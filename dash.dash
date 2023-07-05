@@ -1,61 +1,54 @@
-main: Void {
+main =
   environment.self.
     withCommand(buildDemo).
     serve
-}
 
-code: Directory {
-  host.directory(".",
-    include: %w{
-      **/*.go
-      **/go.{mod,sum}
-      **/testdata/**/*
-      **/*.proto
-      **/*.tmpl
-    }
-    exclude: %w{
-      ci/**/*
-    })
-}
+code = host.directory(
+  path: ".",
+  include: %w{
+    **/*.go
+    **/go.mod
+    **/go.sum
+    **/testdata/**/*
+    **/*.proto
+    **/*.tmpl
+  }
+  exclude: %w{
+    ci/**/*
+  }
+)
 
-buildDemo(): Directory {
-  goBuild(
-    base: base
-    source: code
-    packages: [./demo] # typed, somehow
-    static: true
-    subdir: ./demo/
-  )
-}
+buildDemo = goBuild(
+  base: base
+  source: code
+  packages: [./demo] # typed, somehow
+  static: true
+  subdir: ./demo/
+)
 
 # simple assignment, no := or anything fancy
-packages: Container {
-  wolfi(%w{
-    go
-    protobuf-dev
-    protoc
-    protoc-gen-go
-    protoc-gen-go-grpc
-  })
-}
+packages = wolfi(%w{
+  go
+  protobuf-dev
+  protoc
+  protoc-gen-go
+  protoc-gen-go-grpc
+})
 
-base: Container {
-  goBin(packages) $ {
-    go install "gotest.tools/gotestsum@latest"
-  }
-}
+base = goBin(packages)
+  $ go install "gotest.tools/gotestsum@latest";
 
-wolfi(packages: [String]): Container {
+fn wolfi(packages: [String]): Container {
   config = {
-    cmd: "/bin/sh"
+    cmd: "/bin/sh",
     environment: {
-      PATH: "/usr/sbin:/sbin:/usr/bin:/bin"
-    }
+      PATH: "/usr/sbin:/sbin:/usr/bin:/bin",
+    },
     archs: [currentPlatform.arch],
     contents: {
-      repositories: ["https://packages.wolfi.dev/os"]
-      keyring: ["https://packages.wolfi.dev/os/wolfi-signing.rsa.pub"]
-      packages: packages
+      repositories: ["https://packages.wolfi.dev/os"],
+      keyring: ["https://packages.wolfi.dev/os/wolfi-signing.rsa.pub"],
+      packages: packages,
     }
   }.yaml
 
@@ -64,63 +57,85 @@ wolfi(packages: [String]): Container {
   fork = git("https://github.com/vito/apko").branch("oci-layout").tree
 
   apko = container
-    .from("golang:alpine")
-    .with(goCache)
-    .withMountedDirectory("/apko", fork)
-    .withExec(["go", "install", "-c", "/apko", "."])
-    .withEntrypoint(["apko"])
+    . from("golang:alpine")
+    . with(goCache)
+    . withMountedDirectory("/apko", fork)
+    . withExec(["go", "install", "-c", "/apko", "."])
+    . withEntrypoint(["apko"])
 
   layout = apko
     .withMountedFile("/config.yml", configDir.file("config.yml"))
     .withDirectory("/layout", directory)
     .withMountedCache("/apkcache", cacheVolume("apko"))
     .focus
-    .withExec(%sh`build --debug --cache-dir /apkache /config.yml latest layout`)
+    .withExec(%sh{build --debug --cache-dir /apkache /config.yml latest layout})
     .directory("/layout")
 
   # too weird; that's not a shell!
-  layout = apko $ {
-    cache "apko" /apkcache
-    mount configDir/config.yml /config.yml
-    mkdir /layout/
-    focus
-    # ew, sucks to have to type exec
-    exec build --debug --cache-dir /apkcache /config.yml latest /layout/
-    directory /layout/
-  }
+  # layout = apko $ {
+  #   cache "apko" /apkcache
+  #   mount configDir/config.yml /config.yml
+  #   mkdir /layout/
+  #   focus
+  #   # ew, sucks to have to type exec
+  #   exec build --debug --cache-dir /apkcache /config.yml latest /layout/
+  #   directory /layout/
+  # }
 
   # too circlejerky
+  # layout = apko
+  #   . withMountedFile("/config.yml", configDir.file("config.yml"))
+  #   . withDirectory("/layout", directory)
+  #   . withMountedCache("/apkcache", cacheVolume("apko"))
+  #   . focus
+  #   $ { build --debug --cache-dir /apkache/ /config.yml latest layout }
+  #   / /layout/
+  #   `exec` { build --debug --cache-dir /apkache/ /config.yml latest layout }
+  #   `directory` /layout/
+
+  # kinda clean though
+  #
+  # . is just an operator that takes a call and "descends" into it
+  #
+  # $ is just an operator that takes a block of shell commands and execs them
+  #
+  # both operators are right associative
   layout = apko
     . withMountedFile("/config.yml", configDir.file("config.yml"))
     . withDirectory("/layout", directory)
     . withMountedCache("/apkcache", cacheVolume("apko"))
     . focus
-    $ { build --debug --cache-dir /apkache/ /config.yml latest layout }
-    / /layout/
-    `exec` { build --debug --cache-dir /apkache/ /config.yml latest layout }
-    `directory` /layout/
+    $ build --debug --cache-dir /apkache/ /config.yml latest layout;
+    . directory("/layout/")
 
+  # what about aligning function calls with CLIs? (no parens)
+  # nah, too different from GraphQL
+  # layout = apko
+  #   . withMountedFile "/config.yml" configDir.file("config.yml")
+  #   . withDirectory "/layout" directory
+  #   . withMountedCache "/apkcache", cacheVolume("apko")
+  #   . focus
+  #   $ { build --debug --cache-dir /apkache/ /config.yml latest layout }
+  #   . directory("/layout/")
+
+  # playing with $
   layout = apko
-    .withMountedFile("/config.yml", configDir.file("config.yml"))
-    .withDirectory("/layout", directory)
-    .withMountedCache("/apkcache", cacheVolume("apko"))
-    .focus
-    .${ build --debug --cache-dir /apkache/ /config.yml latest layout }
-    .directory("/layout/"
+    . withMountedFile("/config.yml", configDir.file("config.yml"))
+    . withDirectory("/layout", directory)
+    . withMountedCache("/apkcache", cacheVolume("apko"))
+    . focus
+    $ build --debug --cache-dir /apkache/ /config.yml latest /layout/;
+    . directory(/layout/)
+
+  container.from("alpine") $ echo hello, world!; echo goodbye, world!; .directory(/foo/)
 
   container.importDir(layout)
 }
 
-goBin(container: Container): Container {
-  ctr $ {
-    # withEnvVariable("GOBIN", "/go/bin")
-    GOBIN = "/go/bin"
-    # withEnvVariable("PATH", "$GOBIN:$PATH", expand: true)
-    PATH = "$GOBIN:$PATH"
-  }
-  # ctr.
-  #   withEnvVariable("GOBIN", "/go/bin").
-  #   withEnvVariable("PATH", "$GOBIN:$PATH", expand: true)
+fn goBin(container: Container): Container {
+  ctr.
+    withEnvVariable("GOBIN", "/go/bin").
+    withEnvVariable("PATH", "$GOBIN:$PATH", expand: true)
 }
 
 # --------------
