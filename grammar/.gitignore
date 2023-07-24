@@ -1,0 +1,10 @@
+Cargo.lock
+package-lock.json
+/build
+/node_modules
+/examples/*/
+/target
+/.direnv
+/go.work
+/go.work.sum
+/Session.vim

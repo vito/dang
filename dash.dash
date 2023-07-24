@@ -19,11 +19,11 @@ code = host.directory(
 )
 
 buildDemo = goBuild(
-  base: base
-  source: code
-  packages: [./demo] # typed, somehow
-  static: true
-  subdir: ./demo/
+  base: base,
+  source: code,
+  packages: [./demo], # typed, somehow
+  static: true,
+  subdir: ./demo/,
 )
 
 # simple assignment, no := or anything fancy
@@ -35,16 +35,13 @@ packages = wolfi(%w{
   protoc-gen-go-grpc
 })
 
-base = goBin(packages)
-  $ go install "gotest.tools/gotestsum@latest";
-
 fn wolfi(packages: [String]): Container {
   config = {
     cmd: "/bin/sh",
     environment: {
       PATH: "/usr/sbin:/sbin:/usr/bin:/bin",
     },
-    archs: [currentPlatform.arch],
+    archs: [defaultPlatform.arch],
     contents: {
       repositories: ["https://packages.wolfi.dev/os"],
       keyring: ["https://packages.wolfi.dev/os/wolfi-signing.rsa.pub"],
@@ -60,65 +57,9 @@ fn wolfi(packages: [String]): Container {
     . from("golang:alpine")
     . with(goCache)
     . withMountedDirectory("/apko", fork)
-    . withExec(["go", "install", "-c", "/apko", "."])
+    $ go install -C /apko ./;
     . withEntrypoint(["apko"])
 
-  layout = apko
-    .withMountedFile("/config.yml", configDir.file("config.yml"))
-    .withDirectory("/layout", directory)
-    .withMountedCache("/apkcache", cacheVolume("apko"))
-    .focus
-    .withExec(%sh{build --debug --cache-dir /apkache /config.yml latest layout})
-    .directory("/layout")
-
-  # too weird; that's not a shell!
-  # layout = apko $ {
-  #   cache "apko" /apkcache
-  #   mount configDir/config.yml /config.yml
-  #   mkdir /layout/
-  #   focus
-  #   # ew, sucks to have to type exec
-  #   exec build --debug --cache-dir /apkcache /config.yml latest /layout/
-  #   directory /layout/
-  # }
-
-  # too circlejerky
-  # layout = apko
-  #   . withMountedFile("/config.yml", configDir.file("config.yml"))
-  #   . withDirectory("/layout", directory)
-  #   . withMountedCache("/apkcache", cacheVolume("apko"))
-  #   . focus
-  #   $ { build --debug --cache-dir /apkache/ /config.yml latest layout }
-  #   / /layout/
-  #   `exec` { build --debug --cache-dir /apkache/ /config.yml latest layout }
-  #   `directory` /layout/
-
-  # kinda clean though
-  #
-  # . is just an operator that takes a call and "descends" into it
-  #
-  # $ is just an operator that takes a block of shell commands and execs them
-  #
-  # both operators are right associative
-  layout = apko
-    . withMountedFile("/config.yml", configDir.file("config.yml"))
-    . withDirectory("/layout", directory)
-    . withMountedCache("/apkcache", cacheVolume("apko"))
-    . focus
-    $ build --debug --cache-dir /apkache/ /config.yml latest layout;
-    . directory("/layout/")
-
-  # what about aligning function calls with CLIs? (no parens)
-  # nah, too different from GraphQL
-  # layout = apko
-  #   . withMountedFile "/config.yml" configDir.file("config.yml")
-  #   . withDirectory "/layout" directory
-  #   . withMountedCache "/apkcache", cacheVolume("apko")
-  #   . focus
-  #   $ { build --debug --cache-dir /apkache/ /config.yml latest layout }
-  #   . directory("/layout/")
-
-  # playing with $
   layout = apko
     . withMountedFile("/config.yml", configDir.file("config.yml"))
     . withDirectory("/layout", directory)
@@ -127,7 +68,7 @@ fn wolfi(packages: [String]): Container {
     $ build --debug --cache-dir /apkache/ /config.yml latest /layout/;
     . directory(/layout/)
 
-  container.from("alpine") $ echo hello, world!; echo goodbye, world!; .directory(/foo/)
+  container.from("alpine") $ echo hello, world!;
 
   container.importDir(layout)
 }
@@ -137,6 +78,9 @@ fn goBin(container: Container): Container {
     withEnvVariable("GOBIN", "/go/bin").
     withEnvVariable("PATH", "$GOBIN:$PATH", expand: true)
 }
+
+base = goBin(packages)
+  $ go install "gotest.tools/gotestsum@latest";
 
 # --------------
 

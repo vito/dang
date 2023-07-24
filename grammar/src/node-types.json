@@ -1,0 +1,738 @@
+[
+  {
+    "type": "form",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "Call",
+        "named": true
+      },
+      {
+        "type": "Fn",
+        "named": true
+      },
+      {
+        "type": "Infix",
+        "named": true
+      },
+      {
+        "type": "List",
+        "named": true
+      },
+      {
+        "type": "Path",
+        "named": true
+      },
+      {
+        "type": "Record",
+        "named": true
+      },
+      {
+        "type": "Symbol",
+        "named": true
+      },
+      {
+        "type": "literal",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "literal",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "Boolean",
+        "named": true
+      },
+      {
+        "type": "Null",
+        "named": true
+      },
+      {
+        "type": "Number",
+        "named": true
+      },
+      {
+        "type": "Quoted",
+        "named": true
+      },
+      {
+        "type": "String",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "Boolean",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "Call",
+    "named": true,
+    "fields": {
+      "Args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "kwargs",
+            "named": true
+          }
+        ]
+      },
+      "Name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Symbol",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Fn",
+    "named": true,
+    "fields": {
+      "ArgTypes": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "kwtypes",
+            "named": true
+          }
+        ]
+      },
+      "Body": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "Name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Symbol",
+            "named": true
+          }
+        ]
+      },
+      "ReturnType": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": ":",
+            "named": false
+          }
+        ]
+      },
+      "Type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "fnKeyword",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "Infix",
+    "named": true,
+    "fields": {
+      "Left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "Operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "assignOperator",
+            "named": true
+          },
+          {
+            "type": "dollarOperator",
+            "named": true
+          },
+          {
+            "type": "dotOperator",
+            "named": true
+          }
+        ]
+      },
+      "Right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "Shell",
+            "named": true
+          },
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "List",
+    "named": true,
+    "fields": {
+      "Value": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "Values": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma",
+            "named": true
+          },
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Quoted",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "quotedEscape",
+          "named": true
+        },
+        {
+          "type": "quotedFragment",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "Record",
+    "named": true,
+    "fields": {
+      "KeyVal": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "keyval",
+            "named": true
+          }
+        ]
+      },
+      "KeyValues": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma",
+            "named": true
+          },
+          {
+            "type": "keyval",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "Shell",
+    "named": true,
+    "fields": {
+      "Arguments": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argument",
+            "named": true
+          }
+        ]
+      },
+      "Command": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "argument",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "semicolon",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "String",
+    "named": true,
+    "fields": {
+      "Content": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "escapeSequence",
+            "named": true
+          },
+          {
+            "type": "stringFragment",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "argument",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "Call",
+          "named": true
+        },
+        {
+          "type": "Path",
+          "named": true
+        },
+        {
+          "type": "Quoted",
+          "named": true
+        },
+        {
+          "type": "String",
+          "named": true
+        },
+        {
+          "type": "shellvar",
+          "named": true
+        },
+        {
+          "type": "textarg",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "dollarOperator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "escapeSequence",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "immediateEscapeSequence",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fnType",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "type_",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "keytype",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "keyword",
+          "named": true
+        },
+        {
+          "type": "type_",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "keyval",
+    "named": true,
+    "fields": {
+      "Keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "keyword",
+            "named": true
+          }
+        ]
+      },
+      "Value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "kwargs",
+    "named": true,
+    "fields": {
+      "AnonymousArgs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma",
+            "named": true
+          },
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "Form": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "NamedArg": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "keyval",
+            "named": true
+          }
+        ]
+      },
+      "NamedArgs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma",
+            "named": true
+          },
+          {
+            "type": "keyval",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "kwtypes",
+    "named": true,
+    "fields": {
+      "NamedArg": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "keytype",
+            "named": true
+          }
+        ]
+      },
+      "NamedArgs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma",
+            "named": true
+          },
+          {
+            "type": "keytype",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "listType",
+    "named": true,
+    "fields": {
+      "Inner": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "shellvar",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "form",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "source",
+    "named": true,
+    "fields": {
+      "Body": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "textarg",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "shellvar",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "Symbol",
+          "named": true
+        },
+        {
+          "type": "fnType",
+          "named": true
+        },
+        {
+          "type": "listType",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "\"",
+    "named": false
+  },
+  {
+    "type": "$",
+    "named": false
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "->",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
+  },
+  {
+    "type": "Null",
+    "named": true
+  },
+  {
+    "type": "Number",
+    "named": true
+  },
+  {
+    "type": "Path",
+    "named": true
+  },
+  {
+    "type": "Symbol",
+    "named": true
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "assignOperator",
+    "named": true
+  },
+  {
+    "type": "comma",
+    "named": true
+  },
+  {
+    "type": "comment",
+    "named": true
+  },
+  {
+    "type": "dotOperator",
+    "named": true
+  },
+  {
+    "type": "false",
+    "named": false
+  },
+  {
+    "type": "fnKeyword",
+    "named": true
+  },
+  {
+    "type": "immediateEscapeSequence",
+    "named": true
+  },
+  {
+    "type": "keyword",
+    "named": true
+  },
+  {
+    "type": "quotedEscape",
+    "named": true
+  },
+  {
+    "type": "quotedFragment",
+    "named": true
+  },
+  {
+    "type": "semicolon",
+    "named": true
+  },
+  {
+    "type": "stringFragment",
+    "named": true
+  },
+  {
+    "type": "true",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  }
+]

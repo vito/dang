@@ -1,0 +1,180 @@
+; see https://www.sublimetext.com/docs/scope_naming.html
+;
+; see https://github.com/nvim-treesitter/nvim-treesitter/blob/master/lua/nvim-treesitter/highlight.lua
+
+_
+; <- constant.builtin
+
+true
+; <- constant.builtin.boolean
+
+false
+; <- constant.builtin.boolean
+
+null
+; <- constant.builtin
+
+42
+; <- constant.numeric.integer
+
+:foo
+; <- string.special.symbol
+
+"foo"
+; <- string
+
+"foo\nbar"
+; <- string
+;    ^ constant.character.escape
+
+(foo & bar)
+; <- punctuation.bracket
+;^ function
+;    ^ operator
+;         ^ punctuation.bracket
+
+[foo & bar]
+; <- punctuation.bracket
+; ^ variable
+;    ^ operator
+;       ^ variable
+;         ^ punctuation.bracket
+
+{foo bar}
+; <- punctuation.bracket
+; ^ variable
+;     ^ variable
+;       ^ punctuation.bracket
+
+; foo
+; <- comment.line
+
+.bash
+; <- string.special.path
+
+./foo
+; <- string.special.path
+; ^ string.special.path
+
+../foo
+; <- string.special.path
+;  ^ string.special.path
+
+./foo/
+; <- string.special.path
+; ^ string.special.path
+
+../foo/
+; <- string.special.path
+;  ^ string.special.path
+
+/foo
+; ^ string.special.path
+
+foo/bar
+;   ^ string.special.path
+
+foo:bar
+; <- variable
+;  ^ string.special.symbol
+
+foo:bar:baz
+; <- variable
+;  ^ string.special.symbol
+;      ^ string.special.symbol
+
+foo:bar/baz/buzz
+; <- variable
+;  ^ string.special.symbol
+;       ^ string.special.path
+;           ^ string.special.path
+
+foo:bar/baz/buzz/
+; <- variable
+;  ^ string.special.symbol
+;       ^ string.special.path
+;           ^ string.special.path
+
+(def foo 42)
+; ^ label
+
+[def foo 42]
+; ^ label
+
+(defn foo 42)
+; ^ label
+
+[defn foo 42]
+; ^ label
+
+(use (.strings))
+; ^ keyword.control.import
+
+[use (.strings)]
+; ^ keyword.control.import
+
+(load (.strings))
+; ^ keyword.control.import
+
+[load (.strings)]
+; ^ keyword.control.import
+
+(import (load (.strings)))
+; ^ keyword.control.import
+;        ^ keyword.control.import
+
+[import (load (.strings))]
+; ^ keyword.control.import
+;        ^ keyword.control.import
+
+(if a b c)
+; ^ keyword.control.conditional
+
+[if a b c]
+; ^ keyword.control.conditional
+
+(when a b c)
+; ^ keyword.control.conditional
+
+[when a b c]
+; ^ keyword.control.conditional
+
+(cond a b c)
+; ^ keyword.control.conditional
+
+[cond a b c]
+; ^ keyword.control.conditional
+
+(case a b c)
+; ^ keyword.control.conditional
+
+[case a b c]
+; ^ keyword.control.conditional
+
+(-> hi foo (bar baz) quux)
+; ^ function.macro
+;   ^ variable.parameter
+;      ^ function
+;           ^ function
+;                    ^ function
+
+(-> 42 foo (bar baz) quux)
+; ^ function.macro
+;   ^ constant.numeric.integer
+;      ^ function
+;           ^ function
+;                    ^ function
+
+(ops & * + - < <= = > >=)
+; ^ function
+;    ^ operator
+;      ^ operator
+;        ^ operator
+;          ^ operator
+;            ^ operator
+;              ^ operator
+;               ^ operator
+;                 ^ operator
+;                   ^ operator
+;                     ^ operator
+;                      ^ operator
