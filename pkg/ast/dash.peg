@@ -13,44 +13,75 @@
   }
 }
 
-Dash <- nodes:Form* !. {
+Dash <- _ nodes:(f:Form _ { return f, nil })* _ !. {
   return sliceOf[Node](nodes), nil
 }
 
-Form <- node:(Call / Infix / List / Literal / FunDecl / ClsDecl / Symbol) {
-  return node, nil
-}
+Form <- Call / Infix / List / Literal / FunDecl / ClsDecl / Symbol
 
-Id <- name:[a-zA-Z0-9]+ {
+Id <- WordToken
+WordToken <- name:[a-zA-Z0-9]+ {
+  return name, nil
+}
+UpperId <- UpperToken
+UpperToken <- name:[A-Z][a-zA-Z0-9]* {
   return name, nil
 }
 
-Call <- name:Id "(" params:KeyValue* ")" {
-  return &Call{name.(string), sliceOf[Keyed[Node]](params)}, nil
+Call <- name:Id "(" _ params:KeyValue* _ ")" {
+  return Call{name.(string), sliceOf[Keyed[Node]](params)}, nil
 }
 
-KeyValue <- key:Id ":" value:Form Comma? {
-  return &Keyed[Node]{key.(string), value}, nil
+KeyValue <- key:KeywordToken _ value:Form _ CommaToken? {
+  return Keyed[Node]{key.(string), value}, nil
+}
+KeyType <- key:KeywordToken _ type_:Type _ CommaToken? {
+  return Keyed[Type]{key.(string), type_.(Type)}, nil
+}
+KeywordToken <- name:[a-zA-Z0-9]+ ":" {
+  return name, nil
 }
 
-KeyType <- key:Id ":" type_:Type Comma? {
-  return &Keyed[Type]{key.(string), type_.(Type)}, nil
+Type <- NamedType / ListType / NonNull
+NamedType <- name:UpperId {
+  return Type{
+    Class: name.(string),
+  }, nil
 }
-
-Comma <- ","
-
-Infix <- left:Form "." call:Call {
-  return &Chain{left.(Node), call.(*Call)}, nil
+ListType <- "[" inner:Type "]" {
+  t := inner.(Type)
+  return Type{
+    ListOf: &t,
+  }, nil
 }
+NonNull <- inner:Type BangToken {
+  t := inner.(Type)
+  t.NonNull = true
+  return t, nil
+}
+BangToken <- "!"
 
-FunDecl <- "fun" name:Id args:ArgTypes? ":" ret:Type body:Block {
-  return &FunDecl{
+CommaToken <- ","
+
+Infix <- Select / Default
+Select <- left:Form DotToken call:Call {
+  return Select{left.(Node), call.(Call)}, nil
+}
+DotToken <- "."
+Default <- left:Form DefaultToken right:Form {
+  return Default{left.(Node), right.(Node)}, nil
+}
+DefaultToken <- "?"
+
+FunDecl <- FunToken name:Id args:ArgTypes? ":" ret:Type body:Block {
+  return FunDecl{
     name.(string),
     sliceOf[Keyed[Type]](args),
     ret.(Type),
     body.(Block),
   }, nil
 }
+FunToken <- "fun"
 
 ArgTypes <- "(" args:KeyType* ")" {
   return sliceOf[Keyed[Type]](args), nil
@@ -60,12 +91,13 @@ ArgValues <- "(" args:KeyValue* ")" {
   return sliceOf[Keyed[Node]](args), nil
 }
 
-ClsDecl <- "cls" name:Id "{" body:SlotDecl* "}" {
-  return &ClassDecl{name.(string), sliceOf[SlotDecl](body)}, nil
+ClsDecl <- ClsToken _ name:Id _ "{" _ body:SlotDecl* _ "}" {
+  return ClassDecl{name.(string), sliceOf[SlotDecl](body)}, nil
 }
+ClsToken <- "cls"
 
-SlotDecl <- vis:Visibility name:Id args:ArgTypes? ":" ret:Type body:Block? {
-  return &SlotDecl{
+SlotDecl <- vis:Visibility _ name:Id _ args:ArgTypes? _ ":" _ ret:Type _ body:Block? {
+  return SlotDecl{
     name.(string),
     sliceOf[Keyed[Type]](args),
     ret.(Type),
@@ -74,19 +106,60 @@ SlotDecl <- vis:Visibility name:Id args:ArgTypes? ":" ret:Type body:Block? {
   }, nil
 }
 
-Visibility <- "pub" { return PublicVisibility, nil }
-            / "pri" { return PrivateVisibility, nil }
+Visibility <- PubToken { return PublicVisibility, nil }
+            / PvtToken { return PrivateVisibility, nil }
+PubToken <- "pub"
+PvtToken <- "pvt"
 
-Literal <- !. // TODO
+List <- '[' _ eles:Form* _ ']' {
+  return List{sliceOf[Node](eles)}, nil
+}
+
+Block <- '{' _ body:Form* _ '}' {
+  return Block{sliceOf[Node](body)}, nil
+}
+
+Literal <- Integer / Boolean / String / Quoted / Null
+
+Integer <- '0' / NonZeroDecimalDigit DecimalDigit*
+
+Exponent <- 'e'i [+-]? DecimalDigit+
+
+String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
+  c.text = bytes.Replace(c.text, []byte(`\/`), []byte(`/`), -1)
+  value, err := strconv.Unquote(string(c.text))
+  if err != nil {
+    return nil, err
+  }
+  return String{value}, nil
+}
+
+EscapedChar <- [\x00-\x1f"\\]
+
+EscapeSequence <- SingleCharEscape / UnicodeEscape
+
+SingleCharEscape <- ["\\/bfnrt]
+
+UnicodeEscape <- 'u' HexDigit HexDigit HexDigit HexDigit
+
+DecimalDigit <- [0-9]
+
+NonZeroDecimalDigit <- [1-9]
+
+HexDigit <- [0-9a-f]i
+
+Quoted <- "%" quoter:WordToken "{" raw:[^}]* "}" {
+  return Quoted{quoter.(string), raw.(string)}, nil
+}
+
+Boolean <- "true" { return true, nil } / "false" { return false, nil }
+
+Null <- "null" { return nil, nil }
 
 Symbol <- name:Id {
-  return &Symbol{name.(string)}, nil
+  return Symbol{name.(string)}, nil
 }
 
-List <- '[' eles:Form* ']' {
-  return &List{sliceOf[Node](eles)}, nil
-}
+_ "whitespace" <- [ \t\r\n]*
 
-Block <- '{' body:Form* '}' {
-  return &Block{sliceOf[Node](body)}, nil
-}
+CommentToken <- "#" .*

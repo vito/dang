@@ -4,94 +4,469 @@
     "named": true,
     "subtypes": [
       {
-        "type": "Call",
+        "type": "call",
         "named": true
       },
       {
-        "type": "Fun",
+        "type": "cls_decl",
         "named": true
       },
       {
-        "type": "Infix",
+        "type": "fun_decl",
         "named": true
       },
       {
-        "type": "List",
+        "type": "infix",
         "named": true
       },
       {
-        "type": "Path",
-        "named": true
-      },
-      {
-        "type": "Record",
-        "named": true
-      },
-      {
-        "type": "Symbol",
-        "named": true
-      },
-      {
-        "type": "Type",
+        "type": "list",
         "named": true
       },
       {
         "type": "literal",
         "named": true
+      },
+      {
+        "type": "symbol",
+        "named": true
       }
     ]
+  },
+  {
+    "type": "arg_types",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "key_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "block",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "boolean",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "call",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "cls_decl",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "slot_decl",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "cls_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "dash",
+    "named": true,
+    "fields": {
+      "f": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "nodes": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "default",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "default_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "escape_sequence",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "single_char_escape",
+          "named": true
+        },
+        {
+          "type": "unicode_escape",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fun_decl",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "ret": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "fun_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "id",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "word_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "infix",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "default",
+          "named": true
+        },
+        {
+          "type": "select",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "integer",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "decimal_digit",
+          "named": true
+        },
+        {
+          "type": "non_zero_decimal_digit",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "key_type",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "keyword_token",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "key_value",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "keyword_token",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "list",
+    "named": true,
+    "fields": {
+      "eles": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "list_type",
+    "named": true,
+    "fields": {
+      "inner": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "literal",
     "named": true,
-    "subtypes": [
-      {
-        "type": "Boolean",
-        "named": true
-      },
-      {
-        "type": "Null",
-        "named": true
-      },
-      {
-        "type": "Number",
-        "named": true
-      },
-      {
-        "type": "Quoted",
-        "named": true
-      },
-      {
-        "type": "String",
-        "named": true
-      }
-    ]
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "integer",
+          "named": true
+        },
+        {
+          "type": "null",
+          "named": true
+        },
+        {
+          "type": "quoted",
+          "named": true
+        },
+        {
+          "type": "string",
+          "named": true
+        }
+      ]
+    }
   },
   {
-    "type": "Boolean",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "Call",
+    "type": "named_type",
     "named": true,
     "fields": {
-      "Args": {
+      "name": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "kwargs",
-            "named": true
-          }
-        ]
-      },
-      "Name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "Symbol",
+            "type": "upper_id",
             "named": true
           }
         ]
@@ -99,55 +474,15 @@
     }
   },
   {
-    "type": "Fun",
+    "type": "non_null",
     "named": true,
     "fields": {
-      "ArgTypes": {
+      "inner": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "kwtypes",
-            "named": true
-          }
-        ]
-      },
-      "Body": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "Name": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "Symbol",
-            "named": true
-          }
-        ]
-      },
-      "ReturnType": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": ":",
-            "named": false
-          }
-        ]
-      },
-      "Type": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "type_",
+            "type": "type",
             "named": true
           }
         ]
@@ -158,54 +493,22 @@
       "required": true,
       "types": [
         {
-          "type": "funKeyword",
+          "type": "bang_token",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "Infix",
+    "type": "quoted",
     "named": true,
     "fields": {
-      "Left": {
+      "quoter": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "Operator": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "assignOperator",
-            "named": true
-          },
-          {
-            "type": "dollarOperator",
-            "named": true
-          },
-          {
-            "type": "dotOperator",
-            "named": true
-          }
-        ]
-      },
-      "Right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "Shell",
-            "named": true
-          },
-          {
-            "type": "form",
+            "type": "word_token",
             "named": true
           }
         ]
@@ -213,104 +516,25 @@
     }
   },
   {
-    "type": "List",
+    "type": "select",
     "named": true,
     "fields": {
-      "Value": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "Values": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "comma",
-            "named": true
-          },
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "Quoted",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "quotedEscape",
-          "named": true
-        },
-        {
-          "type": "quotedFragment",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "Record",
-    "named": true,
-    "fields": {
-      "KeyVal": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "keyval",
-            "named": true
-          }
-        ]
-      },
-      "KeyValues": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "comma",
-            "named": true
-          },
-          {
-            "type": "keyval",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "Shell",
-    "named": true,
-    "fields": {
-      "Arguments": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "argument",
-            "named": true
-          }
-        ]
-      },
-      "Command": {
+      "call": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "argument",
+            "type": "call",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
             "named": true
           }
         ]
@@ -321,303 +545,62 @@
       "required": true,
       "types": [
         {
-          "type": "semicolon",
+          "type": "dot_token",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "String",
+    "type": "slot_decl",
     "named": true,
     "fields": {
-      "Content": {
-        "multiple": true,
+      "args": {
+        "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "escapeSequence",
-            "named": true
-          },
-          {
-            "type": "stringFragment",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "Type",
-    "named": true,
-    "fields": {
-      "Body": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "fieldOrFun",
+            "type": "arg_types",
             "named": true
           }
         ]
       },
-      "Name": {
+      "body": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "Symbol",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "typeKeyword",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "argument",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "Call",
-          "named": true
-        },
-        {
-          "type": "Path",
-          "named": true
-        },
-        {
-          "type": "Quoted",
-          "named": true
-        },
-        {
-          "type": "String",
-          "named": true
-        },
-        {
-          "type": "shellvar",
-          "named": true
-        },
-        {
-          "type": "textarg",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "dollarOperator",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "escapeSequence",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "immediateEscapeSequence",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "fieldOrFun",
-    "named": true,
-    "fields": {
-      "Field": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "keyval",
+            "type": "block",
             "named": true
           }
         ]
       },
-      "Fun": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "Fun",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "funType",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "type_",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "keytype",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "keyword",
-          "named": true
-        },
-        {
-          "type": "type_",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "keyval",
-    "named": true,
-    "fields": {
-      "Keyword": {
+      "name": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "keyword",
+            "type": "id",
             "named": true
           }
         ]
       },
-      "Value": {
+      "ret": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "kwargs",
-    "named": true,
-    "fields": {
-      "AnonymousArgs": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "comma",
-            "named": true
-          },
-          {
-            "type": "form",
+            "type": "type",
             "named": true
           }
         ]
       },
-      "Form": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "NamedArg": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "keyval",
-            "named": true
-          }
-        ]
-      },
-      "NamedArgs": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "comma",
-            "named": true
-          },
-          {
-            "type": "keyval",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "kwtypes",
-    "named": true,
-    "fields": {
-      "NamedArg": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "keytype",
-            "named": true
-          }
-        ]
-      },
-      "NamedArgs": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "comma",
-            "named": true
-          },
-          {
-            "type": "keytype",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "listType",
-    "named": true,
-    "fields": {
-      "Inner": {
+      "vis": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "type_",
+            "type": "visibility",
             "named": true
           }
         ]
@@ -625,38 +608,7 @@
     }
   },
   {
-    "type": "shellvar",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "form",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "source",
-    "named": true,
-    "fields": {
-      "Body": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "textarg",
+    "type": "string",
     "named": true,
     "fields": {},
     "children": {
@@ -664,14 +616,30 @@
       "required": false,
       "types": [
         {
-          "type": "shellvar",
+          "type": "escape_sequence",
           "named": true
         }
       ]
     }
   },
   {
-    "type": "type_",
+    "type": "symbol",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "type",
     "named": true,
     "fields": {},
     "children": {
@@ -679,15 +647,64 @@
       "required": true,
       "types": [
         {
-          "type": "Symbol",
+          "type": "list_type",
           "named": true
         },
         {
-          "type": "funType",
+          "type": "named_type",
           "named": true
         },
         {
-          "type": "listType",
+          "type": "non_null",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "unicode_escape",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "hex_digit",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "upper_id",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "upper_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "visibility",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "pub_token",
+          "named": true
+        },
+        {
+          "type": "pvt_token",
           "named": true
         }
       ]
@@ -698,7 +715,7 @@
     "named": false
   },
   {
-    "type": "$",
+    "type": "%",
     "named": false
   },
   {
@@ -710,7 +727,7 @@
     "named": false
   },
   {
-    "type": "->",
+    "type": "0",
     "named": false
   },
   {
@@ -718,23 +735,11 @@
     "named": false
   },
   {
-    "type": "Null",
-    "named": true
-  },
-  {
-    "type": "Number",
-    "named": true
-  },
-  {
-    "type": "Path",
-    "named": true
-  },
-  {
-    "type": "Symbol",
-    "named": true
-  },
-  {
     "type": "[",
+    "named": false
+  },
+  {
+    "type": "\\",
     "named": false
   },
   {
@@ -742,51 +747,71 @@
     "named": false
   },
   {
-    "type": "assignOperator",
+    "type": "bang_token",
     "named": true
   },
   {
-    "type": "comma",
+    "type": "cls_token",
     "named": true
   },
   {
-    "type": "comment",
+    "type": "comma_token",
     "named": true
   },
   {
-    "type": "dotOperator",
+    "type": "comment_token",
     "named": true
+  },
+  {
+    "type": "decimal_digit",
+    "named": true
+  },
+  {
+    "type": "default_token",
+    "named": true
+  },
+  {
+    "type": "dot_token",
+    "named": true
+  },
+  {
+    "type": "e",
+    "named": false
   },
   {
     "type": "false",
     "named": false
   },
   {
-    "type": "funKeyword",
+    "type": "fun_token",
     "named": true
   },
   {
-    "type": "immediateEscapeSequence",
+    "type": "hex_digit",
     "named": true
   },
   {
-    "type": "keyword",
+    "type": "keyword_token",
     "named": true
   },
   {
-    "type": "quotedEscape",
+    "type": "non_zero_decimal_digit",
     "named": true
   },
   {
-    "type": "quotedFragment",
+    "type": "null",
     "named": true
   },
   {
-    "type": "semicolon",
+    "type": "pub_token",
     "named": true
   },
   {
-    "type": "stringFragment",
+    "type": "pvt_token",
+    "named": true
+  },
+  {
+    "type": "single_char_escape",
     "named": true
   },
   {
@@ -794,7 +819,15 @@
     "named": false
   },
   {
-    "type": "typeKeyword",
+    "type": "u",
+    "named": false
+  },
+  {
+    "type": "upper_token",
+    "named": true
+  },
+  {
+    "type": "word_token",
     "named": true
   },
   {

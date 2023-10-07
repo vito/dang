@@ -3,21 +3,21 @@ package ast
 type Node interface{}
 
 type Type struct {
-	// A named GraphQL type.
-	Named string
+	// A named class.
+	Class string
 
 	// A list of other types.
 	ListOf *Type
+
+	// Whether the value can be null.
+	NonNull bool
 
 	// A set of fields and associated types.
 	//
 	// TODO: GraphQL doesn't have this, just guessing it might be useful for
 	// intra-language stuff, maybe like generic functions that can act on objects
 	// having certain fields
-	RecordOf map[string]Type
-
-	// Whether the value can be null.
-	Nullable bool
+	// RecordOf map[string]Type
 }
 
 // Kind is the kind of a type.
@@ -25,9 +25,9 @@ type TypeKind int
 
 const (
 	KindInvalid TypeKind = iota
-	KindNamed
+	KindClass
 	KindList
-	KindRecord
+	// KindRecord
 )
 
 // Kind returns the kind of type.
@@ -35,11 +35,11 @@ func (t Type) Kind() TypeKind {
 	if t.ListOf != nil {
 		return KindList
 	}
-	if t.RecordOf != nil {
-		return KindRecord
-	}
-	if t.Named != "" {
-		return KindNamed
+	// if t.RecordOf != nil {
+	// 	return KindRecord
+	// }
+	if t.Class != "" {
+		return KindClass
 	}
 	return KindInvalid
 }
@@ -91,4 +91,23 @@ type Block struct {
 
 type Symbol struct {
 	Name string
+}
+
+type Select struct {
+	Receiver Node
+	Call     Call
+}
+
+type Default struct {
+	Left  Node
+	Right Node
+}
+
+type String struct {
+	Value string
+}
+
+type Quoted struct {
+	Quoter string
+	Raw    string
 }
