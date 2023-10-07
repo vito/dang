@@ -8,7 +8,7 @@
         "named": true
       },
       {
-        "type": "Fn",
+        "type": "Fun",
         "named": true
       },
       {
@@ -29,6 +29,10 @@
       },
       {
         "type": "Symbol",
+        "named": true
+      },
+      {
+        "type": "Type",
         "named": true
       },
       {
@@ -95,12 +99,12 @@
     }
   },
   {
-    "type": "Fn",
+    "type": "Fun",
     "named": true,
     "fields": {
       "ArgTypes": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "kwtypes",
@@ -154,7 +158,7 @@
       "required": true,
       "types": [
         {
-          "type": "fnKeyword",
+          "type": "funKeyword",
           "named": true
         }
       ]
@@ -344,6 +348,42 @@
     }
   },
   {
+    "type": "Type",
+    "named": true,
+    "fields": {
+      "Body": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "fieldOrFun",
+            "named": true
+          }
+        ]
+      },
+      "Name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "typeKeyword",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "argument",
     "named": true,
     "fields": {},
@@ -399,7 +439,33 @@
     }
   },
   {
-    "type": "fnType",
+    "type": "fieldOrFun",
+    "named": true,
+    "fields": {
+      "Field": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "keyval",
+            "named": true
+          }
+        ]
+      },
+      "Fun": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "Fun",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "funType",
     "named": true,
     "fields": {},
     "children": {
@@ -617,7 +683,7 @@
           "named": true
         },
         {
-          "type": "fnType",
+          "type": "funType",
           "named": true
         },
         {
@@ -696,7 +762,7 @@
     "named": false
   },
   {
-    "type": "fnKeyword",
+    "type": "funKeyword",
     "named": true
   },
   {
@@ -726,6 +792,10 @@
   {
     "type": "true",
     "named": false
+  },
+  {
+    "type": "typeKeyword",
+    "named": true
   },
   {
     "type": "{",

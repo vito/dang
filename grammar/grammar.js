@@ -68,7 +68,8 @@ module.exports = grammar({
       // Forms
       field('Call', $.Call),
       field('Infix', $.Infix),
-      field('Fn', $.Fn),
+      field('Fun', $.Fun),
+      field('Type', $.Type),
 
       // literals
       field('Literal', $.literal),
@@ -100,14 +101,14 @@ module.exports = grammar({
       ')',
     ),
 
-    Fn: $ => seq(
-      $.fnKeyword,
+    Fun: $ => seq(
+      $.funKeyword,
       field('Name', optional($.Symbol)),
-      field('ArgTypes', $.kwtypes),
+      field('ArgTypes', optional($.kwtypes)),
       field('ReturnType', optional(seq(':', field('Type', $.type_)))),
       '{', field('Body', repeat($.form)), '}',
     ),
-    fnKeyword: _ => token('fn'),
+    funKeyword: _ => token('fun'),
     kwtypes: $ => seq(
       '(',
         field('NamedArgs', repeat(seq(field('NamedArg', $.keytype), optional($.comma)))),
@@ -115,8 +116,19 @@ module.exports = grammar({
     ),
     keytype: $ => seq($.keyword, $.type_),
 
-    type_: $ => choice($.Symbol, $.fnType, $.listType),
-    fnType: $ => prec.left(seq($.type_, '->', $.type_)),
+    Type: $ => seq(
+      $.typeKeyword,
+      field('Name', optional($.Symbol)),
+      '{', field('Body', repeat($.fieldOrFun)), '}',
+    ),
+    typeKeyword: _ => token('type'),
+    fieldOrFun: $ => choice(
+      field('Field', $.keyval),
+      field('Fun', $.Fun),
+    ),
+
+    type_: $ => choice($.Symbol, $.funType, $.listType),
+    funType: $ => prec.left(seq($.type_, '->', $.type_)),
     listType: $ => seq('[', field('Inner', $.type_), ']'),
 
     Infix: $ => {

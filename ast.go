@@ -5,100 +5,91 @@ import (
 	"log"
 
 	sitter "github.com/smacker/go-tree-sitter"
-	dash "github.com/vito/dash/grammar/bindings/go"
 )
 
-func FromTS(n *sitter.Node) (Node, error) {
-	cursor := sitter.NewTreeCursor(n)
+func FromTS(n *sitter.Node, input []byte) (Node, error) {
 	node := Nodes[n.Symbol()]()
-	return node, node.UnmarshalTS(cursor)
+	return node, node.UnmarshalTS(n, input)
 }
 
 //go:generate go run ./pkg/ast/gen ./grammar/src/grammar.json ./ast.gen.go
 
-func (n *source) UnmarshalTS(cursor *sitter.TreeCursor) error {
-	if !cursor.GoToFirstChild() {
-		panic("wat")
-	}
-
-	node := cursor.CurrentNode()
-
+func (n *source) UnmarshalTS(node *sitter.Node, input []byte) error {
 	// TODO: this would be a good sanity check
 	// if node.Symbol() != dash.SymbolSource {
 	// 	return fmt.Errorf("expected source node, got %v", node.Symbol())
 	// }
 	n.Body = make([]*form, node.ChildCount())
-
-	for {
-		log.Printf("!!! CHILD %q: %s", cursor.CurrentFieldName(), cursor.CurrentNode())
-
-		var f *form
-		if err := f.UnmarshalTS(cursor); err != nil {
-			return err
-		}
-
-		if !cursor.GoToNextSibling() {
-			break
+	log.Println("!!! SOURCE", node.ChildCount())
+	sitter.NewTreeCursor(node)
+	for i := 0; i < int(node.ChildCount()); i++ {
+		log.Println("!!! SOURCE CHILD", node.FieldNameForChild(i))
+		debugNode(node.Child(i))
+		n.Body[i] = &form{}
+		if err := n.Body[i].UnmarshalTS(node.Child(i), input); err != nil {
+			return fmt.Errorf("child %d: %w", i, err)
 		}
 	}
-
 	return nil
 }
 
-func (n *form) UnmarshalTS(cursor *sitter.TreeCursor) error {
+func (n *form) UnmarshalTS(node *sitter.Node, input []byte) error {
+	*n = form{}
 	// TODO: this would be a good sanity check
 	// if node.Symbol() != dash.SymbolSource {
 	// 	return fmt.Errorf("expected source node, got %v", node.Symbol())
 	// }
-
-	n = &form{}
-	switch cursor.CurrentFieldName() {
-	case "List":
-		n.List = &List{}
-		cursor.GoToFirstChild()
-		if err := n.List.UnmarshalTS(cursor); err != nil {
-			return err
-		}
-		// XXX HERE
-	}
-	log.Println("!!! FORM:", cursor.CurrentFieldName())
-
-	for {
-		log.Printf("!!! CHILD %q: %s", cursor.CurrentFieldName(), cursor.CurrentNode())
-
-		if !cursor.GoToNextSibling() {
-			break
-		}
+	log.Println("!!!!!!!!!!!!!!!!!!!! FORM", node.Type())
+	debugNode(node)
+	cons, defined := Nodes[node.Symbol()]
+	if !defined {
+		return fmt.Errorf("unknown symbol: %v", node.Symbol())
 	}
 
-	return nil
+	switch x := cons().(type) {
+	case *Call:
+		n.Call = x
+		return n.Call.UnmarshalTS(node, input)
+	case *Infix:
+		n.Infix = x
+		return n.Infix.UnmarshalTS(node, input)
+	case *Fun:
+		n.Fun = x
+		return n.Fun.UnmarshalTS(node, input)
+	case *literal:
+		n.Literal = x
+		return n.Literal.UnmarshalTS(node, input)
+	case *Symbol:
+		n.Symbol = x
+		return n.Symbol.UnmarshalTS(node, input)
+	case *List:
+		n.List = x
+		return n.List.UnmarshalTS(node, input)
+	case *Record:
+		n.Record = x
+		return n.Record.UnmarshalTS(node, input)
+	case *Path:
+		n.Path = x
+		return n.Path.UnmarshalTS(node, input)
+	default:
+		return fmt.Errorf("unknown form: %T (%+v)", x, x)
+	}
 }
 
-func (n *List) UnmarshalTS(cursor *sitter.TreeCursor) error {
-	// TODO: this would be a good sanity check
-	// if node.Symbol() != dash.SymbolSource {
-	// 	return fmt.Errorf("expected source node, got %v", node.Symbol())
-	// }
-
-	n = &List{}
-
-	log.Println("!!! LIST:", cursor.CurrentFieldName())
-
-	for {
-		log.Printf("!!! LIST CHILD %q: %s", cursor.CurrentFieldName(), cursor.CurrentNode())
-
-		if !cursor.GoToNextSibling() {
-			break
-		}
-	}
-
+func (list *List) UnmarshalTS(node *sitter.Node, input []byte) error {
+	cursor := sitter.NewTreeCursor(node)
+	defer cursor.Close()
+	log.Println("!!!!!!!!!!!!!!!!!!!!!!! UNMARSHAL LIST", node)
+	debugNode(cursor.CurrentNode())
 	return nil
 }
 
 func debugNode(n *sitter.Node) {
-	fmt.Printf("TS NODE: %s %#v\n", dash.Language().SymbolName(n.Symbol()), n)
+	// fmt.Printf("TS NODE: %s %#v\n", dash.Language().SymbolName(n.Symbol()), n)
 	if dashNode, defined := Nodes[n.Symbol()]; defined {
-		fmt.Printf("DASH NODE: %#v\n", dashNode())
+		fmt.Printf("DASH NODE: %T\n", dashNode())
+	} else {
+		fmt.Printf("UNKNOWN NODE: %s\n", n.Type())
 	}
 	fmt.Println("CHILD COUNT:", n.ChildCount())
 	fmt.Println("NAMED CHILD COUNT:", n.NamedChildCount())

@@ -1,41 +1,38 @@
-main =
-  environment.self.
-    withCommand(buildDemo).
-    serve
+fun main(): Void {
+  code = host.directory(
+    path: ".",
+    include: %w{
+      **/*.go
+      **/go.mod
+      **/go.sum
+      **/testdata/**/*
+      **/*.proto
+      **/*.tmpl
+    }
+    exclude: %w{
+      ci/**/*
+    }
+  )
 
-code = host.directory(
-  path: ".",
-  include: %w{
-    **/*.go
-    **/go.mod
-    **/go.sum
-    **/testdata/**/*
-    **/*.proto
-    **/*.tmpl
-  }
-  exclude: %w{
-    ci/**/*
-  }
-)
+  buildDemo = goBuild(
+    base: base,
+    source: code,
+    packages: [./demo], # typed, somehow
+    static: true,
+    subdir: ./demo/,
+  )
 
-buildDemo = goBuild(
-  base: base,
-  source: code,
-  packages: [./demo], # typed, somehow
-  static: true,
-  subdir: ./demo/,
-)
+  # simple assignment, no := or anything fancy
+  packages = apko.wolfi(%w{
+    go
+    protobuf-dev
+    protoc
+    protoc-gen-go
+    protoc-gen-go-grpc
+  })
+}
 
-# simple assignment, no := or anything fancy
-packages = wolfi(%w{
-  go
-  protobuf-dev
-  protoc
-  protoc-gen-go
-  protoc-gen-go-grpc
-})
-
-fn wolfi(packages: [String]): Container {
+fun wolfi(packages: [String]): Container {
   config = {
     cmd: "/bin/sh",
     environment: {
@@ -73,7 +70,7 @@ fn wolfi(packages: [String]): Container {
   container.importDir(layout)
 }
 
-fn goBin(container: Container): Container {
+fun goBin(container: Container): Container {
   ctr.
     withEnvVariable("GOBIN", "/go/bin").
     withEnvVariable("PATH", "$GOBIN:$PATH", expand: true)

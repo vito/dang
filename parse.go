@@ -26,7 +26,7 @@ func main() {
 
 	debugNode(n)
 
-	node, err := FromTS(n)
+	node, err := FromTS(n, sourceCode)
 	if err != nil {
 		panic(err)
 	}

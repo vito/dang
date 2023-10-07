@@ -139,7 +139,10 @@ func (c *Codegen) WriteTypes(f *jen.File) {
 	f.Type().Id("Node").Interface(
 		// TODO
 		jen.Id("UnmarshalTS").
-			Params(jen.Op("*").Qual("github.com/smacker/go-tree-sitter", "TreeCursor")).
+			Params(
+				jen.Op("*").Qual("github.com/smacker/go-tree-sitter", "Node"),
+				jen.Index().Byte(),
+			).
 			Error(),
 	)
 
@@ -157,7 +160,10 @@ func (c *Codegen) WriteConstructors(f *jen.File) {
 	f.Func().
 		Params(jen.Id("unimplementedNode")).
 		Id("UnmarshalTS").
-		Params(jen.Id("node").Op("*").Qual("github.com/smacker/go-tree-sitter", "TreeCursor")).
+		Params(
+			jen.Id("node").Op("*").Qual("github.com/smacker/go-tree-sitter", "Node"),
+			jen.Id("input").Index().Byte(),
+		).
 		Error().
 		Block(
 			jen.Return(jen.Qual("fmt", "Errorf").Call(jen.Lit("unimplemented node type"))),
