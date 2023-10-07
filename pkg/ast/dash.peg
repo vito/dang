@@ -1,0 +1,92 @@
+{
+  package ast
+
+  import "strings"
+
+  func sliceOf[T any](val any) []T {
+    anys := val.([]any)
+    ts := make([]T, len(anys))
+    for i, node := range anys {
+      ts[i] = node.(T)
+    }
+    return ts
+  }
+}
+
+Dash <- nodes:Form* !. {
+  return sliceOf[Node](nodes), nil
+}
+
+Form <- node:(Call / Infix / List / Literal / FunDecl / ClsDecl / Symbol) {
+  return node, nil
+}
+
+Id <- name:[a-zA-Z0-9]+ {
+  return name, nil
+}
+
+Call <- name:Id "(" params:KeyValue* ")" {
+  return &Call{name.(string), sliceOf[Keyed[Node]](params)}, nil
+}
+
+KeyValue <- key:Id ":" value:Form Comma? {
+  return &Keyed[Node]{key.(string), value}, nil
+}
+
+KeyType <- key:Id ":" type_:Type Comma? {
+  return &Keyed[Type]{key.(string), type_.(Type)}, nil
+}
+
+Comma <- ","
+
+Infix <- left:Form "." call:Call {
+  return &Chain{left.(Node), call.(*Call)}, nil
+}
+
+FunDecl <- "fun" name:Id args:ArgTypes? ":" ret:Type body:Block {
+  return &FunDecl{
+    name.(string),
+    sliceOf[Keyed[Type]](args),
+    ret.(Type),
+    body.(Block),
+  }, nil
+}
+
+ArgTypes <- "(" args:KeyType* ")" {
+  return sliceOf[Keyed[Type]](args), nil
+}
+
+ArgValues <- "(" args:KeyValue* ")" {
+  return sliceOf[Keyed[Node]](args), nil
+}
+
+ClsDecl <- "cls" name:Id "{" body:SlotDecl* "}" {
+  return &ClassDecl{name.(string), sliceOf[SlotDecl](body)}, nil
+}
+
+SlotDecl <- vis:Visibility name:Id args:ArgTypes? ":" ret:Type body:Block? {
+  return &SlotDecl{
+    name.(string),
+    sliceOf[Keyed[Type]](args),
+    ret.(Type),
+    vis.(Visibility),
+    body.(Block),
+  }, nil
+}
+
+Visibility <- "pub" { return PublicVisibility, nil }
+            / "pri" { return PrivateVisibility, nil }
+
+Literal <- !. // TODO
+
+Symbol <- name:Id {
+  return &Symbol{name.(string)}, nil
+}
+
+List <- '[' eles:Form* ']' {
+  return &List{sliceOf[Node](eles)}, nil
+}
+
+Block <- '{' body:Form* '}' {
+  return &Block{sliceOf[Node](body)}, nil
+}
