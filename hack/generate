@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -e -u -x
+
+go generate -x ./...
+
+# reinstall dash treesitter
+vim --headless '+TSUpdateSync dash' +qall

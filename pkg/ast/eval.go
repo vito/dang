@@ -1,0 +1,88 @@
+package ast
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/chewxy/hm"
+)
+
+func CheckFile(filePath string) error {
+	dash, err := ParseFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	// DISCLAIMER: i dont know wtf im doing, I'll go read a book sometime
+
+	fun := dash.(FunDecl)
+
+	return CheckFunctionType(fun)
+	// return EvalReader(ctx, scope, file, source)
+}
+
+func CheckFunctionType(fun FunDecl) error {
+	// Initialize the type environment
+	env := hm.SimpleEnv{}
+
+	// Add known types to the environment if any.
+	// This might include built-in types, global variables, etc.
+
+	// Infer types for function arguments and add them to the environment
+	for _, arg := range fun.Args {
+		env[fun.Named] = hm.NewScheme(nil, arg.Value)
+	}
+
+	// Infer the type of the function body
+	bodyScheme, err := hm.Infer(env, fun.Form)
+	if err != nil {
+		return fmt.Errorf("failed to infer type for function body: %v", err)
+	}
+
+	log.Println("INFERRED", bodyScheme)
+
+	// Check against the expected return type, if any
+	if fun.Ret != nil {
+		bodyType, isMono := bodyScheme.Type()
+		if !isMono {
+			return fmt.Errorf("function body is not monomorphic")
+		}
+
+		// Check if the inferred type of the function body matches the expected return type
+		if !bodyType.Eq(fun.Ret) {
+			return fmt.Errorf("mismatched return type. expected: %v, got: %v", fun.Ret, bodyType)
+		}
+	}
+
+	// If everything checks out, return nil indicating no errors
+	return nil
+}
+
+// func EvalString(ctx context.Context, e *Scope, str string, source Readable) (Value, error) {
+// 	return EvalReader(ctx, e, bytes.NewBufferString(str), source)
+// }
+
+// func EvalReader(ctx context.Context, e *Scope, r io.Reader, source Readable) (Value, error) {
+// 	reader := NewReader(r, source)
+
+// 	var res Value
+// 	for {
+// 		val, err := reader.Next()
+// 		if err != nil {
+// 			if errors.Is(err, io.EOF) {
+// 				break
+// 			}
+
+// 			return nil, err
+// 		}
+
+// 		rdy := val.Eval(ctx, e, Identity)
+
+// 		res, err = Trampoline(ctx, rdy)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	}
+
+// 	return res, nil
+// }

@@ -22,7 +22,7 @@ func TreesitterGrammar() treesitter.Grammar {
 			Value: `[\s]`,
 		},
 	}
-	ts.Supertypes = []string{"form"}
+	ts.Supertypes = []string{"expr"}
 
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i

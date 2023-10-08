@@ -1,127 +1,182 @@
 {
   package ast
+}
 
-  import "strings"
+Dash <- nodes:(_ e:Expr { return e, nil })* _ !. {
+  return Block{sliceOf[Node](nodes)}.Fun()
+}
 
-  func sliceOf[T any](val any) []T {
-    anys := val.([]any)
-    ts := make([]T, len(anys))
-    for i, node := range anys {
-      ts[i] = node.(T)
-    }
-    return ts
+Expr <- Slot / Form
+
+Form <- Infix / Term
+
+Term <- Select / FunCall / List / Literal / Symbol
+
+Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Integer! { 1 }
+      / TypeAndBlockSlot         // pub a: Integer! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
+      / TypeAndValueSlot         // pub a: Integer! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
+      / TypeOnlySlot             // pub a: Integer!        <- becomes required by implicit constructor function
+      / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Integer!
+      / ClassSlot                // cls A { a: Integer! = 1 } <- becomes a function that takes an empty record of args, can use other fields
+
+TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type {
+  return SlotDecl{
+    Named: name.(string),
+    Ret: type_.(Type),
+    Visibility: vis.(Visibility),
+  }, nil
+}
+
+TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
+  return SlotDecl{
+    Named: name.(string),
+    Ret: type_.(Type),
+    Value: value.(Node),
+    Visibility: vis.(Visibility),
+  }, nil
+}
+
+ValueOnlySlot <- vis:Visibility _ name:Id _ '=' _ val:Form {
+  return SlotDecl{
+    Named: name.(string),
+    Value: val.(Node),
+    Visibility: vis.(Visibility),
+  }, nil
+}
+
+TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block {
+  fun, err := block.(Block).Fun()
+  if err != nil {
+    return nil, err
   }
-}
-
-Dash <- _ nodes:(f:Form _ { return f, nil })* _ !. {
-  return sliceOf[Node](nodes), nil
-}
-
-Form <- Call / Infix / List / Literal / FunDecl / ClsDecl / Symbol
-
-Id <- WordToken
-WordToken <- name:[a-zA-Z0-9]+ {
-  return name, nil
-}
-UpperId <- UpperToken
-UpperToken <- name:[A-Z][a-zA-Z0-9]* {
-  return name, nil
-}
-
-Call <- name:Id "(" _ params:KeyValue* _ ")" {
-  return Call{name.(string), sliceOf[Keyed[Node]](params)}, nil
-}
-
-KeyValue <- key:KeywordToken _ value:Form _ CommaToken? {
-  return Keyed[Node]{key.(string), value}, nil
-}
-KeyType <- key:KeywordToken _ type_:Type _ CommaToken? {
-  return Keyed[Type]{key.(string), type_.(Type)}, nil
-}
-KeywordToken <- name:[a-zA-Z0-9]+ ":" {
-  return name, nil
-}
-
-Type <- NamedType / ListType / NonNull
-NamedType <- name:UpperId {
-  return Type{
-    Class: name.(string),
+  fun.Named = name.(string)
+  fun.Ret = type_.(Type)
+  return SlotDecl{
+    Named: name.(string),
+    Value: fun,
+    Visibility: vis.(Visibility),
   }, nil
 }
-ListType <- "[" inner:Type "]" {
-  t := inner.(Type)
-  return Type{
-    ListOf: &t,
+
+TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block {
+  // TODO: resolve conflicts between computed block args and provided fun args
+  fun, err := block.(Block).Fun()
+  if err != nil {
+    return nil, err
+  }
+  fun.Named = name.(string)
+  fun.Args = args.([]Keyed[Type])
+  fun.Ret = type_.(Type)
+  return SlotDecl{
+    Named: name.(string),
+    Value: fun,
+    Visibility: vis.(Visibility),
   }, nil
 }
-NonNull <- inner:Type BangToken {
-  t := inner.(Type)
-  t.NonNull = true
-  return t, nil
-}
-BangToken <- "!"
 
-CommaToken <- ","
+ClassSlot <- ClsToken _ name:Id _ block:Block {
+  // TODO: resolve conflicts between computed block args and provided fun args
+  fun, err := block.(Block).Fun()
+  if err != nil {
+    return nil, err
+  }
+  fun.Named = name.(string)
 
-Infix <- Select / Default
-Select <- left:Form DotToken call:Call {
-  return Select{left.(Node), call.(Call)}, nil
-}
-DotToken <- "."
-Default <- left:Form DefaultToken right:Form {
-  return Default{left.(Node), right.(Node)}, nil
-}
-DefaultToken <- "?"
+	args := []Keyed[*hm.Scheme]{}
+	for _, arg := range fun.Args {
+		args = append(args, Keyed[*hm.Scheme]{arg.Key, hm.NewScheme(nil, arg.Value)})
+	}
+  fun.Ret = NewRecordType(name.(string), args...)
 
-FunDecl <- FunToken name:Id args:ArgTypes? ":" ret:Type body:Block {
-  return FunDecl{
-    name.(string),
-    sliceOf[Keyed[Type]](args),
-    ret.(Type),
-    body.(Block),
+  return SlotDecl{
+    Named: name.(string),
+    Value: fun,
+    Visibility: PrivateVisibility,
   }, nil
-}
-FunToken <- "fun"
-
-ArgTypes <- "(" args:KeyType* ")" {
-  return sliceOf[Keyed[Type]](args), nil
-}
-
-ArgValues <- "(" args:KeyValue* ")" {
-  return sliceOf[Keyed[Node]](args), nil
-}
-
-ClsDecl <- ClsToken _ name:Id _ "{" _ body:SlotDecl* _ "}" {
-  return ClassDecl{name.(string), sliceOf[SlotDecl](body)}, nil
 }
 ClsToken <- "cls"
-
-SlotDecl <- vis:Visibility _ name:Id _ args:ArgTypes? _ ":" _ ret:Type _ body:Block? {
-  return SlotDecl{
-    name.(string),
-    sliceOf[Keyed[Type]](args),
-    ret.(Type),
-    vis.(Visibility),
-    body.(Block),
-  }, nil
-}
 
 Visibility <- PubToken { return PublicVisibility, nil }
             / PvtToken { return PrivateVisibility, nil }
 PubToken <- "pub"
 PvtToken <- "pvt"
 
-List <- '[' _ eles:Form* _ ']' {
+Id <- WordToken
+WordToken <- [a-zA-Z0-9]+ {
+  return string(c.text), nil
+}
+UpperId <- UpperToken
+UpperToken <- [A-Z][a-zA-Z0-9]* {
+  return string(c.text), nil
+}
+
+FunCall <- name:Term args:ArgValues {
+  return FunCall{name.(Node), Record(args.([]Keyed[Node]))}, nil
+}
+
+ArgValues <- "(" args:KeyValue* ")" {
+  return sliceOf[Keyed[Node]](args), nil
+}
+ArgTypes <- "(" args:KeyType* ")" {
+  return sliceOf[Keyed[Type]](args), nil
+}
+
+KeyValue <- key:WordToken ColonToken _ value:Form _ CommaToken? {
+  return Keyed[Node]{key.(string), value.(Node)}, nil
+}
+KeyType <- key:WordToken ColonToken _ type_:Type _ CommaToken? {
+  return Keyed[Type]{key.(string), type_.(Type)}, nil
+}
+ColonToken <- ":"
+
+Type <- NonNull / NamedType / ListType
+NamedType <- name:UpperId {
+  return NewRecordType(name.(string)), nil
+}
+ListType <- '[' inner:Type ']' {
+  return ListType{inner.(Type)}, nil
+}
+NonNull <- inner:Type BangToken {
+  return NonNullType{inner.(Type)}, nil
+}
+BangToken <- '!'
+
+CommaToken <- _ ',' _
+
+Infix <- Default
+Default <- left:Form _ InterroToken _ right:Term {
+  return Default{left.(Node), right.(Node)}, nil
+}
+InterroToken <- '?'
+
+Select <- left:Term _ DotToken _ name:Id {
+  return Select{left.(Node), name.(string)}, nil
+}
+DotToken <- '.'
+
+List <- '[' eles:(_ e:Form _ CommaToken? { return e, nil })* ']' {
   return List{sliceOf[Node](eles)}, nil
 }
 
-Block <- '{' _ body:Form* _ '}' {
+Block <- '{' body:(_ e:Expr _ { return e, nil })* '}' {
   return Block{sliceOf[Node](body)}, nil
 }
 
+Symbol <- name:Id {
+  return Symbol{name.(string)}, nil
+}
+
+// Literals
+
 Literal <- Integer / Boolean / String / Quoted / Null
 
-Integer <- '0' / NonZeroDecimalDigit DecimalDigit*
+Integer <- '0' / NonZeroDecimalDigit DecimalDigit* {
+  value, err := strconv.ParseInt(string(c.text), 10, 64)
+  if err != nil {
+    return nil, err
+  }
+  return Integer(value), nil
+}
 
 Exponent <- 'e'i [+-]? DecimalDigit+
 
@@ -148,18 +203,24 @@ NonZeroDecimalDigit <- [1-9]
 
 HexDigit <- [0-9a-f]i
 
-Quoted <- "%" quoter:WordToken "{" raw:[^}]* "}" {
-  return Quoted{quoter.(string), raw.(string)}, nil
+Quoted <- '%' quoter:WordToken '{' raw:QuotedRawToken '}' {
+  return Quoted{
+    quoter.(string),
+    raw.(string),
+  }, nil
+}
+QuotedRawToken <- [^}]* {
+  return string(c.text), nil
 }
 
-Boolean <- "true" { return true, nil } / "false" { return false, nil }
+Boolean <- TrueToken { return Boolean(true), nil }
+         / FalseToken { return Boolean(false), nil }
+TrueToken <- "true"
+FalseToken <- "false"
 
-Null <- "null" { return nil, nil }
+Null <- NullToken { return Null{}, nil }
+NullToken <- "null"
 
-Symbol <- name:Id {
-  return Symbol{name.(string)}, nil
-}
+_ "whitespace" <- [ \t\r\n]* CommentToken?
 
-_ "whitespace" <- [ \t\r\n]*
-
-CommentToken <- "#" .*
+CommentToken <- '#' .*

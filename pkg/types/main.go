@@ -5,31 +5,29 @@ import (
 	"log"
 	"strings"
 
-	. "github.com/chewxy/hm"
+	"github.com/chewxy/hm"
 	"github.com/pkg/errors"
 )
 
-const digits = "0123456789"
-
 type TyperExpression interface {
-	Expression
-	Typer
+	hm.Expression
+	hm.Typer
 }
 
 type λ struct {
 	name string
-	body Expression
+	body hm.Expression
 }
 
-func (n λ) Name() string     { return n.name }
-func (n λ) Body() Expression { return n.body }
-func (n λ) IsLambda() bool   { return true }
+func (n λ) Name() string        { return n.name }
+func (n λ) Body() hm.Expression { return n.body }
+func (n λ) IsLambda() bool      { return true }
 
 type lit string
 
-func (n lit) Name() string     { return string(n) }
-func (n lit) Body() Expression { return n }
-func (n lit) Type() Type {
+func (n lit) Name() string        { return string(n) }
+func (n lit) Body() hm.Expression { return n }
+func (n lit) Type() hm.Type {
 	switch {
 	case strings.ContainsAny(digits, string(n)) && strings.ContainsAny(digits, string(n[0])):
 		return Float
@@ -43,35 +41,35 @@ func (n lit) IsLit() bool    { return true }
 func (n lit) IsLambda() bool { return true }
 
 type app struct {
-	f   Expression
-	arg Expression
+	f   hm.Expression
+	arg hm.Expression
 }
 
-func (n app) Fn() Expression   { return n.f }
-func (n app) Body() Expression { return n.arg }
-func (n app) Arg() Expression  { return n.arg }
+func (n app) Fn() hm.Expression   { return n.f }
+func (n app) Body() hm.Expression { return n.arg }
+func (n app) Arg() hm.Expression  { return n.arg }
 
 type let struct {
 	name string
-	def  Expression
-	in   Expression
+	def  hm.Expression
+	in   hm.Expression
 }
 
-func (n let) Name() string     { return n.name }
-func (n let) Def() Expression  { return n.def }
-func (n let) Body() Expression { return n.in }
+func (n let) Name() string        { return n.name }
+func (n let) Def() hm.Expression  { return n.def }
+func (n let) Body() hm.Expression { return n.in }
 
 type letrec struct {
 	name string
-	def  Expression
-	in   Expression
+	def  hm.Expression
+	in   hm.Expression
 }
 
-func (n letrec) Name() string           { return n.name }
-func (n letrec) Def() Expression        { return n.def }
-func (n letrec) Body() Expression       { return n.in }
-func (n letrec) Children() []Expression { return []Expression{n.def, n.in} }
-func (n letrec) IsRecursive() bool      { return true }
+func (n letrec) Name() string              { return n.name }
+func (n letrec) Def() hm.Expression        { return n.def }
+func (n letrec) Body() hm.Expression       { return n.in }
+func (n letrec) Children() []hm.Expression { return []hm.Expression{n.def, n.in} }
+func (n letrec) IsRecursive() bool         { return true }
 
 type prim byte
 
@@ -81,12 +79,12 @@ const (
 )
 
 // implement Type
-func (t prim) Name() string                                   { return t.String() }
-func (t prim) Apply(Subs) Substitutable                       { return t }
-func (t prim) FreeTypeVar() TypeVarSet                        { return nil }
-func (t prim) Normalize(TypeVarSet, TypeVarSet) (Type, error) { return t, nil }
-func (t prim) Types() Types                                   { return nil }
-func (t prim) Eq(other Type) bool {
+func (t prim) Name() string                                            { return t.String() }
+func (t prim) Apply(hm.Subs) hm.Substitutable                          { return t }
+func (t prim) FreeTypeVar() hm.TypeVarSet                              { return nil }
+func (t prim) Normalize(hm.TypeVarSet, hm.TypeVarSet) (hm.Type, error) { return t, nil }
+func (t prim) Types() hm.Types                                         { return nil }
+func (t prim) Eq(other hm.Type) bool {
 	if ot, ok := other.(prim); ok {
 		return ot == t
 	}
@@ -154,24 +152,24 @@ func main() {
 		},
 	}
 
-	env := SimpleEnv{
-		"--":     NewScheme(TypeVarSet{'a'}, NewFnType(TypeVariable('a'), TypeVariable('a'))),
-		"if":     NewScheme(TypeVarSet{'a'}, NewFnType(Bool, TypeVariable('a'), TypeVariable('a'), TypeVariable('a'))),
-		"isZero": NewScheme(nil, NewFnType(Float, Bool)),
-		"mul":    NewScheme(nil, NewFnType(Float, Float, Float)),
-		"+":      NewScheme(TypeVarSet{'a'}, NewFnType(TypeVariable('a'), TypeVariable('a'), TypeVariable('a'))),
+	env := hm.SimpleEnv{
+		"--":     hm.NewScheme(hm.TypeVarSet{'a'}, hm.NewFnType(hm.TypeVariable('a'), hm.TypeVariable('a'))),
+		"if":     hm.NewScheme(hm.TypeVarSet{'a'}, hm.NewFnType(Bool, hm.TypeVariable('a'), hm.TypeVariable('a'), hm.TypeVariable('a'))),
+		"isZero": hm.NewScheme(nil, hm.NewFnType(Float, Bool)),
+		"mul":    hm.NewScheme(nil, hm.NewFnType(Float, Float, Float)),
+		"+":      hm.NewScheme(hm.TypeVarSet{'a'}, hm.NewFnType(hm.TypeVariable('a'), hm.TypeVariable('a'), hm.TypeVariable('a'))),
 	}
 
-	var scheme *Scheme
+	var scheme *hm.Scheme
 	var err error
-	scheme, err = Infer(env, simple)
+	scheme, err = hm.Infer(env, simple)
 	if err != nil {
 		log.Printf("%+v", errors.Cause(err))
 	}
 	simpleType, ok := scheme.Type()
 	fmt.Printf("simple Type: %v | isMonoType: %v | err: %v\n", simpleType, ok, err)
 
-	scheme, err = Infer(env, fac)
+	scheme, err = hm.Infer(env, fac)
 	if err != nil {
 		log.Printf("%+v", errors.Cause(err))
 	}
