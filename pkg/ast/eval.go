@@ -1,10 +1,8 @@
 package ast
 
 import (
-	"fmt"
-	"log"
-
 	"github.com/chewxy/hm"
+	"github.com/kr/pretty"
 )
 
 func CheckFile(filePath string) error {
@@ -15,48 +13,61 @@ func CheckFile(filePath string) error {
 
 	// DISCLAIMER: i dont know wtf im doing, I'll go read a book sometime
 
-	fun := dash.(FunDecl)
+	node := dash.(Node)
 
-	return CheckFunctionType(fun)
+	pretty.Logln("CHECKING:", node)
+
+	env := NewRecordType("")
+
+	_, err = hm.Infer(env, node)
+	return err
 	// return EvalReader(ctx, scope, file, source)
 }
 
-func CheckFunctionType(fun FunDecl) error {
-	// Initialize the type environment
-	env := hm.SimpleEnv{}
+// func CheckFunctionType(fun FunDecl) error {
+// 	pretty.Logln("INFERRING", fun)
 
-	// Add known types to the environment if any.
-	// This might include built-in types, global variables, etc.
+// 	// Initialize the type environment
+// 	env := NewRecordType("")
 
-	// Infer types for function arguments and add them to the environment
-	for _, arg := range fun.Args {
-		env[fun.Named] = hm.NewScheme(nil, arg.Value)
-	}
+// 	// Add known types to the environment if any.
+// 	// This might include built-in types, global variables, etc.
 
-	// Infer the type of the function body
-	bodyScheme, err := hm.Infer(env, fun.Form)
-	if err != nil {
-		return fmt.Errorf("failed to infer type for function body: %v", err)
-	}
+// 	// Infer types for function arguments and add them to the environment
+// 	for _, arg := range fun.Args {
+// 		env = env.Add(arg.Key, hm.NewScheme(nil, arg.Value)).(*RecordType)
+// 	}
 
-	log.Println("INFERRED", bodyScheme)
+// 	// Infer the type of the function body
+// 	bodyScheme, err := hm.Infer(env, fun.Form)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to infer type for function body: %v", err)
+// 	}
 
-	// Check against the expected return type, if any
-	if fun.Ret != nil {
-		bodyType, isMono := bodyScheme.Type()
-		if !isMono {
-			return fmt.Errorf("function body is not monomorphic")
-		}
+// 	pretty.Logln("INFERRED", bodyScheme)
 
-		// Check if the inferred type of the function body matches the expected return type
-		if !bodyType.Eq(fun.Ret) {
-			return fmt.Errorf("mismatched return type. expected: %v, got: %v", fun.Ret, bodyType)
-		}
-	}
+// 	pretty.Logln("FINAL ENV", env)
 
-	// If everything checks out, return nil indicating no errors
-	return nil
-}
+// 	// Check against the expected return type, if any
+// 	if fun.Ret != nil {
+// 		bodyType, isMono := bodyScheme.Type()
+// 		if !isMono {
+// 			return fmt.Errorf("function body is not monomorphic")
+// 		}
+
+// 		// Check if the inferred type of the function body matches the expected return type
+// 		if !bodyType.Eq(fun.Ret) {
+// 			return fmt.Errorf("mismatched return type. expected: %v, got: %v", fun.Ret, bodyType)
+// 		} else {
+// 			pretty.Logln("RETURN TYPE MATCHES")
+// 		}
+// 	} else {
+// 		pretty.Logln("NO RETURN TYPE")
+// 	}
+
+// 	// If everything checks out, return nil indicating no errors
+// 	return nil
+// }
 
 // func EvalString(ctx context.Context, e *Scope, str string, source Readable) (Value, error) {
 // 	return EvalReader(ctx, e, bytes.NewBufferString(str), source)

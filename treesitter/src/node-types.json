@@ -4,14 +4,37 @@
     "named": true,
     "subtypes": [
       {
-        "type": "form",
+        "type": "let",
         "named": true
       },
       {
-        "type": "slot",
+        "type": "seq",
         "named": true
       }
     ]
+  },
+  {
+    "type": "arg_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "arg_with_block_default",
+          "named": true
+        },
+        {
+          "type": "arg_with_default",
+          "named": true
+        },
+        {
+          "type": "arg_with_type",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "arg_types",
@@ -22,7 +45,7 @@
         "required": false,
         "types": [
           {
-            "type": "key_type",
+            "type": "arg_type",
             "named": true
           }
         ]
@@ -46,22 +69,152 @@
     }
   },
   {
-    "type": "block",
+    "type": "arg_with_block_default",
     "named": true,
     "fields": {
-      "body": {
-        "multiple": true,
-        "required": false,
+      "block": {
+        "multiple": false,
+        "required": true,
         "types": [
           {
-            "type": "expr",
+            "type": "block",
             "named": true
           }
         ]
       },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "arg_with_default",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "arg_with_type",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "block",
+    "named": true,
+    "fields": {
       "e": {
-        "multiple": true,
-        "required": false,
+        "multiple": false,
+        "required": true,
         "types": [
           {
             "type": "expr",
@@ -94,6 +247,16 @@
     "type": "class_slot",
     "named": true,
     "fields": {
+      "args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
       "block": {
         "multiple": false,
         "required": true,
@@ -131,18 +294,8 @@
     "named": true,
     "fields": {
       "e": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      },
-      "nodes": {
-        "multiple": true,
-        "required": false,
+        "multiple": false,
+        "required": true,
         "types": [
           {
             "type": "expr",
@@ -302,46 +455,6 @@
     }
   },
   {
-    "type": "key_type",
-    "named": true,
-    "fields": {
-      "key": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "word_token",
-            "named": true
-          }
-        ]
-      },
-      "type_": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "colon_token",
-          "named": true
-        },
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "key_value",
     "named": true,
     "fields": {
@@ -374,6 +487,42 @@
           "type": "colon_token",
           "named": true
         },
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "let",
+    "named": true,
+    "fields": {
+      "f": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "s": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "slot",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
         {
           "type": "comma_token",
           "named": true
@@ -578,6 +727,42 @@
     }
   },
   {
+    "type": "seq",
+    "named": true,
+    "fields": {
+      "e": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "f": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "slot",
     "named": true,
     "fields": {},
@@ -599,10 +784,6 @@
         },
         {
           "type": "type_and_value_slot",
-          "named": true
-        },
-        {
-          "type": "type_only_slot",
           "named": true
         },
         {
@@ -692,6 +873,10 @@
         },
         {
           "type": "non_null",
+          "named": true
+        },
+        {
+          "type": "type_variable",
           "named": true
         }
       ]
@@ -876,50 +1061,9 @@
     }
   },
   {
-    "type": "type_only_slot",
+    "type": "type_variable",
     "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "type_": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
-      },
-      "vis": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "visibility",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "colon_token",
-          "named": true
-        }
-      ]
-    }
+    "fields": {}
   },
   {
     "type": "unicode_escape",

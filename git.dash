@@ -1,29 +1,16 @@
-pub foo: String! {
-  "bar"
-}
+pub foo: String! = 42
 
-pub foo = 123
-
-cls GitUtil {
-  pvt customBase: Container
-
+cls GitUtil(base: Container! { apko.wolfi(packages: ["git"]) }) {
   pub repo(url: String!): Repository! {
     Repository(url: url, base: base)
   }
 
-  pub base: Container! {
-    customBase ? apko.wolfi(packages: ["git"])
-  }
-
   pub withBase(base: Container!): GitUtil! {
-    self(customBase: base)
+    self(base: base)
   }
 }
 
-cls Repository {
-  pub url: String!
-  pub base: Container!
-
+cls Repository(url: String!, base: Container!) {
   pub clone(depth: Integer!): Directory! {
     base.withExec(args: ["git", "clone", url, "./"]).directory(path: "./")
   }
@@ -31,12 +18,14 @@ cls Repository {
 
 # are classes just functions?
 
-pub Repository(url: String!, base: Container!): Repository! {
-  pub clone(depth: Integer!): Directory! {
-    base
-      .withExec(args: %w{git clone $url ./})
-      .directory(path: "./")
-  }
+# pub Repository(url: String!, base: Container!): Repository! {
+#   pub clone(depth: Integer!): Directory! {
+#     base
+#       .withExec(args: %w{git clone $url ./})
+#       .directory(path: "./")
+#   }
 
-  self
-}
+#   self
+# }
+
+# (yes)

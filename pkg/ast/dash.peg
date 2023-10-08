@@ -2,35 +2,51 @@
   package ast
 }
 
-Dash <- nodes:(_ e:Expr { return e, nil })* _ !. {
-  return Block{sliceOf[Node](nodes)}.Fun()
+Dash <- _ e:Expr _ !. {
+  return e, nil
 }
 
-Expr <- Slot / Form
+Expr <- Let / Seq
+Let <- s:Slot _ CommaToken? _ f:Expr? {
+  decl := s.(SlotDecl)
+  if f == nil {
+    f = Self{}
+  }
+  if decl.Value != nil {
+    return Let{
+      Named: decl.Named,
+      Type_: decl.Type_,
+      Def_  : decl.Value,
+      Body_: f.(Node),
+    }, nil
+  }
+  if decl.Type_ != nil {
+    return decl, nil
+  }
+  return nil, fmt.Errorf("impossible: no type or value")
+}
+Seq <- e:Form _ CommaToken? _ f:Expr? {
+  if f == nil {
+    return e, nil
+  } else {
+    return Seq{e.(Node), f.(Node)}, nil
+  }
+}
 
 Form <- Infix / Term
 
 Term <- Select / FunCall / List / Literal / Symbol
 
-Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Integer! { 1 }
+Slot <- ClassSlot                // cls A { a: Integer! = 1 } <- becomes a function that takes an empty record of args, can use other fields
+      / TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Integer! { 1 }
       / TypeAndBlockSlot         // pub a: Integer! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
       / TypeAndValueSlot         // pub a: Integer! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
-      / TypeOnlySlot             // pub a: Integer!        <- becomes required by implicit constructor function
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Integer!
-      / ClassSlot                // cls A { a: Integer! = 1 } <- becomes a function that takes an empty record of args, can use other fields
-
-TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type {
-  return SlotDecl{
-    Named: name.(string),
-    Ret: type_.(Type),
-    Visibility: vis.(Visibility),
-  }, nil
-}
 
 TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
   return SlotDecl{
     Named: name.(string),
-    Ret: type_.(Type),
+    Type_: type_.(Type),
     Value: value.(Node),
     Visibility: vis.(Visibility),
   }, nil
@@ -45,52 +61,47 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ '=' _ val:Form {
 }
 
 TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block {
-  fun, err := block.(Block).Fun()
-  if err != nil {
-    return nil, err
-  }
-  fun.Named = name.(string)
-  fun.Ret = type_.(Type)
+  blk := block.(Block)
+  blk.Named = name.(string)
   return SlotDecl{
     Named: name.(string),
-    Value: fun,
+    Type_: hm.NewFnType(NewRecordType(""), type_.(Type)),
+    Value: FunDecl{
+      Named: name.(string),
+      Ret: type_.(Type),
+      Form: blk,
+    },
     Visibility: vis.(Visibility),
   }, nil
 }
 
 TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block {
-  // TODO: resolve conflicts between computed block args and provided fun args
-  fun, err := block.(Block).Fun()
-  if err != nil {
-    return nil, err
-  }
-  fun.Named = name.(string)
-  fun.Args = args.([]Keyed[Type])
-  fun.Ret = type_.(Type)
+  blk := block.(Block)
+  blk.Named = name.(string)
   return SlotDecl{
     Named: name.(string),
-    Value: fun,
+    Value: FunDecl{
+      Named: name.(string),
+      Args: args.([]SlotDecl),
+      Ret: type_.(Type),
+      Form: blk,
+    },
     Visibility: vis.(Visibility),
   }, nil
 }
 
-ClassSlot <- ClsToken _ name:Id _ block:Block {
-  // TODO: resolve conflicts between computed block args and provided fun args
-  fun, err := block.(Block).Fun()
-  if err != nil {
-    return nil, err
-  }
-  fun.Named = name.(string)
-
-	args := []Keyed[*hm.Scheme]{}
-	for _, arg := range fun.Args {
-		args = append(args, Keyed[*hm.Scheme]{arg.Key, hm.NewScheme(nil, arg.Value)})
-	}
-  fun.Ret = NewRecordType(name.(string), args...)
-
+ClassSlot <- ClsToken _ name:Id _ args:ArgTypes _ block:Block {
+  blk := block.(Block)
+  blk.Named = name.(string)
+  blk.Form = Seq{blk.Form, Self{}}
   return SlotDecl{
     Named: name.(string),
-    Value: fun,
+    Value: FunDecl{
+      Named: name.(string),
+      Args: args.([]SlotDecl),
+      Ret: NewRecordType(name.(string)),
+      Form: blk,
+    },
     Visibility: PrivateVisibility,
   }, nil
 }
@@ -114,22 +125,40 @@ FunCall <- name:Term args:ArgValues {
   return FunCall{name.(Node), Record(args.([]Keyed[Node]))}, nil
 }
 
-ArgValues <- "(" args:KeyValue* ")" {
+ArgValues <- '(' args:KeyValue* ')' {
   return sliceOf[Keyed[Node]](args), nil
 }
-ArgTypes <- "(" args:KeyType* ")" {
-  return sliceOf[Keyed[Type]](args), nil
+ArgTypes <- '(' args:ArgType* ')' {
+  return sliceOf[SlotDecl](args), nil
+}
+ArgType <- ArgWithDefault / ArgWithBlockDefault / ArgWithType
+ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ "=" _ value:Form CommaToken? {
+  return SlotDecl{
+    Named: name.(string),
+    Type_: type_.(Type),
+    Value: value.(Node),
+  }, nil
+}
+ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ block:Block CommaToken? {
+  return SlotDecl{
+    Named: name.(string),
+    Type_: type_.(Type),
+    Value: block.(Block),
+  }, nil
+}
+ArgWithType <- name:Id _ ColonToken _ type_:Type CommaToken? {
+  return SlotDecl{
+    Named: name.(string),
+    Type_: type_.(Type),
+  }, nil
 }
 
-KeyValue <- key:WordToken ColonToken _ value:Form _ CommaToken? {
+KeyValue <- key:WordToken ColonToken _ value:Form CommaToken? {
   return Keyed[Node]{key.(string), value.(Node)}, nil
 }
-KeyType <- key:WordToken ColonToken _ type_:Type _ CommaToken? {
-  return Keyed[Type]{key.(string), type_.(Type)}, nil
-}
-ColonToken <- ":"
+ColonToken <- ':'
 
-Type <- NonNull / NamedType / ListType
+Type <- NonNull / NamedType / ListType / TypeVariable
 NamedType <- name:UpperId {
   return NewRecordType(name.(string)), nil
 }
@@ -139,6 +168,10 @@ ListType <- '[' inner:Type ']' {
 NonNull <- inner:Type BangToken {
   return NonNullType{inner.(Type)}, nil
 }
+TypeVariable <- v:[a-z] {
+  return hm.TypeVariable(v.(byte)), nil
+}
+
 BangToken <- '!'
 
 CommaToken <- _ ',' _
@@ -154,12 +187,12 @@ Select <- left:Term _ DotToken _ name:Id {
 }
 DotToken <- '.'
 
-List <- '[' eles:(_ e:Form _ CommaToken? { return e, nil })* ']' {
+List <- '[' eles:(_ e:Form CommaToken? { return e, nil })* ']' {
   return List{sliceOf[Node](eles)}, nil
 }
 
-Block <- '{' body:(_ e:Expr _ { return e, nil })* '}' {
-  return Block{sliceOf[Node](body)}, nil
+Block <- '{' _ e:Expr _ '}' {
+  return Block{"", e.(Node)}, nil
 }
 
 Symbol <- name:Id {

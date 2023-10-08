@@ -1,9 +1,15 @@
 package ast
 
-import "github.com/chewxy/hm"
+import (
+	"fmt"
+
+	"github.com/chewxy/hm"
+	"github.com/kr/pretty"
+)
 
 type Let struct {
 	Named string
+	Type_ Type
 	Def_  Node
 	Body_ Node
 }
@@ -15,10 +21,38 @@ func (l Let) Body() hm.Expression { return l.Body_ }
 var _ Node = Let{}
 
 func (s Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// TODO: is this right?
-	if _, err := s.Def_.Infer(env, fresh); err != nil {
+	pretty.Logln("LET.INFER", s.Named, s.Type_)
+
+	dt, err := s.Def_.Infer(env, fresh)
+	if err != nil {
 		return nil, err
 	}
+
+	if s.Type_ != nil {
+		if !s.Type_.Eq(dt) {
+			panic("TODO this gets dropped")
+			return nil, fmt.Errorf("Let.Infer: %q mismatch: defined as %s, expected %s", s.Named, dt, s.Type_)
+		} else {
+			pretty.Logf("Let.Infer: %q matches: defined as %s, expected %v (%T)", s.Named, dt, s.Type_, s.Type_)
+		}
+	}
+
+	cur, defined := env.SchemeOf(s.Named)
+	if defined {
+		panic("DEFINED")
+		curT, curMono := cur.Type()
+		if !curMono {
+			return nil, fmt.Errorf("Let.Infer: TODO: type is not monomorphic")
+		}
+
+		if !dt.Eq(curT) {
+			return nil, fmt.Errorf("Let.Infer: %q already defined as %s", s.Named, curT)
+		}
+	} else {
+		println("NOT DEFINED: " + s.Named)
+		env = env.Add(s.Named, hm.NewScheme(nil, dt))
+	}
+
 	return s.Body_.Infer(env, fresh)
 }
 

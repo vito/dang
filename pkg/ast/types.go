@@ -2,6 +2,7 @@ package ast
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/chewxy/hm"
 )
@@ -85,21 +86,14 @@ func (t *RecordType) Clone() hm.Env {
 }
 
 func (t *RecordType) Add(key string, type_ *hm.Scheme) hm.Env {
-	cp := *t
-	cp.Fields = make([]Keyed[*hm.Scheme], len(t.Fields))
-	copy(cp.Fields, t.Fields)
 	t.Fields = append(t.Fields, Keyed[*hm.Scheme]{Key: key, Value: type_})
 	return t
 }
 
 func (t *RecordType) Remove(key string) hm.Env {
-	cp := *t
-	cp.Fields = make([]Keyed[*hm.Scheme], len(t.Fields))
-	copy(cp.Fields, t.Fields)
 	for i, f := range t.Fields {
 		if f.Key == key {
-			cp.Fields = append(t.Fields[:i], t.Fields[i+1:]...)
-			return &cp
+			t.Fields = append(t.Fields[:i], t.Fields[i+1:]...)
 		}
 	}
 	return t
@@ -157,15 +151,15 @@ func (t *RecordType) Eq(other Type) bool {
 		if len(ot.Fields) != len(t.Fields) {
 			return false
 		}
-		//if t.Named != "" && ot.Named != "" && ot.Named != ot.Named {
-		//	// if either does not specify a name, allow a match
-		//	//
-		//	// either the client is wanting to duck type instead, or the API is
-		//	// wanting to be generic
-		//	//
-		//	// TDOO: not sure if Eq is the right place for this
-		//	return false
-		//}
+		if t.Named != "" && ot.Named != "" && t.Named != ot.Named {
+			// if either does not specify a name, allow a match
+			//
+			// either the client is wanting to duck type instead, or the API is
+			// wanting to be generic
+			//
+			// TDOO: not sure if Eq is the right place for this
+			return false
+		}
 		for i, f := range t.Fields {
 			of := ot.Fields[i]
 			if f.Key != of.Key {
@@ -178,21 +172,24 @@ func (t *RecordType) Eq(other Type) bool {
 				return false
 			}
 		}
+		log.Println("RECORD TYPE MATCH", t, ot, t.Named, ot.Named)
 		return true
 	}
 	return false
 }
 
 func (t *RecordType) Format(f fmt.State, c rune) {
+	if t.Named != "" {
+		fmt.Fprint(f, t.Named)
+	}
 	f.Write([]byte("{"))
 	for i, v := range t.Fields {
+		fmt.Fprintf(f, "%s: %v", v.Key, v.Value)
 		if i < len(t.Fields)-1 {
-			fmt.Fprintf(f, "%s: %v, ", v.Key, v.Value)
-		} else {
-			fmt.Fprintf(f, "%s: %v}", v.Key, v.Value)
+			fmt.Fprintf(f, ", ")
 		}
 	}
-
+	f.Write([]byte("}"))
 }
 
 func (t *RecordType) String() string { return fmt.Sprintf("%v", t) }

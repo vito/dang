@@ -52,25 +52,35 @@ func (c FunCall) Fn() hm.Expression { return c.Fun }
 
 type FunDecl struct {
 	Named string
-	Args  []Keyed[Type]
+	Args  []SlotDecl
 	Form  Node
 	Ret   Type
 }
 
-var _ Node = FunDecl{}
+var _ hm.Expression = FunDecl{}
 
-// 	switch et := expr.(type) {
-// 	case Literal:
-// 	case Var:
-// 	case Lambda:
-// 	case Apply:
-// 	case LetRec:
-// 	case Let:
-// 	default:
-// 		return errors.Errorf("Expression of %T is unhandled", expr)
-// 	}
+func (f FunDecl) Body() hm.Expression { return f.Form }
+
+var _ hm.Inferer = FunDecl{}
 
 func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	args := []Keyed[*hm.Scheme]{}
+	for _, arg := range f.Args {
+		t := arg.Type_
+		if t == nil {
+			if arg.Value != nil {
+				var err error
+				t, err = arg.Value.Infer(env, fresh)
+				if err != nil {
+					return nil, fmt.Errorf("FuncDecl.Infer arg: %w", err)
+				}
+			} else {
+				return nil, fmt.Errorf("FuncDecl.Infer arg: no type or value")
+			}
+		}
+		args = append(args, Keyed[*hm.Scheme]{arg.Named, hm.NewScheme(nil, t)})
+	}
+
 	if f.Ret == nil {
 		var err error
 		// TODO just a guess, not sure if nil env makes more sense, but i think we
@@ -81,40 +91,29 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 	}
 
-	args := []Keyed[*hm.Scheme]{}
-	for _, arg := range f.Args {
-		args = append(args, Keyed[*hm.Scheme]{arg.Key, hm.NewScheme(nil, arg.Value)})
-	}
-
 	return hm.NewFnType(NewRecordType("", args...), f.Ret), nil
 }
 
-var _ hm.LetRec = FunDecl{}
+// var _ hm.LetRec = FunDecl{}
 
-func (f FunDecl) Def() hm.Expression { return f.Form }
+// func (f FunDecl) Def() hm.Expression { return f.Form }
 
-func (f FunDecl) IsRecursive() bool { return true }
+// func (f FunDecl) IsRecursive() bool { return true }
 
-var _ hm.Lambda = FunDecl{}
+// var _ hm.Lambda = FunDecl{}
 
-func (f FunDecl) Name() string {
-	if f.Named != "" {
-		return f.Named
-	}
-	return fmt.Sprintf("(%s): %s", f.Args, f.Ret)
-}
+// func (f FunDecl) Name() string {
+// 	if f.Named != "" {
+// 		return f.Named
+// 	}
+// 	return fmt.Sprintf("(%v): %s", f.Args, f.Ret)
+// }
 
-func (f FunDecl) Body() hm.Expression { return f.Form }
-func (f FunDecl) IsLambda() bool      { return true }
-
-type ClassDecl struct {
-	Name  string
-	Slots []SlotDecl
-}
+// func (f FunDecl) IsLambda() bool { return true }
 
 type SlotDecl struct {
 	Named      string
-	Ret        Type
+	Type_      Type
 	Value      Node
 	Visibility Visibility
 }
@@ -127,8 +126,11 @@ func (s SlotDecl) Body() hm.Expression {
 }
 
 func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	if s.Ret != nil {
-		return s.Ret, nil
+	panic("INFERRING SLOT")
+	env.Add(s.Named, hm.NewScheme(nil, s.Type_))
+
+	if s.Type_ != nil {
+		return s.Type_, nil
 	}
 	if s.Value != nil {
 		return s.Value.Infer(env, fresh)
@@ -136,15 +138,27 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
 }
 
-// TODO: is this proper use of Var?
+// // TODO: is this proper use of Var?
 // var _ hm.Var = SlotDecl{}
 
+// // TODO: prob don't want to do this, it takes precedence over Inferer
 // func (s SlotDecl) Type() hm.Type {
 // 	t, _ := s.Scheme.Type()
 // 	return t
 // }
 
-func (s SlotDecl) Name() string { return s.Named }
+// func (s SlotDecl) Name() string { return s.Named }
+
+// 	switch et := expr.(type) {
+// 	case Literal:
+// 	case Var:
+// 	case Lambda:
+// 	case Apply:
+// 	case LetRec:
+// 	case Let:
+// 	default:
+// 		return errors.Errorf("Expression of %T is unhandled", expr)
+// 	}
 
 type List struct {
 	Elements []Node
@@ -254,10 +268,10 @@ func (d Default) Body() hm.Expression { return d }
 const yahh = true
 
 var (
-	NullType    hm.TypeConst = "Null"
-	BooleanType hm.TypeConst = "Boolean"
-	StringType  hm.TypeConst = "String"
-	IntegerType hm.TypeConst = "Integer"
+	NullType    = NewRecordType("Null")
+	BooleanType = NewRecordType("Boolean")
+	StringType  = NewRecordType("String")
+	IntegerType = NewRecordType("Integer")
 )
 
 type String struct {
@@ -327,3 +341,13 @@ func (s Integer) IsLit() bool         { return yahh }
 func (s Integer) Name() string        { return "Integer" }
 func (s Integer) Type() hm.Type       { return IntegerType }
 func (s Integer) Body() hm.Expression { return s }
+
+type Self struct{}
+
+var _ Node = Self{}
+
+func (Self) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return env.(*RecordType), nil
+}
+
+func (s Self) Body() hm.Expression { return s }
