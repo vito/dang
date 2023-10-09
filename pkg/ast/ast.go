@@ -64,6 +64,7 @@ func (f FunDecl) Body() hm.Expression { return f.Form }
 var _ hm.Inferer = FunDecl{}
 
 func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	panic("FUNCDECL INFER")
 	args := []Keyed[*hm.Scheme]{}
 	for _, arg := range f.Args {
 		t := arg.Type_
@@ -347,7 +348,7 @@ type Self struct{}
 var _ Node = Self{}
 
 func (Self) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return env.(*RecordType), nil
+	return env.Clone().(*RecordType), nil
 }
 
 func (s Self) Body() hm.Expression { return s }

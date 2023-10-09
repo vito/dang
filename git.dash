@@ -1,5 +1,15 @@
-pub foo: String! = 42
+pub foo: String! = "hey!"
 
+# declares a new class named "GitUtil"
+#
+# the class has a constructor that takes a single argument named "base"
+# the constructor has a default value of apko.wolfi(packages: ["git"]) which is
+# defined in a 0-arity block
+#
+# the block will be evaluated when the constructor is called without an argument
+# 0-arity blocks are recursively evaluated; they are a form of opt-in lazy
+# evaluation. this way you don't have to distinguish between fields and method
+# calls.
 cls GitUtil(base: Container! { apko.wolfi(packages: ["git"]) }) {
   pub repo(url: String!): Repository! {
     Repository(url: url, base: base)
@@ -7,12 +17,15 @@ cls GitUtil(base: Container! { apko.wolfi(packages: ["git"]) }) {
 
   pub withBase(base: Container!): GitUtil! {
     self(base: base)
+    self{ base = base }
+    { self | base = base }
   }
 }
 
 cls Repository(url: String!, base: Container!) {
   pub clone(depth: Integer!): Directory! {
     base.withExec(args: ["git", "clone", url, "./"]).directory(path: "./")
+    self # needs to return the Repository, not the current child scope
   }
 }
 

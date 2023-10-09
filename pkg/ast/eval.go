@@ -1,7 +1,6 @@
 package ast
 
 import (
-	"github.com/chewxy/hm"
 	"github.com/kr/pretty"
 )
 
@@ -19,7 +18,7 @@ func CheckFile(filePath string) error {
 
 	env := NewRecordType("")
 
-	_, err = hm.Infer(env, node)
+	_, err = Infer(env, node)
 	return err
 	// return EvalReader(ctx, scope, file, source)
 }

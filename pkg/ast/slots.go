@@ -30,7 +30,6 @@ func (s Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	if s.Type_ != nil {
 		if !s.Type_.Eq(dt) {
-			panic("TODO this gets dropped")
 			return nil, fmt.Errorf("Let.Infer: %q mismatch: defined as %s, expected %s", s.Named, dt, s.Type_)
 		} else {
 			pretty.Logf("Let.Infer: %q matches: defined as %s, expected %v (%T)", s.Named, dt, s.Type_, s.Type_)
@@ -39,7 +38,6 @@ func (s Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	cur, defined := env.SchemeOf(s.Named)
 	if defined {
-		panic("DEFINED")
 		curT, curMono := cur.Type()
 		if !curMono {
 			return nil, fmt.Errorf("Let.Infer: TODO: type is not monomorphic")
@@ -49,7 +47,6 @@ func (s Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, fmt.Errorf("Let.Infer: %q already defined as %s", s.Named, curT)
 		}
 	} else {
-		println("NOT DEFINED: " + s.Named)
 		env = env.Add(s.Named, hm.NewScheme(nil, dt))
 	}
 

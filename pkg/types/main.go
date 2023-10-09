@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const digits = "0123456789"
+
 type TyperExpression interface {
 	hm.Expression
 	hm.Typer
