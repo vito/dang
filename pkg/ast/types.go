@@ -9,6 +9,43 @@ import (
 
 type Type = hm.Type
 
+type TypeNode interface {
+	hm.Inferer
+}
+
+// TODO: support sub-selections?
+
+type NamedTypeNode struct {
+	Named string
+}
+
+var _ TypeNode = NamedTypeNode{}
+
+func (t NamedTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	if t.Named == "" {
+		return nil, fmt.Errorf("NamedType.Infer: empty name")
+	}
+	s, ok := env.(*Module).NamedType(t.Named)
+	if !ok {
+		return nil, fmt.Errorf("NamedType.Infer: undefined %v", t.Named)
+	}
+	return s, nil
+}
+
+type ListTypeNode struct {
+	Elem TypeNode
+}
+
+var _ TypeNode = ListTypeNode{}
+
+func (t ListTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e, err := t.Elem.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("ListType.Infer: %w", err)
+	}
+	return ListType{e}, nil
+}
+
 type ListType struct {
 	Type
 }
@@ -194,6 +231,31 @@ func (t *RecordType) Format(f fmt.State, c rune) {
 
 func (t *RecordType) String() string { return fmt.Sprintf("%v", t) }
 
+type NonNullTypeNode struct {
+	Elem TypeNode
+}
+
+var _ TypeNode = NonNullTypeNode{}
+
+func (t NonNullTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e, err := t.Elem.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("NonNullType.Infer: %w", err)
+	}
+	return NonNullType{e}, nil
+}
+
+type VariableTypeNode struct {
+	Name byte
+}
+
+var _ TypeNode = VariableTypeNode{}
+
+func (t VariableTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// TODO unsure if this works
+	return hm.TypeVariable(t.Name), nil
+}
+
 type NonNullType struct {
 	Type
 }
@@ -231,4 +293,27 @@ func (t NonNullType) Eq(other Type) bool {
 		return t.Type.Eq(ot.Type)
 	}
 	return false
+}
+
+type FunTypeNode struct {
+	Args []SlotDecl
+	Ret  TypeNode
+}
+
+var _ TypeNode = FunTypeNode{}
+
+func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	args := make([]Keyed[*hm.Scheme], len(t.Args))
+	for i, a := range t.Args {
+		scheme, err := Infer(env, a.Value)
+		if err != nil {
+			return nil, fmt.Errorf("FunType.Infer: %w", err)
+		}
+		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: scheme}
+	}
+	ret, err := t.Ret.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("FunType.Infer: %w", err)
+	}
+	return hm.NewFnType(NewRecordType("", args...), ret), nil
 }

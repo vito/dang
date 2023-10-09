@@ -1,8 +1,6 @@
 package ast
 
-import (
-	"github.com/kr/pretty"
-)
+import "github.com/kr/pretty"
 
 func CheckFile(filePath string) error {
 	dash, err := ParseFile(filePath)
@@ -12,14 +10,18 @@ func CheckFile(filePath string) error {
 
 	// DISCLAIMER: i dont know wtf im doing, I'll go read a book sometime
 
-	node := dash.(Node)
+	node := dash.(Block)
 
-	pretty.Logln("CHECKING:", node)
+	env := NewEnv()
 
-	env := NewRecordType("")
+	inferred, err := Infer(env, node)
+	if err != nil {
+		return err
+	}
 
-	_, err = Infer(env, node)
-	return err
+	pretty.Logln("INFERRED END", inferred)
+
+	return nil
 	// return EvalReader(ctx, scope, file, source)
 }
 

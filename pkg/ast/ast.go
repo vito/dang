@@ -51,10 +51,11 @@ var _ hm.Apply = FunCall{}
 func (c FunCall) Fn() hm.Expression { return c.Fun }
 
 type FunDecl struct {
-	Named string
-	Args  []SlotDecl
-	Form  Node
-	Ret   Type
+	Named      string
+	Args       []SlotDecl
+	Form       Node
+	Ret        TypeNode
+	Visibility Visibility
 }
 
 var _ hm.Expression = FunDecl{}
@@ -64,35 +65,66 @@ func (f FunDecl) Body() hm.Expression { return f.Form }
 var _ hm.Inferer = FunDecl{}
 
 func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	panic("FUNCDECL INFER")
+	// TODO: Lambda semantics
+
+	var err error
+
 	args := []Keyed[*hm.Scheme]{}
 	for _, arg := range f.Args {
-		t := arg.Type_
-		if t == nil {
-			if arg.Value != nil {
-				var err error
-				t, err = arg.Value.Infer(env, fresh)
-				if err != nil {
-					return nil, fmt.Errorf("FuncDecl.Infer arg: %w", err)
-				}
-			} else {
-				return nil, fmt.Errorf("FuncDecl.Infer arg: no type or value")
+		var definedArgType hm.Type
+
+		if arg.Type_ != nil {
+			definedArgType, err = arg.Type_.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("FuncDecl.Infer arg: %w", err)
 			}
 		}
-		args = append(args, Keyed[*hm.Scheme]{arg.Named, hm.NewScheme(nil, t)})
+
+		var inferredValType hm.Type
+		if arg.Value != nil {
+			inferredValType, err = arg.Value.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("FuncDecl.Infer arg: %w", err)
+			}
+		}
+
+		if definedArgType != nil && inferredValType != nil {
+			if !definedArgType.Eq(inferredValType) {
+				return nil, fmt.Errorf("FuncDecl.Infer arg: %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
+			}
+		} else if definedArgType != nil {
+			inferredValType = definedArgType
+		} else if inferredValType != nil {
+			definedArgType = inferredValType
+		} else {
+			return nil, fmt.Errorf("FuncDecl.Infer arg: %q has no type or value", arg.Named)
+		}
+
+		args = append(args, Keyed[*hm.Scheme]{arg.Named, hm.NewScheme(nil, definedArgType)})
 	}
 
-	if f.Ret == nil {
-		var err error
-		// TODO just a guess, not sure if nil env makes more sense, but i think we
-		// want it to be able to refer to outer slots
-		f.Ret, err = f.Form.Infer(env, fresh)
+	var definedRet hm.Type
+
+	if f.Ret != nil {
+		definedRet, err = f.Ret.Infer(env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("FuncDecl.Infer: %w", err)
+			return nil, fmt.Errorf("FuncDecl.Infer: Ret: %w", err)
 		}
 	}
 
-	return hm.NewFnType(NewRecordType("", args...), f.Ret), nil
+	inferredRet, err := f.Form.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("FuncDecl.Infer: Form: %w", err)
+	}
+
+	if definedRet != nil {
+		// TODO: Unify?
+		if !definedRet.Eq(inferredRet) {
+			return nil, fmt.Errorf("FuncDecl.Infer: %q mismatch: defined as %s, inferred as %s", f.Named, definedRet, inferredRet)
+		}
+	}
+
+	return hm.NewFnType(NewRecordType("", args...), inferredRet), nil
 }
 
 // var _ hm.LetRec = FunDecl{}
@@ -114,7 +146,7 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 type SlotDecl struct {
 	Named      string
-	Type_      Type
+	Type_      TypeNode
 	Value      Node
 	Visibility Visibility
 }
@@ -127,16 +159,135 @@ func (s SlotDecl) Body() hm.Expression {
 }
 
 func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	panic("INFERRING SLOT")
-	env.Add(s.Named, hm.NewScheme(nil, s.Type_))
+	var err error
 
+	var definedType hm.Type
 	if s.Type_ != nil {
-		return s.Type_, nil
+		definedType, err = s.Type_.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 	}
+
+	var inferredType hm.Type
 	if s.Value != nil {
-		return s.Value.Infer(env, fresh)
+		inferredType, err = s.Value.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		if definedType == nil {
+			definedType = inferredType
+		}
+		// scheme, err := Infer(env, s.Value)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		// 		if definedType != nil {
+		// 			it, isMono := scheme.Type()
+		// 			if isMono {
+		// 				if !definedType.Eq(it) {
+		// 					return nil, fmt.Errorf("SlotDecl.Infer: %q mismatch: defined as %s, expected %s", s.Named, definedType, it)
+		// 				}
+		// 			} else {
+		// 				subs, err := hm.Unify(it, definedType) // TODO does this make sense?
+		// 				if err != nil {
+		// 					return nil, fmt.Errorf("SlotDecl.Infer: Unify: %w", err)
+		// 				}
+		// 				scheme = scheme.Apply(subs).(*hm.Scheme)
+		// 			}
+		// 		}
+
+		// 		env.Add(s.Named, scheme)
 	}
-	return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
+
+	if definedType != nil {
+		env.Add(s.Named, hm.NewScheme(nil, definedType))
+		return definedType, nil
+	} else {
+		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
+	}
+}
+
+type ClassDecl struct {
+	Named      string
+	Value      Block
+	Visibility Visibility // theoretically the type itself is public but its constructor value can be private
+}
+
+var _ Node = ClassDecl{}
+
+func (c ClassDecl) Body() hm.Expression { return c.Value }
+
+func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e := env.(*Module)
+
+	class, found := e.classes[c.Named]
+	if !found {
+		class = NewModule(c.Named)
+		e.AddClass(class)
+	}
+
+	// TODO: this feels a little hacky, but we basically want classes to infer by
+	// writing to the class while using the original env to resolve types/etc.,
+	// so we set the class - even an existing - parent to the current call site,
+	// and set it back to nil after as we don't want methods selected from the
+	// class to actually recurse to the original context.
+	class.Parent = e
+
+	_, err := c.Value.Infer(class, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	class.Parent = nil
+
+	args := []Keyed[*hm.Scheme]{}
+	for name, slot := range class.vars { // TODO: respect privacy, order
+		// TODO this is kind of interesting... we just reflect all of them as-is
+		// instead of special-casing required slots. the result is you can just
+		// override any slot, even function implementations.
+		args = append(args, Keyed[*hm.Scheme]{name, slot})
+	}
+	argsType := NewRecordType(c.Named, args...)
+
+	env.Add(c.Named, hm.NewScheme(nil, hm.NewFnType(argsType, NonNullType{class})))
+
+	// set special 'self' keyword to match the function signature.
+	class.Add("self", hm.NewScheme(nil, hm.NewFnType(argsType, NonNullType{class})))
+
+	// TODO: assign constructor
+
+	return class, nil
+}
+
+var _ Hoister = ClassDecl{}
+
+func (c ClassDecl) Hoist(env hm.Env) hm.Env {
+	e := env.(*Module)
+	class := NewModule(c.Named)
+	e = e.AddClass(class)
+	for _, form := range c.Value.Forms {
+		if hoister, ok := form.(Hoister); ok {
+			class = hoister.Hoist(class).(*Module)
+		}
+	}
+
+	args := []Keyed[*hm.Scheme]{}
+	for name, slot := range class.vars { // TODO: respect privacy, order
+		// TODO this is kind of interesting... we just reflect all of them as-is
+		// instead of special-casing required slots. the result is you can just
+		// override any slot, even function implementations.
+		args = append(args, Keyed[*hm.Scheme]{name, slot})
+	}
+	argsType := NewRecordType(c.Named, args...)
+	env.Add(c.Named, hm.NewScheme(nil, hm.NewFnType(argsType, NonNullType{class})))
+
+	// set special 'self' keyword to match the function signature.
+	class.Add("self", hm.NewScheme(nil, hm.NewFnType(argsType, NonNullType{class})))
+
+	return e
 }
 
 // // TODO: is this proper use of Var?
@@ -222,9 +373,13 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	rec, ok := lt.(*RecordType)
+	nn, ok := lt.(NonNullType)
 	if !ok {
-		return nil, fmt.Errorf("Select.Infer: expected record type, got %s", lt)
+		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", nn, lt)
+	}
+	rec, ok := nn.Type.(*Module)
+	if !ok {
+		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", rec, nn.Type)
 	}
 	scheme, found := rec.SchemeOf(d.Field)
 	if !found {
@@ -264,15 +419,23 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (d Default) Body() hm.Expression { return d }
 
-// Literals
+type Null struct{}
 
-const yahh = true
+var _ Node = Null{}
+
+func (n Null) Body() hm.Expression { return n }
+
+func (Null) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return fresh.Fresh(), nil
+}
 
 var (
-	NullType    = NewRecordType("Null")
-	BooleanType = NewRecordType("Boolean")
-	StringType  = NewRecordType("String")
-	IntegerType = NewRecordType("Integer")
+	// Null does not have a type. Its type is always inferred as a free variable.
+	// NullType    = NewClass("Null")
+
+	BooleanType = NewModule("Boolean")
+	StringType  = NewModule("String")
+	IntegerType = NewModule("Integer")
 )
 
 type String struct {
@@ -281,16 +444,12 @@ type String struct {
 
 var _ Node = String{}
 
-func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return NonNullType{StringType}, nil
-}
-
-var _ hm.Literal = String{}
-
-func (s String) IsLit() bool         { return yahh }
-func (s String) Name() string        { return "String" }
-func (s String) Type() hm.Type       { return StringType }
+func (s String) Type() hm.Type       { return NonNullType{StringType} }
 func (s String) Body() hm.Expression { return s }
+
+func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return s.Type(), nil
+}
 
 type Quoted struct {
 	Quoter string
@@ -301,54 +460,31 @@ type Boolean bool
 
 var _ Node = Boolean(false)
 
-func (b Boolean) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return NonNullType{BooleanType}, nil
+func (b Boolean) Type() hm.Type       { return NonNullType{BooleanType} }
+func (b Boolean) Body() hm.Expression { return b }
+
+func (b Boolean) Infer(hm.Env, hm.Fresher) (hm.Type, error) {
+	return b.Type(), nil
 }
-
-var _ hm.Literal = Boolean(false)
-
-func (s Boolean) IsLit() bool         { return yahh }
-func (s Boolean) Name() string        { return "Boolean" }
-func (s Boolean) Type() hm.Type       { return BooleanType }
-func (s Boolean) Body() hm.Expression { return s }
-
-type Null struct{}
-
-var _ Node = Null{}
-
-func (b Null) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// making this NonNull would certainly be cursed, so let's see how it goes...
-	return NullType, nil
-}
-
-var _ hm.Literal = Null{}
-
-func (s Null) IsLit() bool         { return yahh }
-func (s Null) Name() string        { return "Null" }
-func (s Null) Type() hm.Type       { return NullType }
-func (s Null) Body() hm.Expression { return s }
 
 type Integer int
 
 var _ Node = Integer(0)
 
-func (b Integer) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return NonNullType{IntegerType}, nil
+func (i Integer) Body() hm.Expression { return i }
+
+func (i Integer) Type() hm.Type { return NonNullType{IntegerType} }
+
+func (i Integer) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return i.Type(), nil
 }
-
-var _ hm.Literal = Integer(0)
-
-func (s Integer) IsLit() bool         { return yahh }
-func (s Integer) Name() string        { return "Integer" }
-func (s Integer) Type() hm.Type       { return IntegerType }
-func (s Integer) Body() hm.Expression { return s }
 
 type Self struct{}
 
 var _ Node = Self{}
 
 func (Self) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return env.Clone().(*RecordType), nil
+	return env.Clone().(*Module), nil
 }
 
 func (s Self) Body() hm.Expression { return s }

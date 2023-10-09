@@ -2,51 +2,37 @@
   package ast
 }
 
-Dash <- _ e:Expr _ !. {
-  return e, nil
+Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
+  exprs := sliceOf[Node](es)
+  log.Println("!!! DASH", exprs)
+  return Block{exprs}, nil
 }
 
-Expr <- Let / Seq
-Let <- s:Slot _ CommaToken? _ f:Expr? {
-  decl := s.(SlotDecl)
-  if f == nil {
-    f = Self{}
-  }
-  if decl.Value != nil {
-    return Let{
-      Named: decl.Named,
-      Type_: decl.Type_,
-      Def_  : decl.Value,
-      Body_: f.(Node),
-    }, nil
-  }
-  if decl.Type_ != nil {
-    return decl, nil
-  }
-  return nil, fmt.Errorf("impossible: no type or value")
-}
-Seq <- e:Form _ CommaToken? _ f:Expr? {
-  if f == nil {
-    return e, nil
-  } else {
-    return Seq{e.(Node), f.(Node)}, nil
-  }
-}
+Expr <- Class / Slot / Form
 
 Form <- Infix / Term
 
 Term <- Select / FunCall / List / Literal / Symbol
 
-Slot <- ClassSlot                // cls A { a: Integer! = 1 } <- becomes a function that takes an empty record of args, can use other fields
-      / TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Integer! { 1 }
+Class <- ClsToken _ name:Id _ block:Block {
+  return ClassDecl{
+    Named: name.(string),
+    Value: block.(Block),
+    Visibility: PrivateVisibility, // TODO
+  }, nil
+}
+ClsToken <- "cls"
+
+Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Integer! { 1 }
       / TypeAndBlockSlot         // pub a: Integer! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
       / TypeAndValueSlot         // pub a: Integer! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Integer!
+      / TypeOnlySlot             // pub a: Integer              <- as above, type inferred as Integer!
 
 TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
   return SlotDecl{
     Named: name.(string),
-    Type_: type_.(Type),
+    Type_: type_.(TypeNode),
     Value: value.(Node),
     Visibility: vis.(Visibility),
   }, nil
@@ -60,52 +46,40 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ '=' _ val:Form {
   }, nil
 }
 
-TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block {
-  blk := block.(Block)
-  blk.Named = name.(string)
+TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type {
   return SlotDecl{
     Named: name.(string),
-    Type_: hm.NewFnType(NewRecordType(""), type_.(Type)),
+    Type_: type_.(TypeNode),
+    Visibility: vis.(Visibility),
+  }, nil
+}
+
+TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block {
+  return SlotDecl{
+    Named: name.(string),
+    Type_: FunTypeNode{nil, type_.(TypeNode)},
     Value: FunDecl{
       Named: name.(string),
-      Ret: type_.(Type),
-      Form: blk,
+      Ret: type_.(TypeNode),
+      Form: block.(Block),
     },
     Visibility: vis.(Visibility),
   }, nil
 }
 
 TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block {
-  blk := block.(Block)
-  blk.Named = name.(string)
   return SlotDecl{
     Named: name.(string),
+    Type_: FunTypeNode{nil, type_.(TypeNode)},
     Value: FunDecl{
       Named: name.(string),
       Args: args.([]SlotDecl),
-      Ret: type_.(Type),
-      Form: blk,
+      Ret: type_.(TypeNode),
+      Form: block.(Block),
     },
     Visibility: vis.(Visibility),
   }, nil
 }
-
-ClassSlot <- ClsToken _ name:Id _ args:ArgTypes _ block:Block {
-  blk := block.(Block)
-  blk.Named = name.(string)
-  blk.Form = Seq{blk.Form, Self{}}
-  return SlotDecl{
-    Named: name.(string),
-    Value: FunDecl{
-      Named: name.(string),
-      Args: args.([]SlotDecl),
-      Ret: NewRecordType(name.(string)),
-      Form: blk,
-    },
-    Visibility: PrivateVisibility,
-  }, nil
-}
-ClsToken <- "cls"
 
 Visibility <- PubToken { return PublicVisibility, nil }
             / PvtToken { return PrivateVisibility, nil }
@@ -131,25 +105,27 @@ ArgValues <- '(' args:KeyValue* ')' {
 ArgTypes <- '(' args:ArgType* ')' {
   return sliceOf[SlotDecl](args), nil
 }
-ArgType <- ArgWithDefault / ArgWithBlockDefault / ArgWithType
-ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ "=" _ value:Form CommaToken? {
+ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) CommaToken? {
+  return slot.(SlotDecl), nil
+}
+ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
   return SlotDecl{
     Named: name.(string),
-    Type_: type_.(Type),
+    Type_: type_.(TypeNode),
     Value: value.(Node),
   }, nil
 }
-ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ block:Block CommaToken? {
+ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ block:Block {
   return SlotDecl{
     Named: name.(string),
-    Type_: type_.(Type),
+    Type_: type_.(TypeNode),
     Value: block.(Block),
   }, nil
 }
-ArgWithType <- name:Id _ ColonToken _ type_:Type CommaToken? {
+ArgWithType <- name:Id _ ColonToken _ type_:Type {
   return SlotDecl{
     Named: name.(string),
-    Type_: type_.(Type),
+    Type_: type_.(TypeNode),
   }, nil
 }
 
@@ -160,16 +136,16 @@ ColonToken <- ':'
 
 Type <- NonNull / NamedType / ListType / TypeVariable
 NamedType <- name:UpperId {
-  return NewRecordType(name.(string)), nil
+  return NamedTypeNode{name.(string)}, nil
 }
 ListType <- '[' inner:Type ']' {
-  return ListType{inner.(Type)}, nil
+  return ListTypeNode{inner.(TypeNode)}, nil
 }
 NonNull <- inner:Type BangToken {
-  return NonNullType{inner.(Type)}, nil
+  return NonNullTypeNode{inner.(TypeNode)}, nil
 }
 TypeVariable <- v:[a-z] {
-  return hm.TypeVariable(v.(byte)), nil
+  return VariableTypeNode{v.(byte)}, nil
 }
 
 BangToken <- '!'
@@ -187,12 +163,14 @@ Select <- left:Term _ DotToken _ name:Id {
 }
 DotToken <- '.'
 
-List <- '[' eles:(_ e:Form CommaToken? { return e, nil })* ']' {
+List <- '[' _ eles:(_ e:Form CommaToken? _ { return e, nil })* ']' {
   return List{sliceOf[Node](eles)}, nil
 }
 
-Block <- '{' _ e:Expr _ '}' {
-  return Block{"", e.(Node)}, nil
+Block <- '{' es:(_ e:Expr CommaToken? _ { return e, nil })* '}' {
+  exprs := sliceOf[Node](es)
+  log.Println("!!! BLOCK", exprs)
+  return Block{exprs}, nil
 }
 
 Symbol <- name:Id {
@@ -254,6 +232,6 @@ FalseToken <- "false"
 Null <- NullToken { return Null{}, nil }
 NullToken <- "null"
 
-_ "whitespace" <- [ \t\r\n]* CommentToken?
+_ "whitespace" <- ([ \t\r\n] / CommentToken)*
 
-CommentToken <- '#' .*
+CommentToken <- '#' [^\n]*

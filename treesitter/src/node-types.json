@@ -4,11 +4,15 @@
     "named": true,
     "subtypes": [
       {
-        "type": "let",
+        "type": "class",
         "named": true
       },
       {
-        "type": "seq",
+        "type": "form",
+        "named": true
+      },
+      {
+        "type": "slot",
         "named": true
       }
     ]
@@ -16,21 +20,32 @@
   {
     "type": "arg_type",
     "named": true,
-    "fields": {},
+    "fields": {
+      "slot": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "arg_with_block_default",
+            "named": true
+          },
+          {
+            "type": "arg_with_default",
+            "named": true
+          },
+          {
+            "type": "arg_with_type",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
-      "required": true,
+      "required": false,
       "types": [
         {
-          "type": "arg_with_block_default",
-          "named": true
-        },
-        {
-          "type": "arg_with_default",
-          "named": true
-        },
-        {
-          "type": "arg_with_type",
+          "type": "comma_token",
           "named": true
         }
       ]
@@ -104,15 +119,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "colon_token",
-          "named": true
-        },
-        {
-          "type": "comma_token",
           "named": true
         }
       ]
@@ -154,15 +165,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "colon_token",
-          "named": true
-        },
-        {
-          "type": "comma_token",
           "named": true
         }
       ]
@@ -194,15 +201,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "colon_token",
-          "named": true
-        },
-        {
-          "type": "comma_token",
           "named": true
         }
       ]
@@ -213,9 +216,23 @@
     "named": true,
     "fields": {
       "e": {
-        "multiple": false,
-        "required": true,
+        "multiple": true,
+        "required": false,
         "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "es": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma_token",
+            "named": true
+          },
           {
             "type": "expr",
             "named": true
@@ -244,19 +261,9 @@
     }
   },
   {
-    "type": "class_slot",
+    "type": "class",
     "named": true,
     "fields": {
-      "args": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "arg_types",
-            "named": true
-          }
-        ]
-      },
       "block": {
         "multiple": false,
         "required": true,
@@ -294,9 +301,23 @@
     "named": true,
     "fields": {
       "e": {
-        "multiple": false,
-        "required": true,
+        "multiple": true,
+        "required": false,
         "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "es": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "comma_token",
+            "named": true
+          },
           {
             "type": "expr",
             "named": true
@@ -487,42 +508,6 @@
           "type": "colon_token",
           "named": true
         },
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "let",
-    "named": true,
-    "fields": {
-      "f": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      },
-      "s": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "slot",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
         {
           "type": "comma_token",
           "named": true
@@ -727,42 +712,6 @@
     }
   },
   {
-    "type": "seq",
-    "named": true,
-    "fields": {
-      "e": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "f": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "slot",
     "named": true,
     "fields": {},
@@ -770,10 +719,6 @@
       "multiple": false,
       "required": true,
       "types": [
-        {
-          "type": "class_slot",
-          "named": true
-        },
         {
           "type": "type_and_args_and_block_slot",
           "named": true
@@ -784,6 +729,10 @@
         },
         {
           "type": "type_and_value_slot",
+          "named": true
+        },
+        {
+          "type": "type_only_slot",
           "named": true
         },
         {
@@ -1034,6 +983,52 @@
         "types": [
           {
             "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "vis": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "visibility",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_only_slot",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
             "named": true
           }
         ]
