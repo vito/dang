@@ -1,5 +1,9 @@
 # dash
 
+```
+go run ./cmd/dash git.dash
+```
+
 an experimental scripting language for Dagger
 
 ## philosophy
