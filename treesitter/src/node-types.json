@@ -457,7 +457,7 @@
     }
   },
   {
-    "type": "integer",
+    "type": "int",
     "named": true,
     "fields": {},
     "children": {
@@ -574,7 +574,7 @@
           "named": true
         },
         {
-          "type": "integer",
+          "type": "int",
           "named": true
         },
         {

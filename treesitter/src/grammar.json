@@ -1003,7 +1003,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "integer"
+          "name": "int"
         },
         {
           "type": "SYMBOL",
@@ -1023,7 +1023,7 @@
         }
       ]
     },
-    "integer": {
+    "int": {
       "type": "CHOICE",
       "members": [
         {

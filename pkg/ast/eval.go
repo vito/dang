@@ -1,8 +1,12 @@
 package ast
 
-import "github.com/kr/pretty"
+import (
+	"log"
 
-func CheckFile(filePath string) error {
+	"github.com/dagger/dagger/codegen/introspection"
+)
+
+func CheckFile(schema *introspection.Schema, filePath string) error {
 	dash, err := ParseFile(filePath)
 	if err != nil {
 		return err
@@ -12,14 +16,14 @@ func CheckFile(filePath string) error {
 
 	node := dash.(Block)
 
-	env := NewEnv()
+	env := NewEnv(schema)
 
 	inferred, err := Infer(env, node, true)
 	if err != nil {
 		return err
 	}
 
-	pretty.Logln("INFERRED END", inferred)
+	log.Printf("INFERRED END: %T", inferred)
 
 	return nil
 	// return EvalReader(ctx, scope, file, source)

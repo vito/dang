@@ -4,36 +4,14 @@ pub bar: String
 
 pub foo = bar ? "foo"
 
-cls Directory {}
-
 # TODO: load from graphql
-cls Container {
-  pub withExec(args: [String!]!): Container! {
-    self() # TODO: we have to call it, but ... it works
-  }
-
-  pub directory(path: String!): Directory! {
-    Directory()
-  }
-}
-
 cls Apko {
   pub wolfi(packages: [String!]!): Container! {
-    Container()
+    container().withExec(args: ["apk", "add"])
   }
 }
 
 pub apko = Apko()
-
-cls Repository {
-  pub url: String!
-
-  pub base: Container!
-
-  pub clone(depth: Integer!): Directory! {
-    base.withExec(args: ["git", "clone", url, "./"]).directory(path: "./")
-  }
-}
 
 cls GitUtil {
   pvt customBase: Container
@@ -48,5 +26,15 @@ cls GitUtil {
 
   pub repo(url: String!): Repository! {
     Repository(url: url, base: base()) # TODO: make parens implicit, Ruby + GraphQL style
+  }
+}
+
+cls Repository {
+  pub url: String!
+
+  pub base: Container!
+
+  pub clone(depth: Int!): Directory! {
+    base.withExec(args: ["git", "clone", url, "./"]).directory(path: "./")
   }
 }

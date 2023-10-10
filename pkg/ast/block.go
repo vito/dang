@@ -2,10 +2,8 @@ package ast
 
 import (
 	"errors"
-	"log"
 
 	"github.com/chewxy/hm"
-	"github.com/kr/pretty"
 )
 
 type Block struct {
@@ -17,33 +15,18 @@ var _ hm.Expression = Block{}
 func (f Block) Body() hm.Expression { return f }
 
 type Hoister interface {
-	Hoist(hm.Env, hm.Fresher) error
+	Hoist(hm.Env, hm.Fresher, int) error
 }
 
 var _ Hoister = Block{}
 
 type Set[T comparable] map[T]struct{}
 
-func (b Block) Hoist(env hm.Env, fresh hm.Fresher) error {
-	return b.hoist(env, fresh)
-	for {
-		err := b.hoist(env, fresh)
-		if err == nil {
-			return nil
-		}
-		var unresolved UnresolvedTypeError
-		if !errors.As(err, &unresolved) {
-			return err
-		}
-		log.Println("AGAIN", err)
-	}
-}
-
-func (b Block) hoist(env hm.Env, fresh hm.Fresher) error {
+func (b Block) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	var errs []error
 	for _, form := range b.Forms {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh); err != nil {
+			if err := hoister.Hoist(env, fresh, depth); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -61,13 +44,11 @@ func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	var t hm.Type
 	for _, form := range forms {
-		log.Printf("CHECKING: %T", form)
 		et, err := form.Infer(env, fresh)
 		if err != nil {
 			return nil, err
 		}
 		t = et
-		pretty.Logln("INFERRED", et)
 	}
 
 	return t, nil

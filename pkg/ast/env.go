@@ -2,8 +2,10 @@ package ast
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/chewxy/hm"
+	"github.com/dagger/dagger/codegen/introspection"
 )
 
 // TODO: is this just ClassType? are Classes just named Envs?
@@ -25,11 +27,106 @@ func NewModule(name string) *Module {
 	return env
 }
 
-func NewEnv() *Module {
-	mod := NewModule("<env>")
-	mod.AddClass(BooleanType)
-	mod.AddClass(IntegerType)
-	mod.AddClass(StringType)
+func gqlToTypeNode(mod *Module, ref *introspection.TypeRef) (hm.Type, error) {
+	switch ref.Kind {
+	case introspection.TypeKindScalar:
+		t, found := mod.NamedType(ref.Name)
+		if !found {
+			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
+		}
+		return t, nil
+	case introspection.TypeKindObject:
+		t, found := mod.NamedType(ref.Name)
+		if !found {
+			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
+		}
+		return t, nil
+	// case introspection.TypeKindInterface:
+	// 	return NamedTypeNode{t.Name}
+	// case introspection.TypeKindUnion:
+	// 	return NamedTypeNode{t.Name}
+	case introspection.TypeKindEnum:
+		t, found := mod.NamedType(ref.Name)
+		if !found {
+			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
+		}
+		return t, nil
+	case introspection.TypeKindInputObject:
+		t, found := mod.NamedType(ref.Name)
+		if !found {
+			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
+		}
+		return t, nil
+	case introspection.TypeKindList:
+		inner, err := gqlToTypeNode(mod, ref.OfType)
+		if err != nil {
+			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
+		}
+		return ListType{inner}, nil
+	case introspection.TypeKindNonNull:
+		inner, err := gqlToTypeNode(mod, ref.OfType)
+		if err != nil {
+			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
+		}
+		return NonNullType{inner}, nil
+	default:
+		return nil, fmt.Errorf("unhandled type kind: %s", ref.Kind)
+	}
+}
+
+func NewEnv(schema *introspection.Schema) *Module {
+	mod := NewModule("<dash>")
+
+	for _, t := range schema.Types {
+		sub, found := mod.NamedType(t.Name)
+		if !found {
+			sub = NewModule(t.Name)
+			mod.AddClass(sub)
+		}
+		if t.Name == schema.QueryType.Name {
+			// Set Query as the parent of the outermost module so that its fields are
+			// defined globally.
+			mod.Parent = sub
+		}
+	}
+
+	for _, t := range schema.Types {
+		install, found := mod.NamedType(t.Name)
+		if !found {
+			// we just set it above...
+			panic(fmt.Errorf("NewEnv: impossible: %q not found", t.Name))
+		}
+
+		// TODO assign input fields, maybe input classes are "just" records?
+		//t.InputFields
+
+		// TODO assign enum constructors
+		//t.EnumValues
+
+		for _, f := range t.Fields {
+			ret, err := gqlToTypeNode(mod, f.TypeRef)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(f.Args) > 0 {
+				args := NewRecordType("")
+				for _, arg := range f.Args {
+					argType, err := gqlToTypeNode(mod, arg.TypeRef)
+					if err != nil {
+						panic(err)
+					}
+					args.Add(arg.Name, hm.NewScheme(nil, argType))
+				}
+				log.Println("ADDING FUN", t.Name, f.Name)
+				install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
+			} else {
+				log.Println("ADDING 0-ARITY FIELD", t.Name, f.Name)
+				install.Add(f.Name, hm.NewScheme(nil, ret))
+			}
+		}
+	}
+
 	return mod
 }
 

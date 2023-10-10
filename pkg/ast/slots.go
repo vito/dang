@@ -22,7 +22,12 @@ func (s SlotDecl) Body() hm.Expression {
 
 var _ Hoister = SlotDecl{}
 
-func (c SlotDecl) Hoist(env hm.Env, fresh hm.Fresher) error {
+func (c SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
+	if depth == 0 {
+		// first pass only collects classes
+		return nil
+	}
+
 	if c.Type_ != nil {
 		dt, err := c.Type_.Infer(env, fresh)
 		if err != nil {
@@ -31,6 +36,7 @@ func (c SlotDecl) Hoist(env hm.Env, fresh hm.Fresher) error {
 
 		env.Add(c.Named, hm.NewScheme(nil, dt))
 	}
+
 	return nil
 }
 
@@ -104,10 +110,19 @@ func (c ClassDecl) Body() hm.Expression { return c.Value }
 
 var _ Hoister = ClassDecl{}
 
-func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher) error {
+func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	mod := env.(*Module)
 
-	class := NewModule(c.Named)
+	class, found := mod.NamedType(c.Named)
+	if !found {
+		class = NewModule(c.Named)
+		mod.AddClass(class)
+	}
+
+	// set special 'self' keyword to match the function signature.
+	self := hm.NewScheme(nil, class)
+	class.Add("self", self)
+	env.Add(c.Named, self)
 
 	// TODO: hacky, see elsewhere
 	class.Parent = mod
@@ -115,35 +130,22 @@ func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher) error {
 		class.Parent = nil
 	}()
 
-	mod.AddClass(class)
-
-	if err := c.Value.Hoist(class, fresh); err != nil {
-		return err
+	if depth > 0 {
+		if err := c.Value.Hoist(class, fresh, depth); err != nil {
+			return err
+		}
 	}
 
-	args := []Keyed[*hm.Scheme]{}
-	for name, slot := range class.vars { // TODO: respect privacy, order
-		// TODO this is kind of interesting... we just reflect all of them as-is
-		// instead of special-casing required slots. the result is you can just
-		// override any slot, even function implementations.
-		args = append(args, Keyed[*hm.Scheme]{name, slot})
-	}
-	argsType := NewRecordType(c.Named, args...)
-
-	// set special 'self' keyword to match the function signature.
-	self := hm.NewScheme(nil, hm.NewFnType(argsType, NonNullType{class}))
-	class.Add("self", self)
-	env.Add(c.Named, self)
 	return nil
 }
 
 func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	e := env.(*Module)
+	mod := env.(*Module)
 
-	class, found := e.classes[c.Named]
+	class, found := mod.NamedType(c.Named)
 	if !found {
 		class = NewModule(c.Named)
-		e.AddClass(class)
+		mod.AddClass(class)
 	}
 
 	// TODO: this feels a little hacky, but we basically want classes to infer by
@@ -151,7 +153,7 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// so we set the class - even an existing - parent to the current call site,
 	// and set it back to nil after as we don't want methods selected from the
 	// class to actually recurse to the original context.
-	class.Parent = e
+	class.Parent = mod
 
 	_, err := c.Value.Infer(class, fresh)
 	if err != nil {
@@ -160,17 +162,8 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	class.Parent = nil
 
-	args := []Keyed[*hm.Scheme]{}
-	for name, slot := range class.vars { // TODO: respect privacy, order
-		// TODO this is kind of interesting... we just reflect all of them as-is
-		// instead of special-casing required slots. the result is you can just
-		// override any slot, even function implementations.
-		args = append(args, Keyed[*hm.Scheme]{name, slot})
-	}
-	argsType := NewRecordType(c.Named, args...)
-
 	// set special 'self' keyword to match the function signature.
-	self := hm.NewScheme(nil, hm.NewFnType(argsType, NonNullType{class}))
+	self := hm.NewScheme(nil, class)
 	class.Add("self", self)
 	env.Add(c.Named, self)
 

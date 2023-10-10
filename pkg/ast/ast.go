@@ -64,6 +64,30 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 		// TODO: check required args are specified?
 		return ft.Ret(false), nil
+	case *Module:
+		for _, arg := range c.Args {
+			k, v := arg.Key, arg.Value
+
+			it, err := v.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("FunCall.Infer: %w", err)
+			}
+
+			scheme, has := ft.SchemeOf(k)
+			if !has {
+				return nil, fmt.Errorf("FunCall.Infer: %q not found in %s", k, ft)
+			}
+
+			dt, isMono := scheme.Type()
+			if !isMono {
+				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
+			}
+
+			if _, err := hm.Unify(dt, it); err != nil {
+				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+			}
+		}
+		return NonNullType{ft}, nil
 	default:
 		return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 	}
@@ -279,7 +303,7 @@ var (
 
 	BooleanType = NewModule("Boolean")
 	StringType  = NewModule("String")
-	IntegerType = NewModule("Integer")
+	IntType     = NewModule("Int")
 )
 
 type String struct {
@@ -288,11 +312,10 @@ type String struct {
 
 var _ Node = String{}
 
-func (s String) Type() hm.Type       { return NonNullType{StringType} }
 func (s String) Body() hm.Expression { return s }
 
 func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return s.Type(), nil
+	return NonNullTypeNode{NamedTypeNode{"String"}}.Infer(env, fresh)
 }
 
 type Quoted struct {
@@ -304,21 +327,18 @@ type Boolean bool
 
 var _ Node = Boolean(false)
 
-func (b Boolean) Type() hm.Type       { return NonNullType{BooleanType} }
 func (b Boolean) Body() hm.Expression { return b }
 
-func (b Boolean) Infer(hm.Env, hm.Fresher) (hm.Type, error) {
-	return b.Type(), nil
+func (b Boolean) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
 
-type Integer int
+type Int int
 
-var _ Node = Integer(0)
+var _ Node = Int(0)
 
-func (i Integer) Body() hm.Expression { return i }
+func (i Int) Body() hm.Expression { return i }
 
-func (i Integer) Type() hm.Type { return NonNullType{IntegerType} }
-
-func (i Integer) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return i.Type(), nil
+func (i Int) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
 }

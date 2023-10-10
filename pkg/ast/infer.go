@@ -2,6 +2,7 @@ package ast
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/chewxy/hm"
 	"github.com/pkg/errors"
@@ -180,9 +181,15 @@ func Infer(env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
 	infer := newInferer(env)
 
 	if hoister, ok := expr.(Hoister); ok {
-		if err := hoister.Hoist(env, infer); err != nil {
+		// Hoist in two passes. This could maybe be a boolean, but leaving it as an
+		// integer in case I need it later (as much of a smell as that may be)
+		if err := hoister.Hoist(env, infer, 0); err != nil {
 			return nil, fmt.Errorf("Block.Hoist: %w", err)
 		}
+		if err := hoister.Hoist(env, infer, 1); err != nil {
+			return nil, fmt.Errorf("Block.Hoist: %w", err)
+		}
+		log.Println("HOISTED")
 	}
 
 	if err := infer.consGen(expr); err != nil {

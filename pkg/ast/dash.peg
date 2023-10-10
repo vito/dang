@@ -23,11 +23,11 @@ Class <- ClsToken _ name:Id _ block:Block {
 }
 ClsToken <- "cls"
 
-Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Integer! { 1 }
-      / TypeAndBlockSlot         // pub a: Integer! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
-      / TypeAndValueSlot         // pub a: Integer! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
-      / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Integer!
-      / TypeOnlySlot             // pub a: Integer              <- as above, type inferred as Integer!
+Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
+      / TypeAndBlockSlot         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
+      / TypeAndValueSlot         // pub a: Int! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
+      / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
+      / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
 TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
   return SlotDecl{
@@ -179,14 +179,14 @@ Symbol <- name:Id {
 
 // Literals
 
-Literal <- Integer / Boolean / String / Quoted / Null
+Literal <- Int / Boolean / String / Quoted / Null
 
-Integer <- '0' / NonZeroDecimalDigit DecimalDigit* {
+Int <- '0' / NonZeroDecimalDigit DecimalDigit* {
   value, err := strconv.ParseInt(string(c.text), 10, 64)
   if err != nil {
     return nil, err
   }
-  return Integer(value), nil
+  return Int(value), nil
 }
 
 Exponent <- 'e'i [+-]? DecimalDigit+
