@@ -21,13 +21,21 @@ type NamedTypeNode struct {
 
 var _ TypeNode = NamedTypeNode{}
 
+type UnresolvedTypeError struct {
+	Name string
+}
+
+func (e UnresolvedTypeError) Error() string {
+	return fmt.Sprintf("unresolved type: %s", e.Name)
+}
+
 func (t NamedTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if t.Named == "" {
 		return nil, fmt.Errorf("NamedType.Infer: empty name")
 	}
 	s, ok := env.(*Module).NamedType(t.Named)
 	if !ok {
-		return nil, fmt.Errorf("NamedType.Infer: undefined %v", t.Named)
+		return nil, UnresolvedTypeError{t.Named}
 	}
 	return s, nil
 }
@@ -305,15 +313,44 @@ var _ TypeNode = FunTypeNode{}
 func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	args := make([]Keyed[*hm.Scheme], len(t.Args))
 	for i, a := range t.Args {
-		scheme, err := Infer(env, a.Value)
+		// TODO: more scheme/type awkwardness, double check this
+		// scheme, err := Infer(env, a.Value)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("FunType.Infer: %w", err)
+		// }
+		dt, err := a.Type_.Infer(env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("FunType.Infer: %w", err)
+			return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 		}
-		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: scheme}
+		// TODO: should we infer from value?
+		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: hm.NewScheme(nil, dt)}
 	}
 	ret, err := t.Ret.Infer(env, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("FunType.Infer: %w", err)
+		return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 	}
 	return hm.NewFnType(NewRecordType("", args...), ret), nil
 }
+
+// not needed yet
+//
+// type RecordTypeNode struct {
+// 	Named  string
+// 	Fields []SlotDecl
+// }
+
+// var _ TypeNode = RecordTypeNode{}
+
+// func (t RecordTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+// 	fields := make([]Keyed[*hm.Scheme], len(t.Fields))
+// 	for i, f := range t.Fields {
+// 		dt, err := f.Type_.Infer(env, fresh)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("RecordType.Infer: %w", err)
+// 		}
+// 		// TODO: more scheme/type awkwardness, double check this
+// 		// TODO: should we infer from value?
+// 		fields[i] = Keyed[*hm.Scheme]{Key: f.Named, Value: hm.NewScheme(nil, dt)}
+// 	}
+// 	return NewRecordType(t.Named, fields...), nil
+// }

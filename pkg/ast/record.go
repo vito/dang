@@ -9,7 +9,7 @@ var _ hm.Inferer = Record{}
 func (r Record) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var fields []Keyed[*hm.Scheme]
 	for _, f := range r {
-		s, err := Infer(env, f.Value)
+		s, err := Infer(env, f.Value, false)
 		if err != nil {
 			return nil, err
 		}

@@ -1,4 +1,10 @@
-pub foo: String! = "hey!"
+pub foo: String!
+
+pub bar: String
+
+pub foo = bar ? "foo"
+
+cls Directory {}
 
 # TODO: load from graphql
 cls Container {
@@ -11,35 +17,13 @@ cls Container {
   }
 }
 
-cls Directory {}
-
 cls Apko {
-  pub wolfi(packages: [String!]): Container! {
+  pub wolfi(packages: [String!]!): Container! {
     Container()
   }
 }
 
 pub apko = Apko()
-
-# TODO: this should fail since it's already assigned, but i think right now it
-# just replaces it, which is A Bad Move.
-pub foo = 42
-
-cls GitUtil {
-  pvt customBase: Container
-
-  pub base: Container! {
-    customBase ? apko.wolfi(packages: ["git"])
-  }
-
-  pub withBase(base: Container!): GitUtil! {
-    self(customBase: base)
-  }
-
-  pub repo(url: String!): Repository! {
-    Repository(url: url, base: base)
-  }
-}
 
 cls Repository {
   pub url: String!
@@ -48,5 +32,21 @@ cls Repository {
 
   pub clone(depth: Integer!): Directory! {
     base.withExec(args: ["git", "clone", url, "./"]).directory(path: "./")
+  }
+}
+
+cls GitUtil {
+  pvt customBase: Container
+
+  pub base: Container! {
+    customBase ? apko.wolfi(packages: ["git"])
+  }
+
+  pub withBase(base: Container): GitUtil! {
+    self(customBase: base)
+  }
+
+  pub repo(url: String!): Repository! {
+    Repository(url: url, base: base()) # TODO: make parens implicit, Ruby + GraphQL style
   }
 }

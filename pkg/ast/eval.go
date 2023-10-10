@@ -14,7 +14,7 @@ func CheckFile(filePath string) error {
 
 	env := NewEnv()
 
-	inferred, err := Infer(env, node)
+	inferred, err := Infer(env, node, true)
 	if err != nil {
 		return err
 	}

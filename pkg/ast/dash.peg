@@ -70,7 +70,7 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
 TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block {
   return SlotDecl{
     Named: name.(string),
-    Type_: FunTypeNode{nil, type_.(TypeNode)},
+    Type_: FunTypeNode{args.([]SlotDecl), type_.(TypeNode)},
     Value: FunDecl{
       Named: name.(string),
       Args: args.([]SlotDecl),

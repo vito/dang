@@ -168,49 +168,7 @@ func (infer *inferer) consGen(expr hm.Expression) (err error) {
 	// return nil
 }
 
-// Infer takes an env, and an expression, and returns a scheme.
-//
-// The Infer function is the core of the HM type inference system. This is a reference implementation and is completely servicable, but not quite performant.
-// You should use this as a reference and write your own infer function.
-//
-// Very briefly, these rules are implemented:
-//
-// # Var
-//
-// If x is of type T, in a collection of statements Γ, then we can infer that x has type T when we come to a new instance of x
-//
-//	 x: T ∈ Γ
-//	-----------
-//	 Γ ⊢ x: T
-//
-// # Apply
-//
-// If f is a function that takes T1 and returns T2; and if x is of type T1;
-// then we can infer that the result of applying f on x will yield a result has type T2
-//
-//	 Γ ⊢ f: T1→T2  Γ ⊢ x: T1
-//	-------------------------
-//	     Γ ⊢ f(x): T2
-//
-// # Lambda Abstraction
-//
-// If we assume x has type T1, and because of that we were able to infer e has type T2
-// then we can infer that the lambda abstraction of e with respect to the variable x,  λx.e,
-// will be a function with type T1→T2
-//
-//	  Γ, x: T1 ⊢ e: T2
-//	-------------------
-//	  Γ ⊢ λx.e: T1→T2
-//
-// # Let
-//
-// If we can infer that e1 has type T1 and if we take x to have type T1 such that we could infer that e2 has type T2,
-// then we can infer that the result of letting x = e1 and substituting it into e2 has type T2
-//
-//	  Γ, e1: T1  Γ, x: T1 ⊢ e2: T2
-//	--------------------------------
-//	     Γ ⊢ let x = e1 in e2: T2
-func Infer(env hm.Env, expr hm.Expression) (*hm.Scheme, error) {
+func Infer(env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
 	if expr == nil {
 		return nil, errors.Errorf("Cannot infer a nil expression")
 	}
@@ -220,6 +178,13 @@ func Infer(env hm.Env, expr hm.Expression) (*hm.Scheme, error) {
 	}
 
 	infer := newInferer(env)
+
+	if hoister, ok := expr.(Hoister); ok {
+		if err := hoister.Hoist(env, infer); err != nil {
+			return nil, fmt.Errorf("Block.Hoist: %w", err)
+		}
+	}
+
 	if err := infer.consGen(expr); err != nil {
 		return nil, err
 	}
