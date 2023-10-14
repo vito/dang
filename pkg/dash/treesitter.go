@@ -1,11 +1,11 @@
-package ast
+package dash
 
 import (
 	"fmt"
 	"log"
 	"strings"
 
-	"github.com/vito/dash/pkg/ast/treesitter"
+	"github.com/vito/dash/pkg/dash/treesitter"
 )
 
 func TreesitterGrammar() treesitter.Grammar {

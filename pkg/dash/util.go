@@ -1,4 +1,4 @@
-package ast
+package dash
 
 func sliceOf[T any](val any) []T {
 	anys := val.([]any)

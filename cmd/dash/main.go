@@ -7,7 +7,7 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/dagger/dagger/codegen/introspection"
-	"github.com/vito/dash/pkg/ast"
+	"github.com/vito/dash/pkg/dash"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := ast.CheckFile(schema, os.Args[1]); err != nil {
+	if err := dash.CheckFile(schema, os.Args[1]); err != nil {
 		panic(err)
 	}
 

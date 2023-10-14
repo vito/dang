@@ -1,5 +1,5 @@
 {
-  package ast
+  package dash
 }
 
 Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {

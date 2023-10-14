@@ -3,7 +3,7 @@ module github.com/vito/dash
 go 1.20
 
 require (
-	dagger.io/dagger v0.8.7
+	dagger.io/dagger v0.8.8
 	github.com/chewxy/hm v1.0.0
 	github.com/dagger/dagger v0.8.7
 	github.com/iancoleman/strcase v0.3.0
@@ -18,7 +18,7 @@ require (
 	github.com/adrg/xdg v0.4.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
+	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.6 // indirect
 	github.com/xtgo/set v1.0.0 // indirect

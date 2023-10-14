@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/vito/dash/pkg/ast"
+	"github.com/vito/dash/pkg/dash"
 )
 
 //go:generate go run .
@@ -18,5 +18,5 @@ func main() {
 	}
 	defer grammarFile.Close()
 
-	json.NewEncoder(grammarFile).Encode(ast.TreesitterGrammar())
+	json.NewEncoder(grammarFile).Encode(dash.TreesitterGrammar())
 }
