@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/chewxy/hm"
+	"github.com/dagger/dagger/codegen/introspection"
 )
 
 type Node interface {
@@ -482,7 +483,73 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if !found {
 		return nil, fmt.Errorf("Symbol.Eval: %q not found in env", s.Name)
 	}
+
+	// Auto-call zero-arity functions when accessed as symbols
+	if isZeroArityFunction(val) {
+		return callZeroArityFunction(ctx, env, val)
+	}
+
 	return val, nil
+}
+
+// isZeroArityFunction checks if a value is a function with zero required arguments
+func isZeroArityFunction(val Value) bool {
+	switch fn := val.(type) {
+	case FunctionValue:
+		return len(fn.Args) == 0
+	case GraphQLFunction:
+		// Check if the function has zero REQUIRED arguments (all args are optional)
+		return hasZeroRequiredArgs(fn.Field)
+	case BuiltinFunction:
+		// For builtin functions, check if all arguments are optional (would need metadata)
+		// For now, only consider truly zero-argument builtins as auto-callable
+		if rt, ok := fn.FnType.Arg().(*RecordType); ok {
+			return len(rt.Fields) == 0
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+// hasZeroRequiredArgs checks if a GraphQL field has zero required arguments
+func hasZeroRequiredArgs(field *introspection.Field) bool {
+	if field == nil {
+		return false
+	}
+	
+	// Check if all arguments are optional (nullable)
+	for _, arg := range field.Args {
+		if arg.TypeRef.Kind == "NON_NULL" {
+			// This argument is required (non-null)
+			return false
+		}
+	}
+	
+	// All arguments are optional, so this function can be called with zero args
+	return true
+}
+
+// callZeroArityFunction calls a zero-arity function with empty arguments
+func callZeroArityFunction(ctx context.Context, env EvalEnv, val Value) (Value, error) {
+	emptyArgs := make(map[string]Value)
+
+	switch fn := val.(type) {
+	case FunctionValue:
+		// Regular function call with empty environment
+		return EvalNode(ctx, fn.Closure, fn.Body)
+		
+	case GraphQLFunction:
+		// GraphQL function call with empty arguments
+		return fn.Call(ctx, env, emptyArgs)
+		
+	case BuiltinFunction:
+		// Builtin function call with empty arguments
+		return fn.Call(ctx, env, emptyArgs)
+		
+	default:
+		return nil, fmt.Errorf("callZeroArityFunction: %T is not a callable function", val)
+	}
 }
 
 type Select struct {

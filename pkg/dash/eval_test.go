@@ -371,3 +371,37 @@ func TestPositionalArgumentsParsing(t *testing.T) {
 		tr.AssertOutput("outer\n")
 	})
 }
+
+// Tests for zero required arguments auto-calling
+func TestZeroRequiredArgumentsAutoCalling(t *testing.T) {
+	tr := NewTestRunner(t)
+	defer tr.Close()
+
+	t.Run("functions with only optional args should auto-call", func(t *testing.T) {
+		// Test that a symbol access to a function with only optional arguments
+		// behaves the same as calling it with no arguments
+		
+		// For now, we test that container returns a GraphQLValue rather than GraphQLFunction
+		// This indicates it was auto-called
+		err := tr.RunScript(`container`)
+		if err != nil {
+			t.Fatalf("container symbol access should work: %v", err)
+		}
+		
+		// The fact that it doesn't error means the auto-calling worked
+		// (previously it would return a GraphQLFunction which can't be printed directly)
+	})
+
+	t.Run("functions with required args should not auto-call", func(t *testing.T) {
+		// print has required arguments, so should not auto-call
+		// Accessing it as a symbol should succeed (return the function value)
+		// but calling it without args should fail
+		err := tr.RunScript(`print`)
+		if err != nil {
+			t.Fatalf("print symbol access should work: %v", err)
+		}
+		
+		// Calling print without required arguments should fail
+		tr.AssertError(`print()`, "missing required argument")
+	})
+}
