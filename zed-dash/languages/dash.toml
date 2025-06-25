@@ -1,0 +1,15 @@
+name = "Dash"
+grammar = "dash"
+path_suffixes = ["dash"]
+line_comments = ["# "]
+autoclose_before = ")]},'\";\\/"
+brackets = [
+  { start = "{", end = "}", close = true, newline = true },
+  { start = "[", end = "]", close = true, newline = true },
+  { start = "(", end = ")", close = true, newline = true },
+  { start = "\"", end = "\"", close = true, newline = false, not_in = ["string"] },
+]
+word_characters = ["_"]
+
+[language_servers]
+name = "dash-language-server"
