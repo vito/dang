@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/chewxy/hm"
@@ -14,6 +15,7 @@ type SlotDecl struct {
 }
 
 var _ Node = SlotDecl{}
+var _ Evaluator = SlotDecl{}
 
 func (s SlotDecl) Body() hm.Expression {
 	// TODO(vito): return Value? unclear how Body is used
@@ -96,6 +98,22 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	} else {
 		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
 	}
+}
+
+func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if s.Value == nil {
+		return nil, fmt.Errorf("SlotDecl.Eval: no value to evaluate for %q", s.Named)
+	}
+
+	val, err := EvalNode(ctx, env, s.Value)
+	if err != nil {
+		return nil, fmt.Errorf("SlotDecl.Eval: evaluating value for %q: %w", s.Named, err)
+	}
+
+	// Add the value to the environment for future use
+	env.Set(s.Named, val)
+
+	return val, nil
 }
 
 type ClassDecl struct {
