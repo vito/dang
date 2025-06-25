@@ -1,10 +1,14 @@
 package dash
 
-import "github.com/chewxy/hm"
+import (
+	"context"
+	"github.com/chewxy/hm"
+)
 
 type Record []Keyed[Node]
 
 var _ hm.Inferer = Record{}
+var _ Evaluator = Record{}
 
 func (r Record) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var fields []Keyed[*hm.Scheme]
@@ -21,3 +25,22 @@ func (r Record) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 var _ hm.Expression = Record{}
 
 func (r Record) Body() hm.Expression { return r }
+
+func (r Record) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	fields := make(map[string]Value)
+	schemeFields := make([]Keyed[*hm.Scheme], len(r))
+	
+	for i, f := range r {
+		val, err := EvalNode(ctx, env, f.Value)
+		if err != nil {
+			return nil, err
+		}
+		fields[f.Key] = val
+		schemeFields[i] = Keyed[*hm.Scheme]{f.Key, hm.NewScheme(nil, val.Type())}
+	}
+	
+	return RecordValue{
+		Fields: fields,
+		RecType: NewRecordType("", schemeFields...),
+	}, nil
+}
