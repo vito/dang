@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	"dagger.io/dagger"
+	"dagger.io/dagger/querybuilder"
 	"github.com/chewxy/hm"
 	"github.com/dagger/dagger/codegen/introspection"
 )
@@ -65,10 +68,13 @@ func (e *SimpleEvalEnv) Clone() EvalEnv {
 
 // GraphQLFunction represents a GraphQL API function that makes actual calls
 type GraphQLFunction struct {
-	Name     string
-	TypeName string
-	Field    *introspection.Field
-	FnType   *hm.FunctionType
+	Name       string
+	TypeName   string
+	Field      *introspection.Field
+	FnType     *hm.FunctionType
+	Client     *dagger.Client
+	Schema     *introspection.Schema
+	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 }
 
 func (g GraphQLFunction) Type() hm.Type {
@@ -80,17 +86,74 @@ func (g GraphQLFunction) String() string {
 }
 
 func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-	// TODO: This is where we would make the actual GraphQL call
-	// For now, return a placeholder
-	return StringValue{Val: fmt.Sprintf("GraphQL call to %s.%s", g.TypeName, g.Name)}, nil
+	// Build the GraphQL query using querybuilder
+	var query *querybuilder.Selection
+	
+	if g.QueryChain != nil {
+		// Use existing query chain - extract the field name from the full name
+		parts := strings.Split(g.Name, ".")
+		fieldName := parts[len(parts)-1] // Get the last part as the field name
+		query = g.QueryChain.Select(fieldName)
+	} else {
+		// Build from scratch for top-level functions
+		// Check if this is a method call (contains a dot) or a top-level function
+		if strings.Contains(g.Name, ".") {
+			// This is a method call like "container.from" - we need to build a nested query
+			parts := strings.Split(g.Name, ".")
+			query = querybuilder.Query()
+			for _, part := range parts {
+				query = query.Select(part)
+			}
+		} else {
+			// This is a top-level function call
+			query = querybuilder.Query().Select(g.Name)
+		}
+	}
+	
+	// Add arguments to the query
+	for _, arg := range g.Field.Args {
+		if val, ok := args[arg.Name]; ok {
+			// Convert Dash value to Go value for GraphQL
+			goVal, err := dashValueToGo(val)
+			if err != nil {
+				return nil, fmt.Errorf("converting argument %s: %w", arg.Name, err)
+			}
+			query = query.Arg(arg.Name, goVal)
+		}
+	}
+	
+	// For functions that return scalar types, execute the query immediately
+	if isScalarType(g.Field.TypeRef, g.Schema) {
+		// Execute the query and return the scalar value
+		var result interface{}
+		query = query.Bind(&result).Client(g.Client.GraphQLClient())
+		if err := query.Execute(ctx); err != nil {
+			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
+		}
+		return goValueToDash(result, g.Field.TypeRef)
+	}
+	
+	// For non-scalar types, return a GraphQLValue that can be further selected
+	return GraphQLValue{
+		Name:       g.Name,
+		TypeName:   getTypeName(g.Field.TypeRef),
+		Field:      g.Field,
+		ValType:    g.FnType.Ret(false),
+		Client:     g.Client,
+		Schema:     g.Schema,
+		QueryChain: query, // Pass the query chain for further building
+	}, nil
 }
 
 // GraphQLValue represents a GraphQL object/field value
 type GraphQLValue struct {
-	Name     string
-	TypeName string
-	Field    *introspection.Field
-	ValType  hm.Type
+	Name       string
+	TypeName   string
+	Field      *introspection.Field
+	ValType    hm.Type
+	Client     *dagger.Client
+	Schema     *introspection.Schema
+	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 }
 
 func (g GraphQLValue) Type() hm.Type {
@@ -101,8 +164,105 @@ func (g GraphQLValue) String() string {
 	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
 }
 
+// SelectField handles field selection on a GraphQLValue
+func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value, error) {
+	// Find the type definition for this GraphQL value
+	var objectType *introspection.Type
+	for _, t := range g.Schema.Types {
+		if t.Name == g.TypeName {
+			objectType = t
+			break
+		}
+	}
+	
+	if objectType == nil {
+		return nil, fmt.Errorf("GraphQL type %s not found in schema", g.TypeName)
+	}
+	
+	// Find the requested field in the object type
+	var field *introspection.Field
+	for _, f := range objectType.Fields {
+		if f.Name == fieldName {
+			field = f
+			break
+		}
+	}
+	
+	if field == nil {
+		return nil, fmt.Errorf("field %s not found on GraphQL type %s", fieldName, g.TypeName)
+	}
+	
+	// If this field has arguments, return a GraphQLFunction for calling
+	if len(field.Args) > 0 {
+		// Create a function type for this method call
+		args := NewRecordType("")
+		for _, arg := range field.Args {
+			argType, err := gqlToTypeNode(NewEnv(g.Schema), arg.TypeRef)
+			if err != nil {
+				continue
+			}
+			args.Add(arg.Name, hm.NewScheme(nil, argType))
+		}
+		
+		retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert return type: %w", err)
+		}
+		
+		fnType := hm.NewFnType(args, retType)
+		
+		return GraphQLFunction{
+			Name:       fmt.Sprintf("%s.%s", g.Name, fieldName),
+			TypeName:   g.TypeName,
+			Field:      field,
+			FnType:     fnType,
+			Client:     g.Client,
+			Schema:     g.Schema,
+			QueryChain: g.QueryChain, // Pass the current query chain
+		}, nil
+	}
+	
+	// For 0-arity fields, check if it's scalar
+	if isScalarType(field.TypeRef, g.Schema) {
+		// Execute the query and return the scalar result
+		var query *querybuilder.Selection
+		if g.QueryChain != nil {
+			// Use existing query chain and add this field
+			query = g.QueryChain.Select(fieldName)
+		} else {
+			// Build from scratch (shouldn't happen in normal flow)
+			query = querybuilder.Query().Select(g.Name).Select(fieldName)
+		}
+		
+		var result interface{}
+		query = query.Bind(&result).Client(g.Client.GraphQLClient())
+		if err := query.Execute(ctx); err != nil {
+			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, fieldName, err)
+		}
+		return goValueToDash(result, field.TypeRef)
+	}
+	
+	// For non-scalar 0-arity fields, return another GraphQLValue for further selection
+	var newQueryChain *querybuilder.Selection
+	if g.QueryChain != nil {
+		newQueryChain = g.QueryChain.Select(fieldName)
+	} else {
+		newQueryChain = querybuilder.Query().Select(g.Name).Select(fieldName)
+	}
+	
+	return GraphQLValue{
+		Name:       fmt.Sprintf("%s.%s", g.Name, fieldName),
+		TypeName:   getTypeName(field.TypeRef),
+		Field:      field,
+		ValType:    g.ValType, // This could be improved with proper type inference
+		Client:     g.Client,
+		Schema:     g.Schema,
+		QueryChain: newQueryChain,
+	}, nil
+}
+
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
-func NewEvalEnvWithSchema(schema *introspection.Schema) EvalEnv {
+func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) EvalEnv {
 	env := NewEvalEnv()
 
 	// Create a type environment to help with type conversion
@@ -128,10 +288,13 @@ func NewEvalEnvWithSchema(schema *introspection.Schema) EvalEnv {
 				fnType := hm.NewFnType(args, ret)
 
 				gqlFunc := GraphQLFunction{
-					Name:     f.Name,
-					TypeName: t.Name,
-					Field:    f,
-					FnType:   fnType,
+					Name:       f.Name,
+					TypeName:   t.Name,
+					Field:      f,
+					FnType:     fnType,
+					Client:     dag,
+					Schema:     schema,
+					QueryChain: nil, // Top-level functions start with no query chain
 				}
 
 				// Add to global scope if it's from the Query type
@@ -141,10 +304,13 @@ func NewEvalEnvWithSchema(schema *introspection.Schema) EvalEnv {
 			} else {
 				// This is a field/property - create a GraphQLValue
 				gqlVal := GraphQLValue{
-					Name:     f.Name,
-					TypeName: t.Name,
-					Field:    f,
-					ValType:  ret,
+					Name:       f.Name,
+					TypeName:   t.Name,
+					Field:      f,
+					ValType:    ret,
+					Client:     dag,
+					Schema:     schema,
+					QueryChain: nil, // Top-level values start with no query chain
 				}
 
 				// Add to global scope if it's from the Query type
@@ -156,6 +322,90 @@ func NewEvalEnvWithSchema(schema *introspection.Schema) EvalEnv {
 	}
 
 	return env
+}
+
+// Helper function to determine if a GraphQL type is scalar
+func isScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
+	// Unwrap NonNull and List wrappers
+	currentType := typeRef
+	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
+		currentType = currentType.OfType
+	}
+	
+	// Check if it's a built-in scalar
+	switch currentType.Name {
+	case "String", "Int", "Float", "Boolean", "ID":
+		return true
+	}
+	
+	// Check if it's a custom scalar in the schema
+	for _, t := range schema.Types {
+		if t.Name == currentType.Name && t.Kind == "SCALAR" {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// Helper function to get the type name from a TypeRef
+func getTypeName(typeRef *introspection.TypeRef) string {
+	// Unwrap NonNull and List wrappers to get the base type name
+	currentType := typeRef
+	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
+		currentType = currentType.OfType
+	}
+	return currentType.Name
+}
+
+// Helper function to convert Dash values to Go values for GraphQL
+func dashValueToGo(val Value) (interface{}, error) {
+	switch v := val.(type) {
+	case StringValue:
+		return v.Val, nil
+	case IntValue:
+		return v.Val, nil
+	case BoolValue:
+		return v.Val, nil
+	case NullValue:
+		return nil, nil
+	case ListValue:
+		// Convert list elements to Go slice
+		result := make([]interface{}, len(v.Elements))
+		for i, elem := range v.Elements {
+			goVal, err := dashValueToGo(elem)
+			if err != nil {
+				return nil, fmt.Errorf("converting list element %d: %w", i, err)
+			}
+			result[i] = goVal
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("unsupported value type: %T", val)
+	}
+}
+
+// Helper function to convert Go values back to Dash values
+func goValueToDash(val interface{}, typeRef *introspection.TypeRef) (Value, error) {
+	if val == nil {
+		return NullValue{}, nil
+	}
+	
+	switch v := val.(type) {
+	case string:
+		return StringValue{Val: v}, nil
+	case int:
+		return IntValue{Val: v}, nil
+	case int64:
+		return IntValue{Val: int(v)}, nil
+	case float64:
+		// For now, treat floats as ints - could be improved
+		return IntValue{Val: int(v)}, nil
+	case bool:
+		return BoolValue{Val: v}, nil
+	default:
+		return nil, fmt.Errorf("unsupported Go value type: %T", val)
+	}
 }
 
 // Runtime value implementations
@@ -285,7 +535,7 @@ func (m ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod.Named)
 }
 
-func CheckFile(schema *introspection.Schema, filePath string) error {
+func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string) error {
 	// Read the source file for error reporting
 	sourceBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -313,7 +563,7 @@ func CheckFile(schema *introspection.Schema, filePath string) error {
 	log.Printf("INFERRED TYPE: %s", inferred)
 
 	// Now evaluate the program
-	evalEnv := NewEvalEnvWithSchema(schema)
+	evalEnv := NewEvalEnvWithSchema(schema, dag)
 	ctx := context.Background()
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)

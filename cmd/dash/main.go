@@ -24,7 +24,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := dash.CheckFile(schema, os.Args[1]); err != nil {
+	if err := dash.CheckFile(schema, dag, os.Args[1]); err != nil {
 		panic(err)
 	}
 

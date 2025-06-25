@@ -412,6 +412,10 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			Values: map[string]Value{d.Field: StringValue{Val: fmt.Sprintf("dagger.%s.%s", rec.Mod.Named, d.Field)}},
 		}, nil
 		
+	case GraphQLValue:
+		// Handle GraphQL field selection
+		return rec.SelectField(ctx, d.Field)
+		
 	default:
 		err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
 		return nil, CreateEvalError(ctx, err, d)
