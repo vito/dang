@@ -25,7 +25,7 @@ func (e *SourceError) Error() string {
 	if e.Location == nil {
 		return e.Message
 	}
-	
+
 	return e.FormatWithHighlighting()
 }
 
@@ -34,12 +34,12 @@ func (e *SourceError) FormatWithHighlighting() string {
 	if e.Location == nil || e.Source == "" {
 		return e.Message
 	}
-	
+
 	lines := strings.Split(e.Source, "\n")
 	if e.Location.Line < 1 || e.Location.Line > len(lines) {
 		return e.Message
 	}
-	
+
 	// Colors for terminal output
 	const (
 		red    = "\033[31m"
@@ -49,39 +49,39 @@ func (e *SourceError) FormatWithHighlighting() string {
 		reset  = "\033[0m"
 		dim    = "\033[2m"
 	)
-	
+
 	var result strings.Builder
-	
+
 	// Error header
 	result.WriteString(fmt.Sprintf("%s%sError:%s %s\n", bold, red, reset, e.Message))
 	result.WriteString(fmt.Sprintf("  %s%s--> %s:%d:%d%s\n", dim, blue, e.Location.Filename, e.Location.Line, e.Location.Column, reset))
 	result.WriteString(fmt.Sprintf("   %s|%s\n", dim, reset))
-	
+
 	// Show context lines
 	startLine := max(1, e.Location.Line-2)
 	endLine := min(len(lines), e.Location.Line+2)
-	
+
 	for i := startLine; i <= endLine; i++ {
 		lineStr := fmt.Sprintf("%d", i)
 		if i == e.Location.Line {
 			// Highlight the error line
-			result.WriteString(fmt.Sprintf("%s%s%s | %s%s%s\n", 
+			result.WriteString(fmt.Sprintf("%s%s%s | %s%s%s\n",
 				blue, bold, padLeft(lineStr, 3), reset, lines[i-1], reset))
-			
+
 			// Add underline for the specific error location
 			padding := strings.Repeat(" ", len(padLeft(lineStr, 3))+3+e.Location.Column-1)
 			underline := strings.Repeat("^", max(1, e.Location.Length))
-			result.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n", 
+			result.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n",
 				dim, padding, reset, red, underline, reset))
 		} else {
 			// Context lines
-			result.WriteString(fmt.Sprintf("%s%s | %s%s\n", 
+			result.WriteString(fmt.Sprintf("%s%s | %s%s\n",
 				dim, padLeft(lineStr, 3), lines[i-1], reset))
 		}
 	}
-	
+
 	result.WriteString(fmt.Sprintf("   %s|%s\n", dim, reset))
-	
+
 	return result.String()
 }
 
@@ -159,7 +159,7 @@ func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
 	if sourceErr, ok := err.(*SourceError); ok {
 		return sourceErr
 	}
-	
+
 	// Use the actual source location from the AST node
 	var location *SourceLocation
 	if node != nil {
@@ -172,7 +172,7 @@ func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
 			}
 		}
 	}
-	
+
 	// Only use guessing as a last resort if we don't have any location info
 	if location == nil {
 		line, column, length := ctx.guessLocation(err, node)
@@ -183,7 +183,7 @@ func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
 			Length:   length,
 		}
 	}
-	
+
 	return NewSourceError(err.Error(), location, ctx.Source)
 }
 
@@ -191,7 +191,7 @@ func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
 func (ctx *EvalContext) guessLocation(err error, node Node) (line, column, length int) {
 	errMsg := err.Error()
 	lines := strings.Split(ctx.Source, "\n")
-	
+
 	// Try to find patterns in the source that match the error
 	switch {
 	case strings.Contains(errMsg, "Select.Eval"):
@@ -205,7 +205,7 @@ func (ctx *EvalContext) guessLocation(err error, node Node) (line, column, lengt
 					fieldName = errMsg[start : start+end]
 				}
 			}
-			
+
 			// Try to find the specific field selection in the source
 			for i, sourceLine := range lines {
 				if fieldName != "" {
@@ -231,7 +231,7 @@ func (ctx *EvalContext) guessLocation(err error, node Node) (line, column, lengt
 			}
 		}
 	}
-	
+
 	// Default: return the first line
 	if len(lines) > 0 {
 		return 1, 1, len(lines[0])

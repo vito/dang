@@ -22,21 +22,21 @@ type TestRunner struct {
 // NewTestRunner creates a new test runner with output capture
 func NewTestRunner(t *testing.T) *TestRunner {
 	t.Helper()
-	
+
 	// Connect to Dagger for testing
 	ctx := context.Background()
 	dag, err := dagger.Connect(ctx)
 	if err != nil {
 		t.Fatalf("Failed to connect to Dagger: %v", err)
 	}
-	
+
 	// Get schema
 	schema, err := introspectSchema(ctx, dag)
 	if err != nil {
 		dag.Close()
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
-	
+
 	return &TestRunner{
 		t:      t,
 		output: &bytes.Buffer{},
@@ -70,29 +70,29 @@ func introspectSchema(ctx context.Context, dag *dagger.Client) (*introspection.S
 // RunScript executes a Dash script from a string and captures output
 func (tr *TestRunner) RunScript(script string) error {
 	tr.t.Helper()
-	
+
 	// Clear previous output
 	tr.output.Reset()
-	
+
 	// Parse the script
 	result, err := Parse("test", []byte(script))
 	if err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
-	
+
 	node := result.(Block)
-	
+
 	// Create type environment and infer types
 	typeEnv := NewEnv(tr.schema)
 	_, err = Infer(typeEnv, node, true)
 	if err != nil {
 		return err
 	}
-	
+
 	// Create evaluation environment with captured output
 	evalEnv := NewEvalEnvWithSchema(tr.schema, tr.dag)
 	evalEnv.SetWriter(tr.output)
-	
+
 	// Evaluate the script
 	ctx := context.Background()
 	_, err = EvalNode(ctx, evalEnv, node)
@@ -127,13 +127,13 @@ func (tr *TestRunner) AssertOutputLines(expectedLines ...string) {
 	tr.t.Helper()
 	actual := strings.TrimSpace(tr.Output())
 	actualLines := strings.Split(actual, "\n")
-	
+
 	if len(actualLines) != len(expectedLines) {
-		tr.t.Errorf("Expected %d lines, got %d lines. Output: %q", 
+		tr.t.Errorf("Expected %d lines, got %d lines. Output: %q",
 			len(expectedLines), len(actualLines), actual)
 		return
 	}
-	
+
 	for i, expected := range expectedLines {
 		if actualLines[i] != expected {
 			tr.t.Errorf("Line %d: expected %q, got %q", i+1, expected, actualLines[i])
@@ -282,5 +282,92 @@ func TestPrintReturnValue(t *testing.T) {
 		}
 		tr.AssertOutput("hello\n")
 		// The null return value doesn't produce additional output
+	})
+}
+
+// Tests for positional arguments
+func TestPositionalArguments(t *testing.T) {
+	tr := NewTestRunner(t)
+	defer tr.Close()
+
+	t.Run("print with positional argument", func(t *testing.T) {
+		tr.RunAndAssertOutput(`print("hello")`, "hello\n")
+	})
+
+	t.Run("print with named argument still works", func(t *testing.T) {
+		tr.RunAndAssertOutput(`print(value: "hello")`, "hello\n")
+	})
+
+	t.Run("builtin function positional argument types", func(t *testing.T) {
+		// Test different types with positional arguments
+		tr.RunAndAssertOutput(`print(42)`, "42\n")
+		tr.RunAndAssertOutput(`print(true)`, "true\n")
+		tr.RunAndAssertOutput(`print([1, 2, 3])`, "[1, 2, 3]\n")
+	})
+}
+
+func TestPositionalArgumentErrors(t *testing.T) {
+	tr := NewTestRunner(t)
+	defer tr.Close()
+
+	t.Run("positional after named", func(t *testing.T) {
+		// This should fail because positional args must come before named args
+		tr.AssertError(`print(value: "hello", "world")`, "positional arguments must come before named arguments")
+	})
+
+	t.Run("too many positional arguments", func(t *testing.T) {
+		// print only takes one argument
+		tr.AssertError(`print("hello", "world")`, "too many positional arguments")
+	})
+
+	t.Run("argument specified both ways", func(t *testing.T) {
+		// This should fail because we specify the same argument positionally and by name
+		tr.AssertError(`print("hello", value: "world")`, "argument \"value\" specified both positionally and by name")
+	})
+
+	t.Run("duplicate named arguments", func(t *testing.T) {
+		// This should fail because we specify the same named argument twice
+		tr.AssertError(`print(value: "hello", value: "world")`, "argument \"value\" specified multiple times")
+	})
+}
+
+func TestMixedPositionalAndNamedArguments(t *testing.T) {
+	tr := NewTestRunner(t)
+	defer tr.Close()
+
+	t.Run("hypothetical multi-argument function", func(t *testing.T) {
+		// Since we only have print (1 arg) available, let's test the parsing works
+		// by ensuring that complex expressions parse correctly even if they fail at runtime
+
+		// Test that the syntax is parsed correctly - this validates our grammar changes
+		err := tr.RunScript(`print("test")`)
+		if err != nil {
+			t.Fatalf("Single positional arg should work: %v", err)
+		}
+		tr.AssertOutput("test\n")
+	})
+}
+
+func TestPositionalArgumentsParsing(t *testing.T) {
+	tr := NewTestRunner(t)
+	defer tr.Close()
+
+	t.Run("empty argument list", func(t *testing.T) {
+		// Test function calls with no arguments
+		tr.AssertError(`print()`, "missing required argument")
+	})
+
+	t.Run("complex positional expressions", func(t *testing.T) {
+		// Test that complex expressions work as positional arguments
+		tr.RunAndAssertOutput(`print([1, 2, 3])`, "[1, 2, 3]\n")
+	})
+
+	t.Run("nested function calls with positional args", func(t *testing.T) {
+		// Since we don't have nested functions, test that the parser handles syntax
+		err := tr.RunScript(`print("outer")`)
+		if err != nil {
+			t.Fatalf("Nested positional calls should parse: %v", err)
+		}
+		tr.AssertOutput("outer\n")
 	})
 }

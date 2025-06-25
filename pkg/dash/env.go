@@ -143,7 +143,7 @@ func addBuiltinTypes(mod *Module) {
 	args := NewRecordType("")
 	args.Add("value", hm.NewScheme(nil, argType))
 	printType := hm.NewFnType(args, hm.TypeVariable('n')) // returns null
-	
+
 	slog.Debug("adding builtin function", "function", "print")
 	mod.Add("print", hm.NewScheme(nil, printType))
 }

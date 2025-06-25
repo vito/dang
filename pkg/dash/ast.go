@@ -14,8 +14,9 @@ type Node interface {
 }
 
 type Keyed[X any] struct {
-	Key   string
-	Value X
+	Key        string
+	Value      X
+	Positional bool // true if this argument was passed positionally
 }
 
 type Visibility int
@@ -46,8 +47,21 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	switch ft := fun.(type) {
 	case *hm.FunctionType:
-		for _, arg := range c.Args {
-			k, v := arg.Key, arg.Value
+		// Handle positional argument mapping for type inference
+		argMapping, err := c.mapArgumentsForInference(ft)
+		if err != nil {
+			return nil, err
+		}
+
+		for i, arg := range c.Args {
+			v := arg.Value
+			var k string
+
+			if arg.Positional {
+				k = argMapping[i]
+			} else {
+				k = arg.Key
+			}
 
 			it, err := v.Infer(env, fresh)
 			if err != nil {
@@ -71,6 +85,8 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		// TODO: check required args are specified?
 		return ft.Ret(false), nil
 	case *Module:
+		// For modules, use the original logic for now
+		// TODO: Add proper positional argument support for modules
 		for _, arg := range c.Args {
 			k, v := arg.Key, arg.Value
 
@@ -110,15 +126,10 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return nil, err
 	}
 
-	// Evaluate arguments
-	argValues := make(map[string]Value)
-	for _, arg := range c.Args {
-		val, err := EvalNode(ctx, env, arg.Value)
-		if err != nil {
-			// Don't wrap errors - let the specific node error bubble up
-			return nil, err
-		}
-		argValues[arg.Key] = val
+	// Evaluate arguments and handle positional/named argument mapping
+	argValues, err := c.evaluateArguments(ctx, env, funVal)
+	if err != nil {
+		return nil, err
 	}
 
 	switch fn := funVal.(type) {
@@ -131,23 +142,148 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			}
 		}
 		return EvalNode(ctx, fnEnv, fn.Body)
-		
+
 	case ModuleValue:
 		// Module function call - this would integrate with Dagger API
 		// For now, return a placeholder
 		return StringValue{Val: fmt.Sprintf("module call: %s with args %v", fn.Mod.Named, argValues)}, nil
-		
+
 	case GraphQLFunction:
 		// GraphQL function call
 		return fn.Call(ctx, env, argValues)
-		
+
 	case BuiltinFunction:
 		// Builtin function call
 		return fn.Call(ctx, env, argValues)
-		
+
 	default:
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
+}
+
+// evaluateArguments handles both positional and named arguments
+func (c FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Value) (map[string]Value, error) {
+	argValues := make(map[string]Value)
+	positionallySet := make(map[string]bool) // Track which args were set positionally
+
+	// Get parameter names from the function type
+	paramNames := c.getParameterNames(funVal)
+
+	// Track positional argument index
+	positionalIndex := 0
+
+	// First pass: ensure positional args come before named args
+	seenNamed := false
+	for _, arg := range c.Args {
+		if arg.Positional && seenNamed {
+			return nil, fmt.Errorf("positional arguments must come before named arguments")
+		}
+		if !arg.Positional {
+			seenNamed = true
+		}
+	}
+
+	// Second pass: evaluate and map arguments
+	for _, arg := range c.Args {
+		val, err := EvalNode(ctx, env, arg.Value)
+		if err != nil {
+			return nil, err
+		}
+
+		if arg.Positional {
+			// Map positional argument to parameter name by index
+			if positionalIndex >= len(paramNames) {
+				return nil, fmt.Errorf("too many positional arguments: got %d, expected at most %d",
+					positionalIndex+1, len(paramNames))
+			}
+			paramName := paramNames[positionalIndex]
+			if _, exists := argValues[paramName]; exists {
+				return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
+			}
+			argValues[paramName] = val
+			positionallySet[paramName] = true
+			positionalIndex++
+		} else {
+			// Named argument
+			if _, exists := argValues[arg.Key]; exists {
+				if positionallySet[arg.Key] {
+					return nil, fmt.Errorf("argument %q specified both positionally and by name", arg.Key)
+				} else {
+					return nil, fmt.Errorf("argument %q specified multiple times", arg.Key)
+				}
+			}
+			argValues[arg.Key] = val
+		}
+	}
+
+	return argValues, nil
+}
+
+// getParameterNames extracts parameter names from a function value
+func (c FunCall) getParameterNames(funVal Value) []string {
+	switch fn := funVal.(type) {
+	case FunctionValue:
+		return fn.Args
+	case GraphQLFunction:
+		// For GraphQL functions, get parameter names from the function type
+		if ft, ok := fn.FnType.Arg().(*RecordType); ok {
+			names := make([]string, len(ft.Fields))
+			for i, field := range ft.Fields {
+				names[i] = field.Key
+			}
+			return names
+		}
+	case BuiltinFunction:
+		// For builtin functions, get parameter names from the function type
+		if ft, ok := fn.FnType.Arg().(*RecordType); ok {
+			names := make([]string, len(ft.Fields))
+			for i, field := range ft.Fields {
+				names[i] = field.Key
+			}
+			return names
+		}
+	}
+	return nil
+}
+
+// mapArgumentsForInference maps positional arguments to parameter names during type inference
+func (c FunCall) mapArgumentsForInference(ft *hm.FunctionType) (map[int]string, error) {
+	argMapping := make(map[int]string)
+
+	// Get parameter names from the function type
+	paramNames := []string{}
+	if rt, ok := ft.Arg().(*RecordType); ok {
+		paramNames = make([]string, len(rt.Fields))
+		for i, field := range rt.Fields {
+			paramNames[i] = field.Key
+		}
+	}
+
+	// Validate positional args come before named args
+	seenNamed := false
+	for _, arg := range c.Args {
+		if arg.Positional && seenNamed {
+			return nil, fmt.Errorf("positional arguments must come before named arguments")
+		}
+		if !arg.Positional {
+			seenNamed = true
+		}
+	}
+
+	// Map positional arguments to parameter names by index
+	positionalIndex := 0
+	for i, arg := range c.Args {
+		if arg.Positional {
+			if positionalIndex >= len(paramNames) {
+				return nil, fmt.Errorf("too many positional arguments: got %d, expected at most %d",
+					positionalIndex+1, len(paramNames))
+			}
+			argMapping[i] = paramNames[positionalIndex]
+			positionalIndex++
+		}
+	}
+
+	return argMapping, nil
 }
 
 type FunDecl struct {
@@ -210,7 +346,7 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		scheme := hm.NewScheme(nil, definedArgType)
 		env.Add(arg.Named, scheme)
-		args = append(args, Keyed[*hm.Scheme]{arg.Named, scheme})
+		args = append(args, Keyed[*hm.Scheme]{Key: arg.Named, Value: scheme, Positional: false})
 	}
 
 	var definedRet hm.Type
@@ -248,17 +384,17 @@ func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	argTypes := make([]Keyed[*hm.Scheme], len(f.Args))
 	for i, arg := range f.Args {
 		// Use a placeholder type for now - in a full implementation we'd get this from type inference
-		argTypes[i] = Keyed[*hm.Scheme]{arg.Named, hm.NewScheme(nil, hm.TypeVariable(byte('a'+i)))}
+		argTypes[i] = Keyed[*hm.Scheme]{Key: arg.Named, Value: hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))), Positional: false}
 	}
 
 	// Create the function type
 	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
 
 	return FunctionValue{
-		Args: argNames,
-		Body: f.Form,
+		Args:    argNames,
+		Body:    f.Form,
 		Closure: env,
-		FnType: fnType,
+		FnType:  fnType,
 	}, nil
 }
 
@@ -403,7 +539,7 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 		err := fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
 		return nil, CreateEvalError(ctx, err, d)
-		
+
 	case ModuleValue:
 		// For module selection, we would typically return a function that represents the API call
 		// For now, return a placeholder
@@ -412,14 +548,14 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 		// Return a placeholder function for Dagger API calls
 		return ModuleValue{
-			Mod: rec.Mod,
+			Mod:    rec.Mod,
 			Values: map[string]Value{d.Field: StringValue{Val: fmt.Sprintf("dagger.%s.%s", rec.Mod.Named, d.Field)}},
 		}, nil
-		
+
 	case GraphQLValue:
 		// Handle GraphQL field selection
 		return rec.SelectField(ctx, d.Field)
-		
+
 	default:
 		err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
 		return nil, CreateEvalError(ctx, err, d)
@@ -458,7 +594,7 @@ func (d Default) GetSourceLocation() *SourceLocation { return d.Loc }
 func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	leftVal, err := EvalNode(ctx, env, d.Left)
 	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err) 
+		return nil, fmt.Errorf("evaluating left side: %w", err)
 	}
 
 	// Check if left value is null
@@ -584,33 +720,33 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	boolType, err := NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if _, err := hm.Unify(condType, boolType); err != nil {
 		return nil, fmt.Errorf("Conditional.Infer: condition must be Boolean, got %s", condType)
 	}
-	
+
 	thenType, err := c.Then.Infer(env, fresh)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if c.Else != nil {
 		elseBlock := c.Else.(Block)
 		elseType, err := elseBlock.Infer(env, fresh)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if _, err := hm.Unify(thenType, elseType); err != nil {
 			return nil, fmt.Errorf("Conditional.Infer: then and else branches must have same type: %s != %s", thenType, elseType)
 		}
 	}
-	
+
 	return thenType, nil
 }
 
@@ -654,10 +790,10 @@ func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	newEnv := env.Clone()
 	newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
-	
+
 	return l.Expr.Infer(newEnv, fresh)
 }
 
@@ -689,18 +825,18 @@ func (l Lambda) GetSourceLocation() *SourceLocation { return l.Loc }
 func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	newEnv := env.Clone()
 	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
-	
+
 	for i, arg := range l.Args {
 		argType := fresh.Fresh()
-		argTypes[i] = Keyed[*hm.Scheme]{arg, hm.NewScheme(nil, argType)}
+		argTypes[i] = Keyed[*hm.Scheme]{Key: arg, Value: hm.NewScheme(nil, argType), Positional: false}
 		newEnv.Add(arg, hm.NewScheme(nil, argType))
 	}
-	
+
 	bodyType, err := l.Expr.Infer(newEnv, fresh)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return hm.NewFnType(NewRecordType("", argTypes...), bodyType), nil
 }
 
@@ -710,17 +846,17 @@ func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
 	for i, arg := range l.Args {
 		// Use a placeholder type for now
-		argTypes[i] = Keyed[*hm.Scheme]{arg, hm.NewScheme(nil, hm.TypeVariable(byte('a'+i)))}
+		argTypes[i] = Keyed[*hm.Scheme]{Key: arg, Value: hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))), Positional: false}
 	}
-	
+
 	// Create a function type with placeholder return type
 	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
-	
+
 	return FunctionValue{
-		Args: l.Args,
-		Body: l.Expr,
+		Args:    l.Args,
+		Body:    l.Expr,
 		Closure: env,
-		FnType: fnType,
+		FnType:  fnType,
 	}, nil
 }
 
@@ -741,25 +877,25 @@ func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(m.Cases) == 0 {
 		return nil, fmt.Errorf("Match.Infer: no match cases")
 	}
-	
+
 	var resultType hm.Type
 	for i, case_ := range m.Cases {
 		caseEnv := env.Clone()
-		
+
 		// TODO: Pattern matching type checking - for now just add pattern variables
 		if varPattern, ok := case_.Pattern.(VariablePattern); ok {
 			caseEnv.Add(varPattern.Name, hm.NewScheme(nil, exprType))
 		}
-		
+
 		caseType, err := case_.Expr.Infer(caseEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if i == 0 {
 			resultType = caseType
 		} else {
@@ -768,7 +904,7 @@ func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 		}
 	}
-	
+
 	return resultType, nil
 }
 

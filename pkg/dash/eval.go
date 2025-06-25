@@ -109,7 +109,7 @@ func (g GraphQLFunction) String() string {
 func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 	// Build the GraphQL query using querybuilder
 	var query *querybuilder.Selection
-	
+
 	if g.QueryChain != nil {
 		// Use existing query chain - extract the field name from the full name
 		parts := strings.Split(g.Name, ".")
@@ -130,7 +130,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 			query = querybuilder.Query().Select(g.Name)
 		}
 	}
-	
+
 	// Add arguments to the query
 	for _, arg := range g.Field.Args {
 		if val, ok := args[arg.Name]; ok {
@@ -142,7 +142,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 			query = query.Arg(arg.Name, goVal)
 		}
 	}
-	
+
 	// For functions that return scalar types, execute the query immediately
 	if isScalarType(g.Field.TypeRef, g.Schema) {
 		// Execute the query and return the scalar value
@@ -153,7 +153,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		}
 		return goValueToDash(result, g.Field.TypeRef)
 	}
-	
+
 	// For non-scalar types, return a GraphQLValue that can be further selected
 	return GraphQLValue{
 		Name:       g.Name,
@@ -195,11 +195,11 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 			break
 		}
 	}
-	
+
 	if objectType == nil {
 		return nil, fmt.Errorf("GraphQL type %s not found in schema", g.TypeName)
 	}
-	
+
 	// Find the requested field in the object type
 	var field *introspection.Field
 	for _, f := range objectType.Fields {
@@ -208,11 +208,11 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 			break
 		}
 	}
-	
+
 	if field == nil {
 		return nil, fmt.Errorf("field %s not found on GraphQL type %s", fieldName, g.TypeName)
 	}
-	
+
 	// If this field has arguments, return a GraphQLFunction for calling
 	if len(field.Args) > 0 {
 		// Create a function type for this method call
@@ -224,14 +224,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 			}
 			args.Add(arg.Name, hm.NewScheme(nil, argType))
 		}
-		
+
 		retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert return type: %w", err)
 		}
-		
+
 		fnType := hm.NewFnType(args, retType)
-		
+
 		return GraphQLFunction{
 			Name:       fmt.Sprintf("%s.%s", g.Name, fieldName),
 			TypeName:   g.TypeName,
@@ -242,7 +242,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 			QueryChain: g.QueryChain, // Pass the current query chain
 		}, nil
 	}
-	
+
 	// For 0-arity fields, check if it's scalar
 	if isScalarType(field.TypeRef, g.Schema) {
 		// Execute the query and return the scalar result
@@ -254,7 +254,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 			// Build from scratch (shouldn't happen in normal flow)
 			query = querybuilder.Query().Select(g.Name).Select(fieldName)
 		}
-		
+
 		var result interface{}
 		query = query.Bind(&result).Client(g.Client.GraphQLClient())
 		if err := query.Execute(ctx); err != nil {
@@ -262,7 +262,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		}
 		return goValueToDash(result, field.TypeRef)
 	}
-	
+
 	// For non-scalar 0-arity fields, return another GraphQLValue for further selection
 	var newQueryChain *querybuilder.Selection
 	if g.QueryChain != nil {
@@ -270,7 +270,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	} else {
 		newQueryChain = querybuilder.Query().Select(g.Name).Select(fieldName)
 	}
-	
+
 	return GraphQLValue{
 		Name:       fmt.Sprintf("%s.%s", g.Name, fieldName),
 		TypeName:   getTypeName(field.TypeRef),
@@ -369,7 +369,7 @@ func addBuiltinFunctions(env EvalEnv) {
 
 			// Print the value to the configured writer
 			fmt.Fprintln(env.Writer(), val.String())
-			
+
 			// Return null
 			return NullValue{}, nil
 		},
@@ -385,20 +385,20 @@ func isScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) 
 	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
 		currentType = currentType.OfType
 	}
-	
+
 	// Check if it's a built-in scalar
 	switch currentType.Name {
 	case "String", "Int", "Float", "Boolean", "ID":
 		return true
 	}
-	
+
 	// Check if it's a custom scalar in the schema
 	for _, t := range schema.Types {
 		if t.Name == currentType.Name && t.Kind == "SCALAR" {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -444,7 +444,7 @@ func goValueToDash(val interface{}, typeRef *introspection.TypeRef) (Value, erro
 	if val == nil {
 		return NullValue{}, nil
 	}
-	
+
 	switch v := val.(type) {
 	case string:
 		return StringValue{Val: v}, nil
@@ -611,7 +611,7 @@ func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string
 		return fmt.Errorf("failed to read source file: %w", err)
 	}
 	source := string(sourceBytes)
-	
+
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
@@ -661,7 +661,7 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 	if evalCtx != nil {
 		ctx = WithEvalContext(ctx, evalCtx)
 	}
-	
+
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, env)
 		if err != nil {

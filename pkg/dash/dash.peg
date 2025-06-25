@@ -153,7 +153,7 @@ FunCall <- name:Term args:ArgValues {
   }, nil
 }
 
-ArgValues <- '(' args:KeyValue* ')' {
+ArgValues <- '(' args:Argument* ')' {
   return sliceOf[Keyed[Node]](args), nil
 }
 ArgTypes <- '(' args:ArgType* ')' {
@@ -183,8 +183,14 @@ ArgWithType <- name:Id _ ColonToken _ type_:Type {
   }, nil
 }
 
+Argument <- KeyValue / PositionalValue
+
 KeyValue <- key:WordToken ColonToken _ value:Form CommaToken? {
-  return Keyed[Node]{key.(string), value.(Node)}, nil
+  return Keyed[Node]{Key: key.(string), Value: value.(Node), Positional: false}, nil
+}
+
+PositionalValue <- value:Form CommaToken? {
+  return Keyed[Node]{Key: "", Value: value.(Node), Positional: true}, nil
 }
 ColonToken <- ':'
 

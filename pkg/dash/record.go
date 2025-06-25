@@ -17,7 +17,7 @@ func (r Record) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		if err != nil {
 			return nil, err
 		}
-		fields = append(fields, Keyed[*hm.Scheme]{f.Key, s})
+		fields = append(fields, Keyed[*hm.Scheme]{Key: f.Key, Value: s, Positional: f.Positional})
 	}
 	return NewRecordType("", fields...), nil
 }
@@ -29,18 +29,18 @@ func (r Record) Body() hm.Expression { return r }
 func (r Record) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	fields := make(map[string]Value)
 	schemeFields := make([]Keyed[*hm.Scheme], len(r))
-	
+
 	for i, f := range r {
 		val, err := EvalNode(ctx, env, f.Value)
 		if err != nil {
 			return nil, err
 		}
 		fields[f.Key] = val
-		schemeFields[i] = Keyed[*hm.Scheme]{f.Key, hm.NewScheme(nil, val.Type())}
+		schemeFields[i] = Keyed[*hm.Scheme]{Key: f.Key, Value: hm.NewScheme(nil, val.Type()), Positional: f.Positional}
 	}
-	
+
 	return RecordValue{
-		Fields: fields,
+		Fields:  fields,
 		RecType: NewRecordType("", schemeFields...),
 	}, nil
 }
