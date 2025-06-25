@@ -1,0 +1,3 @@
+pub str = "hello"
+pub zero = 0
+pub one = 1

@@ -1,0 +1,22 @@
+# Test file for new language constructs
+
+# Test conditional
+pub testIf: String! {
+  if true {
+    "hello"
+  } else {
+    "world"
+  }
+}
+
+# Test let binding
+pub testLet = let x = "test" in x
+
+# Test lambda
+pub testLambda = \x -> x
+
+# This will fail on match for now since it's more complex
+# pub testMatch = match testIf with {
+#   "hello" -> 1,
+#   _ -> 0
+# }
