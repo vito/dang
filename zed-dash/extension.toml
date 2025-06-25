@@ -6,8 +6,7 @@ schema_version = 1
 authors = ["Claude <noreply@anthropic.com>"]
 repository = "https://github.com/vito/dash"
 
-[[grammar]]
-name = "dash"
+[grammars.dash]
 repository = "https://github.com/vito/dash"
+commit = "edf550c4decad102ada8e0cbe4aa29ba6e4a4c31"
 path = "treesitter"
-rev = "331706ee137f06026d34c70b162f912114979e98"
