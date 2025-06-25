@@ -6,12 +6,8 @@ schema_version = 1
 authors = ["Claude <noreply@anthropic.com>"]
 repository = "https://github.com/vito/dash"
 
-[language_servers.dash-language-server]
-name = "Dash Language Server"
-languages = ["Dash"]
-
 [[grammar]]
 name = "dash"
 repository = "https://github.com/vito/dash"
 path = "treesitter"
-commit = "main"
+rev = "331706ee137f06026d34c70b162f912114979e98"
