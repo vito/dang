@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/chewxy/hm"
@@ -29,6 +30,7 @@ type FunCall struct {
 }
 
 var _ Node = FunCall{}
+var _ Evaluator = FunCall{}
 
 func (c FunCall) Body() hm.Expression { return c.Args }
 
@@ -97,6 +99,43 @@ var _ hm.Apply = FunCall{}
 
 func (c FunCall) Fn() hm.Expression { return c.Fun }
 
+func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	funVal, err := EvalNode(ctx, env, c.Fun)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating function: %w", err)
+	}
+
+	// Evaluate arguments
+	argValues := make(map[string]Value)
+	for _, arg := range c.Args {
+		val, err := EvalNode(ctx, env, arg.Value)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
+		}
+		argValues[arg.Key] = val
+	}
+
+	switch fn := funVal.(type) {
+	case FunctionValue:
+		// Regular function call - create new environment with argument bindings
+		fnEnv := fn.Closure.Clone()
+		for i, argName := range fn.Args {
+			if i < len(c.Args) {
+				fnEnv.Set(argName, argValues[c.Args[i].Key])
+			}
+		}
+		return EvalNode(ctx, fnEnv, fn.Body)
+		
+	case ModuleValue:
+		// Module function call - this would integrate with Dagger API
+		// For now, return a placeholder
+		return StringValue{Val: fmt.Sprintf("module call: %s with args %v", fn.Mod.Named, argValues)}, nil
+		
+	default:
+		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
+	}
+}
+
 type FunDecl struct {
 	Named      string
 	Args       []SlotDecl
@@ -106,6 +145,7 @@ type FunDecl struct {
 }
 
 var _ hm.Expression = FunDecl{}
+var _ Evaluator = FunDecl{}
 
 func (f FunDecl) Body() hm.Expression { return f.Form }
 
@@ -180,11 +220,37 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return hm.NewFnType(NewRecordType("", args...), inferredRet), nil
 }
 
+func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Extract argument names from SlotDecl
+	argNames := make([]string, len(f.Args))
+	for i, arg := range f.Args {
+		argNames[i] = arg.Named
+	}
+
+	// Create a function type for this declaration
+	argTypes := make([]Keyed[*hm.Scheme], len(f.Args))
+	for i, arg := range f.Args {
+		// Use a placeholder type for now - in a full implementation we'd get this from type inference
+		argTypes[i] = Keyed[*hm.Scheme]{arg.Named, hm.NewScheme(nil, hm.TypeVariable(byte('a'+i)))}
+	}
+
+	// Create the function type
+	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
+
+	return FunctionValue{
+		Args: argNames,
+		Body: f.Form,
+		Closure: env,
+		FnType: fnType,
+	}, nil
+}
+
 type List struct {
 	Elements []Node
 }
 
 var _ Node = List{}
+var _ Evaluator = List{}
 
 func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
@@ -210,6 +276,28 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 
 func (l List) Body() hm.Expression { return l }
 
+func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if len(l.Elements) == 0 {
+		return ListValue{Elements: []Value{}, ElemType: hm.TypeVariable('a')}, nil
+	}
+
+	values := make([]Value, len(l.Elements))
+	var elemType hm.Type
+
+	for i, elem := range l.Elements {
+		val, err := EvalNode(ctx, env, elem)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating list element %d: %w", i, err)
+		}
+		values[i] = val
+		if i == 0 {
+			elemType = val.Type()
+		}
+	}
+
+	return ListValue{Elements: values, ElemType: elemType}, nil
+}
+
 // TODO record literals?
 
 type Symbol struct {
@@ -217,6 +305,7 @@ type Symbol struct {
 }
 
 var _ Node = Symbol{}
+var _ Evaluator = Symbol{}
 
 func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	scheme, found := env.SchemeOf(s.Name)
@@ -229,12 +318,21 @@ func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (s Symbol) Body() hm.Expression { return s }
 
+func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	val, found := env.Get(s.Name)
+	if !found {
+		return nil, fmt.Errorf("Symbol.Eval: %q not found in env", s.Name)
+	}
+	return val, nil
+}
+
 type Select struct {
 	Receiver Node
 	Field    string
 }
 
 var _ Node = Select{}
+var _ Evaluator = Select{}
 
 func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	lt, err := d.Receiver.Infer(env, fresh)
@@ -262,12 +360,43 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (d Select) Body() hm.Expression { return d }
 
+func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	receiverVal, err := EvalNode(ctx, env, d.Receiver)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating receiver: %w", err)
+	}
+
+	switch rec := receiverVal.(type) {
+	case RecordValue:
+		if val, found := rec.Fields[d.Field]; found {
+			return val, nil
+		}
+		return nil, fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
+		
+	case ModuleValue:
+		// For module selection, we would typically return a function that represents the API call
+		// For now, return a placeholder
+		if val, found := rec.Values[d.Field]; found {
+			return val, nil
+		}
+		// Return a placeholder function for Dagger API calls
+		return ModuleValue{
+			Mod: rec.Mod,
+			Values: map[string]Value{d.Field: StringValue{Val: fmt.Sprintf("dagger.%s.%s", rec.Mod.Named, d.Field)}},
+		}, nil
+		
+	default:
+		return nil, fmt.Errorf("Select.Eval: cannot select field from %T", receiverVal)
+	}
+}
+
 type Default struct {
 	Left  Node
 	Right Node
 }
 
 var _ Node = Default{}
+var _ Evaluator = Default{}
 
 func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	lt, err := d.Left.Infer(env, fresh)
@@ -287,14 +416,34 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (d Default) Body() hm.Expression { return d }
 
+func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, d.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err) 
+	}
+
+	// Check if left value is null
+	if _, isNull := leftVal.(NullValue); isNull {
+		// Use the right side as default
+		return EvalNode(ctx, env, d.Right)
+	}
+
+	return leftVal, nil
+}
+
 type Null struct{}
 
 var _ Node = Null{}
+var _ Evaluator = Null{}
 
 func (n Null) Body() hm.Expression { return n }
 
 func (Null) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return fresh.Fresh(), nil
+}
+
+func (n Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return NullValue{}, nil
 }
 
 var (
@@ -311,11 +460,16 @@ type String struct {
 }
 
 var _ Node = String{}
+var _ Evaluator = String{}
 
 func (s String) Body() hm.Expression { return s }
 
 func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"String"}}.Infer(env, fresh)
+}
+
+func (s String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return StringValue{Val: s.Value}, nil
 }
 
 type Quoted struct {
@@ -326,6 +480,7 @@ type Quoted struct {
 type Boolean bool
 
 var _ Node = Boolean(false)
+var _ Evaluator = Boolean(false)
 
 func (b Boolean) Body() hm.Expression { return b }
 
@@ -333,14 +488,23 @@ func (b Boolean) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
 
+func (b Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return BoolValue{Val: bool(b)}, nil
+}
+
 type Int int
 
 var _ Node = Int(0)
+var _ Evaluator = Int(0)
 
 func (i Int) Body() hm.Expression { return i }
 
 func (i Int) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
+}
+
+func (i Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return IntValue{Val: int(i)}, nil
 }
 
 // Additional language constructs
@@ -352,6 +516,7 @@ type Conditional struct {
 }
 
 var _ Node = Conditional{}
+var _ Evaluator = Conditional{}
 
 func (c Conditional) Body() hm.Expression { return c }
 
@@ -390,6 +555,27 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return thenType, nil
 }
 
+func (c Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	condVal, err := EvalNode(ctx, env, c.Condition)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating condition: %w", err)
+	}
+
+	boolVal, ok := condVal.(BoolValue)
+	if !ok {
+		return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
+	}
+
+	if boolVal.Val {
+		return EvalNode(ctx, env, c.Then)
+	} else if c.Else != nil {
+		elseBlock := c.Else.(Block)
+		return EvalNode(ctx, env, elseBlock)
+	} else {
+		return NullValue{}, nil
+	}
+}
+
 type Let struct {
 	Name  string
 	Value Node
@@ -397,6 +583,7 @@ type Let struct {
 }
 
 var _ Node = Let{}
+var _ Evaluator = Let{}
 
 func (l Let) Body() hm.Expression { return l }
 
@@ -412,12 +599,25 @@ func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return l.Expr.Infer(newEnv, fresh)
 }
 
+func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	val, err := EvalNode(ctx, env, l.Value)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating let value: %w", err)
+	}
+
+	newEnv := env.Clone()
+	newEnv.Set(l.Name, val)
+
+	return EvalNode(ctx, newEnv, l.Expr)
+}
+
 type Lambda struct {
 	Args []string
 	Expr Node
 }
 
 var _ Node = Lambda{}
+var _ Evaluator = Lambda{}
 
 func (l Lambda) Body() hm.Expression { return l }
 
@@ -437,6 +637,26 @@ func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 	
 	return hm.NewFnType(NewRecordType("", argTypes...), bodyType), nil
+}
+
+func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// For now, create a simple function type signature
+	// In a full implementation, we'd need to properly infer the function type
+	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
+	for i, arg := range l.Args {
+		// Use a placeholder type for now
+		argTypes[i] = Keyed[*hm.Scheme]{arg, hm.NewScheme(nil, hm.TypeVariable(byte('a'+i)))}
+	}
+	
+	// Create a function type with placeholder return type
+	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
+	
+	return FunctionValue{
+		Args: l.Args,
+		Body: l.Expr,
+		Closure: env,
+		FnType: fnType,
+	}, nil
 }
 
 type Match struct {
