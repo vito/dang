@@ -30,7 +30,7 @@ type EvalEnv interface {
 
 // SimpleEvalEnv is a simple implementation of EvalEnv
 type SimpleEvalEnv struct {
-	vars map[string]Value
+	vars   map[string]Value
 	parent EvalEnv
 }
 
@@ -57,10 +57,105 @@ func (e *SimpleEvalEnv) Set(name string, value Value) EvalEnv {
 
 func (e *SimpleEvalEnv) Clone() EvalEnv {
 	newEnv := &SimpleEvalEnv{
-		vars: make(map[string]Value),
+		vars:   make(map[string]Value),
 		parent: e,
 	}
 	return newEnv
+}
+
+// GraphQLFunction represents a GraphQL API function that makes actual calls
+type GraphQLFunction struct {
+	Name     string
+	TypeName string
+	Field    *introspection.Field
+	FnType   *hm.FunctionType
+}
+
+func (g GraphQLFunction) Type() hm.Type {
+	return g.FnType
+}
+
+func (g GraphQLFunction) String() string {
+	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
+}
+
+func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	// TODO: This is where we would make the actual GraphQL call
+	// For now, return a placeholder
+	return StringValue{Val: fmt.Sprintf("GraphQL call to %s.%s", g.TypeName, g.Name)}, nil
+}
+
+// GraphQLValue represents a GraphQL object/field value
+type GraphQLValue struct {
+	Name     string
+	TypeName string
+	Field    *introspection.Field
+	ValType  hm.Type
+}
+
+func (g GraphQLValue) Type() hm.Type {
+	return g.ValType
+}
+
+func (g GraphQLValue) String() string {
+	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
+}
+
+// NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
+func NewEvalEnvWithSchema(schema *introspection.Schema) EvalEnv {
+	env := NewEvalEnv()
+
+	// Create a type environment to help with type conversion
+	typeEnv := NewEnv(schema)
+
+	for _, t := range schema.Types {
+		for _, f := range t.Fields {
+			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
+			if err != nil {
+				continue
+			}
+
+			if len(f.Args) > 0 {
+				// This is a function - create a GraphQLFunction value
+				args := NewRecordType("")
+				for _, arg := range f.Args {
+					argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+					if err != nil {
+						continue
+					}
+					args.Add(arg.Name, hm.NewScheme(nil, argType))
+				}
+				fnType := hm.NewFnType(args, ret)
+
+				gqlFunc := GraphQLFunction{
+					Name:     f.Name,
+					TypeName: t.Name,
+					Field:    f,
+					FnType:   fnType,
+				}
+
+				// Add to global scope if it's from the Query type
+				if t.Name == schema.QueryType.Name {
+					env.Set(f.Name, gqlFunc)
+				}
+			} else {
+				// This is a field/property - create a GraphQLValue
+				gqlVal := GraphQLValue{
+					Name:     f.Name,
+					TypeName: t.Name,
+					Field:    f,
+					ValType:  ret,
+				}
+
+				// Add to global scope if it's from the Query type
+				if t.Name == schema.QueryType.Name {
+					env.Set(f.Name, gqlVal)
+				}
+			}
+		}
+	}
+
+	return env
 }
 
 // Runtime value implementations
@@ -139,7 +234,7 @@ func (l ListValue) String() string {
 
 // RecordValue represents a record value
 type RecordValue struct {
-	Fields map[string]Value
+	Fields  map[string]Value
 	RecType *RecordType
 }
 
@@ -162,10 +257,10 @@ func (r RecordValue) String() string {
 
 // FunctionValue represents a function value
 type FunctionValue struct {
-	Args []string
-	Body Node
+	Args    []string
+	Body    Node
 	Closure EvalEnv
-	FnType *hm.FunctionType
+	FnType  *hm.FunctionType
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -178,7 +273,7 @@ func (f FunctionValue) String() string {
 
 // ModuleValue represents a module value
 type ModuleValue struct {
-	Mod *Module
+	Mod    *Module
 	Values map[string]Value
 }
 
@@ -191,6 +286,16 @@ func (m ModuleValue) String() string {
 }
 
 func CheckFile(schema *introspection.Schema, filePath string) error {
+	// Read the source file for error reporting
+	sourceBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read source file: %w", err)
+	}
+	source := string(sourceBytes)
+	
+	// Create evaluation context for enhanced error reporting
+	evalCtx := NewEvalContext(filePath, source)
+
 	dash, err := ParseFile(filePath)
 	if err != nil {
 		return err
@@ -208,11 +313,15 @@ func CheckFile(schema *introspection.Schema, filePath string) error {
 	log.Printf("INFERRED TYPE: %s", inferred)
 
 	// Now evaluate the program
-	evalEnv := NewEvalEnv()
+	evalEnv := NewEvalEnvWithSchema(schema)
 	ctx := context.Background()
 
-	result, err := EvalNode(ctx, evalEnv, node)
+	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
+		// If it's already a SourceError, don't wrap it again
+		if _, isSourceError := err.(*SourceError); isSourceError {
+			return err
+		}
 		return fmt.Errorf("evaluation error: %w", err)
 	}
 
@@ -222,10 +331,29 @@ func CheckFile(schema *introspection.Schema, filePath string) error {
 	return nil
 }
 
-// EvalNode evaluates any AST node
+// EvalNode evaluates any AST node (legacy interface)
 func EvalNode(ctx context.Context, env EvalEnv, node Node) (Value, error) {
+	return EvalNodeWithContext(ctx, env, node, nil)
+}
+
+// EvalNodeWithContext evaluates any AST node with enhanced error reporting
+func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *EvalContext) (Value, error) {
+	// Store the eval context in the Go context for evaluators to access
+	if evalCtx != nil {
+		ctx = WithEvalContext(ctx, evalCtx)
+	}
+	
 	if evaluator, ok := node.(Evaluator); ok {
-		return evaluator.Eval(ctx, env)
+		val, err := evaluator.Eval(ctx, env)
+		if err != nil {
+			// Check if the error is already a SourceError - if so, don't wrap it again
+			if _, isSourceError := err.(*SourceError); isSourceError || evalCtx == nil {
+				return nil, err
+			}
+			// Only create source error if the evaluator didn't already create one
+			return nil, evalCtx.CreateSourceError(err, node)
+		}
+		return val, err
 	}
 
 	// Fallback for nodes that don't implement Evaluator directly
@@ -233,13 +361,16 @@ func EvalNode(ctx context.Context, env EvalEnv, node Node) (Value, error) {
 	case String:
 		return StringValue{Val: n.Value}, nil
 	case Int:
-		return IntValue{Val: int(n)}, nil
+		return IntValue{Val: int(n.Value)}, nil
 	case Boolean:
-		return BoolValue{Val: bool(n)}, nil
+		return BoolValue{Val: n.Value}, nil
 	case Null:
 		return NullValue{}, nil
 	default:
-		return nil, fmt.Errorf("evaluation not implemented for node type %T", node)
+		err := fmt.Errorf("evaluation not implemented for node type %T", node)
+		if evalCtx != nil {
+			return nil, evalCtx.CreateSourceError(err, node)
+		}
+		return nil, err
 	}
 }
-
