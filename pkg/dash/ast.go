@@ -141,6 +141,10 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// GraphQL function call
 		return fn.Call(ctx, env, argValues)
 		
+	case BuiltinFunction:
+		// Builtin function call
+		return fn.Call(ctx, env, argValues)
+		
 	default:
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}

@@ -3,6 +3,7 @@ package dash
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -29,17 +30,21 @@ type EvalEnv interface {
 	Get(name string) (Value, bool)
 	Set(name string, value Value) EvalEnv
 	Clone() EvalEnv
+	Writer() io.Writer
+	SetWriter(w io.Writer) EvalEnv
 }
 
 // SimpleEvalEnv is a simple implementation of EvalEnv
 type SimpleEvalEnv struct {
 	vars   map[string]Value
 	parent EvalEnv
+	writer io.Writer
 }
 
 func NewEvalEnv() *SimpleEvalEnv {
 	return &SimpleEvalEnv{
-		vars: make(map[string]Value),
+		vars:   make(map[string]Value),
+		writer: os.Stdout, // Default to stdout
 	}
 }
 
@@ -62,8 +67,24 @@ func (e *SimpleEvalEnv) Clone() EvalEnv {
 	newEnv := &SimpleEvalEnv{
 		vars:   make(map[string]Value),
 		parent: e,
+		writer: e.writer, // Inherit writer from parent
 	}
 	return newEnv
+}
+
+func (e *SimpleEvalEnv) Writer() io.Writer {
+	if e.writer != nil {
+		return e.writer
+	}
+	if e.parent != nil {
+		return e.parent.Writer()
+	}
+	return os.Stdout // Fallback
+}
+
+func (e *SimpleEvalEnv) SetWriter(w io.Writer) EvalEnv {
+	e.writer = w
+	return e
 }
 
 // GraphQLFunction represents a GraphQL API function that makes actual calls
@@ -321,7 +342,40 @@ func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) Eval
 		}
 	}
 
+	// Add builtin functions
+	addBuiltinFunctions(env)
+
 	return env
+}
+
+// addBuiltinFunctions adds builtin functions like print to the evaluation environment
+func addBuiltinFunctions(env EvalEnv) {
+	// Create the print function
+	// Type signature: print(value: a) -> Null where 'a' is a type variable (any type)
+	argType := hm.TypeVariable('a')
+	args := NewRecordType("")
+	args.Add("value", hm.NewScheme(nil, argType))
+	printType := hm.NewFnType(args, hm.TypeVariable('n')) // returns null (type variable)
+
+	printFn := BuiltinFunction{
+		Name:   "print",
+		FnType: printType,
+		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+			// Get the value to print
+			val, ok := args["value"]
+			if !ok {
+				return nil, fmt.Errorf("print: missing required argument 'value'")
+			}
+
+			// Print the value to the configured writer
+			fmt.Fprintln(env.Writer(), val.String())
+			
+			// Return null
+			return NullValue{}, nil
+		},
+	}
+
+	env.Set("print", printFn)
 }
 
 // Helper function to determine if a GraphQL type is scalar
@@ -533,6 +587,21 @@ func (m ModuleValue) Type() hm.Type {
 
 func (m ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod.Named)
+}
+
+// BuiltinFunction represents a builtin function like print
+type BuiltinFunction struct {
+	Name   string
+	FnType *hm.FunctionType
+	Call   func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+}
+
+func (b BuiltinFunction) Type() hm.Type {
+	return b.FnType
+}
+
+func (b BuiltinFunction) String() string {
+	return fmt.Sprintf("builtin:%s", b.Name)
 }
 
 func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string) error {
