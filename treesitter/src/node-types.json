@@ -299,6 +299,7 @@
   {
     "type": "dash",
     "named": true,
+    "root": true,
     "fields": {
       "e": {
         "multiple": true,
@@ -1199,7 +1200,8 @@
   },
   {
     "type": "comment_token",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "decimal_digit",
@@ -1208,10 +1210,6 @@
   {
     "type": "dot_token",
     "named": true
-  },
-  {
-    "type": "e",
-    "named": false
   },
   {
     "type": "false_token",

@@ -9,7 +9,7 @@ import (
 
 //go:generate go run .
 
-//go:generate tree-sitter generate
+//go:generate tree-sitter generate src/grammar.json
 
 func main() {
 	grammarFile, err := os.Create("src/grammar.json")
@@ -18,5 +18,7 @@ func main() {
 	}
 	defer grammarFile.Close()
 
-	json.NewEncoder(grammarFile).Encode(dash.TreesitterGrammar())
+	enc := json.NewEncoder(grammarFile)
+	enc.SetIndent("", "  ")
+	enc.Encode(dash.TreesitterGrammar())
 }

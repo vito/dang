@@ -135,7 +135,7 @@ var g = &grammar{
 					},
 				},
 			},
-			leader:        false,
+			leader:        true,
 			leftRecursive: true,
 		},
 		{
@@ -1270,7 +1270,7 @@ var g = &grammar{
 				pos:  position{line: 155, col: 10, offset: 4129},
 				name: "Default",
 			},
-			leader:        true,
+			leader:        false,
 			leftRecursive: true,
 		},
 		{
