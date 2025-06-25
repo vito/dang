@@ -87,7 +87,7 @@ PubToken <- "pub"
 PvtToken <- "pvt"
 
 Id <- WordToken
-WordToken <- [a-zA-Z0-9]+ {
+WordToken <- [a-zA-Z_][a-zA-Z0-9_]* {
   return string(c.text), nil
 }
 UpperId <- UpperToken
