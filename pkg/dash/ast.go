@@ -10,6 +10,7 @@ import (
 type Node interface {
 	hm.Expression
 	hm.Inferer
+	GetSourceLocation() *SourceLocation
 }
 
 type Keyed[X any] struct {
@@ -27,12 +28,15 @@ const (
 type FunCall struct {
 	Fun  Node
 	Args Record
+	Loc  *SourceLocation
 }
 
 var _ Node = FunCall{}
 var _ Evaluator = FunCall{}
 
 func (c FunCall) Body() hm.Expression { return c.Args }
+
+func (c FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	fun, err := c.Fun.Infer(env, fresh)
@@ -102,7 +106,8 @@ func (c FunCall) Fn() hm.Expression { return c.Fun }
 func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	funVal, err := EvalNode(ctx, env, c.Fun)
 	if err != nil {
-		return nil, fmt.Errorf("evaluating function: %w", err)
+		// Don't wrap errors - let the specific node error bubble up
+		return nil, err
 	}
 
 	// Evaluate arguments
@@ -110,7 +115,8 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	for _, arg := range c.Args {
 		val, err := EvalNode(ctx, env, arg.Value)
 		if err != nil {
-			return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
+			// Don't wrap errors - let the specific node error bubble up
+			return nil, err
 		}
 		argValues[arg.Key] = val
 	}
@@ -131,6 +137,10 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// For now, return a placeholder
 		return StringValue{Val: fmt.Sprintf("module call: %s with args %v", fn.Mod.Named, argValues)}, nil
 		
+	case GraphQLFunction:
+		// GraphQL function call
+		return fn.Call(ctx, env, argValues)
+		
 	default:
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
@@ -142,12 +152,15 @@ type FunDecl struct {
 	Form       Node
 	Ret        TypeNode
 	Visibility Visibility
+	Loc        *SourceLocation
 }
 
 var _ hm.Expression = FunDecl{}
 var _ Evaluator = FunDecl{}
 
 func (f FunDecl) Body() hm.Expression { return f.Form }
+
+func (f FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
 
 var _ hm.Inferer = FunDecl{}
 
@@ -247,6 +260,7 @@ func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 type List struct {
 	Elements []Node
+	Loc      *SourceLocation
 }
 
 var _ Node = List{}
@@ -276,6 +290,8 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 
 func (l List) Body() hm.Expression { return l }
 
+func (l List) GetSourceLocation() *SourceLocation { return l.Loc }
+
 func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if len(l.Elements) == 0 {
 		return ListValue{Elements: []Value{}, ElemType: hm.TypeVariable('a')}, nil
@@ -302,6 +318,7 @@ func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 type Symbol struct {
 	Name string
+	Loc  *SourceLocation
 }
 
 var _ Node = Symbol{}
@@ -318,6 +335,8 @@ func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (s Symbol) Body() hm.Expression { return s }
 
+func (s Symbol) GetSourceLocation() *SourceLocation { return s.Loc }
+
 func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	val, found := env.Get(s.Name)
 	if !found {
@@ -329,6 +348,7 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type Select struct {
 	Receiver Node
 	Field    string
+	Loc      *SourceLocation
 }
 
 var _ Node = Select{}
@@ -360,9 +380,15 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (d Select) Body() hm.Expression { return d }
 
+func (d Select) GetSourceLocation() *SourceLocation { return d.Loc }
+
 func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	receiverVal, err := EvalNode(ctx, env, d.Receiver)
 	if err != nil {
+		// Don't wrap SourceErrors - let them bubble up directly
+		if _, isSourceError := err.(*SourceError); isSourceError {
+			return nil, err
+		}
 		return nil, fmt.Errorf("evaluating receiver: %w", err)
 	}
 
@@ -371,7 +397,8 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		if val, found := rec.Fields[d.Field]; found {
 			return val, nil
 		}
-		return nil, fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
+		err := fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
+		return nil, CreateEvalError(ctx, err, d)
 		
 	case ModuleValue:
 		// For module selection, we would typically return a function that represents the API call
@@ -386,13 +413,15 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}, nil
 		
 	default:
-		return nil, fmt.Errorf("Select.Eval: cannot select field from %T", receiverVal)
+		err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
+		return nil, CreateEvalError(ctx, err, d)
 	}
 }
 
 type Default struct {
 	Left  Node
 	Right Node
+	Loc   *SourceLocation
 }
 
 var _ Node = Default{}
@@ -416,6 +445,8 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (d Default) Body() hm.Expression { return d }
 
+func (d Default) GetSourceLocation() *SourceLocation { return d.Loc }
+
 func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	leftVal, err := EvalNode(ctx, env, d.Left)
 	if err != nil {
@@ -431,12 +462,16 @@ func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return leftVal, nil
 }
 
-type Null struct{}
+type Null struct {
+	Loc *SourceLocation
+}
 
 var _ Node = Null{}
 var _ Evaluator = Null{}
 
 func (n Null) Body() hm.Expression { return n }
+
+func (n Null) GetSourceLocation() *SourceLocation { return n.Loc }
 
 func (Null) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return fresh.Fresh(), nil
@@ -457,12 +492,15 @@ var (
 
 type String struct {
 	Value string
+	Loc   *SourceLocation
 }
 
 var _ Node = String{}
 var _ Evaluator = String{}
 
 func (s String) Body() hm.Expression { return s }
+
+func (s String) GetSourceLocation() *SourceLocation { return s.Loc }
 
 func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"String"}}.Infer(env, fresh)
@@ -477,34 +515,44 @@ type Quoted struct {
 	Raw    string
 }
 
-type Boolean bool
+type Boolean struct {
+	Value bool
+	Loc   *SourceLocation
+}
 
-var _ Node = Boolean(false)
-var _ Evaluator = Boolean(false)
+var _ Node = Boolean{}
+var _ Evaluator = Boolean{}
 
 func (b Boolean) Body() hm.Expression { return b }
+
+func (b Boolean) GetSourceLocation() *SourceLocation { return b.Loc }
 
 func (b Boolean) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
 
 func (b Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return BoolValue{Val: bool(b)}, nil
+	return BoolValue{Val: b.Value}, nil
 }
 
-type Int int
+type Int struct {
+	Value int64
+	Loc   *SourceLocation
+}
 
-var _ Node = Int(0)
-var _ Evaluator = Int(0)
+var _ Node = Int{}
+var _ Evaluator = Int{}
 
 func (i Int) Body() hm.Expression { return i }
+
+func (i Int) GetSourceLocation() *SourceLocation { return i.Loc }
 
 func (i Int) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
 }
 
 func (i Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return IntValue{Val: int(i)}, nil
+	return IntValue{Val: int(i.Value)}, nil
 }
 
 // Additional language constructs
@@ -513,12 +561,15 @@ type Conditional struct {
 	Condition Node
 	Then      Block
 	Else      interface{}
+	Loc       *SourceLocation
 }
 
 var _ Node = Conditional{}
 var _ Evaluator = Conditional{}
 
 func (c Conditional) Body() hm.Expression { return c }
+
+func (c Conditional) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	condType, err := c.Condition.Infer(env, fresh)
@@ -580,12 +631,15 @@ type Let struct {
 	Name  string
 	Value Node
 	Expr  Node
+	Loc   *SourceLocation
 }
 
 var _ Node = Let{}
 var _ Evaluator = Let{}
 
 func (l Let) Body() hm.Expression { return l }
+
+func (l Let) GetSourceLocation() *SourceLocation { return l.Loc }
 
 func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	valueType, err := l.Value.Infer(env, fresh)
@@ -614,12 +668,15 @@ func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type Lambda struct {
 	Args []string
 	Expr Node
+	Loc  *SourceLocation
 }
 
 var _ Node = Lambda{}
 var _ Evaluator = Lambda{}
 
 func (l Lambda) Body() hm.Expression { return l }
+
+func (l Lambda) GetSourceLocation() *SourceLocation { return l.Loc }
 
 func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	newEnv := env.Clone()
@@ -662,11 +719,14 @@ func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type Match struct {
 	Expr  Node
 	Cases []MatchCase
+	Loc   *SourceLocation
 }
 
 var _ Node = Match{}
 
 func (m Match) Body() hm.Expression { return m }
+
+func (m Match) GetSourceLocation() *SourceLocation { return m.Loc }
 
 func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	exprType, err := m.Expr.Infer(env, fresh)

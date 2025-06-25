@@ -12,6 +12,7 @@ type SlotDecl struct {
 	Type_      TypeNode
 	Value      Node
 	Visibility Visibility
+	Loc        *SourceLocation
 }
 
 var _ Node = SlotDecl{}
@@ -21,6 +22,8 @@ func (s SlotDecl) Body() hm.Expression {
 	// TODO(vito): return Value? unclear how Body is used
 	return s
 }
+
+func (s SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
 var _ Hoister = SlotDecl{}
 
@@ -102,12 +105,16 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if s.Value == nil {
-		return nil, fmt.Errorf("SlotDecl.Eval: no value to evaluate for %q", s.Named)
+		// If no value is provided, this is just a type declaration
+		// Add a null value to the environment as a placeholder
+		env.Set(s.Named, NullValue{})
+		return NullValue{}, nil
 	}
 
+	// Use direct evaluation without wrapping the error - let the specific node error be preserved
 	val, err := EvalNode(ctx, env, s.Value)
 	if err != nil {
-		return nil, fmt.Errorf("SlotDecl.Eval: evaluating value for %q: %w", s.Named, err)
+		return nil, err // Don't wrap the error here - preserve the original location
 	}
 
 	// Add the value to the environment for future use
@@ -120,11 +127,15 @@ type ClassDecl struct {
 	Named      string
 	Value      Block
 	Visibility Visibility // theoretically the type itself is public but its constructor value can be private
+	Loc        *SourceLocation
 }
 
 var _ Node = ClassDecl{}
+var _ Evaluator = ClassDecl{}
 
 func (c ClassDecl) Body() hm.Expression { return c.Value }
+
+func (c ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
 var _ Hoister = ClassDecl{}
 
@@ -186,4 +197,27 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	env.Add(c.Named, self)
 
 	return class, nil
+}
+
+func (c ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Create an evaluation environment for the class
+	classEnv := env.Clone()
+	
+	// Evaluate the class body (Block) which contains all the slots
+	_, err := EvalNode(ctx, classEnv, c.Value)
+	if err != nil {
+		return nil, fmt.Errorf("ClassDecl.Eval: evaluating class body for %q: %w", c.Named, err)
+	}
+	
+	// Create a module value that can be used as a constructor
+	mod := NewModule(c.Named)
+	modValue := ModuleValue{
+		Mod:    mod,
+		Values: make(map[string]Value),
+	}
+	
+	// Add the class to the evaluation environment so it can be referenced
+	env.Set(c.Named, modValue)
+	
+	return modValue, nil
 }

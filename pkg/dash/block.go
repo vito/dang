@@ -9,12 +9,15 @@ import (
 
 type Block struct {
 	Forms []Node
+	Loc   *SourceLocation
 }
 
 var _ hm.Expression = Block{}
 var _ Evaluator = Block{}
 
 func (f Block) Body() hm.Expression { return f }
+
+func (f Block) GetSourceLocation() *SourceLocation { return f.Loc }
 
 type Hoister interface {
 	Hoist(hm.Env, hm.Fresher, int) error
