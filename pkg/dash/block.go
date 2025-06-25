@@ -1,6 +1,7 @@
 package dash
 
 import (
+	"context"
 	"errors"
 
 	"github.com/chewxy/hm"
@@ -11,6 +12,7 @@ type Block struct {
 }
 
 var _ hm.Expression = Block{}
+var _ Evaluator = Block{}
 
 func (f Block) Body() hm.Expression { return f }
 
@@ -52,4 +54,22 @@ func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	return t, nil
+}
+
+func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	forms := b.Forms
+	if len(forms) == 0 {
+		return NullValue{}, nil
+	}
+
+	var result Value
+	for _, form := range forms {
+		val, err := EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, err
+		}
+		result = val
+	}
+
+	return result, nil
 }
