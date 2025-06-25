@@ -5,7 +5,14 @@
 Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
   exprs := sliceOf[Node](es)
   log.Println("!!! DASH", exprs)
-  return Block{exprs}, nil
+  return Block{
+    Forms: exprs,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 Expr <- Class / Slot / Form
@@ -19,6 +26,11 @@ Class <- ClsToken _ name:Id _ block:Block {
     Named: name.(string),
     Value: block.(Block),
     Visibility: PrivateVisibility, // TODO
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
   }, nil
 }
 ClsToken <- "cls"
@@ -35,6 +47,11 @@ TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ "=" _ v
     Type_: type_.(TypeNode),
     Value: value.(Node),
     Visibility: vis.(Visibility),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
   }, nil
 }
 
@@ -43,6 +60,11 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ '=' _ val:Form {
     Named: name.(string),
     Value: val.(Node),
     Visibility: vis.(Visibility),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
   }, nil
 }
 
@@ -51,6 +73,11 @@ TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type {
     Named: name.(string),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
   }, nil
 }
 
@@ -62,8 +89,18 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
       Named: name.(string),
       Ret: type_.(TypeNode),
       Form: block.(Block),
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
     },
     Visibility: vis.(Visibility),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
   }, nil
 }
 
@@ -76,8 +113,18 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
       Args: args.([]SlotDecl),
       Ret: type_.(TypeNode),
       Form: block.(Block),
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
     },
     Visibility: vis.(Visibility),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
   }, nil
 }
 
@@ -96,7 +143,15 @@ UpperToken <- [A-Z][a-zA-Z0-9]* {
 }
 
 FunCall <- name:Term args:ArgValues {
-  return FunCall{name.(Node), Record(args.([]Keyed[Node]))}, nil
+  return FunCall{
+    Fun: name.(Node), 
+    Args: Record(args.([]Keyed[Node])),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 ArgValues <- '(' args:KeyValue* ')' {
@@ -154,27 +209,64 @@ CommaToken <- _ ',' _
 
 Infix <- Default
 Default <- left:Form _ InterroToken _ right:Term {
-  return Default{left.(Node), right.(Node)}, nil
+  return Default{
+    Left: left.(Node), 
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 InterroToken <- '?'
 
 Select <- left:Term _ DotToken _ name:Id {
-  return Select{left.(Node), name.(string)}, nil
+  return Select{
+    Receiver: left.(Node), 
+    Field: name.(string),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 DotToken <- '.'
 
 List <- '[' _ eles:(_ e:Form CommaToken? _ { return e, nil })* ']' {
-  return List{sliceOf[Node](eles)}, nil
+  return List{
+    Elements: sliceOf[Node](eles),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 Block <- '{' es:(_ e:Expr CommaToken? _ { return e, nil })* '}' {
   exprs := sliceOf[Node](es)
   log.Println("!!! BLOCK", exprs)
-  return Block{exprs}, nil
+  return Block{
+    Forms: exprs,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 Symbol <- name:Id {
-  return Symbol{name.(string)}, nil
+  return Symbol{
+    Name: name.(string),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 // Literals
@@ -186,7 +278,14 @@ Int <- '0' / NonZeroDecimalDigit DecimalDigit* {
   if err != nil {
     return nil, err
   }
-  return Int(value), nil
+  return Int{
+    Value: value,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 Exponent <- 'e'i [+-]? DecimalDigit+
@@ -197,7 +296,14 @@ String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
   if err != nil {
     return nil, err
   }
-  return String{value}, nil
+  return String{
+    Value: value,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 EscapedChar <- [\x00-\x1f"\\]
@@ -224,12 +330,37 @@ QuotedRawToken <- [^}]* {
   return string(c.text), nil
 }
 
-Boolean <- TrueToken { return Boolean(true), nil }
-         / FalseToken { return Boolean(false), nil }
+Boolean <- TrueToken { 
+  return Boolean{
+    Value: true,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil 
+} / FalseToken { 
+  return Boolean{
+    Value: false,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil 
+}
 TrueToken <- "true"
 FalseToken <- "false"
 
-Null <- NullToken { return Null{}, nil }
+Null <- NullToken { 
+  return Null{
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil 
+}
 NullToken <- "null"
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
