@@ -1,0 +1,10 @@
+# Test type inference edge cases
+
+# This should infer properly
+pub simple = "hello"
+
+# This should also work - function with inference
+pub identity = \x -> x
+
+# This might show type inference issues - simplified for now
+pub complex = let f = \x -> x in f
