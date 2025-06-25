@@ -1,14 +1,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "TreeSitterBass",
+    name: "TreeSitterDash",
     platforms: [.macOS(.v10_13), .iOS(.v11)],
     products: [
-        .library(name: "TreeSitterBass", targets: ["TreeSitterBass"]),
+        .library(name: "TreeSitterDash", targets: ["TreeSitterDash"]),
     ],
     dependencies: [],
     targets: [
-        .target(name: "TreeSitterBass",
+        .target(name: "TreeSitterDash",
                 path: ".",
                 exclude: [
                     "binding.gyp",

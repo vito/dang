@@ -1,12 +1,12 @@
 {
-  "name": "tree-sitter-bass",
+  "name": "tree-sitter-dash",
   "version": "0.0.2",
-  "description": "Bass grammar for tree-sitter",
+  "description": "Dash grammar for tree-sitter",
   "main": "bindings/node",
   "keywords": [
     "parser",
     "lexer",
-    "bass"
+    "dash"
   ],
   "author": "Alex Suraci <suraci.alex@gmail.com>",
   "contributors": [
@@ -14,9 +14,9 @@
   ],
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/amaanq/tree-sitter-bass/issues"
+    "url": "https://github.com/vito/dash/issues"
   },
-  "homepage": "https://github.com/amaanq/tree-sitter-bass#readme",
+  "homepage": "https://github.com/vito/dash#readme",
   "dependencies": {
     "nan": "^2.16.0"
   },
@@ -25,7 +25,7 @@
     "eslint-config-google": "^0.14.0",
     "tree-sitter-cli": "^0.20.7"
   },
-  "repository": "https://github.com/amaanq/tree-sitter-bass",
+  "repository": "https://github.com/vito/dash",
   "scripts": {
     "build": "tree-sitter generate && node-gyp build",
     "lint": "eslint grammar.js",
@@ -35,11 +35,11 @@
   },
   "tree-sitter": [
     {
-      "scope": "source.bass",
-      "injection-regex": "bass",
-      "first-line-regex": "#!.*\\bbass$",
+      "scope": "source.dash",
+      "injection-regex": "dash",
+      "first-line-regex": "#!.*\\bdash$",
       "file-types": [
-        "bass"
+        "dash"
       ],
       "//": "We use the helix query for testing because its precedence rules are compatible with tree-sitter test.",
       "highlights": [

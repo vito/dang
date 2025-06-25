@@ -1,9 +1,8 @@
 /**
  * @file Dash grammar for tree-sitter
  * @author Alex Suraci <suraci.alex@gmail.com>
- * @author Amaan Qureshi <amaanq12@gmail.com>
  * @license MIT
- * @see {@link https://bass-lang.org|official website}
+ * @see {@link https://github.com/vito/dash|official website}
  */
 
 /* eslint-disable arrow-parens */
@@ -12,8 +11,6 @@
 /// <reference types="tree-sitter-cli/dsl" />
 // @ts-check
 
-var fs = require('fs');
+var fs = require("fs");
 
-module.exports = JSON.parse(
-  fs.readFileSync('src/grammar.json', 'utf8')
-);
+module.exports = JSON.parse(fs.readFileSync("src/grammar.json", "utf8"));

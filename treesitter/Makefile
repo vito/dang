@@ -19,7 +19,7 @@ clean:
 	rm -f $(targets)
 
 install:
-	cp ./queries/*.scm ../bass.vim/queries/bass/
-	cp ./queries/nvim/*.scm ../bass.vim/queries/bass/
-	cp ./queries/*.scm ../helix/runtime/queries/bass/
-	cp ./queries/helix/*.scm ../helix/runtime/queries/bass/
+	cp ./queries/*.scm ../dash.vim/queries/dash/
+	cp ./queries/nvim/*.scm ../dash.vim/queries/dash/
+	cp ./queries/*.scm ../helix/runtime/queries/dash/
+	cp ./queries/helix/*.scm ../helix/runtime/queries/dash/

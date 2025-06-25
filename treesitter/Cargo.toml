@@ -1,16 +1,16 @@
 [package]
-name = "tree-sitter-bass"
-description = "Bass grammar for tree-sitter"
-version = "0.0.2"
+name = "tree-sitter-dash"
+description = "Dash grammar for tree-sitter"
+version = "0.0.1"
 authors = [
-	"Alex Suraci <suraci.alex@gmail.com>",
-	"Amaan Qureshi <amaanq12@gmail.com>",
+  "Alex Suraci <suraci.alex@gmail.com>",
+  "Amaan Qureshi <amaanq12@gmail.com>",
 ]
 license = "MIT"
 readme = "bindings/rust/README.md"
-keywords = ["incremental", "parsing", "bass"]
+keywords = ["incremental", "parsing", "dash"]
 categories = ["parsing", "text-editors"]
-repository = "https://github.com/amaanq/tree-sitter-bass"
+repository = "https://github.com/vito/dash"
 edition = "2021"
 autoexamples = false
 
