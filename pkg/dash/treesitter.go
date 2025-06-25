@@ -2,7 +2,7 @@ package dash
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/vito/dash/pkg/dash/treesitter"
@@ -28,10 +28,10 @@ func TreesitterGrammar() treesitter.Grammar {
 		prec := len(g.rules) - i
 		tsRule := treesitterRule(rule, prec)
 		if tsRule == nil || rule.name == "_" {
-			log.Println("skipping rule", rule.name)
+			slog.Debug("skipping grammar rule", "rule", rule.name)
 			continue
 		} else {
-			log.Println("adding rule", rule.name)
+			slog.Debug("adding grammar rule", "rule", rule.name)
 			ts.Rules.Add(treesitter.Name(rule.name), *tsRule)
 		}
 	}

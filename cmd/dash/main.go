@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"dagger.io/dagger"
@@ -11,7 +13,29 @@ import (
 )
 
 func main() {
+	var debug bool
+	flag.BoolVar(&debug, "debug", false, "enable debug logging")
+	flag.Parse()
+
+	// Set up slog with appropriate level
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
+	
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
 	ctx := context.Background()
+
+	args := flag.Args()
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, "Usage: %s [--debug] <dash-file>\n", os.Args[0])
+		os.Exit(1)
+	}
 
 	dag, err := dagger.Connect(ctx)
 	if err != nil {
@@ -24,7 +48,7 @@ func main() {
 		panic(err)
 	}
 
-	if err := dash.CheckFile(schema, dag, os.Args[1]); err != nil {
+	if err := dash.CheckFile(schema, dag, args[0]); err != nil {
 		panic(err)
 	}
 

@@ -4,7 +4,6 @@
 
 Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
   exprs := sliceOf[Node](es)
-  log.Println("!!! DASH", exprs)
   return Block{
     Forms: exprs,
     Loc: &SourceLocation{
@@ -144,7 +143,7 @@ UpperToken <- [A-Z][a-zA-Z0-9]* {
 
 FunCall <- name:Term args:ArgValues {
   return FunCall{
-    Fun: name.(Node), 
+    Fun: name.(Node),
     Args: Record(args.([]Keyed[Node])),
     Loc: &SourceLocation{
       Line: c.pos.line,
@@ -210,7 +209,7 @@ CommaToken <- _ ',' _
 Infix <- Default
 Default <- left:Form _ InterroToken _ right:Term {
   return Default{
-    Left: left.(Node), 
+    Left: left.(Node),
     Right: right.(Node),
     Loc: &SourceLocation{
       Line: c.pos.line,
@@ -223,7 +222,7 @@ InterroToken <- '?'
 
 Select <- left:Term _ DotToken _ name:Id {
   return Select{
-    Receiver: left.(Node), 
+    Receiver: left.(Node),
     Field: name.(string),
     Loc: &SourceLocation{
       Line: c.pos.line,
@@ -247,7 +246,6 @@ List <- '[' _ eles:(_ e:Form CommaToken? _ { return e, nil })* ']' {
 
 Block <- '{' es:(_ e:Expr CommaToken? _ { return e, nil })* '}' {
   exprs := sliceOf[Node](es)
-  log.Println("!!! BLOCK", exprs)
   return Block{
     Forms: exprs,
     Loc: &SourceLocation{
@@ -330,7 +328,7 @@ QuotedRawToken <- [^}]* {
   return string(c.text), nil
 }
 
-Boolean <- TrueToken { 
+Boolean <- TrueToken {
   return Boolean{
     Value: true,
     Loc: &SourceLocation{
@@ -338,8 +336,8 @@ Boolean <- TrueToken {
       Column: c.pos.col,
       Length: len(string(c.text)),
     },
-  }, nil 
-} / FalseToken { 
+  }, nil
+} / FalseToken {
   return Boolean{
     Value: false,
     Loc: &SourceLocation{
@@ -347,19 +345,19 @@ Boolean <- TrueToken {
       Column: c.pos.col,
       Length: len(string(c.text)),
     },
-  }, nil 
+  }, nil
 }
 TrueToken <- "true"
 FalseToken <- "false"
 
-Null <- NullToken { 
+Null <- NullToken {
   return Null{
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
       Length: len(string(c.text)),
     },
-  }, nil 
+  }, nil
 }
 NullToken <- "null"
 

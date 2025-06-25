@@ -2,7 +2,7 @@ package dash
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/chewxy/hm"
 	"github.com/dagger/dagger/codegen/introspection"
@@ -121,10 +121,10 @@ func NewEnv(schema *introspection.Schema) *Module {
 					}
 					args.Add(arg.Name, hm.NewScheme(nil, argType))
 				}
-				log.Println("ADDING FUN", t.Name, f.Name)
+				slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
 				install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
 			} else {
-				log.Println("ADDING 0-ARITY FIELD", t.Name, f.Name)
+				slog.Debug("adding field binding", "type", t.Name, "field", f.Name)
 				install.Add(f.Name, hm.NewScheme(nil, ret))
 			}
 		}

@@ -2,7 +2,7 @@ package dash
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/chewxy/hm"
 	"github.com/pkg/errors"
@@ -189,7 +189,7 @@ func Infer(env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
 		if err := hoister.Hoist(env, infer, 1); err != nil {
 			return nil, fmt.Errorf("Block.Hoist: %w", err)
 		}
-		log.Println("HOISTED")
+		slog.Debug("completed function hoisting")
 	}
 
 	if err := infer.consGen(expr); err != nil {

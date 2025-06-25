@@ -3,7 +3,7 @@ package dash
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -560,7 +560,7 @@ func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string
 		return err
 	}
 
-	log.Printf("INFERRED TYPE: %s", inferred)
+	slog.Debug("type inference completed", "type", inferred)
 
 	// Now evaluate the program
 	evalEnv := NewEvalEnvWithSchema(schema, dag)
@@ -575,8 +575,8 @@ func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string
 		return fmt.Errorf("evaluation error: %w", err)
 	}
 
-	log.Printf("EVALUATION RESULT: %s", result.String())
-	fmt.Fprintf(os.Stderr, ">>> FINAL RESULT: %s\n", result.String())
+	slog.Debug("evaluation completed", "result", result.String())
+	slog.Debug("final program result", "result", result.String())
 
 	return nil
 }
