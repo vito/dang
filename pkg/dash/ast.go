@@ -342,3 +342,166 @@ func (i Int) Body() hm.Expression { return i }
 func (i Int) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
 }
+
+// Additional language constructs
+
+type Conditional struct {
+	Condition Node
+	Then      Block
+	Else      interface{}
+}
+
+var _ Node = Conditional{}
+
+func (c Conditional) Body() hm.Expression { return c }
+
+func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	condType, err := c.Condition.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	boolType, err := NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	if _, err := hm.Unify(condType, boolType); err != nil {
+		return nil, fmt.Errorf("Conditional.Infer: condition must be Boolean, got %s", condType)
+	}
+	
+	thenType, err := c.Then.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	if c.Else != nil {
+		elseBlock := c.Else.(Block)
+		elseType, err := elseBlock.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		
+		if _, err := hm.Unify(thenType, elseType); err != nil {
+			return nil, fmt.Errorf("Conditional.Infer: then and else branches must have same type: %s != %s", thenType, elseType)
+		}
+	}
+	
+	return thenType, nil
+}
+
+type Let struct {
+	Name  string
+	Value Node
+	Expr  Node
+}
+
+var _ Node = Let{}
+
+func (l Let) Body() hm.Expression { return l }
+
+func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	valueType, err := l.Value.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	newEnv := env.Clone()
+	newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
+	
+	return l.Expr.Infer(newEnv, fresh)
+}
+
+type Lambda struct {
+	Args []string
+	Expr Node
+}
+
+var _ Node = Lambda{}
+
+func (l Lambda) Body() hm.Expression { return l }
+
+func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	newEnv := env.Clone()
+	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
+	
+	for i, arg := range l.Args {
+		argType := fresh.Fresh()
+		argTypes[i] = Keyed[*hm.Scheme]{arg, hm.NewScheme(nil, argType)}
+		newEnv.Add(arg, hm.NewScheme(nil, argType))
+	}
+	
+	bodyType, err := l.Expr.Infer(newEnv, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	return hm.NewFnType(NewRecordType("", argTypes...), bodyType), nil
+}
+
+type Match struct {
+	Expr  Node
+	Cases []MatchCase
+}
+
+var _ Node = Match{}
+
+func (m Match) Body() hm.Expression { return m }
+
+func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	exprType, err := m.Expr.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(m.Cases) == 0 {
+		return nil, fmt.Errorf("Match.Infer: no match cases")
+	}
+	
+	var resultType hm.Type
+	for i, case_ := range m.Cases {
+		caseEnv := env.Clone()
+		
+		// TODO: Pattern matching type checking - for now just add pattern variables
+		if varPattern, ok := case_.Pattern.(VariablePattern); ok {
+			caseEnv.Add(varPattern.Name, hm.NewScheme(nil, exprType))
+		}
+		
+		caseType, err := case_.Expr.Infer(caseEnv, fresh)
+		if err != nil {
+			return nil, err
+		}
+		
+		if i == 0 {
+			resultType = caseType
+		} else {
+			if _, err := hm.Unify(resultType, caseType); err != nil {
+				return nil, fmt.Errorf("Match.Infer: case %d type mismatch: %s != %s", i, resultType, caseType)
+			}
+		}
+	}
+	
+	return resultType, nil
+}
+
+type MatchCase struct {
+	Pattern Pattern
+	Expr    Node
+}
+
+type Pattern interface{}
+
+type WildcardPattern struct{}
+
+type LiteralPattern struct {
+	Value Node
+}
+
+type ConstructorPattern struct {
+	Name string
+	Args []Pattern
+}
+
+type VariablePattern struct {
+	Name string
+}

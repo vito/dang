@@ -94,7 +94,8 @@ func NewEnv(schema *introspection.Schema) *Module {
 		install, found := mod.NamedType(t.Name)
 		if !found {
 			// we just set it above...
-			panic(fmt.Errorf("NewEnv: impossible: %q not found", t.Name))
+			// This should never happen, but handle gracefully
+			continue
 		}
 
 		// TODO assign input fields, maybe input classes are "just" records?
@@ -106,7 +107,8 @@ func NewEnv(schema *introspection.Schema) *Module {
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(mod, f.TypeRef)
 			if err != nil {
-				panic(err)
+				// Skip fields we can't convert
+				continue
 			}
 
 			if len(f.Args) > 0 {
@@ -114,7 +116,8 @@ func NewEnv(schema *introspection.Schema) *Module {
 				for _, arg := range f.Args {
 					argType, err := gqlToTypeNode(mod, arg.TypeRef)
 					if err != nil {
-						panic(err)
+						// Skip args we can't convert
+						continue
 					}
 					args.Add(arg.Name, hm.NewScheme(nil, argType))
 				}

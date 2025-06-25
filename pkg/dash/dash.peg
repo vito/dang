@@ -10,7 +10,7 @@ Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
 
 Expr <- Class / Slot / Form
 
-Form <- Infix / Term
+Form <- Conditional / Let / Lambda / Match / Infix / Term
 
 Term <- Select / FunCall / List / Literal / Symbol
 
@@ -235,3 +235,98 @@ NullToken <- "null"
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
 
 CommentToken <- '#' [^\n]*
+
+// Additional language constructs
+
+Conditional <- IfToken _ cond:Form _ block:Block else_:ElseClause? {
+  return Conditional{
+    Condition: cond.(Node),
+    Then: block.(Block),
+    Else: else_,
+  }, nil
+}
+
+ElseClause <- _ ElseToken _ block:Block {
+  return block.(Block), nil
+}
+
+IfToken <- "if"
+ElseToken <- "else"
+
+Let <- LetToken _ name:Id _ "=" _ value:Form _ InToken _ expr:Form {
+  return Let{
+    Name: name.(string),
+    Value: value.(Node),
+    Expr: expr.(Node),
+  }, nil
+}
+
+LetToken <- "let"
+InToken <- "in"
+
+Lambda <- '\\' args:LambdaArgs _ "->" _ expr:Form {
+  return Lambda{
+    Args: args.([]string),
+    Expr: expr.(Node),
+  }, nil
+}
+
+LambdaArgs <- '(' args:LambdaArg* ')' {
+  return sliceOf[string](args), nil
+} / arg:Id {
+  return []string{arg.(string)}, nil
+}
+
+LambdaArg <- arg:Id CommaToken? {
+  return arg.(string), nil
+}
+
+Match <- MatchToken _ expr:Form _ WithToken _ '{' cases:MatchCase* '}' {
+  return Match{
+    Expr: expr.(Node),
+    Cases: sliceOf[MatchCase](cases),
+  }, nil
+}
+
+MatchCase <- pattern:Pattern _ "->" _ expr:Form CommaToken? {
+  return MatchCase{
+    Pattern: pattern.(Pattern),
+    Expr: expr.(Node),
+  }, nil
+}
+
+Pattern <- WildcardPattern / LiteralPattern / ConstructorPattern / VariablePattern
+
+WildcardPattern <- '_' {
+  return WildcardPattern{}, nil
+}
+
+LiteralPattern <- lit:Literal {
+  return LiteralPattern{Value: lit.(Node)}, nil
+}
+
+ConstructorPattern <- name:UpperId args:PatternArgs? {
+  var patterns []Pattern
+  if args != nil {
+    patterns = args.([]Pattern)
+  }
+  return ConstructorPattern{
+    Name: name.(string),
+    Args: patterns,
+  }, nil
+}
+
+PatternArgs <- '(' patterns:PatternArg* ')' {
+  return sliceOf[Pattern](patterns), nil
+}
+
+PatternArg <- pattern:Pattern CommaToken? {
+  return pattern.(Pattern), nil
+}
+
+VariablePattern <- name:Id {
+  return VariablePattern{Name: name.(string)}, nil
+}
+
+MatchToken <- "match"
+WithToken <- "with"

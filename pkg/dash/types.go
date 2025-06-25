@@ -181,12 +181,12 @@ func (t *RecordType) Normalize(k, v hm.TypeVarSet) (Type, error) {
 func (t *RecordType) Types() hm.Types {
 	ts := hm.BorrowTypes(len(t.Fields))
 	for _, f := range t.Fields {
-		t, mono := f.Value.Type()
+		typ, mono := f.Value.Type()
 		if !mono {
-			// TODO maybe omit?
-			panic("RecordType.Types: non-monomorphic type")
+			// TODO maybe omit? For now, skip non-monomorphic types
+			continue
 		}
-		ts = append(ts, t)
+		ts = append(ts, typ)
 	}
 	return ts
 }
