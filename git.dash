@@ -1,14 +1,10 @@
-pub foo: String!
-
-pub bar: String
-
-pub foo = bar ? "foo"
-
 cls Apko {
   pub wolfi(packages: [String!]!): Container! {
     container().withExec(args: ["apk", "add"])
   }
 }
+
+pub fn = currentFunctionCall.parentName
 
 pub apko = Apko()
 
