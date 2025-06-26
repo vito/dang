@@ -764,10 +764,23 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	lt = NonNullType{lt}
-	if !lt.Eq(rt) {
-		return nil, fmt.Errorf("Default.Infer: mismatched types: %s != %s", lt, rt)
+	
+	// For the default operator, the left side can be nullable and the right side 
+	// provides the fallback value. We need to unify the non-null version of the 
+	// left type with the right type.
+	
+	// Try to unify the types - this handles the case where left is a type variable (like null)
+	_, err = hm.Unify(lt, rt)
+	if err != nil {
+		// If direct unification fails, try with non-null version of left
+		nonNullLeft := NonNullType{lt}
+		_, err = hm.Unify(nonNullLeft, rt)
+		if err != nil {
+			return nil, fmt.Errorf("Default.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		}
 	}
+	
+	// Return the right type (the fallback value type)
 	return rt, nil
 }
 
@@ -800,19 +813,14 @@ var _ Node = Equality{}
 var _ Evaluator = Equality{}
 
 func (e Equality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := e.Left.Infer(env, fresh)
+	// Type check both sides for validity, but allow cross-type comparison at runtime
+	_, err := e.Left.Infer(env, fresh)
 	if err != nil {
 		return nil, err
 	}
-	rt, err := e.Right.Infer(env, fresh)
+	_, err = e.Right.Infer(env, fresh)
 	if err != nil {
 		return nil, err
-	}
-	
-	// Try to unify the types to ensure they can be compared
-	_, err = hm.Unify(lt, rt)
-	if err != nil {
-		return nil, fmt.Errorf("Equality.Infer: cannot compare types %s and %s: %w", lt, rt, err)
 	}
 	
 	// Equality always returns a boolean
