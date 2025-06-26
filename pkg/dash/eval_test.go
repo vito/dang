@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"dagger.io/dagger"
-	"github.com/dagger/dagger/codegen/introspection"
+	"github.com/vito/dash/introspection"
 )
 
 // TestRunner provides utilities for testing Dash scripts

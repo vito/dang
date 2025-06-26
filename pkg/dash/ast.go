@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/chewxy/hm"
-	"github.com/dagger/dagger/codegen/introspection"
+	"github.com/vito/dash/introspection"
 )
 
 type Node interface {

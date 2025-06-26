@@ -11,8 +11,8 @@ import (
 	"dagger.io/dagger"
 	"github.com/charmbracelet/fang"
 	"github.com/chzyer/readline"
-	"github.com/dagger/dagger/codegen/introspection"
 	"github.com/spf13/cobra"
+	"github.com/vito/dash/introspection"
 	"github.com/vito/dash/pkg/dash"
 )
 

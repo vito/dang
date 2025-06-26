@@ -11,7 +11,7 @@ import (
 	"dagger.io/dagger"
 	"dagger.io/dagger/querybuilder"
 	"github.com/chewxy/hm"
-	"github.com/dagger/dagger/codegen/introspection"
+	"github.com/vito/dash/introspection"
 )
 
 // Value represents a runtime value in the Dash language

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/chewxy/hm"
-	"github.com/dagger/dagger/codegen/introspection"
+	"github.com/vito/dash/introspection"
 )
 
 // TODO: is this just ClassType? are Classes just named Envs?
