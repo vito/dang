@@ -74,7 +74,7 @@
 (call
   (id) @function.method)
 
-((symbol_or_call
+((call
   (id) @function.builtin)
   (#match? @function.builtin "^(print)$"))
 
