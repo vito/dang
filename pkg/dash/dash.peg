@@ -1,9 +1,12 @@
 {
   package dash
+
+  import "github.com/kr/pretty"
 }
 
 Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
   exprs := sliceOf[Node](es)
+  pretty.Print(exprs)
   return Block{
     Forms: exprs,
     Loc: &SourceLocation{
