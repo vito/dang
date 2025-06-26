@@ -1,0 +1,27 @@
+# Test default operator that works
+
+# Basic null coalescing in function
+pub get_fallback: String! {
+  null ? "fallback_value"
+}
+
+pub get_existing: String! {
+  "existing" ? "fallback_value"  
+}
+
+# Test results
+pub result1 = get_fallback
+pub result2 = get_existing
+
+assert { result1 == "fallback_value" }
+assert { result2 == "existing" }
+
+# Test with numbers
+pub get_number: Int! {
+  null ? 42
+}
+
+pub number_result = get_number
+assert { number_result == 42 }
+
+print("Default operator tests passed!")

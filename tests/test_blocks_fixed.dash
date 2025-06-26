@@ -1,0 +1,40 @@
+# Test block expressions with proper comma syntax
+
+# Simple block that returns last expression
+pub block_result = {
+  42,
+  "hello", 
+  100
+}
+
+assert { block_result == 100 }
+
+# Block with let expressions (need comma separators)
+pub complex_block = {
+  let x = 10 in x,
+  let y = 20 in y,
+  42
+}
+
+assert { complex_block == 42 }
+
+# Block in conditional
+pub conditional_block = if true {
+  let temp = "yes" in temp
+} else {
+  "no"
+}
+
+assert { conditional_block == "yes" }
+
+# Nested blocks
+pub nested_blocks = {
+  let outer = 1 in outer,
+  {
+    let inner = 2 in inner
+  }
+}
+
+assert { nested_blocks == 2 }
+
+print("Block tests passed!")

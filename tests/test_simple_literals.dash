@@ -1,0 +1,6 @@
+# Test simple literal values
+
+pub test_val = 42
+assert { test_val == 42 }
+
+print("Simple literal tests passed!")

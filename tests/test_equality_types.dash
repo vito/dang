@@ -1,0 +1,38 @@
+# Test equality operator with same types
+
+# Integers
+pub a = 42
+pub b = 42
+pub c = 43
+
+assert { a == b }
+assert { a == 42 }
+assert("Different numbers should not be equal") { (a == c) == false }
+
+# Strings  
+pub str1 = "hello"
+pub str2 = "hello"
+pub str3 = "world"
+
+assert { str1 == str2 }
+assert { str1 == "hello" }
+assert("Different strings should not be equal") { (str1 == str3) == false }
+
+# Booleans
+pub true1 = true
+pub true2 = true  
+pub false1 = false
+
+assert { true1 == true2 }
+assert { true1 == true }
+assert { false1 == false }
+assert("True should not equal false") { (true1 == false1) == false }
+
+# Null values
+pub null1 = null
+pub null2 = null
+
+assert { null1 == null2 }
+assert { null1 == null }
+
+print("Type-safe equality tests passed!")
