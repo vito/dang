@@ -137,9 +137,9 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case FunctionValue:
 		// Regular function call - create new environment with argument bindings
 		fnEnv := fn.Closure.Clone()
-		for i, argName := range fn.Args {
-			if i < len(c.Args) {
-				fnEnv.Set(argName, argValues[c.Args[i].Key])
+		for _, argName := range fn.Args {
+			if val, exists := argValues[argName]; exists {
+				fnEnv.Set(argName, val)
 			}
 		}
 		return EvalNode(ctx, fnEnv, fn.Body)
