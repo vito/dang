@@ -60,6 +60,9 @@ It provides type-safe, composable abstractions for container operations.`,
 	if err := fang.Execute(ctx, rootCmd,
 		fang.WithVersion("v0.1.0"),
 		fang.WithCommit("dev"),
+		fang.WithErrorHandler(func(w io.Writer, styles fang.Styles, err error) {
+			fmt.Fprintln(w, err.Error())
+		}),
 	); err != nil {
 		os.Exit(1)
 	}
