@@ -654,7 +654,10 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 			// Only create source error if the evaluator didn't already create one
 			return nil, evalCtx.CreateSourceError(err, node)
 		}
-		return val, err
+		if val == nil {
+			return nil, fmt.Errorf("Evaluator(%T) returned nil", node)
+		}
+		return val, nil
 	}
 
 	// Fallback for nodes that don't implement Evaluator directly

@@ -512,6 +512,10 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return nil, fmt.Errorf("Symbol.Eval: %q not found in env", s.Name)
 	}
 
+	if val == nil {
+		return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
+	}
+
 	// Auto-call zero-arity functions when accessed as symbols
 	if isZeroArityFunction(val) {
 		return callZeroArityFunction(ctx, env, val)
@@ -598,7 +602,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Select.Infer: %w", err)
 		}
-		return t, err
+		return t, nil
 	}
 
 	// Handle nil receiver (symbol calls) - look up type in environment
