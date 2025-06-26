@@ -1,12 +1,12 @@
 id = "dash"
 name = "Dash"
-description = "Dash language support for Zed - a functional language for Dagger with Hindley-Milner type inference"
-version = "0.1.0"
+version = "0.1.1"
 schema_version = 1
-authors = ["Claude <noreply@anthropic.com>"]
+description = "Dash language support for Zed - a functional language for Dagger with Hindley-Milner type inference"
+authors = ["vito"]
 repository = "https://github.com/vito/dash"
 
 [grammars.dash]
 repository = "https://github.com/vito/dash"
-commit = "7c9756d826aff94d0a5e17d38f7b5c36ccb17668"
+commit = "b8edeee873a25b1a20e09fc0a27128b3be0316af"
 path = "treesitter"
