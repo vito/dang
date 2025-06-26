@@ -70,8 +70,10 @@
   (id) @type)
 
 ;; Special highlighting for print function
-(symbol_or_call
-  (id) @variable)
+(symbol) @variable
+(call
+  (id) @function.method)
+
 ((symbol_or_call
   (id) @function.builtin)
   (#match? @function.builtin "^(print)$"))

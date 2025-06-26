@@ -58,7 +58,7 @@
     },
     "form": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 85,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -115,7 +115,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -155,6 +155,19 @@
       }
     },
     "symbol_or_call": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "call"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "symbol"
+        }
+      ]
+    },
+    "call": {
       "type": "SEQ",
       "members": [
         {
@@ -169,19 +182,19 @@
           "type": "FIELD",
           "name": "args",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "arg_values"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "arg_values"
           }
         }
       ]
+    },
+    "symbol": {
+      "type": "FIELD",
+      "name": "name",
+      "content": {
+        "type": "SYMBOL",
+        "name": "id"
+      }
     },
     "select_or_call": {
       "type": "PREC_LEFT",

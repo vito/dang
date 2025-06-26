@@ -280,6 +280,32 @@
     }
   },
   {
+    "type": "call",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "class",
     "named": true,
     "fields": {
@@ -1191,19 +1217,9 @@
     }
   },
   {
-    "type": "symbol_or_call",
+    "type": "symbol",
     "named": true,
     "fields": {
-      "args": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "arg_values",
-            "named": true
-          }
-        ]
-      },
       "name": {
         "multiple": false,
         "required": true,
@@ -1214,6 +1230,25 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "symbol_or_call",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "call",
+          "named": true
+        },
+        {
+          "type": "symbol",
+          "named": true
+        }
+      ]
     }
   },
   {

@@ -21,31 +21,31 @@ Form <- Conditional / Let / Lambda / Match / Infix / Term
 Term <- SelectOrCall / List / Literal / SymbolOrCall
 
 // Handle Symbol followed by optional ()
-SymbolOrCall <- name:Id args:ArgValues? {
-  if args != nil {
-    // Symbol followed by () - create Select with nil Receiver
-    argRecord := Record(args.([]Keyed[Node]))
-    return Select{
-      Receiver: nil,
-      Field: name.(string),
-      Args: &argRecord,
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
-      },
-    }, nil
-  } else {
-    // Just a Symbol
-    return Symbol{
-      Name: name.(string),
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
-      },
-    }, nil
-  }
+SymbolOrCall <- Call / Symbol
+Call <- name:Id args:ArgValues {
+  // Symbol followed by () - create Select with nil Receiver
+  argRecord := Record(args.([]Keyed[Node]))
+  return Select{
+    Receiver: nil,
+    Field: name.(string),
+    Args: &argRecord,
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+Symbol <- name:Id {
+  // Just a Symbol
+  return Symbol{
+    Name: name.(string),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
 }
 
 // Handle Select followed by optional ()
@@ -251,7 +251,7 @@ NonNull <- inner:Type BangToken {
   return NonNullTypeNode{inner.(TypeNode)}, nil
 }
 TypeVariable <- v:[a-z] {
-  return VariableTypeNode{v.(byte)}, nil
+  return VariableTypeNode{v.([]byte)[0]}, nil
 }
 
 BangToken <- '!'
