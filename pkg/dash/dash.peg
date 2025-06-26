@@ -18,7 +18,11 @@ Expr <- Class / Slot / Form
 
 Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
-Term <- SelectOrCall / List / Literal / SymbolOrCall
+Term <- SelectOrCall / List / Block / Literal / ParenExpr / SymbolOrCall
+
+ParenExpr <- '(' _ expr:Form _ ')' {
+  return expr.(Node), nil
+}
 
 // Handle Symbol followed by optional ()
 SymbolOrCall <- Call / Symbol
@@ -90,7 +94,7 @@ Class <- ClsToken _ name:Id _ block:Block {
     },
   }, nil
 }
-ClsToken <- "cls"
+ClsToken <- "cls" !WordChar
 
 Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockSlot         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
@@ -187,13 +191,14 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
 
 Visibility <- PubToken { return PublicVisibility, nil }
             / PvtToken { return PrivateVisibility, nil }
-PubToken <- "pub"
-PvtToken <- "pvt"
+PubToken <- "pub" !WordChar
+PvtToken <- "pvt" !WordChar
 
 Id <- WordToken
 WordToken <- [a-zA-Z_][a-zA-Z0-9_]* {
   return string(c.text), nil
 }
+WordChar <- [a-zA-Z0-9_]
 UpperId <- UpperToken
 UpperToken <- [A-Z][a-zA-Z0-9]* {
   return string(c.text), nil
@@ -258,8 +263,8 @@ BangToken <- '!'
 
 CommaToken <- _ ',' _
 
-Infix <- Default / Equality
-Default <- left:Equality _ InterroToken _ right:Term {
+Infix <- Equality / Default
+Default <- left:Term _ InterroToken _ right:Term {
   return Default{
     Left: left.(Node),
     Right: right.(Node),
@@ -390,8 +395,8 @@ Boolean <- TrueToken {
     },
   }, nil
 }
-TrueToken <- "true"
-FalseToken <- "false"
+TrueToken <- "true" !WordChar
+FalseToken <- "false" !WordChar
 
 Null <- NullToken {
   return Null{
@@ -402,7 +407,7 @@ Null <- NullToken {
     },
   }, nil
 }
-NullToken <- "null"
+NullToken <- "null" !WordChar
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
 
@@ -422,8 +427,8 @@ ElseClause <- _ ElseToken _ block:Block {
   return block.(Block), nil
 }
 
-IfToken <- "if"
-ElseToken <- "else"
+IfToken <- "if" !WordChar
+ElseToken <- "else" !WordChar
 
 Let <- LetToken _ name:Id _ "=" _ value:Form _ InToken _ expr:Form {
   return Let{
@@ -433,8 +438,8 @@ Let <- LetToken _ name:Id _ "=" _ value:Form _ InToken _ expr:Form {
   }, nil
 }
 
-LetToken <- "let"
-InToken <- "in"
+LetToken <- "let" !WordChar
+InToken <- "in" !WordChar
 
 Lambda <- '\\' args:LambdaArgs _ "->" _ expr:Form {
   return Lambda{
@@ -500,8 +505,8 @@ VariablePattern <- name:Id {
   return VariablePattern{Name: name.(string)}, nil
 }
 
-MatchToken <- "match"
-WithToken <- "with"
+MatchToken <- "match" !WordChar
+WithToken <- "with" !WordChar
 
 Assert <- AssertToken message:MessageArgs? _ block:Block {
   var msg Node
@@ -523,4 +528,4 @@ MessageArgs <- '(' _ msg:Form _ ')' {
   return msg, nil
 }
 
-AssertToken <- "assert"
+AssertToken <- "assert" !WordChar
