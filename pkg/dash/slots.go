@@ -95,12 +95,8 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 	}
 
-	if definedType != nil {
-		env.Add(s.Named, hm.NewScheme(nil, definedType))
-		return definedType, nil
-	} else {
-		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
-	}
+	env.Add(s.Named, hm.NewScheme(nil, definedType))
+	return definedType, nil
 }
 
 func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
