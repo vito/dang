@@ -2,10 +2,19 @@
   package dash
 }
 
-Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
-  exprs := sliceOf[Node](es)
+Dash <- _ eles:( first:Expr rest:(Sep e:Expr { return e, nil })* {
+  result := []Node{first.(Node)}
+  for _, e := range sliceOf[Node](rest) {
+    result = append(result, e)
+  }
+  return result, nil
+})? _ !. {
+  var elements []Node
+  if eles != nil {
+    elements = eles.([]Node)
+  }
   return Block{
-    Forms: exprs,
+    Forms: elements,
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -13,6 +22,12 @@ Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
     },
   }, nil
 }
+
+_ "whitespace" <- ([ \t\r\n] / CommentToken)*
+
+Sep <- LineSep+ / CommaToken
+LineSep <- [ \t\f]* [\r\n] _
+CommaToken <- _ ',' _
 
 Expr <- Class / Slot / Form
 
@@ -102,7 +117,7 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
+TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ '=' _ value:Form {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
@@ -204,16 +219,36 @@ UpperToken <- [A-Z][a-zA-Z0-9]* {
   return string(c.text), nil
 }
 
-ArgValues <- '(' args:Argument* ')' {
-  return sliceOf[Keyed[Node]](args), nil
+ArgValues <- '(' _ args:( first:Argument rest:(Sep arg:Argument { return arg, nil })* {
+  result := []Keyed[Node]{first.(Keyed[Node])}
+  for _, arg := range sliceOf[Keyed[Node]](rest) {
+    result = append(result, arg)
+  }
+  return result, nil
+})? _ ')' {
+  var result []Keyed[Node]
+  if args != nil {
+    result = args.([]Keyed[Node])
+  }
+  return result, nil
 }
-ArgTypes <- '(' args:ArgType* ')' {
-  return sliceOf[SlotDecl](args), nil
+ArgTypes <- '(' _ args:( first:ArgType rest:(Sep arg:ArgType { return arg, nil })* {
+  result := []SlotDecl{first.(SlotDecl)}
+  for _, arg := range sliceOf[SlotDecl](rest) {
+    result = append(result, arg)
+  }
+  return result, nil
+})? _ ')' {
+  var result []SlotDecl
+  if args != nil {
+    result = args.([]SlotDecl)
+  }
+  return result, nil
 }
-ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) CommaToken? {
+ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   return slot.(SlotDecl), nil
 }
-ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ "=" _ value:Form {
+ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ '=' _ value:Form {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
@@ -236,11 +271,11 @@ ArgWithType <- name:Id _ ColonToken _ type_:Type {
 
 Argument <- KeyValue / PositionalValue
 
-KeyValue <- key:WordToken ColonToken _ value:Form CommaToken? {
+KeyValue <- key:WordToken ColonToken _ value:Form {
   return Keyed[Node]{Key: key.(string), Value: value.(Node), Positional: false}, nil
 }
 
-PositionalValue <- value:Form CommaToken? {
+PositionalValue <- value:Form {
   return Keyed[Node]{Key: "", Value: value.(Node), Positional: true}, nil
 }
 ColonToken <- ':'
@@ -260,8 +295,6 @@ TypeVariable <- v:[a-z] {
 }
 
 BangToken <- '!'
-
-CommaToken <- _ ',' _
 
 Infix <- Equality / Default
 Default <- left:Term _ InterroToken _ right:Term {
@@ -292,9 +325,19 @@ EqualToken <- "=="
 
 DotToken <- '.'
 
-List <- '[' _ eles:(_ e:Form CommaToken? _ { return e, nil })* ']' {
+List <- '[' _ eles:( first:Form rest:(Sep e:Form { return e, nil })* {
+  result := []Node{first.(Node)}
+  for _, e := range sliceOf[Node](rest) {
+    result = append(result, e)
+  }
+  return result, nil
+})? _ ']' {
+  var elements []Node
+  if eles != nil {
+    elements = eles.([]Node)
+  }
   return List{
-    Elements: sliceOf[Node](eles),
+    Elements: elements,
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -303,10 +346,19 @@ List <- '[' _ eles:(_ e:Form CommaToken? _ { return e, nil })* ']' {
   }, nil
 }
 
-Block <- '{' es:(_ e:Expr CommaToken? _ { return e, nil })* '}' {
-  exprs := sliceOf[Node](es)
+Block <- '{' _ eles:( first:Expr rest:(Sep e:Expr { return e, nil })* {
+  result := []Node{first.(Node)}
+  for _, e := range sliceOf[Node](rest) {
+    result = append(result, e)
+  }
+  return result, nil
+})? _ '}' {
+  var elements []Node
+  if eles != nil {
+    elements = eles.([]Node)
+  }
   return Block{
-    Forms: exprs,
+    Forms: elements,
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -409,8 +461,6 @@ Null <- NullToken {
 }
 NullToken <- "null" !WordChar
 
-_ "whitespace" <- ([ \t\r\n] / CommentToken)*
-
 CommentToken <- '#' [^\n]*
 
 // Additional language constructs
@@ -430,7 +480,7 @@ ElseClause <- _ ElseToken _ block:Block {
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
 
-Let <- LetToken _ name:Id _ "=" _ value:Form _ InToken _ expr:Form {
+Let <- LetToken _ name:Id _ '=' _ value:Form _ InToken _ expr:Form {
   return Let{
     Name: name.(string),
     Value: value.(Node),
@@ -448,24 +498,40 @@ Lambda <- '\\' args:LambdaArgs _ "->" _ expr:Form {
   }, nil
 }
 
-LambdaArgs <- '(' args:LambdaArg* ')' {
-  return sliceOf[string](args), nil
+LambdaArgs <- '(' _ args:( first:Id rest:(Sep arg:Id { return arg, nil })* {
+  result := []string{first.(string)}
+  for _, arg := range sliceOf[string](rest) {
+    result = append(result, arg)
+  }
+  return result, nil
+})? _ ')' {
+  var result []string
+  if args != nil {
+    result = args.([]string)
+  }
+  return result, nil
 } / arg:Id {
   return []string{arg.(string)}, nil
 }
 
-LambdaArg <- arg:Id CommaToken? {
-  return arg.(string), nil
-}
-
-Match <- MatchToken _ expr:Form _ WithToken _ '{' cases:MatchCase* '}' {
+Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:( first:MatchCase rest:(Sep mc:MatchCase { return mc, nil })* {
+  result := []MatchCase{first.(MatchCase)}
+  for _, mc := range sliceOf[MatchCase](rest) {
+    result = append(result, mc)
+  }
+  return result, nil
+})? _ '}' {
+  var cases []MatchCase
+  if cs != nil {
+    cases = cs.([]MatchCase)
+  }
   return Match{
     Expr: expr.(Node),
-    Cases: sliceOf[MatchCase](cases),
+    Cases: cases,
   }, nil
 }
 
-MatchCase <- pattern:Pattern _ "->" _ expr:Form CommaToken? {
+MatchCase <- pattern:Pattern _ "->" _ expr:Form {
   return MatchCase{
     Pattern: pattern.(Pattern),
     Expr: expr.(Node),
@@ -493,12 +559,18 @@ ConstructorPattern <- name:UpperId args:PatternArgs? {
   }, nil
 }
 
-PatternArgs <- '(' patterns:PatternArg* ')' {
-  return sliceOf[Pattern](patterns), nil
-}
-
-PatternArg <- pattern:Pattern CommaToken? {
-  return pattern.(Pattern), nil
+PatternArgs <- '(' _ patterns:( first:Pattern rest:(Sep p:Pattern { return p, nil })* {
+  result := []Pattern{first.(Pattern)}
+  for _, p := range sliceOf[Pattern](rest) {
+    result = append(result, p)
+  }
+  return result, nil
+})? _ ')' {
+  var result []Pattern
+  if patterns != nil {
+    result = patterns.([]Pattern)
+  }
+  return result, nil
 }
 
 VariablePattern <- name:Id {

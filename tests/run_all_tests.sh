@@ -2,6 +2,8 @@
 
 # Run all Dash test files in the tests directory
 
+set -e -u
+
 echo "Running Dash Test Suite..."
 echo "========================="
 

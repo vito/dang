@@ -39,28 +39,42 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
     }
   },
   {
     "type": "arg_types",
     "named": true,
     "fields": {
-      "args": {
+      "arg": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "arg_type",
+            "named": true
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_type",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_type",
+            "named": true
+          },
+          {
+            "type": "sep",
             "named": true
           }
         ]
@@ -71,12 +85,36 @@
     "type": "arg_values",
     "named": true,
     "fields": {
-      "args": {
+      "arg": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "argument",
+            "named": true
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "argument",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "argument",
+            "named": true
+          },
+          {
+            "type": "sep",
             "named": true
           }
         ]
@@ -231,6 +269,42 @@
     }
   },
   {
+    "type": "assert",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "message": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "message_args",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "assert_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "block",
     "named": true,
     "fields": {
@@ -244,16 +318,26 @@
           }
         ]
       },
-      "es": {
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "comma_token",
+            "type": "expr",
             "named": true
           },
           {
-            "type": "expr",
+            "type": "sep",
             "named": true
           }
         ]
@@ -428,16 +512,26 @@
           }
         ]
       },
-      "es": {
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "comma_token",
+            "type": "expr",
             "named": true
           },
           {
-            "type": "expr",
+            "type": "sep",
             "named": true
           }
         ]
@@ -453,7 +547,7 @@
         "required": true,
         "types": [
           {
-            "type": "form",
+            "type": "term",
             "named": true
           }
         ]
@@ -507,6 +601,42 @@
     }
   },
   {
+    "type": "equality",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "equal_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "escape_sequence",
     "named": true,
     "fields": {},
@@ -533,6 +663,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "assert",
+          "named": true
+        },
         {
           "type": "conditional",
           "named": true
@@ -586,6 +720,10 @@
         {
           "type": "default",
           "named": true
+        },
+        {
+          "type": "equality",
+          "named": true
         }
       ]
     }
@@ -635,15 +773,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "colon_token",
-          "named": true
-        },
-        {
-          "type": "comma_token",
           "named": true
         }
       ]
@@ -676,36 +810,20 @@
     }
   },
   {
-    "type": "lambda_arg",
+    "type": "lambda_args",
     "named": true,
     "fields": {
       "arg": {
-        "multiple": false,
-        "required": true,
+        "multiple": true,
+        "required": false,
         "types": [
           {
             "type": "id",
             "named": true
           }
         ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "lambda_args",
-    "named": true,
-    "fields": {
-      "arg": {
+      },
+      "first": {
         "multiple": false,
         "required": false,
         "types": [
@@ -715,12 +833,16 @@
           }
         ]
       },
-      "args": {
+      "rest": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "lambda_arg",
+            "type": "id",
+            "named": true
+          },
+          {
+            "type": "sep",
             "named": true
           }
         ]
@@ -778,6 +900,11 @@
     }
   },
   {
+    "type": "line_sep",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "list",
     "named": true,
     "fields": {
@@ -791,16 +918,26 @@
           }
         ]
       },
-      "eles": {
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "comma_token",
+            "type": "form",
             "named": true
           },
           {
-            "type": "form",
+            "type": "sep",
             "named": true
           }
         ]
@@ -874,7 +1011,27 @@
     "type": "match",
     "named": true,
     "fields": {
-      "cases": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "match_case",
+            "named": true
+          }
+        ]
+      },
+      "mc": {
         "multiple": true,
         "required": false,
         "types": [
@@ -884,12 +1041,16 @@
           }
         ]
       },
-      "expr": {
-        "multiple": false,
-        "required": true,
+      "rest": {
+        "multiple": true,
+        "required": false,
         "types": [
           {
-            "type": "form",
+            "type": "match_case",
+            "named": true
+          },
+          {
+            "type": "sep",
             "named": true
           }
         ]
@@ -934,16 +1095,22 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
+    }
+  },
+  {
+    "type": "message_args",
+    "named": true,
+    "fields": {
+      "msg": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1004,6 +1171,22 @@
     }
   },
   {
+    "type": "paren_expr",
+    "named": true,
+    "fields": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "pattern",
     "named": true,
     "fields": {},
@@ -1031,41 +1214,39 @@
     }
   },
   {
-    "type": "pattern_arg",
+    "type": "pattern_args",
     "named": true,
     "fields": {
-      "pattern": {
+      "first": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "pattern",
             "named": true
           }
         ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "pattern_args",
-    "named": true,
-    "fields": {
-      "patterns": {
+      },
+      "p": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "pattern_arg",
+            "type": "pattern",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "pattern",
+            "named": true
+          },
+          {
+            "type": "sep",
             "named": true
           }
         ]
@@ -1086,16 +1267,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -1165,6 +1336,25 @@
       "types": [
         {
           "type": "dot_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "sep",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "comma_token",
+          "named": true
+        },
+        {
+          "type": "line_sep",
           "named": true
         }
       ]
@@ -1260,11 +1450,19 @@
       "required": true,
       "types": [
         {
+          "type": "block",
+          "named": true
+        },
+        {
           "type": "list",
           "named": true
         },
         {
           "type": "literal",
+          "named": true
+        },
+        {
+          "type": "paren_expr",
           "named": true
         },
         {
@@ -1676,6 +1874,10 @@
     "named": false
   },
   {
+    "type": "assert_token",
+    "named": true
+  },
+  {
     "type": "bang_token",
     "named": true
   },
@@ -1706,6 +1908,10 @@
   },
   {
     "type": "else_token",
+    "named": true
+  },
+  {
+    "type": "equal_token",
     "named": true
   },
   {
