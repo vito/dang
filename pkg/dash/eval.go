@@ -11,6 +11,7 @@ import (
 	"dagger.io/dagger"
 	"dagger.io/dagger/querybuilder"
 	"github.com/chewxy/hm"
+	"github.com/kr/pretty"
 	"github.com/vito/dash/introspection"
 )
 
@@ -586,7 +587,7 @@ func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
 }
 
-func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string) error {
+func RunFile(schema *introspection.Schema, dag *dagger.Client, filePath string, debug bool) error {
 	// Read the source file for error reporting
 	sourceBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -603,6 +604,10 @@ func CheckFile(schema *introspection.Schema, dag *dagger.Client, filePath string
 	}
 
 	node := dash.(Block)
+
+	if debug {
+		pretty.Println(node)
+	}
 
 	typeEnv := NewEnv(schema)
 

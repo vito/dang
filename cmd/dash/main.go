@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/chewxy/hm"
 	"github.com/chzyer/readline"
+	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/vito/dash/introspection"
 	"github.com/vito/dash/pkg/dash"
@@ -97,7 +98,7 @@ func run(cfg Config) error {
 	}
 
 	// Check and evaluate the Dash file
-	if err := dash.CheckFile(schema, dag, cfg.File); err != nil {
+	if err := dash.RunFile(schema, dag, cfg.File, cfg.Debug); err != nil {
 		return fmt.Errorf("failed to evaluate Dash file: %w", err)
 	}
 
@@ -368,6 +369,10 @@ func (r *REPL) evaluateExpression(expr string) error {
 	}
 
 	node := result.(dash.Block)
+
+	if r.debug {
+		pretty.Println(node)
+	}
 
 	// Type inference
 	_, err = dash.Infer(r.typeEnv, node, true)
