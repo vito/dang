@@ -1,0 +1,18 @@
+# Test equality operator with assertions
+
+# Test basic equality that should pass
+pub x = 42
+pub y = 42
+assert("Numbers should be equal") { x == y }
+
+# Test string equality that should pass
+pub message1 = "hello"
+pub message2 = "hello"
+assert("Messages should match") { message1 == message2 }
+
+# Test equality that should fail
+pub a = 42
+pub b = 43
+assert("Values should differ") { a == b }
+
+print("Equality tests completed")

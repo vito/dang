@@ -258,8 +258,8 @@ BangToken <- '!'
 
 CommaToken <- _ ',' _
 
-Infix <- Default
-Default <- left:Form _ InterroToken _ right:Term {
+Infix <- Default / Equality
+Default <- left:Equality _ InterroToken _ right:Term {
   return Default{
     Left: left.(Node),
     Right: right.(Node),
@@ -271,6 +271,19 @@ Default <- left:Form _ InterroToken _ right:Term {
   }, nil
 }
 InterroToken <- '?'
+
+Equality <- left:Term _ EqualToken _ right:Term {
+  return Equality{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+EqualToken <- "=="
 
 DotToken <- '.'
 

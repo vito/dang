@@ -790,6 +790,111 @@ func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return leftVal, nil
 }
 
+type Equality struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Equality{}
+var _ Evaluator = Equality{}
+
+func (e Equality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := e.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := e.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Try to unify the types to ensure they can be compared
+	_, err = hm.Unify(lt, rt)
+	if err != nil {
+		return nil, fmt.Errorf("Equality.Infer: cannot compare types %s and %s: %w", lt, rt, err)
+	}
+	
+	// Equality always returns a boolean
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (e Equality) Body() hm.Expression { return e }
+
+func (e Equality) GetSourceLocation() *SourceLocation { return e.Loc }
+
+func (e Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, e.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+
+	rightVal, err := EvalNode(ctx, env, e.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+
+	// Compare the values
+	equal := valuesEqual(leftVal, rightVal)
+	return BoolValue{Val: equal}, nil
+}
+
+// valuesEqual compares two values for equality
+func valuesEqual(left, right Value) bool {
+	// Handle null values
+	_, leftIsNull := left.(NullValue)
+	_, rightIsNull := right.(NullValue)
+	if leftIsNull && rightIsNull {
+		return true
+	}
+	if leftIsNull || rightIsNull {
+		return false
+	}
+
+	// Compare by type
+	switch l := left.(type) {
+	case StringValue:
+		if r, ok := right.(StringValue); ok {
+			return l.Val == r.Val
+		}
+	case IntValue:
+		if r, ok := right.(IntValue); ok {
+			return l.Val == r.Val
+		}
+	case BoolValue:
+		if r, ok := right.(BoolValue); ok {
+			return l.Val == r.Val
+		}
+	case ListValue:
+		if r, ok := right.(ListValue); ok {
+			if len(l.Elements) != len(r.Elements) {
+				return false
+			}
+			for i := range l.Elements {
+				if !valuesEqual(l.Elements[i], r.Elements[i]) {
+					return false
+				}
+			}
+			return true
+		}
+	case RecordValue:
+		if r, ok := right.(RecordValue); ok {
+			if len(l.Fields) != len(r.Fields) {
+				return false
+			}
+			for k, v := range l.Fields {
+				if rv, exists := r.Fields[k]; !exists || !valuesEqual(v, rv) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	// Different types or unsupported comparison
+	return false
+}
+
 type Null struct {
 	Loc *SourceLocation
 }
@@ -1274,6 +1379,13 @@ func (a Assert) getImmediateChildren(expr Node) []ChildNode {
 			{"right", n.Right},
 		}
 
+	case Equality:
+		// Equality operator children
+		return []ChildNode{
+			{"left", n.Left},
+			{"right", n.Right},
+		}
+
 	case Conditional:
 		// Conditional expression children
 		return []ChildNode{
@@ -1324,6 +1436,10 @@ func (a Assert) nodeToString(node Node) string {
 		left := a.nodeToString(n.Left)
 		right := a.nodeToString(n.Right)
 		return fmt.Sprintf("%s ? %s", left, right)
+	case Equality:
+		left := a.nodeToString(n.Left)
+		right := a.nodeToString(n.Right)
+		return fmt.Sprintf("%s == %s", left, right)
 	case Conditional:
 		condition := a.nodeToString(n.Condition)
 		return fmt.Sprintf("if %s { ... }", condition)

@@ -1,0 +1,23 @@
+# Test passing equality assertions
+
+# Test numbers
+pub x = 42
+pub y = 42
+assert("Numbers should be equal") { x == y }
+
+# Test strings  
+pub msg1 = "hello"
+pub msg2 = "hello"
+assert("Strings should match") { msg1 == msg2 }
+
+# Test booleans
+pub bool1 = true
+pub bool2 = true
+assert("Booleans should match") { bool1 == bool2 }
+
+# Test null values
+pub null1 = null
+pub null2 = null
+assert("Nulls should be equal") { null1 == null2 }
+
+print("All equality assertions passed!")

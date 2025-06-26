@@ -1,0 +1,21 @@
+# Comprehensive test of equality operator with assertions
+
+# Basic type comparisons
+pub num1 = 42
+pub num2 = 42  
+pub str1 = "hello"
+pub str2 = "hello"
+
+# These should all pass
+assert { num1 == num2 }
+assert { str1 == str2 }
+assert { true == true }
+assert { false == false }
+assert { null == null }
+
+# Test with more descriptive failures
+pub user1 = "Alice"
+pub user2 = "Bob"
+assert("Users should match") { user1 == user2 }
+
+print("Comprehensive equality test completed")
