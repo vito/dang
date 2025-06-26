@@ -1,0 +1,24 @@
+# Test string literals and escape sequences
+
+# Basic strings
+pub empty = ""
+pub simple = "hello"
+pub with_spaces = "hello world"
+pub with_numbers = "test123"
+
+assert { empty == "" }
+assert { simple == "hello" }
+assert { with_spaces == "hello world" }
+assert { with_numbers == "test123" }
+
+# String escape sequences
+pub quote_escape = "He said \"hello\""
+pub backslash = "path\\file"
+pub newline = "line1\nline2"
+pub tab = "before\tafter"
+
+# Test that escapes work (can't test exact content easily without print)
+assert { quote_escape == "He said \"hello\"" }
+assert { backslash == "path\\file" }
+
+print("String tests passed!")

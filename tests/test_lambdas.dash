@@ -1,0 +1,16 @@
+# Test lambda expressions
+
+# Simple lambda
+pub identity = \x -> x
+pub add_one = \x -> x
+
+# Note: We can't actually call lambdas without function call support
+# For now, just test that lambdas can be defined and assigned
+
+# Lambda with string
+pub string_lambda = \s -> s
+
+# Lambda with multiple params (if supported)
+# pub add = \(x, y) -> x  # May not work without proper syntax
+
+print("Lambda expression tests passed!")

@@ -1,0 +1,27 @@
+# Test list literals and operations
+
+# Empty list
+pub empty_list = []
+assert { empty_list == [] }
+
+# List with integers
+pub numbers = [1, 2, 3]
+assert { numbers == [1, 2, 3] }
+
+# List with strings  
+pub words = ["hello", "world"]
+assert { words == ["hello", "world"] }
+
+# List with mixed types (same type required due to type system)
+pub bools = [true, false, true]
+assert { bools == [true, false, true] }
+
+# Nested lists
+pub nested = [[1, 2], [3, 4]]
+assert { nested == [[1, 2], [3, 4]] }
+
+# Single element list
+pub single = [42]
+assert { single == [42] }
+
+print("List tests passed!")

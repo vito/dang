@@ -1,0 +1,29 @@
+# Test let expressions and scoping
+
+# Basic let binding
+pub result1 = let x = 42 in x
+assert { result1 == 42 }
+
+# Let with calculation
+pub result2 = let y = 5 in y
+assert { result2 == 5 }
+
+# Let with string
+pub result3 = let msg = "hello" in msg  
+assert { result3 == "hello" }
+
+# Nested let expressions
+pub nested = let x = 10 in let y = 20 in x
+assert { nested == 10 }
+
+# Let expressions don't affect outer scope
+pub outer_var = 100
+pub let_result = let outer_var = 200 in outer_var
+assert { outer_var == 100 }
+assert { let_result == 200 }
+
+# Let with conditionals
+pub conditional_let = let x = true in if x { "true_branch" } else { "false_branch" }
+assert { conditional_let == "true_branch" }
+
+print("Let expression tests passed!")

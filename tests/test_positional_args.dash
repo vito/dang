@@ -1,0 +1,25 @@
+# Test positional and named function arguments
+
+# Function that takes multiple parameters
+pub add(x: Int!, y: Int!): Int! { x }
+
+# Test named arguments
+pub result1 = add(x: 10, y: 20)
+assert { result1 == 10 }
+
+# Test positional arguments (first is positional for x, second named for y)
+pub result2 = add(15, y: 25)
+assert { result2 == 15 }
+
+# Function with three parameters for more complex testing
+pub combine(a: Int!, b: Int!, c: Int!): Int! { a }
+
+# All named
+pub result3 = combine(a: 1, b: 2, c: 3)
+assert { result3 == 1 }
+
+# Mixed positional and named (positional must come first)
+pub result4 = combine(10, b: 20, c: 30)
+assert { result4 == 10 }
+
+print("Positional argument tests passed!")

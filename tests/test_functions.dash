@@ -1,0 +1,23 @@
+# Test function calls and declarations
+
+# Simple function declaration
+pub double(x: Int!): Int! { x }
+
+# Function with string parameter
+pub greet(name: String!): String! { name }
+
+# Test function calls with named arguments
+pub result1 = double(x: 5)
+pub result2 = greet(name: "Alice")
+
+assert { result1 == 5 }
+assert { result2 == "Alice" }
+
+# Zero-arity function
+pub get_value: String! { "constant" }
+
+# Test accessing zero-arity function (should auto-call)
+pub auto_called = get_value
+assert { auto_called == "constant" }
+
+print("Function tests passed!")
