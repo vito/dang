@@ -16,7 +16,7 @@ Dash <- es:(_ e:Expr _ CommaToken? { return e, nil })* !. {
 
 Expr <- Class / Slot / Form
 
-Form <- Conditional / Let / Lambda / Match / Infix / Term
+Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
 Term <- SelectOrCall / List / Literal / SymbolOrCall
 
@@ -489,3 +489,25 @@ VariablePattern <- name:Id {
 
 MatchToken <- "match"
 WithToken <- "with"
+
+Assert <- AssertToken message:MessageArgs? _ block:Block {
+  var msg Node
+  if message != nil {
+    msg = message.(Node)
+  }
+  return Assert{
+    Message: msg,
+    Block: block.(Block),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+
+MessageArgs <- '(' _ msg:Form _ ')' {
+  return msg, nil
+}
+
+AssertToken <- "assert"

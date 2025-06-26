@@ -238,3 +238,16 @@ func (ctx *EvalContext) guessLocation(err error, node Node) (line, column, lengt
 	}
 	return 1, 1, 1
 }
+
+// AssertionError represents a failed assertion with detailed information
+type AssertionError struct {
+	Message  string
+	Location *SourceLocation
+}
+
+func (e *AssertionError) Error() string {
+	if e.Location == nil {
+		return e.Message
+	}
+	return fmt.Sprintf("%s\n  Location: %s:%d:%d", e.Message, e.Location.Filename, e.Location.Line, e.Location.Column)
+}

@@ -3,6 +3,7 @@ package dash
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/chewxy/hm"
 	"github.com/vito/dash/introspection"
@@ -1111,4 +1112,242 @@ type ConstructorPattern struct {
 
 type VariablePattern struct {
 	Name string
+}
+
+type Assert struct {
+	Message Node  // Optional message expression
+	Block   Block // Block containing the assertion expression
+	Loc     *SourceLocation
+}
+
+var _ Node = Assert{}
+var _ Evaluator = Assert{}
+
+func (a Assert) Body() hm.Expression { return a.Block }
+
+func (a Assert) GetSourceLocation() *SourceLocation { return a.Loc }
+
+func (a Assert) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Infer the block type - the assertion will be evaluated
+	_, err := a.Block.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Infer the message type if present
+	if a.Message != nil {
+		_, err := a.Message.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Assert returns nothing (unit type / null)
+	return hm.TypeVariable('a'), nil
+}
+
+func (a Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Evaluate the block (gets the last expression's value)
+	blockVal, err := EvalNode(ctx, env, a.Block)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if assertion passed
+	if isTruthy(blockVal) {
+		return NullValue{}, nil
+	}
+
+	// Assertion failed - analyze the last expression
+	if len(a.Block.Forms) == 0 {
+		return nil, &AssertionError{Message: "Empty assertion block", Location: a.Loc}
+	}
+
+	lastExpr := a.Block.Forms[len(a.Block.Forms)-1]
+	return nil, a.createAssertionError(ctx, env, lastExpr)
+}
+
+// createAssertionError builds a detailed error message with child node values
+func (a Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Node) error {
+	var message strings.Builder
+
+	// Optional user message
+	if a.Message != nil {
+		msgVal, err := EvalNode(ctx, env, a.Message)
+		if err == nil {
+			message.WriteString(fmt.Sprintf("Assertion failed: %s\n", msgVal.String()))
+		} else {
+			message.WriteString("Assertion failed\n")
+		}
+	} else {
+		message.WriteString("Assertion failed\n")
+	}
+
+	// Show the failed expression
+	message.WriteString(fmt.Sprintf("  Expression: %s\n", a.nodeToString(expr)))
+
+	// Extract and evaluate immediate children
+	children := a.getImmediateChildren(expr)
+	if len(children) > 0 {
+		message.WriteString("  Values:\n")
+		for _, child := range children {
+			if val, err := EvalNode(ctx, env, child.Node); err == nil {
+				message.WriteString(fmt.Sprintf("    %s: %s\n", child.Name, val.String()))
+			}
+		}
+	}
+
+	return &AssertionError{
+		Message:  message.String(),
+		Location: expr.GetSourceLocation(),
+	}
+}
+
+type ChildNode struct {
+	Name string
+	Node Node
+}
+
+// getImmediateChildren extracts immediate child nodes for error reporting
+func (a Assert) getImmediateChildren(expr Node) []ChildNode {
+	switch n := expr.(type) {
+	case Select:
+		// Handle both field access and method calls
+		var children []ChildNode
+		
+		// Add receiver if present
+		if n.Receiver != nil {
+			children = append(children, ChildNode{"receiver", n.Receiver})
+		}
+		
+		// Add arguments if this is a method call
+		if n.Args != nil {
+			for i, arg := range *n.Args {
+				if arg.Positional {
+					children = append(children, ChildNode{
+						Name: fmt.Sprintf("arg%d", i),
+						Node: arg.Value,
+					})
+				} else {
+					children = append(children, ChildNode{
+						Name: arg.Key,
+						Node: arg.Value,
+					})
+				}
+			}
+		}
+		return children
+
+	case FunCall:
+		// Function call arguments
+		var children []ChildNode
+		for i, arg := range n.Args {
+			if arg.Positional {
+				children = append(children, ChildNode{
+					Name: fmt.Sprintf("arg%d", i),
+					Node: arg.Value,
+				})
+			} else {
+				children = append(children, ChildNode{
+					Name: arg.Key,
+					Node: arg.Value,
+				})
+			}
+		}
+		return children
+
+	case List:
+		// List elements
+		var children []ChildNode
+		for i, elem := range n.Elements {
+			children = append(children, ChildNode{
+				Name: fmt.Sprintf("[%d]", i),
+				Node: elem,
+			})
+		}
+		return children
+
+	case Default:
+		// Default operator children
+		return []ChildNode{
+			{"left", n.Left},
+			{"right", n.Right},
+		}
+
+	case Conditional:
+		// Conditional expression children
+		return []ChildNode{
+			{"condition", n.Condition},
+		}
+
+	case Let:
+		// Let expression children
+		return []ChildNode{
+			{"value", n.Value},
+		}
+	}
+
+	return nil
+}
+
+// nodeToString converts a node to its string representation
+func (a Assert) nodeToString(node Node) string {
+	switch n := node.(type) {
+	case Symbol:
+		return n.Name
+	case Select:
+		if n.Receiver == nil {
+			if n.Args != nil {
+				return fmt.Sprintf("%s(...)", n.Field)
+			}
+			return n.Field
+		}
+		receiver := a.nodeToString(n.Receiver)
+		if n.Args != nil {
+			return fmt.Sprintf("%s.%s(...)", receiver, n.Field)
+		}
+		return fmt.Sprintf("%s.%s", receiver, n.Field)
+	case FunCall:
+		fun := a.nodeToString(n.Fun)
+		return fmt.Sprintf("%s(...)", fun)
+	case String:
+		return fmt.Sprintf("\"%s\"", n.Value)
+	case Int:
+		return fmt.Sprintf("%d", n.Value)
+	case Boolean:
+		return fmt.Sprintf("%t", n.Value)
+	case Null:
+		return "null"
+	case List:
+		return "[...]"
+	case Default:
+		left := a.nodeToString(n.Left)
+		right := a.nodeToString(n.Right)
+		return fmt.Sprintf("%s ? %s", left, right)
+	case Conditional:
+		condition := a.nodeToString(n.Condition)
+		return fmt.Sprintf("if %s { ... }", condition)
+	case Let:
+		return fmt.Sprintf("let %s = %s in ...", n.Name, a.nodeToString(n.Value))
+	default:
+		return fmt.Sprintf("%T", node)
+	}
+}
+
+// isTruthy determines if a value should be considered true for assertion purposes
+func isTruthy(val Value) bool {
+	switch v := val.(type) {
+	case BoolValue:
+		return v.Val
+	case NullValue:
+		return false
+	case IntValue:
+		return v.Val != 0
+	case StringValue:
+		return v.Val != ""
+	case ListValue:
+		return len(v.Elements) > 0
+	default:
+		return true // Other values are considered truthy
+	}
 }

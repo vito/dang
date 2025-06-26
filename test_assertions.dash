@@ -1,0 +1,21 @@
+# Test assertions
+
+# Simple value tests
+pub x = 42
+pub y = null
+
+# Test basic assertion that should pass (truthy value)
+assert { x }
+
+# Test assertion with message that should fail (falsy value)
+assert("Value should not be null") { y }
+
+# Test assertion with default operator
+pub fallback = "world"
+assert("Should use fallback") { fallback }
+
+# Test assertion with conditional
+pub isActive = true
+assert("User should be active") { 
+  if isActive { "active" } else { null }
+}
