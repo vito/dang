@@ -1,0 +1,7 @@
+pub container: String! { "container_module" }
+
+print(value: "Testing container.from:")
+# This should fail - string doesn't have .from method
+
+print(value: "Testing container().from:")  
+# This should also fail - string doesn't have .from method

@@ -183,11 +183,11 @@ func (r *REPL) Run() error {
 
 	// Configure readline
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          "dash> ",
-		HistoryFile:     "/tmp/dash_history",
-		AutoComplete:    r.createCompleter(),
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
+		Prompt:            "dash> ",
+		HistoryFile:       "/tmp/dash_history",
+		AutoComplete:      r.createCompleter(),
+		InterruptPrompt:   "^C",
+		EOFPrompt:         "exit",
 		HistorySearchFold: true,
 		FuncFilterInputRune: func(r rune) (rune, bool) {
 			switch r {

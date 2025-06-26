@@ -18,7 +18,65 @@ Expr <- Class / Slot / Form
 
 Form <- Conditional / Let / Lambda / Match / Infix / Term
 
-Term <- Select / FunCall / List / Literal / Symbol
+Term <- SelectOrCall / List / Literal / SymbolOrCall
+
+// Handle Symbol followed by optional ()
+SymbolOrCall <- name:Id args:ArgValues? {
+  if args != nil {
+    // Symbol followed by () - create Select with nil Receiver
+    argRecord := Record(args.([]Keyed[Node]))
+    return Select{
+      Receiver: nil,
+      Field: name.(string),
+      Args: &argRecord,
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
+    }, nil
+  } else {
+    // Just a Symbol
+    return Symbol{
+      Name: name.(string),
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
+    }, nil
+  }
+}
+
+// Handle Select followed by optional ()
+SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
+  if args != nil {
+    // Select followed by () - add Args field
+    argRecord := Record(args.([]Keyed[Node]))
+    return Select{
+      Receiver: left.(Node),
+      Field: name.(string),
+      Args: &argRecord,
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
+    }, nil
+  } else {
+    // Just a Select
+    return Select{
+      Receiver: left.(Node),
+      Field: name.(string),
+      Args: nil,
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
+    }, nil
+  }
+}
 
 Class <- ClsToken _ name:Id _ block:Block {
   return ClassDecl{
@@ -141,18 +199,6 @@ UpperToken <- [A-Z][a-zA-Z0-9]* {
   return string(c.text), nil
 }
 
-FunCall <- name:Term args:ArgValues {
-  return FunCall{
-    Fun: name.(Node),
-    Args: Record(args.([]Keyed[Node])),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
-  }, nil
-}
-
 ArgValues <- '(' args:Argument* ')' {
   return sliceOf[Keyed[Node]](args), nil
 }
@@ -226,17 +272,6 @@ Default <- left:Form _ InterroToken _ right:Term {
 }
 InterroToken <- '?'
 
-Select <- left:Term _ DotToken _ name:Id {
-  return Select{
-    Receiver: left.(Node),
-    Field: name.(string),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
-  }, nil
-}
 DotToken <- '.'
 
 List <- '[' _ eles:(_ e:Form CommaToken? _ { return e, nil })* ']' {
@@ -254,17 +289,6 @@ Block <- '{' es:(_ e:Expr CommaToken? _ { return e, nil })* '}' {
   exprs := sliceOf[Node](es)
   return Block{
     Forms: exprs,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
-  }, nil
-}
-
-Symbol <- name:Id {
-  return Symbol{
-    Name: name.(string),
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,

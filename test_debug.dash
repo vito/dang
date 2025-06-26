@@ -1,0 +1,4 @@
+pub container: String! { "container_module" }
+
+print(value: container.from)
+print(value: container().from)
