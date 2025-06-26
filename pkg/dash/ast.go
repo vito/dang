@@ -591,6 +591,16 @@ var _ Node = Select{}
 var _ Evaluator = Select{}
 
 func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// If this is a function call (Args present), delegate to FunCall
+	// implementation
+	if d.Args != nil {
+		t, err := d.AsCall().Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("Select.Infer: %w", err)
+		}
+		return t, err
+	}
+
 	// Handle nil receiver (symbol calls) - look up type in environment
 	if d.Receiver == nil {
 		scheme, found := env.SchemeOf(d.Field)
@@ -598,22 +608,13 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, fmt.Errorf("Select.Infer: %q not found in env", d.Field)
 		}
 		t, _ := scheme.Type()
-
-		// If this is a function call (Args present), return the return type
-		if d.Args != nil {
-			if fnType, ok := t.(*hm.FunctionType); ok {
-				return fnType.Ret(false), nil
-			}
-			return nil, fmt.Errorf("Select.Infer: %q is not a function but is being called", d.Field)
-		}
-
 		return t, nil
 	}
 
 	// Handle normal receiver
 	lt, err := d.Receiver.Infer(env, fresh)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Receiver.Infer: %w", err)
 	}
 	nn, ok := lt.(NonNullType)
 	if !ok {
@@ -632,15 +633,23 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field)
 	}
 
-	// If this is a function call (Args present), return the return type
-	if d.Args != nil {
-		if fnType, ok := t.(*hm.FunctionType); ok {
-			return fnType.Ret(false), nil
-		}
-		return nil, fmt.Errorf("Select.Infer: field %q is not a function but is being called", d.Field)
-	}
-
 	return t, nil
+}
+
+func (d Select) AsCall() FunCall {
+	var args Record
+	if d.Args != nil {
+		args = *d.Args
+	}
+	return FunCall{
+		Fun: Select{
+			Receiver: d.Receiver,
+			Field:    d.Field,
+			Loc:      d.Loc,
+		},
+		Args: args,
+		Loc:  d.Loc,
+	}
 }
 
 func (d Select) Body() hm.Expression { return d }
@@ -648,23 +657,23 @@ func (d Select) Body() hm.Expression { return d }
 func (d Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	var receiverVal Value
-	var err error
+	// If this is a function call (Args present), delegate to FunCall
+	// implementation
+	if d.Args != nil {
+		return d.AsCall().Eval(ctx, env)
+	}
 
 	// Handle nil receiver (symbol followed by ()) - select from environment
 	if d.Receiver == nil {
-		receiverVal, found := env.Get(d.Field)
+		val, found := env.Get(d.Field)
 		if !found {
 			return nil, fmt.Errorf("Select.Eval: %q not found in env", d.Field)
 		}
-
-		// If this is a function call (Args present), call the function
-		if d.Args != nil {
-			return d.callFunction(ctx, env, receiverVal)
-		}
-
-		return receiverVal, nil
+		return val, nil
 	}
+
+	var receiverVal Value
+	var err error
 
 	// Handle normal receiver evaluation
 	receiverVal, err = EvalNode(ctx, env, d.Receiver)
@@ -679,10 +688,6 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	switch rec := receiverVal.(type) {
 	case RecordValue:
 		if val, found := rec.Fields[d.Field]; found {
-			// If this is a function call (Args present), call the function
-			if d.Args != nil {
-				return d.callFunction(ctx, env, val)
-			}
 			return val, nil
 		}
 		err := fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
@@ -693,9 +698,6 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// For now, return a placeholder
 		if val, found := rec.Values[d.Field]; found {
 			// If this is a function call (Args present), call the function
-			if d.Args != nil {
-				return d.callFunction(ctx, env, val)
-			}
 			return val, nil
 		}
 		// Return a placeholder function for Dagger API calls
@@ -706,97 +708,11 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	case GraphQLValue:
 		// Handle GraphQL field selection
-		fieldVal, err := rec.SelectField(ctx, d.Field)
-		if err != nil {
-			return nil, err
-		}
-
-		// If this is a function call (Args present), call the function
-		if d.Args != nil {
-			return d.callFunction(ctx, env, fieldVal)
-		}
-		return fieldVal, nil
+		return rec.SelectField(ctx, d.Field)
 
 	default:
 		err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
 		return nil, CreateEvalError(ctx, err, d)
-	}
-}
-
-// callFunction handles function calls when Select has Args
-func (d Select) callFunction(ctx context.Context, env EvalEnv, funVal Value) (Value, error) {
-	// Evaluate arguments similar to FunCall.evaluateArguments
-	argValues := make(map[string]Value)
-	if d.Args != nil {
-		positionallySet := make(map[string]bool)
-		paramNames := d.getParameterNames(funVal)
-		positionalIndex := 0
-
-		// Validate positional args come before named args
-		seenNamed := false
-		for _, arg := range *d.Args {
-			if arg.Positional && seenNamed {
-				return nil, fmt.Errorf("positional arguments must come before named arguments")
-			}
-			if !arg.Positional {
-				seenNamed = true
-			}
-		}
-
-		// Evaluate and map arguments
-		for _, arg := range *d.Args {
-			val, err := EvalNode(ctx, env, arg.Value)
-			if err != nil {
-				return nil, err
-			}
-
-			if arg.Positional {
-				if positionalIndex >= len(paramNames) {
-					return nil, fmt.Errorf("too many positional arguments: got %d, expected at most %d",
-						positionalIndex+1, len(paramNames))
-				}
-				paramName := paramNames[positionalIndex]
-				if _, exists := argValues[paramName]; exists {
-					return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
-				}
-				argValues[paramName] = val
-				positionallySet[paramName] = true
-				positionalIndex++
-			} else {
-				if _, exists := argValues[arg.Key]; exists {
-					if positionallySet[arg.Key] {
-						return nil, fmt.Errorf("argument %q specified both positionally and by name", arg.Key)
-					} else {
-						return nil, fmt.Errorf("argument %q specified multiple times", arg.Key)
-					}
-				}
-				argValues[arg.Key] = val
-			}
-		}
-	}
-
-	// Call the function similar to FunCall.Eval
-	switch fn := funVal.(type) {
-	case FunctionValue:
-		fnEnv := fn.Closure.Clone()
-		for _, argName := range fn.Args {
-			if val, exists := argValues[argName]; exists {
-				fnEnv.Set(argName, val)
-			}
-		}
-		return EvalNode(ctx, fnEnv, fn.Body)
-
-	case ModuleValue:
-		return StringValue{Val: fmt.Sprintf("module call: %s with args %v", fn.Mod.Named, argValues)}, nil
-
-	case GraphQLFunction:
-		return fn.Call(ctx, env, argValues)
-
-	case BuiltinFunction:
-		return fn.Call(ctx, env, argValues)
-
-	default:
-		return nil, fmt.Errorf("Select.callFunction: %T is not callable", funVal)
 	}
 }
 
@@ -967,7 +883,7 @@ func (i Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type Conditional struct {
 	Condition Node
 	Then      Block
-	Else      interface{}
+	Else      any
 	Loc       *SourceLocation
 }
 

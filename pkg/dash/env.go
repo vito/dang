@@ -111,22 +111,17 @@ func NewEnv(schema *introspection.Schema) *Module {
 				continue
 			}
 
-			if len(f.Args) > 0 {
-				args := NewRecordType("")
-				for _, arg := range f.Args {
-					argType, err := gqlToTypeNode(mod, arg.TypeRef)
-					if err != nil {
-						// Skip args we can't convert
-						continue
-					}
-					args.Add(arg.Name, hm.NewScheme(nil, argType))
+			args := NewRecordType("")
+			for _, arg := range f.Args {
+				argType, err := gqlToTypeNode(mod, arg.TypeRef)
+				if err != nil {
+					// Skip args we can't convert
+					continue
 				}
-				slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
-				install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
-			} else {
-				slog.Debug("adding field binding", "type", t.Name, "field", f.Name)
-				install.Add(f.Name, hm.NewScheme(nil, ret))
+				args.Add(arg.Name, hm.NewScheme(nil, argType))
 			}
+			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
+			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
 		}
 	}
 

@@ -296,48 +296,30 @@ func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) Eval
 				continue
 			}
 
-			if len(f.Args) > 0 {
-				// This is a function - create a GraphQLFunction value
-				args := NewRecordType("")
-				for _, arg := range f.Args {
-					argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
-					if err != nil {
-						continue
-					}
-					args.Add(arg.Name, hm.NewScheme(nil, argType))
+			// This is a function - create a GraphQLFunction value
+			args := NewRecordType("")
+			for _, arg := range f.Args {
+				argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+				if err != nil {
+					continue
 				}
-				fnType := hm.NewFnType(args, ret)
+				args.Add(arg.Name, hm.NewScheme(nil, argType))
+			}
+			fnType := hm.NewFnType(args, ret)
 
-				gqlFunc := GraphQLFunction{
-					Name:       f.Name,
-					TypeName:   t.Name,
-					Field:      f,
-					FnType:     fnType,
-					Client:     dag,
-					Schema:     schema,
-					QueryChain: nil, // Top-level functions start with no query chain
-				}
+			gqlFunc := GraphQLFunction{
+				Name:       f.Name,
+				TypeName:   t.Name,
+				Field:      f,
+				FnType:     fnType,
+				Client:     dag,
+				Schema:     schema,
+				QueryChain: nil, // Top-level functions start with no query chain
+			}
 
-				// Add to global scope if it's from the Query type
-				if t.Name == schema.QueryType.Name {
-					env.Set(f.Name, gqlFunc)
-				}
-			} else {
-				// This is a field/property - create a GraphQLValue
-				gqlVal := GraphQLValue{
-					Name:       f.Name,
-					TypeName:   t.Name,
-					Field:      f,
-					ValType:    ret,
-					Client:     dag,
-					Schema:     schema,
-					QueryChain: nil, // Top-level values start with no query chain
-				}
-
-				// Add to global scope if it's from the Query type
-				if t.Name == schema.QueryType.Name {
-					env.Set(f.Name, gqlVal)
-				}
+			// Add to global scope if it's from the Query type
+			if t.Name == schema.QueryType.Name {
+				env.Set(f.Name, gqlFunc)
 			}
 		}
 	}
