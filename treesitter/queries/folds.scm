@@ -1,5 +1,4 @@
 [
   (list)
-  (scope)
-  (cons)
+  (block)
 ] @fold

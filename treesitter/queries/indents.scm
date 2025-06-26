@@ -1,7 +1,6 @@
 [
   (list)
-  (scope)
-  (cons)
+  (block)
 ] @indent
 
 [
@@ -18,5 +17,5 @@
 
 [
   (ERROR)
-  (comment)
+  (comment_token)
 ] @auto

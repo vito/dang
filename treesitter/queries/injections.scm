@@ -1,1 +1,1 @@
-(comment) @comment
+(comment_token) @comment
