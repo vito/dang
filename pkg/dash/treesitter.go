@@ -8,6 +8,10 @@ import (
 	"github.com/vito/dash/pkg/dash/treesitter"
 )
 
+func skipTS(name string) bool {
+	return strings.HasPrefix(name, "_")
+}
+
 func TreesitterGrammar() treesitter.Grammar {
 	ts := treesitter.NewGrammar("dash")
 
@@ -27,7 +31,7 @@ func TreesitterGrammar() treesitter.Grammar {
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i
 		tsRule := treesitterRule(rule, prec)
-		if tsRule == nil || rule.name == "_" {
+		if tsRule == nil || skipTS(rule.name) {
 			slog.Warn("skipping grammar rule", "rule", rule.name)
 			continue
 		} else {
@@ -78,7 +82,7 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 			expr: t.expr,
 		}, prec)
 	case *ruleRefExpr:
-		if t.name == "_" {
+		if skipTS(t.name) {
 			// ignore whitespace; tree-sitter works differently
 			return nil
 		}
