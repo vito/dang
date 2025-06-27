@@ -162,9 +162,9 @@ func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
 
 func (e *Module) FreeTypeVar() hm.TypeVarSet {
 	var retVal hm.TypeVarSet
-	for _, v := range e.vars {
-		retVal = v.FreeTypeVar().Union(retVal)
-	}
+	// for _, v := range e.vars {
+	// 	retVal = v.FreeTypeVar().Union(retVal)
+	// }
 	return retVal
 }
 
