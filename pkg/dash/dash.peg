@@ -2,19 +2,9 @@
   package dash
 }
 
-Dash <- _ eles:( first:Expr rest:(Sep e:Expr { return e, nil })* {
-  result := []Node{first.(Node)}
-  for _, e := range sliceOf[Node](rest) {
-    result = append(result, e)
-  }
-  return result, nil
-})? _ !. {
-  var elements []Node
-  if eles != nil {
-    elements = eles.([]Node)
-  }
+Dash <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
   return Block{
-    Forms: elements,
+    Forms: sliceOfAppend[Node](eles, last),
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -25,15 +15,13 @@ Dash <- _ eles:( first:Expr rest:(Sep e:Expr { return e, nil })* {
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
 
-Sep <- LineSep+ / CommaToken
-LineSep <- [ \t\f]* [\r\n] _
-CommaToken <- _ ',' _
+Sep <- [,\n] _
 
 Expr <- Class / Slot / Form
 
 Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
-Term <- SelectOrCall / List / Block / Literal / ParenExpr / SymbolOrCall
+Term <- Literal / SelectOrCall / List / Block / ParenExpr / SymbolOrCall
 
 ParenExpr <- '(' _ expr:Form _ ')' {
   return expr.(Node), nil
@@ -212,7 +200,7 @@ PubToken <- "pub" !WordChar
 PvtToken <- "pvt" !WordChar
 
 Id <- WordToken
-WordToken <- [a-zA-Z_][a-zA-Z0-9_]* {
+WordToken <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
   return string(c.text), nil
 }
 WordChar <- [a-zA-Z0-9_]
@@ -221,31 +209,11 @@ UpperToken <- [A-Z][a-zA-Z0-9]* {
   return string(c.text), nil
 }
 
-ArgValues <- '(' _ args:( first:Argument rest:(Sep arg:Argument { return arg, nil })* {
-  result := []Keyed[Node]{first.(Keyed[Node])}
-  for _, arg := range sliceOf[Keyed[Node]](rest) {
-    result = append(result, arg)
-  }
-  return result, nil
-})? _ ')' {
-  var result []Keyed[Node]
-  if args != nil {
-    result = args.([]Keyed[Node])
-  }
-  return result, nil
+ArgValues <- '(' _ args:(a:Argument Sep { return a, nil })* last:Argument? _ ')' {
+  return sliceOfAppend[Keyed[Node]](args, last), nil
 }
-ArgTypes <- '(' _ args:( first:ArgType rest:(Sep arg:ArgType { return arg, nil })* {
-  result := []SlotDecl{first.(SlotDecl)}
-  for _, arg := range sliceOf[SlotDecl](rest) {
-    result = append(result, arg)
-  }
-  return result, nil
-})? _ ')' {
-  var result []SlotDecl
-  if args != nil {
-    result = args.([]SlotDecl)
-  }
-  return result, nil
+ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
+  return sliceOfAppend[SlotDecl](args, last), nil
 }
 ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   return slot.(SlotDecl), nil
@@ -375,7 +343,7 @@ Modulo <- left:Term _ PercentToken _ right:Term {
     },
   }, nil
 }
-PercentToken <- '%' !(WordChar / '{') 
+PercentToken <- '%' !(WordChar / '{')
 
 Equality <- left:Term _ EqualToken _ right:Term {
   return Equality{
@@ -457,19 +425,9 @@ GreaterToken <- '>'
 
 DotToken <- '.'
 
-List <- '[' _ eles:( first:Form rest:(Sep e:Form { return e, nil })* {
-  result := []Node{first.(Node)}
-  for _, e := range sliceOf[Node](rest) {
-    result = append(result, e)
-  }
-  return result, nil
-})? _ ']' {
-  var elements []Node
-  if eles != nil {
-    elements = eles.([]Node)
-  }
+List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
   return List{
-    Elements: elements,
+    Elements: sliceOfAppend[Node](eles, last),
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -478,19 +436,9 @@ List <- '[' _ eles:( first:Form rest:(Sep e:Form { return e, nil })* {
   }, nil
 }
 
-Block <- '{' _ eles:( first:Expr rest:(Sep e:Expr { return e, nil })* {
-  result := []Node{first.(Node)}
-  for _, e := range sliceOf[Node](rest) {
-    result = append(result, e)
-  }
-  return result, nil
-})? _ '}' {
-  var elements []Node
-  if eles != nil {
-    elements = eles.([]Node)
-  }
+Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
   return Block{
-    Forms: elements,
+    Forms: sliceOfAppend[Node](eles, last),
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -630,36 +578,17 @@ Lambda <- '\\' args:LambdaArgs _ "->" _ expr:Form {
   }, nil
 }
 
-LambdaArgs <- '(' _ args:( first:Id rest:(Sep arg:Id { return arg, nil })* {
-  result := []string{first.(string)}
-  for _, arg := range sliceOf[string](rest) {
-    result = append(result, arg)
-  }
-  return result, nil
-})? _ ')' {
-  var result []string
-  if args != nil {
-    result = args.([]string)
-  }
-  return result, nil
+// TODO: use ArgTypes?
+LambdaArgs <- '(' _ args:(a:Id Sep { return a, nil })* last:Id? _ ')' {
+  return sliceOfAppend[string](args, last), nil
 } / arg:Id {
   return []string{arg.(string)}, nil
 }
 
-Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:( first:MatchCase rest:(Sep mc:MatchCase { return mc, nil })* {
-  result := []MatchCase{first.(MatchCase)}
-  for _, mc := range sliceOf[MatchCase](rest) {
-    result = append(result, mc)
-  }
-  return result, nil
-})? _ '}' {
-  var cases []MatchCase
-  if cs != nil {
-    cases = cs.([]MatchCase)
-  }
+Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
   return Match{
     Expr: expr.(Node),
-    Cases: cases,
+    Cases: sliceOfAppend[MatchCase](cs, last),
   }, nil
 }
 
@@ -691,18 +620,8 @@ ConstructorPattern <- name:UpperId args:PatternArgs? {
   }, nil
 }
 
-PatternArgs <- '(' _ patterns:( first:Pattern rest:(Sep p:Pattern { return p, nil })* {
-  result := []Pattern{first.(Pattern)}
-  for _, p := range sliceOf[Pattern](rest) {
-    result = append(result, p)
-  }
-  return result, nil
-})? _ ')' {
-  var result []Pattern
-  if patterns != nil {
-    result = patterns.([]Pattern)
-  }
-  return result, nil
+PatternArgs <- '(' _ patterns:(p:Pattern Sep { return p, nil })* last:Pattern? _ ')' {
+  return sliceOfAppend[Pattern](patterns, last), nil
 }
 
 VariablePattern <- name:Id {

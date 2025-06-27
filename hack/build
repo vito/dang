@@ -6,7 +6,7 @@ pvt src = host.directory(
     "**/*.go",
     "**/go.mod",
     "**/go.sum",
-    "introspection/introspection.graphql"
+    "introspection/introspection.graphql",
   ]
 )
 

@@ -18,6 +18,70 @@
     ]
   },
   {
+    "type": "form",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "assert",
+        "named": true
+      },
+      {
+        "type": "conditional",
+        "named": true
+      },
+      {
+        "type": "infix",
+        "named": true
+      },
+      {
+        "type": "lambda",
+        "named": true
+      },
+      {
+        "type": "let",
+        "named": true
+      },
+      {
+        "type": "match",
+        "named": true
+      },
+      {
+        "type": "term",
+        "named": true
+      }
+    ]
+  },
+  {
+    "type": "term",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "block",
+        "named": true
+      },
+      {
+        "type": "list",
+        "named": true
+      },
+      {
+        "type": "literal",
+        "named": true
+      },
+      {
+        "type": "paren_expr",
+        "named": true
+      },
+      {
+        "type": "select_or_call",
+        "named": true
+      },
+      {
+        "type": "symbol_or_call",
+        "named": true
+      }
+    ]
+  },
+  {
     "type": "addition",
     "named": true,
     "fields": {
@@ -81,7 +145,7 @@
     "type": "arg_types",
     "named": true,
     "fields": {
-      "arg": {
+      "a": {
         "multiple": true,
         "required": false,
         "types": [
@@ -91,17 +155,7 @@
           }
         ]
       },
-      "first": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "arg_type",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
+      "args": {
         "multiple": true,
         "required": false,
         "types": [
@@ -111,6 +165,16 @@
           },
           {
             "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_type",
             "named": true
           }
         ]
@@ -121,7 +185,7 @@
     "type": "arg_values",
     "named": true,
     "fields": {
-      "arg": {
+      "a": {
         "multiple": true,
         "required": false,
         "types": [
@@ -131,17 +195,7 @@
           }
         ]
       },
-      "first": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "argument",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
+      "args": {
         "multiple": true,
         "required": false,
         "types": [
@@ -151,6 +205,16 @@
           },
           {
             "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "argument",
             "named": true
           }
         ]
@@ -354,17 +418,7 @@
           }
         ]
       },
-      "first": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
+      "eles": {
         "multiple": true,
         "required": false,
         "types": [
@@ -374,6 +428,16 @@
           },
           {
             "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
             "named": true
           }
         ]
@@ -548,17 +612,7 @@
           }
         ]
       },
-      "first": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
+      "eles": {
         "multiple": true,
         "required": false,
         "types": [
@@ -568,6 +622,16 @@
           },
           {
             "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
             "named": true
           }
         ]
@@ -722,45 +786,6 @@
         },
         {
           "type": "unicode_escape",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "form",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "assert",
-          "named": true
-        },
-        {
-          "type": "conditional",
-          "named": true
-        },
-        {
-          "type": "infix",
-          "named": true
-        },
-        {
-          "type": "lambda",
-          "named": true
-        },
-        {
-          "type": "let",
-          "named": true
-        },
-        {
-          "type": "match",
-          "named": true
-        },
-        {
-          "type": "term",
           "named": true
         }
       ]
@@ -1033,7 +1058,7 @@
     "type": "lambda_args",
     "named": true,
     "fields": {
-      "arg": {
+      "a": {
         "multiple": true,
         "required": false,
         "types": [
@@ -1043,7 +1068,7 @@
           }
         ]
       },
-      "first": {
+      "arg": {
         "multiple": false,
         "required": false,
         "types": [
@@ -1053,7 +1078,7 @@
           }
         ]
       },
-      "rest": {
+      "args": {
         "multiple": true,
         "required": false,
         "types": [
@@ -1063,6 +1088,16 @@
           },
           {
             "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "id",
             "named": true
           }
         ]
@@ -1192,11 +1227,6 @@
     }
   },
   {
-    "type": "line_sep",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "list",
     "named": true,
     "fields": {
@@ -1210,17 +1240,7 @@
           }
         ]
       },
-      "first": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
+      "eles": {
         "multiple": true,
         "required": false,
         "types": [
@@ -1230,6 +1250,16 @@
           },
           {
             "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
             "named": true
           }
         ]
@@ -1303,6 +1333,20 @@
     "type": "match",
     "named": true,
     "fields": {
+      "cs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "match_case",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
       "expr": {
         "multiple": false,
         "required": true,
@@ -1313,7 +1357,7 @@
           }
         ]
       },
-      "first": {
+      "last": {
         "multiple": false,
         "required": false,
         "types": [
@@ -1323,26 +1367,12 @@
           }
         ]
       },
-      "mc": {
+      "m": {
         "multiple": true,
         "required": false,
         "types": [
           {
             "type": "match_case",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "match_case",
-            "named": true
-          },
-          {
-            "type": "sep",
             "named": true
           }
         ]
@@ -1581,7 +1611,7 @@
     "type": "pattern_args",
     "named": true,
     "fields": {
-      "first": {
+      "last": {
         "multiple": false,
         "required": false,
         "types": [
@@ -1601,7 +1631,7 @@
           }
         ]
       },
-      "rest": {
+      "patterns": {
         "multiple": true,
         "required": false,
         "types": [
@@ -1616,6 +1646,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "percent_token",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "positional_value",
@@ -1700,25 +1735,6 @@
       "types": [
         {
           "type": "dot_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "sep",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "comma_token",
-          "named": true
-        },
-        {
-          "type": "line_sep",
           "named": true
         }
       ]
@@ -1836,41 +1852,6 @@
         },
         {
           "type": "symbol",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "term",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "block",
-          "named": true
-        },
-        {
-          "type": "list",
-          "named": true
-        },
-        {
-          "type": "literal",
-          "named": true
-        },
-        {
-          "type": "paren_expr",
-          "named": true
-        },
-        {
-          "type": "select_or_call",
-          "named": true
-        },
-        {
-          "type": "symbol_or_call",
           "named": true
         }
       ]
@@ -2290,10 +2271,6 @@
     "named": true
   },
   {
-    "type": "comma_token",
-    "named": true
-  },
-  {
     "type": "comment_token",
     "named": true,
     "extra": true
@@ -2375,10 +2352,6 @@
     "named": true
   },
   {
-    "type": "percent_token",
-    "named": true
-  },
-  {
     "type": "plus_token",
     "named": true
   },
@@ -2392,6 +2365,10 @@
   },
   {
     "type": "quoted_raw_token",
+    "named": true
+  },
+  {
+    "type": "sep",
     "named": true
   },
   {

@@ -19,19 +19,19 @@ func TreesitterGrammar() treesitter.Grammar {
 		},
 		{
 			Type:  treesitter.RuleTypePattern,
-			Value: `[\s]`,
+			Value: `\s`,
 		},
 	}
-	ts.Supertypes = []string{"expr"}
+	ts.Supertypes = []string{"expr", "form", "term"}
 
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i
 		tsRule := treesitterRule(rule, prec)
 		if tsRule == nil || rule.name == "_" {
-			slog.Debug("skipping grammar rule", "rule", rule.name)
+			slog.Warn("skipping grammar rule", "rule", rule.name)
 			continue
 		} else {
-			slog.Debug("adding grammar rule", "rule", rule.name)
+			slog.Info("adding grammar rule", "rule", rule.name)
 			ts.Rules.Add(treesitter.Name(rule.name), *tsRule)
 		}
 	}
@@ -164,6 +164,12 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 	// 	// ignored
 	default:
 		panic(fmt.Sprintf("unhandled rule type: %T", t))
+	}
+
+	// Simplify, since some things are seq'd with _ which doesn't get added
+	if len(ts.Members) == 1 {
+		// TODO only for Seq or Choice?
+		*ts = ts.Members[0]
 	}
 
 	if strings.HasSuffix(string(r.name), "Token") {

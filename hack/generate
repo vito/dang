@@ -3,4 +3,8 @@
 set -e -u -x
 
 go generate -x ./...
-go -C treesitter generate -x ./...
+
+pushd treesitter
+  go generate -x ./...
+  tree-sitter test
+popd
