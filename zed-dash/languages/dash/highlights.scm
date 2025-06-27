@@ -11,6 +11,7 @@
   (in_token)
   (match_token)
   (with_token)
+  (assert_token)
 ] @keyword.control
 
 ;; Literals
@@ -28,6 +29,8 @@
   "="
   (interro_token)
   (bang_token)
+  (lambda_token)
+  (arrow_token)
 ] @operator
 ["{" "}" "[" "]" "(" ")"] @punctuation.bracket
 [

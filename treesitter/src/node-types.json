@@ -385,6 +385,11 @@
     }
   },
   {
+    "type": "arrow_token",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "assert",
     "named": true,
     "fields": {
@@ -1068,6 +1073,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
+          "named": true
+        },
+        {
+          "type": "lambda_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1146,6 +1165,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "lambda_token",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "less_than",
