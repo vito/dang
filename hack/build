@@ -1,0 +1,31 @@
+#!/usr/bin/env dash
+
+pvt src = host.directory(
+  ".",
+  include: [
+    "**/*.go",
+    "**/go.mod",
+    "**/go.sum",
+    "introspection/introspection.graphql"
+  ]
+)
+
+pvt bin(src: Directory!): File! {
+  container.
+    from("golang").
+    withDirectory("/src", src).
+    withWorkdir("/src").
+    withEnvVariable("CGO_ENABLED", "0").
+    withExec(["go", "build", "-o", "/out/dash", "./cmd/dash"]).
+    file("/out/dash")
+}
+
+pvt test(bin: File!): String! {
+  container.
+    from("alpine").
+    withFile("/bin/dash", bin).
+    withExec(["dash", "--version"]).
+    stdout
+}
+
+print(test(bin(src)))
