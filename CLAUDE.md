@@ -4,3 +4,4 @@ Run ./hack/generate to re-generate all generated code without building or runnin
 Try to avoid changing your working directory unless the task expressly needs it. The hack/ scripts should suffice in general.
 ALWAYS start by adding a test if one is missing, and work towards making the test pass.
 Don't look for APIs - you won't find them in this codebase, because they're all derived from the Dagger GraphQL schema.
+This language favors simplicity over all else. For example, there is no operator precedence - just use parentheses.

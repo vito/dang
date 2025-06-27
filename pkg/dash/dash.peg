@@ -298,7 +298,7 @@ TypeVariable <- v:[a-z] {
 
 BangToken <- '!'
 
-Infix <- Equality / Default
+Infix <- Equality / Default / Addition
 Default <- left:Term _ InterroToken _ right:Term {
   return Default{
     Left: left.(Node),
@@ -311,6 +311,19 @@ Default <- left:Term _ InterroToken _ right:Term {
   }, nil
 }
 InterroToken <- '?'
+
+Addition <- left:Term _ PlusToken _ right:Term {
+  return Addition{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+PlusToken <- '+'
 
 Equality <- left:Term _ EqualToken _ right:Term {
   return Equality{

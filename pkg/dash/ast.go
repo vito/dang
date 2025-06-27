@@ -915,6 +915,56 @@ func valuesEqual(left, right Value) bool {
 	return false
 }
 
+type Addition struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Addition{}
+var _ Evaluator = Addition{}
+
+func (a Addition) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := a.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := a.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+		return nil, fmt.Errorf("Addition.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+	}
+	return lt, nil
+}
+
+func (a Addition) Body() hm.Expression { return a }
+
+func (a Addition) GetSourceLocation() *SourceLocation { return a.Loc }
+
+func (a Addition) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, a.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, a.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			return IntValue{Val: l.Val + r.Val}, nil
+		}
+	case StringValue:
+		if r, ok := rightVal.(StringValue); ok {
+			return StringValue{Val: l.Val + r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)
+}
+
 type Null struct {
 	Loc *SourceLocation
 }

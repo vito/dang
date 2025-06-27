@@ -18,6 +18,42 @@
     ]
   },
   {
+    "type": "addition",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "plus_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "arg_type",
     "named": true,
     "fields": {
@@ -717,6 +753,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "addition",
+          "named": true
+        },
         {
           "type": "default",
           "named": true
@@ -1948,6 +1988,10 @@
   },
   {
     "type": "null_token",
+    "named": true
+  },
+  {
+    "type": "plus_token",
     "named": true
   },
   {
