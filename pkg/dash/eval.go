@@ -2,6 +2,7 @@ package dash
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -376,9 +377,44 @@ func dashValueToGo(val Value) (interface{}, error) {
 			result[i] = goVal
 		}
 		return result, nil
+	case GraphQLValue:
+		if v.Field.TypeRef.IsObject() {
+			return gqlObjectMarshaller{val: v}, nil
+		}
+		return nil, fmt.Errorf("unsupported value type (%T): %s", val, pretty.Sprint(v))
 	default:
 		return nil, fmt.Errorf("unsupported value type: %T", val)
 	}
+}
+
+type gqlObjectMarshaller struct {
+	val GraphQLValue
+}
+
+func (m gqlObjectMarshaller) XXX_GraphQLType() string {
+	return m.val.TypeName
+}
+
+func (m gqlObjectMarshaller) XXX_GraphQLIDType() string {
+	return m.val.TypeName + "ID"
+}
+
+// XXX_GraphqlID is an internal function. It returns the underlying type ID
+func (m gqlObjectMarshaller) XXX_GraphQLID(ctx context.Context) (string, error) {
+	var res string
+	query := m.val.QueryChain.Select("id").Bind(&res).Client(m.val.Client.GraphQLClient())
+	if err := query.Execute(ctx); err != nil {
+		return "", err
+	}
+	return res, nil
+}
+
+func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
+	id, err := m.XXX_GraphQLID(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(id)
 }
 
 // Helper function to convert Go values back to Dash values

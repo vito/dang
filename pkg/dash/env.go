@@ -3,6 +3,7 @@ package dash
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/chewxy/hm"
 	"github.com/vito/dash/introspection"
@@ -30,6 +31,12 @@ func NewModule(name string) *Module {
 func gqlToTypeNode(mod *Module, ref *introspection.TypeRef) (hm.Type, error) {
 	switch ref.Kind {
 	case introspection.TypeKindScalar:
+		if strings.HasSuffix(ref.Name, "ID") {
+			return gqlToTypeNode(mod, &introspection.TypeRef{
+				Name: strings.TrimSuffix(ref.Name, "ID"),
+				Kind: introspection.TypeKindObject,
+			})
+		}
 		t, found := mod.NamedType(ref.Name)
 		if !found {
 			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
