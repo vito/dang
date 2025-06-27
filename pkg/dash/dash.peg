@@ -59,6 +59,7 @@ Symbol <- name:Id {
   // Just a Symbol
   return Symbol{
     Name: name.(string),
+    AutoCall: true,
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
@@ -88,6 +89,7 @@ SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
       Receiver: left.(Node),
       Field: name.(string),
       Args: nil,
+      AutoCall: true,
       Loc: &SourceLocation{
         Line: c.pos.line,
         Column: c.pos.col,

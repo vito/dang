@@ -214,72 +214,31 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		return nil, fmt.Errorf("field %s not found on GraphQL type %s", fieldName, g.TypeName)
 	}
 
-	// If this field has arguments, return a GraphQLFunction for calling
-	if len(field.Args) > 0 {
-		// Create a function type for this method call
-		args := NewRecordType("")
-		for _, arg := range field.Args {
-			argType, err := gqlToTypeNode(NewEnv(g.Schema), arg.TypeRef)
-			if err != nil {
-				continue
-			}
-			args.Add(arg.Name, hm.NewScheme(nil, argType))
-		}
-
-		retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef)
+	// Create a function type for this method call
+	args := NewRecordType("")
+	for _, arg := range field.Args {
+		argType, err := gqlToTypeNode(NewEnv(g.Schema), arg.TypeRef)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert return type: %w", err)
+			continue
 		}
-
-		fnType := hm.NewFnType(args, retType)
-
-		return GraphQLFunction{
-			Name:       fmt.Sprintf("%s.%s", g.Name, fieldName),
-			TypeName:   g.TypeName,
-			Field:      field,
-			FnType:     fnType,
-			Client:     g.Client,
-			Schema:     g.Schema,
-			QueryChain: g.QueryChain, // Pass the current query chain
-		}, nil
+		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	// For 0-arity fields, check if it's scalar
-	if isScalarType(field.TypeRef, g.Schema) {
-		// Execute the query and return the scalar result
-		var query *querybuilder.Selection
-		if g.QueryChain != nil {
-			// Use existing query chain and add this field
-			query = g.QueryChain.Select(fieldName)
-		} else {
-			// Build from scratch (shouldn't happen in normal flow)
-			query = querybuilder.Query().Select(g.Name).Select(fieldName)
-		}
-
-		var result interface{}
-		query = query.Bind(&result).Client(g.Client.GraphQLClient())
-		if err := query.Execute(ctx); err != nil {
-			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, fieldName, err)
-		}
-		return goValueToDash(result, field.TypeRef)
+	retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
 
-	// For non-scalar 0-arity fields, return another GraphQLValue for further selection
-	var newQueryChain *querybuilder.Selection
-	if g.QueryChain != nil {
-		newQueryChain = g.QueryChain.Select(fieldName)
-	} else {
-		newQueryChain = querybuilder.Query().Select(g.Name).Select(fieldName)
-	}
+	fnType := hm.NewFnType(args, retType)
 
-	return GraphQLValue{
+	return GraphQLFunction{
 		Name:       fmt.Sprintf("%s.%s", g.Name, fieldName),
-		TypeName:   getTypeName(field.TypeRef),
+		TypeName:   g.TypeName,
 		Field:      field,
-		ValType:    g.ValType, // This could be improved with proper type inference
+		FnType:     fnType,
 		Client:     g.Client,
 		Schema:     g.Schema,
-		QueryChain: newQueryChain,
+		QueryChain: g.QueryChain, // Pass the current query chain
 	}, nil
 }
 

@@ -3,6 +3,4 @@
 set -e -u -x
 
 go generate -x ./...
-
-# reinstall dash treesitter
-vim --headless '+TSUpdateSync dash' +qall
+go -C treesitter generate -x ./...

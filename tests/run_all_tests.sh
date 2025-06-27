@@ -11,8 +11,7 @@ echo "========================="
 cd "$(dirname "$0")/.."
 
 # Make sure we always run with a fresh build
-go generate -x ./...
-go -C treesitter generate -x ./...
+./hack/generate
 go build -o dash ./cmd/dash
 
 failed_tests=0

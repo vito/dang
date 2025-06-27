@@ -459,29 +459,18 @@ func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 // TODO record literals?
 
 type Symbol struct {
-	Name string
-	Loc  *SourceLocation
+	Name     string
+	AutoCall bool
+	Loc      *SourceLocation
 }
 
 var _ Node = Symbol{}
 var _ Evaluator = Symbol{}
 
-func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	scheme, found := env.SchemeOf(s.Name)
-	if !found {
-		return nil, fmt.Errorf("Symbol.Infer: %q not found in env", s.Name)
-	}
-	t, _ := scheme.Type()
-
+func autoCallFnType(t hm.Type) hm.Type {
 	// Check if this is a zero-arity function and return its return type
 	if ft, ok := t.(*hm.FunctionType); ok {
 		if rt, ok := ft.Arg().(*RecordType); ok {
-			// Check if it has zero fields (truly zero-arity) or only optional arguments
-			if len(rt.Fields) == 0 {
-				// This is a zero-arity function, return its return type
-				return ft.Ret(false), nil
-			}
-
 			// Check if all fields are optional (no NonNullType fields)
 			hasRequiredArgs := false
 			for _, field := range rt.Fields {
@@ -495,11 +484,22 @@ func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 			if !hasRequiredArgs {
 				// All arguments are optional, return the return type
-				return ft.Ret(false), nil
+				return ft.Ret(false)
 			}
 		}
 	}
+	return t
+}
 
+func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	scheme, found := env.SchemeOf(s.Name)
+	if !found {
+		return nil, fmt.Errorf("Symbol.Infer: %q not found in env", s.Name)
+	}
+	t, _ := scheme.Type()
+	if s.AutoCall {
+		return autoCallFnType(t), nil
+	}
 	return t, nil
 }
 
@@ -518,17 +518,18 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Auto-call zero-arity functions when accessed as symbols
-	if isZeroArityFunction(val) {
-		return callZeroArityFunction(ctx, env, val)
+	if s.AutoCall && isAutoCallableFn(val) {
+		return autoCallFn(ctx, env, val)
 	}
 
 	return val, nil
 }
 
-// isZeroArityFunction checks if a value is a function with zero required arguments
-func isZeroArityFunction(val Value) bool {
+// isAutoCallableFn checks if a value is a function with zero required arguments
+func isAutoCallableFn(val Value) bool {
 	switch fn := val.(type) {
 	case FunctionValue:
+		// TODO: check for required args
 		return len(fn.Args) == 0
 	case GraphQLFunction:
 		// Check if the function has zero REQUIRED arguments (all args are optional)
@@ -563,8 +564,8 @@ func hasZeroRequiredArgs(field *introspection.Field) bool {
 	return true
 }
 
-// callZeroArityFunction calls a zero-arity function with empty arguments
-func callZeroArityFunction(ctx context.Context, env EvalEnv, val Value) (Value, error) {
+// autoCallFn calls a zero-arity function with empty arguments
+func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
 	emptyArgs := make(map[string]Value)
 
 	switch fn := val.(type) {
@@ -589,6 +590,7 @@ type Select struct {
 	Receiver Node
 	Field    string
 	Args     *Record // Optional: when present, this is a function call
+	AutoCall bool
 	Loc      *SourceLocation
 }
 
@@ -637,7 +639,9 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if !mono {
 		return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field)
 	}
-
+	if d.AutoCall {
+		return autoCallFnType(t), nil
+	}
 	return t, nil
 }
 
@@ -690,35 +694,47 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return nil, fmt.Errorf("evaluating receiver: %w", err)
 	}
 
-	switch rec := receiverVal.(type) {
-	case RecordValue:
-		if val, found := rec.Fields[d.Field]; found {
-			return val, nil
+	val, err := (func() (Value, error) {
+		switch rec := receiverVal.(type) {
+		case RecordValue:
+			if val, found := rec.Fields[d.Field]; found {
+				return val, nil
+			}
+			err := fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
+			return nil, CreateEvalError(ctx, err, d)
+
+		case ModuleValue:
+			// For module selection, we would typically return a function that represents the API call
+			// For now, return a placeholder
+			if val, found := rec.Values[d.Field]; found {
+				// If this is a function call (Args present), call the function
+				return val, nil
+			}
+			// Return a placeholder function for Dagger API calls
+			return ModuleValue{
+				Mod:    rec.Mod,
+				Values: map[string]Value{d.Field: StringValue{Val: fmt.Sprintf("dagger.%s.%s", rec.Mod.Named, d.Field)}},
+			}, nil
+
+		case GraphQLValue:
+			// Handle GraphQL field selection
+			return rec.SelectField(ctx, d.Field)
+
+		default:
+			err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
+			return nil, CreateEvalError(ctx, err, d)
 		}
-		err := fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
-		return nil, CreateEvalError(ctx, err, d)
-
-	case ModuleValue:
-		// For module selection, we would typically return a function that represents the API call
-		// For now, return a placeholder
-		if val, found := rec.Values[d.Field]; found {
-			// If this is a function call (Args present), call the function
-			return val, nil
-		}
-		// Return a placeholder function for Dagger API calls
-		return ModuleValue{
-			Mod:    rec.Mod,
-			Values: map[string]Value{d.Field: StringValue{Val: fmt.Sprintf("dagger.%s.%s", rec.Mod.Named, d.Field)}},
-		}, nil
-
-	case GraphQLValue:
-		// Handle GraphQL field selection
-		return rec.SelectField(ctx, d.Field)
-
-	default:
-		err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
-		return nil, CreateEvalError(ctx, err, d)
+	})()
+	if err != nil {
+		return nil, err
 	}
+
+	// Auto-call zero-arity functions when accessed as symbols
+	if d.AutoCall && isAutoCallableFn(val) {
+		return autoCallFn(ctx, env, val)
+	}
+
+	return val, nil
 }
 
 // getParameterNames extracts parameter names from a function value (similar to FunCall)
@@ -764,11 +780,11 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	
-	// For the default operator, the left side can be nullable and the right side 
-	// provides the fallback value. We need to unify the non-null version of the 
+
+	// For the default operator, the left side can be nullable and the right side
+	// provides the fallback value. We need to unify the non-null version of the
 	// left type with the right type.
-	
+
 	// Try to unify the types - this handles the case where left is a type variable (like null)
 	_, err = hm.Unify(lt, rt)
 	if err != nil {
@@ -779,7 +795,7 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, fmt.Errorf("Default.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
 		}
 	}
-	
+
 	// Return the right type (the fallback value type)
 	return rt, nil
 }
@@ -822,7 +838,7 @@ func (e Equality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Equality always returns a boolean
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
@@ -1327,12 +1343,12 @@ func (a Assert) getImmediateChildren(expr Node) []ChildNode {
 	case Select:
 		// Handle both field access and method calls
 		var children []ChildNode
-		
+
 		// Add receiver if present
 		if n.Receiver != nil {
 			children = append(children, ChildNode{"receiver", n.Receiver})
 		}
-		
+
 		// Add arguments if this is a method call
 		if n.Args != nil {
 			for i, arg := range *n.Args {
