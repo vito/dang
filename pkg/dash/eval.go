@@ -435,6 +435,27 @@ func goValueToDash(val interface{}, typeRef *introspection.TypeRef) (Value, erro
 		return IntValue{Val: int(v)}, nil
 	case bool:
 		return BoolValue{Val: v}, nil
+	case []any:
+		var vals []Value
+		var elemType hm.Type
+		for _, item := range v {
+			val, err := goValueToDash(item, typeRef.OfType)
+			if err != nil {
+				return nil, err
+			}
+			if elemType == nil {
+				elemType = val.Type()
+			} else {
+				if _, err := hm.Unify(elemType, val.Type()); err != nil {
+					return nil, fmt.Errorf("type mismatch: %s vs %s", elemType, val.Type())
+				}
+			}
+			vals = append(vals, val)
+		}
+		if elemType == nil {
+			elemType = hm.TypeVariable('a')
+		}
+		return ListValue{Elements: vals, ElemType: elemType}, nil
 	default:
 		return nil, fmt.Errorf("unsupported Go value type: %T", val)
 	}
