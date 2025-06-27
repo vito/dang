@@ -1,0 +1,13 @@
+cls Apko {
+  pvt packages: [String!]!
+
+  pub withPackages(packages: [String!]!): Apko! {
+    self(packages: packages)
+  }
+
+  pub build: [String!]! {
+    packages
+  }
+}
+
+Apko().withPackages(["foo", "bar"]).build
