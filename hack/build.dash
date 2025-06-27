@@ -1,0 +1,5 @@
+#!/usr/bin/env dash
+
+pvt src = host.directory(".", include: ["**/*.go"])
+
+print(src.entries)

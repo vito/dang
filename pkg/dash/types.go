@@ -69,7 +69,11 @@ func (t ListType) Apply(subs hm.Subs) hm.Substitutable {
 }
 
 func (t ListType) Normalize(k, v hm.TypeVarSet) (Type, error) {
-	return ListType{t}, nil
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return ListType{normalized}, nil
 }
 
 func (t ListType) Types() hm.Types {
@@ -279,7 +283,11 @@ func (t NonNullType) Apply(subs hm.Subs) hm.Substitutable {
 }
 
 func (t NonNullType) Normalize(k, v hm.TypeVarSet) (Type, error) {
-	return NonNullType{t}, nil
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return NonNullType{normalized}, nil
 }
 
 func (t NonNullType) Types() hm.Types {

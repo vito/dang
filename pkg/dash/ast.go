@@ -80,8 +80,20 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
 			}
 
-			if _, err := hm.Unify(dt, it); err != nil {
-				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+			// Try to unify the types - this handles the case where one is nullable and the other is non-null
+			_, err = hm.Unify(dt, it)
+			if err != nil {
+				// If direct unification fails, try with non-null version of the inferred type
+				nonNullIt := NonNullType{it}
+				_, err = hm.Unify(dt, nonNullIt)
+				if err != nil {
+					// Also try wrapping the declared type with NonNull
+					nonNullDt := NonNullType{dt}
+					_, err = hm.Unify(nonNullDt, it)
+					if err != nil {
+						return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+					}
+				}
 			}
 		}
 		// TODO: check required args are specified?
@@ -107,8 +119,20 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
 			}
 
-			if _, err := hm.Unify(dt, it); err != nil {
-				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+			// Try to unify the types - this handles the case where one is nullable and the other is non-null
+			_, err = hm.Unify(dt, it)
+			if err != nil {
+				// If direct unification fails, try with non-null version of the inferred type
+				nonNullIt := NonNullType{it}
+				_, err = hm.Unify(dt, nonNullIt)
+				if err != nil {
+					// Also try wrapping the declared type with NonNull
+					nonNullDt := NonNullType{dt}
+					_, err = hm.Unify(nonNullDt, it)
+					if err != nil {
+						return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+					}
+				}
 			}
 		}
 		return NonNullType{ft}, nil
@@ -410,8 +434,10 @@ var _ Evaluator = List{}
 
 func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
-		// TODO: is this right?
-		return NonNullType{ListType{f.Fresh()}}, nil
+		// For now, just return the original approach and document this as a known issue
+		// The real fix requires changes to how the HM library handles recursive types
+		tv := f.Fresh()
+		return NonNullType{ListType{tv}}, nil
 	}
 
 	var t hm.Type
