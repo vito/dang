@@ -2,7 +2,6 @@ package dash
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/chewxy/hm"
 )
@@ -27,12 +26,12 @@ func UnifyWithCompatibility(expected, provided hm.Type) (hm.Subs, error) {
 	if subs, err := hm.Unify(expected, provided); err == nil {
 		return subs, nil
 	}
-	
+
 	// Check subtyping compatibility
 	if isSubtypeCompatible(expected, provided) {
 		return nil, nil // Empty substitution
 	}
-	
+
 	// Neither worked, return original unification error for better error messages
 	return hm.Unify(expected, provided)
 }
@@ -45,7 +44,7 @@ func isSubtypeCompatible(expected, provided hm.Type) bool {
 			return true
 		}
 	}
-	
+
 	// Check if expected type implements subtyping and provided is its supertype
 	// (This handles cases where expected is more specific than provided, which should fail)
 	if expectedST, ok := expected.(SubtypingType); ok {
@@ -53,7 +52,7 @@ func isSubtypeCompatible(expected, provided hm.Type) bool {
 			return false // Don't allow supertype -> subtype
 		}
 	}
-	
+
 	return false
 }
 
@@ -273,7 +272,6 @@ func (t *RecordType) Eq(other Type) bool {
 				return false
 			}
 		}
-		log.Println("RECORD TYPE MATCH", t, ot, t.Named, ot.Named)
 		return true
 	}
 	return false
