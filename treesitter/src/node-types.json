@@ -350,6 +350,22 @@
     }
   },
   {
+    "type": "arg_without_type",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "argument",
     "named": true,
     "fields": {},
@@ -1055,6 +1071,33 @@
     }
   },
   {
+    "type": "lambda_arg",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "arg_with_block_default",
+          "named": true
+        },
+        {
+          "type": "arg_with_default",
+          "named": true
+        },
+        {
+          "type": "arg_with_type",
+          "named": true
+        },
+        {
+          "type": "arg_without_type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "lambda_args",
     "named": true,
     "fields": {
@@ -1063,7 +1106,7 @@
         "required": false,
         "types": [
           {
-            "type": "id",
+            "type": "lambda_arg",
             "named": true
           }
         ]
@@ -1073,7 +1116,7 @@
         "required": false,
         "types": [
           {
-            "type": "id",
+            "type": "lambda_arg",
             "named": true
           }
         ]
@@ -1083,7 +1126,7 @@
         "required": false,
         "types": [
           {
-            "type": "id",
+            "type": "lambda_arg",
             "named": true
           },
           {
@@ -1097,7 +1140,7 @@
         "required": false,
         "types": [
           {
-            "type": "id",
+            "type": "lambda_arg",
             "named": true
           }
         ]

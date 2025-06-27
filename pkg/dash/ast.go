@@ -1590,7 +1590,7 @@ func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Lambda struct {
-	Args []string
+	Args []SlotDecl
 	Expr Node
 	Loc  *SourceLocation
 }
@@ -1607,9 +1607,41 @@ func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
 
 	for i, arg := range l.Args {
-		argType := fresh.Fresh()
-		argTypes[i] = Keyed[*hm.Scheme]{Key: arg, Value: hm.NewScheme(nil, argType), Positional: false}
-		newEnv.Add(arg, hm.NewScheme(nil, argType))
+		var definedArgType hm.Type
+		var err error
+
+		if arg.Type_ != nil {
+			definedArgType, err = arg.Type_.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("Lambda.Infer arg: %w", err)
+			}
+		}
+
+		var inferredValType hm.Type
+		if arg.Value != nil {
+			inferredValType, err = arg.Value.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("Lambda.Infer arg: %w", err)
+			}
+		}
+
+		var finalArgType hm.Type
+		if definedArgType != nil && inferredValType != nil {
+			if !definedArgType.Eq(inferredValType) {
+				return nil, fmt.Errorf("Lambda.Infer arg: %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
+			}
+			finalArgType = definedArgType
+		} else if definedArgType != nil {
+			finalArgType = definedArgType
+		} else if inferredValType != nil {
+			finalArgType = inferredValType
+		} else {
+			finalArgType = fresh.Fresh()
+		}
+
+		scheme := hm.NewScheme(nil, finalArgType)
+		newEnv.Add(arg.Named, scheme)
+		argTypes[i] = Keyed[*hm.Scheme]{Key: arg.Named, Value: scheme, Positional: false}
 	}
 
 	bodyType, err := l.Expr.Infer(newEnv, fresh)
@@ -1621,19 +1653,24 @@ func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// For now, create a simple function type signature
-	// In a full implementation, we'd need to properly infer the function type
-	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
+	// Extract argument names from SlotDecl
+	argNames := make([]string, len(l.Args))
 	for i, arg := range l.Args {
-		// Use a placeholder type for now
-		argTypes[i] = Keyed[*hm.Scheme]{Key: arg, Value: hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))), Positional: false}
+		argNames[i] = arg.Named
 	}
 
-	// Create a function type with placeholder return type
+	// Create function type for this lambda
+	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
+	for i, arg := range l.Args {
+		// Use a placeholder type for now - in a full implementation we'd get this from type inference
+		argTypes[i] = Keyed[*hm.Scheme]{Key: arg.Named, Value: hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))), Positional: false}
+	}
+
+	// Create the function type
 	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
 
 	return FunctionValue{
-		Args:    l.Args,
+		Args:    argNames,
 		Body:    l.Expr,
 		Closure: env,
 		FnType:  fnType,

@@ -1,16 +1,16 @@
-# Test lambda expressions
-
 # Simple lambda
 pub identity = \x -> x
-pub add_one = \x -> x
+assert { identity(42) == 42 }
+assert { identity("test") == "test" }
 
-# Note: We can't actually call lambdas without function call support
-# For now, just test that lambdas can be defined and assigned
+# Lambda with typed arguments
+pub typed_identity = \(x: Int!) -> x
+assert { typed_identity(123) == 123 }
 
-# Lambda with string
-pub string_lambda = \s -> s
+pub typed_string_fn = \(s: String!) -> s
+assert { typed_string_fn("hello") == "hello" }
 
-# Lambda with multiple params (if supported)
-# pub add = \(x, y) -> x  # May not work without proper syntax
-
-print("Lambda expression tests passed!")
+# Lambda with multiple typed parameters
+pub typed_add = \(x: Int!, y: Int!) -> x + y
+assert { typed_add(3, 4) == 7 }
+assert { typed_add(10, 20) == 30 }
