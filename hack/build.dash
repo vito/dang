@@ -2,4 +2,9 @@
 
 pvt src = host.directory(".", include: ["**/*.go"])
 
-print(src.entries)
+pvt ver = container.
+  from("golang").
+  withExec(["go", "version"]).
+  stdout
+
+print(ver)

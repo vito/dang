@@ -141,17 +141,13 @@ func NewEnv(schema *introspection.Schema) *Module {
 // addBuiltinTypes adds the type signatures for builtin functions
 func addBuiltinTypes(mod *Module) {
 	// print function: print(value: a) -> Null
-	// Use a polymorphic scheme that allows any type for the value parameter
-	argTypeVar := hm.TypeVariable('a')
+	argType := hm.TypeVariable('a')
 	args := NewRecordType("")
-	args.Add("value", hm.NewScheme(nil, argTypeVar))
+	args.Add("value", hm.NewScheme(nil, argType))
 	printType := hm.NewFnType(args, hm.TypeVariable('n')) // returns null
-	
-	// Create a proper polymorphic scheme for print
-	printScheme := hm.NewScheme(hm.TypeVarSet{argTypeVar: struct{}{}}, printType)
 
 	slog.Debug("adding builtin function", "function", "print")
-	mod.Add("print", printScheme)
+	mod.Add("print", hm.NewScheme(nil, printType))
 }
 
 var _ hm.Substitutable = (*Module)(nil)

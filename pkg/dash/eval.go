@@ -446,7 +446,7 @@ func goValueToDash(val interface{}, typeRef *introspection.TypeRef) (Value, erro
 			if elemType == nil {
 				elemType = val.Type()
 			} else {
-				if _, err := hm.Unify(elemType, val.Type()); err != nil {
+				if _, err := UnifyWithCompatibility(elemType, val.Type()); err != nil {
 					return nil, fmt.Errorf("type mismatch: %s vs %s", elemType, val.Type())
 				}
 			}

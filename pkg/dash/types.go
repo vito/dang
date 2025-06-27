@@ -9,8 +9,52 @@ import (
 
 type Type = hm.Type
 
+// SubtypingType extends hm.Type with subtyping relationships
+type SubtypingType interface {
+	hm.Type
+	// IsSubtypeOf returns true if this type can be used where other is expected
+	IsSubtypeOf(other hm.Type) bool
+}
+
 type TypeNode interface {
 	hm.Inferer
+}
+
+// UnifyWithCompatibility unifies two types, considering subtyping relationships
+// This is the main entry point for all type unification in Dash
+func UnifyWithCompatibility(expected, provided hm.Type) (hm.Subs, error) {
+	// Try direct structural unification first (preserves HM semantics)
+	if subs, err := hm.Unify(expected, provided); err == nil {
+		return subs, nil
+	}
+	
+	// Check subtyping compatibility
+	if isSubtypeCompatible(expected, provided) {
+		return nil, nil // Empty substitution
+	}
+	
+	// Neither worked, return original unification error for better error messages
+	return hm.Unify(expected, provided)
+}
+
+// isSubtypeCompatible checks if provided type can be used where expected type is required
+func isSubtypeCompatible(expected, provided hm.Type) bool {
+	// Check if provided type implements subtyping and is subtype of expected
+	if providedST, ok := provided.(SubtypingType); ok {
+		if providedST.IsSubtypeOf(expected) {
+			return true
+		}
+	}
+	
+	// Check if expected type implements subtyping and provided is its supertype
+	// (This handles cases where expected is more specific than provided, which should fail)
+	if expectedST, ok := expected.(SubtypingType); ok {
+		if expectedST.IsSubtypeOf(provided) {
+			return false // Don't allow supertype -> subtype
+		}
+	}
+	
+	return false
 }
 
 // TODO: support sub-selections?
@@ -80,6 +124,14 @@ func (t ListType) Types() hm.Types {
 	ts := hm.BorrowTypes(1)
 	ts[0] = t.Type
 	return ts
+}
+
+// IsSubtypeOf implements SubtypingType
+// ListType doesn't have direct subtyping, but its elements might
+func (t ListType) IsSubtypeOf(other hm.Type) bool {
+	// List types are only subtypes if they're identical
+	// The subtyping happens at the NonNull wrapper level
+	return t.Eq(other)
 }
 
 func (t ListType) String() string {
@@ -294,6 +346,13 @@ func (t NonNullType) Types() hm.Types {
 	ts := hm.BorrowTypes(1)
 	ts[0] = t.Type
 	return ts
+}
+
+// IsSubtypeOf implements SubtypingType
+// NonNull T is a subtype of nullable T
+func (t NonNullType) IsSubtypeOf(other hm.Type) bool {
+	// NonNull T <: T (non-null is subtype of nullable)
+	return t.Type.Eq(other)
 }
 
 func (t NonNullType) String() string {

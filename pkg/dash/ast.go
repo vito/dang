@@ -80,20 +80,8 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
 			}
 
-			// Try to unify the types - this handles the case where one is nullable and the other is non-null
-			_, err = hm.Unify(dt, it)
-			if err != nil {
-				// If direct unification fails, try with non-null version of the inferred type
-				nonNullIt := NonNullType{it}
-				_, err = hm.Unify(dt, nonNullIt)
-				if err != nil {
-					// Also try wrapping the declared type with NonNull
-					nonNullDt := NonNullType{dt}
-					_, err = hm.Unify(nonNullDt, it)
-					if err != nil {
-						return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
-					}
-				}
+			if _, err := UnifyWithCompatibility(dt, it); err != nil {
+				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
 			}
 		}
 		// TODO: check required args are specified?
@@ -119,20 +107,8 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
 			}
 
-			// Try to unify the types - this handles the case where one is nullable and the other is non-null
-			_, err = hm.Unify(dt, it)
-			if err != nil {
-				// If direct unification fails, try with non-null version of the inferred type
-				nonNullIt := NonNullType{it}
-				_, err = hm.Unify(dt, nonNullIt)
-				if err != nil {
-					// Also try wrapping the declared type with NonNull
-					nonNullDt := NonNullType{dt}
-					_, err = hm.Unify(nonNullDt, it)
-					if err != nil {
-						return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
-					}
-				}
+			if _, err := UnifyWithCompatibility(dt, it); err != nil {
+				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
 			}
 		}
 		return NonNullType{ft}, nil
@@ -448,7 +424,7 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 		}
 		if t == nil {
 			t = et
-		} else if _, err := hm.Unify(t, et); err != nil {
+		} else if _, err := UnifyWithCompatibility(t, et); err != nil {
 			// TODO: is this right?
 			return nil, fmt.Errorf("unify index %d: %w", i, err)
 		}
@@ -811,15 +787,9 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// provides the fallback value. We need to unify the non-null version of the
 	// left type with the right type.
 
-	// Try to unify the types - this handles the case where left is a type variable (like null)
-	_, err = hm.Unify(lt, rt)
-	if err != nil {
-		// If direct unification fails, try with non-null version of left
-		nonNullLeft := NonNullType{lt}
-		_, err = hm.Unify(nonNullLeft, rt)
-		if err != nil {
-			return nil, fmt.Errorf("Default.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
-		}
+	// Unify types with subtyping support for nullable/NonNull compatibility
+	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+		return nil, fmt.Errorf("Default.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
 	}
 
 	// Return the right type (the fallback value type)
@@ -1065,7 +1035,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 
-	if _, err := hm.Unify(condType, boolType); err != nil {
+	if _, err := UnifyWithCompatibility(condType, boolType); err != nil {
 		return nil, fmt.Errorf("Conditional.Infer: condition must be Boolean, got %s", condType)
 	}
 
@@ -1081,7 +1051,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, err
 		}
 
-		if _, err := hm.Unify(thenType, elseType); err != nil {
+		if _, err := UnifyWithCompatibility(thenType, elseType); err != nil {
 			return nil, fmt.Errorf("Conditional.Infer: then and else branches must have same type: %s != %s", thenType, elseType)
 		}
 	}
@@ -1238,7 +1208,7 @@ func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		if i == 0 {
 			resultType = caseType
 		} else {
-			if _, err := hm.Unify(resultType, caseType); err != nil {
+			if _, err := UnifyWithCompatibility(resultType, caseType); err != nil {
 				return nil, fmt.Errorf("Match.Infer: case %d type mismatch: %s != %s", i, resultType, caseType)
 			}
 		}
