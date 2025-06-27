@@ -15,7 +15,8 @@ Dash <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
 
-Sep <- [,\n] _
+Sep <- (CommaToken / '\n') _
+CommaToken <- ','
 
 Expr <- Class / Slot / Form
 

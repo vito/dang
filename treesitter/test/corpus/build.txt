@@ -131,7 +131,8 @@ print(test(bin(src)))
                       (positional_value
                         (literal
                           (string))))
-                    (sep)
+                    (sep
+                      (comma_token))
                     (argument
                       (positional_value
                         (symbol_or_call
@@ -154,7 +155,8 @@ print(test(bin(src)))
                   (positional_value
                     (literal
                       (string))))
-                (sep)
+                (sep
+                  (comma_token))
                 (argument
                   (positional_value
                     (literal
@@ -168,16 +170,20 @@ print(test(bin(src)))
                   (list
                     (literal
                       (string))
-                    (sep)
+                    (sep
+                      (comma_token))
                     (literal
                       (string))
-                    (sep)
+                    (sep
+                      (comma_token))
                     (literal
                       (string))
-                    (sep)
+                    (sep
+                      (comma_token))
                     (literal
                       (string))
-                    (sep)
+                    (sep
+                      (comma_token))
                     (literal
                       (string)))))))
           (dot_token)
@@ -242,7 +248,8 @@ print(test(bin(src)))
                   (positional_value
                     (literal
                       (string))))
-                (sep)
+                (sep
+                  (comma_token))
                 (argument
                   (positional_value
                     (symbol_or_call
@@ -258,7 +265,8 @@ print(test(bin(src)))
                   (list
                     (literal
                       (string))
-                    (sep)
+                    (sep
+                      (comma_token))
                     (literal
                       (string)))))))
           (dot_token)

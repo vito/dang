@@ -1741,6 +1741,21 @@
     }
   },
   {
+    "type": "sep",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "comma_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "slot",
     "named": true,
     "fields": {},
@@ -2215,6 +2230,10 @@
     }
   },
   {
+    "type": "\n",
+    "named": false
+  },
+  {
     "type": "\"",
     "named": false
   },
@@ -2268,6 +2287,10 @@
   },
   {
     "type": "colon_token",
+    "named": true
+  },
+  {
+    "type": "comma_token",
     "named": true
   },
   {
@@ -2365,10 +2388,6 @@
   },
   {
     "type": "quoted_raw_token",
-    "named": true
-  },
-  {
-    "type": "sep",
     "named": true
   },
   {
