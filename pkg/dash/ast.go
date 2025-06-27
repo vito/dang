@@ -965,6 +965,427 @@ func (a Addition) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)
 }
 
+type Subtraction struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Subtraction{}
+var _ Evaluator = Subtraction{}
+
+func (s Subtraction) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := s.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := s.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+		return nil, fmt.Errorf("Subtraction.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+	}
+	return lt, nil
+}
+
+func (s Subtraction) Body() hm.Expression { return s }
+
+func (s Subtraction) GetSourceLocation() *SourceLocation { return s.Loc }
+
+func (s Subtraction) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, s.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, s.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			return IntValue{Val: l.Val - r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("subtraction not supported for types %T and %T", leftVal, rightVal)
+}
+
+type Multiplication struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Multiplication{}
+var _ Evaluator = Multiplication{}
+
+func (m Multiplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := m.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := m.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+		return nil, fmt.Errorf("Multiplication.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+	}
+	return lt, nil
+}
+
+func (m Multiplication) Body() hm.Expression { return m }
+
+func (m Multiplication) GetSourceLocation() *SourceLocation { return m.Loc }
+
+func (m Multiplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, m.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, m.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			return IntValue{Val: l.Val * r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("multiplication not supported for types %T and %T", leftVal, rightVal)
+}
+
+type Division struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Division{}
+var _ Evaluator = Division{}
+
+func (d Division) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := d.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := d.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+		return nil, fmt.Errorf("Division.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+	}
+	return lt, nil
+}
+
+func (d Division) Body() hm.Expression { return d }
+
+func (d Division) GetSourceLocation() *SourceLocation { return d.Loc }
+
+func (d Division) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, d.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, d.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			if r.Val == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return IntValue{Val: l.Val / r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("division not supported for types %T and %T", leftVal, rightVal)
+}
+
+type Modulo struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Modulo{}
+var _ Evaluator = Modulo{}
+
+func (m Modulo) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := m.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := m.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+		return nil, fmt.Errorf("Modulo.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+	}
+	return lt, nil
+}
+
+func (m Modulo) Body() hm.Expression { return m }
+
+func (m Modulo) GetSourceLocation() *SourceLocation { return m.Loc }
+
+func (m Modulo) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, m.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, m.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			if r.Val == 0 {
+				return nil, fmt.Errorf("modulo by zero")
+			}
+			return IntValue{Val: l.Val % r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
+}
+
+type Inequality struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Inequality{}
+var _ Evaluator = Inequality{}
+
+func (i Inequality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Type check both sides for validity, but allow cross-type comparison at runtime
+	_, err := i.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	_, err = i.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Inequality always returns a boolean
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (i Inequality) Body() hm.Expression { return i }
+
+func (i Inequality) GetSourceLocation() *SourceLocation { return i.Loc }
+
+func (i Inequality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, i.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, i.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	
+	// Compare the values and return the opposite of equality
+	equal := valuesEqual(leftVal, rightVal)
+	return BoolValue{Val: !equal}, nil
+}
+
+type LessThan struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = LessThan{}
+var _ Evaluator = LessThan{}
+
+func (l LessThan) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Type check both sides for validity
+	_, err := l.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	_, err = l.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// LessThan always returns a boolean
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (l LessThan) Body() hm.Expression { return l }
+
+func (l LessThan) GetSourceLocation() *SourceLocation { return l.Loc }
+
+func (l LessThan) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, l.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, l.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val < rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
+type GreaterThan struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = GreaterThan{}
+var _ Evaluator = GreaterThan{}
+
+func (g GreaterThan) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Type check both sides for validity
+	_, err := g.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	_, err = g.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// GreaterThan always returns a boolean
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (g GreaterThan) Body() hm.Expression { return g }
+
+func (g GreaterThan) GetSourceLocation() *SourceLocation { return g.Loc }
+
+func (g GreaterThan) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, g.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, g.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val > rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("greater than comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
+type LessThanEqual struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = LessThanEqual{}
+var _ Evaluator = LessThanEqual{}
+
+func (l LessThanEqual) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Type check both sides for validity
+	_, err := l.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	_, err = l.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// LessThanEqual always returns a boolean
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (l LessThanEqual) Body() hm.Expression { return l }
+
+func (l LessThanEqual) GetSourceLocation() *SourceLocation { return l.Loc }
+
+func (l LessThanEqual) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, l.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, l.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val <= rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
+type GreaterThanEqual struct {
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = GreaterThanEqual{}
+var _ Evaluator = GreaterThanEqual{}
+
+func (g GreaterThanEqual) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Type check both sides for validity
+	_, err := g.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	_, err = g.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// GreaterThanEqual always returns a boolean
+	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (g GreaterThanEqual) Body() hm.Expression { return g }
+
+func (g GreaterThanEqual) GetSourceLocation() *SourceLocation { return g.Loc }
+
+func (g GreaterThanEqual) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, g.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, g.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+	
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val >= rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("greater than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
 type Null struct {
 	Loc *SourceLocation
 }

@@ -298,7 +298,7 @@ TypeVariable <- v:[a-z] {
 
 BangToken <- '!'
 
-Infix <- Equality / Default / Addition
+Infix <- Equality / Inequality / LessThanEqual / LessThan / GreaterThanEqual / GreaterThan / Default / Addition / Subtraction / Multiplication / Division / Modulo
 Default <- left:Term _ InterroToken _ right:Term {
   return Default{
     Left: left.(Node),
@@ -325,6 +325,58 @@ Addition <- left:Term _ PlusToken _ right:Term {
 }
 PlusToken <- '+'
 
+Subtraction <- left:Term _ MinusToken _ right:Term {
+  return Subtraction{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+MinusToken <- '-'
+
+Multiplication <- left:Term _ StarToken _ right:Term {
+  return Multiplication{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+StarToken <- '*'
+
+Division <- left:Term _ SlashToken _ right:Term {
+  return Division{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+SlashToken <- '/'
+
+Modulo <- left:Term _ PercentToken _ right:Term {
+  return Modulo{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+PercentToken <- '%' !(WordChar / '{') 
+
 Equality <- left:Term _ EqualToken _ right:Term {
   return Equality{
     Left: left.(Node),
@@ -337,6 +389,71 @@ Equality <- left:Term _ EqualToken _ right:Term {
   }, nil
 }
 EqualToken <- "=="
+
+Inequality <- left:Term _ NotEqualToken _ right:Term {
+  return Inequality{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+NotEqualToken <- "!="
+
+LessThanEqual <- left:Term _ LessEqualToken _ right:Term {
+  return LessThanEqual{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+LessEqualToken <- "<="
+
+LessThan <- left:Term _ LessToken _ right:Term {
+  return LessThan{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+LessToken <- '<'
+
+GreaterThanEqual <- left:Term _ GreaterEqualToken _ right:Term {
+  return GreaterThanEqual{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+GreaterEqualToken <- ">="
+
+GreaterThan <- left:Term _ GreaterToken _ right:Term {
+  return GreaterThan{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+GreaterToken <- '>'
 
 DotToken <- '.'
 
@@ -386,7 +503,7 @@ Block <- '{' _ eles:( first:Expr rest:(Sep e:Expr { return e, nil })* {
 
 Literal <- Int / Boolean / String / Quoted / Null
 
-Int <- '0' / NonZeroDecimalDigit DecimalDigit* {
+Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   value, err := strconv.ParseInt(string(c.text), 10, 64)
   if err != nil {
     return nil, err

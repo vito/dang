@@ -1,0 +1,4 @@
+assert { (5 > 3) == true }
+assert { (3 > 5) == false }
+assert { (5 > 5) == false }
+assert { (1 > 0) == true }
