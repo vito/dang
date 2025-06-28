@@ -22,9 +22,4 @@ assert { flag == false }
   assert { x == 200 }
 }
 
-# Test reassignment returns value
-pub result = (x = 300)
-assert { result == 300 }
-assert { x == 300 }
-
 print("Reassignment tests passed!")

@@ -37,7 +37,7 @@ type FunCall struct {
 var _ Node = FunCall{}
 var _ Evaluator = FunCall{}
 
-func (c FunCall) Body() hm.Expression { return c.Args }
+func (c FunCall) Body() hm.Expression { return c.Fun }
 
 func (c FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
@@ -698,25 +698,13 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	val, err := (func() (Value, error) {
 		switch rec := receiverVal.(type) {
-		case RecordValue:
-			if val, found := rec.Fields[d.Field]; found {
-				return val, nil
-			}
-			err := fmt.Errorf("Select.Eval: field %q not found in record", d.Field)
-			return nil, CreateEvalError(ctx, err, d)
-
-		case ModuleValue:
-			// For module selection, we would typically return a function that represents the API call
-			// For now, return a placeholder
-			if val, found := rec.Values[d.Field]; found {
+		case EvalEnv:
+			if val, found := rec.Get(d.Field); found {
 				// If this is a function call (Args present), call the function
 				return val, nil
 			}
-			// Return a placeholder function for Dagger API calls
-			return ModuleValue{
-				Mod:    rec.Mod,
-				Values: map[string]Value{d.Field: StringValue{Val: fmt.Sprintf("dagger.%s.%s", rec.Mod.Named, d.Field)}},
-			}, nil
+			// this shouldn't happen (should be caught at type checking)
+			return nil, fmt.Errorf("module %q does not have a field %q", rec, d.Field)
 
 		case GraphQLValue:
 			// Handle GraphQL field selection
@@ -892,18 +880,6 @@ func valuesEqual(left, right Value) bool {
 			}
 			for i := range l.Elements {
 				if !valuesEqual(l.Elements[i], r.Elements[i]) {
-					return false
-				}
-			}
-			return true
-		}
-	case RecordValue:
-		if r, ok := right.(RecordValue); ok {
-			if len(l.Fields) != len(r.Fields) {
-				return false
-			}
-			for k, v := range l.Fields {
-				if rv, exists := r.Fields[k]; !exists || !valuesEqual(v, rv) {
 					return false
 				}
 			}
@@ -1766,24 +1742,24 @@ func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if !found {
 		return nil, fmt.Errorf("Reassignment.Infer: variable %q not found", r.Name)
 	}
-	
+
 	// Get the existing type
 	existingType, mono := scheme.Type()
 	if !mono {
 		return nil, fmt.Errorf("Reassignment.Infer: variable %q is not monomorphic", r.Name)
 	}
-	
+
 	// Infer the type of the new value
 	valueType, err := r.Value.Infer(env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("Reassignment.Infer: %w", err)
 	}
-	
+
 	// Check that the types are compatible
 	if _, err := UnifyWithCompatibility(existingType, valueType); err != nil {
 		return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to variable %q of type %s: %w", valueType, r.Name, existingType, err)
 	}
-	
+
 	// Reassignment returns the value type
 	return valueType, nil
 }
@@ -1794,18 +1770,89 @@ func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if !found {
 		return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", r.Name)
 	}
-	
+
 	// Evaluate the new value
 	newValue, err := EvalNode(ctx, env, r.Value)
 	if err != nil {
 		return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
 	}
-	
+
 	// Update the variable in the environment
 	env.Set(r.Name, newValue)
-	
+
 	// Return the new value
 	return newValue, nil
+}
+
+type Reopen struct {
+	Term  Node
+	Block Block
+	Loc   *SourceLocation
+}
+
+var _ Node = Reopen{}
+var _ Evaluator = Reopen{}
+
+func (r Reopen) Body() hm.Expression { return r.Term }
+
+func (r Reopen) GetSourceLocation() *SourceLocation { return r.Loc }
+
+func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Infer the type of the base term
+	termType, err := r.Term.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("Reopen.Infer: base term: %w", err)
+	}
+
+	// The term must be a module that can be reopened
+	nonNullType, ok := termType.(NonNullType)
+	if !ok {
+		return nil, fmt.Errorf("Reopen.Infer: cannot reopen nullable type %s", termType)
+	}
+
+	module, ok := nonNullType.Type.(*Module)
+	if !ok {
+		return nil, fmt.Errorf("Reopen.Infer: cannot reopen non-module type %s", termType)
+	}
+
+	// Create a new environment for type checking the block using clone (parent field semantics)
+	blockEnv := module.Clone()
+
+	// Type check the block in the context of the reopened scope
+	_, err = r.Block.Infer(blockEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("Reopen.Infer: block: %w", err)
+	}
+
+	// Return the same type as the base term (copy-on-write semantics)
+	return termType, nil
+}
+
+func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Evaluate the base term
+	termValue, err := EvalNode(ctx, env, r.Term)
+	if err != nil {
+		return nil, fmt.Errorf("Reopen.Eval: evaluating base term: %w", err)
+	}
+
+	// The term must evaluate to a module that can be reopened
+	moduleValue, ok := termValue.(ModuleValue)
+	if !ok {
+		return nil, fmt.Errorf("Reopen.Eval: cannot reopen %T, expected module", termValue)
+	}
+
+	// Create a new scope that inherits from the base module's values (copy-on-write using parent semantics)
+	reopenedEnv := moduleValue.Clone()
+
+	// Evaluate the block in the reopened scope
+	for _, node := range r.Block.Forms {
+		_, err = EvalNode(ctx, reopenedEnv, node)
+		if err != nil {
+			return nil, fmt.Errorf("Reopen.Eval: evaluating block: %w", err)
+		}
+	}
+
+	return reopenedEnv.(ModuleValue), nil
 }
 
 type Assert struct {

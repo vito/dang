@@ -19,13 +19,13 @@ _lineSpace <- [ \t]*
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Class / Slot / Form
+Expr <- Class / Slot / Reassignment / Form
 
-Form <- Conditional / Let / Lambda / Match / Assert / Reassignment / Infix / Term
+Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
-Term <- Literal / SelectOrCall / List / Object / Block / ParenExpr / SymbolOrCall
+Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
-ParenExpr <- '(' _ expr:Form _ ')' {
+ParenForm <- '(' _ expr:Form _ ')' {
   return expr.(Node), nil
 }
 
@@ -268,7 +268,7 @@ TypeVariable <- v:[a-z] {
 
 BangToken <- '!'
 
-Infix <- Equality / Inequality / LessThanEqual / LessThan / GreaterThanEqual / GreaterThan / Default / Addition / Subtraction / Multiplication / Division / Modulo
+Infix <- Reopen / Equality / Inequality / LessThanEqual / LessThan / GreaterThanEqual / GreaterThan / Default / Addition / Subtraction / Multiplication / Division / Modulo
 Default <- left:Term _ InterroToken _ right:Term {
   return Default{
     Left: left.(Node),
@@ -281,6 +281,18 @@ Default <- left:Term _ InterroToken _ right:Term {
   }, nil
 }
 InterroToken <- '?'
+
+Reopen <- t:Term _ ReopenToken _ b:Block {
+  return Reopen{
+    Term: t.(Node),
+    Block: b.(Block),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
 
 Addition <- left:Term _ PlusToken _ right:Term {
   return Addition{
@@ -398,6 +410,7 @@ LessThan <- left:Term _ LessToken _ right:Term {
   }, nil
 }
 LessToken <- '<'
+ReopenToken <- "<<"
 
 GreaterThanEqual <- left:Term _ GreaterEqualToken _ right:Term {
   return GreaterThanEqual{

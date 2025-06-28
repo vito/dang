@@ -12,6 +12,10 @@
         "named": true
       },
       {
+        "type": "reassignment",
+        "named": true
+      },
+      {
         "type": "slot",
         "named": true
       }
@@ -46,10 +50,6 @@
         "named": true
       },
       {
-        "type": "reassignment",
-        "named": true
-      },
-      {
         "type": "term",
         "named": true
       }
@@ -76,7 +76,7 @@
         "named": true
       },
       {
-        "type": "paren_expr",
+        "type": "paren_form",
         "named": true
       },
       {
@@ -996,6 +996,10 @@
           "named": true
         },
         {
+          "type": "reopen",
+          "named": true
+        },
+        {
           "type": "subtraction",
           "named": true
         }
@@ -1680,7 +1684,7 @@
     }
   },
   {
-    "type": "paren_expr",
+    "type": "paren_form",
     "named": true,
     "fields": {
       "expr": {
@@ -1833,6 +1837,42 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "reopen",
+    "named": true,
+    "fields": {
+      "b": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "t": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "reopen_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2529,6 +2569,10 @@
   },
   {
     "type": "quoted_raw_token",
+    "named": true
+  },
+  {
+    "type": "reopen_token",
     "named": true
   },
   {

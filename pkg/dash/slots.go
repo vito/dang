@@ -197,7 +197,7 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 func (c ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Create an evaluation environment for the class
 	classEnv := env.Clone()
-	
+
 	// If classEnv is a ModuleValue, we can set it as self
 	if modValue, ok := classEnv.(ModuleValue); ok {
 		classEnv.Set("self", modValue)

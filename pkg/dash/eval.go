@@ -482,29 +482,6 @@ func (l ListValue) String() string {
 	return result + "]"
 }
 
-// RecordValue represents a record value
-type RecordValue struct {
-	Fields  map[string]Value
-	RecType *RecordType
-}
-
-func (r RecordValue) Type() hm.Type {
-	return NonNullType{r.RecType}
-}
-
-func (r RecordValue) String() string {
-	result := "{"
-	i := 0
-	for k, v := range r.Fields {
-		if i > 0 {
-			result += ", "
-		}
-		result += fmt.Sprintf("%s: %s", k, v.String())
-		i++
-	}
-	return result + "}"
-}
-
 // FunctionValue represents a function value
 type FunctionValue struct {
 	Args    []string

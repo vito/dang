@@ -1,0 +1,30 @@
+# Test scope reopening functionality
+
+# Create a base object to reopen
+pub base = {{ a: 1, b: "hello", c: "wtf" }}
+
+# Test basic reopening - should override a field
+pub reopened1 = base << { a = 42 }
+assert { reopened1.a == 42 }
+assert { reopened1.b == "hello" }
+
+# Test that original is unchanged
+assert { base.a == 1 }
+assert { base.b == "hello" }
+
+# Test multiple field updates
+pub reopened3 = base << {
+  a = 100
+  b = "world"
+}
+assert { reopened3.a == 100 }
+assert { reopened3.b == "world" }
+
+# Test with variables
+pub updated = base << {
+  a = (a + 10)
+}
+assert { updated.a == 11 }
+assert { updated.b == "hello" }
+
+print("Reopening tests passed!")
