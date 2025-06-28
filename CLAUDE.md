@@ -1,5 +1,6 @@
 You are developing Dash, a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Its grammar is defined in pkg/dash/dash.peg.
 Run ./tests/run_all_tests.sh to validate your changes. This is an all-in-one script that re-generates all generated code, re-builds the Dash binary, and runs all of the tests.
+To run an individual test, use go run ./cmd/dash ./tests/test_foo.dash.
 Run ./hack/generate to re-generate all generated code without building or running the tests. DO NOT run generation commands yourself; trust the script.
 Try to avoid changing your working directory unless the task expressly needs it. The hack/ scripts should suffice in general.
 ALWAYS start by adding a test if one is missing, and work towards making the test pass.
