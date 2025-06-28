@@ -109,6 +109,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "reassignment"
+        },
+        {
+          "type": "SYMBOL",
           "name": "infix"
         },
         {
@@ -119,7 +123,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 112,
+      "value": 113,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -247,7 +251,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 107,
+      "value": 108,
       "content": {
         "type": "SEQ",
         "members": [
@@ -902,7 +906,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 80,
+      "value": 81,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -972,7 +976,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 77,
+      "value": 78,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2437,6 +2441,31 @@
         "type": "STRING",
         "value": "assert"
       }
+    },
+    "reassignment": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "="
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        }
+      ]
     }
   },
   "extras": [

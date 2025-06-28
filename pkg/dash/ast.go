@@ -1747,6 +1747,67 @@ type VariablePattern struct {
 	Name string
 }
 
+type Reassignment struct {
+	Name  string
+	Value Node
+	Loc   *SourceLocation
+}
+
+var _ Node = Reassignment{}
+var _ Evaluator = Reassignment{}
+
+func (r Reassignment) Body() hm.Expression { return r.Value }
+
+func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
+
+func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Check that the variable exists in the environment
+	scheme, found := env.SchemeOf(r.Name)
+	if !found {
+		return nil, fmt.Errorf("Reassignment.Infer: variable %q not found", r.Name)
+	}
+	
+	// Get the existing type
+	existingType, mono := scheme.Type()
+	if !mono {
+		return nil, fmt.Errorf("Reassignment.Infer: variable %q is not monomorphic", r.Name)
+	}
+	
+	// Infer the type of the new value
+	valueType, err := r.Value.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("Reassignment.Infer: %w", err)
+	}
+	
+	// Check that the types are compatible
+	if _, err := UnifyWithCompatibility(existingType, valueType); err != nil {
+		return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to variable %q of type %s: %w", valueType, r.Name, existingType, err)
+	}
+	
+	// Reassignment returns the value type
+	return valueType, nil
+}
+
+func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Check that the variable exists
+	_, found := env.Get(r.Name)
+	if !found {
+		return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", r.Name)
+	}
+	
+	// Evaluate the new value
+	newValue, err := EvalNode(ctx, env, r.Value)
+	if err != nil {
+		return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
+	}
+	
+	// Update the variable in the environment
+	env.Set(r.Name, newValue)
+	
+	// Return the new value
+	return newValue, nil
+}
+
 type Assert struct {
 	Message Node  // Optional message expression
 	Block   Block // Block containing the assertion expression

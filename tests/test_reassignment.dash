@@ -1,0 +1,30 @@
+# Test reassignment functionality
+
+pub x = 42
+pub y = "hello"
+pub flag = true
+
+# Test basic reassignment
+x = 100
+assert { x == 100 }
+
+# Test string reassignment
+y = "world"
+assert { y == "world" }
+
+# Test boolean reassignment
+flag = false
+assert { flag == false }
+
+# Test reassignment in blocks
+{
+  x = 200
+  assert { x == 200 }
+}
+
+# Test reassignment returns value
+pub result = (x = 300)
+assert { result == 300 }
+assert { x == 300 }
+
+print("Reassignment tests passed!")

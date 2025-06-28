@@ -46,6 +46,10 @@
         "named": true
       },
       {
+        "type": "reassignment",
+        "named": true
+      },
+      {
         "type": "term",
         "named": true
       }
@@ -1799,6 +1803,32 @@
         "types": [
           {
             "type": "quoted_raw_token",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "reassignment",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
             "named": true
           }
         ]

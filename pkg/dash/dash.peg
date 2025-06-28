@@ -21,7 +21,7 @@ CommaToken <- ','
 
 Expr <- Class / Slot / Form
 
-Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
+Form <- Conditional / Let / Lambda / Match / Assert / Reassignment / Infix / Term
 
 Term <- Literal / SelectOrCall / List / Object / Block / ParenExpr / SymbolOrCall
 
@@ -682,3 +682,15 @@ MessageArgs <- '(' _ msg:Form _ ')' {
 }
 
 AssertToken <- "assert" !WordChar
+
+Reassignment <- name:Id _ '=' _ value:Form {
+  return Reassignment{
+    Name: name.(string),
+    Value: value.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
