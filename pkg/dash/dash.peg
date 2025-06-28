@@ -19,7 +19,7 @@ _lineSpace <- [ \t]*
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Class / Slot / Reassignment / Reopen / Form
+Expr <- Class / Slot / CompoundAssignment / Reassignment / Reopen / Form
 
 Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
@@ -683,6 +683,21 @@ MessageArgs <- '(' _ msg:Form _ ')' {
 }
 
 AssertToken <- "assert" !WordChar
+
+CompoundAssignment <- name:Id _ op:CompoundOp _ value:Form {
+  return CompoundAssignment{
+    Name: name.(string),
+    Op: op.(string),
+    Value: value.(Node),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+
+CompoundOp <- "+=" { return "+", nil }
 
 Reassignment <- name:Id _ '=' _ value:Form {
   return Reassignment{

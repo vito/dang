@@ -937,6 +937,21 @@ func (a Addition) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		if r, ok := rightVal.(StringValue); ok {
 			return StringValue{Val: l.Val + r.Val}, nil
 		}
+	case ListValue:
+		if r, ok := rightVal.(ListValue); ok {
+			// Concatenate the lists
+			combined := make([]Value, len(l.Elements)+len(r.Elements))
+			copy(combined, l.Elements)
+			copy(combined[len(l.Elements):], r.Elements)
+			
+			// Use the element type from the left operand, or right if left is empty
+			elemType := l.ElemType
+			if len(l.Elements) == 0 && len(r.Elements) > 0 {
+				elemType = r.ElemType
+			}
+			
+			return ListValue{Elements: combined, ElemType: elemType}, nil
+		}
 	}
 	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)
 }
@@ -1732,6 +1747,16 @@ type Reassignment struct {
 var _ Node = Reassignment{}
 var _ Evaluator = Reassignment{}
 
+type CompoundAssignment struct {
+	Name  string
+	Op    string // "+" for +=, "-" for -=, etc.
+	Value Node
+	Loc   *SourceLocation
+}
+
+var _ Node = CompoundAssignment{}
+var _ Evaluator = CompoundAssignment{}
+
 func (r Reassignment) Body() hm.Expression { return r.Value }
 
 func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
@@ -1779,6 +1804,104 @@ func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Update the variable in the environment
 	env.Set(r.Name, newValue)
+
+	// Return the new value
+	return newValue, nil
+}
+
+func (c CompoundAssignment) Body() hm.Expression { return c.Value }
+
+func (c CompoundAssignment) GetSourceLocation() *SourceLocation { return c.Loc }
+
+func (c CompoundAssignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Check that the variable exists in the environment
+	scheme, found := env.SchemeOf(c.Name)
+	if !found {
+		return nil, fmt.Errorf("CompoundAssignment.Infer: variable %q not found", c.Name)
+	}
+
+	// Get the existing type
+	existingType, mono := scheme.Type()
+	if !mono {
+		return nil, fmt.Errorf("CompoundAssignment.Infer: variable %q is not monomorphic", c.Name)
+	}
+
+	// For += operator, check addition compatibility by attempting unification
+	// This leverages the existing Addition type inference logic
+	if c.Op == "+" {
+		// Create a temporary Addition node to check type compatibility
+		tempAddition := Addition{
+			Left:  Symbol{Name: c.Name}, // Reference to existing variable
+			Right: c.Value,              // Right-hand side value
+		}
+		
+		// Try to infer the addition result type
+		_, err := tempAddition.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("CompoundAssignment.Infer: %w", err)
+		}
+	}
+
+	// Compound assignment returns the existing variable type
+	return existingType, nil
+}
+
+func (c CompoundAssignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Check that the variable exists and get its current value
+	currentValue, found := env.Get(c.Name)
+	if !found {
+		return nil, fmt.Errorf("CompoundAssignment.Eval: variable %q not found", c.Name)
+	}
+
+	// Evaluate the right-hand side value
+	rightValue, err := EvalNode(ctx, env, c.Value)
+	if err != nil {
+		return nil, fmt.Errorf("CompoundAssignment.Eval: evaluating value: %w", err)
+	}
+
+	// Perform the compound operation
+	var newValue Value
+	if c.Op == "+" {
+		// Use the same logic as Addition.Eval
+		switch l := currentValue.(type) {
+		case IntValue:
+			if r, ok := rightValue.(IntValue); ok {
+				newValue = IntValue{Val: l.Val + r.Val}
+			} else {
+				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to int variable %q", rightValue, c.Name)
+			}
+		case StringValue:
+			if r, ok := rightValue.(StringValue); ok {
+				newValue = StringValue{Val: l.Val + r.Val}
+			} else {
+				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to string variable %q", rightValue, c.Name)
+			}
+		case ListValue:
+			if r, ok := rightValue.(ListValue); ok {
+				// Concatenate the lists
+				combined := make([]Value, len(l.Elements)+len(r.Elements))
+				copy(combined, l.Elements)
+				copy(combined[len(l.Elements):], r.Elements)
+				
+				// Use the element type from the left operand, or right if left is empty
+				elemType := l.ElemType
+				if len(l.Elements) == 0 && len(r.Elements) > 0 {
+					elemType = r.ElemType
+				}
+				
+				newValue = ListValue{Elements: combined, ElemType: elemType}
+			} else {
+				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to list variable %q", rightValue, c.Name)
+			}
+		default:
+			return nil, fmt.Errorf("CompoundAssignment.Eval: addition not supported for type %T", currentValue)
+		}
+	} else {
+		return nil, fmt.Errorf("CompoundAssignment.Eval: unsupported operator %q", c.Op)
+	}
+
+	// Update the variable in the environment
+	env.Set(c.Name, newValue)
 
 	// Return the new value
 	return newValue, nil
