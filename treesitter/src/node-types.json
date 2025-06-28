@@ -68,6 +68,10 @@
         "named": true
       },
       {
+        "type": "object",
+        "named": true
+      },
+      {
         "type": "paren_expr",
         "named": true
       },
@@ -1632,6 +1636,46 @@
     }
   },
   {
+    "type": "object",
+    "named": true,
+    "fields": {
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          }
+        ]
+      },
+      "v": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          }
+        ]
+      },
+      "vals": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "paren_expr",
     "named": true,
     "fields": {
@@ -2498,7 +2542,15 @@
     "named": false
   },
   {
+    "type": "{{",
+    "named": false
+  },
+  {
     "type": "}",
+    "named": false
+  },
+  {
+    "type": "}}",
     "named": false
   }
 ]

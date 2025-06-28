@@ -25,8 +25,6 @@ type Hoister interface {
 
 var _ Hoister = Block{}
 
-type Set[T comparable] map[T]struct{}
-
 func (b Block) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	var errs []error
 	for _, form := range b.Forms {
@@ -42,6 +40,8 @@ func (b Block) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 var _ hm.Inferer = Block{}
 
 func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	newEnv := env.Clone()
+
 	forms := b.Forms
 	if len(forms) == 0 {
 		forms = append(forms, Null{})
@@ -49,7 +49,7 @@ func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	var t hm.Type
 	for _, form := range forms {
-		et, err := form.Infer(env, fresh)
+		et, err := form.Infer(newEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -65,9 +65,11 @@ func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return NullValue{}, nil
 	}
 
+	newEnv := env.Clone()
+
 	var result Value
 	for _, form := range forms {
-		val, err := EvalNode(ctx, env, form)
+		val, err := EvalNode(ctx, newEnv, form)
 		if err != nil {
 			return nil, err
 		}
@@ -75,4 +77,41 @@ func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	return result, nil
+}
+
+type Object struct {
+	Slots []SlotDecl
+	Loc   *SourceLocation
+}
+
+var _ Node = Block{}
+
+func (f Object) Body() hm.Expression { return f }
+
+func (f Object) GetSourceLocation() *SourceLocation { return f.Loc }
+
+var _ hm.Inferer = Object{}
+
+func (o Object) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	newEnv := env.Clone()
+	for _, slot := range o.Slots {
+		_, err := slot.Infer(newEnv, fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return NonNullType{newEnv.(*Module)}, nil
+}
+
+var _ Evaluator = Block{}
+
+func (o Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	newEnv := env.Clone()
+	for _, slot := range o.Slots {
+		_, err := EvalNode(ctx, newEnv, slot)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return newEnv.(ModuleValue), nil
 }

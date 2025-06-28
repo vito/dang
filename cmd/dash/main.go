@@ -369,28 +369,28 @@ func (r *REPL) evaluateExpression(expr string) error {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	node := result.(dash.Block)
+	for _, node := range result.(dash.Block).Forms {
+		if r.debug {
+			pretty.Println(node)
+		}
 
-	if r.debug {
-		pretty.Println(node)
-	}
+		// Type inference
+		_, err = dash.Infer(r.typeEnv, node, true)
+		if err != nil {
+			return fmt.Errorf("type error: %w", err)
+		}
 
-	// Type inference
-	_, err = dash.Infer(r.typeEnv, node, true)
-	if err != nil {
-		return fmt.Errorf("type error: %w", err)
-	}
+		// Evaluation with stdout context
+		ctx := ioctx.StdoutToContext(r.ctx, os.Stdout)
+		val, err := dash.EvalNode(ctx, r.evalEnv, node)
+		if err != nil {
+			return fmt.Errorf("evaluation error: %w", err)
+		}
 
-	// Evaluation with stdout context
-	ctx := ioctx.StdoutToContext(r.ctx, os.Stdout)
-	val, err := dash.EvalNode(ctx, r.evalEnv, node)
-	if err != nil {
-		return fmt.Errorf("evaluation error: %w", err)
-	}
-
-	// Print result (unless it's null)
-	if _, isNull := val.(dash.NullValue); !isNull {
-		fmt.Printf("=> %s\n", val.String())
+		// Print result (unless it's null)
+		if _, isNull := val.(dash.NullValue); !isNull {
+			fmt.Printf("=> %s\n", val.String())
+		}
 	}
 
 	return nil

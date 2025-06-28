@@ -1192,7 +1192,7 @@ func (i Inequality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluating right side: %w", err)
 	}
-	
+
 	// Compare the values and return the opposite of equality
 	equal := valuesEqual(leftVal, rightVal)
 	return BoolValue{Val: !equal}, nil
@@ -1235,7 +1235,7 @@ func (l LessThan) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluating right side: %w", err)
 	}
-	
+
 	switch lv := leftVal.(type) {
 	case IntValue:
 		if rv, ok := rightVal.(IntValue); ok {
@@ -1282,7 +1282,7 @@ func (g GreaterThan) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluating right side: %w", err)
 	}
-	
+
 	switch lv := leftVal.(type) {
 	case IntValue:
 		if rv, ok := rightVal.(IntValue); ok {
@@ -1329,7 +1329,7 @@ func (l LessThanEqual) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("evaluating right side: %w", err)
 	}
-	
+
 	switch lv := leftVal.(type) {
 	case IntValue:
 		if rv, ok := rightVal.(IntValue); ok {
@@ -1376,7 +1376,7 @@ func (g GreaterThanEqual) Eval(ctx context.Context, env EvalEnv) (Value, error) 
 	if err != nil {
 		return nil, fmt.Errorf("evaluating right side: %w", err)
 	}
-	
+
 	switch lv := leftVal.(type) {
 	case IntValue:
 		if rv, ok := rightVal.(IntValue); ok {
