@@ -80,6 +80,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "compound_assignment"
+        },
+        {
+          "type": "SYMBOL",
           "name": "reassignment"
         },
         {
@@ -127,7 +131,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 115,
+      "value": 118,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -255,7 +259,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 110,
+      "value": 113,
       "content": {
         "type": "SEQ",
         "members": [
@@ -910,7 +914,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -980,7 +984,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 80,
+      "value": 83,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2451,6 +2455,46 @@
       "content": {
         "type": "STRING",
         "value": "assert"
+      }
+    },
+    "compound_assignment": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "op",
+          "content": {
+            "type": "SYMBOL",
+            "name": "compound_op"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        }
+      ]
+    },
+    "compound_op": {
+      "type": "SYMBOL",
+      "name": "plus_equal_token"
+    },
+    "plus_equal_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "+="
       }
     },
     "reassignment": {

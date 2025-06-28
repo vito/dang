@@ -697,7 +697,8 @@ CompoundAssignment <- name:Id _ op:CompoundOp _ value:Form {
   }, nil
 }
 
-CompoundOp <- "+=" { return "+", nil }
+CompoundOp <- PlusEqualToken { return "+", nil }
+PlusEqualToken <- "+="
 
 Reassignment <- name:Id _ '=' _ value:Form {
   return Reassignment{

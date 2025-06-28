@@ -8,6 +8,10 @@
         "named": true
       },
       {
+        "type": "compound_assignment",
+        "named": true
+      },
+      {
         "type": "form",
         "named": true
       },
@@ -553,6 +557,57 @@
       "types": [
         {
           "type": "cls_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "compound_assignment",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "compound_op",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "compound_op",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "plus_equal_token",
           "named": true
         }
       ]
@@ -2553,6 +2608,10 @@
   },
   {
     "type": "null_token",
+    "named": true
+  },
+  {
+    "type": "plus_equal_token",
     "named": true
   },
   {
