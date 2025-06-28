@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/chewxy/hm"
 	"github.com/kr/pretty"
 	"github.com/vito/dash/introspection"
+	"github.com/vito/dash/pkg/ioctx"
 )
 
 // Value represents a runtime value in the Dash language
@@ -32,61 +32,6 @@ type EvalEnv interface {
 	Get(name string) (Value, bool)
 	Set(name string, value Value) EvalEnv
 	Clone() EvalEnv
-	Writer() io.Writer
-	SetWriter(w io.Writer) EvalEnv
-}
-
-// SimpleEvalEnv is a simple implementation of EvalEnv
-type SimpleEvalEnv struct {
-	vars   map[string]Value
-	parent EvalEnv
-	writer io.Writer
-}
-
-func NewEvalEnv() *SimpleEvalEnv {
-	return &SimpleEvalEnv{
-		vars:   make(map[string]Value),
-		writer: os.Stdout, // Default to stdout
-	}
-}
-
-func (e *SimpleEvalEnv) Get(name string) (Value, bool) {
-	if val, ok := e.vars[name]; ok {
-		return val, true
-	}
-	if e.parent != nil {
-		return e.parent.Get(name)
-	}
-	return nil, false
-}
-
-func (e *SimpleEvalEnv) Set(name string, value Value) EvalEnv {
-	e.vars[name] = value
-	return e
-}
-
-func (e *SimpleEvalEnv) Clone() EvalEnv {
-	newEnv := &SimpleEvalEnv{
-		vars:   make(map[string]Value),
-		parent: e,
-		writer: e.writer, // Inherit writer from parent
-	}
-	return newEnv
-}
-
-func (e *SimpleEvalEnv) Writer() io.Writer {
-	if e.writer != nil {
-		return e.writer
-	}
-	if e.parent != nil {
-		return e.parent.Writer()
-	}
-	return os.Stdout // Fallback
-}
-
-func (e *SimpleEvalEnv) SetWriter(w io.Writer) EvalEnv {
-	e.writer = w
-	return e
 }
 
 // GraphQLFunction represents a GraphQL API function that makes actual calls
@@ -245,10 +190,11 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
 func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) EvalEnv {
-	env := NewEvalEnv()
-
 	// Create a type environment to help with type conversion
 	typeEnv := NewEnv(schema)
+
+	// Create a ModuleValue from the type environment
+	env := NewModuleValue(typeEnv)
 
 	for _, t := range schema.Types {
 		for _, f := range t.Fields {
@@ -310,8 +256,9 @@ func addBuiltinFunctions(env EvalEnv) {
 				return nil, fmt.Errorf("print: missing required argument 'value'")
 			}
 
-			// Print the value to the configured writer
-			fmt.Fprintln(env.Writer(), val.String())
+			// Print the value using the context-based writer from ioctx
+			writer := ioctx.StdoutFromContext(ctx)
+			fmt.Fprintln(writer, val.String())
 
 			// Return null
 			return NullValue{}, nil
@@ -574,10 +521,20 @@ func (f FunctionValue) String() string {
 	return fmt.Sprintf("function(%v)", f.Args)
 }
 
-// ModuleValue represents a module value
+// ModuleValue represents a module value that implements EvalEnv
 type ModuleValue struct {
 	Mod    *Module
 	Values map[string]Value
+	Parent EvalEnv // For hierarchical scoping
+}
+
+// NewModuleValue creates a new ModuleValue with an empty values map
+func NewModuleValue(mod *Module) ModuleValue {
+	return ModuleValue{
+		Mod:    mod,
+		Values: make(map[string]Value),
+		Parent: nil,
+	}
 }
 
 func (m ModuleValue) Type() hm.Type {
@@ -586,6 +543,32 @@ func (m ModuleValue) Type() hm.Type {
 
 func (m ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod.Named)
+}
+
+// EvalEnv interface implementation
+func (m ModuleValue) Get(name string) (Value, bool) {
+	if val, ok := m.Values[name]; ok {
+		return val, true
+	}
+	if m.Parent != nil {
+		return m.Parent.Get(name)
+	}
+	return nil, false
+}
+
+func (m ModuleValue) Set(name string, value Value) EvalEnv {
+	// TODO: check the type, set it if not present?
+	m.Values[name] = value
+	return m
+}
+
+func (m ModuleValue) Clone() EvalEnv {
+	newValues := make(map[string]Value)
+	return ModuleValue{
+		Mod:    m.Mod,
+		Values: newValues,
+		Parent: m,
+	}
 }
 
 // BuiltinFunction represents a builtin function like print
@@ -637,6 +620,7 @@ func RunFile(schema *introspection.Schema, dag *dagger.Client, filePath string, 
 	// Now evaluate the program
 	evalEnv := NewEvalEnvWithSchema(schema, dag)
 	ctx := context.Background()
+	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {

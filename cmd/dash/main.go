@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vito/dash/introspection"
 	"github.com/vito/dash/pkg/dash"
+	"github.com/vito/dash/pkg/ioctx"
 )
 
 // Config holds the application configuration
@@ -380,8 +381,9 @@ func (r *REPL) evaluateExpression(expr string) error {
 		return fmt.Errorf("type error: %w", err)
 	}
 
-	// Evaluation
-	val, err := dash.EvalNode(r.ctx, r.evalEnv, node)
+	// Evaluation with stdout context
+	ctx := ioctx.StdoutToContext(r.ctx, os.Stdout)
+	val, err := dash.EvalNode(ctx, r.evalEnv, node)
 	if err != nil {
 		return fmt.Errorf("evaluation error: %w", err)
 	}

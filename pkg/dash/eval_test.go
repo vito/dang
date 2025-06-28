@@ -9,6 +9,7 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/vito/dash/introspection"
+	"github.com/vito/dash/pkg/ioctx"
 )
 
 // TestRunner provides utilities for testing Dash scripts
@@ -89,12 +90,12 @@ func (tr *TestRunner) RunScript(script string) error {
 		return err
 	}
 
-	// Create evaluation environment with captured output
+	// Create evaluation environment
 	evalEnv := NewEvalEnvWithSchema(tr.schema, tr.dag)
-	evalEnv.SetWriter(tr.output)
 
-	// Evaluate the script
+	// Evaluate the script with captured output via context
 	ctx := context.Background()
+	ctx = ioctx.StdoutToContext(ctx, tr.output)
 	_, err = EvalNode(ctx, evalEnv, node)
 	return err
 }
