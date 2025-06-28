@@ -16,6 +16,10 @@
         "named": true
       },
       {
+        "type": "reopen",
+        "named": true
+      },
+      {
         "type": "slot",
         "named": true
       }
@@ -996,10 +1000,6 @@
           "named": true
         },
         {
-          "type": "reopen",
-          "named": true
-        },
-        {
           "type": "subtraction",
           "named": true
         }
@@ -1853,12 +1853,12 @@
           }
         ]
       },
-      "t": {
+      "name": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "term",
+            "type": "id",
             "named": true
           }
         ]

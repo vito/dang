@@ -1785,7 +1785,7 @@ func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Reopen struct {
-	Term  Node
+	Name  string
 	Block Block
 	Loc   *SourceLocation
 }
@@ -1793,13 +1793,20 @@ type Reopen struct {
 var _ Node = Reopen{}
 var _ Evaluator = Reopen{}
 
-func (r Reopen) Body() hm.Expression { return r.Term }
+func (r Reopen) Body() hm.Expression { return r.Block }
 
 func (r Reopen) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	sym := Symbol{
+		Name: r.Name,
+		// low conviction, but allow shadowing?
+		// though this might be type-incompatible...? () -> Module vs. Module
+		// AutoCall: true,
+	}
+
 	// Infer the type of the base term
-	termType, err := r.Term.Infer(env, fresh)
+	termType, err := sym.Infer(env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("Reopen.Infer: base term: %w", err)
 	}
@@ -1830,9 +1837,9 @@ func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Evaluate the base term
-	termValue, err := EvalNode(ctx, env, r.Term)
-	if err != nil {
-		return nil, fmt.Errorf("Reopen.Eval: evaluating base term: %w", err)
+	termValue, found := env.Get(r.Name)
+	if !found {
+		return nil, fmt.Errorf("Reopen.Eval: symbol %s not found", r.Name)
 	}
 
 	// The term must evaluate to a module that can be reopened
@@ -1846,13 +1853,17 @@ func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Evaluate the block in the reopened scope
 	for _, node := range r.Block.Forms {
-		_, err = EvalNode(ctx, reopenedEnv, node)
+		_, err := EvalNode(ctx, reopenedEnv, node)
 		if err != nil {
 			return nil, fmt.Errorf("Reopen.Eval: evaluating block: %w", err)
 		}
 	}
 
-	return reopenedEnv.(ModuleValue), nil
+	// Update the binding in the current env
+	val := reopenedEnv.(ModuleValue)
+	env.Set(r.Name, val)
+
+	return val, nil
 }
 
 type Assert struct {

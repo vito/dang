@@ -2,29 +2,52 @@
 
 # Create a base object to reopen
 pub base = {{ a: 1, b: "hello", c: "wtf" }}
+pub copy = base
 
 # Test basic reopening - should override a field
-pub reopened1 = base << { a = 42 }
-assert { reopened1.a == 42 }
-assert { reopened1.b == "hello" }
-
-# Test that original is unchanged
-assert { base.a == 1 }
+base << { a = 42 }
+assert { base.a == 42 }
 assert { base.b == "hello" }
 
+# Test that original is unchanged
+assert { copy.a == 1 }
+assert { copy.b == "hello" }
+
 # Test multiple field updates
-pub reopened3 = base << {
+base << {
   a = 100
   b = "world"
 }
-assert { reopened3.a == 100 }
-assert { reopened3.b == "world" }
+assert { base.a == 100 }
+assert { base.b == "world" }
 
 # Test with variables
-pub updated = base << {
+base << {
   a = (a + 10)
 }
-assert { updated.a == 11 }
-assert { updated.b == "hello" }
+assert { base.a == 110 }
+assert { base.b == "world" }
+
+# Test nested updates
+pub config = {{
+  contents: {{
+    packages: []
+    repositories: []
+    keyring: []
+    cmd: "original"
+    environment: {{
+      PATH: "/usr/local/bin:/usr/bin:/bin"
+    }}
+    archs: []
+  }}
+}}
+pub configCopy = config
+config << {
+  contents << {
+    cmd = "some command"
+  }
+}
+assert { config.contents.cmd == "some command" }
+assert { configCopy.contents.cmd == "original" }
 
 print("Reopening tests passed!")
