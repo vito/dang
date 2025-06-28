@@ -1,0 +1,18 @@
+# Test simple scope inheritance in reopening
+
+# Test function parameter access in reopening
+pub withValue(input: String!): String! {
+  pub base = {{ value: "default" }}
+  
+  # Should be able to access 'input' parameter inside reopening
+  base << {
+    value = input
+  }
+  
+  base.value
+}
+
+pub result = withValue(input: "parameter value")
+assert { result == "parameter value" }
+
+print("Simple scope test passed!")

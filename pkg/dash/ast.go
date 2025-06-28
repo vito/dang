@@ -362,7 +362,7 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	inferredRet, err := f.Form.Infer(env, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("FuncDecl.Infer: Form: %w", err)
+		return nil, fmt.Errorf("FuncDecl(%s).Infer: Form: %w", f.Named, err)
 	}
 
 	if definedRet != nil {
@@ -629,7 +629,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if !ok {
 		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", nn, lt)
 	}
-	rec, ok := nn.Type.(*Module)
+	rec, ok := nn.Type.(Env)
 	if !ok {
 		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", rec, nn.Type)
 	}
@@ -943,13 +943,13 @@ func (a Addition) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			combined := make([]Value, len(l.Elements)+len(r.Elements))
 			copy(combined, l.Elements)
 			copy(combined[len(l.Elements):], r.Elements)
-			
+
 			// Use the element type from the left operand, or right if left is empty
 			elemType := l.ElemType
 			if len(l.Elements) == 0 && len(r.Elements) > 0 {
 				elemType = r.ElemType
 			}
-			
+
 			return ListValue{Elements: combined, ElemType: elemType}, nil
 		}
 	}
@@ -1834,7 +1834,7 @@ func (c CompoundAssignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error)
 			Left:  Symbol{Name: c.Name}, // Reference to existing variable
 			Right: c.Value,              // Right-hand side value
 		}
-		
+
 		// Try to infer the addition result type
 		_, err := tempAddition.Infer(env, fresh)
 		if err != nil {
@@ -1882,13 +1882,13 @@ func (c CompoundAssignment) Eval(ctx context.Context, env EvalEnv) (Value, error
 				combined := make([]Value, len(l.Elements)+len(r.Elements))
 				copy(combined, l.Elements)
 				copy(combined[len(l.Elements):], r.Elements)
-				
+
 				// Use the element type from the left operand, or right if left is empty
 				elemType := l.ElemType
 				if len(l.Elements) == 0 && len(r.Elements) > 0 {
 					elemType = r.ElemType
 				}
-				
+
 				newValue = ListValue{Elements: combined, ElemType: elemType}
 			} else {
 				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to list variable %q", rightValue, c.Name)
@@ -1940,16 +1940,20 @@ func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, fmt.Errorf("Reopen.Infer: cannot reopen nullable type %s", termType)
 	}
 
-	module, ok := nonNullType.Type.(*Module)
+	module, ok := nonNullType.Type.(Env)
 	if !ok {
 		return nil, fmt.Errorf("Reopen.Infer: cannot reopen non-module type %s", termType)
 	}
 
-	// Create a new environment for type checking the block using clone (parent field semantics)
-	blockEnv := module.Clone()
+	// Create a composite environment that allows access to both the reopened module
+	// and the current lexical environment for type checking
+	compositeTypeEnv := &CompositeModule{
+		primary: module.Clone().(Env),
+		lexical: env.(Env),
+	}
 
-	// Type check the block in the context of the reopened scope
-	_, err = r.Block.Infer(blockEnv, fresh)
+	// Type check the block in the composite context
+	_, err = r.Block.Infer(compositeTypeEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("Reopen.Infer: block: %w", err)
 	}
@@ -1974,19 +1978,136 @@ func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Create a new scope that inherits from the base module's values (copy-on-write using parent semantics)
 	reopenedEnv := moduleValue.Clone()
 
-	// Evaluate the block in the reopened scope
+	// Create a composite environment that allows access to both the reopened module and the current lexical environment
+	// This enables access to local variables like function parameters while maintaining copy-on-write semantics
+	compositeEnv := createCompositeEnv(reopenedEnv, env)
+
+	// Evaluate the block in the composite scope
 	for _, node := range r.Block.Forms {
-		_, err := EvalNode(ctx, reopenedEnv, node)
+		_, err := EvalNode(ctx, compositeEnv, node)
 		if err != nil {
 			return nil, fmt.Errorf("Reopen.Eval: evaluating block: %w", err)
 		}
 	}
 
 	// Update the binding in the current env
-	val := reopenedEnv.(ModuleValue)
+	// Extract the primary environment from the composite (if used) or use reopenedEnv directly
+	var val ModuleValue
+	if compositeEnv, ok := compositeEnv.(CompositeEnv); ok {
+		val = compositeEnv.primary.(ModuleValue)
+	} else {
+		val = reopenedEnv.(ModuleValue)
+	}
 	env.Set(r.Name, val)
 
 	return val, nil
+}
+
+// CompositeEnv is a specialized environment for reopening that allows access to both
+// the reopened module (for copy-on-write semantics) and the current lexical environment (for variable access)
+type CompositeEnv struct {
+	primary EvalEnv // Where new bindings go (the reopened module)
+	lexical EvalEnv // Where to look for external variables (current environment)
+}
+
+func (c CompositeEnv) Get(name string) (Value, bool) {
+	// First check the primary environment (reopened module)
+	if val, found := c.primary.Get(name); found {
+		return val, true
+	}
+	// Then check the lexical environment (current scope)
+	return c.lexical.Get(name)
+}
+
+func (c CompositeEnv) Set(name string, value Value) EvalEnv {
+	// All new bindings go to the primary environment (copy-on-write semantics)
+	c.primary.Set(name, value)
+	return c
+}
+
+func (c CompositeEnv) Clone() EvalEnv {
+	// Clone the primary environment and keep the same lexical environment
+	return CompositeEnv{
+		primary: c.primary.Clone(),
+		lexical: c.lexical,
+	}
+}
+
+// createCompositeEnv creates a composite environment for reopening
+func createCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) EvalEnv {
+	return CompositeEnv{
+		primary: reopenedEnv,
+		lexical: currentEnv,
+	}
+}
+
+// CompositeModule combines two type environments for Reopen type inference
+type CompositeModule struct {
+	primary Env // The reopened module (where new bindings go)
+	lexical Env // Current lexical scope (for variable lookups)
+}
+
+func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
+	// First check the primary environment (reopened module)
+	if scheme, found := c.primary.SchemeOf(name); found {
+		return scheme, true
+	}
+	// Then check the lexical environment (current scope)
+	return c.lexical.SchemeOf(name)
+}
+
+func (c *CompositeModule) Clone() hm.Env {
+	return &CompositeModule{
+		primary: c.primary.Clone().(Env),
+		lexical: c.lexical, // Keep same lexical environment
+	}
+}
+
+func (c *CompositeModule) Add(name string, scheme *hm.Scheme) hm.Env {
+	c.primary.Add(name, scheme)
+	return c
+}
+
+func (c *CompositeModule) Remove(name string) hm.Env {
+	c.primary.Remove(name)
+	return c
+}
+
+func (c *CompositeModule) Apply(subs hm.Subs) hm.Substitutable {
+	return &CompositeModule{
+		primary: c.primary.Apply(subs).(Env),
+		lexical: c.lexical.Apply(subs).(Env),
+	}
+}
+
+func (c *CompositeModule) FreeTypeVar() hm.TypeVarSet {
+	primaryVars := c.primary.FreeTypeVar()
+	lexicalVars := c.lexical.FreeTypeVar()
+	return primaryVars.Union(lexicalVars)
+}
+
+var _ Env = &CompositeModule{}
+
+func (t *CompositeModule) Eq(other Type) bool                         { return other == t }
+func (t *CompositeModule) Name() string                               { return t.primary.Name() }
+func (t *CompositeModule) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
+func (t *CompositeModule) Types() hm.Types                            { return nil }
+func (t *CompositeModule) String() string                             { return t.Name() }
+func (t *CompositeModule) Format(s fmt.State, c rune)                 { fmt.Fprintf(s, "%s", t.Name()) }
+
+// NamedType looks up class types, needed for NamedTypeNode.Infer compatibility
+func (c *CompositeModule) NamedType(name string) (Env, bool) {
+	// First check the primary environment (reopened module)
+	if t, found := c.primary.NamedType(name); found {
+		return t, true
+	}
+	// Then check the lexical environment (current scope)
+	return c.lexical.NamedType(name)
+}
+
+// AddClass adds a class type, needed for ClassDecl compatibility
+func (c *CompositeModule) AddClass(name string, class Env) {
+	c.primary.AddClass(name, class)
 }
 
 type Assert struct {

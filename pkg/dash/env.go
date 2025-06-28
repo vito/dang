@@ -9,26 +9,36 @@ import (
 	"github.com/vito/dash/introspection"
 )
 
+type Env interface {
+	hm.Env
+	hm.Type
+	NamedType(string) (Env, bool)
+	AddClass(string, Env)
+}
+
 // TODO: is this just ClassType? are Classes just named Envs?
 type Module struct {
 	Named string
 
-	Parent *Module
+	Parent Env
 
-	classes map[string]*Module
+	classes map[string]Env
 	vars    map[string]*hm.Scheme
 }
 
+//	type CompositeModule struct {
+//		Reads Env
+//	}
 func NewModule(name string) *Module {
 	env := &Module{
 		Named:   name,
-		classes: make(map[string]*Module),
+		classes: make(map[string]Env),
 		vars:    make(map[string]*hm.Scheme),
 	}
 	return env
 }
 
-func gqlToTypeNode(mod *Module, ref *introspection.TypeRef) (hm.Type, error) {
+func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 	switch ref.Kind {
 	case introspection.TypeKindScalar:
 		if strings.HasSuffix(ref.Name, "ID") {
@@ -88,7 +98,7 @@ func NewEnv(schema *introspection.Schema) *Module {
 		sub, found := mod.NamedType(t.Name)
 		if !found {
 			sub = NewModule(t.Name)
-			mod.AddClass(sub)
+			mod.AddClass(t.Name, sub)
 		}
 		if t.Name == schema.QueryType.Name {
 			// Set Query as the parent of the outermost module so that its fields are
@@ -190,12 +200,11 @@ func (e *Module) Clone() hm.Env {
 	return mod
 }
 
-func (e *Module) AddClass(c *Module) *Module {
-	e.classes[c.Named] = c
-	return e
+func (e *Module) AddClass(name string, c Env) {
+	e.classes[name] = c
 }
 
-func (e *Module) NamedType(name string) (*Module, bool) {
+func (e *Module) NamedType(name string) (Env, bool) {
 	t, ok := e.classes[name]
 	if ok {
 		return t, ok

@@ -76,11 +76,16 @@ func (t NamedTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if t.Named == "" {
 		return nil, fmt.Errorf("NamedType.Infer: empty name")
 	}
-	s, ok := env.(*Module).NamedType(t.Named)
-	if !ok {
-		return nil, UnresolvedTypeError{t.Named}
+
+	if lookup, ok := env.(Env); ok {
+		s, found := lookup.NamedType(t.Named)
+		if !found {
+			return nil, UnresolvedTypeError{t.Named}
+		}
+		return s, nil
 	}
-	return s, nil
+
+	return nil, fmt.Errorf("NamedTypeNode.Infer: environment does not support NamedType lookup")
 }
 
 type ListTypeNode struct {

@@ -100,7 +100,7 @@ func (o Object) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, err
 		}
 	}
-	return NonNullType{newEnv.(*Module)}, nil
+	return NonNullType{newEnv.(Env)}, nil
 }
 
 var _ Evaluator = Block{}

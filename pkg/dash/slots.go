@@ -135,12 +135,15 @@ func (c ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 var _ Hoister = ClassDecl{}
 
 func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
-	mod := env.(*Module)
+	mod, ok := env.(Env)
+	if !ok {
+		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
+	}
 
 	class, found := mod.NamedType(c.Named)
 	if !found {
 		class = NewModule(c.Named)
-		mod.AddClass(class)
+		mod.AddClass(c.Named, class)
 	}
 
 	// set special 'self' keyword to match the function signature.
@@ -148,14 +151,13 @@ func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	class.Add("self", self)
 	env.Add(c.Named, self)
 
-	// TODO: hacky, see elsewhere
-	class.Parent = mod
-	defer func() {
-		class.Parent = nil
-	}()
+	hoistEnv := &CompositeModule{
+		primary: class,
+		lexical: env.(Env),
+	}
 
 	if depth > 0 {
-		if err := c.Value.Hoist(class, fresh, depth); err != nil {
+		if err := c.Value.Hoist(hoistEnv, fresh, depth); err != nil {
 			return err
 		}
 	}
@@ -164,27 +166,28 @@ func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 }
 
 func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := env.(*Module)
+	mod, ok := env.(Env)
+	if !ok {
+		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
+	}
 
 	class, found := mod.NamedType(c.Named)
 	if !found {
 		class = NewModule(c.Named)
-		mod.AddClass(class)
+		mod.AddClass(c.Named, class)
 	}
 
-	// TODO: this feels a little hacky, but we basically want classes to infer by
-	// writing to the class while using the original env to resolve types/etc.,
-	// so we set the class - even an existing - parent to the current call site,
-	// and set it back to nil after as we don't want methods selected from the
-	// class to actually recurse to the original context.
-	class.Parent = mod
-
-	_, err := c.Value.Infer(class, fresh)
-	if err != nil {
-		return nil, err
+	inferEnv := &CompositeModule{
+		primary: class,
+		lexical: env.(Env),
 	}
 
-	class.Parent = nil
+	for _, node := range c.Value.Forms {
+		_, err := node.Infer(inferEnv, fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// set special 'self' keyword to match the function signature.
 	self := hm.NewScheme(nil, NonNullType{class})
