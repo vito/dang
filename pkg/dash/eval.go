@@ -710,6 +710,24 @@ func dashValueToJSONWithVisited(val Value, visited map[*map[string]Value]bool) (
 	}
 }
 
+// BoundMethod represents a method bound to a specific receiver
+type BoundMethod struct {
+	Method   FunctionValue
+	Receiver Value
+}
+
+func (b BoundMethod) Type() hm.Type {
+	return b.Method.Type()
+}
+
+func (b BoundMethod) String() string {
+	return fmt.Sprintf("bound_method(%s)", b.Method.String())
+}
+
+func (b BoundMethod) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("cannot marshal bound method value")
+}
+
 // BuiltinFunction represents a builtin function like print
 type BuiltinFunction struct {
 	Name   string
