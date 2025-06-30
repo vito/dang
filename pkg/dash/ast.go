@@ -84,7 +84,14 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
 			}
 		}
-		// TODO: check required args are specified?
+
+		// Check that all required arguments are provided
+		// Now that we've transformed types, this validation should work correctly
+		err = c.validateRequiredArgumentsInInfer(ft)
+		if err != nil {
+			return nil, err
+		}
+
 		return ft.Ret(false), nil
 	case *Module:
 		// For modules, use the original logic for now
@@ -309,6 +316,58 @@ func (c FunCall) mapArgumentsForInference(ft *hm.FunctionType) (map[int]string, 
 	return argMapping, nil
 }
 
+// validateRequiredArgumentsInInfer checks that all required arguments are provided during type inference
+func (c FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
+	// Get the record type that represents the function arguments
+	rt, ok := ft.Arg().(*RecordType)
+	if !ok {
+		return nil // Not a record type, no validation needed
+	}
+
+	// Build a set of provided argument names for quick lookup
+	providedArgs := make(map[string]bool)
+	argMapping, err := c.mapArgumentsForInference(ft)
+	if err != nil {
+		return err
+	}
+
+	for i, arg := range c.Args {
+		var key string
+		if arg.Positional {
+			key = argMapping[i]
+		} else {
+			key = arg.Key
+		}
+		providedArgs[key] = true
+	}
+
+	// Check each parameter in the function signature
+	for _, field := range rt.Fields {
+		paramName := field.Key
+		scheme := field.Value
+
+		// Skip if this argument was provided
+		if providedArgs[paramName] {
+			continue
+		}
+
+		// Get the type of this parameter
+		paramType, isMono := scheme.Type()
+		if !isMono {
+			continue // Skip polymorphic parameters for now
+		}
+
+		// Check if this parameter is required (NonNullType)
+		// With our transformation, arguments with defaults are now nullable in the signature,
+		// so only truly required arguments (without defaults) will be NonNull here
+		if _, isNonNull := paramType.(NonNullType); isNonNull {
+			return fmt.Errorf("FunCall.Infer: missing required argument: %q", paramName)
+		}
+	}
+
+	return nil
+}
+
 // FunctionBase contains the common functionality between FunDecl and Lambda
 type FunctionBase struct {
 	Args []SlotDecl
@@ -357,7 +416,20 @@ func (f FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allow
 
 		scheme := hm.NewScheme(nil, finalArgType)
 		env.Add(arg.Named, scheme)
-		args = append(args, Keyed[*hm.Scheme]{Key: arg.Named, Value: scheme, Positional: false})
+
+		// For arguments with defaults, make them nullable in the function signature
+		// This allows callers to pass null or omit the argument
+		signatureType := finalArgType
+		if arg.Value != nil {
+			// Argument has a default value - make it nullable in the function signature
+			if nonNullType, isNonNull := finalArgType.(NonNullType); isNonNull {
+				signatureType = nonNullType.Type
+			}
+		}
+
+		// Add to function signature with the appropriate type
+		signatureScheme := hm.NewScheme(nil, signatureType)
+		args = append(args, Keyed[*hm.Scheme]{Key: arg.Named, Value: signatureScheme, Positional: false})
 	}
 	return args, nil
 }
@@ -456,7 +528,6 @@ var _ hm.Inferer = FunDecl{}
 func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return f.FunctionBase.inferFunctionType(env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 }
-
 
 type List struct {
 	Elements []Node
@@ -1685,7 +1756,6 @@ func (l Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc 
 func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return l.FunctionBase.inferFunctionType(env, fresh, true, nil, "Lambda")
 }
-
 
 type Match struct {
 	Expr  Node

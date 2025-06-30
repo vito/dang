@@ -1,9 +1,0 @@
-pub container: Container! { 
-  Container{ values: {"from": "alpine_method"} }
-}
-
-print(value: "Testing container.from:")
-print(value: container.from("alpine"))
-
-print(value: "Testing container().from:")  
-print(value: container().from("alpine"))

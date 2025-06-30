@@ -392,8 +392,19 @@ func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 		}
+
+		// Apply the same nullable transformation as in inferFunctionArguments
+		// For arguments with defaults, make them nullable in the function signature
+		signatureType := dt
+		if a.Value != nil {
+			// Argument has a default value - make it nullable in the function signature
+			if nonNullType, isNonNull := dt.(NonNullType); isNonNull {
+				signatureType = nonNullType.Type
+			}
+		}
+
 		// TODO: should we infer from value?
-		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: hm.NewScheme(nil, dt)}
+		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: hm.NewScheme(nil, signatureType)}
 	}
 	ret, err := t.Ret.Infer(env, fresh)
 	if err != nil {
