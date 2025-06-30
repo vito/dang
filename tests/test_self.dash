@@ -29,6 +29,10 @@ cls MyClass {
       name = (prefix + "-") + suffix
     }
   }
+
+  pub dynamicAccess(): String! {
+    name  # Should resolve to current receiver's name, not static "initial"
+  }
 }
 
 assert { MyClass.new.val == 1 }
@@ -40,3 +44,8 @@ assert { MyClass.new.withName("test").name == "test" }
 assert { MyClass.new.withName().name == "edge" }
 assert { MyClass.new.complex().name == "pre-suf" }
 assert { MyClass.new.complex("hello", "world").name == "hello-world" }
+
+# Test: variables resolve against current receiver instance, not static scope
+assert { MyClass.new.dynamicAccess() == "initial" }
+assert { MyClass.new.withName("modified").dynamicAccess() == "modified" }
+assert { MyClass.new.complex("hello", "world").dynamicAccess() == "hello-world" }
