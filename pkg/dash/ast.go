@@ -2,7 +2,9 @@ package dash
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/chewxy/hm"
@@ -146,7 +148,9 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	switch fn := funVal.(type) {
 	case BoundMethod:
 		// BoundMethod - create new environment with receiver as 'self' and argument bindings
-		fnEnv := fn.Method.Closure.Clone()
+		fnEnv := fn.Receiver.Clone()
+		pl, err := json.Marshal(fnEnv)
+		log.Printf("METHOD ENV: %s %s", string(pl), err)
 		fnEnv.Set("self", fn.Receiver)
 
 		for _, argName := range fn.Method.Args {
@@ -180,6 +184,8 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case FunctionValue:
 		// Regular function call - create new environment with argument bindings
 		fnEnv := fn.Closure.Clone()
+		pl, err := json.Marshal(fnEnv)
+		log.Printf("FUNCTION VALUE ENV: %s %s", string(pl), err)
 
 		for _, argName := range fn.Args {
 			if val, exists := argValues[argName]; exists {
@@ -681,24 +687,7 @@ func (s Symbol) GetSourceLocation() *SourceLocation { return s.Loc }
 func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	val, found := env.Get(s.Name)
 	if !found {
-		// If symbol not found, try implicit self resolution (self.symbol)
-		if selfVal, selfFound := env.Get("self"); selfFound {
-			if selfModule, isSelfModule := selfVal.(ModuleValue); isSelfModule {
-				if selfFieldVal, selfFieldFound := selfModule.Get(s.Name); selfFieldFound {
-					// If it's a FunctionValue, bind it as a method
-					if fnVal, isFunctionValue := selfFieldVal.(FunctionValue); isFunctionValue {
-						val = BoundMethod{Method: fnVal, Receiver: selfVal}
-					} else {
-						val = selfFieldVal
-					}
-					found = true
-				}
-			}
-		}
-		
-		if !found {
-			return nil, fmt.Errorf("Symbol.Eval: %q not found in env", s.Name)
-		}
+		return nil, fmt.Errorf("Symbol.Eval: %q not found in env", s.Name)
 	}
 
 	if val == nil {
@@ -781,22 +770,25 @@ func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
 }
 
 // autoCallFnWithReceiver calls a zero-arity function with empty arguments and an optional receiver for 'self'
-func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receiver Value) (Value, error) {
+func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receiver *ModuleValue) (Value, error) {
 	emptyArgs := make(map[string]Value)
 
 	switch fn := val.(type) {
 	case BoundMethod:
 		// BoundMethods already have their receiver, use it instead of the passed receiver
-		return autoCallFnWithReceiver(ctx, env, fn.Method, fn.Receiver)
+		return autoCallFnWithReceiver(ctx, env, fn.Method, &fn.Receiver)
 	case FunctionValue:
 		// Simulate a proper function call with empty arguments to trigger default value handling
-		fnEnv := fn.Closure.Clone()
-		
+
+		var fnEnv EvalEnv
 		// Set receiver as 'self' if provided
 		if receiver != nil {
+			fnEnv = receiver.Clone()
 			fnEnv.Set("self", receiver)
+		} else {
+			fnEnv = fn.Closure.Clone()
 		}
-		
+
 		for _, argName := range fn.Args {
 			if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
 				// Evaluate the default value in the function's closure
@@ -937,8 +929,8 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// If this is a FunctionValue accessed from a module, bind it to the receiver
 				if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
 					// Only bind if the receiver is a ModuleValue (class instance)
-					if _, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
-						return BoundMethod{Method: fnVal, Receiver: receiverVal}, nil
+					if modVal, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
+						return BoundMethod{Method: fnVal, Receiver: modVal}, nil
 					}
 				}
 				return val, nil

@@ -713,7 +713,7 @@ func dashValueToJSONWithVisited(val Value, visited map[*map[string]Value]bool) (
 // BoundMethod represents a method bound to a specific receiver
 type BoundMethod struct {
 	Method   FunctionValue
-	Receiver Value
+	Receiver ModuleValue
 }
 
 func (b BoundMethod) Type() hm.Type {
