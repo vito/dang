@@ -93,6 +93,9 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 
 func NewEnv(schema *introspection.Schema) *Module {
 	mod := NewModule("<dash>")
+	mod.AddClass("String", StringType)
+	mod.AddClass("Int", IntType)
+	mod.AddClass("Boolean", BooleanType)
 
 	for _, t := range schema.Types {
 		sub, found := mod.NamedType(t.Name)
