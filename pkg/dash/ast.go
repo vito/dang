@@ -736,12 +736,23 @@ func hasZeroRequiredArgs(field *introspection.Field) bool {
 
 // autoCallFn calls a zero-arity function with empty arguments
 func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
+	return autoCallFnWithReceiver(ctx, env, val, nil)
+}
+
+// autoCallFnWithReceiver calls a zero-arity function with empty arguments and an optional receiver for 'self'
+func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receiver Value) (Value, error) {
 	emptyArgs := make(map[string]Value)
 
 	switch fn := val.(type) {
 	case FunctionValue:
 		// Simulate a proper function call with empty arguments to trigger default value handling
 		fnEnv := fn.Closure.Clone()
+		
+		// Set receiver as 'self' if provided
+		if receiver != nil {
+			fnEnv.Set("self", receiver)
+		}
+		
 		for _, argName := range fn.Args {
 			if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
 				// Evaluate the default value in the function's closure
@@ -900,31 +911,15 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Auto-call zero-arity functions when accessed as symbols
 	if d.AutoCall && isAutoCallableFn(val) {
-		// For auto-called methods, we need to set 'self' properly
-		if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue && d.Receiver != nil {
-			// Evaluate the receiver
+		// For auto-called methods with receivers, evaluate receiver and pass to autoCallFnWithReceiver
+		if d.Receiver != nil {
 			receiverVal, err := EvalNode(ctx, env, d.Receiver)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating receiver for auto-call: %w", err)
 			}
-			// Create new environment with 'self' set to the receiver
-			if modVal, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
-				fnEnv := fnVal.Closure.Clone()
-				fnEnv.Set("self", modVal)
-
-				// Handle default arguments just like autoCallFn does
-				for _, argName := range fnVal.Args {
-					if defaultExpr, hasDefault := fnVal.Defaults[argName]; hasDefault {
-						// Evaluate the default value in the function's closure
-						defaultVal, err := EvalNode(ctx, fnVal.Closure, defaultExpr)
-						if err != nil {
-							return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-						}
-						fnEnv.Set(argName, defaultVal)
-					}
-				}
-
-				return EvalNode(ctx, fnEnv, fnVal.Body)
+			// Only set self if the receiver is a class instance (ModuleValue)
+			if _, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
+				return autoCallFnWithReceiver(ctx, env, val, receiverVal)
 			}
 		}
 		return autoCallFn(ctx, env, val)

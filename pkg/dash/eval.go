@@ -559,7 +559,6 @@ type ModuleValue struct {
 	Values       map[string]Value
 	Visibilities map[string]Visibility // Track visibility of each field
 	Parent       *ModuleValue          // For hierarchical scoping
-	Receiver     Value                 // Current receiver for method calls (for 'self')
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
