@@ -2,9 +2,7 @@ package dash
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/chewxy/hm"
@@ -149,8 +147,6 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case BoundMethod:
 		// BoundMethod - create new environment with receiver as 'self' and argument bindings
 		fnEnv := fn.Receiver.Clone()
-		pl, err := json.Marshal(fnEnv)
-		log.Printf("METHOD ENV: %s %s", string(pl), err)
 		fnEnv.Set("self", fn.Receiver)
 
 		for _, argName := range fn.Method.Args {
@@ -184,8 +180,6 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case FunctionValue:
 		// Regular function call - create new environment with argument bindings
 		fnEnv := fn.Closure.Clone()
-		pl, err := json.Marshal(fnEnv)
-		log.Printf("FUNCTION VALUE ENV: %s %s", string(pl), err)
 
 		for _, argName := range fn.Args {
 			if val, exists := argValues[argName]; exists {
@@ -766,52 +760,46 @@ func hasZeroRequiredArgs(field *introspection.Field) bool {
 
 // autoCallFn calls a zero-arity function with empty arguments
 func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
-	return autoCallFnWithReceiver(ctx, env, val, nil)
+	// Create a FunCall with empty arguments and delegate to FunCall.Eval
+	emptyRecord := Record{}
+	funCall := FunCall{
+		Fun:  createValueNode(val),
+		Args: emptyRecord,
+		Loc:  nil,
+	}
+	return funCall.Eval(ctx, env)
 }
 
 // autoCallFnWithReceiver calls a zero-arity function with empty arguments and an optional receiver for 'self'
 func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receiver *ModuleValue) (Value, error) {
-	emptyArgs := make(map[string]Value)
-
-	switch fn := val.(type) {
-	case BoundMethod:
-		// BoundMethods already have their receiver, use it instead of the passed receiver
-		return autoCallFnWithReceiver(ctx, env, fn.Method, &fn.Receiver)
-	case FunctionValue:
-		// Simulate a proper function call with empty arguments to trigger default value handling
-
-		var fnEnv EvalEnv
-		// Set receiver as 'self' if provided
-		if receiver != nil {
-			fnEnv = receiver.Clone()
-			fnEnv.Set("self", receiver)
-		} else {
-			fnEnv = fn.Closure.Clone()
-		}
-
-		for _, argName := range fn.Args {
-			if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
-				// Evaluate the default value in the function's closure
-				defaultVal, err := EvalNode(ctx, fn.Closure, defaultExpr)
-				if err != nil {
-					return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-				}
-				fnEnv.Set(argName, defaultVal)
-			}
-		}
-		return EvalNode(ctx, fnEnv, fn.Body)
-
-	case GraphQLFunction:
-		// GraphQL function call with empty arguments
-		return fn.Call(ctx, env, emptyArgs)
-
-	case BuiltinFunction:
-		// Builtin function call with empty arguments
-		return fn.Call(ctx, env, emptyArgs)
-
-	default:
-		return nil, fmt.Errorf("callZeroArityFunction: %T is not a callable function", val)
+	// For BoundMethods, just use regular autoCall since they already have their receiver
+	if boundMethod, isBoundMethod := val.(BoundMethod); isBoundMethod {
+		return autoCallFn(ctx, env, boundMethod)
 	}
+
+	// For FunctionValue with receiver, create a BoundMethod and then autoCall
+	if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue && receiver != nil {
+		boundMethod := BoundMethod{Method: fnVal, Receiver: *receiver}
+		return autoCallFn(ctx, env, boundMethod)
+	}
+
+	// For everything else, use regular autoCall
+	return autoCallFn(ctx, env, val)
+}
+
+// createValueNode creates a simple node that evaluates to the given value
+type ValueNode struct {
+	Val Value
+	Loc *SourceLocation
+}
+
+func (v ValueNode) Body() hm.Expression                                  { return nil }
+func (v ValueNode) GetSourceLocation() *SourceLocation                   { return v.Loc }
+func (v ValueNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error)  { return v.Val.Type(), nil }
+func (v ValueNode) Eval(ctx context.Context, env EvalEnv) (Value, error) { return v.Val, nil }
+
+func createValueNode(val Value) ValueNode {
+	return ValueNode{Val: val, Loc: nil}
 }
 
 type Select struct {
