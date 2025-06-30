@@ -309,41 +309,24 @@ func (c FunCall) mapArgumentsForInference(ft *hm.FunctionType) (map[int]string, 
 	return argMapping, nil
 }
 
-type FunDecl struct {
-	Named      string
-	Args       []SlotDecl
-	Form       Node
-	Ret        TypeNode
-	Visibility Visibility
-	Loc        *SourceLocation
+// FunctionBase contains the common functionality between FunDecl and Lambda
+type FunctionBase struct {
+	Args []SlotDecl
+	Body Node
+	Loc  *SourceLocation
 }
 
-var _ hm.Expression = FunDecl{}
-var _ Evaluator = FunDecl{}
-
-func (f FunDecl) Body() hm.Expression { return f.Form }
-
-func (f FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
-
-var _ hm.Inferer = FunDecl{}
-
-func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// TODO: Lambda semantics
-
-	var err error
-
-	// closure
-	env = env.Clone()
-
+// inferFunctionArguments processes SlotDecl arguments into function type arguments
+func (f FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allowFreshTypes bool) ([]Keyed[*hm.Scheme], error) {
 	args := []Keyed[*hm.Scheme]{}
 	for _, arg := range f.Args {
 		var definedArgType hm.Type
+		var err error
 
 		if arg.Type_ != nil {
-			// TODO should this take fresh? seems like maybe not?
 			definedArgType, err = arg.Type_.Infer(env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("FuncDecl.Infer arg: %w", err)
+				return nil, fmt.Errorf("function arg %q type: %w", arg.Named, err)
 			}
 		}
 
@@ -351,56 +334,39 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		if arg.Value != nil {
 			inferredValType, err = arg.Value.Infer(env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("FuncDecl.Infer arg: %w", err)
+				return nil, fmt.Errorf("function arg %q default: %w", arg.Named, err)
 			}
 		}
 
+		var finalArgType hm.Type
 		if definedArgType != nil && inferredValType != nil {
 			if !definedArgType.Eq(inferredValType) {
-				return nil, fmt.Errorf("FuncDecl.Infer arg: %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
+				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
 			}
+			finalArgType = definedArgType
 		} else if definedArgType != nil {
-			inferredValType = definedArgType
+			finalArgType = definedArgType
 		} else if inferredValType != nil {
-			definedArgType = inferredValType
+			finalArgType = inferredValType
+		} else if allowFreshTypes {
+			// Allow fresh types when no explicit type is given (for lambdas)
+			finalArgType = fresh.Fresh()
 		} else {
-			return nil, fmt.Errorf("FuncDecl.Infer arg: %q has no type or value", arg.Named)
+			return nil, fmt.Errorf("function arg %q has no type or value", arg.Named)
 		}
 
-		scheme := hm.NewScheme(nil, definedArgType)
+		scheme := hm.NewScheme(nil, finalArgType)
 		env.Add(arg.Named, scheme)
 		args = append(args, Keyed[*hm.Scheme]{Key: arg.Named, Value: scheme, Positional: false})
 	}
-
-	var definedRet hm.Type
-
-	if f.Ret != nil {
-		definedRet, err = f.Ret.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("FuncDecl.Infer: Ret: %w", err)
-		}
-	}
-
-	inferredRet, err := f.Form.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("FuncDecl(%s).Infer: Form: %w", f.Named, err)
-	}
-
-	if definedRet != nil {
-		// TODO: Unify?
-		if !definedRet.Eq(inferredRet) {
-			return nil, fmt.Errorf("FuncDecl.Infer: %q mismatch: defined as %s, inferred as %s", f.Named, definedRet, inferredRet)
-		}
-	}
-
-	return hm.NewFnType(NewRecordType("", args...), inferredRet), nil
+	return args, nil
 }
 
-func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Extract argument names from SlotDecl
+// createFunctionValue creates a FunctionValue from processed arguments
+func (f FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
 	defaults := make(map[string]Node)
-	
+
 	for i, arg := range f.Args {
 		argNames[i] = arg.Named
 		if arg.Value != nil {
@@ -408,10 +374,57 @@ func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 	}
 
-	// Create a function type for this declaration
+	return FunctionValue{
+		Args:     argNames,
+		Body:     f.Body,
+		Closure:  env,
+		FnType:   fnType,
+		Defaults: defaults,
+	}
+}
+
+// inferFunctionType provides shared type inference logic for functions
+func (f FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (hm.Type, error) {
+	// Clone environment for closure semantics
+	newEnv := env.Clone()
+
+	// Process arguments using shared logic
+	args, err := f.inferFunctionArguments(newEnv, fresh, allowFreshTypes)
+	if err != nil {
+		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
+	}
+
+	// Handle explicit return type if provided
+	var definedRet hm.Type
+	if explicitRetType != nil {
+		definedRet, err = explicitRetType.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s.Infer return type: %w", contextName, err)
+		}
+	}
+
+	// Infer return type from function body
+	inferredRet, err := f.Body.Infer(newEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
+	}
+
+	// Unify explicit and inferred return types if both exist
+	if definedRet != nil {
+		if !definedRet.Eq(inferredRet) {
+			return nil, fmt.Errorf("%s.Infer: return type mismatch: declared %s, inferred %s", contextName, definedRet, inferredRet)
+		}
+	}
+
+	return hm.NewFnType(NewRecordType("", args...), inferredRet), nil
+}
+
+// Eval provides shared evaluation logic for functions
+func (f FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Create a placeholder function type for evaluation
+	// In a full implementation, this would use the actual inferred types
 	argTypes := make([]Keyed[*hm.Scheme], len(f.Args))
 	for i, arg := range f.Args {
-		// Use a placeholder type for now - in a full implementation we'd get this from type inference
 		argTypes[i] = Keyed[*hm.Scheme]{
 			Key:        arg.Named,
 			Value:      hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))),
@@ -419,17 +432,31 @@ func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 	}
 
-	// Create the function type
 	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
 
-	return FunctionValue{
-		Args:     argNames,
-		Body:     f.Form,
-		Closure:  env,
-		FnType:   fnType,
-		Defaults: defaults,
-	}, nil
+	return f.createFunctionValue(env, fnType), nil
 }
+
+type FunDecl struct {
+	FunctionBase
+	Named      string
+	Ret        TypeNode
+	Visibility Visibility
+}
+
+var _ hm.Expression = FunDecl{}
+var _ Evaluator = FunDecl{}
+
+func (f FunDecl) Body() hm.Expression { return f.FunctionBase.Body }
+
+func (f FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
+
+var _ hm.Inferer = FunDecl{}
+
+func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return f.FunctionBase.inferFunctionType(env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+}
+
 
 type List struct {
 	Elements []Node
@@ -570,7 +597,7 @@ func isAutoCallableFn(val Value) bool {
 			if _, hasDefault := fn.Defaults[argName]; hasDefault {
 				continue
 			}
-			
+
 			// If no default, check if the type is nullable (optional)
 			if rt, ok := fn.FnType.Arg().(*RecordType); ok {
 				scheme, found := rt.SchemeOf(argName)
@@ -1645,9 +1672,7 @@ func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Lambda struct {
-	Args []SlotDecl
-	Expr Node
-	Loc  *SourceLocation
+	FunctionBase
 }
 
 var _ Node = Lambda{}
@@ -1655,88 +1680,12 @@ var _ Evaluator = Lambda{}
 
 func (l Lambda) Body() hm.Expression { return l }
 
-func (l Lambda) GetSourceLocation() *SourceLocation { return l.Loc }
+func (l Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
 
 func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	newEnv := env.Clone()
-	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
-
-	for i, arg := range l.Args {
-		var definedArgType hm.Type
-		var err error
-
-		if arg.Type_ != nil {
-			definedArgType, err = arg.Type_.Infer(env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("Lambda.Infer arg: %w", err)
-			}
-		}
-
-		var inferredValType hm.Type
-		if arg.Value != nil {
-			inferredValType, err = arg.Value.Infer(env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("Lambda.Infer arg: %w", err)
-			}
-		}
-
-		var finalArgType hm.Type
-		if definedArgType != nil && inferredValType != nil {
-			if !definedArgType.Eq(inferredValType) {
-				return nil, fmt.Errorf("Lambda.Infer arg: %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
-			}
-			finalArgType = definedArgType
-		} else if definedArgType != nil {
-			finalArgType = definedArgType
-		} else if inferredValType != nil {
-			finalArgType = inferredValType
-		} else {
-			finalArgType = fresh.Fresh()
-		}
-
-		scheme := hm.NewScheme(nil, finalArgType)
-		newEnv.Add(arg.Named, scheme)
-		argTypes[i] = Keyed[*hm.Scheme]{Key: arg.Named, Value: scheme, Positional: false}
-	}
-
-	bodyType, err := l.Expr.Infer(newEnv, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	return hm.NewFnType(NewRecordType("", argTypes...), bodyType), nil
+	return l.FunctionBase.inferFunctionType(env, fresh, true, nil, "Lambda")
 }
 
-func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Extract argument names and defaults from SlotDecl
-	argNames := make([]string, len(l.Args))
-	defaults := make(map[string]Node)
-	
-	for i, arg := range l.Args {
-		argNames[i] = arg.Named
-		if arg.Value != nil {
-			defaults[arg.Named] = arg.Value
-		}
-	}
-
-	// Create function type for this lambda
-	argTypes := make([]Keyed[*hm.Scheme], len(l.Args))
-	for i, arg := range l.Args {
-		// Use a placeholder type for now - in a full implementation we'd get this from type inference
-		argTypes[i] = Keyed[*hm.Scheme]{Key: arg.Named, Value: hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))), Positional: false}
-	}
-
-	// Create the function type
-	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
-
-	return FunctionValue{
-		Args:     argNames,
-		Body:     l.Expr,
-		Closure:  env,
-		FnType:   fnType,
-		Defaults: defaults,
-	}, nil
-}
 
 type Match struct {
 	Expr  Node

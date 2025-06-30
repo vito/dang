@@ -198,25 +198,19 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 func (c ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Create an evaluation environment for the class
 	classEnv := env.Clone()
 
-	// If classEnv is a ModuleValue, we can set it as self
-	if modValue, ok := classEnv.(ModuleValue); ok {
-		classEnv.Set("self", modValue)
-	}
+	modValue := classEnv.(Value)
+
+	// Bind 'self' to the module
+	classEnv.Set("self", modValue)
 
 	// Evaluate the class body (Block) which contains all the slots
-	_, err := EvalNode(ctx, classEnv, c.Value)
-	if err != nil {
-		return nil, fmt.Errorf("ClassDecl.Eval: evaluating class body for %q: %w", c.Named, err)
-	}
-
-	// Create a module value that can be used as a constructor
-	mod := NewModule(c.Named)
-	modValue := ModuleValue{
-		Mod:    mod,
-		Values: make(map[string]Value),
+	for _, node := range c.Value.Forms {
+		_, err := EvalNode(ctx, classEnv, node)
+		if err != nil {
+			return nil, fmt.Errorf("ClassDecl.Eval: evaluating class body for %q: %w", c.Named, err)
+		}
 	}
 
 	// Add the class to the evaluation environment so it can be referenced

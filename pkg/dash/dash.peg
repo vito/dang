@@ -154,14 +154,18 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
     Named: name.(string),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
     Value: FunDecl{
+      FunctionBase: FunctionBase{
+        Args: nil,
+        Body: block.(Block),
+        Loc: &SourceLocation{
+          Line: c.pos.line,
+          Column: c.pos.col,
+          Length: len(string(c.text)),
+        },
+      },
       Named: name.(string),
       Ret: type_.(TypeNode),
-      Form: block.(Block),
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
-      },
+      Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
     Loc: &SourceLocation{
@@ -177,15 +181,18 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
     Named: name.(string),
     Type_: FunTypeNode{args.([]SlotDecl), type_.(TypeNode)},
     Value: FunDecl{
-      Named: name.(string),
-      Args: args.([]SlotDecl),
-      Ret: type_.(TypeNode),
-      Form: block.(Block),
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
+      FunctionBase: FunctionBase{
+        Args: args.([]SlotDecl),
+        Body: block.(Block),
+        Loc: &SourceLocation{
+          Line: c.pos.line,
+          Column: c.pos.col,
+          Length: len(string(c.text)),
+        },
       },
+      Named: name.(string),
+      Ret: type_.(TypeNode),
+      Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
     Loc: &SourceLocation{
@@ -595,8 +602,15 @@ InToken <- "in" !WordChar
 
 Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
   return Lambda{
-    Args: args.([]SlotDecl),
-    Expr: expr.(Node),
+    FunctionBase: FunctionBase{
+      Args: args.([]SlotDecl),
+      Body: expr.(Node),
+      Loc: &SourceLocation{
+        Line: c.pos.line,
+        Column: c.pos.col,
+        Length: len(string(c.text)),
+      },
+    },
   }, nil
 }
 LambdaToken <- '\\'
