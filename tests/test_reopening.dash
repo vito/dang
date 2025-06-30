@@ -72,19 +72,20 @@ cls MyClass {
     self
   }
 
-  pub withFoo: MyClass! {
+  pub withPackages(packages: [String!]!): MyClass! {
+    pvt outer = packages
     self << {
       config << {
         contents << {
-          packages += ["foo"]
+          packages += outer
         }
         cmd = "some command"
       }
     }
   }
 }
-assert { MyClass.new.withFoo.config.cmd == "some command" }
-assert { MyClass.new.withFoo.config.contents.packages == ["foo"] }
+assert { MyClass.new.withPackages(["foo"]).config.cmd == "some command" }
+assert { MyClass.new.withPackages(["foo"]).config.contents.packages == ["foo"] }
 assert { MyClass.new.config.cmd == "original" }
 assert { MyClass.new.config.contents.packages == [] }
 

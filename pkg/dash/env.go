@@ -2,7 +2,6 @@ package dash
 
 import (
 	"fmt"
-	"log"
 	"log/slog"
 	"strings"
 
@@ -15,6 +14,7 @@ type Env interface {
 	hm.Type
 	NamedType(string) (Env, bool)
 	AddClass(string, Env)
+	LocalSchemeOf(string) (*hm.Scheme, bool)
 }
 
 // TODO: is this just ClassType? are Classes just named Envs?
@@ -208,6 +208,11 @@ func (e *Module) SchemeOf(name string) (*hm.Scheme, bool) {
 	return nil, false
 }
 
+func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
+	s, ok := e.vars[name]
+	return s, ok
+}
+
 func (e *Module) Clone() hm.Env {
 	mod := NewModule(e.Named)
 	mod.Parent = e
@@ -243,7 +248,4 @@ func (t *Module) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
 func (t *Module) Types() hm.Types                            { return nil }
 func (t *Module) String() string                             { return t.Named }
 func (t *Module) Format(s fmt.State, c rune)                 { fmt.Fprintf(s, "%s", t.Named) }
-func (t *Module) Eq(other Type) bool {
-	log.Printf("MODULE EQ: %s (< %v) (%p) <=> %s (%p): %t", t.Named, t.Parent, t, other.String(), other, other == t)
-	return other == t
-}
+func (t *Module) Eq(other Type) bool                         { return other == t }

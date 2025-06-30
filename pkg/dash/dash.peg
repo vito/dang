@@ -455,7 +455,7 @@ Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" 
       Loc: kv.Value.GetSourceLocation(),
     })
   }
-  return Object{
+  return &Object{
     Slots: slots,
     Loc: &SourceLocation{
       Line: c.pos.line,

@@ -31,6 +31,7 @@ type Evaluator interface {
 type EvalEnv interface {
 	Get(name string) (Value, bool)
 	Set(name string, value Value) EvalEnv
+	SetWithVisibility(name string, value Value, visibility Visibility)
 	Clone() EvalEnv
 }
 
@@ -528,15 +529,7 @@ func (l ListValue) String() string {
 }
 
 func (l ListValue) MarshalJSON() ([]byte, error) {
-	jsonList := make([]interface{}, len(l.Elements))
-	for i, elem := range l.Elements {
-		jsonElem, err := dashValueToJSON(elem)
-		if err != nil {
-			return nil, fmt.Errorf("converting list element %d: %w", i, err)
-		}
-		jsonList[i] = jsonElem
-	}
-	return json.Marshal(jsonList)
+	return json.Marshal(l.Elements)
 }
 
 // FunctionValue represents a function value
@@ -556,12 +549,16 @@ func (f FunctionValue) String() string {
 	return fmt.Sprintf("function(%v)", f.Args)
 }
 
+func (f FunctionValue) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("cannot marshal function value")
+}
+
 // ModuleValue represents a module value that implements EvalEnv
 type ModuleValue struct {
 	Mod          *Module
 	Values       map[string]Value
 	Visibilities map[string]Visibility // Track visibility of each field
-	Parent       EvalEnv               // For hierarchical scoping
+	Parent       *ModuleValue          // For hierarchical scoping
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
@@ -596,8 +593,18 @@ func (m ModuleValue) Get(name string) (Value, bool) {
 func (m ModuleValue) Set(name string, value Value) EvalEnv {
 	// TODO: check the type, set it if not present?
 	m.Values[name] = value
-	m.Visibilities[name] = PrivateVisibility
+	m.Visibilities[name] = m.Visibility(name)
 	return m
+}
+
+func (m ModuleValue) Visibility(name string) Visibility {
+	if vis, ok := m.Visibilities[name]; ok {
+		return vis
+	}
+	if m.Parent != nil {
+		return m.Parent.Visibility(name)
+	}
+	return PrivateVisibility
 }
 
 func (m ModuleValue) Clone() EvalEnv {
@@ -607,7 +614,7 @@ func (m ModuleValue) Clone() EvalEnv {
 		Mod:          m.Mod,
 		Values:       newValues,
 		Visibilities: newVisibilities,
-		Parent:       m,
+		Parent:       &m,
 	}
 }
 
@@ -620,21 +627,24 @@ func (m ModuleValue) SetWithVisibility(name string, value Value, visibility Visi
 // MarshalJSON implements json.Marshaler for ModuleValue
 // Only includes public fields in the JSON output
 func (m ModuleValue) MarshalJSON() ([]byte, error) {
-	result := make(map[string]interface{})
+	result := make(map[string]Value)
+	m.collectPublic(result)
+	return json.Marshal(result)
+}
 
+func (m ModuleValue) collectPublic(dest map[string]Value) {
 	for name, value := range m.Values {
+		if _, shadowed := dest[name]; shadowed {
+			continue
+		}
 		// Only include public fields
-		if visibility, exists := m.Visibilities[name]; !exists || visibility == PublicVisibility {
-			// Convert Dash values to JSON-serializable values
-			jsonValue, err := dashValueToJSON(value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert field %q to JSON: %w", name, err)
-			}
-			result[name] = jsonValue
+		if m.Visibilities[name] == PublicVisibility {
+			dest[name] = value
 		}
 	}
-
-	return json.Marshal(result)
+	if m.Parent != nil {
+		m.Parent.collectPublic(dest)
+	}
 }
 
 // dashValueToJSON converts a Dash Value to a JSON-serializable Go value

@@ -82,15 +82,17 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// 	return nil, fmt.Errorf("SlotDecl.Infer: %q mismatch: defined as %s, inferred as %s", s.Named, definedType, inferredType)
 	// }
 
-	cur, defined := env.SchemeOf(s.Named)
-	if defined {
-		curT, curMono := cur.Type()
-		if !curMono {
-			return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
-		}
+	if dashEnv, ok := env.(Env); ok {
+		cur, defined := dashEnv.LocalSchemeOf(s.Named)
+		if defined {
+			curT, curMono := cur.Type()
+			if !curMono {
+				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
+			}
 
-		if !definedType.Eq(curT) {
-			return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s", s.Named, curT)
+			if !definedType.Eq(curT) {
+				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s", s.Named, curT)
+			}
 		}
 	}
 
@@ -114,11 +116,7 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Add the value to the environment for future use
 	// If it's a ModuleValue, use SetWithVisibility to track visibility
-	if moduleEnv, ok := env.(ModuleValue); ok {
-		moduleEnv.SetWithVisibility(s.Named, val, s.Visibility)
-	} else {
-		env.Set(s.Named, val)
-	}
+	env.SetWithVisibility(s.Named, val, s.Visibility)
 
 	return val, nil
 }

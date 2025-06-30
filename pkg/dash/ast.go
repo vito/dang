@@ -94,8 +94,10 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		return ft.Ret(false), nil
 	case *Module:
-		// For modules, use the original logic for now
-		// TODO: Add proper positional argument support for modules
+		// For modules, use the original logic for now TODO: Add proper positional
+		// argument support for modules TODO: delete this actually? we don't
+		// initialize modules by calling them anymore, we use 'new' and prototype
+		// style cloning with COW
 		for _, arg := range c.Args {
 			k, v := arg.Key, arg.Value
 
@@ -2109,6 +2111,11 @@ func (c CompositeEnv) Set(name string, value Value) EvalEnv {
 	return c
 }
 
+func (c CompositeEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
+	// All new bindings go to the primary environment (copy-on-write semantics)
+	c.primary.SetWithVisibility(name, value, visibility)
+}
+
 func (c CompositeEnv) Clone() EvalEnv {
 	// Clone the primary environment and keep the same lexical environment
 	return CompositeEnv{
@@ -2138,6 +2145,11 @@ func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
 	}
 	// Then check the lexical environment (current scope)
 	return c.lexical.SchemeOf(name)
+}
+
+func (c *CompositeModule) LocalSchemeOf(name string) (*hm.Scheme, bool) {
+	// For CompositeModule, local scope is the primary environment (the reopened module)
+	return c.primary.LocalSchemeOf(name)
 }
 
 func (c *CompositeModule) Clone() hm.Env {
