@@ -147,6 +147,21 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case FunctionValue:
 		// Regular function call - create new environment with argument bindings
 		fnEnv := fn.Closure.Clone()
+
+		// Check if this is a method call by examining the Fun expression
+		// If it's a Select with a receiver, that receiver should become 'self'
+		if selectExpr, isSelect := c.Fun.(Select); isSelect && selectExpr.Receiver != nil {
+			// Evaluate the receiver and set it as 'self' in the function environment
+			receiverVal, err := EvalNode(ctx, env, selectExpr.Receiver)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating receiver: %w", err)
+			}
+			// Only set self if the receiver is a class instance (ModuleValue)
+			if modVal, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
+				fnEnv.Set("self", modVal)
+			}
+		}
+
 		for _, argName := range fn.Args {
 			if val, exists := argValues[argName]; exists {
 				// Check if the value is null and we have a default
@@ -833,7 +848,7 @@ func (d Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// If this is a function call (Args present), delegate to FunCall
-	// implementation
+	// implementation, which will properly handle setting 'self'
 	if d.Args != nil {
 		return d.AsCall().Eval(ctx, env)
 	}
@@ -885,6 +900,33 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Auto-call zero-arity functions when accessed as symbols
 	if d.AutoCall && isAutoCallableFn(val) {
+		// For auto-called methods, we need to set 'self' properly
+		if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue && d.Receiver != nil {
+			// Evaluate the receiver
+			receiverVal, err := EvalNode(ctx, env, d.Receiver)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating receiver for auto-call: %w", err)
+			}
+			// Create new environment with 'self' set to the receiver
+			if modVal, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
+				fnEnv := fnVal.Closure.Clone()
+				fnEnv.Set("self", modVal)
+
+				// Handle default arguments just like autoCallFn does
+				for _, argName := range fnVal.Args {
+					if defaultExpr, hasDefault := fnVal.Defaults[argName]; hasDefault {
+						// Evaluate the default value in the function's closure
+						defaultVal, err := EvalNode(ctx, fnVal.Closure, defaultExpr)
+						if err != nil {
+							return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+						}
+						fnEnv.Set(argName, defaultVal)
+					}
+				}
+
+				return EvalNode(ctx, fnEnv, fnVal.Body)
+			}
+		}
 		return autoCallFn(ctx, env, val)
 	}
 

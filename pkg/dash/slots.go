@@ -205,7 +205,8 @@ func (c ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	modValue := classEnv.(Value)
 
-	// Bind 'self' to the module
+	// Bind 'self' to the class template during class definition
+	// This will be overridden with the specific instance during method calls
 	classEnv.Set("self", modValue)
 
 	// Evaluate the class body (Block) which contains all the slots

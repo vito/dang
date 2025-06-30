@@ -1,0 +1,42 @@
+cls MyClass {
+  pub val = 1
+  pub name = "initial"
+
+  pub new: MyClass! {
+    self
+  }
+
+  pub incr: MyClass! {
+    self << {
+      val += 1
+    }
+  }
+
+  pub incrBy(amount: Int!): MyClass! {
+    self << {
+      val += amount
+    }
+  }
+
+  pub withName(branch: String! = "edge"): MyClass! {
+    self << {
+      name = branch
+    }
+  }
+
+  pub complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
+    self << {
+      name = (prefix + "-") + suffix
+    }
+  }
+}
+
+assert { MyClass.new.val == 1 }
+assert { MyClass.new.incr.val == 2 }
+assert { MyClass.new.incr.incr.val == 3 }
+assert { MyClass.new.incrBy(5).val == 6 }
+assert { MyClass.new.incrBy(3).incrBy(2).val == 6 }
+assert { MyClass.new.withName("test").name == "test" }
+assert { MyClass.new.withName().name == "edge" }
+assert { MyClass.new.complex().name == "pre-suf" }
+assert { MyClass.new.complex("hello", "world").name == "hello-world" }

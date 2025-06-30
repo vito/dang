@@ -1,1 +1,0 @@
-pub withArg(x: String!): String! { x }
