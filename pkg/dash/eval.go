@@ -484,10 +484,11 @@ func (l ListValue) String() string {
 
 // FunctionValue represents a function value
 type FunctionValue struct {
-	Args    []string
-	Body    Node
-	Closure EvalEnv
-	FnType  *hm.FunctionType
+	Args     []string
+	Body     Node
+	Closure  EvalEnv
+	FnType   *hm.FunctionType
+	Defaults map[string]Node // Map of argument name to default value expression
 }
 
 func (f FunctionValue) Type() hm.Type {

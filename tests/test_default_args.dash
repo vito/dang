@@ -1,0 +1,50 @@
+# Function with one default argument
+pub reqWithDefault(str: String! = "defaulted"): String! {
+  str + "!"
+}
+
+# Function with multiple default arguments
+pub multipleDefaults(name: String! = "world", prefix: String! = "Hello"): String! {
+  (prefix + " ") + (name + "!")
+}
+
+# Function with mixed required and optional arguments
+pub mixedArgs(required: String!, optional: String! = "default"): String! {
+  (required + "-") + optional
+}
+
+# Test auto-calling (property access without parentheses)
+assert { reqWithDefault == "defaulted!" }
+
+# Test explicit no-argument calls
+assert { reqWithDefault() == "defaulted!" }
+
+# Test explicit argument calls
+assert { reqWithDefault("hey") == "hey!" }
+
+# Test null handling - null gets replaced with default
+assert { reqWithDefault(null) == "defaulted!" }
+
+# Test multiple default arguments with auto-calling
+assert { multipleDefaults == "Hello world!" }
+
+# Test multiple defaults with explicit no-arg call
+assert { multipleDefaults() == "Hello world!" }
+
+# Test partial argument specification (positional)
+assert { multipleDefaults("Alice") == "Hello Alice!" }
+
+# Test all arguments specified (positional)
+assert { multipleDefaults("Bob", "Hi") == "Hi Bob!" }
+
+# Test mixed args with only required argument
+assert { mixedArgs("test") == "test-default" }
+
+# Test mixed args with both arguments
+assert { mixedArgs("test", "custom") == "test-custom" }
+
+# Test mixed args with null optional (should use default)
+assert { mixedArgs("test", null) == "test-default" }
+
+# NOTE: Lambda default arguments may not be fully implemented yet
+# and would need separate testing once supported

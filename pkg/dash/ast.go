@@ -140,7 +140,28 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		fnEnv := fn.Closure.Clone()
 		for _, argName := range fn.Args {
 			if val, exists := argValues[argName]; exists {
-				fnEnv.Set(argName, val)
+				// Check if the value is null and we have a default
+				if _, isNull := val.(NullValue); isNull {
+					if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
+						// Use default value instead of null
+						defaultVal, err := EvalNode(ctx, fn.Closure, defaultExpr)
+						if err != nil {
+							return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+						}
+						fnEnv.Set(argName, defaultVal)
+					} else {
+						fnEnv.Set(argName, val)
+					}
+				} else {
+					fnEnv.Set(argName, val)
+				}
+			} else if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
+				// Evaluate the default value in the function's closure
+				defaultVal, err := EvalNode(ctx, fn.Closure, defaultExpr)
+				if err != nil {
+					return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+				}
+				fnEnv.Set(argName, defaultVal)
 			}
 		}
 		return EvalNode(ctx, fnEnv, fn.Body)
@@ -378,25 +399,35 @@ func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 func (f FunDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Extract argument names from SlotDecl
 	argNames := make([]string, len(f.Args))
+	defaults := make(map[string]Node)
+	
 	for i, arg := range f.Args {
 		argNames[i] = arg.Named
+		if arg.Value != nil {
+			defaults[arg.Named] = arg.Value
+		}
 	}
 
 	// Create a function type for this declaration
 	argTypes := make([]Keyed[*hm.Scheme], len(f.Args))
 	for i, arg := range f.Args {
 		// Use a placeholder type for now - in a full implementation we'd get this from type inference
-		argTypes[i] = Keyed[*hm.Scheme]{Key: arg.Named, Value: hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))), Positional: false}
+		argTypes[i] = Keyed[*hm.Scheme]{
+			Key:        arg.Named,
+			Value:      hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))),
+			Positional: false,
+		}
 	}
 
 	// Create the function type
 	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
 
 	return FunctionValue{
-		Args:    argNames,
-		Body:    f.Form,
-		Closure: env,
-		FnType:  fnType,
+		Args:     argNames,
+		Body:     f.Form,
+		Closure:  env,
+		FnType:   fnType,
+		Defaults: defaults,
 	}, nil
 }
 
@@ -474,6 +505,8 @@ func autoCallFnType(t hm.Type) hm.Type {
 	if ft, ok := t.(*hm.FunctionType); ok {
 		if rt, ok := ft.Arg().(*RecordType); ok {
 			// Check if all fields are optional (no NonNullType fields)
+			// Note: This function only has type information, not default value information
+			// The actual auto-call decision is made in isAutoCallableFn with FunctionValue
 			hasRequiredArgs := false
 			for _, field := range rt.Fields {
 				if fieldType, _ := field.Value.Type(); fieldType != nil {
@@ -531,8 +564,28 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 func isAutoCallableFn(val Value) bool {
 	switch fn := val.(type) {
 	case FunctionValue:
-		// TODO: check for required args
-		return len(fn.Args) == 0
+		// For FunctionValue, check if all arguments either have default values or are optional
+		for _, argName := range fn.Args {
+			// If this argument has a default value, it's optional
+			if _, hasDefault := fn.Defaults[argName]; hasDefault {
+				continue
+			}
+			
+			// If no default, check if the type is nullable (optional)
+			if rt, ok := fn.FnType.Arg().(*RecordType); ok {
+				scheme, found := rt.SchemeOf(argName)
+				if found {
+					if fieldType, _ := scheme.Type(); fieldType != nil {
+						if _, isNonNull := fieldType.(NonNullType); isNonNull {
+							// This is a required argument with no default value
+							return false
+						}
+					}
+				}
+			}
+		}
+		// All arguments are either optional or have defaults, so this function can be auto-called
+		return true
 	case GraphQLFunction:
 		// Check if the function has zero REQUIRED arguments (all args are optional)
 		return hasZeroRequiredArgs(fn.Field)
@@ -554,10 +607,10 @@ func hasZeroRequiredArgs(field *introspection.Field) bool {
 		return false
 	}
 
-	// Check if all arguments are optional (nullable)
+	// Check if all arguments are optional (nullable or have defaults)
 	for _, arg := range field.Args {
-		if arg.TypeRef.Kind == "NON_NULL" {
-			// This argument is required (non-null)
+		if arg.TypeRef.Kind == "NON_NULL" && arg.DefaultValue == nil {
+			// This argument is required (non-null with no default)
 			return false
 		}
 	}
@@ -572,8 +625,19 @@ func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
 
 	switch fn := val.(type) {
 	case FunctionValue:
-		// Regular function call with empty environment
-		return EvalNode(ctx, fn.Closure, fn.Body)
+		// Simulate a proper function call with empty arguments to trigger default value handling
+		fnEnv := fn.Closure.Clone()
+		for _, argName := range fn.Args {
+			if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
+				// Evaluate the default value in the function's closure
+				defaultVal, err := EvalNode(ctx, fn.Closure, defaultExpr)
+				if err != nil {
+					return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+				}
+				fnEnv.Set(argName, defaultVal)
+			}
+		}
+		return EvalNode(ctx, fnEnv, fn.Body)
 
 	case GraphQLFunction:
 		// GraphQL function call with empty arguments
@@ -1644,10 +1708,15 @@ func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Extract argument names from SlotDecl
+	// Extract argument names and defaults from SlotDecl
 	argNames := make([]string, len(l.Args))
+	defaults := make(map[string]Node)
+	
 	for i, arg := range l.Args {
 		argNames[i] = arg.Named
+		if arg.Value != nil {
+			defaults[arg.Named] = arg.Value
+		}
 	}
 
 	// Create function type for this lambda
@@ -1661,10 +1730,11 @@ func (l Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
 
 	return FunctionValue{
-		Args:    argNames,
-		Body:    l.Expr,
-		Closure: env,
-		FnType:  fnType,
+		Args:     argNames,
+		Body:     l.Expr,
+		Closure:  env,
+		FnType:   fnType,
+		Defaults: defaults,
 	}, nil
 }
 
