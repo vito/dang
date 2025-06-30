@@ -1,0 +1,23 @@
+# Test JSON marshaling functionality
+
+# Test basic types
+print(json("hello world"))
+print(json(42))
+print(json(true))
+print(json(false))
+print(json(null))
+
+# Test list
+print(json([1, 2, 3]))
+print(json(["a", "b", "c"]))
+
+# Test module with mixed visibility
+cls TestClass {
+  pub publicField: String! = "visible"
+  pvt privateField: String! = "hidden"
+  pub publicNumber: Int! = 123
+  pvt privateNumber: Int! = 456
+}
+
+pub testInstance: TestClass! = TestClass
+print(json(testInstance))

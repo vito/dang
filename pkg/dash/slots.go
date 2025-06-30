@@ -113,7 +113,12 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Add the value to the environment for future use
-	env.Set(s.Named, val)
+	// If it's a ModuleValue, use SetWithVisibility to track visibility
+	if moduleEnv, ok := env.(ModuleValue); ok {
+		moduleEnv.SetWithVisibility(s.Named, val, s.Visibility)
+	} else {
+		env.Set(s.Named, val)
+	}
 
 	return val, nil
 }

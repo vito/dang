@@ -2,6 +2,7 @@ package dash
 
 import (
 	"fmt"
+	"log"
 	"log/slog"
 	"strings"
 
@@ -154,13 +155,23 @@ func NewEnv(schema *introspection.Schema) *Module {
 // addBuiltinTypes adds the type signatures for builtin functions
 func addBuiltinTypes(mod *Module) {
 	// print function: print(value: a) -> Null
-	argType := hm.TypeVariable('a')
-	args := NewRecordType("")
-	args.Add("value", hm.NewScheme(nil, argType))
-	printType := hm.NewFnType(args, hm.TypeVariable('n')) // returns null
+	printArgType := hm.TypeVariable('a')
+	printArgs := NewRecordType("")
+	printArgs.Add("value", hm.NewScheme(nil, printArgType))
+	printType := hm.NewFnType(printArgs, hm.TypeVariable('n')) // returns null
 
 	slog.Debug("adding builtin function", "function", "print")
 	mod.Add("print", hm.NewScheme(nil, printType))
+
+	// json function: json(value: b) -> String!
+	jsonArgType := hm.TypeVariable('b')
+	jsonArgs := NewRecordType("")
+	jsonArgs.Add("value", hm.NewScheme(nil, jsonArgType))
+	jsonReturnType := NonNullType{StringType}
+	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
+
+	slog.Debug("adding builtin function", "function", "json")
+	mod.Add("json", hm.NewScheme(nil, jsonType))
 }
 
 var _ hm.Substitutable = (*Module)(nil)
@@ -232,4 +243,7 @@ func (t *Module) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
 func (t *Module) Types() hm.Types                            { return nil }
 func (t *Module) String() string                             { return t.Named }
 func (t *Module) Format(s fmt.State, c rune)                 { fmt.Fprintf(s, "%s", t.Named) }
-func (t *Module) Eq(other Type) bool                         { return other == t }
+func (t *Module) Eq(other Type) bool {
+	log.Printf("MODULE EQ: %s (< %v) (%p) <=> %s (%p): %t", t.Named, t.Parent, t, other.String(), other, other == t)
+	return other == t
+}

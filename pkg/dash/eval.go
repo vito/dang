@@ -266,6 +266,35 @@ func addBuiltinFunctions(env EvalEnv) {
 	}
 
 	env.Set("print", printFn)
+
+	// Create the json function
+	// Type signature: json(value: a) -> String! where 'a' is a type variable (any type)
+	jsonArgs := NewRecordType("")
+	jsonArgs.Add("value", hm.NewScheme(nil, argType))
+	jsonReturnType := NonNullType{StringType}
+	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
+
+	jsonFn := BuiltinFunction{
+		Name:   "json",
+		FnType: jsonType,
+		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+			// Get the value to marshal
+			val, ok := args["value"]
+			if !ok {
+				return nil, fmt.Errorf("json: missing required argument 'value'")
+			}
+
+			// Marshal the value to JSON
+			jsonBytes, err := json.Marshal(val)
+			if err != nil {
+				return nil, fmt.Errorf("json: failed to marshal value: %w", err)
+			}
+
+			return StringValue{Val: string(jsonBytes)}, nil
+		},
+	}
+
+	env.Set("json", jsonFn)
 }
 
 // Helper function to determine if a GraphQL type is scalar
@@ -423,6 +452,10 @@ func (s StringValue) String() string {
 	return s.Val
 }
 
+func (s StringValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Val)
+}
+
 // IntValue represents an integer value
 type IntValue struct {
 	Val int
@@ -434,6 +467,10 @@ func (i IntValue) Type() hm.Type {
 
 func (i IntValue) String() string {
 	return fmt.Sprintf("%d", i.Val)
+}
+
+func (i IntValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(i.Val)
 }
 
 // BoolValue represents a boolean value
@@ -449,6 +486,10 @@ func (b BoolValue) String() string {
 	return fmt.Sprintf("%t", b.Val)
 }
 
+func (b BoolValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(b.Val)
+}
+
 // NullValue represents a null value
 type NullValue struct{}
 
@@ -459,6 +500,10 @@ func (n NullValue) Type() hm.Type {
 
 func (n NullValue) String() string {
 	return "null"
+}
+
+func (n NullValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(nil)
 }
 
 // ListValue represents a list value
@@ -482,6 +527,18 @@ func (l ListValue) String() string {
 	return result + "]"
 }
 
+func (l ListValue) MarshalJSON() ([]byte, error) {
+	jsonList := make([]interface{}, len(l.Elements))
+	for i, elem := range l.Elements {
+		jsonElem, err := dashValueToJSON(elem)
+		if err != nil {
+			return nil, fmt.Errorf("converting list element %d: %w", i, err)
+		}
+		jsonList[i] = jsonElem
+	}
+	return json.Marshal(jsonList)
+}
+
 // FunctionValue represents a function value
 type FunctionValue struct {
 	Args     []string
@@ -501,17 +558,19 @@ func (f FunctionValue) String() string {
 
 // ModuleValue represents a module value that implements EvalEnv
 type ModuleValue struct {
-	Mod    *Module
-	Values map[string]Value
-	Parent EvalEnv // For hierarchical scoping
+	Mod          *Module
+	Values       map[string]Value
+	Visibilities map[string]Visibility // Track visibility of each field
+	Parent       EvalEnv               // For hierarchical scoping
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
 func NewModuleValue(mod *Module) ModuleValue {
 	return ModuleValue{
-		Mod:    mod,
-		Values: make(map[string]Value),
-		Parent: nil,
+		Mod:          mod,
+		Values:       make(map[string]Value),
+		Visibilities: make(map[string]Visibility),
+		Parent:       nil,
 	}
 }
 
@@ -537,15 +596,107 @@ func (m ModuleValue) Get(name string) (Value, bool) {
 func (m ModuleValue) Set(name string, value Value) EvalEnv {
 	// TODO: check the type, set it if not present?
 	m.Values[name] = value
+	m.Visibilities[name] = PrivateVisibility
 	return m
 }
 
 func (m ModuleValue) Clone() EvalEnv {
 	newValues := make(map[string]Value)
+	newVisibilities := make(map[string]Visibility)
 	return ModuleValue{
-		Mod:    m.Mod,
-		Values: newValues,
-		Parent: m,
+		Mod:          m.Mod,
+		Values:       newValues,
+		Visibilities: newVisibilities,
+		Parent:       m,
+	}
+}
+
+// SetWithVisibility sets a value with explicit visibility information
+func (m ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
+	m.Values[name] = value
+	m.Visibilities[name] = visibility
+}
+
+// MarshalJSON implements json.Marshaler for ModuleValue
+// Only includes public fields in the JSON output
+func (m ModuleValue) MarshalJSON() ([]byte, error) {
+	result := make(map[string]interface{})
+
+	for name, value := range m.Values {
+		// Only include public fields
+		if visibility, exists := m.Visibilities[name]; !exists || visibility == PublicVisibility {
+			// Convert Dash values to JSON-serializable values
+			jsonValue, err := dashValueToJSON(value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert field %q to JSON: %w", name, err)
+			}
+			result[name] = jsonValue
+		}
+	}
+
+	return json.Marshal(result)
+}
+
+// dashValueToJSON converts a Dash Value to a JSON-serializable Go value
+func dashValueToJSON(val Value) (interface{}, error) {
+	return dashValueToJSONWithVisited(val, make(map[*map[string]Value]bool))
+}
+
+// dashValueToJSONWithVisited converts a Dash Value to a JSON-serializable Go value with recursion protection
+func dashValueToJSONWithVisited(val Value, visited map[*map[string]Value]bool) (interface{}, error) {
+	switch v := val.(type) {
+	case StringValue:
+		return v.Val, nil
+	case IntValue:
+		return v.Val, nil
+	case BoolValue:
+		return v.Val, nil
+	case NullValue:
+		return nil, nil
+	case ListValue:
+		jsonList := make([]interface{}, len(v.Elements))
+		for i, elem := range v.Elements {
+			jsonElem, err := dashValueToJSONWithVisited(elem, visited)
+			if err != nil {
+				return nil, fmt.Errorf("converting list element %d: %w", i, err)
+			}
+			jsonList[i] = jsonElem
+		}
+		return jsonList, nil
+	case ModuleValue:
+		// Check for recursion using the Values map pointer
+		mapPtr := &v.Values
+		if visited[mapPtr] {
+			return "<circular reference>", nil
+		}
+		visited[mapPtr] = true
+		defer delete(visited, mapPtr)
+
+		// For modules, create a map manually to avoid infinite recursion
+		result := make(map[string]interface{})
+		for name, value := range v.Values {
+			// Only include public fields
+			if visibility, exists := v.Visibilities[name]; !exists || visibility == PublicVisibility {
+				jsonValue, err := dashValueToJSONWithVisited(value, visited)
+				if err != nil {
+					return nil, fmt.Errorf("failed to convert field %q to JSON: %w", name, err)
+				}
+				result[name] = jsonValue
+			}
+		}
+		return result, nil
+	case FunctionValue:
+		// Functions can't be serialized to JSON - represent as a string
+		return fmt.Sprintf("function(%v)", v.Args), nil
+	case GraphQLFunction:
+		// GraphQL functions represented as their name
+		return v.String(), nil
+	case BuiltinFunction:
+		// Builtin functions represented as their name
+		return v.String(), nil
+	default:
+		// For unknown types, use their string representation
+		return v.String(), nil
 	}
 }
 

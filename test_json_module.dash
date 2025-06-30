@@ -1,0 +1,9 @@
+# Test JSON marshaling for modules with visibility
+
+cls TestClass {
+  pub publicField: String! = "visible"
+  pub publicNumber: Int! = 123
+}
+
+pub testObj = TestClass
+print(json(testObj))

@@ -2081,12 +2081,7 @@ func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Update the binding in the current env
 	// Extract the primary environment from the composite (if used) or use reopenedEnv directly
-	var val ModuleValue
-	if compositeEnv, ok := compositeEnv.(CompositeEnv); ok {
-		val = compositeEnv.primary.(ModuleValue)
-	} else {
-		val = reopenedEnv.(ModuleValue)
-	}
+	val := compositeEnv.primary.(ModuleValue)
 	env.Set(r.Name, val)
 
 	return val, nil
@@ -2123,7 +2118,7 @@ func (c CompositeEnv) Clone() EvalEnv {
 }
 
 // createCompositeEnv creates a composite environment for reopening
-func createCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) EvalEnv {
+func createCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
 	return CompositeEnv{
 		primary: reopenedEnv,
 		lexical: currentEnv,
