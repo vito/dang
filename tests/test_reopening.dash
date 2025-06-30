@@ -34,20 +34,58 @@ pub config = {{
     packages: []
     repositories: []
     keyring: []
+  }}
+  cmd: "original"
+  environment: {{
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+  }}
+  archs: []
+}}
+pub configCopy = config
+config << {
+  contents << {
+    packages += ["foo"]
+  }
+  cmd = "some command"
+}
+assert { config.cmd == "some command" }
+assert { config.contents.packages == ["foo"] }
+assert { configCopy.cmd == "original" }
+assert { configCopy.contents.packages == [] }
+
+# Test nested updates within a class
+cls MyClass {
+  pub config = {{
+    contents: {{
+      packages: []
+      repositories: []
+      keyring: []
+    }}
     cmd: "original"
     environment: {{
       PATH: "/usr/local/bin:/usr/bin:/bin"
     }}
     archs: []
   }}
-}}
-pub configCopy = config
-config << {
-  contents << {
-    cmd = "some command"
+
+  pub new: MyClass! {
+    self
+  }
+
+  pub withFoo: MyClass! {
+    self << {
+      config << {
+        contents << {
+          packages += ["foo"]
+        }
+        cmd = "some command"
+      }
+    }
   }
 }
-assert { config.contents.cmd == "some command" }
-assert { configCopy.contents.cmd == "original" }
+assert { MyClass.new.withFoo.config.cmd == "some command" }
+assert { MyClass.new.withFoo.config.contents.packages == ["foo"] }
+assert { MyClass.new.config.cmd == "original" }
+assert { MyClass.new.config.contents.packages == [] }
 
 print("Reopening tests passed!")
