@@ -77,7 +77,7 @@ cls MyClass {
     self << {
       config << {
         contents << {
-          packages += outer
+          packages += args.packages
         }
         cmd = "some command"
       }

@@ -1,0 +1,3 @@
+# Test assignment with existing variable
+pub x = 42
+x = 24

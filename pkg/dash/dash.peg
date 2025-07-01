@@ -14,12 +14,12 @@ Dash <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
 }
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
-_lineSpace <- [ \t]*
+_lineSpace <- [ \t]* CommentToken?
 
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Class / Slot / CompoundAssignment / Reassignment / Reopen / Form
+Expr <- Class / Slot / Reassignment / Form
 
 Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
@@ -354,7 +354,7 @@ Modulo <- left:Term _ PercentToken _ right:Term {
 }
 PercentToken <- '%' !(WordChar / '{')
 
-Equality <- left:Term _ EqualToken _ right:Term {
+Equality <- left:Term _ DoubleEqualToken _ right:Term {
   return Equality{
     Left: left.(Node),
     Right: right.(Node),
@@ -365,7 +365,7 @@ Equality <- left:Term _ EqualToken _ right:Term {
     },
   }, nil
 }
-EqualToken <- "=="
+DoubleEqualToken <- "=="
 
 Inequality <- left:Term _ NotEqualToken _ right:Term {
   return Inequality{
@@ -698,25 +698,10 @@ MessageArgs <- '(' _ msg:Form _ ')' {
 
 AssertToken <- "assert" !WordChar
 
-CompoundAssignment <- name:Id _ op:CompoundOp _ value:Form {
-  return CompoundAssignment{
-    Name: name.(string),
-    Op: op.(string),
-    Value: value.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
-  }, nil
-}
-
-CompoundOp <- PlusEqualToken { return "+", nil }
-PlusEqualToken <- "+="
-
-Reassignment <- name:Id _ '=' _ value:Form {
+Reassignment <- target:Term _ op:AssignOp _ value:Form {
   return Reassignment{
-    Name: name.(string),
+    Target: target.(Node),
+    Modifier: op.(string),
     Value: value.(Node),
     Loc: &SourceLocation{
       Line: c.pos.line,
@@ -725,6 +710,10 @@ Reassignment <- name:Id _ '=' _ value:Form {
     },
   }, nil
 }
+
+AssignOp <- PlusEqualToken { return "+", nil } / EqualToken { return "=", nil }
+PlusEqualToken <- "+="
+EqualToken <- '='
 
 Reopen <- name:Id _ ReopenToken _ b:Block {
   return Reopen{

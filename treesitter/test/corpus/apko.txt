@@ -1,12 +1,12 @@
 ===
-Reopening
+Apko
 ===
 
 pub description =
   "Builds containers from simple lists of packages using the Apko CLI."
 
 # TODO
-pvt arch = "linux/amd64"
+pvt arch = "x86_64"
 
 cls Apko {
   pub config = {{
@@ -14,31 +14,27 @@ cls Apko {
       packages: []
       repositories: []
       keyring: []
-      cmd: ""
-      environment: {{
-        PATH: "/usr/local/bin:/usr/bin:/bin"
-      }}
-      archs: [arch]
     }}
+    cmd: ""
+    environment: {{
+      PATH: "/usr/local/bin:/usr/bin:/bin"
+    }}
+    archs: [arch]
   }}
 
   pub withAlpine(branch: String! = "edge"): Apko! {
-    self << {
-      config << {
-        packages += ["apk-tools"]
-        repositories += [("https://dl-cdn.alpinelinux.org/alpine/" + branch) + "/main"]
-      }
-    }
+    self.config.contents.packages += ["apk-tools"]
+    self.config.contents.repositories += [
+      ("https://dl-cdn.alpinelinux.org/alpine/" + branch) + "/main"
+    ]
   }
 
   pub withPackages(packages: [String!]!): Apko! {
-    pvt outer = here
-    self << { config << { packages += outer.packages } }
+    self.config.contents.packages += packages
   }
 
   pub withArchs(archs: [String!]!): Apko! {
-    pvt outer = here
-    self << { config << { archs += outer.archs } }
+    self.config.archs += archs
   }
 
   pub asContainer: Container! {
@@ -46,16 +42,20 @@ cls Apko {
       container.
         from("cgr.dev/chainguard/apko").
         withMountedCache("/apkache/", cacheVolume("apko")).
-        withExec(["apko", "build", "--cache-dir", "/apkache/", json(config), "layout.tar"]).
+        withNewFile("/config.yml", contents: json(config)).
+        withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest","layout.tar"]).
         file("layout.tar")
     )
   }
 
   pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
-    self.withAlpine(branch).withPackages(packaegs).asContainer
+    withAlpine(branch).withPackages(packages).asContainer
   }
 }
 
+print(json(Apko.withAlpine.config))
+print(Apko.withAlpine.withPackages(["git"]).asContainer.withExec(["git", "version"]).stdout)
+print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
 ---
 
 (dash
@@ -108,33 +108,33 @@ cls Apko {
                   (word_token)
                   (colon_token)
                   (list))
-                (sep)
+                (sep)))
+            (sep)
+            (key_value
+              (word_token)
+              (colon_token)
+              (literal
+                (string)))
+            (sep)
+            (key_value
+              (word_token)
+              (colon_token)
+              (object
                 (key_value
                   (word_token)
                   (colon_token)
                   (literal
                     (string)))
-                (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (object
-                    (key_value
-                      (word_token)
-                      (colon_token)
-                      (literal
-                        (string)))
-                    (sep)))
-                (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (list
-                    (symbol_or_call
-                      (symbol
-                        (id
-                          (word_token))))))
                 (sep)))
+            (sep)
+            (key_value
+              (word_token)
+              (colon_token)
+              (list
+                (symbol_or_call
+                  (symbol
+                    (id
+                      (word_token))))))
             (sep))))
       (sep)
       (slot
@@ -167,47 +167,64 @@ cls Apko {
                     (upper_token))))
               (bang_token)))
           (block
-            (reopen
-              (id
-                (word_token))
-              (reopen_token)
-              (block
-                (reopen
+            (reassignment
+              (select_or_call
+                (select_or_call
+                  (select_or_call
+                    (symbol_or_call
+                      (symbol
+                        (id
+                          (word_token))))
+                    (dot_token)
+                    (id
+                      (word_token)))
+                  (dot_token)
                   (id
-                    (word_token))
-                  (reopen_token)
-                  (block
-                    (compound_assignment
-                      (id
-                        (word_token))
-                      (compound_op
-                        (plus_equal_token))
-                      (list
-                        (literal
-                          (string))))
-                    (sep)
-                    (compound_assignment
-                      (id
-                        (word_token))
-                      (compound_op
-                        (plus_equal_token))
-                      (list
-                        (infix
-                          (addition
-                            (paren_form
-                              (infix
-                                (addition
-                                  (literal
-                                    (string))
-                                  (plus_token)
-                                  (symbol_or_call
-                                    (symbol
-                                      (id
-                                        (word_token)))))))
-                            (plus_token)
-                            (literal
-                              (string))))))
-                    (sep)))
+                    (word_token)))
+                (dot_token)
+                (id
+                  (word_token)))
+              (assign_op
+                (plus_equal_token))
+              (list
+                (literal
+                  (string))))
+            (sep)
+            (reassignment
+              (select_or_call
+                (select_or_call
+                  (select_or_call
+                    (symbol_or_call
+                      (symbol
+                        (id
+                          (word_token))))
+                    (dot_token)
+                    (id
+                      (word_token)))
+                  (dot_token)
+                  (id
+                    (word_token)))
+                (dot_token)
+                (id
+                  (word_token)))
+              (assign_op
+                (plus_equal_token))
+              (list
+                (infix
+                  (addition
+                    (paren_form
+                      (infix
+                        (addition
+                          (literal
+                            (string))
+                          (plus_token)
+                          (symbol_or_call
+                            (symbol
+                              (id
+                                (word_token)))))))
+                    (plus_token)
+                    (literal
+                      (string))))
                 (sep)))
             (sep))))
       (sep)
@@ -244,40 +261,29 @@ cls Apko {
                     (upper_token))))
               (bang_token)))
           (block
-            (slot
-              (value_only_slot
-                (visibility
-                  (pvt_token))
-                (id
-                  (word_token))
-                (symbol_or_call
-                  (symbol
-                    (id
-                      (word_token))))))
-            (sep)
-            (reopen
-              (id
-                (word_token))
-              (reopen_token)
-              (block
-                (reopen
-                  (id
-                    (word_token))
-                  (reopen_token)
-                  (block
-                    (compound_assignment
-                      (id
-                        (word_token))
-                      (compound_op
-                        (plus_equal_token))
-                      (select_or_call
-                        (symbol_or_call
-                          (symbol
-                            (id
-                              (word_token))))
-                        (dot_token)
+            (reassignment
+              (select_or_call
+                (select_or_call
+                  (select_or_call
+                    (symbol_or_call
+                      (symbol
                         (id
-                          (word_token))))))))
+                          (word_token))))
+                    (dot_token)
+                    (id
+                      (word_token)))
+                  (dot_token)
+                  (id
+                    (word_token)))
+                (dot_token)
+                (id
+                  (word_token)))
+              (assign_op
+                (plus_equal_token))
+              (symbol_or_call
+                (symbol
+                  (id
+                    (word_token)))))
             (sep))))
       (sep)
       (slot
@@ -313,40 +319,25 @@ cls Apko {
                     (upper_token))))
               (bang_token)))
           (block
-            (slot
-              (value_only_slot
-                (visibility
-                  (pvt_token))
-                (id
-                  (word_token))
-                (symbol_or_call
-                  (symbol
-                    (id
-                      (word_token))))))
-            (sep)
-            (reopen
-              (id
-                (word_token))
-              (reopen_token)
-              (block
-                (reopen
-                  (id
-                    (word_token))
-                  (reopen_token)
-                  (block
-                    (compound_assignment
+            (reassignment
+              (select_or_call
+                (select_or_call
+                  (symbol_or_call
+                    (symbol
                       (id
-                        (word_token))
-                      (compound_op
-                        (plus_equal_token))
-                      (select_or_call
-                        (symbol_or_call
-                          (symbol
-                            (id
-                              (word_token))))
-                        (dot_token)
-                        (id
-                          (word_token))))))))
+                        (word_token))))
+                  (dot_token)
+                  (id
+                    (word_token)))
+                (dot_token)
+                (id
+                  (word_token)))
+              (assign_op
+                (plus_equal_token))
+              (symbol_or_call
+                (symbol
+                  (id
+                    (word_token)))))
             (sep))))
       (sep)
       (slot
@@ -379,10 +370,19 @@ cls Apko {
                       (select_or_call
                         (select_or_call
                           (select_or_call
-                            (symbol_or_call
-                              (symbol
-                                (id
-                                  (word_token))))
+                            (select_or_call
+                              (symbol_or_call
+                                (symbol
+                                  (id
+                                    (word_token))))
+                              (dot_token)
+                              (id
+                                (word_token))
+                              (arg_values
+                                (argument
+                                  (positional_value
+                                    (literal
+                                      (string))))))
                             (dot_token)
                             (id
                               (word_token))
@@ -390,7 +390,20 @@ cls Apko {
                               (argument
                                 (positional_value
                                   (literal
-                                    (string))))))
+                                    (string))))
+                              (sep
+                                (comma_token))
+                              (argument
+                                (positional_value
+                                  (symbol_or_call
+                                    (call
+                                      (id
+                                        (word_token))
+                                      (arg_values
+                                        (argument
+                                          (positional_value
+                                            (literal
+                                              (string)))))))))))
                           (dot_token)
                           (id
                             (word_token))
@@ -402,7 +415,9 @@ cls Apko {
                             (sep
                               (comma_token))
                             (argument
-                              (positional_value
+                              (key_value
+                                (word_token)
+                                (colon_token)
                                 (symbol_or_call
                                   (call
                                     (id
@@ -410,8 +425,10 @@ cls Apko {
                                     (arg_values
                                       (argument
                                         (positional_value
-                                          (literal
-                                            (string)))))))))))
+                                          (symbol_or_call
+                                            (symbol
+                                              (id
+                                                (word_token)))))))))))))
                         (dot_token)
                         (id
                           (word_token))
@@ -435,17 +452,12 @@ cls Apko {
                                   (string))
                                 (sep
                                   (comma_token))
-                                (symbol_or_call
-                                  (call
-                                    (id
-                                      (word_token))
-                                    (arg_values
-                                      (argument
-                                        (positional_value
-                                          (symbol_or_call
-                                            (symbol
-                                              (id
-                                                (word_token)))))))))
+                                (literal
+                                  (string))
+                                (sep
+                                  (comma_token))
+                                (literal
+                                  (string))
                                 (sep
                                   (comma_token))
                                 (literal
@@ -512,21 +524,17 @@ cls Apko {
           (block
             (select_or_call
               (select_or_call
-                (select_or_call
-                  (symbol_or_call
-                    (symbol
-                      (id
-                        (word_token))))
-                  (dot_token)
-                  (id
-                    (word_token))
-                  (arg_values
-                    (argument
-                      (positional_value
-                        (symbol_or_call
-                          (symbol
-                            (id
-                              (word_token))))))))
+                (symbol_or_call
+                  (call
+                    (id
+                      (word_token))
+                    (arg_values
+                      (argument
+                        (positional_value
+                          (symbol_or_call
+                            (symbol
+                              (id
+                                (word_token)))))))))
                 (dot_token)
                 (id
                   (word_token))
@@ -542,4 +550,118 @@ cls Apko {
                 (word_token)))
             (sep))))
       (sep)))
-  (sep))
+  (sep)
+  (symbol_or_call
+    (call
+      (id
+        (word_token))
+      (arg_values
+        (argument
+          (positional_value
+            (symbol_or_call
+              (call
+                (id
+                  (word_token))
+                (arg_values
+                  (argument
+                    (positional_value
+                      (select_or_call
+                        (select_or_call
+                          (symbol_or_call
+                            (symbol
+                              (id
+                                (word_token))))
+                          (dot_token)
+                          (id
+                            (word_token)))
+                        (dot_token)
+                        (id
+                          (word_token)))))))))))))
+  (sep)
+  (symbol_or_call
+    (call
+      (id
+        (word_token))
+      (arg_values
+        (argument
+          (positional_value
+            (select_or_call
+              (select_or_call
+                (select_or_call
+                  (select_or_call
+                    (select_or_call
+                      (symbol_or_call
+                        (symbol
+                          (id
+                            (word_token))))
+                      (dot_token)
+                      (id
+                        (word_token)))
+                    (dot_token)
+                    (id
+                      (word_token))
+                    (arg_values
+                      (argument
+                        (positional_value
+                          (list
+                            (literal
+                              (string)))))))
+                  (dot_token)
+                  (id
+                    (word_token)))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (argument
+                    (positional_value
+                      (list
+                        (literal
+                          (string))
+                        (sep
+                          (comma_token))
+                        (literal
+                          (string)))))))
+              (dot_token)
+              (id
+                (word_token))))))))
+  (sep)
+  (symbol_or_call
+    (call
+      (id
+        (word_token))
+      (arg_values
+        (argument
+          (positional_value
+            (select_or_call
+              (select_or_call
+                (select_or_call
+                  (symbol_or_call
+                    (symbol
+                      (id
+                        (word_token))))
+                  (dot_token)
+                  (id
+                    (word_token))
+                  (arg_values
+                    (argument
+                      (positional_value
+                        (list
+                          (literal
+                            (string)))))))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (argument
+                    (positional_value
+                      (list
+                        (literal
+                          (string))
+                        (sep
+                          (comma_token))
+                        (literal
+                          (string)))))))
+              (dot_token)
+              (id
+                (word_token)))))))))

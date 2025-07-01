@@ -1886,172 +1886,209 @@ type VariablePattern struct {
 }
 
 type Reassignment struct {
-	Name  string
-	Value Node
-	Loc   *SourceLocation
+	Target   Node   // Left-hand side expression (Symbol, Select, etc.)
+	Modifier string // "=" or "+=" etc.
+	Value    Node   // Right-hand side expression
+	Loc      *SourceLocation
 }
 
 var _ Node = Reassignment{}
 var _ Evaluator = Reassignment{}
 
-type CompoundAssignment struct {
-	Name  string
-	Op    string // "+" for +=, "-" for -=, etc.
-	Value Node
-	Loc   *SourceLocation
-}
 
-var _ Node = CompoundAssignment{}
-var _ Evaluator = CompoundAssignment{}
-
-func (r Reassignment) Body() hm.Expression { return r.Value }
+func (r Reassignment) Body() hm.Expression { return r.Target }
 
 func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Check that the variable exists in the environment
-	scheme, found := env.SchemeOf(r.Name)
-	if !found {
-		return nil, fmt.Errorf("Reassignment.Infer: variable %q not found", r.Name)
+	// Infer the type of the target (left-hand side)
+	targetType, err := r.Target.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 	}
 
-	// Get the existing type
-	existingType, mono := scheme.Type()
-	if !mono {
-		return nil, fmt.Errorf("Reassignment.Infer: variable %q is not monomorphic", r.Name)
-	}
-
-	// Infer the type of the new value
+	// Infer the type of the value (right-hand side)
 	valueType, err := r.Value.Infer(env, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("Reassignment.Infer: %w", err)
+		return nil, fmt.Errorf("Reassignment.Infer: value: %w", err)
 	}
 
-	// Check that the types are compatible
-	if _, err := UnifyWithCompatibility(existingType, valueType); err != nil {
-		return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to variable %q of type %s: %w", valueType, r.Name, existingType, err)
+	// For simple assignment, check compatibility
+	if r.Modifier == "=" {
+		if _, err := UnifyWithCompatibility(targetType, valueType); err != nil {
+			return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
+		}
+		return targetType, nil
+	} else if r.Modifier == "+" {
+		// For compound assignment, check that it's compatible with addition
+		// Create a temporary Addition node to check type compatibility
+		tempAddition := Addition{
+			Left:  r.Target,
+			Right: r.Value,
+		}
+		_, err := tempAddition.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
+		}
+		return targetType, nil
 	}
 
-	// Reassignment returns the value type
-	return valueType, nil
+	return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 }
 
 func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Check that the variable exists
-	_, found := env.Get(r.Name)
-	if !found {
-		return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", r.Name)
-	}
-
-	// Evaluate the new value
-	newValue, err := EvalNode(ctx, env, r.Value)
+	// Evaluate the value first
+	value, err := EvalNode(ctx, env, r.Value)
 	if err != nil {
 		return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
 	}
 
-	// Update the variable in the environment
-	env.Set(r.Name, newValue)
+	// Handle different assignment types based on target
+	switch target := r.Target.(type) {
+	case Symbol:
+		// Simple variable assignment: x = value or x += value
+		return r.evalVariableAssignment(ctx, env, target.Name, value)
 
-	// Return the new value
-	return newValue, nil
+	case Select:
+		// Field assignment: obj.field = value or obj.field += value
+		return r.evalFieldAssignment(ctx, env, target, value)
+
+	default:
+		return nil, fmt.Errorf("Reassignment.Eval: unsupported assignment target type %T", r.Target)
+	}
 }
 
-func (c CompoundAssignment) Body() hm.Expression { return c.Value }
-
-func (c CompoundAssignment) GetSourceLocation() *SourceLocation { return c.Loc }
-
-func (c CompoundAssignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Check that the variable exists in the environment
-	scheme, found := env.SchemeOf(c.Name)
-	if !found {
-		return nil, fmt.Errorf("CompoundAssignment.Infer: variable %q not found", c.Name)
-	}
-
-	// Get the existing type
-	existingType, mono := scheme.Type()
-	if !mono {
-		return nil, fmt.Errorf("CompoundAssignment.Infer: variable %q is not monomorphic", c.Name)
-	}
-
-	// For += operator, check addition compatibility by attempting unification
-	// This leverages the existing Addition type inference logic
-	if c.Op == "+" {
-		// Create a temporary Addition node to check type compatibility
-		tempAddition := Addition{
-			Left:  Symbol{Name: c.Name}, // Reference to existing variable
-			Right: c.Value,              // Right-hand side value
+func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, varName string, value Value) (Value, error) {
+	if r.Modifier == "=" {
+		// Simple assignment: x = value
+		_, found := env.Get(varName)
+		if !found {
+			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
+		}
+		env.Set(varName, value)
+		return value, nil
+	} else if r.Modifier == "+" {
+		// Compound assignment: x += value
+		currentValue, found := env.Get(varName)
+		if !found {
+			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
 
-		// Try to infer the addition result type
-		_, err := tempAddition.Infer(env, fresh)
+		// Perform addition using existing Addition logic
+		newValue, err := r.performAddition(currentValue, value, varName)
 		if err != nil {
-			return nil, fmt.Errorf("CompoundAssignment.Infer: %w", err)
+			return nil, err
 		}
+
+		env.Set(varName, newValue)
+		return newValue, nil
 	}
 
-	// Compound assignment returns the existing variable type
-	return existingType, nil
+	return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 }
 
-func (c CompoundAssignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Check that the variable exists and get its current value
-	currentValue, found := env.Get(c.Name)
-	if !found {
-		return nil, fmt.Errorf("CompoundAssignment.Eval: variable %q not found", c.Name)
+func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode Select, value Value) (Value, error) {
+	// For field assignments like obj.field = value, we need to use copy-on-write semantics
+	// This transforms into a reopen block: obj << { field = value }
+
+	// Determine the receiver name
+	var receiverName string
+	switch receiver := selectNode.Receiver.(type) {
+	case nil:
+		return nil, fmt.Errorf("Reassignment.Eval: field assignment requires a receiver")
+	case Symbol:
+		receiverName = receiver.Name
+	default:
+		return nil, fmt.Errorf("Reassignment.Eval: complex receivers not yet supported for field assignment")
 	}
 
-	// Evaluate the right-hand side value
-	rightValue, err := EvalNode(ctx, env, c.Value)
-	if err != nil {
-		return nil, fmt.Errorf("CompoundAssignment.Eval: evaluating value: %w", err)
-	}
-
-	// Perform the compound operation
-	var newValue Value
-	if c.Op == "+" {
-		// Use the same logic as Addition.Eval
-		switch l := currentValue.(type) {
-		case IntValue:
-			if r, ok := rightValue.(IntValue); ok {
-				newValue = IntValue{Val: l.Val + r.Val}
-			} else {
-				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to int variable %q", rightValue, c.Name)
-			}
-		case StringValue:
-			if r, ok := rightValue.(StringValue); ok {
-				newValue = StringValue{Val: l.Val + r.Val}
-			} else {
-				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to string variable %q", rightValue, c.Name)
-			}
-		case ListValue:
-			if r, ok := rightValue.(ListValue); ok {
-				// Concatenate the lists
-				combined := make([]Value, len(l.Elements)+len(r.Elements))
-				copy(combined, l.Elements)
-				copy(combined[len(l.Elements):], r.Elements)
-
-				// Use the element type from the left operand, or right if left is empty
-				elemType := l.ElemType
-				if len(l.Elements) == 0 && len(r.Elements) > 0 {
-					elemType = r.ElemType
-				}
-
-				newValue = ListValue{Elements: combined, ElemType: elemType}
-			} else {
-				return nil, fmt.Errorf("CompoundAssignment.Eval: cannot add %T to list variable %q", rightValue, c.Name)
-			}
-		default:
-			return nil, fmt.Errorf("CompoundAssignment.Eval: addition not supported for type %T", currentValue)
+	// Create a reopen block with the assignment
+	var innerNode Node
+	if r.Modifier == "=" {
+		// Simple field assignment: obj.field = value
+		// This should become: field = value inside the reopen block
+		innerNode = Reassignment{
+			Target:   Symbol{Name: selectNode.Field, Loc: r.Loc},
+			Modifier: "=",
+			Value:    r.createValueNode(value),
+			Loc:      r.Loc,
+		}
+	} else if r.Modifier == "+" {
+		// Compound field assignment: obj.field += value
+		innerNode = Reassignment{
+			Target:   Symbol{Name: selectNode.Field, Loc: r.Loc},
+			Modifier: "+",
+			Value:    r.createValueNode(value),
+			Loc:      r.Loc,
 		}
 	} else {
-		return nil, fmt.Errorf("CompoundAssignment.Eval: unsupported operator %q", c.Op)
+		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 
-	// Update the variable in the environment
-	env.Set(c.Name, newValue)
+	reopenNode := Reopen{
+		Name: receiverName,
+		Block: Block{
+			Forms: []Node{innerNode},
+			Loc:   r.Loc,
+		},
+		Loc: r.Loc,
+	}
 
-	// Return the new value
-	return newValue, nil
+	// Evaluate the reopen block
+	return EvalNode(ctx, env, reopenNode)
+}
+
+func (r Reassignment) performAddition(left, right Value, varName string) (Value, error) {
+	switch l := left.(type) {
+	case IntValue:
+		if r, ok := right.(IntValue); ok {
+			return IntValue{Val: l.Val + r.Val}, nil
+		}
+		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to int variable %q", right, varName)
+
+	case StringValue:
+		if r, ok := right.(StringValue); ok {
+			return StringValue{Val: l.Val + r.Val}, nil
+		}
+		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to string variable %q", right, varName)
+
+	case ListValue:
+		if r, ok := right.(ListValue); ok {
+			// Concatenate the lists
+			combined := make([]Value, len(l.Elements)+len(r.Elements))
+			copy(combined, l.Elements)
+			copy(combined[len(l.Elements):], r.Elements)
+
+			// Use the element type from the left operand, or right if left is empty
+			elemType := l.ElemType
+			if len(l.Elements) == 0 && len(r.Elements) > 0 {
+				elemType = r.ElemType
+			}
+
+			return ListValue{Elements: combined, ElemType: elemType}, nil
+		}
+		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to list variable %q", right, varName)
+
+	default:
+		return nil, fmt.Errorf("Reassignment.Eval: addition not supported for type %T", left)
+	}
+}
+
+func (r Reassignment) createValueNode(value Value) Node {
+	switch v := value.(type) {
+	case IntValue:
+		return Int{Value: int64(v.Val), Loc: r.Loc}
+	case StringValue:
+		return String{Value: v.Val, Loc: r.Loc}
+	case BoolValue:
+		return Boolean{Value: v.Val, Loc: r.Loc}
+	case NullValue:
+		return Null{Loc: r.Loc}
+	default:
+		// For complex values, we'll need a more sophisticated approach
+		// For now, just create a Symbol that references the value
+		return Symbol{Name: fmt.Sprintf("__temp_value_%p", value), Loc: r.Loc}
+	}
 }
 
 type Reopen struct {
@@ -2153,11 +2190,24 @@ type CompositeEnv struct {
 }
 
 func (c CompositeEnv) Get(name string) (Value, bool) {
-	// First check the primary environment (reopened module)
+	// First check the lexical environment (current scope) for variable lookup
+	// This allows method parameters to shadow receiver fields
+	if val, found := c.lexical.Get(name); found {
+		return val, true
+	}
+	// Then check the primary environment (reopened module)
+	return c.primary.Get(name)
+}
+
+// GetForAssignment returns the value from the environment where assignment should occur
+// For compound assignments, we want to read and write from the same environment (primary)
+func (c CompositeEnv) GetForAssignment(name string) (Value, bool) {
+	// For assignment operations, prefer the primary environment (receiver)
+	// This ensures compound assignments like += work on receiver fields
 	if val, found := c.primary.Get(name); found {
 		return val, true
 	}
-	// Then check the lexical environment (current scope)
+	// Fall back to lexical environment only if not found in primary
 	return c.lexical.Get(name)
 }
 
@@ -2195,12 +2245,13 @@ type CompositeModule struct {
 }
 
 func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
-	// First check the primary environment (reopened module)
-	if scheme, found := c.primary.SchemeOf(name); found {
+	// First check the lexical environment (current scope) for variable lookup
+	// This allows method parameters to shadow receiver fields during type inference
+	if scheme, found := c.lexical.SchemeOf(name); found {
 		return scheme, true
 	}
-	// Then check the lexical environment (current scope)
-	return c.lexical.SchemeOf(name)
+	// Then check the primary environment (reopened module)
+	return c.primary.SchemeOf(name)
 }
 
 func (c *CompositeModule) LocalSchemeOf(name string) (*hm.Scheme, bool) {

@@ -8,19 +8,11 @@
         "named": true
       },
       {
-        "type": "compound_assignment",
-        "named": true
-      },
-      {
         "type": "form",
         "named": true
       },
       {
         "type": "reassignment",
-        "named": true
-      },
-      {
-        "type": "reopen",
         "named": true
       },
       {
@@ -442,6 +434,25 @@
     }
   },
   {
+    "type": "assign_op",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "equal_token",
+          "named": true
+        },
+        {
+          "type": "plus_equal_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "block",
     "named": true,
     "fields": {
@@ -557,57 +568,6 @@
       "types": [
         {
           "type": "cls_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "compound_assignment",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "op": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "compound_op",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "compound_op",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "plus_equal_token",
           "named": true
         }
       ]
@@ -825,6 +785,11 @@
     }
   },
   {
+    "type": "equal_token",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "equality",
     "named": true,
     "fields": {
@@ -854,7 +819,7 @@
       "required": true,
       "types": [
         {
-          "type": "equal_token",
+          "type": "double_equal_token",
           "named": true
         }
       ]
@@ -1872,12 +1837,22 @@
     "type": "reassignment",
     "named": true,
     "fields": {
-      "name": {
+      "op": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "assign_op",
+            "named": true
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
             "named": true
           }
         ]
@@ -1892,42 +1867,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "reopen",
-    "named": true,
-    "fields": {
-      "b": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "reopen_token",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2543,11 +2482,11 @@
     "named": true
   },
   {
-    "type": "else_token",
+    "type": "double_equal_token",
     "named": true
   },
   {
-    "type": "equal_token",
+    "type": "else_token",
     "named": true
   },
   {
@@ -2628,10 +2567,6 @@
   },
   {
     "type": "quoted_raw_token",
-    "named": true
-  },
-  {
-    "type": "reopen_token",
     "named": true
   },
   {

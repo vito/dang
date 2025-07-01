@@ -80,15 +80,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "compound_assignment"
-        },
-        {
-          "type": "SYMBOL",
           "name": "reassignment"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "reopen"
         },
         {
           "type": "SYMBOL",
@@ -1276,7 +1268,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "equal_token"
+          "name": "double_equal_token"
         },
         {
           "type": "FIELD",
@@ -1288,7 +1280,7 @@
         }
       ]
     },
-    "equal_token": {
+    "double_equal_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
@@ -2457,15 +2449,15 @@
         "value": "assert"
       }
     },
-    "compound_assignment": {
+    "reassignment": {
       "type": "SEQ",
       "members": [
         {
           "type": "FIELD",
-          "name": "name",
+          "name": "target",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "term"
           }
         },
         {
@@ -2473,7 +2465,7 @@
           "name": "op",
           "content": {
             "type": "SYMBOL",
-            "name": "compound_op"
+            "name": "assign_op"
           }
         },
         {
@@ -2486,9 +2478,18 @@
         }
       ]
     },
-    "compound_op": {
-      "type": "SYMBOL",
-      "name": "plus_equal_token"
+    "assign_op": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "plus_equal_token"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "equal_token"
+        }
+      ]
     },
     "plus_equal_token": {
       "type": "TOKEN",
@@ -2497,30 +2498,12 @@
         "value": "+="
       }
     },
-    "reassignment": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "name",
-          "content": {
-            "type": "SYMBOL",
-            "name": "id"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "="
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
-        }
-      ]
+    "equal_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "="
+      }
     },
     "reopen": {
       "type": "SEQ",

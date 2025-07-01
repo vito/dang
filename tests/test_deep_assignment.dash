@@ -1,0 +1,27 @@
+# Test deep field assignment (multiple levels)
+
+cls Config {
+  pub packages = ["base"]
+}
+
+cls Contents {
+  pub config = Config { }
+}
+
+cls Container {
+  pub contents = Contents { }
+  
+  pub addPackages(packages: [String!]!): Container! {
+    # Deep assignment: self.contents.config.packages += packages
+    self.contents.config.packages += packages
+    self
+  }
+}
+
+# Test deep assignment
+pub container = Container { }
+pub result = container.addPackages(["new-package"])
+
+assert { result.contents.config.packages == ["base", "new-package"] }
+
+print("Deep assignment test passed!")
