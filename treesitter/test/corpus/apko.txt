@@ -9,18 +9,18 @@ pub description =
 pvt arch = "x86_64"
 
 cls Apko {
-  pub config = {{
-    contents: {{
-      packages: []
-      repositories: []
-      keyring: []
-    }}
-    cmd: ""
-    environment: {{
-      PATH: "/usr/local/bin:/usr/bin:/bin"
-    }}
-    archs: [arch]
-  }}
+  pub config = {
+    "contents": {
+      "packages": []
+      "repositories": []
+      "keyring": []
+    }
+    "cmd": ""
+    "environment": {
+      "PATH": "/usr/local/bin:/usr/bin:/bin"
+    }
+    "archs": [arch]
+  }
 
   pub withAlpine(branch: String! = "edge"): Apko! {
     self.config.contents.packages += ["apk-tools"]
@@ -92,46 +92,46 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
           (id
             (word_token))
           (equal_token)
-          (object
-            (key_value
-              (word_token)
+          (block
+            (field
+              (string)
               (colon_token)
-              (object
-                (key_value
-                  (word_token)
+              (block
+                (field
+                  (string)
                   (colon_token)
                   (list))
                 (sep)
-                (key_value
-                  (word_token)
+                (field
+                  (string)
                   (colon_token)
                   (list))
                 (sep)
-                (key_value
-                  (word_token)
+                (field
+                  (string)
                   (colon_token)
                   (list))
                 (sep)))
             (sep)
-            (key_value
-              (word_token)
+            (field
+              (string)
               (colon_token)
               (literal
                 (string)))
             (sep)
-            (key_value
-              (word_token)
+            (field
+              (string)
               (colon_token)
-              (object
-                (key_value
-                  (word_token)
+              (block
+                (field
+                  (string)
                   (colon_token)
                   (literal
                     (string)))
                 (sep)))
             (sep)
-            (key_value
-              (word_token)
+            (field
+              (string)
               (colon_token)
               (list
                 (symbol_or_call

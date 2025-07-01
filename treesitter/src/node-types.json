@@ -8,6 +8,10 @@
         "named": true
       },
       {
+        "type": "field",
+        "named": true
+      },
+      {
         "type": "form",
         "named": true
       },
@@ -69,10 +73,6 @@
       },
       {
         "type": "literal",
-        "named": true
-      },
-      {
-        "type": "object",
         "named": true
       },
       {
@@ -838,6 +838,42 @@
         },
         {
           "type": "unicode_escape",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "field",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
+      "val": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
           "named": true
         }
       ]
@@ -1664,46 +1700,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "object",
-    "named": true,
-    "fields": {
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "key_value",
-            "named": true
-          }
-        ]
-      },
-      "v": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "key_value",
-            "named": true
-          }
-        ]
-      },
-      "vals": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "key_value",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -2627,15 +2623,7 @@
     "named": false
   },
   {
-    "type": "{{",
-    "named": false
-  },
-  {
     "type": "}",
-    "named": false
-  },
-  {
-    "type": "}}",
     "named": false
   }
 ]

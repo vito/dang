@@ -1895,7 +1895,6 @@ type Reassignment struct {
 var _ Node = Reassignment{}
 var _ Evaluator = Reassignment{}
 
-
 func (r Reassignment) Body() hm.Expression { return r.Target }
 
 func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
@@ -2070,7 +2069,6 @@ func (r Reassignment) getPath(selectNode Select) (string, []string, error) {
 	return rootSymbol.Name, path, nil
 }
 
-
 func (r Reassignment) performAddition(left, right Value, varName string) (Value, error) {
 	switch l := left.(type) {
 	case IntValue:
@@ -2205,6 +2203,16 @@ func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type CompositeEnv struct {
 	primary EvalEnv // Where new bindings go (the reopened module)
 	lexical EvalEnv // Where to look for external variables (current environment)
+}
+
+var _ Value = CompositeEnv{}
+
+func (c CompositeEnv) Type() hm.Type {
+	return c.primary.Type()
+}
+
+func (c CompositeEnv) String() string {
+	return c.primary.String()
 }
 
 func (c CompositeEnv) Get(name string) (Value, bool) {
