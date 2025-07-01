@@ -177,349 +177,183 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 	return result, nil
 }
 
-// OnDemandInferenceContext manages recursive symbol inference with cycle detection.
-// This experimental approach eliminates the need for topological sorting by 
-// resolving dependencies on-demand during type inference.
-type OnDemandInferenceContext struct {
-	symbolToNode   map[string]Node     // Maps symbol names to their declaring nodes
-	inferenceStack map[string]bool     // Tracks currently inferring symbols to detect cycles
-	availableForms []Node              // All forms available for inference
-}
 
-// OnDemandEvaluationContext manages recursive declaration evaluation with cycle detection.
-// This complements on-demand inference by lazily evaluating declarations only when needed.
-type OnDemandEvaluationContext struct {
-	symbolToNode    map[string]Node     // Maps symbol names to their declaring nodes (shared with inference)
-	evaluationStack map[string]bool     // Tracks currently evaluating symbols to detect cycles
-	evaluated       map[string]Value    // Memoization cache: symbolName -> Value
-}
-
-// NewOnDemandInferenceContext creates a new context for on-demand inference
-func NewOnDemandInferenceContext(forms []Node) *OnDemandInferenceContext {
-	ctx := &OnDemandInferenceContext{
-		symbolToNode:   make(map[string]Node),
-		inferenceStack: make(map[string]bool),
-		availableForms: forms,
-	}
-
-	// Build symbol-to-node mapping using DeclaredSymbols()
-	for _, form := range forms {
-		if declarer, ok := form.(Declarer); ok && declarer.IsDeclarer() {
-			for _, symbol := range form.DeclaredSymbols() {
-				ctx.symbolToNode[symbol] = form
-			}
-		}
-	}
-
-	return ctx
-}
-
-// NewOnDemandEvaluationContext creates a new context for on-demand evaluation
-func NewOnDemandEvaluationContext(forms []Node) *OnDemandEvaluationContext {
-	ctx := &OnDemandEvaluationContext{
-		symbolToNode:    make(map[string]Node),
-		evaluationStack: make(map[string]bool),
-		evaluated:       make(map[string]Value),
-	}
-
-	// Build symbol-to-node mapping using DeclaredSymbols() (same as inference)
-	for _, form := range forms {
-		if declarer, ok := form.(Declarer); ok && declarer.IsDeclarer() {
-			for _, symbol := range form.DeclaredSymbols() {
-				ctx.symbolToNode[symbol] = form
-			}
-		}
-	}
-
-	return ctx
-}
-
-// InferSymbolOnDemand attempts to infer a symbol by finding and inferring its declarer
-func (ctx *OnDemandInferenceContext) InferSymbolOnDemand(symbolName string, wrappedEnv *OnDemandEnv, fresh hm.Fresher) error {
-	// Check for cycles
-	if ctx.inferenceStack[symbolName] {
-		return errors.New("circular dependency detected in symbol inference: " + symbolName)
-	}
-
-	// Find the node that declares this symbol
-	declarer, found := ctx.symbolToNode[symbolName]
-	if !found {
-		return errors.New("symbol not found: " + symbolName)
-	}
-
-	// Mark this symbol as being inferred to detect cycles
-	ctx.inferenceStack[symbolName] = true
-	defer func() {
-		delete(ctx.inferenceStack, symbolName)
-	}()
-
-	// Recursively infer the declarer using the wrapped environment
-	_, err := declarer.Infer(wrappedEnv, fresh)
-	return err
-}
-
-// EvaluateSymbolOnDemand attempts to evaluate a symbol by finding and evaluating its declarer
-func (ctx *OnDemandEvaluationContext) EvaluateSymbolOnDemand(symbolName string, wrappedEnv *OnDemandEvalEnv, evalContext context.Context) (Value, error) {
-	// Check cache first
-	if val, found := ctx.evaluated[symbolName]; found {
-		return val, nil
-	}
-
-	// Check for cycles
-	if ctx.evaluationStack[symbolName] {
-		return nil, fmt.Errorf("circular dependency detected in evaluation: %s", symbolName)
-	}
-
-	// Find the node that declares this symbol
-	declarer, found := ctx.symbolToNode[symbolName]
-	if !found {
-		return nil, fmt.Errorf("symbol not found: %s", symbolName)
-	}
-
-	// Mark this symbol as being evaluated to detect cycles
-	ctx.evaluationStack[symbolName] = true
-	defer func() {
-		delete(ctx.evaluationStack, symbolName)
-	}()
-
-	// Recursively evaluate the declarer using the wrapped environment
-	val, err := EvalNode(evalContext, wrappedEnv, declarer)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cache the result
-	ctx.evaluated[symbolName] = val
-	return val, nil
-}
-
-// InferFormsWithOnDemandResolution infers forms using recursive on-demand symbol resolution.
-// This is an experimental alternative to topological sorting that resolves dependencies
-// lazily as they are encountered during type inference.
-func InferFormsWithOnDemandResolution(forms []Node, env hm.Env, fresh hm.Fresher) error {
-	ctx := NewOnDemandInferenceContext(forms)
+// InferFormsWithGoStylePhases implements Go's compilation phases:
+// 1. Parse all files (already done)
+// 2. Build dependency graph of all declarations
+// 3. Typecheck constants and types (which can reference each other)
+// 4. Declare function signatures (without bodies)
+// 5. Typecheck variables in dependency order (can now reference function signatures)
+// 6. Typecheck function bodies last (can reference all package-level declarations)
+func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
+	// Phase 1: Separate forms by category
+	var constants []Node     // SlotDecl with constant values (literals, no function calls)
+	var types []Node         // ClassDecl
+	var variables []Node     // SlotDecl with computed values (function calls, references)
+	var functions []Node     // FunDecl
 	
-	// Create a wrapper environment that can trigger on-demand inference
-	wrappedEnv := &OnDemandEnv{
-		base: env,
-		ctx:  ctx,
-		fresh: fresh,
-	}
-
-	// Try to infer each form, letting the OnDemandEnv handle symbol resolution
 	for _, form := range forms {
-		_, err := form.Infer(wrappedEnv, fresh)
-		if err != nil {
-			return err
+		switch f := form.(type) {
+		case ClassDecl:
+			types = append(types, f)
+		case SlotDecl:
+			if isConstantValue(f.Value) {
+				constants = append(constants, f)
+			} else {
+				variables = append(variables, f)
+			}
+		case FunDecl:
+			functions = append(functions, f)
+		default:
+			// Other forms go with variables
+			variables = append(variables, form)
 		}
 	}
-
+	
+	// Phase 2: Typecheck constants (can be in any order, no dependencies)
+	for _, form := range constants {
+		_, err := form.Infer(env, fresh)
+		if err != nil {
+			return fmt.Errorf("constant inference failed: %w", err)
+		}
+	}
+	
+	// Phase 3: Typecheck types (classes) - use traditional hoisting
+	for _, form := range types {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(env, fresh, 0); err != nil { // Pass 0: create classes
+				return fmt.Errorf("type hoisting failed: %w", err)
+			}
+		}
+	}
+	for _, form := range types {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(env, fresh, 1); err != nil { // Pass 1: infer class bodies
+				return fmt.Errorf("type body inference failed: %w", err)
+			}
+		}
+	}
+	
+	// Phase 4: Declare function signatures (hoist function declarations without bodies)
+	for _, form := range functions {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(env, fresh, 0); err != nil { // Hoist function signatures
+				return fmt.Errorf("function signature hoisting failed: %w", err)
+			}
+		}
+	}
+	
+	// Phase 5: Typecheck variables in dependency order (can now reference function signatures)
+	if len(variables) > 0 {
+		orderedVars, err := orderByDependencies(variables)
+		if err != nil {
+			return fmt.Errorf("variable dependency ordering failed: %w", err)
+		}
+		
+		for _, form := range orderedVars {
+			_, err := form.Infer(env, fresh)
+			if err != nil {
+				return fmt.Errorf("variable inference failed: %w", err)
+			}
+		}
+	}
+	
+	// Phase 6: Typecheck function bodies (can reference everything)
+	for _, form := range functions {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(env, fresh, 1); err != nil { // Infer function bodies
+				return fmt.Errorf("function body inference failed: %w", err)
+			}
+		}
+	}
+	
 	return nil
 }
 
-// EvaluateFormsWithOnDemandResolution evaluates forms using recursive on-demand declaration evaluation.
-// This complements on-demand inference by lazily evaluating declarations only when they are referenced.
-func EvaluateFormsWithOnDemandResolution(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
-	evalCtx := NewOnDemandEvaluationContext(forms)
+// isConstantValue determines if a value expression is a compile-time constant
+func isConstantValue(value Node) bool {
+	if value == nil {
+		return true // Type-only declarations
+	}
 	
-	// Create a wrapper environment that can trigger on-demand evaluation
-	wrappedEnv := &OnDemandEvalEnv{
-		base:        env,
-		ctx:         evalCtx,
-		evalContext: ctx,
+	switch value.(type) {
+	case String, Int, Boolean, Null:
+		return true
+	default:
+		return false
 	}
+}
 
-	// Evaluate forms in order, but dependencies will be resolved on-demand
-	var result Value = NullValue{}
+// EvaluateFormsWithGoStylePhases evaluates forms using the same phased approach as inference.
+// This ensures that constants, types, functions, and variables are evaluated in the correct order.
+func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+	// Phase 1: Separate forms by category (same as inference)
+	var constants []Node     // SlotDecl with constant values
+	var types []Node         // ClassDecl
+	var variables []Node     // SlotDecl with computed values
+	var functions []Node     // FunDecl
+	
 	for _, form := range forms {
-		val, err := EvalNode(ctx, wrappedEnv, form)
-		if err != nil {
-			return nil, err
+		switch f := form.(type) {
+		case ClassDecl:
+			types = append(types, f)
+		case SlotDecl:
+			if isConstantValue(f.Value) {
+				constants = append(constants, f)
+			} else {
+				variables = append(variables, f)
+			}
+		case FunDecl:
+			functions = append(functions, f)
+		default:
+			variables = append(variables, form)
 		}
-		result = val
 	}
-
+	
+	// Phase 2: Evaluate constants
+	for _, form := range constants {
+		_, err := EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, fmt.Errorf("constant evaluation failed: %w", err)
+		}
+	}
+	
+	// Phase 3: Evaluate types (classes)
+	for _, form := range types {
+		_, err := EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, fmt.Errorf("type evaluation failed: %w", err)
+		}
+	}
+	
+	// Phase 4: Evaluate functions (establish function values in environment)
+	for _, form := range functions {
+		_, err := EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, fmt.Errorf("function evaluation failed: %w", err)
+		}
+	}
+	
+	// Phase 5: Evaluate variables in dependency order
+	var result Value = NullValue{}
+	if len(variables) > 0 {
+		orderedVars, err := orderByDependencies(variables)
+		if err != nil {
+			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
+		}
+		
+		for _, form := range orderedVars {
+			val, err := EvalNode(ctx, env, form)
+			if err != nil {
+				return nil, fmt.Errorf("variable evaluation failed: %w", err)
+			}
+			result = val
+		}
+	}
+	
 	return result, nil
 }
 
-// OnDemandEnv wraps a base environment to provide on-demand symbol inference.
-// When a symbol is not found, it attempts to find and infer the declaring node recursively.
-type OnDemandEnv struct {
-	base  hm.Env
-	ctx   *OnDemandInferenceContext
-	fresh hm.Fresher
-}
-
-func (e *OnDemandEnv) SchemeOf(name string) (*hm.Scheme, bool) {
-	// First try the base environment
-	scheme, found := e.base.SchemeOf(name)
-	if found {
-		return scheme, true
-	}
-
-	// If not found, try on-demand inference
-	err := e.ctx.InferSymbolOnDemand(name, e, e.fresh)
-	if err != nil {
-		return nil, false // Inference failed, symbol truly not available
-	}
-
-	// Try again after on-demand inference
-	return e.base.SchemeOf(name)
-}
-
-// Delegate all other methods to the base environment
-func (e *OnDemandEnv) Clone() hm.Env {
-	return &OnDemandEnv{
-		base:  e.base.Clone(),
-		ctx:   e.ctx,
-		fresh: e.fresh,
-	}
-}
-
-func (e *OnDemandEnv) Add(name string, scheme *hm.Scheme) hm.Env {
-	e.base.Add(name, scheme)
-	return e
-}
-
-func (e *OnDemandEnv) Remove(name string) hm.Env {
-	e.base.Remove(name)
-	return e
-}
-
-func (e *OnDemandEnv) Apply(subs hm.Subs) hm.Substitutable {
-	return &OnDemandEnv{
-		base:  e.base.Apply(subs).(hm.Env),
-		ctx:   e.ctx,
-		fresh: e.fresh,
-	}
-}
-
-func (e *OnDemandEnv) FreeTypeVar() hm.TypeVarSet {
-	return e.base.FreeTypeVar()
-}
-
-// Implement Env interface methods
-func (e *OnDemandEnv) NamedType(name string) (Env, bool) {
-	if baseEnv, ok := e.base.(Env); ok {
-		// First try the base environment
-		namedType, found := baseEnv.NamedType(name)
-		if found {
-			return namedType, true
-		}
-
-		// If not found, try on-demand inference
-		// Note: NamedTypes are typically declared by ClassDecl nodes
-		err := e.ctx.InferSymbolOnDemand(name, e, e.fresh)
-		if err != nil {
-			return nil, false
-		}
-
-		// Try again after on-demand inference
-		return baseEnv.NamedType(name)
-	}
-	return nil, false
-}
-
-func (e *OnDemandEnv) AddClass(name string, class Env) {
-	if baseEnv, ok := e.base.(Env); ok {
-		baseEnv.AddClass(name, class)
-	}
-}
-
-func (e *OnDemandEnv) LocalSchemeOf(name string) (*hm.Scheme, bool) {
-	if baseEnv, ok := e.base.(Env); ok {
-		return baseEnv.LocalSchemeOf(name)
-	}
-	return nil, false
-}
-
-// Implement hm.Type interface methods (needed for Env interface)
-func (e *OnDemandEnv) Eq(other hm.Type) bool {
-	if baseType, ok := e.base.(hm.Type); ok {
-		return baseType.Eq(other)
-	}
-	return false
-}
-
-func (e *OnDemandEnv) Name() string {
-	if baseType, ok := e.base.(hm.Type); ok {
-		return baseType.Name()
-	}
-	return ""
-}
-
-func (e *OnDemandEnv) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
-	if baseType, ok := e.base.(hm.Type); ok {
-		return baseType.Normalize(k, v)
-	}
-	return e, nil
-}
-
-func (e *OnDemandEnv) Types() hm.Types {
-	if baseType, ok := e.base.(hm.Type); ok {
-		return baseType.Types()
-	}
-	return nil
-}
-
-func (e *OnDemandEnv) String() string {
-	if baseType, ok := e.base.(hm.Type); ok {
-		return baseType.String()
-	}
-	return ""
-}
-
-func (e *OnDemandEnv) Format(s fmt.State, c rune) {
-	if baseType, ok := e.base.(hm.Type); ok {
-		if formattable, ok := baseType.(fmt.Formatter); ok {
-			formattable.Format(s, c)
-			return
-		}
-	}
-	fmt.Fprintf(s, "%s", e.String())
-}
-
-// OnDemandEvalEnv wraps a base evaluation environment to provide on-demand declaration evaluation.
-// When a symbol is not found, it attempts to find and evaluate the declaring node recursively.
-type OnDemandEvalEnv struct {
-	base        EvalEnv
-	ctx         *OnDemandEvaluationContext
-	evalContext context.Context
-}
-
-func (e *OnDemandEvalEnv) Get(name string) (Value, bool) {
-	// First try the base environment
-	val, found := e.base.Get(name)
-	if found {
-		return val, true
-	}
-
-	// If not found, try on-demand evaluation
-	val, err := e.ctx.EvaluateSymbolOnDemand(name, e, e.evalContext)
-	if err != nil {
-		return nil, false // Evaluation failed, symbol truly not available
-	}
-
-	// Cache in base environment for future lookups
-	e.base.Set(name, val)
-	return val, true
-}
-
-func (e *OnDemandEvalEnv) Set(name string, value Value) EvalEnv {
-	return e.base.Set(name, value)
-}
-
-func (e *OnDemandEvalEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
-	e.base.SetWithVisibility(name, value, visibility)
-}
-
-func (e *OnDemandEvalEnv) Clone() EvalEnv {
-	return &OnDemandEvalEnv{
-		base:        e.base.Clone(),
-		ctx:         e.ctx,
-		evalContext: e.evalContext,
-	}
-}
 
 var _ hm.Inferer = Block{}
 

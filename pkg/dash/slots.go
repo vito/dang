@@ -222,7 +222,6 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 	}
 
-	// set special 'self' keyword to match the function signature.
 	self := hm.NewScheme(nil, NonNullType{class})
 	class.Add("self", self)
 	env.Add(c.Named, self)
