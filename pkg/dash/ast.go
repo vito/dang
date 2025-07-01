@@ -779,7 +779,7 @@ func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receive
 
 	// For FunctionValue with receiver, create a BoundMethod and then autoCall
 	if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue && receiver != nil {
-		boundMethod := BoundMethod{Method: fnVal, Receiver: *receiver}
+		boundMethod := BoundMethod{Method: fnVal, Receiver: receiver}
 		return autoCallFn(ctx, env, boundMethod)
 	}
 
@@ -917,7 +917,7 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// If this is a FunctionValue accessed from a module, bind it to the receiver
 				if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
 					// Only bind if the receiver is a ModuleValue (class instance)
-					if modVal, isModuleValue := receiverVal.(ModuleValue); isModuleValue {
+					if modVal, isModuleValue := receiverVal.(*ModuleValue); isModuleValue {
 						return BoundMethod{Method: fnVal, Receiver: modVal}, nil
 					}
 				}
@@ -1989,37 +1989,65 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 
 func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
-	finalReceiver, field, err := r.traverseSelect(ctx, env, selectNode)
+	rootSymbol, path, err := r.getPath(selectNode)
 	if err != nil {
-		return nil, fmt.Errorf("Reassignment.Eval: %w", err)
+		return nil, err
 	}
+
+	// Get the root object from the environment
+	rootObj, found := env.Get(rootSymbol)
+	if !found {
+		return nil, fmt.Errorf("object %q not found", rootSymbol)
+	}
+
+	// Clone the root object to begin the copy-on-write process
+	newRoot := rootObj.(EvalEnv).Clone()
+
+	// Traverse the path, cloning objects as we go
+	currentObj := newRoot
+	for i := 0; i < len(path)-1; i++ {
+		fieldName := path[i]
+		val, found := currentObj.Get(fieldName)
+		if !found {
+			return nil, fmt.Errorf("field %q not found in object", fieldName)
+		}
+		clonedVal := val.(EvalEnv).Clone()
+		currentObj.Set(fieldName, clonedVal.(Value))
+		currentObj = clonedVal
+	}
+
+	// Get the final field to modify
+	finalField := path[len(path)-1]
 
 	// Now that we have the final receiver, perform the assignment
 	if r.Modifier == "=" {
 		// Simple assignment: obj.field = value
-		finalReceiver.Set(field, value)
-		return value, nil
+		currentObj.Set(finalField, value)
 	} else if r.Modifier == "+" {
 		// Compound assignment: obj.field += value
-		currentValue, found := finalReceiver.Get(field)
+		currentValue, found := currentObj.Get(finalField)
 		if !found {
-			return nil, fmt.Errorf("Reassignment.Eval: field %q not found", field)
+			return nil, fmt.Errorf("Reassignment.Eval: field %q not found", finalField)
 		}
 
 		// Perform addition using existing Addition logic
-		newValue, err := r.performAddition(currentValue, value, field)
+		newValue, err := r.performAddition(currentValue, value, finalField)
 		if err != nil {
 			return nil, err
 		}
 
-		finalReceiver.Set(field, newValue)
-		return newValue, nil
+		currentObj.Set(finalField, newValue)
+	} else {
+		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 
-	return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
+	// Update the root object in the environment
+	env.Set(rootSymbol, newRoot.(Value))
+
+	return newRoot.(Value), nil
 }
 
-func (r Reassignment) traverseSelect(ctx context.Context, env EvalEnv, selectNode Select) (EvalEnv, string, error) {
+func (r Reassignment) getPath(selectNode Select) (string, []string, error) {
 	var path []string
 	var currentNode Node = selectNode
 
@@ -2036,37 +2064,10 @@ func (r Reassignment) traverseSelect(ctx context.Context, env EvalEnv, selectNod
 	// The final node in the chain should be a Symbol (the root object)
 	rootSymbol, ok := currentNode.(Symbol)
 	if !ok {
-		return nil, "", fmt.Errorf("complex receivers must start with a symbol")
+		return "", nil, fmt.Errorf("complex receivers must start with a symbol")
 	}
 
-	// Get the root object from the environment
-	rootObj, found := env.Get(rootSymbol.Name)
-	if !found {
-		return nil, "", fmt.Errorf("object %q not found", rootSymbol.Name)
-	}
-
-	currentObj, ok := rootObj.(EvalEnv)
-	if !ok {
-		return nil, "", fmt.Errorf("expected a module or object, got %T", rootObj)
-	}
-
-	// Traverse the path to get to the second-to-last object
-	for i := 0; i < len(path)-1; i++ {
-		fieldName := path[i]
-		val, found := currentObj.Get(fieldName)
-		if !found {
-			return nil, "", fmt.Errorf("field %q not found in object", fieldName)
-		}
-		currentObj, ok = val.(EvalEnv)
-		if !ok {
-			return nil, "", fmt.Errorf("field %q is not an object", fieldName)
-		}
-	}
-
-	// The last element in the path is the field to be modified
-	finalField := path[len(path)-1]
-
-	return currentObj, finalField, nil
+	return rootSymbol.Name, path, nil
 }
 
 
@@ -2179,38 +2180,23 @@ func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Evaluate the base term
-	termValue, found := env.Get(r.Name)
+	reopened, found := env.Get(r.Name)
 	if !found {
-		return nil, fmt.Errorf("Reopen.Eval: symbol %s not found", r.Name)
+		return nil, fmt.Errorf("cannot reopen %q: not found", r.Name)
 	}
-
-	// The term must evaluate to a module that can be reopened
-	moduleValue, ok := termValue.(ModuleValue)
+	reopenedEnv, ok := reopened.(EvalEnv)
 	if !ok {
-		return nil, fmt.Errorf("Reopen.Eval: cannot reopen %T, expected module", termValue)
+		return nil, fmt.Errorf("cannot reopen %T: not an environment", reopened)
 	}
 
-	// Create a new scope that inherits from the base module's values (copy-on-write using parent semantics)
-	reopenedEnv := moduleValue.Clone()
-
-	// Create a composite environment that allows access to both the reopened module and the current lexical environment
-	// This enables access to local variables like function parameters while maintaining copy-on-write semantics
 	compositeEnv := createCompositeEnv(reopenedEnv, env)
-
-	// Evaluate the block in the composite scope
 	for _, node := range r.Block.Forms {
 		_, err := EvalNode(ctx, compositeEnv, node)
 		if err != nil {
-			return nil, fmt.Errorf("Reopen.Eval: evaluating block: %w", err)
+			return nil, fmt.Errorf("Reopen.Eval: %w", err)
 		}
 	}
-
-	// Update the binding in the current env
-	// Extract the primary environment from the composite (if used) or use reopenedEnv directly
-	val := compositeEnv.primary.(ModuleValue)
-	env.Set(r.Name, val)
-
+	val := compositeEnv.primary.(*ModuleValue)
 	return val, nil
 }
 

@@ -207,7 +207,7 @@ func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) Eval
 			// This is a function - create a GraphQLFunction value
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+				argType, err := gqlToTypeNode(typeEnv, f.TypeRef)
 				if err != nil {
 					continue
 				}
@@ -562,8 +562,8 @@ type ModuleValue struct {
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
-func NewModuleValue(mod *Module) ModuleValue {
-	return ModuleValue{
+func NewModuleValue(mod *Module) *ModuleValue {
+	return &ModuleValue{
 		Mod:          mod,
 		Values:       make(map[string]Value),
 		Visibilities: make(map[string]Visibility),
@@ -580,7 +580,7 @@ func (m ModuleValue) String() string {
 }
 
 // EvalEnv interface implementation
-func (m ModuleValue) Get(name string) (Value, bool) {
+func (m *ModuleValue) Get(name string) (Value, bool) {
 	if val, ok := m.Values[name]; ok {
 		return val, true
 	}
@@ -590,14 +590,14 @@ func (m ModuleValue) Get(name string) (Value, bool) {
 	return nil, false
 }
 
-func (m ModuleValue) Set(name string, value Value) EvalEnv {
+func (m *ModuleValue) Set(name string, value Value) EvalEnv {
 	// TODO: check the type, set it if not present?
 	m.Values[name] = value
 	m.Visibilities[name] = m.Visibility(name)
 	return m
 }
 
-func (m ModuleValue) Visibility(name string) Visibility {
+func (m *ModuleValue) Visibility(name string) Visibility {
 	if vis, ok := m.Visibilities[name]; ok {
 		return vis
 	}
@@ -607,19 +607,19 @@ func (m ModuleValue) Visibility(name string) Visibility {
 	return PrivateVisibility
 }
 
-func (m ModuleValue) Clone() EvalEnv {
+func (m *ModuleValue) Clone() EvalEnv {
 	newValues := make(map[string]Value)
 	newVisibilities := make(map[string]Visibility)
-	return ModuleValue{
+	return &ModuleValue{
 		Mod:          m.Mod,
 		Values:       newValues,
 		Visibilities: newVisibilities,
-		Parent:       &m,
+		Parent:       m,
 	}
 }
 
 // SetWithVisibility sets a value with explicit visibility information
-func (m ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
+func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
 }
@@ -713,7 +713,7 @@ func dashValueToJSONWithVisited(val Value, visited map[*map[string]Value]bool) (
 // BoundMethod represents a method bound to a specific receiver
 type BoundMethod struct {
 	Method   FunctionValue
-	Receiver ModuleValue
+	Receiver *ModuleValue
 }
 
 func (b BoundMethod) Type() hm.Type {
