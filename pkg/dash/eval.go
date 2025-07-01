@@ -870,12 +870,25 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	evalCtx := NewEvalContext(allFilePaths[0], allSources[0])
 
 	// Evaluate the combined block
-	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
-	if err != nil {
-		if _, isSourceError := err.(*SourceError); isSourceError {
-			return err
+	var result Value
+	if useOnDemand {
+		if debug {
+			fmt.Println("Running on-demand evaluation...")
 		}
-		return fmt.Errorf("evaluation error in directory %s: %w", dirPath, err)
+		// Use on-demand evaluation approach
+		result, err = EvaluateFormsWithOnDemandResolution(ctx, masterBlock.Forms, evalEnv)
+		if err != nil {
+			return fmt.Errorf("on-demand evaluation failed for directory %s: %w", dirPath, err)
+		}
+	} else {
+		// Use traditional evaluation
+		result, err = EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
+		if err != nil {
+			if _, isSourceError := err.(*SourceError); isSourceError {
+				return err
+			}
+			return fmt.Errorf("evaluation error in directory %s: %w", dirPath, err)
+		}
 	}
 
 	slog.Debug("directory evaluation completed", "result", result.String(), "dir", dirPath)

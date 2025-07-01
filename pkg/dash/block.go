@@ -186,6 +186,14 @@ type OnDemandInferenceContext struct {
 	availableForms []Node              // All forms available for inference
 }
 
+// OnDemandEvaluationContext manages recursive declaration evaluation with cycle detection.
+// This complements on-demand inference by lazily evaluating declarations only when needed.
+type OnDemandEvaluationContext struct {
+	symbolToNode    map[string]Node     // Maps symbol names to their declaring nodes (shared with inference)
+	evaluationStack map[string]bool     // Tracks currently evaluating symbols to detect cycles
+	evaluated       map[string]Value    // Memoization cache: symbolName -> Value
+}
+
 // NewOnDemandInferenceContext creates a new context for on-demand inference
 func NewOnDemandInferenceContext(forms []Node) *OnDemandInferenceContext {
 	ctx := &OnDemandInferenceContext{
@@ -195,6 +203,26 @@ func NewOnDemandInferenceContext(forms []Node) *OnDemandInferenceContext {
 	}
 
 	// Build symbol-to-node mapping using DeclaredSymbols()
+	for _, form := range forms {
+		if declarer, ok := form.(Declarer); ok && declarer.IsDeclarer() {
+			for _, symbol := range form.DeclaredSymbols() {
+				ctx.symbolToNode[symbol] = form
+			}
+		}
+	}
+
+	return ctx
+}
+
+// NewOnDemandEvaluationContext creates a new context for on-demand evaluation
+func NewOnDemandEvaluationContext(forms []Node) *OnDemandEvaluationContext {
+	ctx := &OnDemandEvaluationContext{
+		symbolToNode:    make(map[string]Node),
+		evaluationStack: make(map[string]bool),
+		evaluated:       make(map[string]Value),
+	}
+
+	// Build symbol-to-node mapping using DeclaredSymbols() (same as inference)
 	for _, form := range forms {
 		if declarer, ok := form.(Declarer); ok && declarer.IsDeclarer() {
 			for _, symbol := range form.DeclaredSymbols() {
@@ -230,6 +258,41 @@ func (ctx *OnDemandInferenceContext) InferSymbolOnDemand(symbolName string, wrap
 	return err
 }
 
+// EvaluateSymbolOnDemand attempts to evaluate a symbol by finding and evaluating its declarer
+func (ctx *OnDemandEvaluationContext) EvaluateSymbolOnDemand(symbolName string, wrappedEnv *OnDemandEvalEnv, evalContext context.Context) (Value, error) {
+	// Check cache first
+	if val, found := ctx.evaluated[symbolName]; found {
+		return val, nil
+	}
+
+	// Check for cycles
+	if ctx.evaluationStack[symbolName] {
+		return nil, fmt.Errorf("circular dependency detected in evaluation: %s", symbolName)
+	}
+
+	// Find the node that declares this symbol
+	declarer, found := ctx.symbolToNode[symbolName]
+	if !found {
+		return nil, fmt.Errorf("symbol not found: %s", symbolName)
+	}
+
+	// Mark this symbol as being evaluated to detect cycles
+	ctx.evaluationStack[symbolName] = true
+	defer func() {
+		delete(ctx.evaluationStack, symbolName)
+	}()
+
+	// Recursively evaluate the declarer using the wrapped environment
+	val, err := EvalNode(evalContext, wrappedEnv, declarer)
+	if err != nil {
+		return nil, err
+	}
+
+	// Cache the result
+	ctx.evaluated[symbolName] = val
+	return val, nil
+}
+
 // InferFormsWithOnDemandResolution infers forms using recursive on-demand symbol resolution.
 // This is an experimental alternative to topological sorting that resolves dependencies
 // lazily as they are encountered during type inference.
@@ -252,6 +315,31 @@ func InferFormsWithOnDemandResolution(forms []Node, env hm.Env, fresh hm.Fresher
 	}
 
 	return nil
+}
+
+// EvaluateFormsWithOnDemandResolution evaluates forms using recursive on-demand declaration evaluation.
+// This complements on-demand inference by lazily evaluating declarations only when they are referenced.
+func EvaluateFormsWithOnDemandResolution(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+	evalCtx := NewOnDemandEvaluationContext(forms)
+	
+	// Create a wrapper environment that can trigger on-demand evaluation
+	wrappedEnv := &OnDemandEvalEnv{
+		base:        env,
+		ctx:         evalCtx,
+		evalContext: ctx,
+	}
+
+	// Evaluate forms in order, but dependencies will be resolved on-demand
+	var result Value = NullValue{}
+	for _, form := range forms {
+		val, err := EvalNode(ctx, wrappedEnv, form)
+		if err != nil {
+			return nil, err
+		}
+		result = val
+	}
+
+	return result, nil
 }
 
 // OnDemandEnv wraps a base environment to provide on-demand symbol inference.
@@ -389,6 +477,48 @@ func (e *OnDemandEnv) Format(s fmt.State, c rune) {
 		}
 	}
 	fmt.Fprintf(s, "%s", e.String())
+}
+
+// OnDemandEvalEnv wraps a base evaluation environment to provide on-demand declaration evaluation.
+// When a symbol is not found, it attempts to find and evaluate the declaring node recursively.
+type OnDemandEvalEnv struct {
+	base        EvalEnv
+	ctx         *OnDemandEvaluationContext
+	evalContext context.Context
+}
+
+func (e *OnDemandEvalEnv) Get(name string) (Value, bool) {
+	// First try the base environment
+	val, found := e.base.Get(name)
+	if found {
+		return val, true
+	}
+
+	// If not found, try on-demand evaluation
+	val, err := e.ctx.EvaluateSymbolOnDemand(name, e, e.evalContext)
+	if err != nil {
+		return nil, false // Evaluation failed, symbol truly not available
+	}
+
+	// Cache in base environment for future lookups
+	e.base.Set(name, val)
+	return val, true
+}
+
+func (e *OnDemandEvalEnv) Set(name string, value Value) EvalEnv {
+	return e.base.Set(name, value)
+}
+
+func (e *OnDemandEvalEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
+	e.base.SetWithVisibility(name, value, visibility)
+}
+
+func (e *OnDemandEvalEnv) Clone() EvalEnv {
+	return &OnDemandEvalEnv{
+		base:        e.base.Clone(),
+		ctx:         e.ctx,
+		evalContext: e.evalContext,
+	}
 }
 
 var _ hm.Inferer = Block{}
