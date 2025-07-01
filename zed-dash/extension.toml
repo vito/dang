@@ -8,5 +8,5 @@ repository = "https://github.com/vito/dash"
 
 [grammars.dash]
 repository = "https://github.com/vito/dash"
-commit = "2ad83ce93d4d5990cc1177cd55da2d8ddf2be0ce"
+commit = "3ddf4f105b994f3323231ee4adb20db4d10b1edb"
 path = "treesitter"

@@ -29,7 +29,6 @@ type Evaluator interface {
 
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
-	Value
 	Get(name string) (Value, bool)
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)

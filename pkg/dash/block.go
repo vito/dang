@@ -78,3 +78,57 @@ func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	return result, nil
 }
+
+type Object struct {
+	Slots []SlotDecl
+	Loc   *SourceLocation
+
+	// Filled in during inference phase
+	// This is a little weird but has come up twice, maybe OK pattern?
+	// Requires mutating node in-place.
+	Mod *Module
+}
+
+var _ Node = &Object{}
+
+func (f *Object) Body() hm.Expression { return f }
+
+func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
+
+var _ hm.Inferer = &Object{}
+
+func (o *Object) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	mod := NewModule("<lit>")
+	inferEnv := &CompositeModule{
+		primary: mod,
+		lexical: env.(Env),
+	}
+	for _, slot := range o.Slots {
+		_, err := slot.Infer(inferEnv, fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
+	o.Mod = mod
+	return NonNullType{mod}, nil
+}
+
+var _ Evaluator = &Object{}
+
+func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if o.Mod == nil {
+		return nil, errors.New("object has no module inferred")
+	}
+	newMod := NewModuleValue(o.Mod)
+	evalEnv := &CompositeEnv{
+		primary: newMod,
+		lexical: env,
+	}
+	for _, slot := range o.Slots {
+		_, err := EvalNode(ctx, evalEnv, slot)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return newMod, nil
+}

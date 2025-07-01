@@ -45,9 +45,7 @@ func (c SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	return nil
 }
 
-func (s SlotDecl) Infer(hmEnv hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	env := hmEnv.(Env)
-
+func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
 
 	var definedType hm.Type
@@ -84,20 +82,22 @@ func (s SlotDecl) Infer(hmEnv hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// 	return nil, fmt.Errorf("SlotDecl.Infer: %q mismatch: defined as %s, inferred as %s", s.Named, definedType, inferredType)
 	// }
 
-	cur, defined := env.LocalSchemeOf(s.Named)
-	if defined {
-		curT, curMono := cur.Type()
-		if !curMono {
-			return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
-		}
+	if dashEnv, ok := env.(Env); ok {
+		cur, defined := dashEnv.LocalSchemeOf(s.Named)
+		if defined {
+			curT, curMono := cur.Type()
+			if !curMono {
+				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
+			}
 
-		if !definedType.Eq(curT) {
-			return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s", s.Named, curT)
+			if !definedType.Eq(curT) {
+				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s", s.Named, curT)
+			}
 		}
 	}
 
 	env.Add(s.Named, hm.NewScheme(nil, definedType))
-	return NonNullType{env}, nil
+	return definedType, nil
 }
 
 func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -118,7 +118,7 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// If it's a ModuleValue, use SetWithVisibility to track visibility
 	env.SetWithVisibility(s.Named, val, s.Visibility)
 
-	return env, nil
+	return val, nil
 }
 
 type ClassDecl struct {

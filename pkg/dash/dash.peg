@@ -19,27 +19,14 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Class / Slot / Reassignment / Field / Form
+Expr <- Class / Slot / Reassignment / Form
 
 Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
 
-Term <- Literal / SelectOrCall / List / Block / ParenForm / SymbolOrCall
+Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
 ParenForm <- '(' _ expr:Form _ ')' {
   return expr.(Node), nil
-}
-
-Field <- name:String _ ColonToken _ val:Expr {
-  return SlotDecl{
-    Named: name.(String).Value,
-    Value: val.(Node),
-    Visibility: PublicVisibility,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
-  }, nil
 }
 
 // Handle Symbol followed by optional ()
@@ -451,6 +438,25 @@ DotToken <- '.'
 List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
   return List{
     Elements: sliceOfAppend[Node](eles, last),
+    Loc: &SourceLocation{
+      Line: c.pos.line,
+      Column: c.pos.col,
+      Length: len(string(c.text)),
+    },
+  }, nil
+}
+
+Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {
+  var slots []SlotDecl
+  for _, kv := range sliceOfAppend[Keyed[Node]](vals, last) {
+    slots = append(slots, SlotDecl{
+      Named: kv.Key,
+      Value: kv.Value,
+      Loc: kv.Value.GetSourceLocation(),
+    })
+  }
+  return &Object{
+    Slots: slots,
     Loc: &SourceLocation{
       Line: c.pos.line,
       Column: c.pos.col,
