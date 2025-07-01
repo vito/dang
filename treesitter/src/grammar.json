@@ -383,8 +383,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "="
+          "type": "SYMBOL",
+          "name": "equal_token"
         },
         {
           "type": "FIELD",
@@ -416,8 +416,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "="
+          "type": "SYMBOL",
+          "name": "equal_token"
         },
         {
           "type": "FIELD",
@@ -780,8 +780,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "="
+          "type": "SYMBOL",
+          "name": "equal_token"
         },
         {
           "type": "FIELD",
@@ -1980,8 +1980,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "="
+          "type": "SYMBOL",
+          "name": "equal_token"
         },
         {
           "type": "FIELD",

@@ -44,6 +44,7 @@ print(test(bin(src)))
         (pvt_token))
       (id
         (word_token))
+      (equal_token)
       (select_or_call
         (symbol_or_call
           (symbol

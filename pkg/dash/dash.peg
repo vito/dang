@@ -109,7 +109,7 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ '=' _ value:Form {
+TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
@@ -123,7 +123,7 @@ TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ '=' _ v
   }, nil
 }
 
-ValueOnlySlot <- vis:Visibility _ name:Id _ '=' _ val:Form {
+ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form {
   return SlotDecl{
     Named: name.(string),
     Value: val.(Node),
@@ -227,7 +227,7 @@ ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
 ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   return slot.(SlotDecl), nil
 }
-ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ '=' _ value:Form {
+ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
@@ -589,7 +589,7 @@ ElseClause <- _ ElseToken _ block:Block {
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
 
-Let <- LetToken _ name:Id _ '=' _ value:Form _ InToken _ expr:Form {
+Let <- LetToken _ name:Id _ EqualToken _ value:Form _ InToken _ expr:Form {
   return Let{
     Name: name.(string),
     Value: value.(Node),

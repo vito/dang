@@ -311,11 +311,15 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "equal_token",
           "named": true
         }
       ]
@@ -783,11 +787,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "equal_token",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "equality",
@@ -1314,6 +1313,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "equal_token",
+          "named": true
+        },
         {
           "type": "in_token",
           "named": true
@@ -2242,11 +2245,15 @@
       }
     },
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
         {
           "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "equal_token",
           "named": true
         }
       ]
@@ -2367,6 +2374,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "equal_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2433,10 +2450,6 @@
     "named": false
   },
   {
-    "type": "=",
-    "named": false
-  },
-  {
     "type": "[",
     "named": false
   },
@@ -2487,6 +2500,10 @@
   },
   {
     "type": "else_token",
+    "named": true
+  },
+  {
+    "type": "equal_token",
     "named": true
   },
   {
