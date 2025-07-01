@@ -773,50 +773,90 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		allForms = append(allForms, block.Forms...)
 	}
 
-	// Order forms based on dependencies for proper inference order
-	orderedForms, err := OrderFormsByDependencies(allForms)
-	if err != nil {
-		return fmt.Errorf("failed to order forms by dependencies: %w", err)
-	}
-
-	// Debug: print form names to see ordering
-	if debug {
-		fmt.Println("Form ordering:")
-		for i, form := range orderedForms {
-			var name string
-			switch f := form.(type) {
-			case SlotDecl:
-				name = f.Named
-			case ClassDecl:
-				name = f.Named
-			case FunDecl:
-				name = f.Named
-			default:
-				name = fmt.Sprintf("%T", f)
-			}
-			fmt.Printf("  %d: %s\n", i, name)
+	// Experimental: Try on-demand inference first
+	useOnDemand := os.Getenv("DASH_ON_DEMAND_INFERENCE") == "1"
+	
+	var masterBlock Block
+	
+	if useOnDemand {
+		if debug {
+			fmt.Println("Using experimental on-demand inference...")
 		}
-	}
+		// Use original form order, let on-demand inference handle dependencies
+		masterBlock = Block{
+			Forms: allForms,
+			Loc:   &SourceLocation{},
+		}
+	} else {
+		// Order forms based on dependencies for proper inference order
+		orderedForms, err := OrderFormsByDependencies(allForms)
+		if err != nil {
+			return fmt.Errorf("failed to order forms by dependencies: %w", err)
+		}
 
-	// Create a master block containing all forms from all files
-	masterBlock := Block{
-		Forms: orderedForms,
-		Loc:   &SourceLocation{}, // TODO: could be improved to track multiple files
+		// Debug: print form names to see ordering
+		if debug {
+			fmt.Println("Form ordering:")
+			for i, form := range orderedForms {
+				var name string
+				switch f := form.(type) {
+				case SlotDecl:
+					name = f.Named
+				case ClassDecl:
+					name = f.Named
+				case FunDecl:
+					name = f.Named
+				default:
+					name = fmt.Sprintf("%T", f)
+				}
+				fmt.Printf("  %d: %s\n", i, name)
+			}
+		}
+
+		// Create a master block containing all forms from all files
+		masterBlock = Block{
+			Forms: orderedForms,
+			Loc:   &SourceLocation{}, // TODO: could be improved to track multiple files
+		}
 	}
 
 	if debug {
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
-		fmt.Printf("Found %d .dash files with %d total forms\n", len(dashFiles), len(orderedForms))
+		fmt.Printf("Found %d .dash files with %d total forms\n", len(dashFiles), len(masterBlock.Forms))
 		// pretty.Println(masterBlock)
 	}
 
 	// Create type environment
 	typeEnv := NewEnv(schema)
 
-	// Run type inference with cross-file hoisting
-	inferred, err := Infer(typeEnv, masterBlock, true)
-	if err != nil {
-		return fmt.Errorf("type inference failed for directory %s: %w", dirPath, err)
+	// Run type inference
+	var inferred *hm.Scheme
+	if useOnDemand {
+		if debug {
+			fmt.Println("Running on-demand inference...")
+		}
+		// Use on-demand inference approach
+		infer := newInferer(typeEnv)
+		err := InferFormsWithOnDemandResolution(masterBlock.Forms, typeEnv, infer)
+		if err != nil {
+			return fmt.Errorf("on-demand inference failed for directory %s: %w", dirPath, err)
+		}
+		// For compatibility, create a scheme for the result (last form's type)
+		if len(masterBlock.Forms) > 0 {
+			lastType, err := masterBlock.Forms[len(masterBlock.Forms)-1].Infer(typeEnv, infer)
+			if err != nil {
+				return fmt.Errorf("failed to infer final form type: %w", err)
+			}
+			inferred = hm.NewScheme(nil, lastType)
+		} else {
+			inferred = hm.NewScheme(nil, hm.TypeVariable('a'))
+		}
+	} else {
+		// Use traditional hoisting approach
+		inferred, err = Infer(typeEnv, masterBlock, true)
+		if err != nil {
+			return fmt.Errorf("type inference failed for directory %s: %w", dirPath, err)
+		}
 	}
 
 	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)
