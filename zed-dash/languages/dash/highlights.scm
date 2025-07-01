@@ -26,13 +26,14 @@
 
 ;; Operators and punctuation
 [
-  "="
+  (equal_token)
+  (plus_equal_token)
   (interro_token)
   (bang_token)
   (lambda_token)
   (arrow_token)
 ] @operator
-["{" "}" "[" "]" "(" ")"] @punctuation.bracket
+["{{" "}}" "{" "}" "[" "]" "(" ")"] @punctuation.bracket
 [
   (comma_token)
   (dot_token)
@@ -84,6 +85,9 @@
 ;; Field selections
 (select_or_call
   (id) @function.method)
+
+((symbol) @variable.special
+  (#match? @variable.special "^(self)$"))
 
 ;; Error highlighting
 (ERROR) @error
