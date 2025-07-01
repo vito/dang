@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"dagger.io/dagger"
 	"dagger.io/dagger/querybuilder"
+	"github.com/Khan/genqlient/graphql"
 	"github.com/chewxy/hm"
 	"github.com/kr/pretty"
 	"github.com/vito/dash/introspection"
@@ -41,7 +41,7 @@ type GraphQLFunction struct {
 	TypeName   string
 	Field      *introspection.Field
 	FnType     *hm.FunctionType
-	Client     *dagger.Client
+	Client     graphql.Client
 	Schema     *introspection.Schema
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 }
@@ -95,7 +95,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 	if isScalarType(g.Field.TypeRef, g.Schema) {
 		// Execute the query and return the scalar value
 		var result interface{}
-		query = query.Bind(&result).Client(g.Client.GraphQLClient())
+		query = query.Bind(&result).Client(g.Client)
 		if err := query.Execute(ctx); err != nil {
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
@@ -120,7 +120,7 @@ type GraphQLValue struct {
 	TypeName   string
 	Field      *introspection.Field
 	ValType    hm.Type
-	Client     *dagger.Client
+	Client     graphql.Client
 	Schema     *introspection.Schema
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 }
@@ -190,7 +190,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 }
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
-func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) EvalEnv {
+func NewEvalEnvWithSchema(client graphql.Client, schema *introspection.Schema) EvalEnv {
 	// Create a type environment to help with type conversion
 	typeEnv := NewEnv(schema)
 
@@ -220,7 +220,7 @@ func NewEvalEnvWithSchema(schema *introspection.Schema, dag *dagger.Client) Eval
 				TypeName:   t.Name,
 				Field:      f,
 				FnType:     fnType,
-				Client:     dag,
+				Client:     client,
 				Schema:     schema,
 				QueryChain: nil, // Top-level functions start with no query chain
 			}
@@ -379,7 +379,7 @@ func (m gqlObjectMarshaller) XXX_GraphQLIDType() string {
 // XXX_GraphqlID is an internal function. It returns the underlying type ID
 func (m gqlObjectMarshaller) XXX_GraphQLID(ctx context.Context) (string, error) {
 	var res string
-	query := m.val.QueryChain.Select("id").Bind(&res).Client(m.val.Client.GraphQLClient())
+	query := m.val.QueryChain.Select("id").Bind(&res).Client(m.val.Client)
 	if err := query.Execute(ctx); err != nil {
 		return "", err
 	}
@@ -743,7 +743,7 @@ func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
 }
 
-func RunFile(schema *introspection.Schema, dag *dagger.Client, filePath string, debug bool) error {
+func RunFile(client graphql.Client, schema *introspection.Schema, filePath string, debug bool) error {
 	// Read the source file for error reporting
 	sourceBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -775,7 +775,7 @@ func RunFile(schema *introspection.Schema, dag *dagger.Client, filePath string, 
 	slog.Debug("type inference completed", "type", inferred)
 
 	// Now evaluate the program
-	evalEnv := NewEvalEnvWithSchema(schema, dag)
+	evalEnv := NewEvalEnvWithSchema(client, schema)
 	ctx := context.Background()
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 

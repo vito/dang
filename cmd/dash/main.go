@@ -99,7 +99,7 @@ func run(cfg Config) error {
 	}
 
 	// Check and evaluate the Dash file
-	if err := dash.RunFile(schema, dag, cfg.File, cfg.Debug); err != nil {
+	if err := dash.RunFile(dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
 		return fmt.Errorf("failed to evaluate Dash file: %w", err)
 	}
 
@@ -182,7 +182,7 @@ type REPLCommand struct {
 func (r *REPL) Run() error {
 	// Initialize environments
 	r.typeEnv = dash.NewEnv(r.schema)
-	r.evalEnv = dash.NewEvalEnvWithSchema(r.schema, r.dag)
+	r.evalEnv = dash.NewEvalEnvWithSchema(r.dag.GraphQLClient(), r.schema)
 
 	// Initialize commands
 	r.initCommands()
@@ -423,7 +423,7 @@ func (r *REPL) clearCommand(repl *REPL, args []string) error {
 
 func (r *REPL) resetCommand(repl *REPL, args []string) error {
 	// Reset evaluation environment
-	repl.evalEnv = dash.NewEvalEnvWithSchema(repl.schema, repl.dag)
+	repl.evalEnv = dash.NewEvalEnvWithSchema(repl.dag.GraphQLClient(), repl.schema)
 	fmt.Println("Environment reset.")
 	return nil
 }

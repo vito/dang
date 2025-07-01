@@ -1,0 +1,57 @@
+(provide [defobj]
+  ^:indent
+  (defop deffield [name args :=> ret & body] scope
+    (let [binding (list->bind (arg-bindings args))
+          fn-args (if (= name :new)
+                    [binding] ; constructor has no "self" yet
+                    [:self binding])]
+      ^{:type (eval ret scope)
+        :args (arg-configs args scope)}
+      (eval [defn name fn-args & body] scope)))
+
+  ^:indent
+  (defop defobj [name & body] scope
+    (let [obj-scope {scope :defn deffield}]
+      (eval [do & body] obj-scope)
+      ^{:object name}
+      (eval [def name obj-scope] scope)))
+
+  (defn arg-configs [args scope]
+    (case args
+      [] {}
+      [kw _ type-or-default & rest]
+      (if (keyword? kw)
+        (assoc (arg-configs rest scope)
+               (eval kw scope)
+               (arg-config (eval type-or-default scope)))
+        (error "Expected keyword argument"))))
+
+  (defn arg-config [type-or-default]
+    (cond
+      (string? type-or-default) {:type :String
+                                 :default type-or-default}
+      (number? type-or-default) {:type :Int
+                                 :default type-or-default}
+      (symbol? type-or-default) {:type type-or-default}
+      (list? type-or-default)   (let [elem (arg-config (first type-or-default))]
+                                  (if (null? (:default elem null))
+                                    {:type [elem:type]}
+                                    {:type [elem:type]
+                                     :default type-or-default}))))
+
+  (defn arg-bindings [args]
+    (case args
+      [] []
+      [kw val _ & rest]
+      (if (keyword? kw)
+        (append [kw val] (arg-bindings rest))
+        (error "Expected keyword argument"))))
+  )
+
+; Updates a value in a nested scope structure.
+(defn update-in [val ks f & args]
+  ; TODO move to stdlib
+  (case ks
+    [] val
+    [k]      (assoc val k (apply f (cons (k val) args)))
+    [k & ks] (assoc val k (update-in (k val) ks f & args))))
