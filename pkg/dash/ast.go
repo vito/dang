@@ -554,6 +554,12 @@ type FunDecl struct {
 	Visibility Visibility
 }
 
+var _ Declarer = FunDecl{}
+
+func (f FunDecl) IsDeclarer() bool {
+	return true
+}
+
 var _ hm.Expression = FunDecl{}
 var _ Evaluator = FunDecl{}
 
@@ -1895,7 +1901,6 @@ type Reassignment struct {
 var _ Node = Reassignment{}
 var _ Evaluator = Reassignment{}
 
-
 func (r Reassignment) Body() hm.Expression { return r.Target }
 
 func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
@@ -2069,7 +2074,6 @@ func (r Reassignment) getPath(selectNode Select) (string, []string, error) {
 
 	return rootSymbol.Name, path, nil
 }
-
 
 func (r Reassignment) performAddition(left, right Value, varName string) (Value, error) {
 	switch l := left.(type) {

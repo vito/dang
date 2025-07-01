@@ -15,6 +15,15 @@ type SlotDecl struct {
 	Loc        *SourceLocation
 }
 
+var _ Declarer = SlotDecl{}
+
+func (f SlotDecl) IsDeclarer() bool {
+	if declarer, ok := f.Value.(Declarer); ok {
+		return declarer.IsDeclarer()
+	}
+	return false
+}
+
 var _ Node = SlotDecl{}
 var _ Evaluator = SlotDecl{}
 
@@ -33,14 +42,12 @@ func (c SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 		return nil
 	}
 
-	if c.Type_ != nil {
-		dt, err := c.Type_.Infer(env, fresh)
-		if err != nil {
-			return fmt.Errorf("SlotDecl.Hoist: Infer %T: %w", c.Type_, err)
-		}
-
-		env.Add(c.Named, hm.NewScheme(nil, dt))
+	dt, err := c.Infer(env, fresh)
+	if err != nil {
+		return fmt.Errorf("SlotDecl.Hoist: Infer %T: %w", c.Type_, err)
 	}
+
+	env.Add(c.Named, hm.NewScheme(nil, dt))
 
 	return nil
 }
@@ -126,6 +133,10 @@ type ClassDecl struct {
 	Value      Block
 	Visibility Visibility // theoretically the type itself is public but its constructor value can be private
 	Loc        *SourceLocation
+}
+
+func (f ClassDecl) IsDeclarer() bool {
+	return true
 }
 
 var _ Node = ClassDecl{}

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"dagger.io/dagger/querybuilder"
@@ -727,6 +729,92 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	slog.Debug("evaluation completed", "result", result.String())
 	slog.Debug("final program result", "result", result.String())
 
+	return nil
+}
+
+// RunDir evaluates all .dash files in a directory as a single module
+func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) error {
+	// Discover all .dash files in the directory
+	dashFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dash"))
+	if err != nil {
+		return fmt.Errorf("failed to find .dash files in directory %s: %w", dirPath, err)
+	}
+	
+	if len(dashFiles) == 0 {
+		return fmt.Errorf("no .dash files found in directory: %s", dirPath)
+	}
+	
+	// Sort files for deterministic order
+	sort.Strings(dashFiles)
+	
+	// Parse all files and collect their blocks
+	var allForms []Node
+	var allSources []string
+	var allFilePaths []string
+	
+	for _, filePath := range dashFiles {
+		// Read source for error reporting
+		sourceBytes, err := os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to read source file %s: %w", filePath, err)
+		}
+		source := string(sourceBytes)
+		allSources = append(allSources, source)
+		allFilePaths = append(allFilePaths, filePath)
+		
+		// Parse the file
+		dash, err := ParseFile(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to parse file %s: %w", filePath, err)
+		}
+		
+		block := dash.(Block)
+		// Add all forms from this file to the combined block
+		allForms = append(allForms, block.Forms...)
+	}
+	
+	// Create a master block containing all forms from all files
+	masterBlock := Block{
+		Forms: allForms,
+		Loc:   &SourceLocation{}, // TODO: could be improved to track multiple files
+	}
+	
+	if debug {
+		fmt.Printf("Evaluating directory: %s\n", dirPath)
+		fmt.Printf("Found %d .dash files with %d total forms\n", len(dashFiles), len(allForms))
+		pretty.Println(masterBlock)
+	}
+	
+	// Create type environment
+	typeEnv := NewEnv(schema)
+	
+	// Run type inference with cross-file hoisting
+	inferred, err := Infer(typeEnv, masterBlock, true)
+	if err != nil {
+		return fmt.Errorf("type inference failed for directory %s: %w", dirPath, err)
+	}
+	
+	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)
+	
+	// Create evaluation environment
+	evalEnv := NewEvalEnvWithSchema(client, schema)
+	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
+	
+	// For error reporting, we'll use the first file's context
+	// TODO: could be improved to create a multi-file context
+	evalCtx := NewEvalContext(allFilePaths[0], allSources[0])
+	
+	// Evaluate the combined block
+	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
+	if err != nil {
+		if _, isSourceError := err.(*SourceError); isSourceError {
+			return err
+		}
+		return fmt.Errorf("evaluation error in directory %s: %w", dirPath, err)
+	}
+	
+	slog.Debug("directory evaluation completed", "result", result.String(), "dir", dirPath)
+	
 	return nil
 }
 

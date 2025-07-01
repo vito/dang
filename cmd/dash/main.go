@@ -30,19 +30,22 @@ func main() {
 
 	// Create the root command
 	rootCmd := &cobra.Command{
-		Use:   "dash [flags] [file]",
+		Use:   "dash [flags] [file|directory]",
 		Short: "Dash language interpreter",
 		Long: `Dash is a functional language for building Dagger pipelines.
 It provides type-safe, composable abstractions for container operations.`,
 		Example: `  # Run a Dash script
   dash script.dash
 
+  # Run all .dash files in a directory as a module
+  dash ./my-module
+
   # Start interactive REPL
   dash
 
   # Run with debug logging enabled
   dash --debug script.dash
-  dash -d script.dash`,
+  dash -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -98,9 +101,22 @@ func run(cfg Config) error {
 		return fmt.Errorf("failed to introspect schema: %w", err)
 	}
 
-	// Check and evaluate the Dash file
-	if err := dash.RunFile(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
-		return fmt.Errorf("failed to evaluate Dash file: %w", err)
+	// Check if the path is a directory or file
+	fileInfo, err := os.Stat(cfg.File)
+	if err != nil {
+		return fmt.Errorf("failed to access path %s: %w", cfg.File, err)
+	}
+
+	if fileInfo.IsDir() {
+		// Evaluate directory as a module
+		if err := dash.RunDir(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+			return fmt.Errorf("failed to evaluate Dash directory: %w", err)
+		}
+	} else {
+		// Evaluate single file
+		if err := dash.RunFile(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+			return fmt.Errorf("failed to evaluate Dash file: %w", err)
+		}
 	}
 
 	fmt.Println("ok!")

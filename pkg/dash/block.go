@@ -25,6 +25,10 @@ type Hoister interface {
 
 var _ Hoister = Block{}
 
+type Declarer interface {
+	IsDeclarer() bool
+}
+
 func (b Block) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	var errs []error
 	for _, form := range b.Forms {
@@ -34,6 +38,19 @@ func (b Block) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 			}
 		}
 	}
+	var declarers, nonDeclarers []Node
+	for _, form := range b.Forms {
+		if declarer, ok := form.(Declarer); ok {
+			if declarer.IsDeclarer() {
+				declarers = append(declarers, form)
+			} else {
+				nonDeclarers = append(nonDeclarers, form)
+			}
+		} else {
+			nonDeclarers = append(nonDeclarers, form)
+		}
+	}
+	b.Forms = append(declarers, nonDeclarers...)
 	return errors.Join(errs...)
 }
 
