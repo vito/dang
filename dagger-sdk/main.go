@@ -10,7 +10,9 @@ import (
 
 const Golang = "golang:1.24"
 
-type DashSdk struct{}
+type DashSdk struct {
+	DashRoot *dagger.Directory
+}
 
 const (
 	ModSourceDirPath         = "/src"
@@ -19,11 +21,20 @@ const (
 	codegenBinPath           = "/codegen"
 )
 
+func New(
+	// +defaultPath="/"
+	dashRoot *dagger.Directory,
+) *DashSdk {
+	return &DashSdk{
+		DashRoot: dashRoot,
+	}
+}
+
 // ModuleRuntime returns a container with the node entrypoint ready to be called.
 func (t *DashSdk) ModuleRuntime(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
-	introspectionJson string,
+	introspectionJson *dagger.File,
 ) (*dagger.Container, error) {
 	return t.CodegenBase(ctx, modSource, introspectionJson)
 }
@@ -32,7 +43,7 @@ func (t *DashSdk) ModuleRuntime(
 func (t *DashSdk) Codegen(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
-	introspectionJson string,
+	introspectionJson *dagger.File,
 ) (*dagger.GeneratedCode, error) {
 	ctr, err := t.CodegenBase(ctx, modSource, introspectionJson)
 	if err != nil {
@@ -47,7 +58,7 @@ func (t *DashSdk) Codegen(
 func (t *DashSdk) CodegenBase(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
-	introspectionJson string,
+	introspectionJson *dagger.File,
 ) (*dagger.Container, error) {
 	modName, err := modSource.ModuleOriginalName(ctx)
 	if err != nil {
@@ -63,6 +74,7 @@ func (t *DashSdk) CodegenBase(
 
 	return t.Base().
 		WithMountedDirectory(ModSourceDirPath, modSource.ContextDirectory()).
+		WithFile("/introspection.json", introspectionJson).
 		WithWorkdir(modSrcDir).
 		WithEntrypoint([]string{"/dash", modSrcDir, modName}), nil
 }
@@ -76,8 +88,11 @@ func (t *DashSdk) Base() *dagger.Container {
 
 func (t *DashSdk) Entrypoint() *dagger.File {
 	return t.goBase().
-		WithExec([]string{"go", "build", "-o", "/dash", "./entrypoint"}).
-		File("/dash")
+		WithWorkdir("./entrypoint").
+		WithDirectory("/dash", t.DashRoot).
+		WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/dash=/dash"}).
+		WithExec([]string{"go", "build", "-o", "/entrypoint"}).
+		File("/entrypoint")
 }
 
 func (t *DashSdk) Repl() *dagger.Container {

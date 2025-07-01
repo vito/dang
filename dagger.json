@@ -1,0 +1,8 @@
+{
+  "name": "dash",
+  "engineVersion": "v0.18.12",
+  "sdk": {
+    "source": "./dagger-sdk"
+  },
+  "source": ".dagger"
+}

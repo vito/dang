@@ -647,69 +647,6 @@ func (m ModuleValue) collectPublic(dest map[string]Value) {
 	}
 }
 
-// dashValueToJSON converts a Dash Value to a JSON-serializable Go value
-func dashValueToJSON(val Value) (interface{}, error) {
-	return dashValueToJSONWithVisited(val, make(map[*map[string]Value]bool))
-}
-
-// dashValueToJSONWithVisited converts a Dash Value to a JSON-serializable Go value with recursion protection
-func dashValueToJSONWithVisited(val Value, visited map[*map[string]Value]bool) (interface{}, error) {
-	switch v := val.(type) {
-	case StringValue:
-		return v.Val, nil
-	case IntValue:
-		return v.Val, nil
-	case BoolValue:
-		return v.Val, nil
-	case NullValue:
-		return nil, nil
-	case ListValue:
-		jsonList := make([]interface{}, len(v.Elements))
-		for i, elem := range v.Elements {
-			jsonElem, err := dashValueToJSONWithVisited(elem, visited)
-			if err != nil {
-				return nil, fmt.Errorf("converting list element %d: %w", i, err)
-			}
-			jsonList[i] = jsonElem
-		}
-		return jsonList, nil
-	case ModuleValue:
-		// Check for recursion using the Values map pointer
-		mapPtr := &v.Values
-		if visited[mapPtr] {
-			return "<circular reference>", nil
-		}
-		visited[mapPtr] = true
-		defer delete(visited, mapPtr)
-
-		// For modules, create a map manually to avoid infinite recursion
-		result := make(map[string]interface{})
-		for name, value := range v.Values {
-			// Only include public fields
-			if visibility, exists := v.Visibilities[name]; !exists || visibility == PublicVisibility {
-				jsonValue, err := dashValueToJSONWithVisited(value, visited)
-				if err != nil {
-					return nil, fmt.Errorf("failed to convert field %q to JSON: %w", name, err)
-				}
-				result[name] = jsonValue
-			}
-		}
-		return result, nil
-	case FunctionValue:
-		// Functions can't be serialized to JSON - represent as a string
-		return fmt.Sprintf("function(%v)", v.Args), nil
-	case GraphQLFunction:
-		// GraphQL functions represented as their name
-		return v.String(), nil
-	case BuiltinFunction:
-		// Builtin functions represented as their name
-		return v.String(), nil
-	default:
-		// For unknown types, use their string representation
-		return v.String(), nil
-	}
-}
-
 // BoundMethod represents a method bound to a specific receiver
 type BoundMethod struct {
 	Method   FunctionValue
@@ -743,7 +680,7 @@ func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
 }
 
-func RunFile(client graphql.Client, schema *introspection.Schema, filePath string, debug bool) error {
+func RunFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, filePath string, debug bool) error {
 	// Read the source file for error reporting
 	sourceBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -776,7 +713,6 @@ func RunFile(client graphql.Client, schema *introspection.Schema, filePath strin
 
 	// Now evaluate the program
 	evalEnv := NewEvalEnvWithSchema(client, schema)
-	ctx := context.Background()
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)

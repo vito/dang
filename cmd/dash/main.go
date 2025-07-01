@@ -99,7 +99,7 @@ func run(cfg Config) error {
 	}
 
 	// Check and evaluate the Dash file
-	if err := dash.RunFile(dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+	if err := dash.RunFile(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
 		return fmt.Errorf("failed to evaluate Dash file: %w", err)
 	}
 
