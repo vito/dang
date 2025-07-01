@@ -11,7 +11,8 @@ assert { json1 == "{\"name\":\"test\",\"value\":42}" }
 pub obj2 = {{user: {{id: 1, active: true}}, count: 100}}
 pub json2 = json(value: obj2)
 
-# TODO: make this match defined order
+# TODO: make this match defined order? or don't? maybe it's nice that it's
+# stable for cache busting avoidance?
 assert { json2 == "{\"count\":100,\"user\":{\"active\":true,\"id\":1}}" }
 
 # Object literal created in function scope - this should expose the issue
