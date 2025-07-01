@@ -1988,55 +1988,87 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 }
 
 func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode Select, value Value) (Value, error) {
-	// For field assignments like obj.field = value, we need to use copy-on-write semantics
-	// This transforms into a reopen block: obj << { field = value }
-
-	// Determine the receiver name
-	var receiverName string
-	switch receiver := selectNode.Receiver.(type) {
-	case nil:
-		return nil, fmt.Errorf("Reassignment.Eval: field assignment requires a receiver")
-	case Symbol:
-		receiverName = receiver.Name
-	default:
-		return nil, fmt.Errorf("Reassignment.Eval: complex receivers not yet supported for field assignment")
+	// Traverse the nested Select nodes to find the final receiver and the field to modify
+	finalReceiver, field, err := r.traverseSelect(ctx, env, selectNode)
+	if err != nil {
+		return nil, fmt.Errorf("Reassignment.Eval: %w", err)
 	}
 
-	// Create a reopen block with the assignment
-	var innerNode Node
+	// Now that we have the final receiver, perform the assignment
 	if r.Modifier == "=" {
-		// Simple field assignment: obj.field = value
-		// This should become: field = value inside the reopen block
-		innerNode = Reassignment{
-			Target:   Symbol{Name: selectNode.Field, Loc: r.Loc},
-			Modifier: "=",
-			Value:    r.createValueNode(value),
-			Loc:      r.Loc,
-		}
+		// Simple assignment: obj.field = value
+		finalReceiver.Set(field, value)
+		return value, nil
 	} else if r.Modifier == "+" {
-		// Compound field assignment: obj.field += value
-		innerNode = Reassignment{
-			Target:   Symbol{Name: selectNode.Field, Loc: r.Loc},
-			Modifier: "+",
-			Value:    r.createValueNode(value),
-			Loc:      r.Loc,
+		// Compound assignment: obj.field += value
+		currentValue, found := finalReceiver.Get(field)
+		if !found {
+			return nil, fmt.Errorf("Reassignment.Eval: field %q not found", field)
 		}
-	} else {
-		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
+
+		// Perform addition using existing Addition logic
+		newValue, err := r.performAddition(currentValue, value, field)
+		if err != nil {
+			return nil, err
+		}
+
+		finalReceiver.Set(field, newValue)
+		return newValue, nil
 	}
 
-	reopenNode := Reopen{
-		Name: receiverName,
-		Block: Block{
-			Forms: []Node{innerNode},
-			Loc:   r.Loc,
-		},
-		Loc: r.Loc,
-	}
-
-	// Evaluate the reopen block
-	return EvalNode(ctx, env, reopenNode)
+	return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 }
+
+func (r Reassignment) traverseSelect(ctx context.Context, env EvalEnv, selectNode Select) (EvalEnv, string, error) {
+	var path []string
+	var currentNode Node = selectNode
+
+	// Traverse down the chain of Select nodes, collecting field names
+	for {
+		if s, ok := currentNode.(Select); ok {
+			path = append([]string{s.Field}, path...)
+			currentNode = s.Receiver
+		} else {
+			break
+		}
+	}
+
+	// The final node in the chain should be a Symbol (the root object)
+	rootSymbol, ok := currentNode.(Symbol)
+	if !ok {
+		return nil, "", fmt.Errorf("complex receivers must start with a symbol")
+	}
+
+	// Get the root object from the environment
+	rootObj, found := env.Get(rootSymbol.Name)
+	if !found {
+		return nil, "", fmt.Errorf("object %q not found", rootSymbol.Name)
+	}
+
+	currentObj, ok := rootObj.(EvalEnv)
+	if !ok {
+		return nil, "", fmt.Errorf("expected a module or object, got %T", rootObj)
+	}
+
+	// Traverse the path to get to the second-to-last object
+	for i := 0; i < len(path)-1; i++ {
+		fieldName := path[i]
+		val, found := currentObj.Get(fieldName)
+		if !found {
+			return nil, "", fmt.Errorf("field %q not found in object", fieldName)
+		}
+		currentObj, ok = val.(EvalEnv)
+		if !ok {
+			return nil, "", fmt.Errorf("field %q is not an object", fieldName)
+		}
+	}
+
+	// The last element in the path is the field to be modified
+	finalField := path[len(path)-1]
+
+	return currentObj, finalField, nil
+}
+
 
 func (r Reassignment) performAddition(left, right Value, varName string) (Value, error) {
 	switch l := left.(type) {

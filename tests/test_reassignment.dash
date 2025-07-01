@@ -22,4 +22,11 @@ assert { flag == false }
   assert { x == 200 }
 }
 
+pvt fs = {{ a: {{ b: {{ c: 42 }} }} }}
+fs.a.b.c = 100
+assert { fs.a.b.c == 100 }
+
+fs.a.b.c += 50
+assert { fs.a.b.c == 150 }
+
 print("Reassignment tests passed!")
