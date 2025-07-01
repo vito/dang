@@ -33,10 +33,11 @@
   (lambda_token)
   (arrow_token)
 ] @operator
-["{{" "}}" "{" "}" "[" "]" "(" ")"] @punctuation.bracket
+["{" "}" "[" "]" "(" ")"] @punctuation.bracket
 [
   (comma_token)
   (dot_token)
+  (colon_token)
 ] @punctuation.delimiter
 
 ;; Identifiers - using more generic patterns
