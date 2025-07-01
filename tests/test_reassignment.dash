@@ -18,11 +18,13 @@ assert { flag == false }
 
 # Test reassignment in blocks
 {
+  assert("slot inherited type and was assigned locally") { x == 100 }
   x = 200
-  assert { x == 200 }
+  assert("slot inherited type and was assigned locally") { x == 200 }
 }
+assert("does not modify outside of block, because the block cloned") { x == 100 }
 
-pvt fs = {{ a: {{ b: {{ c: 42 }} }} }}
+pvt fs = {{a: {{b: {{c: 42}}}}}}
 fs.a.b.c = 100
 assert { fs.a.b.c == 100 }
 
@@ -30,7 +32,7 @@ fs.a.b.c += 50
 assert { fs.a.b.c == 150 }
 
 # Test copy-on-write semantics
-pvt original = {{ a: {{ b: {{ c: 1 }} }} }}
+pvt original = {{a: {{b: {{c: 1}}}}}}
 pvt modified = original
 modified.a.b.c = 2
 assert { original.a.b.c == 1 }

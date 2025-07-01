@@ -7,27 +7,23 @@ cls MyClass {
   }
 
   pub incr: MyClass! {
-    self << {
-      val += 1
-    }
+    self.val += 1
+    self # TODO: make not required?
   }
 
   pub incrBy(amount: Int!): MyClass! {
-    self << {
-      val += amount
-    }
+    self.val += amount
+    self # TODO: make not required?
   }
 
   pub withName(branch: String! = "edge"): MyClass! {
-    self << {
-      name = branch
-    }
+    self.name = branch
+    self # TODO: make not required?
   }
 
   pub complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
-    self << {
-      name = (prefix + "-") + suffix
-    }
+    self.name = (prefix + "-") + suffix
+    self # TODO: make not required?
   }
 
   pub dynamicAccess(): String! {
