@@ -26,6 +26,17 @@ func (f SlotDecl) IsDeclarer() bool {
 var _ Node = SlotDecl{}
 var _ Evaluator = SlotDecl{}
 
+func (s SlotDecl) DeclaredSymbols() []string {
+	return []string{s.Named} // Slot declarations declare their name
+}
+
+func (s SlotDecl) ReferencedSymbols() []string {
+	if s.Value != nil {
+		return s.Value.ReferencedSymbols()
+	}
+	return nil
+}
+
 func (s SlotDecl) Body() hm.Expression {
 	// TODO(vito): return Value? unclear how Body is used
 	return s
@@ -140,6 +151,15 @@ func (f ClassDecl) IsDeclarer() bool {
 
 var _ Node = ClassDecl{}
 var _ Evaluator = ClassDecl{}
+
+func (c ClassDecl) DeclaredSymbols() []string {
+	return []string{c.Named} // Class declarations declare their name
+}
+
+func (c ClassDecl) ReferencedSymbols() []string {
+	// Class declarations reference symbols from their body (the Block)
+	return c.Value.ReferencedSymbols()
+}
 
 func (c ClassDecl) Body() hm.Expression { return c.Value }
 

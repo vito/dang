@@ -15,6 +15,21 @@ type Block struct {
 var _ hm.Expression = Block{}
 var _ Evaluator = Block{}
 
+func (b Block) DeclaredSymbols() []string {
+	return nil // Blocks don't declare symbols directly (their forms do)
+}
+
+func (b Block) ReferencedSymbols() []string {
+	var symbols []string
+	
+	// Add symbols from all forms in the block
+	for _, form := range b.Forms {
+		symbols = append(symbols, form.ReferencedSymbols()...)
+	}
+	
+	return symbols
+}
+
 func (f Block) Body() hm.Expression { return f }
 
 func (f Block) GetSourceLocation() *SourceLocation { return f.Loc }
@@ -75,137 +90,16 @@ func orderByDependencies(declarers []Node) ([]Node, error) {
 
 // getDeclarationNames extracts the symbol names that a declarer introduces
 func getDeclarationNames(node Node) []string {
-	switch n := node.(type) {
-	case SlotDecl:
-		return []string{n.Named}
-	case ClassDecl:
-		return []string{n.Named}
-	case FunDecl:
-		return []string{n.Named}
-	default:
-		return nil
-	}
+	return node.DeclaredSymbols()
 }
 
 // getSymbolReferences extracts all symbol references in a node's value/body
 func getSymbolReferences(node Node) []string {
-	switch n := node.(type) {
-	case SlotDecl:
-		if n.Value != nil {
-			return extractSymbols(n.Value)
-		}
-		return nil
-	case ClassDecl:
-		return extractSymbols(n.Value)
-	case FunDecl:
-		return extractSymbols(n.FunctionBase.Body)
-	default:
-		return nil
-	}
+	return node.ReferencedSymbols()
 }
 
-// extractSymbols recursively extracts all Symbol references from a node
-func extractSymbols(node Node) []string {
-	var symbols []string
-
-	switch n := node.(type) {
-	case Symbol:
-		symbols = append(symbols, n.Name)
-	case Select:
-		// When Receiver is nil, this is a top-level function call like createPerson()
-		if n.Receiver == nil {
-			symbols = append(symbols, n.Field)
-		} else {
-			symbols = append(symbols, extractSymbols(n.Receiver)...)
-		}
-		if n.Args != nil {
-			for _, arg := range *n.Args {
-				symbols = append(symbols, extractSymbols(arg.Value)...)
-			}
-		}
-	case FunCall:
-		symbols = append(symbols, extractSymbols(n.Fun)...)
-		for _, arg := range n.Args {
-			symbols = append(symbols, extractSymbols(arg.Value)...)
-		}
-	case Block:
-		for _, form := range n.Forms {
-			symbols = append(symbols, extractSymbols(form)...)
-		}
-	case List:
-		for _, elem := range n.Elements {
-			symbols = append(symbols, extractSymbols(elem)...)
-		}
-	case Default:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Equality:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Addition:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Subtraction:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Multiplication:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Division:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Modulo:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Inequality:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case LessThan:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case GreaterThan:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case LessThanEqual:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case GreaterThanEqual:
-		symbols = append(symbols, extractSymbols(n.Left)...)
-		symbols = append(symbols, extractSymbols(n.Right)...)
-	case Conditional:
-		symbols = append(symbols, extractSymbols(n.Condition)...)
-		symbols = append(symbols, extractSymbols(n.Then)...)
-		if n.Else != nil {
-			symbols = append(symbols, extractSymbols(n.Else.(Block))...)
-		}
-	case Let:
-		symbols = append(symbols, extractSymbols(n.Value)...)
-		symbols = append(symbols, extractSymbols(n.Expr)...)
-	case Lambda:
-		symbols = append(symbols, extractSymbols(n.FunctionBase.Body)...)
-	case Reassignment:
-		symbols = append(symbols, extractSymbols(n.Target)...)
-		symbols = append(symbols, extractSymbols(n.Value)...)
-	case Assert:
-		symbols = append(symbols, extractSymbols(n.Block)...)
-		if n.Message != nil {
-			symbols = append(symbols, extractSymbols(n.Message)...)
-		}
-	case SlotDecl:
-		if n.Value != nil {
-			symbols = append(symbols, extractSymbols(n.Value)...)
-		}
-	case ClassDecl:
-		symbols = append(symbols, extractSymbols(n.Value)...)
-	case FunDecl:
-		symbols = append(symbols, extractSymbols(n.FunctionBase.Body)...)
-	// Literals don't contain symbol references
-	case String, Int, Boolean, Null:
-		// No symbols to extract
-	}
-
-	return symbols
-}
+// extractSymbols is deprecated - use node.ReferencedSymbols() instead
+// This function is kept for backward compatibility but should not be used in new code
 
 // topologicalSort performs Kahn's algorithm for topological sorting
 func topologicalSort(nodes []Node, dependencies map[int][]int) ([]Node, error) {
@@ -335,6 +229,19 @@ type Object struct {
 }
 
 var _ Node = &Object{}
+
+func (o *Object) DeclaredSymbols() []string {
+	return nil // Objects don't declare symbols in the global scope
+}
+
+func (o *Object) ReferencedSymbols() []string {
+	var symbols []string
+	// Objects reference symbols from their slots
+	for _, slot := range o.Slots {
+		symbols = append(symbols, slot.ReferencedSymbols()...)
+	}
+	return symbols
+}
 
 func (f *Object) Body() hm.Expression { return f }
 

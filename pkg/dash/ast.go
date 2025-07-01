@@ -13,6 +13,12 @@ type Node interface {
 	hm.Expression
 	hm.Inferer
 	GetSourceLocation() *SourceLocation
+	
+	// DeclaredSymbols returns the symbols that this node declares (introduces to scope)
+	DeclaredSymbols() []string
+	
+	// ReferencedSymbols returns the symbols that this node references (depends on)
+	ReferencedSymbols() []string
 }
 
 type Keyed[X any] struct {
@@ -36,6 +42,24 @@ type FunCall struct {
 
 var _ Node = FunCall{}
 var _ Evaluator = FunCall{}
+
+func (c FunCall) DeclaredSymbols() []string {
+	return nil // Function calls don't declare anything
+}
+
+func (c FunCall) ReferencedSymbols() []string {
+	var symbols []string
+	
+	// Add symbols from the function being called
+	symbols = append(symbols, c.Fun.ReferencedSymbols()...)
+	
+	// Add symbols from arguments
+	for _, arg := range c.Args {
+		symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+	}
+	
+	return symbols
+}
 
 func (c FunCall) Body() hm.Expression { return c.Fun }
 
@@ -563,6 +587,15 @@ func (f FunDecl) IsDeclarer() bool {
 var _ hm.Expression = FunDecl{}
 var _ Evaluator = FunDecl{}
 
+func (f FunDecl) DeclaredSymbols() []string {
+	return []string{f.Named} // Function declarations declare their name
+}
+
+func (f FunDecl) ReferencedSymbols() []string {
+	// Function declarations reference symbols from their body
+	return f.FunctionBase.Body.ReferencedSymbols()
+}
+
 func (f FunDecl) Body() hm.Expression { return f.FunctionBase.Body }
 
 func (f FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
@@ -603,6 +636,21 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 		}
 	}
 	return NonNullType{ListType{t}}, nil
+}
+
+func (l List) DeclaredSymbols() []string {
+	return nil // Lists don't declare anything
+}
+
+func (l List) ReferencedSymbols() []string {
+	var symbols []string
+	
+	// Add symbols from all elements
+	for _, elem := range l.Elements {
+		symbols = append(symbols, elem.ReferencedSymbols()...)
+	}
+	
+	return symbols
 }
 
 func (l List) Body() hm.Expression { return l }
@@ -683,6 +731,14 @@ func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 func (s Symbol) Body() hm.Expression { return s }
 
 func (s Symbol) GetSourceLocation() *SourceLocation { return s.Loc }
+
+func (s Symbol) DeclaredSymbols() []string {
+	return nil // Symbols don't declare anything
+}
+
+func (s Symbol) ReferencedSymbols() []string {
+	return []string{s.Name} // Symbols reference themselves
+}
 
 func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	val, found := env.Get(s.Name)
@@ -799,6 +855,14 @@ type ValueNode struct {
 	Loc *SourceLocation
 }
 
+func (v ValueNode) DeclaredSymbols() []string {
+	return nil // ValueNodes don't declare anything
+}
+
+func (v ValueNode) ReferencedSymbols() []string {
+	return nil // ValueNodes don't reference anything
+}
+
 func (v ValueNode) Body() hm.Expression                                  { return nil }
 func (v ValueNode) GetSourceLocation() *SourceLocation                   { return v.Loc }
 func (v ValueNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error)  { return v.Val.Type(), nil }
@@ -881,6 +945,30 @@ func (d Select) AsCall() FunCall {
 		Args: args,
 		Loc:  d.Loc,
 	}
+}
+
+func (d Select) DeclaredSymbols() []string {
+	return nil // Select expressions don't declare anything
+}
+
+func (d Select) ReferencedSymbols() []string {
+	var symbols []string
+	
+	// When Receiver is nil, this is a top-level function call like createPerson()
+	if d.Receiver == nil {
+		symbols = append(symbols, d.Field)
+	} else {
+		symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
+	}
+	
+	// Add symbols from arguments
+	if d.Args != nil {
+		for _, arg := range *d.Args {
+			symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+		}
+	}
+	
+	return symbols
 }
 
 func (d Select) Body() hm.Expression { return d }
@@ -1010,6 +1098,17 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return rt, nil
 }
 
+func (d Default) DeclaredSymbols() []string {
+	return nil // Default operator doesn't declare anything
+}
+
+func (d Default) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, d.Left.ReferencedSymbols()...)
+	symbols = append(symbols, d.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (d Default) Body() hm.Expression { return d }
 
 func (d Default) GetSourceLocation() *SourceLocation { return d.Loc }
@@ -1051,6 +1150,17 @@ func (e Equality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	// Equality always returns a boolean
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+}
+
+func (e Equality) DeclaredSymbols() []string {
+	return nil // Equality operator doesn't declare anything
+}
+
+func (e Equality) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, e.Left.ReferencedSymbols()...)
+	symbols = append(symbols, e.Right.ReferencedSymbols()...)
+	return symbols
 }
 
 func (e Equality) Body() hm.Expression { return e }
@@ -1141,6 +1251,17 @@ func (a Addition) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return lt, nil
 }
 
+func (a Addition) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (a Addition) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, a.Left.ReferencedSymbols()...)
+	symbols = append(symbols, a.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (a Addition) Body() hm.Expression { return a }
 
 func (a Addition) GetSourceLocation() *SourceLocation { return a.Loc }
@@ -1206,6 +1327,17 @@ func (s Subtraction) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return lt, nil
 }
 
+func (s Subtraction) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (s Subtraction) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, s.Left.ReferencedSymbols()...)
+	symbols = append(symbols, s.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (s Subtraction) Body() hm.Expression { return s }
 
 func (s Subtraction) GetSourceLocation() *SourceLocation { return s.Loc }
@@ -1252,6 +1384,17 @@ func (m Multiplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return lt, nil
 }
 
+func (m Multiplication) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (m Multiplication) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, m.Left.ReferencedSymbols()...)
+	symbols = append(symbols, m.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (m Multiplication) Body() hm.Expression { return m }
 
 func (m Multiplication) GetSourceLocation() *SourceLocation { return m.Loc }
@@ -1296,6 +1439,17 @@ func (d Division) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, fmt.Errorf("Division.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
 	}
 	return lt, nil
+}
+
+func (d Division) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (d Division) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, d.Left.ReferencedSymbols()...)
+	symbols = append(symbols, d.Right.ReferencedSymbols()...)
+	return symbols
 }
 
 func (d Division) Body() hm.Expression { return d }
@@ -1347,6 +1501,17 @@ func (m Modulo) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return lt, nil
 }
 
+func (m Modulo) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (m Modulo) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, m.Left.ReferencedSymbols()...)
+	symbols = append(symbols, m.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (m Modulo) Body() hm.Expression { return m }
 
 func (m Modulo) GetSourceLocation() *SourceLocation { return m.Loc }
@@ -1396,6 +1561,17 @@ func (i Inequality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
 
+func (i Inequality) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (i Inequality) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, i.Left.ReferencedSymbols()...)
+	symbols = append(symbols, i.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (i Inequality) Body() hm.Expression { return i }
 
 func (i Inequality) GetSourceLocation() *SourceLocation { return i.Loc }
@@ -1439,6 +1615,17 @@ func (l LessThan) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
 
+func (l LessThan) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (l LessThan) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, l.Left.ReferencedSymbols()...)
+	symbols = append(symbols, l.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (l LessThan) Body() hm.Expression { return l }
 
 func (l LessThan) GetSourceLocation() *SourceLocation { return l.Loc }
@@ -1470,6 +1657,17 @@ type GreaterThan struct {
 
 var _ Node = GreaterThan{}
 var _ Evaluator = GreaterThan{}
+
+func (g GreaterThan) DeclaredSymbols() []string {
+	return nil // Comparison operators don't declare anything
+}
+
+func (g GreaterThan) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, g.Left.ReferencedSymbols()...)
+	symbols = append(symbols, g.Right.ReferencedSymbols()...)
+	return symbols
+}
 
 func (g GreaterThan) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Type check both sides for validity
@@ -1518,6 +1716,17 @@ type LessThanEqual struct {
 var _ Node = LessThanEqual{}
 var _ Evaluator = LessThanEqual{}
 
+func (l LessThanEqual) DeclaredSymbols() []string {
+	return nil // Comparison operators don't declare anything
+}
+
+func (l LessThanEqual) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, l.Left.ReferencedSymbols()...)
+	symbols = append(symbols, l.Right.ReferencedSymbols()...)
+	return symbols
+}
+
 func (l LessThanEqual) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Type check both sides for validity
 	_, err := l.Left.Infer(env, fresh)
@@ -1564,6 +1773,17 @@ type GreaterThanEqual struct {
 
 var _ Node = GreaterThanEqual{}
 var _ Evaluator = GreaterThanEqual{}
+
+func (g GreaterThanEqual) DeclaredSymbols() []string {
+	return nil // Comparison operators don't declare anything
+}
+
+func (g GreaterThanEqual) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, g.Left.ReferencedSymbols()...)
+	symbols = append(symbols, g.Right.ReferencedSymbols()...)
+	return symbols
+}
 
 func (g GreaterThanEqual) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Type check both sides for validity
@@ -1618,6 +1838,14 @@ func (Null) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return fresh.Fresh(), nil
 }
 
+func (n Null) DeclaredSymbols() []string {
+	return nil // Null literals don't declare anything
+}
+
+func (n Null) ReferencedSymbols() []string {
+	return nil // Null literals don't reference anything
+}
+
 func (n Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return NullValue{}, nil
 }
@@ -1647,6 +1875,14 @@ func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"String"}}.Infer(env, fresh)
 }
 
+func (s String) DeclaredSymbols() []string {
+	return nil // String literals don't declare anything
+}
+
+func (s String) ReferencedSymbols() []string {
+	return nil // String literals don't reference anything
+}
+
 func (s String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return StringValue{Val: s.Value}, nil
 }
@@ -1672,6 +1908,14 @@ func (b Boolean) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
 }
 
+func (b Boolean) DeclaredSymbols() []string {
+	return nil // Boolean literals don't declare anything
+}
+
+func (b Boolean) ReferencedSymbols() []string {
+	return nil // Boolean literals don't reference anything
+}
+
 func (b Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return BoolValue{Val: b.Value}, nil
 }
@@ -1692,6 +1936,14 @@ func (i Int) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
 }
 
+func (i Int) DeclaredSymbols() []string {
+	return nil // Int literals don't declare anything
+}
+
+func (i Int) ReferencedSymbols() []string {
+	return nil // Int literals don't reference anything
+}
+
 func (i Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return IntValue{Val: int(i.Value)}, nil
 }
@@ -1707,6 +1959,21 @@ type Conditional struct {
 
 var _ Node = Conditional{}
 var _ Evaluator = Conditional{}
+
+func (c Conditional) DeclaredSymbols() []string {
+	return nil // Conditionals don't declare anything
+}
+
+func (c Conditional) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, c.Condition.ReferencedSymbols()...)
+	symbols = append(symbols, c.Then.ReferencedSymbols()...)
+	if c.Else != nil {
+		elseBlock := c.Else.(Block)
+		symbols = append(symbols, elseBlock.ReferencedSymbols()...)
+	}
+	return symbols
+}
 
 func (c Conditional) Body() hm.Expression { return c }
 
@@ -1778,6 +2045,17 @@ type Let struct {
 var _ Node = Let{}
 var _ Evaluator = Let{}
 
+func (l Let) DeclaredSymbols() []string {
+	return nil // Let expressions don't declare symbols in the global scope
+}
+
+func (l Let) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, l.Value.ReferencedSymbols()...)
+	symbols = append(symbols, l.Expr.ReferencedSymbols()...)
+	return symbols
+}
+
 func (l Let) Body() hm.Expression { return l }
 
 func (l Let) GetSourceLocation() *SourceLocation { return l.Loc }
@@ -1813,6 +2091,15 @@ type Lambda struct {
 var _ Node = Lambda{}
 var _ Evaluator = Lambda{}
 
+func (l Lambda) DeclaredSymbols() []string {
+	return nil // Lambdas don't declare symbols in the global scope
+}
+
+func (l Lambda) ReferencedSymbols() []string {
+	// Lambdas reference symbols from their body
+	return l.FunctionBase.Body.ReferencedSymbols()
+}
+
 func (l Lambda) Body() hm.Expression { return l }
 
 func (l Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
@@ -1828,6 +2115,20 @@ type Match struct {
 }
 
 var _ Node = Match{}
+
+func (m Match) DeclaredSymbols() []string {
+	return nil // Match expressions don't declare anything
+}
+
+func (m Match) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, m.Expr.ReferencedSymbols()...)
+	// Add symbols from case expressions
+	for _, case_ := range m.Cases {
+		symbols = append(symbols, case_.Expr.ReferencedSymbols()...)
+	}
+	return symbols
+}
 
 func (m Match) Body() hm.Expression { return m }
 
@@ -1900,6 +2201,17 @@ type Reassignment struct {
 
 var _ Node = Reassignment{}
 var _ Evaluator = Reassignment{}
+
+func (r Reassignment) DeclaredSymbols() []string {
+	return nil // Reassignments don't declare new symbols
+}
+
+func (r Reassignment) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, r.Target.ReferencedSymbols()...)
+	symbols = append(symbols, r.Value.ReferencedSymbols()...)
+	return symbols
+}
 
 func (r Reassignment) Body() hm.Expression { return r.Target }
 
@@ -2137,6 +2449,19 @@ type Reopen struct {
 var _ Node = Reopen{}
 var _ Evaluator = Reopen{}
 
+func (r Reopen) DeclaredSymbols() []string {
+	return nil // Reopen expressions don't declare new symbols
+}
+
+func (r Reopen) ReferencedSymbols() []string {
+	var symbols []string
+	// Reopen references the module being reopened
+	symbols = append(symbols, r.Name)
+	// And any symbols from the block
+	symbols = append(symbols, r.Block.ReferencedSymbols()...)
+	return symbols
+}
+
 func (r Reopen) Body() hm.Expression { return r.Block }
 
 func (r Reopen) GetSourceLocation() *SourceLocation { return r.Loc }
@@ -2343,6 +2668,19 @@ type Assert struct {
 
 var _ Node = Assert{}
 var _ Evaluator = Assert{}
+
+func (a Assert) DeclaredSymbols() []string {
+	return nil // Assert expressions don't declare anything
+}
+
+func (a Assert) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, a.Block.ReferencedSymbols()...)
+	if a.Message != nil {
+		symbols = append(symbols, a.Message.ReferencedSymbols()...)
+	}
+	return symbols
+}
 
 func (a Assert) Body() hm.Expression { return a.Block }
 
