@@ -2532,13 +2532,13 @@ type CompositeEnv struct {
 }
 
 func (c CompositeEnv) Get(name string) (Value, bool) {
-	// First check the lexical environment (current scope) for variable lookup
-	// This allows method parameters to shadow receiver fields
-	if val, found := c.lexical.Get(name); found {
+	// First check the primary environment (receiver/parameters)
+	// This allows parameters and receiver fields to shadow lexical scope
+	if val, found := c.primary.Get(name); found {
 		return val, true
 	}
-	// Then check the primary environment (reopened module)
-	return c.primary.Get(name)
+	// Then check the lexical environment for fallback
+	return c.lexical.Get(name)
 }
 
 func (c CompositeEnv) Bindings(vis Visibility) []Keyed[Value] {
