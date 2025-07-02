@@ -21,3 +21,9 @@ This language favors simplicity over all else. For example, there is no operator
 Take notes of important language design or implementation details as you learn them, beneath ./llm-notes/, with a name that will help your future self.
 
 Maintain the accuracy of ./llm-notes/ as the project evolves.
+
+## Dagger SDK
+
+To test the Dagger SDK, do not use `go test`. Instead, call `dagger functions` as a quick spot check - you should see 'build' and 'test' functions. Use `dagger call test` to run them.
+
+Run all `dagger` commands from the root of the repo, NOT the dagger-sdk directory.
