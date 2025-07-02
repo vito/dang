@@ -806,7 +806,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	}
 
 	// Create a master block containing all forms from all files
-	// The Go-style phased approach will handle dependency ordering
+	// The phased approach will handle dependency ordering
 	masterBlock := Block{
 		Forms: allForms,
 		Loc:   &SourceLocation{}, // TODO: could be improved to track multiple files
@@ -821,28 +821,14 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	// Create type environment
 	typeEnv := NewEnv(schema)
 
-	// Run type inference using Go-style phased approach
+	// Run type inference using phased approach
 	if debug {
-		fmt.Println("Running Go-style phased inference...")
+		fmt.Println("Running phased inference...")
 	}
 
-	// Use Go-style approach: constants -> types -> function signatures -> variables -> function bodies
-	infer := newInferer(typeEnv)
-	err = InferFormsWithGoStylePhases(masterBlock.Forms, typeEnv, infer)
+	inferred, err := Infer(typeEnv, masterBlock, true)
 	if err != nil {
-		return nil, fmt.Errorf("Go-style inference failed for directory %s: %w", dirPath, err)
-	}
-
-	// For compatibility, create a scheme for the result (last form's type)
-	var inferred *hm.Scheme
-	if len(masterBlock.Forms) > 0 {
-		lastType, err := masterBlock.Forms[len(masterBlock.Forms)-1].Infer(typeEnv, infer)
-		if err != nil {
-			return nil, fmt.Errorf("failed to infer final form type: %w", err)
-		}
-		inferred = hm.NewScheme(nil, lastType)
-	} else {
-		inferred = hm.NewScheme(nil, hm.TypeVariable('a'))
+		return nil, fmt.Errorf("inference failed for directory %s: %w", dirPath, err)
 	}
 
 	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)
@@ -851,15 +837,14 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	evalEnv := NewEvalEnvWithSchema(client, schema)
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
-	// Evaluate the combined block using Go-style phased evaluation
+	// Evaluate the combined block using phased evaluation
 	if debug {
-		fmt.Println("Running Go-style phased evaluation...")
+		fmt.Println("Running phased evaluation...")
 	}
 
-	// Use Go-style phased evaluation to match the inference order
-	result, err := EvaluateFormsWithGoStylePhases(ctx, masterBlock.Forms, evalEnv)
+	result, err := EvalNode(ctx, evalEnv, masterBlock)
 	if err != nil {
-		return nil, fmt.Errorf("Go-style evaluation failed for directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("evaluation failed for directory %s: %w", dirPath, err)
 	}
 
 	slog.Debug("directory evaluation completed", "result", result.String(), "dir", dirPath)

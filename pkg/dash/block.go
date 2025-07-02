@@ -177,19 +177,20 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 	return result, nil
 }
 
-// InferFormsWithGoStylePhases implements Go's compilation phases:
+// InferFormsWithPhases implements phased compilation:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
 // 3. Typecheck constants and types (which can reference each other)
 // 4. Declare function signatures (without bodies)
 // 5. Typecheck variables in dependency order (can now reference function signatures)
 // 6. Typecheck function bodies last (can reference all package-level declarations)
-func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
-	// Phase 1: Separate forms by category
-	var constants []Node // SlotDecl with constant values (literals, no function calls)
-	var types []Node     // ClassDecl
-	var variables []Node // SlotDecl with computed values (function calls, references)
-	var functions []Node // FunDecl
+func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
+	// Phase 1: Separate declarations from non-declarations
+	var constants []Node      // SlotDecl with constant values (literals, no function calls)
+	var types []Node          // ClassDecl
+	var variables []Node      // SlotDecl with computed values (function calls, references)
+	var functions []Node      // FunDecl
+	var nonDeclarations []Node // Everything else (assignments, expressions, etc.)
 
 	for _, form := range forms {
 		switch f := form.(type) {
@@ -204,8 +205,8 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 		case *FunDecl:
 			functions = append(functions, f)
 		default:
-			// Other forms go with variables
-			variables = append(variables, form)
+			// All non-declarations (assignments, expressions, assertions, etc.)
+			nonDeclarations = append(nonDeclarations, form)
 		}
 	}
 
@@ -266,6 +267,14 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 		}
 	}
 
+	// Phase 7: Typecheck non-declarations in original order (can reference all declarations)
+	for _, form := range nonDeclarations {
+		_, err := form.Infer(env, fresh)
+		if err != nil {
+			return fmt.Errorf("non-declaration inference failed: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -283,14 +292,15 @@ func isConstantValue(value Node) bool {
 	}
 }
 
-// EvaluateFormsWithGoStylePhases evaluates forms using the same phased approach as inference.
+// EvaluateFormsWithPhases evaluates forms using the same phased approach as inference.
 // This ensures that constants, types, functions, and variables are evaluated in the correct order.
-func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
-	// Phase 1: Separate forms by category (same as inference)
-	var constants []Node // SlotDecl with constant values
-	var types []Node     // ClassDecl
-	var variables []Node // SlotDecl with computed values
-	var functions []Node // FunDecl
+func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+	// Phase 1: Separate declarations from non-declarations (same as inference)
+	var constants []Node      // SlotDecl with constant values
+	var types []Node          // ClassDecl
+	var variables []Node      // SlotDecl with computed values
+	var functions []Node      // FunDecl
+	var nonDeclarations []Node // Everything else (evaluated in original order)
 
 	for _, form := range forms {
 		switch f := form.(type) {
@@ -305,7 +315,8 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 		case *FunDecl:
 			functions = append(functions, f)
 		default:
-			variables = append(variables, form)
+			// All non-declarations (assignments, expressions, assertions, etc.)
+			nonDeclarations = append(nonDeclarations, form)
 		}
 	}
 
@@ -313,7 +324,7 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 	for _, form := range constants {
 		_, err := EvalNode(ctx, env, form)
 		if err != nil {
-			return nil, fmt.Errorf("constant evaluation failed: %w", err)
+			return nil, err
 		}
 	}
 
@@ -321,7 +332,7 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 	for _, form := range types {
 		_, err := EvalNode(ctx, env, form)
 		if err != nil {
-			return nil, fmt.Errorf("type evaluation failed: %w", err)
+			return nil, err
 		}
 	}
 
@@ -329,12 +340,11 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 	for _, form := range functions {
 		_, err := EvalNode(ctx, env, form)
 		if err != nil {
-			return nil, fmt.Errorf("function evaluation failed: %w", err)
+			return nil, err
 		}
 	}
 
 	// Phase 5: Evaluate variables in dependency order
-	var result Value = NullValue{}
 	if len(variables) > 0 {
 		orderedVars, err := orderByDependencies(variables)
 		if err != nil {
@@ -342,12 +352,21 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 		}
 
 		for _, form := range orderedVars {
-			val, err := EvalNode(ctx, env, form)
+			_, err := EvalNode(ctx, env, form)
 			if err != nil {
-				return nil, fmt.Errorf("variable evaluation failed: %w", err)
+				return nil, err
 			}
-			result = val
 		}
+	}
+
+	// Phase 6: Evaluate non-declarations in original order (assignments, expressions, etc.)
+	var result Value = NullValue{}
+	for _, form := range nonDeclarations {
+		val, err := EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, err
+		}
+		result = val
 	}
 
 	return result, nil
@@ -363,16 +382,18 @@ func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		forms = append(forms, Null{})
 	}
 
-	var t hm.Type
-	for _, form := range forms {
-		et, err := form.Infer(newEnv, fresh)
-		if err != nil {
-			return nil, err
-		}
-		t = et
+	// Use phased inference approach for proper dependency handling
+	if err := InferFormsWithPhases(forms, newEnv, fresh); err != nil {
+		return nil, err
 	}
 
-	return t, nil
+	// Return the type of the last form
+	if len(forms) > 0 {
+		return forms[len(forms)-1].Infer(newEnv, fresh)
+	}
+
+	// Empty block returns null type
+	return Null{}.Infer(newEnv, fresh)
 }
 
 func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -383,16 +404,8 @@ func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	newEnv := env.Clone()
 
-	var result Value
-	for _, form := range forms {
-		val, err := EvalNode(ctx, newEnv, form)
-		if err != nil {
-			return nil, err
-		}
-		result = val
-	}
-
-	return result, nil
+	// Use phased evaluation to match the inference order
+	return EvaluateFormsWithPhases(ctx, forms, newEnv)
 }
 
 type Object struct {
