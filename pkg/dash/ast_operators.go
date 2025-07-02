@@ -144,7 +144,7 @@ func (a Addition) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
-		return nil, fmt.Errorf("Addition.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		return nil, NewInferError(fmt.Sprintf("Addition.Infer: mismatched types: %s and %s cannot be unified: %v", lt, rt, err), a)
 	}
 	return lt, nil
 }

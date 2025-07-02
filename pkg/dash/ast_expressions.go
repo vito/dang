@@ -79,7 +79,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if _, err := UnifyWithCompatibility(dt, it); err != nil {
-				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+				return nil, NewInferError(fmt.Sprintf("FunCall.Infer: %q cannot unify (%s ~ %s): %v", k, dt, it, err), c)
 			}
 		}
 
@@ -115,7 +115,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if _, err := UnifyWithCompatibility(dt, it); err != nil {
-				return nil, fmt.Errorf("FunCall.Infer: %q cannot unify (%s ~ %s): %w", k, dt, it, err)
+				return nil, NewInferError(fmt.Sprintf("FunCall.Infer: %q cannot unify (%s ~ %s): %v", k, dt, it, err), c)
 			}
 		}
 		return NonNullType{ft}, nil
@@ -419,7 +419,7 @@ var _ Evaluator = Symbol{}
 func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	scheme, found := env.SchemeOf(s.Name)
 	if !found {
-		return nil, fmt.Errorf("Symbol.Infer: %q not found in env", s.Name)
+		return nil, NewInferError(fmt.Sprintf("Symbol.Infer: %q not found in env", s.Name), s)
 	}
 	t, _ := scheme.Type()
 	if s.AutoCall {
@@ -711,7 +711,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 
 		if _, err := UnifyWithCompatibility(thenType, elseType); err != nil {
-			return nil, fmt.Errorf("Conditional.Infer: then and else branches must have same type: %s != %s", thenType, elseType)
+			return nil, NewInferError(fmt.Sprintf("Conditional.Infer: then and else branches must have same type: %s != %s", thenType, elseType), c)
 		}
 	}
 

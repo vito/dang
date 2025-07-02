@@ -2,6 +2,7 @@ package dash
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -55,7 +56,9 @@ func (e *SourceError) FormatWithHighlighting() string {
 	// Error header
 	result.WriteString(fmt.Sprintf("%s%sError:%s %s\n", bold, red, reset, e.Message))
 	result.WriteString(fmt.Sprintf("  %s%s--> %s:%d:%d%s\n", dim, blue, e.Location.Filename, e.Location.Line, e.Location.Column, reset))
-	result.WriteString(fmt.Sprintf("   %s|%s\n", dim, reset))
+	
+	// Top separator pipe (aligned with line numbers)
+	result.WriteString(fmt.Sprintf(" %s%s |%s\n", dim, padLeft("", 3), reset))
 
 	// Show context lines
 	startLine := max(1, e.Location.Line-2)
@@ -63,24 +66,27 @@ func (e *SourceError) FormatWithHighlighting() string {
 
 	for i := startLine; i <= endLine; i++ {
 		lineStr := fmt.Sprintf("%d", i)
+		paddedLineStr := padLeft(lineStr, 3)
 		if i == e.Location.Line {
 			// Highlight the error line
-			result.WriteString(fmt.Sprintf("%s%s%s | %s%s%s\n",
-				blue, bold, padLeft(lineStr, 3), reset, lines[i-1], reset))
+			result.WriteString(fmt.Sprintf(" %s%s%s%s | %s%s\n",
+				dim, blue, bold, paddedLineStr, reset, lines[i-1]))
 
 			// Add underline for the specific error location
-			padding := strings.Repeat(" ", len(padLeft(lineStr, 3))+3+e.Location.Column-1)
+			// Calculate padding: 1 space + 3 for line number + " | " (3 chars) + column position - 1
+			padding := strings.Repeat(" ", 1+3+3+e.Location.Column-1)
 			underline := strings.Repeat("^", max(1, e.Location.Length))
-			result.WriteString(fmt.Sprintf("%s%s%s %s%s%s\n",
-				dim, padding, reset, red, underline, reset))
+			result.WriteString(fmt.Sprintf("%s%s%s%s%s\n",
+				dim, padding, red, underline, reset))
 		} else {
 			// Context lines
-			result.WriteString(fmt.Sprintf("%s%s | %s%s\n",
-				dim, padLeft(lineStr, 3), lines[i-1], reset))
+			result.WriteString(fmt.Sprintf(" %s%s | %s%s\n",
+				dim, paddedLineStr, lines[i-1], reset))
 		}
 	}
 
-	result.WriteString(fmt.Sprintf("   %s|%s\n", dim, reset))
+	// Bottom separator pipe (aligned with line numbers)
+	result.WriteString(fmt.Sprintf(" %s%s |%s\n", dim, padLeft("", 3), reset))
 
 	return result.String()
 }
@@ -146,6 +152,41 @@ func CreateEvalError(ctx context.Context, err error, node Node) error {
 	return err
 }
 
+// InferError represents a type inference error with source location information
+type InferError struct {
+	Message  string
+	Location *SourceLocation
+	Node     Node // Keep reference to the AST node for additional context
+}
+
+func (e *InferError) Error() string {
+	return e.Message
+}
+
+// NewInferError creates a new InferError with source location from an AST node
+func NewInferError(message string, node Node) *InferError {
+	var location *SourceLocation
+	if node != nil {
+		location = node.GetSourceLocation()
+	}
+	return &InferError{
+		Message:  message,
+		Location: location,
+		Node:     node,
+	}
+}
+
+// WrapInferError wraps an existing error with source location information
+func WrapInferError(err error, node Node) error {
+	if inferErr, ok := err.(*InferError); ok {
+		// Already an InferError, don't double-wrap
+		return inferErr
+	}
+	
+	// Create new InferError with the original error's message
+	return NewInferError(err.Error(), node)
+}
+
 // NewEvalContext creates a new evaluation context
 func NewEvalContext(filename, source string) *EvalContext {
 	return &EvalContext{
@@ -185,6 +226,39 @@ func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
 	}
 
 	return NewSourceError(err.Error(), location, ctx.Source)
+}
+
+// ConvertInferError converts an InferError to a SourceError with source context
+func (ctx *EvalContext) ConvertInferError(err error) error {
+	var inferErr *InferError
+	if errors.As(err, &inferErr) {
+		// Convert InferError to SourceError with full context
+		var location *SourceLocation
+		if inferErr.Location != nil {
+			location = &SourceLocation{
+				Filename: ctx.Filename,
+				Line:     inferErr.Location.Line,
+				Column:   inferErr.Location.Column,
+				Length:   inferErr.Location.Length,
+			}
+		}
+		
+		if location == nil && inferErr.Node != nil {
+			// Fallback to guessing if we somehow don't have location
+			line, column, length := ctx.guessLocation(err, inferErr.Node)
+			location = &SourceLocation{
+				Filename: ctx.Filename,
+				Line:     line,
+				Column:   column,
+				Length:   length,
+			}
+		}
+		
+		return NewSourceError(inferErr.Message, location, ctx.Source)
+	}
+	
+	// Not an InferError, handle as regular error
+	return ctx.CreateSourceError(err, nil)
 }
 
 // guessLocation tries to guess the source location based on error patterns

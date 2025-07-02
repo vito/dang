@@ -739,7 +739,8 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 
 	inferred, err := Infer(typeEnv, node, true)
 	if err != nil {
-		return err
+		// Convert InferError to SourceError with full context
+		return evalCtx.ConvertInferError(err)
 	}
 
 	slog.Debug("type inference completed", "type", inferred)
