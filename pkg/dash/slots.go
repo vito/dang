@@ -44,24 +44,6 @@ func (s SlotDecl) Body() hm.Expression {
 
 func (s SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
-var _ Hoister = SlotDecl{}
-
-func (c SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
-	if depth == 0 {
-		// first pass only collects classes
-		return nil
-	}
-
-	dt, err := c.Infer(env, fresh)
-	if err != nil {
-		return fmt.Errorf("SlotDecl.Hoist: Infer %T: %w", c.Type_, err)
-	}
-
-	env.Add(c.Named, hm.NewScheme(nil, dt))
-
-	return nil
-}
-
 func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
 
