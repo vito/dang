@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -32,8 +33,10 @@ type Evaluator interface {
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
 	Get(name string) (Value, bool)
+	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
+	Visibility(name string) Visibility
 	Clone() EvalEnv
 }
 
@@ -573,11 +576,11 @@ func NewModuleValue(mod *Module) *ModuleValue {
 	}
 }
 
-func (m ModuleValue) Type() hm.Type {
+func (m *ModuleValue) Type() hm.Type {
 	return NonNullType{m.Mod}
 }
 
-func (m ModuleValue) String() string {
+func (m *ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod.Named)
 }
 
@@ -609,6 +612,33 @@ func (m *ModuleValue) Visibility(name string) Visibility {
 	return PrivateVisibility
 }
 
+func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
+	var bindings []Keyed[Value]
+
+	// Collect bindings from this module
+	for name, value := range m.Values {
+		if m.Visibilities[name] == vis {
+			bindings = append(bindings, Keyed[Value]{
+				Key:        name,
+				Value:      value,
+				Positional: false, // Module bindings are never positional
+			})
+		}
+	}
+
+	// Collect bindings from parent (if any) - avoiding duplicates
+	if m.Parent != nil {
+		for _, binding := range m.Parent.Bindings(vis) {
+			// Only include if not shadowed by current module
+			if _, shadowed := m.Values[binding.Key]; !shadowed {
+				bindings = append(bindings, binding)
+			}
+		}
+	}
+
+	return bindings
+}
+
 func (m *ModuleValue) Clone() EvalEnv {
 	newValues := make(map[string]Value)
 	newVisibilities := make(map[string]Visibility)
@@ -628,25 +658,16 @@ func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Vis
 
 // MarshalJSON implements json.Marshaler for ModuleValue
 // Only includes public fields in the JSON output
-func (m ModuleValue) MarshalJSON() ([]byte, error) {
+func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 	result := make(map[string]Value)
-	m.collectPublic(result)
-	return json.Marshal(result)
-}
-
-func (m ModuleValue) collectPublic(dest map[string]Value) {
-	for name, value := range m.Values {
-		if _, shadowed := dest[name]; shadowed {
+	for _, kv := range m.Bindings(PublicVisibility) {
+		if _, isFn := kv.Value.(FunctionValue); isFn {
 			continue
 		}
-		// Only include public fields
-		if m.Visibilities[name] == PublicVisibility {
-			dest[name] = value
-		}
+		log.Println("Marshaling", kv.Key, kv.Value, fmt.Sprintf("%T", kv.Value))
+		result[kv.Key] = kv.Value
 	}
-	if m.Parent != nil {
-		m.Parent.collectPublic(dest)
-	}
+	return json.Marshal(result)
 }
 
 // BoundMethod represents a method bound to a specific receiver
@@ -733,15 +754,15 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 }
 
 // RunDir evaluates all .dash files in a directory as a single module
-func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) error {
+func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) (EvalEnv, error) {
 	// Discover all .dash files in the directory
 	dashFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dash"))
 	if err != nil {
-		return fmt.Errorf("failed to find .dash files in directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to find .dash files in directory %s: %w", dirPath, err)
 	}
 
 	if len(dashFiles) == 0 {
-		return fmt.Errorf("no .dash files found in directory: %s", dirPath)
+		return nil, fmt.Errorf("no .dash files found in directory: %s", dirPath)
 	}
 
 	// Sort files for deterministic order
@@ -756,7 +777,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		// Read source for error reporting
 		sourceBytes, err := os.ReadFile(filePath)
 		if err != nil {
-			return fmt.Errorf("failed to read source file %s: %w", filePath, err)
+			return nil, fmt.Errorf("failed to read source file %s: %w", filePath, err)
 		}
 		source := string(sourceBytes)
 		allSources = append(allSources, source)
@@ -765,7 +786,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		// Parse the file
 		dash, err := ParseFile(filePath)
 		if err != nil {
-			return fmt.Errorf("failed to parse file %s: %w", filePath, err)
+			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
 
 		block := dash.(Block)
@@ -793,20 +814,20 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	if debug {
 		fmt.Println("Running Go-style phased inference...")
 	}
-	
+
 	// Use Go-style approach: constants -> types -> function signatures -> variables -> function bodies
 	infer := newInferer(typeEnv)
 	err = InferFormsWithGoStylePhases(masterBlock.Forms, typeEnv, infer)
 	if err != nil {
-		return fmt.Errorf("Go-style inference failed for directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("Go-style inference failed for directory %s: %w", dirPath, err)
 	}
-	
+
 	// For compatibility, create a scheme for the result (last form's type)
 	var inferred *hm.Scheme
 	if len(masterBlock.Forms) > 0 {
 		lastType, err := masterBlock.Forms[len(masterBlock.Forms)-1].Infer(typeEnv, infer)
 		if err != nil {
-			return fmt.Errorf("failed to infer final form type: %w", err)
+			return nil, fmt.Errorf("failed to infer final form type: %w", err)
 		}
 		inferred = hm.NewScheme(nil, lastType)
 	} else {
@@ -823,16 +844,16 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	if debug {
 		fmt.Println("Running Go-style phased evaluation...")
 	}
-	
+
 	// Use Go-style phased evaluation to match the inference order
 	result, err := EvaluateFormsWithGoStylePhases(ctx, masterBlock.Forms, evalEnv)
 	if err != nil {
-		return fmt.Errorf("Go-style evaluation failed for directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("Go-style evaluation failed for directory %s: %w", dirPath, err)
 	}
 
 	slog.Debug("directory evaluation completed", "result", result.String(), "dir", dirPath)
 
-	return nil
+	return evalEnv, nil
 }
 
 // EvalNode evaluates any AST node (legacy interface)

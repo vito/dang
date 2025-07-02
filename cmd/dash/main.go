@@ -109,7 +109,7 @@ func run(cfg Config) error {
 
 	if fileInfo.IsDir() {
 		// Evaluate directory as a module
-		if err := dash.RunDir(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+		if _, err := dash.RunDir(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
 			return fmt.Errorf("failed to evaluate Dash directory: %w", err)
 		}
 	} else {

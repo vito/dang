@@ -13,10 +13,10 @@ type Node interface {
 	hm.Expression
 	hm.Inferer
 	GetSourceLocation() *SourceLocation
-	
+
 	// DeclaredSymbols returns the symbols that this node declares (introduces to scope)
 	DeclaredSymbols() []string
-	
+
 	// ReferencedSymbols returns the symbols that this node references (depends on)
 	ReferencedSymbols() []string
 }
@@ -49,15 +49,15 @@ func (c FunCall) DeclaredSymbols() []string {
 
 func (c FunCall) ReferencedSymbols() []string {
 	var symbols []string
-	
+
 	// Add symbols from the function being called
 	symbols = append(symbols, c.Fun.ReferencedSymbols()...)
-	
+
 	// Add symbols from arguments
 	for _, arg := range c.Args {
 		symbols = append(symbols, arg.Value.ReferencedSymbols()...)
 	}
-	
+
 	return symbols
 }
 
@@ -233,7 +233,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 		return EvalNode(ctx, fnEnv, fn.Body)
 
-	case ModuleValue:
+	case *ModuleValue:
 		// Module function call - this would integrate with Dagger API
 		// For now, return a placeholder
 		return StringValue{Val: fmt.Sprintf("module call: %s with args %v", fn.Mod.Named, argValues)}, nil
@@ -435,10 +435,12 @@ type FunctionBase struct {
 	Args []SlotDecl
 	Body Node
 	Loc  *SourceLocation
+
+	Inferred *hm.FunctionType
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
-func (f FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allowFreshTypes bool) ([]Keyed[*hm.Scheme], error) {
+func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allowFreshTypes bool) ([]Keyed[*hm.Scheme], error) {
 	args := []Keyed[*hm.Scheme]{}
 	for _, arg := range f.Args {
 		var definedArgType hm.Type
@@ -497,7 +499,7 @@ func (f FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allow
 }
 
 // createFunctionValue creates a FunctionValue from processed arguments
-func (f FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) FunctionValue {
+func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
 	defaults := make(map[string]Node)
 
@@ -518,7 +520,7 @@ func (f FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) 
 }
 
 // inferFunctionType provides shared type inference logic for functions
-func (f FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (hm.Type, error) {
+func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (hm.Type, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
 
@@ -550,25 +552,16 @@ func (f FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFresh
 		}
 	}
 
-	return hm.NewFnType(NewRecordType("", args...), inferredRet), nil
+	f.Inferred = hm.NewFnType(NewRecordType("", args...), inferredRet)
+	return f.Inferred, nil
 }
 
 // Eval provides shared evaluation logic for functions
-func (f FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Create a placeholder function type for evaluation
-	// In a full implementation, this would use the actual inferred types
-	argTypes := make([]Keyed[*hm.Scheme], len(f.Args))
-	for i, arg := range f.Args {
-		argTypes[i] = Keyed[*hm.Scheme]{
-			Key:        arg.Named,
-			Value:      hm.NewScheme(nil, hm.TypeVariable(byte('a'+i))),
-			Positional: false,
-		}
+func (f *FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if f.Inferred == nil {
+		return nil, fmt.Errorf("%s.Eval: function type not inferred", f)
 	}
-
-	fnType := hm.NewFnType(NewRecordType("", argTypes...), hm.TypeVariable('r'))
-
-	return f.createFunctionValue(env, fnType), nil
+	return f.createFunctionValue(env, f.Inferred), nil
 }
 
 type FunDecl struct {
@@ -578,31 +571,31 @@ type FunDecl struct {
 	Visibility Visibility
 }
 
-var _ Declarer = FunDecl{}
+var _ Declarer = &FunDecl{}
 
-func (f FunDecl) IsDeclarer() bool {
+func (f *FunDecl) IsDeclarer() bool {
 	return true
 }
 
-var _ hm.Expression = FunDecl{}
-var _ Evaluator = FunDecl{}
+var _ hm.Expression = &FunDecl{}
+var _ Evaluator = &FunDecl{}
 
-func (f FunDecl) DeclaredSymbols() []string {
+func (f *FunDecl) DeclaredSymbols() []string {
 	return []string{f.Named} // Function declarations declare their name
 }
 
-func (f FunDecl) ReferencedSymbols() []string {
+func (f *FunDecl) ReferencedSymbols() []string {
 	// Function declarations reference symbols from their body
 	return f.FunctionBase.Body.ReferencedSymbols()
 }
 
-func (f FunDecl) Body() hm.Expression { return f.FunctionBase.Body }
+func (f *FunDecl) Body() hm.Expression { return f.FunctionBase.Body }
 
-func (f FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
+func (f *FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
 
-var _ hm.Inferer = FunDecl{}
+var _ hm.Inferer = &FunDecl{}
 
-func (f FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (f *FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return f.FunctionBase.inferFunctionType(env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 }
 
@@ -644,12 +637,12 @@ func (l List) DeclaredSymbols() []string {
 
 func (l List) ReferencedSymbols() []string {
 	var symbols []string
-	
+
 	// Add symbols from all elements
 	for _, elem := range l.Elements {
 		symbols = append(symbols, elem.ReferencedSymbols()...)
 	}
-	
+
 	return symbols
 }
 
@@ -953,21 +946,21 @@ func (d Select) DeclaredSymbols() []string {
 
 func (d Select) ReferencedSymbols() []string {
 	var symbols []string
-	
+
 	// When Receiver is nil, this is a top-level function call like createPerson()
 	if d.Receiver == nil {
 		symbols = append(symbols, d.Field)
 	} else {
 		symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
 	}
-	
+
 	// Add symbols from arguments
 	if d.Args != nil {
 		for _, arg := range *d.Args {
 			symbols = append(symbols, arg.Value.ReferencedSymbols()...)
 		}
 	}
-	
+
 	return symbols
 }
 
@@ -2088,23 +2081,23 @@ type Lambda struct {
 	FunctionBase
 }
 
-var _ Node = Lambda{}
-var _ Evaluator = Lambda{}
+var _ Node = &Lambda{}
+var _ Evaluator = &Lambda{}
 
-func (l Lambda) DeclaredSymbols() []string {
+func (l *Lambda) DeclaredSymbols() []string {
 	return nil // Lambdas don't declare symbols in the global scope
 }
 
-func (l Lambda) ReferencedSymbols() []string {
+func (l *Lambda) ReferencedSymbols() []string {
 	// Lambdas reference symbols from their body
 	return l.FunctionBase.Body.ReferencedSymbols()
 }
 
-func (l Lambda) Body() hm.Expression { return l }
+func (l *Lambda) Body() hm.Expression { return l }
 
-func (l Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
+func (l *Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
 
-func (l Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (l *Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return l.FunctionBase.inferFunctionType(env, fresh, true, nil, "Lambda")
 }
 
@@ -2546,6 +2539,10 @@ func (c CompositeEnv) Get(name string) (Value, bool) {
 	return c.primary.Get(name)
 }
 
+func (c CompositeEnv) Bindings(vis Visibility) []Keyed[Value] {
+	return c.primary.Bindings(vis)
+}
+
 // GetForAssignment returns the value from the environment where assignment should occur
 // For compound assignments, we want to read and write from the same environment (primary)
 func (c CompositeEnv) GetForAssignment(name string) (Value, bool) {
@@ -2567,6 +2564,11 @@ func (c CompositeEnv) Set(name string, value Value) EvalEnv {
 func (c CompositeEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
 	// All new bindings go to the primary environment (copy-on-write semantics)
 	c.primary.SetWithVisibility(name, value, visibility)
+}
+
+func (c CompositeEnv) Visibility(name string) Visibility {
+	// Speculative: don't fall back to lexical, we should consider that always private?
+	return c.primary.Visibility(name)
 }
 
 func (c CompositeEnv) Clone() EvalEnv {

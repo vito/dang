@@ -22,12 +22,12 @@ func (b Block) DeclaredSymbols() []string {
 
 func (b Block) ReferencedSymbols() []string {
 	var symbols []string
-	
+
 	// Add symbols from all forms in the block
 	for _, form := range b.Forms {
 		symbols = append(symbols, form.ReferencedSymbols()...)
 	}
-	
+
 	return symbols
 }
 
@@ -177,7 +177,6 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 	return result, nil
 }
 
-
 // InferFormsWithGoStylePhases implements Go's compilation phases:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
@@ -187,14 +186,14 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 // 6. Typecheck function bodies last (can reference all package-level declarations)
 func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 	// Phase 1: Separate forms by category
-	var constants []Node     // SlotDecl with constant values (literals, no function calls)
-	var types []Node         // ClassDecl
-	var variables []Node     // SlotDecl with computed values (function calls, references)
-	var functions []Node     // FunDecl
-	
+	var constants []Node // SlotDecl with constant values (literals, no function calls)
+	var types []Node     // ClassDecl
+	var variables []Node // SlotDecl with computed values (function calls, references)
+	var functions []Node // FunDecl
+
 	for _, form := range forms {
 		switch f := form.(type) {
-		case ClassDecl:
+		case *ClassDecl:
 			types = append(types, f)
 		case SlotDecl:
 			if isConstantValue(f.Value) {
@@ -202,14 +201,14 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 			} else {
 				variables = append(variables, f)
 			}
-		case FunDecl:
+		case *FunDecl:
 			functions = append(functions, f)
 		default:
 			// Other forms go with variables
 			variables = append(variables, form)
 		}
 	}
-	
+
 	// Phase 2: Typecheck constants (can be in any order, no dependencies)
 	for _, form := range constants {
 		_, err := form.Infer(env, fresh)
@@ -217,7 +216,7 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 			return fmt.Errorf("constant inference failed: %w", err)
 		}
 	}
-	
+
 	// Phase 3: Typecheck types (classes) - use traditional hoisting
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
@@ -233,7 +232,7 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 			}
 		}
 	}
-	
+
 	// Phase 4: Declare function signatures (hoist function declarations without bodies)
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
@@ -242,14 +241,14 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 			}
 		}
 	}
-	
+
 	// Phase 5: Typecheck variables in dependency order (can now reference function signatures)
 	if len(variables) > 0 {
 		orderedVars, err := orderByDependencies(variables)
 		if err != nil {
 			return fmt.Errorf("variable dependency ordering failed: %w", err)
 		}
-		
+
 		for _, form := range orderedVars {
 			_, err := form.Infer(env, fresh)
 			if err != nil {
@@ -257,7 +256,7 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 			}
 		}
 	}
-	
+
 	// Phase 6: Typecheck function bodies (can reference everything)
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
@@ -266,7 +265,7 @@ func InferFormsWithGoStylePhases(forms []Node, env hm.Env, fresh hm.Fresher) err
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -275,7 +274,7 @@ func isConstantValue(value Node) bool {
 	if value == nil {
 		return true // Type-only declarations
 	}
-	
+
 	switch value.(type) {
 	case String, Int, Boolean, Null:
 		return true
@@ -288,14 +287,14 @@ func isConstantValue(value Node) bool {
 // This ensures that constants, types, functions, and variables are evaluated in the correct order.
 func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	// Phase 1: Separate forms by category (same as inference)
-	var constants []Node     // SlotDecl with constant values
-	var types []Node         // ClassDecl
-	var variables []Node     // SlotDecl with computed values
-	var functions []Node     // FunDecl
-	
+	var constants []Node // SlotDecl with constant values
+	var types []Node     // ClassDecl
+	var variables []Node // SlotDecl with computed values
+	var functions []Node // FunDecl
+
 	for _, form := range forms {
 		switch f := form.(type) {
-		case ClassDecl:
+		case *ClassDecl:
 			types = append(types, f)
 		case SlotDecl:
 			if isConstantValue(f.Value) {
@@ -303,13 +302,13 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 			} else {
 				variables = append(variables, f)
 			}
-		case FunDecl:
+		case *FunDecl:
 			functions = append(functions, f)
 		default:
 			variables = append(variables, form)
 		}
 	}
-	
+
 	// Phase 2: Evaluate constants
 	for _, form := range constants {
 		_, err := EvalNode(ctx, env, form)
@@ -317,7 +316,7 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 			return nil, fmt.Errorf("constant evaluation failed: %w", err)
 		}
 	}
-	
+
 	// Phase 3: Evaluate types (classes)
 	for _, form := range types {
 		_, err := EvalNode(ctx, env, form)
@@ -325,7 +324,7 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 			return nil, fmt.Errorf("type evaluation failed: %w", err)
 		}
 	}
-	
+
 	// Phase 4: Evaluate functions (establish function values in environment)
 	for _, form := range functions {
 		_, err := EvalNode(ctx, env, form)
@@ -333,7 +332,7 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 			return nil, fmt.Errorf("function evaluation failed: %w", err)
 		}
 	}
-	
+
 	// Phase 5: Evaluate variables in dependency order
 	var result Value = NullValue{}
 	if len(variables) > 0 {
@@ -341,7 +340,7 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 		if err != nil {
 			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
 		}
-		
+
 		for _, form := range orderedVars {
 			val, err := EvalNode(ctx, env, form)
 			if err != nil {
@@ -350,10 +349,9 @@ func EvaluateFormsWithGoStylePhases(ctx context.Context, forms []Node, env EvalE
 			result = val
 		}
 	}
-	
+
 	return result, nil
 }
-
 
 var _ hm.Inferer = Block{}
 

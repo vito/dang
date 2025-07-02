@@ -141,33 +141,35 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type ClassDecl struct {
 	Named      string
 	Value      Block
-	Visibility Visibility // theoretically the type itself is public but its constructor value can be private
+	Visibility Visibility
 	Loc        *SourceLocation
+
+	Inferred *Module
 }
 
-func (f ClassDecl) IsDeclarer() bool {
+func (f *ClassDecl) IsDeclarer() bool {
 	return true
 }
 
-var _ Node = ClassDecl{}
-var _ Evaluator = ClassDecl{}
+var _ Node = &ClassDecl{}
+var _ Evaluator = &ClassDecl{}
 
-func (c ClassDecl) DeclaredSymbols() []string {
+func (c *ClassDecl) DeclaredSymbols() []string {
 	return []string{c.Named} // Class declarations declare their name
 }
 
-func (c ClassDecl) ReferencedSymbols() []string {
+func (c *ClassDecl) ReferencedSymbols() []string {
 	// Class declarations reference symbols from their body (the Block)
 	return c.Value.ReferencedSymbols()
 }
 
-func (c ClassDecl) Body() hm.Expression { return c.Value }
+func (c *ClassDecl) Body() hm.Expression { return c.Value }
 
-func (c ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
+func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
-var _ Hoister = ClassDecl{}
+var _ Hoister = &ClassDecl{}
 
-func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
+func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	mod, ok := env.(Env)
 	if !ok {
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
@@ -198,7 +200,7 @@ func (c ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 	return nil
 }
 
-func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod, ok := env.(Env)
 	if !ok {
 		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
@@ -226,13 +228,13 @@ func (c ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	class.Add("self", self)
 	env.Add(c.Named, self)
 
+	c.Inferred = class.(*Module)
 	return class, nil
 }
 
-func (c ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	classEnv := env.Clone()
-
-	modValue := classEnv.(Value)
+func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	modValue := NewModuleValue(c.Inferred)
+	classEnv := createCompositeEnv(modValue, env)
 
 	// Bind 'self' to the class template during class definition
 	// This will be overridden with the specific instance during method calls
@@ -247,7 +249,7 @@ func (c ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Add the class to the evaluation environment so it can be referenced
-	env.Set(c.Named, modValue)
+	env.SetWithVisibility(c.Named, modValue, c.Visibility)
 
 	return modValue, nil
 }
