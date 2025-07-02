@@ -15,3 +15,5 @@ cls Dash {
     file("value.json", json(self.value))
   }
 }
+
+Dash.new(42).currentValue

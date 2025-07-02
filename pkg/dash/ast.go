@@ -170,8 +170,10 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	switch fn := funVal.(type) {
 	case BoundMethod:
 		// BoundMethod - create new environment with receiver as 'self' and argument bindings
-		fnEnv := fn.Receiver.Clone()
-		fnEnv.Set("self", fn.Receiver)
+		// Create a composite environment that includes both the receiver and the method's closure
+		recv := fn.Receiver.Clone().(*ModuleValue)
+		fnEnv := createCompositeEnv(recv, fn.Method.Closure)
+		fnEnv.Set("self", recv)
 
 		for _, argName := range fn.Method.Args {
 			if val, exists := argValues[argName]; exists {
@@ -2553,6 +2555,16 @@ func (c CompositeEnv) GetForAssignment(name string) (Value, bool) {
 	}
 	// Fall back to lexical environment only if not found in primary
 	return c.lexical.Get(name)
+}
+
+var _ Value = CompositeEnv{}
+
+func (c CompositeEnv) String() string {
+	return fmt.Sprintf("CompositeEnv{primary: %v, lexical: %v}", c.primary, c.lexical)
+}
+
+func (c CompositeEnv) Type() hm.Type {
+	return c.primary.Type()
 }
 
 func (c CompositeEnv) Set(name string, value Value) EvalEnv {

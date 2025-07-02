@@ -32,6 +32,7 @@ type Evaluator interface {
 
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
+	Value
 	Get(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv

@@ -7,7 +7,11 @@ cls MyClass {
   }
 
   pub incr: MyClass! {
+    print("BEFORE:")
+    print(self.val)
     self.val += 1
+    print("AFTER:")
+    print(self.val)
     self # TODO: make not required?
   }
 

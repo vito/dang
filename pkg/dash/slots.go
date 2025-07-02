@@ -225,7 +225,7 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	self := hm.NewScheme(nil, NonNullType{class})
-	class.Add("self", self)
+	// class.Add("self", self)
 	env.Add(c.Named, self)
 
 	c.Inferred = class.(*Module)
@@ -238,7 +238,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Bind 'self' to the class template during class definition
 	// This will be overridden with the specific instance during method calls
-	classEnv.Set("self", modValue)
+	// classEnv.Set("self", StringValue{Val: "wtf"})
 
 	// Evaluate the class body (Block) which contains all the slots
 	for _, node := range c.Value.Forms {
