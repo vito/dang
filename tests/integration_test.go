@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"dagger.io/dagger"
@@ -45,25 +44,32 @@ func TestIntegration(tT *testing.T) {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	// Find all test_*.dash files
-	testFiles, err := filepath.Glob("test_*.dash")
+	// Find all test_*.dash files or test_* packages
+	paths, err := filepath.Glob("test_*")
 	if err != nil {
 		t.Fatalf("Failed to find test files: %v", err)
 	}
 
-	if len(testFiles) == 0 {
-		t.Skip("No test_*.dash files found")
+	if len(paths) == 0 {
+		t.Skip("No test_* files or directories found")
 	}
 
 	// Run each test file in parallel
-	for _, testFile := range testFiles {
-		testFile := testFile // capture loop variable
-		t.Run(strings.TrimSuffix(filepath.Base(testFile), ".dash"), func(ctx context.Context, t *testctx.T) {
+	for _, testFileOrDir := range paths {
+		t.Run(filepath.Base(testFileOrDir), func(ctx context.Context, t *testctx.T) {
 			// t.Parallel()
-
-			err := dash.RunFile(ctx, dag.GraphQLClient(), schema, testFile, false)
+			fi, err := os.Stat(testFileOrDir)
 			if err != nil {
-				t.Errorf("Test %s failed: %v", testFile, err)
+				t.Errorf("Failed to stat test file or directory %s: %v", testFileOrDir, err)
+				return
+			}
+			if fi.IsDir() {
+				_, err = dash.RunDir(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+			} else {
+				err = dash.RunFile(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+			}
+			if err != nil {
+				t.Errorf("Test %s failed: %v", testFileOrDir, err)
 			}
 		})
 	}
