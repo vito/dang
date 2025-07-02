@@ -114,7 +114,7 @@ func topologicalSort(nodes []Node, dependencies map[int][]int) ([]Node, error) {
 
 	// Start with nodes that have no dependencies
 	queue := []int{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if inDegree[i] == 0 {
 			queue = append(queue, i)
 		}
@@ -231,6 +231,12 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 			if err := hoister.Hoist(env, fresh, 1); err != nil { // Pass 1: infer class bodies
 				return fmt.Errorf("type body inference failed: %w", err)
 			}
+		}
+	}
+	for _, form := range types {
+		_, err := form.Infer(env, fresh)
+		if err != nil {
+			return fmt.Errorf("variable inference failed: %w", err)
 		}
 	}
 

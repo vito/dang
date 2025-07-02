@@ -170,7 +170,7 @@ func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
 var _ Hoister = &ClassDecl{}
 
-func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
+func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(Env)
 	if !ok {
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
@@ -192,8 +192,8 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
 		lexical: env.(Env),
 	}
 
-	if depth > 0 {
-		if err := c.Value.Hoist(hoistEnv, fresh, depth); err != nil {
+	if pass > 0 {
+		if err := c.Value.Hoist(hoistEnv, fresh, pass); err != nil {
 			return err
 		}
 	}
@@ -234,6 +234,10 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if c.Inferred == nil {
+		panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
+	}
+
 	modValue := NewModuleValue(c.Inferred)
 	classEnv := createCompositeEnv(modValue, env)
 
