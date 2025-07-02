@@ -5,17 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"dagger.io/dagger"
 	"dagger.io/dagger/telemetry"
+	"github.com/chewxy/hm"
 
-	"github.com/iancoleman/strcase"
 	"github.com/vito/dash/introspection"
 	"github.com/vito/dash/pkg/dash"
 	"github.com/vito/dash/pkg/ioctx"
@@ -97,237 +94,230 @@ func main() {
 	modSrcDir := os.Args[1]
 	modName := os.Args[2]
 
-	result, err := invoke(ctx, dag, schema, modSrcDir, modName, []byte(parentJson), parentName, fnName, inputArgs)
+	err = invoke(ctx, dag, schema, modSrcDir, modName, []byte(parentJson), parentName, fnName, inputArgs)
 	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
-	resultBytes, err := json.Marshal(result)
-	if err != nil {
-		WriteError(ctx, fmt.Errorf("failed to marshal result: %w", err))
-		os.Exit(2)
-	}
-
-	slog.Debug("returning", "result", string(resultBytes))
-
-	if err := fnCall.ReturnValue(ctx, dagger.JSON(resultBytes)); err != nil {
 		WriteError(ctx, err)
 		os.Exit(2)
 	}
 }
 
-func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (any, error) {
-	tmpfile, err := os.CreateTemp("", "dash-sdk-*.dash")
+func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) error {
+	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
+	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
+	env, err := dash.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to run dir: %w", err)
 	}
-	defer os.Remove(tmpfile.Name())
 
-	var script strings.Builder
-	camelModName := strcase.ToCamel(modName)
+	// camelModName := strcase.ToCamel(modName)
 
-	// Import the module being executed
-	script.WriteString(fmt.Sprintf("import \"%s\"\n\n", filepath.Join(modSrcDir, modName+".dash")))
+	dagMod := dag.Module()
+	if desc, found := env.Get("description"); found {
+		dagMod = dagMod.WithDescription(desc.String())
+	}
 
-	if parentName == "" { // INIT case
-		if fnName == "" {
-			fnName = "new"
-		}
-		args, err := buildDashArgs(schema, camelModName, fnName, inputArgs)
+	// initializing module
+	if parentName == "" {
+		dagMod, err := initModule(dag, env)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build constructor args: %w", err)
+			return fmt.Errorf("failed to init module: %w", err)
 		}
-		script.WriteString(fmt.Sprintf("pvt inst = %s.%s(%s)\n", camelModName, fnName, args))
-		script.WriteString("print(json(inst))\n")
-	} else { // METHOD case
-		script.WriteString(fmt.Sprintf("pvt inst = %s\n", camelModName))
-
-		var parent map[string]json.RawMessage
-		if err := json.Unmarshal(parentJSON, &parent); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal parent json: %w", err)
-		}
-
-		parentTypeDef := schema.Types.Get(strcase.ToCamel(parentName))
-		if parentTypeDef == nil {
-			return nil, fmt.Errorf("type %s not found in schema", parentName)
-		}
-
-		for key, valBytes := range parent {
-			var field *introspection.Field
-			for _, f := range parentTypeDef.Fields {
-				if f.Name == strcase.ToCamel(key) {
-					field = f
-					break
-				}
-			}
-			if field == nil {
-				continue
-			}
-
-			var val any
-			if err := json.Unmarshal(valBytes, &val); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal parent field %s: %w", key, err)
-			}
-			dashLiteral, err := goValueToDashLiteral(val, field.TypeRef, schema)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert parent field %s to dash literal: %w", key, err)
-			}
-			script.WriteString(fmt.Sprintf("inst.%s = %s\n", strcase.ToKebab(key), dashLiteral))
-		}
-
-		kebabFnName := strcase.ToKebab(fnName)
-		args, err := buildDashArgs(schema, camelModName, fnName, inputArgs)
+		jsonBytes, err := json.Marshal(dagMod)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build method args: %w", err)
+			return fmt.Errorf("failed to marshal module: %w", err)
 		}
-		script.WriteString(fmt.Sprintf("print(json(inst.%s(%s)))\n", kebabFnName, args))
+		return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 	}
 
-	fmt.Fprintln(os.Stderr, script.String())
-
-	slog.Debug("generated script", "path", tmpfile.Name(), "content", script.String())
-
-	if _, err := tmpfile.WriteString(script.String()); err != nil {
-		tmpfile.Close()
-		return nil, fmt.Errorf("failed to write to temp file: %w", err)
+	parentMod, found := env.Get(parentName)
+	if !found {
+		return fmt.Errorf("unknown parent type: %s", parentName)
 	}
-	if err := tmpfile.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	var parentState map[string]any
+	dec := json.NewDecoder(bytes.NewReader(parentJSON))
+	dec.UseNumber()
+	if err := dec.Decode(&parentState); err != nil {
+		return fmt.Errorf("failed to unmarshal parent JSON: %w", err)
 	}
-
-	// Capture stdout
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	execCtx := ioctx.StdoutToContext(ctx, w)
-	runErr := dash.RunFile(execCtx, dag.GraphQLClient(), schema, tmpfile.Name(), debug)
-
-	w.Close()
-	os.Stdout = oldStdout
-
-	var resultBuf bytes.Buffer
-	if _, err := io.Copy(&resultBuf, r); err != nil {
-		return nil, fmt.Errorf("failed to read stdout: %w", err)
-	}
-
-	if runErr != nil {
-		return nil, fmt.Errorf("failed to run dash script: %w\noutput: %s", runErr, resultBuf.String())
-	}
-
-	var result any
-	if err := json.Unmarshal(resultBuf.Bytes(), &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal result from dash script: %w\noutput: %s", err, resultBuf.String())
-	}
-
-	return result, nil
-}
-
-func buildDashArgs(schema *introspection.Schema, typeName, fnName string, args map[string][]byte) (string, error) {
-	objType := schema.Types.Get(typeName)
-	if objType == nil {
-		return "", fmt.Errorf("type %s not found in schema", typeName)
-	}
-
-	var fn *introspection.Field
-	for _, f := range objType.Fields {
-		if f.Name == fnName {
-			fn = f
-			break
+	parentModEnv := parentMod.(dash.EvalEnv).Clone()
+	for name, value := range parentState {
+		dashVal, err := anyToDash(value)
+		if err != nil {
+			return fmt.Errorf("failed to convert input argument %s to dash value: %w", name, err)
 		}
+		parentModEnv.Set(name, dashVal)
 	}
-	if fn == nil {
-		return "", fmt.Errorf("function %s not found on type %s", fnName, typeName)
+	if fnName == "" {
+		fnName = "new"
 	}
-
-	var parts []string
-	for _, argDef := range fn.Args {
-		argBytes, ok := args[argDef.Name]
-		if !ok {
-			continue // Or handle default values if they are available in schema
-		}
+	call := dash.Select{
+		Receiver: dash.ValueNode{Val: parentModEnv.(*dash.ModuleValue)},
+		Field:    fnName,
+	}
+	var args dash.Record
+	for name, value := range inputArgs {
+		dec := json.NewDecoder(bytes.NewReader(value))
+		dec.UseNumber()
 		var val any
-		if err := json.Unmarshal(argBytes, &val); err != nil {
-			return "", fmt.Errorf("failed to unmarshal arg %s: %w", argDef.Name, err)
+		if err := dec.Decode(&val); err != nil {
+			return fmt.Errorf("failed to unmarshal input argument %s: %w", name, err)
 		}
-		dashLiteral, err := goValueToDashLiteral(val, argDef.TypeRef, schema)
+		dashVal, err := anyToDash(val)
 		if err != nil {
-			return "", fmt.Errorf("failed to convert arg %s to dash literal: %w", argDef.Name, err)
+			return fmt.Errorf("failed to convert input argument %s to dash value: %w", name, err)
 		}
-		parts = append(parts, fmt.Sprintf("%s: %s", strcase.ToKebab(argDef.Name), dashLiteral))
+		args = append(args, dash.Keyed[dash.Node]{
+			Key:   name,
+			Value: dash.ValueNode{Val: dashVal},
+		})
 	}
-	return strings.Join(parts, ", "), nil
+	call.Args = &args
+	result, err := call.Eval(ctx, env)
+	if err != nil {
+		return fmt.Errorf("failed to evaluate call: %w", err)
+	}
+	jsonBytes, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("failed to marshal result: %w", err)
+	}
+	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
-func goValueToDashLiteral(val any, typeRef *introspection.TypeRef, schema *introspection.Schema) (string, error) {
-	if val == nil {
-		return "null", nil
-	}
-
-	if typeRef.Kind == introspection.TypeKindNonNull {
-		typeRef = typeRef.OfType
-	}
-
-	if typeRef.Kind == introspection.TypeKindList {
-		list, ok := val.([]any)
-		if !ok {
-			return "", fmt.Errorf("expected list for list type, got %T", val)
-		}
-		var parts []string
-		for _, item := range list {
-			dashItem, err := goValueToDashLiteral(item, typeRef.OfType, schema)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, dashItem)
-		}
-		return fmt.Sprintf("[%s]", strings.Join(parts, ", ")), nil
-	}
-
-	switch typeRef.Kind {
-	case introspection.TypeKindScalar:
-		jsonBytes, err := json.Marshal(val)
+func anyToDash(val any) (dash.Value, error) {
+	switch v := val.(type) {
+	case string:
+		return dash.StringValue{Val: v}, nil
+	case int:
+		return dash.IntValue{Val: v}, nil
+	case json.Number:
+		// if strings.Contains(v.String(), ".") {
+		// 	return dash.FloatValue{Val: v.Float64()}, nil
+		// }
+		i, err := v.Int64()
 		if err != nil {
-			return "", err
+			return nil, fmt.Errorf("failed to convert json.Number to int64: %w", err)
 		}
-		return string(jsonBytes), nil
-	case introspection.TypeKindObject:
-		id, ok := val.(string)
-		if !ok {
-			return "", fmt.Errorf("expected object ID string, got %T", val)
-		}
-		loadFn := "load" + typeRef.Name + "FromID"
-		return fmt.Sprintf("%s(\"%s\")", loadFn, id), nil
-	case introspection.TypeKindInputObject:
-		rec, ok := val.(map[string]any)
-		if !ok {
-			return "", fmt.Errorf("expected map for input object, got %T", val)
-		}
-		inputTypeDef := schema.Types.Get(typeRef.Name)
-		if inputTypeDef == nil {
-			return "", fmt.Errorf("input type %s not found", typeRef.Name)
-		}
-		var parts []string
-		for key, fieldVal := range rec {
-			var inputField *introspection.InputValue
-			for _, f := range inputTypeDef.InputFields {
-				if f.Name == strcase.ToCamel(key) {
-					inputField = &f
-					break
-				}
-			}
-			if inputField == nil {
-				continue
-			}
-			dashVal, err := goValueToDashLiteral(fieldVal, inputField.TypeRef, schema)
-			if err != nil {
-				return "", err
-			}
-			parts = append(parts, fmt.Sprintf("%s: %s", strcase.ToKebab(key), dashVal))
-		}
-		return fmt.Sprintf("{%s}", strings.Join(parts, ", ")), nil
+		return dash.IntValue{Val: int(i)}, nil
+	case bool:
+		return dash.BoolValue{Val: v}, nil
 	default:
-		return "", fmt.Errorf("unsupported kind for dash literal: %s", typeRef.Kind)
+		return nil, fmt.Errorf("unsupported type %T", v)
+	}
+}
+
+func initModule(dag *dagger.Client, env dash.EvalEnv) (*dagger.Module, error) {
+	dagMod := dag.Module()
+
+	// Handle module-level description if present
+	if descBinding, found := env.Get("description"); found {
+		dagMod = dagMod.WithDescription(descBinding.String())
+	}
+
+	binds := env.Bindings(dash.PublicVisibility)
+	for _, binding := range binds {
+		log.Println("Binding:", binding.Key)
+		switch val := binding.Value.(type) {
+		case *dash.ModuleValue:
+			// Classes/objects - register as TypeDefs with their methods
+			objDef, err := createObjectTypeDef(dag, binding.Key, val)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create object %s: %w", binding.Key, err)
+			}
+			dagMod = dagMod.WithObject(objDef)
+
+		default:
+			// Other values (functions, constants, etc.) - for now skip
+			// In the Dagger SDK, everything needs to be structured as objects
+			slog.Info("skipping non-class public binding", "name", binding.Key, "type", fmt.Sprintf("%T", val))
+		}
+	}
+
+	return dagMod, nil
+}
+
+func createFunction(dag *dagger.Client, name string, fn dash.FunctionValue) (*dagger.Function, error) {
+	// Convert Dash function type to Dagger TypeDef
+	retTypeDef, err := dashTypeToTypeDef(dag, fn.FnType.Ret(false))
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn.FnType, err)
+	}
+
+	funDef := dag.Function(name, retTypeDef)
+
+	for _, arg := range fn.FnType.Arg().(*dash.RecordType).Fields {
+		argType, mono := arg.Value.Type()
+		if !mono {
+			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
+		}
+		typeDef, err := dashTypeToTypeDef(dag, argType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
+		}
+		funDef = funDef.WithArg(arg.Key, typeDef)
+	}
+
+	return funDef, nil
+}
+
+func createObjectTypeDef(dag *dagger.Client, name string, module *dash.ModuleValue) (*dagger.TypeDef, error) {
+	objDef := dag.TypeDef().WithObject(name)
+
+	// Process public methods in the class
+	for _, binding := range module.Bindings(dash.PublicVisibility) {
+		if fn, ok := binding.Value.(dash.FunctionValue); ok {
+			fnDef, err := createFunction(dag, binding.Key, fn)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create method %s for %s: %w", binding.Key, name, err)
+			}
+
+			if binding.Key == "new" {
+				// Constructor function
+				objDef = objDef.WithConstructor(fnDef)
+			} else {
+				// Regular method
+				objDef = objDef.WithFunction(fnDef)
+			}
+		}
+		// TODO: Handle fields/properties if needed
+	}
+
+	return objDef, nil
+}
+
+func dashTypeToTypeDef(dag *dagger.Client, dashType hm.Type) (*dagger.TypeDef, error) {
+	def := dag.TypeDef()
+
+	switch t := dashType.(type) {
+	case dash.NonNullType:
+		// Handle non-null wrapper
+		return dashTypeToTypeDef(dag, t.Type)
+
+	case dash.ListType:
+		elemTypeDef, err := dashTypeToTypeDef(dag, t.Type)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert list element type: %w", err)
+		}
+		return def.WithListOf(elemTypeDef), nil
+
+	case *dash.Module:
+		// Check for basic types and object/class types
+		switch t.Named {
+		case "String":
+			return def.WithKind(dagger.TypeDefKindStringKind), nil
+		case "Int":
+			return def.WithKind(dagger.TypeDefKindIntegerKind), nil
+		case "Boolean":
+			return def.WithKind(dagger.TypeDefKindBooleanKind), nil
+		default:
+			// Object/class type
+			return def.WithObject(t.Named), nil
+		}
+
+	default:
+		// For type variables and other complex types, default to string for now
+		// TODO: Handle type variables more gracefully
+		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", dashType), "value", fmt.Sprintf("%s", dashType))
+		return nil, fmt.Errorf("unknown type: %T: %s", dashType, dashType)
 	}
 }
 
@@ -351,3 +341,19 @@ func WriteError(ctx context.Context, err error) {
 		log.Println(err)
 	}
 }
+
+// func initPlatform(ctx context.Context, dag *dagger.Client, scope *bass.Scope) error {
+// 	// Set the default OCI platform as *platform*.
+// 	platStr, err := dag.DefaultPlatform(ctx)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get default platform: %w", err)
+// 	}
+// 	scope.Set("*platform*", bass.String(platStr))
+
+// 	// Set the non-OS portion of the OCI platform as *arch* so that we include v7
+// 	// in arm/v7.
+// 	_, arch, _ := strings.Cut(string(platStr), "/")
+// 	scope.Set("*arch*", bass.String(arch))
+
+// 	return nil
+// }

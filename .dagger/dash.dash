@@ -1,7 +1,17 @@
 cls Dash {
   pub value = 0
+
   pub new(value: Int!): Dash! {
     self.value = value
     self
+  }
+
+  pub add(value: Int!): Dash! {
+    self.value += value
+    self
+  }
+
+  pub currentValue: Int! {
+    self.value
   }
 }
