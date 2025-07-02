@@ -716,7 +716,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			if len(elseBlock.Forms) > 0 {
 				errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
 			}
-			return nil, NewInferError("then and else branches have different types", errorNode)
+			return nil, NewInferError(err.Error(), errorNode)
 		}
 	}
 

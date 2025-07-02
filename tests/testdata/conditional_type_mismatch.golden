@@ -1,4 +1,4 @@
-[1m[31mError:[0m then and else branches have different types
+[1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
   [2m[34m--> errors/conditional_type_mismatch.dash:2:42[0m
  [2m    |[0m
  [2m  1 | # Test conditional with mismatched branch types[0m
