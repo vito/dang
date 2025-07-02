@@ -1,0 +1,8 @@
+[1m[31mError:[0m "undefined_var" not found
+  [2m[34m--> errors/let_undefined_symbol.dash:2:22[0m
+ [2m    |[0m
+ [2m  1 | # Test let expression with undefined symbol[0m
+ [2m[34m[1m  2 | [0mpub result = let x = undefined_var in x + 1
+[2m                            [31m^^^^^^^^^^^^^[0m
+ [2m    |[0m
+

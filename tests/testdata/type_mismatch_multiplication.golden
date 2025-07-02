@@ -1,0 +1,8 @@
+[1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
+  [2m[34m--> errors/type_mismatch_multiplication.dash:2:14[0m
+ [2m    |[0m
+ [2m  1 | # Test multiplication type mismatch[0m
+ [2m[34m[1m  2 | [0mpub result = "hello" * 42
+[2m                    [31m^^^^^^^^^^^^[0m
+ [2m    |[0m
+

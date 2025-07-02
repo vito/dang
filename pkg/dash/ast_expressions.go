@@ -695,7 +695,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	if _, err := UnifyWithCompatibility(condType, boolType); err != nil {
-		return nil, fmt.Errorf("Conditional.Infer: condition must be Boolean, got %s", condType)
+		return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
 	}
 
 	thenType, err := c.Then.Infer(env, fresh)

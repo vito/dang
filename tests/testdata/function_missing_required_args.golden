@@ -1,0 +1,9 @@
+[1m[31mError:[0m Block.Hoist: SlotDecl.Hoist: Infer <nil>: Select.Infer: FunCall.Infer: missing required argument: "y"
+  [2m[34m--> errors/function_missing_required_args.dash:1:1[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0m# Test function call missing required arguments
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  2 | pub add_nums(x: Int!, y: Int!): Int! { x + y }[0m
+ [2m  3 | pub result = add_nums(x: 5)[0m
+ [2m    |[0m
+

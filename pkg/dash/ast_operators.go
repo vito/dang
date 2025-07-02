@@ -32,7 +32,7 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	// Unify types with subtyping support for nullable/NonNull compatibility
 	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
-		return nil, fmt.Errorf("Default.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		return nil, NewInferError(err.Error(), d)
 	}
 
 	// Return the right type (the fallback value type)
@@ -220,7 +220,7 @@ func (s Subtraction) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
-		return nil, fmt.Errorf("Subtraction.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		return nil, NewInferError(err.Error(), s)
 	}
 	return lt, nil
 }
@@ -277,7 +277,7 @@ func (m Multiplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
-		return nil, fmt.Errorf("Multiplication.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		return nil, NewInferError(err.Error(), m)
 	}
 	return lt, nil
 }
@@ -334,7 +334,7 @@ func (d Division) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
-		return nil, fmt.Errorf("Division.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		return nil, NewInferError(err.Error(), d)
 	}
 	return lt, nil
 }
@@ -394,7 +394,7 @@ func (m Modulo) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
-		return nil, fmt.Errorf("Modulo.Infer: mismatched types: %s and %s cannot be unified: %w", lt, rt, err)
+		return nil, NewInferError(err.Error(), m)
 	}
 	return lt, nil
 }

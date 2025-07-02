@@ -1,0 +1,8 @@
+[1m[31mError:[0m Block.Hoist: SlotDecl.Hoist: Infer dash.NonNullTypeNode: SlotDecl.Infer: Unify dash.NonNullType(String!) ~ dash.NonNullType(Int!): Unification Fail: String ~ Int cannot be unified
+  [2m[34m--> errors/variable_type_annotation_mismatch.dash:1:1[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0m# Test variable type annotation mismatch
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  2 | pub x: Int! = "hello"[0m
+ [2m    |[0m
+

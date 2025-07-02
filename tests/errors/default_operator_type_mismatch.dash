@@ -1,0 +1,2 @@
+# Test default operator type mismatch
+pub result = "hello" ? 42

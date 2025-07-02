@@ -1,0 +1,2 @@
+# Test greater than or equal comparison type mismatch
+pub result = "hello" >= 42

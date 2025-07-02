@@ -1,0 +1,2 @@
+# Test modulo type mismatch
+pub result = "hello" % 42
