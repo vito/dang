@@ -79,7 +79,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if _, err := UnifyWithCompatibility(dt, it); err != nil {
-				return nil, NewInferError(err.Error(), c)
+				return nil, NewInferError(err.Error(), v)
 			}
 		}
 
@@ -115,7 +115,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if _, err := UnifyWithCompatibility(dt, it); err != nil {
-				return nil, NewInferError(err.Error(), c)
+				return nil, NewInferError(err.Error(), v)
 			}
 		}
 		return NonNullType{ft}, nil
