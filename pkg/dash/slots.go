@@ -121,7 +121,7 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if s.Value == nil {
 		// If no value is provided, this is just a type declaration
 		// Add a null value to the environment as a placeholder
-		env.Set(s.Named, NullValue{})
+		env.SetWithVisibility(s.Named, NullValue{}, s.Visibility)
 		return NullValue{}, nil
 	}
 

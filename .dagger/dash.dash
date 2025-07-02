@@ -1,17 +1,14 @@
 cls Dash {
-  pub value = 0
+  pub source: Directory!
 
-  pub new(value: Int!): Dash! {
-    self.value = value
+  pub new(
+    source: Directory!,
+  ): Dash! {
+    self.source = source
     self
   }
 
-  pub add(value: Int!): Dash! {
-    self.value += value
-    self
-  }
-
-  pub currentValue: File! {
-    file("value.json", json(self.value))
+  pub entries: [String!]! {
+    self.source.entries
   }
 }
