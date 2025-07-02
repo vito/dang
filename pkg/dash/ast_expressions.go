@@ -711,7 +711,12 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 
 		if _, err := UnifyWithCompatibility(thenType, elseType); err != nil {
-			return nil, NewInferError("then and else branches have different types", c)
+			// Try to point to the specific value in the else block for better error targeting
+			var errorNode Node = elseBlock
+			if len(elseBlock.Forms) > 0 {
+				errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
+			}
+			return nil, NewInferError("then and else branches have different types", errorNode)
 		}
 	}
 
