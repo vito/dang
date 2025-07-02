@@ -2,13 +2,20 @@ cls Dash {
   pub source: Directory!
 
   pub new(
-    source: Directory!,
+    source: Directory!
   ): Dash! {
     self.source = source
     self
   }
 
-  pub entries: [String!]! {
-    self.source.entries
+  pub build(): File! {
+    go(self.source).binary("./cmd/dash")
+  }
+
+  pub test(): Container! {
+    go(self.source).base.
+      withDirectory("/src", self.source).
+      withWorkdir("/src").
+      withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true)
   }
 }

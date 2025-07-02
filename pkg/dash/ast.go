@@ -561,7 +561,7 @@ func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFres
 // Eval provides shared evaluation logic for functions
 func (f *FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if f.Inferred == nil {
-		return nil, fmt.Errorf("%s.Eval: function type not inferred", f)
+		return nil, fmt.Errorf("%v.Eval: function type not inferred", f)
 	}
 	return f.createFunctionValue(env, f.Inferred), nil
 }

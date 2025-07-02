@@ -154,7 +154,6 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if err != nil {
 			return fmt.Errorf("failed to convert input argument %s to dash value: %w", name, err)
 		}
-		log.Println("loaded parent state", name, dashVal, fieldType)
 		parentModEnv.Set(name, dashVal)
 	}
 	if fnName == "" {
@@ -362,6 +361,8 @@ func dashTypeToTypeDef(dag *dagger.Client, dashType hm.Type) (*dagger.TypeDef, e
 			return def.WithKind(dagger.TypeDefKindIntegerKind), nil
 		case "Boolean":
 			return def.WithKind(dagger.TypeDefKindBooleanKind), nil
+		case "Void":
+			return def.WithKind(dagger.TypeDefKindVoidKind), nil
 		default:
 			// Object/class type
 			return def.WithObject(t.Named), nil

@@ -4,5 +4,12 @@
   "sdk": {
     "source": "./dagger-sdk"
   },
+  "dependencies": [
+    {
+      "name": "go",
+      "source": "github.com/dagger/dagger/modules/go",
+      "pin": "1f420c4811f4d02e43d7be71975c5405f82a7d75"
+    }
+  ],
   "source": ".dagger"
 }
