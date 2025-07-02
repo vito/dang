@@ -1,0 +1,2 @@
+# Test conditional with mismatched branch types
+pub result = if true { "string" } else { 123 }

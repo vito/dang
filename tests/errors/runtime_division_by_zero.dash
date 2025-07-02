@@ -1,0 +1,2 @@
+# Test runtime division by zero error
+pub result = 42 / 0

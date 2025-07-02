@@ -1,0 +1,8 @@
+[1m[31mError:[0m "undefined_var" not found
+  [2m[34m--> errors/undefined_symbol.dash:2:9[0m
+ [2m    |[0m
+ [2m  1 | # Test undefined symbol error[0m
+ [2m[34m[1m  2 | [0mpub x = undefined_var
+[2m               [31m^^^^^^^^^^^^^[0m
+ [2m    |[0m
+

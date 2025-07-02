@@ -1,0 +1,10 @@
+[1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
+  [2m[34m--> errors/multiple_type_errors.dash:2:20[0m
+ [2m    |[0m
+ [2m  1 | # Test multiple type errors in one file[0m
+ [2m[34m[1m  2 | [0mpub bad_addition = "hello" + 42
+[2m                          [31m^^^^^^^^^^^^[0m
+ [2m  3 | pub missing_var = undefined_symbol[0m
+ [2m  4 | pub bad_conditional = if true { "string" } else { 123 }[0m
+ [2m    |[0m
+
