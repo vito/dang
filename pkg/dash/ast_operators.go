@@ -124,7 +124,6 @@ func (e Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return BoolValue{Val: equal}, nil
 }
 
-
 type Addition struct {
 	Left  Node
 	Right Node

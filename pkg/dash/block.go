@@ -186,10 +186,10 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 // 6. Typecheck function bodies last (can reference all package-level declarations)
 func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 	// Phase 1: Separate declarations from non-declarations
-	var constants []Node      // SlotDecl with constant values (literals, no function calls)
-	var types []Node          // ClassDecl
-	var variables []Node      // SlotDecl with computed values (function calls, references)
-	var functions []Node      // FunDecl
+	var constants []Node       // SlotDecl with constant values (literals, no function calls)
+	var types []Node           // ClassDecl
+	var variables []Node       // SlotDecl with computed values (function calls, references)
+	var functions []Node       // FunDecl
 	var nonDeclarations []Node // Everything else (assignments, expressions, etc.)
 
 	for _, form := range forms {
@@ -296,10 +296,10 @@ func isConstantValue(value Node) bool {
 // This ensures that constants, types, functions, and variables are evaluated in the correct order.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	// Phase 1: Separate declarations from non-declarations (same as inference)
-	var constants []Node      // SlotDecl with constant values
-	var types []Node          // ClassDecl
-	var variables []Node      // SlotDecl with computed values
-	var functions []Node      // FunDecl
+	var constants []Node       // SlotDecl with constant values
+	var types []Node           // ClassDecl
+	var variables []Node       // SlotDecl with computed values
+	var functions []Node       // FunDecl
 	var nonDeclarations []Node // Everything else (evaluated in original order)
 
 	for _, form := range forms {

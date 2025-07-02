@@ -75,7 +75,6 @@ type MatchCase struct {
 	Expr    Node
 }
 
-
 // WildcardPattern represents the wildcard pattern '_'
 type WildcardPattern struct{}
 

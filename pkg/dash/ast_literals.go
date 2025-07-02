@@ -91,7 +91,6 @@ func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return ListValue{Elements: values, ElemType: elemType}, nil
 }
 
-
 // Null represents a null literal
 type Null struct {
 	Loc *SourceLocation

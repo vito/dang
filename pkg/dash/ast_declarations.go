@@ -298,7 +298,8 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 	// Get the root object from the environment
 	rootObj, found := env.Get(rootSymbol)
 	if !found {
-		return nil, fmt.Errorf("object %q not found", rootSymbol)
+		err := fmt.Errorf("object %q not found", rootSymbol)
+		return nil, CreateEvalError(ctx, err, selectNode)
 	}
 
 	// Clone the root object to begin the copy-on-write process
@@ -310,7 +311,8 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 		fieldName := path[i]
 		val, found := currentObj.Get(fieldName)
 		if !found {
-			return nil, fmt.Errorf("field %q not found in object", fieldName)
+			err := fmt.Errorf("field %q not found in object", fieldName)
+			return nil, CreateEvalError(ctx, err, selectNode)
 		}
 		clonedVal := val.(EvalEnv).Clone()
 		currentObj.Set(fieldName, clonedVal.(Value))
@@ -328,7 +330,8 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 		// Compound assignment: obj.field += value
 		currentValue, found := currentObj.Get(finalField)
 		if !found {
-			return nil, fmt.Errorf("Reassignment.Eval: field %q not found", finalField)
+			err := fmt.Errorf("field %q not found", finalField)
+			return nil, CreateEvalError(ctx, err, selectNode)
 		}
 
 		// Perform addition using existing Addition logic

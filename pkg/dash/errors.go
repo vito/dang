@@ -56,7 +56,7 @@ func (e *SourceError) FormatWithHighlighting() string {
 	// Error header
 	result.WriteString(fmt.Sprintf("%s%sError:%s %s\n", bold, red, reset, e.Message))
 	result.WriteString(fmt.Sprintf("  %s%s--> %s:%d:%d%s\n", dim, blue, e.Location.Filename, e.Location.Line, e.Location.Column, reset))
-	
+
 	// Top separator pipe (aligned with line numbers)
 	result.WriteString(fmt.Sprintf(" %s%s |%s\n", dim, padLeft("", 3), reset))
 
@@ -182,7 +182,7 @@ func WrapInferError(err error, node Node) error {
 		// Already an InferError, don't double-wrap
 		return inferErr
 	}
-	
+
 	// Create new InferError with the original error's message
 	return NewInferError(err.Error(), node)
 }
@@ -242,7 +242,7 @@ func (ctx *EvalContext) ConvertInferError(err error) error {
 				Length:   inferErr.Location.Length,
 			}
 		}
-		
+
 		if location == nil && inferErr.Node != nil {
 			// Fallback to guessing if we somehow don't have location
 			line, column, length := ctx.guessLocation(err, inferErr.Node)
@@ -253,10 +253,10 @@ func (ctx *EvalContext) ConvertInferError(err error) error {
 				Length:   length,
 			}
 		}
-		
+
 		return NewSourceError(inferErr.Message, location, ctx.Source)
 	}
-	
+
 	// Not an InferError, handle as regular error
 	return ctx.CreateSourceError(err, nil)
 }
