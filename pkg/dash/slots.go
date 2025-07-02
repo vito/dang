@@ -125,10 +125,11 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return NullValue{}, nil
 	}
 
-	// Use direct evaluation without wrapping the error - let the specific node error be preserved
+	// Evaluate the value expression with proper error context
 	val, err := EvalNode(ctx, env, s.Value)
 	if err != nil {
-		return nil, err // Don't wrap the error here - preserve the original location
+		// Convert error with proper source location from the failing node
+		return nil, CreateEvalError(ctx, err, s.Value)
 	}
 
 	// Add the value to the environment for future use

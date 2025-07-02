@@ -1,8 +1,8 @@
 [1m[31mError:[0m division by zero
-  [2m[34m--> errors/runtime_division_by_zero.dash:1:1[0m
+  [2m[34m--> errors/runtime_division_by_zero.dash:2:14[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0m# Test runtime division by zero error
-[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  2 | pub result = 42 / 0[0m
+ [2m  1 | # Test runtime division by zero error[0m
+ [2m[34m[1m  2 | [0mpub result = 42 / 0
+[2m                    [31m^^^^^^[0m
  [2m    |[0m
 

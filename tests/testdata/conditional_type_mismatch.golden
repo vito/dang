@@ -1,8 +1,8 @@
 [1m[31mError:[0m then and else branches have different types
-  [2m[34m--> errors/conditional_type_mismatch.dash:1:1[0m
+  [2m[34m--> errors/conditional_type_mismatch.dash:2:14[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0m# Test conditional with mismatched branch types
-[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  2 | pub result = if true { "string" } else { 123 }[0m
+ [2m  1 | # Test conditional with mismatched branch types[0m
+ [2m[34m[1m  2 | [0mpub result = if true { "string" } else { 123 }
+[2m                    [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
  [2m    |[0m
 
