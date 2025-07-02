@@ -139,6 +139,15 @@ func (g GraphQLValue) String() string {
 	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
 }
 
+func (g GraphQLValue) MarshalJSON() ([]byte, error) {
+	var id string
+	err := g.QueryChain.Select("id").Client(g.Client).Bind(&id).Execute(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(id)
+}
+
 // SelectField handles field selection on a GraphQLValue
 func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value, error) {
 	// Find the type definition for this GraphQL value
