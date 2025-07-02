@@ -125,7 +125,7 @@ func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFres
 	// Unify explicit and inferred return types if both exist
 	if definedRet != nil {
 		if !definedRet.Eq(inferredRet) {
-			return nil, fmt.Errorf("%s.Infer: return type mismatch: declared %s, inferred %s", contextName, definedRet, inferredRet)
+			return nil, NewInferError(fmt.Sprintf("return type mismatch: declared %s, inferred %s", definedRet, inferredRet), f.Body)
 		}
 	}
 

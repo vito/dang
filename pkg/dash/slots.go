@@ -82,7 +82,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		if definedType != nil {
 			if _, err := UnifyWithCompatibility(inferredType, definedType); err != nil {
-				return nil, fmt.Errorf("SlotDecl.Infer: Unify %T(%s) ~ %T(%s): %s", inferredType, inferredType, definedType, definedType, err)
+				return nil, NewInferError(err.Error(), s.Value)
 			}
 		} else {
 			definedType = inferredType

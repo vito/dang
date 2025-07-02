@@ -1,8 +1,8 @@
-[1m[31mError:[0m Block.Hoist: SlotDecl.Hoist: Infer dash.FunTypeNode: FuncDecl(my_func).Infer: return type mismatch: declared String!, inferred Int!
-  [2m[34m--> errors/function_return_type_mismatch.dash:1:1[0m
+[1m[31mError:[0m return type mismatch: declared String!, inferred Int!
+  [2m[34m--> errors/function_return_type_mismatch.dash:2:24[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0m# Test function return type mismatch
-[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  2 | pub my_func(): String! { 42 }[0m
+ [2m  1 | # Test function return type mismatch[0m
+ [2m[34m[1m  2 | [0mpub my_func(): String! { 42 }
+[2m                              [31m^^^^^^[0m
  [2m    |[0m
 

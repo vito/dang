@@ -399,7 +399,7 @@ func (c FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 		// With our transformation, arguments with defaults are now nullable in the signature,
 		// so only truly required arguments (without defaults) will be NonNull here
 		if _, isNonNull := paramType.(NonNullType); isNonNull {
-			return fmt.Errorf("FunCall.Infer: missing required argument: %q", paramName)
+			return NewInferError(fmt.Sprintf("missing required argument: %q", paramName), c)
 		}
 	}
 
