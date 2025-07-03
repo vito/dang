@@ -721,7 +721,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	dash, err := ParseFile(filePath)
+	dash, err := ParseFile(filePath, GlobalStore("filePath", filePath))
 	if err != nil {
 		return err
 	}
@@ -737,7 +737,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	inferred, err := Infer(typeEnv, node, true)
 	if err != nil {
 		// Convert InferError to SourceError with full context
-		return evalCtx.ConvertInferError(err)
+		return ConvertInferError(err)
 	}
 
 	slog.Debug("type inference completed", "type", inferred)
@@ -792,7 +792,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		allFilePaths = append(allFilePaths, filePath)
 
 		// Parse the file
-		dash, err := ParseFile(filePath)
+		dash, err := ParseFile(filePath, GlobalStore("filePath", filePath))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
@@ -825,7 +825,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	inferred, err := Infer(typeEnv, masterBlock, true)
 	if err != nil {
-		return nil, fmt.Errorf("inference failed for directory %s: %w", dirPath, err)
+		return nil, ConvertInferError(err)
 	}
 
 	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)

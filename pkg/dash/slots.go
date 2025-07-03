@@ -62,7 +62,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if s.Type_ != nil {
 		definedType, err = s.Type_.Infer(env, fresh)
 		if err != nil {
-			return nil, err
+			return nil, WrapInferError(err, s)
 		}
 	}
 
@@ -70,12 +70,12 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if s.Value != nil {
 		inferredType, err = s.Value.Infer(env, fresh)
 		if err != nil {
-			return nil, err
+			return nil, WrapInferError(err, s.Value)
 		}
 
 		if definedType != nil {
 			if _, err := UnifyWithCompatibility(inferredType, definedType); err != nil {
-				return nil, NewInferError(err.Error(), s.Value)
+				return nil, WrapInferError(err, s.Value)
 			}
 		} else {
 			definedType = inferredType

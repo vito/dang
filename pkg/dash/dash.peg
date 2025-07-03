@@ -5,11 +5,7 @@
 Dash <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
   return Block{
     Forms: sliceOfAppend[Node](eles, last),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -38,11 +34,7 @@ Call <- name:Id args:ArgValues {
     Receiver: nil,
     Field: name.(string),
     Args: &argRecord,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 Symbol <- name:Id {
@@ -50,11 +42,7 @@ Symbol <- name:Id {
   return Symbol{
     Name: name.(string),
     AutoCall: true,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -67,11 +55,7 @@ SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
       Receiver: left.(Node),
       Field: name.(string),
       Args: &argRecord,
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
-      },
+      Loc: c.Loc(),
     }, nil
   } else {
     // Just a Select
@@ -80,11 +64,7 @@ SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
       Field: name.(string),
       Args: nil,
       AutoCall: true,
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
-      },
+      Loc: c.Loc(),
     }, nil
   }
 }
@@ -94,11 +74,7 @@ Class <- ClsToken _ name:Id _ block:Block {
     Named: name.(string),
     Value: block.(Block),
     Visibility: PublicVisibility, // TODO
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 ClsToken <- "cls" !WordChar
@@ -115,11 +91,7 @@ TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualTo
     Type_: type_.(TypeNode),
     Value: value.(Node),
     Visibility: vis.(Visibility),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -128,11 +100,7 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form {
     Named: name.(string),
     Value: val.(Node),
     Visibility: vis.(Visibility),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -141,11 +109,7 @@ TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type {
     Named: name.(string),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -157,22 +121,14 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
       FunctionBase: FunctionBase{
         Args: nil,
         Body: block.(Block),
-        Loc: &SourceLocation{
-          Line: c.pos.line,
-          Column: c.pos.col,
-          Length: len(string(c.text)),
-        },
+        Loc: c.Loc(),
       },
       Named: name.(string),
       Ret: type_.(TypeNode),
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -184,22 +140,14 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
       FunctionBase: FunctionBase{
         Args: args.([]SlotDecl),
         Body: block.(Block),
-        Loc: &SourceLocation{
-          Line: c.pos.line,
-          Column: c.pos.col,
-          Length: len(string(c.text)),
-        },
+        Loc: c.Loc(),
       },
       Named: name.(string),
       Ret: type_.(TypeNode),
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -232,6 +180,7 @@ ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form {
     Named: name.(string),
     Type_: type_.(TypeNode),
     Value: value.(Node),
+    Loc: c.Loc(),
   }, nil
 }
 ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ block:Block {
@@ -239,12 +188,14 @@ ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ block:Block {
     Named: name.(string),
     Type_: type_.(TypeNode),
     Value: block.(Block),
+    Loc: c.Loc(),
   }, nil
 }
 ArgWithType <- name:Id _ ColonToken _ type_:Type {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -280,11 +231,7 @@ Default <- left:Term _ InterroToken _ right:Term {
   return Default{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 InterroToken <- '?'
@@ -293,11 +240,7 @@ Addition <- left:Term _ PlusToken _ right:Term {
   return Addition{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 PlusToken <- '+'
@@ -306,11 +249,7 @@ Subtraction <- left:Term _ MinusToken _ right:Term {
   return Subtraction{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 MinusToken <- '-'
@@ -319,11 +258,7 @@ Multiplication <- left:Term _ StarToken _ right:Term {
   return Multiplication{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 StarToken <- '*'
@@ -332,11 +267,7 @@ Division <- left:Term _ SlashToken _ right:Term {
   return Division{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 SlashToken <- '/'
@@ -345,11 +276,7 @@ Modulo <- left:Term _ PercentToken _ right:Term {
   return Modulo{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 PercentToken <- '%' !(WordChar / '{')
@@ -358,11 +285,7 @@ Equality <- left:Term _ DoubleEqualToken _ right:Term {
   return Equality{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 DoubleEqualToken <- "=="
@@ -371,11 +294,7 @@ Inequality <- left:Term _ NotEqualToken _ right:Term {
   return Inequality{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 NotEqualToken <- "!="
@@ -384,11 +303,7 @@ LessThanEqual <- left:Term _ LessEqualToken _ right:Term {
   return LessThanEqual{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 LessEqualToken <- "<="
@@ -397,11 +312,7 @@ LessThan <- left:Term _ LessToken _ right:Term {
   return LessThan{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 LessToken <- '<'
@@ -411,11 +322,7 @@ GreaterThanEqual <- left:Term _ GreaterEqualToken _ right:Term {
   return GreaterThanEqual{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 GreaterEqualToken <- ">="
@@ -424,11 +331,7 @@ GreaterThan <- left:Term _ GreaterToken _ right:Term {
   return GreaterThan{
     Left: left.(Node),
     Right: right.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 GreaterToken <- '>'
@@ -438,11 +341,7 @@ DotToken <- '.'
 List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
   return List{
     Elements: sliceOfAppend[Node](eles, last),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -457,22 +356,14 @@ Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" 
   }
   return &Object{
     Slots: slots,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
 Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
   return Block{
     Forms: sliceOfAppend[Node](eles, last),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -487,11 +378,7 @@ Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   }
   return Int{
     Value: value,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -505,11 +392,7 @@ String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
   }
   return String{
     Value: value,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -540,20 +423,12 @@ QuotedRawToken <- [^}]* {
 Boolean <- TrueToken {
   return Boolean{
     Value: true,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 } / FalseToken {
   return Boolean{
     Value: false,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 TrueToken <- "true" !WordChar
@@ -561,11 +436,7 @@ FalseToken <- "false" !WordChar
 
 Null <- NullToken {
   return Null{
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 NullToken <- "null" !WordChar
@@ -579,11 +450,7 @@ Conditional <- IfToken _ cond:Form _ block:Block else_:ElseClause? {
     Condition: cond.(Node),
     Then: block.(Block),
     Else: else_,
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -610,11 +477,7 @@ Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
     FunctionBase: FunctionBase{
       Args: args.([]SlotDecl),
       Body: expr.(Node),
-      Loc: &SourceLocation{
-        Line: c.pos.line,
-        Column: c.pos.col,
-        Length: len(string(c.text)),
-      },
+      Loc: c.Loc(),
     },
   }, nil
 }
@@ -632,6 +495,7 @@ LambdaArg <- ArgWithDefault / ArgWithBlockDefault / ArgWithType / ArgWithoutType
 ArgWithoutType <- name:Id {
   return SlotDecl{
     Named: name.(string),
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -689,11 +553,7 @@ Assert <- AssertToken message:MessageArgs? _ block:Block {
   return Assert{
     Message: msg,
     Block: block.(Block),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -708,11 +568,7 @@ Reassignment <- target:Term _ op:AssignOp _ value:Form {
     Target: target.(Node),
     Modifier: op.(string),
     Value: value.(Node),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }
 
@@ -724,10 +580,6 @@ Reopen <- name:Id _ ReopenToken _ b:Block {
   return Reopen{
     Name: name.(string),
     Block: b.(Block),
-    Loc: &SourceLocation{
-      Line: c.pos.line,
-      Column: c.pos.col,
-      Length: len(string(c.text)),
-    },
+    Loc: c.Loc(),
   }, nil
 }

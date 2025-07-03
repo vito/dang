@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -178,7 +179,8 @@ func NewInferError(message string, node Node) *InferError {
 
 // WrapInferError wraps an existing error with source location information
 func WrapInferError(err error, node Node) error {
-	if inferErr, ok := err.(*InferError); ok {
+	var inferErr *InferError
+	if errors.As(err, &inferErr) {
 		// Already an InferError, don't double-wrap
 		return inferErr
 	}
@@ -197,120 +199,46 @@ func NewEvalContext(filename, source string) *EvalContext {
 
 // CreateSourceError creates a SourceError from a regular error, trying to extract location info
 func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
-	if sourceErr, ok := err.(*SourceError); ok {
+	var sourceErr *SourceError
+	if errors.As(err, &sourceErr) {
 		return sourceErr
 	}
 
 	// Use the actual source location from the AST node
-	var location *SourceLocation
-	if node != nil {
-		if nodeLoc := node.GetSourceLocation(); nodeLoc != nil {
-			location = &SourceLocation{
-				Filename: ctx.Filename,
-				Line:     nodeLoc.Line,
-				Column:   nodeLoc.Column,
-				Length:   nodeLoc.Length,
-			}
-		}
-	}
-
-	// Only use guessing as a last resort if we don't have any location info
+	location := node.GetSourceLocation()
 	if location == nil {
-		line, column, length := ctx.guessLocation(err, node)
-		location = &SourceLocation{
-			Filename: ctx.Filename,
-			Line:     line,
-			Column:   column,
-			Length:   length,
-		}
+		// No location info; give up
+		return err
 	}
 
 	return NewSourceError(err.Error(), location, ctx.Source)
 }
 
 // ConvertInferError converts an InferError to a SourceError with source context
-func (ctx *EvalContext) ConvertInferError(err error) error {
+func ConvertInferError(origErr error) error {
 	var inferErr *InferError
-	if errors.As(err, &inferErr) {
+	if errors.As(origErr, &inferErr) {
 		// Convert InferError to SourceError with full context
-		var location *SourceLocation
-		if inferErr.Location != nil {
-			location = &SourceLocation{
-				Filename: ctx.Filename,
-				Line:     inferErr.Location.Line,
-				Column:   inferErr.Location.Column,
-				Length:   inferErr.Location.Length,
-			}
+		location := inferErr.Location
+		if location == nil {
+			// Location missing; nothing we can do
+			return errors.Join(
+				origErr,
+				fmt.Errorf("No location info available for node (%T): %#v", inferErr.Node, inferErr.Node),
+			)
 		}
-
-		if location == nil && inferErr.Node != nil {
-			// Fallback to guessing if we somehow don't have location
-			line, column, length := ctx.guessLocation(err, inferErr.Node)
-			location = &SourceLocation{
-				Filename: ctx.Filename,
-				Line:     line,
-				Column:   column,
-				Length:   length,
-			}
+		source, err := os.ReadFile(location.Filename)
+		if err != nil {
+			return errors.Join(
+				origErr,
+				fmt.Errorf("Failed to read file %s: %w", location.Filename, err),
+			)
 		}
-
-		return NewSourceError(inferErr.Message, location, ctx.Source)
+		return NewSourceError(inferErr.Message, location, string(source))
 	}
 
 	// Not an InferError, handle as regular error
-	return ctx.CreateSourceError(err, nil)
-}
-
-// guessLocation tries to guess the source location based on error patterns
-func (ctx *EvalContext) guessLocation(err error, node Node) (line, column, length int) {
-	errMsg := err.Error()
-	lines := strings.Split(ctx.Source, "\n")
-
-	// Try to find patterns in the source that match the error
-	switch {
-	case strings.Contains(errMsg, "Select.Eval"):
-		// Look for field selection patterns
-		if strings.Contains(errMsg, "cannot select field") {
-			// Extract the field name from the error message
-			var fieldName string
-			if start := strings.Index(errMsg, `"`); start >= 0 {
-				start++ // Move past the opening quote
-				if end := strings.Index(errMsg[start:], `"`); end > 0 {
-					fieldName = errMsg[start : start+end]
-				}
-			}
-
-			// Try to find the specific field selection in the source
-			for i, sourceLine := range lines {
-				if fieldName != "" {
-					// Look for the specific field being accessed
-					pattern := "." + fieldName
-					if idx := strings.Index(sourceLine, pattern); idx != -1 {
-						return i + 1, idx + 1, len(pattern) // Point to the dot and field name
-					}
-				} else if strings.Contains(sourceLine, ".") {
-					// Fallback: find any field access
-					if idx := strings.Index(sourceLine, "."); idx != -1 {
-						return i + 1, idx + 1, 1
-					}
-				}
-			}
-		}
-	case strings.Contains(errMsg, "not found in env"):
-		// Look for symbol references
-		for i, sourceLine := range lines {
-			// This is a simple heuristic - look for the first non-empty line
-			if strings.TrimSpace(sourceLine) != "" {
-				return i + 1, 1, len(strings.TrimSpace(sourceLine))
-			}
-		}
-	}
-
-	// Default: return the first line
-	if len(lines) > 0 {
-		return 1, 1, len(lines[0])
-	}
-	return 1, 1, 1
+	return origErr
 }
 
 // AssertionError represents a failed assertion with detailed information

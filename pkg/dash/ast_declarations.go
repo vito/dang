@@ -26,7 +26,7 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 		if arg.Type_ != nil {
 			definedArgType, err = arg.Type_.Infer(env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("function arg %q type: %w", arg.Named, err)
+				return nil, WrapInferError(err, arg)
 			}
 		}
 
@@ -34,14 +34,14 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 		if arg.Value != nil {
 			inferredValType, err = arg.Value.Infer(env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("function arg %q default: %w", arg.Named, err)
+				return nil, WrapInferError(err, arg.Value)
 			}
 		}
 
 		var finalArgType hm.Type
 		if definedArgType != nil && inferredValType != nil {
 			if !definedArgType.Eq(inferredValType) {
-				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
+				return nil, WrapInferError(fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType), arg)
 			}
 			finalArgType = definedArgType
 		} else if definedArgType != nil {

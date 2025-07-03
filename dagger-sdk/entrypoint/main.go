@@ -425,7 +425,7 @@ func Introspect(ctx context.Context, dag *dagger.Client) (*introspection.Schema,
 
 func WriteError(ctx context.Context, err error) {
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 	}
 }
 

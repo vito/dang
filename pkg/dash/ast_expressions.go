@@ -79,7 +79,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if _, err := UnifyWithCompatibility(dt, it); err != nil {
-				return nil, NewInferError(err.Error(), v)
+				return nil, WrapInferError(err, v)
 			}
 		}
 
@@ -115,7 +115,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if _, err := UnifyWithCompatibility(dt, it); err != nil {
-				return nil, NewInferError(err.Error(), v)
+				return nil, WrapInferError(err, v)
 			}
 		}
 		return NonNullType{ft}, nil
@@ -476,7 +476,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if d.Args != nil {
 		t, err := d.AsCall().Infer(env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("Select.Infer: %w", err)
+			return nil, WrapInferError(err, d.AsCall())
 		}
 		return t, nil
 	}
@@ -708,7 +708,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			if len(elseBlock.Forms) > 0 {
 				errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
 			}
-			return nil, NewInferError(err.Error(), errorNode)
+			return nil, WrapInferError(err, errorNode)
 		}
 	}
 
