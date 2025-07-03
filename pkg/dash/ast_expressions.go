@@ -485,7 +485,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if d.Receiver == nil {
 		scheme, found := env.SchemeOf(d.Field)
 		if !found {
-			return nil, fmt.Errorf("Select.Infer: %q not found in env", d.Field)
+			return nil, NewInferError(fmt.Sprintf("%q not found in env", d.Field), d)
 		}
 		t, _ := scheme.Type()
 		return t, nil
@@ -506,7 +506,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 	scheme, found := rec.SchemeOf(d.Field)
 	if !found {
-		return nil, fmt.Errorf("Select.Infer: field %q not found in record %s", d.Field, rec)
+		return nil, NewInferError(fmt.Sprintf("field %q not found in record %s", d.Field, rec), d)
 	}
 	t, mono := scheme.Type()
 	if !mono {
