@@ -207,12 +207,12 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 }
 
 func anyToDash(ctx context.Context, env dash.EvalEnv, val any, fieldType hm.Type) (dash.Value, error) {
+	if nonNull, ok := fieldType.(dash.NonNullType); ok {
+		return anyToDash(ctx, env, val, nonNull.Type)
+	}
 	switch v := val.(type) {
 	case string:
-		if nonNull, ok := fieldType.(dash.NonNullType); ok {
-			return anyToDash(ctx, env, val, nonNull.Type)
-		}
-		if modType, ok := fieldType.(*dash.Module); ok {
+		if modType, ok := fieldType.(*dash.Module); ok && modType != dash.StringType {
 			sel := dash.Select{
 				Field: fmt.Sprintf("load%sFromID", modType.Named),
 				Args: &dash.Record{
@@ -238,6 +238,23 @@ func anyToDash(ctx context.Context, env dash.EvalEnv, val any, fieldType hm.Type
 		return dash.IntValue{Val: int(i)}, nil
 	case bool:
 		return dash.BoolValue{Val: v}, nil
+	case []any:
+		listT, isList := fieldType.(dash.ListType)
+		if !isList {
+			return nil, fmt.Errorf("expected list type, got %T", fieldType)
+		}
+		vals := dash.ListValue{
+			ElemType: listT,
+		}
+		for _, item := range v {
+			val, err := anyToDash(ctx, env, item, listT.Type)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert list item: %w", err)
+			}
+			vals.Elements = append(vals.Elements, val)
+		}
+		return vals, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported type %T", v)
 	}
