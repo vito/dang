@@ -3,6 +3,7 @@ package dash
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/chewxy/hm"
@@ -241,11 +242,39 @@ func (e *Module) Remove(name string) hm.Env {
 	return e
 }
 
+func (e *Module) AsRecord() *RecordType {
+	var rec RecordType
+	for name, scheme := range e.vars {
+		rec.Fields = append(rec.Fields, Keyed[*hm.Scheme]{
+			Key:   name,
+			Value: scheme,
+		})
+	}
+	sort.Slice(rec.Fields, func(i, j int) bool {
+		return rec.Fields[i].Key < rec.Fields[j].Key
+	})
+	return &rec
+}
+
 var _ hm.Type = (*Module)(nil)
 
 func (t *Module) Name() string                               { return t.Named }
 func (t *Module) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
 func (t *Module) Types() hm.Types                            { return nil }
-func (t *Module) String() string                             { return t.Named }
-func (t *Module) Format(s fmt.State, c rune)                 { fmt.Fprintf(s, "%s", t.Named) }
-func (t *Module) Eq(other Type) bool                         { return other == t }
+func (t *Module) String() string {
+	if t.Named != "" {
+		return t.Named
+	}
+	return t.AsRecord().String()
+}
+func (t *Module) Format(s fmt.State, c rune) { fmt.Fprintf(s, "%s", t.String()) }
+func (t *Module) Eq(other Type) bool {
+	otherMod, ok := other.(*Module)
+	if !ok {
+		return false
+	}
+	if t.Named != "" {
+		return t == otherMod
+	}
+	return t.AsRecord().Eq(otherMod.AsRecord())
+}

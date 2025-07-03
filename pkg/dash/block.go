@@ -466,21 +466,17 @@ func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
 var _ hm.Inferer = &Object{}
 
 func (o *Object) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("<placeholder>")
+	mod := NewModule("")
 	inferEnv := &CompositeModule{
 		primary: mod,
 		lexical: env.(Env),
 	}
-	var slots []string
 	for _, slot := range o.Slots {
-		t, err := slot.Infer(inferEnv, fresh)
+		_, err := slot.Infer(inferEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
-		slots = append(slots, fmt.Sprintf("%s: %s", slot.Named, t.String()))
 	}
-	// set a nicer name for type conflicts
-	mod.Named = fmt.Sprintf("{{ %s }}", strings.Join(slots, ", "))
 	o.Mod = mod
 	return NonNullType{mod}, nil
 }
