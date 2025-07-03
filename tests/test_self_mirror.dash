@@ -7,7 +7,7 @@ cls MyClass {
   }
 
   pub incr: MyClass! {
-    self.incrBy(1)
+    incrBy(1) # Using foo instead of self.goo
   }
 
   pub incrBy(amount: Int!): MyClass! {
@@ -20,16 +20,16 @@ cls MyClass {
   }
 
   pub withName(branch: String! = "edge"): MyClass! {
-    self.name = branch
+    self.name = branch  # self. still required for re-assignment
     self # TODO: make not required?
   }
 
   pub complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
-    self.withName((prefix + "-") + suffix)
+    withName((prefix + "-") + suffix) # Using foo instead of self.goo
   }
 
   pub dynamicAccess: String! {
-    self.name  # Should resolve to current receiver's name, not static "initial"
+    name  # Should resolve to current receiver's name, not static "initial"
   }
 }
 
@@ -39,11 +39,11 @@ assert { MyClass.new.incr.incr.val == 3 }
 assert { MyClass.new.incrBy(5).val == 6 }
 assert { MyClass.new.incrBy(3).incrBy(2).val == 6 }
 assert { MyClass.new.withName("test").name == "test" }
-assert { MyClass.new.withName.name == "edge" }
-assert { MyClass.new.complex.name == "pre-suf" }
+assert { MyClass.new.withName().name == "edge" }
+assert { MyClass.new.complex().name == "pre-suf" }
 assert { MyClass.new.complex("hello", "world").name == "hello-world" }
 
 # Test: variables resolve against current receiver instance, not static scope
-assert { MyClass.new.dynamicAccess == "initial" }
+assert { MyClass.new.dynamicAccess() == "initial" }
 assert { MyClass.new.withName("modified").dynamicAccess() == "modified" }
 assert { MyClass.new.complex("hello", "world").dynamicAccess() == "hello-world" }
