@@ -9,12 +9,12 @@ cls Dash {
   }
 
   pub build(): File! {
-    go(self.source).binary("./cmd/dash")
+    go(source).binary("./cmd/dash")
   }
 
   pub test(): Container! {
-    go(self.source).base.
-      withDirectory("/src", self.source).
+    go(source).base.
+      withDirectory("/src", source).
       withWorkdir("/src").
       withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true)
   }
