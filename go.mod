@@ -5,16 +5,19 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
-	dagger.io/dagger v0.18.11
+	dagger.io/dagger v0.18.12
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.2.0
 	github.com/chewxy/hm v1.0.0
 	github.com/chzyer/readline v1.5.1
+	github.com/dagger/testctx v0.0.5
 	github.com/dagger/testctx/oteltest v0.0.3
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.9.1
+	go.opentelemetry.io/otel v1.36.0
+	gotest.tools/v3 v3.5.2
 )
 
 require (
@@ -28,7 +31,6 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250603201427-c31516f43444 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
-	github.com/dagger/testctx v0.0.5 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
@@ -53,7 +55,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xtgo/set v1.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/otel v1.36.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.12.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.12.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.32.0 // indirect
@@ -78,7 +79,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
 	google.golang.org/grpc v1.73.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
-	gotest.tools/v3 v3.5.2 // indirect
 )
 
 tool github.com/mna/pigeon
