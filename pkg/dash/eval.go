@@ -808,8 +808,8 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	// Create a master block containing all forms from all files
 	// The phased approach will handle dependency ordering
 	masterBlock := Block{
-		Forms: allForms,
-		Loc:   &SourceLocation{}, // TODO: could be improved to track multiple files
+		Forms:  allForms,
+		Inline: true,
 	}
 
 	if debug {

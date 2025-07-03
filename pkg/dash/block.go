@@ -11,7 +11,9 @@ import (
 
 type Block struct {
 	Forms []Node
-	Loc   *SourceLocation
+	// Evaluate forms in the current scope, not a nested one.
+	Inline bool
+	Loc    *SourceLocation
 }
 
 var _ hm.Expression = Block{}
@@ -382,7 +384,10 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 var _ hm.Inferer = Block{}
 
 func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	newEnv := env.Clone()
+	newEnv := env
+	if !b.Inline {
+		newEnv = env.Clone()
+	}
 
 	forms := b.Forms
 	if len(forms) == 0 {
@@ -409,7 +414,10 @@ func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return NullValue{}, nil
 	}
 
-	newEnv := env.Clone()
+	newEnv := env
+	if !b.Inline {
+		newEnv = env.Clone()
+	}
 
 	// Use phased evaluation to match the inference order
 	return EvaluateFormsWithPhases(ctx, forms, newEnv)
