@@ -308,7 +308,19 @@ func createFunction(dag *dagger.Client, name string, fn dash.FunctionValue) (*da
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
-		funDef = funDef.WithArg(arg.Key, typeDef)
+		argOpts := dagger.FunctionWithArgOpts{}
+		if _, isNonNull := argType.(dash.NonNullType); !isNonNull {
+			typeDef = typeDef.WithOptional(true)
+		}
+		// TODO: eval default?
+		// if def, hasDefault := fn.Defaults[arg.Key]; hasDefault {
+		// 	js, err := json.Marshal(def)
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to marshal default value for %s: %w", arg.Key, err)
+		// 	}
+		// 	argOpts.DefaultValue = js
+		// }
+		funDef = funDef.WithArg(arg.Key, typeDef, argOpts)
 	}
 
 	return funDef, nil
