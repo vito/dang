@@ -683,7 +683,7 @@ func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 // BoundMethod represents a method bound to a specific receiver
 type BoundMethod struct {
 	Method   FunctionValue
-	Receiver *ModuleValue
+	Receiver EvalEnv
 }
 
 func (b BoundMethod) Type() hm.Type {

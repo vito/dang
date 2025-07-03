@@ -145,7 +145,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case BoundMethod:
 		// BoundMethod - create new environment with receiver as 'self' and argument bindings
 		// Create a composite environment that includes both the receiver and the method's closure
-		recv := fn.Receiver.Clone().(*ModuleValue)
+		recv := fn.Receiver.Clone()
 		fnEnv := createCompositeEnv(recv, fn.Method.Closure)
 		fnEnv.Set("self", recv)
 
@@ -155,7 +155,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				if _, isNull := val.(NullValue); isNull {
 					if defaultExpr, hasDefault := fn.Method.Defaults[argName]; hasDefault {
 						// Use default value instead of null
-						defaultVal, err := EvalNode(ctx, fn.Method.Closure, defaultExpr)
+						defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
 						if err != nil {
 							return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 						}
@@ -168,7 +168,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				}
 			} else if defaultExpr, hasDefault := fn.Method.Defaults[argName]; hasDefault {
 				// Evaluate the default value in the function's closure
-				defaultVal, err := EvalNode(ctx, fn.Method.Closure, defaultExpr)
+				defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 				}
@@ -569,26 +569,21 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return d.AsCall().Eval(ctx, env)
 	}
 
-	// Handle nil receiver (symbol followed by ()) - select from environment
-	if d.Receiver == nil {
-		val, found := env.Get(d.Field)
-		if !found {
-			return nil, fmt.Errorf("Select.Eval: %q not found in env", d.Field)
-		}
-		return val, nil
-	}
-
 	var receiverVal Value
 	var err error
 
 	// Handle normal receiver evaluation
-	receiverVal, err = EvalNode(ctx, env, d.Receiver)
-	if err != nil {
-		// Don't wrap SourceErrors - let them bubble up directly
-		if _, isSourceError := err.(*SourceError); isSourceError {
-			return nil, err
+	if d.Receiver != nil {
+		receiverVal, err = EvalNode(ctx, env, d.Receiver)
+		if err != nil {
+			// Don't wrap SourceErrors - let them bubble up directly
+			if _, isSourceError := err.(*SourceError); isSourceError {
+				return nil, err
+			}
+			return nil, fmt.Errorf("evaluating receiver: %w", err)
 		}
-		return nil, fmt.Errorf("evaluating receiver: %w", err)
+	} else {
+		receiverVal = env
 	}
 
 	val, err := (func() (Value, error) {
@@ -597,10 +592,7 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if val, found := rec.Get(d.Field); found {
 				// If this is a FunctionValue accessed from a module, bind it to the receiver
 				if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
-					// Only bind if the receiver is a ModuleValue (class instance)
-					if modVal, isModuleValue := receiverVal.(*ModuleValue); isModuleValue {
-						return BoundMethod{Method: fnVal, Receiver: modVal}, nil
-					}
+					return BoundMethod{Method: fnVal, Receiver: rec}, nil
 				}
 				return val, nil
 			}
