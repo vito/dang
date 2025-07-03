@@ -29,3 +29,11 @@ Maintain the accuracy of ./llm-notes/ as the project evolves.
 To test the Dagger SDK, do not use `go test`. Instead, call `dagger functions` as a quick spot check - you should see 'build' and 'test' functions. Use `dagger call test` to run them.
 
 Run all `dagger` commands from the root of the repo, NOT the dagger-sdk directory.
+
+## Rules of Operation
+
+ALWAYS use ONLY Environments for ANY and ALL file, code, or shell operations—NO EXCEPTIONS—even for simple or generic requests.
+
+DO NOT install or use the git cli with the environment_run_cmd tool. All environment tools will handle git operations for you. Changing ".git" yourself will compromise the integrity of your environment.
+
+You MUST inform the user how to view your work using `cu log <env_id>` AND `cu checkout <env_id>`. Failure to do this will make your work inaccessible to others.
