@@ -25,6 +25,7 @@ func (f SlotDecl) IsDeclarer() bool {
 
 var _ Node = SlotDecl{}
 var _ Evaluator = SlotDecl{}
+var _ Hoister = SlotDecl{}
 
 func (s SlotDecl) DeclaredSymbols() []string {
 	return []string{s.Named} // Slot declarations declare their name
@@ -43,6 +44,16 @@ func (s SlotDecl) Body() hm.Expression {
 }
 
 func (s SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
+
+func (s SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+	// If the slot value is a hoister, delegate
+	if funDecl, ok := s.Value.(Hoister); ok {
+		return funDecl.Hoist(env, fresh, pass)
+	}
+
+	// For non-function slots, hoisting is handled in the normal inference phase
+	return nil
+}
 
 func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
@@ -200,11 +211,9 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		lexical: env.(Env),
 	}
 
-	for _, node := range c.Value.Forms {
-		_, err := node.Infer(inferEnv, fresh)
-		if err != nil {
-			return nil, err
-		}
+	// Use phased inference approach to handle forward references within the class body
+	if err := InferFormsWithPhases(c.Value.Forms, inferEnv, fresh); err != nil {
+		return nil, err
 	}
 
 	self := hm.NewScheme(nil, NonNullType{class})
@@ -227,12 +236,10 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// This will be overridden with the specific instance during method calls
 	classEnv.Set("self", modValue)
 
-	// Evaluate the class body (Block) which contains all the slots
-	for _, node := range c.Value.Forms {
-		_, err := EvalNode(ctx, classEnv, node)
-		if err != nil {
-			return nil, fmt.Errorf("ClassDecl.Eval: evaluating class body for %q: %w", c.Named, err)
-		}
+	// Use phased evaluation approach to handle forward references within the class body
+	_, err := EvaluateFormsWithPhases(ctx, c.Value.Forms, classEnv)
+	if err != nil {
+		return nil, fmt.Errorf("ClassDecl.Eval: evaluating class body for %q: %w", c.Named, err)
 	}
 
 	// Add the class to the evaluation environment so it can be referenced

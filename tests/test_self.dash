@@ -12,10 +12,10 @@ cls MyClass {
 
   pub incrBy(amount: Int!): MyClass! {
     print("BEFORE:")
-    print(val)  # Using foo instead of self.foo
+    print(self.val)
     self.val += amount  # self. still required for re-assignment
     print("AFTER:")
-    print(val)  # Using foo instead of self.foo
+    print(self.val)
     self # TODO: make not required?
   }
 

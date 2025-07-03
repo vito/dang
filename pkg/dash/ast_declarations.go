@@ -171,6 +171,43 @@ func (f *FunDecl) Body() hm.Expression { return f.FunctionBase.Body }
 func (f *FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
 
 var _ hm.Inferer = &FunDecl{}
+var _ Hoister = &FunDecl{}
+
+func (f *FunDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+	if pass == 0 {
+		// Pass 0: Hoist function signature (declare type without inferring body)
+		// Clone environment to avoid mutating original during signature inference
+		signatureEnv := env.Clone()
+
+		// Process arguments to get function signature
+		args, err := f.FunctionBase.inferFunctionArguments(signatureEnv, fresh, false)
+		if err != nil {
+			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
+		}
+
+		// Handle explicit return type if provided
+		var retType hm.Type
+		if f.Ret != nil {
+			retType, err = f.Ret.Infer(env, fresh)
+			if err != nil {
+				return fmt.Errorf("FuncDecl.Hoist: %s return type: %w", f.Named, err)
+			}
+		} else {
+			// Use a fresh type variable for the return type if not specified
+			retType = fresh.Fresh()
+		}
+
+		// Create function type and add to environment
+		fnType := hm.NewFnType(NewRecordType("", args...), retType)
+		env.Add(f.Named, hm.NewScheme(nil, fnType))
+		return nil
+	} else if pass == 1 {
+		// Pass 1: Infer function body (function signature already available)
+		// The actual inference will happen in the normal Infer method
+		return nil
+	}
+	return nil
+}
 
 func (f *FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return f.FunctionBase.inferFunctionType(env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))

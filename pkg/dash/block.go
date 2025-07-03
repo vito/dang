@@ -202,6 +202,9 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 		case SlotDecl:
 			if isConstantValue(f.Value) {
 				constants = append(constants, f)
+			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
+				// Treat SlotDecl with function bodies as functions for proper hoisting
+				functions = append(functions, f)
 			} else {
 				variables = append(variables, f)
 			}
@@ -274,6 +277,11 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 				return fmt.Errorf("function body inference failed: %w", err)
 			}
 		}
+		// Call Infer to complete the function's type inference
+		_, err := form.Infer(env, fresh)
+		if err != nil {
+			return fmt.Errorf("function inference failed: %w", err)
+		}
 	}
 
 	// Phase 7: Typecheck non-declarations in original order (can reference all declarations)
@@ -318,6 +326,9 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		case SlotDecl:
 			if isConstantValue(f.Value) {
 				constants = append(constants, f)
+			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
+				// Treat SlotDecl with function bodies as functions for proper hoisting
+				functions = append(functions, f)
 			} else {
 				variables = append(variables, f)
 			}
