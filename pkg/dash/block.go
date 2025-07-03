@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/chewxy/hm"
 )
@@ -187,7 +186,7 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 // 4. Declare function signatures (without bodies)
 // 5. Typecheck variables in dependency order (can now reference function signatures)
 // 6. Typecheck function bodies last (can reference all package-level declarations)
-func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
+func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.Type, err error) {
 	// Phase 1: Separate declarations from non-declarations
 	var constants []Node       // SlotDecl with constant values (literals, no function calls)
 	var types []Node           // ClassDecl
@@ -218,9 +217,9 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 
 	// Phase 2: Typecheck constants (can be in any order, no dependencies)
 	for _, form := range constants {
-		_, err := form.Infer(env, fresh)
+		lastT, err = form.Infer(env, fresh)
 		if err != nil {
-			return fmt.Errorf("constant inference failed: %w", err)
+			return nil, fmt.Errorf("constant inference failed: %w", err)
 		}
 	}
 
@@ -228,21 +227,21 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil { // Pass 0: create classes
-				return fmt.Errorf("type hoisting failed: %w", err)
+				return nil, fmt.Errorf("type hoisting failed: %w", err)
 			}
 		}
 	}
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 1); err != nil { // Pass 1: infer class bodies
-				return fmt.Errorf("type body inference failed: %w", err)
+				return nil, fmt.Errorf("type body inference failed: %w", err)
 			}
 		}
 	}
 	for _, form := range types {
-		_, err := form.Infer(env, fresh)
+		lastT, err = form.Infer(env, fresh)
 		if err != nil {
-			return fmt.Errorf("variable inference failed: %w", err)
+			return nil, fmt.Errorf("variable inference failed: %w", err)
 		}
 	}
 
@@ -250,7 +249,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil { // Hoist function signatures
-				return fmt.Errorf("function signature hoisting failed: %w", err)
+				return nil, fmt.Errorf("function signature hoisting failed: %w", err)
 			}
 		}
 	}
@@ -259,13 +258,13 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 	if len(variables) > 0 {
 		orderedVars, err := orderByDependencies(variables)
 		if err != nil {
-			return fmt.Errorf("variable dependency ordering failed: %w", err)
+			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
 		}
 
 		for _, form := range orderedVars {
-			_, err := form.Infer(env, fresh)
+			lastT, err = form.Infer(env, fresh)
 			if err != nil {
-				return fmt.Errorf("variable inference failed: %w", err)
+				return nil, fmt.Errorf("variable inference failed: %w", err)
 			}
 		}
 	}
@@ -274,25 +273,25 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) error {
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 1); err != nil { // Infer function bodies
-				return fmt.Errorf("function body inference failed: %w", err)
+				return nil, fmt.Errorf("function body inference failed: %w", err)
 			}
 		}
 		// Call Infer to complete the function's type inference
-		_, err := form.Infer(env, fresh)
+		lastT, err = form.Infer(env, fresh)
 		if err != nil {
-			return fmt.Errorf("function inference failed: %w", err)
+			return nil, fmt.Errorf("function inference failed: %w", err)
 		}
 	}
 
 	// Phase 7: Typecheck non-declarations in original order (can reference all declarations)
 	for _, form := range nonDeclarations {
-		_, err := form.Infer(env, fresh)
+		lastT, err = form.Infer(env, fresh)
 		if err != nil {
-			return fmt.Errorf("non-declaration inference failed: %w", err)
+			return nil, fmt.Errorf("non-declaration inference failed: %w", err)
 		}
 	}
 
-	return nil
+	return lastT, nil
 }
 
 // isConstantValue determines if a value expression is a compile-time constant
@@ -406,17 +405,7 @@ func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Use phased inference approach for proper dependency handling
-	if err := InferFormsWithPhases(forms, newEnv, fresh); err != nil {
-		return nil, err
-	}
-
-	// Return the type of the last form
-	if len(forms) > 0 {
-		return forms[len(forms)-1].Infer(newEnv, fresh)
-	}
-
-	// Empty block returns null type
-	return Null{}.Infer(newEnv, fresh)
+	return InferFormsWithPhases(forms, newEnv, fresh)
 }
 
 func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {

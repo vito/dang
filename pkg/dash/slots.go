@@ -212,7 +212,7 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Use phased inference approach to handle forward references within the class body
-	if err := InferFormsWithPhases(c.Value.Forms, inferEnv, fresh); err != nil {
+	if _, err := InferFormsWithPhases(c.Value.Forms, inferEnv, fresh); err != nil {
 		return nil, err
 	}
 
