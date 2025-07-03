@@ -363,8 +363,11 @@ func dashTypeToTypeDef(dag *dagger.Client, dashType hm.Type) (*dagger.TypeDef, e
 			return def.WithKind(dagger.TypeDefKindBooleanKind), nil
 		case "Void":
 			return def.WithKind(dagger.TypeDefKindVoidKind), nil
+		case "":
+			// ad-hoc object type like {{foo: 1}}
+			return nil, fmt.Errorf("cannot directly expose ad-hoc object type: %s", t)
 		default:
-			// Object/class type
+			// assume object (TODO?)
 			return def.WithObject(t.Named), nil
 		}
 
