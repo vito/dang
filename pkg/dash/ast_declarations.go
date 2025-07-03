@@ -546,14 +546,14 @@ func (a Assert) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Infer the block type - the assertion will be evaluated
 	_, err := a.Block.Infer(env, fresh)
 	if err != nil {
-		return nil, err
+		return nil, WrapInferError(err, a)
 	}
 
 	// Infer the message type if present
 	if a.Message != nil {
 		_, err := a.Message.Infer(env, fresh)
 		if err != nil {
-			return nil, err
+			return nil, WrapInferError(err, a)
 		}
 	}
 
@@ -565,7 +565,7 @@ func (a Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Evaluate the block (gets the last expression's value)
 	blockVal, err := EvalNode(ctx, env, a.Block)
 	if err != nil {
-		return nil, err
+		return nil, CreateEvalError(ctx, err, a)
 	}
 
 	// Check if assertion passed
@@ -579,7 +579,7 @@ func (a Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	lastExpr := a.Block.Forms[len(a.Block.Forms)-1]
-	return nil, a.createAssertionError(ctx, env, lastExpr)
+	return nil, CreateEvalError(ctx, a.createAssertionError(ctx, env, lastExpr), a)
 }
 
 // createAssertionError builds a detailed error message with child node values
