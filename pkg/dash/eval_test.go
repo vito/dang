@@ -91,7 +91,7 @@ func (tr *TestRunner) RunScript(script string) error {
 	}
 
 	// Create evaluation environment
-	evalEnv := NewEvalEnvWithSchema(tr.dag.GraphQLClient(), tr.schema)
+	evalEnv := NewEvalEnvWithSchema(typeEnv, tr.dag.GraphQLClient(), tr.schema)
 
 	// Evaluate the script with captured output via context
 	ctx := context.Background()

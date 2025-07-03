@@ -205,10 +205,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 }
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
-func NewEvalEnvWithSchema(client graphql.Client, schema *introspection.Schema) EvalEnv {
-	// Create a type environment to help with type conversion
-	typeEnv := NewEnv(schema)
-
+func NewEvalEnvWithSchema(typeEnv *Module, client graphql.Client, schema *introspection.Schema) EvalEnv {
 	// Create a ModuleValue from the type environment
 	env := NewModuleValue(typeEnv)
 
@@ -746,7 +743,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	slog.Debug("type inference completed", "type", inferred)
 
 	// Now evaluate the program
-	evalEnv := NewEvalEnvWithSchema(client, schema)
+	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
@@ -834,7 +831,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)
 
 	// Create evaluation environment
-	evalEnv := NewEvalEnvWithSchema(client, schema)
+	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
 	// Evaluate the combined block using phased evaluation

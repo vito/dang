@@ -198,7 +198,7 @@ type REPLCommand struct {
 func (r *REPL) Run() error {
 	// Initialize environments
 	r.typeEnv = dash.NewEnv(r.schema)
-	r.evalEnv = dash.NewEvalEnvWithSchema(r.dag.GraphQLClient(), r.schema)
+	r.evalEnv = dash.NewEvalEnvWithSchema(r.typeEnv, r.dag.GraphQLClient(), r.schema)
 
 	// Initialize commands
 	r.initCommands()
@@ -439,7 +439,8 @@ func (r *REPL) clearCommand(repl *REPL, args []string) error {
 
 func (r *REPL) resetCommand(repl *REPL, args []string) error {
 	// Reset evaluation environment
-	repl.evalEnv = dash.NewEvalEnvWithSchema(repl.dag.GraphQLClient(), repl.schema)
+	repl.typeEnv = dash.NewEnv(repl.schema)
+	repl.evalEnv = dash.NewEvalEnvWithSchema(repl.typeEnv, repl.dag.GraphQLClient(), repl.schema)
 	fmt.Println("Environment reset.")
 	return nil
 }
