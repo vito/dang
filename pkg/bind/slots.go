@@ -74,7 +74,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 
 		if definedType != nil {
-			if _, err := hm.Unify(inferredType, definedType); err != nil {
+			if _, err := hm.Unify(definedType, inferredType); err != nil {
 				return nil, WrapInferError(err, s.Value)
 			}
 		} else {
