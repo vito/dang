@@ -8,55 +8,9 @@ import (
 
 type Type = hm.Type
 
-// SubtypingType extends hm.Type with subtyping relationships
-type SubtypingType interface {
-	hm.Type
-	// IsSubtypeOf returns true if this type can be used where other is expected
-	IsSubtypeOf(other hm.Type) bool
-}
-
 type TypeNode interface {
 	hm.Inferer
 }
-
-// UnifyWithCompatibility unifies two types, considering subtyping relationships
-// This is the main entry point for all type unification in Bind
-func UnifyWithCompatibility(expected, provided hm.Type) (hm.Subs, error) {
-	// Try direct structural unification first (preserves HM semantics)
-	if subs, err := hm.Unify(expected, provided); err == nil {
-		return subs, nil
-	}
-
-	// Check subtyping compatibility
-	if isSubtypeCompatible(expected, provided) {
-		return nil, nil // Empty substitution
-	}
-
-	// Neither worked, return original unification error for better error messages
-	return hm.Unify(expected, provided)
-}
-
-// isSubtypeCompatible checks if provided type can be used where expected type is required
-func isSubtypeCompatible(expected, provided hm.Type) bool {
-	// Check if provided type implements subtyping and is subtype of expected
-	if providedST, ok := provided.(SubtypingType); ok {
-		if providedST.IsSubtypeOf(expected) {
-			return true
-		}
-	}
-
-	// Check if expected type implements subtyping and provided is its supertype
-	// (This handles cases where expected is more specific than provided, which should fail)
-	if expectedST, ok := expected.(SubtypingType); ok {
-		if expectedST.IsSubtypeOf(provided) {
-			return false // Don't allow supertype -> subtype
-		}
-	}
-
-	return false
-}
-
-// TODO: support sub-selections?
 
 type NamedTypeNode struct {
 	Named string
@@ -128,14 +82,6 @@ func (t ListType) Types() hm.Types {
 	ts := hm.BorrowTypes(1)
 	ts[0] = t.Type
 	return ts
-}
-
-// IsSubtypeOf implements SubtypingType
-// ListType doesn't have direct subtyping, but its elements might
-func (t ListType) IsSubtypeOf(other hm.Type) bool {
-	// List types are only subtypes if they're identical
-	// The subtyping happens at the NonNull wrapper level
-	return t.Eq(other)
 }
 
 func (t ListType) String() string {
@@ -320,7 +266,7 @@ func (t NonNullTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NonNullType.Infer: %w", err)
 	}
-	return NonNullType{e}, nil
+	return hm.NonNullType{Type: e}, nil
 }
 
 type VariableTypeNode struct {
@@ -358,56 +304,6 @@ func (t VariableTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return hm.TypeVariable(t.Name), nil
 }
 
-type NonNullType struct {
-	Type
-}
-
-var _ hm.Type = NonNullType{}
-
-func (t NonNullType) Name() string {
-	return fmt.Sprintf("%s!", t.Type.Name())
-}
-
-func (t NonNullType) Apply(subs hm.Subs) hm.Substitutable {
-	return NonNullType{t.Type.Apply(subs).(hm.Type)}
-}
-
-func (t NonNullType) Normalize(k, v hm.TypeVarSet) (Type, error) {
-	normalized, err := t.Type.Normalize(k, v)
-	if err != nil {
-		return nil, err
-	}
-	return NonNullType{normalized}, nil
-}
-
-func (t NonNullType) Types() hm.Types {
-	ts := hm.BorrowTypes(1)
-	ts[0] = t.Type
-	return ts
-}
-
-// IsSubtypeOf implements SubtypingType
-// NonNull T is a subtype of nullable T
-func (t NonNullType) IsSubtypeOf(other hm.Type) bool {
-	// NonNull T <: T (non-null is subtype of nullable)
-	return t.Type.Eq(other)
-}
-
-func (t NonNullType) String() string {
-	return fmt.Sprintf("%s!", t.Type)
-}
-
-func (t NonNullType) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%"+string(c)+"!", t.Type)
-}
-
-func (t NonNullType) Eq(other Type) bool {
-	if ot, ok := other.(NonNullType); ok {
-		return t.Type.Eq(ot.Type)
-	}
-	return false
-}
-
 type FunTypeNode struct {
 	Args []SlotDecl
 	Ret  TypeNode
@@ -433,7 +329,7 @@ func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		signatureType := dt
 		if a.Value != nil {
 			// Argument has a default value - make it nullable in the function signature
-			if nonNullType, isNonNull := dt.(NonNullType); isNonNull {
+			if nonNullType, isNonNull := dt.(hm.NonNullType); isNonNull {
 				signatureType = nonNullType.Type
 			}
 		}

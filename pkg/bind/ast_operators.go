@@ -31,7 +31,7 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// left type with the right type.
 
 	// Unify types with subtyping support for nullable/NonNull compatibility
-	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+	if _, err := hm.Unify(lt, rt); err != nil {
 		return nil, WrapInferError(err, d)
 	}
 
@@ -142,7 +142,7 @@ func (a Addition) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+	if _, err := hm.Unify(lt, rt); err != nil {
 		return nil, WrapInferError(err, a)
 	}
 	return lt, nil
@@ -218,7 +218,7 @@ func (s Subtraction) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+	if _, err := hm.Unify(lt, rt); err != nil {
 		return nil, WrapInferError(err, s)
 	}
 	return lt, nil
@@ -275,7 +275,7 @@ func (m Multiplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+	if _, err := hm.Unify(lt, rt); err != nil {
 		return nil, WrapInferError(err, m)
 	}
 	return lt, nil
@@ -332,7 +332,7 @@ func (d Division) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+	if _, err := hm.Unify(lt, rt); err != nil {
 		return nil, WrapInferError(err, d)
 	}
 	return lt, nil
@@ -392,7 +392,7 @@ func (m Modulo) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := UnifyWithCompatibility(lt, rt); err != nil {
+	if _, err := hm.Unify(lt, rt); err != nil {
 		return nil, WrapInferError(err, m)
 	}
 	return lt, nil

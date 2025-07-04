@@ -63,7 +63,7 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 		signatureType := finalArgType
 		if arg.Value != nil {
 			// Argument has a default value - make it nullable in the function signature
-			if nonNullType, isNonNull := finalArgType.(NonNullType); isNonNull {
+			if nonNullType, isNonNull := finalArgType.(hm.NonNullType); isNonNull {
 				signatureType = nonNullType.Type
 			}
 		}
@@ -253,7 +253,7 @@ func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	// For simple assignment, check compatibility
 	if r.Modifier == "=" {
-		if _, err := UnifyWithCompatibility(targetType, valueType); err != nil {
+		if _, err := hm.Unify(targetType, valueType); err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 		}
 		return targetType, nil
@@ -505,7 +505,7 @@ func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// The term must be a module that can be reopened
-	nonNullType, ok := termType.(NonNullType)
+	nonNullType, ok := termType.(hm.NonNullType)
 	if !ok {
 		return nil, fmt.Errorf("Reopen.Infer: cannot reopen nullable type %s", termType)
 	}

@@ -10,12 +10,12 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/charmbracelet/fang"
-	"github.com/vito/bind/pkg/hm"
 	"github.com/chzyer/readline"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/vito/bind/introspection"
 	"github.com/vito/bind/pkg/bind"
+	"github.com/vito/bind/pkg/hm"
 	"github.com/vito/bind/pkg/ioctx"
 )
 
@@ -717,7 +717,7 @@ func (r *REPL) typeCommand(repl *REPL, args []string) error {
 							hasRequired := false
 							for _, field := range rt.Fields {
 								if fieldType, _ := field.Value.Type(); fieldType != nil {
-									if _, isNonNull := fieldType.(bind.NonNullType); isNonNull {
+									if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
 										hasRequired = true
 										break
 									}

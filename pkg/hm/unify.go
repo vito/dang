@@ -19,33 +19,33 @@ func Unify(t1, t2 Type) (Subs, error) {
 }
 
 func unify(t1, t2 Type) (Subs, error) {
-	// Handle qualified types by unifying the underlying types and checking nullability
-	if qt1, ok := t1.(*QualifiedType); ok {
-		if qt2, ok := t2.(*QualifiedType); ok {
-			// Both are qualified - nullability must match
-			if qt1.NonNull != qt2.NonNull {
-				return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
-			}
-			return unify(qt1.Type, qt2.Type)
+	// Handle non-null types
+	if nt1, ok := t1.(NonNullType); ok {
+		if nt2, ok := t2.(NonNullType); ok {
+			// Both are non-null - unify underlying types
+			return unify(nt1.Type, nt2.Type)
 		}
-		// t1 is qualified, t2 is not - unify underlying types
-		return unify(qt1.Type, t2)
+		// t1 is non-null, t2 is nullable - unify with underlying type
+		// NonNull T can unify with T (non-null is subtype of nullable)
+		// return unify(nt1.Type, t2)
+		return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
 	}
-	
-	if qt2, ok := t2.(*QualifiedType); ok {
-		// t2 is qualified, t1 is not - unify underlying types
-		return unify(t1, qt2.Type)
+
+	if nt2, ok := t2.(NonNullType); ok {
+		// t2 is non-null, t1 is nullable - not allowed
+		return unify(t1, nt2.Type)
+		// return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
 	}
 
 	// Handle type variables
 	if tv1, ok := t1.(TypeVariable); ok {
 		return bindVar(tv1, t2)
 	}
-	
+
 	if tv2, ok := t2.(TypeVariable); ok {
 		return bindVar(tv2, t1)
 	}
-	
+
 	// Handle function types
 	if ft1, ok := t1.(*FunctionType); ok {
 		if ft2, ok := t2.(*FunctionType); ok {
@@ -54,7 +54,7 @@ func unify(t1, t2 Type) (Subs, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Apply s1 to return types and unify
 			ret1 := ft1.ret.Apply(s1).(Type)
 			ret2 := ft2.ret.Apply(s1).(Type)
@@ -62,23 +62,17 @@ func unify(t1, t2 Type) (Subs, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			return s1.Compose(s2), nil
 		}
 		return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
 	}
-	
-	// Handle type constants
-	if tc1, ok := t1.(TypeConst); ok {
-		if tc2, ok := t2.(TypeConst); ok {
-			if tc1 == tc2 {
-				return NewSubs(), nil
-			}
-			return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", tc1, tc2)}
-		}
-		return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
+
+	// General case - use Type.Eq for any remaining types
+	if t1.Eq(t2) {
+		return NewSubs(), nil
 	}
-	
+
 	return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
 }
 
@@ -88,12 +82,12 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	if tv2, ok := t.(TypeVariable); ok && tv == tv2 {
 		return NewSubs(), nil
 	}
-	
+
 	// Occurs check
 	if occursCheck(tv, t) {
 		return nil, UnificationError{fmt.Sprintf("Occurs check failed: %s occurs in %s", tv, t)}
 	}
-	
+
 	subs := NewSubs()
 	subs.Add(tv, t)
 	return subs, nil

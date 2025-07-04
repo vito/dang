@@ -467,7 +467,7 @@ func (o *Object) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 	}
 	o.Mod = mod
-	return NonNullType{mod}, nil
+	return hm.NonNullType{Type: mod}, nil
 }
 
 var _ Evaluator = &Object{}

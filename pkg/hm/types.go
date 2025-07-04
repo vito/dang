@@ -11,7 +11,7 @@ type Type interface {
 	Normalize(TypeVarSet, TypeVarSet) (Type, error)
 	Types() Types
 	Eq(Type) bool
-	fmt.Formatter
+	// fmt.Formatter
 	fmt.Stringer
 }
 
@@ -19,64 +19,6 @@ type Type interface {
 type Substitutable interface {
 	Apply(Subs) Substitutable
 	FreeTypeVar() TypeVarSet
-}
-
-// QualifiedType represents a type with nullability qualification
-type QualifiedType struct {
-	Type    Type
-	NonNull bool
-}
-
-func NewQualifiedType(t Type, nonNull bool) *QualifiedType {
-	return &QualifiedType{Type: t, NonNull: nonNull}
-}
-
-func (qt *QualifiedType) Name() string {
-	if qt.NonNull {
-		return qt.Type.Name() + "!"
-	}
-	return qt.Type.Name()
-}
-
-func (qt *QualifiedType) Apply(subs Subs) Substitutable {
-	return &QualifiedType{
-		Type:    qt.Type.Apply(subs).(Type),
-		NonNull: qt.NonNull,
-	}
-}
-
-func (qt *QualifiedType) FreeTypeVar() TypeVarSet {
-	return qt.Type.FreeTypeVar()
-}
-
-func (qt *QualifiedType) Normalize(k, v TypeVarSet) (Type, error) {
-	normalized, err := qt.Type.Normalize(k, v)
-	if err != nil {
-		return nil, err
-	}
-	return &QualifiedType{Type: normalized, NonNull: qt.NonNull}, nil
-}
-
-func (qt *QualifiedType) Types() Types {
-	return qt.Type.Types()
-}
-
-func (qt *QualifiedType) Eq(other Type) bool {
-	if ot, ok := other.(*QualifiedType); ok {
-		return qt.NonNull == ot.NonNull && qt.Type.Eq(ot.Type)
-	}
-	return false
-}
-
-func (qt *QualifiedType) String() string {
-	if qt.NonNull {
-		return qt.Type.String() + "!"
-	}
-	return qt.Type.String()
-}
-
-func (qt *QualifiedType) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s", qt.String())
 }
 
 // TypeVariable represents a type variable
@@ -118,44 +60,6 @@ func (tv TypeVariable) String() string {
 
 func (tv TypeVariable) Format(s fmt.State, c rune) {
 	fmt.Fprintf(s, "%s", string(tv))
-}
-
-// TypeConst represents a constant type
-type TypeConst string
-
-func (tc TypeConst) Name() string {
-	return string(tc)
-}
-
-func (tc TypeConst) Apply(subs Subs) Substitutable {
-	return tc
-}
-
-func (tc TypeConst) FreeTypeVar() TypeVarSet {
-	return nil
-}
-
-func (tc TypeConst) Normalize(k, v TypeVarSet) (Type, error) {
-	return tc, nil
-}
-
-func (tc TypeConst) Types() Types {
-	return nil
-}
-
-func (tc TypeConst) Eq(other Type) bool {
-	if ot, ok := other.(TypeConst); ok {
-		return tc == ot
-	}
-	return false
-}
-
-func (tc TypeConst) String() string {
-	return string(tc)
-}
-
-func (tc TypeConst) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s", string(tc))
 }
 
 // FunctionType represents a function type
@@ -233,16 +137,52 @@ func (ft *FunctionType) ReturnType() Type {
 // Types represents a slice of types
 type Types []Type
 
-// Common type constants
-var (
-	IntType    = TypeConst("Int")
-	BoolType   = TypeConst("Bool")
-	StringType = TypeConst("String")
-	UnitType   = TypeConst("()")
-)
-
 // BorrowTypes creates a new slice of types with the given capacity
 // This is for compatibility with object pooling patterns
 func BorrowTypes(capacity int) Types {
 	return make(Types, capacity)
+}
+
+// NonNullType represents a non-nullable type wrapper
+type NonNullType struct {
+	Type Type
+}
+
+func (t NonNullType) Name() string {
+	return fmt.Sprintf("%s!", t.Type.Name())
+}
+
+func (t NonNullType) Apply(subs Subs) Substitutable {
+	return NonNullType{t.Type.Apply(subs).(Type)}
+}
+
+func (t NonNullType) FreeTypeVar() TypeVarSet {
+	return t.Type.FreeTypeVar()
+}
+
+func (t NonNullType) Normalize(k, v TypeVarSet) (Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return NonNullType{normalized}, nil
+}
+
+func (t NonNullType) Types() Types {
+	return t.Type.Types()
+}
+
+func (t NonNullType) Eq(other Type) bool {
+	if ot, ok := other.(NonNullType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
+func (t NonNullType) String() string {
+	return fmt.Sprintf("%s!", t.Type)
+}
+
+func (t NonNullType) Format(s fmt.State, c rune) {
+	fmt.Fprintf(s, "%s!", t.Type)
 }

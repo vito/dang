@@ -31,7 +31,7 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 		// For now, just return the original approach and document this as a known issue
 		// The real fix requires changes to how the HM library handles recursive types
 		tv := f.Fresh()
-		return NonNullType{ListType{tv}}, nil
+		return hm.NonNullType{Type: ListType{tv}}, nil
 	}
 
 	var t hm.Type
@@ -42,12 +42,12 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 		}
 		if t == nil {
 			t = et
-		} else if _, err := UnifyWithCompatibility(t, et); err != nil {
+		} else if _, err := hm.Unify(t, et); err != nil {
 			// TODO: is this right?
 			return nil, fmt.Errorf("unify index %d: %w", i, err)
 		}
 	}
-	return NonNullType{ListType{t}}, nil
+	return hm.NonNullType{Type: ListType{t}}, nil
 }
 
 func (l List) DeclaredSymbols() []string {

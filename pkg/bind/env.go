@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vito/bind/pkg/hm"
 	"github.com/vito/bind/introspection"
+	"github.com/vito/bind/pkg/hm"
 )
 
 type Env interface {
@@ -87,7 +87,7 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
 		}
-		return NonNullType{inner}, nil
+		return hm.NonNullType{Type: inner}, nil
 	default:
 		return nil, fmt.Errorf("unhandled type kind: %s", ref.Kind)
 	}
@@ -168,7 +168,7 @@ func addBuiltinTypes(mod *Module) {
 	jsonArgType := hm.TypeVariable('b')
 	jsonArgs := NewRecordType("")
 	jsonArgs.Add("value", hm.NewScheme(nil, jsonArgType))
-	jsonReturnType := NonNullType{StringType}
+	jsonReturnType := hm.NonNullType{Type: StringType}
 	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
 
 	slog.Debug("adding builtin function", "function", "json")
@@ -178,6 +178,9 @@ func addBuiltinTypes(mod *Module) {
 var _ hm.Substitutable = (*Module)(nil)
 
 func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
+	if len(subs) == 0 {
+		return e
+	}
 	retVal := e.Clone().(*Module)
 	for _, v := range retVal.vars {
 		v.Apply(subs)
@@ -215,6 +218,9 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 }
 
 func (e *Module) Clone() hm.Env {
+	if e.Named == "Int" {
+		panic("why?")
+	}
 	mod := NewModule(e.Named)
 	mod.Parent = e
 	return mod
@@ -261,13 +267,24 @@ var _ hm.Type = (*Module)(nil)
 func (t *Module) Name() string                               { return t.Named }
 func (t *Module) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
 func (t *Module) Types() hm.Types                            { return nil }
+
 func (t *Module) String() string {
 	if t.Named != "" {
 		return t.Named
 	}
 	return t.AsRecord().String()
 }
-func (t *Module) Format(s fmt.State, c rune) { fmt.Fprintf(s, "%s", t.String()) }
+
+//	func (t *Module) Format(s fmt.State, c rune) {
+//		switch c {
+//		case 'v':
+//			fmt.Fprintf(s, "%+v", t.)
+//		case 's':
+//			fmt.Fprintf(s, "%s", t.String())
+//		default:
+//			fmt.Fprintf(s, "%#v", t)
+//		}
+//	}
 func (t *Module) Eq(other Type) bool {
 	otherMod, ok := other.(*Module)
 	if !ok {

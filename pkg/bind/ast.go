@@ -46,7 +46,7 @@ func autoCallFnType(t hm.Type) hm.Type {
 			hasRequiredArgs := false
 			for _, field := range rt.Fields {
 				if fieldType, _ := field.Value.Type(); fieldType != nil {
-					if _, isNonNull := fieldType.(NonNullType); isNonNull {
+					if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
 						hasRequiredArgs = true
 						break
 					}
@@ -81,7 +81,7 @@ func isAutoCallableFn(val Value) bool {
 				scheme, found := rt.SchemeOf(argName)
 				if found {
 					if fieldType, _ := scheme.Type(); fieldType != nil {
-						if _, isNonNull := fieldType.(NonNullType); isNonNull {
+						if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
 							// This is a required argument with no default value
 							return false
 						}

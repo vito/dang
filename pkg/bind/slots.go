@@ -74,7 +74,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 
 		if definedType != nil {
-			if _, err := UnifyWithCompatibility(inferredType, definedType); err != nil {
+			if _, err := hm.Unify(inferredType, definedType); err != nil {
 				return nil, WrapInferError(err, s.Value)
 			}
 		} else {
@@ -176,7 +176,7 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	}
 
 	// set special 'self' keyword to match the function signature.
-	self := hm.NewScheme(nil, NonNullType{class})
+	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
 	env.Add(c.Named, self)
 
@@ -216,7 +216,7 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 
-	self := hm.NewScheme(nil, NonNullType{class})
+	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
 	env.Add(c.Named, self)
 

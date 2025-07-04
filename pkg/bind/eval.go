@@ -284,7 +284,7 @@ func addBuiltinFunctions(env EvalEnv) {
 	// Type signature: json(value: a) -> String! where 'a' is a type variable (any type)
 	jsonArgs := NewRecordType("")
 	jsonArgs.Add("value", hm.NewScheme(nil, argType))
-	jsonReturnType := NonNullType{StringType}
+	jsonReturnType := hm.NonNullType{Type: StringType}
 	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
 
 	jsonFn := BuiltinFunction{
@@ -435,7 +435,7 @@ func goValueToBind(val interface{}, typeRef *introspection.TypeRef) (Value, erro
 			if elemType == nil {
 				elemType = val.Type()
 			} else {
-				if _, err := UnifyWithCompatibility(elemType, val.Type()); err != nil {
+				if _, err := hm.Unify(elemType, val.Type()); err != nil {
 					return nil, fmt.Errorf("type mismatch: %s vs %s", elemType, val.Type())
 				}
 			}
@@ -458,7 +458,7 @@ type StringValue struct {
 }
 
 func (s StringValue) Type() hm.Type {
-	return NonNullType{StringType}
+	return hm.NonNullType{Type: StringType}
 }
 
 func (s StringValue) String() string {
@@ -475,7 +475,7 @@ type IntValue struct {
 }
 
 func (i IntValue) Type() hm.Type {
-	return NonNullType{IntType}
+	return hm.NonNullType{Type: IntType}
 }
 
 func (i IntValue) String() string {
@@ -492,7 +492,7 @@ type BoolValue struct {
 }
 
 func (b BoolValue) Type() hm.Type {
-	return NonNullType{BooleanType}
+	return hm.NonNullType{Type: BooleanType}
 }
 
 func (b BoolValue) String() string {
@@ -526,7 +526,7 @@ type ListValue struct {
 }
 
 func (l ListValue) Type() hm.Type {
-	return NonNullType{ListType{l.ElemType}}
+	return hm.NonNullType{Type: ListType{l.ElemType}}
 }
 
 func (l ListValue) String() string {
@@ -584,7 +584,7 @@ func NewModuleValue(mod *Module) *ModuleValue {
 }
 
 func (m *ModuleValue) Type() hm.Type {
-	return NonNullType{m.Mod}
+	return hm.NonNullType{Type: m.Mod}
 }
 
 func (m *ModuleValue) String() string {

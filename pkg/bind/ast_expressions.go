@@ -78,7 +78,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
 			}
 
-			if _, err := UnifyWithCompatibility(dt, it); err != nil {
+			if _, err := hm.Unify(dt, it); err != nil {
 				return nil, WrapInferError(err, v)
 			}
 		}
@@ -114,11 +114,11 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
 			}
 
-			if _, err := UnifyWithCompatibility(dt, it); err != nil {
+			if _, err := hm.Unify(dt, it); err != nil {
 				return nil, WrapInferError(err, v)
 			}
 		}
-		return NonNullType{ft}, nil
+		return hm.NonNullType{Type: ft}, nil
 	default:
 		return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 	}
@@ -395,10 +395,10 @@ func (c FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 			continue // Skip polymorphic parameters for now
 		}
 
-		// Check if this parameter is required (NonNullType)
+		// Check if this parameter is required (hm.NonNullType)
 		// With our transformation, arguments with defaults are now nullable in the signature,
 		// so only truly required arguments (without defaults) will be NonNull here
-		if _, isNonNull := paramType.(NonNullType); isNonNull {
+		if _, isNonNull := paramType.(hm.NonNullType); isNonNull {
 			return NewInferError(fmt.Sprintf("missing required argument: %q", paramName), c)
 		}
 	}
@@ -496,7 +496,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Receiver.Infer: %w", err)
 	}
-	nn, ok := lt.(NonNullType)
+	nn, ok := lt.(hm.NonNullType)
 	if !ok {
 		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", nn, lt)
 	}
@@ -686,7 +686,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 
-	if _, err := UnifyWithCompatibility(condType, boolType); err != nil {
+	if _, err := hm.Unify(condType, boolType); err != nil {
 		return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
 	}
 
@@ -702,7 +702,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, err
 		}
 
-		if _, err := UnifyWithCompatibility(thenType, elseType); err != nil {
+		if _, err := hm.Unify(thenType, elseType); err != nil {
 			// Try to point to the specific value in the else block for better error targeting
 			var errorNode Node = elseBlock
 			if len(elseBlock.Forms) > 0 {
@@ -829,12 +829,12 @@ func (t TypeHint) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	hintCore := hintType
 
 	// If expression is NonNull, extract the inner type for unification
-	if exprNonNull, ok := exprType.(NonNullType); ok {
+	if exprNonNull, ok := exprType.(hm.NonNullType); ok {
 		exprCore = exprNonNull.Type
 	}
 
 	// If hint is NonNull, extract the inner type for unification
-	if hintNonNull, ok := hintType.(NonNullType); ok {
+	if hintNonNull, ok := hintType.(hm.NonNullType); ok {
 		hintCore = hintNonNull.Type
 	}
 
@@ -847,7 +847,7 @@ func (t TypeHint) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Core unification failed, try the original approach with subtyping
-	subs, err := UnifyWithCompatibility(exprType, hintType)
+	subs, err := hm.Unify(exprType, hintType)
 	if err != nil {
 		return nil, NewInferError(fmt.Sprintf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 	}

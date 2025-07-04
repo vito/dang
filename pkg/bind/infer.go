@@ -3,8 +3,8 @@ package bind
 import (
 	"fmt"
 
-	"github.com/vito/bind/pkg/hm"
 	"github.com/pkg/errors"
+	"github.com/vito/bind/pkg/hm"
 )
 
 type inferer struct {
