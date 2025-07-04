@@ -12,7 +12,7 @@ type Apko {
       keyring: []
     }}
     cmd: ""
-    environment: {{
+    environment: {{ # TODO: how to support arbitrary key-value?
       PATH: "/usr/local/bin:/usr/bin:/bin"
     }}
     archs: [arch]
