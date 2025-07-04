@@ -5,7 +5,7 @@ pub single_block = { 42 }
 assert { single_block == 42 }
 
 # Block with let expression
-pub let_block = { let x = 10 in x }
+pub let_block = { let x = 10 , x }
 assert { let_block == 10 }
 
 # Block with conditional

@@ -24,15 +24,6 @@ assert { max_num == 42 }
 assert { min_result == "true branch" }
 assert { no_else_result == "has value" }
 
-# =================== LET EXPRESSIONS ===================
-pub let_basic = let x = 50 in x
-pub let_calculation = let base = 10 in base
-pub let_nested = let outer = let inner = 5 in inner in outer
-
-assert { let_basic == 50 }
-assert { let_calculation == 10 }
-assert { let_nested == 5 }
-
 # =================== FUNCTIONS ===================
 pub square(n: Int!): Int! { n }
 pub greet(name: String!): String! { name }
@@ -64,7 +55,7 @@ pub string_processor = \s -> s
 # =================== DECLARATIONS WITH TYPES ===================
 pub typed_int: Int! = 999
 pub typed_string: String! = "typed"
-pvt private_value = 123
+let private_value = 123
 
 assert { typed_int == 999 }
 assert { typed_string == "typed" }

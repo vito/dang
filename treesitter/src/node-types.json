@@ -42,10 +42,6 @@
         "named": true
       },
       {
-        "type": "let",
-        "named": true
-      },
-      {
         "type": "match",
         "named": true
       },
@@ -1056,60 +1052,6 @@
     "type": "lambda_token",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "let",
-    "named": true,
-    "fields": {
-      "expr": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "equal_token",
-          "named": true
-        },
-        {
-          "type": "in_token",
-          "named": true
-        },
-        {
-          "type": "let_token",
-          "named": true
-        }
-      ]
-    }
   },
   {
     "type": "list",
@@ -2185,11 +2127,11 @@
       "required": true,
       "types": [
         {
-          "type": "pub_token",
+          "type": "let_token",
           "named": true
         },
         {
-          "type": "pvt_token",
+          "type": "pub_token",
           "named": true
         }
       ]
@@ -2325,10 +2267,6 @@
     "named": true
   },
   {
-    "type": "in_token",
-    "named": true
-  },
-  {
     "type": "interro_token",
     "named": true
   },
@@ -2354,10 +2292,6 @@
   },
   {
     "type": "pub_token",
-    "named": true
-  },
-  {
-    "type": "pvt_token",
     "named": true
   },
   {

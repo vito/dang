@@ -19,7 +19,7 @@ CommaToken <- ','
 
 Expr <- Class / Slot / Reassignment / Form
 
-Form <- Conditional / Let / Lambda / Match / Assert / DefaultExpr / Term
+Form <- Conditional / Lambda / Match / Assert / DefaultExpr / Term
 
 Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -154,9 +154,9 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
 }
 
 Visibility <- PubToken { return PublicVisibility, nil }
-            / PvtToken { return PrivateVisibility, nil }
+            / LetToken { return PrivateVisibility, nil }
 PubToken <- "pub" !WordChar
-PvtToken <- "pvt" !WordChar
+LetToken <- "let" !WordChar
 
 Id <- WordToken
 WordToken <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
@@ -466,17 +466,6 @@ ElseClause <- _ ElseToken _ block:Block {
 
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
-
-Let <- LetToken _ name:Id _ EqualToken _ value:Form _ InToken _ expr:Form {
-  return Let{
-    Name: name.(string),
-    Value: value.(Node),
-    Expr: expr.(Node),
-  }, nil
-}
-
-LetToken <- "let" !WordChar
-InToken <- "in" !WordChar
 
 Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
   return &Lambda{

@@ -4,7 +4,7 @@ Build
 
 #!/usr/bin/env bind
 
-pvt src = host.directory(
+let src = host.directory(
   "."
   include: [
     "**/*.go"
@@ -14,7 +14,7 @@ pvt src = host.directory(
   ]
 )
 
-pvt bin(src: Directory!): File! {
+let bin(src: Directory!): File! {
   container.
     from("golang").
     withDirectory("/src", src).
@@ -24,7 +24,7 @@ pvt bin(src: Directory!): File! {
     file("/out/bind")
 }
 
-pvt test(bin: File!): String! {
+let test(bin: File!): String! {
   container.
     from("alpine").
     withFile("/bin/bind", bin).
@@ -41,7 +41,7 @@ print(test(bin(src)))
   (slot
     (value_only_slot
       (visibility
-        (pvt_token))
+        (let_token))
       (id
         (word_token))
       (equal_token)
@@ -81,7 +81,7 @@ print(test(bin(src)))
   (slot
     (type_and_args_and_block_slot
       (visibility
-        (pvt_token))
+        (let_token))
       (id
         (word_token))
       (arg_types
@@ -200,7 +200,7 @@ print(test(bin(src)))
   (slot
     (type_and_args_and_block_slot
       (visibility
-        (pvt_token))
+        (let_token))
       (id
         (word_token))
       (arg_types

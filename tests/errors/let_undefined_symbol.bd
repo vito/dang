@@ -1,2 +1,0 @@
-# Test let expression with undefined symbol
-pub result = let x = undefined_var in x + 1

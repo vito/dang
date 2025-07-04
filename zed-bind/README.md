@@ -13,7 +13,7 @@ This extension provides [Bind language](https://github.com/vito/bind) support fo
 ## Language Features Supported
 
 ### Core Language Constructs
-- **Variables**: `pub name = value`, `pvt name = value`
+- **Variables**: `pub name = value`, `let name = value`
 - **Functions**: `pub func(arg: Type): ReturnType { body }`
 - **Classes**: `cls ClassName { ... }`
 - **Conditionals**: `if condition { then } else { else }`

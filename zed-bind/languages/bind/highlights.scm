@@ -1,10 +1,10 @@
 ;; Keywords
 [
-  (pvt_token)
+  (let_token)
   (pub_token)
 ] @keyword
 [
-  (cls_token)
+  (type_token)
   (if_token)
   (else_token)
   (let_token)

@@ -64,8 +64,8 @@ Objects are **copied** when modified, not mutated in place. This provides:
 
 ### Example from `test_reassignment.bd`:
 ```bind
-pvt original = {{a: {{b: {{c: 1}}}}}}
-pvt modified = original
+let original = {{a: {{b: {{c: 1}}}}}}
+let modified = original
 modified.a.b.c = 2
 
 assert { original.a.b.c == 1 }  # Original unchanged

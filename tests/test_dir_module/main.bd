@@ -1,6 +1,6 @@
 # Main file that uses cross-file references
-pvt person = createPerson("Alice", 30)
-pvt magic = getMagicNumber()
+let person = createPerson("Alice", 30)
+let magic = getMagicNumber()
 
 # Test that we can access types and functions from other files
 assert { person.name == "Alice" }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bind
 
-pvt src = host.directory(
+let src = host.directory(
   ".",
   include: [
     "**/*.go",
@@ -10,7 +10,7 @@ pvt src = host.directory(
   ]
 )
 
-pvt bin(src: Directory!): File! {
+let bin(src: Directory!): File! {
   container.
     from("golang").
     withDirectory("/src", src).
@@ -20,7 +20,7 @@ pvt bin(src: Directory!): File! {
     file("/out/bind")
 }
 
-pvt test(bin: File!): String! {
+let test(bin: File!): String! {
   container.
     from("alpine").
     withFile("/bin/bind", bin).

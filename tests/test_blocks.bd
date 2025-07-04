@@ -1,18 +1,18 @@
-# Test blocks and expression sequencing
+# Test block expressions with proper comma syntax
 
 # Simple block that returns last expression
 pub block_result = {
-  42
-  "hello"
+  42,
+  "hello",
   100
 }
 
 assert { block_result == 100 }
 
-# Block with multiple statements
+# Block with let expressions
 pub complex_block = {
-  let x = 10 in x,
-  let y = 20 in y,
+  let x = 10
+  let y = 20
   42
 }
 
@@ -20,7 +20,7 @@ assert { complex_block == 42 }
 
 # Block in conditional
 pub conditional_block = if true {
-  let temp = "yes" in temp
+  "yes"
 } else {
   "no"
 }
@@ -29,9 +29,10 @@ assert { conditional_block == "yes" }
 
 # Nested blocks
 pub nested_blocks = {
-  let outer = 1 in outer,
+  let outer = 1,
   {
-    let inner = 2 in inner
+    let inner = 2
+    inner
   }
 }
 

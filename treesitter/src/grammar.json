@@ -97,10 +97,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "let"
-        },
-        {
-          "type": "SYMBOL",
           "name": "lambda"
         },
         {
@@ -123,7 +119,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 103,
+      "value": 100,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -251,7 +247,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 98,
+      "value": 95,
       "content": {
         "type": "SEQ",
         "members": [
@@ -561,7 +557,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "pvt_token"
+          "name": "let_token"
         }
       ]
     },
@@ -572,11 +568,11 @@
         "value": "pub"
       }
     },
-    "pvt_token": {
+    "let_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "pvt"
+        "value": "let"
       }
     },
     "id": {
@@ -906,7 +902,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 71,
+      "value": 68,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -976,7 +972,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 68,
+      "value": 65,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1064,7 +1060,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 64,
+      "value": 61,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1145,7 +1141,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 62,
+      "value": 59,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1234,7 +1230,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 60,
+      "value": 57,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1315,7 +1311,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 58,
+      "value": 55,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1894,61 +1890,6 @@
       "content": {
         "type": "STRING",
         "value": "else"
-      }
-    },
-    "let": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "let_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "name",
-          "content": {
-            "type": "SYMBOL",
-            "name": "id"
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "equal_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "in_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "expr",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
-        }
-      ]
-    },
-    "let_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "let"
-      }
-    },
-    "in_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "in"
       }
     },
     "lambda": {

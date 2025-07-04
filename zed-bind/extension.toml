@@ -2,7 +2,7 @@ id = "bind"
 name = "Bind"
 version = "0.1.1"
 schema_version = 1
-description = "Bind language support for Zed - a functional language for Dagger with Hindley-Milner type inference"
+description = "Bind language support for Zed"
 authors = ["vito"]
 repository = "https://github.com/vito/bind"
 

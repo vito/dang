@@ -2,7 +2,7 @@
   [2m[34m--> errors/lambda_argument_type_mismatch.bd:3:24[0m
  [2m    |[0m
  [2m  1 | # Test lambda argument type mismatch[0m
- [2m  2 | pub my_lambda = \(x: Int!) -> x + 1 [0m
+ [2m  2 | pub my_lambda = \(x: Int!) -> x + 1[0m
  [2m[34m[1m  3 | [0mpub result = my_lambda("not a number")
 [2m                              [31m^^^^^^^^^^^^^^[0m
  [2m  4 | [0m

@@ -24,7 +24,7 @@ assert { flag == false }
 }
 assert("does not modify outside of block, because the block cloned") { x == 100 }
 
-pvt fs = {{a: {{b: {{c: 42}}}}}}
+let fs = {{a: {{b: {{c: 42}}}}}}
 fs.a.b.c = 100
 assert { fs.a.b.c == 100 }
 
@@ -32,8 +32,8 @@ fs.a.b.c += 50
 assert { fs.a.b.c == 150 }
 
 # Test copy-on-write semantics
-pvt original = {{a: {{b: {{c: 1}}}}}}
-pvt modified = original
+let original = {{a: {{b: {{c: 1}}}}}}
+let modified = original
 modified.a.b.c = 2
 assert { original.a.b.c == 1 }
 assert { modified.a.b.c == 2 }

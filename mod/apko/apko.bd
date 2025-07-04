@@ -2,10 +2,10 @@ pub description =
   "Builds containers from simple lists of packages using the Apko CLI."
 
 # TODO
-pvt arch = "x86_64"
+let arch = "x86_64"
 
 type Apko {
-  pvt config = {{
+  let config = {{
     contents: {{
       packages: []
       repositories: []

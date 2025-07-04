@@ -6,7 +6,7 @@ pub description =
   "Builds containers from simple lists of packages using the Apko CLI."
 
 # TODO
-pvt arch = "x86_64"
+let arch = "x86_64"
 
 type Apko {
   pub config = {{
@@ -73,7 +73,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
   (slot
     (value_only_slot
       (visibility
-        (pvt_token))
+        (let_token))
       (id
         (word_token))
       (equal_token)
