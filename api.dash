@@ -1,1 +1,0 @@
-pub result = container().from(address: "golang").withExec(args: ["go", "version"]).stdout
