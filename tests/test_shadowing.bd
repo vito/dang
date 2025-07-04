@@ -1,7 +1,7 @@
 pub a = 1
 assert { { pub a = "two", a } == "two" }
 
-cls MyClass {
+type MyClass {
   pub a = "two"
 }
 

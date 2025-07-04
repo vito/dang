@@ -4,7 +4,7 @@ pub description =
 # TODO
 pvt arch = "x86_64"
 
-cls Apko {
+type Apko {
   pvt config = {{
     contents: {{
       packages: []

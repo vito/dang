@@ -1,6 +1,6 @@
-cls Test {
+type Test {
   pub field = "original"
-  
+
   pub test: Test! {
     self.field = "new"
     self

@@ -44,7 +44,7 @@ obj.a.b.c += 50   # Compound assignment on fields
 
 #### 4. Self Assignment in Classes
 ```bind
-cls MyClass {
+type MyClass {
   pub val = 1
 
   pub incr: MyClass! {
@@ -123,7 +123,7 @@ type Reassignment struct {
 
 ### 1. Fluent Interface Pattern
 ```bind
-cls Apko {
+type Apko {
   pub withPackages(packages: [String!]!): Apko! {
     self.config.contents.packages += packages
     self                        # Return self for chaining
@@ -133,7 +133,7 @@ cls Apko {
 
 ### 2. Builder Pattern
 ```bind
-cls MyClass {
+type MyClass {
   pub withName(name: String!): MyClass! {
     self.name = name
     self

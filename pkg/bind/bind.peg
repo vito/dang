@@ -71,7 +71,7 @@ SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
   }
 }
 
-Class <- ClsToken _ name:Id _ block:Block {
+Class <- TypeToken _ name:Id _ block:Block {
   return &ClassDecl{
     Named: name.(string),
     Value: block.(Block),
@@ -79,7 +79,7 @@ Class <- ClsToken _ name:Id _ block:Block {
     Loc: c.Loc(),
   }, nil
 }
-ClsToken <- "cls" !WordChar
+TypeToken <- "type" !WordChar
 
 Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockSlot         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields

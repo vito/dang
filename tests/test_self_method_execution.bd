@@ -1,7 +1,7 @@
 # Regression test for the original apko self issue
 # This reproduces the exact issue: self not found during method execution
 
-cls SimpleApko {
+type SimpleApko {
   pub config = {{
     items: []
   }}

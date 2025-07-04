@@ -635,7 +635,7 @@
       "required": true,
       "types": [
         {
-          "type": "cls_token",
+          "type": "type_token",
           "named": true
         }
       ]
@@ -2284,10 +2284,6 @@
     "named": true
   },
   {
-    "type": "cls_token",
-    "named": true
-  },
-  {
     "type": "colon_token",
     "named": true
   },
@@ -2374,6 +2370,10 @@
   },
   {
     "type": "true_token",
+    "named": true
+  },
+  {
+    "type": "type_token",
     "named": true
   },
   {

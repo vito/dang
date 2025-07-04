@@ -1,4 +1,4 @@
-cls Bind {
+type Bind {
   pub source: Directory!
 
   pub new(

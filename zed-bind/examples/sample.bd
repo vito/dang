@@ -20,7 +20,7 @@ pub computed = let
 in x + y
 
 # Class definitions
-cls ContainerOps {
+type ContainerOps {
   pub build(tag: String!): Container! {
     container
       .from("alpine:latest")

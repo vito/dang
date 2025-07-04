@@ -9,7 +9,7 @@ assert { a == b }
 assert { a == 42 }
 assert("Different numbers should not be equal") { (a == c) == false }
 
-# Strings  
+# Strings
 pub str1 = "hello"
 pub str2 = "hello"
 pub str3 = "world"
@@ -20,7 +20,7 @@ assert("Different strings should not be equal") { (str1 == str3) == false }
 
 # Booleans
 pub true1 = true
-pub true2 = true  
+pub true2 = true
 pub false1 = false
 
 assert { true1 == true2 }

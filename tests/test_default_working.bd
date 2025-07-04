@@ -6,7 +6,7 @@ pub get_fallback: String! {
 }
 
 pub get_existing: String! {
-  "existing" ? "fallback_value"  
+  "existing" ? "fallback_value"
 }
 
 # Test results

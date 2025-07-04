@@ -1,6 +1,6 @@
 # Test parameter precedence with deep assignment
 
-cls TestClass {
+type TestClass {
   pub config = "receiver_config"
   pub field = "original_field"
 

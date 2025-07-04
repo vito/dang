@@ -8,7 +8,7 @@ assert { ([1, 2] + []) == [1, 2] }
 assert { ([] + [3, 4]) == [3, 4] }
 assert { ([] + []) == [] }
 
-# String list concatenation  
+# String list concatenation
 assert { (["hello", "world"] + ["foo", "bar"]) == ["hello", "world", "foo", "bar"] }
 
 # Boolean list concatenation

@@ -299,7 +299,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "cls_token"
+          "name": "type_token"
         },
         {
           "type": "FIELD",
@@ -319,11 +319,11 @@
         }
       ]
     },
-    "cls_token": {
+    "type_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "cls"
+        "value": "type"
       }
     },
     "slot": {

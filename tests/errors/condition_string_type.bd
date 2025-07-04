@@ -1,2 +1,2 @@
-# Test conditional with string condition  
+# Test conditional with string condition
 pub result = if "hello" { "string condition" } else { "default" }

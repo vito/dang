@@ -3,7 +3,7 @@
 ## Assert Syntax
 Use `assert { condition }` to test expected behaviors in Bind code:
 ```bind
-cls Person(name: String!) {
+type Person(name: String!) {
   pub greet: String! {
     "Hello, I'm " + self.name
   }

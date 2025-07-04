@@ -5,7 +5,7 @@ pub x = 5
 x += 3
 assert { x == 8 }
 
-# String concatenation assignment  
+# String concatenation assignment
 pub msg = "hello"
 msg += " world"
 assert { msg == "hello world" }
@@ -22,7 +22,7 @@ counter += 2
 counter += 3
 assert { counter == 6 }
 
-# Empty list += 
+# Empty list +=
 pub empty_list = []
 empty_list += [1, 2]
 assert { empty_list == [1, 2] }

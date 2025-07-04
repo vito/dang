@@ -3,7 +3,7 @@
 # Simple block that returns last expression
 pub block_result = {
   42,
-  "hello", 
+  "hello",
   100
 }
 

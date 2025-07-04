@@ -15,10 +15,10 @@ assert { result3 == "value" }
 assert { result4 == null }
 
 # Nested conditionals
-pub nested = if true { 
+pub nested = if true {
   if false { "inner_false" } else { "inner_true" }
-} else { 
-  "outer_false" 
+} else {
+  "outer_false"
 }
 
 assert { nested == "inner_true" }
@@ -27,7 +27,7 @@ assert { nested == "inner_true" }
 pub x = 10
 pub y = 20
 
-pub max = if x == y { x } else { 
+pub max = if x == y { x } else {
   if x == y { x } else { y }
 }
 

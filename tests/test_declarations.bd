@@ -5,7 +5,7 @@ pub public_var = 42
 pub typed_var: Int! = 100
 pub string_var: String! = "hello"
 
-# Private variables  
+# Private variables
 pvt private_var = 24
 pvt private_typed: String! = "private"
 

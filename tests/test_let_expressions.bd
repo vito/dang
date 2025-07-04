@@ -9,7 +9,7 @@ pub result2 = let y = 5 in y
 assert { result2 == 5 }
 
 # Let with string
-pub result3 = let msg = "hello" in msg  
+pub result3 = let msg = "hello" in msg
 assert { result3 == "hello" }
 
 # Nested let expressions

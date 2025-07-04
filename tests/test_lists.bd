@@ -8,7 +8,7 @@ assert { empty_list == [] }
 pub numbers = [1, 2, 3]
 assert { numbers == [1, 2, 3] }
 
-# List with strings  
+# List with strings
 pub words = ["hello", "world"]
 assert { words == ["hello", "world"] }
 

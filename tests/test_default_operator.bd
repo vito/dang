@@ -14,7 +14,7 @@ pub result2 = not_null ? fallback
 assert { result2 == "value" }
 
 # Test with different types
-pub null_num = null  
+pub null_num = null
 pub fallback_num = 42
 pub result_num = null_num ? fallback_num
 
@@ -22,7 +22,7 @@ assert { result_num == 42 }
 
 # Test chaining
 pub first_null = null
-pub second_null = null  
+pub second_null = null
 pub final_value = "final"
 pub chained = first_null ? (second_null ? final_value)
 

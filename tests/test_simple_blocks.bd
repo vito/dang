@@ -4,7 +4,7 @@
 pub single_block = { 42 }
 assert { single_block == 42 }
 
-# Block with let expression  
+# Block with let expression
 pub let_block = { let x = 10 in x }
 assert { let_block == 10 }
 

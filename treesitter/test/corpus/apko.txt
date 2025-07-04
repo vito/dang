@@ -8,7 +8,7 @@ pub description =
 # TODO
 pvt arch = "x86_64"
 
-cls Apko {
+type Apko {
   pub config = {{
     contents: {{
       packages: []
@@ -81,7 +81,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
         (string))))
   (sep)
   (class
-    (cls_token)
+    (type_token)
     (id
       (word_token))
     (block

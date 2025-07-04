@@ -1,4 +1,4 @@
-cls MyClass {
+type MyClass {
   pub val = 1
   pub name = "initial"
 

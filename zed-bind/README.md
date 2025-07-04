@@ -61,7 +61,7 @@ pub result = if true { "success" } else { "failure" }
 pub computed = let x = 10 in x * 2
 
 # Class definition for container operations
-cls MyContainer {
+type MyContainer {
   pub build(): Container! {
     container.from("alpine:latest")
       .withExec(["echo", "Hello from Bind!"])
@@ -71,7 +71,7 @@ cls MyContainer {
 
 ## Contributing
 
-This extension is part of the [Bind language project](https://github.com/vito/bind). 
+This extension is part of the [Bind language project](https://github.com/vito/bind).
 Contributions are welcome!
 
 ## License

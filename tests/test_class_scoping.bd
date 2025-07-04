@@ -1,4 +1,4 @@
-cls Bind {
+type Bind {
   pub value = 0
 
   pub new(value: Int!): Bind! {
