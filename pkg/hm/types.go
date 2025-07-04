@@ -240,3 +240,9 @@ var (
 	StringType = TypeConst("String")
 	UnitType   = TypeConst("()")
 )
+
+// BorrowTypes creates a new slice of types with the given capacity
+// This is for compatibility with object pooling patterns
+func BorrowTypes(capacity int) Types {
+	return make(Types, capacity)
+}

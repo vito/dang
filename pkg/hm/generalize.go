@@ -3,7 +3,13 @@ package hm
 // Generalize creates a type scheme by quantifying over type variables
 // that are free in the type but not free in the environment
 func Generalize(env Env, t Type) *Scheme {
-	envFtvs := env.FreeTypeVar()
+	var envFtvs TypeVarSet
+	if env != nil {
+		envFtvs = env.FreeTypeVar()
+	} else {
+		envFtvs = make(TypeVarSet)
+	}
+	
 	typeFtvs := t.FreeTypeVar()
 	
 	// Find type variables that are free in the type but not in the environment

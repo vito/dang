@@ -41,13 +41,34 @@ func (s Subs) Clone() Subs {
 	return result
 }
 
-// Add adds a substitution mapping
-func (s Subs) Add(tv TypeVariable, t Type) {
+// Add adds a substitution mapping and returns the updated substitution
+func (s Subs) Add(tv TypeVariable, t Type) Subs {
 	s[tv] = t
+	return s
 }
 
 // Get gets a type for a type variable
 func (s Subs) Get(tv TypeVariable) (Type, bool) {
 	t, exists := s[tv]
 	return t, exists
+}
+
+// Substitution represents a single type variable to type mapping
+type Substitution struct {
+	Tv TypeVariable
+	T  Type
+}
+
+// Iter iterates over the substitutions
+func (s Subs) Iter() []Substitution {
+	var result []Substitution
+	for tv, t := range s {
+		result = append(result, Substitution{Tv: tv, T: t})
+	}
+	return result
+}
+
+// ReturnSubs is a no-op function for compatibility with object pooling
+func ReturnSubs(s Subs) {
+	// No-op - not implementing object pooling
 }

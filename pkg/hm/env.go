@@ -5,9 +5,9 @@ type Env interface {
 	SchemeOf(name string) (*Scheme, bool)
 	Clone() Env
 	Add(name string, scheme *Scheme) Env
-	Remove(name string)
+	Remove(name string) Env
 	FreeTypeVar() TypeVarSet
-	Apply(subs Subs) Env
+	Apply(subs Subs) Substitutable
 }
 
 // SimpleEnv is a simple implementation of Env
@@ -44,8 +44,14 @@ func (env *SimpleEnv) Add(name string, scheme *Scheme) Env {
 }
 
 // Remove removes a binding from the environment
-func (env *SimpleEnv) Remove(name string) {
-	delete(env.schemes, name)
+func (env *SimpleEnv) Remove(name string) Env {
+	newEnv := NewSimpleEnv()
+	for n, scheme := range env.schemes {
+		if n != name {
+			newEnv.schemes[n] = scheme
+		}
+	}
+	return newEnv
 }
 
 // FreeTypeVar returns the free type variables in the environment
@@ -61,10 +67,10 @@ func (env *SimpleEnv) FreeTypeVar() TypeVarSet {
 }
 
 // Apply applies a substitution to the environment
-func (env *SimpleEnv) Apply(subs Subs) Env {
+func (env *SimpleEnv) Apply(subs Subs) Substitutable {
 	newEnv := NewSimpleEnv()
 	for name, scheme := range env.schemes {
-		newEnv.schemes[name] = scheme.Apply(subs)
+		newEnv.schemes[name] = scheme.Apply(subs).(*Scheme)
 	}
 	return newEnv
 }

@@ -24,7 +24,7 @@ func unify(t1, t2 Type) (Subs, error) {
 		if qt2, ok := t2.(*QualifiedType); ok {
 			// Both are qualified - nullability must match
 			if qt1.NonNull != qt2.NonNull {
-				return nil, UnificationError{fmt.Sprintf("Cannot unify %s with %s: nullability mismatch", t1, t2)}
+				return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
 			}
 			return unify(qt1.Type, qt2.Type)
 		}
@@ -65,7 +65,7 @@ func unify(t1, t2 Type) (Subs, error) {
 			
 			return s1.Compose(s2), nil
 		}
-		return nil, UnificationError{fmt.Sprintf("Cannot unify function type %s with non-function type %s", t1, t2)}
+		return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
 	}
 	
 	// Handle type constants
@@ -74,12 +74,12 @@ func unify(t1, t2 Type) (Subs, error) {
 			if tc1 == tc2 {
 				return NewSubs(), nil
 			}
-			return nil, UnificationError{fmt.Sprintf("Cannot unify type constant %s with %s", tc1, tc2)}
+			return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", tc1, tc2)}
 		}
-		return nil, UnificationError{fmt.Sprintf("Cannot unify type constant %s with %s", t1, t2)}
+		return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
 	}
 	
-	return nil, UnificationError{fmt.Sprintf("Cannot unify %s with %s", t1, t2)}
+	return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
 }
 
 // bindVar binds a type variable to a type

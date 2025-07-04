@@ -13,9 +13,10 @@ func NewScheme(tvs []TypeVariable, t Type) *Scheme {
 	return &Scheme{tvs: tvs, t: t}
 }
 
-// Type returns the underlying type
-func (s *Scheme) Type() Type {
-	return s.t
+// Type returns the underlying type and whether it's monomorphic
+func (s *Scheme) Type() (Type, bool) {
+	// A scheme is monomorphic if it has no bound type variables
+	return s.t, len(s.tvs) == 0
 }
 
 // TypeVars returns the bound type variables
@@ -24,7 +25,7 @@ func (s *Scheme) TypeVars() []TypeVariable {
 }
 
 // Apply applies a substitution to a scheme
-func (s *Scheme) Apply(subs Subs) *Scheme {
+func (s *Scheme) Apply(subs Subs) Substitutable {
 	// Remove substitutions for bound variables
 	filteredSubs := make(Subs)
 	for tv, t := range subs {
@@ -63,6 +64,12 @@ func (s *Scheme) Clone() *Scheme {
 	tvs := make([]TypeVariable, len(s.tvs))
 	copy(tvs, s.tvs)
 	return &Scheme{tvs: tvs, t: s.t}
+}
+
+// Normalize normalizes the type variable names in the scheme
+func (s *Scheme) Normalize() error {
+	// For now, we don't implement normalization
+	return nil
 }
 
 // String returns a string representation

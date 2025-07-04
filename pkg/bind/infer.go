@@ -174,7 +174,7 @@ func Infer(env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
 	}
 
 	if env == nil {
-		env = make(hm.SimpleEnv)
+		env = hm.NewSimpleEnv()
 	}
 
 	infer := newInferer(env)
