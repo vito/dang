@@ -19,7 +19,7 @@ CommaToken <- ','
 
 Expr <- Class / Slot / Reassignment / Form
 
-Form <- Conditional / Lambda / Match / Assert / DefaultExpr / Term
+Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
 Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -212,12 +212,23 @@ PositionalValue <- value:Form {
 }
 ColonToken <- ':'
 
-Type <- NonNull / NamedType / ListType / TypeVariable
+Type <- NonNull / NamedType / ListType / ObjectType / TypeVariable
 NamedType <- name:UpperId {
   return NamedTypeNode{name.(string)}, nil
 }
 ListType <- '[' inner:Type ']' {
   return ListTypeNode{inner.(TypeNode)}, nil
+}
+ObjectType <- "{{" _ fields:(f:ObjectTypeField Sep { return f, nil })* last:ObjectTypeField? _ "}}" {
+  return ObjectTypeNode{
+    Fields: sliceOfAppend[ObjectTypeField](fields, last),
+  }, nil
+}
+ObjectTypeField <- key:Id _ ColonToken _ type_:Type {
+  return ObjectTypeField{
+    Key: key.(string),
+    Type: type_.(TypeNode),
+  }, nil
 }
 NonNull <- inner:Type BangToken {
   return NonNullTypeNode{inner.(TypeNode)}, nil
@@ -570,6 +581,16 @@ Reassignment <- target:Term _ op:AssignOp _ value:Form {
 AssignOp <- PlusEqualToken { return "+", nil } / EqualToken { return "=", nil }
 PlusEqualToken <- "+="
 EqualToken <- '='
+
+TypeHint <- expr:Term _ DoubleColonToken _ type_:Type {
+  return TypeHint{
+    Expr: expr.(Node),
+    Type: type_.(TypeNode),
+    Loc: c.Loc(),
+  }, nil
+}
+
+DoubleColonToken <- "::"
 
 Reopen <- name:Id _ ReopenToken _ b:Block {
   return Reopen{

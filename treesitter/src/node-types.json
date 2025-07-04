@@ -48,6 +48,10 @@
       {
         "type": "term",
         "named": true
+      },
+      {
+        "type": "type_hint",
+        "named": true
       }
     ]
   },
@@ -1405,6 +1409,82 @@
     }
   },
   {
+    "type": "object_type",
+    "named": true,
+    "fields": {
+      "f": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "object_type_field",
+            "named": true
+          }
+        ]
+      },
+      "fields": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "object_type_field",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "object_type_field",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "object_type_field",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "paren_form",
     "named": true,
     "fields": {
@@ -1787,6 +1867,10 @@
           "named": true
         },
         {
+          "type": "object_type",
+          "named": true
+        },
+        {
           "type": "type_variable",
           "named": true
         }
@@ -1970,6 +2054,42 @@
         },
         {
           "type": "equal_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_hint",
+    "named": true,
+    "fields": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "double_colon_token",
           "named": true
         }
       ]
@@ -2244,6 +2364,10 @@
   },
   {
     "type": "dot_token",
+    "named": true
+  },
+  {
+    "type": "double_colon_token",
     "named": true
   },
   {

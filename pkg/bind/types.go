@@ -329,6 +329,30 @@ type VariableTypeNode struct {
 
 var _ TypeNode = VariableTypeNode{}
 
+type ObjectTypeField struct {
+	Key  string
+	Type TypeNode
+}
+
+type ObjectTypeNode struct {
+	Fields []ObjectTypeField
+}
+
+var _ TypeNode = ObjectTypeNode{}
+
+func (t ObjectTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	mod := NewModule("")
+	for _, field := range t.Fields {
+		fieldType, err := field.Type.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("ObjectTypeNode.Infer: field %q: %w", field.Key, err)
+		}
+		scheme := hm.NewScheme(nil, fieldType)
+		mod.Add(field.Key, scheme)
+	}
+	return mod, nil
+}
+
 func (t VariableTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// TODO unsure if this works
 	return hm.TypeVariable(t.Name), nil

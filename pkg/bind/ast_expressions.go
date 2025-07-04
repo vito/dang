@@ -786,6 +786,60 @@ func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return EvalNode(ctx, newEnv, l.Expr)
 }
 
+// TypeHint represents a type hint expression using :: syntax
+type TypeHint struct {
+	Expr Node
+	Type TypeNode
+	Loc  *SourceLocation
+}
+
+var _ Node = TypeHint{}
+var _ Evaluator = TypeHint{}
+
+func (t TypeHint) DeclaredSymbols() []string {
+	return nil // Type hints don't declare symbols
+}
+
+func (t TypeHint) ReferencedSymbols() []string {
+	return t.Expr.ReferencedSymbols()
+}
+
+func (t TypeHint) Body() hm.Expression { return t }
+
+func (t TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
+
+func (t TypeHint) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Infer the type of the expression
+	exprType, err := t.Expr.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Infer the type of the type hint
+	hintType, err := t.Type.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unify the hint type (expected) with the expression type (provided)
+	// This allows type variables in exprType to be bound to concrete types in hintType
+	// and enables subtyping (e.g., Int! can be used where Int is expected)
+	subs, err := UnifyWithCompatibility(hintType, exprType)
+	if err != nil {
+		return nil, NewInferError(fmt.Sprintf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
+	}
+
+	// Apply substitutions to the hint type and return it
+	// This ensures we get the most specific type after unification
+	result := hintType.Apply(subs).(hm.Type)
+	return result, nil
+}
+
+func (t TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Type hints don't change runtime behavior - just evaluate the expression
+	return EvalNode(ctx, env, t.Expr)
+}
+
 // Lambda represents a lambda function expression
 type Lambda struct {
 	FunctionBase
