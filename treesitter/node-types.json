@@ -369,7 +369,7 @@
     }
   },
   {
-    "type": "dash",
+    "type": "bind",
     "named": true,
     "root": true,
     "fields": {

@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"dagger.io/dagger"
-	"github.com/vito/dash/introspection"
-	"github.com/vito/dash/pkg/dash"
-	"github.com/vito/dash/pkg/ioctx"
+	"github.com/vito/bind/introspection"
+	"github.com/vito/bind/pkg/bind"
+	"github.com/vito/bind/pkg/ioctx"
 	"gotest.tools/v3/golden"
 )
 
@@ -18,17 +18,17 @@ import (
 func TestErrorMessages(t *testing.T) {
 	errorsDir := filepath.Join("errors")
 
-	// Find all .dash files in the errors directory
-	dashFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.dash"))
+	// Find all .bd files in the errors directory
+	bindFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.bd"))
 	if err != nil {
-		t.Fatalf("Failed to find .dash files: %v", err)
+		t.Fatalf("Failed to find .bd files: %v", err)
 	}
 
-	if len(dashFiles) == 0 {
-		t.Fatal("No .dash test files found in tests/errors/")
+	if len(bindFiles) == 0 {
+		t.Fatal("No .bd test files found in tests/errors/")
 	}
 
-	// Connect to Dagger (required for Dash execution)
+	// Connect to Dagger (required for Bind execution)
 	ctx := t.Context()
 	dag, err := dagger.Connect(ctx)
 	if err != nil {
@@ -36,20 +36,20 @@ func TestErrorMessages(t *testing.T) {
 	}
 	defer dag.Close()
 
-	// Introspect the GraphQL schema (required for Dash execution)
+	// Introspect the GraphQL schema (required for Bind execution)
 	schema, err := introspectSchema(ctx, dag)
 	if err != nil {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	for _, dashFile := range dashFiles {
-		dashFile := dashFile // capture loop variable
+	for _, bindFile := range bindFiles {
+		bindFile := bindFile // capture loop variable
 
 		// Extract test name from filename
-		testName := strings.TrimSuffix(filepath.Base(dashFile), ".dash")
+		testName := strings.TrimSuffix(filepath.Base(bindFile), ".bd")
 
 		t.Run(testName, func(t *testing.T) {
-			output := runDashFile(t.Context(), dag, schema, dashFile)
+			output := runBindFile(t.Context(), dag, schema, bindFile)
 
 			// Compare with golden file
 			golden.Assert(t, output, testName+".golden")
@@ -57,8 +57,8 @@ func TestErrorMessages(t *testing.T) {
 	}
 }
 
-// runDashFile runs a Dash file and captures combined stdout/stderr
-func runDashFile(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, dashFile string) string {
+// runBindFile runs a Bind file and captures combined stdout/stderr
+func runBindFile(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, bindFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
 
@@ -66,8 +66,8 @@ func runDashFile(ctx context.Context, dag *dagger.Client, schema *introspection.
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
-	// Run the Dash file
-	err := dash.RunFile(ctx, dag.GraphQLClient(), schema, dashFile, false)
+	// Run the Bind file
+	err := bind.RunFile(ctx, dag.GraphQLClient(), schema, bindFile, false)
 
 	// Combine stdout and stderr output
 	var combined bytes.Buffer

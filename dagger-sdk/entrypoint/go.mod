@@ -1,13 +1,13 @@
-module github.com/vito/dash/dagger-sdk/entrypoint
+module github.com/vito/bind/dagger-sdk/entrypoint
 
 go 1.24.4
 
-replace github.com/vito/dash => ../../
+replace github.com/vito/bind => ../../
 
 require (
 	dagger.io/dagger v0.18.12
 	github.com/chewxy/hm v1.0.0
-	github.com/vito/dash v0.0.0-00010101000000-000000000000
+	github.com/vito/bind v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/sdk v1.37.0
 )

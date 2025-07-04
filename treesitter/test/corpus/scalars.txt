@@ -11,7 +11,7 @@ false
 
 ---
 
-(dash
+(bind
   (literal
     (null
       (null_token)))

@@ -5,33 +5,33 @@ import (
 	"fmt"
 	"path"
 
-	"dagger/dash/internal/dagger"
+	"dagger/bind/internal/dagger"
 )
 
 const Golang = "golang:1.24"
 
-type DashSdk struct {
-	DashRoot *dagger.Directory
+type BindSdk struct {
+	BindRoot *dagger.Directory
 }
 
 const (
 	ModSourceDirPath         = "/src"
-	EntrypointExecutableFile = "/dash"
+	EntrypointExecutableFile = "/bind"
 	EntrypointExecutablePath = "src/" + EntrypointExecutableFile
 	codegenBinPath           = "/codegen"
 )
 
 func New(
 	// +defaultPath="/"
-	dashRoot *dagger.Directory,
-) *DashSdk {
-	return &DashSdk{
-		DashRoot: dashRoot,
+	bindRoot *dagger.Directory,
+) *BindSdk {
+	return &BindSdk{
+		BindRoot: bindRoot,
 	}
 }
 
 // ModuleRuntime returns a container with the node entrypoint ready to be called.
-func (t *DashSdk) ModuleRuntime(
+func (t *BindSdk) ModuleRuntime(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
@@ -40,7 +40,7 @@ func (t *DashSdk) ModuleRuntime(
 }
 
 // Codegen returns the generated API client based on user's module
-func (t *DashSdk) Codegen(
+func (t *BindSdk) Codegen(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
@@ -55,7 +55,7 @@ func (t *DashSdk) Codegen(
 		WithVCSIgnoredPaths([]string{}), nil
 }
 
-func (t *DashSdk) CodegenBase(
+func (t *BindSdk) CodegenBase(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
@@ -76,36 +76,36 @@ func (t *DashSdk) CodegenBase(
 		WithMountedDirectory(ModSourceDirPath, modSource.ContextDirectory()).
 		WithFile("/introspection.json", introspectionJson).
 		WithWorkdir(modSrcDir).
-		WithEntrypoint([]string{"/dash", modSrcDir, modName}), nil
+		WithEntrypoint([]string{"/bind", modSrcDir, modName}), nil
 }
 
-func (t *DashSdk) Base() *dagger.Container {
+func (t *BindSdk) Base() *dagger.Container {
 	return dag.Container().
 		From("busybox").
-		WithFile("/dash", t.Entrypoint()).
-		WithEntrypoint([]string{"/dash"})
+		WithFile("/bind", t.Entrypoint()).
+		WithEntrypoint([]string{"/bind"})
 }
 
-func (t *DashSdk) Entrypoint() *dagger.File {
+func (t *BindSdk) Entrypoint() *dagger.File {
 	return t.goBase().
 		WithWorkdir("./entrypoint").
-		WithDirectory("/dash", t.DashRoot).
-		WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/dash=/dash"}).
+		WithDirectory("/bind", t.BindRoot).
+		WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/bind=/bind"}).
 		WithExec([]string{"go", "build", "-o", "/entrypoint"}).
 		File("/entrypoint")
 }
 
-func (t *DashSdk) Repl() *dagger.Container {
+func (t *BindSdk) Repl() *dagger.Container {
 	return t.Base().
-		WithDefaultTerminalCmd([]string{"/dash"}).
-		WithMountedCache("/xdg/home", dag.CacheVolume("dash-repl-home")).
+		WithDefaultTerminalCmd([]string{"/bind"}).
+		WithMountedCache("/xdg/home", dag.CacheVolume("bind-repl-home")).
 		WithEnvVariable("XDG_DATA_HOME", "/xdg/home").
 		Terminal(dagger.ContainerTerminalOpts{
 			ExperimentalPrivilegedNesting: true,
 		})
 }
 
-func (t *DashSdk) goBase() *dagger.Container {
+func (t *BindSdk) goBase() *dagger.Container {
 	return dag.Container().From(Golang).
 		WithEnvVariable("CGO_ENABLED", "0").
 		WithDirectory("/src", dag.CurrentModule().Source()).

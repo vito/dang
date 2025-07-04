@@ -1,0 +1,26 @@
+{
+  "name": "zed-bind",
+  "version": "0.1.0",
+  "description": "Bind language extension for Zed editor",
+  "main": "extension.toml",
+  "keywords": [
+    "zed",
+    "extension",
+    "bind",
+    "language",
+    "dagger",
+    "functional-programming",
+    "syntax-highlighting"
+  ],
+  "author": "Claude <noreply@anthropic.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vito/bind.git",
+    "directory": "zed-bind"
+  },
+  "bugs": {
+    "url": "https://github.com/vito/bind/issues"
+  },
+  "homepage": "https://github.com/vito/bind/tree/main/zed-bind"
+}

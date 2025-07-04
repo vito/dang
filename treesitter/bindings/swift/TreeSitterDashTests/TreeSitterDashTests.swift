@@ -1,12 +1,12 @@
 import XCTest
 import SwiftTreeSitter
-import TreeSitterDash
+import TreeSitterBind
 
-final class TreeSitterDashTests: XCTestCase {
+final class TreeSitterBindTests: XCTestCase {
     func testCanLoadGrammar() throws {
         let parser = Parser()
-        let language = Language(language: tree_sitter_dash())
+        let language = Language(language: tree_sitter_bind())
         XCTAssertNoThrow(try parser.setLanguage(language),
-                         "Error loading Dash grammar")
+                         "Error loading Bind grammar")
     }
 }

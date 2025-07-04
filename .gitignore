@@ -1,4 +1,4 @@
 Session.vim
-/dash
-/zed-dash/grammars/
+/bind
+/zed-bind/grammars/
 /.env

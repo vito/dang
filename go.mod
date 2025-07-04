@@ -1,4 +1,4 @@
-module github.com/vito/dash
+module github.com/vito/bind
 
 go 1.24.0
 

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Run all Dash test files in the tests directory
+# Run all Bind test files in the tests directory
 
 set -e -u
 
-echo "Running Dash Test Suite..."
+echo "Running Bind Test Suite..."
 echo "========================="
 
-# Change to the parent directory (where the dash binary is)
+# Change to the parent directory (where the bind binary is)
 cd "$(dirname "$0")/.."
 
 # Make sure we always run with a fresh build

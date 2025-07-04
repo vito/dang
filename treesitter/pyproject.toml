@@ -3,10 +3,10 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tree-sitter-dash"
-description = "Dash grammar for tree-sitter"
+name = "tree-sitter-bind"
+description = "Bind grammar for tree-sitter"
 version = "0.1.0"
-keywords = ["incremental", "parsing", "tree-sitter", "dash"]
+keywords = ["incremental", "parsing", "tree-sitter", "bind"]
 classifiers = [
   "Intended Audience :: Developers",
   "Topic :: Software Development :: Compilers",
@@ -19,7 +19,7 @@ license.text = "MIT"
 readme = "README.md"
 
 [project.urls]
-Homepage = "https://github.com/tree-sitter/tree-sitter-dash"
+Homepage = "https://github.com/tree-sitter/tree-sitter-bind"
 
 [project.optional-dependencies]
 core = ["tree-sitter~=0.24"]

@@ -1,5 +1,5 @@
 [1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
-  [2m[34m--> errors/multiple_type_errors.dash:2:20[0m
+  [2m[34m--> errors/multiple_type_errors.bd:2:20[0m
  [2m    |[0m
  [2m  1 | # Test multiple type errors in one file[0m
  [2m[34m[1m  2 | [0mpub bad_addition = "hello" + 42

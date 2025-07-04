@@ -1,7 +1,7 @@
-# dash
+# bind
 
 ```
-go run ./cmd/dash git.dash
+go run ./cmd/bind ./mod/apko/
 ```
 
 an experimental scripting language for Dagger

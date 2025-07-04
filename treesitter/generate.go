@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/vito/dash/pkg/dash"
+	"github.com/vito/bind/pkg/bind"
 )
 
 //go:generate go run .
@@ -20,5 +20,5 @@ func main() {
 
 	enc := json.NewEncoder(grammarFile)
 	enc.SetIndent("", "  ")
-	enc.Encode(dash.TreesitterGrammar())
+	enc.Encode(bind.TreesitterGrammar())
 }

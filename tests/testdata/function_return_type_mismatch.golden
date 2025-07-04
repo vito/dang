@@ -1,5 +1,5 @@
 [1m[31mError:[0m return type mismatch: declared String!, inferred Int!
-  [2m[34m--> errors/function_return_type_mismatch.dash:2:24[0m
+  [2m[34m--> errors/function_return_type_mismatch.bd:2:24[0m
  [2m    |[0m
  [2m  1 | # Test function return type mismatch[0m
  [2m[34m[1m  2 | [0mpub my_func(): String! { 42 }

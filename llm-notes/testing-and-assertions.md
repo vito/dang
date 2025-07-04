@@ -1,8 +1,8 @@
-# Testing and Assertions in Dash
+# Testing and Assertions in Bind
 
 ## Assert Syntax
-Use `assert { condition }` to test expected behaviors in Dash code:
-```dash
+Use `assert { condition }` to test expected behaviors in Bind code:
+```bind
 cls Person(name: String!) {
   pub greet: String! {
     "Hello, I'm " + self.name
@@ -23,12 +23,12 @@ assert { Person("Bob").name == "Bob" }
 ## Directory Module Testing
 The special `test_dir_module` test requires manual execution:
 ```bash
-go run ./cmd/dash ./tests/test_dir_module
+go run ./cmd/bind ./tests/test_dir_module
 ```
 This tests cross-file references and module boundaries, which the Go test suite doesn't cover.
 
 ## Test File Organization
-- Individual `.dash` files in `/tests/` are picked up by Go test runner
-- Use meaningful test file names like `test_constructor_syntax.dash`
+- Individual `.bd` files in `/tests/` are picked up by Go test runner
+- Use meaningful test file names like `test_constructor_syntax.bd`
 - Keep tests focused on specific features
 - Use comments to explain complex test scenarios

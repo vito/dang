@@ -1,0 +1,21 @@
+cls Bind {
+  pub source: Directory!
+
+  pub new(
+    source: Directory!
+  ): Bind! {
+    self.source = source
+    self
+  }
+
+  pub build(): File! {
+    go(source).binary("./cmd/bind")
+  }
+
+  pub test(): Container! {
+    go(source).base.
+      withDirectory("/src", source).
+      withWorkdir("/src").
+      withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true)
+  }
+}

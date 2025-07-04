@@ -1,8 +1,8 @@
 {
-  "name": "dash",
+  "name": "bind",
   "word": "word_token",
   "rules": {
-    "dash": {
+    "bind": {
       "type": "SEQ",
       "members": [
         {

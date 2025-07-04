@@ -1,0 +1,19 @@
+cls Bind {
+  pub value = 0
+
+  pub new(value: Int!): Bind! {
+    self.value = value
+    self
+  }
+
+  pub add(value: Int!): Bind! {
+    self.value += value
+    self
+  }
+
+  pub currentValue: File! {
+    file("value.json", json(self.value))
+  }
+}
+
+Bind.new(42).currentValue

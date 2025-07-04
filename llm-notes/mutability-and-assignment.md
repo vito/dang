@@ -1,12 +1,12 @@
-# Mutability and Assignment in Dash
+# Mutability and Assignment in Bind
 
 ## Overview
-Dash implements a **copy-on-write** mutability model where variables and objects can be reassigned, but modifications create copies rather than mutating the original data structures in place.
+Bind implements a **copy-on-write** mutability model where variables and objects can be reassigned, but modifications create copies rather than mutating the original data structures in place.
 
 ## Assignment Operators
 
 ### Grammar Rules
-From `pkg/dash/dash.peg`, Dash supports two assignment operators:
+From `pkg/bind/bind.peg`, Bind supports two assignment operators:
 - `=` (simple assignment)
 - `+=` (compound assignment for addition)
 
@@ -18,13 +18,13 @@ AssignOp <- PlusEqualToken { return "+", nil } / EqualToken { return "=", nil }
 ### Supported Assignment Patterns
 
 #### 1. Simple Variable Assignment (`=`)
-```dash
+```bind
 pub x = 42
 x = 100           # Reassigns x to 100
 ```
 
 #### 2. Compound Assignment (`+=`)
-```dash
+```bind
 pub x = 5
 x += 3            # x becomes 8
 
@@ -36,17 +36,17 @@ nums += [3, 4]    # nums becomes [1, 2, 3, 4]
 ```
 
 #### 3. Field Assignment
-```dash
+```bind
 pub obj = {{a: {{b: {{c: 42}}}}}}
 obj.a.b.c = 100   # Nested field assignment
 obj.a.b.c += 50   # Compound assignment on fields
 ```
 
 #### 4. Self Assignment in Classes
-```dash
+```bind
 cls MyClass {
   pub val = 1
-  
+
   pub incr: MyClass! {
     self.val += 1   # self. prefix required for reassignment
     self
@@ -62,8 +62,8 @@ Objects are **copied** when modified, not mutated in place. This provides:
 - **Safe concurrency**: No shared mutable state
 - **Predictable behavior**: Modifications don't affect other references
 
-### Example from `test_reassignment.dash`:
-```dash
+### Example from `test_reassignment.bd`:
+```bind
 pvt original = {{a: {{b: {{c: 1}}}}}}
 pvt modified = original
 modified.a.b.c = 2
@@ -73,7 +73,7 @@ assert { modified.a.b.c == 2 }  # Modified copy
 ```
 
 ### Block Scoping
-```dash
+```bind
 pub x = 100
 {
   x = 200         # Creates local copy
@@ -108,7 +108,7 @@ type Reassignment struct {
 
 ### Evaluation Process
 1. **Variable Assignment**: Updates environment directly
-2. **Field Assignment**: 
+2. **Field Assignment**:
    - Clones the root object
    - Traverses the path, cloning intermediate objects
    - Updates the final field
@@ -122,7 +122,7 @@ type Reassignment struct {
 ## Patterns and Best Practices
 
 ### 1. Fluent Interface Pattern
-```dash
+```bind
 cls Apko {
   pub withPackages(packages: [String!]!): Apko! {
     self.config.contents.packages += packages
@@ -132,7 +132,7 @@ cls Apko {
 ```
 
 ### 2. Builder Pattern
-```dash
+```bind
 cls MyClass {
   pub withName(name: String!): MyClass! {
     self.name = name
@@ -142,7 +142,7 @@ cls MyClass {
 ```
 
 ### 3. Accumulator Pattern
-```dash
+```bind
 pub counter = 0
 counter += 1
 counter += 2
@@ -154,7 +154,7 @@ counter += 3
 
 ### 1. Self Requirement
 Reassignment of class fields requires the `self.` prefix:
-```dash
+```bind
 self.field = value  # Required
 field = value       # Not valid for reassignment
 ```
@@ -174,8 +174,8 @@ Currently only `+=` is supported for compound assignment. Other operators like `
 
 ## Examples from Codebase
 
-### Real-world Usage (apko.dash)
-```dash
+### Real-world Usage (apko.bd)
+```bind
 pub withAlpine(branch: String! = "edge"): Apko! {
   self.config.contents.packages += ["apk-tools"]
   self.config.contents.repositories += [
@@ -186,7 +186,7 @@ pub withAlpine(branch: String! = "edge"): Apko! {
 ```
 
 ### Test Examples
-- `test_reassignment.dash`: Basic assignment patterns
-- `test_plus_equals.dash`: Compound assignment with various types
-- `test_self.dash`: Class field reassignment patterns
-- `test_self_method_execution.dash`: Method chaining with reassignment
+- `test_reassignment.bd`: Basic assignment patterns
+- `test_plus_equals.bd`: Compound assignment with various types
+- `test_self.bd`: Class field reassignment patterns
+- `test_self_method_execution.bd`: Method chaining with reassignment

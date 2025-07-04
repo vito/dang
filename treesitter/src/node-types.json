@@ -480,6 +480,47 @@
     }
   },
   {
+    "type": "bind",
+    "named": true,
+    "root": true,
+    "fields": {
+      "e": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "eles": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "block",
     "named": true,
     "fields": {
@@ -666,47 +707,6 @@
         "types": [
           {
             "type": "upper_id",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "dash",
-    "named": true,
-    "root": true,
-    "fields": {
-      "e": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          }
-        ]
-      },
-      "eles": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      },
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expr",
             "named": true
           }
         ]

@@ -1,10 +1,10 @@
 Read ./llm-notes/ to refresh your memory.
 
-You are developing Dash, a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Its grammar is defined in pkg/dash/dash.peg.
+You are developing Bind, a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Its grammar is defined in pkg/bind/bind.peg.
 
-NEVER GUESS DASH CODE SYNTAX. You do NOT know this language already. Study other Dash code, and the Dash grammar (pkg/dash/dash.peg) BEFORE attempting to write any Dash code.
+NEVER GUESS BIND CODE SYNTAX. You do NOT know this language already. Study other Bind code, and the Bind grammar (pkg/bind/bind.peg) BEFORE attempting to write any Bind code.
 
-Run ./tests/run_all_tests.sh to validate your changes. This is an all-in-one script that re-generates all generated code, re-builds the Dash binary, and runs all of the tests.
+Run ./tests/run_all_tests.sh to validate your changes. This is an all-in-one script that re-generates all generated code, re-builds the Bind binary, and runs all of the tests.
 
 Run ./hack/generate to re-generate all generated code without building or running the tests. DO NOT run generation commands yourself; trust the script.
 

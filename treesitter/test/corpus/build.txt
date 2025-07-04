@@ -2,7 +2,7 @@
 Build
 ===
 
-#!/usr/bin/env dash
+#!/usr/bin/env bind
 
 pvt src = host.directory(
   "."
@@ -20,15 +20,15 @@ pvt bin(src: Directory!): File! {
     withDirectory("/src", src).
     withWorkdir("/src").
     withEnvVariable("CGO_ENABLED", "0").
-    withExec(["go", "build", "-o", "/out/dash", "./cmd/dash"]).
-    file("/out/dash")
+    withExec(["go", "build", "-o", "/out/bind", "./cmd/bind"]).
+    file("/out/bind")
 }
 
 pvt test(bin: File!): String! {
   container.
     from("alpine").
-    withFile("/bin/dash", bin).
-    withExec(["dash", "--version"]).
+    withFile("/bin/bind", bin).
+    withExec(["bind", "--version"]).
     stdout
 }
 
@@ -36,7 +36,7 @@ print(test(bin(src)))
 
 ---
 
-(dash
+(bind
   (comment_token)
   (slot
     (value_only_slot

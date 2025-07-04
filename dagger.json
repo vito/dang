@@ -1,5 +1,5 @@
 {
-  "name": "dash",
+  "name": "bind",
   "engineVersion": "v0.18.12",
   "sdk": {
     "source": "./dagger-sdk"

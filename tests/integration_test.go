@@ -10,8 +10,8 @@ import (
 	"dagger.io/dagger/telemetry"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
-	"github.com/vito/dash/introspection"
-	"github.com/vito/dash/pkg/dash"
+	"github.com/vito/bind/introspection"
+	"github.com/vito/bind/pkg/bind"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -44,7 +44,7 @@ func TestIntegration(tT *testing.T) {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	// Find all test_*.dash files or test_* packages
+	// Find all test_*.bd files or test_* packages
 	paths, err := filepath.Glob("test_*")
 	if err != nil {
 		t.Fatalf("Failed to find test files: %v", err)
@@ -64,9 +64,9 @@ func TestIntegration(tT *testing.T) {
 				return
 			}
 			if fi.IsDir() {
-				_, err = dash.RunDir(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+				_, err = bind.RunDir(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
 			} else {
-				err = dash.RunFile(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+				err = bind.RunFile(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
 			}
 			if err != nil {
 				t.Errorf("Test %s failed: %v", testFileOrDir, err)

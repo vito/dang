@@ -1,5 +1,5 @@
 [1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
-  [2m[34m--> errors/conditional_type_mismatch.dash:2:42[0m
+  [2m[34m--> errors/conditional_type_mismatch.bd:2:42[0m
  [2m    |[0m
  [2m  1 | # Test conditional with mismatched branch types[0m
  [2m[34m[1m  2 | [0mpub result = if true { "string" } else { 123 }

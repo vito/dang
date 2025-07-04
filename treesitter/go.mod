@@ -1,4 +1,4 @@
-module github.com/tree-sitter/tree-sitter-dash
+module github.com/tree-sitter/tree-sitter-bind
 
 go 1.24.0
 
@@ -7,7 +7,7 @@ toolchain go1.24.4
 require (
 	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82
 	github.com/tree-sitter/go-tree-sitter v0.24.0
-	github.com/vito/dash v0.0.0-20231014151113-edf550c4deca
+	github.com/vito/bind v0.0.0-20231014151113-edf550c4deca
 )
 
 require (
@@ -28,4 +28,4 @@ require (
 	golang.org/x/sync v0.15.0 // indirect
 )
 
-replace github.com/vito/dash => ../
+replace github.com/vito/bind => ../

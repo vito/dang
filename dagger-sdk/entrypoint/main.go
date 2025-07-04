@@ -13,9 +13,9 @@ import (
 	"dagger.io/dagger/telemetry"
 	"github.com/chewxy/hm"
 
-	"github.com/vito/dash/introspection"
-	"github.com/vito/dash/pkg/dash"
-	"github.com/vito/dash/pkg/ioctx"
+	"github.com/vito/bind/introspection"
+	"github.com/vito/bind/pkg/bind"
+	"github.com/vito/bind/pkg/ioctx"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
@@ -29,7 +29,7 @@ func main() {
 
 	ctx = telemetry.InitEmbedded(ctx, resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String("dagger-dash-sdk"),
+		semconv.ServiceNameKey.String("dagger-bind-sdk"),
 	))
 	defer telemetry.Close()
 
@@ -104,7 +104,7 @@ func main() {
 func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) error {
 	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
 	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
-	env, err := dash.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
+	env, err := bind.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
 	if err != nil {
 		return fmt.Errorf("failed to run dir: %w", err)
 	}
@@ -139,8 +139,8 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	if err := dec.Decode(&parentState); err != nil {
 		return fmt.Errorf("failed to unmarshal parent JSON: %w", err)
 	}
-	parentModEnv := parentModBase.(dash.EvalEnv).Clone()
-	parentModType := parentModEnv.(*dash.ModuleValue).Mod
+	parentModEnv := parentModBase.(bind.EvalEnv).Clone()
+	parentModType := parentModEnv.(*bind.ModuleValue).Mod
 	for name, value := range parentState {
 		scheme, found := parentModType.SchemeOf(name)
 		if !found {
@@ -150,11 +150,11 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if !isMono {
 			return fmt.Errorf("non-monotype argument %s", name)
 		}
-		dashVal, err := anyToDash(ctx, env, value, fieldType)
+		bindVal, err := anyToBind(ctx, env, value, fieldType)
 		if err != nil {
-			return fmt.Errorf("failed to convert input argument %s to dash value: %w", name, err)
+			return fmt.Errorf("failed to convert input argument %s to bind value: %w", name, err)
 		}
-		parentModEnv.Set(name, dashVal)
+		parentModEnv.Set(name, bindVal)
 	}
 	if fnName == "" {
 		fnName = "new"
@@ -164,13 +164,13 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		return fmt.Errorf("unknown function: %s", fnName)
 	}
 
-	call := dash.Select{
-		Receiver: dash.ValueNode{Val: parentModEnv.(*dash.ModuleValue)},
+	call := bind.Select{
+		Receiver: bind.ValueNode{Val: parentModEnv.(*bind.ModuleValue)},
 		Field:    fnName,
 	}
-	var args dash.Record
-	fn := fnValue.(dash.FunctionValue)
-	for _, arg := range fn.FnType.Arg().(*dash.RecordType).Fields {
+	var args bind.Record
+	fn := fnValue.(bind.FunctionValue)
+	for _, arg := range fn.FnType.Arg().(*bind.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -185,13 +185,13 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if err := dec.Decode(&val); err != nil {
 			return fmt.Errorf("failed to unmarshal input argument %s: %w", arg.Key, err)
 		}
-		dashVal, err := anyToDash(ctx, env, val, argType)
+		bindVal, err := anyToBind(ctx, env, val, argType)
 		if err != nil {
-			return fmt.Errorf("failed to convert input argument %s to dash value: %w", arg.Key, err)
+			return fmt.Errorf("failed to convert input argument %s to bind value: %w", arg.Key, err)
 		}
-		args = append(args, dash.Keyed[dash.Node]{
+		args = append(args, bind.Keyed[bind.Node]{
 			Key:   arg.Key,
-			Value: dash.ValueNode{Val: dashVal},
+			Value: bind.ValueNode{Val: bindVal},
 		})
 	}
 	call.Args = &args
@@ -206,48 +206,48 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
-func anyToDash(ctx context.Context, env dash.EvalEnv, val any, fieldType hm.Type) (dash.Value, error) {
-	if nonNull, ok := fieldType.(dash.NonNullType); ok {
-		return anyToDash(ctx, env, val, nonNull.Type)
+func anyToBind(ctx context.Context, env bind.EvalEnv, val any, fieldType hm.Type) (bind.Value, error) {
+	if nonNull, ok := fieldType.(bind.NonNullType); ok {
+		return anyToBind(ctx, env, val, nonNull.Type)
 	}
 	switch v := val.(type) {
 	case string:
-		if modType, ok := fieldType.(*dash.Module); ok && modType != dash.StringType {
-			sel := dash.Select{
+		if modType, ok := fieldType.(*bind.Module); ok && modType != bind.StringType {
+			sel := bind.Select{
 				Field: fmt.Sprintf("load%sFromID", modType.Named),
-				Args: &dash.Record{
-					dash.Keyed[dash.Node]{
+				Args: &bind.Record{
+					bind.Keyed[bind.Node]{
 						Key:   "id",
-						Value: dash.String{Value: v},
+						Value: bind.String{Value: v},
 					},
 				},
 			}
 			return sel.Eval(ctx, env)
 		}
-		return dash.StringValue{Val: v}, nil
+		return bind.StringValue{Val: v}, nil
 	case int:
-		return dash.IntValue{Val: v}, nil
+		return bind.IntValue{Val: v}, nil
 	case json.Number:
 		// if strings.Contains(v.String(), ".") {
-		// 	return dash.FloatValue{Val: v.Float64()}, nil
+		// 	return bind.FloatValue{Val: v.Float64()}, nil
 		// }
 		i, err := v.Int64()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert json.Number to int64: %w", err)
 		}
-		return dash.IntValue{Val: int(i)}, nil
+		return bind.IntValue{Val: int(i)}, nil
 	case bool:
-		return dash.BoolValue{Val: v}, nil
+		return bind.BoolValue{Val: v}, nil
 	case []any:
-		listT, isList := fieldType.(dash.ListType)
+		listT, isList := fieldType.(bind.ListType)
 		if !isList {
 			return nil, fmt.Errorf("expected list type, got %T", fieldType)
 		}
-		vals := dash.ListValue{
+		vals := bind.ListValue{
 			ElemType: listT,
 		}
 		for _, item := range v {
-			val, err := anyToDash(ctx, env, item, listT.Type)
+			val, err := anyToBind(ctx, env, item, listT.Type)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert list item: %w", err)
 			}
@@ -260,7 +260,7 @@ func anyToDash(ctx context.Context, env dash.EvalEnv, val any, fieldType hm.Type
 	}
 }
 
-func initModule(dag *dagger.Client, env dash.EvalEnv) (*dagger.Module, error) {
+func initModule(dag *dagger.Client, env bind.EvalEnv) (*dagger.Module, error) {
 	dagMod := dag.Module()
 
 	// Handle module-level description if present
@@ -268,11 +268,11 @@ func initModule(dag *dagger.Client, env dash.EvalEnv) (*dagger.Module, error) {
 		dagMod = dagMod.WithDescription(descBinding.String())
 	}
 
-	binds := env.Bindings(dash.PublicVisibility)
+	binds := env.Bindings(bind.PublicVisibility)
 	for _, binding := range binds {
 		log.Println("Binding:", binding.Key)
 		switch val := binding.Value.(type) {
-		case *dash.ModuleValue:
+		case *bind.ModuleValue:
 			// Classes/objects - register as TypeDefs with their methods
 			objDef, err := createObjectTypeDef(dag, binding.Key, val)
 			if err != nil {
@@ -290,26 +290,26 @@ func initModule(dag *dagger.Client, env dash.EvalEnv) (*dagger.Module, error) {
 	return dagMod, nil
 }
 
-func createFunction(dag *dagger.Client, name string, fn dash.FunctionValue) (*dagger.Function, error) {
-	// Convert Dash function type to Dagger TypeDef
-	retTypeDef, err := dashTypeToTypeDef(dag, fn.FnType.Ret(false))
+func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*dagger.Function, error) {
+	// Convert Bind function type to Dagger TypeDef
+	retTypeDef, err := bindTypeToTypeDef(dag, fn.FnType.Ret(false))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn.FnType, err)
 	}
 
 	funDef := dag.Function(name, retTypeDef)
 
-	for _, arg := range fn.FnType.Arg().(*dash.RecordType).Fields {
+	for _, arg := range fn.FnType.Arg().(*bind.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
 		}
-		typeDef, err := dashTypeToTypeDef(dag, argType)
+		typeDef, err := bindTypeToTypeDef(dag, argType)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
 		argOpts := dagger.FunctionWithArgOpts{}
-		if _, isNonNull := argType.(dash.NonNullType); !isNonNull {
+		if _, isNonNull := argType.(bind.NonNullType); !isNonNull {
 			typeDef = typeDef.WithOptional(true)
 		}
 		// TODO: eval default?
@@ -326,11 +326,11 @@ func createFunction(dag *dagger.Client, name string, fn dash.FunctionValue) (*da
 	return funDef, nil
 }
 
-func createObjectTypeDef(dag *dagger.Client, name string, module *dash.ModuleValue) (*dagger.TypeDef, error) {
+func createObjectTypeDef(dag *dagger.Client, name string, module *bind.ModuleValue) (*dagger.TypeDef, error) {
 	objDef := dag.TypeDef().WithObject(name)
 
 	// Process public methods in the class
-	for _, binding := range module.Bindings(dash.PublicVisibility) {
+	for _, binding := range module.Bindings(bind.PublicVisibility) {
 		scheme, found := module.Mod.SchemeOf(binding.Key)
 		if !found {
 			return nil, fmt.Errorf("failed to find type scheme for %s", binding.Key)
@@ -340,7 +340,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dash.ModuleVal
 			return nil, fmt.Errorf("non-monotype method %s", binding.Key)
 		}
 		switch x := binding.Value.(type) {
-		case dash.FunctionValue:
+		case bind.FunctionValue:
 			fn := x
 			fnDef, err := createFunction(dag, binding.Key, fn)
 			if err != nil {
@@ -355,7 +355,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dash.ModuleVal
 				objDef = objDef.WithFunction(fnDef)
 			}
 		default:
-			fieldDef, err := dashTypeToTypeDef(dag, slotType)
+			fieldDef, err := bindTypeToTypeDef(dag, slotType)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create field %s: %w", binding.Key, err)
 			}
@@ -366,22 +366,22 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dash.ModuleVal
 	return objDef, nil
 }
 
-func dashTypeToTypeDef(dag *dagger.Client, dashType hm.Type) (*dagger.TypeDef, error) {
+func bindTypeToTypeDef(dag *dagger.Client, bindType hm.Type) (*dagger.TypeDef, error) {
 	def := dag.TypeDef()
 
-	switch t := dashType.(type) {
-	case dash.NonNullType:
+	switch t := bindType.(type) {
+	case bind.NonNullType:
 		// Handle non-null wrapper
-		return dashTypeToTypeDef(dag, t.Type)
+		return bindTypeToTypeDef(dag, t.Type)
 
-	case dash.ListType:
-		elemTypeDef, err := dashTypeToTypeDef(dag, t.Type)
+	case bind.ListType:
+		elemTypeDef, err := bindTypeToTypeDef(dag, t.Type)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert list element type: %w", err)
 		}
 		return def.WithListOf(elemTypeDef), nil
 
-	case *dash.Module:
+	case *bind.Module:
 		// Check for basic types and object/class types
 		switch t.Named {
 		case "String":
@@ -403,8 +403,8 @@ func dashTypeToTypeDef(dag *dagger.Client, dashType hm.Type) (*dagger.TypeDef, e
 	default:
 		// For type variables and other complex types, default to string for now
 		// TODO: Handle type variables more gracefully
-		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", dashType), "value", fmt.Sprintf("%s", dashType))
-		return nil, fmt.Errorf("unknown type: %T: %s", dashType, dashType)
+		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", bindType), "value", fmt.Sprintf("%s", bindType))
+		return nil, fmt.Errorf("unknown type: %T: %s", bindType, bindType)
 	}
 }
 

@@ -1,0 +1,59 @@
+# Sample Bind file for testing syntax highlighting
+
+# Variable declarations
+pub greeting = "Hello, Bind!"
+pub version = 1
+pub is_enabled = true
+pub nullable_value = null
+
+# Function definitions
+pub identity = \x -> x
+pub double = \n -> n * 2
+
+# Conditional expressions
+pub status = if is_enabled { "active" } else { "inactive" }
+
+# Let bindings
+pub computed = let
+  x = 10,
+  y = 20
+in x + y
+
+# Class definitions
+cls ContainerOps {
+  pub build(tag: String!): Container! {
+    container
+      .from("alpine:latest")
+      .withExec(["echo", tag])
+  }
+
+  pub test(): Container! {
+    build("test-image")
+      .withExec(["cat", "/etc/os-release"])
+  }
+}
+
+# Pattern matching (when implemented)
+pub process_result = match status with
+  | "active" -> "System is running"
+  | "inactive" -> "System is stopped"
+  | _ -> "Unknown status"
+
+# Lists and records
+pub numbers = [1, 2, 3, 4, 5]
+pub config = {
+  name: "bind-app",
+  port: 8080,
+  debug: true
+}
+
+# Complex expression combining features
+pub pipeline = let
+  image = container.from("node:18"),
+  app_dir = "/app"
+in
+  image
+    .withDirectory(app_dir, host.directory("."))
+    .withWorkdir(app_dir)
+    .withExec(["npm", "install"])
+    .withExec(["npm", "test"])

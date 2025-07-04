@@ -1,4 +1,4 @@
-module dagger/dash
+module dagger/bind
 
 go 1.24
 
