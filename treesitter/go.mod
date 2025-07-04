@@ -14,7 +14,6 @@ require (
 	dagger.io/dagger v0.18.12 // indirect
 	github.com/99designs/gqlgen v0.17.75 // indirect
 	github.com/Khan/genqlient v0.8.1 // indirect
-	github.com/chewxy/hm v1.0.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
@@ -24,7 +23,6 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.28 // indirect
-	github.com/xtgo/set v1.0.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect
 )
 
