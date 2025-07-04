@@ -153,7 +153,11 @@ func (t NonNullType) Name() string {
 }
 
 func (t NonNullType) Apply(subs Subs) Substitutable {
-	return NonNullType{t.Type.Apply(subs).(Type)}
+	applied := t.Type.Apply(subs).(Type)
+	if applied == t.Type {
+		return t
+	}
+	return NonNullType{applied}
 }
 
 func (t NonNullType) FreeTypeVar() TypeVarSet {

@@ -31,12 +31,13 @@ func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// left type with the right type.
 
 	// Unify types with subtyping support for nullable/NonNull compatibility
-	if _, err := hm.Unify(lt, rt); err != nil {
+	subs, err := hm.Unify(lt, rt)
+	if err != nil {
 		return nil, WrapInferError(err, d)
 	}
 
-	// Return the right type (the fallback value type)
-	return rt, nil
+	// Return the right type (the fallback value type) with substitutions applied
+	return rt.Apply(subs).(hm.Type), nil
 }
 
 func (d Default) DeclaredSymbols() []string {
@@ -142,10 +143,11 @@ func (a Addition) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := hm.Unify(lt, rt); err != nil {
+	subs, err := hm.Unify(lt, rt)
+	if err != nil {
 		return nil, WrapInferError(err, a)
 	}
-	return lt, nil
+	return lt.Apply(subs).(hm.Type), nil
 }
 
 func (a Addition) DeclaredSymbols() []string {
@@ -218,10 +220,11 @@ func (s Subtraction) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := hm.Unify(lt, rt); err != nil {
+	subs, err := hm.Unify(lt, rt)
+	if err != nil {
 		return nil, WrapInferError(err, s)
 	}
-	return lt, nil
+	return lt.Apply(subs).(hm.Type), nil
 }
 
 func (s Subtraction) DeclaredSymbols() []string {
@@ -275,10 +278,11 @@ func (m Multiplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := hm.Unify(lt, rt); err != nil {
+	subs, err := hm.Unify(lt, rt)
+	if err != nil {
 		return nil, WrapInferError(err, m)
 	}
-	return lt, nil
+	return lt.Apply(subs).(hm.Type), nil
 }
 
 func (m Multiplication) DeclaredSymbols() []string {
@@ -332,10 +336,11 @@ func (d Division) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := hm.Unify(lt, rt); err != nil {
+	subs, err := hm.Unify(lt, rt)
+	if err != nil {
 		return nil, WrapInferError(err, d)
 	}
-	return lt, nil
+	return lt.Apply(subs).(hm.Type), nil
 }
 
 func (d Division) DeclaredSymbols() []string {
@@ -392,10 +397,11 @@ func (m Modulo) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := hm.Unify(lt, rt); err != nil {
+	subs, err := hm.Unify(lt, rt)
+	if err != nil {
 		return nil, WrapInferError(err, m)
 	}
-	return lt, nil
+	return lt.Apply(subs).(hm.Type), nil
 }
 
 func (m Modulo) DeclaredSymbols() []string {

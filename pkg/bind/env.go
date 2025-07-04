@@ -178,7 +178,7 @@ func addBuiltinTypes(mod *Module) {
 var _ hm.Substitutable = (*Module)(nil)
 
 func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
-	if len(subs) == 0 {
+	if len(subs) == 0 || len(e.FreeTypeVar()) == 0 {
 		return e
 	}
 	retVal := e.Clone().(*Module)
@@ -218,9 +218,6 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 }
 
 func (e *Module) Clone() hm.Env {
-	if e.Named == "Int" {
-		panic("why?")
-	}
 	mod := NewModule(e.Named)
 	mod.Parent = e
 	return mod

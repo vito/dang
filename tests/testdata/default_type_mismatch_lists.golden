@@ -1,0 +1,8 @@
+[1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
+  [2m[34m--> errors/default_type_mismatch_lists.bd:2:19[0m
+ [2m    |[0m
+ [2m  1 | # This should fail: mixing String and Int lists in default operator[0m
+ [2m[34m[1m  2 | [0mpub result = [] ? ["foo"] ? [3]
+[2m                         [31m^^^^^^^^^^^^^[0m
+ [2m    |[0m
+
