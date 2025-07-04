@@ -42,9 +42,12 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 		}
 		if t == nil {
 			t = et
-		} else if _, err := hm.Unify(t, et); err != nil {
-			// TODO: is this right?
-			return nil, fmt.Errorf("unify index %d: %w", i, err)
+		} else {
+			subs, err := hm.Unify(t, et)
+			if err != nil {
+				return nil, fmt.Errorf("unify index %d: %w", i, err)
+			}
+			t = t.Apply(subs).(hm.Type)
 		}
 	}
 	return hm.NonNullType{Type: ListType{t}}, nil

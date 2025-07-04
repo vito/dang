@@ -60,9 +60,11 @@ func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		if i == 0 {
 			resultType = caseType
 		} else {
-			if _, err := hm.Unify(resultType, caseType); err != nil {
+			subs, err := hm.Unify(resultType, caseType)
+			if err != nil {
 				return nil, fmt.Errorf("Match.Infer: case %d type mismatch: %s != %s", i, resultType, caseType)
 			}
+			resultType = resultType.Apply(subs).(hm.Type)
 		}
 	}
 
