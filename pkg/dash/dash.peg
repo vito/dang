@@ -1,5 +1,7 @@
 {
   package dash
+
+  import "fmt"
 }
 
 Dash <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
@@ -17,7 +19,7 @@ CommaToken <- ','
 
 Expr <- Class / Slot / Reassignment / Form
 
-Form <- Conditional / Let / Lambda / Match / Assert / Infix / Term
+Form <- Conditional / Let / Lambda / Match / Assert / DefaultExpr / Term
 
 Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -226,115 +228,119 @@ TypeVariable <- v:[a-z] {
 
 BangToken <- '!'
 
-Infix <- Equality / Inequality / LessThanEqual / LessThan / GreaterThanEqual / GreaterThan / Default / Addition / Subtraction / Multiplication / Division / Modulo
-Default <- left:Term _ InterroToken _ right:Term {
+// Precedence levels from lowest to highest
+DefaultExpr <- left:EqualityExpr _ InterroToken _ right:DefaultExpr {
   return Default{
     Left: left.(Node),
     Right: right.(Node),
     Loc: c.Loc(),
   }, nil
-}
+} / EqualityExpr
+
+EqualityExpr <- left:EqualityExpr _ op:EqualityOp _ right:RelationalExpr {
+  switch op.(string) {
+  case "==":
+    return Equality{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case "!=":
+    return Inequality{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  default:
+    return nil, fmt.Errorf("unknown equality operator: %s", op.(string))
+  }
+} / RelationalExpr
+
+EqualityOp <- "==" { return "==", nil } / "!=" { return "!=", nil }
+
+RelationalExpr <- left:RelationalExpr _ op:RelationalOp _ right:AdditiveExpr {
+  switch op.(string) {
+  case "<":
+    return LessThan{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case "<=":
+    return LessThanEqual{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case ">":
+    return GreaterThan{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case ">=":
+    return GreaterThanEqual{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  default:
+    return nil, fmt.Errorf("unknown relational operator: %s", op.(string))
+  }
+} / AdditiveExpr
+
+RelationalOp <- "<=" { return "<=", nil } / ">=" { return ">=", nil } / "<" { return "<", nil } / ">" { return ">", nil }
+
+AdditiveExpr <- left:AdditiveExpr _ op:AdditiveOp _ right:MultiplicativeExpr {
+  switch op.(string) {
+  case "+":
+    return Addition{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case "-":
+    return Subtraction{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  default:
+    return nil, fmt.Errorf("unknown additive operator: %s", op.(string))
+  }
+} / MultiplicativeExpr
+
+AdditiveOp <- "+" { return "+", nil } / "-" { return "-", nil }
+
+MultiplicativeExpr <- left:MultiplicativeExpr _ op:MultiplicativeOp _ right:Term {
+  switch op.(string) {
+  case "*":
+    return Multiplication{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case "/":
+    return Division{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  case "%":
+    return Modulo{
+      Left: left.(Node),
+      Right: right.(Node),
+      Loc: c.Loc(),
+    }, nil
+  default:
+    return nil, fmt.Errorf("unknown multiplicative operator: %s", op.(string))
+  }
+} / Term
+
+MultiplicativeOp <- "*" { return "*", nil } / "/" { return "/", nil } / "%" { return "%", nil }
+
 InterroToken <- '?'
-
-Addition <- left:Term _ PlusToken _ right:Term {
-  return Addition{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-PlusToken <- '+'
-
-Subtraction <- left:Term _ MinusToken _ right:Term {
-  return Subtraction{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-MinusToken <- '-'
-
-Multiplication <- left:Term _ StarToken _ right:Term {
-  return Multiplication{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-StarToken <- '*'
-
-Division <- left:Term _ SlashToken _ right:Term {
-  return Division{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-SlashToken <- '/'
-
-Modulo <- left:Term _ PercentToken _ right:Term {
-  return Modulo{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-PercentToken <- '%' !(WordChar / '{')
-
-Equality <- left:Term _ DoubleEqualToken _ right:Term {
-  return Equality{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-DoubleEqualToken <- "=="
-
-Inequality <- left:Term _ NotEqualToken _ right:Term {
-  return Inequality{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-NotEqualToken <- "!="
-
-LessThanEqual <- left:Term _ LessEqualToken _ right:Term {
-  return LessThanEqual{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-LessEqualToken <- "<="
-
-LessThan <- left:Term _ LessToken _ right:Term {
-  return LessThan{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-LessToken <- '<'
 ReopenToken <- "<<"
-
-GreaterThanEqual <- left:Term _ GreaterEqualToken _ right:Term {
-  return GreaterThanEqual{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-GreaterEqualToken <- ">="
-
-GreaterThan <- left:Term _ GreaterToken _ right:Term {
-  return GreaterThan{
-    Left: left.(Node),
-    Right: right.(Node),
-    Loc: c.Loc(),
-  }, nil
-}
-GreaterToken <- '>'
 
 DotToken <- '.'
 

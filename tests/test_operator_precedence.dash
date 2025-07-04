@@ -1,0 +1,37 @@
+# Test operator precedence
+# Should follow standard precedence: * / % > + - > < <= > >= > == != > ?
+
+# Basic multiplication vs addition
+assert { 2 + 3 * 4 == 14 }    # Should be 2 + (3 * 4) = 14
+assert { 3 * 4 + 2 == 14 }    # Should be (3 * 4) + 2 = 14
+
+# Division vs addition
+assert { 10 + 8 / 2 == 14 }   # Should be 10 + (8 / 2) = 14
+assert { 8 / 2 + 10 == 14 }   # Should be (8 / 2) + 10 = 14
+
+# Modulo vs addition
+assert { 5 + 7 % 3 == 6 }     # Should be 5 + (7 % 3) = 6
+assert { 7 % 3 + 5 == 6 }     # Should be (7 % 3) + 5 = 6
+
+# Subtraction vs multiplication
+assert { 10 - 2 * 3 == 4 }    # Should be 10 - (2 * 3) = 4
+assert { 2 * 3 - 10 == 0 - 4 }   # Should be (2 * 3) - 10 = -4
+
+# Comparison vs arithmetic
+assert { 5 + 3 > 6 }          # Should be (5 + 3) > 6 = true
+assert { 10 - 2 < 5 * 2 }     # Should be (10 - 2) < (5 * 2) = true
+
+# Equality vs arithmetic
+assert { 2 + 2 == 4 }         # Should be (2 + 2) == 4 = true
+assert { 3 * 3 != 8 }         # Should be (3 * 3) != 8 = true
+
+# Default operator (lowest precedence)
+assert { 5 + 3 == 8 ? 42 == 42 }  # Should be ((5 + 3) == 8) ? (42 == 42) = true
+
+# Mixed precedence
+assert { 2 * 3 + 4 * 5 == 26 }    # Should be (2 * 3) + (4 * 5) = 26
+assert { 10 / 2 + 15 / 3 == 10 }  # Should be (10 / 2) + (15 / 3) = 10
+
+# Chained operations of same precedence (left associative)
+assert { 20 / 4 / 2 == 2 }         # Should be (20 / 4) / 2 = 2
+assert { 10 - 3 - 2 == 5 }         # Should be (10 - 3) - 2 = 5
