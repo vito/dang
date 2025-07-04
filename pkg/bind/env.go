@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 	"github.com/vito/bind/introspection"
 )
 

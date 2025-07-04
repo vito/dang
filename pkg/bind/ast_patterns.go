@@ -3,7 +3,7 @@ package bind
 import (
 	"fmt"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 )
 
 // Match represents a pattern matching expression

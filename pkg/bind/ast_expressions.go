@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 )
 
 // FunCall represents a function call expression

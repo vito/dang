@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 )
 
 type FunctionBase struct {

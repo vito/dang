@@ -3,7 +3,7 @@ package bind
 import (
 	"fmt"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 	"github.com/pkg/errors"
 )
 

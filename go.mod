@@ -8,7 +8,6 @@ require (
 	dagger.io/dagger v0.18.12
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.2.0
-	github.com/chewxy/hm v1.0.0
 	github.com/chzyer/readline v1.5.1
 	github.com/dagger/testctx v0.0.5
 	github.com/dagger/testctx/oteltest v0.0.3
@@ -53,7 +52,6 @@ require (
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.28 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	github.com/xtgo/set v1.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.12.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.12.2 // indirect

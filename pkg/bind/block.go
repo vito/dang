@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 )
 
 type Block struct {

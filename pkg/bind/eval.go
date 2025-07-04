@@ -13,7 +13,7 @@ import (
 
 	"dagger.io/dagger/querybuilder"
 	"github.com/Khan/genqlient/graphql"
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 	"github.com/kr/pretty"
 	"github.com/vito/bind/introspection"
 	"github.com/vito/bind/pkg/ioctx"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 )
 
 type SlotDecl struct {

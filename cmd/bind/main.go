@@ -10,7 +10,7 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/charmbracelet/fang"
-	"github.com/chewxy/hm"
+	"github.com/vito/bind/pkg/hm"
 	"github.com/chzyer/readline"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
