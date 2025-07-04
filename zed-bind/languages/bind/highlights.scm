@@ -7,8 +7,6 @@
   (type_token)
   (if_token)
   (else_token)
-  (let_token)
-  (in_token)
   (match_token)
   (with_token)
   (assert_token)
