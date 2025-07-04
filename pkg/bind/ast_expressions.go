@@ -821,16 +821,38 @@ func (t TypeHint) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 
-	// Unify the hint type (expected) with the expression type (provided)
-	// This allows type variables in exprType to be bound to concrete types in hintType
-	// and enables subtyping (e.g., Int! can be used where Int is expected)
-	subs, err := UnifyWithCompatibility(hintType, exprType)
+	// For type hints, we want to bind type variables from the expression to concrete types in the hint
+	// while allowing the hint to override things like nullability
+
+	// Try to extract the "core" types for unification (removing nullability wrappers)
+	exprCore := exprType
+	hintCore := hintType
+
+	// If expression is NonNull, extract the inner type for unification
+	if exprNonNull, ok := exprType.(NonNullType); ok {
+		exprCore = exprNonNull.Type
+	}
+
+	// If hint is NonNull, extract the inner type for unification
+	if hintNonNull, ok := hintType.(NonNullType); ok {
+		hintCore = hintNonNull.Type
+	}
+
+	// Try to unify the core types to bind type variables
+	if subs, err := hm.Unify(exprCore, hintCore); err == nil {
+		// Unification succeeded - apply substitutions to the hint and return it
+		// This allows the hint to override the expression's type (including nullability)
+		result := hintType.Apply(subs).(hm.Type)
+		return result, nil
+	}
+
+	// Core unification failed, try the original approach with subtyping
+	subs, err := UnifyWithCompatibility(exprType, hintType)
 	if err != nil {
 		return nil, NewInferError(fmt.Sprintf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 	}
 
 	// Apply substitutions to the hint type and return it
-	// This ensures we get the most specific type after unification
 	result := hintType.Apply(subs).(hm.Type)
 	return result, nil
 }

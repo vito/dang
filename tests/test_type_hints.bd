@@ -9,6 +9,10 @@ pub text = "hello" :: String!
 pub nullable_number = 42 :: Int
 pub nullable_empty_list = [] :: [String!]
 
+# Test case for the bug: empty list with nullable element type
+# This should work - type hint should bind the type variable to String
+pub empty_list_nullable_strings = [] :: [String]
+
 # Type hints on function calls
 pub getValue(): Int! { 100 }
 pub result = getValue() :: Int!
@@ -45,6 +49,7 @@ assert { simple_obj.name == "test" }
 assert { typed_empty_list == [] }
 assert { nullable_empty_list == [] }
 assert { nullable_number == 42 }
+assert { empty_list_nullable_strings == [] }
 # Nullable object test removed
 assert { nested_obj.items == ["hello", "world"] }
 assert { complex_obj.user.name == "Alice" }
