@@ -229,7 +229,7 @@ TypeVariable <- v:[a-z] {
 BangToken <- '!'
 
 // Precedence levels from lowest to highest
-DefaultExpr <- left:EqualityExpr _ InterroToken _ right:DefaultExpr {
+DefaultExpr <- left:(EqualityExpr / Term) _ InterroToken _ right:(DefaultExpr / Term) {
   return Default{
     Left: left.(Node),
     Right: right.(Node),
@@ -237,7 +237,7 @@ DefaultExpr <- left:EqualityExpr _ InterroToken _ right:DefaultExpr {
   }, nil
 } / EqualityExpr
 
-EqualityExpr <- left:EqualityExpr _ op:EqualityOp _ right:RelationalExpr {
+EqualityExpr <- left:(EqualityExpr / Term) _ op:EqualityOp _ right:(RelationalExpr / Term) {
   switch op.(string) {
   case "==":
     return Equality{
@@ -258,7 +258,7 @@ EqualityExpr <- left:EqualityExpr _ op:EqualityOp _ right:RelationalExpr {
 
 EqualityOp <- "==" { return "==", nil } / "!=" { return "!=", nil }
 
-RelationalExpr <- left:RelationalExpr _ op:RelationalOp _ right:AdditiveExpr {
+RelationalExpr <- left:(RelationalExpr / Term) _ op:RelationalOp _ right:(AdditiveExpr / Term) {
   switch op.(string) {
   case "<":
     return LessThan{
@@ -291,7 +291,7 @@ RelationalExpr <- left:RelationalExpr _ op:RelationalOp _ right:AdditiveExpr {
 
 RelationalOp <- "<=" { return "<=", nil } / ">=" { return ">=", nil } / "<" { return "<", nil } / ">" { return ">", nil }
 
-AdditiveExpr <- left:AdditiveExpr _ op:AdditiveOp _ right:MultiplicativeExpr {
+AdditiveExpr <- left:(AdditiveExpr / Term) _ op:AdditiveOp _ right:(MultiplicativeExpr / Term) {
   switch op.(string) {
   case "+":
     return Addition{
@@ -312,7 +312,7 @@ AdditiveExpr <- left:AdditiveExpr _ op:AdditiveOp _ right:MultiplicativeExpr {
 
 AdditiveOp <- "+" { return "+", nil } / "-" { return "-", nil }
 
-MultiplicativeExpr <- left:MultiplicativeExpr _ op:MultiplicativeOp _ right:Term {
+MultiplicativeExpr <- left:(MultiplicativeExpr / Term) _ op:MultiplicativeOp _ right:Term {
   switch op.(string) {
   case "*":
     return Multiplication{
@@ -335,7 +335,7 @@ MultiplicativeExpr <- left:MultiplicativeExpr _ op:MultiplicativeOp _ right:Term
   default:
     return nil, fmt.Errorf("unknown multiplicative operator: %s", op.(string))
   }
-} / Term
+}
 
 MultiplicativeOp <- "*" { return "*", nil } / "/" { return "/", nil } / "%" { return "%", nil }
 

@@ -34,7 +34,7 @@
         "named": true
       },
       {
-        "type": "infix",
+        "type": "default_expr",
         "named": true
       },
       {
@@ -90,23 +90,41 @@
     ]
   },
   {
-    "type": "addition",
+    "type": "additive_expr",
     "named": true,
     "fields": {
       "left": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
+          {
+            "type": "additive_expr",
+            "named": true
+          },
           {
             "type": "term",
             "named": true
           }
         ]
       },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "additive_op",
+            "named": true
+          }
+        ]
+      },
       "right": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
+          {
+            "type": "multiplicative_expr",
+            "named": true
+          },
           {
             "type": "term",
             "named": true
@@ -116,14 +134,19 @@
     },
     "children": {
       "multiple": false,
-      "required": true,
+      "required": false,
       "types": [
         {
-          "type": "plus_token",
+          "type": "multiplicative_expr",
           "named": true
         }
       ]
     }
+  },
+  {
+    "type": "additive_op",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "arg_type",
@@ -691,13 +714,17 @@
     }
   },
   {
-    "type": "default",
+    "type": "default_expr",
     "named": true,
     "fields": {
       "left": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
+          {
+            "type": "equality_expr",
+            "named": true
+          },
           {
             "type": "term",
             "named": true
@@ -706,8 +733,12 @@
       },
       "right": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
+          {
+            "type": "default_expr",
+            "named": true
+          },
           {
             "type": "term",
             "named": true
@@ -719,44 +750,12 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "equality_expr",
+          "named": true
+        },
         {
           "type": "interro_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "division",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "slash_token",
           "named": true
         }
       ]
@@ -789,23 +788,41 @@
     }
   },
   {
-    "type": "equality",
+    "type": "equality_expr",
     "named": true,
     "fields": {
       "left": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
+          {
+            "type": "equality_expr",
+            "named": true
+          },
           {
             "type": "term",
             "named": true
           }
         ]
       },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "equality_op",
+            "named": true
+          }
+        ]
+      },
       "right": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
+          {
+            "type": "relational_expr",
+            "named": true
+          },
           {
             "type": "term",
             "named": true
@@ -815,14 +832,19 @@
     },
     "children": {
       "multiple": false,
-      "required": true,
+      "required": false,
       "types": [
         {
-          "type": "double_equal_token",
+          "type": "relational_expr",
           "named": true
         }
       ]
     }
+  },
+  {
+    "type": "equality_op",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "escape_sequence",
@@ -844,78 +866,6 @@
     }
   },
   {
-    "type": "greater_than",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "greater_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "greater_than_equal",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "greater_equal_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "id",
     "named": true,
     "fields": {},
@@ -925,101 +875,6 @@
       "types": [
         {
           "type": "word_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "inequality",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "not_equal_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "infix",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "addition",
-          "named": true
-        },
-        {
-          "type": "default",
-          "named": true
-        },
-        {
-          "type": "division",
-          "named": true
-        },
-        {
-          "type": "equality",
-          "named": true
-        },
-        {
-          "type": "greater_than",
-          "named": true
-        },
-        {
-          "type": "greater_than_equal",
-          "named": true
-        },
-        {
-          "type": "inequality",
-          "named": true
-        },
-        {
-          "type": "less_than",
-          "named": true
-        },
-        {
-          "type": "less_than_equal",
-          "named": true
-        },
-        {
-          "type": "modulo",
-          "named": true
-        },
-        {
-          "type": "multiplication",
-          "named": true
-        },
-        {
-          "type": "subtraction",
           "named": true
         }
       ]
@@ -1201,78 +1056,6 @@
     "type": "lambda_token",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "less_than",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "less_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "less_than_equal",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "less_equal_token",
-          "named": true
-        }
-      ]
-    }
   },
   {
     "type": "let",
@@ -1538,7 +1321,7 @@
     }
   },
   {
-    "type": "modulo",
+    "type": "multiplicative_expr",
     "named": true,
     "fields": {
       "left": {
@@ -1546,7 +1329,21 @@
         "required": true,
         "types": [
           {
+            "type": "multiplicative_expr",
+            "named": true
+          },
+          {
             "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "multiplicative_op",
             "named": true
           }
         ]
@@ -1561,53 +1358,12 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "percent_token",
-          "named": true
-        }
-      ]
     }
   },
   {
-    "type": "multiplication",
+    "type": "multiplicative_op",
     "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "star_token",
-          "named": true
-        }
-      ]
-    }
+    "fields": {}
   },
   {
     "type": "named_type",
@@ -1790,11 +1546,6 @@
     }
   },
   {
-    "type": "percent_token",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "positional_value",
     "named": true,
     "fields": {
@@ -1871,6 +1622,65 @@
         ]
       }
     }
+  },
+  {
+    "type": "relational_expr",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "relational_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "relational_op",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "additive_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "additive_expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "relational_op",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "select_or_call",
@@ -1974,42 +1784,6 @@
       "types": [
         {
           "type": "escape_sequence",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "subtraction",
-    "named": true,
-    "fields": {
-      "left": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      },
-      "right": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "term",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "minus_token",
           "named": true
         }
       ]
@@ -2426,6 +2200,10 @@
     "named": false
   },
   {
+    "type": "!=",
+    "named": false
+  },
+  {
     "type": "\"",
     "named": false
   },
@@ -2442,11 +2220,47 @@
     "named": false
   },
   {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
     "type": "->",
     "named": false
   },
   {
+    "type": "/",
+    "named": false
+  },
+  {
     "type": "0",
+    "named": false
+  },
+  {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
+    "type": "==",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
     "named": false
   },
   {
@@ -2495,10 +2309,6 @@
     "named": true
   },
   {
-    "type": "double_equal_token",
-    "named": true
-  },
-  {
     "type": "else_token",
     "named": true
   },
@@ -2508,14 +2318,6 @@
   },
   {
     "type": "false_token",
-    "named": true
-  },
-  {
-    "type": "greater_equal_token",
-    "named": true
-  },
-  {
-    "type": "greater_token",
     "named": true
   },
   {
@@ -2535,14 +2337,6 @@
     "named": true
   },
   {
-    "type": "less_equal_token",
-    "named": true
-  },
-  {
-    "type": "less_token",
-    "named": true
-  },
-  {
     "type": "let_token",
     "named": true
   },
@@ -2551,15 +2345,7 @@
     "named": true
   },
   {
-    "type": "minus_token",
-    "named": true
-  },
-  {
     "type": "non_zero_decimal_digit",
-    "named": true
-  },
-  {
-    "type": "not_equal_token",
     "named": true
   },
   {
@@ -2568,10 +2354,6 @@
   },
   {
     "type": "plus_equal_token",
-    "named": true
-  },
-  {
-    "type": "plus_token",
     "named": true
   },
   {
@@ -2588,14 +2370,6 @@
   },
   {
     "type": "single_char_escape",
-    "named": true
-  },
-  {
-    "type": "slash_token",
-    "named": true
-  },
-  {
-    "type": "star_token",
     "named": true
   },
   {

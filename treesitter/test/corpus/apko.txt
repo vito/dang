@@ -214,21 +214,25 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
               (assign_op
                 (plus_equal_token))
               (list
-                (infix
-                  (addition
-                    (paren_form
-                      (infix
-                        (addition
-                          (literal
-                            (string))
-                          (plus_token)
-                          (symbol_or_call
-                            (symbol
-                              (id
-                                (word_token)))))))
-                    (plus_token)
-                    (literal
-                      (string))))
+                (default_expr
+                  (equality_expr
+                    (relational_expr
+                      (additive_expr
+                        (paren_form
+                          (default_expr
+                            (equality_expr
+                              (relational_expr
+                                (additive_expr
+                                  (literal
+                                    (string))
+                                  (additive_op)
+                                  (symbol_or_call
+                                    (symbol
+                                      (id
+                                        (word_token)))))))))
+                        (additive_op)
+                        (literal
+                          (string))))))
                 (sep)))
             (sep))))
       (sep)
