@@ -19,6 +19,15 @@ func Unify(t1, t2 Type) (Subs, error) {
 }
 
 func unify(t1, t2 Type) (Subs, error) {
+	// Handle type variables
+	if tv1, ok := t1.(TypeVariable); ok {
+		return bindVar(tv1, t2)
+	}
+
+	if tv2, ok := t2.(TypeVariable); ok {
+		return bindVar(tv2, t1)
+	}
+
 	// Handle non-null types
 	if nt1, ok := t1.(NonNullType); ok {
 		if nt2, ok := t2.(NonNullType); ok {
@@ -37,38 +46,36 @@ func unify(t1, t2 Type) (Subs, error) {
 		// return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
 	}
 
-	// Handle type variables
-	if tv1, ok := t1.(TypeVariable); ok {
-		return bindVar(tv1, t2)
-	}
+	// Handle composite types using Types() method
+	t1Types := t1.Types()
+	t2Types := t2.Types()
 
-	if tv2, ok := t2.(TypeVariable); ok {
-		return bindVar(tv2, t1)
-	}
-
-	// Handle function types
-	if ft1, ok := t1.(*FunctionType); ok {
-		if ft2, ok := t2.(*FunctionType); ok {
-			// Unify argument types
-			s1, err := unify(ft1.arg, ft2.arg)
-			if err != nil {
-				return nil, err
-			}
-
-			// Apply s1 to return types and unify
-			ret1 := ft1.ret.Apply(s1).(Type)
-			ret2 := ft2.ret.Apply(s1).(Type)
-			s2, err := unify(ret1, ret2)
-			if err != nil {
-				return nil, err
-			}
-
-			return s1.Compose(s2), nil
+	if t1Types != nil && t2Types != nil {
+		// Both have component types - check length and unify components
+		if len(t1Types) != len(t2Types) {
+			return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified (different arities)", t1, t2)}
 		}
-		return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
+
+		var subs Subs = NewSubs()
+		for i, comp1 := range t1Types {
+			comp2 := t2Types[i]
+			// Apply current substitutions to both components
+			comp1Applied := comp1.Apply(subs).(Type)
+			comp2Applied := comp2.Apply(subs).(Type)
+
+			// Unify the components
+			componentSubs, err := unify(comp1Applied, comp2Applied)
+			if err != nil {
+				return nil, err
+			}
+
+			// Compose the substitutions
+			subs = subs.Compose(componentSubs)
+		}
+		return subs, nil
 	}
 
-	// General case - use Type.Eq for any remaining types
+	// Fall back to Type.Eq for atomic types or when only one has component types
 	if t1.Eq(t2) {
 		return NewSubs(), nil
 	}
