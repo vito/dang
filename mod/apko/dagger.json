@@ -2,6 +2,6 @@
   "name": "apko",
   "engineVersion": "v0.16.3",
   "sdk": {
-    "source": "../dagger-sdk"
+    "source": "../../dagger-sdk"
   }
 }
