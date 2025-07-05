@@ -8,5 +8,5 @@ repository = "https://github.com/vito/bind"
 
 [grammars.bind]
 repository = "https://github.com/vito/bind"
-commit = "6fe787bc8eb7a6558aa80ad28dc30ca4e4d5881d"
+commit = "245235b05ab64f53df127479622a7e9e9c1b56c8"
 path = "treesitter"
