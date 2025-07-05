@@ -16,19 +16,19 @@ func (s Subs) Apply(t Type) Type {
 // Compose composes two substitutions
 func (s Subs) Compose(other Subs) Subs {
 	result := make(Subs)
-	
+
 	// Apply other to all types in s
 	for tv, t := range s {
 		result[tv] = t.Apply(other).(Type)
 	}
-	
+
 	// Add mappings from other that aren't in s
 	for tv, t := range other {
 		if _, exists := result[tv]; !exists {
 			result[tv] = t
 		}
 	}
-	
+
 	return result
 }
 

@@ -1,18 +1,24 @@
+# Dagger SDK directive for setting default paths
+directive @defaultPath(path: String!, ignore: [String!] = []) on ARGUMENT_DEFINITION
+
 type Bind {
   pub source: Directory!
 
   pub new(
-    source: Directory!
+    source: Directory! @defaultPath(
+      path: "/",
+      ignore: ["**/node_modules", "bin"]
+    )
   ): Bind! {
     self.source = source
     self
   }
 
-  pub build(): File! {
+  pub build: File! {
     go(source).binary("./cmd/bind")
   }
 
-  pub test(): Container! {
+  pub test: Container! {
     go(source).base.
       withDirectory("/src", source).
       withWorkdir("/src").

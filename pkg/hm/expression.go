@@ -48,7 +48,7 @@ type Lambda interface {
 // Let is an Expression/AST node that represents let polymorphism
 type Let interface {
 	Expression
-	Namer    // name of the bound variable
+	Namer            // name of the bound variable
 	Def() Expression // definition
 }
 

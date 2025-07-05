@@ -40,7 +40,7 @@ func (s *Scheme) Apply(subs Subs) Substitutable {
 			filteredSubs[tv] = t
 		}
 	}
-	
+
 	return &Scheme{
 		tvs: s.tvs,
 		t:   s.t.Apply(filteredSubs).(Type),
@@ -50,12 +50,12 @@ func (s *Scheme) Apply(subs Subs) Substitutable {
 // FreeTypeVar returns the free type variables in the scheme
 func (s *Scheme) FreeTypeVar() TypeVarSet {
 	ftvs := s.t.FreeTypeVar()
-	
+
 	// Remove bound variables
 	for _, tv := range s.tvs {
 		delete(ftvs, tv)
 	}
-	
+
 	return ftvs
 }
 
@@ -77,12 +77,12 @@ func (s *Scheme) String() string {
 	if len(s.tvs) == 0 {
 		return s.t.String()
 	}
-	
+
 	var tvStrs []string
 	for _, tv := range s.tvs {
 		tvStrs = append(tvStrs, tv.String())
 	}
-	
+
 	return fmt.Sprintf("forall %s. %s", joinStrings(tvStrs, " "), s.t.String())
 }
 
@@ -94,7 +94,7 @@ func joinStrings(strs []string, sep string) string {
 	if len(strs) == 1 {
 		return strs[0]
 	}
-	
+
 	result := strs[0]
 	for i := 1; i < len(strs); i++ {
 		result += sep + strs[i]

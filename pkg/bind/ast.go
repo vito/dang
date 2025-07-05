@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vito/bind/pkg/hm"
 	"github.com/vito/bind/introspection"
+	"github.com/vito/bind/pkg/hm"
 )
 
 type Node interface {

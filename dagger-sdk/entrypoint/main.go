@@ -312,6 +312,44 @@ func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*da
 		if _, isNonNull := argType.(hm.NonNullType); !isNonNull {
 			typeDef = typeDef.WithOptional(true)
 		}
+		
+		// Check for directives on this argument
+		for _, argDecl := range fn.ArgDecls {
+			if argDecl.Named == arg.Key {
+				for _, directive := range argDecl.Directives {
+					switch directive.Name {
+					case "defaultPath":
+						// Extract arguments from @defaultPath directive
+						if len(directive.Args) > 0 {
+							for _, directiveArg := range directive.Args {
+								switch directiveArg.Key {
+								case "path":
+									// Handle string literals in directive arguments
+									if strVal, ok := directiveArg.Value.(bind.String); ok {
+										argOpts.DefaultPath = strVal.Value
+									}
+								case "ignore":
+									// Handle ignore patterns as list of strings
+									if listVal, ok := directiveArg.Value.(bind.List); ok {
+										var ignorePatterns []string
+										for _, item := range listVal.Elements {
+											if strVal, ok := item.(bind.String); ok {
+												ignorePatterns = append(ignorePatterns, strVal.Value)
+											}
+										}
+										if len(ignorePatterns) > 0 {
+											argOpts.Ignore = ignorePatterns
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+				break
+			}
+		}
+		
 		// TODO: eval default?
 		// if def, hasDefault := fn.Defaults[arg.Key]; hasDefault {
 		// 	js, err := json.Marshal(def)

@@ -38,6 +38,13 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 			}
 		}
 
+		for _, directive := range arg.Directives {
+			_, err = directive.Infer(env, fresh)
+			if err != nil {
+				return nil, WrapInferError(err, arg.Value)
+			}
+		}
+
 		var finalArgType hm.Type
 		if definedArgType != nil && inferredValType != nil {
 			if !definedArgType.Eq(inferredValType) {
@@ -93,6 +100,7 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 		Closure:  env,
 		FnType:   fnType,
 		Defaults: defaults,
+		ArgDecls: f.Args, // Preserve original argument declarations with directives
 	}
 }
 
@@ -866,7 +874,7 @@ func (d *DirectiveDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 		}
 	}
-	
+
 	// Directive declarations don't have a meaningful runtime type
 	return hm.TypeVariable('d'), nil
 }
@@ -907,16 +915,16 @@ func (d DirectiveApplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, erro
 	if bindEnv, ok := env.(Env); ok {
 		directiveDecl, found := bindEnv.GetDirective(d.Name)
 		if !found {
-			return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
+			return nil, WrapInferError(fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name), d)
 		}
-		
+
 		// Validate arguments match the directive declaration
 		err := d.validateArguments(directiveDecl, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
+			return nil, WrapInferError(fmt.Errorf("DirectiveApplication.Infer: %w", err), d)
 		}
 	}
-	
+
 	// Directive applications don't have a meaningful type for inference
 	return hm.TypeVariable('d'), nil
 }
@@ -936,11 +944,11 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 		}
 		providedArgs[arg.Key] = arg.Value
 	}
-	
+
 	// Check each declared argument
 	for _, declArg := range decl.Args {
 		providedArg, provided := providedArgs[declArg.Named]
-		
+
 		if !provided {
 			// Check if argument has a default value
 			if declArg.Value == nil {
@@ -957,26 +965,26 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 			}
 			continue
 		}
-		
+
 		// Validate provided argument type matches declared type
 		if declArg.Type_ != nil {
 			expectedType, err := declArg.Type_.Infer(env, fresh)
 			if err != nil {
 				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Named, err)
 			}
-			
+
 			providedType, err := providedArg.Infer(env, fresh)
 			if err != nil {
 				return fmt.Errorf("failed to infer type for provided argument %q: %w", declArg.Named, err)
 			}
-			
+
 			// Use type unification instead of equality to allow non-null types to be provided where nullable types are expected
 			if _, err := hm.Unify(expectedType, providedType); err != nil {
 				return fmt.Errorf("argument %q type mismatch: expected %s, got %s", declArg.Named, expectedType, providedType)
 			}
 		}
 	}
-	
+
 	// Check for unexpected arguments
 	for argName := range providedArgs {
 		found := false
@@ -990,6 +998,6 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 			return fmt.Errorf("unexpected argument %q", argName)
 		}
 	}
-	
+
 	return nil
 }

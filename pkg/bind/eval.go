@@ -13,9 +13,9 @@ import (
 
 	"dagger.io/dagger/querybuilder"
 	"github.com/Khan/genqlient/graphql"
-	"github.com/vito/bind/pkg/hm"
 	"github.com/kr/pretty"
 	"github.com/vito/bind/introspection"
+	"github.com/vito/bind/pkg/hm"
 	"github.com/vito/bind/pkg/ioctx"
 )
 
@@ -551,6 +551,7 @@ type FunctionValue struct {
 	Closure  EvalEnv
 	FnType   *hm.FunctionType
 	Defaults map[string]Node // Map of argument name to default value expression
+	ArgDecls []SlotDecl      // Original argument declarations with directives
 }
 
 func (f FunctionValue) Type() hm.Type {
