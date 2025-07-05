@@ -179,6 +179,195 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 	return result, nil
 }
 
+// ClassifiedForms holds forms categorized by their compilation phase
+type ClassifiedForms struct {
+	Directives      []Node // DirectiveDecl (must be processed first)
+	Constants       []Node // SlotDecl with constant values (literals, no function calls)
+	Types           []Node // ClassDecl
+	Variables       []Node // SlotDecl with computed values (function calls, references)
+	Functions       []Node // FunDecl and SlotDecl with function bodies
+	NonDeclarations []Node // Everything else (assignments, expressions, etc.)
+}
+
+// classifyForms separates forms by their compilation phase requirements
+func classifyForms(forms []Node) ClassifiedForms {
+	var classified ClassifiedForms
+
+	for _, form := range forms {
+		switch f := form.(type) {
+		case *DirectiveDecl:
+			classified.Directives = append(classified.Directives, f)
+		case *ClassDecl:
+			classified.Types = append(classified.Types, f)
+		case SlotDecl:
+			if isConstantValue(f.Value) {
+				classified.Constants = append(classified.Constants, f)
+			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
+				// Treat SlotDecl with function bodies as functions for proper hoisting
+				classified.Functions = append(classified.Functions, f)
+			} else {
+				classified.Variables = append(classified.Variables, f)
+			}
+		case *FunDecl:
+			classified.Functions = append(classified.Functions, f)
+		default:
+			// All non-declarations (assignments, expressions, assertions, etc.)
+			classified.NonDeclarations = append(classified.NonDeclarations, form)
+		}
+	}
+
+	return classified
+}
+
+// PhaseRunner defines the operations needed to run compilation phases generically
+type PhaseRunner[E any, T any] struct {
+	env     E
+	fresh   hm.Fresher                                 // Only used for inference
+	inferOp func(Node, E, hm.Fresher) (T, error)      // Main operation (Infer or Eval)
+	hoistOp func(Node, E, hm.Fresher, int) error     // Optional hoisting operation (nil for eval)
+	ctx     context.Context                            // Only used for evaluation
+}
+
+// InferenceRunner creates a PhaseRunner for type inference
+func InferenceRunner(env hm.Env, fresh hm.Fresher) PhaseRunner[hm.Env, hm.Type] {
+	return PhaseRunner[hm.Env, hm.Type]{
+		env:   env,
+		fresh: fresh,
+		inferOp: func(node Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+			return node.Infer(env, fresh)
+		},
+		hoistOp: func(node Node, env hm.Env, fresh hm.Fresher, pass int) error {
+			if hoister, ok := node.(Hoister); ok {
+				return hoister.Hoist(env, fresh, pass)
+			}
+			return nil
+		},
+	}
+}
+
+// EvaluationRunner creates a PhaseRunner for evaluation
+func EvaluationRunner(ctx context.Context, env EvalEnv) PhaseRunner[EvalEnv, Value] {
+	return PhaseRunner[EvalEnv, Value]{
+		env: env,
+		ctx: ctx,
+		inferOp: func(node Node, env EvalEnv, _ hm.Fresher) (Value, error) {
+			return EvalNode(ctx, env, node)
+		},
+		hoistOp: nil, // No hoisting in evaluation
+	}
+}
+
+// runPhases executes all compilation phases generically
+func runPhases[E any, T any](forms []Node, runner PhaseRunner[E, T]) (T, error) {
+	var lastResult T
+	var err error
+	
+	// Phase 1: Classify forms by compilation phase
+	classified := classifyForms(forms)
+
+	// Phase 2: Process directives (must be available before any usage)
+	for _, form := range classified.Directives {
+		if runner.hoistOp != nil {
+			if err := runner.hoistOp(form, runner.env, runner.fresh, 0); err != nil {
+				return lastResult, fmt.Errorf("directive hoisting failed: %w", err)
+			}
+		}
+		lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+		if err != nil {
+			return lastResult, fmt.Errorf("directive processing failed: %w", err)
+		}
+	}
+
+	// Phase 3: Process constants (can be in any order, no dependencies)
+	for _, form := range classified.Constants {
+		lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+		if err != nil {
+			return lastResult, fmt.Errorf("constant processing failed: %w", err)
+		}
+	}
+
+	// Phase 4: Process types (classes) - use multi-pass hoisting if available
+	if runner.hoistOp != nil {
+		// Pass 0: Create classes
+		for _, form := range classified.Types {
+			if err := runner.hoistOp(form, runner.env, runner.fresh, 0); err != nil {
+				return lastResult, fmt.Errorf("type hoisting (pass 0) failed: %w", err)
+			}
+		}
+		// Pass 1: Infer class bodies
+		for _, form := range classified.Types {
+			if err := runner.hoistOp(form, runner.env, runner.fresh, 1); err != nil {
+				return lastResult, fmt.Errorf("type hoisting (pass 1) failed: %w", err)
+			}
+		}
+	}
+	for _, form := range classified.Types {
+		lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+		if err != nil {
+			return lastResult, fmt.Errorf("type processing failed: %w", err)
+		}
+	}
+
+	// Phase 5: Declare function signatures (hoist function declarations without bodies)
+	if runner.hoistOp != nil {
+		for _, form := range classified.Functions {
+			if err := runner.hoistOp(form, runner.env, runner.fresh, 0); err != nil {
+				return lastResult, fmt.Errorf("function signature hoisting failed: %w", err)
+			}
+		}
+	} else {
+		// For evaluation, process functions immediately (no hoisting)
+		for _, form := range classified.Functions {
+			lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+			if err != nil {
+				return lastResult, fmt.Errorf("function processing failed: %w", err)
+			}
+		}
+	}
+
+	// Phase 6: Process variables in dependency order (can now reference function signatures)
+	if len(classified.Variables) > 0 {
+		orderedVars, err := orderByDependencies(classified.Variables)
+		if err != nil {
+			return lastResult, fmt.Errorf("variable dependency ordering failed: %w", err)
+		}
+
+		for _, form := range orderedVars {
+			lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+			if err != nil {
+				return lastResult, fmt.Errorf("variable processing failed: %w", err)
+			}
+		}
+	}
+
+	// Phase 7: Process function bodies (can reference everything)
+	if runner.hoistOp != nil {
+		// For inference: do second pass hoisting and then process function bodies
+		for _, form := range classified.Functions {
+			if err := runner.hoistOp(form, runner.env, runner.fresh, 1); err != nil {
+				return lastResult, fmt.Errorf("function body hoisting failed: %w", err)
+			}
+		}
+		for _, form := range classified.Functions {
+			lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+			if err != nil {
+				return lastResult, fmt.Errorf("function processing failed: %w", err)
+			}
+		}
+	}
+	// For evaluation: functions were already processed in Phase 5, so skip Phase 7
+
+	// Phase 8: Process non-declarations in original order (can reference all declarations)
+	for _, form := range classified.NonDeclarations {
+		lastResult, err = runner.inferOp(form, runner.env, runner.fresh)
+		if err != nil {
+			return lastResult, fmt.Errorf("non-declaration processing failed: %w", err)
+		}
+	}
+
+	return lastResult, nil
+}
+
 // InferFormsWithPhases implements phased compilation:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
@@ -186,128 +375,9 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 // 4. Declare function signatures (without bodies)
 // 5. Typecheck variables in dependency order (can now reference function signatures)
 // 6. Typecheck function bodies last (can reference all package-level declarations)
-func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.Type, err error) {
-	// Phase 1: Separate declarations from non-declarations
-	var directives []Node      // DirectiveDecl (must be processed first)
-	var constants []Node       // SlotDecl with constant values (literals, no function calls)
-	var types []Node           // ClassDecl
-	var variables []Node       // SlotDecl with computed values (function calls, references)
-	var functions []Node       // FunDecl
-	var nonDeclarations []Node // Everything else (assignments, expressions, etc.)
-
-	for _, form := range forms {
-		switch f := form.(type) {
-		case *DirectiveDecl:
-			directives = append(directives, f)
-		case *ClassDecl:
-			types = append(types, f)
-		case SlotDecl:
-			if isConstantValue(f.Value) {
-				constants = append(constants, f)
-			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
-				// Treat SlotDecl with function bodies as functions for proper hoisting
-				functions = append(functions, f)
-			} else {
-				variables = append(variables, f)
-			}
-		case *FunDecl:
-			functions = append(functions, f)
-		default:
-			// All non-declarations (assignments, expressions, assertions, etc.)
-			nonDeclarations = append(nonDeclarations, form)
-		}
-	}
-
-	// Phase 2: Hoist and typecheck directives (must be available before any usage)
-	for _, form := range directives {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 0); err != nil {
-				return nil, fmt.Errorf("directive hoisting failed: %w", err)
-			}
-		}
-		lastT, err = form.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("directive inference failed: %w", err)
-		}
-	}
-
-	// Phase 3: Typecheck constants (can be in any order, no dependencies)
-	for _, form := range constants {
-		lastT, err = form.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("constant inference failed: %w", err)
-		}
-	}
-
-	// Phase 4: Typecheck types (classes) - use traditional hoisting
-	for _, form := range types {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 0); err != nil { // Pass 0: create classes
-				return nil, fmt.Errorf("type hoisting failed: %w", err)
-			}
-		}
-	}
-	for _, form := range types {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 1); err != nil { // Pass 1: infer class bodies
-				return nil, fmt.Errorf("type body inference failed: %w", err)
-			}
-		}
-	}
-	for _, form := range types {
-		lastT, err = form.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("variable inference failed: %w", err)
-		}
-	}
-
-	// Phase 5: Declare function signatures (hoist function declarations without bodies)
-	for _, form := range functions {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 0); err != nil { // Hoist function signatures
-				return nil, fmt.Errorf("function signature hoisting failed: %w", err)
-			}
-		}
-	}
-
-	// Phase 6: Typecheck variables in dependency order (can now reference function signatures)
-	if len(variables) > 0 {
-		orderedVars, err := orderByDependencies(variables)
-		if err != nil {
-			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
-		}
-
-		for _, form := range orderedVars {
-			lastT, err = form.Infer(env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("variable inference failed: %w", err)
-			}
-		}
-	}
-
-	// Phase 7: Typecheck function bodies (can reference everything)
-	for _, form := range functions {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 1); err != nil { // Infer function bodies
-				return nil, fmt.Errorf("function body inference failed: %w", err)
-			}
-		}
-		// Call Infer to complete the function's type inference
-		lastT, err = form.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("function inference failed: %w", err)
-		}
-	}
-
-	// Phase 8: Typecheck non-declarations in original order (can reference all declarations)
-	for _, form := range nonDeclarations {
-		lastT, err = form.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("non-declaration inference failed: %w", err)
-		}
-	}
-
-	return lastT, nil
+func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	runner := InferenceRunner(env, fresh)
+	return runPhases(forms, runner)
 }
 
 // isConstantValue determines if a value expression is a compile-time constant
@@ -327,95 +397,8 @@ func isConstantValue(value Node) bool {
 // EvaluateFormsWithPhases evaluates forms using the same phased approach as inference.
 // This ensures that constants, types, functions, and variables are evaluated in the correct order.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
-	// Phase 1: Separate declarations from non-declarations (same as inference)
-	var directives []Node      // DirectiveDecl (must be processed first)
-	var constants []Node       // SlotDecl with constant values
-	var types []Node           // ClassDecl
-	var variables []Node       // SlotDecl with computed values
-	var functions []Node       // FunDecl
-	var nonDeclarations []Node // Everything else (evaluated in original order)
-
-	for _, form := range forms {
-		switch f := form.(type) {
-		case *DirectiveDecl:
-			directives = append(directives, f)
-		case *ClassDecl:
-			types = append(types, f)
-		case SlotDecl:
-			if isConstantValue(f.Value) {
-				constants = append(constants, f)
-			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
-				// Treat SlotDecl with function bodies as functions for proper hoisting
-				functions = append(functions, f)
-			} else {
-				variables = append(variables, f)
-			}
-		case *FunDecl:
-			functions = append(functions, f)
-		default:
-			// All non-declarations (assignments, expressions, assertions, etc.)
-			nonDeclarations = append(nonDeclarations, form)
-		}
-	}
-
-	// Phase 2: Evaluate directives (must be available before any usage)
-	for _, form := range directives {
-		_, err := EvalNode(ctx, env, form)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Phase 3: Evaluate constants
-	for _, form := range constants {
-		_, err := EvalNode(ctx, env, form)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Phase 4: Evaluate types (classes)
-	for _, form := range types {
-		_, err := EvalNode(ctx, env, form)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Phase 5: Evaluate functions (establish function values in environment)
-	for _, form := range functions {
-		_, err := EvalNode(ctx, env, form)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Phase 6: Evaluate variables in dependency order
-	if len(variables) > 0 {
-		orderedVars, err := orderByDependencies(variables)
-		if err != nil {
-			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
-		}
-
-		for _, form := range orderedVars {
-			_, err := EvalNode(ctx, env, form)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// Phase 7: Evaluate non-declarations in original order (assignments, expressions, etc.)
-	var result Value = NullValue{}
-	for _, form := range nonDeclarations {
-		val, err := EvalNode(ctx, env, form)
-		if err != nil {
-			return nil, err
-		}
-		result = val
-	}
-
-	return result, nil
+	runner := EvaluationRunner(ctx, env)
+	return runPhases(forms, runner)
 }
 
 var _ hm.Inferer = Block{}
