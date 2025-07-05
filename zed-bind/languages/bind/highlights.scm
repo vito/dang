@@ -10,6 +10,8 @@
   (match_token)
   (with_token)
   (assert_token)
+  (directive_token)
+  (on_token)
 ] @keyword.control
 
 ;; Literals
@@ -21,6 +23,13 @@
 ;; Comments
 (comment_token) @comment.line
 (upper_token) @type
+
+;; Directives
+(directive_name) @function.macro
+(directive_application
+  (id) @function.macro)
+(directive_location
+  (upper_id) @constant.builtin)
 
 ;; Operators and punctuation
 [
@@ -36,6 +45,7 @@
   (comma_token)
   (dot_token)
 ] @punctuation.delimiter
+["@" "|"] @punctuation.special
 
 ;; Identifiers - using more generic patterns
 ; (symbol_or_call) @variable
