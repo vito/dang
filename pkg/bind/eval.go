@@ -714,11 +714,11 @@ func (b BuiltinFunction) String() string {
 
 // ConstructorFunction represents a class constructor that evaluates the class body when called
 type ConstructorFunction struct {
-	ClassName  string
-	ClassDecl  *ClassDecl
-	Parameters []SlotDecl
-	ClassType  *Module
-	FnType     *hm.FunctionType
+	ClassName      string
+	Parameters     []SlotDecl
+	ClassType      *Module
+	FnType         *hm.FunctionType
+	ClassBodyForms []Node // Only the forms that should be evaluated (excluding constructor params)
 }
 
 func (c *ConstructorFunction) Type() hm.Type {
@@ -757,28 +757,8 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		}
 	}
 
-	// Create a filtered class body that excludes constructor parameter slots
-	constructorParamNames := make(map[string]bool)
-	for _, param := range c.Parameters {
-		constructorParamNames[param.Named] = true
-	}
-	
-	// Filter out slots that are constructor parameters
-	filteredForms := make([]Node, 0, len(c.ClassDecl.Value.Forms))
-	for _, form := range c.ClassDecl.Value.Forms {
-		if slot, ok := form.(SlotDecl); ok {
-			// Skip non-function slots that are constructor parameters
-			if constructorParamNames[slot.Named] {
-				if _, isFun := slot.Value.(*FunDecl); !isFun {
-					continue // Skip this slot, it's a constructor parameter
-				}
-			}
-		}
-		filteredForms = append(filteredForms, form)
-	}
-
-	// Evaluate the filtered class body in the instance environment
-	_, err := EvaluateFormsWithPhases(ctx, filteredForms, instanceEnv)
+	// Evaluate the pre-filtered class body in the instance environment
+	_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
 	if err != nil {
 		return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
 	}

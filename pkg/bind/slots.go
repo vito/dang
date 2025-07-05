@@ -203,7 +203,7 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	class.Add("self", self)
 
 	// Create and add constructor function type to environment
-	constructorParams := c.extractConstructorParameters()
+	constructorParams, _ := c.extractConstructorParametersAndCleanBody()
 	constructorType := c.buildConstructorType(constructorParams, class, fresh)
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Named, constructorScheme)
@@ -248,7 +248,7 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	class.Add("self", self)
 
 	// Create a constructor function type based on public non-function slots
-	constructorParams := c.extractConstructorParameters()
+	constructorParams, _ := c.extractConstructorParametersAndCleanBody()
 	constructorType := c.buildConstructorType(constructorParams, class, fresh)
 
 	// Add the constructor function type to the environment
@@ -267,20 +267,28 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return constructorType, nil
 }
 
-// extractConstructorParameters extracts public non-function slots from a class body
-func (c *ClassDecl) extractConstructorParameters() []SlotDecl {
+// extractConstructorParametersAndCleanBody extracts public non-function slots as constructor 
+// parameters and returns the filtered forms that should be evaluated in the class body
+func (c *ClassDecl) extractConstructorParametersAndCleanBody() ([]SlotDecl, []Node) {
 	var params []SlotDecl
+	var filteredForms []Node
+	
 	for _, form := range c.Value.Forms {
 		if slot, ok := form.(SlotDecl); ok {
-			// Include public slots that are not functions
+			// Check if this is a public non-function slot (constructor parameter)
 			if slot.Visibility == PublicVisibility {
 				if _, isFun := slot.Value.(*FunDecl); !isFun {
+					// This is a constructor parameter - extract it but don't include in filtered forms
 					params = append(params, slot)
+					continue
 				}
 			}
 		}
+		// Include all other forms (functions, private slots, etc.)
+		filteredForms = append(filteredForms, form)
 	}
-	return params
+	
+	return params, filteredForms
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
@@ -330,15 +338,15 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
 	}
 
-	// Extract constructor parameters from public non-function slots
-	constructorParams := c.extractConstructorParameters()
+	// Extract constructor parameters and get filtered class body forms
+	constructorParams, filteredForms := c.extractConstructorParametersAndCleanBody()
 
 	// Create a constructor function that evaluates the class body when called
 	constructor := &ConstructorFunction{
-		ClassName:  c.Named,
-		ClassDecl:  c,
-		Parameters: constructorParams,
-		ClassType:  c.Inferred,
+		ClassName:      c.Named,
+		Parameters:     constructorParams,
+		ClassType:      c.Inferred,
+		ClassBodyForms: filteredForms,
 	}
 
 	// Add the constructor to the evaluation environment
