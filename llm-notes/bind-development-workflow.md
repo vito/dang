@@ -16,7 +16,7 @@
 6. **Test** - Run specific test, then full suite
 
 ## Language Design Principles
-- **Simplicity over complexity** - No operator precedence, use parentheses
+- **Simplicity over complexity** - Clear, readable syntax
 - **Type safety** - Hindley-Milner type system prevents runtime errors
 - **No invalid states** - Constructor functions ensure proper initialization
 - **GraphQL integration** - Types and APIs derived from GraphQL schema

@@ -16,8 +16,6 @@ ALWAYS start by adding a test if one is missing, and work towards making the tes
 
 Don't look for APIs - you won't find them in this codebase, because they're all derived from the Dagger GraphQL schema.
 
-This language favors simplicity over all else. For example, there is no operator precedence - just use parentheses.
-
 ## Taking Notes
 
 Take notes of important language design or implementation details as you learn them, beneath ./llm-notes/, with a name that will help your future self.
