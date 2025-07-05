@@ -188,6 +188,7 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 // 6. Typecheck function bodies last (can reference all package-level declarations)
 func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.Type, err error) {
 	// Phase 1: Separate declarations from non-declarations
+	var directives []Node      // DirectiveDecl (must be processed first)
 	var constants []Node       // SlotDecl with constant values (literals, no function calls)
 	var types []Node           // ClassDecl
 	var variables []Node       // SlotDecl with computed values (function calls, references)
@@ -196,6 +197,8 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 
 	for _, form := range forms {
 		switch f := form.(type) {
+		case *DirectiveDecl:
+			directives = append(directives, f)
 		case *ClassDecl:
 			types = append(types, f)
 		case SlotDecl:
@@ -215,7 +218,20 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 		}
 	}
 
-	// Phase 2: Typecheck constants (can be in any order, no dependencies)
+	// Phase 2: Hoist and typecheck directives (must be available before any usage)
+	for _, form := range directives {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(env, fresh, 0); err != nil {
+				return nil, fmt.Errorf("directive hoisting failed: %w", err)
+			}
+		}
+		lastT, err = form.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("directive inference failed: %w", err)
+		}
+	}
+
+	// Phase 3: Typecheck constants (can be in any order, no dependencies)
 	for _, form := range constants {
 		lastT, err = form.Infer(env, fresh)
 		if err != nil {
@@ -223,7 +239,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 		}
 	}
 
-	// Phase 3: Typecheck types (classes) - use traditional hoisting
+	// Phase 4: Typecheck types (classes) - use traditional hoisting
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil { // Pass 0: create classes
@@ -245,7 +261,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 		}
 	}
 
-	// Phase 4: Declare function signatures (hoist function declarations without bodies)
+	// Phase 5: Declare function signatures (hoist function declarations without bodies)
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil { // Hoist function signatures
@@ -254,7 +270,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 		}
 	}
 
-	// Phase 5: Typecheck variables in dependency order (can now reference function signatures)
+	// Phase 6: Typecheck variables in dependency order (can now reference function signatures)
 	if len(variables) > 0 {
 		orderedVars, err := orderByDependencies(variables)
 		if err != nil {
@@ -269,7 +285,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 		}
 	}
 
-	// Phase 6: Typecheck function bodies (can reference everything)
+	// Phase 7: Typecheck function bodies (can reference everything)
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 1); err != nil { // Infer function bodies
@@ -283,7 +299,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (lastT hm.
 		}
 	}
 
-	// Phase 7: Typecheck non-declarations in original order (can reference all declarations)
+	// Phase 8: Typecheck non-declarations in original order (can reference all declarations)
 	for _, form := range nonDeclarations {
 		lastT, err = form.Infer(env, fresh)
 		if err != nil {
@@ -312,6 +328,7 @@ func isConstantValue(value Node) bool {
 // This ensures that constants, types, functions, and variables are evaluated in the correct order.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	// Phase 1: Separate declarations from non-declarations (same as inference)
+	var directives []Node      // DirectiveDecl (must be processed first)
 	var constants []Node       // SlotDecl with constant values
 	var types []Node           // ClassDecl
 	var variables []Node       // SlotDecl with computed values
@@ -320,6 +337,8 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 
 	for _, form := range forms {
 		switch f := form.(type) {
+		case *DirectiveDecl:
+			directives = append(directives, f)
 		case *ClassDecl:
 			types = append(types, f)
 		case SlotDecl:
@@ -339,7 +358,15 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 2: Evaluate constants
+	// Phase 2: Evaluate directives (must be available before any usage)
+	for _, form := range directives {
+		_, err := EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Phase 3: Evaluate constants
 	for _, form := range constants {
 		_, err := EvalNode(ctx, env, form)
 		if err != nil {
@@ -347,7 +374,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 3: Evaluate types (classes)
+	// Phase 4: Evaluate types (classes)
 	for _, form := range types {
 		_, err := EvalNode(ctx, env, form)
 		if err != nil {
@@ -355,7 +382,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 4: Evaluate functions (establish function values in environment)
+	// Phase 5: Evaluate functions (establish function values in environment)
 	for _, form := range functions {
 		_, err := EvalNode(ctx, env, form)
 		if err != nil {
@@ -363,7 +390,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 5: Evaluate variables in dependency order
+	// Phase 6: Evaluate variables in dependency order
 	if len(variables) > 0 {
 		orderedVars, err := orderByDependencies(variables)
 		if err != nil {
@@ -378,7 +405,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 6: Evaluate non-declarations in original order (assignments, expressions, etc.)
+	// Phase 7: Evaluate non-declarations in original order (assignments, expressions, etc.)
 	var result Value = NullValue{}
 	for _, form := range nonDeclarations {
 		val, err := EvalNode(ctx, env, form)

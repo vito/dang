@@ -183,26 +183,29 @@ ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
 ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   return slot.(SlotDecl), nil
 }
-ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form {
+ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
+    Directives: sliceOf[DirectiveApplication](directives),
     Value: value.(Node),
     Loc: c.Loc(),
   }, nil
 }
-ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ block:Block {
+ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ block:Block {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
+    Directives: sliceOf[DirectiveApplication](directives),
     Value: block.(Block),
     Loc: c.Loc(),
   }, nil
 }
-ArgWithType <- name:Id _ ColonToken _ type_:Type {
+ArgWithType <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }

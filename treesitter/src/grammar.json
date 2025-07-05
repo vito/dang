@@ -874,6 +874,17 @@
           }
         },
         {
+          "type": "FIELD",
+          "name": "directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "directive_application"
+            }
+          }
+        },
+        {
           "type": "SYMBOL",
           "name": "equal_token"
         },
@@ -912,6 +923,17 @@
         },
         {
           "type": "FIELD",
+          "name": "directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "directive_application"
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "block",
           "content": {
             "type": "SYMBOL",
@@ -941,6 +963,17 @@
           "content": {
             "type": "SYMBOL",
             "name": "type"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "directive_application"
+            }
           }
         }
       ]

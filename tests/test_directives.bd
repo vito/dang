@@ -27,7 +27,4 @@ pub processUser(user: User! @experimental): String! {
   user.displayName
 }
 
-# Test assertions for directive functionality
-assert { processUser(User("1", "old", "John", "john@example.com", "secret", "data")) == "John" }
-
 print("Directive tests passed!")

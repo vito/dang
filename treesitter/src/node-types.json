@@ -270,6 +270,16 @@
           }
         ]
       },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -306,6 +316,16 @@
     "type": "arg_with_default",
     "named": true,
     "fields": {
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -356,6 +376,16 @@
     "type": "arg_with_type",
     "named": true,
     "fields": {
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,

@@ -970,7 +970,8 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 				return fmt.Errorf("failed to infer type for provided argument %q: %w", declArg.Named, err)
 			}
 			
-			if !expectedType.Eq(providedType) {
+			// Use type unification instead of equality to allow non-null types to be provided where nullable types are expected
+			if _, err := hm.Unify(expectedType, providedType); err != nil {
 				return fmt.Errorf("argument %q type mismatch: expected %s, got %s", declArg.Named, expectedType, providedType)
 			}
 		}
