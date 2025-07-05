@@ -9,6 +9,7 @@ Bind is a strongly typed scripting language with Hindley-Milner type inference, 
 - **Hindley-Milner inference**: Types are inferred automatically, no explicit annotations needed
 - **GraphQL integration**: Types derived from GraphQL schema introspection
 - **Null safety**: Explicit nullable (`Type`) vs non-null (`Type!`) types
+- **Flow-sensitive null checking**: Automatic type narrowing in conditional branches
 - **Primitive types**: `Int`, `String`, `Boolean`, `Null`
 - **Composite types**: Lists `[Type]`, Objects `{{field: Type}}`, Records
 

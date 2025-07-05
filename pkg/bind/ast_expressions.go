@@ -690,14 +690,26 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
 	}
 
-	thenType, err := c.Then.Infer(env, fresh)
+	// Analyze null assertions in the condition for flow-sensitive type checking
+	assertions := AnalyzeNullAssertions(c.Condition)
+	thenRefinements, elseRefinements, err := CreateTypeRefinements(assertions, env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("creating type refinements: %w", err)
+	}
+
+	// Apply type refinements to the then branch
+	thenEnv := ApplyTypeRefinements(env, thenRefinements)
+	thenType, err := c.Then.Infer(thenEnv, fresh)
 	if err != nil {
 		return nil, err
 	}
 
 	if c.Else != nil {
 		elseBlock := c.Else.(Block)
-		elseType, err := elseBlock.Infer(env, fresh)
+		
+		// Apply type refinements to the else branch
+		elseEnv := ApplyTypeRefinements(env, elseRefinements)
+		elseType, err := elseBlock.Infer(elseEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
