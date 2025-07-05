@@ -796,3 +796,199 @@ func (a Assert) nodeToString(node Node) string {
 		return fmt.Sprintf("%T", node)
 	}
 }
+
+// DirectiveLocation represents a valid location where a directive can be applied
+type DirectiveLocation struct {
+	Name string
+}
+
+// DirectiveDecl represents a directive declaration
+type DirectiveDecl struct {
+	Name      string
+	Args      []SlotDecl
+	Locations []DirectiveLocation
+	Loc       *SourceLocation
+}
+
+var _ Node = &DirectiveDecl{}
+var _ Declarer = &DirectiveDecl{}
+var _ Hoister = &DirectiveDecl{}
+
+func (d *DirectiveDecl) IsDeclarer() bool {
+	return true
+}
+
+func (d *DirectiveDecl) DeclaredSymbols() []string {
+	return []string{d.Name} // Directive declarations declare their name
+}
+
+func (d *DirectiveDecl) ReferencedSymbols() []string {
+	var symbols []string
+	// Add symbols from argument types and default values
+	for _, arg := range d.Args {
+		if arg.Type_ != nil {
+			symbols = append(symbols, arg.Type_.ReferencedSymbols()...)
+		}
+		if arg.Value != nil {
+			symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+		}
+	}
+	return symbols
+}
+
+func (d *DirectiveDecl) Body() hm.Expression { return nil }
+
+func (d *DirectiveDecl) GetSourceLocation() *SourceLocation { return d.Loc }
+
+func (d *DirectiveDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+	if pass == 0 {
+		// Add directive to environment during hoisting so it's available for later use
+		if bindEnv, ok := env.(Env); ok {
+			bindEnv.AddDirective(d.Name, d)
+		}
+	}
+	return nil
+}
+
+func (d *DirectiveDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Validate argument types
+	for _, arg := range d.Args {
+		if arg.Type_ != nil {
+			_, err := arg.Type_.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q type: %w", arg.Named, err)
+			}
+		}
+		if arg.Value != nil {
+			_, err := arg.Value.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q default value: %w", arg.Named, err)
+			}
+		}
+	}
+	
+	// Directive declarations don't have a meaningful runtime type
+	return hm.TypeVariable('d'), nil
+}
+
+func (d *DirectiveDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Directives are compile-time constructs, they don't evaluate to runtime values
+	return NullValue{}, nil
+}
+
+// DirectiveApplication represents the application of a directive
+type DirectiveApplication struct {
+	Name string
+	Args []Keyed[Node]
+	Loc  *SourceLocation
+}
+
+var _ Node = DirectiveApplication{}
+
+func (d DirectiveApplication) DeclaredSymbols() []string {
+	return nil // Directive applications don't declare anything
+}
+
+func (d DirectiveApplication) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, d.Name) // Reference the directive name
+	for _, arg := range d.Args {
+		symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+	}
+	return symbols
+}
+
+func (d DirectiveApplication) Body() hm.Expression { return nil }
+
+func (d DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Loc }
+
+func (d DirectiveApplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Validate that the directive exists and arguments match
+	if bindEnv, ok := env.(Env); ok {
+		directiveDecl, found := bindEnv.GetDirective(d.Name)
+		if !found {
+			return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
+		}
+		
+		// Validate arguments match the directive declaration
+		err := d.validateArguments(directiveDecl, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
+		}
+	}
+	
+	// Directive applications don't have a meaningful type for inference
+	return hm.TypeVariable('d'), nil
+}
+
+func (d DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Directive applications are compile-time annotations, no runtime evaluation
+	return NullValue{}, nil
+}
+
+// validateArguments checks that directive application arguments match the declaration
+func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env, fresh hm.Fresher) error {
+	// Create map of provided arguments
+	providedArgs := make(map[string]Node)
+	for _, arg := range d.Args {
+		if arg.Positional {
+			return fmt.Errorf("directive arguments must be named, not positional")
+		}
+		providedArgs[arg.Key] = arg.Value
+	}
+	
+	// Check each declared argument
+	for _, declArg := range decl.Args {
+		providedArg, provided := providedArgs[declArg.Named]
+		
+		if !provided {
+			// Check if argument has a default value
+			if declArg.Value == nil {
+				// Check if the argument type is nullable (optional)
+				if declArg.Type_ != nil {
+					argType, err := declArg.Type_.Infer(env, fresh)
+					if err != nil {
+						return err
+					}
+					if _, isNonNull := argType.(hm.NonNullType); isNonNull {
+						return fmt.Errorf("required argument %q not provided", declArg.Named)
+					}
+				}
+			}
+			continue
+		}
+		
+		// Validate provided argument type matches declared type
+		if declArg.Type_ != nil {
+			expectedType, err := declArg.Type_.Infer(env, fresh)
+			if err != nil {
+				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Named, err)
+			}
+			
+			providedType, err := providedArg.Infer(env, fresh)
+			if err != nil {
+				return fmt.Errorf("failed to infer type for provided argument %q: %w", declArg.Named, err)
+			}
+			
+			if !expectedType.Eq(providedType) {
+				return fmt.Errorf("argument %q type mismatch: expected %s, got %s", declArg.Named, expectedType, providedType)
+			}
+		}
+	}
+	
+	// Check for unexpected arguments
+	for argName := range providedArgs {
+		found := false
+		for _, declArg := range decl.Args {
+			if declArg.Named == argName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unexpected argument %q", argName)
+		}
+	}
+	
+	return nil
+}

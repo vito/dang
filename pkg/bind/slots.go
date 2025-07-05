@@ -12,6 +12,7 @@ type SlotDecl struct {
 	Type_      TypeNode
 	Value      Node
 	Visibility Visibility
+	Directives []DirectiveApplication
 	Loc        *SourceLocation
 }
 
@@ -32,10 +33,17 @@ func (s SlotDecl) DeclaredSymbols() []string {
 }
 
 func (s SlotDecl) ReferencedSymbols() []string {
+	var symbols []string
 	if s.Value != nil {
-		return s.Value.ReferencedSymbols()
+		symbols = append(symbols, s.Value.ReferencedSymbols()...)
 	}
-	return nil
+	if s.Type_ != nil {
+		symbols = append(symbols, s.Type_.ReferencedSymbols()...)
+	}
+	for _, directive := range s.Directives {
+		symbols = append(symbols, directive.ReferencedSymbols()...)
+	}
+	return symbols
 }
 
 func (s SlotDecl) Body() hm.Expression {
@@ -106,6 +114,14 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 	}
 
+	// Validate directive applications
+	for _, directive := range s.Directives {
+		_, err := directive.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
+		}
+	}
+
 	env.Add(s.Named, hm.NewScheme(nil, definedType))
 	return definedType, nil
 }
@@ -136,6 +152,7 @@ type ClassDecl struct {
 	Named      string
 	Value      Block
 	Visibility Visibility
+	Directives []DirectiveApplication
 	Loc        *SourceLocation
 
 	Inferred *Module
@@ -153,8 +170,14 @@ func (c *ClassDecl) DeclaredSymbols() []string {
 }
 
 func (c *ClassDecl) ReferencedSymbols() []string {
+	var symbols []string
 	// Class declarations reference symbols from their body (the Block)
-	return c.Value.ReferencedSymbols()
+	symbols = append(symbols, c.Value.ReferencedSymbols()...)
+	// And from directive applications
+	for _, directive := range c.Directives {
+		symbols = append(symbols, directive.ReferencedSymbols()...)
+	}
+	return symbols
 }
 
 func (c *ClassDecl) Body() hm.Expression { return c.Value }
@@ -219,6 +242,14 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
 	env.Add(c.Named, self)
+
+	// Validate directive applications
+	for _, directive := range c.Directives {
+		_, err := directive.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
+		}
+	}
 
 	c.Inferred = class.(*Module)
 	return class, nil

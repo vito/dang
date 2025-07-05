@@ -8,6 +8,10 @@
         "named": true
       },
       {
+        "type": "directive_decl",
+        "named": true
+      },
+      {
         "type": "form",
         "named": true
       },
@@ -609,12 +613,32 @@
     "type": "class",
     "named": true,
     "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "block": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -759,6 +783,154 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "directive_application",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "directive_decl",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
+      "locations": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "directive_locations",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "directive_name",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "directive_token",
+          "named": true
+        },
+        {
+          "type": "on_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "directive_location",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "upper_id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "directive_locations",
+    "named": true,
+    "fields": {
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "directive_location",
+            "named": true
+          }
+        ]
+      },
+      "loc": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_location",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_location",
+            "named": true
+          },
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "directive_name",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1881,6 +2053,16 @@
     "type": "type_and_args_and_block_slot",
     "named": true,
     "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "args": {
         "multiple": false,
         "required": true,
@@ -1897,6 +2079,16 @@
         "types": [
           {
             "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -1947,12 +2139,32 @@
     "type": "type_and_block_slot",
     "named": true,
     "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "block": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -2003,6 +2215,26 @@
     "type": "type_and_value_slot",
     "named": true,
     "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -2099,6 +2331,26 @@
     "type": "type_only_slot",
     "named": true,
     "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -2180,6 +2432,26 @@
     "type": "value_only_slot",
     "named": true,
     "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -2326,6 +2598,10 @@
     "named": false
   },
   {
+    "type": "@",
+    "named": false
+  },
+  {
     "type": "[",
     "named": false
   },
@@ -2360,6 +2636,10 @@
   },
   {
     "type": "decimal_digit",
+    "named": true
+  },
+  {
+    "type": "directive_token",
     "named": true
   },
   {
@@ -2408,6 +2688,10 @@
   },
   {
     "type": "null_token",
+    "named": true
+  },
+  {
+    "type": "on_token",
     "named": true
   },
   {
@@ -2460,6 +2744,10 @@
   },
   {
     "type": "{{",
+    "named": false
+  },
+  {
+    "type": "|",
     "named": false
   },
   {

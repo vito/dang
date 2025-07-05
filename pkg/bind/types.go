@@ -10,6 +10,7 @@ type Type = hm.Type
 
 type TypeNode interface {
 	hm.Inferer
+	ReferencedSymbols() []string
 }
 
 type NamedTypeNode struct {
@@ -17,6 +18,13 @@ type NamedTypeNode struct {
 }
 
 var _ TypeNode = NamedTypeNode{}
+
+func (t NamedTypeNode) ReferencedSymbols() []string {
+	if t.Named == "" {
+		return nil
+	}
+	return []string{t.Named}
+}
 
 type UnresolvedTypeError struct {
 	Name string
@@ -47,6 +55,10 @@ type ListTypeNode struct {
 }
 
 var _ TypeNode = ListTypeNode{}
+
+func (t ListTypeNode) ReferencedSymbols() []string {
+	return t.Elem.ReferencedSymbols()
+}
 
 func (t ListTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	e, err := t.Elem.Infer(env, fresh)
@@ -261,6 +273,10 @@ type NonNullTypeNode struct {
 
 var _ TypeNode = NonNullTypeNode{}
 
+func (t NonNullTypeNode) ReferencedSymbols() []string {
+	return t.Elem.ReferencedSymbols()
+}
+
 func (t NonNullTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	e, err := t.Elem.Infer(env, fresh)
 	if err != nil {
@@ -275,6 +291,14 @@ type VariableTypeNode struct {
 
 var _ TypeNode = VariableTypeNode{}
 
+func (t VariableTypeNode) ReferencedSymbols() []string {
+	return nil // Type variables don't reference other symbols
+}
+
+func (t VariableTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return hm.TypeVariable(t.Name), nil
+}
+
 type ObjectTypeField struct {
 	Key  string
 	Type TypeNode
@@ -285,6 +309,14 @@ type ObjectTypeNode struct {
 }
 
 var _ TypeNode = ObjectTypeNode{}
+
+func (t ObjectTypeNode) ReferencedSymbols() []string {
+	var symbols []string
+	for _, field := range t.Fields {
+		symbols = append(symbols, field.Type.ReferencedSymbols()...)
+	}
+	return symbols
+}
 
 func (t ObjectTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewModule("")
@@ -299,17 +331,28 @@ func (t ObjectTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return mod, nil
 }
 
-func (t VariableTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// TODO unsure if this works
-	return hm.TypeVariable(t.Name), nil
-}
-
 type FunTypeNode struct {
 	Args []SlotDecl
 	Ret  TypeNode
 }
 
 var _ TypeNode = FunTypeNode{}
+
+func (t FunTypeNode) ReferencedSymbols() []string {
+	var symbols []string
+	for _, arg := range t.Args {
+		if arg.Type_ != nil {
+			symbols = append(symbols, arg.Type_.ReferencedSymbols()...)
+		}
+		if arg.Value != nil {
+			symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+		}
+	}
+	if t.Ret != nil {
+		symbols = append(symbols, t.Ret.ReferencedSymbols()...)
+	}
+	return symbols
+}
 
 func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	args := make([]Keyed[*hm.Scheme], len(t.Args))

@@ -16,6 +16,8 @@ type Env interface {
 	NamedType(string) (Env, bool)
 	AddClass(string, Env)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
+	AddDirective(string, *DirectiveDecl)
+	GetDirective(string) (*DirectiveDecl, bool)
 }
 
 // TODO: is this just ClassType? are Classes just named Envs?
@@ -24,8 +26,9 @@ type Module struct {
 
 	Parent Env
 
-	classes map[string]Env
-	vars    map[string]*hm.Scheme
+	classes    map[string]Env
+	vars       map[string]*hm.Scheme
+	directives map[string]*DirectiveDecl
 }
 
 //	type CompositeModule struct {
@@ -33,9 +36,10 @@ type Module struct {
 //	}
 func NewModule(name string) *Module {
 	env := &Module{
-		Named:   name,
-		classes: make(map[string]Env),
-		vars:    make(map[string]*hm.Scheme),
+		Named:      name,
+		classes:    make(map[string]Env),
+		vars:       make(map[string]*hm.Scheme),
+		directives: make(map[string]*DirectiveDecl),
 	}
 	return env
 }
@@ -225,6 +229,21 @@ func (e *Module) Clone() hm.Env {
 
 func (e *Module) AddClass(name string, c Env) {
 	e.classes[name] = c
+}
+
+func (e *Module) AddDirective(name string, directive *DirectiveDecl) {
+	e.directives[name] = directive
+}
+
+func (e *Module) GetDirective(name string) (*DirectiveDecl, bool) {
+	directive, ok := e.directives[name]
+	if ok {
+		return directive, ok
+	}
+	if e.Parent != nil {
+		return e.Parent.GetDirective(name)
+	}
+	return nil, false
 }
 
 func (e *Module) NamedType(name string) (Env, bool) {

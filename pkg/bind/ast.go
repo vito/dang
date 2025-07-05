@@ -388,6 +388,21 @@ func (c *CompositeModule) AddClass(name string, class Env) {
 	c.primary.AddClass(name, class)
 }
 
+// AddDirective adds a directive to the primary environment
+func (c *CompositeModule) AddDirective(name string, directive *DirectiveDecl) {
+	c.primary.AddDirective(name, directive)
+}
+
+// GetDirective gets a directive from either environment
+func (c *CompositeModule) GetDirective(name string) (*DirectiveDecl, bool) {
+	// First check the primary environment (reopened module)
+	if directive, found := c.primary.GetDirective(name); found {
+		return directive, true
+	}
+	// Then check the lexical environment (current scope)
+	return c.lexical.GetDirective(name)
+}
+
 // nodeToString converts a Node to a readable string representation for debugging
 func nodeToString(node Node) string {
 	switch n := node.(type) {

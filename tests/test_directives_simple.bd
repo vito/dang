@@ -1,0 +1,10 @@
+# Test basic directive declarations only
+
+# Test basic directive declaration
+directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | OBJECT
+
+# Test simple directive with no arguments
+directive @experimental on FIELD_DEFINITION
+
+# Test basic directive validation passes
+print("Directive declarations successful!")

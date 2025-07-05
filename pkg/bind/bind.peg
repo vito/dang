@@ -17,7 +17,7 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Class / Slot / Reassignment / Form
+Expr <- Class / Slot / DirectiveDecl / Reassignment / Form
 
 Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
@@ -71,11 +71,12 @@ SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
   }
 }
 
-Class <- TypeToken _ name:Id _ block:Block {
+Class <- TypeToken _ name:Id directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
   return &ClassDecl{
     Named: name.(string),
     Value: block.(Block),
     Visibility: PublicVisibility, // TODO
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -87,35 +88,38 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form {
+TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form directives:(_ app:DirectiveApplication { return app, nil })* {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Value: value.(Node),
     Visibility: vis.(Visibility),
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
 
-ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form {
+ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form directives:(_ app:DirectiveApplication { return app, nil })* {
   return SlotDecl{
     Named: name.(string),
     Value: val.(Node),
     Visibility: vis.(Visibility),
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type {
+TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
   return SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block {
+TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
   return SlotDecl{
     Named: name.(string),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
@@ -130,11 +134,12 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block {
+TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
   return SlotDecl{
     Named: name.(string),
     Type_: FunTypeNode{args.([]SlotDecl), type_.(TypeNode)},
@@ -149,6 +154,7 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
+    Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -164,7 +170,7 @@ WordToken <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
 }
 WordChar <- [a-zA-Z0-9_]
 UpperId <- UpperToken
-UpperToken <- [A-Z][a-zA-Z0-9]* {
+UpperToken <- [A-Z][a-zA-Z0-9_]* {
   return string(c.text), nil
 }
 
@@ -599,3 +605,43 @@ Reopen <- name:Id _ ReopenToken _ b:Block {
     Loc: c.Loc(),
   }, nil
 }
+
+DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken _ locations:DirectiveLocations {
+  var argTypes []SlotDecl
+  if args != nil {
+    argTypes = args.([]SlotDecl)
+  }
+  return &DirectiveDecl{
+    Name: name.(string),
+    Args: argTypes,
+    Locations: locations.([]DirectiveLocation),
+    Loc: c.Loc(),
+  }, nil
+}
+
+DirectiveApplication <- '@' name:Id args:ArgValues? {
+  var argValues []Keyed[Node]
+  if args != nil {
+    argValues = args.([]Keyed[Node])
+  }
+  return DirectiveApplication{
+    Name: name.(string),
+    Args: argValues,
+    Loc: c.Loc(),
+  }, nil
+}
+
+DirectiveLocations <- first:DirectiveLocation rest:(_ '|' _ loc:DirectiveLocation { return loc, nil })* {
+  return sliceOfAppend[DirectiveLocation](rest, first), nil
+}
+
+DirectiveLocation <- name:UpperId {
+  return DirectiveLocation{Name: name.(string)}, nil
+}
+
+DirectiveName <- '@' name:Id {
+  return name.(string), nil
+}
+
+DirectiveToken <- "directive" !WordChar
+OnToken <- "on" !WordChar
