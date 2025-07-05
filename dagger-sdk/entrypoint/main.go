@@ -207,7 +207,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 }
 
 func anyToBind(ctx context.Context, env bind.EvalEnv, val any, fieldType hm.Type) (bind.Value, error) {
-	if nonNull, ok := fieldType.(bind.NonNullType); ok {
+	if nonNull, ok := fieldType.(hm.NonNullType); ok {
 		return anyToBind(ctx, env, val, nonNull.Type)
 	}
 	switch v := val.(type) {
@@ -309,7 +309,7 @@ func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*da
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
 		argOpts := dagger.FunctionWithArgOpts{}
-		if _, isNonNull := argType.(bind.NonNullType); !isNonNull {
+		if _, isNonNull := argType.(hm.NonNullType); !isNonNull {
 			typeDef = typeDef.WithOptional(true)
 		}
 		// TODO: eval default?
@@ -370,7 +370,7 @@ func bindTypeToTypeDef(dag *dagger.Client, bindType hm.Type) (*dagger.TypeDef, e
 	def := dag.TypeDef()
 
 	switch t := bindType.(type) {
-	case bind.NonNullType:
+	case hm.NonNullType:
 		// Handle non-null wrapper
 		return bindTypeToTypeDef(dag, t.Type)
 
