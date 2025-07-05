@@ -2,10 +2,6 @@ type MyClass {
   pub val = 1
   pub name = "initial"
 
-  pub new: MyClass! {
-    self
-  }
-
   pub incr: MyClass! {
     self.incrBy(1)
   }
@@ -33,17 +29,17 @@ type MyClass {
   }
 }
 
-assert { MyClass.new.val == 1 }
-assert { MyClass.new.incr.val == 2 }
-assert { MyClass.new.incr.incr.val == 3 }
-assert { MyClass.new.incrBy(5).val == 6 }
-assert { MyClass.new.incrBy(3).incrBy(2).val == 6 }
-assert { MyClass.new.withName("test").name == "test" }
-assert { MyClass.new.withName.name == "edge" }
-assert { MyClass.new.complex.name == "pre-suf" }
-assert { MyClass.new.complex("hello", "world").name == "hello-world" }
+assert { MyClass.val == 1 }
+assert { MyClass.incr.val == 2 }
+assert { MyClass.incr.incr.val == 3 }
+assert { MyClass.incrBy(5).val == 6 }
+assert { MyClass.incrBy(3).incrBy(2).val == 6 }
+assert { MyClass.withName("test").name == "test" }
+assert { MyClass.withName.name == "edge" }
+assert { MyClass.complex.name == "pre-suf" }
+assert { MyClass.complex("hello", "world").name == "hello-world" }
 
 # Test: variables resolve against current receiver instance, not static scope
-assert { MyClass.new.dynamicAccess == "initial" }
-assert { MyClass.new.withName("modified").dynamicAccess() == "modified" }
-assert { MyClass.new.complex("hello", "world").dynamicAccess() == "hello-world" }
+assert { MyClass.dynamicAccess == "initial" }
+assert { MyClass.withName("modified").dynamicAccess() == "modified" }
+assert { MyClass.complex("hello", "world").dynamicAccess() == "hello-world" }

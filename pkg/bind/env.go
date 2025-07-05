@@ -28,17 +28,16 @@ type Module struct {
 
 	classes    map[string]Env
 	vars       map[string]*hm.Scheme
+	visibility map[string]Visibility
 	directives map[string]*DirectiveDecl
 }
 
-//	type CompositeModule struct {
-//		Reads Env
-//	}
 func NewModule(name string) *Module {
 	env := &Module{
 		Named:      name,
 		classes:    make(map[string]Env),
 		vars:       make(map[string]*hm.Scheme),
+		visibility: make(map[string]Visibility),
 		directives: make(map[string]*DirectiveDecl),
 	}
 	return env

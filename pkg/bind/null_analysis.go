@@ -28,7 +28,7 @@ func AnalyzeNullAssertions(condition Node) []NullAssertion {
 		if assertion := analyzeInequalityForNull(cond, true); assertion != nil {
 			assertions = append(assertions, *assertion)
 		}
-	// TODO: Add support for compound conditions with && and ||
+		// TODO: Add support for compound conditions with && and ||
 	}
 
 	return assertions
@@ -43,7 +43,7 @@ func analyzeEqualityForNull(eq Equality, isNonNull bool) *NullAssertion {
 			IsNonNullAssertion: isNonNull,
 		}
 	}
-	
+
 	// Check "null == symbol"
 	if isNullLiteral(eq.Left) {
 		if symbol := extractSymbolName(eq.Right); symbol != "" {
@@ -66,7 +66,7 @@ func analyzeInequalityForNull(ineq Inequality, isNonNull bool) *NullAssertion {
 			IsNonNullAssertion: isNonNull,
 		}
 	}
-	
+
 	// Check "null != symbol"
 	if isNullLiteral(ineq.Left) {
 		if symbol := extractSymbolName(ineq.Right); symbol != "" {

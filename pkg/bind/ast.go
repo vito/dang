@@ -101,6 +101,16 @@ func isAutoCallableFn(val Value) bool {
 			return len(rt.Fields) == 0
 		}
 		return false
+	case *ConstructorFunction:
+		// For constructor functions, check if all parameters have default values
+		for _, param := range fn.Parameters {
+			if param.Value == nil {
+				// No default value, so this is a required parameter
+				return false
+			}
+		}
+		// All parameters have default values, so constructor can be auto-called
+		return true
 	default:
 		return false
 	}

@@ -201,7 +201,12 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	// set special 'self' keyword to match the function signature.
 	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
-	env.Add(c.Named, self)
+
+	// Create and add constructor function type to environment
+	constructorParams := c.extractConstructorParameters()
+	constructorType := c.buildConstructorType(constructorParams, class, fresh)
+	constructorScheme := hm.NewScheme(nil, constructorType)
+	env.Add(c.Named, constructorScheme)
 
 	hoistEnv := &CompositeModule{
 		primary: class,
@@ -241,7 +246,14 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
-	env.Add(c.Named, self)
+
+	// Create a constructor function type based on public non-function slots
+	constructorParams := c.extractConstructorParameters()
+	constructorType := c.buildConstructorType(constructorParams, class, fresh)
+
+	// Add the constructor function type to the environment
+	constructorScheme := hm.NewScheme(nil, constructorType)
+	env.Add(c.Named, constructorScheme)
 
 	// Validate directive applications
 	for _, directive := range c.Directives {
@@ -252,7 +264,65 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	c.Inferred = class.(*Module)
-	return class, nil
+	return constructorType, nil
+}
+
+// extractConstructorParameters extracts public non-function slots from a class body
+func (c *ClassDecl) extractConstructorParameters() []SlotDecl {
+	var params []SlotDecl
+	for _, form := range c.Value.Forms {
+		if slot, ok := form.(SlotDecl); ok {
+			// Include public slots that are not functions
+			if slot.Visibility == PublicVisibility {
+				if _, isFun := slot.Value.(*FunDecl); !isFun {
+					params = append(params, slot)
+				}
+			}
+		}
+	}
+	return params
+}
+
+// buildConstructorType creates a function type for the constructor based on the parameters
+func (c *ClassDecl) buildConstructorType(params []SlotDecl, classType hm.Type, fresh hm.Fresher) hm.Type {
+	if len(params) == 0 {
+		// No parameters, so constructor is a function that takes no arguments and returns the class type
+		argType := &RecordType{Fields: []Keyed[*hm.Scheme]{}}
+		return hm.NewFnType(argType, hm.NonNullType{Type: classType})
+	}
+
+	// Build record type for constructor parameters
+	fields := make([]Keyed[*hm.Scheme], len(params))
+	for i, param := range params {
+		var paramType hm.Type
+
+		if param.Type_ != nil {
+			// Use the declared type - for now, use a type variable since we'd need
+			// to infer it properly in context, which would require refactoring
+			paramType = fresh.Fresh()
+		} else {
+			// No explicit type, use a type variable
+			paramType = fresh.Fresh()
+		}
+
+		// Check if parameter has a default value to determine if it's nullable
+		if param.Value != nil {
+			// Has default value, so parameter is optional (nullable)
+			fields[i] = Keyed[*hm.Scheme]{
+				Key:   param.Named,
+				Value: hm.NewScheme(nil, paramType),
+			}
+		} else {
+			// No default value, so parameter is required (non-null)
+			fields[i] = Keyed[*hm.Scheme]{
+				Key:   param.Named,
+				Value: hm.NewScheme(nil, hm.NonNullType{Type: paramType}),
+			}
+		}
+	}
+
+	argType := &RecordType{Fields: fields}
+	return hm.NewFnType(argType, hm.NonNullType{Type: classType})
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -260,21 +330,19 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
 	}
 
-	modValue := NewModuleValue(c.Inferred)
-	classEnv := createCompositeEnv(modValue, env)
+	// Extract constructor parameters from public non-function slots
+	constructorParams := c.extractConstructorParameters()
 
-	// Bind 'self' to the class template during class definition
-	// This will be overridden with the specific instance during method calls
-	classEnv.Set("self", modValue)
-
-	// Use phased evaluation approach to handle forward references within the class body
-	_, err := EvaluateFormsWithPhases(ctx, c.Value.Forms, classEnv)
-	if err != nil {
-		return nil, fmt.Errorf("ClassDecl.Eval: evaluating class body for %q: %w", c.Named, err)
+	// Create a constructor function that evaluates the class body when called
+	constructor := &ConstructorFunction{
+		ClassName:  c.Named,
+		ClassDecl:  c,
+		Parameters: constructorParams,
+		ClassType:  c.Inferred,
 	}
 
-	// Add the class to the evaluation environment so it can be referenced
-	env.SetWithVisibility(c.Named, modValue, c.Visibility)
+	// Add the constructor to the evaluation environment
+	env.SetWithVisibility(c.Named, constructor, c.Visibility)
 
-	return modValue, nil
+	return constructor, nil
 }

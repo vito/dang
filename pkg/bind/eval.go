@@ -590,7 +590,7 @@ func (m *ModuleValue) Type() hm.Type {
 }
 
 func (m *ModuleValue) String() string {
-	return fmt.Sprintf("module %s", m.Mod.Named)
+	return fmt.Sprintf("module %s", m.Mod)
 }
 
 // EvalEnv interface implementation
@@ -710,6 +710,80 @@ func (b BuiltinFunction) Type() hm.Type {
 
 func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
+}
+
+// ConstructorFunction represents a class constructor that evaluates the class body when called
+type ConstructorFunction struct {
+	ClassName  string
+	ClassDecl  *ClassDecl
+	Parameters []SlotDecl
+	ClassType  *Module
+	FnType     *hm.FunctionType
+}
+
+func (c *ConstructorFunction) Type() hm.Type {
+	if c.FnType != nil {
+		return c.FnType
+	}
+	// TODO: Build function type from parameters
+	return c.ClassType
+}
+
+func (c *ConstructorFunction) String() string {
+	return fmt.Sprintf("constructor:%s", c.ClassName)
+}
+
+func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	// Create a new instance of the class
+	instance := NewModuleValue(c.ClassType)
+	instanceEnv := createCompositeEnv(instance, env)
+
+	// Bind 'self' to the instance first so it's available for default value evaluation
+	instanceEnv.Set("self", instance)
+
+	// Bind constructor arguments to the instance environment
+	for _, param := range c.Parameters {
+		if arg, found := args[param.Named]; found {
+			instanceEnv.Set(param.Named, arg)
+		} else if param.Value != nil {
+			// Evaluate default value with access to self
+			defaultVal, err := EvalNode(ctx, instanceEnv, param.Value)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating default value for parameter %s: %w", param.Named, err)
+			}
+			instanceEnv.Set(param.Named, defaultVal)
+		} else {
+			return nil, fmt.Errorf("missing required constructor parameter: %s", param.Named)
+		}
+	}
+
+	// Create a filtered class body that excludes constructor parameter slots
+	constructorParamNames := make(map[string]bool)
+	for _, param := range c.Parameters {
+		constructorParamNames[param.Named] = true
+	}
+	
+	// Filter out slots that are constructor parameters
+	filteredForms := make([]Node, 0, len(c.ClassDecl.Value.Forms))
+	for _, form := range c.ClassDecl.Value.Forms {
+		if slot, ok := form.(SlotDecl); ok {
+			// Skip non-function slots that are constructor parameters
+			if constructorParamNames[slot.Named] {
+				if _, isFun := slot.Value.(*FunDecl); !isFun {
+					continue // Skip this slot, it's a constructor parameter
+				}
+			}
+		}
+		filteredForms = append(filteredForms, form)
+	}
+
+	// Evaluate the filtered class body in the instance environment
+	_, err := EvaluateFormsWithPhases(ctx, filteredForms, instanceEnv)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
+	}
+
+	return instance, nil
 }
 
 func RunFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, filePath string, debug bool) error {

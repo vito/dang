@@ -114,10 +114,10 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 // processDirectives evaluates directive arguments into convenient Go values
 func (f *FunctionBase) processDirectives(directives []DirectiveApplication, env EvalEnv) map[string]map[string]interface{} {
 	result := make(map[string]map[string]interface{})
-	
+
 	for _, directive := range directives {
 		directiveArgs := make(map[string]interface{})
-		
+
 		for _, arg := range directive.Args {
 			// Evaluate the directive argument value
 			if evalValue, err := f.evaluateDirectiveArgument(arg.Value, env); err == nil {
@@ -126,12 +126,12 @@ func (f *FunctionBase) processDirectives(directives []DirectiveApplication, env 
 			// Note: We silently skip arguments that fail to evaluate
 			// This allows for graceful degradation if directive args have issues
 		}
-		
+
 		if len(directiveArgs) > 0 {
 			result[directive.Name] = directiveArgs
 		}
 	}
-	
+
 	return result
 }
 

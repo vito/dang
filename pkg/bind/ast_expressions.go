@@ -222,6 +222,10 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Builtin function call
 		return fn.Call(ctx, env, argValues)
 
+	case *ConstructorFunction:
+		// Constructor function call
+		return fn.Call(ctx, env, argValues)
+
 	default:
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
@@ -310,6 +314,13 @@ func (c FunCall) getParameterNames(funVal Value) []string {
 			}
 			return names
 		}
+	case *ConstructorFunction:
+		// For constructor functions, get parameter names from the constructor parameters
+		names := make([]string, len(fn.Parameters))
+		for i, param := range fn.Parameters {
+			names[i] = param.Named
+		}
+		return names
 	}
 	return nil
 }
@@ -706,7 +717,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	if c.Else != nil {
 		elseBlock := c.Else.(Block)
-		
+
 		// Apply type refinements to the else branch
 		elseEnv := ApplyTypeRefinements(env, elseRefinements)
 		elseType, err := elseBlock.Infer(elseEnv, fresh)

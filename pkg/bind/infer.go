@@ -24,9 +24,26 @@ func newInferer(env hm.Env) *inferer {
 const letters = `abcdefghijklmnopqrstuvwxyz`
 
 func (infer *inferer) Fresh() hm.TypeVariable {
-	retVal := letters[infer.count]
-	infer.count++
-	return hm.TypeVariable(retVal)
+	if infer.count < len(letters) {
+		retVal := letters[infer.count]
+		infer.count++
+		return hm.TypeVariable(retVal)
+	} else {
+		// Use Greek letters and other Unicode characters when we run out of Latin letters
+		// Start with Greek lowercase letters (α, β, γ, etc.)
+		greekStart := infer.count - len(letters)
+		if greekStart < 24 { // 24 Greek letters
+			greek := rune('α' + greekStart)
+			infer.count++
+			return hm.TypeVariable(greek)
+		} else {
+			// Fall back to using numbers as characters
+			numStart := greekStart - 24
+			char := rune('0' + (numStart % 10))
+			infer.count++
+			return hm.TypeVariable(char)
+		}
+	}
 }
 
 func (infer *inferer) lookup(name string) error {
