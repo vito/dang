@@ -1,96 +1,101 @@
-; Keywords
+;; Keywords
 [
-  "pub"
-  "let"
-  "type"
-  "directive"
-  "on"
-  "if" 
-  "else"
-  "match"
-  "with"
-  "assert"
+  (let_token)
+  (pub_token)
 ] @keyword
+[
+  (type_token)
+  (if_token)
+  (else_token)
+  (match_token)
+  (with_token)
+  (assert_token)
+  (directive_token)
+  (on_token)
+] @keyword.control
 
-; Directive keywords
-(directive_token) @keyword.directive
-(on_token) @keyword.directive
-
-; Directive names and applications
-(directive_name) @function.macro
-(directive_application name: (id) @function.macro)
-
-; Directive locations
-(directive_location name: (upper_id) @constant.builtin)
-
-; Types
-(named_type name: (upper_id) @type)
-(type_variable name: (_) @type.parameter)
-
-; Literals
+;; Literals
 (string) @string
-(int) @constant.numeric.integer
+(int) @constant.numeric
 (boolean) @constant.builtin.boolean
 (null) @constant.builtin
 
-; Operators
+;; Comments
+(comment_token) @comment.line
+(upper_token) @type
+
+;; Directives
+(directive_name) @function.macro
+(directive_application
+  (id) @function.macro)
+(directive_location
+  (upper_id) @constant.builtin)
+
+;; Operators and punctuation
 [
-  "="
-  "+="
-  "+"
-  "-"
-  "*"
-  "/"
-  "%"
-  "=="
-  "!="
-  "<"
-  "<="
-  ">"
-  ">="
-  "?"
-  "::"
+  (equal_token)
+  (plus_equal_token)
+  (interro_token)
+  (bang_token)
+  (lambda_token)
+  (arrow_token)
 ] @operator
-
-; Punctuation
+["{{" "}}" "{" "}" "[" "]" "(" ")"] @punctuation.bracket
 [
-  "("
-  ")"
-  "["
-  "]"
-  "{"
-  "}"
-  "{{"
-  "}}"
-] @punctuation.bracket
-
-[
-  ","
-  ":"
-  ";"
-  "."
-  "|"
-  "!"
-  "@"
+  (comma_token)
+  (dot_token)
 ] @punctuation.delimiter
+["@" "|"] @punctuation.special
 
-; Arrow operator
-"->" @punctuation.special
+;; Identifiers - using more generic patterns
+; (symbol_or_call) @variable
 
-; Identifiers
-(id) @variable
+;; Special highlighting for built-in functions
+; ((symbol_or_call) @function.builtin
+;   (#match? @function.builtin "^(print)$"))
 
-; Function definitions
-(fun_decl name: (id) @function)
+;; Key-value pairs
+(key_value
+  (word_token) @property)
 
-; Class definitions  
-(class name: (id) @type.definition)
+;; Slot definitions
+(type_and_block_slot
+  (id) @function.method)
+(type_and_args_and_block_slot
+  (id) @function.method)
+(type_and_value_slot
+  (id) @function.method)
+(value_only_slot
+  (id) @function.method)
+(type_only_slot
+  (id) @function.method)
 
-; Slot declarations
-(slot_decl name: (id) @variable.member)
+(arg_with_block_default
+  (id) @variable.parameter)
+(arg_with_type
+  (id) @variable.parameter)
+(arg_with_default
+  (id) @variable.parameter)
 
-; Comments
-(comment_token) @comment
+;; Class definitions
+(class
+  (id) @type)
 
-; Error highlighting for invalid syntax
+;; Special highlighting for print function
+(symbol) @variable
+(call
+  (id) @function.method)
+
+((call
+  (id) @function.builtin)
+  (#match? @function.builtin "^(print)$"))
+
+;; Field selections
+(select_or_call
+  (id) @function.method)
+
+((symbol) @variable.special
+  (#match? @variable.special "^(self)$"))
+
+;; Error highlighting
 (ERROR) @error
