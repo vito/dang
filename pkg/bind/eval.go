@@ -546,12 +546,13 @@ func (l ListValue) MarshalJSON() ([]byte, error) {
 
 // FunctionValue represents a function value
 type FunctionValue struct {
-	Args     []string
-	Body     Node
-	Closure  EvalEnv
-	FnType   *hm.FunctionType
-	Defaults map[string]Node // Map of argument name to default value expression
-	ArgDecls []SlotDecl      // Original argument declarations with directives
+	Args                []string
+	Body                Node
+	Closure             EvalEnv
+	FnType              *hm.FunctionType
+	Defaults            map[string]Node                              // Map of argument name to default value expression
+	ArgDecls            []SlotDecl                                   // Original argument declarations with directives
+	ProcessedDirectives map[string]map[string]map[string]interface{} // argName -> directiveName -> argName -> value
 }
 
 func (f FunctionValue) Type() hm.Type {

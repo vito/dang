@@ -313,40 +313,23 @@ func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*da
 			typeDef = typeDef.WithOptional(true)
 		}
 		
-		// Check for directives on this argument
-		for _, argDecl := range fn.ArgDecls {
-			if argDecl.Named == arg.Key {
-				for _, directive := range argDecl.Directives {
-					switch directive.Name {
-					case "defaultPath":
-						// Extract arguments from @defaultPath directive
-						if len(directive.Args) > 0 {
-							for _, directiveArg := range directive.Args {
-								switch directiveArg.Key {
-								case "path":
-									// Handle string literals in directive arguments
-									if strVal, ok := directiveArg.Value.(bind.String); ok {
-										argOpts.DefaultPath = strVal.Value
-									}
-								case "ignore":
-									// Handle ignore patterns as list of strings
-									if listVal, ok := directiveArg.Value.(bind.List); ok {
-										var ignorePatterns []string
-										for _, item := range listVal.Elements {
-											if strVal, ok := item.(bind.String); ok {
-												ignorePatterns = append(ignorePatterns, strVal.Value)
-											}
-										}
-										if len(ignorePatterns) > 0 {
-											argOpts.Ignore = ignorePatterns
-										}
-									}
-								}
-							}
+		// Check for directives on this argument using processed directives
+		if argDirectives, hasDirectives := fn.ProcessedDirectives[arg.Key]; hasDirectives {
+			if defaultPath, hasDefaultPath := argDirectives["defaultPath"]; hasDefaultPath {
+				if path, ok := defaultPath["path"].(string); ok {
+					argOpts.DefaultPath = path
+				}
+				if ignore, ok := defaultPath["ignore"].([]interface{}); ok {
+					var ignorePatterns []string
+					for _, pattern := range ignore {
+						if str, ok := pattern.(string); ok {
+							ignorePatterns = append(ignorePatterns, str)
 						}
 					}
+					if len(ignorePatterns) > 0 {
+						argOpts.Ignore = ignorePatterns
+					}
 				}
-				break
 			}
 		}
 		

@@ -7,7 +7,13 @@ type Bind {
   pub new(
     source: Directory! @defaultPath(
       path: "/",
-      ignore: ["**/node_modules", "bin"]
+      ignore: [
+        # TODO: respecting .gitignore would be nice
+        "Session.vim"
+        "/bind"
+        "/zed-bind/grammars/",
+        "/.env"
+      ]
     )
   ): Bind! {
     self.source = source
