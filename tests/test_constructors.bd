@@ -51,19 +51,19 @@ assert { Mixed(1, "Test", "Custom desc", false).enabled == false }
 type WithMethods {
   pub value: Int! = 42
 
-  pub getValue(): Int! {
+  pub getValue: Int! {
     self.value
   }
 
-  pub increment(): WithMethods! {
+  pub increment: WithMethods! {
     self.value += 1
     self
   }
 }
 
-assert { WithMethods.getValue() == 42 }
-assert { WithMethods.increment().getValue() == 43 }
-assert { WithMethods(100).getValue() == 100 }
+assert { WithMethods.getValue == 42 }
+assert { WithMethods.increment.getValue == 43 }
+assert { WithMethods(100).getValue == 100 }
 
 # Constructor where default values reference other parameters
 type Computed {
@@ -94,10 +94,11 @@ assert { Complex.computed == 10 }
 # Constructor with self-referencing default values
 type SelfRef {
   pub name: String! = "test"
-  pub greeting: String! = "Hello, " + self.name + "!"
+  pub greeting: String! = "Hello, " + name + "!"
 }
 
 assert { SelfRef.greeting == "Hello, test!" }
 assert { SelfRef("Alice").greeting == "Hello, Alice!" }
+assert { SelfRef("Alice", "What's up?").greeting == "What's up?" }
 
 print("Constructor tests passed!")

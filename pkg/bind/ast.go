@@ -2,6 +2,7 @@ package bind
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/vito/bind/introspection"
@@ -31,8 +32,8 @@ type Keyed[X any] struct {
 type Visibility int
 
 const (
-	PublicVisibility Visibility = iota
-	PrivateVisibility
+	PrivateVisibility Visibility = iota
+	PublicVisibility
 )
 
 // autoCallFnType returns the type that should be used for zero-arity function auto-calling
@@ -265,8 +266,18 @@ func (c CompositeEnv) Get(name string) (Value, bool) {
 	return c.lexical.Get(name)
 }
 
+func (c CompositeEnv) GetLocal(name string) (Value, bool) {
+	return c.primary.GetLocal(name)
+}
+
 func (c CompositeEnv) Bindings(vis Visibility) []Keyed[Value] {
 	return c.primary.Bindings(vis)
+}
+
+// MarshalJSON implements json.Marshaler for ModuleValue
+// Includes private fields, so that state can be retained
+func (m CompositeEnv) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.primary)
 }
 
 // GetForAssignment returns the value from the environment where assignment should occur
@@ -315,8 +326,8 @@ func (c CompositeEnv) Clone() EvalEnv {
 	}
 }
 
-// createCompositeEnv creates a composite environment for reopening
-func createCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
+// CreateCompositeEnv creates a composite environment for reopening
+func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
 	return CompositeEnv{
 		primary: reopenedEnv,
 		lexical: currentEnv,
@@ -354,6 +365,10 @@ func (c *CompositeModule) Clone() hm.Env {
 func (c *CompositeModule) Add(name string, scheme *hm.Scheme) hm.Env {
 	c.primary.Add(name, scheme)
 	return c
+}
+
+func (c *CompositeModule) SetVisibility(name string, visibility Visibility) {
+	c.primary.SetVisibility(name, visibility)
 }
 
 func (c *CompositeModule) Remove(name string) hm.Env {

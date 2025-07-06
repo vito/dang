@@ -139,38 +139,33 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	if err := dec.Decode(&parentState); err != nil {
 		return fmt.Errorf("failed to unmarshal parent JSON: %w", err)
 	}
-	parentModEnv := parentModBase.(bind.EvalEnv).Clone()
-	parentModType := parentModEnv.(*bind.ModuleValue).Mod
-	for name, value := range parentState {
-		scheme, found := parentModType.SchemeOf(name)
-		if !found {
-			return fmt.Errorf("unknown field: %s", name)
-		}
-		fieldType, isMono := scheme.Type()
-		if !isMono {
-			return fmt.Errorf("non-monotype argument %s", name)
-		}
-		bindVal, err := anyToBind(ctx, env, value, fieldType)
-		if err != nil {
-			return fmt.Errorf("failed to convert input argument %s to bind value: %w", name, err)
-		}
-		parentModEnv.Set(name, bindVal)
-	}
+
+	parentConstructor := parentModBase.(*bind.ConstructorFunction)
+	parentModType := parentConstructor.ClassType
+
+	var fnType *hm.FunctionType
+
 	if fnName == "" {
-		fnName = "new"
-	}
-	fnValue, found := parentModEnv.Get(fnName)
-	if !found {
-		return fmt.Errorf("unknown function: %s", fnName)
+		fnType = parentConstructor.FnType
+	} else {
+		fnScheme, found := parentModType.SchemeOf(fnName)
+		if !found {
+			return fmt.Errorf("unknown function: %s", fnName)
+		}
+		t, mono := fnScheme.Type()
+		if !mono {
+			return fmt.Errorf("non-monotype function %s", fnName)
+		}
+		var ok bool
+		fnType, ok = t.(*hm.FunctionType)
+		if !ok {
+			return fmt.Errorf("expected function type, got %T", fnScheme)
+		}
 	}
 
-	call := bind.Select{
-		Receiver: bind.ValueNode{Val: parentModEnv.(*bind.ModuleValue)},
-		Field:    fnName,
-	}
 	var args bind.Record
-	fn := fnValue.(bind.FunctionValue)
-	for _, arg := range fn.FnType.Arg().(*bind.RecordType).Fields {
+	argMap := make(map[string]bind.Value, len(args))
+	for _, arg := range fnType.Arg().(*bind.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -189,20 +184,62 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if err != nil {
 			return fmt.Errorf("failed to convert input argument %s to bind value: %w", arg.Key, err)
 		}
+		argMap[arg.Key] = bindVal
 		args = append(args, bind.Keyed[bind.Node]{
 			Key:   arg.Key,
 			Value: bind.ValueNode{Val: bindVal},
 		})
 	}
-	call.Args = &args
-	result, err := call.Eval(ctx, env)
-	if err != nil {
-		return fmt.Errorf("failed to evaluate call: %w", err)
+
+	var result bind.Value
+	if fnName == "" {
+		result, err = parentConstructor.Call(ctx, env, argMap)
+		if err != nil {
+			return fmt.Errorf("failed to call parent constructor: %w", err)
+		}
+	} else {
+		parentModEnv := bind.NewModuleValue(parentModType)
+		parentModEnv.Set("self", parentModEnv)
+
+		fmt.Fprintf(os.Stderr, "parentState: %+v\n", parentState)
+		for name, value := range parentState {
+			scheme, found := parentModType.SchemeOf(name)
+			if !found {
+				return fmt.Errorf("unknown field: %s", name)
+			}
+			fieldType, isMono := scheme.Type()
+			if !isMono {
+				return fmt.Errorf("non-monotype argument %s", name)
+			}
+			bindVal, err := anyToBind(ctx, env, value, fieldType)
+			if err != nil {
+				return fmt.Errorf("failed to convert input argument %s to bind value: %w", name, err)
+			}
+			parentModEnv.Set(name, bindVal)
+		}
+
+		bodyEnv := bind.CreateCompositeEnv(parentModEnv, env)
+		_, err := bind.EvaluateFormsWithPhases(ctx, parentConstructor.ClassBodyForms, bodyEnv)
+		if err != nil {
+			return fmt.Errorf("evaluating class body for %s: %w", parentConstructor.ClassName, err)
+		}
+
+		call := bind.Select{
+			Receiver: bind.ValueNode{Val: parentModEnv},
+			Field:    fnName,
+			Args:     &args,
+		}
+		result, err = call.Eval(ctx, env)
+		if err != nil {
+			return fmt.Errorf("failed to evaluate call: %w", err)
+		}
 	}
+
 	jsonBytes, err := json.Marshal(result)
 	if err != nil {
 		return fmt.Errorf("failed to marshal result: %w", err)
 	}
+	fmt.Fprintf(os.Stderr, "JSON result: %T => %s\n", result, jsonBytes)
 	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
@@ -254,9 +291,10 @@ func anyToBind(ctx context.Context, env bind.EvalEnv, val any, fieldType hm.Type
 			vals.Elements = append(vals.Elements, val)
 		}
 		return vals, nil
-
+	case nil:
+		return bind.NullValue{}, nil
 	default:
-		return nil, fmt.Errorf("unsupported type %T", v)
+		return nil, fmt.Errorf("unsupported type %T", val)
 	}
 }
 
@@ -272,12 +310,36 @@ func initModule(dag *dagger.Client, env bind.EvalEnv) (*dagger.Module, error) {
 	for _, binding := range binds {
 		log.Println("Binding:", binding.Key)
 		switch val := binding.Value.(type) {
-		case *bind.ModuleValue:
+		case *bind.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
 			objDef, err := createObjectTypeDef(dag, binding.Key, val)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create object %s: %w", binding.Key, err)
 			}
+			directives := ProcessedDirectives{}
+			for _, slot := range val.Parameters {
+				for _, dir := range slot.Directives {
+					if directives[slot.Named] == nil {
+						directives[slot.Named] = map[string]map[string]any{}
+					}
+					for _, arg := range dir.Args {
+						if directives[slot.Named][dir.Name] == nil {
+							directives[slot.Named][dir.Name] = map[string]any{}
+						}
+						val, err := evalConstantValue(arg.Value)
+						if err != nil {
+							return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", slot.Named, dir.Name, arg.Key, err)
+						}
+						directives[slot.Named][dir.Name][arg.Key] = val
+					}
+				}
+			}
+			fnDef, err := createFunction(dag, binding.Key, val.FnType, directives)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create constructor for %s: %w", binding.Key, err)
+			}
+			objDef = objDef.WithConstructor(fnDef)
+
 			dagMod = dagMod.WithObject(objDef)
 
 		default:
@@ -290,16 +352,19 @@ func initModule(dag *dagger.Client, env bind.EvalEnv) (*dagger.Module, error) {
 	return dagMod, nil
 }
 
-func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*dagger.Function, error) {
+// arg => directive => directive args
+type ProcessedDirectives = map[string]map[string]map[string]any
+
+func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, directives ProcessedDirectives) (*dagger.Function, error) {
 	// Convert Bind function type to Dagger TypeDef
-	retTypeDef, err := bindTypeToTypeDef(dag, fn.FnType.Ret(false))
+	retTypeDef, err := bindTypeToTypeDef(dag, fn.Ret(false))
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn.FnType, err)
+		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn, err)
 	}
 
 	funDef := dag.Function(name, retTypeDef)
 
-	for _, arg := range fn.FnType.Arg().(*bind.RecordType).Fields {
+	for _, arg := range fn.Arg().(*bind.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -312,14 +377,14 @@ func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*da
 		if _, isNonNull := argType.(hm.NonNullType); !isNonNull {
 			typeDef = typeDef.WithOptional(true)
 		}
-		
+
 		// Check for directives on this argument using processed directives
-		if argDirectives, hasDirectives := fn.ProcessedDirectives[arg.Key]; hasDirectives {
+		if argDirectives, hasDirectives := directives[arg.Key]; hasDirectives {
 			if defaultPath, hasDefaultPath := argDirectives["defaultPath"]; hasDefaultPath {
 				if path, ok := defaultPath["path"].(string); ok {
 					argOpts.DefaultPath = path
 				}
-				if ignore, ok := defaultPath["ignore"].([]interface{}); ok {
+				if ignore, ok := defaultPath["ignore"].([]any); ok {
 					var ignorePatterns []string
 					for _, pattern := range ignore {
 						if str, ok := pattern.(string); ok {
@@ -347,40 +412,56 @@ func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*da
 	return funDef, nil
 }
 
-func createObjectTypeDef(dag *dagger.Client, name string, module *bind.ModuleValue) (*dagger.TypeDef, error) {
+// evalConstantValue converts AST nodes to Go values for directive arguments
+func evalConstantValue(node bind.Node) (any, error) {
+	switch n := node.(type) {
+	case bind.String:
+		return n.Value, nil
+	case bind.Int:
+		return n.Value, nil
+	case bind.Boolean:
+		return n.Value, nil
+	case bind.List:
+		var elements []any
+		for _, elem := range n.Elements {
+			if evalElem, err := evalConstantValue(elem); err == nil {
+				elements = append(elements, evalElem)
+			} else {
+				return nil, fmt.Errorf("failed to evaluate list element: %w", err)
+			}
+		}
+		return elements, nil
+	default:
+		// For more complex nodes, we could try full evaluation
+		// but for now, directive arguments should be simple literals
+		return nil, fmt.Errorf("unsupported directive argument type: %T", node)
+	}
+}
+
+func createObjectTypeDef(dag *dagger.Client, name string, module *bind.ConstructorFunction) (*dagger.TypeDef, error) {
 	objDef := dag.TypeDef().WithObject(name)
 
 	// Process public methods in the class
-	for _, binding := range module.Bindings(bind.PublicVisibility) {
-		scheme, found := module.Mod.SchemeOf(binding.Key)
-		if !found {
-			return nil, fmt.Errorf("failed to find type scheme for %s", binding.Key)
-		}
+	for name, scheme := range module.ClassType.Bindings(bind.PublicVisibility) {
 		slotType, isMono := scheme.Type()
 		if !isMono {
-			return nil, fmt.Errorf("non-monotype method %s", binding.Key)
+			return nil, fmt.Errorf("non-monotype method %s", name)
 		}
-		switch x := binding.Value.(type) {
-		case bind.FunctionValue:
+		switch x := slotType.(type) {
+		case *hm.FunctionType:
 			fn := x
-			fnDef, err := createFunction(dag, binding.Key, fn)
+			// TODO: figure out the directives locally
+			fnDef, err := createFunction(dag, name, fn, nil)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create method %s for %s: %w", binding.Key, name, err)
+				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
 			}
-
-			if binding.Key == "new" {
-				// Constructor function
-				objDef = objDef.WithConstructor(fnDef)
-			} else {
-				// Regular method
-				objDef = objDef.WithFunction(fnDef)
-			}
+			objDef = objDef.WithFunction(fnDef)
 		default:
 			fieldDef, err := bindTypeToTypeDef(dag, slotType)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create field %s: %w", binding.Key, err)
+				return nil, fmt.Errorf("failed to create field %s: %w", name, err)
 			}
-			objDef = objDef.WithField(binding.Key, fieldDef)
+			objDef = objDef.WithField(name, fieldDef)
 		}
 	}
 

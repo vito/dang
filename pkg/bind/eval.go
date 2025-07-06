@@ -34,6 +34,7 @@ type Evaluator interface {
 type EvalEnv interface {
 	Value
 	Get(name string) (Value, bool)
+	GetLocal(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
@@ -546,13 +547,12 @@ func (l ListValue) MarshalJSON() ([]byte, error) {
 
 // FunctionValue represents a function value
 type FunctionValue struct {
-	Args                []string
-	Body                Node
-	Closure             EvalEnv
-	FnType              *hm.FunctionType
-	Defaults            map[string]Node                              // Map of argument name to default value expression
-	ArgDecls            []SlotDecl                                   // Original argument declarations with directives
-	ProcessedDirectives map[string]map[string]map[string]interface{} // argName -> directiveName -> argName -> value
+	Args     []string
+	Body     Node
+	Closure  EvalEnv
+	FnType   *hm.FunctionType
+	Defaults map[string]Node // Map of argument name to default value expression
+	ArgDecls []SlotDecl      // Original argument declarations with directives
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -593,7 +593,6 @@ func (m *ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod)
 }
 
-// EvalEnv interface implementation
 func (m *ModuleValue) Get(name string) (Value, bool) {
 	if val, ok := m.Values[name]; ok {
 		return val, true
@@ -602,6 +601,11 @@ func (m *ModuleValue) Get(name string) (Value, bool) {
 		return m.Parent.Get(name)
 	}
 	return nil, false
+}
+
+func (m *ModuleValue) GetLocal(name string) (Value, bool) {
+	val, ok := m.Values[name]
+	return val, ok
 }
 
 func (m *ModuleValue) Set(name string, value Value) EvalEnv {
@@ -626,7 +630,7 @@ func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
 
 	// Collect bindings from this module
 	for name, value := range m.Values {
-		if m.Visibilities[name] == vis {
+		if m.Visibilities[name] >= vis {
 			bindings = append(bindings, Keyed[Value]{
 				Key:        name,
 				Value:      value,
@@ -666,11 +670,16 @@ func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Vis
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue
-// Only includes public fields in the JSON output
+// Includes private fields, so that state can be retained
 func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 	result := make(map[string]Value)
-	for _, kv := range m.Bindings(PublicVisibility) {
+	for _, kv := range m.Bindings(PrivateVisibility) {
+		log.Println("Marshaling", kv.Key, kv.Value, fmt.Sprintf("%T", kv.Value))
 		if _, isFn := kv.Value.(FunctionValue); isFn {
+			continue
+		}
+		if kv.Key == "self" {
+			// prevent infinite recursion
 			continue
 		}
 		log.Println("Marshaling", kv.Key, kv.Value, fmt.Sprintf("%T", kv.Value))
@@ -714,6 +723,7 @@ func (b BuiltinFunction) String() string {
 
 // ConstructorFunction represents a class constructor that evaluates the class body when called
 type ConstructorFunction struct {
+	Closure        EvalEnv
 	ClassName      string
 	Parameters     []SlotDecl
 	ClassType      *Module
@@ -722,11 +732,7 @@ type ConstructorFunction struct {
 }
 
 func (c *ConstructorFunction) Type() hm.Type {
-	if c.FnType != nil {
-		return c.FnType
-	}
-	// TODO: Build function type from parameters
-	return c.ClassType
+	return c.FnType
 }
 
 func (c *ConstructorFunction) String() string {
@@ -736,22 +742,24 @@ func (c *ConstructorFunction) String() string {
 func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 	// Create a new instance of the class
 	instance := NewModuleValue(c.ClassType)
-	instanceEnv := createCompositeEnv(instance, env)
+
+	instanceEnv := CreateCompositeEnv(instance, c.Closure)
 
 	// Bind 'self' to the instance first so it's available for default value evaluation
+	// TODO: is this necessary?
 	instanceEnv.Set("self", instance)
 
 	// Bind constructor arguments to the instance environment
 	for _, param := range c.Parameters {
 		if arg, found := args[param.Named]; found {
-			instanceEnv.Set(param.Named, arg)
+			instanceEnv.SetWithVisibility(param.Named, arg, param.Visibility)
 		} else if param.Value != nil {
 			// Evaluate default value with access to self
 			defaultVal, err := EvalNode(ctx, instanceEnv, param.Value)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating default value for parameter %s: %w", param.Named, err)
 			}
-			instanceEnv.Set(param.Named, defaultVal)
+			instanceEnv.SetWithVisibility(param.Named, defaultVal, param.Visibility)
 		} else {
 			return nil, fmt.Errorf("missing required constructor parameter: %s", param.Named)
 		}

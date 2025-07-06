@@ -494,10 +494,7 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return nil, errors.New("object has no module inferred")
 	}
 	newMod := NewModuleValue(o.Mod)
-	evalEnv := &CompositeEnv{
-		primary: newMod,
-		lexical: env,
-	}
+	evalEnv := CreateCompositeEnv(newMod, env)
 	for _, slot := range o.Slots {
 		_, err := EvalNode(ctx, evalEnv, slot)
 		if err != nil {

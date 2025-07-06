@@ -86,83 +86,26 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
 	defaults := make(map[string]Node)
-	processedDirectives := make(map[string]map[string]map[string]interface{})
 
 	for i, arg := range f.Args {
 		argNames[i] = arg.Named
 		if arg.Value != nil {
 			defaults[arg.Named] = arg.Value
 		}
-
-		// Process directives for this argument
-		if len(arg.Directives) > 0 {
-			processedDirectives[arg.Named] = f.processDirectives(arg.Directives, env)
-		}
 	}
 
 	return FunctionValue{
-		Args:                argNames,
-		Body:                f.Body,
-		Closure:             env,
-		FnType:              fnType,
-		Defaults:            defaults,
-		ArgDecls:            f.Args, // Preserve original argument declarations with directives
-		ProcessedDirectives: processedDirectives,
-	}
-}
-
-// processDirectives evaluates directive arguments into convenient Go values
-func (f *FunctionBase) processDirectives(directives []DirectiveApplication, env EvalEnv) map[string]map[string]interface{} {
-	result := make(map[string]map[string]interface{})
-
-	for _, directive := range directives {
-		directiveArgs := make(map[string]interface{})
-
-		for _, arg := range directive.Args {
-			// Evaluate the directive argument value
-			if evalValue, err := f.evaluateDirectiveArgument(arg.Value, env); err == nil {
-				directiveArgs[arg.Key] = evalValue
-			}
-			// Note: We silently skip arguments that fail to evaluate
-			// This allows for graceful degradation if directive args have issues
-		}
-
-		if len(directiveArgs) > 0 {
-			result[directive.Name] = directiveArgs
-		}
-	}
-
-	return result
-}
-
-// evaluateDirectiveArgument converts AST nodes to Go values for directive arguments
-func (f *FunctionBase) evaluateDirectiveArgument(node Node, env EvalEnv) (interface{}, error) {
-	switch n := node.(type) {
-	case String:
-		return n.Value, nil
-	case Int:
-		return n.Value, nil
-	case Boolean:
-		return n.Value, nil
-	case List:
-		var elements []interface{}
-		for _, elem := range n.Elements {
-			if evalElem, err := f.evaluateDirectiveArgument(elem, env); err == nil {
-				elements = append(elements, evalElem)
-			} else {
-				return nil, fmt.Errorf("failed to evaluate list element: %w", err)
-			}
-		}
-		return elements, nil
-	default:
-		// For more complex nodes, we could try full evaluation
-		// but for now, directive arguments should be simple literals
-		return nil, fmt.Errorf("unsupported directive argument type: %T", node)
+		Args:     argNames,
+		Body:     f.Body,
+		Closure:  env,
+		FnType:   fnType,
+		Defaults: defaults,
+		ArgDecls: f.Args, // Preserve original argument declarations with directives
 	}
 }
 
 // inferFunctionType provides shared type inference logic for functions
-func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (hm.Type, error) {
+func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
 
@@ -607,7 +550,7 @@ func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return nil, fmt.Errorf("cannot reopen %T: not an environment", reopened)
 	}
 
-	compositeEnv := createCompositeEnv(reopenedEnv, env)
+	compositeEnv := CreateCompositeEnv(reopenedEnv, env)
 	for _, node := range r.Block.Forms {
 		_, err := EvalNode(ctx, compositeEnv, node)
 		if err != nil {

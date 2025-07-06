@@ -3,6 +3,7 @@ package bind
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/vito/bind/pkg/hm"
 )
@@ -112,6 +113,9 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s", s.Named, curT)
 			}
 		}
+
+		fmt.Fprintf(os.Stderr, "setting visibility for %q: %+v\n", s.Named, s.Visibility)
+		bindEnv.SetVisibility(s.Named, s.Visibility)
 	}
 
 	// Validate directive applications
@@ -127,6 +131,12 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	val, defined := env.GetLocal(s.Named)
+	if defined {
+		// already defined (e.g. through constructor), nothing to do
+		return val, nil
+	}
+
 	if s.Value == nil {
 		// If no value is provided, this is just a type declaration
 		// Add a null value to the environment as a placeholder
@@ -155,7 +165,8 @@ type ClassDecl struct {
 	Directives []DirectiveApplication
 	Loc        *SourceLocation
 
-	Inferred *Module
+	Inferred          *Module
+	ConstructorFnType *hm.FunctionType
 }
 
 func (f *ClassDecl) IsDeclarer() bool {
@@ -198,23 +209,29 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 		mod.AddClass(c.Named, class)
 	}
 
-	// set special 'self' keyword to match the function signature.
-	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
-	class.Add("self", self)
-
-	// Create and add constructor function type to environment
-	constructorParams, _ := c.extractConstructorParametersAndCleanBody()
-	constructorType := c.buildConstructorType(constructorParams, class, fresh)
-	constructorScheme := hm.NewScheme(nil, constructorType)
-	env.Add(c.Named, constructorScheme)
-
-	hoistEnv := &CompositeModule{
+	inferEnv := &CompositeModule{
 		primary: class,
 		lexical: env.(Env),
 	}
 
+	// Create a constructor function type based on public non-function slots
+	constructorParams := c.extractConstructorParameters()
+	constructorType, err := c.buildConstructorType(inferEnv, constructorParams, class.(*Module), fresh)
+	if err != nil {
+		return err
+	}
+	c.ConstructorFnType = constructorType
+
+	// Add the constructor function type to the environment
+	constructorScheme := hm.NewScheme(nil, constructorType)
+	env.Add(c.Named, constructorScheme)
+
 	if pass > 0 {
-		if err := c.Value.Hoist(hoistEnv, fresh, pass); err != nil {
+		// set special 'self' keyword to match the function signature.
+		self := hm.NewScheme(nil, hm.NonNullType{Type: class})
+		class.Add("self", self)
+
+		if err := c.Value.Hoist(inferEnv, fresh, pass); err != nil {
 			return err
 		}
 	}
@@ -247,14 +264,6 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
 
-	// Create a constructor function type based on public non-function slots
-	constructorParams, _ := c.extractConstructorParametersAndCleanBody()
-	constructorType := c.buildConstructorType(constructorParams, class, fresh)
-
-	// Add the constructor function type to the environment
-	constructorScheme := hm.NewScheme(nil, constructorType)
-	env.Add(c.Named, constructorScheme)
-
 	// Validate directive applications
 	for _, directive := range c.Directives {
 		_, err := directive.Infer(env, fresh)
@@ -264,14 +273,13 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	c.Inferred = class.(*Module)
-	return constructorType, nil
+	return c.ConstructorFnType, nil
 }
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots as constructor
 // parameters and returns the filtered forms that should be evaluated in the class body
-func (c *ClassDecl) extractConstructorParametersAndCleanBody() ([]SlotDecl, []Node) {
+func (c *ClassDecl) extractConstructorParameters() []SlotDecl {
 	var params []SlotDecl
-	var filteredForms []Node
 
 	for _, form := range c.Value.Forms {
 		if slot, ok := form.(SlotDecl); ok {
@@ -280,57 +288,25 @@ func (c *ClassDecl) extractConstructorParametersAndCleanBody() ([]SlotDecl, []No
 				if _, isFun := slot.Value.(*FunDecl); !isFun {
 					// This is a constructor parameter - extract it but don't include in filtered forms
 					params = append(params, slot)
-					continue
 				}
 			}
 		}
-		// Include all other forms (functions, private slots, etc.)
-		filteredForms = append(filteredForms, form)
 	}
 
-	return params, filteredForms
+	return params
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(params []SlotDecl, classType hm.Type, fresh hm.Fresher) hm.Type {
-	if len(params) == 0 {
-		// No parameters, so constructor is a function that takes no arguments and returns the class type
-		argType := &RecordType{Fields: []Keyed[*hm.Scheme]{}}
-		return hm.NewFnType(argType, hm.NonNullType{Type: classType})
+func (c *ClassDecl) buildConstructorType(env hm.Env, params []SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+	fnDecl := FunctionBase{
+		Args: params,
+		Body: Block{
+			Forms: []Node{
+				ValueNode{Val: NewModuleValue(classType)},
+			},
+		},
 	}
-
-	// Build record type for constructor parameters
-	fields := make([]Keyed[*hm.Scheme], len(params))
-	for i, param := range params {
-		var paramType hm.Type
-
-		if param.Type_ != nil {
-			// Use the declared type - for now, use a type variable since we'd need
-			// to infer it properly in context, which would require refactoring
-			paramType = fresh.Fresh()
-		} else {
-			// No explicit type, use a type variable
-			paramType = fresh.Fresh()
-		}
-
-		// Check if parameter has a default value to determine if it's nullable
-		if param.Value != nil {
-			// Has default value, so parameter is optional (nullable)
-			fields[i] = Keyed[*hm.Scheme]{
-				Key:   param.Named,
-				Value: hm.NewScheme(nil, paramType),
-			}
-		} else {
-			// No default value, so parameter is required (non-null)
-			fields[i] = Keyed[*hm.Scheme]{
-				Key:   param.Named,
-				Value: hm.NewScheme(nil, hm.NonNullType{Type: paramType}),
-			}
-		}
-	}
-
-	argType := &RecordType{Fields: fields}
-	return hm.NewFnType(argType, hm.NonNullType{Type: classType})
+	return fnDecl.inferFunctionType(env, fresh, false, nil, classType.Named+" Constructor")
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -339,14 +315,16 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Extract constructor parameters and get filtered class body forms
-	constructorParams, filteredForms := c.extractConstructorParametersAndCleanBody()
+	constructorParams := c.extractConstructorParameters()
 
 	// Create a constructor function that evaluates the class body when called
 	constructor := &ConstructorFunction{
+		Closure:        env,
 		ClassName:      c.Named,
 		Parameters:     constructorParams,
 		ClassType:      c.Inferred,
-		ClassBodyForms: filteredForms,
+		ClassBodyForms: c.Value.Forms,
+		FnType:         c.ConstructorFnType,
 	}
 
 	// Add the constructor to the evaluation environment

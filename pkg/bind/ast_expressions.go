@@ -146,7 +146,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// BoundMethod - create new environment with receiver as 'self' and argument bindings
 		// Create a composite environment that includes both the receiver and the method's closure
 		recv := fn.Receiver.Clone()
-		fnEnv := createCompositeEnv(recv, fn.Method.Closure)
+		fnEnv := CreateCompositeEnv(recv, fn.Method.Closure)
 		fnEnv.Set("self", recv)
 
 		for _, argName := range fn.Method.Args {
@@ -454,11 +454,11 @@ func (s Symbol) ReferencedSymbols() []string {
 func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	val, found := env.Get(s.Name)
 	if !found {
-		return nil, fmt.Errorf("Symbol.Eval: %q not found in env", s.Name)
+		return nil, CreateEvalError(ctx, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env), s)
 	}
 
 	if val == nil {
-		return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
+		return nil, CreateEvalError(ctx, fmt.Errorf("Symbol: found nil value for %q", s.Name), s)
 	}
 
 	// Auto-call zero-arity functions when accessed as symbols

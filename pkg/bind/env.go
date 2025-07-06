@@ -2,6 +2,7 @@ package bind
 
 import (
 	"fmt"
+	"iter"
 	"log/slog"
 	"sort"
 	"strings"
@@ -15,6 +16,7 @@ type Env interface {
 	hm.Type
 	NamedType(string) (Env, bool)
 	AddClass(string, Env)
+	SetVisibility(string, Visibility)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
@@ -178,6 +180,18 @@ func addBuiltinTypes(mod *Module) {
 	mod.Add("json", hm.NewScheme(nil, jsonType))
 }
 
+func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
+	return func(yield func(string, *hm.Scheme) bool) {
+		for name, v := range e.vars {
+			if e.visibility[name] >= visibility {
+				if !yield(name, v) {
+					break
+				}
+			}
+		}
+	}
+}
+
 var _ hm.Substitutable = (*Module)(nil)
 
 func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
@@ -201,7 +215,14 @@ func (e *Module) FreeTypeVar() hm.TypeVarSet {
 
 func (e *Module) Add(name string, s *hm.Scheme) hm.Env {
 	e.vars[name] = s
+	if _, ok := e.visibility[name]; !ok {
+		e.visibility[name] = PrivateVisibility
+	}
 	return e
+}
+
+func (e *Module) SetVisibility(name string, visibility Visibility) {
+	e.visibility[name] = visibility
 }
 
 func (e *Module) SchemeOf(name string) (*hm.Scheme, bool) {
