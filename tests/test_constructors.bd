@@ -50,11 +50,11 @@ assert { Mixed(1, "Test", "Custom desc", false).enabled == false }
 # Constructor with methods
 type WithMethods {
   pub value: Int! = 42
-  
+
   pub getValue(): Int! {
     self.value
   }
-  
+
   pub increment(): WithMethods! {
     self.value += 1
     self

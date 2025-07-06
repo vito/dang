@@ -332,7 +332,7 @@ func createFunction(dag *dagger.Client, name string, fn bind.FunctionValue) (*da
 				}
 			}
 		}
-		
+
 		// TODO: eval default?
 		// if def, hasDefault := fn.Defaults[arg.Key]; hasDefault {
 		// 	js, err := json.Marshal(def)

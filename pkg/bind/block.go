@@ -219,7 +219,6 @@ func classifyForms(forms []Node) ClassifiedForms {
 	return classified
 }
 
-
 // InferFormsWithPhases implements phased compilation:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
@@ -230,7 +229,7 @@ func classifyForms(forms []Node) ClassifiedForms {
 func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var lastT hm.Type
 	var err error
-	
+
 	// Phase 1: Classify forms by their compilation requirements
 	classified := classifyForms(forms)
 
@@ -264,7 +263,7 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, 
 			}
 		}
 	}
-	// Pass 1: Infer class bodies 
+	// Pass 1: Infer class bodies
 	for _, form := range classified.Types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 1); err != nil {
@@ -347,7 +346,7 @@ func isConstantValue(value Node) bool {
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	var result Value = NullValue{}
 	var err error
-	
+
 	// Phase 1: Classify forms by their compilation requirements
 	classified := classifyForms(forms)
 

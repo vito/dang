@@ -267,12 +267,12 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return constructorType, nil
 }
 
-// extractConstructorParametersAndCleanBody extracts public non-function slots as constructor 
+// extractConstructorParametersAndCleanBody extracts public non-function slots as constructor
 // parameters and returns the filtered forms that should be evaluated in the class body
 func (c *ClassDecl) extractConstructorParametersAndCleanBody() ([]SlotDecl, []Node) {
 	var params []SlotDecl
 	var filteredForms []Node
-	
+
 	for _, form := range c.Value.Forms {
 		if slot, ok := form.(SlotDecl); ok {
 			// Check if this is a public non-function slot (constructor parameter)
@@ -287,7 +287,7 @@ func (c *ClassDecl) extractConstructorParametersAndCleanBody() ([]SlotDecl, []No
 		// Include all other forms (functions, private slots, etc.)
 		filteredForms = append(filteredForms, form)
 	}
-	
+
 	return params, filteredForms
 }
 
