@@ -37,7 +37,7 @@ type EvalEnv interface {
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
-	SetInScope(name string, value Value)
+	Reassign(name string, value Value)
 	Visibility(name string) Visibility
 	Clone() EvalEnv
 	Fork() EvalEnv
@@ -684,11 +684,11 @@ func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Vis
 	m.Visibilities[name] = visibility
 }
 
-// SetInScope sets a value in the appropriate scope:
+// Reassign reassigns a value following proper scoping rules:
 // - If the variable exists locally, update it locally
 // - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
 // - If the variable doesn't exist anywhere, set it locally
-func (m *ModuleValue) SetInScope(name string, value Value) {
+func (m *ModuleValue) Reassign(name string, value Value) {
 	if _, existsLocally := m.Values[name]; existsLocally {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
@@ -696,7 +696,7 @@ func (m *ModuleValue) SetInScope(name string, value Value) {
 	} else if m.Parent != nil && !m.IsForked {
 		if _, existsInParent := m.Parent.Get(name); existsInParent {
 			// Variable exists in parent, update parent (only if not forked)
-			m.Parent.SetInScope(name, value)
+			m.Parent.Reassign(name, value)
 		} else {
 			// Variable doesn't exist anywhere, set it locally
 			m.Values[name] = value

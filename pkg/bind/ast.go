@@ -313,9 +313,9 @@ func (c CompositeEnv) SetWithVisibility(name string, value Value, visibility Vis
 	c.primary.SetWithVisibility(name, value, visibility)
 }
 
-func (c CompositeEnv) SetInScope(name string, value Value) {
+func (c CompositeEnv) Reassign(name string, value Value) {
 	// Delegate to the primary environment for scoping logic
-	c.primary.SetInScope(name, value)
+	c.primary.Reassign(name, value)
 }
 
 func (c CompositeEnv) Visibility(name string) Visibility {

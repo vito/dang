@@ -124,7 +124,7 @@ type Reassignment struct {
 ```
 
 ### Evaluation Process
-1. **Variable Assignment**: Uses `SetInScope()` to respect scoping rules
+1. **Variable Assignment**: Uses `Reassign()` to respect scoping rules
 2. **Field Assignment**:
    - Clones the root object  
    - Traverses the path, cloning intermediate objects
@@ -138,7 +138,7 @@ Bind uses two distinct scoping mechanisms:
 1. **Lexical Scoping (`Clone()`)**: For blocks and function calls
    - Creates new scope frame in scope chain
    - Child can read from parent
-   - Assignments follow scoping rules via `SetInScope()`
+   - Assignments follow scoping rules via `Reassign()`
 
 2. **Execution Isolation (`Fork()`)**: For method calls on objects
    - Creates execution boundary to prevent mutation

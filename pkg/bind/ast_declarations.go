@@ -311,7 +311,7 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 		if !found {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
-		env.SetInScope(varName, value)
+		env.Reassign(varName, value)
 		return value, nil
 	} else if r.Modifier == "+" {
 		// Compound assignment: x += value
@@ -326,7 +326,7 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 			return nil, err
 		}
 
-		env.SetInScope(varName, newValue)
+		env.Reassign(varName, newValue)
 		return newValue, nil
 	}
 
@@ -391,7 +391,7 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 	}
 
 	// Update the root object in the environment (respects Fork boundaries)
-	env.SetInScope(rootSymbol, newRoot.(Value))
+	env.Reassign(rootSymbol, newRoot.(Value))
 
 	return newRoot.(Value), nil
 }
