@@ -403,9 +403,10 @@ func (r *REPL) evaluateExpression(expr string) error {
 			return fmt.Errorf("evaluation error: %w", err)
 		}
 
-		// Print result (unless it's null)
-		if _, isNull := val.(bind.NullValue); !isNull {
-			fmt.Printf("=> %s\n", val.String())
+		fmt.Printf("=> %s\n", val.String())
+
+		if r.debug {
+			pretty.Println(val)
 		}
 	}
 
