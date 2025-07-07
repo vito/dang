@@ -1,0 +1,23 @@
+# Test that class slots have precedence over outer scope
+
+pub shadowed = "outer"
+
+type Foo {
+  let shadowed = 42
+  pub bump: Foo! {
+    shadowed += 3
+    self
+  }
+}
+
+# Basic test
+let foo_result = Foo.bump.shadowed
+assert("Foo.bump.shadowed should return 45") { foo_result == 45 }
+
+# Test immutability
+let original = Foo
+let modified = original.bump
+assert("original should be unchanged") { original.shadowed == 42 }
+assert("modified should be updated") { modified.shadowed == 45 }
+
+print("Class shadowed inference test completed!")

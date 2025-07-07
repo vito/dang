@@ -354,13 +354,13 @@ type CompositeModule struct {
 }
 
 func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
-	// First check the lexical environment (current scope) for variable lookup
-	// This allows method parameters to shadow receiver fields during type inference
-	if scheme, found := c.lexical.SchemeOf(name); found {
+	// First check the primary environment (reopened module/class fields)
+	// This allows class fields to have precedence over outer scope variables
+	if scheme, found := c.primary.SchemeOf(name); found {
 		return scheme, true
 	}
-	// Then check the primary environment (reopened module)
-	return c.primary.SchemeOf(name)
+	// Then check the lexical environment (current scope) for fallback
+	return c.lexical.SchemeOf(name)
 }
 
 func (c *CompositeModule) LocalSchemeOf(name string) (*hm.Scheme, bool) {
