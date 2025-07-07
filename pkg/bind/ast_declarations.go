@@ -352,7 +352,7 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
-	for i := 0; i < len(path)-1; i++ {
+	for i := range len(path) - 1 {
 		fieldName := path[i]
 		val, found := currentObj.Get(fieldName)
 		if !found {
@@ -390,8 +390,8 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 
-	// Update the root object in the environment
-	env.Set(rootSymbol, newRoot.(Value))
+	// Update the root object in the environment (respects Fork boundaries)
+	env.SetInScope(rootSymbol, newRoot.(Value))
 
 	return newRoot.(Value), nil
 }

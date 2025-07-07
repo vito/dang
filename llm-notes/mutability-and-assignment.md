@@ -42,13 +42,18 @@ obj.a.b.c = 100   # Nested field assignment
 obj.a.b.c += 50   # Compound assignment on fields
 ```
 
-#### 4. Self Assignment in Classes
+#### 4. Class Field Assignment
 ```bind
 type MyClass {
   pub val = 1
 
   pub incr: MyClass! {
-    self.val += 1   # self. prefix required for reassignment
+    val += 1        # No self. prefix needed (uses Fork() semantics)
+    self
+  }
+  
+  pub incrExplicit: MyClass! {
+    self.val += 1   # self. prefix still works and is explicit
     self
   }
 }
@@ -119,12 +124,26 @@ type Reassignment struct {
 ```
 
 ### Evaluation Process
-1. **Variable Assignment**: Updates environment directly
+1. **Variable Assignment**: Uses `SetInScope()` to respect scoping rules
 2. **Field Assignment**:
-   - Clones the root object
+   - Clones the root object  
    - Traverses the path, cloning intermediate objects
    - Updates the final field
    - Stores the new root in the environment
+3. **Class Method Assignment**: Uses `Fork()` to create execution boundary that prevents mutation of original object
+
+### Scoping Mechanisms
+Bind uses two distinct scoping mechanisms:
+
+1. **Lexical Scoping (`Clone()`)**: For blocks and function calls
+   - Creates new scope frame in scope chain
+   - Child can read from parent
+   - Assignments follow scoping rules via `SetInScope()`
+
+2. **Execution Isolation (`Fork()`)**: For method calls on objects
+   - Creates execution boundary to prevent mutation
+   - Child can read from parent but assignments stay local
+   - Marked with `IsForked` flag to prevent parent mutation
 
 ### Type Checking
 - Simple assignment checks type compatibility
@@ -146,8 +165,10 @@ type Apko {
 ### 2. Builder Pattern
 ```bind
 type MyClass {
+  pub name: String! = "Jeff"
+
   pub withName(name: String!): MyClass! {
-    self.name = name
+    self.name = name  # self. prefix needed to avoid parameter shadowing
     self
   }
 }
@@ -164,11 +185,17 @@ counter += 3
 
 ## Constraints and Limitations
 
-### 1. Self Requirement
-Reassignment of class fields requires the `self.` prefix:
+### 1. Class Field Assignment Flexibility
+Class field assignment supports both prefixed and unprefixed syntax:
 ```bind
-self.field = value  # Required
-field = value       # Not valid for reassignment
+# Both are valid and equivalent when no shadowing occurs
+field = value       # Uses Fork() semantics, no self. needed
+self.field = value  # Explicit self. prefix also works
+
+# When parameter names shadow field names, use self. prefix
+pub withName(name: String!): MyClass! {
+  self.name = name  # Required: parameter 'name' shadows field 'name'
+}
 ```
 
 ### 2. Assignment Target Types
@@ -200,5 +227,29 @@ pub withAlpine(branch: String! = "edge"): Apko! {
 ### Test Examples
 - `test_reassignment.bd`: Basic assignment patterns
 - `test_plus_equals.bd`: Compound assignment with various types
-- `test_self.bd`: Class field reassignment patterns
+- `test_self.bd`: Class field reassignment patterns  
 - `test_self_method_execution.bd`: Method chaining with reassignment
+- `test_block_scoping.bd`: Block scoping with outer slot reassignment
+- `test_class_desired_behavior.bd`: Class methods without self prefix
+- `test_class_immutability.bd`: Fork() semantics for class methods
+
+### Class Method Assignment Examples
+```bind
+type Counter {
+  pub value: Int!
+  
+  pub incr: Counter! {
+    value += 1    # Works without self. prefix
+    self
+  }
+}
+
+# Usage preserves immutability
+let original = Counter(42)
+let modified = original.incr
+assert { original.value == 42 }  # Original unchanged
+assert { modified.value == 43 }  # Modified copy
+
+# Chain calls work naturally
+assert { Counter(10).incr.incr.value == 12 }
+```

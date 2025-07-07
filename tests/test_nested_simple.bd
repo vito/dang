@@ -1,0 +1,79 @@
+# Test nested field assignment in class methods with Fork() semantics
+
+type InnerData {
+  pub value: Int! = 42
+  pub name: String! = "default"
+}
+
+type MiddleLayer {
+  pub inner: InnerData!
+  pub count: Int! = 0
+}
+
+type Container {
+  pub middle: MiddleLayer!
+  
+  # Test: nested field assignment should work with Fork() semantics
+  # This should: Fork container -> clone middle -> clone inner -> update value
+  pub updateDeepValue(newValue: Int!): Container! {
+    middle.inner.value = newValue  # No self. prefix
+    self
+  }
+  
+  # Test: compound assignment on deeply nested fields
+  pub incrementDeepValue: Container! {
+    middle.inner.value += 10  # No self. prefix
+    self
+  }
+  
+  # Test: update multiple fields in nested structure
+  pub updateMultiple(newValue: Int!, newName: String!): Container! {
+    middle.inner.value = newValue  # No self. prefix
+    middle.inner.name = newName    # No self. prefix
+    middle.count += 1              # No self. prefix
+    self
+  }
+}
+
+# Create original with deeply nested structure
+let original = Container(
+  middle: MiddleLayer(
+    inner: InnerData(value: 100, name: "original"),
+    count: 5
+  )
+)
+
+# Test 1: Deep nested field assignment with Fork() semantics
+let modified1 = original.updateDeepValue(200)
+assert("deep nested field updated in copy") { modified1.middle.inner.value == 200 }
+assert("original container unchanged") { original.middle.inner.value == 100 }
+assert("original name unchanged") { original.middle.inner.name == "original" }
+assert("original count unchanged") { original.middle.count == 5 }
+
+# Test 2: Compound assignment on deeply nested fields  
+let modified2 = original.incrementDeepValue
+assert("deep nested compound assignment works") { modified2.middle.inner.value == 110 }
+assert("original still unchanged") { original.middle.inner.value == 100 }
+
+# Test 3: Multiple field updates in same method call
+let modified3 = original.updateMultiple(999, "modified")
+assert("multiple nested updates work") { modified3.middle.inner.value == 999 }
+assert("multiple nested updates work") { modified3.middle.inner.name == "modified" }
+assert("multiple nested updates work") { modified3.middle.count == 6 }
+assert("original completely unchanged") { original.middle.inner.value == 100 }
+assert("original completely unchanged") { original.middle.inner.name == "original" }
+assert("original completely unchanged") { original.middle.count == 5 }
+
+# Test 4: Chained method calls with nested updates preserve independence
+let chained = original.updateDeepValue(300).incrementDeepValue
+assert("chained calls work") { chained.middle.inner.value == 310 }
+assert("original still unchanged after chaining") { original.middle.inner.value == 100 }
+
+# Test 5: Multiple independent modifications
+let copy1 = original.updateDeepValue(111)
+let copy2 = original.updateDeepValue(222)
+assert("independent copies") { copy1.middle.inner.value == 111 }
+assert("independent copies") { copy2.middle.inner.value == 222 }
+assert("original unchanged by multiple copies") { original.middle.inner.value == 100 }
+
+print("Deep nested field assignment with Fork() semantics tests passed!")
