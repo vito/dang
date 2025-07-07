@@ -408,8 +408,7 @@ func (t *CompositeModule) Eq(other Type) bool                         { return o
 func (t *CompositeModule) Name() string                               { return t.primary.Name() }
 func (t *CompositeModule) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
 func (t *CompositeModule) Types() hm.Types                            { return nil }
-func (t *CompositeModule) String() string                             { return t.Name() }
-func (t *CompositeModule) Format(s fmt.State, c rune)                 { fmt.Fprintf(s, "%s", t.Name()) }
+func (t *CompositeModule) String() string                             { return t.primary.String() }
 
 // NamedType looks up class types, needed for NamedTypeNode.Infer compatibility
 func (c *CompositeModule) NamedType(name string) (Env, bool) {
