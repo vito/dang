@@ -201,7 +201,6 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		parentModEnv := bind.NewModuleValue(parentModType)
 		parentModEnv.Set("self", parentModEnv)
 
-		fmt.Fprintf(os.Stderr, "parentState: %+v\n", parentState)
 		for name, value := range parentState {
 			scheme, found := parentModType.SchemeOf(name)
 			if !found {
@@ -239,7 +238,6 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	if err != nil {
 		return fmt.Errorf("failed to marshal result: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "JSON result: %T => %s\n", result, jsonBytes)
 	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 

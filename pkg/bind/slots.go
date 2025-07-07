@@ -3,7 +3,6 @@ package bind
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/vito/bind/pkg/hm"
 )
@@ -114,7 +113,6 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "setting visibility for %q: %+v\n", s.Named, s.Visibility)
 		bindEnv.SetVisibility(s.Named, s.Visibility)
 	}
 
