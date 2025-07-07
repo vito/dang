@@ -313,6 +313,11 @@ func (c CompositeEnv) SetWithVisibility(name string, value Value, visibility Vis
 	c.primary.SetWithVisibility(name, value, visibility)
 }
 
+func (c CompositeEnv) SetInScope(name string, value Value) {
+	// Delegate to the primary environment for scoping logic
+	c.primary.SetInScope(name, value)
+}
+
 func (c CompositeEnv) Visibility(name string) Visibility {
 	// Speculative: don't fall back to lexical, we should consider that always private?
 	return c.primary.Visibility(name)

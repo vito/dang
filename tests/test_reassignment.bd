@@ -22,7 +22,7 @@ assert { flag == false }
   x = 200
   assert("slot inherited type and was assigned locally") { x == 200 }
 }
-assert("does not modify outside of block, because the block cloned") { x == 100 }
+assert("updates the outer slot, because the block did not declare its own") { x == 200 }
 
 let fs = {{a: {{b: {{c: 42}}}}}}
 fs.a.b.c = 100

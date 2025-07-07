@@ -311,7 +311,7 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 		if !found {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
-		env.Set(varName, value)
+		env.SetInScope(varName, value)
 		return value, nil
 	} else if r.Modifier == "+" {
 		// Compound assignment: x += value
@@ -326,7 +326,7 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 			return nil, err
 		}
 
-		env.Set(varName, newValue)
+		env.SetInScope(varName, newValue)
 		return newValue, nil
 	}
 

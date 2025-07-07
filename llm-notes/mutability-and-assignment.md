@@ -73,13 +73,25 @@ assert { modified.a.b.c == 2 }  # Modified copy
 ```
 
 ### Block Scoping
+Block scoping in Bind follows these rules:
+- If a block **doesn't declare** a local variable, reassignment updates the outer slot
+- If a block **declares** a local variable, it shadows the outer variable (normal scoping)
+
 ```bind
 pub x = 100
 {
-  x = 200         # Creates local copy
+  x = 200         # No local declaration, updates outer slot
   assert { x == 200 }
 }
-assert { x == 100 }  # Original unchanged outside block
+assert { x == 200 }  # Outer slot was updated
+
+pub y = 300
+{
+  let y = 400     # Local declaration shadows outer
+  y = 500         # Updates local shadow
+  assert { y == 500 }
+}
+assert { y == 300 }  # Outer slot unchanged
 ```
 
 ## Supported Types for Assignment

@@ -38,6 +38,7 @@ type EvalEnv interface {
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
+	SetInScope(name string, value Value)
 	Visibility(name string) Visibility
 	Clone() EvalEnv
 }
@@ -667,6 +668,31 @@ func (m *ModuleValue) Clone() EvalEnv {
 func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
+}
+
+// SetInScope sets a value in the appropriate scope:
+// - If the variable exists locally, update it locally
+// - If the variable doesn't exist locally but exists in parent, update parent
+// - If the variable doesn't exist anywhere, set it locally
+func (m *ModuleValue) SetInScope(name string, value Value) {
+	if _, existsLocally := m.Values[name]; existsLocally {
+		// Variable exists locally, update it locally
+		m.Values[name] = value
+		m.Visibilities[name] = m.Visibility(name)
+	} else if m.Parent != nil {
+		if _, existsInParent := m.Parent.Get(name); existsInParent {
+			// Variable exists in parent, update parent
+			m.Parent.SetInScope(name, value)
+		} else {
+			// Variable doesn't exist anywhere, set it locally
+			m.Values[name] = value
+			m.Visibilities[name] = m.Visibility(name)
+		}
+	} else {
+		// No parent, set it locally
+		m.Values[name] = value
+		m.Visibilities[name] = m.Visibility(name)
+	}
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue
