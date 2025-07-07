@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -700,7 +699,6 @@ func (m *ModuleValue) SetInScope(name string, value Value) {
 func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 	result := make(map[string]Value)
 	for _, kv := range m.Bindings(PrivateVisibility) {
-		log.Println("Marshaling", kv.Key, kv.Value, fmt.Sprintf("%T", kv.Value))
 		if _, isFn := kv.Value.(FunctionValue); isFn {
 			continue
 		}
@@ -708,7 +706,6 @@ func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 			// prevent infinite recursion
 			continue
 		}
-		log.Println("Marshaling", kv.Key, kv.Value, fmt.Sprintf("%T", kv.Value))
 		result[kv.Key] = kv.Value
 	}
 	return json.Marshal(result)
