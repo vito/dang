@@ -145,7 +145,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	case BoundMethod:
 		// BoundMethod - create new environment with receiver as 'self' and argument bindings
 		// Create a composite environment that includes both the receiver and the method's closure
-		recv := fn.Receiver.Clone()
+		recv := fn.Receiver.Fork()
 		fnEnv := CreateCompositeEnv(recv, fn.Method.Closure)
 		fnEnv.Set("self", recv)
 

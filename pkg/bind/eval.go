@@ -40,6 +40,7 @@ type EvalEnv interface {
 	SetInScope(name string, value Value)
 	Visibility(name string) Visibility
 	Clone() EvalEnv
+	Fork() EvalEnv
 }
 
 // GraphQLFunction represents a GraphQL API function that makes actual calls
@@ -573,6 +574,7 @@ type ModuleValue struct {
 	Values       map[string]Value
 	Visibilities map[string]Visibility // Track visibility of each field
 	Parent       *ModuleValue          // For hierarchical scoping
+	IsForked     bool                  // Prevents SetInScope from traversing to parent
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
@@ -663,6 +665,19 @@ func (m *ModuleValue) Clone() EvalEnv {
 	}
 }
 
+func (m *ModuleValue) Fork() EvalEnv {
+	// Create shallow copy with fork boundary marker
+	newValues := make(map[string]Value)
+	newVisibilities := make(map[string]Visibility)
+	return &ModuleValue{
+		Mod:          m.Mod,
+		Values:       newValues,
+		Visibilities: newVisibilities,
+		Parent:       m,
+		IsForked:     true, // This prevents SetInScope from traversing to parent
+	}
+}
+
 // SetWithVisibility sets a value with explicit visibility information
 func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
@@ -671,16 +686,16 @@ func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Vis
 
 // SetInScope sets a value in the appropriate scope:
 // - If the variable exists locally, update it locally
-// - If the variable doesn't exist locally but exists in parent, update parent
+// - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
 // - If the variable doesn't exist anywhere, set it locally
 func (m *ModuleValue) SetInScope(name string, value Value) {
 	if _, existsLocally := m.Values[name]; existsLocally {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
-	} else if m.Parent != nil {
+	} else if m.Parent != nil && !m.IsForked {
 		if _, existsInParent := m.Parent.Get(name); existsInParent {
-			// Variable exists in parent, update parent
+			// Variable exists in parent, update parent (only if not forked)
 			m.Parent.SetInScope(name, value)
 		} else {
 			// Variable doesn't exist anywhere, set it locally
@@ -688,7 +703,7 @@ func (m *ModuleValue) SetInScope(name string, value Value) {
 			m.Visibilities[name] = m.Visibility(name)
 		}
 	} else {
-		// No parent, set it locally
+		// No parent or forked boundary, set it locally
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
 	}

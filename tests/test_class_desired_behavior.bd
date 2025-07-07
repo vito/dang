@@ -1,0 +1,22 @@
+# Test the desired class method behavior without self prefix
+
+type Foo {
+  pub a: Int!
+  
+  pub incr: Foo! {
+    a += 1  # This should work without self prefix
+    self
+  }
+}
+
+# This should work per the requirements
+let foo_result = Foo(42).incr.a
+assert("Foo(42).incr.a should return 43") { foo_result == 43 }
+
+# Test immutability
+let original = Foo(10)
+let modified = original.incr
+assert("original should be unchanged") { original.a == 10 }
+assert("modified should be updated") { modified.a == 11 }
+
+print("Desired behavior test completed!")

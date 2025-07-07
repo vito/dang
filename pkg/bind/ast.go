@@ -323,6 +323,14 @@ func (c CompositeEnv) Visibility(name string) Visibility {
 	return c.primary.Visibility(name)
 }
 
+func (c CompositeEnv) Fork() EvalEnv {
+	// Fork the primary environment and keep the same lexical environment
+	return CompositeEnv{
+		primary: c.primary.Fork(),
+		lexical: c.lexical,
+	}
+}
+
 func (c CompositeEnv) Clone() EvalEnv {
 	// Clone the primary environment and keep the same lexical environment
 	return CompositeEnv{

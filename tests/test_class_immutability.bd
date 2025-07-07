@@ -1,0 +1,27 @@
+# Test class method immutability
+
+type Counter {
+  pub value: Int!
+  
+  pub incr: Counter! {
+    self.value += 1
+    self
+  }
+}
+
+# Test direct constructor call behavior (like existing tests)
+assert("Direct constructor call behavior") { Counter(42).incr.value == 43 }
+
+# Test stored instance behavior (problematic case)
+let stored = Counter(42)
+let modified = stored.incr
+
+print("stored.value:")
+print(stored.value)
+print("modified.value:")
+print(modified.value)
+
+assert("stored instance should be unchanged") { stored.value == 42 }
+assert("modified instance should be updated") { modified.value == 43 }
+
+print("Class immutability test completed!")
