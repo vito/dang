@@ -271,6 +271,7 @@ func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		tempAddition := Addition{
 			Left:  r.Target,
 			Right: r.Value,
+			Loc:   r.Loc,
 		}
 		_, err := tempAddition.Infer(env, fresh)
 		if err != nil {
