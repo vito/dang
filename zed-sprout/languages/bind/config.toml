@@ -1,8 +1,0 @@
-name = "Bind"
-grammar = "bind"
-path_suffixes = ["bd", "bind"]
-line_comments = ["# "]
-first_line_pattern = "^#!.*\\bbind\\b"
-tab_size = 2
-hard_tabs = false
-word_characters = ["_"]
