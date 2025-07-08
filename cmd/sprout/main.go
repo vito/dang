@@ -36,16 +36,16 @@ func main() {
 		Long: `Sprout is a functional language for building Dagger pipelines.
 It provides type-safe, composable abstractions for container operations.`,
 		Example: `  # Run a Sprout script
-  sprout script.bd
+  sprout script.sp
 
-  # Run all .bd files in a directory as a module
+  # Run all .sp files in a directory as a module
   sprout ./my-module
 
   # Start interactive REPL
   sprout
 
   # Run with debug logging enabled
-  sprout --debug script.bd
+  sprout --debug script.sp
   sprout -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

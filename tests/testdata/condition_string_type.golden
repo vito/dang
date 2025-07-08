@@ -1,5 +1,5 @@
 [1m[31mError:[0m condition must be Boolean, got String!
-  [2m[34m--> errors/condition_string_type.bd:2:17[0m
+  [2m[34m--> errors/condition_string_type.sp:2:17[0m
  [2m    |[0m
  [2m  1 | # Test conditional with string condition[0m
  [2m[34m[1m  2 | [0mpub result = if "hello" { "string condition" } else { "default" }

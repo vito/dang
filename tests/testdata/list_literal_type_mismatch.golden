@@ -1,5 +1,5 @@
 [1m[31mError:[0m unify index 2: Unification Fail: String ~ Int cannot be unified
-  [2m[34m--> errors/list_literal_type_mismatch.bd:2:14[0m
+  [2m[34m--> errors/list_literal_type_mismatch.sp:2:14[0m
  [2m    |[0m
  [2m  1 | # This should fail: mixing types in list literal[0m
  [2m[34m[1m  2 | [0mpub result = [[], ["foo"], [3]]

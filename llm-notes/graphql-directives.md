@@ -10,7 +10,7 @@ Sprout already has comprehensive GraphQL directive support in its introspection 
 - `DirectiveArg` struct for directive arguments
 - Built-in directives: `@experimental`, `@sourceMap`, `@enumValue`
 
-However, the Sprout language itself has **no syntax** for declaring or using directives in `.bd` files.
+However, the Sprout language itself has **no syntax** for declaring or using directives in `.sp` files.
 
 ## Proposed Implementation
 

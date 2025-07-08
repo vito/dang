@@ -47,5 +47,5 @@ For production use, would need full control flow analysis with boolean constrain
 
 ### Testing
 
-- **Positive test**: `tests/test_flow_sensitive_null.bd` - verifies null checks work correctly
-- **Error test**: `tests/errors/flow_sensitive_null_else_branch.bd` - verifies type errors still occur in branches where variable remains nullable
+- **Positive test**: `tests/test_flow_sensitive_null.sp` - verifies null checks work correctly
+- **Error test**: `tests/errors/flow_sensitive_null_else_branch.sp` - verifies type errors still occur in branches where variable remains nullable

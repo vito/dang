@@ -67,7 +67,7 @@ Objects are **copied** when modified, not mutated in place. This provides:
 - **Safe concurrency**: No shared mutable state
 - **Predictable behavior**: Modifications don't affect other references
 
-### Example from `test_reassignment.bd`:
+### Example from `test_reassignment.sp`:
 ```sprout
 let original = {{a: {{b: {{c: 1}}}}}}
 let modified = original
@@ -213,7 +213,7 @@ Currently only `+=` is supported for compound assignment. Other operators like `
 
 ## Examples from Codebase
 
-### Real-world Usage (apko.bd)
+### Real-world Usage (apko.sp)
 ```sprout
 pub withAlpine(branch: String! = "edge"): Apko! {
   self.config.contents.packages += ["apk-tools"]
@@ -225,13 +225,13 @@ pub withAlpine(branch: String! = "edge"): Apko! {
 ```
 
 ### Test Examples
-- `test_reassignment.bd`: Basic assignment patterns
-- `test_plus_equals.bd`: Compound assignment with various types
-- `test_self.bd`: Class field reassignment patterns  
-- `test_self_method_execution.bd`: Method chaining with reassignment
-- `test_block_scoping.bd`: Block scoping with outer slot reassignment
-- `test_class_desired_behavior.bd`: Class methods without self prefix
-- `test_class_immutability.bd`: Fork() semantics for class methods
+- `test_reassignment.sp`: Basic assignment patterns
+- `test_plus_equals.sp`: Compound assignment with various types
+- `test_self.sp`: Class field reassignment patterns  
+- `test_self_method_execution.sp`: Method chaining with reassignment
+- `test_block_scoping.sp`: Block scoping with outer slot reassignment
+- `test_class_desired_behavior.sp`: Class methods without self prefix
+- `test_class_immutability.sp`: Fork() semantics for class methods
 
 ### Class Method Assignment Examples
 ```sprout

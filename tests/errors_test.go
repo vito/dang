@@ -18,14 +18,14 @@ import (
 func TestErrorMessages(t *testing.T) {
 	errorsDir := filepath.Join("errors")
 
-	// Find all .bd files in the errors directory
-	bindFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.bd"))
+	// Find all .sp files in the errors directory
+	bindFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.sp"))
 	if err != nil {
-		t.Fatalf("Failed to find .bd files: %v", err)
+		t.Fatalf("Failed to find .sp files: %v", err)
 	}
 
 	if len(bindFiles) == 0 {
-		t.Fatal("No .bd test files found in tests/errors/")
+		t.Fatal("No .sp test files found in tests/errors/")
 	}
 
 	// Connect to Dagger (required for Bind execution)
@@ -46,7 +46,7 @@ func TestErrorMessages(t *testing.T) {
 		bindFile := bindFile // capture loop variable
 
 		// Extract test name from filename
-		testName := strings.TrimSuffix(filepath.Base(bindFile), ".bd")
+		testName := strings.TrimSuffix(filepath.Base(bindFile), ".sp")
 
 		t.Run(testName, func(t *testing.T) {
 			output := runBindFile(t.Context(), dag, schema, bindFile)

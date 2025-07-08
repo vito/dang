@@ -4,11 +4,11 @@
 - `./hack/generate` - Regenerate parser and build code (run after grammar changes)
 - `./tests/run_all_tests.sh` - Full test suite (Go tests + Dagger integration)
 - `go test ./tests/ -count -v -run /test_name` - Run specific test
-- `go run ./cmd/sprout ./path/to/file.bd` - Execute Sprout file
+- `go run ./cmd/sprout ./path/to/file.sp` - Execute Sprout file
 - `go run ./cmd/sprout ./tests/test_dir_module` - Special directory module test
 
 ## Development Process
-1. **Add test first** - Create `.bd` file in `/tests/` with `assert { ... }` statements
+1. **Add test first** - Create `.sp` file in `/tests/` with `assert { ... }` statements
 2. **Modify grammar** - Update `pkg/sprout/sprout.peg` for syntax changes
 3. **Update AST** - Modify structs in `pkg/sprout/*.go` as needed
 4. **Implement logic** - Update `Hoist()`, `Infer()`, and `Eval()` methods
@@ -32,5 +32,5 @@
 - `pkg/sprout/slots.go` - Class and slot declarations
 - `pkg/sprout/ast.go` - Function calls and evaluation
 - `pkg/sprout/eval.go` - Core evaluation engine
-- `tests/*.bd` - Individual test files (auto-discovered by Go tests)
+- `tests/*.sp` - Individual test files (auto-discovered by Go tests)
 - `tests/test_dir_module/` - Multi-file test (manual execution required)

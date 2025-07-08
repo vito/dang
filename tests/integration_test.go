@@ -44,7 +44,7 @@ func TestIntegration(tT *testing.T) {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	// Find all test_*.bd files or test_* packages
+	// Find all test_*.sp files or test_* packages
 	paths, err := filepath.Glob("test_*")
 	if err != nil {
 		t.Fatalf("Failed to find test files: %v", err)

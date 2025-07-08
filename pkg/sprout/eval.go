@@ -863,16 +863,16 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	return nil
 }
 
-// RunDir evaluates all .bd files in a directory as a single module
+// RunDir evaluates all .sp files in a directory as a single module
 func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) (EvalEnv, error) {
-	// Discover all .bd files in the directory
-	bindFiles, err := filepath.Glob(filepath.Join(dirPath, "*.bd"))
+	// Discover all .sp files in the directory
+	bindFiles, err := filepath.Glob(filepath.Join(dirPath, "*.sp"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to find .bd files in directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to find .sp files in directory %s: %w", dirPath, err)
 	}
 
 	if len(bindFiles) == 0 {
-		return nil, fmt.Errorf("no .bd files found in directory: %s", dirPath)
+		return nil, fmt.Errorf("no .sp files found in directory: %s", dirPath)
 	}
 
 	// Sort files for deterministic order
@@ -913,7 +913,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	if debug {
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
-		fmt.Printf("Found %d .bd files with %d total forms\n", len(bindFiles), len(masterBlock.Forms))
+		fmt.Printf("Found %d .sp files with %d total forms\n", len(bindFiles), len(masterBlock.Forms))
 		// pretty.Println(masterBlock)
 	}
 

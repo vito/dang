@@ -1,4 +1,4 @@
-# Utility functions using types from types.bd
+# Utility functions using types from types.sp
 pub createPerson(name: String!, age: Int!): Person! {
   Person.new(name, age)
 }

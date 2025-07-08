@@ -1,5 +1,5 @@
 [1m[31mError:[0m missing required argument: "y"
-  [2m[34m--> errors/function_missing_required_args.bd:3:14[0m
+  [2m[34m--> errors/function_missing_required_args.sp:3:14[0m
  [2m    |[0m
  [2m  1 | # Test function call missing required arguments[0m
  [2m  2 | pub add_nums(x: Int!, y: Int!): Int! { x + y }[0m
