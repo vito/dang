@@ -1,8 +1,8 @@
-# Testing and Assertions in Bind
+# Testing and Assertions in Sprout
 
 ## Assert Syntax
-Use `assert { condition }` to test expected behaviors in Bind code:
-```bind
+Use `assert { condition }` to test expected behaviors in Sprout code:
+```sprout
 type Person(name: String!) {
   pub greet: String! {
     "Hello, I'm " + self.name
@@ -23,7 +23,7 @@ assert { Person("Bob").name == "Bob" }
 ## Directory Module Testing
 The special `test_dir_module` test requires manual execution:
 ```bash
-go run ./cmd/bind ./tests/test_dir_module
+go run ./cmd/sprout ./tests/test_dir_module
 ```
 This tests cross-file references and module boundaries, which the Go test suite doesn't cover.
 

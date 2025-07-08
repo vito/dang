@@ -1,3 +1,3 @@
-package bind
+package sprout
 
 type Record []Keyed[Node]

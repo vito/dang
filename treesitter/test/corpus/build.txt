@@ -36,7 +36,7 @@ print(test(bin(src)))
 
 ---
 
-(bind
+(sprout
   (comment_token)
   (slot
     (value_only_slot

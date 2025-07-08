@@ -1,4 +1,4 @@
-package bind
+package sprout
 
 func sliceOf[T any](val any) []T {
 	anys := val.([]any)

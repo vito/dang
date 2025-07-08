@@ -1,7 +1,7 @@
 package grammar
 
 //#include "tree_sitter/parser.h"
-//TSLanguage *tree_sitter_bind();
+//TSLanguage *tree_sitter_sprout();
 import "C"
 import (
 	"unsafe"
@@ -10,6 +10,6 @@ import (
 )
 
 func Language() *sitter.Language {
-	ptr := unsafe.Pointer(C.tree_sitter_bind())
+	ptr := unsafe.Pointer(C.tree_sitter_sprout())
 	return sitter.NewLanguage(ptr)
 }

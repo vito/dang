@@ -1,11 +1,11 @@
-package bind
+package sprout
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type FunctionBase struct {

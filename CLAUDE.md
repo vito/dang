@@ -1,10 +1,10 @@
 Read @llm-notes/ to refresh your memory.
 
-You are developing Bind, a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Its grammar is defined in pkg/bind/bind.peg.
+You are developing Sprout, a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Its grammar is defined in pkg/sprout/sprout.peg.
 
-NEVER GUESS BIND CODE SYNTAX. You do NOT know this language already. Study other Bind code, and the Bind grammar (pkg/bind/bind.peg) BEFORE attempting to write any Bind code.
+NEVER GUESS SPROUT CODE SYNTAX. You do NOT know this language already. Study other Sprout code, and the Sprout grammar (pkg/sprout/sprout.peg) BEFORE attempting to write any Sprout code.
 
-Run ./tests/run_all_tests.sh to validate your changes. This is an all-in-one script that re-generates all generated code, re-builds the Bind binary, and runs all of the tests.
+Run ./tests/run_all_tests.sh to validate your changes. This is an all-in-one script that re-generates all generated code, re-builds the Sprout binary, and runs all of the tests.
 
 Run ./hack/generate to re-generate all generated code without building or running the tests. DO NOT run generation commands yourself; trust the script.
 

@@ -1,16 +1,16 @@
-# Bind Development Workflow
+# Sprout Development Workflow
 
 ## Essential Commands
 - `./hack/generate` - Regenerate parser and build code (run after grammar changes)
 - `./tests/run_all_tests.sh` - Full test suite (Go tests + Dagger integration)
 - `go test ./tests/ -count -v -run /test_name` - Run specific test
-- `go run ./cmd/bind ./path/to/file.bd` - Execute Bind file
-- `go run ./cmd/bind ./tests/test_dir_module` - Special directory module test
+- `go run ./cmd/sprout ./path/to/file.bd` - Execute Sprout file
+- `go run ./cmd/sprout ./tests/test_dir_module` - Special directory module test
 
 ## Development Process
 1. **Add test first** - Create `.bd` file in `/tests/` with `assert { ... }` statements
-2. **Modify grammar** - Update `pkg/bind/bind.peg` for syntax changes
-3. **Update AST** - Modify structs in `pkg/bind/*.go` as needed
+2. **Modify grammar** - Update `pkg/sprout/sprout.peg` for syntax changes
+3. **Update AST** - Modify structs in `pkg/sprout/*.go` as needed
 4. **Implement logic** - Update `Hoist()`, `Infer()`, and `Eval()` methods
 5. **Regenerate** - Run `./hack/generate` after grammar changes
 6. **Test** - Run specific test, then full suite
@@ -28,9 +28,9 @@
 - **Type inference order** - Constructor args must be available during class method inference
 
 ## File Organization
-- `pkg/bind/bind.peg` - Grammar definition
-- `pkg/bind/slots.go` - Class and slot declarations
-- `pkg/bind/ast.go` - Function calls and evaluation
-- `pkg/bind/eval.go` - Core evaluation engine
+- `pkg/sprout/sprout.peg` - Grammar definition
+- `pkg/sprout/slots.go` - Class and slot declarations
+- `pkg/sprout/ast.go` - Function calls and evaluation
+- `pkg/sprout/eval.go` - Core evaluation engine
 - `tests/*.bd` - Individual test files (auto-discovered by Go tests)
 - `tests/test_dir_module/` - Multi-file test (manual execution required)

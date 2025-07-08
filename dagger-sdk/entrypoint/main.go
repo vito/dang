@@ -11,11 +11,11 @@ import (
 
 	"dagger.io/dagger"
 	"dagger.io/dagger/telemetry"
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/bind"
-	"github.com/vito/bind/pkg/ioctx"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/sprout/pkg/ioctx"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
@@ -29,7 +29,7 @@ func main() {
 
 	ctx = telemetry.InitEmbedded(ctx, resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String("dagger-bind-sdk"),
+		semconv.ServiceNameKey.String("dagger-sprout-sdk"),
 	))
 	defer telemetry.Close()
 
@@ -104,7 +104,7 @@ func main() {
 func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) error {
 	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
 	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
-	env, err := bind.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
+	env, err := sprout.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
 	if err != nil {
 		return fmt.Errorf("failed to run dir: %w", err)
 	}
@@ -140,7 +140,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		return fmt.Errorf("failed to unmarshal parent JSON: %w", err)
 	}
 
-	parentConstructor := parentModBase.(*bind.ConstructorFunction)
+	parentConstructor := parentModBase.(*sprout.ConstructorFunction)
 	parentModType := parentConstructor.ClassType
 
 	var fnType *hm.FunctionType
@@ -163,9 +163,9 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		}
 	}
 
-	var args bind.Record
-	argMap := make(map[string]bind.Value, len(args))
-	for _, arg := range fnType.Arg().(*bind.RecordType).Fields {
+	var args sprout.Record
+	argMap := make(map[string]sprout.Value, len(args))
+	for _, arg := range fnType.Arg().(*sprout.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -185,20 +185,20 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			return fmt.Errorf("failed to convert input argument %s to bind value: %w", arg.Key, err)
 		}
 		argMap[arg.Key] = bindVal
-		args = append(args, bind.Keyed[bind.Node]{
+		args = append(args, sprout.Keyed[sprout.Node]{
 			Key:   arg.Key,
-			Value: bind.ValueNode{Val: bindVal},
+			Value: sprout.ValueNode{Val: bindVal},
 		})
 	}
 
-	var result bind.Value
+	var result sprout.Value
 	if fnName == "" {
 		result, err = parentConstructor.Call(ctx, env, argMap)
 		if err != nil {
 			return fmt.Errorf("failed to call parent constructor: %w", err)
 		}
 	} else {
-		parentModEnv := bind.NewModuleValue(parentModType)
+		parentModEnv := sprout.NewModuleValue(parentModType)
 		parentModEnv.Set("self", parentModEnv)
 
 		for name, value := range parentState {
@@ -217,14 +217,14 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			parentModEnv.Set(name, bindVal)
 		}
 
-		bodyEnv := bind.CreateCompositeEnv(parentModEnv, env)
-		_, err := bind.EvaluateFormsWithPhases(ctx, parentConstructor.ClassBodyForms, bodyEnv)
+		bodyEnv := sprout.CreateCompositeEnv(parentModEnv, env)
+		_, err := sprout.EvaluateFormsWithPhases(ctx, parentConstructor.ClassBodyForms, bodyEnv)
 		if err != nil {
 			return fmt.Errorf("evaluating class body for %s: %w", parentConstructor.ClassName, err)
 		}
 
-		call := bind.Select{
-			Receiver: bind.ValueNode{Val: parentModEnv},
+		call := sprout.Select{
+			Receiver: sprout.ValueNode{Val: parentModEnv},
 			Field:    fnName,
 			Args:     &args,
 		}
@@ -241,44 +241,44 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
-func anyToBind(ctx context.Context, env bind.EvalEnv, val any, fieldType hm.Type) (bind.Value, error) {
+func anyToBind(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.Type) (sprout.Value, error) {
 	if nonNull, ok := fieldType.(hm.NonNullType); ok {
 		return anyToBind(ctx, env, val, nonNull.Type)
 	}
 	switch v := val.(type) {
 	case string:
-		if modType, ok := fieldType.(*bind.Module); ok && modType != bind.StringType {
-			sel := bind.Select{
+		if modType, ok := fieldType.(*sprout.Module); ok && modType != sprout.StringType {
+			sel := sprout.Select{
 				Field: fmt.Sprintf("load%sFromID", modType.Named),
-				Args: &bind.Record{
-					bind.Keyed[bind.Node]{
+				Args: &sprout.Record{
+					sprout.Keyed[sprout.Node]{
 						Key:   "id",
-						Value: bind.String{Value: v},
+						Value: sprout.String{Value: v},
 					},
 				},
 			}
 			return sel.Eval(ctx, env)
 		}
-		return bind.StringValue{Val: v}, nil
+		return sprout.StringValue{Val: v}, nil
 	case int:
-		return bind.IntValue{Val: v}, nil
+		return sprout.IntValue{Val: v}, nil
 	case json.Number:
 		// if strings.Contains(v.String(), ".") {
-		// 	return bind.FloatValue{Val: v.Float64()}, nil
+		// 	return sprout.FloatValue{Val: v.Float64()}, nil
 		// }
 		i, err := v.Int64()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert json.Number to int64: %w", err)
 		}
-		return bind.IntValue{Val: int(i)}, nil
+		return sprout.IntValue{Val: int(i)}, nil
 	case bool:
-		return bind.BoolValue{Val: v}, nil
+		return sprout.BoolValue{Val: v}, nil
 	case []any:
-		listT, isList := fieldType.(bind.ListType)
+		listT, isList := fieldType.(sprout.ListType)
 		if !isList {
 			return nil, fmt.Errorf("expected list type, got %T", fieldType)
 		}
-		vals := bind.ListValue{
+		vals := sprout.ListValue{
 			ElemType: listT,
 		}
 		for _, item := range v {
@@ -290,13 +290,13 @@ func anyToBind(ctx context.Context, env bind.EvalEnv, val any, fieldType hm.Type
 		}
 		return vals, nil
 	case nil:
-		return bind.NullValue{}, nil
+		return sprout.NullValue{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %T", val)
 	}
 }
 
-func initModule(dag *dagger.Client, env bind.EvalEnv) (*dagger.Module, error) {
+func initModule(dag *dagger.Client, env sprout.EvalEnv) (*dagger.Module, error) {
 	dagMod := dag.Module()
 
 	// Handle module-level description if present
@@ -304,11 +304,11 @@ func initModule(dag *dagger.Client, env bind.EvalEnv) (*dagger.Module, error) {
 		dagMod = dagMod.WithDescription(descBinding.String())
 	}
 
-	binds := env.Bindings(bind.PublicVisibility)
+	binds := env.Bindings(sprout.PublicVisibility)
 	for _, binding := range binds {
 		log.Println("Binding:", binding.Key)
 		switch val := binding.Value.(type) {
-		case *bind.ConstructorFunction:
+		case *sprout.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
 			objDef, err := createObjectTypeDef(dag, binding.Key, val)
 			if err != nil {
@@ -362,7 +362,7 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 
 	funDef := dag.Function(name, retTypeDef)
 
-	for _, arg := range fn.Arg().(*bind.RecordType).Fields {
+	for _, arg := range fn.Arg().(*sprout.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -411,15 +411,15 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 }
 
 // evalConstantValue converts AST nodes to Go values for directive arguments
-func evalConstantValue(node bind.Node) (any, error) {
+func evalConstantValue(node sprout.Node) (any, error) {
 	switch n := node.(type) {
-	case bind.String:
+	case sprout.String:
 		return n.Value, nil
-	case bind.Int:
+	case sprout.Int:
 		return n.Value, nil
-	case bind.Boolean:
+	case sprout.Boolean:
 		return n.Value, nil
-	case bind.List:
+	case sprout.List:
 		var elements []any
 		for _, elem := range n.Elements {
 			if evalElem, err := evalConstantValue(elem); err == nil {
@@ -436,11 +436,11 @@ func evalConstantValue(node bind.Node) (any, error) {
 	}
 }
 
-func createObjectTypeDef(dag *dagger.Client, name string, module *bind.ConstructorFunction) (*dagger.TypeDef, error) {
+func createObjectTypeDef(dag *dagger.Client, name string, module *sprout.ConstructorFunction) (*dagger.TypeDef, error) {
 	objDef := dag.TypeDef().WithObject(name)
 
 	// Process public methods in the class
-	for name, scheme := range module.ClassType.Bindings(bind.PublicVisibility) {
+	for name, scheme := range module.ClassType.Bindings(sprout.PublicVisibility) {
 		slotType, isMono := scheme.Type()
 		if !isMono {
 			return nil, fmt.Errorf("non-monotype method %s", name)
@@ -474,14 +474,14 @@ func bindTypeToTypeDef(dag *dagger.Client, bindType hm.Type) (*dagger.TypeDef, e
 		// Handle non-null wrapper
 		return bindTypeToTypeDef(dag, t.Type)
 
-	case bind.ListType:
+	case sprout.ListType:
 		elemTypeDef, err := bindTypeToTypeDef(dag, t.Type)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert list element type: %w", err)
 		}
 		return def.WithListOf(elemTypeDef), nil
 
-	case *bind.Module:
+	case *sprout.Module:
 		// Check for basic types and object/class types
 		switch t.Named {
 		case "String":

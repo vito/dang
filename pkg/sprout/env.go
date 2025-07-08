@@ -1,4 +1,4 @@
-package bind
+package sprout
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type Env interface {

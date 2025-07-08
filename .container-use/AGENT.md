@@ -1,0 +1,1 @@
+Working on renaming the Bind project to Sprout. Tools available: git, go, rg (ripgrep), curl, wget, dagger. Use ./tests/run_all_tests.sh to validate changes.

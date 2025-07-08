@@ -14,10 +14,10 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/bind"
-	"github.com/vito/bind/pkg/hm"
-	"github.com/vito/bind/pkg/ioctx"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/sprout/pkg/hm"
+	"github.com/vito/sprout/pkg/ioctx"
 )
 
 // Config holds the application configuration
@@ -31,22 +31,22 @@ func main() {
 
 	// Create the root command
 	rootCmd := &cobra.Command{
-		Use:   "bind [flags] [file|directory]",
-		Short: "Bind language interpreter",
-		Long: `Bind is a functional language for building Dagger pipelines.
+		Use:   "sprout [flags] [file|directory]",
+		Short: "Sprout language interpreter",
+		Long: `Sprout is a functional language for building Dagger pipelines.
 It provides type-safe, composable abstractions for container operations.`,
-		Example: `  # Run a Bind script
-  bind script.bd
+		Example: `  # Run a Sprout script
+  sprout script.bd
 
   # Run all .bd files in a directory as a module
-  bind ./my-module
+  sprout ./my-module
 
   # Start interactive REPL
-  bind
+  sprout
 
   # Run with debug logging enabled
-  bind --debug script.bd
-  bind -d ./my-module`,
+  sprout --debug script.bd
+  sprout -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -110,13 +110,13 @@ func run(cfg Config) error {
 
 	if fileInfo.IsDir() {
 		// Evaluate directory as a module
-		if _, err := bind.RunDir(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
-			return fmt.Errorf("failed to evaluate Bind directory: %w", err)
+		if _, err := sprout.RunDir(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+			return fmt.Errorf("failed to evaluate Sprout directory: %w", err)
 		}
 	} else {
 		// Evaluate single file
-		if err := bind.RunFile(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
-			return fmt.Errorf("failed to evaluate Bind file: %w", err)
+		if err := sprout.RunFile(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+			return fmt.Errorf("failed to evaluate Sprout file: %w", err)
 		}
 	}
 
@@ -184,8 +184,8 @@ type REPL struct {
 	schema   *introspection.Schema
 	dag      *dagger.Client
 	debug    bool
-	typeEnv  *bind.Module
-	evalEnv  bind.EvalEnv
+	typeEnv  *sprout.Module
+	evalEnv  sprout.EvalEnv
 	commands map[string]REPLCommand
 }
 
@@ -198,16 +198,16 @@ type REPLCommand struct {
 // Run starts the REPL
 func (r *REPL) Run() error {
 	// Initialize environments
-	r.typeEnv = bind.NewEnv(r.schema)
-	r.evalEnv = bind.NewEvalEnvWithSchema(r.typeEnv, r.dag.GraphQLClient(), r.schema)
+	r.typeEnv = sprout.NewEnv(r.schema)
+	r.evalEnv = sprout.NewEvalEnvWithSchema(r.typeEnv, r.dag.GraphQLClient(), r.schema)
 
 	// Initialize commands
 	r.initCommands()
 
 	// Configure readline
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:            "bind> ",
-		HistoryFile:       "/tmp/bind_history",
+		Prompt:            "sprout> ",
+		HistoryFile:       "/tmp/sprout_history",
 		AutoComplete:      r.createCompleter(),
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
@@ -328,9 +328,9 @@ func (r *REPL) createCompleter() readline.AutoCompleter {
 		items = append(items, readline.PcItem(":"+cmd))
 	}
 
-	// Add common Bind keywords
-	bindKeywords := []string{"print", "container", "let", "if", "match", "true", "false", "null"}
-	for _, keyword := range bindKeywords {
+	// Add common Sprout keywords
+	sproutKeywords := []string{"print", "container", "let", "if", "match", "true", "false", "null"}
+	for _, keyword := range sproutKeywords {
 		items = append(items, readline.PcItem(keyword))
 	}
 
@@ -339,8 +339,8 @@ func (r *REPL) createCompleter() readline.AutoCompleter {
 
 // printWelcome prints the welcome message
 func (r *REPL) printWelcome() {
-	fmt.Println("Welcome to Bind REPL v0.1.0!")
-	fmt.Println("Interactive environment for Bind functional language")
+	fmt.Println("Welcome to Sprout REPL v0.1.0!")
+	fmt.Println("Interactive environment for Sprout functional language")
 	fmt.Printf("Connected to Dagger with %d GraphQL types\n", len(r.schema.Types))
 	fmt.Println()
 	fmt.Println("Type :help for available commands")
@@ -356,7 +356,7 @@ func (r *REPL) processLine(line string) error {
 		return r.handleCommand(line[1:])
 	}
 
-	// Otherwise, evaluate as Bind code
+	// Otherwise, evaluate as Sprout code
 	return r.evaluateExpression(line)
 }
 
@@ -378,28 +378,28 @@ func (r *REPL) handleCommand(cmdLine string) error {
 	return cmd.handler(r, args)
 }
 
-// evaluateExpression evaluates a Bind expression
+// evaluateExpression evaluates a Sprout expression
 func (r *REPL) evaluateExpression(expr string) error {
 	// Parse the expression
-	result, err := bind.Parse("repl", []byte(expr))
+	result, err := sprout.Parse("repl", []byte(expr))
 	if err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	for _, node := range result.(bind.Block).Forms {
+	for _, node := range result.(sprout.Block).Forms {
 		if r.debug {
 			pretty.Println(node)
 		}
 
 		// Type inference
-		_, err = bind.Infer(r.typeEnv, node, true)
+		_, err = sprout.Infer(r.typeEnv, node, true)
 		if err != nil {
 			return fmt.Errorf("type error: %w", err)
 		}
 
 		// Evaluation with stdout context
 		ctx := ioctx.StdoutToContext(r.ctx, os.Stdout)
-		val, err := bind.EvalNode(ctx, r.evalEnv, node)
+		val, err := sprout.EvalNode(ctx, r.evalEnv, node)
 		if err != nil {
 			return fmt.Errorf("evaluation error: %w", err)
 		}
@@ -421,7 +421,7 @@ func (r *REPL) helpCommand(repl *REPL, args []string) error {
 	for cmd, info := range r.commands {
 		fmt.Printf("  :%s - %s\n", cmd, info.description)
 	}
-	fmt.Println("\nYou can also type Bind expressions to evaluate them.")
+	fmt.Println("\nYou can also type Sprout expressions to evaluate them.")
 	fmt.Println("Examples:")
 	fmt.Println("  print(\"Hello, World!\")")
 	fmt.Println("  42 + 8")
@@ -441,8 +441,8 @@ func (r *REPL) clearCommand(repl *REPL, args []string) error {
 
 func (r *REPL) resetCommand(repl *REPL, args []string) error {
 	// Reset evaluation environment
-	repl.typeEnv = bind.NewEnv(repl.schema)
-	repl.evalEnv = bind.NewEvalEnvWithSchema(repl.typeEnv, repl.dag.GraphQLClient(), repl.schema)
+	repl.typeEnv = sprout.NewEnv(repl.schema)
+	repl.evalEnv = sprout.NewEvalEnvWithSchema(repl.typeEnv, repl.dag.GraphQLClient(), repl.schema)
 	fmt.Println("Environment reset.")
 	return nil
 }
@@ -542,8 +542,8 @@ func (r *REPL) envCommand(repl *REPL, args []string) error {
 }
 
 func (r *REPL) versionCommand(repl *REPL, args []string) error {
-	fmt.Println("Bind REPL v0.1.0")
-	fmt.Println("Interactive Read-Eval-Print Loop for Bind language")
+	fmt.Println("Sprout REPL v0.1.0")
+	fmt.Println("Interactive Read-Eval-Print Loop for Sprout language")
 	fmt.Printf("Connected to Dagger with %d GraphQL types\n", len(repl.schema.Types))
 	return nil
 }
@@ -552,7 +552,7 @@ func (r *REPL) historyCommand(repl *REPL, args []string) error {
 	fmt.Println("Command history is managed by readline")
 	fmt.Println("Use Up/Down arrows to navigate history")
 	fmt.Println("Use Ctrl+R for reverse search")
-	fmt.Println("History is persisted in /tmp/bind_history")
+	fmt.Println("History is persisted in /tmp/sprout_history")
 	return nil
 }
 
@@ -687,15 +687,15 @@ func (r *REPL) typeCommand(repl *REPL, args []string) error {
 	expr := strings.Join(args, " ")
 
 	// Parse the expression
-	result, err := bind.Parse("type-check", []byte(expr))
+	result, err := sprout.Parse("type-check", []byte(expr))
 	if err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	node := result.(bind.Block)
+	node := result.(sprout.Block)
 
 	// Type inference
-	inferredType, err := bind.Infer(repl.typeEnv, node, false)
+	inferredType, err := sprout.Infer(repl.typeEnv, node, false)
 	if err != nil {
 		return fmt.Errorf("type error: %w", err)
 	}
@@ -712,7 +712,7 @@ func (r *REPL) typeCommand(repl *REPL, args []string) error {
 
 				// Check if it's a function that auto-calls
 				if ft, ok := t.(*hm.FunctionType); ok {
-					if rt, ok := ft.Arg().(*bind.RecordType); ok {
+					if rt, ok := ft.Arg().(*sprout.RecordType); ok {
 						if len(rt.Fields) == 0 {
 							fmt.Println("Note: This is a zero-argument function that auto-calls")
 						} else {

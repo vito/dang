@@ -1,11 +1,11 @@
-# Constructor and Initialization Patterns in Bind
+# Constructor and Initialization Patterns in Sprout
 
 ## Type Construction Methods
 
-Bind uses copy-on-write semantics for object construction and mutation. There are several patterns for creating and initializing objects:
+Sprout uses copy-on-write semantics for object construction and mutation. There are several patterns for creating and initializing objects:
 
 ### Direct Type Reference
-```bind
+```sprout
 type MyType {
   let value = 42
 }
@@ -15,7 +15,7 @@ let instance = MyType
 ```
 
 ### Builder Pattern with Assignment
-```bind
+```sprout
 type Container {
   let name = ""
   let size = 0
@@ -27,7 +27,7 @@ container.size = 100
 ```
 
 ### Constructor-like Methods
-```bind
+```sprout
 type Compose {
   let dir: Directory!
   let files: [String!]!
@@ -44,7 +44,7 @@ type Compose {
 ### Record Literals (NOT for type construction)
 Record literals `{{}}` are for creating anonymous records, not for constructing instances of named types:
 
-```bind
+```sprout
 # This creates an anonymous record
 let record = {{ name: "test", value: 42 }}
 
@@ -62,7 +62,7 @@ let record = {{ name: "test", value: 42 }}
 ## Common Patterns
 
 ### Fluent API
-```bind
+```sprout
 let daemon = Daemon.
   withVersion("24.0").
   withCache(cacheVolume("docker-cache")).
@@ -70,7 +70,7 @@ let daemon = Daemon.
 ```
 
 ### Conditional Initialization
-```bind
+```sprout
 let container = baseContainer
 if (needsCache) {
   container = container.withMountedCache("/cache", cache)
@@ -78,7 +78,7 @@ if (needsCache) {
 ```
 
 ### Factory Methods
-```bind
+```sprout
 type Docker {
   pub daemon: Daemon! {
     Daemon  # Return default instance

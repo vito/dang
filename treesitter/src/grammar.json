@@ -2,7 +2,7 @@
   "name": "bind",
   "word": "word_token",
   "rules": {
-    "bind": {
+    "sprout": {
       "type": "SEQ",
       "members": [
         {

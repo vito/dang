@@ -1,7 +1,7 @@
-# bind
+# sprout
 
 ```
-go run ./cmd/bind ./mod/apko/
+go run ./cmd/sprout ./mod/apko/
 ```
 
 an experimental scripting language for Dagger

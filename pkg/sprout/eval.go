@@ -1,4 +1,4 @@
-package bind
+package sprout
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"dagger.io/dagger/querybuilder"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/kr/pretty"
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/hm"
-	"github.com/vito/bind/pkg/ioctx"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/hm"
+	"github.com/vito/sprout/pkg/ioctx"
 )
 
 // Value represents a runtime value in the Bind language

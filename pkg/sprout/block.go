@@ -1,11 +1,11 @@
-package bind
+package sprout
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type Block struct {

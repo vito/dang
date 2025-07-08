@@ -1,4 +1,4 @@
-[1m[31mError:[0m greater than or equal comparison not supported for types bind.StringValue and bind.IntValue
+[1m[31mError:[0m greater than or equal comparison not supported for types sprout.StringValue and sprout.IntValue
   [2m[34m--> errors/type_mismatch_greater_equal.bd:2:14[0m
  [2m    |[0m
  [2m  1 | # Test greater than or equal comparison type mismatch[0m

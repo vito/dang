@@ -1,4 +1,4 @@
-module dagger/bind
+module dagger/sprout
 
 go 1.24
 

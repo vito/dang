@@ -1,11 +1,11 @@
-package bind
+package sprout
 
 import (
 	"fmt"
 	"log/slog"
 	"strings"
 
-	"github.com/vito/bind/pkg/bind/treesitter"
+	"github.com/vito/sprout/pkg/sprout/treesitter"
 )
 
 func skipTS(name string) bool {

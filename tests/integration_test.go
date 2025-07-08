@@ -10,8 +10,8 @@ import (
 	"dagger.io/dagger/telemetry"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/bind"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/sprout"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -64,9 +64,9 @@ func TestIntegration(tT *testing.T) {
 				return
 			}
 			if fi.IsDir() {
-				_, err = bind.RunDir(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+				_, err = sprout.RunDir(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
 			} else {
-				err = bind.RunFile(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+				err = sprout.RunFile(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
 			}
 			if err != nil {
 				t.Errorf("Test %s failed: %v", testFileOrDir, err)

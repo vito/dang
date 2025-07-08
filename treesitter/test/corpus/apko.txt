@@ -58,7 +58,7 @@ print(Apko.withAlpine.withPackages(["git"]).asContainer.withExec(["git", "versio
 print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
 ---
 
-(bind
+(sprout
   (slot
     (value_only_slot
       (visibility

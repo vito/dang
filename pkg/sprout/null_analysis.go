@@ -1,7 +1,7 @@
-package bind
+package sprout
 
 import (
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 // NullAssertion represents a null check that can be used for type narrowing

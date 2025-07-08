@@ -1,10 +1,10 @@
-package bind
+package sprout
 
 import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type inferer struct {

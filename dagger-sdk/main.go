@@ -5,33 +5,33 @@ import (
 	"fmt"
 	"path"
 
-	"dagger/bind/internal/dagger"
+	"dagger/sprout/internal/dagger"
 )
 
 const Golang = "golang:1.24"
 
-type BindSdk struct {
-	BindRoot *dagger.Directory
+type SproutSdk struct {
+	SproutRoot *dagger.Directory
 }
 
 const (
 	ModSourceDirPath         = "/src"
-	EntrypointExecutableFile = "/bind"
+	EntrypointExecutableFile = "/sprout"
 	EntrypointExecutablePath = "src/" + EntrypointExecutableFile
 	codegenBinPath           = "/codegen"
 )
 
 func New(
 	// +defaultPath="/"
-	bindRoot *dagger.Directory,
-) *BindSdk {
-	return &BindSdk{
-		BindRoot: bindRoot,
+	sproutRoot *dagger.Directory,
+) *SproutSdk {
+	return &SproutSdk{
+		SproutRoot: sproutRoot,
 	}
 }
 
 // ModuleRuntime returns a container with the node entrypoint ready to be called.
-func (t *BindSdk) ModuleRuntime(
+func (t *SproutSdk) ModuleRuntime(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
@@ -40,7 +40,7 @@ func (t *BindSdk) ModuleRuntime(
 }
 
 // Codegen returns the generated API client based on user's module
-func (t *BindSdk) Codegen(
+func (t *SproutSdk) Codegen(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
@@ -55,7 +55,7 @@ func (t *BindSdk) Codegen(
 		WithVCSIgnoredPaths([]string{}), nil
 }
 
-func (t *BindSdk) CodegenBase(
+func (t *SproutSdk) CodegenBase(
 	ctx context.Context,
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
@@ -76,36 +76,36 @@ func (t *BindSdk) CodegenBase(
 		WithMountedDirectory(ModSourceDirPath, modSource.ContextDirectory()).
 		WithFile("/introspection.json", introspectionJson).
 		WithWorkdir(modSrcDir).
-		WithEntrypoint([]string{"/bind", modSrcDir, modName}), nil
+		WithEntrypoint([]string{"/sprout", modSrcDir, modName}), nil
 }
 
-func (t *BindSdk) Base() *dagger.Container {
+func (t *SproutSdk) Base() *dagger.Container {
 	return dag.Container().
 		From("busybox").
-		WithFile("/bind", t.Entrypoint()).
-		WithEntrypoint([]string{"/bind"})
+		WithFile("/sprout", t.Entrypoint()).
+		WithEntrypoint([]string{"/sprout"})
 }
 
-func (t *BindSdk) Entrypoint() *dagger.File {
+func (t *SproutSdk) Entrypoint() *dagger.File {
 	return t.goBase().
 		WithWorkdir("./entrypoint").
-		WithDirectory("/bind", t.BindRoot).
-		WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/bind=/bind"}).
+		WithDirectory("/sprout", t.SproutRoot).
+		WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/sprout=/sprout"}).
 		WithExec([]string{"go", "build", "-o", "/entrypoint"}).
 		File("/entrypoint")
 }
 
-func (t *BindSdk) Repl() *dagger.Container {
+func (t *SproutSdk) Repl() *dagger.Container {
 	return t.Base().
-		WithDefaultTerminalCmd([]string{"/bind"}).
-		WithMountedCache("/xdg/home", dag.CacheVolume("bind-repl-home")).
+		WithDefaultTerminalCmd([]string{"/sprout"}).
+		WithMountedCache("/xdg/home", dag.CacheVolume("sprout-repl-home")).
 		WithEnvVariable("XDG_DATA_HOME", "/xdg/home").
 		Terminal(dagger.ContainerTerminalOpts{
 			ExperimentalPrivilegedNesting: true,
 		})
 }
 
-func (t *BindSdk) goBase() *dagger.Container {
+func (t *SproutSdk) goBase() *dagger.Container {
 	return dag.Container().From(Golang).
 		WithEnvVariable("CGO_ENABLED", "0").
 		WithDirectory("/src", dag.CurrentModule().Source()).

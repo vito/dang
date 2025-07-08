@@ -1,0 +1,10 @@
+{
+  "workdir": "/workdir",
+  "base_image": "ubuntu:24.04",
+  "setup_commands": [
+    "apt-get update",
+    "apt-get install -y git golang-go ripgrep curl wget",
+    "curl -fsSL https://releases.dagger.io/dagger/install.sh | sh"
+  ],
+  "Locked": false
+}

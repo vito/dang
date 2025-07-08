@@ -2,7 +2,7 @@
 
 ## Current Implementation
 
-Bind now supports basic flow-sensitive null checking through conditional type refinement. When a conditional expression contains null checks, the type system automatically narrows types in the appropriate branches.
+Sprout now supports basic flow-sensitive null checking through conditional type refinement. When a conditional expression contains null checks, the type system automatically narrows types in the appropriate branches.
 
 ### Supported Patterns
 
@@ -13,7 +13,7 @@ Bind now supports basic flow-sensitive null checking through conditional type re
 
 ### Example Usage
 
-```bind
+```sprout
 type Example {
   let maybeValue: String = null
   
@@ -30,7 +30,7 @@ type Example {
 
 ### Technical Implementation
 
-- **Location**: `pkg/bind/null_analysis.go` and modified `Conditional.Infer()` in `ast_expressions.go`
+- **Location**: `pkg/sprout/null_analysis.go` and modified `Conditional.Infer()` in `ast_expressions.go`
 - **Pattern Detection**: `AnalyzeNullAssertions()` scans conditional expressions for null comparison patterns
 - **Type Refinement**: `CreateTypeRefinements()` converts detected patterns into type narrowing rules
 - **Environment Shadowing**: `ApplyTypeRefinements()` creates separate type environments for then/else branches using copy-on-write semantics

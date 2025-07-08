@@ -1,12 +1,12 @@
-# Mutability and Assignment in Bind
+# Mutability and Assignment in Sprout
 
 ## Overview
-Bind implements a **copy-on-write** mutability model where variables and objects can be reassigned, but modifications create copies rather than mutating the original data structures in place.
+Sprout implements a **copy-on-write** mutability model where variables and objects can be reassigned, but modifications create copies rather than mutating the original data structures in place.
 
 ## Assignment Operators
 
 ### Grammar Rules
-From `pkg/bind/bind.peg`, Bind supports two assignment operators:
+From `pkg/sprout/sprout.peg`, Sprout supports two assignment operators:
 - `=` (simple assignment)
 - `+=` (compound assignment for addition)
 
@@ -18,13 +18,13 @@ AssignOp <- PlusEqualToken { return "+", nil } / EqualToken { return "=", nil }
 ### Supported Assignment Patterns
 
 #### 1. Simple Variable Assignment (`=`)
-```bind
+```sprout
 pub x = 42
 x = 100           # Reassigns x to 100
 ```
 
 #### 2. Compound Assignment (`+=`)
-```bind
+```sprout
 pub x = 5
 x += 3            # x becomes 8
 
@@ -36,14 +36,14 @@ nums += [3, 4]    # nums becomes [1, 2, 3, 4]
 ```
 
 #### 3. Field Assignment
-```bind
+```sprout
 pub obj = {{a: {{b: {{c: 42}}}}}}
 obj.a.b.c = 100   # Nested field assignment
 obj.a.b.c += 50   # Compound assignment on fields
 ```
 
 #### 4. Class Field Assignment
-```bind
+```sprout
 type MyClass {
   pub val = 1
 
@@ -68,7 +68,7 @@ Objects are **copied** when modified, not mutated in place. This provides:
 - **Predictable behavior**: Modifications don't affect other references
 
 ### Example from `test_reassignment.bd`:
-```bind
+```sprout
 let original = {{a: {{b: {{c: 1}}}}}}
 let modified = original
 modified.a.b.c = 2
@@ -78,11 +78,11 @@ assert { modified.a.b.c == 2 }  # Modified copy
 ```
 
 ### Block Scoping
-Block scoping in Bind follows these rules:
+Block scoping in Sprout follows these rules:
 - If a block **doesn't declare** a local variable, reassignment updates the outer slot
 - If a block **declares** a local variable, it shadows the outer variable (normal scoping)
 
-```bind
+```sprout
 pub x = 100
 {
   x = 200         # No local declaration, updates outer slot
@@ -133,7 +133,7 @@ type Reassignment struct {
 3. **Class Method Assignment**: Uses `Fork()` to create execution boundary that prevents mutation of original object
 
 ### Scoping Mechanisms
-Bind uses two distinct scoping mechanisms:
+Sprout uses two distinct scoping mechanisms:
 
 1. **Lexical Scoping (`Clone()`)**: For blocks and function calls
    - Creates new scope frame in scope chain
@@ -153,7 +153,7 @@ Bind uses two distinct scoping mechanisms:
 ## Patterns and Best Practices
 
 ### 1. Fluent Interface Pattern
-```bind
+```sprout
 type Apko {
   pub withPackages(packages: [String!]!): Apko! {
     self.config.contents.packages += packages
@@ -163,7 +163,7 @@ type Apko {
 ```
 
 ### 2. Builder Pattern
-```bind
+```sprout
 type MyClass {
   pub name: String! = "Jeff"
 
@@ -175,7 +175,7 @@ type MyClass {
 ```
 
 ### 3. Accumulator Pattern
-```bind
+```sprout
 pub counter = 0
 counter += 1
 counter += 2
@@ -187,7 +187,7 @@ counter += 3
 
 ### 1. Class Field Assignment Flexibility
 Class field assignment supports both prefixed and unprefixed syntax:
-```bind
+```sprout
 # Both are valid and equivalent when no shadowing occurs
 field = value       # Uses Fork() semantics, no self. needed
 self.field = value  # Explicit self. prefix also works
@@ -214,7 +214,7 @@ Currently only `+=` is supported for compound assignment. Other operators like `
 ## Examples from Codebase
 
 ### Real-world Usage (apko.bd)
-```bind
+```sprout
 pub withAlpine(branch: String! = "edge"): Apko! {
   self.config.contents.packages += ["apk-tools"]
   self.config.contents.repositories += [
@@ -234,7 +234,7 @@ pub withAlpine(branch: String! = "edge"): Apko! {
 - `test_class_immutability.bd`: Fork() semantics for class methods
 
 ### Class Method Assignment Examples
-```bind
+```sprout
 type Counter {
   pub value: Int!
   

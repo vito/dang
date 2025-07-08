@@ -1,9 +1,9 @@
-package bind
+package sprout
 
 import (
 	"fmt"
 
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type Type = hm.Type

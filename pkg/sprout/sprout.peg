@@ -1,10 +1,10 @@
 {
-  package bind
+  package sprout
 
   import "fmt"
 }
 
-Bind <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
+Sprout <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
   return Block{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),

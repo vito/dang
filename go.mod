@@ -1,4 +1,4 @@
-module github.com/vito/bind
+module github.com/vito/sprout
 
 go 1.24.0
 

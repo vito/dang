@@ -1,5 +1,5 @@
 {
-  "name": "bind",
+  "name": "sprout",
   "engineVersion": "v0.18.12",
   "sdk": {
     "source": "./dagger-sdk"

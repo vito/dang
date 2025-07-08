@@ -1,7 +1,7 @@
-# Bind Language Overview
+# Sprout Language Overview
 
-## What is Bind?
-Bind is a strongly typed scripting language with Hindley-Milner type inference, designed for GraphQL API integration. Types are derived from GraphQL schemas, providing compile-time safety for API interactions.
+## What is Sprout?
+Sprout is a strongly typed scripting language with Hindley-Milner type inference, designed for GraphQL API integration. Types are derived from GraphQL schemas, providing compile-time safety for API interactions.
 
 ## Core Language Features
 
@@ -14,7 +14,7 @@ Bind is a strongly typed scripting language with Hindley-Milner type inference, 
 - **Composite types**: Lists `[Type]`, Objects `{{field: Type}}`, Records
 
 ### Syntax Basics
-```bind
+```sprout
 # Variable declarations
 pub x = 42              # Public, type inferred as Int!
 let y: String! = "hi"   # Private, explicit type
@@ -44,7 +44,7 @@ assert { add(2, 3) == 5 }
 - **Immutable by default**: Copy-on-write semantics for mutations
 
 ## Grammar Structure
-The language grammar is defined in `pkg/bind/bind.peg` using PEG (Parsing Expression Grammar):
+The language grammar is defined in `pkg/sprout/sprout.peg` using PEG (Parsing Expression Grammar):
 
 - **Expressions**: `Expr <- Class / Slot / Reassignment / Form`
 - **Forms**: `Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term`
@@ -52,18 +52,18 @@ The language grammar is defined in `pkg/bind/bind.peg` using PEG (Parsing Expres
 
 ## Development Workflow
 1. **Add test first**: Create `.bd` file with `assert { ... }` statements
-2. **Modify grammar**: Update `pkg/bind/bind.peg` for syntax changes
-3. **Update AST**: Add/modify structs in `pkg/bind/ast_*.go`
+2. **Modify grammar**: Update `pkg/sprout/sprout.peg` for syntax changes
+3. **Update AST**: Add/modify structs in `pkg/sprout/ast_*.go`
 4. **Implement methods**: Add `Hoist()`, `Infer()`, `Eval()` methods
 5. **Regenerate**: Run `./hack/generate` after grammar changes
 6. **Test**: Run `./tests/run_all_tests.sh` or specific tests
 
 ## File Organization
-- `pkg/bind/bind.peg` - Grammar definition (PEG format)
-- `pkg/bind/ast_*.go` - AST node definitions and implementations
-- `pkg/bind/env.go` - Type environment and module system
-- `pkg/bind/infer.go` - Type inference engine
-- `pkg/bind/eval.go` - Runtime evaluation
+- `pkg/sprout/sprout.peg` - Grammar definition (PEG format)
+- `pkg/sprout/ast_*.go` - AST node definitions and implementations
+- `pkg/sprout/env.go` - Type environment and module system
+- `pkg/sprout/infer.go` - Type inference engine
+- `pkg/sprout/eval.go` - Runtime evaluation
 - `tests/*.bd` - Test files (auto-discovered by test runner)
 
 ## Type Inference Flow

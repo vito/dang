@@ -1,12 +1,12 @@
 {
-  "name": "zed-bind",
+  "name": "zed-sprout",
   "version": "0.1.0",
-  "description": "Bind language extension for Zed editor",
+  "description": "Sprout language extension for Zed editor",
   "main": "extension.toml",
   "keywords": [
     "zed",
     "extension",
-    "bind",
+    "sprout",
     "language",
     "dagger",
     "functional-programming",
@@ -16,11 +16,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vito/bind.git",
-    "directory": "zed-bind"
+    "url": "https://github.com/vito/sprout.git",
+    "directory": "zed-sprout"
   },
   "bugs": {
-    "url": "https://github.com/vito/bind/issues"
+    "url": "https://github.com/vito/sprout/issues"
   },
-  "homepage": "https://github.com/vito/bind/tree/main/zed-bind"
+  "homepage": "https://github.com/vito/sprout/tree/main/zed-sprout"
 }

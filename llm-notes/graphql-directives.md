@@ -1,21 +1,21 @@
-# GraphQL Directives in Bind
+# GraphQL Directives in Sprout
 
 ## Background
 GraphQL directives are annotations that can be applied to various parts of a GraphQL schema or query to modify execution behavior. They use `@directiveName(args...)` syntax.
 
 ## Current State
-Bind already has comprehensive GraphQL directive support in its introspection system (`introspection/introspection.go`):
+Sprout already has comprehensive GraphQL directive support in its introspection system (`introspection/introspection.go`):
 - `DirectiveDef` struct for directive definitions
 - `Directive` struct for directive applications  
 - `DirectiveArg` struct for directive arguments
 - Built-in directives: `@experimental`, `@sourceMap`, `@enumValue`
 
-However, the Bind language itself has **no syntax** for declaring or using directives in `.bd` files.
+However, the Sprout language itself has **no syntax** for declaring or using directives in `.bd` files.
 
 ## Proposed Implementation
 
 ### Directive Declaration Syntax
-```bind
+```sprout
 # Declare a directive that can be used on fields and types
 directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | OBJECT
 
@@ -24,7 +24,7 @@ directive @experimental on FIELD_DEFINITION | ARGUMENT_DEFINITION
 ```
 
 ### Directive Application Syntax
-```bind
+```sprout
 type User {
   pub id: String!
   pub name: String! @deprecated(reason: "Use displayName instead")
@@ -40,7 +40,7 @@ Standard GraphQL directive locations:
 
 ## Implementation Plan
 
-### 1. Grammar Extension (`pkg/bind/bind.peg`)
+### 1. Grammar Extension (`pkg/sprout/sprout.peg`)
 ```peg
 DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken _ locs:DirectiveLocations
 
@@ -83,7 +83,7 @@ type Module struct {
 ## Usage Examples
 
 ### Custom Directives
-```bind
+```sprout
 # Declare custom directives
 directive @auth(role: String!) on FIELD_DEFINITION
 directive @cache(ttl: Int! = 300) on FIELD_DEFINITION
@@ -95,7 +95,7 @@ type Query {
 ```
 
 ### Integration with GraphQL Schema
-When generating GraphQL schema from Bind code, directive applications would be preserved and included in the output schema.
+When generating GraphQL schema from Sprout code, directive applications would be preserved and included in the output schema.
 
 ## Benefits
 - **Static validation**: Catch directive typos at compile time
@@ -105,8 +105,8 @@ When generating GraphQL schema from Bind code, directive applications would be p
 
 ## Design Considerations
 - **Simplicity**: Keep directive syntax minimal and familiar
-- **Type safety**: Leverage Bind's type system for directive validation
+- **Type safety**: Leverage Sprout's type system for directive validation
 - **GraphQL compliance**: Follow GraphQL specification for directive behavior
-- **Backward compatibility**: Don't break existing Bind code
+- **Backward compatibility**: Don't break existing Sprout code
 
-This implementation would make Bind's GraphQL integration even more powerful while maintaining its core principles of type safety and simplicity.
+This implementation would make Sprout's GraphQL integration even more powerful while maintaining its core principles of type safety and simplicity.

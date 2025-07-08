@@ -1,4 +1,4 @@
-package bind
+package sprout
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"dagger.io/dagger"
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/ioctx"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/ioctx"
 )
 
 // TestRunner provides utilities for testing Bind scripts

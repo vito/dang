@@ -1,13 +1,13 @@
-# Bind Language Extension for Zed
+# Sprout Language Extension for Zed
 
-This extension provides [Bind language](https://github.com/vito/bind) support for the Zed editor.
+This extension provides [Sprout language](https://github.com/vito/sprout) support for the Zed editor.
 
 ## Features
 
-- **Syntax Highlighting**: Full syntax highlighting for Bind language constructs
-- **Tree-sitter Grammar**: Uses the official tree-sitter grammar from the Bind repository
+- **Syntax Highlighting**: Full syntax highlighting for Sprout language constructs
+- **Tree-sitter Grammar**: Uses the official tree-sitter grammar from the Sprout repository
 - **Code Folding**: Support for folding functions, classes, conditionals, and other blocks
-- **Indentation**: Smart indentation for Bind code structures
+- **Indentation**: Smart indentation for Sprout code structures
 - **Bracket Matching**: Automatic bracket completion and matching
 
 ## Language Features Supported
@@ -17,7 +17,7 @@ This extension provides [Bind language](https://github.com/vito/bind) support fo
 - **Functions**: `pub func(arg: Type): ReturnType { body }`
 - **Classes**: `cls ClassName { ... }`
 - **Conditionals**: `if condition { then } else { else }`
-- **Let bindings**: `let x = value in expression`
+- **Let sproutings**: `let x = value in expression`
 - **Lambda expressions**: `\x -> expression`
 - **Pattern matching**: `match expr with cases`
 
@@ -35,11 +35,11 @@ This extension provides [Bind language](https://github.com/vito/bind) support fo
 1. Open Zed
 2. Press `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Linux/Windows)
 3. Type "zed: install dev extension"
-4. Select the `zed-bind` directory
+4. Select the `zed-sprout` directory
 
-## About Bind
+## About Sprout
 
-Bind is a functional programming language designed for [Dagger](https://dagger.io) with:
+Sprout is a functional programming language designed for [Dagger](https://dagger.io) with:
 - **Hindley-Milner type inference**: Strong typing without explicit type annotations
 - **Container orchestration**: Built-in integration with Dagger's container API
 - **Functional paradigm**: Immutable data structures and pure functions
@@ -47,9 +47,9 @@ Bind is a functional programming language designed for [Dagger](https://dagger.i
 
 ## Example Code
 
-```bind
+```sprout
 # Simple variable declaration
-pub greeting = "Hello, Bind!"
+pub greeting = "Hello, Sprout!"
 
 # Function with type inference
 pub identity = \x -> x
@@ -57,23 +57,23 @@ pub identity = \x -> x
 # Conditional expression
 pub result = if true { "success" } else { "failure" }
 
-# Let binding
+# Let sprouting
 pub computed = let x = 10 in x * 2
 
 # Class definition for container operations
 type MyContainer {
   pub build(): Container! {
     container.from("alpine:latest")
-      .withExec(["echo", "Hello from Bind!"])
+      .withExec(["echo", "Hello from Sprout!"])
   }
 }
 ```
 
 ## Contributing
 
-This extension is part of the [Bind language project](https://github.com/vito/bind).
+This extension is part of the [Sprout language project](https://github.com/vito/sprout).
 Contributions are welcome!
 
 ## License
 
-MIT License - see the main Bind repository for details.
+MIT License - see the main Sprout repository for details.

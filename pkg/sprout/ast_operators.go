@@ -1,10 +1,10 @@
-package bind
+package sprout
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type Default struct {

@@ -1,12 +1,12 @@
-package bind
+package sprout
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/hm"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/hm"
 )
 
 type Node interface {

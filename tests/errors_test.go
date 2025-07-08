@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"dagger.io/dagger"
-	"github.com/vito/bind/introspection"
-	"github.com/vito/bind/pkg/bind"
-	"github.com/vito/bind/pkg/ioctx"
+	"github.com/vito/sprout/introspection"
+	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/sprout/pkg/ioctx"
 	"gotest.tools/v3/golden"
 )
 
@@ -67,7 +67,7 @@ func runBindFile(ctx context.Context, dag *dagger.Client, schema *introspection.
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
 	// Run the Bind file
-	err := bind.RunFile(ctx, dag.GraphQLClient(), schema, bindFile, false)
+	err := sprout.RunFile(ctx, dag.GraphQLClient(), schema, bindFile, false)
 
 	// Combine stdout and stderr output
 	var combined bytes.Buffer
