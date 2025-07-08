@@ -1,1 +1,0 @@
-This is a Bind programming language development environment. Bind is a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Key commands: ./tests/run_all_tests.sh to run all tests, ./hack/generate to regenerate code, go test ./tests/ -v -run /test_name for individual tests.
