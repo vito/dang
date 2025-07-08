@@ -4,7 +4,9 @@
   "setup_commands": [
     "apt-get update",
     "apt-get install -y git golang-go ripgrep curl wget",
-    "curl -fsSL https://releases.dagger.io/dagger/install.sh | sh"
+    "curl -fsSL https://releases.dagger.io/dagger/install.sh | sh",
+    "cp ./bin/dagger /usr/local/bin/dagger \u0026\u0026 chmod +x /usr/local/bin/dagger",
+    "curl -L https://github.com/tree-sitter/tree-sitter/releases/download/v0.25.6/tree-sitter-linux-x64.gz | gunzip \u003e /usr/local/bin/tree-sitter \u0026\u0026 chmod +x /usr/local/bin/tree-sitter"
   ],
   "Locked": false
 }
