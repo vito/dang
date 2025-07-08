@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"dagger.io/dagger"
+	"github.com/Khan/genqlient/graphql"
 	"github.com/charmbracelet/fang"
 	"github.com/chzyer/readline"
 	"github.com/kr/pretty"
@@ -96,7 +97,7 @@ func run(cfg Config) error {
 	defer dag.Close()
 
 	// Introspect the GraphQL schema
-	schema, err := Introspect(ctx, dag)
+	schema, err := Introspect(ctx, dag.GraphQLClient())
 	if err != nil {
 		return fmt.Errorf("failed to introspect schema: %w", err)
 	}
@@ -123,12 +124,12 @@ func run(cfg Config) error {
 	return nil
 }
 
-func Introspect(ctx context.Context, dag *dagger.Client) (*introspection.Schema, error) {
+func Introspect(ctx context.Context, gql graphql.Client) (*introspection.Schema, error) {
 	var introspectionResp introspection.Response
-	err := dag.Do(ctx, &dagger.Request{
+	err := gql.MakeRequest(ctx, &graphql.Request{
 		Query:  introspection.Query,
 		OpName: "IntrospectionQuery",
-	}, &dagger.Response{
+	}, &graphql.Response{
 		Data: &introspectionResp,
 	})
 	if err != nil {
@@ -161,7 +162,7 @@ func runREPL(cfg Config) error {
 	defer dag.Close()
 
 	// Introspect the GraphQL schema
-	schema, err := Introspect(ctx, dag)
+	schema, err := Introspect(ctx, dag.GraphQLClient())
 	if err != nil {
 		return fmt.Errorf("failed to introspect schema: %w", err)
 	}
