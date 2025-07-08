@@ -14,4 +14,10 @@ cd "$(dirname "$0")/.."
 ./hack/generate
 
 # run the actual tests
-dagger run go test ./tests/ -v
+if [ -n "${DAGGER_SESSION_TOKEN:-}" ]; then
+  # Already in a Dagger session, run tests directly
+  go test ./tests/ -v
+else
+  # Not in a Dagger session, wrap with dagger run
+  dagger run go test ./tests/ -v
+fi
