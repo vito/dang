@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/charmbracelet/fang"
 	"github.com/chzyer/readline"
@@ -89,18 +88,16 @@ func run(cfg Config) error {
 
 	ctx := context.Background()
 
-	// Connect to Dagger
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to connect to Dagger: %w", err)
-	}
-	defer dag.Close()
+	// Load GraphQL configuration
+	config := sprout.LoadGraphQLConfig()
+	provider := sprout.NewGraphQLClientProvider(config)
 
-	// Introspect the GraphQL schema
-	schema, err := Introspect(ctx, dag.GraphQLClient())
+	// Get configured GraphQL client and schema
+	client, schema, err := provider.GetClientAndSchema(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to introspect schema: %w", err)
+		return fmt.Errorf("failed to setup GraphQL client: %w", err)
 	}
+	defer provider.Close()
 
 	// Check if the path is a directory or file
 	fileInfo, err := os.Stat(cfg.File)
@@ -110,12 +107,12 @@ func run(cfg Config) error {
 
 	if fileInfo.IsDir() {
 		// Evaluate directory as a module
-		if _, err := sprout.RunDir(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+		if _, err := sprout.RunDir(ctx, client, schema, cfg.File, cfg.Debug); err != nil {
 			return fmt.Errorf("failed to evaluate Sprout directory: %w", err)
 		}
 	} else {
 		// Evaluate single file
-		if err := sprout.RunFile(ctx, dag.GraphQLClient(), schema, cfg.File, cfg.Debug); err != nil {
+		if err := sprout.RunFile(ctx, client, schema, cfg.File, cfg.Debug); err != nil {
 			return fmt.Errorf("failed to evaluate Sprout file: %w", err)
 		}
 	}
@@ -124,20 +121,7 @@ func run(cfg Config) error {
 	return nil
 }
 
-func Introspect(ctx context.Context, gql graphql.Client) (*introspection.Schema, error) {
-	var introspectionResp introspection.Response
-	err := gql.MakeRequest(ctx, &graphql.Request{
-		Query:  introspection.Query,
-		OpName: "IntrospectionQuery",
-	}, &graphql.Response{
-		Data: &introspectionResp,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("introspection query: %w", err)
-	}
 
-	return introspectionResp.Schema, nil
-}
 
 func runREPL(cfg Config) error {
 	// Set up slog with appropriate level
@@ -154,24 +138,22 @@ func runREPL(cfg Config) error {
 
 	ctx := context.Background()
 
-	// Connect to Dagger
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to connect to Dagger: %w", err)
-	}
-	defer dag.Close()
+	// Load GraphQL configuration
+	config := sprout.LoadGraphQLConfig()
+	provider := sprout.NewGraphQLClientProvider(config)
 
-	// Introspect the GraphQL schema
-	schema, err := Introspect(ctx, dag.GraphQLClient())
+	// Get configured GraphQL client and schema
+	client, schema, err := provider.GetClientAndSchema(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to introspect schema: %w", err)
+		return fmt.Errorf("failed to setup GraphQL client: %w", err)
 	}
+	defer provider.Close()
 
 	// Create REPL instance
 	repl := &REPL{
 		ctx:    ctx,
 		schema: schema,
-		dag:    dag,
+		client: client,
 		debug:  cfg.Debug,
 	}
 
@@ -182,7 +164,7 @@ func runREPL(cfg Config) error {
 type REPL struct {
 	ctx      context.Context
 	schema   *introspection.Schema
-	dag      *dagger.Client
+	client   graphql.Client
 	debug    bool
 	typeEnv  *sprout.Module
 	evalEnv  sprout.EvalEnv
@@ -199,7 +181,7 @@ type REPLCommand struct {
 func (r *REPL) Run() error {
 	// Initialize environments
 	r.typeEnv = sprout.NewEnv(r.schema)
-	r.evalEnv = sprout.NewEvalEnvWithSchema(r.typeEnv, r.dag.GraphQLClient(), r.schema)
+	r.evalEnv = sprout.NewEvalEnvWithSchema(r.typeEnv, r.client, r.schema)
 
 	// Initialize commands
 	r.initCommands()
@@ -341,7 +323,7 @@ func (r *REPL) createCompleter() readline.AutoCompleter {
 func (r *REPL) printWelcome() {
 	fmt.Println("Welcome to Sprout REPL v0.1.0!")
 	fmt.Println("Interactive environment for Sprout functional language")
-	fmt.Printf("Connected to Dagger with %d GraphQL types\n", len(r.schema.Types))
+	fmt.Printf("Connected to GraphQL API with %d types\n", len(r.schema.Types))
 	fmt.Println()
 	fmt.Println("Type :help for available commands")
 	fmt.Println("Type expressions to evaluate them")
@@ -442,7 +424,7 @@ func (r *REPL) clearCommand(repl *REPL, args []string) error {
 func (r *REPL) resetCommand(repl *REPL, args []string) error {
 	// Reset evaluation environment
 	repl.typeEnv = sprout.NewEnv(repl.schema)
-	repl.evalEnv = sprout.NewEvalEnvWithSchema(repl.typeEnv, repl.dag.GraphQLClient(), repl.schema)
+	repl.evalEnv = sprout.NewEvalEnvWithSchema(repl.typeEnv, repl.client, repl.schema)
 	fmt.Println("Environment reset.")
 	return nil
 }
@@ -481,7 +463,7 @@ func (r *REPL) envCommand(repl *REPL, args []string) error {
 	}
 
 	fmt.Println("Current environment bindings:")
-	fmt.Printf("Connected to Dagger with %d GraphQL types\n\n", len(repl.schema.Types))
+	fmt.Printf("Connected to GraphQL API with %d types\n\n", len(repl.schema.Types))
 
 	// Show built-in functions
 	fmt.Println("Built-in functions:")
@@ -544,7 +526,7 @@ func (r *REPL) envCommand(repl *REPL, args []string) error {
 func (r *REPL) versionCommand(repl *REPL, args []string) error {
 	fmt.Println("Sprout REPL v0.1.0")
 	fmt.Println("Interactive Read-Eval-Print Loop for Sprout language")
-	fmt.Printf("Connected to Dagger with %d GraphQL types\n", len(repl.schema.Types))
+	fmt.Printf("Connected to GraphQL API with %d types\n", len(repl.schema.Types))
 	return nil
 }
 

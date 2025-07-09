@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"dagger.io/dagger"
+	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/sprout/introspection"
 	"github.com/vito/sprout/pkg/ioctx"
 )
@@ -31,8 +32,9 @@ func NewTestRunner(t *testing.T) *TestRunner {
 		t.Fatalf("Failed to connect to Dagger: %v", err)
 	}
 
-	// Get schema
-	schema, err := introspectSchema(ctx, dag)
+	// Get schema using the GraphQL client
+	client := dag.GraphQLClient()
+	schema, err := introspectSchemaForTest(ctx, client)
 	if err != nil {
 		dag.Close()
 		t.Fatalf("Failed to introspect schema: %v", err)
@@ -53,13 +55,13 @@ func (tr *TestRunner) Close() {
 	}
 }
 
-// introspectSchema is a helper function to get the GraphQL schema
-func introspectSchema(ctx context.Context, dag *dagger.Client) (*introspection.Schema, error) {
+// introspectSchemaForTest is a helper function to get the GraphQL schema for tests
+func introspectSchemaForTest(ctx context.Context, client graphql.Client) (*introspection.Schema, error) {
 	var introspectionResp introspection.Response
-	err := dag.Do(ctx, &dagger.Request{
+	err := client.MakeRequest(ctx, &graphql.Request{
 		Query:  introspection.Query,
 		OpName: "IntrospectionQuery",
-	}, &dagger.Response{
+	}, &graphql.Response{
 		Data: &introspectionResp,
 	})
 	if err != nil {
