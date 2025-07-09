@@ -2,4 +2,5 @@ Session.vim
 /bind
 /zed-bind/grammars/
 /.env
+/.envrc
 CLAUDE.local.md

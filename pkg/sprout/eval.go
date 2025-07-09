@@ -10,12 +10,13 @@ import (
 	"sort"
 	"strings"
 
-	"dagger.io/dagger/querybuilder"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/kr/pretty"
+
 	"github.com/vito/sprout/introspection"
 	"github.com/vito/sprout/pkg/hm"
 	"github.com/vito/sprout/pkg/ioctx"
+	"github.com/vito/sprout/pkg/querybuilder"
 )
 
 // Value represents a runtime value in the Bind language
