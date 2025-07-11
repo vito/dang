@@ -1,0 +1,42 @@
+# Test nullable propagation in Select operations
+# If foo is nullable, then foo.bar should also be nullable even if bar is normally non-null
+
+type TestRecord {
+  let name: String! = "test"
+  let id: Int! = 42
+}
+
+# Test case 1: nullable object field selection
+pub maybeRecord: TestRecord = TestRecord
+assert { maybeRecord.name == "test" }
+assert { maybeRecord.id == 42 }
+
+# Now set it to null and test that accessing fields propagates nullability
+maybeRecord = null
+# Test direct access (not variable assignment to avoid phased evaluation)
+assert { maybeRecord.name == null }
+assert { maybeRecord.id == null }
+
+# Test case 2: nested nullable selection
+type NestedRecord {
+  let inner: TestRecord! = TestRecord
+}
+
+pub maybeNested: NestedRecord = NestedRecord
+assert { maybeNested.inner.name == "test" }
+
+# When maybeNested is null, accessing inner.name should be null
+maybeNested = null
+assert { maybeNested.inner.name == null }
+
+# Test case 3: chain of nullable selections
+type ChainRecord {
+  let level1: NestedRecord! = NestedRecord
+}
+
+pub maybeChain: ChainRecord = ChainRecord
+assert { maybeChain.level1.inner.name == "test" }
+
+# When maybeChain is null, the whole chain should be null
+maybeChain = null
+assert { maybeChain.level1.inner.name == null }

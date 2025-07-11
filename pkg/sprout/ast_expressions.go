@@ -508,14 +508,27 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Receiver.Infer: %w", err)
 	}
-	nn, ok := lt.(hm.NonNullType)
-	if !ok {
-		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", nn, lt)
+	
+	// Check if receiver is nullable or non-null
+	var rec Env
+	var isNullable bool
+	
+	if nn, ok := lt.(hm.NonNullType); ok {
+		// Non-null receiver
+		envType, ok := nn.Type.(Env)
+		if !ok {
+			return nil, fmt.Errorf("Select.Infer: expected %T, got %T", envType, nn.Type)
+		}
+		rec = envType
+		isNullable = false
+	} else if envType, ok := lt.(Env); ok {
+		// Nullable receiver - inherit nullability
+		rec = envType
+		isNullable = true
+	} else {
+		return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
 	}
-	rec, ok := nn.Type.(Env)
-	if !ok {
-		return nil, fmt.Errorf("Select.Infer: expected %T, got %T", rec, nn.Type)
-	}
+	
 	scheme, found := rec.SchemeOf(d.Field)
 	if !found {
 		return nil, NewInferError(fmt.Sprintf("field %q not found in record %s", d.Field, rec), d)
@@ -527,6 +540,17 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if d.AutoCall {
 		t, _ = autoCallFnType(t)
 	}
+	
+	// If receiver was nullable, make result nullable too
+	if isNullable {
+		// Remove any existing NonNullType wrapper from the field type
+		if nnType, ok := t.(hm.NonNullType); ok {
+			return nnType.Type, nil
+		}
+		// Field type is already nullable, return as-is
+		return t, nil
+	}
+	
 	return t, nil
 }
 
@@ -600,6 +624,10 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	val, err := (func() (Value, error) {
 		switch rec := receiverVal.(type) {
+		case NullValue:
+			// Null propagation: if receiver is null, result is null
+			return NullValue{}, nil
+		
 		case EvalEnv:
 			if val, found := rec.Get(d.Field); found {
 				// If this is a FunctionValue accessed from a module, bind it to the receiver
