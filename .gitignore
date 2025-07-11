@@ -1,6 +1,6 @@
 Session.vim
-/bind
-/zed-bind/grammars/
+/sprout
+/zed-sprout/grammars/
 /.env
 /.envrc
 CLAUDE.local.md
