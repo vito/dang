@@ -127,7 +127,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 111,
+      "value": 113,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -255,7 +255,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 106,
+      "value": 108,
       "content": {
         "type": "SEQ",
         "members": [
@@ -273,30 +273,183 @@
           },
           {
             "type": "FIELD",
-            "name": "name",
-            "content": {
-              "type": "SYMBOL",
-              "name": "id"
-            }
-          },
-          {
-            "type": "FIELD",
-            "name": "args",
+            "name": "selection",
             "content": {
               "type": "CHOICE",
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "arg_values"
+                  "name": "object_selection"
                 },
                 {
-                  "type": "BLANK"
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "name",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "id"
+                      }
+                    },
+                    {
+                      "type": "FIELD",
+                      "name": "args",
+                      "content": {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "arg_values"
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
+                      }
+                    }
+                  ]
                 }
               ]
             }
           }
         ]
       }
+    },
+    "object_selection": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "FIELD",
+          "name": "fields",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "FIELD",
+                  "name": "f",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "field_selection"
+                  }
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "sep"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "last",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "field_selection"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "field_selection": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "selection",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "."
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "{"
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "fields",
+                    "content": {
+                      "type": "REPEAT",
+                      "content": {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "FIELD",
+                            "name": "f",
+                            "content": {
+                              "type": "SYMBOL",
+                              "name": "field_selection"
+                            }
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "sep"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "last",
+                    "content": {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "field_selection"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "}"
+                  }
+                ]
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        }
+      ]
     },
     "class": {
       "type": "SEQ",

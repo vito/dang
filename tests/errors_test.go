@@ -9,8 +9,8 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/vito/sprout/introspection"
-	"github.com/vito/sprout/pkg/sprout"
 	"github.com/vito/sprout/pkg/ioctx"
+	"github.com/vito/sprout/pkg/sprout"
 	"gotest.tools/v3/golden"
 )
 

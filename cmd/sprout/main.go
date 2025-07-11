@@ -14,9 +14,9 @@ import (
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/vito/sprout/introspection"
-	"github.com/vito/sprout/pkg/sprout"
 	"github.com/vito/sprout/pkg/hm"
 	"github.com/vito/sprout/pkg/ioctx"
+	"github.com/vito/sprout/pkg/sprout"
 )
 
 // Config holds the application configuration
@@ -120,8 +120,6 @@ func run(cfg Config) error {
 	fmt.Println("ok!")
 	return nil
 }
-
-
 
 func runREPL(cfg Config) error {
 	// Set up slog with appropriate level

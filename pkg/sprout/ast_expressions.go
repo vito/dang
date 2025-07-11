@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vito/sprout/pkg/hm"
+	"github.com/vito/sprout/pkg/querybuilder"
 )
 
 // FunCall represents a function call expression
@@ -434,7 +435,7 @@ func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 	t, _ := scheme.Type()
 	if s.AutoCall {
-		return autoCallFnType(t), nil
+		t, _ = autoCallFnType(t)
 	}
 	return t, nil
 }
@@ -524,7 +525,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field)
 	}
 	if d.AutoCall {
-		return autoCallFnType(t), nil
+		t, _ = autoCallFnType(t)
 	}
 	return t, nil
 }
@@ -654,6 +655,276 @@ func (d Select) getParameterNames(funVal Value) []string {
 		}
 	}
 	return nil
+}
+
+// FieldSelection represents a field name in an object selection
+type FieldSelection struct {
+	Name      string
+	Selection []FieldSelection // For nested selections like profile.{bio, avatar}
+	Loc       *SourceLocation
+}
+
+func (f FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
+
+// ObjectSelection represents multi-field selection like obj.{field1, field2}
+type ObjectSelection struct {
+	Receiver Node
+	Fields   []FieldSelection
+	Loc      *SourceLocation
+
+	Inferred *Module
+}
+
+var _ Node = (*ObjectSelection)(nil)
+var _ Evaluator = (*ObjectSelection)(nil)
+
+func (o *ObjectSelection) DeclaredSymbols() []string {
+	return nil // Object selections don't declare anything
+}
+
+func (o *ObjectSelection) ReferencedSymbols() []string {
+	return o.Receiver.ReferencedSymbols()
+}
+
+func (o *ObjectSelection) Body() hm.Expression { return o }
+
+func (o *ObjectSelection) GetSourceLocation() *SourceLocation { return o.Loc }
+
+func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Infer the type of the receiver
+	receiverType, err := o.Receiver.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
+	}
+
+	// Handle list types - apply selection to each element
+	if listType, ok := receiverType.(hm.NonNullType); ok {
+		if innerListType, ok := listType.Type.(ListType); ok {
+			elementType, err := o.inferSelectionType(innerListType.Type, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			return hm.NonNullType{Type: ListType{elementType}}, nil
+		}
+	}
+
+	// Handle regular object types
+	o.Inferred, err = o.inferSelectionType(receiverType, env, fresh)
+	return hm.NonNullType{Type: o.Inferred}, err
+}
+
+func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
+	nn, ok := receiverType.(hm.NonNullType)
+	if !ok {
+		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected %T, got %T", nn, receiverType)
+	}
+
+	rec, ok := nn.Type.(Env)
+	if !ok {
+		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected %T, got %T", rec, nn.Type)
+	}
+
+	mod := NewModule("")
+	for _, field := range o.Fields {
+		fieldType, err := o.inferFieldType(field, rec, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		mod.Add(field.Name, hm.NewScheme(nil, fieldType))
+	}
+	return mod, nil
+}
+
+func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	scheme, found := rec.SchemeOf(field.Name)
+	if !found {
+		return nil, NewInferError(fmt.Sprintf("field %q not found in record %s", field.Name, rec), o)
+	}
+
+	fieldType, mono := scheme.Type()
+	if !mono {
+		return nil, fmt.Errorf("ObjectSelection.inferFieldType: field %q is not monomorphic", field.Name)
+	}
+
+	ret, autoCallable := autoCallFnType(fieldType)
+	if !autoCallable {
+		return nil, fmt.Errorf("ObjectSelection.inferFieldType: field %q is not auto-callable", field.Name)
+	}
+
+	// Handle nested selections
+	if len(field.Selection) > 0 {
+		nestedSelection := &ObjectSelection{
+			Receiver: nil, // Not needed for type inference
+			Fields:   field.Selection,
+			Loc:      field.Loc,
+		}
+		return nestedSelection.inferSelectionType(fieldType, env, fresh)
+	}
+
+	return ret, nil
+}
+
+func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	receiverVal, err := EvalNode(ctx, env, o.Receiver)
+	if err != nil {
+		return nil, fmt.Errorf("ObjectSelection.Eval: %w", err)
+	}
+
+	// Handle list types - apply selection to each element
+	if listVal, ok := receiverVal.(ListValue); ok {
+		var results []Value
+		for _, elem := range listVal.Elements {
+			result, err := o.evalSelectionOnValue(elem, ctx, env)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, result)
+		}
+		return ListValue{Elements: results}, nil
+	}
+
+	// Handle regular object types
+	return o.evalSelectionOnValue(receiverVal, ctx, env)
+}
+
+func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
+	switch v := val.(type) {
+	case *ModuleValue:
+		return o.evalModuleSelection(v, ctx, env)
+	case GraphQLValue:
+		return o.evalGraphQLSelection(v, ctx, env)
+	default:
+		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *ModuleValue or GraphQLValue, got %T", val)
+	}
+}
+
+func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.Context, env EvalEnv) (Value, error) {
+	if o.Inferred == nil {
+		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
+	}
+
+	resultModuleValue := NewModuleValue(o.Inferred)
+
+	// Build result object with selected fields
+	for _, field := range o.Fields {
+		fieldVal, exists := objVal.Get(field.Name)
+		if !exists {
+			return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: field %q not found", field.Name)
+		}
+
+		// Handle nested selections
+		if len(field.Selection) > 0 {
+			nestedSelection := &ObjectSelection{
+				Receiver: nil, // Not needed for evaluation
+				Fields:   field.Selection,
+				Loc:      field.Loc,
+			}
+			fieldVal, err := nestedSelection.evalSelectionOnValue(fieldVal, ctx, env)
+			if err != nil {
+				return nil, err
+			}
+			resultModuleValue.Set(field.Name, fieldVal)
+		} else {
+			resultModuleValue.Set(field.Name, fieldVal)
+		}
+	}
+
+	return resultModuleValue, nil
+}
+
+func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+	if o.Inferred == nil {
+		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
+	}
+
+	// Build optimized GraphQL query for all selected fields
+	query, err := o.buildGraphQLQuery(gqlVal.QueryChain, o.Fields)
+	if err != nil {
+		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err)
+	}
+
+	// Execute the single optimized query
+	var result any
+	err = query.Client(gqlVal.Client).Bind(&result).Execute(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err)
+	}
+
+	// Convert GraphQL result to ModuleValue
+	return o.convertGraphQLResultToModule(result, o.Fields)
+}
+
+func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
+	// Check if we have any nested selections
+	hasNestedSelections := false
+	for _, field := range fields {
+		if len(field.Selection) > 0 {
+			hasNestedSelections = true
+			break
+		}
+	}
+
+	if !hasNestedSelections {
+		// Simple case: just select all fields using SelectFields
+		fieldNames := make([]string, len(fields))
+		for i, field := range fields {
+			fieldNames[i] = field.Name
+		}
+		return baseQuery.SelectFields(fieldNames...), nil
+	}
+
+	// Complex case: mix of simple fields and nested selections
+	query := baseQuery
+
+	for _, field := range fields {
+		if len(field.Selection) > 0 {
+			// Handle nested selections
+			nestedQuery, err := o.buildGraphQLQuery(querybuilder.Query(), field.Selection)
+			if err != nil {
+				return nil, err
+			}
+			query = query.SelectNested(field.Name, nestedQuery)
+		} else {
+			// Simple field selection
+			query = query.Select(field.Name)
+		}
+	}
+
+	return query, nil
+}
+
+func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []FieldSelection) (Value, error) {
+	resultModuleValue := NewModuleValue(o.Inferred)
+
+	// Convert GraphQL result to Sprout values
+	if resultMap, ok := result.(map[string]any); ok {
+		for _, field := range fields {
+			if fieldValue, exists := resultMap[field.Name]; exists {
+				// Handle nested selections
+				if len(field.Selection) > 0 {
+					nestedSelection := &ObjectSelection{
+						Receiver: nil, // Not needed for conversion
+						Fields:   field.Selection,
+						Loc:      field.Loc,
+					}
+					nestedResult, err := nestedSelection.convertGraphQLResultToModule(fieldValue, field.Selection)
+					if err != nil {
+						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
+					}
+					resultModuleValue.Set(field.Name, nestedResult)
+				} else {
+					// Convert GraphQL value to Sprout value
+					sproutVal, err := goValueToBind(fieldValue, nil)
+					if err != nil {
+						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
+					}
+					resultModuleValue.Set(field.Name, sproutVal)
+				}
+			}
+		}
+	}
+
+	return resultModuleValue, nil
 }
 
 // Conditional represents an if-then-else expression

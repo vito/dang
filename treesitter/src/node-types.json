@@ -923,6 +923,11 @@
     }
   },
   {
+    "type": "dot_token",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "else_clause",
     "named": true,
     "fields": {
@@ -1024,6 +1029,74 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "field_selection",
+    "named": true,
+    "fields": {
+      "f": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          }
+        ]
+      },
+      "fields": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "selection": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": ".",
+            "named": false
+          },
+          {
+            "type": "{",
+            "named": false
+          },
+          {
+            "type": "}",
+            "named": false
+          }
+        ]
+      }
     }
   },
   {
@@ -1570,6 +1643,46 @@
     }
   },
   {
+    "type": "object_selection",
+    "named": true,
+    "fields": {
+      "f": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          }
+        ]
+      },
+      "fields": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "object_type",
     "named": true,
     "fields": {
@@ -1891,10 +2004,20 @@
       },
       "name": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "id",
+            "named": true
+          }
+        ]
+      },
+      "selection": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "object_selection",
             "named": true
           }
         ]
@@ -2600,6 +2723,10 @@
     "named": false
   },
   {
+    "type": ".",
+    "named": false
+  },
+  {
     "type": "/",
     "named": false
   },
@@ -2670,10 +2797,6 @@
   },
   {
     "type": "directive_token",
-    "named": true
-  },
-  {
-    "type": "dot_token",
     "named": true
   },
   {

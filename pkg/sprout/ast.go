@@ -37,7 +37,7 @@ const (
 )
 
 // autoCallFnType returns the type that should be used for zero-arity function auto-calling
-func autoCallFnType(t hm.Type) hm.Type {
+func autoCallFnType(t hm.Type) (hm.Type, bool) {
 	// Check if this is a zero-arity function and return its return type
 	if ft, ok := t.(*hm.FunctionType); ok {
 		if rt, ok := ft.Arg().(*RecordType); ok {
@@ -54,13 +54,17 @@ func autoCallFnType(t hm.Type) hm.Type {
 				}
 			}
 
+			if hasRequiredArgs {
+				return t, false
+			}
+
 			if !hasRequiredArgs {
 				// All arguments are optional, return the return type
-				return ft.Ret(false)
+				return ft.Ret(false), true
 			}
 		}
 	}
-	return t
+	return t, true
 }
 
 // isAutoCallableFn checks if a function can be auto-called (has no required arguments)

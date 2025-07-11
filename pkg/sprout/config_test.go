@@ -16,7 +16,7 @@ func TestLoadGraphQLConfig(t *testing.T) {
 	originalEndpoint := os.Getenv("SPROUT_GRAPHQL_ENDPOINT")
 	originalAuth := os.Getenv("SPROUT_GRAPHQL_AUTHORIZATION")
 	originalHeader := os.Getenv("SPROUT_GRAPHQL_HEADER_X_API_KEY")
-	
+
 	defer func() {
 		// Restore original env vars
 		os.Setenv("SPROUT_GRAPHQL_ENDPOINT", originalEndpoint)
@@ -31,7 +31,7 @@ func TestLoadGraphQLConfig(t *testing.T) {
 		os.Unsetenv("SPROUT_GRAPHQL_HEADER_X_API_KEY")
 
 		config := LoadGraphQLConfig()
-		
+
 		assert.Empty(t, config.Endpoint)
 		assert.Empty(t, config.Authorization)
 		assert.Empty(t, config.Headers)
@@ -43,7 +43,7 @@ func TestLoadGraphQLConfig(t *testing.T) {
 		os.Setenv("SPROUT_GRAPHQL_HEADER_X_API_KEY", "secret-key")
 
 		config := LoadGraphQLConfig()
-		
+
 		assert.Equal(t, "https://api.example.com/graphql", config.Endpoint)
 		assert.Equal(t, "Bearer token123", config.Authorization)
 		assert.Equal(t, "secret-key", config.Headers["X-API-KEY"])
@@ -65,7 +65,7 @@ func TestCustomTransport(t *testing.T) {
 		base:          http.DefaultTransport,
 		authorization: "Bearer test-token",
 		headers: map[string]string{
-			"X-API-Key":     "secret-key",
+			"X-API-Key":       "secret-key",
 			"X-Custom-Header": "custom-value",
 		},
 	}
@@ -91,17 +91,17 @@ func TestGraphQLClientProvider(t *testing.T) {
 	t.Run("default Dagger config", func(t *testing.T) {
 		// This test will require a running Dagger engine, so we'll skip it if not available
 		t.Skip("Requires Dagger engine to be running")
-		
+
 		provider := NewGraphQLClientProvider(GraphQLConfig{})
-		
+
 		ctx := context.Background()
 		client, schema, err := provider.GetClientAndSchema(ctx)
-		
+
 		require.NoError(t, err)
 		require.NotNil(t, client)
 		require.NotNil(t, schema)
 		require.NotEmpty(t, schema.Types)
-		
+
 		// Cleanup
 		provider.Close()
 	})
@@ -148,16 +148,16 @@ func TestGraphQLClientProvider(t *testing.T) {
 		}
 
 		provider := NewGraphQLClientProvider(config)
-		
+
 		ctx := context.Background()
 		client, schema, err := provider.GetClientAndSchema(ctx)
-		
+
 		require.NoError(t, err)
 		require.NotNil(t, client)
 		require.NotNil(t, schema)
 		require.Equal(t, "Query", schema.QueryType.Name)
 		require.Len(t, schema.Types, 1)
-		
+
 		// Cleanup
 		provider.Close()
 	})
@@ -173,7 +173,7 @@ func TestNewGraphQLClientProvider(t *testing.T) {
 	}
 
 	provider := NewGraphQLClientProvider(config)
-	
+
 	assert.Equal(t, config.Endpoint, provider.config.Endpoint)
 	assert.Equal(t, config.Authorization, provider.config.Authorization)
 	assert.Equal(t, config.Headers, provider.config.Headers)

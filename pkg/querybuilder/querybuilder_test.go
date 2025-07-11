@@ -200,3 +200,25 @@ func TestUnpackSiblings(t *testing.T) {
 	require.NoError(t, root.unpack(response))
 	require.EqualValues(t, data{"TEST", 12, true}, contents)
 }
+
+func TestSelectFields(t *testing.T) {
+	q, err := Query().
+		Select("user").
+		SelectFields("id", "name", "email").
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `query{user{id name email}}`, q)
+}
+
+func TestSelectFieldsNested(t *testing.T) {
+	profileSelection := Query().SelectFields("bio", "avatar")
+
+	q, err := Query().
+		Select("user").
+		SelectNested("profile", profileSelection).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `query{user{profile{bio avatar}}}`, q)
+}

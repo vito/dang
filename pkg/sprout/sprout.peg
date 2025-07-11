@@ -48,24 +48,60 @@ Symbol <- name:Id {
   }, nil
 }
 
-// Handle Select followed by optional ()
-SelectOrCall <- left:Term _ DotToken _ name:Id args:ArgValues? {
-  if args != nil {
-    // Select followed by () - add Args field
-    argRecord := Record(args.([]Keyed[Node]))
-    return Select{
-      Receiver: left.(Node),
-      Field: name.(string),
-      Args: &argRecord,
+// Handle Select followed by optional (), or ObjectSelection
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args:ArgValues?) {
+  switch sel := selection.(type) {
+  case *ObjectSelection:
+    // Object selection: obj.{field1, field2}
+    sel.Receiver = left.(Node)
+    return sel, nil
+  case []interface{}:
+    // Regular field access with optional args
+    name := sel[0].(string)
+    args := sel[1]
+    if args != nil {
+      // Select followed by () - add Args field
+      argRecord := Record(args.([]Keyed[Node]))
+      return Select{
+        Receiver: left.(Node),
+        Field: name,
+        Args: &argRecord,
+        Loc: c.Loc(),
+      }, nil
+    } else {
+      // Just a Select
+      return Select{
+        Receiver: left.(Node),
+        Field: name,
+        Args: nil,
+        AutoCall: true,
+        Loc: c.Loc(),
+      }, nil
+    }
+  default:
+    return nil, fmt.Errorf("unexpected selection type")
+  }
+}
+
+ObjectSelection <- '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}' {
+  return &ObjectSelection{
+    Receiver: nil, // Will be set by parent SelectOrCall
+    Fields: sliceOfAppend[FieldSelection](fields, last),
+    Loc: c.Loc(),
+  }, nil
+}
+
+FieldSelection <- name:Id selection:('.' '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}')? {
+  if selection != nil {
+    return FieldSelection{
+      Name: name.(string),
+      Selection: sliceOfAppend[FieldSelection](selection.([]interface{})[3], selection.([]interface{})[4]),
       Loc: c.Loc(),
     }, nil
   } else {
-    // Just a Select
-    return Select{
-      Receiver: left.(Node),
-      Field: name.(string),
-      Args: nil,
-      AutoCall: true,
+    return FieldSelection{
+      Name: name.(string),
+      Selection: nil,
       Loc: c.Loc(),
     }, nil
   }

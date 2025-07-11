@@ -17,10 +17,10 @@ type GraphQLConfig struct {
 	// Endpoint is the GraphQL endpoint URL (e.g., "https://api.example.com/graphql")
 	// If empty, defaults to Dagger
 	Endpoint string `json:"endpoint,omitempty"`
-	
+
 	// Authorization header value (e.g., "Bearer token123")
 	Authorization string `json:"authorization,omitempty"`
-	
+
 	// Headers contains additional HTTP headers to send with requests
 	Headers map[string]string `json:"headers,omitempty"`
 }
@@ -42,7 +42,7 @@ func (p *GraphQLClientProvider) GetClientAndSchema(ctx context.Context) (graphql
 	if p.config.Endpoint == "" {
 		return p.getDaggerClientAndSchema(ctx)
 	}
-	
+
 	// Configure custom GraphQL endpoint
 	return p.getCustomClientAndSchema(ctx)
 }
@@ -54,18 +54,18 @@ func (p *GraphQLClientProvider) getDaggerClientAndSchema(ctx context.Context) (g
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to Dagger: %w", err)
 	}
-	
+
 	// Store the connection for cleanup
 	p.daggerConn = dag
-	
+
 	client := dag.GraphQLClient()
-	
+
 	// Introspect the schema
 	schema, err := introspectSchema(ctx, client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to introspect Dagger schema: %w", err)
 	}
-	
+
 	return client, schema, nil
 }
 
@@ -73,7 +73,7 @@ func (p *GraphQLClientProvider) getDaggerClientAndSchema(ctx context.Context) (g
 func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (graphql.Client, *introspection.Schema, error) {
 	// Create HTTP client with custom headers
 	httpClient := &http.Client{}
-	
+
 	// Create custom transport to add headers
 	transport := &customTransport{
 		base:          http.DefaultTransport,
@@ -81,16 +81,16 @@ func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (g
 		headers:       p.config.Headers,
 	}
 	httpClient.Transport = transport
-	
+
 	// Create GraphQL client with custom endpoint
 	client := graphql.NewClient(p.config.Endpoint, httpClient)
-	
+
 	// Introspect the schema
 	schema, err := introspectSchema(ctx, client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to introspect schema from %s: %w", p.config.Endpoint, err)
 	}
-	
+
 	return client, schema, nil
 }
 
@@ -104,17 +104,17 @@ type customTransport struct {
 func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Clone the request to avoid modifying the original
 	req = req.Clone(req.Context())
-	
+
 	// Add authorization header if provided
 	if t.authorization != "" {
 		req.Header.Set("Authorization", t.authorization)
 	}
-	
+
 	// Add custom headers
 	for key, value := range t.headers {
 		req.Header.Set(key, value)
 	}
-	
+
 	return t.base.RoundTrip(req)
 }
 
@@ -130,7 +130,7 @@ func introspectSchema(ctx context.Context, client graphql.Client) (*introspectio
 	if err != nil {
 		return nil, fmt.Errorf("introspection query failed: %w", err)
 	}
-	
+
 	return introspectionResp.Schema, nil
 }
 
@@ -141,7 +141,7 @@ func LoadGraphQLConfig() GraphQLConfig {
 		Authorization: os.Getenv("SPROUT_GRAPHQL_AUTHORIZATION"),
 		Headers:       make(map[string]string),
 	}
-	
+
 	// Parse additional headers from environment variables
 	// Format: SPROUT_GRAPHQL_HEADER_<NAME>=<value>
 	for _, env := range os.Environ() {
@@ -154,7 +154,7 @@ func LoadGraphQLConfig() GraphQLConfig {
 			}
 		}
 	}
-	
+
 	return config
 }
 

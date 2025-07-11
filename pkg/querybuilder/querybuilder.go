@@ -23,6 +23,10 @@ type Selection struct {
 	bind     any
 	multiple bool
 
+	// Support for multi-field selections
+	fields        []string
+	subSelections map[string]*Selection
+
 	prev *Selection
 
 	client graphql.Client
@@ -60,6 +64,28 @@ func (s *Selection) Select(name string) *Selection {
 func (s *Selection) SelectMultiple(name ...string) *Selection {
 	sel := s.SelectWithAlias("", strings.Join(name, " "))
 	sel.multiple = true
+	return sel
+}
+
+// SelectFields selects multiple fields at the current level
+func (s *Selection) SelectFields(fields ...string) *Selection {
+	sel := &Selection{
+		prev:          s,
+		client:        s.client,
+		fields:        fields,
+		subSelections: make(map[string]*Selection),
+	}
+	return sel
+}
+
+// SelectNested selects a field with nested sub-selections
+func (s *Selection) SelectNested(field string, subSelection *Selection) *Selection {
+	sel := &Selection{
+		prev:          s,
+		client:        s.client,
+		subSelections: make(map[string]*Selection),
+	}
+	sel.subSelections[field] = subSelection
 	return sel
 }
 
@@ -112,26 +138,57 @@ func (s *Selection) Build(ctx context.Context) (string, error) {
 
 		b.WriteRune('{')
 
-		if sel.alias != "" {
-			b.WriteString(sel.alias)
-			b.WriteRune(':')
-		}
-
-		b.WriteString(sel.name)
-
-		if len(sel.args) > 0 {
-			b.WriteRune('(')
-			i := 0
-			for name, arg := range sel.args {
+		// Handle multi-field selections
+		if len(sel.fields) > 0 {
+			for i, field := range sel.fields {
 				if i > 0 {
-					b.WriteString(", ")
+					b.WriteRune(' ')
 				}
-				b.WriteString(name)
-				b.WriteRune(':')
-				b.WriteString(arg.marshalled)
+				b.WriteString(field)
+			}
+		} else if len(sel.subSelections) > 0 {
+			// Handle nested selections
+			i := 0
+			for field, subSel := range sel.subSelections {
+				if i > 0 {
+					b.WriteRune(' ')
+				}
+				b.WriteString(field)
+				// Build sub-selection
+				if subSel != nil {
+					subQuery, err := subSel.Build(ctx)
+					if err != nil {
+						return "", err
+					}
+					// Extract the query content without the "query" wrapper
+					content := strings.TrimPrefix(subQuery, "query")
+					b.WriteString(content)
+				}
 				i++
 			}
-			b.WriteRune(')')
+		} else {
+			// Handle regular single field selection
+			if sel.alias != "" {
+				b.WriteString(sel.alias)
+				b.WriteRune(':')
+			}
+
+			b.WriteString(sel.name)
+
+			if len(sel.args) > 0 {
+				b.WriteRune('(')
+				i := 0
+				for name, arg := range sel.args {
+					if i > 0 {
+						b.WriteString(", ")
+					}
+					b.WriteString(name)
+					b.WriteRune(':')
+					b.WriteString(arg.marshalled)
+					i++
+				}
+				b.WriteRune(')')
+			}
 		}
 	}
 
@@ -144,6 +201,22 @@ func (s *Selection) unpack(data any) error {
 		k := i.name
 		if i.alias != "" {
 			k = i.alias
+		}
+
+		// Handle SelectFields case - when we have fields but no name,
+		// don't navigate deeper, just bind at the current level
+		if len(i.fields) > 0 && i.name == "" {
+			// This is a SelectFields selection - bind directly to current data
+			if i.bind != nil {
+				marshalled, err := json.Marshal(data)
+				if err != nil {
+					return err
+				}
+				if err := json.Unmarshal(marshalled, i.bind); err != nil {
+					return err
+				}
+			}
+			continue
 		}
 
 		if !i.multiple {
