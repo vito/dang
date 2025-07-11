@@ -623,7 +623,7 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
 	Name      string
-	Selection []FieldSelection // For nested selections like profile.{bio, avatar}
+	Selection *ObjectSelection // For nested selections like profile.{bio, avatar}
 	Loc       *SourceLocation
 }
 
@@ -661,19 +661,31 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Handle list types - apply selection to each element
+	var innerType hm.Type
 	if listType, ok := receiverType.(hm.NonNullType); ok {
 		if innerListType, ok := listType.Type.(ListType); ok {
-			elementType, err := o.inferSelectionType(innerListType.Type, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-			return hm.NonNullType{Type: ListType{elementType}}, nil
+			innerType = innerListType.Type
 		}
+	} else if listType, ok := receiverType.(ListType); ok {
+		innerType = listType.Type
+	}
+
+	if innerType != nil {
+		elementType, err := o.inferSelectionType(innerType, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		o.Inferred = elementType
+		// TODO: should this ALWAYS be non-null?
+		return hm.NonNullType{Type: ListType{elementType}}, nil
 	}
 
 	// Handle regular object types
-	o.Inferred, err = o.inferSelectionType(receiverType, env, fresh)
-	return hm.NonNullType{Type: o.Inferred}, err
+	t, err := o.inferSelectionType(receiverType, env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	return hm.NonNullType{Type: t}, nil
 }
 
 func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
@@ -695,6 +707,7 @@ func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, f
 		}
 		mod.Add(field.Name, hm.NewScheme(nil, fieldType))
 	}
+	o.Inferred = mod
 	return mod, nil
 }
 
@@ -709,19 +722,15 @@ func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.E
 		return nil, fmt.Errorf("ObjectSelection.inferFieldType: field %q is not monomorphic", field.Name)
 	}
 
-	ret, autoCallable := autoCallFnType(fieldType)
-	if !autoCallable {
-		return nil, fmt.Errorf("ObjectSelection.inferFieldType: field %q is not auto-callable", field.Name)
-	}
+	ret, _ := autoCallFnType(fieldType)
 
 	// Handle nested selections
-	if len(field.Selection) > 0 {
-		nestedSelection := &ObjectSelection{
-			Receiver: nil, // Not needed for type inference
-			Fields:   field.Selection,
-			Loc:      field.Loc,
+	if field.Selection != nil {
+		t, err := field.Selection.inferSelectionType(fieldType, env, fresh)
+		if err != nil {
+			return nil, err
 		}
-		return nestedSelection.inferSelectionType(fieldType, env, fresh)
+		return hm.NonNullType{Type: t}, nil
 	}
 
 	return ret, nil
@@ -776,13 +785,8 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 		}
 
 		// Handle nested selections
-		if len(field.Selection) > 0 {
-			nestedSelection := &ObjectSelection{
-				Receiver: nil, // Not needed for evaluation
-				Fields:   field.Selection,
-				Loc:      field.Loc,
-			}
-			fieldVal, err := nestedSelection.evalSelectionOnValue(fieldVal, ctx, env)
+		if field.Selection != nil {
+			fieldVal, err := field.Selection.evalSelectionOnValue(fieldVal, ctx, env)
 			if err != nil {
 				return nil, err
 			}
@@ -818,31 +822,13 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
-	// Check if we have any nested selections
-	hasNestedSelections := false
-	for _, field := range fields {
-		if len(field.Selection) > 0 {
-			hasNestedSelections = true
-			break
-		}
-	}
-
-	if !hasNestedSelections {
-		// Simple case: just select all fields using SelectFields
-		fieldNames := make([]string, len(fields))
-		for i, field := range fields {
-			fieldNames[i] = field.Name
-		}
-		return baseQuery.SelectFields(fieldNames...), nil
-	}
-
 	// Complex case: mix of simple fields and nested selections
 	query := baseQuery
 
 	for _, field := range fields {
-		if len(field.Selection) > 0 {
+		if field.Selection != nil {
 			// Handle nested selections
-			nestedQuery, err := o.buildGraphQLQuery(querybuilder.Query(), field.Selection)
+			nestedQuery, err := field.Selection.buildGraphQLQuery(querybuilder.Query(), field.Selection.Fields)
 			if err != nil {
 				return nil, err
 			}
@@ -864,13 +850,8 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []Fiel
 		for _, field := range fields {
 			if fieldValue, exists := resultMap[field.Name]; exists {
 				// Handle nested selections
-				if len(field.Selection) > 0 {
-					nestedSelection := &ObjectSelection{
-						Receiver: nil, // Not needed for conversion
-						Fields:   field.Selection,
-						Loc:      field.Loc,
-					}
-					nestedResult, err := nestedSelection.convertGraphQLResultToModule(fieldValue, field.Selection)
+				if field.Selection != nil {
+					nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
 					}

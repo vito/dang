@@ -1035,40 +1035,6 @@
     "type": "field_selection",
     "named": true,
     "fields": {
-      "f": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "field_selection",
-            "named": true
-          }
-        ]
-      },
-      "fields": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "field_selection",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      },
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "field_selection",
-            "named": true
-          }
-        ]
-      },
       "name": {
         "multiple": false,
         "required": true,
@@ -1079,20 +1045,22 @@
           }
         ]
       },
+      "sel": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "object_selection",
+            "named": true
+          }
+        ]
+      },
       "selection": {
-        "multiple": true,
+        "multiple": false,
         "required": false,
         "types": [
           {
             "type": ".",
-            "named": false
-          },
-          {
-            "type": "{",
-            "named": false
-          },
-          {
-            "type": "}",
             "named": false
           }
         ]

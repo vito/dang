@@ -394,52 +394,12 @@
                     "value": "."
                   },
                   {
-                    "type": "STRING",
-                    "value": "{"
-                  },
-                  {
                     "type": "FIELD",
-                    "name": "fields",
+                    "name": "sel",
                     "content": {
-                      "type": "REPEAT",
-                      "content": {
-                        "type": "SEQ",
-                        "members": [
-                          {
-                            "type": "FIELD",
-                            "name": "f",
-                            "content": {
-                              "type": "SYMBOL",
-                              "name": "field_selection"
-                            }
-                          },
-                          {
-                            "type": "SYMBOL",
-                            "name": "sep"
-                          }
-                        ]
-                      }
+                      "type": "SYMBOL",
+                      "name": "object_selection"
                     }
-                  },
-                  {
-                    "type": "FIELD",
-                    "name": "last",
-                    "content": {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "field_selection"
-                        },
-                        {
-                          "type": "BLANK"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "}"
                   }
                 ]
               },

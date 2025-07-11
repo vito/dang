@@ -95,11 +95,11 @@ ObjectSelection <- '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:F
   }, nil
 }
 
-FieldSelection <- name:Id selection:('.' '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}')? {
+FieldSelection <- name:Id selection:('.' sel:ObjectSelection)? {
   if selection != nil {
     return FieldSelection{
       Name: name.(string),
-      Selection: sliceOfAppend[FieldSelection](selection.([]interface{})[3], selection.([]interface{})[4]),
+      Selection: selection.([]interface{})[1].(*ObjectSelection),
       Loc: c.Loc(),
     }, nil
   } else {
