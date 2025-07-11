@@ -273,7 +273,7 @@ func (r *REPL) initCommands() {
 			handler:     r.envCommand,
 		},
 		"version": {
-			description: "Show Bind version information",
+			description: "Show Sprout version information",
 			handler:     r.versionCommand,
 		},
 		"history": {

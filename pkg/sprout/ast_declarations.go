@@ -852,8 +852,8 @@ func (d *DirectiveDecl) GetSourceLocation() *SourceLocation { return d.Loc }
 func (d *DirectiveDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	if pass == 0 {
 		// Add directive to environment during hoisting so it's available for later use
-		if bindEnv, ok := env.(Env); ok {
-			bindEnv.AddDirective(d.Name, d)
+		if e, ok := env.(Env); ok {
+			e.AddDirective(d.Name, d)
 		}
 	}
 	return nil
@@ -913,8 +913,8 @@ func (d DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Loc
 
 func (d DirectiveApplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Validate that the directive exists and arguments match
-	if bindEnv, ok := env.(Env); ok {
-		directiveDecl, found := bindEnv.GetDirective(d.Name)
+	if e, ok := env.(Env); ok {
+		directiveDecl, found := e.GetDirective(d.Name)
 		if !found {
 			return nil, WrapInferError(fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name), d)
 		}

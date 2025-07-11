@@ -13,7 +13,7 @@ func skipTS(name string) bool {
 }
 
 func TreesitterGrammar() treesitter.Grammar {
-	ts := treesitter.NewGrammar("bind")
+	ts := treesitter.NewGrammar("sprout")
 
 	ts.Word = "word_token"
 	ts.Extras = []treesitter.Rule{

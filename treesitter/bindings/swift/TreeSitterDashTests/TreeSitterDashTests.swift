@@ -1,12 +1,12 @@
 import XCTest
 import SwiftTreeSitter
-import TreeSitterBind
+import TreeSitterSprout
 
-final class TreeSitterBindTests: XCTestCase {
+final class TreeSitterSproutTests: XCTestCase {
     func testCanLoadGrammar() throws {
         let parser = Parser()
-        let language = Language(language: tree_sitter_bind())
+        let language = Language(language: tree_sitter_sprout())
         XCTAssertNoThrow(try parser.setLanguage(language),
-                         "Error loading Bind grammar")
+                         "Error loading Sprout grammar")
     }
 }

@@ -2,10 +2,10 @@
 
 typedef struct TSLanguage TSLanguage;
 
-TSLanguage *tree_sitter_bind(void);
+TSLanguage *tree_sitter_sprout(void);
 
 static PyObject* _binding_language(PyObject *Py_UNUSED(self), PyObject *Py_UNUSED(args)) {
-    return PyCapsule_New(tree_sitter_bind(), "tree_sitter.Language", NULL);
+    return PyCapsule_New(tree_sitter_sprout(), "tree_sitter.Language", NULL);
 }
 
 static struct PyModuleDef_Slot slots[] = {

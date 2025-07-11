@@ -914,7 +914,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []Fiel
 					resultModuleValue.Set(field.Name, nestedResult)
 				} else {
 					// Convert GraphQL value to Sprout value
-					sproutVal, err := goValueToBind(fieldValue, nil)
+					sproutVal, err := goValueToSprout(fieldValue, nil)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}

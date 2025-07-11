@@ -100,8 +100,8 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// 	return nil, fmt.Errorf("SlotDecl.Infer: %q mismatch: defined as %s, inferred as %s", s.Named, definedType, inferredType)
 	// }
 
-	if bindEnv, ok := env.(Env); ok {
-		cur, defined := bindEnv.LocalSchemeOf(s.Named)
+	if e, ok := env.(Env); ok {
+		cur, defined := e.LocalSchemeOf(s.Named)
 		if defined {
 			curT, curMono := cur.Type()
 			if !curMono {
@@ -113,7 +113,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 		}
 
-		bindEnv.SetVisibility(s.Named, s.Visibility)
+		e.SetVisibility(s.Named, s.Visibility)
 	}
 
 	// Validate directive applications

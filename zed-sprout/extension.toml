@@ -1,12 +1,12 @@
-id = "bind"
-name = "Bind"
+id = "sprout"
+name = "Sprout"
 version = "0.1.1"
 schema_version = 1
-description = "Bind language support for Zed"
+description = "Sprout language support for Zed"
 authors = ["vito"]
-repository = "https://github.com/vito/bind"
+repository = "https://github.com/vito/sprout"
 
-[grammars.bind]
-repository = "https://github.com/vito/bind"
-commit = "245235b05ab64f53df127479622a7e9e9c1b56c8"
+[grammars.sprout]
+repository = "https://github.com/vito/sprout"
+commit = "be36e86bf7d6e12acb8bae29fdfb8b7a36ad510e"
 path = "treesitter"

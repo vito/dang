@@ -19,7 +19,7 @@ clean:
 	rm -f $(targets)
 
 install:
-	cp ./queries/*.scm ../bind.vim/queries/bind/
-	cp ./queries/nvim/*.scm ../bind.vim/queries/bind/
-	cp ./queries/*.scm ../helix/runtime/queries/bind/
-	cp ./queries/helix/*.scm ../helix/runtime/queries/bind/
+	cp ./queries/*.scm ../sprout.vim/queries/sprout/
+	cp ./queries/nvim/*.scm ../sprout.vim/queries/sprout/
+	cp ./queries/*.scm ../helix/runtime/queries/sprout/
+	cp ./queries/helix/*.scm ../helix/runtime/queries/sprout/

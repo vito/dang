@@ -13,7 +13,7 @@ import (
 	"github.com/vito/sprout/pkg/ioctx"
 )
 
-// TestRunner provides utilities for testing Bind scripts
+// TestRunner provides utilities for testing Sprout scripts
 type TestRunner struct {
 	t      *testing.T
 	output *bytes.Buffer
@@ -70,7 +70,7 @@ func introspectSchemaForTest(ctx context.Context, client graphql.Client) (*intro
 	return introspectionResp.Schema, nil
 }
 
-// RunScript executes a Bind script from a string and captures output
+// RunScript executes a Sprout script from a string and captures output
 func (tr *TestRunner) RunScript(script string) error {
 	tr.t.Helper()
 

@@ -1,20 +1,20 @@
 # Dagger SDK directive for setting default paths
 directive @defaultPath(path: String!, ignore: [String!] = []) on ARGUMENT_DEFINITION
 
-type Bind {
+type Sprout {
   pub source: Directory! @defaultPath(
     path: "/",
     ignore: [
       # TODO: respecting .gitignore would be nice
       "Session.vim"
-      "/bind"
-      "/zed-bind/grammars/",
+      "/sprout"
+      "/zed-sprout/grammars/",
       "/.env"
     ]
   )
 
   pub build: File! {
-    go(source).binary("./cmd/bind")
+    go(source).binary("./cmd/sprout")
   }
 
   pub test: Container! {

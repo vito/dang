@@ -19,16 +19,16 @@ func TestErrorMessages(t *testing.T) {
 	errorsDir := filepath.Join("errors")
 
 	// Find all .sp files in the errors directory
-	bindFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.sp"))
+	sproutFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.sp"))
 	if err != nil {
 		t.Fatalf("Failed to find .sp files: %v", err)
 	}
 
-	if len(bindFiles) == 0 {
+	if len(sproutFiles) == 0 {
 		t.Fatal("No .sp test files found in tests/errors/")
 	}
 
-	// Connect to Dagger (required for Bind execution)
+	// Connect to Dagger (required for Sprout execution)
 	ctx := t.Context()
 	dag, err := dagger.Connect(ctx)
 	if err != nil {
@@ -36,20 +36,18 @@ func TestErrorMessages(t *testing.T) {
 	}
 	defer dag.Close()
 
-	// Introspect the GraphQL schema (required for Bind execution)
+	// Introspect the GraphQL schema (required for Sprout execution)
 	schema, err := introspectSchema(ctx, dag)
 	if err != nil {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	for _, bindFile := range bindFiles {
-		bindFile := bindFile // capture loop variable
-
+	for _, sproutFile := range sproutFiles {
 		// Extract test name from filename
-		testName := strings.TrimSuffix(filepath.Base(bindFile), ".sp")
+		testName := strings.TrimSuffix(filepath.Base(sproutFile), ".sp")
 
 		t.Run(testName, func(t *testing.T) {
-			output := runBindFile(t.Context(), dag, schema, bindFile)
+			output := runSproutFile(t.Context(), dag, schema, sproutFile)
 
 			// Compare with golden file
 			golden.Assert(t, output, testName+".golden")
@@ -57,8 +55,8 @@ func TestErrorMessages(t *testing.T) {
 	}
 }
 
-// runBindFile runs a Bind file and captures combined stdout/stderr
-func runBindFile(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, bindFile string) string {
+// runSproutFile runs a Sprout file and captures combined stdout/stderr
+func runSproutFile(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, sproutFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
 
@@ -66,8 +64,8 @@ func runBindFile(ctx context.Context, dag *dagger.Client, schema *introspection.
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
-	// Run the Bind file
-	err := sprout.RunFile(ctx, dag.GraphQLClient(), schema, bindFile, false)
+	// Run the Sprout file
+	err := sprout.RunFile(ctx, dag.GraphQLClient(), schema, sproutFile, false)
 
 	// Combine stdout and stderr output
 	var combined bytes.Buffer

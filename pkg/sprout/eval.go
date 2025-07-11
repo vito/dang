@@ -19,7 +19,7 @@ import (
 	"github.com/vito/sprout/pkg/querybuilder"
 )
 
-// Value represents a runtime value in the Bind language
+// Value represents a runtime value in the Sprout language
 type Value interface {
 	Type() hm.Type
 	String() string
@@ -91,8 +91,8 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 	// Add arguments to the query
 	for _, arg := range g.Field.Args {
 		if val, ok := args[arg.Name]; ok {
-			// Convert Bind value to Go value for GraphQL
-			goVal, err := bindValueToGo(val)
+			// Convert Sprout value to Go value for GraphQL
+			goVal, err := sproutValueToGo(val)
 			if err != nil {
 				return nil, fmt.Errorf("converting argument %s: %w", arg.Name, err)
 			}
@@ -108,7 +108,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		if err := query.Execute(ctx); err != nil {
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
-		return goValueToBind(result, g.Field.TypeRef)
+		return goValueToSprout(result, g.Field.TypeRef)
 	}
 
 	// For non-scalar types, return a GraphQLValue that can be further selected
@@ -347,8 +347,8 @@ func getTypeName(typeRef *introspection.TypeRef) string {
 	return currentType.Name
 }
 
-// Helper function to convert Bind values to Go values for GraphQL
-func bindValueToGo(val Value) (interface{}, error) {
+// Helper function to convert Sprout values to Go values for GraphQL
+func sproutValueToGo(val Value) (interface{}, error) {
 	switch v := val.(type) {
 	case StringValue:
 		return v.Val, nil
@@ -362,7 +362,7 @@ func bindValueToGo(val Value) (interface{}, error) {
 		// Convert list elements to Go slice
 		result := make([]interface{}, len(v.Elements))
 		for i, elem := range v.Elements {
-			goVal, err := bindValueToGo(elem)
+			goVal, err := sproutValueToGo(elem)
 			if err != nil {
 				return nil, fmt.Errorf("converting list element %d: %w", i, err)
 			}
@@ -409,8 +409,8 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 	return json.Marshal(id)
 }
 
-// Helper function to convert Go values back to Bind values
-func goValueToBind(val interface{}, typeRef *introspection.TypeRef) (Value, error) {
+// Helper function to convert Go values back to Sprout values
+func goValueToSprout(val interface{}, typeRef *introspection.TypeRef) (Value, error) {
 	if val == nil {
 		return NullValue{}, nil
 	}
@@ -431,7 +431,7 @@ func goValueToBind(val interface{}, typeRef *introspection.TypeRef) (Value, erro
 		var vals []Value
 		var elemType hm.Type
 		for _, item := range v {
-			val, err := goValueToBind(item, typeRef.OfType)
+			val, err := goValueToSprout(item, typeRef.OfType)
 			if err != nil {
 				return nil, err
 			}
@@ -824,12 +824,12 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	bind, err := ParseFile(filePath, GlobalStore("filePath", filePath))
+	parsed, err := ParseFile(filePath, GlobalStore("filePath", filePath))
 	if err != nil {
 		return err
 	}
 
-	node := bind.(Block)
+	node := parsed.(Block)
 
 	if debug {
 		pretty.Println(node)
@@ -867,24 +867,24 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 // RunDir evaluates all .sp files in a directory as a single module
 func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) (EvalEnv, error) {
 	// Discover all .sp files in the directory
-	bindFiles, err := filepath.Glob(filepath.Join(dirPath, "*.sp"))
+	sproutFiles, err := filepath.Glob(filepath.Join(dirPath, "*.sp"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to find .sp files in directory %s: %w", dirPath, err)
 	}
 
-	if len(bindFiles) == 0 {
+	if len(sproutFiles) == 0 {
 		return nil, fmt.Errorf("no .sp files found in directory: %s", dirPath)
 	}
 
 	// Sort files for deterministic order
-	sort.Strings(bindFiles)
+	sort.Strings(sproutFiles)
 
 	// Parse all files and collect their blocks
 	var allForms []Node
 	var allSources []string
 	var allFilePaths []string
 
-	for _, filePath := range bindFiles {
+	for _, filePath := range sproutFiles {
 		// Read source for error reporting
 		sourceBytes, err := os.ReadFile(filePath)
 		if err != nil {
@@ -895,12 +895,12 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		allFilePaths = append(allFilePaths, filePath)
 
 		// Parse the file
-		bind, err := ParseFile(filePath, GlobalStore("filePath", filePath))
+		parsed, err := ParseFile(filePath, GlobalStore("filePath", filePath))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
 
-		block := bind.(Block)
+		block := parsed.(Block)
 		// Add all forms from this file to the combined block
 		allForms = append(allForms, block.Forms...)
 	}
@@ -914,7 +914,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	if debug {
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
-		fmt.Printf("Found %d .sp files with %d total forms\n", len(bindFiles), len(masterBlock.Forms))
+		fmt.Printf("Found %d .sp files with %d total forms\n", len(sproutFiles), len(masterBlock.Forms))
 		// pretty.Println(masterBlock)
 	}
 

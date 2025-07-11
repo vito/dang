@@ -1,7 +1,7 @@
-# Sample Bind file for testing syntax highlighting
+# Sample Sprout file for testing syntax highlighting
 
 # Variable declarations
-pub greeting = "Hello, Bind!"
+pub greeting = "Hello, Sprout!"
 pub version = 1
 pub is_enabled = true
 pub nullable_value = null
@@ -42,7 +42,7 @@ pub process_result = match status with
 # Lists and records
 pub numbers = [1, 2, 3, 4, 5]
 pub config = {
-  name: "bind-app",
+  name: "sprout-app",
   port: 8080,
   debug: true
 }

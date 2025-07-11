@@ -1,4 +1,4 @@
-#!/usr/bin/env bind
+#!/usr/bin/env sprout
 
 let src = host.directory(
   ".",
@@ -16,15 +16,15 @@ let bin(src: Directory!): File! {
     withDirectory("/src", src).
     withWorkdir("/src").
     withEnvVariable("CGO_ENABLED", "0").
-    withExec(["go", "build", "-o", "/out/bind", "./cmd/bind"]).
-    file("/out/bind")
+    withExec(["go", "build", "-o", "/out/sprout", "./cmd/sprout"]).
+    file("/out/sprout")
 }
 
 let test(bin: File!): String! {
   container.
     from("alpine").
-    withFile("/bin/bind", bin).
-    withExec(["bind", "--version"]).
+    withFile("/bin/sprout", bin).
+    withExec(["sprout", "--version"]).
     stdout
 }
 

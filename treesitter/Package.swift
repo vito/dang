@@ -1,14 +1,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "TreeSitterBind",
+    name: "TreeSitterSprout",
     platforms: [.macOS(.v10_13), .iOS(.v11)],
     products: [
-        .library(name: "TreeSitterBind", targets: ["TreeSitterBind"]),
+        .library(name: "TreeSitterSprout", targets: ["TreeSitterSprout"]),
     ],
     dependencies: [],
     targets: [
-        .target(name: "TreeSitterBind",
+        .target(name: "TreeSitterSprout",
                 path: ".",
                 exclude: [
                     "binding.gyp",

@@ -14,8 +14,8 @@ import (
 	"github.com/vito/sprout/pkg/hm"
 
 	"github.com/vito/sprout/introspection"
-	"github.com/vito/sprout/pkg/sprout"
 	"github.com/vito/sprout/pkg/ioctx"
+	"github.com/vito/sprout/pkg/sprout"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
@@ -180,14 +180,14 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if err := dec.Decode(&val); err != nil {
 			return fmt.Errorf("failed to unmarshal input argument %s: %w", arg.Key, err)
 		}
-		bindVal, err := anyToBind(ctx, env, val, argType)
+		sproutVal, err := anyToSprout(ctx, env, val, argType)
 		if err != nil {
-			return fmt.Errorf("failed to convert input argument %s to bind value: %w", arg.Key, err)
+			return fmt.Errorf("failed to convert input argument %s to sprout value: %w", arg.Key, err)
 		}
-		argMap[arg.Key] = bindVal
+		argMap[arg.Key] = sproutVal
 		args = append(args, sprout.Keyed[sprout.Node]{
 			Key:   arg.Key,
-			Value: sprout.ValueNode{Val: bindVal},
+			Value: sprout.ValueNode{Val: sproutVal},
 		})
 	}
 
@@ -210,11 +210,11 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			if !isMono {
 				return fmt.Errorf("non-monotype argument %s", name)
 			}
-			bindVal, err := anyToBind(ctx, env, value, fieldType)
+			sproutVal, err := anyToSprout(ctx, env, value, fieldType)
 			if err != nil {
-				return fmt.Errorf("failed to convert input argument %s to bind value: %w", name, err)
+				return fmt.Errorf("failed to convert input argument %s to sprout value: %w", name, err)
 			}
-			parentModEnv.Set(name, bindVal)
+			parentModEnv.Set(name, sproutVal)
 		}
 
 		bodyEnv := sprout.CreateCompositeEnv(parentModEnv, env)
@@ -241,9 +241,9 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
-func anyToBind(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.Type) (sprout.Value, error) {
+func anyToSprout(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.Type) (sprout.Value, error) {
 	if nonNull, ok := fieldType.(hm.NonNullType); ok {
-		return anyToBind(ctx, env, val, nonNull.Type)
+		return anyToSprout(ctx, env, val, nonNull.Type)
 	}
 	switch v := val.(type) {
 	case string:
@@ -282,7 +282,7 @@ func anyToBind(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.Ty
 			ElemType: listT,
 		}
 		for _, item := range v {
-			val, err := anyToBind(ctx, env, item, listT.Type)
+			val, err := anyToSprout(ctx, env, item, listT.Type)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert list item: %w", err)
 			}
@@ -354,8 +354,8 @@ func initModule(dag *dagger.Client, env sprout.EvalEnv) (*dagger.Module, error) 
 type ProcessedDirectives = map[string]map[string]map[string]any
 
 func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, directives ProcessedDirectives) (*dagger.Function, error) {
-	// Convert Bind function type to Dagger TypeDef
-	retTypeDef, err := bindTypeToTypeDef(dag, fn.Ret(false))
+	// Convert Sprout function type to Dagger TypeDef
+	retTypeDef, err := sproutTypeToTypeDef(dag, fn.Ret(false))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn, err)
 	}
@@ -367,7 +367,7 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
 		}
-		typeDef, err := bindTypeToTypeDef(dag, argType)
+		typeDef, err := sproutTypeToTypeDef(dag, argType)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
@@ -455,7 +455,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *sprout.Constru
 			}
 			objDef = objDef.WithFunction(fnDef)
 		default:
-			fieldDef, err := bindTypeToTypeDef(dag, slotType)
+			fieldDef, err := sproutTypeToTypeDef(dag, slotType)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create field %s: %w", name, err)
 			}
@@ -466,16 +466,16 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *sprout.Constru
 	return objDef, nil
 }
 
-func bindTypeToTypeDef(dag *dagger.Client, bindType hm.Type) (*dagger.TypeDef, error) {
+func sproutTypeToTypeDef(dag *dagger.Client, sproutType hm.Type) (*dagger.TypeDef, error) {
 	def := dag.TypeDef()
 
-	switch t := bindType.(type) {
+	switch t := sproutType.(type) {
 	case hm.NonNullType:
 		// Handle non-null wrapper
-		return bindTypeToTypeDef(dag, t.Type)
+		return sproutTypeToTypeDef(dag, t.Type)
 
 	case sprout.ListType:
-		elemTypeDef, err := bindTypeToTypeDef(dag, t.Type)
+		elemTypeDef, err := sproutTypeToTypeDef(dag, t.Type)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert list element type: %w", err)
 		}
@@ -503,8 +503,8 @@ func bindTypeToTypeDef(dag *dagger.Client, bindType hm.Type) (*dagger.TypeDef, e
 	default:
 		// For type variables and other complex types, default to string for now
 		// TODO: Handle type variables more gracefully
-		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", bindType), "value", fmt.Sprintf("%s", bindType))
-		return nil, fmt.Errorf("unknown type: %T: %s", bindType, bindType)
+		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", sproutType), "value", fmt.Sprintf("%s", sproutType))
+		return nil, fmt.Errorf("unknown type: %T: %s", sproutType, sproutType)
 	}
 }
 

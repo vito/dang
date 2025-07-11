@@ -99,7 +99,7 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 }
 
 func NewEnv(schema *introspection.Schema) *Module {
-	mod := NewModule("<bind>")
+	mod := NewModule("<root>")
 	mod.AddClass("String", StringType)
 	mod.AddClass("Int", IntType)
 	mod.AddClass("Boolean", BooleanType)

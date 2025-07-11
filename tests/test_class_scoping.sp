@@ -1,12 +1,12 @@
-type Bind {
+type MyClass {
   pub value = 0
 
-  pub new(value: Int!): Bind! {
+  pub new(value: Int!): MyClass! {
     self.value = value
     self
   }
 
-  pub add(value: Int!): Bind! {
+  pub add(value: Int!): MyClass! {
     self.value += value
     self
   }
@@ -16,4 +16,4 @@ type Bind {
   }
 }
 
-Bind.new(42).currentValue
+MyClass.new(42).currentValue

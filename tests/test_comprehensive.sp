@@ -1,4 +1,4 @@
-# Comprehensive test of working Bind language features
+# Comprehensive test of working Sprout language features
 
 # =================== LITERALS ===================
 pub number = 42
