@@ -8,5 +8,5 @@ repository = "https://github.com/vito/sprout"
 
 [grammars.sprout]
 repository = "https://github.com/vito/sprout"
-commit = "be36e86bf7d6e12acb8bae29fdfb8b7a36ad510e"
+commit = "04a0e59e230a47d06e0f6f66829deea786e4b363"
 path = "treesitter"
