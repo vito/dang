@@ -681,22 +681,7 @@ func (a Assert) getImmediateChildren(expr Node) []ChildNode {
 			children = append(children, ChildNode{"receiver", n.Receiver})
 		}
 
-		// Add arguments if this is a method call
-		if n.Args != nil {
-			for i, arg := range *n.Args {
-				if arg.Positional {
-					children = append(children, ChildNode{
-						Name: fmt.Sprintf("arg%d", i),
-						Node: arg.Value,
-					})
-				} else {
-					children = append(children, ChildNode{
-						Name: arg.Key,
-						Node: arg.Value,
-					})
-				}
-			}
-		}
+		
 		return children
 
 	case FunCall:
@@ -765,15 +750,9 @@ func (a Assert) nodeToString(node Node) string {
 		return n.Name
 	case Select:
 		if n.Receiver == nil {
-			if n.Args != nil {
-				return fmt.Sprintf("%s(...)", n.Field)
-			}
 			return n.Field
 		}
 		receiver := a.nodeToString(n.Receiver)
-		if n.Args != nil {
-			return fmt.Sprintf("%s.%s(...)", receiver, n.Field)
-		}
 		return fmt.Sprintf("%s.%s", receiver, n.Field)
 	case FunCall:
 		fun := a.nodeToString(n.Fun)

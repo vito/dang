@@ -451,15 +451,9 @@ func nodeToString(node Node) string {
 		return n.Name
 	case Select:
 		if n.Receiver == nil {
-			if n.Args != nil {
-				return fmt.Sprintf("%s(...)", n.Field)
-			}
 			return n.Field
 		}
 		receiver := nodeToString(n.Receiver)
-		if n.Args != nil {
-			return fmt.Sprintf("%s.%s(...)", receiver, n.Field)
-		}
 		return fmt.Sprintf("%s.%s", receiver, n.Field)
 	case FunCall:
 		fun := nodeToString(n.Fun)

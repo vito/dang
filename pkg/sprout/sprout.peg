@@ -30,12 +30,14 @@ ParenForm <- '(' _ expr:Form _ ')' {
 // Handle Symbol followed by optional ()
 SymbolOrCall <- Call / Symbol
 Call <- name:Id args:ArgValues {
-  // Symbol followed by () - create Select with nil Receiver
+  // Symbol followed by () - create FunCall
   argRecord := Record(args.([]Keyed[Node]))
-  return Select{
-    Receiver: nil,
-    Field: name.(string),
-    Args: &argRecord,
+  return FunCall{
+    Fun: Symbol{
+      Name: name.(string),
+      Loc: c.Loc(),
+    },
+    Args: argRecord,
     Loc: c.Loc(),
   }, nil
 }
@@ -60,22 +62,24 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
     name := sel[0].(string)
     args := sel[1]
     if args != nil {
-      // Select followed by () - add Args field
+      // Select followed by () - create FunCall
       argRecord := Record(args.([]Keyed[Node]))
-      return Select{
-        Receiver: left.(Node),
-        Field: name,
-        Args: &argRecord,
-        Loc: c.Loc(),
+      return FunCall{
+        Fun: Select{
+          Receiver: left.(Node),
+          Field:    name,
+          Loc:      c.Loc(),
+        },
+        Args: argRecord,
+        Loc:  c.Loc(),
       }, nil
     } else {
       // Just a Select
       return Select{
         Receiver: left.(Node),
-        Field: name,
-        Args: nil,
+        Field:    name,
         AutoCall: true,
-        Loc: c.Loc(),
+        Loc:      c.Loc(),
       }, nil
     }
   default:

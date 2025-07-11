@@ -474,7 +474,6 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type Select struct {
 	Receiver Node
 	Field    string
-	Args     *Record // Optional: when present, this is a function call
 	AutoCall bool
 	Loc      *SourceLocation
 }
@@ -483,16 +482,6 @@ var _ Node = Select{}
 var _ Evaluator = Select{}
 
 func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// If this is a function call (Args present), delegate to FunCall
-	// implementation
-	if d.Args != nil {
-		t, err := d.AsCall().Infer(env, fresh)
-		if err != nil {
-			return nil, WrapInferError(err, d.AsCall())
-		}
-		return t, nil
-	}
-
 	// Handle nil receiver (symbol calls) - look up type in environment
 	if d.Receiver == nil {
 		scheme, found := env.SchemeOf(d.Field)
@@ -508,11 +497,11 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Receiver.Infer: %w", err)
 	}
-	
+
 	// Check if receiver is nullable or non-null
 	var rec Env
 	var isNullable bool
-	
+
 	if nn, ok := lt.(hm.NonNullType); ok {
 		// Non-null receiver
 		envType, ok := nn.Type.(Env)
@@ -528,7 +517,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	} else {
 		return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
 	}
-	
+
 	scheme, found := rec.SchemeOf(d.Field)
 	if !found {
 		return nil, NewInferError(fmt.Sprintf("field %q not found in record %s", d.Field, rec), d)
@@ -540,7 +529,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if d.AutoCall {
 		t, _ = autoCallFnType(t)
 	}
-	
+
 	// If receiver was nullable, make result nullable too
 	if isNullable {
 		// Remove any existing NonNullType wrapper from the field type
@@ -550,24 +539,8 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		// Field type is already nullable, return as-is
 		return t, nil
 	}
-	
-	return t, nil
-}
 
-func (d Select) AsCall() FunCall {
-	var args Record
-	if d.Args != nil {
-		args = *d.Args
-	}
-	return FunCall{
-		Fun: Select{
-			Receiver: d.Receiver,
-			Field:    d.Field,
-			Loc:      d.Loc,
-		},
-		Args: args,
-		Loc:  d.Loc,
-	}
+	return t, nil
 }
 
 func (d Select) DeclaredSymbols() []string {
@@ -584,13 +557,6 @@ func (d Select) ReferencedSymbols() []string {
 		symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
 	}
 
-	// Add symbols from arguments
-	if d.Args != nil {
-		for _, arg := range *d.Args {
-			symbols = append(symbols, arg.Value.ReferencedSymbols()...)
-		}
-	}
-
 	return symbols
 }
 
@@ -599,12 +565,6 @@ func (d Select) Body() hm.Expression { return d }
 func (d Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// If this is a function call (Args present), delegate to FunCall
-	// implementation, which will properly handle setting 'self'
-	if d.Args != nil {
-		return d.AsCall().Eval(ctx, env)
-	}
-
 	var receiverVal Value
 	var err error
 
@@ -627,7 +587,7 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		case NullValue:
 			// Null propagation: if receiver is null, result is null
 			return NullValue{}, nil
-		
+
 		case EvalEnv:
 			if val, found := rec.Get(d.Field); found {
 				// If this is a FunctionValue accessed from a module, bind it to the receiver
@@ -658,31 +618,6 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	return val, nil
-}
-
-// getParameterNames extracts parameter names from a function value (similar to FunCall)
-func (d Select) getParameterNames(funVal Value) []string {
-	switch fn := funVal.(type) {
-	case FunctionValue:
-		return fn.Args
-	case GraphQLFunction:
-		if ft, ok := fn.FnType.Arg().(*RecordType); ok {
-			names := make([]string, len(ft.Fields))
-			for i, field := range ft.Fields {
-				names[i] = field.Key
-			}
-			return names
-		}
-	case BuiltinFunction:
-		if ft, ok := fn.FnType.Arg().(*RecordType); ok {
-			names := make([]string, len(ft.Fields))
-			for i, field := range ft.Fields {
-				names[i] = field.Key
-			}
-			return names
-		}
-	}
-	return nil
 }
 
 // FieldSelection represents a field name in an object selection
