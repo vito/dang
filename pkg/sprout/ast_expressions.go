@@ -676,8 +676,15 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, err
 		}
 		o.Inferred = elementType
-		// TODO: should this ALWAYS be non-null?
-		return hm.NonNullType{Type: ListType{elementType}}, nil
+		
+		// Propagate nullability for list types too
+		if _, ok := receiverType.(hm.NonNullType); ok {
+			// Receiver was non-null, result should be non-null
+			return hm.NonNullType{Type: ListType{elementType}}, nil
+		} else {
+			// Receiver was nullable, result should be nullable
+			return ListType{elementType}, nil
+		}
 	}
 
 	// Handle regular object types
@@ -685,18 +692,33 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	return hm.NonNullType{Type: t}, nil
+	
+	// If receiver was nullable, make result nullable too
+	if _, ok := receiverType.(hm.NonNullType); ok {
+		// Receiver was non-null, result should be non-null
+		return hm.NonNullType{Type: t}, nil
+	} else {
+		// Receiver was nullable, result should be nullable
+		return t, nil
+	}
 }
 
 func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
-	nn, ok := receiverType.(hm.NonNullType)
-	if !ok {
-		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected %T, got %T", nn, receiverType)
-	}
-
-	rec, ok := nn.Type.(Env)
-	if !ok {
-		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected %T, got %T", rec, nn.Type)
+	// Check if receiver is nullable or non-null
+	var rec Env
+	
+	if nn, ok := receiverType.(hm.NonNullType); ok {
+		// Non-null receiver
+		envType, ok := nn.Type.(Env)
+		if !ok {
+			return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected %T, got %T", envType, nn.Type)
+		}
+		rec = envType
+	} else if envType, ok := receiverType.(Env); ok {
+		// Nullable receiver - we can still infer the selection type from the underlying type
+		rec = envType
+	} else {
+		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
 	}
 
 	mod := NewModule("")
@@ -742,6 +764,11 @@ func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) 
 		return nil, fmt.Errorf("ObjectSelection.Eval: %w", err)
 	}
 
+	// Handle null values - propagate null
+	if _, ok := receiverVal.(NullValue); ok {
+		return NullValue{}, nil
+	}
+
 	// Handle list types - apply selection to each element
 	if listVal, ok := receiverVal.(ListValue); ok {
 		var results []Value
@@ -761,6 +788,9 @@ func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) 
 
 func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
 	switch v := val.(type) {
+	case NullValue:
+		// Null propagation for individual values in lists
+		return NullValue{}, nil
 	case *ModuleValue:
 		return o.evalModuleSelection(v, ctx, env)
 	case GraphQLValue:
