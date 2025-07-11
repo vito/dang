@@ -94,12 +94,6 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
 	}
 
-	// definedType = definedType.Apply(subs)
-
-	// if !definedType.Eq(inferredType) {
-	// 	return nil, fmt.Errorf("SlotDecl.Infer: %q mismatch: defined as %s, inferred as %s", s.Named, definedType, inferredType)
-	// }
-
 	if e, ok := env.(Env); ok {
 		cur, defined := e.LocalSchemeOf(s.Named)
 		if defined {
@@ -109,7 +103,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			}
 
 			if !definedType.Eq(curT) {
-				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s", s.Named, curT)
+				return nil, WrapInferError(fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Named, curT, definedType), s.Value)
 			}
 		}
 
