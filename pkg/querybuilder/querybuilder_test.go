@@ -16,7 +16,7 @@ func TestQuery(t *testing.T) {
 
 	q, err := root.Build(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, `query{core{image(ref:"alpine"){file(path:"/etc/alpine-release")}}}`, q)
+	require.Equal(t, `{core{image(ref:"alpine"){file(path:"/etc/alpine-release")}}}`, q)
 }
 
 func TestAlias(t *testing.T) {
@@ -27,7 +27,7 @@ func TestAlias(t *testing.T) {
 
 	q, err := root.Build(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, `query{core{image(ref:"alpine"){foo:file(path:"/etc/alpine-release")}}}`, q)
+	require.Equal(t, `{core{image(ref:"alpine"){foo:file(path:"/etc/alpine-release")}}}`, q)
 }
 
 func TestArgsCollision(t *testing.T) {
@@ -37,7 +37,7 @@ func TestArgsCollision(t *testing.T) {
 		Build(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, `query{a(arg:"one"){b(arg:"two")}}`, q)
+	require.Equal(t, `{a(arg:"one"){b(arg:"two")}}`, q)
 }
 
 func TestNullableArgs(t *testing.T) {
@@ -48,23 +48,23 @@ func TestNullableArgs(t *testing.T) {
 		expect string
 	}{
 		{
-			expect: `query{a(arg:"value")}`,
+			expect: `{a(arg:"value")}`,
 			arg:    str,
 		},
 		{
-			expect: `query{a(arg:"value")}`,
+			expect: `{a(arg:"value")}`,
 			arg:    &str,
 		},
 		{
-			expect: `query{a(arg:["value"])}`,
+			expect: `{a(arg:["value"])}`,
 			arg:    []string{str},
 		},
 		{
-			expect: `query{a(arg:["value"])}`,
+			expect: `{a(arg:["value"])}`,
 			arg:    []*string{&str},
 		},
 		{
-			expect: `query{a(arg:["value"])}`,
+			expect: `{a(arg:["value"])}`,
 			arg:    &([]*string{&str}),
 		},
 	}
@@ -82,12 +82,12 @@ func TestFieldImmutability(t *testing.T) {
 
 	a, err := root.Select("a").Build(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, `query{test{a}}`, a)
+	require.Equal(t, `{test{a}}`, a)
 
 	// Make sure this is not `test{a,b}` (e.g. the previous select didn't modify `root` in-place)
 	b, err := root.Select("b").Build(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, `query{test{b}}`, b)
+	require.Equal(t, `{test{b}}`, b)
 }
 
 func TestArgImmutability(t *testing.T) {
@@ -96,12 +96,12 @@ func TestArgImmutability(t *testing.T) {
 
 	a, err := root.Arg("foo", "bar").Build(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, `query{test(foo:"bar")}`, a)
+	require.Equal(t, `{test(foo:"bar")}`, a)
 
 	// Make sure this does not contain `hello` (e.g. the previous select didn't modify `root` in-place)
 	b, err := root.Arg("hello", "world").Build(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, `query{test(hello:"world")}`, b)
+	require.Equal(t, `{test(hello:"world")}`, b)
 }
 
 func TestUnpack(t *testing.T) {
@@ -158,7 +158,7 @@ func TestSiblings(t *testing.T) {
 		Build(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, `query{foo{bar{one two three}}}`, q)
+	require.Equal(t, `{foo{bar{one two three}}}`, q)
 }
 
 func TestSiblingsLeaf(t *testing.T) {
@@ -208,7 +208,7 @@ func TestSelectFields(t *testing.T) {
 		Build(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, `query{user{id name email}}`, q)
+	require.Equal(t, `{user{id name email}}`, q)
 }
 
 func TestSelectFieldsNested(t *testing.T) {
@@ -220,5 +220,5 @@ func TestSelectFieldsNested(t *testing.T) {
 		Build(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, `query{user{profile{bio avatar}}}`, q)
+	require.Equal(t, `{user{profile{bio avatar}}}`, q)
 }

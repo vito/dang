@@ -127,7 +127,6 @@ func (s *Selection) Build(ctx context.Context) (string, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString("query Query")
 
 	path := s.path()
 
@@ -160,9 +159,7 @@ func (s *Selection) Build(ctx context.Context) (string, error) {
 					if err != nil {
 						return "", err
 					}
-					// Extract the query content without the "query" wrapper
-					content := strings.TrimPrefix(subQuery, "query")
-					b.WriteString(content)
+					b.WriteString(subQuery)
 				}
 				i++
 			}
@@ -259,7 +256,9 @@ func (s *Selection) Execute(ctx context.Context) error {
 	var response any
 	err = s.client.MakeRequest(ctx,
 		&graphql.Request{
-			Query:  query,
+			// Explicitly set an OpName, otherwise we send `"operationName": ""`,
+			// which some servers (GitHub) do not enjoy
+			Query:  "query Query " + query,
 			OpName: "Query",
 		},
 		&graphql.Response{Data: &response},
