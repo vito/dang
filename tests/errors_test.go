@@ -7,10 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"dagger.io/dagger"
+	"github.com/Khan/genqlient/graphql"
+	"github.com/stretchr/testify/require"
 	"github.com/vito/sprout/introspection"
 	"github.com/vito/sprout/pkg/ioctx"
 	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/sprout/tests/gqlserver"
 	"gotest.tools/v3/golden"
 )
 
@@ -28,16 +30,14 @@ func TestErrorMessages(t *testing.T) {
 		t.Fatal("No .sp test files found in tests/errors/")
 	}
 
-	// Connect to Dagger (required for Sprout execution)
-	ctx := t.Context()
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		t.Fatalf("Failed to connect to Dagger: %v", err)
-	}
-	defer dag.Close()
+	testGraphQLServer, err := gqlserver.StartServer()
+	require.NoError(t, err)
+	t.Cleanup(func() { testGraphQLServer.Stop() })
+
+	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
 
 	// Introspect the GraphQL schema (required for Sprout execution)
-	schema, err := introspectSchema(ctx, dag)
+	schema, err := introspectSchema(t.Context(), client)
 	if err != nil {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestErrorMessages(t *testing.T) {
 		testName := strings.TrimSuffix(filepath.Base(sproutFile), ".sp")
 
 		t.Run(testName, func(t *testing.T) {
-			output := runSproutFile(t.Context(), dag, schema, sproutFile)
+			output := runSproutFile(t.Context(), client, schema, sproutFile)
 
 			// Compare with golden file
 			golden.Assert(t, output, testName+".golden")
@@ -56,7 +56,7 @@ func TestErrorMessages(t *testing.T) {
 }
 
 // runSproutFile runs a Sprout file and captures combined stdout/stderr
-func runSproutFile(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, sproutFile string) string {
+func runSproutFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, sproutFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
 
@@ -65,7 +65,7 @@ func runSproutFile(ctx context.Context, dag *dagger.Client, schema *introspectio
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
 	// Run the Sprout file
-	err := sprout.RunFile(ctx, dag.GraphQLClient(), schema, sproutFile, false)
+	err := sprout.RunFile(ctx, client, schema, sproutFile, false)
 
 	// Combine stdout and stderr output
 	var combined bytes.Buffer

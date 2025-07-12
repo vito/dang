@@ -6,12 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"dagger.io/dagger"
 	"dagger.io/dagger/telemetry"
+	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
+	"github.com/stretchr/testify/require"
 	"github.com/vito/sprout/introspection"
 	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/sprout/tests/gqlserver"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -20,9 +22,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestIntegration(tT *testing.T) {
-	// Connect to Dagger for testing
-	ctx := context.Background()
-
 	t := testctx.New(tT,
 		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
 			Attributes: []attribute.KeyValue{
@@ -32,14 +31,14 @@ func TestIntegration(tT *testing.T) {
 		oteltest.WithLogging[*testing.T](),
 	)
 
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		t.Fatalf("Failed to connect to Dagger: %v", err)
-	}
-	defer dag.Close()
+	testGraphQLServer, err := gqlserver.StartServer()
+	require.NoError(t, err)
+	t.Cleanup(func() { testGraphQLServer.Stop() })
+
+	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
 
 	// Get schema
-	schema, err := introspectSchema(ctx, dag)
+	schema, err := introspectSchema(t.Context(), client)
 	if err != nil {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
@@ -64,9 +63,9 @@ func TestIntegration(tT *testing.T) {
 				return
 			}
 			if fi.IsDir() {
-				_, err = sprout.RunDir(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+				_, err = sprout.RunDir(ctx, client, schema, testFileOrDir, false)
 			} else {
-				err = sprout.RunFile(ctx, dag.GraphQLClient(), schema, testFileOrDir, false)
+				err = sprout.RunFile(ctx, client, schema, testFileOrDir, false)
 			}
 			if err != nil {
 				t.Errorf("Test %s failed: %v", testFileOrDir, err)
@@ -76,12 +75,12 @@ func TestIntegration(tT *testing.T) {
 }
 
 // introspectSchema is a helper function to get the GraphQL schema
-func introspectSchema(ctx context.Context, dag *dagger.Client) (*introspection.Schema, error) {
+func introspectSchema(ctx context.Context, client graphql.Client) (*introspection.Schema, error) {
 	var introspectionResp introspection.Response
-	err := dag.Do(ctx, &dagger.Request{
+	err := client.MakeRequest(ctx, &graphql.Request{
 		Query:  introspection.Query,
 		OpName: "IntrospectionQuery",
-	}, &dagger.Response{
+	}, &graphql.Response{
 		Data: &introspectionResp,
 	})
 	if err != nil {

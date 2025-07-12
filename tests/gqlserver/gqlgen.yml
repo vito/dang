@@ -1,0 +1,16 @@
+schema:
+  - schema.graphql
+
+exec:
+  package: gqlserver
+  layout: single-file
+  filename: generated.go
+
+model:
+  filename: models_gen.go
+  package: gqlserver
+
+resolver:
+  package: gqlserver
+  layout: single-file
+  filename: resolvers.go
