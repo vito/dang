@@ -20,8 +20,8 @@ assert { user_posts != null }
 
 # Test nested object selection
 pub profile_data = userProfile(userId: "1", includeStats: true).{
-  user.{name, email}, 
-  joinedDate, 
+  user.{name, email},
+  joinedDate,
   bio,
   postCount,
   averagePostLength
@@ -86,12 +86,12 @@ assert { server_overview != null }
 assert { user_overview != null }
 
 # Test object selection on complex nested structures
-pub complex_query = {
+pub complex_query = {{
   server: serverInfo.{version, platform},
   users: users.{name, email},
   posts: posts.{title, author.{name}},
   titles: postTitles
-}
+}}
 
 assert { complex_query.server.version == "1.0.0" }
 assert { complex_query.titles == ["First Post", "Second Post"] }

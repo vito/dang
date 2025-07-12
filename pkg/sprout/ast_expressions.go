@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/vito/sprout/pkg/hm"
+	"github.com/vito/sprout/pkg/ioctx"
 	"github.com/vito/sprout/pkg/querybuilder"
 )
 
@@ -636,6 +637,7 @@ type ObjectSelection struct {
 	Loc      *SourceLocation
 
 	Inferred *Module
+	IsList   bool // TODO respect
 }
 
 var _ Node = (*ObjectSelection)(nil)
@@ -660,6 +662,26 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
 	}
 
+	// Handle regular object types
+	t, err := o.inferSelectionType(receiverType, env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	// If receiver was nullable, make result nullable too
+	if _, ok := receiverType.(hm.NonNullType); ok {
+		// Receiver was non-null, result should be non-null
+		return hm.NonNullType{Type: t}, nil
+	} else {
+		// Receiver was nullable, result should be nullable
+		return t, nil
+	}
+}
+
+func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
+	// Check if receiver is nullable or non-null
+	var rec Env
+
 	// Handle list types - apply selection to each element
 	var innerType hm.Type
 	if listType, ok := receiverType.(hm.NonNullType); ok {
@@ -676,49 +698,22 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return nil, err
 		}
 		o.Inferred = elementType
-		
-		// Propagate nullability for list types too
-		if _, ok := receiverType.(hm.NonNullType); ok {
-			// Receiver was non-null, result should be non-null
-			return hm.NonNullType{Type: ListType{elementType}}, nil
-		} else {
-			// Receiver was nullable, result should be nullable
-			return ListType{elementType}, nil
-		}
+		o.IsList = true
+		return elementType, nil
 	}
 
-	// Handle regular object types
-	t, err := o.inferSelectionType(receiverType, env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	
-	// If receiver was nullable, make result nullable too
-	if _, ok := receiverType.(hm.NonNullType); ok {
-		// Receiver was non-null, result should be non-null
-		return hm.NonNullType{Type: t}, nil
-	} else {
-		// Receiver was nullable, result should be nullable
-		return t, nil
-	}
-}
-
-func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
-	// Check if receiver is nullable or non-null
-	var rec Env
-	
 	if nn, ok := receiverType.(hm.NonNullType); ok {
 		// Non-null receiver
 		envType, ok := nn.Type.(Env)
 		if !ok {
-			return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected %T, got %T", envType, nn.Type)
+			return nil, WrapInferError(fmt.Errorf("ObjectSelection.inferSelectionType: expected Env, got %T", nn.Type), o)
 		}
 		rec = envType
 	} else if envType, ok := receiverType.(Env); ok {
 		// Nullable receiver - we can still infer the selection type from the underlying type
 		rec = envType
 	} else {
-		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
+		return nil, WrapInferError(fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType), o)
 	}
 
 	mod := NewModule("")
@@ -734,14 +729,13 @@ func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, f
 }
 
 func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	scheme, found := rec.SchemeOf(field.Name)
-	if !found {
-		return nil, NewInferError(fmt.Sprintf("field %q not found in record %s", field.Name, rec), o)
-	}
-
-	fieldType, mono := scheme.Type()
-	if !mono {
-		return nil, fmt.Errorf("ObjectSelection.inferFieldType: field %q is not monomorphic", field.Name)
+	fieldType, err := Symbol{
+		Name:     field.Name,
+		AutoCall: true,
+		Loc:      o.Loc,
+	}.Infer(rec, fresh)
+	if err != nil {
+		return nil, err
 	}
 
 	ret, _ := autoCallFnType(fieldType)
@@ -831,20 +825,23 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 
 func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
 	if o.Inferred == nil {
-		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
+		return nil, CreateEvalError(ctx, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil"), o)
 	}
 
 	// Build optimized GraphQL query for all selected fields
 	query, err := o.buildGraphQLQuery(gqlVal.QueryChain, o.Fields)
 	if err != nil {
-		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err)
+		return nil, CreateEvalError(ctx, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err), o)
 	}
+
+	q, err := query.Build(ctx)
+	fmt.Fprintln(ioctx.StderrFromContext(ctx), q, err)
 
 	// Execute the single optimized query
 	var result any
 	err = query.Client(gqlVal.Client).Bind(&result).Execute(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err)
+		return nil, CreateEvalError(ctx, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err), o)
 	}
 
 	// Convert GraphQL result to ModuleValue
@@ -852,13 +849,32 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
-	// Complex case: mix of simple fields and nested selections
-	query := baseQuery
+	// Check if we have any nested selections
+
+	hasNestedSelections := false
 
 	for _, field := range fields {
 		if field.Selection != nil {
+			hasNestedSelections = true
+			break
+		}
+	}
+
+	if !hasNestedSelections {
+		// Simple case: just select all fields using SelectFields
+		fieldNames := make([]string, len(fields))
+		for i, field := range fields {
+			fieldNames[i] = field.Name
+		}
+		return baseQuery.SelectFields(fieldNames...), nil
+	}
+
+	// Complex case: mix of simple fields and nested selections
+	query := baseQuery
+	for _, field := range fields {
+		if field.Selection != nil {
 			// Handle nested selections
-			nestedQuery, err := field.Selection.buildGraphQLQuery(querybuilder.Query(), field.Selection.Fields)
+			nestedQuery, err := o.buildGraphQLQuery(querybuilder.Query(), field.Selection.Fields)
 			if err != nil {
 				return nil, err
 			}
