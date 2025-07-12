@@ -13,7 +13,7 @@ directive @auth(role: String!) on FIELD_DEFINITION
 directive @cache(ttl: Int! = 300, key: String) on FIELD_DEFINITION
 
 # Test directive applications on type declarations
-type User @deprecated(reason: "Use Person instead") {
+type Person @deprecated(reason: "Use NewPerson instead") {
   pub id: String!
   pub name: String! @deprecated(reason: "Use displayName instead")
   pub displayName: String!
@@ -23,7 +23,7 @@ type User @deprecated(reason: "Use Person instead") {
 }
 
 # Test directive application on function arguments
-pub processUser(user: User! @experimental): String! {
+pub processUser(user: Person! @experimental): String! {
   user.displayName
 }
 

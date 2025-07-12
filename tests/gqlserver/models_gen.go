@@ -22,6 +22,14 @@ type Post struct {
 type Query struct {
 }
 
+type ServerInfo struct {
+	Version    string `json:"version"`
+	Platform   string `json:"platform"`
+	Uptime     string `json:"uptime"`
+	TotalUsers int    `json:"totalUsers"`
+	TotalPosts int    `json:"totalPosts"`
+}
+
 type UpdateUserInput struct {
 	Name  *string `json:"name,omitempty"`
 	Email *string `json:"email,omitempty"`
@@ -34,4 +42,13 @@ type User struct {
 	Email string  `json:"email"`
 	Age   *int    `json:"age,omitempty"`
 	Posts []*Post `json:"posts"`
+}
+
+type UserProfile struct {
+	User              *User    `json:"user"`
+	JoinedDate        string   `json:"joinedDate"`
+	LastActivity      string   `json:"lastActivity"`
+	PostCount         *int     `json:"postCount,omitempty"`
+	AveragePostLength *float64 `json:"averagePostLength,omitempty"`
+	Bio               *string  `json:"bio,omitempty"`
 }

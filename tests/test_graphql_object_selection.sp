@@ -1,50 +1,99 @@
-# Test GraphQLValue object selection functionality
-# Tests the GraphQL query optimization for multi-field selection
+# Test GraphQL object selection functionality with real schema
+# Aspirational test covering all object selection syntax patterns
 
-# Create a mock GraphQL-like object to test object selection
-type MockGraphQLObject {
-    pub id: String! = "mock-id"
-    pub name: String! = "mock-name"
-    pub email: String! = "mock@example.com"
-    pub platform: String! = "linux/amd64"
-    pub status: String! = "active"
-    
-    pub new(id: String!, name: String!, email: String!): MockGraphQLObject! {
-        self.id = id
-        self.name = name
-        self.email = email
-        self
-    }
+# Test basic object selection with GraphQL types
+pub server_info = serverInfo.{version, platform, uptime}
+pub server_stats = serverInfo.{totalUsers, totalPosts}
+
+assert { server_info.version == "1.0.0" }
+assert { server_info.platform != null }
+assert { server_stats.totalUsers == 2 }
+assert { server_stats.totalPosts == 2 }
+
+# Test object selection with function calls and arguments
+pub first_user = user(id: "1").{name, email, age}
+pub user_posts = posts(authorId: "1", limit: 5).{title, content}
+
+assert { first_user.name == "John Doe" }
+assert { first_user.email == "john@example.com" }
+assert { user_posts != null }
+
+# Test nested object selection
+pub profile_data = userProfile(userId: "1", includeStats: true).{
+  user.{name, email}, 
+  joinedDate, 
+  bio,
+  postCount,
+  averagePostLength
 }
 
-# Test basic object selection that would be optimized for GraphQL
-pub mock_graphql_api = MockGraphQLObject("test-id", "test-name", "test@example.com")
+assert { profile_data.user.name == "John Doe" }
+assert { profile_data.joinedDate != null }
+assert { profile_data.postCount != null }
 
-# Test multi-field selection - this should generate optimized queries for real GraphQL
-pub api_info = mock_graphql_api.{id, name, email}
+# Test object selection with mixed field types
+pub comprehensive_user = user(id: "1").{name, email, age, posts.{title, createdAt}}
 
-assert { api_info != null }
-assert { api_info.id == "test-id" }
-assert { api_info.name == "test-name" }
-assert { api_info.email == "test@example.com" }
+assert { comprehensive_user.name != null }
+assert { comprehensive_user.posts != null }
 
-# Test mixed field and object selection
-pub api_id = mock_graphql_api.id
-pub api_summary = mock_graphql_api.{name, email}
+# Test object selection on lists
+pub all_users_summary = users.{name, email}
+pub post_summaries = posts.{title, author.{name}}
 
-assert { api_id == "test-id" }
-assert { api_summary != null }
-assert { api_summary.name == "test-name" }
-assert { api_summary.email == "test@example.com" }
+assert { all_users_summary != null }
+assert { post_summaries != null }
 
-# Test with multiple object selection patterns
-pub api_details = mock_graphql_api.{id, name, email, platform, status}
+# Test deeply nested object selection
+pub deep_selection = userProfile(userId: "1").{
+  user.{
+    name,
+    email,
+    posts.{
+      title,
+      author.{name}
+    }
+  },
+  joinedDate
+}
 
-assert { api_details != null }
-assert { api_details.id == "test-id" }
-assert { api_details.name == "test-name" }
-assert { api_details.email == "test@example.com" }
-assert { api_details.platform == "linux/amd64" }
-assert { api_details.status == "active" }
+assert { deep_selection.user.name != null }
+assert { deep_selection.user.posts != null }
+
+# Test object selection with optional fields
+pub optional_selection = userProfile(userId: "1", includeStats: true).{
+  user.{name, age},
+  postCount,
+  averagePostLength,
+  bio
+}
+
+assert { optional_selection.user.name != null }
+assert { optional_selection.postCount != null }
+
+# Test mixed object selection and direct field access
+pub mixed_data = serverInfo.{version, totalUsers}
+pub direct_platform = serverInfo.platform
+
+assert { mixed_data.version == "1.0.0" }
+assert { direct_platform != null }
+
+# Test object selection with aliasing-like patterns
+pub server_overview = serverInfo.{version, platform, totalUsers, totalPosts}
+pub user_overview = user(id: "1").{name, email}
+
+assert { server_overview != null }
+assert { user_overview != null }
+
+# Test object selection on complex nested structures
+pub complex_query = {
+  server: serverInfo.{version, platform},
+  users: users.{name, email},
+  posts: posts.{title, author.{name}},
+  titles: postTitles
+}
+
+assert { complex_query.server.version == "1.0.0" }
+assert { complex_query.titles == ["First Post", "Second Post"] }
 
 print("GraphQL object selection tests passed!")

@@ -11,8 +11,8 @@ type MyClass {
     self
   }
 
-  pub currentValue: File! {
-    file("value.json", json(self.value))
+  pub currentValue: Int! {
+    serverInfo.totalPosts + self.value
   }
 }
 

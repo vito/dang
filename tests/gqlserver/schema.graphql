@@ -2,6 +2,10 @@ type Query {
   hello(name: String!): String!
   users: [User!]!
   user(id: String!): User
+  serverInfo: ServerInfo!
+  posts(authorId: String, limit: Int): [Post!]!
+  userProfile(userId: String, includeStats: Boolean): UserProfile
+  postTitles: [String!]!
 }
 
 type Mutation {
@@ -24,6 +28,23 @@ type Post {
   content: String!
   author: User!
   createdAt: String!
+}
+
+type ServerInfo {
+  version: String!
+  platform: String!
+  uptime: String!
+  totalUsers: Int!
+  totalPosts: Int!
+}
+
+type UserProfile {
+  user: User!
+  joinedDate: String!
+  lastActivity: String!
+  postCount: Int
+  averagePostLength: Float
+  bio: String
 }
 
 input CreateUserInput {

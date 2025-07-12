@@ -1,7 +1,7 @@
 # Test object selection syntax for multi-field GraphQL fetching
 
 # Basic object types for testing
-type User {
+type TestUser {
   pub name: String! = "Anonymous"
   pub email: String! = "user@example.com"
   pub age: Int! = 0
@@ -13,14 +13,14 @@ type Profile {
   pub avatar: String! = "default.jpg"
 }
 
-type UserWithProfile {
+type TestUserWithProfile {
   pub name: String! = "Anonymous"
   pub email: String! = "user@example.com"
   pub profile: Profile! = Profile("Default bio", "default.jpg")
 }
 
 # Test basic object selection
-pub user = User("Alice", "alice@example.com", 30)
+pub user = TestUser("Alice", "alice@example.com", 30)
 pub user_summary = user.{name, email}
 
 assert { user_summary.name == "Alice" }
@@ -35,7 +35,7 @@ assert { user_info.active == true }
 
 # Test nested object selection
 pub profile = Profile("Software Engineer", "alice.jpg")
-pub user_with_profile = UserWithProfile("Bob", "bob@example.com", profile)
+pub user_with_profile = TestUserWithProfile("Bob", "bob@example.com", profile)
 pub user_nested = user_with_profile.{name, profile.{bio, avatar}}
 
 assert { user_nested.name == "Bob" }
@@ -44,8 +44,8 @@ assert { user_nested.profile.avatar == "alice.jpg" }
 
 # Test with lists of objects
 pub users = [
-  User("Charlie", "charlie@example.com", 25),
-  User("Diana", "diana@example.com", 28)
+  TestUser("Charlie", "charlie@example.com", 25),
+  TestUser("Diana", "diana@example.com", 28)
 ]
 
 pub user_summaries = users.{name, email}
@@ -55,8 +55,8 @@ assert { user_summaries != null }
 
 # Test with nested lists
 pub users_with_profile = [
-  UserWithProfile("Eve", "eve@example.com", Profile("Designer", "eve.jpg")),
-  UserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg"))
+  TestUserWithProfile("Eve", "eve@example.com", Profile("Designer", "eve.jpg")),
+  TestUserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg"))
 ]
 
 pub detailed_summaries = users_with_profile.{name, profile.{bio}}
