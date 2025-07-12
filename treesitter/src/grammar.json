@@ -127,16 +127,24 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 113,
+      "value": 114,
       "content": {
         "type": "CHOICE",
         "members": [
           {
             "type": "PREC_LEFT",
-            "value": 7,
+            "value": 8,
             "content": {
               "type": "SYMBOL",
               "name": "literal"
+            }
+          },
+          {
+            "type": "PREC_LEFT",
+            "value": 7,
+            "content": {
+              "type": "SYMBOL",
+              "name": "index_or_call"
             }
           },
           {
@@ -255,7 +263,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 108,
+      "value": 109,
       "content": {
         "type": "SEQ",
         "members": [
@@ -309,6 +317,55 @@
                       }
                     }
                   ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "index_or_call": {
+      "type": "PREC_LEFT",
+      "value": 108,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "left",
+            "content": {
+              "type": "SYMBOL",
+              "name": "term"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "["
+          },
+          {
+            "type": "FIELD",
+            "name": "index",
+            "content": {
+              "type": "SYMBOL",
+              "name": "form"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "]"
+          },
+          {
+            "type": "FIELD",
+            "name": "args",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "arg_values"
+                },
+                {
+                  "type": "BLANK"
                 }
               ]
             }

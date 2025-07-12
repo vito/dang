@@ -621,6 +621,144 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return val, nil
 }
 
+// Index represents list indexing operations like foo[0]
+type Index struct {
+	Receiver Node
+	Index    Node
+	AutoCall bool
+	Loc      *SourceLocation
+}
+
+var _ Node = Index{}
+var _ Evaluator = Index{}
+
+func (i Index) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// Infer the type of the receiver (should be a list)
+	receiverType, err := i.Receiver.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("Index.Infer receiver: %w", err)
+	}
+
+	// Infer the type of the index (should be Int!)
+	indexType, err := i.Index.Infer(env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("Index.Infer index: %w", err)
+	}
+
+	// Check that index is Int!
+	intType, err := NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := hm.Unify(indexType, intType); err != nil {
+		return nil, NewInferError(fmt.Sprintf("index must be Int!, got %s", indexType), i.Index)
+	}
+
+	// Extract element type from list type
+	var elementType hm.Type
+	var isNullable bool
+
+	if nonNull, ok := receiverType.(hm.NonNullType); ok {
+		// Non-null list
+		if listType, ok := nonNull.Type.(ListType); ok {
+			elementType = listType.Type
+			isNullable = false // Non-null list, but indexing could be out of bounds
+		} else {
+			return nil, NewInferError(fmt.Sprintf("cannot index non-list type %s", receiverType), i.Receiver)
+		}
+	} else if listType, ok := receiverType.(ListType); ok {
+		// Nullable list
+		elementType = listType.Type
+		isNullable = true
+	} else {
+		return nil, NewInferError(fmt.Sprintf("cannot index non-list type %s", receiverType), i.Receiver)
+	}
+
+	// Apply auto-call if needed
+	if i.AutoCall {
+		elementType, _ = autoCallFnType(elementType)
+	}
+
+	// Return nullable element type since indexing can fail (out of bounds)
+	// or if the original list was nullable
+	if isNullable {
+		// Remove NonNull wrapper if present, since nullable list means nullable result
+		if nonNullElem, ok := elementType.(hm.NonNullType); ok {
+			return nonNullElem.Type, nil
+		}
+		return elementType, nil
+	} else {
+		// Even for non-null lists, indexing can fail, so return nullable
+		if nonNullElem, ok := elementType.(hm.NonNullType); ok {
+			return nonNullElem.Type, nil
+		}
+		return elementType, nil
+	}
+}
+
+func (i Index) DeclaredSymbols() []string {
+	return nil // Index expressions don't declare anything
+}
+
+func (i Index) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, i.Receiver.ReferencedSymbols()...)
+	symbols = append(symbols, i.Index.ReferencedSymbols()...)
+	return symbols
+}
+
+func (i Index) Body() hm.Expression { return i }
+
+func (i Index) GetSourceLocation() *SourceLocation { return i.Loc }
+
+func (i Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Evaluate the receiver
+	receiverVal, err := EvalNode(ctx, env, i.Receiver)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating receiver: %w", err)
+	}
+
+	// Handle null receiver
+	if _, ok := receiverVal.(NullValue); ok {
+		return NullValue{}, nil
+	}
+
+	// Evaluate the index
+	indexVal, err := EvalNode(ctx, env, i.Index)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating index: %w", err)
+	}
+
+	// Check that receiver is a list
+	listVal, ok := receiverVal.(ListValue)
+	if !ok {
+		return nil, CreateEvalError(ctx, fmt.Errorf("cannot index non-list value of type %T", receiverVal), i)
+	}
+
+	// Check that index is an integer
+	intVal, ok := indexVal.(IntValue)
+	if !ok {
+		return nil, CreateEvalError(ctx, fmt.Errorf("index must be an integer, got %T", indexVal), i)
+	}
+
+	// Check bounds
+	idx := int(intVal.Val)
+	if idx < 0 || idx >= len(listVal.Elements) {
+		// Return null for out-of-bounds access (nullable behavior)
+		return NullValue{}, nil
+	}
+
+	// Get the element
+	element := listVal.Elements[idx]
+
+	// Auto-call zero-arity functions when accessed
+	if i.AutoCall && isAutoCallableFn(element) {
+		return autoCallFn(ctx, env, element)
+	}
+
+	return element, nil
+}
+
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
 	Name      string

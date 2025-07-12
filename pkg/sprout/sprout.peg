@@ -21,7 +21,7 @@ Expr <- Class / Slot / DirectiveDecl / Reassignment / Form
 
 Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
-Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
+Term <- Literal / IndexOrCall / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
 ParenForm <- '(' _ expr:Form _ ')' {
   return expr.(Node), nil
@@ -84,6 +84,31 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
     }
   default:
     return nil, fmt.Errorf("unexpected selection type")
+  }
+}
+
+// Handle indexing operations like foo[0]
+IndexOrCall <- left:Term _ '[' _ index:Form _ ']' args:ArgValues? {
+  if args != nil {
+    // Index followed by () - create FunCall
+    argRecord := Record(args.([]Keyed[Node]))
+    return FunCall{
+      Fun: Index{
+        Receiver: left.(Node),
+        Index:    index.(Node),
+        Loc:      c.Loc(),
+      },
+      Args: argRecord,
+      Loc:  c.Loc(),
+    }, nil
+  } else {
+    // Just an Index
+    return Index{
+      Receiver: left.(Node),
+      Index:    index.(Node),
+      AutoCall: true,
+      Loc:      c.Loc(),
+    }, nil
   }
 }
 

@@ -68,6 +68,10 @@
         "named": true
       },
       {
+        "type": "index_or_call",
+        "named": true
+      },
+      {
         "type": "list",
         "named": true
       },
@@ -1080,6 +1084,42 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "index_or_call",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
+      "index": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
