@@ -849,10 +849,14 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
+	// Start with the base query (which contains the context like "serverInfo")
+	builder := baseQuery
+	if builder == nil {
+		builder = querybuilder.Query()
+	}
+
 	// Check if we have any nested selections
-
 	hasNestedSelections := false
-
 	for _, field := range fields {
 		if field.Selection != nil {
 			hasNestedSelections = true
@@ -866,26 +870,34 @@ func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, f
 		for i, field := range fields {
 			fieldNames[i] = field.Name
 		}
-		return baseQuery.SelectFields(fieldNames...), nil
+		return builder.SelectFields(fieldNames...), nil
 	}
 
 	// Complex case: mix of simple fields and nested selections
-	query := baseQuery
+	// Use SelectMixed to handle both types in a single selection set
+
+	// Collect simple fields
+	var simpleFields []string
+	nestedSelections := make(map[string]*querybuilder.QueryBuilder)
+
 	for _, field := range fields {
-		if field.Selection != nil {
+		if field.Selection == nil {
+			simpleFields = append(simpleFields, field.Name)
+		} else {
 			// Handle nested selections
-			nestedQuery, err := o.buildGraphQLQuery(querybuilder.Query(), field.Selection.Fields)
+			nestedBuilder := querybuilder.Query()
+			result, err := o.buildGraphQLQuery(nestedBuilder, field.Selection.Fields)
 			if err != nil {
 				return nil, err
 			}
-			query = query.SelectNested(field.Name, nestedQuery)
-		} else {
-			// Simple field selection
-			query = query.Select(field.Name)
+			// Use the result instead of the nestedBuilder
+			nestedSelections[field.Name] = result
 		}
 	}
 
-	return query, nil
+	builder = builder.SelectMixed(simpleFields, nestedSelections)
+
+	return builder, nil
 }
 
 func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []FieldSelection) (Value, error) {
