@@ -1,5 +1,5 @@
 [1m[31mError:[0m less than or equal comparison not supported for types sprout.StringValue and sprout.IntValue
-  [2m[34m--> errors/type_mismatch_less_equal.sp:2:14[0m
+  [2m[34m--> errors/type_mismatch_less_equal.spr:2:14[0m
  [2m    |[0m
  [2m  1 | # Test less than or equal comparison type mismatch[0m
  [2m[34m[1m  2 | [0mpub result = "hello" <= 42

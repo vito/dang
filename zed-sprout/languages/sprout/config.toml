@@ -1,6 +1,6 @@
 name = "Sprout"
 grammar = "sprout"
-path_suffixes = ["sp"]
+path_suffixes = ["spr"]
 line_comments = ["# "]
 first_line_pattern = "^#!.*\\bsprout\\b"
 tab_size = 2

@@ -6,11 +6,11 @@ GraphQL directives are annotations that can be applied to various parts of a Gra
 ## Current State
 Sprout already has comprehensive GraphQL directive support in its introspection system (`introspection/introspection.go`):
 - `DirectiveDef` struct for directive definitions
-- `Directive` struct for directive applications  
+- `Directive` struct for directive applications
 - `DirectiveArg` struct for directive arguments
 - Built-in directives: `@experimental`, `@sourceMap`, `@enumValue`
 
-However, the Sprout language itself has **no syntax** for declaring or using directives in `.sp` files.
+However, the Sprout language itself has **no syntax** for declaring or using directives in `.spr` files.
 
 ## Proposed Implementation
 

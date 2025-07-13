@@ -7,7 +7,7 @@ Sprout now supports basic flow-sensitive null checking through conditional type 
 ### Supported Patterns
 
 - `if (x != null)` - x becomes non-null in then branch
-- `if (x == null)` - x becomes non-null in else branch  
+- `if (x == null)` - x becomes non-null in else branch
 - `if (null != x)` - x becomes non-null in then branch
 - `if (null == x)` - x becomes non-null in else branch
 
@@ -16,7 +16,7 @@ Sprout now supports basic flow-sensitive null checking through conditional type 
 ```sprout
 type Example {
   let maybeValue: String = null
-  
+
   pub process: String! {
     if (maybeValue != null) {
       # maybeValue is automatically narrowed from String to String!
@@ -47,5 +47,5 @@ For production use, would need full control flow analysis with boolean constrain
 
 ### Testing
 
-- **Positive test**: `tests/test_flow_sensitive_null.sp` - verifies null checks work correctly
-- **Error test**: `tests/errors/flow_sensitive_null_else_branch.sp` - verifies type errors still occur in branches where variable remains nullable
+- **Positive test**: `tests/test_flow_sensitive_null.spr` - verifies null checks work correctly
+- **Error test**: `tests/errors/flow_sensitive_null_else_branch.spr` - verifies type errors still occur in branches where variable remains nullable

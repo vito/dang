@@ -51,7 +51,7 @@ The language grammar is defined in `pkg/sprout/sprout.peg` using PEG (Parsing Ex
 - **Terms**: `Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall`
 
 ## Development Workflow
-1. **Add test first**: Create `.sp` file with `assert { ... }` statements
+1. **Add test first**: Create `.spr` file with `assert { ... }` statements
 2. **Modify grammar**: Update `pkg/sprout/sprout.peg` for syntax changes
 3. **Update AST**: Add/modify structs in `pkg/sprout/ast_*.go`
 4. **Implement methods**: Add `Hoist()`, `Infer()`, `Eval()` methods
@@ -64,7 +64,7 @@ The language grammar is defined in `pkg/sprout/sprout.peg` using PEG (Parsing Ex
 - `pkg/sprout/env.go` - Type environment and module system
 - `pkg/sprout/infer.go` - Type inference engine
 - `pkg/sprout/eval.go` - Runtime evaluation
-- `tests/*.sp` - Test files (auto-discovered by test runner)
+- `tests/*.spr` - Test files (auto-discovered by test runner)
 
 ## Type Inference Flow
 1. **Parse**: PEG parser generates AST from source

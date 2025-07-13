@@ -864,16 +864,16 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	return nil
 }
 
-// RunDir evaluates all .sp files in a directory as a single module
+// RunDir evaluates all .spr files in a directory as a single module
 func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) (EvalEnv, error) {
-	// Discover all .sp files in the directory
-	sproutFiles, err := filepath.Glob(filepath.Join(dirPath, "*.sp"))
+	// Discover all .spr files in the directory
+	sproutFiles, err := filepath.Glob(filepath.Join(dirPath, "*.spr"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to find .sp files in directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to find .spr files in directory %s: %w", dirPath, err)
 	}
 
 	if len(sproutFiles) == 0 {
-		return nil, fmt.Errorf("no .sp files found in directory: %s", dirPath)
+		return nil, fmt.Errorf("no .spr files found in directory: %s", dirPath)
 	}
 
 	// Sort files for deterministic order
@@ -914,7 +914,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	if debug {
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
-		fmt.Printf("Found %d .sp files with %d total forms\n", len(sproutFiles), len(masterBlock.Forms))
+		fmt.Printf("Found %d .spr files with %d total forms\n", len(sproutFiles), len(masterBlock.Forms))
 		// pretty.Println(masterBlock)
 	}
 

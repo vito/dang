@@ -51,7 +51,7 @@ type MyClass {
     val += 1        # No self. prefix needed (uses Fork() semantics)
     self
   }
-  
+
   pub incrExplicit: MyClass! {
     self.val += 1   # self. prefix still works and is explicit
     self
@@ -67,7 +67,7 @@ Objects are **copied** when modified, not mutated in place. This provides:
 - **Safe concurrency**: No shared mutable state
 - **Predictable behavior**: Modifications don't affect other references
 
-### Example from `test_reassignment.sp`:
+### Example from `test_reassignment.spr`:
 ```sprout
 let original = {{a: {{b: {{c: 1}}}}}}
 let modified = original
@@ -126,7 +126,7 @@ type Reassignment struct {
 ### Evaluation Process
 1. **Variable Assignment**: Uses `Reassign()` to respect scoping rules
 2. **Field Assignment**:
-   - Clones the root object  
+   - Clones the root object
    - Traverses the path, cloning intermediate objects
    - Updates the final field
    - Stores the new root in the environment
@@ -213,7 +213,7 @@ Currently only `+=` is supported for compound assignment. Other operators like `
 
 ## Examples from Codebase
 
-### Real-world Usage (apko.sp)
+### Real-world Usage (apko.spr)
 ```sprout
 pub withAlpine(branch: String! = "edge"): Apko! {
   self.config.contents.packages += ["apk-tools"]
@@ -225,19 +225,19 @@ pub withAlpine(branch: String! = "edge"): Apko! {
 ```
 
 ### Test Examples
-- `test_reassignment.sp`: Basic assignment patterns
-- `test_plus_equals.sp`: Compound assignment with various types
-- `test_self.sp`: Class field reassignment patterns  
-- `test_self_method_execution.sp`: Method chaining with reassignment
-- `test_block_scoping.sp`: Block scoping with outer slot reassignment
-- `test_class_desired_behavior.sp`: Class methods without self prefix
-- `test_class_immutability.sp`: Fork() semantics for class methods
+- `test_reassignment.spr`: Basic assignment patterns
+- `test_plus_equals.spr`: Compound assignment with various types
+- `test_self.spr`: Class field reassignment patterns
+- `test_self_method_execution.spr`: Method chaining with reassignment
+- `test_block_scoping.spr`: Block scoping with outer slot reassignment
+- `test_class_desired_behavior.spr`: Class methods without self prefix
+- `test_class_immutability.spr`: Fork() semantics for class methods
 
 ### Class Method Assignment Examples
 ```sprout
 type Counter {
   pub value: Int!
-  
+
   pub incr: Counter! {
     value += 1    # Works without self. prefix
     self

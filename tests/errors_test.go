@@ -20,14 +20,14 @@ import (
 func TestErrorMessages(t *testing.T) {
 	errorsDir := filepath.Join("errors")
 
-	// Find all .sp files in the errors directory
-	sproutFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.sp"))
+	// Find all .spr files in the errors directory
+	sproutFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.spr"))
 	if err != nil {
-		t.Fatalf("Failed to find .sp files: %v", err)
+		t.Fatalf("Failed to find .spr files: %v", err)
 	}
 
 	if len(sproutFiles) == 0 {
-		t.Fatal("No .sp test files found in tests/errors/")
+		t.Fatal("No .spr test files found in tests/errors/")
 	}
 
 	testGraphQLServer, err := gqlserver.StartServer()
@@ -44,7 +44,7 @@ func TestErrorMessages(t *testing.T) {
 
 	for _, sproutFile := range sproutFiles {
 		// Extract test name from filename
-		testName := strings.TrimSuffix(filepath.Base(sproutFile), ".sp")
+		testName := strings.TrimSuffix(filepath.Base(sproutFile), ".spr")
 
 		t.Run(testName, func(t *testing.T) {
 			output := runSproutFile(t.Context(), client, schema, sproutFile)

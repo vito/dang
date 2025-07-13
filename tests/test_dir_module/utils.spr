@@ -1,4 +1,4 @@
-# Utility functions using types from types.sp
+# Utility functions using types from types.spr
 pub createPerson(name: String!, age: Int!): Person! {
   Person.new(name, age)
 }

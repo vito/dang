@@ -28,7 +28,7 @@ go run ./cmd/sprout ./tests/test_dir_module
 This tests cross-file references and module boundaries, which the Go test suite doesn't cover.
 
 ## Test File Organization
-- Individual `.sp` files in `/tests/` are picked up by Go test runner
-- Use meaningful test file names like `test_constructor_syntax.sp`
+- Individual `.spr` files in `/tests/` are picked up by Go test runner
+- Use meaningful test file names like `test_constructor_syntax.spr`
 - Keep tests focused on specific features
 - Use comments to explain complex test scenarios

@@ -23,7 +23,7 @@ If no configuration is provided, Sprout will connect to Dagger as before, mainta
 ```bash
 export SPROUT_GRAPHQL_ENDPOINT="https://api.github.com/graphql"
 export SPROUT_GRAPHQL_AUTHORIZATION="Bearer ghp_your_token_here"
-sprout my-script.sp
+sprout my-script.spr
 ```
 
 ### Using Custom API with API Key
@@ -32,7 +32,7 @@ sprout my-script.sp
 export SPROUT_GRAPHQL_ENDPOINT="https://api.example.com/graphql"
 export SPROUT_GRAPHQL_HEADER_X_API_KEY="your-api-key"
 export SPROUT_GRAPHQL_HEADER_X_CLIENT_ID="your-client-id"
-sprout my-script.sp
+sprout my-script.spr
 ```
 
 ### Using with Authorization Header
@@ -40,7 +40,7 @@ sprout my-script.sp
 ```bash
 export SPROUT_GRAPHQL_ENDPOINT="https://api.example.com/graphql"
 export SPROUT_GRAPHQL_AUTHORIZATION="Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-sprout my-script.sp
+sprout my-script.spr
 ```
 
 ## How It Works
@@ -85,7 +85,7 @@ This feature is fully backward compatible. Existing Sprout scripts that rely on 
 Enable debug mode to see detailed information about GraphQL requests:
 
 ```bash
-sprout --debug my-script.sp
+sprout --debug my-script.spr
 ```
 
 This will show:

@@ -1,5 +1,5 @@
 [1m[31mError:[0m condition must be Boolean, got Int!
-  [2m[34m--> errors/condition_not_boolean.sp:2:17[0m
+  [2m[34m--> errors/condition_not_boolean.spr:2:17[0m
  [2m    |[0m
  [2m  1 | # Test conditional with non-boolean condition[0m
  [2m[34m[1m  2 | [0mpub result = if 42 { "number condition" } else { "default" }
