@@ -227,103 +227,159 @@ func classifyForms(forms []Node) ClassifiedForms {
 // 5. Typecheck variables in dependency order (can now reference function signatures)
 // 6. Typecheck function bodies last (can reference all package-level declarations)
 func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var lastT hm.Type
-	var err error
-
 	// Phase 1: Classify forms by their compilation requirements
 	classified := classifyForms(forms)
 
-	// Phase 2: Hoist and typecheck directives (must be available before any usage)
-	for _, form := range classified.Directives {
+	// Execute each compilation phase in order
+	phases := []func() (hm.Type, error){
+		func() (hm.Type, error) { return inferDirectivesPhase(classified.Directives, env, fresh) },
+		func() (hm.Type, error) { return inferConstantsPhase(classified.Constants, env, fresh) },
+		func() (hm.Type, error) { return inferTypesPhase(classified.Types, env, fresh) },
+		func() (hm.Type, error) { return inferFunctionSignaturesPhase(classified.Functions, env, fresh) },
+		func() (hm.Type, error) { return inferVariablesPhase(classified.Variables, env, fresh) },
+		func() (hm.Type, error) { return inferFunctionBodiesPhase(classified.Functions, env, fresh) },
+		func() (hm.Type, error) { return inferNonDeclarationsPhase(classified.NonDeclarations, env, fresh) },
+	}
+
+	var lastT hm.Type
+	for _, phase := range phases {
+		t, err := phase()
+		if err != nil {
+			return nil, err
+		}
+		if t != nil {
+			lastT = t
+		}
+	}
+
+	return lastT, nil
+}
+
+// inferDirectivesPhase processes directive declarations
+func inferDirectivesPhase(directives []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range directives {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil {
 				return nil, fmt.Errorf("directive hoisting failed: %w", err)
 			}
 		}
-		lastT, err = form.Infer(env, fresh)
+		t, err := form.Infer(env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("directive inference failed: %w", err)
 		}
+		lastT = t
 	}
+	return lastT, nil
+}
 
-	// Phase 3: Typecheck constants (can be in any order, no dependencies)
-	for _, form := range classified.Constants {
-		lastT, err = form.Infer(env, fresh)
+// inferConstantsPhase processes constant declarations
+func inferConstantsPhase(constants []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range constants {
+		t, err := form.Infer(env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("constant inference failed: %w", err)
 		}
+		lastT = t
 	}
+	return lastT, nil
+}
 
-	// Phase 4: Typecheck types (classes) - use multi-pass hoisting
+// inferTypesPhase processes type declarations using multi-pass hoisting
+func inferTypesPhase(types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Pass 0: Create class types
-	for _, form := range classified.Types {
+	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil {
 				return nil, fmt.Errorf("type hoisting (pass 0) failed: %w", err)
 			}
 		}
 	}
+
 	// Pass 1: Infer class bodies
-	for _, form := range classified.Types {
+	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 1); err != nil {
 				return nil, fmt.Errorf("type hoisting (pass 1) failed: %w", err)
 			}
 		}
 	}
+
 	// Complete type inference
-	for _, form := range classified.Types {
-		lastT, err = form.Infer(env, fresh)
+	var lastT hm.Type
+	for _, form := range types {
+		t, err := form.Infer(env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("type inference failed: %w", err)
 		}
+		lastT = t
 	}
+	return lastT, nil
+}
 
-	// Phase 5: Declare function signatures (hoist function declarations without bodies)
-	for _, form := range classified.Functions {
+// inferFunctionSignaturesPhase declares function signatures without bodies
+func inferFunctionSignaturesPhase(functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 0); err != nil {
 				return nil, fmt.Errorf("function signature hoisting failed: %w", err)
 			}
 		}
 	}
+	return nil, nil
+}
 
-	// Phase 6: Typecheck variables in dependency order (can now reference function signatures)
-	if len(classified.Variables) > 0 {
-		orderedVars, err := orderByDependencies(classified.Variables)
-		if err != nil {
-			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
-		}
-
-		for _, form := range orderedVars {
-			lastT, err = form.Infer(env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("variable inference failed: %w", err)
-			}
-		}
+// inferVariablesPhase processes variable declarations in dependency order
+func inferVariablesPhase(variables []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	if len(variables) == 0 {
+		return nil, nil
 	}
 
-	// Phase 7: Typecheck function bodies (can reference everything)
-	for _, form := range classified.Functions {
+	orderedVars, err := orderByDependencies(variables)
+	if err != nil {
+		return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
+	}
+
+	var lastT hm.Type
+	for _, form := range orderedVars {
+		t, err := form.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("variable inference failed: %w", err)
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+// inferFunctionBodiesPhase processes function bodies
+func inferFunctionBodiesPhase(functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(env, fresh, 1); err != nil {
 				return nil, fmt.Errorf("function body hoisting failed: %w", err)
 			}
 		}
-		lastT, err = form.Infer(env, fresh)
+		t, err := form.Infer(env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("function inference failed: %w", err)
 		}
+		lastT = t
 	}
+	return lastT, nil
+}
 
-	// Phase 8: Typecheck non-declarations in original order (can reference all declarations)
-	for _, form := range classified.NonDeclarations {
-		lastT, err = form.Infer(env, fresh)
+// inferNonDeclarationsPhase processes non-declaration forms
+func inferNonDeclarationsPhase(nonDeclarations []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range nonDeclarations {
+		t, err := form.Infer(env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("non-declaration inference failed: %w", err)
 		}
+		lastT = t
 	}
-
 	return lastT, nil
 }
 

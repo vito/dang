@@ -50,81 +50,67 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 	switch ft := fun.(type) {
 	case *hm.FunctionType:
-		// Handle positional argument mapping for type inference
-		argMapping, err := c.mapArgumentsForInference(ft)
-		if err != nil {
-			return nil, err
-		}
-
-		for i, arg := range c.Args {
-			v := arg.Value
-			var k string
-
-			if arg.Positional {
-				k = argMapping[i]
-			} else {
-				k = arg.Key
-			}
-
-			it, err := v.Infer(env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("FunCall.Infer: %w", err)
-			}
-
-			scheme, has := ft.Arg().(*RecordType).SchemeOf(k)
-			if !has {
-				return nil, fmt.Errorf("FunCall.Infer: %q not found in %s", k, ft.Arg())
-			}
-
-			dt, isMono := scheme.Type()
-			if !isMono {
-				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
-			}
-
-			if _, err := hm.Unify(dt, it); err != nil {
-				return nil, WrapInferError(err, v)
-			}
-		}
-
-		// Check that all required arguments are provided
-		// Now that we've transformed types, this validation should work correctly
-		err = c.validateRequiredArgumentsInInfer(ft)
-		if err != nil {
-			return nil, err
-		}
-
-		return ft.Ret(false), nil
-	case *Module:
-		// For modules, use the original logic for now TODO: Add proper positional
-		// argument support for modules TODO: delete this actually? we don't
-		// initialize modules by calling them anymore, we use 'new' and prototype
-		// style cloning with COW
-		for _, arg := range c.Args {
-			k, v := arg.Key, arg.Value
-
-			it, err := v.Infer(env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("FunCall.Infer: %w", err)
-			}
-
-			scheme, has := ft.SchemeOf(k)
-			if !has {
-				return nil, fmt.Errorf("FunCall.Infer: %q not found in %s", k, ft)
-			}
-
-			dt, isMono := scheme.Type()
-			if !isMono {
-				return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", k)
-			}
-
-			if _, err := hm.Unify(dt, it); err != nil {
-				return nil, WrapInferError(err, v)
-			}
-		}
-		return hm.NonNullType{Type: ft}, nil
+		return c.inferFunctionType(env, fresh, ft)
 	default:
 		return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 	}
+}
+
+// inferFunctionType handles type inference for FunctionType calls
+func (c FunCall) inferFunctionType(env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
+	// Handle positional argument mapping for type inference
+	argMapping, err := c.mapArgumentsForInference(ft)
+	if err != nil {
+		return nil, err
+	}
+
+	// Type check each argument
+	for i, arg := range c.Args {
+		k := c.getArgumentKey(arg, argMapping, i)
+		err := c.checkArgumentType(env, fresh, arg.Value, ft.Arg().(*RecordType), k)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Check that all required arguments are provided
+	err = c.validateRequiredArgumentsInInfer(ft)
+	if err != nil {
+		return nil, err
+	}
+
+	return ft.Ret(false), nil
+}
+
+// getArgumentKey determines the argument key for positional or named arguments
+func (c FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, index int) string {
+	if arg.Positional {
+		return argMapping[index]
+	}
+	return arg.Key
+}
+
+// checkArgumentType validates an argument's type against the expected parameter type
+func (c FunCall) checkArgumentType(env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
+	it, err := value.Infer(env, fresh)
+	if err != nil {
+		return fmt.Errorf("FunCall.Infer: %w", err)
+	}
+
+	scheme, has := recordType.SchemeOf(key)
+	if !has {
+		return fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
+	}
+
+	dt, isMono := scheme.Type()
+	if !isMono {
+		return fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
+	}
+
+	if _, err := hm.Unify(dt, it); err != nil {
+		return WrapInferError(err, value)
+	}
+	return nil
 }
 
 var _ hm.Apply = FunCall{}
@@ -144,119 +130,102 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return nil, err
 	}
 
+	// Dispatch to appropriate function call handler
+	return c.callFunction(ctx, env, funVal, argValues)
+}
+
+// callFunction dispatches function calls to appropriate handlers
+func (c FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, argValues map[string]Value) (Value, error) {
 	switch fn := funVal.(type) {
 	case BoundMethod:
-		// BoundMethod - create new environment with receiver as 'self' and argument bindings
-		// Create a composite environment that includes both the receiver and the method's closure
-		recv := fn.Receiver.Fork()
-		fnEnv := CreateCompositeEnv(recv, fn.Method.Closure)
-		fnEnv.Set("self", recv)
-
-		for _, argName := range fn.Method.Args {
-			if val, exists := argValues[argName]; exists {
-				// Check if the value is null and we have a default
-				if _, isNull := val.(NullValue); isNull {
-					if defaultExpr, hasDefault := fn.Method.Defaults[argName]; hasDefault {
-						// Use default value instead of null
-						defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
-						if err != nil {
-							return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-						}
-						fnEnv.Set(argName, defaultVal)
-					} else {
-						fnEnv.Set(argName, val)
-					}
-				} else {
-					fnEnv.Set(argName, val)
-				}
-			} else if defaultExpr, hasDefault := fn.Method.Defaults[argName]; hasDefault {
-				// Evaluate the default value in the function's closure
-				defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
-				if err != nil {
-					return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-				}
-				fnEnv.Set(argName, defaultVal)
-			}
-		}
-		return EvalNode(ctx, fnEnv, fn.Method.Body)
-
+		return c.callBoundMethod(ctx, fn, argValues)
 	case FunctionValue:
-		// Regular function call - create new environment with argument bindings
-		fnEnv := fn.Closure.Clone()
-
-		for _, argName := range fn.Args {
-			if val, exists := argValues[argName]; exists {
-				// Check if the value is null and we have a default
-				if _, isNull := val.(NullValue); isNull {
-					if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
-						// Use default value instead of null
-						defaultVal, err := EvalNode(ctx, fn.Closure, defaultExpr)
-						if err != nil {
-							return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-						}
-						fnEnv.Set(argName, defaultVal)
-					} else {
-						fnEnv.Set(argName, val)
-					}
-				} else {
-					fnEnv.Set(argName, val)
-				}
-			} else if defaultExpr, hasDefault := fn.Defaults[argName]; hasDefault {
-				// Evaluate the default value in the function's closure
-				defaultVal, err := EvalNode(ctx, fn.Closure, defaultExpr)
-				if err != nil {
-					return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-				}
-				fnEnv.Set(argName, defaultVal)
-			}
-		}
-		return EvalNode(ctx, fnEnv, fn.Body)
-
-	case *ModuleValue:
-		// Module function call - this would integrate with Dagger API
-		// For now, return a placeholder
-		return StringValue{Val: fmt.Sprintf("module call: %s with args %v", fn.Mod.Named, argValues)}, nil
-
+		return c.callFunctionValue(ctx, fn, argValues)
 	case GraphQLFunction:
-		// GraphQL function call
 		return fn.Call(ctx, env, argValues)
-
 	case BuiltinFunction:
-		// Builtin function call
 		return fn.Call(ctx, env, argValues)
-
 	case *ConstructorFunction:
-		// Constructor function call
 		return fn.Call(ctx, env, argValues)
-
 	default:
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
 }
 
-// evaluateArguments handles both positional and named arguments
-func (c FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Value) (map[string]Value, error) {
-	argValues := make(map[string]Value)
-	positionallySet := make(map[string]bool) // Track which args were set positionally
+// callBoundMethod handles BoundMethod function calls
+func (c FunCall) callBoundMethod(ctx context.Context, fn BoundMethod, argValues map[string]Value) (Value, error) {
+	// Create a composite environment that includes both the receiver and the method's closure
+	recv := fn.Receiver.Fork()
+	fnEnv := CreateCompositeEnv(recv, fn.Method.Closure)
+	fnEnv.Set("self", recv)
 
-	// Get parameter names from the function type
-	paramNames := c.getParameterNames(funVal)
-
-	// Track positional argument index
-	positionalIndex := 0
-
-	// First pass: ensure positional args come before named args
-	seenNamed := false
-	for _, arg := range c.Args {
-		if arg.Positional && seenNamed {
-			return nil, fmt.Errorf("positional arguments must come before named arguments")
-		}
-		if !arg.Positional {
-			seenNamed = true
-		}
+	// Bind arguments to the function environment
+	err := c.bindArgumentsToEnv(ctx, fnEnv, fn.Method.Args, fn.Method.Defaults, argValues, fnEnv)
+	if err != nil {
+		return nil, err
 	}
 
-	// Second pass: evaluate and map arguments
+	return EvalNode(ctx, fnEnv, fn.Method.Body)
+}
+
+// callFunctionValue handles FunctionValue function calls
+func (c FunCall) callFunctionValue(ctx context.Context, fn FunctionValue, argValues map[string]Value) (Value, error) {
+	// Create new environment with argument bindings
+	fnEnv := fn.Closure.Clone()
+
+	// Bind arguments to the function environment
+	err := c.bindArgumentsToEnv(ctx, fnEnv, fn.Args, fn.Defaults, argValues, fn.Closure)
+	if err != nil {
+		return nil, err
+	}
+
+	return EvalNode(ctx, fnEnv, fn.Body)
+}
+
+// bindArgumentsToEnv handles the common logic of binding arguments to function environments
+func (c FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNames []string,
+	defaults map[string]Node, argValues map[string]Value, defaultEvalEnv EvalEnv) error {
+	for _, argName := range paramNames {
+		if val, exists := argValues[argName]; exists {
+			// Handle null values with defaults
+			if _, isNull := val.(NullValue); isNull {
+				if defaultExpr, hasDefault := defaults[argName]; hasDefault {
+					defaultVal, err := EvalNode(ctx, defaultEvalEnv, defaultExpr)
+					if err != nil {
+						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+					}
+					fnEnv.Set(argName, defaultVal)
+				} else {
+					fnEnv.Set(argName, val)
+				}
+			} else {
+				fnEnv.Set(argName, val)
+			}
+		} else if defaultExpr, hasDefault := defaults[argName]; hasDefault {
+			// Use default value when argument not provided
+			defaultVal, err := EvalNode(ctx, defaultEvalEnv, defaultExpr)
+			if err != nil {
+				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+			}
+			fnEnv.Set(argName, defaultVal)
+		}
+	}
+	return nil
+}
+
+// evaluateArguments handles both positional and named arguments
+func (c FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Value) (map[string]Value, error) {
+	// Validate argument order first
+	if err := c.validateArgumentOrder(); err != nil {
+		return nil, err
+	}
+
+	argValues := make(map[string]Value)
+	positionallySet := make(map[string]bool)
+	paramNames := c.getParameterNames(funVal)
+
+	// Process all arguments
+	positionalIndex := 0
 	for _, arg := range c.Args {
 		val, err := EvalNode(ctx, env, arg.Value)
 		if err != nil {
@@ -264,32 +233,64 @@ func (c FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Valu
 		}
 
 		if arg.Positional {
-			// Map positional argument to parameter name by index
-			if positionalIndex >= len(paramNames) {
-				return nil, fmt.Errorf("too many positional arguments: got %d, expected at most %d",
-					positionalIndex+1, len(paramNames))
+			err := c.handlePositionalArgument(arg, val, argValues, positionallySet, paramNames, &positionalIndex)
+			if err != nil {
+				return nil, err
 			}
-			paramName := paramNames[positionalIndex]
-			if _, exists := argValues[paramName]; exists {
-				return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
-			}
-			argValues[paramName] = val
-			positionallySet[paramName] = true
-			positionalIndex++
 		} else {
-			// Named argument
-			if _, exists := argValues[arg.Key]; exists {
-				if positionallySet[arg.Key] {
-					return nil, fmt.Errorf("argument %q specified both positionally and by name", arg.Key)
-				} else {
-					return nil, fmt.Errorf("argument %q specified multiple times", arg.Key)
-				}
+			err := c.handleNamedArgument(arg, val, argValues, positionallySet)
+			if err != nil {
+				return nil, err
 			}
-			argValues[arg.Key] = val
 		}
 	}
 
 	return argValues, nil
+}
+
+// validateArgumentOrder ensures positional args come before named args
+func (c FunCall) validateArgumentOrder() error {
+	seenNamed := false
+	for _, arg := range c.Args {
+		if arg.Positional && seenNamed {
+			return fmt.Errorf("positional arguments must come before named arguments")
+		}
+		if !arg.Positional {
+			seenNamed = true
+		}
+	}
+	return nil
+}
+
+// handlePositionalArgument processes a positional argument
+func (c FunCall) handlePositionalArgument(arg Keyed[Node], val Value, argValues map[string]Value,
+	positionallySet map[string]bool, paramNames []string, positionalIndex *int) error {
+	if *positionalIndex >= len(paramNames) {
+		return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
+			*positionalIndex+1, len(paramNames))
+	}
+	paramName := paramNames[*positionalIndex]
+	if _, exists := argValues[paramName]; exists {
+		return fmt.Errorf("argument %q specified both positionally and by name", paramName)
+	}
+	argValues[paramName] = val
+	positionallySet[paramName] = true
+	*positionalIndex++
+	return nil
+}
+
+// handleNamedArgument processes a named argument
+func (c FunCall) handleNamedArgument(arg Keyed[Node], val Value, argValues map[string]Value,
+	positionallySet map[string]bool) error {
+	if _, exists := argValues[arg.Key]; exists {
+		if positionallySet[arg.Key] {
+			return fmt.Errorf("argument %q specified both positionally and by name", arg.Key)
+		} else {
+			return fmt.Errorf("argument %q specified multiple times", arg.Key)
+		}
+	}
+	argValues[arg.Key] = val
+	return nil
 }
 
 // getParameterNames extracts parameter names from a function value
