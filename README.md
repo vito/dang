@@ -15,7 +15,6 @@ type Sprout {
   pub source: Directory! @defaultPath(
     path: "/",
     ignore: [
-      # TODO: respecting .gitignore would be nice
       "Session.vim"
       "/sprout"
       "/zed-sprout/grammars/",
@@ -94,7 +93,7 @@ can point it at any API endpoint you want.
 This language needs to be maintainable in very limited time as a side project.
 To that end:
 
-* There's a single [Pigeon] grammar from which a [Tree-Sitter] grammar is
+* There's a single [Pigeon] grammar from which a [Tree-sitter] grammar is
   generated, so I don't have to maintain both. Feel free to steal this for your
   own esolang!
 * The language has a built-in `assert { ... }` syntax so that I can test it at
@@ -120,7 +119,7 @@ To that end:
 
 [Bass]: https://github.com/vito/bass
 [Pigeon]: https://github.com/mna/pigeon
-[Tree-Sitter]: https://tree-sitter.github.io/tree-sitter/
+[Tree-sitter]: https://tree-sitter.github.io/tree-sitter/
 
 
 ## thanks
