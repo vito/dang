@@ -1,4 +1,4 @@
-Read @llm-notes/ to refresh your memory.
+Read ./llm-notes/ to refresh your memory.
 
 You are developing Sprout, a strongly typed (Hindley-Milner) scripting language whose types are backed by a GraphQL API. Its grammar is defined in pkg/sprout/sprout.peg.
 
@@ -18,11 +18,11 @@ Don't look for APIs - you won't find them in this codebase, because they're all 
 
 ## Taking Notes
 
-Take notes of important language design or implementation details as you learn them, beneath @llm-notes/, with a name that will help your future self.
+Take notes of important language design or implementation details as you learn them, beneath ./llm-notes/, with a name that will help your future self.
 
-Maintain the accuracy of @llm-notes/ as the project evolves.
+Maintain the accuracy of ./llm-notes/ as the project evolves.
 
-- Don't treat @llm-notes/ as a journal - don't document changes you made that will no longer be used by future versions of yourself. Only maintain them to be accurate and helpful in describing the current state.
+- Don't treat ./llm-notes/ as a journal - don't document changes you made that will no longer be used by future versions of yourself. Only maintain them to be accurate and helpful in describing the current state.
 
 ## Dagger SDK
 
