@@ -268,11 +268,7 @@ func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	} else if r.Modifier == "+" {
 		// For compound assignment, check that it's compatible with addition
 		// Create a temporary Addition node to check type compatibility
-		tempAddition := Addition{
-			Left:  r.Target,
-			Right: r.Value,
-			Loc:   r.Loc,
-		}
+		tempAddition := NewAddition(r.Target, r.Value, r.Loc)
 		_, err := tempAddition.Infer(env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)

@@ -331,11 +331,7 @@ EqualityExpr <- left:(EqualityExpr / Term) _ op:EqualityOp _ right:(RelationalEx
       Loc: c.Loc(),
     }, nil
   case "!=":
-    return Inequality{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewInequality(left.(Node), right.(Node), c.Loc()), nil
   default:
     return nil, fmt.Errorf("unknown equality operator: %s", op.(string))
   }
@@ -346,29 +342,13 @@ EqualityOp <- "==" { return "==", nil } / "!=" { return "!=", nil }
 RelationalExpr <- left:(RelationalExpr / Term) _ op:RelationalOp _ right:(AdditiveExpr / Term) {
   switch op.(string) {
   case "<":
-    return LessThan{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewLessThan(left.(Node), right.(Node), c.Loc()), nil
   case "<=":
-    return LessThanEqual{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewLessThanEqual(left.(Node), right.(Node), c.Loc()), nil
   case ">":
-    return GreaterThan{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewGreaterThan(left.(Node), right.(Node), c.Loc()), nil
   case ">=":
-    return GreaterThanEqual{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewGreaterThanEqual(left.(Node), right.(Node), c.Loc()), nil
   default:
     return nil, fmt.Errorf("unknown relational operator: %s", op.(string))
   }
@@ -379,17 +359,9 @@ RelationalOp <- "<=" { return "<=", nil } / ">=" { return ">=", nil } / "<" { re
 AdditiveExpr <- left:(AdditiveExpr / Term) _ op:AdditiveOp _ right:(MultiplicativeExpr / Term) {
   switch op.(string) {
   case "+":
-    return Addition{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewAddition(left.(Node), right.(Node), c.Loc()), nil
   case "-":
-    return Subtraction{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewSubtraction(left.(Node), right.(Node), c.Loc()), nil
   default:
     return nil, fmt.Errorf("unknown additive operator: %s", op.(string))
   }
@@ -400,23 +372,11 @@ AdditiveOp <- "+" { return "+", nil } / "-" { return "-", nil }
 MultiplicativeExpr <- left:(MultiplicativeExpr / Term) _ op:MultiplicativeOp _ right:Term {
   switch op.(string) {
   case "*":
-    return Multiplication{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewMultiplication(left.(Node), right.(Node), c.Loc()), nil
   case "/":
-    return Division{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewDivision(left.(Node), right.(Node), c.Loc()), nil
   case "%":
-    return Modulo{
-      Left: left.(Node),
-      Right: right.(Node),
-      Loc: c.Loc(),
-    }, nil
+    return NewModulo(left.(Node), right.(Node), c.Loc()), nil
   default:
     return nil, fmt.Errorf("unknown multiplicative operator: %s", op.(string))
   }

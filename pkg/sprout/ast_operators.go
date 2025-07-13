@@ -7,6 +7,206 @@ import (
 	"github.com/vito/sprout/pkg/hm"
 )
 
+// OperatorType defines the category of binary operator
+type OperatorType int
+
+const (
+	ArithmeticOp OperatorType = iota // Unifies types, returns unified type
+	ComparisonOp                     // Validates types, returns Boolean
+)
+
+// BinaryOperatorEvaluator defines the evaluation function for specific operators
+type BinaryOperatorEvaluator func(leftVal, rightVal Value) (Value, error)
+
+// BinaryOperator provides common functionality for binary operators
+type BinaryOperator struct {
+	Left     Node
+	Right    Node
+	Loc      *SourceLocation
+	OpType   OperatorType
+	OpName   string
+	EvalFunc BinaryOperatorEvaluator
+}
+
+// Common interface implementations
+func (b BinaryOperator) DeclaredSymbols() []string {
+	return nil // Binary operators don't declare anything
+}
+
+func (b BinaryOperator) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, b.Left.ReferencedSymbols()...)
+	symbols = append(symbols, b.Right.ReferencedSymbols()...)
+	return symbols
+}
+
+func (b BinaryOperator) Body() hm.Expression { return b }
+
+func (b BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
+
+// Common type inference based on operator type
+func (b BinaryOperator) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	lt, err := b.Left.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := b.Right.Infer(env, fresh)
+	if err != nil {
+		return nil, err
+	}
+
+	switch b.OpType {
+	case ArithmeticOp:
+		// Unify types and return the unified type
+		subs, err := hm.Unify(lt, rt)
+		if err != nil {
+			return nil, WrapInferError(err, b)
+		}
+		return lt.Apply(subs).(hm.Type), nil
+	case ComparisonOp:
+		// Validate types but always return Boolean
+		return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+	default:
+		return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
+	}
+}
+
+// Common evaluation logic
+func (b BinaryOperator) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	leftVal, err := EvalNode(ctx, env, b.Left)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating left side: %w", err)
+	}
+	rightVal, err := EvalNode(ctx, env, b.Right)
+	if err != nil {
+		return nil, fmt.Errorf("evaluating right side: %w", err)
+	}
+
+	return b.EvalFunc(leftVal, rightVal)
+}
+
+// Evaluation functions for specific operators
+func additionEval(leftVal, rightVal Value) (Value, error) {
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			return IntValue{Val: l.Val + r.Val}, nil
+		}
+	case StringValue:
+		if r, ok := rightVal.(StringValue); ok {
+			return StringValue{Val: l.Val + r.Val}, nil
+		}
+	case ListValue:
+		if r, ok := rightVal.(ListValue); ok {
+			// Concatenate the lists
+			combined := make([]Value, len(l.Elements)+len(r.Elements))
+			copy(combined, l.Elements)
+			copy(combined[len(l.Elements):], r.Elements)
+
+			// Use the element type from the left operand, or right if left is empty
+			elemType := l.ElemType
+			if len(l.Elements) == 0 && len(r.Elements) > 0 {
+				elemType = r.ElemType
+			}
+
+			return ListValue{Elements: combined, ElemType: elemType}, nil
+		}
+	}
+	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)
+}
+
+func subtractionEval(leftVal, rightVal Value) (Value, error) {
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			return IntValue{Val: l.Val - r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("subtraction not supported for types %T and %T", leftVal, rightVal)
+}
+
+func multiplicationEval(leftVal, rightVal Value) (Value, error) {
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			return IntValue{Val: l.Val * r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("multiplication not supported for types %T and %T", leftVal, rightVal)
+}
+
+func divisionEval(leftVal, rightVal Value) (Value, error) {
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			if r.Val == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return IntValue{Val: l.Val / r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("division not supported for types %T and %T", leftVal, rightVal)
+}
+
+func moduloEval(leftVal, rightVal Value) (Value, error) {
+	switch l := leftVal.(type) {
+	case IntValue:
+		if r, ok := rightVal.(IntValue); ok {
+			if r.Val == 0 {
+				return nil, fmt.Errorf("modulo by zero")
+			}
+			return IntValue{Val: l.Val % r.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
+}
+
+func inequalityEval(leftVal, rightVal Value) (Value, error) {
+	// Compare the values
+	equal := valuesEqual(leftVal, rightVal)
+	return BoolValue{Val: !equal}, nil
+}
+
+func lessThanEval(leftVal, rightVal Value) (Value, error) {
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val < rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
+func greaterThanEval(leftVal, rightVal Value) (Value, error) {
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val > rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("greater than comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
+func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val <= rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
+func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
+	switch lv := leftVal.(type) {
+	case IntValue:
+		if rv, ok := rightVal.(IntValue); ok {
+			return BoolValue{Val: lv.Val >= rv.Val}, nil
+		}
+	}
+	return nil, fmt.Errorf("greater than or equal comparison not supported for types %T and %T", leftVal, rightVal)
+}
+
 type Default struct {
 	Left  Node
 	Right Node
@@ -126,602 +326,202 @@ func (e Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Addition struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = Addition{}
 var _ Evaluator = Addition{}
 
-func (a Addition) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := a.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewAddition(left, right Node, loc *SourceLocation) Addition {
+	return Addition{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ArithmeticOp,
+			OpName:   "addition",
+			EvalFunc: additionEval,
+		},
 	}
-	rt, err := a.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	subs, err := hm.Unify(lt, rt)
-	if err != nil {
-		return nil, WrapInferError(err, a)
-	}
-	return lt.Apply(subs).(hm.Type), nil
-}
-
-func (a Addition) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (a Addition) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, a.Left.ReferencedSymbols()...)
-	symbols = append(symbols, a.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (a Addition) Body() hm.Expression { return a }
-
-func (a Addition) GetSourceLocation() *SourceLocation { return a.Loc }
-
-func (a Addition) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, a.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, a.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-	switch l := leftVal.(type) {
-	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
-			return IntValue{Val: l.Val + r.Val}, nil
-		}
-	case StringValue:
-		if r, ok := rightVal.(StringValue); ok {
-			return StringValue{Val: l.Val + r.Val}, nil
-		}
-	case ListValue:
-		if r, ok := rightVal.(ListValue); ok {
-			// Concatenate the lists
-			combined := make([]Value, len(l.Elements)+len(r.Elements))
-			copy(combined, l.Elements)
-			copy(combined[len(l.Elements):], r.Elements)
-
-			// Use the element type from the left operand, or right if left is empty
-			elemType := l.ElemType
-			if len(l.Elements) == 0 && len(r.Elements) > 0 {
-				elemType = r.ElemType
-			}
-
-			return ListValue{Elements: combined, ElemType: elemType}, nil
-		}
-	}
-	return nil, fmt.Errorf("addition not supported for types %T and %T", leftVal, rightVal)
 }
 
 type Subtraction struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = Subtraction{}
 var _ Evaluator = Subtraction{}
 
-func (s Subtraction) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := s.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewSubtraction(left, right Node, loc *SourceLocation) Subtraction {
+	return Subtraction{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ArithmeticOp,
+			OpName:   "subtraction",
+			EvalFunc: subtractionEval,
+		},
 	}
-	rt, err := s.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	subs, err := hm.Unify(lt, rt)
-	if err != nil {
-		return nil, WrapInferError(err, s)
-	}
-	return lt.Apply(subs).(hm.Type), nil
-}
-
-func (s Subtraction) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (s Subtraction) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, s.Left.ReferencedSymbols()...)
-	symbols = append(symbols, s.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (s Subtraction) Body() hm.Expression { return s }
-
-func (s Subtraction) GetSourceLocation() *SourceLocation { return s.Loc }
-
-func (s Subtraction) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, s.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, s.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-	switch l := leftVal.(type) {
-	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
-			return IntValue{Val: l.Val - r.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("subtraction not supported for types %T and %T", leftVal, rightVal)
 }
 
 type Multiplication struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = Multiplication{}
 var _ Evaluator = Multiplication{}
 
-func (m Multiplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := m.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewMultiplication(left, right Node, loc *SourceLocation) Multiplication {
+	return Multiplication{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ArithmeticOp,
+			OpName:   "multiplication",
+			EvalFunc: multiplicationEval,
+		},
 	}
-	rt, err := m.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	subs, err := hm.Unify(lt, rt)
-	if err != nil {
-		return nil, WrapInferError(err, m)
-	}
-	return lt.Apply(subs).(hm.Type), nil
 }
 
-func (m Multiplication) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (m Multiplication) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, m.Left.ReferencedSymbols()...)
-	symbols = append(symbols, m.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (m Multiplication) Body() hm.Expression { return m }
-
-func (m Multiplication) GetSourceLocation() *SourceLocation { return m.Loc }
-
-func (m Multiplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, m.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, m.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-	switch l := leftVal.(type) {
-	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
-			return IntValue{Val: l.Val * r.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("multiplication not supported for types %T and %T", leftVal, rightVal)
-}
 
 type Division struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = Division{}
 var _ Evaluator = Division{}
 
-func (d Division) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := d.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewDivision(left, right Node, loc *SourceLocation) Division {
+	return Division{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ArithmeticOp,
+			OpName:   "division",
+			EvalFunc: divisionEval,
+		},
 	}
-	rt, err := d.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	subs, err := hm.Unify(lt, rt)
-	if err != nil {
-		return nil, WrapInferError(err, d)
-	}
-	return lt.Apply(subs).(hm.Type), nil
-}
-
-func (d Division) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (d Division) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, d.Left.ReferencedSymbols()...)
-	symbols = append(symbols, d.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (d Division) Body() hm.Expression { return d }
-
-func (d Division) GetSourceLocation() *SourceLocation { return d.Loc }
-
-func (d Division) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, d.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, d.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-	switch l := leftVal.(type) {
-	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
-			if r.Val == 0 {
-				return nil, fmt.Errorf("division by zero")
-			}
-			return IntValue{Val: l.Val / r.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("division not supported for types %T and %T", leftVal, rightVal)
 }
 
 type Modulo struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = Modulo{}
 var _ Evaluator = Modulo{}
 
-func (m Modulo) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := m.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewModulo(left, right Node, loc *SourceLocation) Modulo {
+	return Modulo{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ArithmeticOp,
+			OpName:   "modulo",
+			EvalFunc: moduloEval,
+		},
 	}
-	rt, err := m.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	subs, err := hm.Unify(lt, rt)
-	if err != nil {
-		return nil, WrapInferError(err, m)
-	}
-	return lt.Apply(subs).(hm.Type), nil
-}
-
-func (m Modulo) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (m Modulo) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, m.Left.ReferencedSymbols()...)
-	symbols = append(symbols, m.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (m Modulo) Body() hm.Expression { return m }
-
-func (m Modulo) GetSourceLocation() *SourceLocation { return m.Loc }
-
-func (m Modulo) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, m.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, m.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-	switch l := leftVal.(type) {
-	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
-			if r.Val == 0 {
-				return nil, fmt.Errorf("modulo by zero")
-			}
-			return IntValue{Val: l.Val % r.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("modulo not supported for types %T and %T", leftVal, rightVal)
 }
 
 type Inequality struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = Inequality{}
 var _ Evaluator = Inequality{}
 
-func (i Inequality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Type check both sides for validity, but allow cross-type comparison at runtime
-	_, err := i.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewInequality(left, right Node, loc *SourceLocation) Inequality {
+	return Inequality{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ComparisonOp,
+			OpName:   "inequality",
+			EvalFunc: inequalityEval,
+		},
 	}
-	_, err = i.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	// Inequality always returns a boolean
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-}
-
-func (i Inequality) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (i Inequality) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, i.Left.ReferencedSymbols()...)
-	symbols = append(symbols, i.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (i Inequality) Body() hm.Expression { return i }
-
-func (i Inequality) GetSourceLocation() *SourceLocation { return i.Loc }
-
-func (i Inequality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, i.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, i.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-
-	// Compare the values and return the opposite of equality
-	equal := valuesEqual(leftVal, rightVal)
-	return BoolValue{Val: !equal}, nil
 }
 
 type LessThan struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = LessThan{}
 var _ Evaluator = LessThan{}
 
-func (l LessThan) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Type check both sides for validity
-	_, err := l.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewLessThan(left, right Node, loc *SourceLocation) LessThan {
+	return LessThan{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ComparisonOp,
+			OpName:   "less_than",
+			EvalFunc: lessThanEval,
+		},
 	}
-	_, err = l.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	// LessThan always returns a boolean
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-}
-
-func (l LessThan) DeclaredSymbols() []string {
-	return nil // Binary operators don't declare anything
-}
-
-func (l LessThan) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, l.Left.ReferencedSymbols()...)
-	symbols = append(symbols, l.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (l LessThan) Body() hm.Expression { return l }
-
-func (l LessThan) GetSourceLocation() *SourceLocation { return l.Loc }
-
-func (l LessThan) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, l.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, l.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-
-	switch lv := leftVal.(type) {
-	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
-			return BoolValue{Val: lv.Val < rv.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
 }
 
 type GreaterThan struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = GreaterThan{}
 var _ Evaluator = GreaterThan{}
 
-func (g GreaterThan) DeclaredSymbols() []string {
-	return nil // Comparison operators don't declare anything
-}
-
-func (g GreaterThan) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, g.Left.ReferencedSymbols()...)
-	symbols = append(symbols, g.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (g GreaterThan) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Type check both sides for validity
-	_, err := g.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewGreaterThan(left, right Node, loc *SourceLocation) GreaterThan {
+	return GreaterThan{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ComparisonOp,
+			OpName:   "greater_than",
+			EvalFunc: greaterThanEval,
+		},
 	}
-	_, err = g.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	// GreaterThan always returns a boolean
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-}
-
-func (g GreaterThan) Body() hm.Expression { return g }
-
-func (g GreaterThan) GetSourceLocation() *SourceLocation { return g.Loc }
-
-func (g GreaterThan) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, g.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, g.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-
-	switch lv := leftVal.(type) {
-	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
-			return BoolValue{Val: lv.Val > rv.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("greater than comparison not supported for types %T and %T", leftVal, rightVal)
 }
 
 type LessThanEqual struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = LessThanEqual{}
 var _ Evaluator = LessThanEqual{}
 
-func (l LessThanEqual) DeclaredSymbols() []string {
-	return nil // Comparison operators don't declare anything
-}
-
-func (l LessThanEqual) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, l.Left.ReferencedSymbols()...)
-	symbols = append(symbols, l.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (l LessThanEqual) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Type check both sides for validity
-	_, err := l.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewLessThanEqual(left, right Node, loc *SourceLocation) LessThanEqual {
+	return LessThanEqual{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ComparisonOp,
+			OpName:   "less_than_equal",
+			EvalFunc: lessThanEqualEval,
+		},
 	}
-	_, err = l.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	// LessThanEqual always returns a boolean
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-}
-
-func (l LessThanEqual) Body() hm.Expression { return l }
-
-func (l LessThanEqual) GetSourceLocation() *SourceLocation { return l.Loc }
-
-func (l LessThanEqual) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, l.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, l.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-
-	switch lv := leftVal.(type) {
-	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
-			return BoolValue{Val: lv.Val <= rv.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
 }
 
 type GreaterThanEqual struct {
-	Left  Node
-	Right Node
-	Loc   *SourceLocation
+	BinaryOperator
 }
 
 var _ Node = GreaterThanEqual{}
 var _ Evaluator = GreaterThanEqual{}
 
-func (g GreaterThanEqual) DeclaredSymbols() []string {
-	return nil // Comparison operators don't declare anything
-}
-
-func (g GreaterThanEqual) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, g.Left.ReferencedSymbols()...)
-	symbols = append(symbols, g.Right.ReferencedSymbols()...)
-	return symbols
-}
-
-func (g GreaterThanEqual) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Type check both sides for validity
-	_, err := g.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
+func NewGreaterThanEqual(left, right Node, loc *SourceLocation) GreaterThanEqual {
+	return GreaterThanEqual{
+		BinaryOperator: BinaryOperator{
+			Left:     left,
+			Right:    right,
+			Loc:      loc,
+			OpType:   ComparisonOp,
+			OpName:   "greater_than_equal",
+			EvalFunc: greaterThanEqualEval,
+		},
 	}
-	_, err = g.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	// GreaterThanEqual always returns a boolean
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-}
-
-func (g GreaterThanEqual) Body() hm.Expression { return g }
-
-func (g GreaterThanEqual) GetSourceLocation() *SourceLocation { return g.Loc }
-
-func (g GreaterThanEqual) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, g.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, g.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
-
-	switch lv := leftVal.(type) {
-	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
-			return BoolValue{Val: lv.Val >= rv.Val}, nil
-		}
-	}
-	return nil, fmt.Errorf("greater than or equal comparison not supported for types %T and %T", leftVal, rightVal)
 }
