@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/vito/sprout/introspection"
 	"github.com/vito/sprout/pkg/hm"
 	"github.com/vito/sprout/pkg/ioctx"
 	"github.com/vito/sprout/pkg/querybuilder"
@@ -806,6 +807,20 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		return nil, err
 	}
 
+	// If this is a list selection, wrap the result in a list type
+	if o.IsList {
+		listType := ListType{Type: t}
+
+		// If receiver was nullable, make result nullable too
+		if _, ok := receiverType.(hm.NonNullType); ok {
+			// Receiver was non-null, result should be non-null list
+			return hm.NonNullType{Type: listType}, nil
+		} else {
+			// Receiver was nullable, result should be nullable list
+			return listType, nil
+		}
+	}
+
 	// If receiver was nullable, make result nullable too
 	if _, ok := receiverType.(hm.NonNullType); ok {
 		// Receiver was non-null, result should be non-null
@@ -884,6 +899,13 @@ func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.E
 		if err != nil {
 			return nil, err
 		}
+
+		// If the nested selection is on a list, wrap the result in a list type
+		if field.Selection.IsList {
+			listType := ListType{Type: t}
+			return hm.NonNullType{Type: listType}, nil
+		}
+
 		return hm.NonNullType{Type: t}, nil
 	}
 
@@ -983,7 +1005,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	}
 
 	// Convert GraphQL result to ModuleValue
-	return o.convertGraphQLResultToModule(result, o.Fields)
+	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field)
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
@@ -1038,7 +1060,20 @@ func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, f
 	return builder, nil
 }
 
-func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []FieldSelection) (Value, error) {
+func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []FieldSelection, schema *introspection.Schema, parentField *introspection.Field) (Value, error) {
+	// Check if the result is a list/slice
+	if resultSlice, ok := result.([]any); ok {
+		var elements []Value
+		for _, item := range resultSlice {
+			itemValue, err := o.convertGraphQLResultToModule(item, fields, schema, parentField)
+			if err != nil {
+				return nil, err
+			}
+			elements = append(elements, itemValue)
+		}
+		return ListValue{Elements: elements}, nil
+	}
+
 	resultModuleValue := NewModuleValue(o.Inferred)
 
 	// Convert GraphQL result to Sprout values
@@ -1047,14 +1082,40 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []Fiel
 			if fieldValue, exists := resultMap[field.Name]; exists {
 				// Handle nested selections
 				if field.Selection != nil {
-					nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields)
-					if err != nil {
-						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
+					// Check if fieldValue is a list that needs selection applied to each element
+					// Get the field information for the nested selection
+					var nestedField *introspection.Field
+					if parentField != nil && schema != nil {
+						nestedField = o.getFieldFromParent(field.Name, parentField, schema)
 					}
-					resultModuleValue.Set(field.Name, nestedResult)
+
+					if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
+						var elements []Value
+						for _, item := range fieldSlice {
+							itemResult, err := field.Selection.convertGraphQLResultToModule(item, field.Selection.Fields, schema, nestedField)
+							if err != nil {
+								return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q item: %w", field.Name, err)
+							}
+							elements = append(elements, itemResult)
+						}
+						resultModuleValue.Set(field.Name, ListValue{Elements: elements})
+					} else {
+						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField)
+						if err != nil {
+							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
+						}
+						resultModuleValue.Set(field.Name, nestedResult)
+					}
 				} else {
-					// Convert GraphQL value to Sprout value
-					sproutVal, err := goValueToSprout(fieldValue, nil)
+					// Convert GraphQL value to Sprout value using proper TypeRef
+					var fieldTypeRef *introspection.TypeRef
+					if parentField != nil && schema != nil {
+						if gqlField := o.getFieldFromParent(field.Name, parentField, schema); gqlField != nil {
+							fieldTypeRef = gqlField.TypeRef
+						}
+					}
+
+					sproutVal, err := goValueToSprout(fieldValue, fieldTypeRef)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
@@ -1065,6 +1126,48 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []Fiel
 	}
 
 	return resultModuleValue, nil
+}
+
+// getFieldFromParent finds a field by name in the parent field's return type
+func (o *ObjectSelection) getFieldFromParent(fieldName string, parentField *introspection.Field, schema *introspection.Schema) *introspection.Field {
+	if parentField == nil || schema == nil {
+		return nil
+	}
+
+	// Get the return type of the parent field (unwrapping lists and non-nulls)
+	returnType := o.unwrapType(parentField.TypeRef)
+	if returnType == nil {
+		return nil
+	}
+
+	// Find the type in the schema
+	schemaType := schema.Types.Get(returnType.Name)
+	if schemaType == nil {
+		return nil
+	}
+
+	// Find the field in the type
+	for _, field := range schemaType.Fields {
+		if field.Name == fieldName {
+			return field
+		}
+	}
+
+	return nil
+}
+
+// unwrapType recursively unwraps LIST and NON_NULL wrappers to get the underlying named type
+func (o *ObjectSelection) unwrapType(typeRef *introspection.TypeRef) *introspection.TypeRef {
+	if typeRef == nil {
+		return nil
+	}
+
+	switch typeRef.Kind {
+	case "NON_NULL", "LIST":
+		return o.unwrapType(typeRef.OfType)
+	default:
+		return typeRef
+	}
 }
 
 // Conditional represents an if-then-else expression

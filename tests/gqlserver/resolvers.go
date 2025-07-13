@@ -16,10 +16,10 @@ type Resolver struct{}
 func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput) (*User, error) {
 	newID := strconv.Itoa(len(users) + 1)
 	user := &User{
-		ID:    newID,
-		Name:  input.Name,
-		Email: input.Email,
-		Age:   input.Age,
+		ID:     newID,
+		Name:   input.Name,
+		Emails: []string{input.Email},
+		Age:    input.Age,
 	}
 	users = append(users, user)
 	return user, nil
@@ -33,7 +33,7 @@ func (r *mutationResolver) UpdateUser(ctx context.Context, id string, input Upda
 				user.Name = *input.Name
 			}
 			if input.Email != nil {
-				user.Email = *input.Email
+				user.Emails = []string{*input.Email}
 			}
 			if input.Age != nil {
 				user.Age = input.Age

@@ -37,11 +37,11 @@ type UpdateUserInput struct {
 }
 
 type User struct {
-	ID    string  `json:"id"`
-	Name  string  `json:"name"`
-	Email string  `json:"email"`
-	Age   *int    `json:"age,omitempty"`
-	Posts []*Post `json:"posts"`
+	ID     string   `json:"id"`
+	Name   string   `json:"name"`
+	Emails []string `json:"emails"`
+	Age    *int     `json:"age,omitempty"`
+	Posts  []*Post  `json:"posts"`
 }
 
 type UserProfile struct {

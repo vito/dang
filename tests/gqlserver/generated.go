@@ -79,11 +79,11 @@ type ComplexityRoot struct {
 	}
 
 	User struct {
-		Age   func(childComplexity int) int
-		Email func(childComplexity int) int
-		ID    func(childComplexity int) int
-		Name  func(childComplexity int) int
-		Posts func(childComplexity int) int
+		Age    func(childComplexity int) int
+		Emails func(childComplexity int) int
+		ID     func(childComplexity int) int
+		Name   func(childComplexity int) int
+		Posts  func(childComplexity int) int
 	}
 
 	UserProfile struct {
@@ -312,12 +312,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.User.Age(childComplexity), true
 
-	case "User.email":
-		if e.complexity.User.Email == nil {
+	case "User.emails":
+		if e.complexity.User.Emails == nil {
 			break
 		}
 
-		return e.complexity.User.Email(childComplexity), true
+		return e.complexity.User.Emails(childComplexity), true
 
 	case "User.id":
 		if e.complexity.User.ID == nil {
@@ -964,8 +964,8 @@ func (ec *executionContext) fieldContext_Mutation_createUser(ctx context.Context
 				return ec.fieldContext_User_id(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
 			case "posts":
@@ -1028,8 +1028,8 @@ func (ec *executionContext) fieldContext_Mutation_updateUser(ctx context.Context
 				return ec.fieldContext_User_id(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
 			case "posts":
@@ -1282,8 +1282,8 @@ func (ec *executionContext) fieldContext_Post_author(_ context.Context, field gr
 				return ec.fieldContext_User_id(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
 			case "posts":
@@ -1437,8 +1437,8 @@ func (ec *executionContext) fieldContext_Query_users(_ context.Context, field gr
 				return ec.fieldContext_User_id(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
 			case "posts":
@@ -1490,8 +1490,8 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 				return ec.fieldContext_User_id(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
 			case "posts":
@@ -2186,8 +2186,8 @@ func (ec *executionContext) fieldContext_User_name(_ context.Context, field grap
 	return fc, nil
 }
 
-func (ec *executionContext) _User_email(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_User_email(ctx, field)
+func (ec *executionContext) _User_emails(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_User_emails(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -2200,7 +2200,7 @@ func (ec *executionContext) _User_email(ctx context.Context, field graphql.Colle
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Email, nil
+		return obj.Emails, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -2212,12 +2212,12 @@ func (ec *executionContext) _User_email(ctx context.Context, field graphql.Colle
 		}
 		return graphql.Null
 	}
-	res := resTmp.(string)
+	res := resTmp.([]string)
 	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
+	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_User_email(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_User_emails(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "User",
 		Field:      field,
@@ -2370,8 +2370,8 @@ func (ec *executionContext) fieldContext_UserProfile_user(_ context.Context, fie
 				return ec.fieldContext_User_id(ctx, field)
 			case "name":
 				return ec.fieldContext_User_name(ctx, field)
-			case "email":
-				return ec.fieldContext_User_email(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
 			case "posts":
@@ -5032,8 +5032,8 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "email":
-			out.Values[i] = ec._User_email(ctx, field, obj)
+		case "emails":
+			out.Values[i] = ec._User_emails(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
