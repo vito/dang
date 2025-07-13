@@ -6,17 +6,6 @@ Sprout is a language for scripting GraphQL, with types and functions loaded from
 the API endpoint.
 
 
-## why?
-
-The initial goal was to be a "native" language for [Dagger](https://dagger.io).
-Combining Sprout with the Dagger ecosystem turns it into a proper superglue
-language, supporting cross-language interop with a "standard library"
-implemented across all languages that Dagger supports.
-
-It can be used for any GraphQL API, but it isn't a general-purpose language, so
-you may find it lacks common facilities. It's more suited to glue other
-languages together that handle all the nitty-gritty details.
-
 ## sample
 
 Here's `.dagger/main.sp` at the time of this writing:
@@ -47,7 +36,28 @@ type Sprout {
 }
 ```
 
-## philosophy
+
+## why?
+
+The initial goal was a "native" language for [Dagger]. Dagger is a polyglot
+function engine with an underlying GraphQL API serving as the common layer where
+functions written in different languages call one another.
+
+Combining Sprout with Dagger gives you a polyglot language with an ecosystem of
+modules developed in any language that has a [Dagger SDK]. Sprout is one such
+Dagger SDK, so it's perfect for writing Dagger modules that simply glue together
+APIs and don't need a heavy full-blown language runtime. As a result of not
+needing a codegen phase, it has potential to be much, much faster than the other
+SDKs.
+
+Architecturally, Sprout is decoupled from Dagger; it just speaks GraphQL, so you
+can point it at any API endpoint you want.
+
+[Dagger]: https://dagger.io
+[Dagger SDK]: https://docs.dagger.io/api/sdk/
+
+
+## design philosophy
 
 * **familiarity** over theory
   - I've had my fun with language design/impl, time to make one people might actually use. :)
@@ -89,15 +99,14 @@ To that end:
   own esolang!
 * The language has a built-in `assert { ... }` syntax so that I can test it at
   a very high level (a Big Pile of Sprout Scripts).
-* And here's the kicker: large swathes of the codebase have been implemented
-  with AI. The language design is still my fault, but I've let AI do a lot of
-  the typing.
+* Large swathes of the codebase have been implemented with AI. The language
+  design is still my fault, but I've let AI do a lot of the typing.
 
   Personally, having already created [Bass] recently I didn't feel the
   motivation to start all over again. It didn't seem like I'd learn much along
-  the way, so it wasn't worth whatever mileage my fingers have left. This was a
-  great opportunity to learn about AI and reach my project goals at the same
-  time, so I took that direction instead.
+  the way, so it wasn't worth spending whatever mileage my fingers have left.
+  This was a great opportunity to learn about AI and reach my project goals at
+  the same time, so I took that direction instead.
 
   This project sat unfinished for 2 years, and in a day of AI crunching I was
   finally able to bring it to life. If you have ethical concerns with this or
@@ -112,6 +121,7 @@ To that end:
 [Bass]: https://github.com/vito/bass
 [Pigeon]: https://github.com/mna/pigeon
 [Tree-Sitter]: https://tree-sitter.github.io/tree-sitter/
+
 
 ## thanks
 
