@@ -223,10 +223,12 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			return fmt.Errorf("evaluating class body for %s: %w", parentConstructor.ClassName, err)
 		}
 
-		call := sprout.Select{
-			Receiver: sprout.ValueNode{Val: parentModEnv},
-			Field:    fnName,
-			Args:     &args,
+		call := sprout.FunCall{
+			Fun: sprout.Select{
+				Receiver: sprout.ValueNode{Val: parentModEnv},
+				Field:    fnName,
+			},
+			Args: args,
 		}
 		result, err = call.Eval(ctx, env)
 		if err != nil {
@@ -248,9 +250,11 @@ func anyToSprout(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.
 	switch v := val.(type) {
 	case string:
 		if modType, ok := fieldType.(*sprout.Module); ok && modType != sprout.StringType {
-			sel := sprout.Select{
-				Field: fmt.Sprintf("load%sFromID", modType.Named),
-				Args: &sprout.Record{
+			sel := sprout.FunCall{
+				Fun: sprout.Select{
+					Field: fmt.Sprintf("load%sFromID", modType.Named),
+				},
+				Args: sprout.Record{
 					sprout.Keyed[sprout.Node]{
 						Key:   "id",
 						Value: sprout.String{Value: v},
