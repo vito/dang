@@ -45,7 +45,7 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 		} else {
 			subs, err := hm.Unify(t, et)
 			if err != nil {
-				return nil, fmt.Errorf("unify index %d: %w", i, err)
+				return nil, NewInferError(fmt.Sprintf("unify index %d: %s", i, err.Error()), l.Elements[i])
 			}
 			t = t.Apply(subs).(hm.Type)
 		}

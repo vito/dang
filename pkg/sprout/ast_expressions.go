@@ -43,17 +43,19 @@ func (c FunCall) Body() hm.Expression { return c.Fun }
 func (c FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	fun, err := c.Fun.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
+	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		fun, err := c.Fun.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	switch ft := fun.(type) {
-	case *hm.FunctionType:
-		return c.inferFunctionType(env, fresh, ft)
-	default:
-		return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
-	}
+		switch ft := fun.(type) {
+		case *hm.FunctionType:
+			return c.inferFunctionType(env, fresh, ft)
+		default:
+			return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
+		}
+	})
 }
 
 // inferFunctionType handles type inference for FunctionType calls
@@ -108,7 +110,7 @@ func (c FunCall) checkArgumentType(env hm.Env, fresh hm.Fresher, value Node, rec
 	}
 
 	if _, err := hm.Unify(dt, it); err != nil {
-		return WrapInferError(err, value)
+		return NewInferError(err.Error(), value)
 	}
 	return nil
 }
@@ -118,20 +120,22 @@ var _ hm.Apply = FunCall{}
 func (c FunCall) Fn() hm.Expression { return c.Fun }
 
 func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	funVal, err := EvalNode(ctx, env, c.Fun)
-	if err != nil {
-		// Don't wrap errors - let the specific node error bubble up
-		return nil, err
-	}
+	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
+		funVal, err := EvalNode(ctx, env, c.Fun)
+		if err != nil {
+			// Don't wrap errors - let the specific node error bubble up
+			return nil, err
+		}
 
-	// Evaluate arguments and handle positional/named argument mapping
-	argValues, err := c.evaluateArguments(ctx, env, funVal)
-	if err != nil {
-		return nil, err
-	}
+		// Evaluate arguments and handle positional/named argument mapping
+		argValues, err := c.evaluateArguments(ctx, env, funVal)
+		if err != nil {
+			return nil, err
+		}
 
-	// Dispatch to appropriate function call handler
-	return c.callFunction(ctx, env, funVal, argValues)
+		// Dispatch to appropriate function call handler
+		return c.callFunction(ctx, env, funVal, argValues)
+	})
 }
 
 // callFunction dispatches function calls to appropriate handlers
@@ -432,15 +436,17 @@ var _ Node = Symbol{}
 var _ Evaluator = Symbol{}
 
 func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	scheme, found := env.SchemeOf(s.Name)
-	if !found {
-		return nil, NewInferError(fmt.Sprintf("%q not found", s.Name), s)
-	}
-	t, _ := scheme.Type()
-	if s.AutoCall {
-		t, _ = autoCallFnType(t)
-	}
-	return t, nil
+	return WithInferErrorHandling(s, func() (hm.Type, error) {
+		scheme, found := env.SchemeOf(s.Name)
+		if !found {
+			return nil, fmt.Errorf("%q not found", s.Name)
+		}
+		t, _ := scheme.Type()
+		if s.AutoCall {
+			t, _ = autoCallFnType(t)
+		}
+		return t, nil
+	})
 }
 
 func (s Symbol) Body() hm.Expression { return s }
@@ -456,21 +462,23 @@ func (s Symbol) ReferencedSymbols() []string {
 }
 
 func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	val, found := env.Get(s.Name)
-	if !found {
-		return nil, CreateEvalError(ctx, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env), s)
-	}
+	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
+		val, found := env.Get(s.Name)
+		if !found {
+			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
+		}
 
-	if val == nil {
-		return nil, CreateEvalError(ctx, fmt.Errorf("Symbol: found nil value for %q", s.Name), s)
-	}
+		if val == nil {
+			return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
+		}
 
-	// Auto-call zero-arity functions when accessed as symbols
-	if s.AutoCall && isAutoCallableFn(val) {
-		return autoCallFn(ctx, env, val)
-	}
+		// Auto-call zero-arity functions when accessed as symbols
+		if s.AutoCall && isAutoCallableFn(val) {
+			return autoCallFn(ctx, env, val)
+		}
 
-	return val, nil
+		return val, nil
+	})
 }
 
 // Select represents field selection or method call
@@ -485,65 +493,67 @@ var _ Node = Select{}
 var _ Evaluator = Select{}
 
 func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Handle nil receiver (symbol calls) - look up type in environment
-	if d.Receiver == nil {
-		scheme, found := env.SchemeOf(d.Field)
+	return WithInferErrorHandling(d, func() (hm.Type, error) {
+		// Handle nil receiver (symbol calls) - look up type in environment
+		if d.Receiver == nil {
+			scheme, found := env.SchemeOf(d.Field)
+			if !found {
+				return nil, fmt.Errorf("%q not found in env", d.Field)
+			}
+			t, _ := scheme.Type()
+			return t, nil
+		}
+
+		// Handle normal receiver
+		lt, err := d.Receiver.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("Receiver.Infer: %w", err)
+		}
+
+		// Check if receiver is nullable or non-null
+		var rec Env
+		var isNullable bool
+
+		if nn, ok := lt.(hm.NonNullType); ok {
+			// Non-null receiver
+			envType, ok := nn.Type.(Env)
+			if !ok {
+				return nil, fmt.Errorf("Select.Infer: expected %T, got %T", envType, nn.Type)
+			}
+			rec = envType
+			isNullable = false
+		} else if envType, ok := lt.(Env); ok {
+			// Nullable receiver - inherit nullability
+			rec = envType
+			isNullable = true
+		} else {
+			return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
+		}
+
+		scheme, found := rec.SchemeOf(d.Field)
 		if !found {
-			return nil, NewInferError(fmt.Sprintf("%q not found in env", d.Field), d)
+			return nil, fmt.Errorf("field %q not found in record %s", d.Field, rec)
 		}
-		t, _ := scheme.Type()
+		t, mono := scheme.Type()
+		if !mono {
+			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field)
+		}
+		if d.AutoCall {
+			t, _ = autoCallFnType(t)
+		}
+
+		// If receiver was nullable, make result nullable too
+		if isNullable {
+			// Remove any existing NonNullType wrapper from the field type
+			if nnType, ok := t.(hm.NonNullType); ok {
+				return nnType.Type, nil
+			}
+			// Field type is already nullable, return as-is
+			return t, nil
+		}
+
 		return t, nil
-	}
-
-	// Handle normal receiver
-	lt, err := d.Receiver.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("Receiver.Infer: %w", err)
-	}
-
-	// Check if receiver is nullable or non-null
-	var rec Env
-	var isNullable bool
-
-	if nn, ok := lt.(hm.NonNullType); ok {
-		// Non-null receiver
-		envType, ok := nn.Type.(Env)
-		if !ok {
-			return nil, fmt.Errorf("Select.Infer: expected %T, got %T", envType, nn.Type)
-		}
-		rec = envType
-		isNullable = false
-	} else if envType, ok := lt.(Env); ok {
-		// Nullable receiver - inherit nullability
-		rec = envType
-		isNullable = true
-	} else {
-		return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
-	}
-
-	scheme, found := rec.SchemeOf(d.Field)
-	if !found {
-		return nil, NewInferError(fmt.Sprintf("field %q not found in record %s", d.Field, rec), d)
-	}
-	t, mono := scheme.Type()
-	if !mono {
-		return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field)
-	}
-	if d.AutoCall {
-		t, _ = autoCallFnType(t)
-	}
-
-	// If receiver was nullable, make result nullable too
-	if isNullable {
-		// Remove any existing NonNullType wrapper from the field type
-		if nnType, ok := t.(hm.NonNullType); ok {
-			return nnType.Type, nil
-		}
-		// Field type is already nullable, return as-is
-		return t, nil
-	}
-
-	return t, nil
+	})
 }
 
 func (d Select) DeclaredSymbols() []string {
@@ -568,59 +578,60 @@ func (d Select) Body() hm.Expression { return d }
 func (d Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	var receiverVal Value
-	var err error
+	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
+		var receiverVal Value
+		var err error
 
-	// Handle normal receiver evaluation
-	if d.Receiver != nil {
-		receiverVal, err = EvalNode(ctx, env, d.Receiver)
-		if err != nil {
-			// Don't wrap SourceErrors - let them bubble up directly
-			if _, isSourceError := err.(*SourceError); isSourceError {
-				return nil, err
-			}
-			return nil, fmt.Errorf("evaluating receiver: %w", err)
-		}
-	} else {
-		receiverVal = env
-	}
-
-	val, err := (func() (Value, error) {
-		switch rec := receiverVal.(type) {
-		case NullValue:
-			// Null propagation: if receiver is null, result is null
-			return NullValue{}, nil
-
-		case EvalEnv:
-			if val, found := rec.Get(d.Field); found {
-				// If this is a FunctionValue accessed from a module, bind it to the receiver
-				if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
-					return BoundMethod{Method: fnVal, Receiver: rec}, nil
+		// Handle normal receiver evaluation
+		if d.Receiver != nil {
+			receiverVal, err = EvalNode(ctx, env, d.Receiver)
+			if err != nil {
+				// Don't wrap SourceErrors - let them bubble up directly
+				if _, isSourceError := err.(*SourceError); isSourceError {
+					return nil, err
 				}
-				return val, nil
+				return nil, fmt.Errorf("evaluating receiver: %w", err)
 			}
-			// this shouldn't happen (should be caught at type checking)
-			return nil, fmt.Errorf("module %q does not have a field %q", rec, d.Field)
-
-		case GraphQLValue:
-			// Handle GraphQL field selection
-			return rec.SelectField(ctx, d.Field)
-
-		default:
-			err := fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
-			return nil, CreateEvalError(ctx, err, d)
+		} else {
+			receiverVal = env
 		}
-	})()
-	if err != nil {
-		return nil, err
-	}
 
-	// Auto-call zero-arity functions when accessed as symbols
-	if d.AutoCall && isAutoCallableFn(val) {
-		return autoCallFn(ctx, env, val)
-	}
+		val, err := (func() (Value, error) {
+			switch rec := receiverVal.(type) {
+			case NullValue:
+				// Null propagation: if receiver is null, result is null
+				return NullValue{}, nil
 
-	return val, nil
+			case EvalEnv:
+				if val, found := rec.Get(d.Field); found {
+					// If this is a FunctionValue accessed from a module, bind it to the receiver
+					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
+						return BoundMethod{Method: fnVal, Receiver: rec}, nil
+					}
+					return val, nil
+				}
+				// this shouldn't happen (should be caught at type checking)
+				return nil, fmt.Errorf("module %q does not have a field %q", rec, d.Field)
+
+			case GraphQLValue:
+				// Handle GraphQL field selection
+				return rec.SelectField(ctx, d.Field)
+
+			default:
+				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
+			}
+		})()
+		if err != nil {
+			return nil, err
+		}
+
+		// Auto-call zero-arity functions when accessed as symbols
+		if d.AutoCall && isAutoCallableFn(val) {
+			return autoCallFn(ctx, env, val)
+		}
+
+		return val, nil
+	})
 }
 
 // Index represents list indexing operations like foo[0]
@@ -635,67 +646,69 @@ var _ Node = Index{}
 var _ Evaluator = Index{}
 
 func (i Index) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Infer the type of the receiver (should be a list)
-	receiverType, err := i.Receiver.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("Index.Infer receiver: %w", err)
-	}
+	return WithInferErrorHandling(i, func() (hm.Type, error) {
+		// Infer the type of the receiver (should be a list)
+		receiverType, err := i.Receiver.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("Index.Infer receiver: %w", err)
+		}
 
-	// Infer the type of the index (should be Int!)
-	indexType, err := i.Index.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("Index.Infer index: %w", err)
-	}
+		// Infer the type of the index (should be Int!)
+		indexType, err := i.Index.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("Index.Infer index: %w", err)
+		}
 
-	// Check that index is Int!
-	intType, err := NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := hm.Unify(indexType, intType); err != nil {
-		return nil, NewInferError(fmt.Sprintf("index must be Int!, got %s", indexType), i.Index)
-	}
+		// Check that index is Int!
+		intType, err := NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := hm.Unify(indexType, intType); err != nil {
+			return nil, fmt.Errorf("index must be Int!, got %s", indexType)
+		}
 
-	// Extract element type from list type
-	var elementType hm.Type
-	var isNullable bool
+		// Extract element type from list type
+		var elementType hm.Type
+		var isNullable bool
 
-	if nonNull, ok := receiverType.(hm.NonNullType); ok {
-		// Non-null list
-		if listType, ok := nonNull.Type.(ListType); ok {
+		if nonNull, ok := receiverType.(hm.NonNullType); ok {
+			// Non-null list
+			if listType, ok := nonNull.Type.(ListType); ok {
+				elementType = listType.Type
+				isNullable = false // Non-null list, but indexing could be out of bounds
+			} else {
+				return nil, fmt.Errorf("cannot index non-list type %s", receiverType)
+			}
+		} else if listType, ok := receiverType.(ListType); ok {
+			// Nullable list
 			elementType = listType.Type
-			isNullable = false // Non-null list, but indexing could be out of bounds
+			isNullable = true
 		} else {
-			return nil, NewInferError(fmt.Sprintf("cannot index non-list type %s", receiverType), i.Receiver)
+			return nil, fmt.Errorf("cannot index non-list type %s", receiverType)
 		}
-	} else if listType, ok := receiverType.(ListType); ok {
-		// Nullable list
-		elementType = listType.Type
-		isNullable = true
-	} else {
-		return nil, NewInferError(fmt.Sprintf("cannot index non-list type %s", receiverType), i.Receiver)
-	}
 
-	// Apply auto-call if needed
-	if i.AutoCall {
-		elementType, _ = autoCallFnType(elementType)
-	}
+		// Apply auto-call if needed
+		if i.AutoCall {
+			elementType, _ = autoCallFnType(elementType)
+		}
 
-	// Return nullable element type since indexing can fail (out of bounds)
-	// or if the original list was nullable
-	if isNullable {
-		// Remove NonNull wrapper if present, since nullable list means nullable result
-		if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-			return nonNullElem.Type, nil
+		// Return nullable element type since indexing can fail (out of bounds)
+		// or if the original list was nullable
+		if isNullable {
+			// Remove NonNull wrapper if present, since nullable list means nullable result
+			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
+				return nonNullElem.Type, nil
+			}
+			return elementType, nil
+		} else {
+			// Even for non-null lists, indexing can fail, so return nullable
+			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
+				return nonNullElem.Type, nil
+			}
+			return elementType, nil
 		}
-		return elementType, nil
-	} else {
-		// Even for non-null lists, indexing can fail, so return nullable
-		if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-			return nonNullElem.Type, nil
-		}
-		return elementType, nil
-	}
+	})
 }
 
 func (i Index) DeclaredSymbols() []string {
@@ -714,51 +727,53 @@ func (i Index) Body() hm.Expression { return i }
 func (i Index) GetSourceLocation() *SourceLocation { return i.Loc }
 
 func (i Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Evaluate the receiver
-	receiverVal, err := EvalNode(ctx, env, i.Receiver)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating receiver: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, i, func() (Value, error) {
+		// Evaluate the receiver
+		receiverVal, err := EvalNode(ctx, env, i.Receiver)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating receiver: %w", err)
+		}
 
-	// Handle null receiver
-	if _, ok := receiverVal.(NullValue); ok {
-		return NullValue{}, nil
-	}
+		// Handle null receiver
+		if _, ok := receiverVal.(NullValue); ok {
+			return NullValue{}, nil
+		}
 
-	// Evaluate the index
-	indexVal, err := EvalNode(ctx, env, i.Index)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating index: %w", err)
-	}
+		// Evaluate the index
+		indexVal, err := EvalNode(ctx, env, i.Index)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating index: %w", err)
+		}
 
-	// Check that receiver is a list
-	listVal, ok := receiverVal.(ListValue)
-	if !ok {
-		return nil, CreateEvalError(ctx, fmt.Errorf("cannot index non-list value of type %T", receiverVal), i)
-	}
+		// Check that receiver is a list
+		listVal, ok := receiverVal.(ListValue)
+		if !ok {
+			return nil, fmt.Errorf("cannot index non-list value of type %T", receiverVal)
+		}
 
-	// Check that index is an integer
-	intVal, ok := indexVal.(IntValue)
-	if !ok {
-		return nil, CreateEvalError(ctx, fmt.Errorf("index must be an integer, got %T", indexVal), i)
-	}
+		// Check that index is an integer
+		intVal, ok := indexVal.(IntValue)
+		if !ok {
+			return nil, fmt.Errorf("index must be an integer, got %T", indexVal)
+		}
 
-	// Check bounds
-	idx := int(intVal.Val)
-	if idx < 0 || idx >= len(listVal.Elements) {
-		// Return null for out-of-bounds access (nullable behavior)
-		return NullValue{}, nil
-	}
+		// Check bounds
+		idx := int(intVal.Val)
+		if idx < 0 || idx >= len(listVal.Elements) {
+			// Return null for out-of-bounds access (nullable behavior)
+			return NullValue{}, nil
+		}
 
-	// Get the element
-	element := listVal.Elements[idx]
+		// Get the element
+		element := listVal.Elements[idx]
 
-	// Auto-call zero-arity functions when accessed
-	if i.AutoCall && isAutoCallableFn(element) {
-		return autoCallFn(ctx, env, element)
-	}
+		// Auto-call zero-arity functions when accessed
+		if i.AutoCall && isAutoCallableFn(element) {
+			return autoCallFn(ctx, env, element)
+		}
 
-	return element, nil
+		return element, nil
+	})
 }
 
 // FieldSelection represents a field name in an object selection
@@ -796,40 +811,42 @@ func (o *ObjectSelection) Body() hm.Expression { return o }
 func (o *ObjectSelection) GetSourceLocation() *SourceLocation { return o.Loc }
 
 func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Infer the type of the receiver
-	receiverType, err := o.Receiver.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
-	}
+	return WithInferErrorHandling(o, func() (hm.Type, error) {
+		// Infer the type of the receiver
+		receiverType, err := o.Receiver.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
+		}
 
-	// Handle regular object types
-	t, err := o.inferSelectionType(receiverType, env, fresh)
-	if err != nil {
-		return nil, err
-	}
+		// Handle regular object types
+		t, err := o.inferSelectionType(receiverType, env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	// If this is a list selection, wrap the result in a list type
-	if o.IsList {
-		listType := ListType{Type: t}
+		// If this is a list selection, wrap the result in a list type
+		if o.IsList {
+			listType := ListType{Type: t}
+
+			// If receiver was nullable, make result nullable too
+			if _, ok := receiverType.(hm.NonNullType); ok {
+				// Receiver was non-null, result should be non-null list
+				return hm.NonNullType{Type: listType}, nil
+			} else {
+				// Receiver was nullable, result should be nullable list
+				return listType, nil
+			}
+		}
 
 		// If receiver was nullable, make result nullable too
 		if _, ok := receiverType.(hm.NonNullType); ok {
-			// Receiver was non-null, result should be non-null list
-			return hm.NonNullType{Type: listType}, nil
+			// Receiver was non-null, result should be non-null
+			return hm.NonNullType{Type: t}, nil
 		} else {
-			// Receiver was nullable, result should be nullable list
-			return listType, nil
+			// Receiver was nullable, result should be nullable
+			return t, nil
 		}
-	}
-
-	// If receiver was nullable, make result nullable too
-	if _, ok := receiverType.(hm.NonNullType); ok {
-		// Receiver was non-null, result should be non-null
-		return hm.NonNullType{Type: t}, nil
-	} else {
-		// Receiver was nullable, result should be nullable
-		return t, nil
-	}
+	})
 }
 
 func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
@@ -860,14 +877,14 @@ func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, f
 		// Non-null receiver
 		envType, ok := nn.Type.(Env)
 		if !ok {
-			return nil, WrapInferError(fmt.Errorf("ObjectSelection.inferSelectionType: expected Env, got %T", nn.Type), o)
+			return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected Env, got %T", nn.Type)
 		}
 		rec = envType
 	} else if envType, ok := receiverType.(Env); ok {
 		// Nullable receiver - we can still infer the selection type from the underlying type
 		rec = envType
 	} else {
-		return nil, WrapInferError(fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType), o)
+		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
 	}
 
 	mod := NewModule("")
@@ -914,31 +931,33 @@ func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.E
 }
 
 func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	receiverVal, err := EvalNode(ctx, env, o.Receiver)
-	if err != nil {
-		return nil, fmt.Errorf("ObjectSelection.Eval: %w", err)
-	}
-
-	// Handle null values - propagate null
-	if _, ok := receiverVal.(NullValue); ok {
-		return NullValue{}, nil
-	}
-
-	// Handle list types - apply selection to each element
-	if listVal, ok := receiverVal.(ListValue); ok {
-		var results []Value
-		for _, elem := range listVal.Elements {
-			result, err := o.evalSelectionOnValue(elem, ctx, env)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, result)
+	return WithEvalErrorHandling(ctx, o, func() (Value, error) {
+		receiverVal, err := EvalNode(ctx, env, o.Receiver)
+		if err != nil {
+			return nil, fmt.Errorf("ObjectSelection.Eval: %w", err)
 		}
-		return ListValue{Elements: results}, nil
-	}
 
-	// Handle regular object types
-	return o.evalSelectionOnValue(receiverVal, ctx, env)
+		// Handle null values - propagate null
+		if _, ok := receiverVal.(NullValue); ok {
+			return NullValue{}, nil
+		}
+
+		// Handle list types - apply selection to each element
+		if listVal, ok := receiverVal.(ListValue); ok {
+			var results []Value
+			for _, elem := range listVal.Elements {
+				result, err := o.evalSelectionOnValue(elem, ctx, env)
+				if err != nil {
+					return nil, err
+				}
+				results = append(results, result)
+			}
+			return ListValue{Elements: results}, nil
+		}
+
+		// Handle regular object types
+		return o.evalSelectionOnValue(receiverVal, ctx, env)
+	})
 }
 
 func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
@@ -986,13 +1005,13 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 
 func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
 	if o.Inferred == nil {
-		return nil, CreateEvalError(ctx, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil"), o)
+		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
 	}
 
 	// Build optimized GraphQL query for all selected fields
 	query, err := o.buildGraphQLQuery(gqlVal.QueryChain, o.Fields)
 	if err != nil {
-		return nil, CreateEvalError(ctx, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err), o)
+		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err)
 	}
 
 	q, err := query.Build(ctx)
@@ -1002,7 +1021,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	var result any
 	err = query.Client(gqlVal.Client).Bind(&result).Execute(ctx)
 	if err != nil {
-		return nil, CreateEvalError(ctx, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err), o)
+		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err)
 	}
 
 	// Convert GraphQL result to ModuleValue
@@ -1202,76 +1221,80 @@ func (c Conditional) Body() hm.Expression { return c }
 func (c Conditional) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	condType, err := c.Condition.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	boolType, err := NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := hm.Unify(condType, boolType); err != nil {
-		return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
-	}
-
-	// Analyze null assertions in the condition for flow-sensitive type checking
-	assertions := AnalyzeNullAssertions(c.Condition)
-	thenRefinements, elseRefinements, err := CreateTypeRefinements(assertions, env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("creating type refinements: %w", err)
-	}
-
-	// Apply type refinements to the then branch
-	thenEnv := ApplyTypeRefinements(env, thenRefinements)
-	thenType, err := c.Then.Infer(thenEnv, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	if c.Else != nil {
-		elseBlock := c.Else.(Block)
-
-		// Apply type refinements to the else branch
-		elseEnv := ApplyTypeRefinements(env, elseRefinements)
-		elseType, err := elseBlock.Infer(elseEnv, fresh)
+	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		condType, err := c.Condition.Infer(env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		if _, err := hm.Unify(thenType, elseType); err != nil {
-			// Try to point to the specific value in the else block for better error targeting
-			var errorNode Node = elseBlock
-			if len(elseBlock.Forms) > 0 {
-				errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
-			}
-			return nil, WrapInferError(err, errorNode)
+		boolType, err := NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+		if err != nil {
+			return nil, err
 		}
-	}
 
-	return thenType, nil
+		if _, err := hm.Unify(condType, boolType); err != nil {
+			return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
+		}
+
+		// Analyze null assertions in the condition for flow-sensitive type checking
+		assertions := AnalyzeNullAssertions(c.Condition)
+		thenRefinements, elseRefinements, err := CreateTypeRefinements(assertions, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("creating type refinements: %w", err)
+		}
+
+		// Apply type refinements to the then branch
+		thenEnv := ApplyTypeRefinements(env, thenRefinements)
+		thenType, err := c.Then.Infer(thenEnv, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		if c.Else != nil {
+			elseBlock := c.Else.(Block)
+
+			// Apply type refinements to the else branch
+			elseEnv := ApplyTypeRefinements(env, elseRefinements)
+			elseType, err := elseBlock.Infer(elseEnv, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			if _, err := hm.Unify(thenType, elseType); err != nil {
+				// Point to the specific else block for better error targeting
+				var errorNode Node = elseBlock
+				if len(elseBlock.Forms) > 0 {
+					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
+				}
+				return nil, NewInferError(err.Error(), errorNode)
+			}
+		}
+
+		return thenType, nil
+	})
 }
 
 func (c Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	condVal, err := EvalNode(ctx, env, c.Condition)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating condition: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
+		condVal, err := EvalNode(ctx, env, c.Condition)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating condition: %w", err)
+		}
 
-	boolVal, ok := condVal.(BoolValue)
-	if !ok {
-		return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
-	}
+		boolVal, ok := condVal.(BoolValue)
+		if !ok {
+			return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
+		}
 
-	if boolVal.Val {
-		return EvalNode(ctx, env, c.Then)
-	} else if c.Else != nil {
-		elseBlock := c.Else.(Block)
-		return EvalNode(ctx, env, elseBlock)
-	} else {
-		return NullValue{}, nil
-	}
+		if boolVal.Val {
+			return EvalNode(ctx, env, c.Then)
+		} else if c.Else != nil {
+			elseBlock := c.Else.(Block)
+			return EvalNode(ctx, env, elseBlock)
+		} else {
+			return NullValue{}, nil
+		}
+	})
 }
 
 // Let represents a let binding expression
@@ -1301,27 +1324,31 @@ func (l Let) Body() hm.Expression { return l }
 func (l Let) GetSourceLocation() *SourceLocation { return l.Loc }
 
 func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	valueType, err := l.Value.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
+	return WithInferErrorHandling(l, func() (hm.Type, error) {
+		valueType, err := l.Value.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	newEnv := env.Clone()
-	newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
+		newEnv := env.Clone()
+		newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
 
-	return l.Expr.Infer(newEnv, fresh)
+		return l.Expr.Infer(newEnv, fresh)
+	})
 }
 
 func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	val, err := EvalNode(ctx, env, l.Value)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating let value: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
+		val, err := EvalNode(ctx, env, l.Value)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating let value: %w", err)
+		}
 
-	newEnv := env.Clone()
-	newEnv.Set(l.Name, val)
+		newEnv := env.Clone()
+		newEnv.Set(l.Name, val)
 
-	return EvalNode(ctx, newEnv, l.Expr)
+		return EvalNode(ctx, newEnv, l.Expr)
+	})
 }
 
 // TypeHint represents a type hint expression using :: syntax
@@ -1347,57 +1374,61 @@ func (t TypeHint) Body() hm.Expression { return t }
 func (t TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
 
 func (t TypeHint) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Infer the type of the expression
-	exprType, err := t.Expr.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
+	return WithInferErrorHandling(t, func() (hm.Type, error) {
+		// Infer the type of the expression
+		exprType, err := t.Expr.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	// Infer the type of the type hint
-	hintType, err := t.Type.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
+		// Infer the type of the type hint
+		hintType, err := t.Type.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	// For type hints, we want to bind type variables from the expression to concrete types in the hint
-	// while allowing the hint to override things like nullability
+		// For type hints, we want to bind type variables from the expression to concrete types in the hint
+		// while allowing the hint to override things like nullability
 
-	// Try to extract the "core" types for unification (removing nullability wrappers)
-	exprCore := exprType
-	hintCore := hintType
+		// Try to extract the "core" types for unification (removing nullability wrappers)
+		exprCore := exprType
+		hintCore := hintType
 
-	// If expression is NonNull, extract the inner type for unification
-	if exprNonNull, ok := exprType.(hm.NonNullType); ok {
-		exprCore = exprNonNull.Type
-	}
+		// If expression is NonNull, extract the inner type for unification
+		if exprNonNull, ok := exprType.(hm.NonNullType); ok {
+			exprCore = exprNonNull.Type
+		}
 
-	// If hint is NonNull, extract the inner type for unification
-	if hintNonNull, ok := hintType.(hm.NonNullType); ok {
-		hintCore = hintNonNull.Type
-	}
+		// If hint is NonNull, extract the inner type for unification
+		if hintNonNull, ok := hintType.(hm.NonNullType); ok {
+			hintCore = hintNonNull.Type
+		}
 
-	// Try to unify the core types to bind type variables
-	if subs, err := hm.Unify(exprCore, hintCore); err == nil {
-		// Unification succeeded - apply substitutions to the hint and return it
-		// This allows the hint to override the expression's type (including nullability)
+		// Try to unify the core types to bind type variables
+		if subs, err := hm.Unify(exprCore, hintCore); err == nil {
+			// Unification succeeded - apply substitutions to the hint and return it
+			// This allows the hint to override the expression's type (including nullability)
+			result := hintType.Apply(subs).(hm.Type)
+			return result, nil
+		}
+
+		// Core unification failed, try the original approach with subtyping
+		subs, err := hm.Unify(exprType, hintType)
+		if err != nil {
+			return nil, NewInferError(fmt.Sprintf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
+		}
+
+		// Apply substitutions to the hint type and return it
 		result := hintType.Apply(subs).(hm.Type)
 		return result, nil
-	}
-
-	// Core unification failed, try the original approach with subtyping
-	subs, err := hm.Unify(exprType, hintType)
-	if err != nil {
-		return nil, NewInferError(fmt.Sprintf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
-	}
-
-	// Apply substitutions to the hint type and return it
-	result := hintType.Apply(subs).(hm.Type)
-	return result, nil
+	})
 }
 
 func (t TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Type hints don't change runtime behavior - just evaluate the expression
-	return EvalNode(ctx, env, t.Expr)
+	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
+		// Type hints don't change runtime behavior - just evaluate the expression
+		return EvalNode(ctx, env, t.Expr)
+	})
 }
 
 // Lambda represents a lambda function expression
@@ -1422,9 +1453,13 @@ func (l *Lambda) Body() hm.Expression { return l }
 func (l *Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
 
 func (l *Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return l.FunctionBase.inferFunctionType(env, fresh, true, nil, "Lambda")
+	return WithInferErrorHandling(l, func() (hm.Type, error) {
+		return l.FunctionBase.inferFunctionType(env, fresh, true, nil, "Lambda")
+	})
 }
 
 func (l *Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return l.FunctionBase.Eval(ctx, env)
+	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
+		return l.FunctionBase.Eval(ctx, env)
+	})
 }

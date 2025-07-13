@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/vito/sprout/pkg/hm"
 )
 
 // SourceLocation represents a location in source code
@@ -239,6 +241,41 @@ func ConvertInferError(origErr error) error {
 
 	// Not an InferError, handle as regular error
 	return origErr
+}
+
+
+// WithInferErrorHandling wraps an Infer method implementation with automatic error handling
+func WithInferErrorHandling(node Node, fn func() (hm.Type, error)) (hm.Type, error) {
+	typ, err := fn()
+	if err != nil {
+		// Check if error already has source location context
+		var inferErr *InferError
+		var sourceErr *SourceError
+		if errors.As(err, &inferErr) || errors.As(err, &sourceErr) {
+			// Already has source location context, preserve it
+			return nil, err
+		}
+		// No source location context, wrap it
+		return nil, WrapInferError(err, node)
+	}
+	return typ, nil
+}
+
+// WithEvalErrorHandling wraps an Eval method implementation with automatic error handling
+func WithEvalErrorHandling(ctx context.Context, node Node, fn func() (Value, error)) (Value, error) {
+	val, err := fn()
+	if err != nil {
+		// Check if error already has source location context
+		var sourceErr *SourceError
+		var assertionErr *AssertionError
+		if errors.As(err, &sourceErr) || errors.As(err, &assertionErr) {
+			// Already has source location context, preserve it
+			return nil, err
+		}
+		// No source location context, wrap it
+		return nil, CreateEvalError(ctx, err, node)
+	}
+	return val, nil
 }
 
 // AssertionError represents a failed assertion with detailed information

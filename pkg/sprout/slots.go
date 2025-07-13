@@ -64,90 +64,94 @@ func (s SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 }
 
 func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var err error
+	return WithInferErrorHandling(s, func() (hm.Type, error) {
+		var err error
 
-	var definedType hm.Type
-	if s.Type_ != nil {
-		definedType, err = s.Type_.Infer(env, fresh)
-		if err != nil {
-			return nil, WrapInferError(err, s)
-		}
-	}
-
-	var inferredType hm.Type
-	if s.Value != nil {
-		inferredType, err = s.Value.Infer(env, fresh)
-		if err != nil {
-			return nil, WrapInferError(err, s.Value)
-		}
-
-		if definedType != nil {
-			if _, err := hm.Unify(definedType, inferredType); err != nil {
-				return nil, WrapInferError(err, s.Value)
-			}
-		} else {
-			definedType = inferredType
-		}
-	}
-
-	if definedType == nil {
-		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
-	}
-
-	if e, ok := env.(Env); ok {
-		cur, defined := e.LocalSchemeOf(s.Named)
-		if defined {
-			curT, curMono := cur.Type()
-			if !curMono {
-				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
-			}
-
-			if !definedType.Eq(curT) {
-				return nil, WrapInferError(fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Named, curT, definedType), s.Value)
+		var definedType hm.Type
+		if s.Type_ != nil {
+			definedType, err = s.Type_.Infer(env, fresh)
+			if err != nil {
+				return nil, err
 			}
 		}
 
-		e.SetVisibility(s.Named, s.Visibility)
-	}
+		var inferredType hm.Type
+		if s.Value != nil {
+			inferredType, err = s.Value.Infer(env, fresh)
+			if err != nil {
+				return nil, err
+			}
 
-	// Validate directive applications
-	for _, directive := range s.Directives {
-		_, err := directive.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
+			if definedType != nil {
+				if _, err := hm.Unify(definedType, inferredType); err != nil {
+					return nil, NewInferError(err.Error(), s.Value)
+				}
+			} else {
+				definedType = inferredType
+			}
 		}
-	}
 
-	env.Add(s.Named, hm.NewScheme(nil, definedType))
-	return definedType, nil
+		if definedType == nil {
+			return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
+		}
+
+		if e, ok := env.(Env); ok {
+			cur, defined := e.LocalSchemeOf(s.Named)
+			if defined {
+				curT, curMono := cur.Type()
+				if !curMono {
+					return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
+				}
+
+				if !definedType.Eq(curT) {
+					return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Named, curT, definedType)
+				}
+			}
+
+			e.SetVisibility(s.Named, s.Visibility)
+		}
+
+		// Validate directive applications
+		for _, directive := range s.Directives {
+			_, err := directive.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
+			}
+		}
+
+		env.Add(s.Named, hm.NewScheme(nil, definedType))
+		return definedType, nil
+	})
 }
 
 func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	val, defined := env.GetLocal(s.Named)
-	if defined {
-		// already defined (e.g. through constructor), nothing to do
+	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
+		val, defined := env.GetLocal(s.Named)
+		if defined {
+			// already defined (e.g. through constructor), nothing to do
+			return val, nil
+		}
+
+		if s.Value == nil {
+			// If no value is provided, this is just a type declaration
+			// Add a null value to the environment as a placeholder
+			env.SetWithVisibility(s.Named, NullValue{}, s.Visibility)
+			return NullValue{}, nil
+		}
+
+		// Evaluate the value expression with proper error context
+		val, err := EvalNode(ctx, env, s.Value)
+		if err != nil {
+			// Convert error with proper source location from the failing node
+			return nil, err
+		}
+
+		// Add the value to the environment for future use
+		// If it's a ModuleValue, use SetWithVisibility to track visibility
+		env.SetWithVisibility(s.Named, val, s.Visibility)
+
 		return val, nil
-	}
-
-	if s.Value == nil {
-		// If no value is provided, this is just a type declaration
-		// Add a null value to the environment as a placeholder
-		env.SetWithVisibility(s.Named, NullValue{}, s.Visibility)
-		return NullValue{}, nil
-	}
-
-	// Evaluate the value expression with proper error context
-	val, err := EvalNode(ctx, env, s.Value)
-	if err != nil {
-		// Convert error with proper source location from the failing node
-		return nil, CreateEvalError(ctx, err, s.Value)
-	}
-
-	// Add the value to the environment for future use
-	// If it's a ModuleValue, use SetWithVisibility to track visibility
-	env.SetWithVisibility(s.Named, val, s.Visibility)
-
-	return val, nil
+	})
 }
 
 type ClassDecl struct {
@@ -232,40 +236,42 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 }
 
 func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod, ok := env.(Env)
-	if !ok {
-		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
-	}
-
-	class, found := mod.NamedType(c.Named)
-	if !found {
-		class = NewModule(c.Named)
-		mod.AddClass(c.Named, class)
-	}
-
-	inferEnv := &CompositeModule{
-		primary: class,
-		lexical: env.(Env),
-	}
-
-	// Use phased inference approach to handle forward references within the class body
-	if _, err := InferFormsWithPhases(c.Value.Forms, inferEnv, fresh); err != nil {
-		return nil, err
-	}
-
-	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
-	class.Add("self", self)
-
-	// Validate directive applications
-	for _, directive := range c.Directives {
-		_, err := directive.Infer(env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
+	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		mod, ok := env.(Env)
+		if !ok {
+			return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
 		}
-	}
 
-	c.Inferred = class.(*Module)
-	return c.ConstructorFnType, nil
+		class, found := mod.NamedType(c.Named)
+		if !found {
+			class = NewModule(c.Named)
+			mod.AddClass(c.Named, class)
+		}
+
+		inferEnv := &CompositeModule{
+			primary: class,
+			lexical: env.(Env),
+		}
+
+		// Use phased inference approach to handle forward references within the class body
+		if _, err := InferFormsWithPhases(c.Value.Forms, inferEnv, fresh); err != nil {
+			return nil, err
+		}
+
+		self := hm.NewScheme(nil, hm.NonNullType{Type: class})
+		class.Add("self", self)
+
+		// Validate directive applications
+		for _, directive := range c.Directives {
+			_, err := directive.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
+			}
+		}
+
+		c.Inferred = class.(*Module)
+		return c.ConstructorFnType, nil
+	})
 }
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots as constructor
@@ -302,25 +308,27 @@ func (c *ClassDecl) buildConstructorType(env hm.Env, params []SlotDecl, classTyp
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	if c.Inferred == nil {
-		panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
-	}
+	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
+		if c.Inferred == nil {
+			panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
+		}
 
-	// Extract constructor parameters and get filtered class body forms
-	constructorParams := c.extractConstructorParameters()
+		// Extract constructor parameters and get filtered class body forms
+		constructorParams := c.extractConstructorParameters()
 
-	// Create a constructor function that evaluates the class body when called
-	constructor := &ConstructorFunction{
-		Closure:        env,
-		ClassName:      c.Named,
-		Parameters:     constructorParams,
-		ClassType:      c.Inferred,
-		ClassBodyForms: c.Value.Forms,
-		FnType:         c.ConstructorFnType,
-	}
+		// Create a constructor function that evaluates the class body when called
+		constructor := &ConstructorFunction{
+			Closure:        env,
+			ClassName:      c.Named,
+			Parameters:     constructorParams,
+			ClassType:      c.Inferred,
+			ClassBodyForms: c.Value.Forms,
+			FnType:         c.ConstructorFnType,
+		}
 
-	// Add the constructor to the evaluation environment
-	env.SetWithVisibility(c.Named, constructor, c.Visibility)
+		// Add the constructor to the evaluation environment
+		env.SetWithVisibility(c.Named, constructor, c.Visibility)
 
-	return constructor, nil
+		return constructor, nil
+	})
 }

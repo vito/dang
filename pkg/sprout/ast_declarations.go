@@ -26,7 +26,7 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 		if arg.Type_ != nil {
 			definedArgType, err = arg.Type_.Infer(env, fresh)
 			if err != nil {
-				return nil, WrapInferError(err, arg)
+				return nil, fmt.Errorf("inferring argument %q type: %w", arg.Named, err)
 			}
 		}
 
@@ -34,21 +34,21 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 		if arg.Value != nil {
 			inferredValType, err = arg.Value.Infer(env, fresh)
 			if err != nil {
-				return nil, WrapInferError(err, arg.Value)
+				return nil, fmt.Errorf("inferring argument %q value: %w", arg.Named, err)
 			}
 		}
 
 		for _, directive := range arg.Directives {
 			_, err = directive.Infer(env, fresh)
 			if err != nil {
-				return nil, WrapInferError(err, arg.Value)
+				return nil, fmt.Errorf("inferring argument %q directive: %w", arg.Named, err)
 			}
 		}
 
 		var finalArgType hm.Type
 		if definedArgType != nil && inferredValType != nil {
 			if !definedArgType.Eq(inferredValType) {
-				return nil, WrapInferError(fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType), arg)
+				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
 			}
 			finalArgType = definedArgType
 		} else if definedArgType != nil {
@@ -247,58 +247,62 @@ func (r Reassignment) Body() hm.Expression { return r.Target }
 func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Infer the type of the target (left-hand side)
-	targetType, err := r.Target.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
-	}
-
-	// Infer the type of the value (right-hand side)
-	valueType, err := r.Value.Infer(env, fresh)
-	if err != nil {
-		return nil, fmt.Errorf("Reassignment.Infer: value: %w", err)
-	}
-
-	// For simple assignment, check compatibility
-	if r.Modifier == "=" {
-		if _, err := hm.Unify(targetType, valueType); err != nil {
-			return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
-		}
-		return targetType, nil
-	} else if r.Modifier == "+" {
-		// For compound assignment, check that it's compatible with addition
-		// Create a temporary Addition node to check type compatibility
-		tempAddition := NewAddition(r.Target, r.Value, r.Loc)
-		_, err := tempAddition.Infer(env, fresh)
+	return WithInferErrorHandling(r, func() (hm.Type, error) {
+		// Infer the type of the target (left-hand side)
+		targetType, err := r.Target.Infer(env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
+			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
-		return targetType, nil
-	}
 
-	return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
+		// Infer the type of the value (right-hand side)
+		valueType, err := r.Value.Infer(env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("Reassignment.Infer: value: %w", err)
+		}
+
+		// For simple assignment, check compatibility
+		if r.Modifier == "=" {
+			if _, err := hm.Unify(targetType, valueType); err != nil {
+				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
+			}
+			return targetType, nil
+		} else if r.Modifier == "+" {
+			// For compound assignment, check that it's compatible with addition
+			// Create a temporary Addition node to check type compatibility
+			tempAddition := NewAddition(r.Target, r.Value, r.Loc)
+			_, err := tempAddition.Infer(env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
+			}
+			return targetType, nil
+		}
+
+		return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
+	})
 }
 
 func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Evaluate the value first
-	value, err := EvalNode(ctx, env, r.Value)
-	if err != nil {
-		return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, r, func() (Value, error) {
+		// Evaluate the value first
+		value, err := EvalNode(ctx, env, r.Value)
+		if err != nil {
+			return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
+		}
 
-	// Handle different assignment types based on target
-	switch target := r.Target.(type) {
-	case Symbol:
-		// Simple variable assignment: x = value or x += value
-		return r.evalVariableAssignment(ctx, env, target.Name, value)
+		// Handle different assignment types based on target
+		switch target := r.Target.(type) {
+		case Symbol:
+			// Simple variable assignment: x = value or x += value
+			return r.evalVariableAssignment(ctx, env, target.Name, value)
 
-	case Select:
-		// Field assignment: obj.field = value or obj.field += value
-		return r.evalFieldAssignment(ctx, env, target, value)
+		case Select:
+			// Field assignment: obj.field = value or obj.field += value
+			return r.evalFieldAssignment(ctx, env, target, value)
 
-	default:
-		return nil, fmt.Errorf("Reassignment.Eval: unsupported assignment target type %T", r.Target)
-	}
+		default:
+			return nil, fmt.Errorf("Reassignment.Eval: unsupported assignment target type %T", r.Target)
+		}
+	})
 }
 
 func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, varName string, value Value) (Value, error) {
@@ -340,8 +344,7 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 	// Get the root object from the environment
 	rootObj, found := env.Get(rootSymbol)
 	if !found {
-		err := fmt.Errorf("object %q not found", rootSymbol)
-		return nil, CreateEvalError(ctx, err, selectNode)
+		return nil, fmt.Errorf("object %q not found", rootSymbol)
 	}
 
 	// Clone the root object to begin the copy-on-write process
@@ -353,8 +356,7 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 		fieldName := path[i]
 		val, found := currentObj.Get(fieldName)
 		if !found {
-			err := fmt.Errorf("field %q not found in object", fieldName)
-			return nil, CreateEvalError(ctx, err, selectNode)
+			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
 		clonedVal := val.(EvalEnv).Clone()
 		currentObj.Set(fieldName, clonedVal.(Value))
@@ -372,8 +374,7 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 		// Compound assignment: obj.field += value
 		currentValue, found := currentObj.Get(finalField)
 		if !found {
-			err := fmt.Errorf("field %q not found", finalField)
-			return nil, CreateEvalError(ctx, err, selectNode)
+			return nil, fmt.Errorf("field %q not found", finalField)
 		}
 
 		// Perform addition using existing Addition logic
@@ -585,43 +586,47 @@ func (a Assert) Body() hm.Expression { return a.Block }
 func (a Assert) GetSourceLocation() *SourceLocation { return a.Loc }
 
 func (a Assert) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Infer the block type - the assertion will be evaluated
-	_, err := a.Block.Infer(env, fresh)
-	if err != nil {
-		return nil, WrapInferError(err, a)
-	}
-
-	// Infer the message type if present
-	if a.Message != nil {
-		_, err := a.Message.Infer(env, fresh)
+	return WithInferErrorHandling(a, func() (hm.Type, error) {
+		// Infer the block type - the assertion will be evaluated
+		_, err := a.Block.Infer(env, fresh)
 		if err != nil {
-			return nil, WrapInferError(err, a)
+			return nil, err
 		}
-	}
 
-	// Assert returns nothing (unit type / null)
-	return hm.TypeVariable('a'), nil
+		// Infer the message type if present
+		if a.Message != nil {
+			_, err := a.Message.Infer(env, fresh)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Assert returns nothing (unit type / null)
+		return hm.TypeVariable('a'), nil
+	})
 }
 
 func (a Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	// Evaluate the block (gets the last expression's value)
-	blockVal, err := EvalNode(ctx, env, a.Block)
-	if err != nil {
-		return nil, CreateEvalError(ctx, err, a)
-	}
+	return WithEvalErrorHandling(ctx, a, func() (Value, error) {
+		// Evaluate the block (gets the last expression's value)
+		blockVal, err := EvalNode(ctx, env, a.Block)
+		if err != nil {
+			return nil, err
+		}
 
-	// Check if assertion passed
-	if isTruthy(blockVal) {
-		return NullValue{}, nil
-	}
+		// Check if assertion passed
+		if isTruthy(blockVal) {
+			return NullValue{}, nil
+		}
 
-	// Assertion failed - analyze the last expression
-	if len(a.Block.Forms) == 0 {
-		return nil, &AssertionError{Message: "Empty assertion block", Location: a.Loc}
-	}
+		// Assertion failed - analyze the last expression
+		if len(a.Block.Forms) == 0 {
+			return nil, &AssertionError{Message: "Empty assertion block", Location: a.Loc}
+		}
 
-	lastExpr := a.Block.Forms[len(a.Block.Forms)-1]
-	return nil, CreateEvalError(ctx, a.createAssertionError(ctx, env, lastExpr), a)
+		lastExpr := a.Block.Forms[len(a.Block.Forms)-1]
+		return nil, a.createAssertionError(ctx, env, lastExpr)
+	})
 }
 
 // createAssertionError builds a detailed error message with child node values
@@ -887,22 +892,24 @@ func (d DirectiveApplication) Body() hm.Expression { return nil }
 func (d DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d DirectiveApplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Validate that the directive exists and arguments match
-	if e, ok := env.(Env); ok {
-		directiveDecl, found := e.GetDirective(d.Name)
-		if !found {
-			return nil, WrapInferError(fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name), d)
+	return WithInferErrorHandling(d, func() (hm.Type, error) {
+		// Validate that the directive exists and arguments match
+		if e, ok := env.(Env); ok {
+			directiveDecl, found := e.GetDirective(d.Name)
+			if !found {
+				return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
+			}
+
+			// Validate arguments match the directive declaration
+			err := d.validateArguments(directiveDecl, env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
+			}
 		}
 
-		// Validate arguments match the directive declaration
-		err := d.validateArguments(directiveDecl, env, fresh)
-		if err != nil {
-			return nil, WrapInferError(fmt.Errorf("DirectiveApplication.Infer: %w", err), d)
-		}
-	}
-
-	// Directive applications don't have a meaningful type for inference
-	return hm.TypeVariable('d'), nil
+		// Directive applications don't have a meaningful type for inference
+		return hm.TypeVariable('d'), nil
+	})
 }
 
 func (d DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {

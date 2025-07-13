@@ -46,43 +46,47 @@ func (b BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
 
 // Common type inference based on operator type
 func (b BinaryOperator) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := b.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	rt, err := b.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-
-	switch b.OpType {
-	case ArithmeticOp:
-		// Unify types and return the unified type
-		subs, err := hm.Unify(lt, rt)
+	return WithInferErrorHandling(b, func() (hm.Type, error) {
+		lt, err := b.Left.Infer(env, fresh)
 		if err != nil {
-			return nil, WrapInferError(err, b)
+			return nil, err
 		}
-		return lt.Apply(subs).(hm.Type), nil
-	case ComparisonOp:
-		// Validate types but always return Boolean
-		return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-	default:
-		return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
-	}
+		rt, err := b.Right.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		switch b.OpType {
+		case ArithmeticOp:
+			// Unify types and return the unified type
+			subs, err := hm.Unify(lt, rt)
+			if err != nil {
+				return nil, err
+			}
+			return lt.Apply(subs).(hm.Type), nil
+		case ComparisonOp:
+			// Validate types but always return Boolean
+			return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+		default:
+			return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
+		}
+	})
 }
 
 // Common evaluation logic
 func (b BinaryOperator) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, b.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
-	rightVal, err := EvalNode(ctx, env, b.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, b, func() (Value, error) {
+		leftVal, err := EvalNode(ctx, env, b.Left)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating left side: %w", err)
+		}
+		rightVal, err := EvalNode(ctx, env, b.Right)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating right side: %w", err)
+		}
 
-	return b.EvalFunc(leftVal, rightVal)
+		return b.EvalFunc(leftVal, rightVal)
+	})
 }
 
 // Evaluation functions for specific operators
@@ -217,27 +221,29 @@ var _ Node = Default{}
 var _ Evaluator = Default{}
 
 func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	lt, err := d.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	rt, err := d.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
+	return WithInferErrorHandling(d, func() (hm.Type, error) {
+		lt, err := d.Left.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		rt, err := d.Right.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	// For the default operator, the left side can be nullable and the right side
-	// provides the fallback value. We need to unify the non-null version of the
-	// left type with the right type.
+		// For the default operator, the left side can be nullable and the right side
+		// provides the fallback value. We need to unify the non-null version of the
+		// left type with the right type.
 
-	// Unify types with subtyping support for nullable/NonNull compatibility
-	subs, err := hm.Unify(lt, rt)
-	if err != nil {
-		return nil, WrapInferError(err, d)
-	}
+		// Unify types with subtyping support for nullable/NonNull compatibility
+		subs, err := hm.Unify(lt, rt)
+		if err != nil {
+			return nil, err
+		}
 
-	// Return the right type (the fallback value type) with substitutions applied
-	return rt.Apply(subs).(hm.Type), nil
+		// Return the right type (the fallback value type) with substitutions applied
+		return rt.Apply(subs).(hm.Type), nil
+	})
 }
 
 func (d Default) DeclaredSymbols() []string {
@@ -256,18 +262,20 @@ func (d Default) Body() hm.Expression { return d }
 func (d Default) GetSourceLocation() *SourceLocation { return d.Loc }
 
 func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, d.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
+		leftVal, err := EvalNode(ctx, env, d.Left)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating left side: %w", err)
+		}
 
-	// Check if left value is null
-	if _, isNull := leftVal.(NullValue); isNull {
-		// Use the right side as default
-		return EvalNode(ctx, env, d.Right)
-	}
+		// Check if left value is null
+		if _, isNull := leftVal.(NullValue); isNull {
+			// Use the right side as default
+			return EvalNode(ctx, env, d.Right)
+		}
 
-	return leftVal, nil
+		return leftVal, nil
+	})
 }
 
 type Equality struct {
@@ -280,18 +288,20 @@ var _ Node = Equality{}
 var _ Evaluator = Equality{}
 
 func (e Equality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Type check both sides for validity, but allow cross-type comparison at runtime
-	_, err := e.Left.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
-	_, err = e.Right.Infer(env, fresh)
-	if err != nil {
-		return nil, err
-	}
+	return WithInferErrorHandling(e, func() (hm.Type, error) {
+		// Type check both sides for validity, but allow cross-type comparison at runtime
+		_, err := e.Left.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		_, err = e.Right.Infer(env, fresh)
+		if err != nil {
+			return nil, err
+		}
 
-	// Equality always returns a boolean
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+		// Equality always returns a boolean
+		return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+	})
 }
 
 func (e Equality) DeclaredSymbols() []string {
@@ -310,19 +320,21 @@ func (e Equality) Body() hm.Expression { return e }
 func (e Equality) GetSourceLocation() *SourceLocation { return e.Loc }
 
 func (e Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	leftVal, err := EvalNode(ctx, env, e.Left)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating left side: %w", err)
-	}
+	return WithEvalErrorHandling(ctx, e, func() (Value, error) {
+		leftVal, err := EvalNode(ctx, env, e.Left)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating left side: %w", err)
+		}
 
-	rightVal, err := EvalNode(ctx, env, e.Right)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating right side: %w", err)
-	}
+		rightVal, err := EvalNode(ctx, env, e.Right)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating right side: %w", err)
+		}
 
-	// Compare the values
-	equal := valuesEqual(leftVal, rightVal)
-	return BoolValue{Val: equal}, nil
+		// Compare the values
+		equal := valuesEqual(leftVal, rightVal)
+		return BoolValue{Val: equal}, nil
+	})
 }
 
 type Addition struct {
