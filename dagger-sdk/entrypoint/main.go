@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"sort"
 
 	"dagger.io/dagger"
+	"dagger.io/dagger/dag"
 	"dagger.io/dagger/telemetry"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/vito/sprout/pkg/hm"
 
 	"github.com/vito/sprout/introspection"
@@ -101,7 +105,16 @@ func main() {
 	}
 }
 
-func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) error {
+func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (rerr error) {
+	fnCall := dag.CurrentFunctionCall()
+	defer func() {
+		if rerr != nil {
+			if err := fnCall.ReturnError(ctx, convertError(rerr)); err != nil {
+				fmt.Println("failed to return error:", err, "\noriginal error:", rerr)
+			}
+		}
+	}()
+
 	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
 	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
 	env, err := sprout.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
@@ -126,7 +139,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if err != nil {
 			return fmt.Errorf("failed to marshal module: %w", err)
 		}
-		return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
+		return fnCall.ReturnValue(ctx, dagger.JSON(jsonBytes))
 	}
 
 	parentModBase, found := env.Get(parentName)
@@ -240,7 +253,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	if err != nil {
 		return fmt.Errorf("failed to marshal result: %w", err)
 	}
-	return dag.CurrentFunctionCall().ReturnValue(ctx, dagger.JSON(jsonBytes))
+	return fnCall.ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
 func anyToSprout(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.Type) (sprout.Value, error) {
@@ -548,3 +561,26 @@ func WriteError(ctx context.Context, err error) {
 
 // 	return nil
 // }
+
+func convertError(rerr error) *dagger.Error {
+	var gqlErr *gqlerror.Error
+	if errors.As(rerr, &gqlErr) {
+		dagErr := dag.Error(gqlErr.Message)
+		if gqlErr.Extensions != nil {
+			keys := make([]string, 0, len(gqlErr.Extensions))
+			for k := range gqlErr.Extensions {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				val, err := json.Marshal(gqlErr.Extensions[k])
+				if err != nil {
+					fmt.Println("failed to marshal error value:", err)
+				}
+				dagErr = dagErr.WithValue(k, dagger.JSON(val))
+			}
+		}
+		return dagErr
+	}
+	return dag.Error(rerr.Error())
+}
