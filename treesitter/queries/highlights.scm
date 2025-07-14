@@ -94,6 +94,11 @@
 (select_or_call
   (id) @function.method)
 
+;; Object selection (multi-field selection)
+(object_selection) @punctuation.bracket
+(field_selection
+  (id) @property)
+
 ((symbol) @variable.special
   (#match? @variable.special "^(self)$"))
 
