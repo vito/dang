@@ -17,7 +17,7 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Class / Slot / DirectiveDecl / Reassignment / Form
+Expr <- Import / Class / Slot / DirectiveDecl / Reassignment / Form
 
 Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
@@ -673,3 +673,28 @@ DirectiveName <- '@' name:Id {
 
 DirectiveToken <- "directive" !WordChar
 OnToken <- "on" !WordChar
+
+Import <- ImportToken _ source:ImportSource alias:(_ AsToken _ name:Id)? {
+  var aliasStr *string
+  if alias != nil {
+    // alias is [_, "as", _, string]
+    aliasValue := alias.([]interface{})[3].(string)
+    aliasStr = &aliasValue
+  }
+  return &ImportDecl{
+    Source: source.(string),
+    Alias:  aliasStr,
+    Loc:    c.Loc(),
+  }, nil
+}
+
+ImportSource <- DaggerKeyword / SchemaURL
+DaggerKeyword <- "dagger" !WordChar {
+  return "dagger", nil
+}
+SchemaURL <- [a-zA-Z] [a-zA-Z0-9.-/]* {
+  return string(c.text), nil
+}
+
+ImportToken <- "import" !WordChar
+AsToken <- "as" !WordChar

@@ -87,7 +87,7 @@ func (tr *TestRunner) RunScript(script string) error {
 
 	// Create type environment and infer types
 	typeEnv := NewEnv(tr.schema)
-	_, err = Infer(typeEnv, node, true)
+	_, err = Infer(tr.t.Context(), typeEnv, node, true)
 	if err != nil {
 		return err
 	}

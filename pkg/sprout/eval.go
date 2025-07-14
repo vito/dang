@@ -182,14 +182,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	// Create a function type for this method call
 	args := NewRecordType("")
 	for _, arg := range field.Args {
-		argType, err := gqlToTypeNode(NewEnv(g.Schema), arg.TypeRef)
+		argType, err := gqlToTypeNode(NewEnv(g.Schema), arg.TypeRef) // TOOD: NewEnv here is sus
 		if err != nil {
 			continue
 		}
 		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef)
+	retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef) // TOOD: NewEnv here is sus
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
@@ -208,10 +208,21 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 }
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
-func NewEvalEnvWithSchema(typeEnv *Module, client graphql.Client, schema *introspection.Schema) EvalEnv {
+func NewEvalEnvWithSchema(typeEnv Env, client graphql.Client, schema *introspection.Schema) EvalEnv {
 	// Create a ModuleValue from the type environment
 	env := NewModuleValue(typeEnv)
 
+	// Populate with GraphQL functions from the schema
+	populateSchemaFunctions(env, typeEnv, client, schema)
+
+	// Add builtin functions
+	addBuiltinFunctions(env)
+
+	return env
+}
+
+// populateSchemaFunctions adds GraphQL functions from a schema to an environment
+func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Client, schema *introspection.Schema) {
 	for _, t := range schema.Types {
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
@@ -222,7 +233,7 @@ func NewEvalEnvWithSchema(typeEnv *Module, client graphql.Client, schema *intros
 			// This is a function - create a GraphQLFunction value
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
 				if err != nil {
 					continue
 				}
@@ -240,17 +251,12 @@ func NewEvalEnvWithSchema(typeEnv *Module, client graphql.Client, schema *intros
 				QueryChain: nil, // Top-level functions start with no query chain
 			}
 
-			// Add to global scope if it's from the Query type
+			// Add to environment if it's from the Query type
 			if t.Name == schema.QueryType.Name {
 				env.Set(f.Name, gqlFunc)
 			}
 		}
 	}
-
-	// Add builtin functions
-	addBuiltinFunctions(env)
-
-	return env
 }
 
 // addBuiltinFunctions adds builtin functions like print to the evaluation environment
@@ -571,7 +577,7 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 
 // ModuleValue represents a module value that implements EvalEnv
 type ModuleValue struct {
-	Mod          *Module
+	Mod          Env
 	Values       map[string]Value
 	Visibilities map[string]Visibility // Track visibility of each field
 	Parent       *ModuleValue          // For hierarchical scoping
@@ -579,7 +585,7 @@ type ModuleValue struct {
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
-func NewModuleValue(mod *Module) *ModuleValue {
+func NewModuleValue(mod Env) *ModuleValue {
 	return &ModuleValue{
 		Mod:          mod,
 		Values:       make(map[string]Value),
@@ -837,7 +843,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 
 	typeEnv := NewEnv(schema)
 
-	inferred, err := Infer(typeEnv, node, true)
+	inferred, err := Infer(ctx, typeEnv, node, true)
 	if err != nil {
 		// Convert InferError to SourceError with full context
 		return ConvertInferError(err)
@@ -926,7 +932,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		fmt.Println("Running phased inference...")
 	}
 
-	inferred, err := Infer(typeEnv, masterBlock, true)
+	inferred, err := Infer(ctx, typeEnv, masterBlock, true)
 	if err != nil {
 		return nil, ConvertInferError(err)
 	}

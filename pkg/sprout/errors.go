@@ -243,7 +243,6 @@ func ConvertInferError(origErr error) error {
 	return origErr
 }
 
-
 // WithInferErrorHandling wraps an Infer method implementation with automatic error handling
 func WithInferErrorHandling(node Node, fn func() (hm.Type, error)) (hm.Type, error) {
 	typ, err := fn()

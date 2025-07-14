@@ -47,40 +47,6 @@ func NewModule(name string) *Module {
 
 func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 	switch ref.Kind {
-	case introspection.TypeKindScalar:
-		if strings.HasSuffix(ref.Name, "ID") {
-			return gqlToTypeNode(mod, &introspection.TypeRef{
-				Name: strings.TrimSuffix(ref.Name, "ID"),
-				Kind: introspection.TypeKindObject,
-			})
-		}
-		t, found := mod.NamedType(ref.Name)
-		if !found {
-			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
-		}
-		return t, nil
-	case introspection.TypeKindObject:
-		t, found := mod.NamedType(ref.Name)
-		if !found {
-			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
-		}
-		return t, nil
-	// case introspection.TypeKindInterface:
-	// 	return NamedTypeNode{t.Name}
-	// case introspection.TypeKindUnion:
-	// 	return NamedTypeNode{t.Name}
-	case introspection.TypeKindEnum:
-		t, found := mod.NamedType(ref.Name)
-		if !found {
-			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
-		}
-		return t, nil
-	case introspection.TypeKindInputObject:
-		t, found := mod.NamedType(ref.Name)
-		if !found {
-			return nil, fmt.Errorf("gqlToTypeNode: %q not found", ref.Name)
-		}
-		return t, nil
 	case introspection.TypeKindList:
 		inner, err := gqlToTypeNode(mod, ref.OfType)
 		if err != nil {
@@ -90,35 +56,73 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 	case introspection.TypeKindNonNull:
 		inner, err := gqlToTypeNode(mod, ref.OfType)
 		if err != nil {
-			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
+			return nil, fmt.Errorf("gqlToTypeNode NonNull: %w", err)
 		}
 		return hm.NonNullType{Type: inner}, nil
+	case introspection.TypeKindScalar:
+		if strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID" {
+			return gqlToTypeNode(mod, &introspection.TypeRef{
+				Name: strings.TrimSuffix(ref.Name, "ID"),
+				Kind: introspection.TypeKindObject,
+			})
+		}
+		fallthrough
 	default:
-		return nil, fmt.Errorf("unhandled type kind: %s", ref.Kind)
+		t, found := mod.NamedType(ref.Name)
+		if !found {
+			return nil, fmt.Errorf("gqlToTypeNode: %s %q not found", ref.Kind, ref.Name)
+		}
+		return t, nil
 	}
 }
 
-func NewEnv(schema *introspection.Schema) *Module {
-	mod := NewModule("<root>")
-	mod.AddClass("String", StringType)
-	mod.AddClass("Int", IntType)
-	mod.AddClass("Boolean", BooleanType)
+var Prelude *Module
+
+func init() {
+	Prelude = NewModule("Prelude")
+
+	// Install built-in types
+	Prelude.AddClass("ID", IDType)
+	Prelude.AddClass("String", StringType)
+	Prelude.AddClass("Int", IntType)
+	Prelude.AddClass("Boolean", BooleanType)
+
+	// print function: print(value: a) -> Null
+	printArgType := hm.TypeVariable('a')
+	printArgs := NewRecordType("")
+	printArgs.Add("value", hm.NewScheme(nil, printArgType))
+	printType := hm.NewFnType(printArgs, hm.TypeVariable('n')) // returns null
+
+	slog.Debug("adding builtin function", "function", "print")
+	Prelude.Add("print", hm.NewScheme(nil, printType))
+
+	// json function: json(value: b) -> String!
+	jsonArgType := hm.TypeVariable('b')
+	jsonArgs := NewRecordType("")
+	jsonArgs.Add("value", hm.NewScheme(nil, jsonArgType))
+	jsonReturnType := hm.NonNullType{Type: StringType}
+	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
+
+	slog.Debug("adding builtin function", "function", "json")
+	Prelude.Add("json", hm.NewScheme(nil, jsonType))
+}
+
+func NewEnv(schema *introspection.Schema) Env {
+	env := &CompositeModule{NewModule(""), Prelude}
 
 	for _, t := range schema.Types {
-		sub, found := mod.NamedType(t.Name)
+		sub, found := env.NamedType(t.Name)
 		if !found {
 			sub = NewModule(t.Name)
-			mod.AddClass(t.Name, sub)
+			env.AddClass(t.Name, sub)
 		}
 		if t.Name == schema.QueryType.Name {
-			// Set Query as the parent of the outermost module so that its fields are
-			// defined globally.
-			mod.Parent = sub
+			env.lexical = &CompositeModule{sub, env.lexical}
 		}
 	}
 
 	for _, t := range schema.Types {
-		install, found := mod.NamedType(t.Name)
+		install, found := env.NamedType(t.Name)
 		if !found {
 			// we just set it above...
 			// This should never happen, but handle gracefully
@@ -132,18 +136,16 @@ func NewEnv(schema *introspection.Schema) *Module {
 		//t.EnumValues
 
 		for _, f := range t.Fields {
-			ret, err := gqlToTypeNode(mod, f.TypeRef)
+			ret, err := gqlToTypeNode(env, f.TypeRef)
 			if err != nil {
-				// Skip fields we can't convert
-				continue
+				panic(err)
 			}
 
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlToTypeNode(mod, arg.TypeRef)
+				argType, err := gqlToTypeNode(env, arg.TypeRef)
 				if err != nil {
-					// Skip args we can't convert
-					continue
+					panic(err)
 				}
 				args.Add(arg.Name, hm.NewScheme(nil, argType))
 			}
@@ -152,32 +154,7 @@ func NewEnv(schema *introspection.Schema) *Module {
 		}
 	}
 
-	// Add builtin functions to the type environment
-	addBuiltinTypes(mod)
-
-	return mod
-}
-
-// addBuiltinTypes adds the type signatures for builtin functions
-func addBuiltinTypes(mod *Module) {
-	// print function: print(value: a) -> Null
-	printArgType := hm.TypeVariable('a')
-	printArgs := NewRecordType("")
-	printArgs.Add("value", hm.NewScheme(nil, printArgType))
-	printType := hm.NewFnType(printArgs, hm.TypeVariable('n')) // returns null
-
-	slog.Debug("adding builtin function", "function", "print")
-	mod.Add("print", hm.NewScheme(nil, printType))
-
-	// json function: json(value: b) -> String!
-	jsonArgType := hm.TypeVariable('b')
-	jsonArgs := NewRecordType("")
-	jsonArgs.Add("value", hm.NewScheme(nil, jsonArgType))
-	jsonReturnType := hm.NonNullType{Type: StringType}
-	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
-
-	slog.Debug("adding builtin function", "function", "json")
-	mod.Add("json", hm.NewScheme(nil, jsonType))
+	return env
 }
 
 func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {

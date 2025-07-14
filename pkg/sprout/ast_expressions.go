@@ -42,16 +42,16 @@ func (c FunCall) Body() hm.Expression { return c.Fun }
 
 func (c FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
-func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		fun, err := c.Fun.Infer(env, fresh)
+		fun, err := c.Fun.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
-			return c.inferFunctionType(env, fresh, ft)
+			return c.inferFunctionType(ctx, env, fresh, ft)
 		default:
 			return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 		}
@@ -59,7 +59,7 @@ func (c FunCall) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 }
 
 // inferFunctionType handles type inference for FunctionType calls
-func (c FunCall) inferFunctionType(env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
+func (c FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
 	// Handle positional argument mapping for type inference
 	argMapping, err := c.mapArgumentsForInference(ft)
 	if err != nil {
@@ -69,9 +69,9 @@ func (c FunCall) inferFunctionType(env hm.Env, fresh hm.Fresher, ft *hm.Function
 	// Type check each argument
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		err := c.checkArgumentType(env, fresh, arg.Value, ft.Arg().(*RecordType), k)
+		err := c.checkArgumentType(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("check argument type: %w", err)
 		}
 	}
 
@@ -93,8 +93,8 @@ func (c FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, inde
 }
 
 // checkArgumentType validates an argument's type against the expected parameter type
-func (c FunCall) checkArgumentType(env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
-	it, err := value.Infer(env, fresh)
+func (c FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
+	it, err := value.Infer(ctx, env, fresh)
 	if err != nil {
 		return fmt.Errorf("FunCall.Infer: %w", err)
 	}
@@ -435,7 +435,7 @@ type Symbol struct {
 var _ Node = Symbol{}
 var _ Evaluator = Symbol{}
 
-func (s Symbol) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (s Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		scheme, found := env.SchemeOf(s.Name)
 		if !found {
@@ -492,7 +492,7 @@ type Select struct {
 var _ Node = Select{}
 var _ Evaluator = Select{}
 
-func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Handle nil receiver (symbol calls) - look up type in environment
 		if d.Receiver == nil {
@@ -505,7 +505,7 @@ func (d Select) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 
 		// Handle normal receiver
-		lt, err := d.Receiver.Infer(env, fresh)
+		lt, err := d.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Receiver.Infer: %w", err)
 		}
@@ -645,22 +645,22 @@ type Index struct {
 var _ Node = Index{}
 var _ Evaluator = Index{}
 
-func (i Index) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (i Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
 		// Infer the type of the receiver (should be a list)
-		receiverType, err := i.Receiver.Infer(env, fresh)
+		receiverType, err := i.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Index.Infer receiver: %w", err)
 		}
 
 		// Infer the type of the index (should be Int!)
-		indexType, err := i.Index.Infer(env, fresh)
+		indexType, err := i.Index.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Index.Infer index: %w", err)
 		}
 
 		// Check that index is Int!
-		intType, err := NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
+		intType, err := NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -810,16 +810,16 @@ func (o *ObjectSelection) Body() hm.Expression { return o }
 
 func (o *ObjectSelection) GetSourceLocation() *SourceLocation { return o.Loc }
 
-func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(o, func() (hm.Type, error) {
 		// Infer the type of the receiver
-		receiverType, err := o.Receiver.Infer(env, fresh)
+		receiverType, err := o.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
 		}
 
 		// Handle regular object types
-		t, err := o.inferSelectionType(receiverType, env, fresh)
+		t, err := o.inferSelectionType(ctx, receiverType, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -849,7 +849,7 @@ func (o *ObjectSelection) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	})
 }
 
-func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
+func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
 	// Check if receiver is nullable or non-null
 	var rec Env
 
@@ -864,7 +864,7 @@ func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, f
 	}
 
 	if innerType != nil {
-		elementType, err := o.inferSelectionType(innerType, env, fresh)
+		elementType, err := o.inferSelectionType(ctx, innerType, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -889,7 +889,7 @@ func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, f
 
 	mod := NewModule("")
 	for _, field := range o.Fields {
-		fieldType, err := o.inferFieldType(field, rec, env, fresh)
+		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -899,12 +899,12 @@ func (o *ObjectSelection) inferSelectionType(receiverType hm.Type, env hm.Env, f
 	return mod, nil
 }
 
-func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (o *ObjectSelection) inferFieldType(ctx context.Context, field FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	fieldType, err := Symbol{
 		Name:     field.Name,
 		AutoCall: true,
 		Loc:      o.Loc,
-	}.Infer(rec, fresh)
+	}.Infer(ctx, rec, fresh)
 	if err != nil {
 		return nil, err
 	}
@@ -913,7 +913,7 @@ func (o *ObjectSelection) inferFieldType(field FieldSelection, rec Env, env hm.E
 
 	// Handle nested selections
 	if field.Selection != nil {
-		t, err := field.Selection.inferSelectionType(fieldType, env, fresh)
+		t, err := field.Selection.inferSelectionType(ctx, fieldType, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1220,19 +1220,14 @@ func (c Conditional) Body() hm.Expression { return c }
 
 func (c Conditional) GetSourceLocation() *SourceLocation { return c.Loc }
 
-func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		condType, err := c.Condition.Infer(env, fresh)
+		condType, err := c.Condition.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		boolType, err := NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
-		if err != nil {
-			return nil, err
-		}
-
-		if _, err := hm.Unify(condType, boolType); err != nil {
+		if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
 			return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
 		}
 
@@ -1245,7 +1240,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		// Apply type refinements to the then branch
 		thenEnv := ApplyTypeRefinements(env, thenRefinements)
-		thenType, err := c.Then.Infer(thenEnv, fresh)
+		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1255,7 +1250,7 @@ func (c Conditional) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 			// Apply type refinements to the else branch
 			elseEnv := ApplyTypeRefinements(env, elseRefinements)
-			elseType, err := elseBlock.Infer(elseEnv, fresh)
+			elseType, err := elseBlock.Infer(ctx, elseEnv, fresh)
 			if err != nil {
 				return nil, err
 			}
@@ -1323,9 +1318,9 @@ func (l Let) Body() hm.Expression { return l }
 
 func (l Let) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (l Let) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(l, func() (hm.Type, error) {
-		valueType, err := l.Value.Infer(env, fresh)
+		valueType, err := l.Value.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1333,7 +1328,7 @@ func (l Let) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		newEnv := env.Clone()
 		newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
 
-		return l.Expr.Infer(newEnv, fresh)
+		return l.Expr.Infer(ctx, newEnv, fresh)
 	})
 }
 
@@ -1373,16 +1368,16 @@ func (t TypeHint) Body() hm.Expression { return t }
 
 func (t TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
 
-func (t TypeHint) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
 		// Infer the type of the expression
-		exprType, err := t.Expr.Infer(env, fresh)
+		exprType, err := t.Expr.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		// Infer the type of the type hint
-		hintType, err := t.Type.Infer(env, fresh)
+		hintType, err := t.Type.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1452,9 +1447,9 @@ func (l *Lambda) Body() hm.Expression { return l }
 
 func (l *Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
 
-func (l *Lambda) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (l *Lambda) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(l, func() (hm.Type, error) {
-		return l.FunctionBase.inferFunctionType(env, fresh, true, nil, "Lambda")
+		return l.FunctionBase.inferFunctionType(ctx, env, fresh, true, nil, "Lambda")
 	})
 }
 

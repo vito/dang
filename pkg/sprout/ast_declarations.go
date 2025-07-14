@@ -3,8 +3,11 @@ package sprout
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/Khan/genqlient/graphql"
+	"github.com/vito/sprout/introspection"
 	"github.com/vito/sprout/pkg/hm"
 )
 
@@ -17,14 +20,14 @@ type FunctionBase struct {
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
-func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allowFreshTypes bool) ([]Keyed[*hm.Scheme], error) {
+func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher, allowFreshTypes bool) ([]Keyed[*hm.Scheme], error) {
 	args := []Keyed[*hm.Scheme]{}
 	for _, arg := range f.Args {
 		var definedArgType hm.Type
 		var err error
 
 		if arg.Type_ != nil {
-			definedArgType, err = arg.Type_.Infer(env, fresh)
+			definedArgType, err = arg.Type_.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("inferring argument %q type: %w", arg.Named, err)
 			}
@@ -32,14 +35,14 @@ func (f *FunctionBase) inferFunctionArguments(env hm.Env, fresh hm.Fresher, allo
 
 		var inferredValType hm.Type
 		if arg.Value != nil {
-			inferredValType, err = arg.Value.Infer(env, fresh)
+			inferredValType, err = arg.Value.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("inferring argument %q value: %w", arg.Named, err)
 			}
 		}
 
 		for _, directive := range arg.Directives {
-			_, err = directive.Infer(env, fresh)
+			_, err = directive.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("inferring argument %q directive: %w", arg.Named, err)
 			}
@@ -105,12 +108,12 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 }
 
 // inferFunctionType provides shared type inference logic for functions
-func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
 
 	// Process arguments using shared logic
-	args, err := f.inferFunctionArguments(newEnv, fresh, allowFreshTypes)
+	args, err := f.inferFunctionArguments(ctx, newEnv, fresh, allowFreshTypes)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
@@ -118,14 +121,14 @@ func (f *FunctionBase) inferFunctionType(env hm.Env, fresh hm.Fresher, allowFres
 	// Handle explicit return type if provided
 	var definedRet hm.Type
 	if explicitRetType != nil {
-		definedRet, err = explicitRetType.Infer(env, fresh)
+		definedRet, err = explicitRetType.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("%s.Infer return type: %w", contextName, err)
 		}
 	}
 
 	// Infer return type from function body
-	inferredRet, err := f.Body.Infer(newEnv, fresh)
+	inferredRet, err := f.Body.Infer(ctx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
@@ -181,14 +184,14 @@ func (f *FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
 var _ hm.Inferer = &FunDecl{}
 var _ Hoister = &FunDecl{}
 
-func (f *FunDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	if pass == 0 {
 		// Pass 0: Hoist function signature (declare type without inferring body)
 		// Clone environment to avoid mutating original during signature inference
 		signatureEnv := env.Clone()
 
 		// Process arguments to get function signature
-		args, err := f.FunctionBase.inferFunctionArguments(signatureEnv, fresh, false)
+		args, err := f.FunctionBase.inferFunctionArguments(ctx, signatureEnv, fresh, false)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
@@ -196,7 +199,7 @@ func (f *FunDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 		// Handle explicit return type if provided
 		var retType hm.Type
 		if f.Ret != nil {
-			retType, err = f.Ret.Infer(env, fresh)
+			retType, err = f.Ret.Infer(ctx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("FuncDecl.Hoist: %s return type: %w", f.Named, err)
 			}
@@ -217,8 +220,8 @@ func (f *FunDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	return nil
 }
 
-func (f *FunDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return f.FunctionBase.inferFunctionType(env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return f.FunctionBase.inferFunctionType(ctx, env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 }
 
 type Reassignment struct {
@@ -246,16 +249,16 @@ func (r Reassignment) Body() hm.Expression { return r.Target }
 
 func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
-func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (r Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
 		// Infer the type of the target (left-hand side)
-		targetType, err := r.Target.Infer(env, fresh)
+		targetType, err := r.Target.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
 
 		// Infer the type of the value (right-hand side)
-		valueType, err := r.Value.Infer(env, fresh)
+		valueType, err := r.Value.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: value: %w", err)
 		}
@@ -270,7 +273,7 @@ func (r Reassignment) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)
-			_, err := tempAddition.Infer(env, fresh)
+			_, err := tempAddition.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
 			}
@@ -496,7 +499,7 @@ func (r Reopen) Body() hm.Expression { return r.Block }
 
 func (r Reopen) GetSourceLocation() *SourceLocation { return r.Loc }
 
-func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (r Reopen) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	sym := Symbol{
 		Name: r.Name,
 		// low conviction, but allow shadowing?
@@ -505,7 +508,7 @@ func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Infer the type of the base term
-	termType, err := sym.Infer(env, fresh)
+	termType, err := sym.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("Reopen.Infer: base term: %w", err)
 	}
@@ -529,7 +532,7 @@ func (r Reopen) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Type check the block in the composite context
-	_, err = r.Block.Infer(compositeTypeEnv, fresh)
+	_, err = r.Block.Infer(ctx, compositeTypeEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("Reopen.Infer: block: %w", err)
 	}
@@ -585,17 +588,17 @@ func (a Assert) Body() hm.Expression { return a.Block }
 
 func (a Assert) GetSourceLocation() *SourceLocation { return a.Loc }
 
-func (a Assert) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (a Assert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(a, func() (hm.Type, error) {
 		// Infer the block type - the assertion will be evaluated
-		_, err := a.Block.Infer(env, fresh)
+		_, err := a.Block.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		// Infer the message type if present
 		if a.Message != nil {
-			_, err := a.Message.Infer(env, fresh)
+			_, err := a.Message.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, err
 			}
@@ -682,7 +685,6 @@ func (a Assert) getImmediateChildren(expr Node) []ChildNode {
 			children = append(children, ChildNode{"receiver", n.Receiver})
 		}
 
-		
 		return children
 
 	case FunCall:
@@ -829,7 +831,7 @@ func (d *DirectiveDecl) Body() hm.Expression { return nil }
 
 func (d *DirectiveDecl) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d *DirectiveDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+func (d *DirectiveDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	if pass == 0 {
 		// Add directive to environment during hoisting so it's available for later use
 		if e, ok := env.(Env); ok {
@@ -839,17 +841,17 @@ func (d *DirectiveDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	return nil
 }
 
-func (d *DirectiveDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d *DirectiveDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Validate argument types
 	for _, arg := range d.Args {
 		if arg.Type_ != nil {
-			_, err := arg.Type_.Infer(env, fresh)
+			_, err := arg.Type_.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q type: %w", arg.Named, err)
 			}
 		}
 		if arg.Value != nil {
-			_, err := arg.Value.Infer(env, fresh)
+			_, err := arg.Value.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q default value: %w", arg.Named, err)
 			}
@@ -891,7 +893,7 @@ func (d DirectiveApplication) Body() hm.Expression { return nil }
 
 func (d DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d DirectiveApplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Validate that the directive exists and arguments match
 		if e, ok := env.(Env); ok {
@@ -901,7 +903,7 @@ func (d DirectiveApplication) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, erro
 			}
 
 			// Validate arguments match the directive declaration
-			err := d.validateArguments(directiveDecl, env, fresh)
+			err := d.validateArguments(ctx, directiveDecl, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
 			}
@@ -918,7 +920,7 @@ func (d DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, err
 }
 
 // validateArguments checks that directive application arguments match the declaration
-func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env, fresh hm.Fresher) error {
+func (d DirectiveApplication) validateArguments(ctx context.Context, decl *DirectiveDecl, env hm.Env, fresh hm.Fresher) error {
 	// Create map of provided arguments
 	providedArgs := make(map[string]Node)
 	for _, arg := range d.Args {
@@ -937,7 +939,7 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 			if declArg.Value == nil {
 				// Check if the argument type is nullable (optional)
 				if declArg.Type_ != nil {
-					argType, err := declArg.Type_.Infer(env, fresh)
+					argType, err := declArg.Type_.Infer(ctx, env, fresh)
 					if err != nil {
 						return err
 					}
@@ -951,12 +953,12 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 
 		// Validate provided argument type matches declared type
 		if declArg.Type_ != nil {
-			expectedType, err := declArg.Type_.Infer(env, fresh)
+			expectedType, err := declArg.Type_.Infer(ctx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Named, err)
 			}
 
-			providedType, err := providedArg.Infer(env, fresh)
+			providedType, err := providedArg.Infer(ctx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("failed to infer type for provided argument %q: %w", declArg.Named, err)
 			}
@@ -979,6 +981,267 @@ func (d DirectiveApplication) validateArguments(decl *DirectiveDecl, env hm.Env,
 		}
 		if !found {
 			return fmt.Errorf("unexpected argument %q", argName)
+		}
+	}
+
+	return nil
+}
+
+// ImportDecl represents a GraphQL schema import statement
+type ImportDecl struct {
+	Source string  // The source identifier (e.g., "api.github.com", "dagger")
+	Alias  *string // Optional alias (e.g., "GH")
+	Loc    *SourceLocation
+
+	client   graphql.Client
+	schema   *introspection.Schema
+	inferred Env
+}
+
+var _ Node = &ImportDecl{}
+var _ Declarer = &ImportDecl{}
+
+func (i *ImportDecl) IsDeclarer() bool {
+	return true
+}
+
+func (i *ImportDecl) DeclaredSymbols() []string {
+	if i.Alias != nil {
+		return []string{*i.Alias} // Import with alias declares the alias symbol
+	}
+	return nil // Import without alias doesn't declare symbols (imported globally)
+}
+
+func (i *ImportDecl) ReferencedSymbols() []string {
+	return nil // Imports don't reference existing symbols
+}
+
+func (i *ImportDecl) Body() hm.Expression { return nil }
+
+func (i *ImportDecl) GetSourceLocation() *SourceLocation { return i.Loc }
+
+var _ hm.Inferer = &ImportDecl{}
+
+func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	if err := i.loadSchema(ctx, env); err != nil {
+		return nil, err
+	}
+	return i.inferred, nil
+}
+
+func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if i.inferred == nil {
+		return nil, fmt.Errorf("ImportDecl.Eval: import not properly inferred")
+	}
+
+	// Create evaluation environment for the imported schema
+	moduleEnv := NewEvalEnvWithSchema(i.inferred, i.client, i.schema)
+
+	if i.Alias != nil {
+		// Set the module in the evaluation environment
+		env.Set(*i.Alias, moduleEnv)
+	} else {
+		// For global imports, the functions should already be in the global scope
+		// Nothing to do at evaluation time for global imports
+	}
+
+	return moduleEnv, nil
+}
+
+// loadSchema performs the actual GraphQL schema loading and type environment setup
+func (i *ImportDecl) loadSchema(ctx context.Context, env hm.Env) error {
+	if i.inferred != nil {
+		// If we've already inferred, skip.
+		// (This is defensive.)
+		return nil
+	}
+
+	// Create the schema provider and perform introspection during hoisting
+	provider, err := i.createSchemaProvider()
+	if err != nil {
+		return fmt.Errorf("ImportDecl.loadSchema: failed to create schema provider: %w", err)
+	}
+
+	// Perform actual schema introspection now during hoisting
+	client, schema, err := provider.GetClientAndSchema(ctx)
+	if err != nil {
+		return fmt.Errorf("ImportDecl.loadSchema: failed to introspect schema for %q: %w", i.Source, err)
+	}
+
+	// Add the import declaration to the environment for later resolution
+	if sproutEnv, ok := env.(Env); ok {
+		if i.Alias != nil {
+			// Import with alias - check for conflicts and create schema module
+			if err := i.checkAliasConflicts(sproutEnv, *i.Alias); err != nil {
+				return err
+			}
+
+			// Create module with GraphQL schema types and functions
+			schemaModule := NewEnv(schema)
+
+			// Store client and schema information for runtime
+			i.client = client
+			i.schema = schema
+
+			// Register type for the module
+			// TOOD: is this useful? i guess it means we can pass GH around which is
+			// kinda neat?
+			sproutEnv.AddClass(*i.Alias, schemaModule)
+
+			// Also add as a scheme so the type checker can find it
+			sproutEnv.Add(*i.Alias, hm.NewScheme(nil, schemaModule))
+
+			i.inferred = schemaModule
+		} else {
+			panic("TODO")
+			// Import without alias - check for global import conflicts and add to global scope
+			if err := i.checkGlobalImportConflicts(sproutEnv, i.Source); err != nil {
+				return err
+			}
+
+			// Add GraphQL functions directly to global scope
+			err := i.addSchemaToGlobalScope(schema, sproutEnv)
+			if err != nil {
+				return fmt.Errorf("ImportDecl.loadSchema: failed to add schema to global scope: %w", err)
+			}
+
+			// Store client and schema information for global imports
+			i.client = client
+			i.schema = schema
+		}
+	}
+
+	return nil
+}
+
+// createSchemaProvider creates a GraphQLClientProvider for the import source
+func (i *ImportDecl) createSchemaProvider() (*GraphQLClientProvider, error) {
+	if i.Source == "dagger" {
+		// Special case for Dagger - use empty config to trigger Dagger connection
+		return NewGraphQLClientProvider(GraphQLConfig{}), nil
+	}
+
+	// For other sources, create config based on source URL and environment variables
+	config := i.createConfigForSource(i.Source)
+	return NewGraphQLClientProvider(config), nil
+}
+
+// createConfigForSource creates a GraphQLConfig for a given source
+func (i *ImportDecl) createConfigForSource(source string) GraphQLConfig {
+	// Map common API sources to their GraphQL endpoints
+	endpoint := i.resolveEndpoint(source)
+
+	// Get credentials from environment variables based on source
+	auth := i.resolveAuth(source)
+
+	return GraphQLConfig{
+		Endpoint:      endpoint,
+		Authorization: auth,
+		Headers:       i.resolveHeaders(source),
+	}
+}
+
+// resolveEndpoint maps import sources to GraphQL endpoints
+func (i *ImportDecl) resolveEndpoint(source string) string {
+	switch source {
+	case "api.github.com":
+		return "https://api.github.com/graphql"
+	default:
+		// For other sources, assume they're direct URLs or domain names
+		if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
+			return source
+		}
+		// Assume it's a domain and append /graphql
+		return fmt.Sprintf("https://%s/graphql", source)
+	}
+}
+
+// resolveAuth resolves authentication for the given source
+func (i *ImportDecl) resolveAuth(source string) string {
+	switch source {
+	case "api.github.com":
+		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+			return fmt.Sprintf("Bearer %s", token)
+		}
+	}
+
+	// Check for generic auth environment variable
+	envVar := fmt.Sprintf("SPROUT_%s_TOKEN", strings.ToUpper(strings.ReplaceAll(source, ".", "_")))
+	if token := os.Getenv(envVar); token != "" {
+		return fmt.Sprintf("Bearer %s", token)
+	}
+
+	return ""
+}
+
+// resolveHeaders resolves additional headers for the given source
+func (i *ImportDecl) resolveHeaders(source string) map[string]string {
+	headers := make(map[string]string)
+
+	// Add common headers based on source
+	switch source {
+	case "api.github.com":
+		headers["User-Agent"] = "Sprout-GraphQL-Client/1.0"
+	}
+
+	return headers
+}
+
+// checkAliasConflicts checks if an import alias conflicts with existing symbols
+func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
+	// Check if alias conflicts with existing classes (types)
+	if _, exists := env.NamedType(alias); exists {
+		return fmt.Errorf("import alias %q conflicts with existing type", alias)
+	}
+
+	// Check if alias conflicts with existing variables/functions
+	if _, exists := env.LocalSchemeOf(alias); exists {
+		return fmt.Errorf("import alias %q conflicts with existing symbol", alias)
+	}
+
+	// Check if alias conflicts with built-in types
+	builtinTypes := []string{"String", "Int", "Boolean"}
+	for _, builtin := range builtinTypes {
+		if alias == builtin {
+			return fmt.Errorf("import alias %q conflicts with built-in type %s", alias, builtin)
+		}
+	}
+
+	return nil
+}
+
+// checkGlobalImportConflicts checks if a global import conflicts with existing imports
+func (i *ImportDecl) checkGlobalImportConflicts(env Env, source string) error {
+	// For now, allow multiple global imports - conflict detection can be enhanced later
+	// TODO: Implement proper global import conflict detection
+
+	return nil
+}
+
+// addSchemaToGlobalScope adds GraphQL functions directly to the global scope
+func (i *ImportDecl) addSchemaToGlobalScope(schema *introspection.Schema, env Env) error {
+	// Add Query type functions to global scope
+	for _, t := range schema.Types {
+		if t.Name == schema.QueryType.Name {
+			for _, f := range t.Fields {
+				ret, err := gqlToTypeNode(env, f.TypeRef)
+				if err != nil {
+					continue
+				}
+
+				args := NewRecordType("")
+				for _, arg := range f.Args {
+					argType, err := gqlToTypeNode(env, arg.TypeRef)
+					if err != nil {
+						continue
+					}
+					args.Add(arg.Name, hm.NewScheme(nil, argType))
+				}
+
+				fnType := hm.NewFnType(args, ret)
+				env.Add(f.Name, hm.NewScheme(nil, fnType))
+			}
+			break
 		}
 	}
 

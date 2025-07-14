@@ -45,13 +45,13 @@ func (b BinaryOperator) Body() hm.Expression { return b }
 func (b BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
 
 // Common type inference based on operator type
-func (b BinaryOperator) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (b BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
-		lt, err := b.Left.Infer(env, fresh)
+		lt, err := b.Left.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
-		rt, err := b.Right.Infer(env, fresh)
+		rt, err := b.Right.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +66,7 @@ func (b BinaryOperator) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			return lt.Apply(subs).(hm.Type), nil
 		case ComparisonOp:
 			// Validate types but always return Boolean
-			return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+			return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(ctx, env, fresh)
 		default:
 			return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
 		}
@@ -220,13 +220,13 @@ type Default struct {
 var _ Node = Default{}
 var _ Evaluator = Default{}
 
-func (d Default) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d Default) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		lt, err := d.Left.Infer(env, fresh)
+		lt, err := d.Left.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
-		rt, err := d.Right.Infer(env, fresh)
+		rt, err := d.Right.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -287,20 +287,20 @@ type Equality struct {
 var _ Node = Equality{}
 var _ Evaluator = Equality{}
 
-func (e Equality) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (e Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(e, func() (hm.Type, error) {
 		// Type check both sides for validity, but allow cross-type comparison at runtime
-		_, err := e.Left.Infer(env, fresh)
+		_, err := e.Left.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
-		_, err = e.Right.Infer(env, fresh)
+		_, err = e.Right.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
 		// Equality always returns a boolean
-		return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+		return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(ctx, env, fresh)
 	})
 }
 
@@ -396,7 +396,6 @@ func NewMultiplication(left, right Node, loc *SourceLocation) Multiplication {
 		},
 	}
 }
-
 
 type Division struct {
 	BinaryOperator
