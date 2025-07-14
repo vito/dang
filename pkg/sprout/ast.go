@@ -182,9 +182,11 @@ func (v ValueNode) ReferencedSymbols() []string {
 	return nil // ValueNodes don't reference anything
 }
 
-func (v ValueNode) Body() hm.Expression                                  { return nil }
-func (v ValueNode) GetSourceLocation() *SourceLocation                   { return v.Loc }
-func (v ValueNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error)  { return v.Val.Type(), nil }
+func (v ValueNode) Body() hm.Expression                { return nil }
+func (v ValueNode) GetSourceLocation() *SourceLocation { return v.Loc }
+func (v ValueNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return v.Val.Type(), nil
+}
 func (v ValueNode) Eval(ctx context.Context, env EvalEnv) (Value, error) { return v.Val, nil }
 
 // createValueNode creates a simple node that evaluates to the given value

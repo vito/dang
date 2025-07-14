@@ -149,22 +149,20 @@ func runREPL(cfg Config) error {
 
 	// Create REPL instance
 	repl := &REPL{
-		ctx:    ctx,
 		schema: schema,
 		client: client,
 		debug:  cfg.Debug,
 	}
 
-	return repl.Run()
+	return repl.Run(ctx)
 }
 
 // REPL represents the Read-Eval-Print Loop
 type REPL struct {
-	ctx      context.Context
 	schema   *introspection.Schema
 	client   graphql.Client
 	debug    bool
-	typeEnv  *sprout.Module
+	typeEnv  sprout.Env
 	evalEnv  sprout.EvalEnv
 	commands map[string]REPLCommand
 }
@@ -172,11 +170,11 @@ type REPL struct {
 // REPLCommand represents a REPL command function
 type REPLCommand struct {
 	description string
-	handler     func(*REPL, []string) error
+	handler     func(context.Context, *REPL, []string) error
 }
 
 // Run starts the REPL
-func (r *REPL) Run() error {
+func (r *REPL) Run(ctx context.Context) error {
 	// Initialize environments
 	r.typeEnv = sprout.NewEnv(r.schema)
 	r.evalEnv = sprout.NewEvalEnvWithSchema(r.typeEnv, r.client, r.schema)
@@ -229,7 +227,7 @@ func (r *REPL) Run() error {
 			continue
 		}
 
-		if err := r.processLine(line); err != nil {
+		if err := r.processLine(ctx, line); err != nil {
 			if err.Error() == "exit" {
 				break
 			}
@@ -330,18 +328,18 @@ func (r *REPL) printWelcome() {
 }
 
 // processLine processes a single line of input
-func (r *REPL) processLine(line string) error {
+func (r *REPL) processLine(ctx context.Context, line string) error {
 	// Check if it's a REPL command
 	if strings.HasPrefix(line, ":") {
-		return r.handleCommand(line[1:])
+		return r.handleCommand(ctx, line[1:])
 	}
 
 	// Otherwise, evaluate as Sprout code
-	return r.evaluateExpression(line)
+	return r.evaluateExpression(ctx, line)
 }
 
 // handleCommand handles REPL commands
-func (r *REPL) handleCommand(cmdLine string) error {
+func (r *REPL) handleCommand(ctx context.Context, cmdLine string) error {
 	parts := strings.Fields(cmdLine)
 	if len(parts) == 0 {
 		return fmt.Errorf("empty command")
@@ -355,11 +353,11 @@ func (r *REPL) handleCommand(cmdLine string) error {
 		return fmt.Errorf("unknown command: %s (type :help for available commands)", cmdName)
 	}
 
-	return cmd.handler(r, args)
+	return cmd.handler(ctx, r, args)
 }
 
 // evaluateExpression evaluates a Sprout expression
-func (r *REPL) evaluateExpression(expr string) error {
+func (r *REPL) evaluateExpression(ctx context.Context, expr string) error {
 	// Parse the expression
 	result, err := sprout.Parse("repl", []byte(expr))
 	if err != nil {
@@ -372,13 +370,13 @@ func (r *REPL) evaluateExpression(expr string) error {
 		}
 
 		// Type inference
-		_, err = sprout.Infer(r.typeEnv, node, true)
+		_, err = sprout.Infer(ctx, r.typeEnv, node, true)
 		if err != nil {
 			return fmt.Errorf("type error: %w", err)
 		}
 
 		// Evaluation with stdout context
-		ctx := ioctx.StdoutToContext(r.ctx, os.Stdout)
+		ctx := ioctx.StdoutToContext(ctx, os.Stdout)
 		val, err := sprout.EvalNode(ctx, r.evalEnv, node)
 		if err != nil {
 			return fmt.Errorf("evaluation error: %w", err)
@@ -396,7 +394,7 @@ func (r *REPL) evaluateExpression(expr string) error {
 
 // REPL command handlers
 
-func (r *REPL) helpCommand(repl *REPL, args []string) error {
+func (r *REPL) helpCommand(ctx context.Context, repl *REPL, args []string) error {
 	fmt.Println("Available commands:")
 	for cmd, info := range r.commands {
 		fmt.Printf("  :%s - %s\n", cmd, info.description)
@@ -409,17 +407,17 @@ func (r *REPL) helpCommand(repl *REPL, args []string) error {
 	return nil
 }
 
-func (r *REPL) exitCommand(repl *REPL, args []string) error {
+func (r *REPL) exitCommand(ctx context.Context, repl *REPL, args []string) error {
 	return fmt.Errorf("exit")
 }
 
-func (r *REPL) clearCommand(repl *REPL, args []string) error {
+func (r *REPL) clearCommand(ctx context.Context, repl *REPL, args []string) error {
 	fmt.Print("\033[2J\033[H") // ANSI escape codes to clear screen and move cursor to top-left
 	repl.printWelcome()
 	return nil
 }
 
-func (r *REPL) resetCommand(repl *REPL, args []string) error {
+func (r *REPL) resetCommand(ctx context.Context, repl *REPL, args []string) error {
 	// Reset evaluation environment
 	repl.typeEnv = sprout.NewEnv(repl.schema)
 	repl.evalEnv = sprout.NewEvalEnvWithSchema(repl.typeEnv, repl.client, repl.schema)
@@ -427,7 +425,7 @@ func (r *REPL) resetCommand(repl *REPL, args []string) error {
 	return nil
 }
 
-func (r *REPL) debugCommand(repl *REPL, args []string) error {
+func (r *REPL) debugCommand(ctx context.Context, repl *REPL, args []string) error {
 	repl.debug = !repl.debug
 	level := slog.LevelInfo
 	if repl.debug {
@@ -448,7 +446,7 @@ func (r *REPL) debugCommand(repl *REPL, args []string) error {
 	return nil
 }
 
-func (r *REPL) envCommand(repl *REPL, args []string) error {
+func (r *REPL) envCommand(ctx context.Context, repl *REPL, args []string) error {
 	// Parse optional filter argument
 	filter := ""
 	showAll := false
@@ -521,14 +519,14 @@ func (r *REPL) envCommand(repl *REPL, args []string) error {
 	return nil
 }
 
-func (r *REPL) versionCommand(repl *REPL, args []string) error {
+func (r *REPL) versionCommand(ctx context.Context, repl *REPL, args []string) error {
 	fmt.Println("Sprout REPL v0.1.0")
 	fmt.Println("Interactive Read-Eval-Print Loop for Sprout language")
 	fmt.Printf("Connected to GraphQL API with %d types\n", len(repl.schema.Types))
 	return nil
 }
 
-func (r *REPL) historyCommand(repl *REPL, args []string) error {
+func (r *REPL) historyCommand(ctx context.Context, repl *REPL, args []string) error {
 	fmt.Println("Command history is managed by readline")
 	fmt.Println("Use Up/Down arrows to navigate history")
 	fmt.Println("Use Ctrl+R for reverse search")
@@ -596,7 +594,7 @@ func isBuiltinType(name string) bool {
 
 // Additional REPL command handlers
 
-func (r *REPL) schemaCommand(repl *REPL, args []string) error {
+func (r *REPL) schemaCommand(ctx context.Context, repl *REPL, args []string) error {
 	if len(args) == 0 {
 		// Show schema overview
 		fmt.Printf("GraphQL Schema Overview:\n")
@@ -653,7 +651,7 @@ func (r *REPL) schemaCommand(repl *REPL, args []string) error {
 	return r.inspectTypeByName(typeName)
 }
 
-func (r *REPL) typeCommand(repl *REPL, args []string) error {
+func (r *REPL) typeCommand(ctx context.Context, repl *REPL, args []string) error {
 	if len(args) == 0 {
 		fmt.Println("Usage: :type <expression>")
 		fmt.Println("Examples:")
@@ -675,7 +673,7 @@ func (r *REPL) typeCommand(repl *REPL, args []string) error {
 	node := result.(sprout.Block)
 
 	// Type inference
-	inferredType, err := sprout.Infer(repl.typeEnv, node, false)
+	inferredType, err := sprout.Infer(ctx, repl.typeEnv, node, false)
 	if err != nil {
 		return fmt.Errorf("type error: %w", err)
 	}
@@ -718,7 +716,7 @@ func (r *REPL) typeCommand(repl *REPL, args []string) error {
 	return nil
 }
 
-func (r *REPL) inspectCommand(repl *REPL, args []string) error {
+func (r *REPL) inspectCommand(ctx context.Context, repl *REPL, args []string) error {
 	if len(args) == 0 {
 		fmt.Println("Usage: :inspect <type-name>")
 		fmt.Println("Examples:")
@@ -774,7 +772,7 @@ func (r *REPL) inspectTypeByName(typeName string) error {
 	return nil
 }
 
-func (r *REPL) findCommand(repl *REPL, args []string) error {
+func (r *REPL) findCommand(ctx context.Context, repl *REPL, args []string) error {
 	if len(args) == 0 {
 		fmt.Println("Usage: :find <pattern>")
 		fmt.Println("Examples:")

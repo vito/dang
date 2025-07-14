@@ -12,6 +12,7 @@ var (
 	// Null does not have a type. Its type is always inferred as a free variable.
 	// NullType    = NewClass("Null")
 
+	IDType      = NewModule("ID")
 	BooleanType = NewModule("Boolean")
 	StringType  = NewModule("String")
 	IntType     = NewModule("Int")
@@ -26,7 +27,7 @@ type List struct {
 var _ Node = List{}
 var _ Evaluator = List{}
 
-func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
+func (l List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
 		// For now, just return the original approach and document this as a known issue
 		// The real fix requires changes to how the HM library handles recursive types
@@ -36,7 +37,7 @@ func (l List) Infer(env hm.Env, f hm.Fresher) (hm.Type, error) {
 
 	var t hm.Type
 	for i, el := range l.Elements {
-		et, err := el.Infer(env, f)
+		et, err := el.Infer(ctx, env, f)
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +107,7 @@ func (n Null) Body() hm.Expression { return n }
 
 func (n Null) GetSourceLocation() *SourceLocation { return n.Loc }
 
-func (Null) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (Null) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return fresh.Fresh(), nil
 }
 
@@ -135,8 +136,8 @@ func (s String) Body() hm.Expression { return s }
 
 func (s String) GetSourceLocation() *SourceLocation { return s.Loc }
 
-func (s String) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return NonNullTypeNode{NamedTypeNode{"String"}}.Infer(env, fresh)
+func (s String) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return hm.NonNullType{Type: StringType}, nil
 }
 
 func (s String) DeclaredSymbols() []string {
@@ -170,8 +171,8 @@ func (b Boolean) Body() hm.Expression { return b }
 
 func (b Boolean) GetSourceLocation() *SourceLocation { return b.Loc }
 
-func (b Boolean) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(env, fresh)
+func (b Boolean) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return hm.NonNullType{Type: BooleanType}, nil
 }
 
 func (b Boolean) DeclaredSymbols() []string {
@@ -199,8 +200,8 @@ func (i Int) Body() hm.Expression { return i }
 
 func (i Int) GetSourceLocation() *SourceLocation { return i.Loc }
 
-func (i Int) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(env, fresh)
+func (i Int) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return hm.NonNullType{Type: IntType}, nil
 }
 
 func (i Int) DeclaredSymbols() []string {

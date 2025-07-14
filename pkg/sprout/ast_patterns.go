@@ -1,6 +1,7 @@
 package sprout
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/vito/sprout/pkg/hm"
@@ -33,8 +34,8 @@ func (m Match) Body() hm.Expression { return m }
 
 func (m Match) GetSourceLocation() *SourceLocation { return m.Loc }
 
-func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	exprType, err := m.Expr.Infer(env, fresh)
+func (m Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	exprType, err := m.Expr.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func (m Match) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 			caseEnv.Add(varPattern.Name, hm.NewScheme(nil, exprType))
 		}
 
-		caseType, err := case_.Expr.Infer(caseEnv, fresh)
+		caseType, err := case_.Expr.Infer(ctx, caseEnv, fresh)
 		if err != nil {
 			return nil, err
 		}

@@ -1,6 +1,7 @@
 package sprout
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -55,7 +56,7 @@ func (infer *inferer) lookup(name string) error {
 	return nil
 }
 
-func (infer *inferer) consGen(expr hm.Expression) (err error) {
+func (infer *inferer) consGen(ctx context.Context, expr hm.Expression) (err error) {
 	// explicit types/inferers - can fail
 	switch et := expr.(type) {
 	case hm.Typer:
@@ -63,7 +64,7 @@ func (infer *inferer) consGen(expr hm.Expression) (err error) {
 			return nil
 		}
 	case hm.Inferer:
-		infer.t, err = et.Infer(infer.env, infer)
+		infer.t, err = et.Infer(ctx, infer.env, infer)
 		if err != nil {
 			return err
 		}
@@ -185,7 +186,7 @@ func (infer *inferer) consGen(expr hm.Expression) (err error) {
 	// return nil
 }
 
-func Infer(env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
+func Infer(ctx context.Context, env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
 	if expr == nil {
 		return nil, errors.Errorf("Cannot infer a nil expression")
 	}
@@ -195,7 +196,7 @@ func Infer(env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {
 	}
 
 	infer := newInferer(env)
-	if err := infer.consGen(expr); err != nil {
+	if err := infer.consGen(ctx, expr); err != nil {
 		return nil, err
 	}
 

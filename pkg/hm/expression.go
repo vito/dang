@@ -1,5 +1,7 @@
 package hm
 
+import "context"
+
 // Expression is basically an AST node
 type Expression interface {
 	Body() Expression
@@ -17,7 +19,7 @@ type Typer interface {
 
 // Inferer is an Expression that can infer its own Type given an Env
 type Inferer interface {
-	Infer(Env, Fresher) (Type, error)
+	Infer(context.Context, Env, Fresher) (Type, error)
 }
 
 // Var is an expression representing a variable

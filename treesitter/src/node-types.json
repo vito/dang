@@ -17,6 +17,10 @@
           "named": true
         },
         {
+          "type": "import",
+          "named": true
+        },
+        {
           "type": "reassignment",
           "named": true
         },
@@ -1088,6 +1092,71 @@
       }
     },
     {
+      "type": "import",
+      "named": true,
+      "fields": {
+        "alias": {
+          "multiple": false,
+          "required": false,
+          "types": [
+            {
+              "type": "as_token",
+              "named": true
+            }
+          ]
+        },
+        "name": {
+          "multiple": false,
+          "required": false,
+          "types": [
+            {
+              "type": "id",
+              "named": true
+            }
+          ]
+        },
+        "source": {
+          "multiple": false,
+          "required": true,
+          "types": [
+            {
+              "type": "import_source",
+              "named": true
+            }
+          ]
+        }
+      },
+      "children": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "import_token",
+            "named": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "import_source",
+      "named": true,
+      "fields": {},
+      "children": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "dagger_keyword",
+            "named": true
+          },
+          {
+            "type": "schema_url",
+            "named": true
+          }
+        ]
+      }
+    },
+    {
       "type": "index_or_call",
       "named": true,
       "fields": {
@@ -1988,6 +2057,11 @@
       "fields": {}
     },
     {
+      "type": "schema_url",
+      "named": true,
+      "fields": {}
+    },
+    {
       "type": "select_or_call",
       "named": true,
       "fields": {
@@ -2780,6 +2854,10 @@
       "named": false
     },
     {
+      "type": "as_token",
+      "named": true
+    },
+    {
       "type": "assert_token",
       "named": true
     },
@@ -2799,6 +2877,10 @@
       "type": "comment_token",
       "named": true,
       "extra": true
+    },
+    {
+      "type": "dagger_keyword",
+      "named": true
     },
     {
       "type": "decimal_digit",
@@ -2830,6 +2912,10 @@
     },
     {
       "type": "if_token",
+      "named": true
+    },
+    {
+      "type": "import_token",
       "named": true
     },
     {

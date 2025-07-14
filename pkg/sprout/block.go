@@ -38,7 +38,7 @@ func (f Block) Body() hm.Expression { return f }
 func (f Block) GetSourceLocation() *SourceLocation { return f.Loc }
 
 type Hoister interface {
-	Hoist(hm.Env, hm.Fresher, int) error
+	Hoist(context.Context, hm.Env, hm.Fresher, int) error
 }
 
 var _ Hoister = Block{}
@@ -47,11 +47,11 @@ type Declarer interface {
 	IsDeclarer() bool
 }
 
-func (b Block) Hoist(env hm.Env, fresh hm.Fresher, depth int) error {
+func (b Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
 	var errs []error
 	for _, form := range b.Forms {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, depth); err != nil {
+			if err := hoister.Hoist(ctx, env, fresh, depth); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -181,7 +181,8 @@ func OrderFormsByDependencies(forms []Node) ([]Node, error) {
 
 // ClassifiedForms holds forms categorized by their compilation phase
 type ClassifiedForms struct {
-	Directives      []Node // DirectiveDecl (must be processed first)
+	Imports         []Node // ImportDecl (must be processed before anything else)
+	Directives      []Node // DirectiveDecl (must be processed first after imports)
 	Constants       []Node // SlotDecl with constant values (literals, no function calls)
 	Types           []Node // ClassDecl
 	Variables       []Node // SlotDecl with computed values (function calls, references)
@@ -195,6 +196,8 @@ func classifyForms(forms []Node) ClassifiedForms {
 
 	for _, form := range forms {
 		switch f := form.(type) {
+		case *ImportDecl:
+			classified.Imports = append(classified.Imports, f)
 		case *DirectiveDecl:
 			classified.Directives = append(classified.Directives, f)
 		case *ClassDecl:
@@ -226,19 +229,20 @@ func classifyForms(forms []Node) ClassifiedForms {
 // 4. Declare function signatures (without bodies)
 // 5. Typecheck variables in dependency order (can now reference function signatures)
 // 6. Typecheck function bodies last (can reference all package-level declarations)
-func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Phase 1: Classify forms by their compilation requirements
 	classified := classifyForms(forms)
 
 	// Execute each compilation phase in order
 	phases := []func() (hm.Type, error){
-		func() (hm.Type, error) { return inferDirectivesPhase(classified.Directives, env, fresh) },
-		func() (hm.Type, error) { return inferConstantsPhase(classified.Constants, env, fresh) },
-		func() (hm.Type, error) { return inferTypesPhase(classified.Types, env, fresh) },
-		func() (hm.Type, error) { return inferFunctionSignaturesPhase(classified.Functions, env, fresh) },
-		func() (hm.Type, error) { return inferVariablesPhase(classified.Variables, env, fresh) },
-		func() (hm.Type, error) { return inferFunctionBodiesPhase(classified.Functions, env, fresh) },
-		func() (hm.Type, error) { return inferNonDeclarationsPhase(classified.NonDeclarations, env, fresh) },
+		func() (hm.Type, error) { return inferImportsPhase(ctx, classified.Imports, env, fresh) },
+		func() (hm.Type, error) { return inferDirectivesPhase(ctx, classified.Directives, env, fresh) },
+		func() (hm.Type, error) { return inferConstantsPhase(ctx, classified.Constants, env, fresh) },
+		func() (hm.Type, error) { return inferTypesPhase(ctx, classified.Types, env, fresh) },
+		func() (hm.Type, error) { return inferFunctionSignaturesPhase(ctx, classified.Functions, env, fresh) },
+		func() (hm.Type, error) { return inferVariablesPhase(ctx, classified.Variables, env, fresh) },
+		func() (hm.Type, error) { return inferFunctionBodiesPhase(ctx, classified.Functions, env, fresh) },
+		func() (hm.Type, error) { return inferNonDeclarationsPhase(ctx, classified.NonDeclarations, env, fresh) },
 	}
 
 	var lastT hm.Type
@@ -255,16 +259,34 @@ func InferFormsWithPhases(forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, 
 	return lastT, nil
 }
 
+// inferImportsPhase processes import declarations first
+func inferImportsPhase(ctx context.Context, imports []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range imports {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
+				return nil, fmt.Errorf("import hoisting failed: %w", err)
+			}
+		}
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("import inference failed: %w", err)
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
 // inferDirectivesPhase processes directive declarations
-func inferDirectivesPhase(directives []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferDirectivesPhase(ctx context.Context, directives []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range directives {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 0); err != nil {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
 				return nil, fmt.Errorf("directive hoisting failed: %w", err)
 			}
 		}
-		t, err := form.Infer(env, fresh)
+		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("directive inference failed: %w", err)
 		}
@@ -274,10 +296,10 @@ func inferDirectivesPhase(directives []Node, env hm.Env, fresh hm.Fresher) (hm.T
 }
 
 // inferConstantsPhase processes constant declarations
-func inferConstantsPhase(constants []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferConstantsPhase(ctx context.Context, constants []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range constants {
-		t, err := form.Infer(env, fresh)
+		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("constant inference failed: %w", err)
 		}
@@ -287,11 +309,11 @@ func inferConstantsPhase(constants []Node, env hm.Env, fresh hm.Fresher) (hm.Typ
 }
 
 // inferTypesPhase processes type declarations using multi-pass hoisting
-func inferTypesPhase(types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferTypesPhase(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	// Pass 0: Create class types
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 0); err != nil {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
 				return nil, fmt.Errorf("type hoisting (pass 0) failed: %w", err)
 			}
 		}
@@ -300,7 +322,7 @@ func inferTypesPhase(types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error
 	// Pass 1: Infer class bodies
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 1); err != nil {
+			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
 				return nil, fmt.Errorf("type hoisting (pass 1) failed: %w", err)
 			}
 		}
@@ -309,7 +331,7 @@ func inferTypesPhase(types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error
 	// Complete type inference
 	var lastT hm.Type
 	for _, form := range types {
-		t, err := form.Infer(env, fresh)
+		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("type inference failed: %w", err)
 		}
@@ -319,10 +341,10 @@ func inferTypesPhase(types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error
 }
 
 // inferFunctionSignaturesPhase declares function signatures without bodies
-func inferFunctionSignaturesPhase(functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferFunctionSignaturesPhase(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 0); err != nil {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
 				return nil, fmt.Errorf("function signature hoisting failed: %w", err)
 			}
 		}
@@ -331,7 +353,7 @@ func inferFunctionSignaturesPhase(functions []Node, env hm.Env, fresh hm.Fresher
 }
 
 // inferVariablesPhase processes variable declarations in dependency order
-func inferVariablesPhase(variables []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferVariablesPhase(ctx context.Context, variables []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if len(variables) == 0 {
 		return nil, nil
 	}
@@ -343,7 +365,7 @@ func inferVariablesPhase(variables []Node, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 	var lastT hm.Type
 	for _, form := range orderedVars {
-		t, err := form.Infer(env, fresh)
+		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("variable inference failed: %w", err)
 		}
@@ -353,15 +375,15 @@ func inferVariablesPhase(variables []Node, env hm.Env, fresh hm.Fresher) (hm.Typ
 }
 
 // inferFunctionBodiesPhase processes function bodies
-func inferFunctionBodiesPhase(functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferFunctionBodiesPhase(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(env, fresh, 1); err != nil {
+			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
 				return nil, fmt.Errorf("function body hoisting failed: %w", err)
 			}
 		}
-		t, err := form.Infer(env, fresh)
+		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("function inference failed: %w", err)
 		}
@@ -371,10 +393,10 @@ func inferFunctionBodiesPhase(functions []Node, env hm.Env, fresh hm.Fresher) (h
 }
 
 // inferNonDeclarationsPhase processes non-declaration forms
-func inferNonDeclarationsPhase(nonDeclarations []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func inferNonDeclarationsPhase(ctx context.Context, nonDeclarations []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range nonDeclarations {
-		t, err := form.Infer(env, fresh)
+		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("non-declaration inference failed: %w", err)
 		}
@@ -403,8 +425,16 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 	var result Value = NullValue{}
 	var err error
 
-	// Phase 1: Classify forms by their compilation requirements
+	// Classify forms by their compilation requirements
 	classified := classifyForms(forms)
+	//
+	// Phase 1: Evaluate imports
+	for _, form := range classified.Imports {
+		result, err = EvalNode(ctx, env, form)
+		if err != nil {
+			return nil, fmt.Errorf("non-declaration evaluation failed: %w", err)
+		}
+	}
 
 	// Phase 2: Evaluate directives (must be available before any usage)
 	for _, form := range classified.Directives {
@@ -466,7 +496,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 
 var _ hm.Inferer = Block{}
 
-func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (b Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	newEnv := env
 	if !b.Inline {
 		newEnv = env.Clone()
@@ -478,7 +508,7 @@ func (b Block) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	}
 
 	// Use phased inference approach for proper dependency handling
-	return InferFormsWithPhases(forms, newEnv, fresh)
+	return InferFormsWithPhases(ctx, forms, newEnv, fresh)
 }
 
 func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -527,14 +557,14 @@ func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
 
 var _ hm.Inferer = &Object{}
 
-func (o *Object) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewModule("")
 	inferEnv := &CompositeModule{
 		primary: mod,
 		lexical: env.(Env),
 	}
 	for _, slot := range o.Slots {
-		_, err := slot.Infer(inferEnv, fresh)
+		_, err := slot.Infer(ctx, inferEnv, fresh)
 		if err != nil {
 			return nil, err
 		}

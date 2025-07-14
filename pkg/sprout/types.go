@@ -1,6 +1,7 @@
 package sprout
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/vito/sprout/pkg/hm"
@@ -34,7 +35,7 @@ func (e UnresolvedTypeError) Error() string {
 	return fmt.Sprintf("unresolved type: %s", e.Name)
 }
 
-func (t NamedTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	if t.Named == "" {
 		return nil, fmt.Errorf("NamedType.Infer: empty name")
 	}
@@ -60,8 +61,8 @@ func (t ListTypeNode) ReferencedSymbols() []string {
 	return t.Elem.ReferencedSymbols()
 }
 
-func (t ListTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	e, err := t.Elem.Infer(env, fresh)
+func (t ListTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e, err := t.Elem.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("ListType.Infer: %w", err)
 	}
@@ -277,8 +278,8 @@ func (t NonNullTypeNode) ReferencedSymbols() []string {
 	return t.Elem.ReferencedSymbols()
 }
 
-func (t NonNullTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	e, err := t.Elem.Infer(env, fresh)
+func (t NonNullTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e, err := t.Elem.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("NonNullType.Infer: %w", err)
 	}
@@ -295,7 +296,7 @@ func (t VariableTypeNode) ReferencedSymbols() []string {
 	return nil // Type variables don't reference other symbols
 }
 
-func (t VariableTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t VariableTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return hm.TypeVariable(t.Name), nil
 }
 
@@ -318,10 +319,10 @@ func (t ObjectTypeNode) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (t ObjectTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewModule("")
 	for _, field := range t.Fields {
-		fieldType, err := field.Type.Infer(env, fresh)
+		fieldType, err := field.Type.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("ObjectTypeNode.Infer: field %q: %w", field.Key, err)
 		}
@@ -354,7 +355,7 @@ func (t FunTypeNode) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	args := make([]Keyed[*hm.Scheme], len(t.Args))
 	for i, a := range t.Args {
 		// TODO: more scheme/type awkwardness, double check this
@@ -362,7 +363,7 @@ func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		// if err != nil {
 		// 	return nil, fmt.Errorf("FunType.Infer: %w", err)
 		// }
-		dt, err := a.Type_.Infer(env, fresh)
+		dt, err := a.Type_.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 		}
@@ -380,7 +381,7 @@ func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		// TODO: should we infer from value?
 		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: hm.NewScheme(nil, signatureType)}
 	}
-	ret, err := t.Ret.Infer(env, fresh)
+	ret, err := t.Ret.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 	}
@@ -396,10 +397,10 @@ func (t FunTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 // var _ TypeNode = RecordTypeNode{}
 
-// func (t RecordTypeNode) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+// func (t RecordTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 // 	fields := make([]Keyed[*hm.Scheme], len(t.Fields))
 // 	for i, f := range t.Fields {
-// 		dt, err := f.Type_.Infer(env, fresh)
+// 		dt, err := f.Type_.Infer(ctx, env, fresh)
 // 		if err != nil {
 // 			return nil, fmt.Errorf("RecordType.Infer: %w", err)
 // 		}

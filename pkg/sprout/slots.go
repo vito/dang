@@ -53,23 +53,23 @@ func (s SlotDecl) Body() hm.Expression {
 
 func (s SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
-func (s SlotDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+func (s SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	// If the slot value is a hoister, delegate
 	if funDecl, ok := s.Value.(Hoister); ok {
-		return funDecl.Hoist(env, fresh, pass)
+		return funDecl.Hoist(ctx, env, fresh, pass)
 	}
 
 	// For non-function slots, hoisting is handled in the normal inference phase
 	return nil
 }
 
-func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (s SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		var err error
 
 		var definedType hm.Type
 		if s.Type_ != nil {
-			definedType, err = s.Type_.Infer(env, fresh)
+			definedType, err = s.Type_.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, err
 			}
@@ -77,7 +77,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		var inferredType hm.Type
 		if s.Value != nil {
-			inferredType, err = s.Value.Infer(env, fresh)
+			inferredType, err = s.Value.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, err
 			}
@@ -113,7 +113,7 @@ func (s SlotDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		// Validate directive applications
 		for _, directive := range s.Directives {
-			_, err := directive.Infer(env, fresh)
+			_, err := directive.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
 			}
@@ -193,7 +193,7 @@ func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
 var _ Hoister = &ClassDecl{}
 
-func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
+func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(Env)
 	if !ok {
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
@@ -212,7 +212,7 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 
 	// Create a constructor function type based on public non-function slots
 	constructorParams := c.extractConstructorParameters()
-	constructorType, err := c.buildConstructorType(inferEnv, constructorParams, class.(*Module), fresh)
+	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, class.(*Module), fresh)
 	if err != nil {
 		return err
 	}
@@ -227,7 +227,7 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 		self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 		class.Add("self", self)
 
-		if err := c.Value.Hoist(inferEnv, fresh, pass); err != nil {
+		if err := c.Value.Hoist(ctx, inferEnv, fresh, pass); err != nil {
 			return err
 		}
 	}
@@ -235,7 +235,7 @@ func (c *ClassDecl) Hoist(env hm.Env, fresh hm.Fresher, pass int) error {
 	return nil
 }
 
-func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
 		mod, ok := env.(Env)
 		if !ok {
@@ -254,7 +254,7 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 		}
 
 		// Use phased inference approach to handle forward references within the class body
-		if _, err := InferFormsWithPhases(c.Value.Forms, inferEnv, fresh); err != nil {
+		if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
 			return nil, err
 		}
 
@@ -263,7 +263,7 @@ func (c *ClassDecl) Infer(env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 
 		// Validate directive applications
 		for _, directive := range c.Directives {
-			_, err := directive.Infer(env, fresh)
+			_, err := directive.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
 			}
@@ -295,7 +295,7 @@ func (c *ClassDecl) extractConstructorParameters() []SlotDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(env hm.Env, params []SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args: params,
 		Body: Block{
@@ -304,7 +304,7 @@ func (c *ClassDecl) buildConstructorType(env hm.Env, params []SlotDecl, classTyp
 			},
 		},
 	}
-	return fnDecl.inferFunctionType(env, fresh, false, nil, classType.Named+" Constructor")
+	return fnDecl.inferFunctionType(ctx, env, fresh, false, nil, classType.Named+" Constructor")
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
