@@ -24,4 +24,8 @@ type Sprout {
       withWorkdir("/src").
       withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true)
   }
+
+  pub lint: Void {
+    go(source).lint(["."])
+  }
 }
