@@ -12,6 +12,8 @@
   (assert_token)
   (directive_token)
   (on_token)
+  (import_token)
+  (as_token)
 ] @keyword.control
 
 ;; Literals
