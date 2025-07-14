@@ -8,8 +8,9 @@ type Sprout {
       # TODO: respecting .gitignore would be nice
       "Session.vim"
       "/sprout"
-      "/zed-sprout/grammars/",
+      "/zed-sprout/grammars/"
       "/.env"
+      "/.envrc"
     ]
   )
 
