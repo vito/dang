@@ -51,7 +51,7 @@ The language grammar is defined in `pkg/dang/dang.peg` using PEG (Parsing Expres
 - **Terms**: `Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall`
 
 ## Development Workflow
-1. **Add test first**: Create `.spr` file with `assert { ... }` statements
+1. **Add test first**: Create `.dang` file with `assert { ... }` statements
 2. **Modify grammar**: Update `pkg/dang/dang.peg` for syntax changes
 3. **Update AST**: Add/modify structs in `pkg/dang/ast_*.go`
 4. **Implement methods**: Add `Hoist()`, `Infer()`, `Eval()` methods
@@ -64,7 +64,7 @@ The language grammar is defined in `pkg/dang/dang.peg` using PEG (Parsing Expres
 - `pkg/dang/env.go` - Type environment and module system
 - `pkg/dang/infer.go` - Type inference engine
 - `pkg/dang/eval.go` - Runtime evaluation
-- `tests/*.spr` - Test files (auto-discovered by test runner)
+- `tests/*.dang` - Test files (auto-discovered by test runner)
 
 ## Type Inference Flow
 1. **Parse**: PEG parser generates AST from source

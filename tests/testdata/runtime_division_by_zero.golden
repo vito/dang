@@ -1,5 +1,5 @@
 [1m[31mError:[0m division by zero
-  [2m[34m--> errors/runtime_division_by_zero.spr:2:14[0m
+  [2m[34m--> errors/runtime_division_by_zero.dang:2:14[0m
  [2m    |[0m
  [2m  1 | # Test runtime division by zero error[0m
  [2m[34m[1m  2 | [0mpub result = 42 / 0

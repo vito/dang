@@ -10,7 +10,7 @@ Dang already has comprehensive GraphQL directive support in its introspection sy
 - `DirectiveArg` struct for directive arguments
 - Built-in directives: `@experimental`, `@sourceMap`, `@enumValue`
 
-However, the Dang language itself has **no syntax** for declaring or using directives in `.spr` files.
+However, the Dang language itself has **no syntax** for declaring or using directives in `.dang` files.
 
 ## Proposed Implementation
 

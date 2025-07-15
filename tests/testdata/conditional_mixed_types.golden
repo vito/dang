@@ -1,5 +1,5 @@
 [1m[31mError:[0m Unification Fail: Int ~ String cannot be unified
-  [2m[34m--> errors/conditional_mixed_types.spr:2:37[0m
+  [2m[34m--> errors/conditional_mixed_types.dang:2:37[0m
  [2m    |[0m
  [2m  1 | # This should fail: conditional with mixed types[0m
  [2m[34m[1m  2 | [0mpub result = if true { [1] } else { ["foo"] }

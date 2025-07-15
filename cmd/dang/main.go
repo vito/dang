@@ -14,9 +14,9 @@ import (
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
 	"github.com/vito/dang/introspection"
+	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/pkg/dang"
 )
 
 // Config holds the application configuration
@@ -35,16 +35,16 @@ func main() {
 		Long: `Dang is a functional language for building Dagger pipelines.
 It provides type-safe, composable abstractions for container operations.`,
 		Example: `  # Run a Dang script
-  dang script.spr
+  dang script.dang
 
-  # Run all .spr files in a directory as a module
+  # Run all .dang files in a directory as a module
   dang ./my-module
 
   # Start interactive REPL
   dang
 
   # Run with debug logging enabled
-  dang --debug script.spr
+  dang --debug script.dang
   dang -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

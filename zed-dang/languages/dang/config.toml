@@ -1,6 +1,6 @@
 name = "Dang"
 grammar = "dang"
-path_suffixes = ["spr"]
+path_suffixes = ["dang"]
 line_comments = ["# "]
 first_line_pattern = "^#!.*\\bdang\\b"
 tab_size = 2

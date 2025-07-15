@@ -16,8 +16,8 @@ import (
 	"github.com/dagger/testctx/oteltest"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/introspection"
-	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -48,7 +48,7 @@ func TestIntegration(tT *testing.T) {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	// Find all test_*.spr files or test_* packages
+	// Find all test_*.dang files or test_* packages
 	paths, err := filepath.Glob("test_*")
 	if err != nil {
 		t.Fatalf("Failed to find test files: %v", err)

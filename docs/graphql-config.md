@@ -23,7 +23,7 @@ If no configuration is provided, Dang will connect to Dagger as before, maintain
 ```bash
 export DANG_GRAPHQL_ENDPOINT="https://api.github.com/graphql"
 export DANG_GRAPHQL_AUTHORIZATION="Bearer ghp_your_token_here"
-dang my-script.spr
+dang my-script.dang
 ```
 
 ### Using Custom API with API Key
@@ -32,7 +32,7 @@ dang my-script.spr
 export DANG_GRAPHQL_ENDPOINT="https://api.example.com/graphql"
 export DANG_GRAPHQL_HEADER_X_API_KEY="your-api-key"
 export DANG_GRAPHQL_HEADER_X_CLIENT_ID="your-client-id"
-dang my-script.spr
+dang my-script.dang
 ```
 
 ### Using with Authorization Header
@@ -40,7 +40,7 @@ dang my-script.spr
 ```bash
 export DANG_GRAPHQL_ENDPOINT="https://api.example.com/graphql"
 export DANG_GRAPHQL_AUTHORIZATION="Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-dang my-script.spr
+dang my-script.dang
 ```
 
 ## How It Works
@@ -85,7 +85,7 @@ This feature is fully backward compatible. Existing Dang scripts that rely on Da
 Enable debug mode to see detailed information about GraphQL requests:
 
 ```bash
-dang --debug my-script.spr
+dang --debug my-script.dang
 ```
 
 This will show:

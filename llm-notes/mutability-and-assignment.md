@@ -67,7 +67,7 @@ Objects are **copied** when modified, not mutated in place. This provides:
 - **Safe concurrency**: No shared mutable state
 - **Predictable behavior**: Modifications don't affect other references
 
-### Example from `test_reassignment.spr`:
+### Example from `test_reassignment.dang`:
 ```dang
 let original = {{a: {{b: {{c: 1}}}}}}
 let modified = original
@@ -213,7 +213,7 @@ Currently only `+=` is supported for compound assignment. Other operators like `
 
 ## Examples from Codebase
 
-### Real-world Usage (apko.spr)
+### Real-world Usage (apko.dang)
 ```dang
 pub withAlpine(branch: String! = "edge"): Apko! {
   self.config.contents.packages += ["apk-tools"]
@@ -225,13 +225,13 @@ pub withAlpine(branch: String! = "edge"): Apko! {
 ```
 
 ### Test Examples
-- `test_reassignment.spr`: Basic assignment patterns
-- `test_plus_equals.spr`: Compound assignment with various types
-- `test_self.spr`: Class field reassignment patterns
-- `test_self_method_execution.spr`: Method chaining with reassignment
-- `test_block_scoping.spr`: Block scoping with outer slot reassignment
-- `test_class_desired_behavior.spr`: Class methods without self prefix
-- `test_class_immutability.spr`: Fork() semantics for class methods
+- `test_reassignment.dang`: Basic assignment patterns
+- `test_plus_equals.dang`: Compound assignment with various types
+- `test_self.dang`: Class field reassignment patterns
+- `test_self_method_execution.dang`: Method chaining with reassignment
+- `test_block_scoping.dang`: Block scoping with outer slot reassignment
+- `test_class_desired_behavior.dang`: Class methods without self prefix
+- `test_class_immutability.dang`: Fork() semantics for class methods
 
 ### Class Method Assignment Examples
 ```dang

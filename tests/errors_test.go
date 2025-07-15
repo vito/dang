@@ -10,8 +10,8 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/introspection"
-	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
 	"gotest.tools/v3/golden"
 )
@@ -20,14 +20,14 @@ import (
 func TestErrorMessages(t *testing.T) {
 	errorsDir := filepath.Join("errors")
 
-	// Find all .spr files in the errors directory
-	dangFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.spr"))
+	// Find all .dang files in the errors directory
+	dangFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.dang"))
 	if err != nil {
-		t.Fatalf("Failed to find .spr files: %v", err)
+		t.Fatalf("Failed to find .dang files: %v", err)
 	}
 
 	if len(dangFiles) == 0 {
-		t.Fatal("No .spr test files found in tests/errors/")
+		t.Fatal("No .dang test files found in tests/errors/")
 	}
 
 	testGraphQLServer, err := gqlserver.StartServer()
@@ -44,7 +44,7 @@ func TestErrorMessages(t *testing.T) {
 
 	for _, dangFile := range dangFiles {
 		// Extract test name from filename
-		testName := strings.TrimSuffix(filepath.Base(dangFile), ".spr")
+		testName := strings.TrimSuffix(filepath.Base(dangFile), ".dang")
 
 		t.Run(testName, func(t *testing.T) {
 			output := runDangFile(t.Context(), client, schema, dangFile)

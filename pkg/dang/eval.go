@@ -870,16 +870,16 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	return nil
 }
 
-// RunDir evaluates all .spr files in a directory as a single module
+// RunDir evaluates all .dang files in a directory as a single module
 func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) (EvalEnv, error) {
-	// Discover all .spr files in the directory
-	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.spr"))
+	// Discover all .dang files in the directory
+	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to find .spr files in directory %s: %w", dirPath, err)
+		return nil, fmt.Errorf("failed to find .dang files in directory %s: %w", dirPath, err)
 	}
 
 	if len(dangFiles) == 0 {
-		return nil, fmt.Errorf("no .spr files found in directory: %s", dirPath)
+		return nil, fmt.Errorf("no .dang files found in directory: %s", dirPath)
 	}
 
 	// Sort files for deterministic order
@@ -920,7 +920,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	if debug {
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
-		fmt.Printf("Found %d .spr files with %d total forms\n", len(dangFiles), len(masterBlock.Forms))
+		fmt.Printf("Found %d .dang files with %d total forms\n", len(dangFiles), len(masterBlock.Forms))
 		// pretty.Println(masterBlock)
 	}
 

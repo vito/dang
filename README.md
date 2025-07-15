@@ -8,7 +8,7 @@ the API endpoint.
 
 ## sample
 
-Here's `.dagger/main.spr` at the time of this writing:
+Here's `.dagger/main.dang` at the time of this writing:
 
 ```sp
 type Dang {

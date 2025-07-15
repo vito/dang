@@ -1,5 +1,5 @@
 [1m[31mError:[0m Unification Fail: Int ~ String cannot be unified
-  [2m[34m--> errors/lambda_argument_type_mismatch.spr:3:24[0m
+  [2m[34m--> errors/lambda_argument_type_mismatch.dang:3:24[0m
  [2m    |[0m
  [2m  1 | # Test lambda argument type mismatch[0m
  [2m  2 | pub my_lambda = \(x: Int!) -> x + 1[0m
