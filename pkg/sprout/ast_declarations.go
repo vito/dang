@@ -1151,6 +1151,10 @@ func (i *ImportDecl) resolveEndpoint(source string) string {
 		if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 			return source
 		}
+		// Respect an alternative path
+		if strings.Contains(source, "/") {
+			return fmt.Sprintf("https://%s", source)
+		}
 		// Assume it's a domain and append /graphql
 		return fmt.Sprintf("https://%s/graphql", source)
 	}
