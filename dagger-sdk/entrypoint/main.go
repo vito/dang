@@ -18,8 +18,8 @@ import (
 	"github.com/vito/dang/pkg/hm"
 
 	"github.com/vito/dang/introspection"
-	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/ioctx"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
@@ -225,7 +225,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			}
 			dangVal, err := anyToDang(ctx, env, value, fieldType)
 			if err != nil {
-				return fmt.Errorf("failed to convert input argument %s to dang value: %w", name, err)
+				return fmt.Errorf("failed to convert parent state %s to dang value: %w", name, err)
 			}
 			parentModEnv.Set(name, dangVal)
 		}
@@ -306,6 +306,29 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 			vals.Elements = append(vals.Elements, val)
 		}
 		return vals, nil
+	case map[string]any:
+		mod, isMod := fieldType.(dang.Env)
+		if !isMod {
+			return nil, fmt.Errorf("expected module type, got %T", fieldType)
+		}
+		modVal := dang.NewModuleValue(mod)
+		for name, val := range v {
+			expectedT, found := mod.SchemeOf(name)
+			if !found {
+				return nil, fmt.Errorf("module %q does not have a scheme for %q", mod.Name(), name)
+			}
+			t, isMono := expectedT.Type()
+			if !isMono {
+				return nil, fmt.Errorf("expected monomorphic type, got %T", t)
+			}
+			dangVal, err := anyToDang(ctx, env, val, t)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert map item %q: %w", name, err)
+			}
+			mod.Add(name, hm.NewScheme(nil, dangVal.Type()))
+			modVal.Set(name, dangVal)
+		}
+		return modVal, nil
 	case nil:
 		return dang.NullValue{}, nil
 	default:
