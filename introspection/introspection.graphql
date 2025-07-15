@@ -55,8 +55,6 @@ fragment InputValue on __InputValue {
     ...TypeRef
   }
   defaultValue
-  isDeprecated
-  deprecationReason
 }
 
 fragment TypeRef on __Type {
