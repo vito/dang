@@ -18,11 +18,13 @@ type Dang {
     go(source).binary("./cmd/dang")
   }
 
-  pub test: Container! {
+  pub test: Void {
     go(source).base.
       withDirectory("/src", source).
       withWorkdir("/src").
-      withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true)
+      withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true).
+      sync
+    null
   }
 
   pub lint: Void {

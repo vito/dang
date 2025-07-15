@@ -1,0 +1,53 @@
+# Test functions with nullable return types returning null
+
+# Function that can return null
+pub maybeGetString(shouldReturnNull: Boolean!): String {
+  if shouldReturnNull {
+    null
+  } else {
+    "hello"
+  }
+}
+
+# Function that always returns null
+pub alwaysNull: String {
+  null
+}
+
+# Function with nullable Int return type
+pub maybeGetNumber(value: Int!): Int {
+  if value < 0 {
+    null
+  } else {
+    value * 2
+  }
+}
+
+# Test the functions
+pub result1 = maybeGetString(shouldReturnNull: true)
+assert { result1 == null }
+
+pub result2 = maybeGetString(shouldReturnNull: false)
+assert { result2 == "hello" }
+
+pub result3 = alwaysNull
+assert { result3 == null }
+
+pub result4 = maybeGetNumber(value: 0 - 5)
+assert { result4 == null }
+
+pub result5 = maybeGetNumber(value: 10)
+assert { result5 == 20 }
+
+# Test nullable function return with flow-sensitive typing
+pub testValue = maybeGetString(shouldReturnNull: false)
+assert { 
+  if (testValue != null) {
+    # testValue should be String! here
+    testValue + " world" == "hello world"
+  } else {
+    false
+  }
+}
+
+print("Nullable function return tests passed!")

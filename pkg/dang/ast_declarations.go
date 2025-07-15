@@ -135,7 +135,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 
 	// Unify explicit and inferred return types if both exist
 	if definedRet != nil {
-		if !definedRet.Eq(inferredRet) {
+		if _, err := hm.Unify(definedRet, inferredRet); err != nil {
 			return nil, NewInferError(fmt.Sprintf("return type mismatch: declared %s, inferred %s", definedRet, inferredRet), f.Body)
 		}
 	}
