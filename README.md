@@ -110,8 +110,9 @@ To that end:
   which may be more interesting to language nerds anyway. :)
 
   If it's any consolation, I will not be using AI for the parts that interface
-  with humans. This README is 100% farm-raised, and any website or logo will be,
-  too.
+  with humans. This README is 100% farm-raised, and the documentation and logo
+  will be, too. (I might use AI for tedious website stuff, but not the
+  content.)
 
 [Bass]: https://github.com/vito/bass
 [Pigeon]: https://github.com/mna/pigeon
