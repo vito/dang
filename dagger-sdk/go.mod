@@ -1,4 +1,4 @@
-module dagger/sprout
+module dagger/dang
 
 go 1.24
 

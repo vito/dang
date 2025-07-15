@@ -9,10 +9,10 @@ import (
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/stretchr/testify/require"
-	"github.com/vito/sprout/introspection"
-	"github.com/vito/sprout/pkg/ioctx"
-	"github.com/vito/sprout/pkg/sprout"
-	"github.com/vito/sprout/tests/gqlserver"
+	"github.com/vito/dang/introspection"
+	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/tests/gqlserver"
 	"gotest.tools/v3/golden"
 )
 
@@ -21,12 +21,12 @@ func TestErrorMessages(t *testing.T) {
 	errorsDir := filepath.Join("errors")
 
 	// Find all .spr files in the errors directory
-	sproutFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.spr"))
+	dangFiles, err := filepath.Glob(filepath.Join(errorsDir, "*.spr"))
 	if err != nil {
 		t.Fatalf("Failed to find .spr files: %v", err)
 	}
 
-	if len(sproutFiles) == 0 {
+	if len(dangFiles) == 0 {
 		t.Fatal("No .spr test files found in tests/errors/")
 	}
 
@@ -36,18 +36,18 @@ func TestErrorMessages(t *testing.T) {
 
 	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
 
-	// Introspect the GraphQL schema (required for Sprout execution)
+	// Introspect the GraphQL schema (required for Dang execution)
 	schema, err := introspectSchema(t.Context(), client)
 	if err != nil {
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
-	for _, sproutFile := range sproutFiles {
+	for _, dangFile := range dangFiles {
 		// Extract test name from filename
-		testName := strings.TrimSuffix(filepath.Base(sproutFile), ".spr")
+		testName := strings.TrimSuffix(filepath.Base(dangFile), ".spr")
 
 		t.Run(testName, func(t *testing.T) {
-			output := runSproutFile(t.Context(), client, schema, sproutFile)
+			output := runDangFile(t.Context(), client, schema, dangFile)
 
 			// Compare with golden file
 			golden.Assert(t, output, testName+".golden")
@@ -55,8 +55,8 @@ func TestErrorMessages(t *testing.T) {
 	}
 }
 
-// runSproutFile runs a Sprout file and captures combined stdout/stderr
-func runSproutFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, sproutFile string) string {
+// runDangFile runs a Dang file and captures combined stdout/stderr
+func runDangFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, dangFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
 
@@ -64,8 +64,8 @@ func runSproutFile(ctx context.Context, client graphql.Client, schema *introspec
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
-	// Run the Sprout file
-	err := sprout.RunFile(ctx, client, schema, sproutFile, false)
+	// Run the Dang file
+	err := dang.RunFile(ctx, client, schema, dangFile, false)
 
 	// Combine stdout and stderr output
 	var combined bytes.Buffer

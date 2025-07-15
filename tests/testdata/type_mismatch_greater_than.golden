@@ -1,4 +1,4 @@
-[1m[31mError:[0m greater than comparison not supported for types sprout.StringValue and sprout.IntValue
+[1m[31mError:[0m greater than comparison not supported for types dang.StringValue and dang.IntValue
   [2m[34m--> errors/type_mismatch_greater_than.spr:2:14[0m
  [2m    |[0m
  [2m  1 | # Test greater than comparison type mismatch[0m

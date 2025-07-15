@@ -1,4 +1,4 @@
-# Comprehensive test of working Sprout language features
+# Comprehensive test of working Dang language features
 
 # =================== LITERALS ===================
 pub number = 42

@@ -49,7 +49,7 @@ pub users = [
 ]
 
 pub user_summaries = users.{name, email}
-# Note: Since Sprout doesn't support array indexing, we'll test the structure differently
+# Note: Since Dang doesn't support array indexing, we'll test the structure differently
 # We can verify the object selection works by checking that the result is well-formed
 assert { user_summaries != null }
 
@@ -60,7 +60,7 @@ pub users_with_profile = [
 ]
 
 pub detailed_summaries = users_with_profile.{name, profile.{bio}}
-# Note: Since Sprout doesn't support array indexing, we'll test the structure differently
+# Note: Since Dang doesn't support array indexing, we'll test the structure differently
 # We can verify the nested object selection works by checking that the result is well-formed
 assert { detailed_summaries != null }
 

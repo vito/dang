@@ -1,5 +1,5 @@
 {
-  "name": "sprout-sdk",
+  "name": "dang-sdk",
   "engineVersion": "v0.18.12",
   "sdk": {
     "source": "go"

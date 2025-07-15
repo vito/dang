@@ -1,0 +1,412 @@
+package dang
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/vito/dang/pkg/hm"
+)
+
+type Type = hm.Type
+
+type TypeNode interface {
+	hm.Inferer
+	ReferencedSymbols() []string
+}
+
+type NamedTypeNode struct {
+	Named string
+}
+
+var _ TypeNode = NamedTypeNode{}
+
+func (t NamedTypeNode) ReferencedSymbols() []string {
+	if t.Named == "" {
+		return nil
+	}
+	return []string{t.Named}
+}
+
+type UnresolvedTypeError struct {
+	Name string
+}
+
+func (e UnresolvedTypeError) Error() string {
+	return fmt.Sprintf("unresolved type: %s", e.Name)
+}
+
+func (t NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	if t.Named == "" {
+		return nil, fmt.Errorf("NamedType.Infer: empty name")
+	}
+
+	if lookup, ok := env.(Env); ok {
+		s, found := lookup.NamedType(t.Named)
+		if !found {
+			return nil, UnresolvedTypeError{t.Named}
+		}
+		return s, nil
+	}
+
+	return nil, fmt.Errorf("NamedTypeNode.Infer: environment does not support NamedType lookup")
+}
+
+type ListTypeNode struct {
+	Elem TypeNode
+}
+
+var _ TypeNode = ListTypeNode{}
+
+func (t ListTypeNode) ReferencedSymbols() []string {
+	return t.Elem.ReferencedSymbols()
+}
+
+func (t ListTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e, err := t.Elem.Infer(ctx, env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("ListType.Infer: %w", err)
+	}
+	return ListType{e}, nil
+}
+
+type ListType struct {
+	Type
+}
+
+var _ hm.Type = ListType{}
+
+func (t ListType) Name() string {
+	return fmt.Sprintf("[%s]", t.Type.Name())
+}
+
+func (t ListType) Apply(subs hm.Subs) hm.Substitutable {
+	return ListType{t.Type.Apply(subs).(hm.Type)}
+}
+
+func (t ListType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return ListType{normalized}, nil
+}
+
+func (t ListType) Types() hm.Types {
+	ts := hm.BorrowTypes(1)
+	ts[0] = t.Type
+	return ts
+}
+
+func (t ListType) String() string {
+	return fmt.Sprintf("[%s]", t.Type)
+}
+
+func (t ListType) Format(s fmt.State, c rune) {
+	fmt.Fprintf(s, "[%"+string(c)+"]", t.Type)
+}
+
+func (t ListType) Eq(other Type) bool {
+	if ot, ok := other.(ListType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
+type RecordType struct {
+	Named  string
+	Fields []Keyed[*hm.Scheme] // TODO this should be a map
+}
+
+var _ hm.Type = (*RecordType)(nil)
+
+// NewRecordType creates a new Record Type
+func NewRecordType(name string, fields ...Keyed[*hm.Scheme]) *RecordType {
+	return &RecordType{
+		Named:  name,
+		Fields: fields,
+	}
+}
+
+var _ hm.Env = (*RecordType)(nil)
+
+func (t *RecordType) SchemeOf(key string) (*hm.Scheme, bool) {
+	for _, f := range t.Fields {
+		if f.Key == key {
+			return f.Value, true
+		}
+	}
+	return nil, false
+}
+
+func (t *RecordType) Clone() hm.Env {
+	retVal := new(RecordType)
+	ts := make([]Keyed[*hm.Scheme], len(t.Fields))
+	for i, tt := range t.Fields {
+		ts[i] = tt
+		ts[i].Value = ts[i].Value.Clone()
+	}
+	retVal.Fields = ts
+	return retVal
+}
+
+func (t *RecordType) Add(key string, type_ *hm.Scheme) hm.Env {
+	t.Fields = append(t.Fields, Keyed[*hm.Scheme]{Key: key, Value: type_})
+	return t
+}
+
+func (t *RecordType) Remove(key string) hm.Env {
+	for i, f := range t.Fields {
+		if f.Key == key {
+			t.Fields = append(t.Fields[:i], t.Fields[i+1:]...)
+		}
+	}
+	return t
+}
+
+func (t *RecordType) Apply(subs hm.Subs) hm.Substitutable {
+	fields := make([]Keyed[*hm.Scheme], len(t.Fields))
+	for i, v := range t.Fields {
+		fields[i] = v
+		fields[i].Value = v.Value.Apply(subs).(*hm.Scheme)
+	}
+	return NewRecordType(t.Named, fields...)
+}
+
+func (t *RecordType) FreeTypeVar() hm.TypeVarSet {
+	var tvs hm.TypeVarSet
+	for _, v := range t.Fields {
+		tvs = v.Value.FreeTypeVar().Union(tvs)
+	}
+	return tvs
+}
+
+func (t *RecordType) Name() string {
+	if t.Named != "" {
+		return t.Named
+	}
+	return t.String()
+}
+
+func (t *RecordType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+	cp := t.Clone().(*RecordType)
+	for _, f := range cp.Fields {
+		if err := f.Value.Normalize(); err != nil {
+			return nil, fmt.Errorf("RecordType.Normalize: %w", err)
+		}
+	}
+	return cp, nil
+}
+
+func (t *RecordType) Types() hm.Types {
+	// Count monomorphic types first
+	count := 0
+	for _, f := range t.Fields {
+		_, mono := f.Value.Type()
+		if mono {
+			count++
+		}
+	}
+
+	ts := hm.BorrowTypes(count)
+	index := 0
+	for _, f := range t.Fields {
+		typ, mono := f.Value.Type()
+		if !mono {
+			// TODO maybe omit? For now, skip non-monomorphic types
+			continue
+		}
+		ts[index] = typ
+		index++
+	}
+	return ts
+}
+
+func (t *RecordType) Eq(other Type) bool {
+	if ot, ok := other.(*RecordType); ok {
+		if len(ot.Fields) != len(t.Fields) {
+			return false
+		}
+		if t.Named != "" && ot.Named != "" && t.Named != ot.Named {
+			// if either does not specify a name, allow a match
+			//
+			// either the client is wanting to duck type instead, or the API is
+			// wanting to be generic
+			//
+			// TDOO: not sure if Eq is the right place for this
+			return false
+		}
+		for i, f := range t.Fields {
+			of := ot.Fields[i]
+			if f.Key != of.Key {
+				return false
+			}
+			// TODO
+			ft, _ := f.Value.Type()
+			oft, _ := of.Value.Type()
+			if !ft.Eq(oft) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func (t *RecordType) Format(f fmt.State, c rune) {
+	if t.Named != "" {
+		fmt.Fprint(f, t.Named)
+	}
+	f.Write([]byte("{"))
+	for i, v := range t.Fields {
+		fmt.Fprintf(f, "%s: %v", v.Key, v.Value)
+		if i < len(t.Fields)-1 {
+			fmt.Fprintf(f, ", ")
+		}
+	}
+	f.Write([]byte("}"))
+}
+
+func (t *RecordType) String() string { return fmt.Sprintf("%v", t) }
+
+type NonNullTypeNode struct {
+	Elem TypeNode
+}
+
+var _ TypeNode = NonNullTypeNode{}
+
+func (t NonNullTypeNode) ReferencedSymbols() []string {
+	return t.Elem.ReferencedSymbols()
+}
+
+func (t NonNullTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	e, err := t.Elem.Infer(ctx, env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("NonNullType.Infer: %w", err)
+	}
+	return hm.NonNullType{Type: e}, nil
+}
+
+type VariableTypeNode struct {
+	Name byte
+}
+
+var _ TypeNode = VariableTypeNode{}
+
+func (t VariableTypeNode) ReferencedSymbols() []string {
+	return nil // Type variables don't reference other symbols
+}
+
+func (t VariableTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return hm.TypeVariable(t.Name), nil
+}
+
+type ObjectTypeField struct {
+	Key  string
+	Type TypeNode
+}
+
+type ObjectTypeNode struct {
+	Fields []ObjectTypeField
+}
+
+var _ TypeNode = ObjectTypeNode{}
+
+func (t ObjectTypeNode) ReferencedSymbols() []string {
+	var symbols []string
+	for _, field := range t.Fields {
+		symbols = append(symbols, field.Type.ReferencedSymbols()...)
+	}
+	return symbols
+}
+
+func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	mod := NewModule("")
+	for _, field := range t.Fields {
+		fieldType, err := field.Type.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("ObjectTypeNode.Infer: field %q: %w", field.Key, err)
+		}
+		scheme := hm.NewScheme(nil, fieldType)
+		mod.Add(field.Key, scheme)
+	}
+	return mod, nil
+}
+
+type FunTypeNode struct {
+	Args []SlotDecl
+	Ret  TypeNode
+}
+
+var _ TypeNode = FunTypeNode{}
+
+func (t FunTypeNode) ReferencedSymbols() []string {
+	var symbols []string
+	for _, arg := range t.Args {
+		if arg.Type_ != nil {
+			symbols = append(symbols, arg.Type_.ReferencedSymbols()...)
+		}
+		if arg.Value != nil {
+			symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+		}
+	}
+	if t.Ret != nil {
+		symbols = append(symbols, t.Ret.ReferencedSymbols()...)
+	}
+	return symbols
+}
+
+func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	args := make([]Keyed[*hm.Scheme], len(t.Args))
+	for i, a := range t.Args {
+		// TODO: more scheme/type awkwardness, double check this
+		// scheme, err := Infer(env, a.Value)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("FunType.Infer: %w", err)
+		// }
+		dt, err := a.Type_.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
+		}
+
+		// Apply the same nullable transformation as in inferFunctionArguments
+		// For arguments with defaults, make them nullable in the function signature
+		signatureType := dt
+		if a.Value != nil {
+			// Argument has a default value - make it nullable in the function signature
+			if nonNullType, isNonNull := dt.(hm.NonNullType); isNonNull {
+				signatureType = nonNullType.Type
+			}
+		}
+
+		// TODO: should we infer from value?
+		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: hm.NewScheme(nil, signatureType)}
+	}
+	ret, err := t.Ret.Infer(ctx, env, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
+	}
+	return hm.NewFnType(NewRecordType("", args...), ret), nil
+}
+
+// not needed yet
+//
+// type RecordTypeNode struct {
+// 	Named  string
+// 	Fields []SlotDecl
+// }
+
+// var _ TypeNode = RecordTypeNode{}
+
+// func (t RecordTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+// 	fields := make([]Keyed[*hm.Scheme], len(t.Fields))
+// 	for i, f := range t.Fields {
+// 		dt, err := f.Type_.Infer(ctx, env, fresh)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("RecordType.Infer: %w", err)
+// 		}
+// 		// TODO: more scheme/type awkwardness, double check this
+// 		// TODO: should we infer from value?
+// 		fields[i] = Keyed[*hm.Scheme]{Key: f.Named, Value: hm.NewScheme(nil, dt)}
+// 	}
+// 	return NewRecordType(t.Named, fields...), nil
+// }

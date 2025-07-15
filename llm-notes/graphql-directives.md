@@ -1,21 +1,21 @@
-# GraphQL Directives in Sprout
+# GraphQL Directives in Dang
 
 ## Background
 GraphQL directives are annotations that can be applied to various parts of a GraphQL schema or query to modify execution behavior. They use `@directiveName(args...)` syntax.
 
 ## Current State
-Sprout already has comprehensive GraphQL directive support in its introspection system (`introspection/introspection.go`):
+Dang already has comprehensive GraphQL directive support in its introspection system (`introspection/introspection.go`):
 - `DirectiveDef` struct for directive definitions
 - `Directive` struct for directive applications
 - `DirectiveArg` struct for directive arguments
 - Built-in directives: `@experimental`, `@sourceMap`, `@enumValue`
 
-However, the Sprout language itself has **no syntax** for declaring or using directives in `.spr` files.
+However, the Dang language itself has **no syntax** for declaring or using directives in `.spr` files.
 
 ## Proposed Implementation
 
 ### Directive Declaration Syntax
-```sprout
+```dang
 # Declare a directive that can be used on fields and types
 directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | OBJECT
 
@@ -24,7 +24,7 @@ directive @experimental on FIELD_DEFINITION | ARGUMENT_DEFINITION
 ```
 
 ### Directive Application Syntax
-```sprout
+```dang
 type User {
   pub id: String!
   pub name: String! @deprecated(reason: "Use displayName instead")
@@ -40,7 +40,7 @@ Standard GraphQL directive locations:
 
 ## Implementation Plan
 
-### 1. Grammar Extension (`pkg/sprout/sprout.peg`)
+### 1. Grammar Extension (`pkg/dang/dang.peg`)
 ```peg
 DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken _ locs:DirectiveLocations
 
@@ -83,7 +83,7 @@ type Module struct {
 ## Usage Examples
 
 ### Custom Directives
-```sprout
+```dang
 # Declare custom directives
 directive @auth(role: String!) on FIELD_DEFINITION
 directive @cache(ttl: Int! = 300) on FIELD_DEFINITION
@@ -95,7 +95,7 @@ type Query {
 ```
 
 ### Integration with GraphQL Schema
-When generating GraphQL schema from Sprout code, directive applications would be preserved and included in the output schema.
+When generating GraphQL schema from Dang code, directive applications would be preserved and included in the output schema.
 
 ## Benefits
 - **Static validation**: Catch directive typos at compile time
@@ -105,8 +105,8 @@ When generating GraphQL schema from Sprout code, directive applications would be
 
 ## Design Considerations
 - **Simplicity**: Keep directive syntax minimal and familiar
-- **Type safety**: Leverage Sprout's type system for directive validation
+- **Type safety**: Leverage Dang's type system for directive validation
 - **GraphQL compliance**: Follow GraphQL specification for directive behavior
-- **Backward compatibility**: Don't break existing Sprout code
+- **Backward compatibility**: Don't break existing Dang code
 
-This implementation would make Sprout's GraphQL integration even more powerful while maintaining its core principles of type safety and simplicity.
+This implementation would make Dang's GraphQL integration even more powerful while maintaining its core principles of type safety and simplicity.

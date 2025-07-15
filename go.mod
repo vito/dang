@@ -1,4 +1,4 @@
-module github.com/vito/sprout
+module github.com/vito/dang
 
 go 1.24.0
 

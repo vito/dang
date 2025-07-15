@@ -2,7 +2,7 @@
 Build
 ===
 
-#!/usr/bin/env sprout
+#!/usr/bin/env dang
 
 let src = host.directory(
   "."
@@ -20,15 +20,15 @@ let bin(src: Directory!): File! {
     withDirectory("/src", src).
     withWorkdir("/src").
     withEnvVariable("CGO_ENABLED", "0").
-    withExec(["go", "build", "-o", "/out/sprout", "./cmd/sprout"]).
-    file("/out/sprout")
+    withExec(["go", "build", "-o", "/out/dang", "./cmd/dang"]).
+    file("/out/dang")
 }
 
 let test(bin: File!): String! {
   container.
     from("alpine").
-    withFile("/bin/sprout", bin).
-    withExec(["sprout", "--version"]).
+    withFile("/bin/dang", bin).
+    withExec(["dang", "--version"]).
     stdout
 }
 
@@ -36,7 +36,7 @@ print(test(bin(src)))
 
 ---
 
-(sprout
+(dang
   (comment_token)
   (slot
     (value_only_slot

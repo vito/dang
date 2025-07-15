@@ -529,7 +529,7 @@ func (ec *executionContext) field_Mutation_createUser_argsInput(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
 	if tmp, ok := rawArgs["input"]; ok {
-		return ec.unmarshalNCreateUserInput2githubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐCreateUserInput(ctx, tmp)
+		return ec.unmarshalNCreateUserInput2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐCreateUserInput(ctx, tmp)
 	}
 
 	var zeroVal CreateUserInput
@@ -608,7 +608,7 @@ func (ec *executionContext) field_Mutation_updateUser_argsInput(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
 	if tmp, ok := rawArgs["input"]; ok {
-		return ec.unmarshalNUpdateUserInput2githubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUpdateUserInput(ctx, tmp)
+		return ec.unmarshalNUpdateUserInput2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUpdateUserInput(ctx, tmp)
 	}
 
 	var zeroVal UpdateUserInput
@@ -949,7 +949,7 @@ func (ec *executionContext) _Mutation_createUser(ctx context.Context, field grap
 	}
 	res := resTmp.(*User)
 	fc.Result = res
-	return ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
+	return ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_createUser(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1013,7 +1013,7 @@ func (ec *executionContext) _Mutation_updateUser(ctx context.Context, field grap
 	}
 	res := resTmp.(*User)
 	fc.Result = res
-	return ec.marshalOUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
+	return ec.marshalOUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_updateUser(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1267,7 +1267,7 @@ func (ec *executionContext) _Post_author(ctx context.Context, field graphql.Coll
 	}
 	res := resTmp.(*User)
 	fc.Result = res
-	return ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
+	return ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Post_author(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1422,7 +1422,7 @@ func (ec *executionContext) _Query_users(ctx context.Context, field graphql.Coll
 	}
 	res := resTmp.([]*User)
 	fc.Result = res
-	return ec.marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUserᚄ(ctx, field.Selections, res)
+	return ec.marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_users(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1475,7 +1475,7 @@ func (ec *executionContext) _Query_user(ctx context.Context, field graphql.Colle
 	}
 	res := resTmp.(*User)
 	fc.Result = res
-	return ec.marshalOUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
+	return ec.marshalOUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1542,7 +1542,7 @@ func (ec *executionContext) _Query_serverInfo(ctx context.Context, field graphql
 	}
 	res := resTmp.(*ServerInfo)
 	fc.Result = res
-	return ec.marshalNServerInfo2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐServerInfo(ctx, field.Selections, res)
+	return ec.marshalNServerInfo2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐServerInfo(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_serverInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1598,7 +1598,7 @@ func (ec *executionContext) _Query_posts(ctx context.Context, field graphql.Coll
 	}
 	res := resTmp.([]*Post)
 	fc.Result = res
-	return ec.marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐPostᚄ(ctx, field.Selections, res)
+	return ec.marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐPostᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_posts(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1662,7 +1662,7 @@ func (ec *executionContext) _Query_userProfile(ctx context.Context, field graphq
 	}
 	res := resTmp.(*UserProfile)
 	fc.Result = res
-	return ec.marshalOUserProfile2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUserProfile(ctx, field.Selections, res)
+	return ec.marshalOUserProfile2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserProfile(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_userProfile(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2299,7 +2299,7 @@ func (ec *executionContext) _User_posts(ctx context.Context, field graphql.Colle
 	}
 	res := resTmp.([]*Post)
 	fc.Result = res
-	return ec.marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐPostᚄ(ctx, field.Selections, res)
+	return ec.marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐPostᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_User_posts(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2355,7 +2355,7 @@ func (ec *executionContext) _UserProfile_user(ctx context.Context, field graphql
 	}
 	res := resTmp.(*User)
 	fc.Result = res
-	return ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
+	return ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_UserProfile_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5473,7 +5473,7 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) unmarshalNCreateUserInput2githubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐCreateUserInput(ctx context.Context, v any) (CreateUserInput, error) {
+func (ec *executionContext) unmarshalNCreateUserInput2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐCreateUserInput(ctx context.Context, v any) (CreateUserInput, error) {
 	res, err := ec.unmarshalInputCreateUserInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
@@ -5494,7 +5494,7 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return res
 }
 
-func (ec *executionContext) marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐPostᚄ(ctx context.Context, sel ast.SelectionSet, v []*Post) graphql.Marshaler {
+func (ec *executionContext) marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐPostᚄ(ctx context.Context, sel ast.SelectionSet, v []*Post) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -5518,7 +5518,7 @@ func (ec *executionContext) marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋte
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNPost2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐPost(ctx, sel, v[i])
+			ret[i] = ec.marshalNPost2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐPost(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -5538,7 +5538,7 @@ func (ec *executionContext) marshalNPost2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋte
 	return ret
 }
 
-func (ec *executionContext) marshalNPost2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐPost(ctx context.Context, sel ast.SelectionSet, v *Post) graphql.Marshaler {
+func (ec *executionContext) marshalNPost2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐPost(ctx context.Context, sel ast.SelectionSet, v *Post) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -5548,11 +5548,11 @@ func (ec *executionContext) marshalNPost2ᚖgithubᚗcomᚋvitoᚋsproutᚋtests
 	return ec._Post(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v ServerInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v ServerInfo) graphql.Marshaler {
 	return ec._ServerInfo(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v *ServerInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v *ServerInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -5608,16 +5608,16 @@ func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel
 	return ret
 }
 
-func (ec *executionContext) unmarshalNUpdateUserInput2githubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUpdateUserInput(ctx context.Context, v any) (UpdateUserInput, error) {
+func (ec *executionContext) unmarshalNUpdateUserInput2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUpdateUserInput(ctx context.Context, v any) (UpdateUserInput, error) {
 	res, err := ec.unmarshalInputUpdateUserInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNUser2githubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx context.Context, sel ast.SelectionSet, v User) graphql.Marshaler {
+func (ec *executionContext) marshalNUser2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx context.Context, sel ast.SelectionSet, v User) graphql.Marshaler {
 	return ec._User(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUserᚄ(ctx context.Context, sel ast.SelectionSet, v []*User) graphql.Marshaler {
+func (ec *executionContext) marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserᚄ(ctx context.Context, sel ast.SelectionSet, v []*User) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -5641,7 +5641,7 @@ func (ec *executionContext) marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋte
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx, sel, v[i])
+			ret[i] = ec.marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -5661,7 +5661,7 @@ func (ec *executionContext) marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋsproutᚋte
 	return ret
 }
 
-func (ec *executionContext) marshalNUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx context.Context, sel ast.SelectionSet, v *User) graphql.Marshaler {
+func (ec *executionContext) marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx context.Context, sel ast.SelectionSet, v *User) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -6007,14 +6007,14 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return res
 }
 
-func (ec *executionContext) marshalOUser2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUser(ctx context.Context, sel ast.SelectionSet, v *User) graphql.Marshaler {
+func (ec *executionContext) marshalOUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUser(ctx context.Context, sel ast.SelectionSet, v *User) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._User(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOUserProfile2ᚖgithubᚗcomᚋvitoᚋsproutᚋtestsᚋgqlserverᚐUserProfile(ctx context.Context, sel ast.SelectionSet, v *UserProfile) graphql.Marshaler {
+func (ec *executionContext) marshalOUserProfile2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserProfile(ctx context.Context, sel ast.SelectionSet, v *UserProfile) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

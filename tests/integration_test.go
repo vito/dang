@@ -15,10 +15,10 @@ import (
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
 	"github.com/stretchr/testify/require"
-	"github.com/vito/sprout/introspection"
-	"github.com/vito/sprout/pkg/ioctx"
-	"github.com/vito/sprout/pkg/sprout"
-	"github.com/vito/sprout/tests/gqlserver"
+	"github.com/vito/dang/introspection"
+	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/tests/gqlserver"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -71,9 +71,9 @@ func TestIntegration(tT *testing.T) {
 				return
 			}
 			if fi.IsDir() {
-				_, err = sprout.RunDir(ctx, client, schema, testFileOrDir, false)
+				_, err = dang.RunDir(ctx, client, schema, testFileOrDir, false)
 			} else {
-				err = sprout.RunFile(ctx, client, schema, testFileOrDir, false)
+				err = dang.RunFile(ctx, client, schema, testFileOrDir, false)
 			}
 			if err != nil {
 				t.Errorf("Test %s failed: %v", testFileOrDir, err)

@@ -30,7 +30,7 @@ pub empty_obj = {{}} :: {{}}!
 pub simple_obj = {{name: "test"}} :: {{name: String!}}!
 # Additional complex type hints
 pub typed_empty_list = [] :: [String!]!
-# Note: Objects are always non-null in Sprout, so no nullable object test
+# Note: Objects are always non-null in Dang, so no nullable object test
 # Complex nested object type hints work with concrete values
 pub nested_obj = {{items: ["hello", "world"]}} :: {{items: [String!]!}}!
 pub complex_obj = {{user: {{name: "Alice", age: 30}}}} :: {{user: {{name: String!, age: Int!}}!}}!

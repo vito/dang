@@ -1,8 +1,8 @@
 {
-  "name": "sprout",
+  "name": "dang",
   "word": "word_token",
   "rules": {
-    "sprout": {
+    "dang": {
       "type": "SEQ",
       "members": [
         {

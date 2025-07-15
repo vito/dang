@@ -1,0 +1,12 @@
+id = "dang"
+name = "Dang"
+version = "0.1.1"
+schema_version = 1
+description = "Dang language support for Zed"
+authors = ["vito"]
+repository = "https://github.com/vito/dang"
+
+[grammars.dang]
+repository = "https://github.com/vito/dang"
+commit = "c10811489a07aa2b6196b4b67eadccf99e0370e3"
+path = "treesitter"

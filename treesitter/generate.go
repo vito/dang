@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/dang/pkg/dang"
 )
 
 //go:generate go run .
@@ -20,5 +20,5 @@ func main() {
 
 	enc := json.NewEncoder(grammarFile)
 	enc.SetIndent("", "  ")
-	enc.Encode(sprout.TreesitterGrammar())
+	enc.Encode(dang.TreesitterGrammar())
 }

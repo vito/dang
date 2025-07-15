@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/vito/sprout/tests/gqlserver"
+	"github.com/vito/dang/tests/gqlserver"
 )
 
 func main() {

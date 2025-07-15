@@ -15,11 +15,11 @@ import (
 	"dagger.io/dagger/dag"
 	"dagger.io/dagger/telemetry"
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"github.com/vito/sprout/pkg/hm"
+	"github.com/vito/dang/pkg/hm"
 
-	"github.com/vito/sprout/introspection"
-	"github.com/vito/sprout/pkg/ioctx"
-	"github.com/vito/sprout/pkg/sprout"
+	"github.com/vito/dang/introspection"
+	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/pkg/dang"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 )
@@ -33,7 +33,7 @@ func main() {
 
 	ctx = telemetry.InitEmbedded(ctx, resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String("dagger-sprout-sdk"),
+		semconv.ServiceNameKey.String("dagger-dang-sdk"),
 	))
 	defer telemetry.Close()
 
@@ -117,7 +117,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 
 	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
 	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
-	env, err := sprout.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
+	env, err := dang.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
 	if err != nil {
 		return fmt.Errorf("failed to run dir: %w", err)
 	}
@@ -153,7 +153,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		return fmt.Errorf("failed to unmarshal parent JSON: %w", err)
 	}
 
-	parentConstructor := parentModBase.(*sprout.ConstructorFunction)
+	parentConstructor := parentModBase.(*dang.ConstructorFunction)
 	parentModType := parentConstructor.ClassType
 
 	var fnType *hm.FunctionType
@@ -176,9 +176,9 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		}
 	}
 
-	var args sprout.Record
-	argMap := make(map[string]sprout.Value, len(args))
-	for _, arg := range fnType.Arg().(*sprout.RecordType).Fields {
+	var args dang.Record
+	argMap := make(map[string]dang.Value, len(args))
+	for _, arg := range fnType.Arg().(*dang.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -193,25 +193,25 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		if err := dec.Decode(&val); err != nil {
 			return fmt.Errorf("failed to unmarshal input argument %s: %w", arg.Key, err)
 		}
-		sproutVal, err := anyToSprout(ctx, env, val, argType)
+		dangVal, err := anyToDang(ctx, env, val, argType)
 		if err != nil {
-			return fmt.Errorf("failed to convert input argument %s to sprout value: %w", arg.Key, err)
+			return fmt.Errorf("failed to convert input argument %s to dang value: %w", arg.Key, err)
 		}
-		argMap[arg.Key] = sproutVal
-		args = append(args, sprout.Keyed[sprout.Node]{
+		argMap[arg.Key] = dangVal
+		args = append(args, dang.Keyed[dang.Node]{
 			Key:   arg.Key,
-			Value: sprout.ValueNode{Val: sproutVal},
+			Value: dang.ValueNode{Val: dangVal},
 		})
 	}
 
-	var result sprout.Value
+	var result dang.Value
 	if fnName == "" {
 		result, err = parentConstructor.Call(ctx, env, argMap)
 		if err != nil {
 			return fmt.Errorf("failed to call parent constructor: %w", err)
 		}
 	} else {
-		parentModEnv := sprout.NewModuleValue(parentModType)
+		parentModEnv := dang.NewModuleValue(parentModType)
 		parentModEnv.Set("self", parentModEnv)
 
 		for name, value := range parentState {
@@ -223,22 +223,22 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			if !isMono {
 				return fmt.Errorf("non-monotype argument %s", name)
 			}
-			sproutVal, err := anyToSprout(ctx, env, value, fieldType)
+			dangVal, err := anyToDang(ctx, env, value, fieldType)
 			if err != nil {
-				return fmt.Errorf("failed to convert input argument %s to sprout value: %w", name, err)
+				return fmt.Errorf("failed to convert input argument %s to dang value: %w", name, err)
 			}
-			parentModEnv.Set(name, sproutVal)
+			parentModEnv.Set(name, dangVal)
 		}
 
-		bodyEnv := sprout.CreateCompositeEnv(parentModEnv, env)
-		_, err := sprout.EvaluateFormsWithPhases(ctx, parentConstructor.ClassBodyForms, bodyEnv)
+		bodyEnv := dang.CreateCompositeEnv(parentModEnv, env)
+		_, err := dang.EvaluateFormsWithPhases(ctx, parentConstructor.ClassBodyForms, bodyEnv)
 		if err != nil {
 			return fmt.Errorf("evaluating class body for %s: %w", parentConstructor.ClassName, err)
 		}
 
-		call := sprout.FunCall{
-			Fun: sprout.Select{
-				Receiver: sprout.ValueNode{Val: parentModEnv},
+		call := dang.FunCall{
+			Fun: dang.Select{
+				Receiver: dang.ValueNode{Val: parentModEnv},
 				Field:    fnName,
 			},
 			Args: args,
@@ -256,50 +256,50 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	return fnCall.ReturnValue(ctx, dagger.JSON(jsonBytes))
 }
 
-func anyToSprout(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.Type) (sprout.Value, error) {
+func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type) (dang.Value, error) {
 	if nonNull, ok := fieldType.(hm.NonNullType); ok {
-		return anyToSprout(ctx, env, val, nonNull.Type)
+		return anyToDang(ctx, env, val, nonNull.Type)
 	}
 	switch v := val.(type) {
 	case string:
-		if modType, ok := fieldType.(*sprout.Module); ok && modType != sprout.StringType {
-			sel := sprout.FunCall{
-				Fun: sprout.Select{
+		if modType, ok := fieldType.(*dang.Module); ok && modType != dang.StringType {
+			sel := dang.FunCall{
+				Fun: dang.Select{
 					Field: fmt.Sprintf("load%sFromID", modType.Named),
 				},
-				Args: sprout.Record{
-					sprout.Keyed[sprout.Node]{
+				Args: dang.Record{
+					dang.Keyed[dang.Node]{
 						Key:   "id",
-						Value: sprout.String{Value: v},
+						Value: dang.String{Value: v},
 					},
 				},
 			}
 			return sel.Eval(ctx, env)
 		}
-		return sprout.StringValue{Val: v}, nil
+		return dang.StringValue{Val: v}, nil
 	case int:
-		return sprout.IntValue{Val: v}, nil
+		return dang.IntValue{Val: v}, nil
 	case json.Number:
 		// if strings.Contains(v.String(), ".") {
-		// 	return sprout.FloatValue{Val: v.Float64()}, nil
+		// 	return dang.FloatValue{Val: v.Float64()}, nil
 		// }
 		i, err := v.Int64()
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert json.Number to int64: %w", err)
 		}
-		return sprout.IntValue{Val: int(i)}, nil
+		return dang.IntValue{Val: int(i)}, nil
 	case bool:
-		return sprout.BoolValue{Val: v}, nil
+		return dang.BoolValue{Val: v}, nil
 	case []any:
-		listT, isList := fieldType.(sprout.ListType)
+		listT, isList := fieldType.(dang.ListType)
 		if !isList {
 			return nil, fmt.Errorf("expected list type, got %T", fieldType)
 		}
-		vals := sprout.ListValue{
+		vals := dang.ListValue{
 			ElemType: listT,
 		}
 		for _, item := range v {
-			val, err := anyToSprout(ctx, env, item, listT.Type)
+			val, err := anyToDang(ctx, env, item, listT.Type)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert list item: %w", err)
 			}
@@ -307,13 +307,13 @@ func anyToSprout(ctx context.Context, env sprout.EvalEnv, val any, fieldType hm.
 		}
 		return vals, nil
 	case nil:
-		return sprout.NullValue{}, nil
+		return dang.NullValue{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported type %T", val)
 	}
 }
 
-func initModule(dag *dagger.Client, env sprout.EvalEnv) (*dagger.Module, error) {
+func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 	dagMod := dag.Module()
 
 	// Handle module-level description if present
@@ -321,11 +321,11 @@ func initModule(dag *dagger.Client, env sprout.EvalEnv) (*dagger.Module, error) 
 		dagMod = dagMod.WithDescription(descBinding.String())
 	}
 
-	binds := env.Bindings(sprout.PublicVisibility)
+	binds := env.Bindings(dang.PublicVisibility)
 	for _, binding := range binds {
 		log.Println("Binding:", binding.Key)
 		switch val := binding.Value.(type) {
-		case *sprout.ConstructorFunction:
+		case *dang.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
 			objDef, err := createObjectTypeDef(dag, binding.Key, val)
 			if err != nil {
@@ -371,20 +371,20 @@ func initModule(dag *dagger.Client, env sprout.EvalEnv) (*dagger.Module, error) 
 type ProcessedDirectives = map[string]map[string]map[string]any
 
 func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, directives ProcessedDirectives) (*dagger.Function, error) {
-	// Convert Sprout function type to Dagger TypeDef
-	retTypeDef, err := sproutTypeToTypeDef(dag, fn.Ret(false))
+	// Convert Dang function type to Dagger TypeDef
+	retTypeDef, err := dangTypeToTypeDef(dag, fn.Ret(false))
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn, err)
 	}
 
 	funDef := dag.Function(name, retTypeDef)
 
-	for _, arg := range fn.Arg().(*sprout.RecordType).Fields {
+	for _, arg := range fn.Arg().(*dang.RecordType).Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
 		}
-		typeDef, err := sproutTypeToTypeDef(dag, argType)
+		typeDef, err := dangTypeToTypeDef(dag, argType)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
@@ -428,15 +428,15 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 }
 
 // evalConstantValue converts AST nodes to Go values for directive arguments
-func evalConstantValue(node sprout.Node) (any, error) {
+func evalConstantValue(node dang.Node) (any, error) {
 	switch n := node.(type) {
-	case sprout.String:
+	case dang.String:
 		return n.Value, nil
-	case sprout.Int:
+	case dang.Int:
 		return n.Value, nil
-	case sprout.Boolean:
+	case dang.Boolean:
 		return n.Value, nil
-	case sprout.List:
+	case dang.List:
 		var elements []any
 		for _, elem := range n.Elements {
 			if evalElem, err := evalConstantValue(elem); err == nil {
@@ -453,11 +453,11 @@ func evalConstantValue(node sprout.Node) (any, error) {
 	}
 }
 
-func createObjectTypeDef(dag *dagger.Client, name string, module *sprout.ConstructorFunction) (*dagger.TypeDef, error) {
+func createObjectTypeDef(dag *dagger.Client, name string, module *dang.ConstructorFunction) (*dagger.TypeDef, error) {
 	objDef := dag.TypeDef().WithObject(name)
 
 	// Process public methods in the class
-	for name, scheme := range module.ClassType.Bindings(sprout.PublicVisibility) {
+	for name, scheme := range module.ClassType.Bindings(dang.PublicVisibility) {
 		slotType, isMono := scheme.Type()
 		if !isMono {
 			return nil, fmt.Errorf("non-monotype method %s", name)
@@ -472,7 +472,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *sprout.Constru
 			}
 			objDef = objDef.WithFunction(fnDef)
 		default:
-			fieldDef, err := sproutTypeToTypeDef(dag, slotType)
+			fieldDef, err := dangTypeToTypeDef(dag, slotType)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create field %s: %w", name, err)
 			}
@@ -483,22 +483,22 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *sprout.Constru
 	return objDef, nil
 }
 
-func sproutTypeToTypeDef(dag *dagger.Client, sproutType hm.Type) (*dagger.TypeDef, error) {
+func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type) (*dagger.TypeDef, error) {
 	def := dag.TypeDef()
 
-	switch t := sproutType.(type) {
+	switch t := dangType.(type) {
 	case hm.NonNullType:
 		// Handle non-null wrapper
-		return sproutTypeToTypeDef(dag, t.Type)
+		return dangTypeToTypeDef(dag, t.Type)
 
-	case sprout.ListType:
-		elemTypeDef, err := sproutTypeToTypeDef(dag, t.Type)
+	case dang.ListType:
+		elemTypeDef, err := dangTypeToTypeDef(dag, t.Type)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert list element type: %w", err)
 		}
 		return def.WithListOf(elemTypeDef), nil
 
-	case *sprout.Module:
+	case *dang.Module:
 		// Check for basic types and object/class types
 		switch t.Named {
 		case "String":
@@ -520,8 +520,8 @@ func sproutTypeToTypeDef(dag *dagger.Client, sproutType hm.Type) (*dagger.TypeDe
 	default:
 		// For type variables and other complex types, default to string for now
 		// TODO: Handle type variables more gracefully
-		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", sproutType), "value", fmt.Sprintf("%s", sproutType))
-		return nil, fmt.Errorf("unknown type: %T: %s", sproutType, sproutType)
+		slog.Info("unknown type, defaulting to string", "type", fmt.Sprintf("%T", dangType), "value", fmt.Sprintf("%s", dangType))
+		return nil, fmt.Errorf("unknown type: %T: %s", dangType, dangType)
 	}
 }
 

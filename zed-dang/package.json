@@ -1,0 +1,26 @@
+{
+  "name": "zed-dang",
+  "version": "0.1.0",
+  "description": "Dang language extension for Zed editor",
+  "main": "extension.toml",
+  "keywords": [
+    "zed",
+    "extension",
+    "dang",
+    "language",
+    "dagger",
+    "functional-programming",
+    "syntax-highlighting"
+  ],
+  "author": "Claude <noreply@anthropic.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vito/dang.git",
+    "directory": "zed-dang"
+  },
+  "bugs": {
+    "url": "https://github.com/vito/dang/issues"
+  },
+  "homepage": "https://github.com/vito/dang/tree/main/zed-dang"
+}

@@ -1,5 +1,5 @@
 {
-  "name": "sprout",
+  "name": "dang",
   "engineVersion": "v0.18.12",
   "sdk": {
     "source": "./dagger-sdk"
