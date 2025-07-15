@@ -2,10 +2,15 @@ package dang
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
@@ -29,6 +34,13 @@ type GraphQLConfig struct {
 type GraphQLClientProvider struct {
 	config     GraphQLConfig
 	daggerConn *dagger.Client // Keep reference to close connection if needed
+}
+
+// schemaCache represents a cached GraphQL schema
+type schemaCache struct {
+	Schema    *introspection.Schema `json:"schema"`
+	Timestamp time.Time             `json:"timestamp"`
+	Endpoint  string                `json:"endpoint"`
 }
 
 // NewGraphQLClientProvider creates a new provider with the given configuration
@@ -85,13 +97,119 @@ func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (g
 	// Create GraphQL client with custom endpoint
 	client := graphql.NewClient(p.config.Endpoint, httpClient)
 
-	// Introspect the schema
+	// Try to load from cache first
+	cachedSchema, err := loadCachedSchema(p.config.Endpoint)
+	if err == nil && cachedSchema != nil {
+		// Cache hit!
+		return client, cachedSchema, nil
+	}
+
+	// Cache miss or error - perform introspection
 	schema, err := introspectSchema(ctx, client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to introspect schema from %s: %w", p.config.Endpoint, err)
 	}
 
+	// Save to cache for future use (best effort, ignore errors)
+	_ = saveCachedSchema(p.config.Endpoint, schema)
+
 	return client, schema, nil
+}
+
+// getCacheDir returns the directory for schema caches
+func getCacheDir() string {
+	// Try XDG_CACHE_HOME first
+	if cacheHome := os.Getenv("XDG_CACHE_HOME"); cacheHome != "" {
+		return filepath.Join(cacheHome, "dang", "schemas")
+	}
+	// Fall back to ~/.cache
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".cache", "dang", "schemas")
+	}
+	// Last resort: temp dir
+	return filepath.Join(os.TempDir(), "dang-cache", "schemas")
+}
+
+// getCacheKey generates a cache key for an endpoint
+func getCacheKey(endpoint string) string {
+	h := sha256.Sum256([]byte(endpoint))
+	return hex.EncodeToString(h[:])
+}
+
+// loadCachedSchema attempts to load a cached schema for the given endpoint
+func loadCachedSchema(endpoint string) (*introspection.Schema, error) {
+	cacheDir := getCacheDir()
+	cacheFile := filepath.Join(cacheDir, getCacheKey(endpoint)+".json")
+
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return nil, err // Cache miss
+	}
+
+	var cached schemaCache
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return nil, err
+	}
+
+	// Verify endpoint matches (paranoid check)
+	if cached.Endpoint != endpoint {
+		return nil, fmt.Errorf("cache corruption: endpoint mismatch")
+	}
+
+	return cached.Schema, nil
+}
+
+// saveCachedSchema saves a schema to the cache
+func saveCachedSchema(endpoint string, schema *introspection.Schema) error {
+	cacheDir := getCacheDir()
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return err
+	}
+
+	cached := schemaCache{
+		Schema:    schema,
+		Timestamp: time.Now(),
+		Endpoint:  endpoint,
+	}
+
+	data, err := json.MarshalIndent(cached, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	cacheFile := filepath.Join(cacheDir, getCacheKey(endpoint)+".json")
+	return os.WriteFile(cacheFile, data, 0644)
+}
+
+// clearSchemaCache removes all cached schemas
+func clearSchemaCache() error {
+	cacheDir := getCacheDir()
+	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
+		// Cache directory doesn't exist, nothing to clear
+		return nil
+	}
+
+	// Remove all files in the cache directory
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return fmt.Errorf("failed to read cache directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+			filePath := filepath.Join(cacheDir, entry.Name())
+			if err := os.Remove(filePath); err != nil {
+				return fmt.Errorf("failed to remove cache file %s: %w", filePath, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ClearSchemaCache is a public function to clear the schema cache
+func ClearSchemaCache() error {
+	return clearSchemaCache()
 }
 
 // customTransport wraps http.RoundTripper to add custom headers

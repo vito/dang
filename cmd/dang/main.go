@@ -21,8 +21,9 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	Debug bool
-	File  string
+	Debug      bool
+	ClearCache bool
+	File       string
 }
 
 func main() {
@@ -48,6 +49,15 @@ It provides type-safe, composable abstractions for container operations.`,
   dang -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Handle cache clearing first
+			if cfg.ClearCache {
+				if err := dang.ClearSchemaCache(); err != nil {
+					return fmt.Errorf("failed to clear cache: %w", err)
+				}
+				fmt.Println("Schema cache cleared successfully")
+				return nil
+			}
+
 			if len(args) == 1 {
 				cfg.File = args[0]
 				return run(cfg)
@@ -59,6 +69,7 @@ It provides type-safe, composable abstractions for container operations.`,
 
 	// Add flags
 	rootCmd.Flags().BoolVarP(&cfg.Debug, "debug", "d", false, "Enable debug logging")
+	rootCmd.Flags().BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear GraphQL schema cache and exit")
 
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
