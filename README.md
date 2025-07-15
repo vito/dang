@@ -1,16 +1,12 @@
-# 🌱 dang
+# dang.
 
-> a little language that grows when you feed it
-
-Dang is a language for scripting GraphQL, with types and functions loaded from
-the API endpoint.
-
+`dang` is a statically typed language for scripting GraphQL, where the types and functions are loaded directly from the schema.
 
 ## sample
 
 Here's `.dagger/main.dang` at the time of this writing:
 
-```sp
+```graphql
 type Dang {
   pub source: Directory! @defaultPath(
     path: "/",
