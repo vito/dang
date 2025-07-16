@@ -222,3 +222,218 @@ func TestSelectFieldsNested(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, `{user{profile{bio avatar}}}`, q)
 }
+
+func TestSelectMixed(t *testing.T) {
+	postsSelection := Query().SelectFields("title", "content")
+	pageInfoSelection := Query().SelectFields("hasNextPage", "endCursor")
+	
+	q, err := Query().
+		Select("user").Arg("id", "1").
+		Select("posts").Arg("first", 2).
+		SelectMixed(
+			nil,
+			map[string]*QueryBuilder{
+				"posts":    postsSelection,
+				"pageInfo": pageInfoSelection,
+			},
+		).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Contains(t, q, `user(id:"1")`)
+	require.Contains(t, q, `posts(first:2)`)
+	require.Contains(t, q, `posts{title content}`)
+	require.Contains(t, q, `pageInfo{hasNextPage endCursor}`)
+}
+
+func TestUnpackMixedFieldsAndSubselections(t *testing.T) {
+	type Post struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	
+	type PageInfo struct {
+		HasNextPage bool   `json:"hasNextPage"`
+		EndCursor   string `json:"endCursor"`
+	}
+	
+	type PostsConnection struct {
+		Posts    []Post   `json:"posts"`
+		PageInfo PageInfo `json:"pageInfo"`
+	}
+	
+	var result PostsConnection
+	
+	postsSelection := Query().SelectFields("title", "content")
+	pageInfoSelection := Query().SelectFields("hasNextPage", "endCursor")
+	
+	root := Query().
+		Select("user").Arg("id", "1").
+		Select("posts").Arg("first", 2).
+		SelectMixed(
+			nil,
+			map[string]*QueryBuilder{
+				"posts":    postsSelection,
+				"pageInfo": pageInfoSelection,
+			},
+		).
+		Bind(&result)
+
+	var response any
+	err := json.Unmarshal([]byte(`
+		{
+			"user": {
+				"posts": {
+					"posts": [
+						{"title": "First Post", "content": "Hello World!"},
+						{"title": "Third Post", "content": "Learning GraphQL pagination"}
+					],
+					"pageInfo": {
+						"hasNextPage": true,
+						"endCursor": "3"
+					}
+				}
+			}
+		}
+	`), &response)
+	require.NoError(t, err)
+	require.NoError(t, root.unpack(response))
+	
+	require.Len(t, result.Posts, 2)
+	require.Equal(t, "First Post", result.Posts[0].Title)
+	require.Equal(t, "Hello World!", result.Posts[0].Content)
+	require.Equal(t, "Third Post", result.Posts[1].Title)
+	require.Equal(t, "Learning GraphQL pagination", result.Posts[1].Content)
+	require.True(t, result.PageInfo.HasNextPage)
+	require.Equal(t, "3", result.PageInfo.EndCursor)
+}
+
+func TestUnpackSubselectionsOnly(t *testing.T) {
+	type User struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	
+	type Profile struct {
+		Bio  string `json:"bio"`
+		User User   `json:"user"`
+	}
+	
+	var result Profile
+	
+	userSelection := Query().SelectFields("name", "age")
+	
+	root := Query().
+		Select("userProfile").Arg("userId", "1").
+		SelectMixed(
+			[]string{"bio"},
+			map[string]*QueryBuilder{
+				"user": userSelection,
+			},
+		).
+		Bind(&result)
+
+	var response any
+	err := json.Unmarshal([]byte(`
+		{
+			"userProfile": {
+				"bio": "A passionate user sharing thoughts and ideas.",
+				"user": {
+					"name": "John Doe",
+					"age": 30
+				}
+			}
+		}
+	`), &response)
+	require.NoError(t, err)
+	require.NoError(t, root.unpack(response))
+	
+	require.Equal(t, "A passionate user sharing thoughts and ideas.", result.Bio)
+	require.Equal(t, "John Doe", result.User.Name)
+	require.Equal(t, 30, result.User.Age)
+}
+
+func TestUnpackEmptySelectionWithSubselections(t *testing.T) {
+	type PageInfo struct {
+		HasNextPage bool   `json:"hasNextPage"`
+		EndCursor   string `json:"endCursor"`
+	}
+	
+	type Result struct {
+		PageInfo PageInfo `json:"pageInfo"`
+	}
+	
+	var result Result
+	
+	pageInfoSelection := Query().SelectFields("hasNextPage", "endCursor")
+	
+	root := Query().
+		Select("data").
+		SelectMixed(
+			nil,
+			map[string]*QueryBuilder{
+				"pageInfo": pageInfoSelection,
+			},
+		).
+		Bind(&result)
+
+	var response any
+	err := json.Unmarshal([]byte(`
+		{
+			"data": {
+				"pageInfo": {
+					"hasNextPage": true,
+					"endCursor": "cursor123"
+				}
+			}
+		}
+	`), &response)
+	require.NoError(t, err)
+	require.NoError(t, root.unpack(response))
+	
+	require.True(t, result.PageInfo.HasNextPage)
+	require.Equal(t, "cursor123", result.PageInfo.EndCursor)
+}
+
+func TestUnpackNestedSubselectionsOnly(t *testing.T) {
+	type User struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+	
+	type Result struct {
+		User User `json:"user"`
+	}
+	
+	var result Result
+	
+	userSelection := Query().SelectFields("name", "age")
+	
+	root := Query().
+		Select("userProfile").Arg("userId", "1").
+		SelectMixed(
+			nil,
+			map[string]*QueryBuilder{
+				"user": userSelection,
+			},
+		).
+		Bind(&result)
+
+	var response any
+	err := json.Unmarshal([]byte(`
+		{
+			"userProfile": {
+				"user": {
+					"name": "John Doe",
+					"age": 30
+				}
+			}
+		}
+	`), &response)
+	require.NoError(t, err)
+	require.NoError(t, root.unpack(response))
+	
+	require.Equal(t, "John Doe", result.User.Name)
+	require.Equal(t, 30, result.User.Age)
+}
+
