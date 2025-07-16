@@ -228,9 +228,10 @@ func (q *QueryBuilder) unpack(data any) error {
 		}
 
 		// Handle SelectFields case - when we have fields but no name,
+		// or when we have subselections but no name (mixed selection case)
 		// don't navigate deeper, just bind at the current level
-		if len(i.fields) > 0 && i.name == "" {
-			// This is a SelectFields selection - bind directly to current data
+		if (len(i.fields) > 0 || len(i.subSelections) > 0) && i.name == "" {
+			// This is a SelectFields or mixed selection - bind directly to current data
 			if i.bind != nil {
 				marshalled, err := json.Marshal(data)
 				if err != nil {

@@ -135,4 +135,17 @@ assert { complex_query.posts[1].title == "Second Post" }
 assert { complex_query.posts[1].author.name == "Jane Smith" }
 assert { complex_query.titles == ["First Post", "Second Post", "Third Post", "Fourth Post", "Fifth Post", "Sixth Post"] }
 
+# Test chained method calls with object selection: foo(...).bar(...).baz{fizz, buzz}
+pub chained_method_test = user(id: "1").posts(first: 2).{
+  posts.{title, content},
+  pageInfo.{hasNextPage, endCursor}
+}
+
+assert { chained_method_test.pageInfo.hasNextPage }
+assert { chained_method_test.posts[0].title == "First Post" }
+assert { chained_method_test.posts[0].content == "Hello World!" }
+assert { chained_method_test.posts[1].title == "Third Post" }
+assert { chained_method_test.posts[1].content == "Learning GraphQL pagination" }
+assert { chained_method_test.posts[2] == null }
+
 print("GraphQL object selection tests passed!")
