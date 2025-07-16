@@ -120,16 +120,23 @@ ObjectSelection <- '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:F
   }, nil
 }
 
-FieldSelection <- name:Id selection:('.' sel:ObjectSelection)? {
+FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
+  var argRecord Record
+  if args != nil {
+    argRecord = Record(args.([]Keyed[Node]))
+  }
+  
   if selection != nil {
     return FieldSelection{
       Name: name.(string),
+      Args: argRecord,
       Selection: selection.([]interface{})[1].(*ObjectSelection),
       Loc: c.Loc(),
     }, nil
   } else {
     return FieldSelection{
       Name: name.(string),
+      Args: argRecord,
       Selection: nil,
       Loc: c.Loc(),
     }, nil

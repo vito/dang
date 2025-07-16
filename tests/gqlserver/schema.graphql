@@ -19,7 +19,7 @@ type User {
   name: String!
   emails: [String!]!
   age: Int
-  posts: [Post!]!
+  posts(limit: Int, offset: Int): [Post!]! @goField(forceResolver: true)
 }
 
 type Post {
@@ -58,3 +58,10 @@ input UpdateUserInput {
   email: String
   age: Int
 }
+
+directive @goField(
+  forceResolver: Boolean
+  name: String
+  omittable: Boolean
+  type: String
+) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION

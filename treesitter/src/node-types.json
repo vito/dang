@@ -1084,6 +1084,16 @@
     "type": "field_selection",
     "named": true,
     "fields": {
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,

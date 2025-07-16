@@ -1,0 +1,28 @@
+# Test multi-select with arguments functionality
+
+type Calculator {
+  pub value = 0
+
+  pub add(amount: Int!): Int! {
+    self.value + amount
+  }
+
+  pub multiply(factor: Int!): Int! {
+    self.value * factor
+  }
+}
+
+pub calc = Calculator
+
+# Test basic multi-select with arguments
+pub result = calc.{
+  value,
+  add(amount: 10),
+  multiply(factor: 3)
+}
+
+assert { result.value == 0 }
+assert { result.add == 10 }
+assert { result.multiply == 0 }
+
+print("Multi-select with arguments tests passed!")

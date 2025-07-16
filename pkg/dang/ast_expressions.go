@@ -779,6 +779,7 @@ func (i Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
 	Name      string
+	Args      Record           // For arguments like repositories(first: 100)
 	Selection *ObjectSelection // For nested selections like profile.{bio, avatar}
 	Loc       *SourceLocation
 }
@@ -900,20 +901,54 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 }
 
 func (o *ObjectSelection) inferFieldType(ctx context.Context, field FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	fieldType, err := Symbol{
-		Name:     field.Name,
-		AutoCall: true,
-		Loc:      o.Loc,
-	}.Infer(ctx, rec, fresh)
-	if err != nil {
-		return nil, err
+	var fieldType hm.Type
+	var err error
+
+	if len(field.Args) > 0 {
+		// Field has arguments - create a Select then FunCall to infer the type
+		// But use a synthetic receiver to get the field from the correct environment
+		selectNode := Select{
+			Receiver: nil, // Will be handled by using rec environment directly
+			Field:    field.Name,
+			AutoCall: false,
+			Loc:      field.Loc,
+		}
+
+		funCall := FunCall{
+			Fun:  selectNode,
+			Args: field.Args,
+			Loc:  field.Loc,
+		}
+
+		// Create a synthetic environment that combines rec and env
+		// Use rec for symbol lookup, env for argument evaluation
+		synthEnv := &CompositeModule{
+			primary: rec,
+			lexical: env.(Env),
+		}
+		fieldType, err = funCall.Infer(ctx, synthEnv, fresh)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// No arguments - use symbol directly as before
+		fieldType, err = Symbol{
+			Name:     field.Name,
+			AutoCall: true,
+			Loc:      o.Loc,
+		}.Infer(ctx, rec, fresh)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ret, _ := autoCallFnType(fieldType)
 
 	// Handle nested selections
 	if field.Selection != nil {
-		t, err := field.Selection.inferSelectionType(ctx, fieldType, env, fresh)
+		// Set the receiver for the nested selection to match the field we're selecting from
+		field.Selection.Receiver = nil // Will be inferred from the receiver type
+		t, err := field.Selection.inferSelectionType(ctx, ret, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -983,21 +1018,45 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 
 	// Build result object with selected fields
 	for _, field := range o.Fields {
-		fieldVal, exists := objVal.Get(field.Name)
-		if !exists {
-			return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: field %q not found", field.Name)
+		var fieldVal Value
+		var err error
+
+		if len(field.Args) > 0 {
+			// Field has arguments - create a Select then FunCall to evaluate
+			selectNode := Select{
+				Receiver: createValueNode(objVal),
+				Field:    field.Name,
+				AutoCall: false,
+				Loc:      field.Loc,
+			}
+
+			funCall := FunCall{
+				Fun:  selectNode,
+				Args: field.Args,
+				Loc:  field.Loc,
+			}
+			fieldVal, err = funCall.Eval(ctx, env)
+			if err != nil {
+				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: evaluating field %q with args: %w", field.Name, err)
+			}
+		} else {
+			// No arguments - get field value directly
+			var exists bool
+			fieldVal, exists = objVal.Get(field.Name)
+			if !exists {
+				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: field %q not found", field.Name)
+			}
 		}
 
 		// Handle nested selections
 		if field.Selection != nil {
-			fieldVal, err := field.Selection.evalSelectionOnValue(fieldVal, ctx, env)
+			fieldVal, err = field.Selection.evalSelectionOnValue(fieldVal, ctx, env)
 			if err != nil {
 				return nil, err
 			}
-			resultModuleValue.Set(field.Name, fieldVal)
-		} else {
-			resultModuleValue.Set(field.Name, fieldVal)
 		}
+
+		resultModuleValue.Set(field.Name, fieldVal)
 	}
 
 	return resultModuleValue, nil
@@ -1009,7 +1068,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	}
 
 	// Build optimized GraphQL query for all selected fields
-	query, err := o.buildGraphQLQuery(gqlVal.QueryChain, o.Fields)
+	query, err := o.buildGraphQLQuery(ctx, env, gqlVal.QueryChain, o.Fields)
 	if err != nil {
 		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err)
 	}
@@ -1028,24 +1087,24 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field)
 }
 
-func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
+func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
 	// Start with the base query (which contains the context like "serverInfo")
 	builder := baseQuery
 	if builder == nil {
 		builder = querybuilder.Query()
 	}
 
-	// Check if we have any nested selections
-	hasNestedSelections := false
+	// Check if we have any nested selections or fields with arguments
+	hasNestedSelectionsOrArgs := false
 	for _, field := range fields {
-		if field.Selection != nil {
-			hasNestedSelections = true
+		if field.Selection != nil || len(field.Args) > 0 {
+			hasNestedSelectionsOrArgs = true
 			break
 		}
 	}
 
-	if !hasNestedSelections {
-		// Simple case: just select all fields using SelectFields
+	if !hasNestedSelectionsOrArgs {
+		// Simple case: just select all fields using SelectFields (no args, no nested selections)
 		fieldNames := make([]string, len(fields))
 		for i, field := range fields {
 			fieldNames[i] = field.Name
@@ -1053,29 +1112,51 @@ func (o *ObjectSelection) buildGraphQLQuery(baseQuery *querybuilder.Selection, f
 		return builder.SelectFields(fieldNames...), nil
 	}
 
-	// Complex case: mix of simple fields and nested selections
-	// Use SelectMixed to handle both types in a single selection set
+	// Complex case: mix of simple fields, fields with arguments, and nested selections
+	// Use SelectMixed to handle all types in a single selection set
 
-	// Collect simple fields
+	// Collect simple fields (no args, no nested selections)
 	var simpleFields []string
-	nestedSelections := make(map[string]*querybuilder.QueryBuilder)
+	fieldsWithSelections := make(map[string]*querybuilder.QueryBuilder)
 
 	for _, field := range fields {
-		if field.Selection == nil {
+		if field.Selection == nil && len(field.Args) == 0 {
+			// Simple field - no arguments, no nested selection
 			simpleFields = append(simpleFields, field.Name)
 		} else {
-			// Handle nested selections
-			nestedBuilder := querybuilder.Query()
-			result, err := o.buildGraphQLQuery(nestedBuilder, field.Selection.Fields)
-			if err != nil {
-				return nil, err
+			// Field has either arguments or nested selection (or both)
+			fieldBuilder := querybuilder.Query().Select(field.Name)
+
+			// Add arguments if present
+			if len(field.Args) > 0 {
+				for _, arg := range field.Args {
+					val, err := EvalNode(ctx, env, arg.Value)
+					if err != nil {
+						return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
+					}
+					// Convert Dang value to Go value for GraphQL
+					goVal, err := dangValueToGo(val)
+					if err != nil {
+						return nil, fmt.Errorf("converting argument %s: %w", arg.Key, err)
+					}
+					fieldBuilder = fieldBuilder.Arg(arg.Key, goVal)
+				}
 			}
-			// Use the result instead of the nestedBuilder
-			nestedSelections[field.Name] = result
+
+			// Handle nested selections
+			if field.Selection != nil {
+				nestedResult, err := field.Selection.buildGraphQLQuery(ctx, env, querybuilder.Query(), field.Selection.Fields)
+				if err != nil {
+					return nil, err
+				}
+				fieldBuilder = nestedResult
+			}
+
+			fieldsWithSelections[field.Name] = fieldBuilder
 		}
 	}
 
-	builder = builder.SelectMixed(simpleFields, nestedSelections)
+	builder = builder.SelectMixed(simpleFields, fieldsWithSelections)
 
 	return builder, nil
 }

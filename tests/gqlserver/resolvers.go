@@ -172,14 +172,41 @@ func (r *queryResolver) PostTitles(ctx context.Context) ([]string, error) {
 	return titles, nil
 }
 
+// Posts is the resolver for the posts field.
+func (r *userResolver) Posts(ctx context.Context, obj *User, limit *int, offset *int) ([]*Post, error) {
+	// Get all posts for this user
+	var userPosts []*Post
+	for _, post := range posts {
+		if post.Author.ID == obj.ID {
+			userPosts = append(userPosts, post)
+		}
+	}
+
+	// Apply offset if provided
+	if offset != nil && *offset >= 0 && *offset < len(userPosts) {
+		userPosts = userPosts[*offset:]
+	}
+
+	// Apply limit if provided
+	if limit != nil && *limit >= 0 && *limit < len(userPosts) {
+		userPosts = userPosts[:*limit]
+	}
+
+	return userPosts, nil
+}
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// User returns UserResolver implementation.
+func (r *Resolver) User() UserResolver { return &userResolver{r} }
+
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type userResolver struct{ *Resolver }
 
 // !!! WARNING !!!
 // The code below was going to be deleted when updating resolvers. It has been copied here so you have

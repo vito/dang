@@ -1,0 +1,44 @@
+# Test the actual multi-select with arguments feature
+# This tests foo.{bar(arg: 123).{deeper}} pattern with class methods
+
+type TestService {
+  pub name = "TestService"
+  
+  pub getData(limit: Int!): TestData! {
+    TestData(name: "Data", count: limit)
+  }
+  
+  pub getInfo(prefix: String!): String! {
+    prefix + ": " + self.name
+  }
+}
+
+type TestData {
+  pub name: String!
+  pub count: Int!
+  
+  pub getDetails(suffix: String!): String! {
+    self.name + " - " + suffix
+  }
+}
+
+pub service = TestService
+
+# Test the actual pattern: foo.{bar(arg: 123).{deeper}}
+pub result = service.{
+  name,
+  getData(limit: 5).{
+    name,
+    count,
+    getDetails(suffix: "deep info")
+  },
+  getInfo(prefix: "Service")
+}
+
+assert { result.name == "TestService" }
+assert { result.getData.name == "Data" }
+assert { result.getData.count == 5 }
+assert { result.getData.getDetails == "Data - deep info" }
+assert { result.getInfo == "Service: TestService" }
+
+print("Actual multi-select with arguments feature works!")
