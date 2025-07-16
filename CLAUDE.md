@@ -29,3 +29,7 @@ Maintain the accuracy of ./llm-notes/ as the project evolves.
 To test the Dagger SDK, do not use `go test`. Instead, call `dagger functions` as a quick spot check - you should see 'build' and 'test' functions. Use `dagger call test` to run them.
 
 Run all `dagger` commands from the root of the repo, NOT the dagger-sdk directory.
+
+## Code Organization
+
+- When adding code to the GraphQL test server, never add helper functions to resolvers.go - always add them to resolvers.helpers.go.

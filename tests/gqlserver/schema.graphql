@@ -19,7 +19,7 @@ type User {
   name: String!
   emails: [String!]!
   age: Int
-  posts(limit: Int, offset: Int): [Post!]! @goField(forceResolver: true)
+  posts(first: Int, after: String, last: Int, before: String): PostConnection! @goField(forceResolver: true)
 }
 
 type Post {
@@ -28,6 +28,18 @@ type Post {
   content: String!
   author: User!
   createdAt: String!
+}
+
+type PostConnection {
+  posts: [Post!]!
+  pageInfo: PageInfo!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
 }
 
 type ServerInfo {

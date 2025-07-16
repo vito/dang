@@ -4,27 +4,26 @@
 # Test the actual pattern with nested field arguments
 pub user_with_limited_posts = user(id: "1").{
   name,
-  posts(limit: 2).{title, content}
+  posts(first: 2).{posts.{title, content}}
 }
 
 assert { user_with_limited_posts.name == "John Doe" }
 assert { user_with_limited_posts.posts != null }
-assert { user_with_limited_posts.posts[0].title == "First Post" }
-assert { user_with_limited_posts.posts[0].content == "Hello World!" }
+assert { user_with_limited_posts.posts.posts[0].title == "First Post" }
+assert { user_with_limited_posts.posts.posts[0].content == "Hello World!" }
 
 # Test more complex nested pattern
 pub detailed_user = user(id: "1").{
   name,
   age,
-  posts(limit: 1, offset: 0).{
-    title,
-    author.{name}
+  posts(first: 1).{
+    posts.{title, author.{name}}
   }
 }
 
 assert { detailed_user.name == "John Doe" }
 assert { detailed_user.age == 30 }
-assert { detailed_user.posts[0].title == "First Post" }
-assert { detailed_user.posts[0].author.name == "John Doe" }
+assert { detailed_user.posts.posts[0].title == "First Post" }
+assert { detailed_user.posts.posts[0].author.name == "John Doe" }
 
 print("Nested field arguments tests passed!")

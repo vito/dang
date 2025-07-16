@@ -11,12 +11,24 @@ type CreateUserInput struct {
 type Mutation struct {
 }
 
+type PageInfo struct {
+	HasNextPage     bool    `json:"hasNextPage"`
+	HasPreviousPage bool    `json:"hasPreviousPage"`
+	StartCursor     *string `json:"startCursor,omitempty"`
+	EndCursor       *string `json:"endCursor,omitempty"`
+}
+
 type Post struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	Content   string `json:"content"`
 	Author    *User  `json:"author"`
 	CreatedAt string `json:"createdAt"`
+}
+
+type PostConnection struct {
+	Posts    []*Post   `json:"posts"`
+	PageInfo *PageInfo `json:"pageInfo"`
 }
 
 type Query struct {
@@ -37,11 +49,11 @@ type UpdateUserInput struct {
 }
 
 type User struct {
-	ID     string   `json:"id"`
-	Name   string   `json:"name"`
-	Emails []string `json:"emails"`
-	Age    *int     `json:"age,omitempty"`
-	Posts  []*Post  `json:"posts"`
+	ID     string          `json:"id"`
+	Name   string          `json:"name"`
+	Emails []string        `json:"emails"`
+	Age    *int            `json:"age,omitempty"`
+	Posts  *PostConnection `json:"posts"`
 }
 
 type UserProfile struct {

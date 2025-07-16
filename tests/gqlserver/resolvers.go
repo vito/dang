@@ -173,7 +173,7 @@ func (r *queryResolver) PostTitles(ctx context.Context) ([]string, error) {
 }
 
 // Posts is the resolver for the posts field.
-func (r *userResolver) Posts(ctx context.Context, obj *User, limit *int, offset *int) ([]*Post, error) {
+func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user
 	var userPosts []*Post
 	for _, post := range posts {
@@ -182,17 +182,8 @@ func (r *userResolver) Posts(ctx context.Context, obj *User, limit *int, offset 
 		}
 	}
 
-	// Apply offset if provided
-	if offset != nil && *offset >= 0 && *offset < len(userPosts) {
-		userPosts = userPosts[*offset:]
-	}
-
-	// Apply limit if provided
-	if limit != nil && *limit >= 0 && *limit < len(userPosts) {
-		userPosts = userPosts[:*limit]
-	}
-
-	return userPosts, nil
+	// Implement cursor-based pagination
+	return paginatePosts(userPosts, first, after, last, before)
 }
 
 // Mutation returns MutationResolver implementation.

@@ -9,7 +9,7 @@ assert { server_info.version == "1.0.0" }
 assert { server_info.platform != null }
 assert { server_info.uptime != null }
 assert { server_stats.totalUsers == 2 }
-assert { server_stats.totalPosts == 2 }
+assert { server_stats.totalPosts == 6 }
 
 # Test object selection with function calls and arguments
 pub first_user = user(id: "1").{name, emails, age}
@@ -35,18 +35,18 @@ assert { profile_data.user.name == "John Doe" }
 assert { profile_data.user.emails[0] == "john@example.com" }
 assert { profile_data.joinedDate == "2024-01-01T00:00:00Z" }
 assert { profile_data.bio == "A passionate user sharing thoughts and ideas." }
-assert { profile_data.postCount == 1 }
+assert { profile_data.postCount == 4 }
 assert { profile_data.averagePostLength != null }
 
 # Test object selection with mixed field types
-pub comprehensive_user = user(id: "1").{name, emails, age, posts.{title, createdAt}}
+pub comprehensive_user = user(id: "1").{name, emails, age, posts.{posts.{title, createdAt}}}
 
 assert { comprehensive_user.name == "John Doe" }
 assert { comprehensive_user.emails[0] == "john@example.com" }
 assert { comprehensive_user.age == 30 }
 assert { comprehensive_user.posts != null }
-assert { comprehensive_user.posts[0].title == "First Post" }
-assert { comprehensive_user.posts[0].createdAt == "2024-01-01T00:00:00Z" }
+assert { comprehensive_user.posts.posts[0].title == "First Post" }
+assert { comprehensive_user.posts.posts[0].createdAt == "2024-01-01T00:00:00Z" }
 
 # Test object selection on lists
 pub all_users_summary = users.{name, emails}
@@ -69,8 +69,7 @@ pub deep_selection = userProfile(userId: "1").{
     name,
     emails,
     posts.{
-      title,
-      author.{name}
+      posts.{title, author.{name}}
     }
   },
   joinedDate
@@ -79,8 +78,8 @@ pub deep_selection = userProfile(userId: "1").{
 assert { deep_selection.user.name == "John Doe" }
 assert { deep_selection.user.emails[0] == "john@example.com" }
 assert { deep_selection.user.posts != null }
-assert { deep_selection.user.posts[0].title == "First Post" }
-assert { deep_selection.user.posts[0].author.name == "John Doe" }
+assert { deep_selection.user.posts.posts[0].title == "First Post" }
+assert { deep_selection.user.posts.posts[0].author.name == "John Doe" }
 assert { deep_selection.joinedDate == "2024-01-01T00:00:00Z" }
 
 # Test object selection with optional fields
@@ -93,7 +92,7 @@ pub optional_selection = userProfile(userId: "1", includeStats: true).{
 
 assert { optional_selection.user.name == "John Doe" }
 assert { optional_selection.user.age == 30 }
-assert { optional_selection.postCount == 1 }
+assert { optional_selection.postCount == 4 }
 assert { optional_selection.averagePostLength != null }
 assert { optional_selection.bio == "A passionate user sharing thoughts and ideas." }
 
@@ -112,7 +111,7 @@ pub user_overview = user(id: "1").{name, emails}
 assert { server_overview.version == "1.0.0" }
 assert { server_overview.platform != null }
 assert { server_overview.totalUsers == 2 }
-assert { server_overview.totalPosts == 2 }
+assert { server_overview.totalPosts == 6 }
 assert { user_overview.name == "John Doe" }
 assert { user_overview.emails[0] == "john@example.com" }
 
@@ -134,6 +133,6 @@ assert { complex_query.posts[0].title == "First Post" }
 assert { complex_query.posts[0].author.name == "John Doe" }
 assert { complex_query.posts[1].title == "Second Post" }
 assert { complex_query.posts[1].author.name == "Jane Smith" }
-assert { complex_query.titles == ["First Post", "Second Post"] }
+assert { complex_query.titles == ["First Post", "Second Post", "Third Post", "Fourth Post", "Fifth Post", "Sixth Post"] }
 
 print("GraphQL object selection tests passed!")
