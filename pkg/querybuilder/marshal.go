@@ -42,6 +42,9 @@ var (
 )
 
 func MarshalGQL(ctx context.Context, v any) (string, error) {
+	if v == nil {
+		return "null", nil
+	}
 	return marshalValue(ctx, reflect.ValueOf(v))
 }
 
