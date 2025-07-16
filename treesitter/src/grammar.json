@@ -105,6 +105,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "while"
+        },
+        {
+          "type": "SYMBOL",
           "name": "lambda"
         },
         {
@@ -131,7 +135,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 120,
+      "value": 122,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -267,7 +271,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 115,
+      "value": 117,
       "content": {
         "type": "SEQ",
         "members": [
@@ -330,7 +334,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 114,
+      "value": 116,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1223,7 +1227,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 87,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1379,7 +1383,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 80,
+      "value": 82,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1467,7 +1471,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 76,
+      "value": 78,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1548,7 +1552,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 74,
+      "value": 76,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1637,7 +1641,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 72,
+      "value": 74,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1718,7 +1722,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 70,
+      "value": 72,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2285,6 +2289,31 @@
         }
       ]
     },
+    "while": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "while_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "cond",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "block",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
     "if_token": {
       "type": "TOKEN",
       "content": {
@@ -2297,6 +2326,13 @@
       "content": {
         "type": "STRING",
         "value": "else"
+      }
+    },
+    "while_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "while"
       }
     },
     "lambda": {

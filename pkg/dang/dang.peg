@@ -19,7 +19,7 @@ CommaToken <- ','
 
 Expr <- Import / Class / Slot / DirectiveDecl / Reassignment / Form
 
-Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
+Form <- Conditional / While / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
 Term <- Literal / IndexOrCall / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -516,8 +516,17 @@ ElseClause <- _ ElseToken _ block:Block {
   return block.(Block), nil
 }
 
+While <- WhileToken _ cond:Form _ block:Block {
+  return While{
+    Condition: cond.(Node),
+    BodyBlock: block.(Block),
+    Loc: c.Loc(),
+  }, nil
+}
+
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
+WhileToken <- "while" !WordChar
 
 Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
   return &Lambda{

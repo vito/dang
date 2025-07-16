@@ -60,6 +60,10 @@
       {
         "type": "type_hint",
         "named": true
+      },
+      {
+        "type": "while",
+        "named": true
       }
     ]
   },
@@ -2775,6 +2779,42 @@
     }
   },
   {
+    "type": "while",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "cond": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "while_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "\n",
     "named": false
   },
@@ -2981,6 +3021,10 @@
   },
   {
     "type": "upper_token",
+    "named": true
+  },
+  {
+    "type": "while_token",
     "named": true
   },
   {

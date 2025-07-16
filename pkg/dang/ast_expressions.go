@@ -1279,6 +1279,13 @@ type Conditional struct {
 	Loc       *SourceLocation
 }
 
+// While represents a while loop expression
+type While struct {
+	Condition Node
+	BodyBlock Block
+	Loc       *SourceLocation
+}
+
 var _ Node = Conditional{}
 var _ Evaluator = Conditional{}
 
@@ -1370,6 +1377,78 @@ func (c Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		} else {
 			return NullValue{}, nil
 		}
+	})
+}
+
+var _ Node = While{}
+var _ Evaluator = While{}
+
+func (w While) DeclaredSymbols() []string {
+	return nil // While loops don't declare anything
+}
+
+func (w While) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, w.Condition.ReferencedSymbols()...)
+	symbols = append(symbols, w.BodyBlock.ReferencedSymbols()...)
+	return symbols
+}
+
+func (w While) Body() hm.Expression { return w }
+
+func (w While) GetSourceLocation() *SourceLocation { return w.Loc }
+
+func (w While) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(w, func() (hm.Type, error) {
+		condType, err := w.Condition.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
+			return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), w.Condition)
+		}
+
+		bodyType, err := w.BodyBlock.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// While loops return the last value from the body, or null if never executed
+		// Make the result nullable since the loop might not execute
+		if nonNull, ok := bodyType.(hm.NonNullType); ok {
+			return nonNull.Type, nil
+		}
+		return bodyType, nil
+	})
+}
+
+func (w While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, w, func() (Value, error) {
+		var lastVal Value = NullValue{}
+
+		for {
+			condVal, err := EvalNode(ctx, env, w.Condition)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating condition: %w", err)
+			}
+
+			boolVal, ok := condVal.(BoolValue)
+			if !ok {
+				return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
+			}
+
+			if !boolVal.Val {
+				break
+			}
+
+			lastVal, err = EvalNode(ctx, env, w.BodyBlock)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating body: %w", err)
+			}
+		}
+
+		return lastVal, nil
 	})
 }
 
