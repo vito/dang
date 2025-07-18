@@ -39,7 +39,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
   }
 }
 
-Form <- Conditional / While / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
+Form <- Conditional / While / ForLoop / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
 Term <- Literal / IndexOrCall / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -567,6 +567,35 @@ While <- WhileToken _ cond:Form _ block:Block {
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
 WhileToken <- "while" !WordChar
+
+ForLoop <- ForTwoVarLoop / ForSingleVarLoop
+
+ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ iterable:Form _ body:Block {
+  var varType TypeNode
+  if typeAnnotation != nil {
+    varType = typeAnnotation.([]interface{})[2].(TypeNode)
+  }
+  return ForLoop{
+    Variable: variable.(string),
+    Type: varType,
+    Iterable: iterable.(Node),
+    LoopBody: body.(Block),
+    Loc: c.Loc(),
+  }, nil
+}
+
+ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:Form _ body:Block {
+  return ForLoop{
+    KeyVariable: key.(string),
+    ValueVariable: value.(string),
+    Iterable: iterable.(Node),
+    LoopBody: body.(Block),
+    Loc: c.Loc(),
+  }, nil
+}
+
+ForToken <- "for" !WordChar
+InToken <- "in" !WordChar
 
 Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
   return &Lambda{

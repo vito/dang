@@ -1,0 +1,54 @@
+# Test basic for..in loop over list
+pub numbers = [1, 2, 3, 4, 5]
+pub sum = 0
+
+for num in numbers {
+  sum += num
+}
+
+assert { sum == 15 }
+
+# Test for..in loop with index
+pub fruits = ["apple", "banana", "cherry"]
+pub result = ""
+pub indices = []
+
+for index, fruit in fruits {
+  result += fruit
+  indices += [index]
+}
+
+assert { result == "applebananacherry" }
+assert { indices == [0, 1, 2] }  # 0 + 1 + 2
+
+# Test nested for loops
+pub matrix = [[1, 2], [3, 4]]
+pub total = 0
+
+for row in matrix {
+  for value in row {
+    total += value
+  }
+}
+
+assert { total == 10 }
+
+# Test empty list
+pub empty: [Int!]! = []
+pub count = 0
+
+for item in empty {
+  count += 1
+}
+
+assert { count == 0 }
+
+# Test single element list
+pub single = [42]
+pub captured = 0
+
+for item in single {
+  captured = item
+}
+
+assert { captured == 42 }

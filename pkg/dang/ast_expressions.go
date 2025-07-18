@@ -1452,6 +1452,186 @@ func (w While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+// ForLoop represents a for..in loop expression
+type ForLoop struct {
+	Variable      string    // Loop variable name (for single-variable iteration)
+	KeyVariable   string    // Key/Index variable name (for two-variable iteration)
+	ValueVariable string    // Value variable name (for two-variable iteration)
+	Type          TypeNode  // Optional type annotation
+	Iterable      Node      // Expression that produces iterable
+	LoopBody      Block     // Loop body
+	Loc           *SourceLocation
+}
+
+var _ Node = ForLoop{}
+var _ Evaluator = ForLoop{}
+
+func (f ForLoop) DeclaredSymbols() []string {
+	return nil // For loops don't declare anything in global scope
+}
+
+func (f ForLoop) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, f.Iterable.ReferencedSymbols()...)
+	symbols = append(symbols, f.LoopBody.ReferencedSymbols()...)
+	return symbols
+}
+
+func (f ForLoop) Body() hm.Expression { return f }
+
+func (f ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
+
+func (f ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(f, func() (hm.Type, error) {
+		// Infer the type of the iterable
+		iterableType, err := f.Iterable.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Handle iteration - check if we have two variables or one
+		if f.KeyVariable == "" {
+			// Single variable iteration
+			var elementType hm.Type
+			
+			// Check if it's a list type
+			if listType, ok := iterableType.(ListType); ok {
+				elementType = listType.Type
+			} else if nonNullListType, ok := iterableType.(hm.NonNullType); ok {
+				if listType, ok := nonNullListType.Type.(ListType); ok {
+					elementType = listType.Type
+				} else {
+					return nil, NewInferError(fmt.Sprintf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
+				}
+			} else {
+				return nil, NewInferError(fmt.Sprintf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
+			}
+
+			// Check if explicit type annotation matches inferred element type
+			if f.Type != nil {
+				declaredType, err := f.Type.Infer(ctx, env, fresh)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := hm.Unify(elementType, declaredType); err != nil {
+					return nil, NewInferError(fmt.Sprintf("type annotation %s doesn't match element type %s", declaredType, elementType), f)
+				}
+			}
+
+			// Single variable iteration - just add the element variable
+			loopEnv := env.Clone()
+			loopEnv = loopEnv.Add(f.Variable, hm.NewScheme(nil, elementType))
+
+			bodyType, err := f.LoopBody.Infer(ctx, loopEnv, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			// For loops return the last value from the body, or null if never executed
+			// Make the result nullable since the loop might not execute
+			if nonNull, ok := bodyType.(hm.NonNullType); ok {
+				return nonNull.Type, nil
+			}
+			return bodyType, nil
+
+		} else {
+			// Two variable iteration
+			iterableType, err := f.Iterable.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			loopEnv := env.Clone()
+
+			// Check if it's a list type (key=index, value=element)
+			if listType, ok := iterableType.(ListType); ok {
+				elementType := listType.Type
+				loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: IntType}))     // index
+				loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, elementType))                     // element
+			} else if nonNullListType, ok := iterableType.(hm.NonNullType); ok {
+				if listType, ok := nonNullListType.Type.(ListType); ok {
+					elementType := listType.Type
+					loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: IntType})) // index
+					loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, elementType))                 // element
+				} else {
+					// Not a list, assume object iteration (key=string, value=string for now)
+					loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType}))   // key
+					loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType})) // value
+				}
+			} else {
+				// Not a list, assume object iteration (key=string, value=string for now)
+				loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType}))   // key
+				loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType})) // value
+			}
+
+			bodyType, err := f.LoopBody.Infer(ctx, loopEnv, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			// For loops return the last value from the body, or null if never executed
+			if nonNull, ok := bodyType.(hm.NonNullType); ok {
+				return nonNull.Type, nil
+			}
+			return bodyType, nil
+		}
+	})
+}
+
+func (f ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
+		// Evaluate the iterable
+		iterableVal, err := EvalNode(ctx, env, f.Iterable)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating iterable: %w", err)
+		}
+
+		var lastVal Value = NullValue{}
+
+		if f.KeyVariable == "" {
+			// Single variable iteration
+			if listVal, ok := iterableVal.(ListValue); ok {
+				// Handle list iteration
+				for _, element := range listVal.Elements {
+					// Create new scope for loop iteration
+					loopEnv := env.Clone()
+					loopEnv.Set(f.Variable, element)
+
+					// Evaluate the body
+					lastVal, err = EvalNode(ctx, loopEnv, f.LoopBody)
+					if err != nil {
+						return nil, fmt.Errorf("evaluating loop body: %w", err)
+					}
+				}
+			} else {
+				return nil, fmt.Errorf("single-variable iteration only supports lists, got %T", iterableVal)
+			}
+		} else {
+			// Two variable iteration
+			if listVal, ok := iterableVal.(ListValue); ok {
+				// Handle list iteration with index (key=index, value=element)
+				for i, element := range listVal.Elements {
+					// Create new scope for loop iteration
+					loopEnv := env.Clone()
+					loopEnv.Set(f.KeyVariable, IntValue{Val: int(i)})    // key = index
+					loopEnv.Set(f.ValueVariable, element)                // value = element
+
+					// Evaluate the body
+					lastVal, err = EvalNode(ctx, loopEnv, f.LoopBody)
+					if err != nil {
+						return nil, fmt.Errorf("evaluating loop body: %w", err)
+					}
+				}
+			} else {
+				// Handle object iteration - for now, just return an error since we need more work on object types
+				return nil, fmt.Errorf("object iteration not yet implemented for type %T", iterableVal)
+			}
+		}
+
+		return lastVal, nil
+	})
+}
+
 // Let represents a let binding expression
 type Let struct {
 	Name  string

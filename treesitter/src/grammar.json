@@ -147,6 +147,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "for_loop"
+        },
+        {
+          "type": "SYMBOL",
           "name": "lambda"
         },
         {
@@ -173,7 +177,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 125,
+      "value": 130,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -309,7 +313,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 120,
+      "value": 125,
       "content": {
         "type": "SEQ",
         "members": [
@@ -372,7 +376,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 119,
+      "value": 124,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1304,7 +1308,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 90,
+      "value": 95,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1460,7 +1464,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 90,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1548,7 +1552,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 81,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1629,7 +1633,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 79,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1718,7 +1722,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 77,
+      "value": 82,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1799,7 +1803,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 75,
+      "value": 80,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2439,6 +2443,148 @@
       "content": {
         "type": "STRING",
         "value": "while"
+      }
+    },
+    "for_loop": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "for_two_var_loop"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "for_single_var_loop"
+        }
+      ]
+    },
+    "for_single_var_loop": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "for_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "variable",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "type_annotation",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "colon_token"
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "t",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "type"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "in_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "iterable",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
+    "for_two_var_loop": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "for_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "key",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "comma_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "in_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "iterable",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
+    "for_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "for"
+      }
+    },
+    "in_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "in"
       }
     },
     "lambda": {
