@@ -26,6 +26,17 @@ type Apko {
     self
   }
 
+  pub withWolfi: Apko! {
+    self.config.contents.packages += ["wolfi-base"]
+    self.config.contents.keyring += [
+      "https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
+    ]
+    self.config.contents.repositories += [
+      "https://packages.wolfi.dev/os",
+    ]
+    self
+  }
+
   pub withPackages(packages: [String!]!): Apko! {
     self.config.contents.packages += packages
     self
@@ -49,6 +60,10 @@ type Apko {
 
   pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
     withAlpine(branch).withPackages(packages).asContainer
+  }
+
+  pub wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
+    withWolfi.withPackages(packages).asContainer
   }
 }
 
