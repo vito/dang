@@ -1,7 +1,7 @@
-# Dagger SDK directive for setting default paths
-directive @defaultPath(path: String!, ignore: [String!] = []) on ARGUMENT_DEFINITION
-
 type Dang {
+  """
+  The source directory for the Dang project.
+  """
   pub source: Directory! @defaultPath(
     path: "/",
     ignore: [
@@ -14,20 +14,57 @@ type Dang {
     ]
   )
 
+  """
+  Return a compiled Dang binary.
+  """
   pub build: File! {
-    go(source).binary("./cmd/dang")
+    goBase.build(pkg: "./cmd/dang")
   }
 
+  """
+  Re-generate and return the modified source directory.
+  """
+  pub generate: Directory! {
+    source.diff(goBase.exec(["./hack/generate"]).directory("."))
+  }
+
+  """
+  Run the tests, re-generating if necessary.
+  """
   pub test: Void {
-    go(source).base.
-      withDirectory("/src", source).
-      withWorkdir("/src").
-      withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true).
+    goBase.container.
+      withExec(["./hack/generate"]).
+      withExec(["go", "test", "-v", "./..."],
+        experimentalPrivilegedNesting: true).
       sync
     null
   }
 
-  pub lint: Void {
-    go(source).lint(["."])
+  """
+  Run the tree-sitter tests.
+  """
+  pub treesitterTest: Void {
+    goBase.container.
+      withWorkdir("./treesitter").
+      withExec(["go", "generate", "-x", "./..."]).
+      withExec(["tree-sitter", "test"]).
+      sync
+    null
+  }
+
+  """
+  Run the linter.
+  """
+  pub lint: Container! {
+    golangciLint.withCache(cacheVolume("golangci-lint-cache")).run(source)
+  }
+
+  let goBase: GoWithSource! {
+    go(container: base).withCgoDisabled().withSource(source)
+  }
+
+  pub base: Container! {
+    apko.wolfi(["go", "nodejs", "npm"]).
+      withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"])
   }
 }

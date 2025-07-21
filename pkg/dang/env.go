@@ -112,8 +112,49 @@ func init() {
 	Prelude.Add("json", hm.NewScheme(nil, jsonType))
 }
 
+func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
+	switch ref.Kind {
+	case introspection.TypeKindList:
+		return ListTypeNode{
+			Elem: introspectionTypeRefToTypeNode(ref.OfType),
+		}
+	case introspection.TypeKindNonNull:
+		return NonNullTypeNode{
+			Elem: introspectionTypeRefToTypeNode(ref.OfType),
+		}
+	default:
+		name := ref.Name
+		if ref.Name == "" {
+			name = "-INVALID_NAME_MISSING-"
+		}
+		return NamedTypeNode{
+			Named: name,
+		}
+	}
+}
+
 func NewEnv(schema *introspection.Schema) Env {
-	env := &CompositeModule{NewModule(""), Prelude}
+	mod := NewModule("")
+	env := &CompositeModule{mod, Prelude}
+
+	for _, t := range schema.Directives {
+		var args []SlotDecl
+		for _, arg := range t.Args {
+			args = append(args, SlotDecl{
+				Named: arg.Name,
+				Type_: introspectionTypeRefToTypeNode(arg.TypeRef),
+			})
+		}
+		var locations []DirectiveLocation
+		for _, loc := range t.Locations {
+			locations = append(locations, DirectiveLocation{Name: loc})
+		}
+		mod.AddDirective(t.Name, &DirectiveDecl{
+			Name:      t.Name,
+			Args:      args,
+			Locations: locations,
+		})
+	}
 
 	for _, t := range schema.Types {
 		sub, found := env.NamedType(t.Name)

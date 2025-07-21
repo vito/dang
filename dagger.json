@@ -1,14 +1,23 @@
 {
   "name": "dang",
-  "engineVersion": "v0.18.12",
+  "engineVersion": "v0.18.14",
   "sdk": {
     "source": "./dagger-sdk"
   },
   "dependencies": [
     {
+      "name": "apko",
+      "source": "mod/apko"
+    },
+    {
       "name": "go",
-      "source": "github.com/dagger/dagger/modules/go",
-      "pin": "1f420c4811f4d02e43d7be71975c5405f82a7d75"
+      "source": "github.com/sagikazarmark/daggerverse/go@go/v0.9.0",
+      "pin": "d9ba06776c4c1ccf6f329bd862b9b439c4582ab6"
+    },
+    {
+      "name": "golangci-lint",
+      "source": "github.com/sagikazarmark/daggerverse/golangci-lint@golangci-lint/v0.9.0",
+      "pin": "e6c14178bcaaff9e102e2a89173ca31479b80629"
     }
   ],
   "source": ".dagger"

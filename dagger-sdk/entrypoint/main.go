@@ -115,6 +115,37 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		}
 	}()
 
+	// Dagger SDK directive for setting default paths
+	schema.Directives = append(schema.Directives, &introspection.DirectiveDef{
+		Name:      "defaultPath",
+		Locations: []string{"ARGUMENT_DEFINITION"},
+		Args: introspection.InputValues{
+			{
+				Name: "path",
+				TypeRef: &introspection.TypeRef{
+					Kind: introspection.TypeKindNonNull,
+					OfType: &introspection.TypeRef{
+						Kind: introspection.TypeKindScalar,
+						Name: "String",
+					},
+				},
+			},
+			{
+				Name: "ignore",
+				TypeRef: &introspection.TypeRef{
+					Kind: introspection.TypeKindList,
+					OfType: &introspection.TypeRef{
+						Kind: introspection.TypeKindNonNull,
+						OfType: &introspection.TypeRef{
+							Kind: introspection.TypeKindScalar,
+							Name: "String",
+						},
+					},
+				},
+			},
+		},
+	})
+
 	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
 	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
 	env, err := dang.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
