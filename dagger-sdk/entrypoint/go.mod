@@ -5,7 +5,8 @@ go 1.24.4
 replace github.com/vito/dang => ../../
 
 require (
-	dagger.io/dagger v0.18.12
+	dagger.io/dagger v0.18.14
+	github.com/vektah/gqlparser/v2 v2.5.28
 	github.com/vito/dang v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/sdk v1.37.0
@@ -28,7 +29,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
-	github.com/vektah/gqlparser/v2 v2.5.28 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.12.2 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.12.2 // indirect
