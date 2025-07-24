@@ -13,6 +13,7 @@ type SlotDecl struct {
 	Value      Node
 	Visibility Visibility
 	Directives []DirectiveApplication
+	DocString  string
 	Loc        *SourceLocation
 }
 
@@ -109,6 +110,11 @@ func (s SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			}
 
 			e.SetVisibility(s.Named, s.Visibility)
+
+			// Store doc string if present
+			if s.DocString != "" {
+				e.SetDocString(s.Named, s.DocString)
+			}
 		}
 
 		// Validate directive applications
@@ -159,6 +165,7 @@ type ClassDecl struct {
 	Value      Block
 	Visibility Visibility
 	Directives []DirectiveApplication
+	DocString  string
 	Loc        *SourceLocation
 
 	Inferred          *Module
@@ -246,6 +253,11 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		if !found {
 			class = NewModule(c.Named)
 			mod.AddClass(c.Named, class)
+
+			// Store doc string for the class name in the environment
+			if c.DocString != "" {
+				mod.SetDocString(c.Named, c.DocString)
+			}
 		}
 
 		inferEnv := &CompositeModule{
@@ -311,6 +323,11 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
 			panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
+		}
+
+		// Set doc string for the class/module itself
+		if c.DocString != "" {
+			c.Inferred.SetModuleDocString(c.DocString)
 		}
 
 		// Extract constructor parameters and get filtered class body forms

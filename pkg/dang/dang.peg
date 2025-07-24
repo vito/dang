@@ -1,7 +1,11 @@
 {
   package dang
 
-  import "fmt"
+  import (
+    "fmt"
+    "strconv"
+    "bytes"
+  )
 }
 
 Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
@@ -17,7 +21,23 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Import / Class / Slot / DirectiveDecl / Reassignment / Form
+Expr <- Import / AnnotatedDecl / Class / Slot / DirectiveDecl / Reassignment / Form
+
+AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
+  switch node := decl.(type) {
+  case *ClassDecl:
+    node.DocString = docstring.(string)
+    return node, nil
+  case SlotDecl:
+    node.DocString = docstring.(string)
+    return node, nil
+  case *DirectiveDecl:
+    node.DocString = docstring.(string)
+    return node, nil
+  default:
+    return decl, nil
+  }
+}
 
 Form <- Conditional / While / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
@@ -125,7 +145,7 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   if args != nil {
     argRecord = Record(args.([]Keyed[Node]))
   }
-  
+
   if selection != nil {
     return FieldSelection{
       Name: name.(string),
@@ -252,7 +272,17 @@ ArgValues <- '(' _ args:(a:Argument Sep { return a, nil })* last:Argument? _ ')'
 ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
   return sliceOfAppend[SlotDecl](args, last), nil
 }
-ArgType <- slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
+ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
+  slotDecl := slot.(SlotDecl)
+  return SlotDecl{
+    Named: slotDecl.Named,
+    Type_: slotDecl.Type_,
+    Value: slotDecl.Value,
+    Directives: slotDecl.Directives,
+    DocString: docstring.(string),
+    Loc: slotDecl.Loc,
+  }, nil
+} / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   return slot.(SlotDecl), nil
 }
 ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
@@ -453,6 +483,16 @@ String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
     Loc: c.Loc(),
   }, nil
 }
+
+DocString <- TripleQuote content:DocStringContent TripleQuote {
+  return string(content.([]byte)), nil
+}
+
+DocStringContent <- (!TripleQuote .)* {
+  return c.text, nil
+}
+
+TripleQuote <- "\"\"\""
 
 EscapedChar <- [\x00-\x1f"\\]
 

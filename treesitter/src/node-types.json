@@ -4,6 +4,10 @@
     "named": true,
     "subtypes": [
       {
+        "type": "annotated_decl",
+        "named": true
+      },
+      {
         "type": "class",
         "named": true
       },
@@ -165,9 +169,53 @@
     "fields": {}
   },
   {
+    "type": "annotated_decl",
+    "named": true,
+    "fields": {
+      "decl": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "class",
+            "named": true
+          },
+          {
+            "type": "directive_decl",
+            "named": true
+          },
+          {
+            "type": "slot",
+            "named": true
+          }
+        ]
+      },
+      "docstring": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "doc_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "arg_type",
     "named": true,
     "fields": {
+      "docstring": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "doc_string",
+            "named": true
+          }
+        ]
+      },
       "slot": {
         "multiple": false,
         "required": true,
@@ -973,6 +1021,32 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "doc_string",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "doc_string_content",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "triple_quote",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2940,6 +3014,10 @@
     "named": true
   },
   {
+    "type": "doc_string_content",
+    "named": true
+  },
+  {
     "type": "double_colon_token",
     "named": true
   },
@@ -3005,6 +3083,10 @@
   },
   {
     "type": "single_char_escape",
+    "named": true
+  },
+  {
+    "type": "triple_quote",
     "named": true
   },
   {

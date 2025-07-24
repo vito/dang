@@ -390,6 +390,10 @@ func (c *CompositeModule) SetVisibility(name string, visibility Visibility) {
 	c.primary.SetVisibility(name, visibility)
 }
 
+func (c *CompositeModule) SetDocString(name string, doc string) {
+	c.primary.SetDocString(name, doc)
+}
+
 func (c *CompositeModule) Remove(name string) hm.Env {
 	c.primary.Remove(name)
 	return c

@@ -798,6 +798,7 @@ type DirectiveDecl struct {
 	Name      string
 	Args      []SlotDecl
 	Locations []DirectiveLocation
+	DocString string
 	Loc       *SourceLocation
 }
 

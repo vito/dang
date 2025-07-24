@@ -16,6 +16,7 @@ type Env interface {
 	hm.Type
 	NamedType(string) (Env, bool)
 	AddClass(string, Env)
+	SetDocString(string, string)
 	SetVisibility(string, Visibility)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
 	AddDirective(string, *DirectiveDecl)
@@ -28,19 +29,23 @@ type Module struct {
 
 	Parent Env
 
-	classes    map[string]Env
-	vars       map[string]*hm.Scheme
-	visibility map[string]Visibility
-	directives map[string]*DirectiveDecl
+	classes         map[string]Env
+	vars            map[string]*hm.Scheme
+	visibility      map[string]Visibility
+	directives      map[string]*DirectiveDecl
+	docStrings      map[string]string
+	moduleDocString string
 }
 
 func NewModule(name string) *Module {
 	env := &Module{
-		Named:      name,
-		classes:    make(map[string]Env),
-		vars:       make(map[string]*hm.Scheme),
-		visibility: make(map[string]Visibility),
-		directives: make(map[string]*DirectiveDecl),
+		Named:           name,
+		classes:         make(map[string]Env),
+		vars:            make(map[string]*hm.Scheme),
+		visibility:      make(map[string]Visibility),
+		directives:      make(map[string]*DirectiveDecl),
+		docStrings:      make(map[string]string),
+		moduleDocString: "",
 	}
 	return env
 }
@@ -259,6 +264,34 @@ func (e *Module) Remove(name string) hm.Env {
 	// to conform to hm.Env?
 	delete(e.vars, name)
 	return e
+}
+
+// SetDocString sets the documentation string for a symbol
+func (e *Module) SetDocString(name string, docString string) {
+	e.docStrings[name] = docString
+}
+
+// GetDocString gets the documentation string for a symbol
+func (e *Module) GetDocString(name string) (string, bool) {
+	if docString, ok := e.docStrings[name]; ok {
+		return docString, true
+	}
+	if e.Parent != nil {
+		if parent, ok := e.Parent.(*Module); ok {
+			return parent.GetDocString(name)
+		}
+	}
+	return "", false
+}
+
+// SetModuleDocString sets the documentation string for the module itself
+func (e *Module) SetModuleDocString(docString string) {
+	e.moduleDocString = docString
+}
+
+// GetModuleDocString gets the documentation string for the module itself
+func (e *Module) GetModuleDocString() string {
+	return e.moduleDocString
 }
 
 func (e *Module) AsRecord() *RecordType {
