@@ -411,6 +411,7 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
+
 		argOpts := dagger.FunctionWithArgOpts{}
 		if _, isNonNull := argType.(hm.NonNullType); !isNonNull {
 			typeDef = typeDef.WithOptional(true)
@@ -493,13 +494,20 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
 			}
+			if desc, ok := module.ClassType.GetDocString(name); ok {
+				fnDef = fnDef.WithDescription(desc)
+			}
 			objDef = objDef.WithFunction(fnDef)
 		default:
 			fieldDef, err := dangTypeToTypeDef(dag, slotType)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create field %s: %w", name, err)
 			}
-			objDef = objDef.WithField(name, fieldDef)
+			opts := dagger.TypeDefWithFieldOpts{}
+			if desc, ok := module.ClassType.GetDocString(name); ok {
+				opts.Description = desc
+			}
+			objDef = objDef.WithField(name, fieldDef, opts)
 		}
 	}
 
