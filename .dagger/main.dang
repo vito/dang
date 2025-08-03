@@ -17,53 +17,66 @@ type Dang {
   """
   Return a compiled Dang binary.
   """
-  pub build: File! {
+  pub binary: File! {
     goBase.build(pkg: "./cmd/dang")
   }
 
   """
-  Re-generate and return the modified source directory.
+  Build the Dang binary to ./bin/dang.
   """
-  pub generate: Directory! {
-    source.diff(goBase.exec(["./hack/generate"]).directory("."))
+  pub build: Env! {
+    currentEnv.withHostfs(source.withFile("bin/dang", binary))
   }
 
   """
-  Run the tests, re-generating if necessary.
+  Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
-  pub test: Void {
+  pub generate: Env! {
+    currentEnv.withHostfs(goBase.exec(["./hack/generate"]).directory("."))
+  }
+
+  """
+  Run the Dang tests.
+  """
+  pub test(filter: String! = ""): Void {
+    let args = ["go", "test", "-v"]
+    if filter != "" {
+      args += ["./tests", "-run", "/"+filter]
+    } else {
+      args += ["./..."]
+    }
     goBase.container.
       withExec(["./hack/generate"]).
-      withExec(["go", "test", "-v", "./..."],
-        experimentalPrivilegedNesting: true).
+      withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
   }
 
-  """
-  Run the tree-sitter tests.
-  """
-  pub treesitterTest: Void {
-    goBase.container.
-      withWorkdir("./treesitter").
-      withExec(["go", "generate", "-x", "./..."]).
-      withExec(["tree-sitter", "test"]).
-      sync
-    null
-  }
+    """
+    Run the tree-sitter tests.
+    """
+    pub treesitterTest: Void {
+      base.
+        withWorkdir("./treesitter").
+        withExec(["go", "generate", "-x", "./..."]).
+        withExec(["tree-sitter", "test"]).
+        sync
+      null
+    }
 
   """
   Run the linter.
   """
-  pub lint: Container! {
+  pub lint: Void {
     golangciLint.withCache(cacheVolume("golangci-lint-cache")).run(source)
+    null
   }
 
   let goBase: GoWithSource! {
     go(container: base).withCgoDisabled().withSource(source)
   }
 
-  pub base: Container! {
+  let base: Container! {
     apko.wolfi(["go", "nodejs", "npm"]).
       withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"])
   }
