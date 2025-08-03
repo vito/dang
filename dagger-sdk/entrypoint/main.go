@@ -550,14 +550,21 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 	return objDef, nil
 }
 
-func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type) (*dagger.TypeDef, error) {
+func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type) (ret *dagger.TypeDef, rerr error) {
 	def := dag.TypeDef()
 
-	switch t := dangType.(type) {
-	case hm.NonNullType:
+	if nonNull, isNonNull := dangType.(hm.NonNullType); isNonNull {
 		// Handle non-null wrapper
-		return dangTypeToTypeDef(dag, t.Type)
+		sub, err := dangTypeToTypeDef(dag, nonNull.Type)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert non-null type: %w", err)
+		}
+		return sub.WithOptional(false), nil
+	} else {
+		def = def.WithOptional(true)
+	}
 
+	switch t := dangType.(type) {
 	case dang.ListType:
 		elemTypeDef, err := dangTypeToTypeDef(dag, t.Type)
 		if err != nil {
