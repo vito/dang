@@ -7,10 +7,10 @@ type Dang {
     ignore: [
       # TODO: respecting .gitignore would be nice
       "Session.vim"
-      "/dang"
-      "/zed-dang/grammars/"
-      "/.env"
-      "/.envrc"
+      "dang"
+      "zed-dang/grammars/"
+      ".env"
+      ".envrc"
     ]
   )
 
