@@ -112,27 +112,6 @@ func init() {
 	Prelude.Add("json", hm.NewScheme(nil, jsonType))
 }
 
-func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
-	switch ref.Kind {
-	case introspection.TypeKindList:
-		return ListTypeNode{
-			Elem: introspectionTypeRefToTypeNode(ref.OfType),
-		}
-	case introspection.TypeKindNonNull:
-		return NonNullTypeNode{
-			Elem: introspectionTypeRefToTypeNode(ref.OfType),
-		}
-	default:
-		name := ref.Name
-		if ref.Name == "" {
-			name = "-INVALID_NAME_MISSING-"
-		}
-		return NamedTypeNode{
-			Named: name,
-		}
-	}
-}
-
 func NewEnv(schema *introspection.Schema) Env {
 	mod := NewModule("")
 	env := &CompositeModule{mod, Prelude}
@@ -201,6 +180,27 @@ func NewEnv(schema *introspection.Schema) Env {
 	}
 
 	return env
+}
+
+func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
+	switch ref.Kind {
+	case introspection.TypeKindList:
+		return ListTypeNode{
+			Elem: introspectionTypeRefToTypeNode(ref.OfType),
+		}
+	case introspection.TypeKindNonNull:
+		return NonNullTypeNode{
+			Elem: introspectionTypeRefToTypeNode(ref.OfType),
+		}
+	default:
+		name := ref.Name
+		if ref.Name == "" {
+			name = "-INVALID_NAME_MISSING-"
+		}
+		return NamedTypeNode{
+			Named: name,
+		}
+	}
 }
 
 func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
