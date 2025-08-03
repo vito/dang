@@ -454,16 +454,21 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 				if path, ok := defaultPath["path"].(string); ok {
 					argOpts.DefaultPath = path
 				}
-				if ignore, ok := defaultPath["ignore"].([]any); ok {
+				ignore, hasIgnore := defaultPath["ignore"]
+				if ignore, ok := ignore.([]any); ok {
 					var ignorePatterns []string
 					for _, pattern := range ignore {
 						if str, ok := pattern.(string); ok {
 							ignorePatterns = append(ignorePatterns, str)
+						} else {
+							return nil, fmt.Errorf("invalid ignore argument %s: %T (expected string)", arg.Key, pattern)
 						}
 					}
 					if len(ignorePatterns) > 0 {
 						argOpts.Ignore = ignorePatterns
 					}
+				} else if hasIgnore {
+					return nil, fmt.Errorf("invalid ignore directive for argument %s: %T (expected []any)", arg.Key, ignore)
 				}
 			}
 		}
