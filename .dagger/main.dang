@@ -56,7 +56,7 @@ type Dang {
     Run the tree-sitter tests.
     """
     pub treesitterTest: Void {
-      base.
+      goBase.container.
         withWorkdir("./treesitter").
         withExec(["go", "generate", "-x", "./..."]).
         withExec(["tree-sitter", "test"]).
