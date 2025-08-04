@@ -96,16 +96,15 @@ func main() {
 	slog.Debug("invoking", "parentName", parentName, "fnName", fnName)
 
 	modSrcDir := os.Args[1]
-	modName := os.Args[2]
 
-	err = invoke(ctx, dag, schema, modSrcDir, modName, []byte(parentJson), parentName, fnName, inputArgs)
+	err = invoke(ctx, dag, schema, modSrcDir, []byte(parentJson), parentName, fnName, inputArgs)
 	if err != nil {
 		WriteError(ctx, err)
 		os.Exit(2)
 	}
 }
 
-func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, modName string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (rerr error) {
+func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (rerr error) {
 	fnCall := dag.CurrentFunctionCall()
 	defer func() {
 		if rerr != nil {
@@ -152,8 +151,6 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 	if err != nil {
 		return fmt.Errorf("failed to run dir: %w", err)
 	}
-
-	// camelModName := strcase.ToCamel(modName)
 
 	dagMod := dag.Module()
 	if desc, found := env.Get("description"); found {

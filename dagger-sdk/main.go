@@ -36,35 +36,6 @@ func (t *DangSdk) ModuleRuntime(
 	modSource *dagger.ModuleSource,
 	introspectionJson *dagger.File,
 ) (*dagger.Container, error) {
-	return t.CodegenBase(ctx, modSource, introspectionJson)
-}
-
-// Codegen returns the generated API client based on user's module
-func (t *DangSdk) Codegen(
-	ctx context.Context,
-	modSource *dagger.ModuleSource,
-	introspectionJson *dagger.File,
-) (*dagger.GeneratedCode, error) {
-	ctr, err := t.CodegenBase(ctx, modSource, introspectionJson)
-	if err != nil {
-		return nil, err
-	}
-
-	return dag.GeneratedCode(ctr.Directory(ModSourceDirPath)).
-		WithVCSGeneratedPaths([]string{}).
-		WithVCSIgnoredPaths([]string{}), nil
-}
-
-func (t *DangSdk) CodegenBase(
-	ctx context.Context,
-	modSource *dagger.ModuleSource,
-	introspectionJson *dagger.File,
-) (*dagger.Container, error) {
-	modName, err := modSource.ModuleOriginalName(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("could not load module config: %v", err)
-	}
-
 	subPath, err := modSource.SourceSubpath(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("could not load module config: %v", err)
@@ -76,14 +47,12 @@ func (t *DangSdk) CodegenBase(
 		WithMountedDirectory(ModSourceDirPath, modSource.ContextDirectory()).
 		WithFile("/introspection.json", introspectionJson).
 		WithWorkdir(modSrcDir).
-		WithEntrypoint([]string{"/dang", modSrcDir, modName}), nil
+		WithDefaultArgs([]string{"/dang", modSrcDir}), nil
 }
 
 func (t *DangSdk) Base() *dagger.Container {
 	return dag.Container().
-		From("busybox").
-		WithFile("/dang", t.Entrypoint()).
-		WithEntrypoint([]string{"/dang"})
+		WithFile("/dang", t.Entrypoint())
 }
 
 func (t *DangSdk) Entrypoint() *dagger.File {
@@ -101,6 +70,7 @@ func (t *DangSdk) Repl() *dagger.Container {
 		WithMountedCache("/xdg/home", dag.CacheVolume("dang-repl-home")).
 		WithEnvVariable("XDG_DATA_HOME", "/xdg/home").
 		Terminal(dagger.ContainerTerminalOpts{
+			Cmd:                           []string{"/dang"},
 			ExperimentalPrivilegedNesting: true,
 		})
 }
