@@ -72,6 +72,34 @@ type Dang {
     null
   }
 
+  pub coder: LLM! {
+    doug.agent(
+      llm.
+        withEnv(currentEnv.withModule(currentModule.meta).withHostfs(source)).
+        withMCPServer(
+          "lsp",
+          container.
+            from("golang").
+            withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
+            withExec(["go", "install", "github.com/isaacphi/mcp-language-server@latest"]).
+            withWorkdir("/src").
+            withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"])
+        )
+    )
+  }
+
+  pub playwright: LLM! {
+    doug.agent(
+      llm.
+        withEnv(currentEnv.withModule(currentModule.meta)).
+        withMCPServer(
+          "playwright",
+          container.
+            from("mcr.microsoft.com/playwright/mcp")
+        )
+    )
+  }
+
   let goBase: GoWithSource! {
     go(container: base).withCgoDisabled().withSource(source)
   }

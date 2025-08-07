@@ -1,6 +1,6 @@
 {
   "name": "dang",
-  "engineVersion": "v0.18.14",
+  "engineVersion": "v0.18.15-010101000000-dev-d2d3c7add761",
   "sdk": {
     "source": "./dagger-sdk"
   },
@@ -8,6 +8,11 @@
     {
       "name": "apko",
       "source": "mod/apko"
+    },
+    {
+      "name": "doug",
+      "source": "github.com/vito/dagger/modules/doug@coding-agents",
+      "pin": "d30f4605cb145536f211dbf114721340ceabb056"
     },
     {
       "name": "go",
