@@ -172,6 +172,14 @@ func NewEnv(schema *introspection.Schema) Env {
 				if err != nil {
 					panic(err)
 				}
+				if arg.DefaultValue != nil {
+					// If an argument has a default, make sure it's nullable in the
+					// function signature.
+					t, ok := argType.(hm.NonNullType)
+					if ok {
+						argType = t.Type
+					}
+				}
 				args.Add(arg.Name, hm.NewScheme(nil, argType))
 			}
 			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
