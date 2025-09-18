@@ -52,7 +52,7 @@ type Apko {
       container.
         from("cgr.dev/chainguard/apko").
         withMountedCache("/apkache/", cacheVolume("apko")).
-        withNewFile("/config.yml", contents: json(config)).
+        withNewFile("/config.yml", contents: toJSON(config)).
         withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest","layout.tar"]).
         file("layout.tar")
     )
@@ -68,6 +68,6 @@ type Apko {
 }
 
 # USAGE:
-# print(json(Apko.withAlpine.config))
+# print(toJSON(Apko.withAlpine.config))
 # print(Apko.withAlpine.withPackages(["git"]).asContainer.withExec(["git", "version"]).stdout)
 # print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)

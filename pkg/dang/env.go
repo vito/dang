@@ -109,7 +109,7 @@ func init() {
 	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
 
 	slog.Debug("adding builtin function", "function", "json")
-	Prelude.Add("json", hm.NewScheme(nil, jsonType))
+	Prelude.Add("toJSON", hm.NewScheme(nil, jsonType))
 }
 
 func NewEnv(schema *introspection.Schema) Env {

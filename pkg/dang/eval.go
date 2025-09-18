@@ -297,7 +297,7 @@ func addBuiltinFunctions(env EvalEnv) {
 	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
 
 	jsonFn := BuiltinFunction{
-		Name:   "json",
+		Name:   "toJSON",
 		FnType: jsonType,
 		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 			// Get the value to marshal
@@ -316,7 +316,7 @@ func addBuiltinFunctions(env EvalEnv) {
 		},
 	}
 
-	env.Set("json", jsonFn)
+	env.Set("toJSON", jsonFn)
 }
 
 // Helper function to determine if a GraphQL type is scalar
