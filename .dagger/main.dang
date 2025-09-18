@@ -2,17 +2,14 @@ type Dang {
   """
   The source directory for the Dang project.
   """
-  pub source: Directory! @defaultPath(
-    path: "/",
-    ignore: [
-      # TODO: respecting .gitignore would be nice
-      "Session.vim"
-      "dang"
-      "zed-dang/grammars/"
-      ".env"
-      ".envrc"
-    ]
-  )
+  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
+    # TODO: respecting .gitignore would be nice
+    "Session.vim"
+    "dang"
+    "zed-dang/grammars/"
+    ".env"
+    ".envrc"
+  ])
 
   """
   Return a compiled Dang binary.
@@ -74,31 +71,27 @@ type Dang {
 
   pub coder: LLM! {
     doug.agent(
-      llm.
-        withEnv(currentEnv.withModule(currentModule.meta).withWorkspace(source)).
-        withMCPServer(
-          "lsp",
-          container.
-            from("golang").
-            withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
-            withExec(["go", "install", "github.com/isaacphi/mcp-language-server@latest"]).
-            withWorkdir("/src").
-            withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"]).
-            asService
-        )
+      llm.withEnv(env.withCurrentModule.withWorkspace(source)).withMCPServer(
+        "lsp",
+        container.
+          from("golang").
+          withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
+          withExec(["go", "install", "github.com/isaacphi/mcp-language-server@latest"]).
+          withWorkdir("/src").
+          withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"]).
+          asService
+      )
     )
   }
 
   pub playwright: LLM! {
     doug.agent(
-      llm.
-        withEnv(currentEnv.withModule(currentModule.meta)).
-        withMCPServer(
-          "playwright",
-          container.
-            from("mcr.microsoft.com/playwright/mcp").
-            asService
-        )
+      llm.withMCPServer(
+        "playwright",
+        container.
+          from("mcr.microsoft.com/playwright/mcp").
+          asService
+      )
     )
   }
 

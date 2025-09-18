@@ -114,37 +114,6 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		}
 	}()
 
-	// Dagger SDK directive for setting default paths
-	schema.Directives = append(schema.Directives, &introspection.DirectiveDef{
-		Name:      "defaultPath",
-		Locations: []string{"ARGUMENT_DEFINITION"},
-		Args: introspection.InputValues{
-			{
-				Name: "path",
-				TypeRef: &introspection.TypeRef{
-					Kind: introspection.TypeKindNonNull,
-					OfType: &introspection.TypeRef{
-						Kind: introspection.TypeKindScalar,
-						Name: "String",
-					},
-				},
-			},
-			{
-				Name: "ignore",
-				TypeRef: &introspection.TypeRef{
-					Kind: introspection.TypeKindList,
-					OfType: &introspection.TypeRef{
-						Kind: introspection.TypeKindNonNull,
-						OfType: &introspection.TypeRef{
-							Kind: introspection.TypeKindScalar,
-							Name: "String",
-						},
-					},
-				},
-			},
-		},
-	})
-
 	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
 	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
 	env, err := dang.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
@@ -451,7 +420,9 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 				if path, ok := defaultPath["path"].(string); ok {
 					argOpts.DefaultPath = path
 				}
-				ignore, hasIgnore := defaultPath["ignore"]
+			}
+			if ignorePatterns, hasIgnorePatterns := argDirectives["ignorePatterns"]; hasIgnorePatterns {
+				ignore, hasIgnore := ignorePatterns["patterns"]
 				if ignore, ok := ignore.([]any); ok {
 					var ignorePatterns []string
 					for _, pattern := range ignore {
