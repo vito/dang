@@ -290,7 +290,7 @@ func addBuiltinFunctions(env EvalEnv) {
 	env.Set("print", printFn)
 
 	// Create the json function
-	// Type signature: json(value: a) -> String! where 'a' is a type variable (any type)
+	// Type signature: toJSON(value: a) -> String! where 'a' is a type variable (any type)
 	jsonArgs := NewRecordType("")
 	jsonArgs.Add("value", hm.NewScheme(nil, argType))
 	jsonReturnType := hm.NonNullType{Type: StringType}

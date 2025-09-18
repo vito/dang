@@ -3,13 +3,13 @@
 
 # Simple object literal
 pub obj1 = {{name: "test", value: 42}}
-pub json1 = json(value: obj1)
+pub json1 = toJSON(value: obj1)
 
 assert { json1 == "{\"name\":\"test\",\"value\":42}" }
 
 # Object literal with nested structure
 pub obj2 = {{user: {{id: 1, active: true}}, count: 100}}
-pub json2 = json(value: obj2)
+pub json2 = toJSON(value: obj2)
 
 # TODO: make this match defined order? or don't? maybe it's nice that it's
 # stable for cache busting avoidance?
@@ -22,7 +22,7 @@ pub createObject = {
 }
 
 pub obj3 = createObject
-pub json3 = json(value: obj3)
+pub json3 = toJSON(value: obj3)
 
 assert { json3 == "{\"data\":\"local\",\"timestamp\":1234567890}" }
 

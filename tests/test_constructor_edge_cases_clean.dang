@@ -59,7 +59,7 @@ type ComplexTypes {
   }}
 }
 
-print(json(ComplexTypes.metadata))
+print(toJSON(ComplexTypes.metadata))
 assert { ComplexTypes.config.items == ["default"] }
 assert { ComplexTypes.config.count == 1 }
 assert { ComplexTypes.metadata.version == "1.0" }

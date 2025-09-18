@@ -12,4 +12,4 @@ assert { person.greet() == "Hello, I'm Alice" }
 print("Cross-file references work!")
 print(formatVersion())
 print(person.greet())
-print("Magic number: " + json(magic))
+print("Magic number: " + toJSON(magic))

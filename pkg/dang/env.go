@@ -101,7 +101,7 @@ func init() {
 	slog.Debug("adding builtin function", "function", "print")
 	Prelude.Add("print", hm.NewScheme(nil, printType))
 
-	// json function: json(value: b) -> String!
+	// json function: toJSON(value: b) -> String!
 	jsonArgType := hm.TypeVariable('b')
 	jsonArgs := NewRecordType("")
 	jsonArgs.Add("value", hm.NewScheme(nil, jsonArgType))
