@@ -1,6 +1,6 @@
 {
   "name": "dang",
-  "engineVersion": "v0.18.19-250918133513-9066690bf5d8",
+  "engineVersion": "v0.18.19-010101000000-dev-5f9e455b2beb",
   "sdk": {
     "source": "./dagger-sdk"
   },
@@ -12,7 +12,7 @@
     {
       "name": "doug",
       "source": "github.com/vito/daggerverse/doug",
-      "pin": "98e2276333991e5774f7a74cac251a0da24e6f9f"
+      "pin": "03450de3e45578e745ad2732f677e42a36973978"
     },
     {
       "name": "go",
