@@ -24,15 +24,15 @@ type Dang {
   """
   Build the Dang binary to ./bin/dang.
   """
-  pub build: Env! {
-    currentEnv.withHostfs(source.withFile("bin/dang", binary))
+  pub build: Changeset! {
+    source.withFile("bin/dang", binary).changes(source)
   }
 
   """
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
-  pub generate: Env! {
-    currentEnv.withHostfs(goBase.exec(["./hack/generate"]).directory("."))
+  pub generate: Changeset! {
+    goBase.exec(["./hack/generate"]).directory(".").changes(source)
   }
 
   """
@@ -75,7 +75,7 @@ type Dang {
   pub coder: LLM! {
     doug.agent(
       llm.
-        withEnv(currentEnv.withModule(currentModule.meta).withHostfs(source)).
+        withEnv(currentEnv.withModule(currentModule.meta).withWorkspace(source)).
         withMCPServer(
           "lsp",
           container.
@@ -83,7 +83,8 @@ type Dang {
             withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
             withExec(["go", "install", "github.com/isaacphi/mcp-language-server@latest"]).
             withWorkdir("/src").
-            withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"])
+            withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"]).
+            asService
         )
     )
   }
@@ -95,7 +96,8 @@ type Dang {
         withMCPServer(
           "playwright",
           container.
-            from("mcr.microsoft.com/playwright/mcp")
+            from("mcr.microsoft.com/playwright/mcp").
+            asService
         )
     )
   }
