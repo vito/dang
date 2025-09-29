@@ -85,7 +85,10 @@ type Dang {
 
   pub coder: LLM! {
     doug.agent(
-      llm.withEnv(env.withCurrentModule.withWorkspace(source)).withMCPServer(
+      llm.
+      withEnv(env.withCurrentModule.withWorkspace(source)).
+      withBlockedFunction("Dang", "binary").
+      withMCPServer(
         "lsp",
         container.
           from("golang").
