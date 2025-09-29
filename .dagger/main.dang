@@ -94,6 +94,7 @@ type Dang {
           from("golang").
           withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
           withExec(["go", "install", "github.com/isaacphi/mcp-language-server@latest"]).
+          withDirectory("/src", source).
           withWorkdir("/src").
           withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"]).
           asService
