@@ -49,17 +49,31 @@ type Dang {
     null
   }
 
-    """
-    Run the tree-sitter tests.
-    """
-    pub treesitterTest: Void {
-      goBase.container.
-        withWorkdir("./treesitter").
-        withExec(["go", "generate", "-x", "./..."]).
-        withExec(["tree-sitter", "test"]).
-        sync
-      null
-    }
+  """
+  Run the tree-sitter tests.
+  """
+  pub treesitterTest: Void {
+    goBase.container.
+      withWorkdir("./treesitter").
+      withExec(["go", "generate", "-x", "./..."]).
+      withExec(["tree-sitter", "test"]).
+      sync
+    null
+  }
+
+  """
+  Update the tree-sitter test corpus.
+  """
+  pub treesitterUpdate: Changeset! {
+    source.
+      withDirectory("./treesitter",
+        goBase.container.
+          withWorkdir("./treesitter").
+          withExec(["go", "generate", "-x", "./..."]).
+          withExec(["tree-sitter", "test", "--update"]).
+          directory(".")).
+      changes(source)
+  }
 
   """
   Run the linter.
