@@ -8,21 +8,6 @@
     {
       "name": "apko",
       "source": "mod/apko"
-    },
-    {
-      "name": "doug",
-      "source": "github.com/vito/daggerverse/doug",
-      "pin": "03450de3e45578e745ad2732f677e42a36973978"
-    },
-    {
-      "name": "go",
-      "source": "github.com/sagikazarmark/daggerverse/go@go/v0.9.0",
-      "pin": "d9ba06776c4c1ccf6f329bd862b9b439c4582ab6"
-    },
-    {
-      "name": "golangci-lint",
-      "source": "github.com/sagikazarmark/daggerverse/golangci-lint@golangci-lint/v0.9.0",
-      "pin": "e6c14178bcaaff9e102e2a89173ca31479b80629"
     }
   ],
   "source": ".dagger"

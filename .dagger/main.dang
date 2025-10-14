@@ -9,13 +9,16 @@ type Dang {
     "zed-dang/grammars/"
     ".env"
     ".envrc"
+    ".dagger"
   ])
 
   """
   Return a compiled Dang binary.
   """
   pub binary: File! {
-    goBase.build(pkg: "./cmd/dang")
+    base.
+      withExec(["go", "build", "-o", "/bin/dang", "./cmd/dang"]).
+      file("/bin/dang")
   }
 
   """
@@ -29,7 +32,7 @@ type Dang {
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   pub generate: Changeset! {
-    goBase.exec(["./hack/generate"]).directory(".").changes(source)
+    generated.directory(".").changes(source)
   }
 
   """
@@ -42,8 +45,7 @@ type Dang {
     } else {
       args += ["./..."]
     }
-    goBase.container.
-      withExec(["./hack/generate"]).
+    generated.
       withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
@@ -53,7 +55,7 @@ type Dang {
   Run the tree-sitter tests.
   """
   pub treesitterTest: Void {
-    goBase.container.
+    base.
       withWorkdir("./treesitter").
       withExec(["go", "generate", "-x", "./..."]).
       withExec(["tree-sitter", "test"]).
@@ -67,7 +69,7 @@ type Dang {
   pub treesitterUpdate: Changeset! {
     source.
       withDirectory("./treesitter",
-        goBase.container.
+        base.
           withWorkdir("./treesitter").
           withExec(["go", "generate", "-x", "./..."]).
           withExec(["tree-sitter", "test", "--update"]).
@@ -79,46 +81,26 @@ type Dang {
   Run the linter.
   """
   pub lint: Void {
-    golangciLint.withCache(cacheVolume("golangci-lint-cache")).run(source)
+    base.
+      withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint").
+      withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache")).
+      withExec(["golangci-lint", "run"]).
+      sync
     null
   }
 
-  pub coder: LLM! {
-    doug.agent(
-      llm.
-      withEnv(env.withCurrentModule.withWorkspace(source)).
-      withBlockedFunction("Dang", "binary").
-      withMCPServer(
-        "lsp",
-        container.
-          from("golang").
-          withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
-          withExec(["go", "install", "github.com/isaacphi/mcp-language-server@latest"]).
-          withDirectory("/src", source).
-          withWorkdir("/src").
-          withDefaultArgs(["mcp-language-server", "--workspace", "/src", "--lsp", "gopls"]).
-          asService
-      )
-    )
-  }
-
-  pub playwright: LLM! {
-    doug.agent(
-      llm.withMCPServer(
-        "playwright",
-        container.
-          from("mcr.microsoft.com/playwright/mcp").
-          asService
-      )
-    )
-  }
-
-  let goBase: GoWithSource! {
-    go(container: base).withCgoDisabled().withSource(source)
-  }
-
   let base: Container! {
-    apko.wolfi(["go", "nodejs", "npm"]).
-      withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"])
+    apko.wolfi(["bash", "go", "nodejs", "npm", "golangci-lint"]).
+      withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
+      withEnvVariable("GOMODCACHE", "/go/pkg/mod").
+      withMountedCache("/go/build-cache", cacheVolume("go-build")).
+      withEnvVariable("GOCACHE", "/go/build-cache").
+      withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"]).
+      withDirectory("/src", source).
+      withWorkdir("/src")
+  }
+
+  let generated: Container! {
+    base.withExec(["./hack/generate"])
   }
 }
