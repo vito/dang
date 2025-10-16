@@ -92,6 +92,15 @@ func init() {
 	Prelude.AddClass("Int", IntType)
 	Prelude.AddClass("Boolean", BooleanType)
 
+	// String.split method: split(separator: String!) -> [String!]!
+	splitArgs := NewRecordType("")
+	splitArgs.Add("separator", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	splitReturnType := hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}
+	splitType := hm.NewFnType(splitArgs, splitReturnType)
+
+	slog.Debug("adding builtin method", "type", "String", "method", "split")
+	StringType.Add("split", hm.NewScheme(nil, splitType))
+
 	// print function: print(value: a) -> Null
 	printArgType := hm.TypeVariable('a')
 	printArgs := NewRecordType("")

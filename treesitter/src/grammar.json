@@ -186,7 +186,7 @@
             "value": 8,
             "content": {
               "type": "SYMBOL",
-              "name": "literal"
+              "name": "index_or_call"
             }
           },
           {
@@ -194,7 +194,7 @@
             "value": 7,
             "content": {
               "type": "SYMBOL",
-              "name": "index_or_call"
+              "name": "select_or_call"
             }
           },
           {
@@ -202,7 +202,7 @@
             "value": 6,
             "content": {
               "type": "SYMBOL",
-              "name": "select_or_call"
+              "name": "literal"
             }
           },
           {

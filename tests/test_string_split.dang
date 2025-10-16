@@ -1,0 +1,29 @@
+# Test string split method
+
+# Basic split with comma separator
+pub basic = "foo,bar,baz".split(",")
+assert { basic[0] == "foo" }
+assert { basic[1] == "bar" }
+assert { basic[2] == "baz" }
+
+# Split with multi-character separator
+pub multi = "foo, bar, baz".split(", ")
+assert { multi[0] == "foo" }
+assert { multi[1] == "bar" }
+assert { multi[2] == "baz" }
+
+# Split with no matches returns single element
+pub no_match = "foobar".split(",")
+assert { no_match[0] == "foobar" }
+
+# Split empty string
+pub empty = "".split(",")
+assert { empty[0] == "" }
+
+# Split with empty separator should split every character
+pub every_char = "abc".split("")
+assert { every_char[0] == "a" }
+assert { every_char[1] == "b" }
+assert { every_char[2] == "c" }
+
+print("String split tests passed!")

@@ -143,6 +143,8 @@ func (c FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, ar
 	switch fn := funVal.(type) {
 	case BoundMethod:
 		return c.callBoundMethod(ctx, fn, argValues)
+	case BoundBuiltinMethod:
+		return c.callBoundBuiltinMethod(ctx, fn, argValues)
 	case FunctionValue:
 		return c.callFunctionValue(ctx, fn, argValues)
 	case GraphQLFunction:
@@ -154,6 +156,17 @@ func (c FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, ar
 	default:
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
+}
+
+// callBoundBuiltinMethod handles BoundBuiltinMethod function calls
+func (c FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMethod, argValues map[string]Value) (Value, error) {
+	// Create a temporary environment with the receiver bound as "self"
+	tempMod := NewModule("_temp_")
+	tempEnv := NewModuleValue(tempMod)
+	tempEnv.Set("self", fn.Receiver)
+
+	// Call the builtin function with the receiver context
+	return fn.Method.Call(ctx, tempEnv, argValues)
 }
 
 // callBoundMethod handles BoundMethod function calls
@@ -302,6 +315,15 @@ func (c FunCall) getParameterNames(funVal Value) []string {
 	switch fn := funVal.(type) {
 	case BoundMethod:
 		return fn.Method.Args
+	case BoundBuiltinMethod:
+		// For bound builtin methods, get parameter names from the function type
+		if ft, ok := fn.Method.FnType.Arg().(*RecordType); ok {
+			names := make([]string, len(ft.Fields))
+			for i, field := range ft.Fields {
+				names[i] = field.Key
+			}
+			return names
+		}
 	case FunctionValue:
 		return fn.Args
 	case GraphQLFunction:
@@ -616,6 +638,18 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			case GraphQLValue:
 				// Handle GraphQL field selection
 				return rec.SelectField(ctx, d.Field)
+
+			case StringValue:
+				// Handle methods on string values by looking them up in the evaluation environment
+				// The builtin is registered with a special name
+				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field)
+				if method, found := env.Get(methodKey); found {
+					if builtinFn, ok := method.(BuiltinFunction); ok {
+						// Create a bound method that will pass the string as self
+						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					}
+				}
+				return nil, fmt.Errorf("string value does not have method %q", d.Field)
 
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)

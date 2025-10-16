@@ -41,7 +41,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
 
 Form <- Conditional / While / ForLoop / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
-Term <- Literal / IndexOrCall / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall
+Term <- IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
 ParenForm <- '(' _ expr:Form _ ')' {
   return expr.(Node), nil

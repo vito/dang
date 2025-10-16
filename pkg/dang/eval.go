@@ -317,6 +317,67 @@ func addBuiltinFunctions(env EvalEnv) {
 	}
 
 	env.Set("toJSON", jsonFn)
+
+	// Create the split builtin for String type
+	// Type signature: split(separator: String!) -> [String!]!
+	splitArgs := NewRecordType("")
+	splitArgs.Add("separator", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	splitReturnType := hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}
+	splitType := hm.NewFnType(splitArgs, splitReturnType)
+
+	splitFn := BuiltinFunction{
+		Name:   "split",
+		FnType: splitType,
+		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+			// Get the separator argument
+			separatorVal, ok := args["separator"]
+			if !ok {
+				return nil, fmt.Errorf("split: missing required argument 'separator'")
+			}
+
+			separatorStr, ok := separatorVal.(StringValue)
+			if !ok {
+				return nil, fmt.Errorf("split: separator must be a string")
+			}
+
+			// Get the receiver (the string to split) from "self"
+			selfVal, ok := env.Get("self")
+			if !ok {
+				return nil, fmt.Errorf("split: missing 'self' binding")
+			}
+
+			strVal, ok := selfVal.(StringValue)
+			if !ok {
+				return nil, fmt.Errorf("split: self must be a string, got %T", selfVal)
+			}
+
+			// Perform the split
+			var parts []string
+			if separatorStr.Val == "" {
+				// Split every character
+				for _, ch := range strVal.Val {
+					parts = append(parts, string(ch))
+				}
+			} else {
+				parts = strings.Split(strVal.Val, separatorStr.Val)
+			}
+
+			// Convert to Value array
+			values := make([]Value, len(parts))
+			for i, part := range parts {
+				values[i] = StringValue{Val: part}
+			}
+
+			return ListValue{
+				Elements: values,
+				ElemType: hm.NonNullType{Type: StringType},
+			}, nil
+		},
+	}
+
+	// Add split to the StringType module for method lookup
+	StringType.Add("split", hm.NewScheme(nil, splitType))
+	env.Set("_string_split_builtin", splitFn)
 }
 
 // Helper function to determine if a GraphQL type is scalar
@@ -749,6 +810,24 @@ func (b BoundMethod) String() string {
 
 func (b BoundMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound method value")
+}
+
+// BoundBuiltinMethod represents a builtin method bound to a primitive value (like StringValue)
+type BoundBuiltinMethod struct {
+	Method   BuiltinFunction
+	Receiver Value
+}
+
+func (b BoundBuiltinMethod) Type() hm.Type {
+	return b.Method.Type()
+}
+
+func (b BoundBuiltinMethod) String() string {
+	return fmt.Sprintf("bound_builtin_method(%s)", b.Method.String())
+}
+
+func (b BoundBuiltinMethod) MarshalJSON() ([]byte, error) {
+	return nil, fmt.Errorf("cannot marshal bound builtin method value")
 }
 
 // BuiltinFunction represents a builtin function like print

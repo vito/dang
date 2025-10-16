@@ -343,15 +343,15 @@ var g = &grammar{
 				alternatives: []any{
 					&ruleRefExpr{
 						pos:  position{line: 44, col: 9, offset: 949},
-						name: "Literal",
-					},
-					&ruleRefExpr{
-						pos:  position{line: 44, col: 19, offset: 959},
 						name: "IndexOrCall",
 					},
 					&ruleRefExpr{
-						pos:  position{line: 44, col: 33, offset: 973},
+						pos:  position{line: 44, col: 23, offset: 963},
 						name: "SelectOrCall",
+					},
+					&ruleRefExpr{
+						pos:  position{line: 44, col: 38, offset: 978},
+						name: "Literal",
 					},
 					&ruleRefExpr{
 						pos:  position{line: 44, col: 48, offset: 988},
