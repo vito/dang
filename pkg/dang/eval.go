@@ -319,15 +319,17 @@ func addBuiltinFunctions(env EvalEnv) {
 	env.Set("toJSON", jsonFn)
 
 	// Create the split builtin for String type
-	// Type signature: split(separator: String!) -> [String!]!
-	splitArgs := NewRecordType("")
-	splitArgs.Add("separator", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
-	splitReturnType := hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}
-	splitType := hm.NewFnType(splitArgs, splitReturnType)
+	// Type signature is defined in env.go init()
+	// Retrieve it from StringType to ensure consistency
+	splitScheme, ok := StringType.LocalSchemeOf("split")
+	if !ok {
+		panic("split method not found in StringType - this should never happen")
+	}
+	splitType, _ := splitScheme.Type()
 
 	splitFn := BuiltinFunction{
 		Name:   "split",
-		FnType: splitType,
+		FnType: splitType.(*hm.FunctionType),
 		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 			// Get the separator argument
 			separatorVal, ok := args["separator"]
@@ -375,8 +377,6 @@ func addBuiltinFunctions(env EvalEnv) {
 		},
 	}
 
-	// Add split to the StringType module for method lookup
-	StringType.Add("split", hm.NewScheme(nil, splitType))
 	env.Set("_string_split_builtin", splitFn)
 }
 

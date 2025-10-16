@@ -1,0 +1,19 @@
+{
+  "name": "dev",
+  "engineVersion": "v0.19.2",
+  "sdk": "dang",
+  "dependencies": [
+    {
+      "name": "dang",
+      "source": "../.."
+    },
+    {
+      "name": "doug",
+      "source": "../doug"
+    },
+    {
+      "name": "apko",
+      "source": "../apko"
+    }
+  ]
+}

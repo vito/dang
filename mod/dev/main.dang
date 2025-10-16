@@ -1,0 +1,101 @@
+type Dev {
+  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
+    # TODO: respecting .gitignore would be nice
+    "Session.vim"
+    "dang"
+    "zed-dang/grammars/"
+    ".env"
+    ".envrc"
+    ".dagger"
+  ])
+
+  """
+  GitHub token to use for fetching issue/PR comments
+  """
+  pub githubToken: Secret!
+
+  # TODO: would be nice to let these be `let`
+  pub promptFile: File! @defaultPath(path: "./prompt.md")
+
+  """
+  Start a coding agent for the Dagger project.
+  """
+  pub agent: LLM! {
+    let gopls = apko.wolfi(["bash", "go"]).
+      withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
+      withEnvVariable("GOMODCACHE", "/go/pkg/mod").
+      withMountedCache("/go/build-cache", cacheVolume("go-build")).
+      withEnvVariable("GOCACHE", "/go/build-cache").
+      withEnvVariable("GOBIN", "/go/bin").
+      withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true).
+      withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
+      withDirectory("/workspace", source).
+      withWorkdir("/workspace").
+      withDefaultArgs(["gopls", "mcp"])
+
+    let goplsInstructions = gopls.
+      withExec(["gopls", "mcp", "-instructions"]).
+      stdout
+
+    let promptContents = promptFile.contents
+
+    doug.agent(
+      llm.
+        withEnv(
+          env.
+            withCurrentModule.
+            withWorkspace(source)).
+        withSystemPrompt(goplsInstructions).
+        withSystemPrompt(promptContents).
+        withMCPServer(name: "gopls", service: gopls.asService)
+    )
+  }
+
+  """
+  Run the tests, or a subset of tests.
+  """
+  pub test(
+    """
+    Filter a sub-test of the test suite, e.g. FindUp/current.
+    """
+    filter: String! = ""
+  ): Void {
+    dang.test(filter)
+  }
+
+  """
+  Run a git command and return its output.
+  """
+  pub git(args: [String!]!): String! {
+    sandbox.
+      withExec(["git"] + args).
+      combinedOutput
+  }
+
+  """
+  Run a gh command and return its output.
+  """
+  pub github(args: [String!]!): String! {
+    let ctr = if githubToken != null {
+      sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
+    } else {
+      sandbox
+    }
+    ctr.
+      withExec(["gh"] + args).
+      combinedOutput
+  }
+
+  """
+  A common environment just to minimize building for utilities like RunGit,
+  RunGithub, etc.
+
+  We don't expose this directly and instead expose wrappers just to keep the
+  agent from going wild and relying too much on the shell.
+  """
+  let sandbox: Container! {
+    apko.wolfi(["bash", "git", "gh"]).
+      withWorkdir("/workspace").
+      withDirectory("/workspace", source)
+  }
+}

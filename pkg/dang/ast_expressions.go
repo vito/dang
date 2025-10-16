@@ -1488,12 +1488,12 @@ func (w While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // ForLoop represents a for..in loop expression
 type ForLoop struct {
-	Variable      string    // Loop variable name (for single-variable iteration)
-	KeyVariable   string    // Key/Index variable name (for two-variable iteration)
-	ValueVariable string    // Value variable name (for two-variable iteration)
-	Type          TypeNode  // Optional type annotation
-	Iterable      Node      // Expression that produces iterable
-	LoopBody      Block     // Loop body
+	Variable      string   // Loop variable name (for single-variable iteration)
+	KeyVariable   string   // Key/Index variable name (for two-variable iteration)
+	ValueVariable string   // Value variable name (for two-variable iteration)
+	Type          TypeNode // Optional type annotation
+	Iterable      Node     // Expression that produces iterable
+	LoopBody      Block    // Loop body
 	Loc           *SourceLocation
 }
 
@@ -1527,7 +1527,7 @@ func (f ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if f.KeyVariable == "" {
 			// Single variable iteration
 			var elementType hm.Type
-			
+
 			// Check if it's a list type
 			if listType, ok := iterableType.(ListType); ok {
 				elementType = listType.Type
@@ -1580,8 +1580,8 @@ func (f ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			// Check if it's a list type (key=index, value=element)
 			if listType, ok := iterableType.(ListType); ok {
 				elementType := listType.Type
-				loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: IntType}))     // index
-				loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, elementType))                     // element
+				loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: IntType})) // index
+				loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, elementType))                 // element
 			} else if nonNullListType, ok := iterableType.(hm.NonNullType); ok {
 				if listType, ok := nonNullListType.Type.(ListType); ok {
 					elementType := listType.Type
@@ -1647,8 +1647,8 @@ func (f ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				for i, element := range listVal.Elements {
 					// Create new scope for loop iteration
 					loopEnv := env.Clone()
-					loopEnv.Set(f.KeyVariable, IntValue{Val: int(i)})    // key = index
-					loopEnv.Set(f.ValueVariable, element)                // value = element
+					loopEnv.Set(f.KeyVariable, IntValue{Val: int(i)}) // key = index
+					loopEnv.Set(f.ValueVariable, element)             // value = element
 
 					// Evaluate the body
 					lastVal, err = EvalNode(ctx, loopEnv, f.LoopBody)

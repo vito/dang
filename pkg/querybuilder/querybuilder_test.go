@@ -226,7 +226,7 @@ func TestSelectFieldsNested(t *testing.T) {
 func TestSelectMixed(t *testing.T) {
 	postsSelection := Query().SelectFields("title", "content")
 	pageInfoSelection := Query().SelectFields("hasNextPage", "endCursor")
-	
+
 	q, err := Query().
 		Select("user").Arg("id", "1").
 		Select("posts").Arg("first", 2).
@@ -251,22 +251,22 @@ func TestUnpackMixedFieldsAndSubselections(t *testing.T) {
 		Title   string `json:"title"`
 		Content string `json:"content"`
 	}
-	
+
 	type PageInfo struct {
 		HasNextPage bool   `json:"hasNextPage"`
 		EndCursor   string `json:"endCursor"`
 	}
-	
+
 	type PostsConnection struct {
 		Posts    []Post   `json:"posts"`
 		PageInfo PageInfo `json:"pageInfo"`
 	}
-	
+
 	var result PostsConnection
-	
+
 	postsSelection := Query().SelectFields("title", "content")
 	pageInfoSelection := Query().SelectFields("hasNextPage", "endCursor")
-	
+
 	root := Query().
 		Select("user").Arg("id", "1").
 		Select("posts").Arg("first", 2).
@@ -298,7 +298,7 @@ func TestUnpackMixedFieldsAndSubselections(t *testing.T) {
 	`), &response)
 	require.NoError(t, err)
 	require.NoError(t, root.unpack(response))
-	
+
 	require.Len(t, result.Posts, 2)
 	require.Equal(t, "First Post", result.Posts[0].Title)
 	require.Equal(t, "Hello World!", result.Posts[0].Content)
@@ -313,16 +313,16 @@ func TestUnpackSubselectionsOnly(t *testing.T) {
 		Name string `json:"name"`
 		Age  int    `json:"age"`
 	}
-	
+
 	type Profile struct {
 		Bio  string `json:"bio"`
 		User User   `json:"user"`
 	}
-	
+
 	var result Profile
-	
+
 	userSelection := Query().SelectFields("name", "age")
-	
+
 	root := Query().
 		Select("userProfile").Arg("userId", "1").
 		SelectMixed(
@@ -347,7 +347,7 @@ func TestUnpackSubselectionsOnly(t *testing.T) {
 	`), &response)
 	require.NoError(t, err)
 	require.NoError(t, root.unpack(response))
-	
+
 	require.Equal(t, "A passionate user sharing thoughts and ideas.", result.Bio)
 	require.Equal(t, "John Doe", result.User.Name)
 	require.Equal(t, 30, result.User.Age)
@@ -358,15 +358,15 @@ func TestUnpackEmptySelectionWithSubselections(t *testing.T) {
 		HasNextPage bool   `json:"hasNextPage"`
 		EndCursor   string `json:"endCursor"`
 	}
-	
+
 	type Result struct {
 		PageInfo PageInfo `json:"pageInfo"`
 	}
-	
+
 	var result Result
-	
+
 	pageInfoSelection := Query().SelectFields("hasNextPage", "endCursor")
-	
+
 	root := Query().
 		Select("data").
 		SelectMixed(
@@ -390,7 +390,7 @@ func TestUnpackEmptySelectionWithSubselections(t *testing.T) {
 	`), &response)
 	require.NoError(t, err)
 	require.NoError(t, root.unpack(response))
-	
+
 	require.True(t, result.PageInfo.HasNextPage)
 	require.Equal(t, "cursor123", result.PageInfo.EndCursor)
 }
@@ -400,15 +400,15 @@ func TestUnpackNestedSubselectionsOnly(t *testing.T) {
 		Name string `json:"name"`
 		Age  int    `json:"age"`
 	}
-	
+
 	type Result struct {
 		User User `json:"user"`
 	}
-	
+
 	var result Result
-	
+
 	userSelection := Query().SelectFields("name", "age")
-	
+
 	root := Query().
 		Select("userProfile").Arg("userId", "1").
 		SelectMixed(
@@ -432,8 +432,7 @@ func TestUnpackNestedSubselectionsOnly(t *testing.T) {
 	`), &response)
 	require.NoError(t, err)
 	require.NoError(t, root.unpack(response))
-	
+
 	require.Equal(t, "John Doe", result.User.Name)
 	require.Equal(t, 30, result.User.Age)
 }
-
