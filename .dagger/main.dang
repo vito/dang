@@ -67,9 +67,8 @@ type Dang {
   Run the tree-sitter tests.
   """
   pub treesitterTest: Void {
-    base.
+    generated.
       withWorkdir("./treesitter").
-      withExec(["go", "generate", "-x", "./..."]).
       withExec(["tree-sitter", "test"]).
       sync
     null
@@ -79,14 +78,14 @@ type Dang {
   Update the tree-sitter test corpus.
   """
   pub treesitterUpdate: Changeset! {
-    source.
+    generated.
       withDirectory("./treesitter",
-        base.
+        generated.
           withWorkdir("./treesitter").
-          withExec(["go", "generate", "-x", "./..."]).
           withExec(["tree-sitter", "test", "--update"]).
           directory(".")).
-      changes(source)
+      directory(".").
+      changes(generated.directory("."))
   }
 
   """
