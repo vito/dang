@@ -8,6 +8,8 @@
   (if_token)
   (else_token)
   (while_token)
+  (for_token)
+  (in_token)
   (match_token)
   (with_token)
   (assert_token)
