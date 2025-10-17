@@ -1,0 +1,222 @@
+===
+Triple-quoted doc strings
+===
+
+type Dev {
+  """
+  GitHub token to use for fetching issue/PR comments
+  """
+  pub githubToken: Secret!
+
+  """
+  Start a coding agent for the Dagger project.
+  """
+  pub agent: LLM! {
+    let gopls = apko.wolfi(["bash", "go"])
+    gopls
+  }
+
+  """
+  Run the tests, or a subset of tests.
+  """
+  pub test(
+    """
+    Filter a sub-test of the test suite, e.g. FindUp/current.
+    """
+    filter: String! = ""
+  ): Void {
+    dang.test(filter)
+  }
+
+  """
+  A common environment just to minimize building for utilities like RunGit,
+  RunGithub, etc.
+
+  We don't expose this directly and instead expose wrappers just to keep the
+  agent from going wild and relying too much on the shell.
+  """
+  let sandbox: Container! {
+    apko.wolfi(["bash", "git", "gh"])
+  }
+}
+
+---
+
+(dang
+  (class
+    (type_token)
+    (id
+      (word_token))
+    (block
+      (annotated_decl
+        (doc_string
+          (triple_quote)
+          (doc_string_content)
+          (triple_quote))
+        (slot
+          (type_only_slot
+            (visibility
+              (pub_token))
+            (id
+              (word_token))
+            (colon_token)
+            (type
+              (non_null
+                (type
+                  (named_type
+                    (upper_id
+                      (upper_token))))
+                (bang_token))))))
+      (sep)
+      (annotated_decl
+        (doc_string
+          (triple_quote)
+          (doc_string_content)
+          (triple_quote))
+        (slot
+          (type_and_block_slot
+            (visibility
+              (pub_token))
+            (id
+              (word_token))
+            (colon_token)
+            (type
+              (non_null
+                (type
+                  (named_type
+                    (upper_id
+                      (upper_token))))
+                (bang_token)))
+            (block
+              (slot
+                (value_only_slot
+                  (visibility
+                    (let_token))
+                  (id
+                    (word_token))
+                  (equal_token)
+                  (select_or_call
+                    (symbol_or_call
+                      (symbol
+                        (id
+                          (word_token))))
+                    (dot_token)
+                    (id
+                      (word_token))
+                    (arg_values
+                      (argument
+                        (positional_value
+                          (list
+                            (literal
+                              (string))
+                            (sep
+                              (comma_token))
+                            (literal
+                              (string)))))))))
+              (sep)
+              (symbol_or_call
+                (symbol
+                  (id
+                    (word_token))))
+              (sep)))))
+      (sep)
+      (annotated_decl
+        (doc_string
+          (triple_quote)
+          (doc_string_content)
+          (triple_quote))
+        (slot
+          (type_and_args_and_block_slot
+            (visibility
+              (pub_token))
+            (id
+              (word_token))
+            (arg_types
+              (arg_type
+                (doc_string
+                  (triple_quote)
+                  (doc_string_content)
+                  (triple_quote))
+                (arg_with_default
+                  (id
+                    (word_token))
+                  (colon_token)
+                  (type
+                    (non_null
+                      (type
+                        (named_type
+                          (upper_id
+                            (upper_token))))
+                      (bang_token)))
+                  (equal_token)
+                  (literal
+                    (string))))
+              (sep))
+            (colon_token)
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (block
+              (select_or_call
+                (symbol_or_call
+                  (symbol
+                    (id
+                      (word_token))))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (argument
+                    (positional_value
+                      (symbol_or_call
+                        (symbol
+                          (id
+                            (word_token))))))))
+              (sep)))))
+      (sep)
+      (annotated_decl
+        (doc_string
+          (triple_quote)
+          (doc_string_content)
+          (triple_quote))
+        (slot
+          (type_and_block_slot
+            (visibility
+              (let_token))
+            (id
+              (word_token))
+            (colon_token)
+            (type
+              (non_null
+                (type
+                  (named_type
+                    (upper_id
+                      (upper_token))))
+                (bang_token)))
+            (block
+              (select_or_call
+                (symbol_or_call
+                  (symbol
+                    (id
+                      (word_token))))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (argument
+                    (positional_value
+                      (list
+                        (literal
+                          (string))
+                        (sep
+                          (comma_token))
+                        (literal
+                          (string))
+                        (sep
+                          (comma_token))
+                        (literal
+                          (string)))))))
+              (sep)))))
+      (sep)))
+  (sep))

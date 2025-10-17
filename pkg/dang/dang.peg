@@ -486,9 +486,11 @@ String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
 
 DocString <- TripleQuote content:DocStringContent TripleQuote {
   return normalizeDocString(content.([]byte)), nil
+} / TripleQuote TripleQuote {
+  return "", nil
 }
 
-DocStringContent <- (!TripleQuote .)* {
+DocStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
   return c.text, nil
 }
 

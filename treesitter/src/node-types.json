@@ -1033,7 +1033,7 @@
     "fields": {
       "content": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "doc_string_content",
@@ -1052,6 +1052,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "doc_string_content",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "dot_token",
@@ -3168,10 +3173,6 @@
   },
   {
     "type": "directive_token",
-    "named": true
-  },
-  {
-    "type": "doc_string_content",
     "named": true
   },
   {
