@@ -19,6 +19,7 @@
 
 ;; Literals
 (string) @string
+(doc_string) @string
 (int) @constant.numeric
 (boolean) @constant.builtin.boolean
 (null) @constant.builtin
