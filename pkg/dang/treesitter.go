@@ -96,6 +96,7 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 		ts.Value = string(t.val)
 		if t.ignoreCase {
 			ts.Flags = "i"
+			ts.Value = strings.TrimSuffix(ts.Value.(string), "i")
 		}
 	case *litMatcher:
 		ts.Type = treesitter.RuleTypeString
@@ -187,6 +188,13 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 		ts = &treesitter.Rule{
 			Type:    treesitter.RuleTypePrecLeft,
 			Value:   prec,
+			Content: ts,
+		}
+	}
+
+	if strings.HasPrefix(string(r.name), "Immediate") {
+		ts = &treesitter.Rule{
+			Type:    treesitter.RuleTypeImmediateToken,
 			Content: ts,
 		}
 	}

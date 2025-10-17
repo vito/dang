@@ -108,11 +108,15 @@ type Dev {
                         (positional_value
                           (list
                             (literal
-                              (string))
+                              (string
+                                (immediate_string_content)
+                                (immediate_quote_token)))
                             (sep
                               (comma_token))
                             (literal
-                              (string)))))))))
+                              (string
+                                (immediate_string_content)
+                                (immediate_quote_token))))))))))
               (sep)
               (symbol_or_call
                 (symbol
@@ -150,7 +154,8 @@ type Dev {
                       (bang_token)))
                   (equal_token)
                   (literal
-                    (string))))
+                    (string
+                      (immediate_quote_token)))))
               (sep))
             (colon_token)
             (type
@@ -208,15 +213,21 @@ type Dev {
                     (positional_value
                       (list
                         (literal
-                          (string))
+                          (string
+                            (immediate_string_content)
+                            (immediate_quote_token)))
                         (sep
                           (comma_token))
                         (literal
-                          (string))
+                          (string
+                            (immediate_string_content)
+                            (immediate_quote_token)))
                         (sep
                           (comma_token))
                         (literal
-                          (string)))))))
+                          (string
+                            (immediate_string_content)
+                            (immediate_quote_token))))))))
               (sep)))))
       (sep)))
   (sep))

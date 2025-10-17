@@ -177,7 +177,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 130,
+      "value": 128,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -313,7 +313,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 125,
+      "value": 123,
       "content": {
         "type": "SEQ",
         "members": [
@@ -376,7 +376,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 124,
+      "value": 122,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1308,7 +1308,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 95,
+      "value": 93,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1464,7 +1464,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 90,
+      "value": 88,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1523,7 +1523,7 @@
             },
             {
               "type": "SYMBOL",
-              "name": "interro_token"
+              "name": "or_token"
             },
             {
               "type": "FIELD",
@@ -1552,7 +1552,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 86,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1633,7 +1633,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 84,
+      "value": 82,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1722,7 +1722,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 80,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1803,7 +1803,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 80,
+      "value": 78,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1860,11 +1860,11 @@
         }
       ]
     },
-    "interro_token": {
+    "or_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "?"
+        "value": "or"
       }
     },
     "reopen_token": {
@@ -2090,6 +2090,14 @@
         }
       ]
     },
+    "non_zero_decimal_digit": {
+      "type": "PATTERN",
+      "value": "[1-9]"
+    },
+    "decimal_digit": {
+      "type": "PATTERN",
+      "value": "[0-9]"
+    },
     "exponent": {
       "type": "SEQ",
       "members": [
@@ -2132,29 +2140,67 @@
             "members": [
               {
                 "type": "PATTERN",
-                "value": "."
+                "value": "[^\\\\\"]+"
               },
               {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "\\"
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "escape_sequence"
-                  }
-                ]
+                "type": "SYMBOL",
+                "name": "immediate_char_escape"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "immediate_hex_escape"
               }
             ]
           }
         },
         {
-          "type": "STRING",
-          "value": "\""
+          "type": "SYMBOL",
+          "name": "immediate_quote"
         }
       ]
+    },
+    "immediate_quote": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "\""
+      }
+    },
+    "immediate_char_escape": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "\\"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[abfnrtv\"\\\\]"
+          }
+        ]
+      }
+    },
+    "immediate_hex_escape": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "\\x"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[0-9a-f]"
+          },
+          {
+            "type": "PATTERN",
+            "value": "[0-9a-f]"
+          }
+        ]
+      }
     },
     "doc_string": {
       "type": "CHOICE",
@@ -2239,65 +2285,6 @@
     "triple_quote": {
       "type": "STRING",
       "value": "\"\"\""
-    },
-    "escaped_char": {
-      "type": "PATTERN",
-      "value": "[\\x00-\\x1f\"\\\\]"
-    },
-    "escape_sequence": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "single_char_escape"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "unicode_escape"
-        }
-      ]
-    },
-    "single_char_escape": {
-      "type": "PATTERN",
-      "value": "[\"\\\\/bfnrt]"
-    },
-    "unicode_escape": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "u"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "hex_digit"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "hex_digit"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "hex_digit"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "hex_digit"
-        }
-      ]
-    },
-    "decimal_digit": {
-      "type": "PATTERN",
-      "value": "[0-9]"
-    },
-    "non_zero_decimal_digit": {
-      "type": "PATTERN",
-      "value": "[1-9]"
-    },
-    "hex_digit": {
-      "type": "PATTERN",
-      "value": "[0-9a-f]i",
-      "flags": "i"
     },
     "quoted": {
       "type": "SEQ",

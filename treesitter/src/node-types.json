@@ -873,7 +873,7 @@
           "named": true
         },
         {
-          "type": "interro_token",
+          "type": "or_token",
           "named": true
         }
       ]
@@ -1147,25 +1147,6 @@
     "type": "equality_op",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "escape_sequence",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "single_char_escape",
-          "named": true
-        },
-        {
-          "type": "unicode_escape",
-          "named": true
-        }
-      ]
-    }
   },
   {
     "type": "field_selection",
@@ -1653,11 +1634,6 @@
         ]
       }
     }
-  },
-  {
-    "type": "lambda_token",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "list",
@@ -2459,10 +2435,18 @@
     "fields": {},
     "children": {
       "multiple": true,
-      "required": false,
+      "required": true,
       "types": [
         {
-          "type": "escape_sequence",
+          "type": "immediate_char_escape",
+          "named": true
+        },
+        {
+          "type": "immediate_hex_escape",
+          "named": true
+        },
+        {
+          "type": "immediate_quote",
           "named": true
         }
       ]
@@ -2884,21 +2868,6 @@
     "fields": {}
   },
   {
-    "type": "unicode_escape",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "hex_digit",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "upper_id",
     "named": true,
     "fields": {},
@@ -3131,10 +3100,6 @@
     "named": false
   },
   {
-    "type": "\\",
-    "named": false
-  },
-  {
     "type": "]",
     "named": false
   },
@@ -3196,11 +3161,19 @@
     "named": true
   },
   {
-    "type": "hex_digit",
+    "type": "if_token",
     "named": true
   },
   {
-    "type": "if_token",
+    "type": "immediate_char_escape",
+    "named": true
+  },
+  {
+    "type": "immediate_hex_escape",
+    "named": true
+  },
+  {
+    "type": "immediate_quote",
     "named": true
   },
   {
@@ -3212,7 +3185,7 @@
     "named": true
   },
   {
-    "type": "interro_token",
+    "type": "lambda_token",
     "named": true
   },
   {
@@ -3236,6 +3209,10 @@
     "named": true
   },
   {
+    "type": "or_token",
+    "named": true
+  },
+  {
     "type": "plus_equal_token",
     "named": true
   },
@@ -3245,10 +3222,6 @@
   },
   {
     "type": "quoted_raw_token",
-    "named": true
-  },
-  {
-    "type": "single_char_escape",
     "named": true
   },
   {
@@ -3262,10 +3235,6 @@
   {
     "type": "type_token",
     "named": true
-  },
-  {
-    "type": "u",
-    "named": false
   },
   {
     "type": "upper_token",

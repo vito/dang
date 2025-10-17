@@ -8,6 +8,10 @@ false
 123
 "foo"
 "foo \" bar"
+"octal \123 esc"
+"hex \x1b esc"
+"unicode \u12ab esc"
+"big-unicode \U12abcdef esc"
 
 ---
 
@@ -31,10 +35,42 @@ false
       (decimal_digit)))
   (sep)
   (literal
-    (string))
+    (string
+      (immediate_string_content)
+      (immediate_quote_token)))
   (sep)
   (literal
     (string
-      (escape_sequence
-        (single_char_escape))))
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token)))
+  (sep)
+  (literal
+    (string
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token)))
+  (sep)
+  (literal
+    (string
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token)))
+  (sep)
+  (literal
+    (string
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token)))
+  (sep)
+  (literal
+    (string
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token)))
   (sep))

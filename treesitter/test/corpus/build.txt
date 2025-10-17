@@ -57,7 +57,9 @@ print(test(bin(src)))
           (argument
             (positional_value
               (literal
-                (string))))
+                (string
+                  (immediate_string_content)
+                  (immediate_quote_token)))))
           (sep)
           (argument
             (key_value
@@ -65,16 +67,24 @@ print(test(bin(src)))
               (colon_token)
               (list
                 (literal
-                  (string))
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))
                 (sep)
                 (literal
-                  (string))
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))
                 (sep)
                 (literal
-                  (string))
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))
                 (sep)
                 (literal
-                  (string))
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))
                 (sep))))
           (sep)))))
   (sep)
@@ -123,7 +133,9 @@ print(test(bin(src)))
                       (argument
                         (positional_value
                           (literal
-                            (string))))))
+                            (string
+                              (immediate_string_content)
+                              (immediate_quote_token)))))))
                   (dot_token)
                   (id
                     (word_token))
@@ -131,7 +143,9 @@ print(test(bin(src)))
                     (argument
                       (positional_value
                         (literal
-                          (string))))
+                          (string
+                            (immediate_string_content)
+                            (immediate_quote_token)))))
                     (sep
                       (comma_token))
                     (argument
@@ -147,7 +161,9 @@ print(test(bin(src)))
                   (argument
                     (positional_value
                       (literal
-                        (string))))))
+                        (string
+                          (immediate_string_content)
+                          (immediate_quote_token)))))))
               (dot_token)
               (id
                 (word_token))
@@ -155,13 +171,17 @@ print(test(bin(src)))
                 (argument
                   (positional_value
                     (literal
-                      (string))))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))))
                 (sep
                   (comma_token))
                 (argument
                   (positional_value
                     (literal
-                      (string))))))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))))))
             (dot_token)
             (id
               (word_token))
@@ -170,23 +190,33 @@ print(test(bin(src)))
                 (positional_value
                   (list
                     (literal
-                      (string))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))
                     (sep
                       (comma_token))
                     (literal
-                      (string))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))
                     (sep
                       (comma_token))
                     (literal
-                      (string))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))
                     (sep
                       (comma_token))
                     (literal
-                      (string))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))
                     (sep
                       (comma_token))
                     (literal
-                      (string)))))))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token))))))))
           (dot_token)
           (id
             (word_token))
@@ -194,7 +224,9 @@ print(test(bin(src)))
             (argument
               (positional_value
                 (literal
-                  (string))))))
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))))))
         (sep))))
   (sep)
   (slot
@@ -240,7 +272,9 @@ print(test(bin(src)))
                   (argument
                     (positional_value
                       (literal
-                        (string))))))
+                        (string
+                          (immediate_string_content)
+                          (immediate_quote_token)))))))
               (dot_token)
               (id
                 (word_token))
@@ -248,7 +282,9 @@ print(test(bin(src)))
                 (argument
                   (positional_value
                     (literal
-                      (string))))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))))
                 (sep
                   (comma_token))
                 (argument
@@ -265,11 +301,15 @@ print(test(bin(src)))
                 (positional_value
                   (list
                     (literal
-                      (string))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))
                     (sep
                       (comma_token))
                     (literal
-                      (string)))))))
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token))))))))
           (dot_token)
           (id
             (word_token)))

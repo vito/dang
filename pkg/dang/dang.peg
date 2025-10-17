@@ -470,9 +470,13 @@ Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   }, nil
 }
 
+NonZeroDecimalDigit <- [1-9]
+
+DecimalDigit <- [0-9]
+
 Exponent <- 'e'i [+-]? DecimalDigit+
 
-String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
+String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken {
   c.text = bytes.Replace(c.text, []byte(`\/`), []byte(`/`), -1)
   value, err := strconv.Unquote(string(c.text))
   if err != nil {
@@ -483,6 +487,16 @@ String <- '"' ( !EscapedChar . / '\\' EscapeSequence )* '"' {
     Loc: c.Loc(),
   }, nil
 }
+
+ImmediateQuoteToken <- '"'
+ImmediateStringContent <- [^\\"\n]+
+ImmediateEscape <- '\\' (
+    [abfnrtv"\\]
+  / 'x' [0-9a-f]i [0-9a-f]i
+  / 'u' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
+  / 'U' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
+  / [0-7] [0-7] [0-7]
+)
 
 DocString <- TripleQuote content:DocStringContent TripleQuote {
   return normalizeDocString(content.([]byte)), nil
@@ -495,20 +509,6 @@ DocStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
 }
 
 TripleQuote <- "\"\"\""
-
-EscapedChar <- [\x00-\x1f"\\]
-
-EscapeSequence <- SingleCharEscape / UnicodeEscape
-
-SingleCharEscape <- ["\\/bfnrt]
-
-UnicodeEscape <- 'u' HexDigit HexDigit HexDigit HexDigit
-
-DecimalDigit <- [0-9]
-
-NonZeroDecimalDigit <- [1-9]
-
-HexDigit <- [0-9a-f]i
 
 Quoted <- '%' quoter:WordToken '{' raw:QuotedRawToken '}' {
   return Quoted{
