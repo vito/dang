@@ -4,16 +4,17 @@
   "sdk": "dang",
   "dependencies": [
     {
+      "name": "apko",
+      "source": "../apko"
+    },
+    {
       "name": "dang",
       "source": "../.."
     },
     {
       "name": "doug",
-      "source": "../doug"
-    },
-    {
-      "name": "apko",
-      "source": "../apko"
+      "source": "github.com/dagger/dagger/modules/doug@main",
+      "pin": "94c7f125b573d7b93caa2900d2f97f71f75ebe20"
     }
   ]
 }
