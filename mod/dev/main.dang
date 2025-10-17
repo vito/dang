@@ -18,9 +18,9 @@ type Dev {
   pub promptFile: File! @defaultPath(path: "./prompt.md")
 
   """
-  Start a coding agent for the Dagger project.
+  Start a coding agent with the provided module.
   """
-  pub agent: LLM! {
+  pub agent(module: Module!): LLM! {
     let gopls = apko.wolfi(["bash", "go"]).
       withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
       withEnvVariable("GOMODCACHE", "/go/pkg/mod").
@@ -44,23 +44,12 @@ type Dev {
         withEnv(
           env.
             withCurrentModule.
+            withModule(module).
             withWorkspace(source)).
         withSystemPrompt(goplsInstructions).
         withSystemPrompt(promptContents).
         withMCPServer(name: "gopls", service: gopls.asService)
     )
-  }
-
-  """
-  Run the tests, or a subset of tests.
-  """
-  pub test(
-    """
-    Filter a sub-test of the test suite, e.g. FindUp/current.
-    """
-    filter: String! = ""
-  ): Void {
-    dang.test(filter)
   }
 
   """
