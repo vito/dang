@@ -485,7 +485,9 @@ PrecRightMultilineString <- first:MultilineStringLine rest:('\n' _lineSpace l:Mu
   }, nil
 }
 
-MultilineStringLine <- '\\' '\\' content:ImmediateMultilineStringContent {
+MultilineToken <- "\\\\"
+
+MultilineStringLine <- MultilineToken content:ImmediateMultilineStringContent {
   return string(content.([]byte)), nil
 }
 ImmediateMultilineStringContent <- [^\n]* {

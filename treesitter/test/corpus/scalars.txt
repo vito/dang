@@ -83,8 +83,10 @@ false
     (literal
       (prec_right_multiline_string
         (multiline_string_line
+          (multiline_token)
           (immediate_multiline_string_content))
         (multiline_string_line
+          (multiline_token)
           (immediate_multiline_string_content))))
     (sep)
     (literal
