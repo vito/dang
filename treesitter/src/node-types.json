@@ -873,7 +873,7 @@
           "named": true
         },
         {
-          "type": "or_token",
+          "type": "interro_token",
           "named": true
         }
       ]
@@ -2438,15 +2438,15 @@
       "required": true,
       "types": [
         {
-          "type": "immediate_char_escape",
+          "type": "immediate_escape",
           "named": true
         },
         {
-          "type": "immediate_hex_escape",
+          "type": "immediate_quote_token",
           "named": true
         },
         {
-          "type": "immediate_quote",
+          "type": "immediate_string_content",
           "named": true
         }
       ]
@@ -3165,15 +3165,15 @@
     "named": true
   },
   {
-    "type": "immediate_char_escape",
+    "type": "immediate_escape",
     "named": true
   },
   {
-    "type": "immediate_hex_escape",
+    "type": "immediate_quote_token",
     "named": true
   },
   {
-    "type": "immediate_quote",
+    "type": "immediate_string_content",
     "named": true
   },
   {
@@ -3182,6 +3182,10 @@
   },
   {
     "type": "in_token",
+    "named": true
+  },
+  {
+    "type": "interro_token",
     "named": true
   },
   {
@@ -3206,10 +3210,6 @@
   },
   {
     "type": "on_token",
-    "named": true
-  },
-  {
-    "type": "or_token",
     "named": true
   },
   {
