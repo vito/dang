@@ -1,20 +1,38 @@
 ;; Bracket pairs for automatic closing and matching
-[
-  "("
-  ")"
-] @bracket
+("(" @open ")" @close)
+("[" @open "]" @close)
+("{" @open "}" @close)
+("\"" @open "\"" @close)
 
-[
-  "["
-  "]"
-] @bracket
+;; Structural bracket pairs
+(block
+  "{" @open
+  "}" @close)
 
-[
-  "{"
-  "}"
-] @bracket
+(list
+  "[" @open
+  "]" @close)
 
-[
-  "\""
-  "\""
-] @bracket
+(object
+  "{{" @open
+  "}}" @close)
+
+(paren_form
+  "(" @open
+  ")" @close)
+
+(arg_values
+  "(" @open
+  ")" @close)
+
+(arg_types
+  "(" @open
+  ")" @close)
+
+(lambda_args
+  "(" @open
+  ")" @close)
+
+(match
+  "{" @open
+  "}" @close)
