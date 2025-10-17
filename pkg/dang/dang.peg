@@ -5,6 +5,7 @@
     "fmt"
     "strconv"
     "bytes"
+    "strings"
   )
 }
 
@@ -457,7 +458,7 @@ Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
 
 // Literals
 
-Literal <- Int / Boolean / String / Quoted / Null
+Literal <- Int / Boolean / PrecRightMultilineString / String / Quoted / Null
 
 Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   value, err := strconv.ParseInt(string(c.text), 10, 64)
@@ -475,6 +476,21 @@ NonZeroDecimalDigit <- [1-9]
 DecimalDigit <- [0-9]
 
 Exponent <- 'e'i [+-]? DecimalDigit+
+
+PrecRightMultilineString <- first:MultilineStringLine rest:('\n' _lineSpace l:MultilineStringLine { return l, nil })* {
+  lines := sliceOfPrepend[string](first, rest)
+  return String{
+    Value: joinMultilineString(lines),
+    Loc: c.Loc(),
+  }, nil
+}
+
+MultilineStringLine <- '\\' '\\' content:ImmediateMultilineStringContent {
+  return string(content.([]byte)), nil
+}
+ImmediateMultilineStringContent <- [^\n]* {
+  return c.text, nil
+}
 
 String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken {
   c.text = bytes.Replace(c.text, []byte(`\/`), []byte(`/`), -1)

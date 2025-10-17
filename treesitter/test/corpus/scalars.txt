@@ -12,6 +12,11 @@ false
 "hex \x1b esc"
 "unicode \u12ab esc"
 "big-unicode \U12abcdef esc"
+[
+  \\foo
+  \\bar
+  123
+]
 
 ---
 
@@ -73,4 +78,19 @@ false
       (immediate_escape)
       (immediate_string_content)
       (immediate_quote_token)))
+  (sep)
+  (list
+    (literal
+      (prec_right_multiline_string
+        (multiline_string_line
+          (immediate_multiline_string_content))
+        (multiline_string_line
+          (immediate_multiline_string_content))))
+    (sep)
+    (literal
+      (int
+        (non_zero_decimal_digit)
+        (decimal_digit)
+        (decimal_digit)))
+    (sep))
   (sep))

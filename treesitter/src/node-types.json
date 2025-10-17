@@ -1636,6 +1636,11 @@
     }
   },
   {
+    "type": "lambda_token",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "list",
     "named": true,
     "fields": {
@@ -1709,6 +1714,10 @@
         },
         {
           "type": "null",
+          "named": true
+        },
+        {
+          "type": "prec_right_multiline_string",
           "named": true
         },
         {
@@ -1838,6 +1847,22 @@
         "types": [
           {
             "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "multiline_string_line",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "immediate_multiline_string_content",
             "named": true
           }
         ]
@@ -2195,6 +2220,46 @@
         "types": [
           {
             "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "prec_right_multiline_string",
+    "named": true,
+    "fields": {
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "multiline_string_line",
+            "named": true
+          }
+        ]
+      },
+      "l": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "multiline_string_line",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "\n",
+            "named": false
+          },
+          {
+            "type": "multiline_string_line",
             "named": true
           }
         ]
@@ -3100,6 +3165,10 @@
     "named": false
   },
   {
+    "type": "\\",
+    "named": false
+  },
+  {
     "type": "]",
     "named": false
   },
@@ -3169,6 +3238,10 @@
     "named": true
   },
   {
+    "type": "immediate_multiline_string_content",
+    "named": true
+  },
+  {
     "type": "immediate_quote_token",
     "named": true
   },
@@ -3186,10 +3259,6 @@
   },
   {
     "type": "interro_token",
-    "named": true
-  },
-  {
-    "type": "lambda_token",
     "named": true
   },
   {

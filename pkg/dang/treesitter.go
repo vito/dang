@@ -199,5 +199,13 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 		}
 	}
 
+	if strings.HasPrefix(string(r.name), "PrecRight") {
+		ts = &treesitter.Rule{
+			Type:    treesitter.RuleTypePrecRight,
+			Content: ts,
+			Value:   2,
+		}
+	}
+
 	return ts
 }

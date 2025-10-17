@@ -2,6 +2,7 @@ package dang
 
 import (
 	"bytes"
+	"strings"
 )
 
 func (c current) Loc() *SourceLocation {
@@ -17,6 +18,7 @@ func (c current) Loc() *SourceLocation {
 		Length:   len(string(c.text[:textEnd])),
 	}
 }
+
 func normalizeDocString(content []byte) (res string) {
 	content = bytes.TrimSpace(content)
 	lines := bytes.Split(content, []byte{'\n'})
@@ -76,4 +78,8 @@ func normalizeDocString(content []byte) (res string) {
 	}
 
 	return string(bytes.Join(result, []byte{'\n'}))
+}
+
+func joinMultilineString(lines []string) string {
+	return strings.Join(lines, "\n")
 }
