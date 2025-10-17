@@ -177,7 +177,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 131,
+      "value": 132,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -313,7 +313,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 126,
+      "value": 127,
       "content": {
         "type": "SEQ",
         "members": [
@@ -376,7 +376,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 125,
+      "value": 126,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1308,7 +1308,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 96,
+      "value": 97,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1464,7 +1464,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 91,
+      "value": 92,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1552,7 +1552,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 87,
+      "value": 88,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1633,7 +1633,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1722,7 +1722,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1803,7 +1803,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 81,
+      "value": 82,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2175,16 +2175,19 @@
         }
       }
     },
+    "multiline_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "\\\\"
+      }
+    },
     "multiline_string_line": {
       "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "\\"
-        },
-        {
-          "type": "STRING",
-          "value": "\\"
+          "type": "SYMBOL",
+          "name": "multiline_token"
         },
         {
           "type": "FIELD",

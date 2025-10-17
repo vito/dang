@@ -1636,11 +1636,6 @@
     }
   },
   {
-    "type": "lambda_token",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "list",
     "named": true,
     "fields": {
@@ -1867,6 +1862,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "multiline_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3165,10 +3170,6 @@
     "named": false
   },
   {
-    "type": "\\",
-    "named": false
-  },
-  {
     "type": "]",
     "named": false
   },
@@ -3262,11 +3263,19 @@
     "named": true
   },
   {
+    "type": "lambda_token",
+    "named": true
+  },
+  {
     "type": "let_token",
     "named": true
   },
   {
     "type": "match_token",
+    "named": true
+  },
+  {
+    "type": "multiline_token",
     "named": true
   },
   {

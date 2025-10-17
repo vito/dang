@@ -22,6 +22,8 @@
 ;; Literals
 (string) @string
 (string (immediate_escape) @string.escape) @string
+(multiline_string_line) @string
+(multiline_token) @string.escape
 (doc_string) @string
 (int) @constant.numeric
 (boolean) @constant.builtin.boolean
