@@ -32,7 +32,7 @@ type Dang {
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   pub generate: Changeset! {
-    generated.directory(".").changes(source)
+    generated.directory(".").changes(base.directory("/src"))
   }
 
   """
@@ -49,6 +49,18 @@ type Dang {
       withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
+  }
+
+  """
+  Update the Golden-style test specimens, treating the current output as
+  correct.
+  """
+  pub testUpdate: Changeset! {
+    generated.
+      withExec(["go", "test", "-v", "./tests", "-update"],
+        experimentalPrivilegedNesting: true).
+      directory(".").
+      changes(generated.directory("."))
   }
 
   """
