@@ -20,7 +20,7 @@
 ] @keyword.control
 
 ;; Literals
-(string) @string
+(string (immediate_escape) @string.escape) @string
 (doc_string) @string
 (int) @constant.numeric
 (boolean) @constant.builtin.boolean
