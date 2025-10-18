@@ -1,30 +1,38 @@
 # Test basic multiline string
-pub basic = \\line one
-            \\line two
-            \\line three
+pub basic = """
+  line one
+  line two
+  line three
+"""
 
 assert { basic == "line one\nline two\nline three" }
 
 # Test multiline string with indentation preserved
-pub withIndent = \\  indented line
-                 \\    more indented
-                 \\  back to original
-assert { withIndent == "  indented line\n    more indented\n  back to original" }
+pub withIndent = """
+    indented line
+      more indented
+    back to original
+"""
+assert { withIndent == "indented line\n  more indented\nback to original" }
 
 # Test empty lines
-pub withEmpty = \\first
-                \\
-                \\third
+pub withEmpty = """
+  first
+
+  third
+"""
 assert { withEmpty == "first\n\nthird" }
 
 # Test single line
-pub single = \\just one line
+pub single = """just one line"""
 assert { single == "just one line" }
 
 # Test in function call
 pub inList = [
   "sh", "-c",
-  \\echo "Hello"
-  \\echo "World"
+  """
+    echo "Hello"
+    echo "World"
+  """
 ]
 assert { inList == ["sh", "-c", "echo \"Hello\"\necho \"World\""] }

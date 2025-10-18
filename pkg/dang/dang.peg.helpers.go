@@ -2,7 +2,6 @@ package dang
 
 import (
 	"bytes"
-	"strings"
 )
 
 func (c current) Loc() *SourceLocation {
@@ -80,6 +79,64 @@ func normalizeDocString(content []byte) (res string) {
 	return string(bytes.Join(result, []byte{'\n'}))
 }
 
-func joinMultilineString(lines []string) string {
-	return strings.Join(lines, "\n")
+func normalizeTripleQuoteString(content []byte) string {
+	// Trim leading newlines only (preserve leading spaces for indentation detection)
+	content = bytes.TrimLeft(content, "\n\r")
+	
+	// Trim trailing newlines and whitespace  
+	content = bytes.TrimRight(content, "\n\r \t")
+	
+	// Handle empty content
+	if len(content) == 0 {
+		return ""
+	}
+	
+	lines := bytes.Split(content, []byte{'\n'})
+	
+	// Single line - trim it and return
+	if len(lines) == 1 {
+		return string(bytes.TrimSpace(content))
+	}
+
+	// Find MINIMUM indentation level from all non-empty lines
+	minIndent := -1
+	for _, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue // Skip empty lines when calculating indent
+		}
+		indent := 0
+		for i, b := range line {
+			if b != ' ' && b != '\t' {
+				indent = i
+				break
+			}
+		}
+		if minIndent == -1 || indent < minIndent {
+			minIndent = indent
+		}
+	}
+
+	if minIndent == -1 {
+		minIndent = 0
+	}
+
+	// Trim minimum indentation from all lines
+	var trimmedLines [][]byte
+	for _, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			// Preserve empty lines as empty
+			trimmedLines = append(trimmedLines, []byte{})
+		} else if len(line) >= minIndent {
+			// Strip minimum indent, then trim trailing whitespace
+			dedented := line[minIndent:]
+			trimmedLines = append(trimmedLines, bytes.TrimRight(dedented, " \t"))
+		} else {
+			// Line has less indentation than minimum - just trim trailing
+			trimmedLines = append(trimmedLines, bytes.TrimRight(line, " \t"))
+		}
+	}
+
+	return string(bytes.Join(trimmedLines, []byte{'\n'}))
 }

@@ -177,7 +177,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 132,
+      "value": 129,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -313,7 +313,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 127,
+      "value": 124,
       "content": {
         "type": "SEQ",
         "members": [
@@ -376,7 +376,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 126,
+      "value": 123,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1308,7 +1308,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 97,
+      "value": 94,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1464,7 +1464,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 92,
+      "value": 89,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1552,7 +1552,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 88,
+      "value": 85,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1633,7 +1633,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 86,
+      "value": 83,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1722,7 +1722,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 84,
+      "value": 81,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1803,7 +1803,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 79,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2053,7 +2053,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "prec_right_multiline_string"
+          "name": "triple_quote_string"
         },
         {
           "type": "SYMBOL",
@@ -2130,84 +2130,89 @@
         }
       ]
     },
-    "prec_right_multiline_string": {
-      "type": "PREC_RIGHT",
-      "value": 2,
-      "content": {
-        "type": "PREC_RIGHT",
-        "value": 2,
-        "content": {
+    "triple_quote_string": {
+      "type": "CHOICE",
+      "members": [
+        {
           "type": "SEQ",
           "members": [
             {
-              "type": "FIELD",
-              "name": "first",
-              "content": {
-                "type": "SYMBOL",
-                "name": "multiline_string_line"
-              }
+              "type": "SYMBOL",
+              "name": "triple_quote"
             },
             {
               "type": "FIELD",
-              "name": "rest",
+              "name": "content",
               "content": {
-                "type": "REPEAT",
-                "content": {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "\n"
-                    },
-                    {
-                      "type": "FIELD",
-                      "name": "l",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "multiline_string_line"
-                      }
-                    }
-                  ]
-                }
+                "type": "SYMBOL",
+                "name": "triple_quote_string_content"
               }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "triple_quote"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "triple_quote"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "triple_quote"
             }
           ]
         }
-      }
-    },
-    "multiline_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "\\\\"
-      }
-    },
-    "multiline_string_line": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "multiline_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "content",
-          "content": {
-            "type": "SYMBOL",
-            "name": "immediate_multiline_string_content"
-          }
-        }
       ]
     },
-    "immediate_multiline_string_content": {
-      "type": "IMMEDIATE_TOKEN",
+    "triple_quote_string_content": {
+      "type": "REPEAT1",
       "content": {
-        "type": "IMMEDIATE_TOKEN",
-        "content": {
-          "type": "PATTERN",
-          "value": "[^\\n]*"
-        }
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "PATTERN",
+            "value": "[^\"]"
+          },
+          {
+            "type": "STRING",
+            "value": "\n"
+          },
+          {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": "\""
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "STRING",
+                    "value": "\""
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
+                "type": "PATTERN",
+                "value": "[^\"]"
+              }
+            ]
+          }
+        ]
       }
+    },
+    "triple_quote": {
+      "type": "STRING",
+      "value": "\"\"\""
     },
     "string": {
       "type": "SEQ",
@@ -2405,7 +2410,7 @@
               "name": "content",
               "content": {
                 "type": "SYMBOL",
-                "name": "doc_string_content"
+                "name": "triple_quote_string_content"
               }
             },
             {
@@ -2428,51 +2433,6 @@
           ]
         }
       ]
-    },
-    "doc_string_content": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "PATTERN",
-            "value": "[^\"]"
-          },
-          {
-            "type": "STRING",
-            "value": "\n"
-          },
-          {
-            "type": "SEQ",
-            "members": [
-              {
-                "type": "STRING",
-                "value": "\""
-              },
-              {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "\""
-                  },
-                  {
-                    "type": "BLANK"
-                  }
-                ]
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\"]"
-              }
-            ]
-          }
-        ]
-      }
-    },
-    "triple_quote": {
-      "type": "STRING",
-      "value": "\"\"\""
     },
     "quoted": {
       "type": "SEQ",

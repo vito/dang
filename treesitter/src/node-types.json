@@ -1036,7 +1036,7 @@
         "required": false,
         "types": [
           {
-            "type": "doc_string_content",
+            "type": "triple_quote_string_content",
             "named": true
           }
         ]
@@ -1052,11 +1052,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "doc_string_content",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "dot_token",
@@ -1712,15 +1707,15 @@
           "named": true
         },
         {
-          "type": "prec_right_multiline_string",
-          "named": true
-        },
-        {
           "type": "quoted",
           "named": true
         },
         {
           "type": "string",
+          "named": true
+        },
+        {
+          "type": "triple_quote_string",
           "named": true
         }
       ]
@@ -1846,32 +1841,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "multiline_string_line",
-    "named": true,
-    "fields": {
-      "content": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "immediate_multiline_string_content",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "multiline_token",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -2232,46 +2201,6 @@
     }
   },
   {
-    "type": "prec_right_multiline_string",
-    "named": true,
-    "fields": {
-      "first": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "multiline_string_line",
-            "named": true
-          }
-        ]
-      },
-      "l": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "multiline_string_line",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "\n",
-            "named": false
-          },
-          {
-            "type": "multiline_string_line",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "quoted",
     "named": true,
     "fields": {
@@ -2556,6 +2485,37 @@
         }
       ]
     }
+  },
+  {
+    "type": "triple_quote_string",
+    "named": true,
+    "fields": {
+      "content": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "triple_quote_string_content",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "triple_quote",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "triple_quote_string_content",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "type",
@@ -3239,10 +3199,6 @@
     "named": true
   },
   {
-    "type": "immediate_multiline_string_content",
-    "named": true
-  },
-  {
     "type": "immediate_quote_token",
     "named": true
   },
@@ -3272,10 +3228,6 @@
   },
   {
     "type": "match_token",
-    "named": true
-  },
-  {
-    "type": "multiline_token",
     "named": true
   },
   {

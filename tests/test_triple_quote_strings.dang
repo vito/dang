@@ -1,0 +1,27 @@
+# Test triple-quote string literals
+
+# Simple cases
+pub test1 = """
+hello
+"""
+
+pub test2 = """
+  hello
+"""
+
+pub test3 = """
+  hello
+  world
+"""
+
+assert { test1 == "hello" }
+assert { test2 == "hello" }  
+assert { test3 == "hello\nworld" }
+
+# Inline triple-quote
+pub inline = """just one line"""
+assert { inline == "just one line" }
+
+# Empty
+pub empty = """"""
+assert { empty == "" }

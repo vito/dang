@@ -458,7 +458,7 @@ Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
 
 // Literals
 
-Literal <- Int / Boolean / PrecRightMultilineString / String / Quoted / Null
+Literal <- Int / Boolean / TripleQuoteString / String / Quoted / Null
 
 Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   value, err := strconv.ParseInt(string(c.text), 10, 64)
@@ -477,22 +477,24 @@ DecimalDigit <- [0-9]
 
 Exponent <- 'e'i [+-]? DecimalDigit+
 
-PrecRightMultilineString <- first:MultilineStringLine rest:('\n' _lineSpace l:MultilineStringLine { return l, nil })* {
-  lines := sliceOfPrepend[string](first, rest)
+TripleQuoteString <- TripleQuote content:TripleQuoteStringContent TripleQuote {
   return String{
-    Value: joinMultilineString(lines),
+    Value: normalizeTripleQuoteString(content.([]byte)),
+    Loc: c.Loc(),
+  }, nil
+} / TripleQuote TripleQuote {
+  return String{
+    Value: "",
     Loc: c.Loc(),
   }, nil
 }
 
-MultilineToken <- "\\\\"
-
-MultilineStringLine <- MultilineToken content:ImmediateMultilineStringContent {
-  return string(content.([]byte)), nil
-}
-ImmediateMultilineStringContent <- [^\n]* {
+TripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
   return c.text, nil
 }
+
+TripleQuote <- "\"\"\""
+
 
 String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken {
   c.text = bytes.Replace(c.text, []byte(`\/`), []byte(`/`), -1)
@@ -516,17 +518,11 @@ ImmediateEscape <- '\\' (
   / [0-7] [0-7] [0-7]
 )
 
-DocString <- TripleQuote content:DocStringContent TripleQuote {
+DocString <- TripleQuote content:TripleQuoteStringContent TripleQuote {
   return normalizeDocString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
 }
-
-DocStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
-  return c.text, nil
-}
-
-TripleQuote <- "\"\"\""
 
 Quoted <- '%' quoter:WordToken '{' raw:QuotedRawToken '}' {
   return Quoted{
