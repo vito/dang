@@ -23,7 +23,7 @@
 (string) @string
 (string (immediate_escape) @string.escape) @string
 (doc_string) @string
-(triple_quoted_string) @string
+(triple_quote_string) @string
 (int) @constant.numeric
 (boolean) @constant.builtin.boolean
 (null) @constant.builtin
