@@ -13,8 +13,10 @@ false
 "unicode \u12ab esc"
 "big-unicode \U12abcdef esc"
 [
-  \\foo
-  \\bar
+  """
+    foo
+    bar
+  """
   123
 ]
 
@@ -81,13 +83,10 @@ false
   (sep)
   (list
     (literal
-      (prec_right_multiline_string
-        (multiline_string_line
-          (multiline_token)
-          (immediate_multiline_string_content))
-        (multiline_string_line
-          (multiline_token)
-          (immediate_multiline_string_content))))
+      (triple_quote_string
+        (triple_quote)
+        (immediate_triple_quote_string_content)
+        (triple_quote)))
     (sep)
     (literal
       (int

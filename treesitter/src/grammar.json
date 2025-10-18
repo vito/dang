@@ -2145,7 +2145,7 @@
               "name": "content",
               "content": {
                 "type": "SYMBOL",
-                "name": "triple_quote_string_content"
+                "name": "immediate_triple_quote_string_content"
               }
             },
             {
@@ -2169,45 +2169,51 @@
         }
       ]
     },
-    "triple_quote_string_content": {
-      "type": "REPEAT1",
+    "immediate_triple_quote_string_content": {
+      "type": "IMMEDIATE_TOKEN",
       "content": {
-        "type": "CHOICE",
-        "members": [
-          {
-            "type": "PATTERN",
-            "value": "[^\"]"
-          },
-          {
-            "type": "STRING",
-            "value": "\n"
-          },
-          {
-            "type": "SEQ",
+        "type": "IMMEDIATE_TOKEN",
+        "content": {
+          "type": "REPEAT1",
+          "content": {
+            "type": "CHOICE",
             "members": [
               {
-                "type": "STRING",
-                "value": "\""
+                "type": "PATTERN",
+                "value": "[^\"]"
               },
               {
-                "type": "CHOICE",
+                "type": "STRING",
+                "value": "\n"
+              },
+              {
+                "type": "SEQ",
                 "members": [
                   {
                     "type": "STRING",
                     "value": "\""
                   },
                   {
-                    "type": "BLANK"
+                    "type": "CHOICE",
+                    "members": [
+                      {
+                        "type": "STRING",
+                        "value": "\""
+                      },
+                      {
+                        "type": "BLANK"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "PATTERN",
+                    "value": "[^\"]"
                   }
                 ]
-              },
-              {
-                "type": "PATTERN",
-                "value": "[^\"]"
               }
             ]
           }
-        ]
+        }
       }
     },
     "triple_quote": {
@@ -2410,7 +2416,7 @@
               "name": "content",
               "content": {
                 "type": "SYMBOL",
-                "name": "triple_quote_string_content"
+                "name": "immediate_triple_quote_string_content"
               }
             },
             {

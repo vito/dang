@@ -1036,7 +1036,7 @@
         "required": false,
         "types": [
           {
-            "type": "triple_quote_string_content",
+            "type": "immediate_triple_quote_string_content",
             "named": true
           }
         ]
@@ -2495,7 +2495,7 @@
         "required": false,
         "types": [
           {
-            "type": "triple_quote_string_content",
+            "type": "immediate_triple_quote_string_content",
             "named": true
           }
         ]
@@ -2511,11 +2511,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "triple_quote_string_content",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "type",
@@ -3204,6 +3199,10 @@
   },
   {
     "type": "immediate_string_content",
+    "named": true
+  },
+  {
+    "type": "immediate_triple_quote_string_content",
     "named": true
   },
   {

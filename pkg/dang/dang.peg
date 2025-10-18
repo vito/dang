@@ -477,7 +477,7 @@ DecimalDigit <- [0-9]
 
 Exponent <- 'e'i [+-]? DecimalDigit+
 
-TripleQuoteString <- TripleQuote content:TripleQuoteStringContent TripleQuote {
+TripleQuoteString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
   return String{
     Value: normalizeTripleQuoteString(content.([]byte)),
     Loc: c.Loc(),
@@ -489,7 +489,7 @@ TripleQuoteString <- TripleQuote content:TripleQuoteStringContent TripleQuote {
   }, nil
 }
 
-TripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
+ImmediateTripleQuoteStringContent <- ( [^"] / '\n' / '"' '"'? [^"])+ {
   return c.text, nil
 }
 
@@ -518,7 +518,7 @@ ImmediateEscape <- '\\' (
   / [0-7] [0-7] [0-7]
 )
 
-DocString <- TripleQuote content:TripleQuoteStringContent TripleQuote {
+DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
   return normalizeDocString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
