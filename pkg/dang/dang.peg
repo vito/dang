@@ -42,7 +42,14 @@ AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
 
 Form <- Conditional / While / ForLoop / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
 
-Term <- IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
+Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
+
+UnaryExpr <- '!' _ expr:Term {
+  return UnaryNegation{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
+}
 
 ParenForm <- '(' _ expr:Form _ ')' {
   return expr.(Node), nil

@@ -1,0 +1,4 @@
+assert { (!true) == false }
+assert { (!false) == true }
+assert { (!!true) == true }
+assert { (!!false) == false }

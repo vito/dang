@@ -536,3 +536,61 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) GreaterThanEqual
 		},
 	}
 }
+
+type UnaryNegation struct {
+	Expr Node
+	Loc  *SourceLocation
+}
+
+var _ Node = UnaryNegation{}
+var _ Evaluator = UnaryNegation{}
+
+func (u UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(u, func() (hm.Type, error) {
+		exprType, err := u.Expr.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Verify that the expression is of type Boolean
+		boolType, err := NonNullTypeNode{NamedTypeNode{"Boolean"}}.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = hm.Unify(exprType, boolType)
+		if err != nil {
+			return nil, fmt.Errorf("unary negation requires Boolean type, got %s", exprType)
+		}
+
+		// Return Boolean type
+		return boolType, nil
+	})
+}
+
+func (u UnaryNegation) DeclaredSymbols() []string {
+	return nil
+}
+
+func (u UnaryNegation) ReferencedSymbols() []string {
+	return u.Expr.ReferencedSymbols()
+}
+
+func (u UnaryNegation) Body() hm.Expression { return u }
+
+func (u UnaryNegation) GetSourceLocation() *SourceLocation { return u.Loc }
+
+func (u UnaryNegation) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, u, func() (Value, error) {
+		val, err := EvalNode(ctx, env, u.Expr)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating expression: %w", err)
+		}
+
+		if boolVal, ok := val.(BoolValue); ok {
+			return BoolValue{Val: !boolVal.Val}, nil
+		}
+
+		return nil, fmt.Errorf("unary negation requires Boolean value, got %T", val)
+	})
+}

@@ -177,10 +177,18 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 129,
+      "value": 130,
       "content": {
         "type": "CHOICE",
         "members": [
+          {
+            "type": "PREC_LEFT",
+            "value": 9,
+            "content": {
+              "type": "SYMBOL",
+              "name": "unary_expr"
+            }
+          },
           {
             "type": "PREC_LEFT",
             "value": 8,
@@ -247,6 +255,23 @@
           }
         ]
       }
+    },
+    "unary_expr": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "!"
+        },
+        {
+          "type": "FIELD",
+          "name": "expr",
+          "content": {
+            "type": "SYMBOL",
+            "name": "term"
+          }
+        }
+      ]
     },
     "paren_form": {
       "type": "SEQ",

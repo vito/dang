@@ -110,6 +110,10 @@
       {
         "type": "symbol_or_call",
         "named": true
+      },
+      {
+        "type": "unary_expr",
+        "named": true
       }
     ]
   },
@@ -576,6 +580,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "bang_token",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "block",
@@ -2893,6 +2902,22 @@
     "fields": {}
   },
   {
+    "type": "unary_expr",
+    "named": true,
+    "fields": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "upper_id",
     "named": true,
     "fields": {},
@@ -3049,6 +3074,10 @@
     "named": false
   },
   {
+    "type": "!",
+    "named": false
+  },
+  {
     "type": "!=",
     "named": false
   },
@@ -3134,10 +3163,6 @@
   },
   {
     "type": "assert_token",
-    "named": true
-  },
-  {
-    "type": "bang_token",
     "named": true
   },
   {
