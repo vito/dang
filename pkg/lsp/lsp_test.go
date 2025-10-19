@@ -99,7 +99,7 @@ func testFile(t *testing.T, client *nvim.Nvim, file string) {
 		is.NoErr(err)
 		line := string(lineb)
 
-		segs := strings.Split(line, "; test: ")
+		segs := strings.Split(line, "# test: ")
 		if len(segs) < 2 {
 			continue
 		}

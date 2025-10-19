@@ -17,7 +17,20 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 		return nil, err
 	}
 
-	// TODO: Implement completion logic
-	// For now, return empty list
-	return []CompletionItem{}, nil
+	f, ok := h.files[params.TextDocument.URI]
+	if !ok {
+		return []CompletionItem{}, nil
+	}
+
+	var items []CompletionItem
+
+	// Add all defined symbols from the current file
+	for name, info := range f.Symbols.Definitions {
+		items = append(items, CompletionItem{
+			Label: name,
+			Kind:  info.Kind,
+		})
+	}
+
+	return items, nil
 }

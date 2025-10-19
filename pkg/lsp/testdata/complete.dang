@@ -1,12 +1,13 @@
 # local bindings
 let hello = 42
 
-[] ; test: ahel<C-x><C-o> => [hello┃]
+[] # test: ahel<C-x><C-o> => [hello┃]
 
 # global functions (from Query type)
-[] ; test: adir<C-x><C-o> => [directory┃]
-[] ; test: acont<C-x><C-o> => [container┃]
+[] # test: adir<C-x><C-o> => [directory┃]
+[] # test: acont<C-x><C-o> => [container┃]
 
 # lexical bindings
-let jxkqv = 42 in
-  [] ; test: ^ajx<C-x><C-o> => [jxkqv┃]
+pub foo(jxkqv: Int!): [Int!] {
+  [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
+}

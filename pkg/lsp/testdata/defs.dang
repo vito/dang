@@ -1,4 +1,0 @@
-# exported bindings
-let adele = "hello from the other side"
-
-let its_me = [true, false]

@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/sourcegraph/jsonrpc2"
+	"github.com/vito/dang/pkg/dang"
 )
 
 // NewHandler create JSON-RPC handler for this language server.
@@ -30,9 +31,32 @@ type langHandler struct {
 
 // File is
 type File struct {
-	LanguageID string
-	Text       string
-	Version    int
+	LanguageID  string
+	Text        string
+	Version     int
+	Diagnostics []Diagnostic
+	Symbols     *SymbolTable
+}
+
+// SymbolTable tracks symbol definitions and references in a file
+type SymbolTable struct {
+	// Map from symbol name to its definition location
+	Definitions map[string]*SymbolInfo
+	// Map from line:col string to symbol at that position
+	References map[string]*SymbolRef
+}
+
+// SymbolInfo describes a symbol definition
+type SymbolInfo struct {
+	Name     string
+	Location *Location
+	Kind     CompletionItemKind
+}
+
+// SymbolRef describes a symbol reference
+type SymbolRef struct {
+	Name     string
+	Location Range
 }
 
 func isWindowsDrivePath(path string) bool {
@@ -120,11 +144,131 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
-	// TODO: Parse and analyze the file for LSP features
-	// This is where we'd parse the Dang code and build data structures
-	// for completion, go-to-definition, etc.
+	// Build symbol table from the text
+	f.Symbols = h.buildSymbolTable(uri, text)
+	f.Diagnostics = nil
+
+	// Publish diagnostics to the client
+	h.publishDiagnostics(ctx, uri, f)
 
 	return nil
+}
+
+func (h *langHandler) buildSymbolTable(uri DocumentURI, text string) *SymbolTable {
+	st := &SymbolTable{
+		Definitions: make(map[string]*SymbolInfo),
+		References:  make(map[string]*SymbolRef),
+	}
+
+	// Parse the Dang code using the actual parser
+	parsed, err := dang.Parse(string(uri), []byte(text))
+	if err != nil {
+		// If parsing fails, return empty symbol table
+		slog.Warn("failed to parse Dang code for LSP", "error", err)
+		return st
+	}
+
+	// The parser returns a Block
+	block, ok := parsed.(dang.Block)
+	if !ok {
+		slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
+		return st
+	}
+
+	// Walk the AST and collect symbols
+	h.collectSymbols(uri, block.Forms, st)
+
+	return st
+}
+
+// collectSymbols walks the AST and collects symbol definitions and references
+func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *SymbolTable) {
+	for _, node := range nodes {
+		// Collect declared symbols (definitions)
+		declared := node.DeclaredSymbols()
+		for _, name := range declared {
+			loc := node.GetSourceLocation()
+			if loc != nil {
+				// LSP uses 0-based line/column, SourceLocation uses 1-based
+				st.Definitions[name] = &SymbolInfo{
+					Name: name,
+					Location: &Location{
+						URI: uri,
+						Range: Range{
+							Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
+							End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(name)},
+						},
+					},
+					Kind: h.symbolKind(node),
+				}
+			}
+		}
+
+		// Recursively process nested nodes
+		h.collectNestedSymbols(uri, node, st)
+	}
+}
+
+// collectNestedSymbols recursively collects symbols from nested structures
+func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *SymbolTable) {
+	switch n := node.(type) {
+	case dang.Block:
+		h.collectSymbols(uri, n.Forms, st)
+	case *dang.ClassDecl:
+		// Collect symbols from class body
+		h.collectSymbols(uri, n.Value.Forms, st)
+	case dang.SlotDecl:
+		// If the slot value is a block or lambda, collect from it
+		if n.Value != nil {
+			h.collectNestedSymbols(uri, n.Value, st)
+		}
+	case *dang.Lambda:
+		// Collect from lambda body
+		h.collectNestedSymbols(uri, n.FunctionBase.Body, st)
+	}
+}
+
+// symbolKind determines the LSP completion item kind for a node
+func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
+	switch node.(type) {
+	case *dang.ClassDecl:
+		return ClassCompletion
+	case dang.SlotDecl:
+		// Check if the slot value is a function/lambda
+		if slot, ok := node.(dang.SlotDecl); ok {
+			if _, isLambda := slot.Value.(*dang.Lambda); isLambda {
+				return FunctionCompletion
+			}
+		}
+		return VariableCompletion
+	default:
+		return VariableCompletion
+	}
+}
+
+func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f *File) {
+	if h.conn == nil {
+		return
+	}
+
+	diagnostics := f.Diagnostics
+	if diagnostics == nil {
+		diagnostics = []Diagnostic{}
+	}
+
+	err := h.conn.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
+		URI:         uri,
+		Diagnostics: diagnostics,
+		Version:     f.Version,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
+	}
+}
+
+func isIdentifierChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9') || r == '_'
 }
 
 func (h *langHandler) addFolder(folder string) {
