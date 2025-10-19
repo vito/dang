@@ -37,15 +37,17 @@ type Dang {
 
   """
   Run the Dang tests.
+
+  The filter argument is passed directly to `go test -run`, so be sure to
+  specify the outermost suite, or prepend a / to search beneath all suites.
   """
   pub test(filter: String! = ""): Void {
-    let args = ["go", "test", "-v", "-count=1"]
+    let args = ["go", "test", "-v", "-count=1", "./..."]
     if filter != "" {
-      args += ["./tests", "-run", "/"+filter]
-    } else {
-      args += ["./..."]
+      args += ["-run", filter]
     }
     generated.
+      withFile("/usr/bin/dang", binary). # install binary for LSP tests
       withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
