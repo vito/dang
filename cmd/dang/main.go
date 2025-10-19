@@ -12,11 +12,13 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/chzyer/readline"
 	"github.com/kr/pretty"
+	"github.com/sourcegraph/jsonrpc2"
 	"github.com/spf13/cobra"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/pkg/lsp"
 )
 
 // Config holds the application configuration
@@ -24,6 +26,8 @@ type Config struct {
 	Debug      bool
 	ClearCache bool
 	File       string
+	LSP        bool
+	LSPLogFile string
 }
 
 func main() {
@@ -49,6 +53,11 @@ It provides type-safe, composable abstractions for container operations.`,
   dang -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Handle LSP mode first
+			if cfg.LSP {
+				return runLSP(cfg)
+			}
+
 			// Handle cache clearing first
 			if cfg.ClearCache {
 				if err := dang.ClearSchemaCache(); err != nil {
@@ -70,6 +79,8 @@ It provides type-safe, composable abstractions for container operations.`,
 	// Add flags
 	rootCmd.Flags().BoolVarP(&cfg.Debug, "debug", "d", false, "Enable debug logging")
 	rootCmd.Flags().BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear GraphQL schema cache and exit")
+	rootCmd.Flags().BoolVar(&cfg.LSP, "lsp", false, "Run in Language Server Protocol mode")
+	rootCmd.Flags().StringVar(&cfg.LSPLogFile, "lsp-log-file", "", "Path to LSP log file (stderr if not specified)")
 
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
@@ -886,3 +897,59 @@ func categorizeTypes(types []*introspection.Type) (objects, interfaces, enums, s
 	}
 	return
 }
+
+func runLSP(cfg Config) error {
+	// Set up logging
+	var logDest io.Writer
+	if cfg.LSPLogFile != "" {
+		logFile, err := os.Create(cfg.LSPLogFile)
+		if err != nil {
+			return fmt.Errorf("open lsp log: %w", err)
+		}
+		defer logFile.Close()
+		logDest = logFile
+	} else {
+		logDest = os.Stderr
+	}
+
+	level := slog.LevelInfo
+	if cfg.Debug {
+		level = slog.LevelDebug
+	}
+
+	handler := slog.NewTextHandler(logDest, &slog.HandlerOptions{
+		Level: level,
+	})
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	ctx := context.Background()
+	logger.InfoContext(ctx, "starting LSP server")
+
+	<-jsonrpc2.NewConn(
+		ctx,
+		jsonrpc2.NewBufferedStream(stdrwc{}, jsonrpc2.VSCodeObjectCodec{}),
+		lsp.NewHandler(),
+	).DisconnectNotify()
+
+	logger.InfoContext(ctx, "LSP server closed")
+	return nil
+}
+
+type stdrwc struct{}
+
+func (stdrwc) Read(p []byte) (int, error) {
+	return os.Stdin.Read(p)
+}
+
+func (c stdrwc) Write(p []byte) (int, error) {
+	return os.Stdout.Write(p)
+}
+
+func (c stdrwc) Close() error {
+	if err := os.Stdin.Close(); err != nil {
+		return err
+	}
+	return os.Stdout.Close()
+}
+

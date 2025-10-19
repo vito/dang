@@ -14,10 +14,13 @@ require (
 	github.com/dagger/testctx/oteltest v0.0.3
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
+	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
 	github.com/pkg/errors v0.9.1
+	github.com/sourcegraph/jsonrpc2 v0.2.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vektah/gqlparser/v2 v2.5.30
+	github.com/vito/is v0.0.5
 	go.opentelemetry.io/otel v1.38.0
 	golang.org/x/sync v0.17.0
 	gotest.tools/v3 v3.5.2
