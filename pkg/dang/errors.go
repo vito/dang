@@ -16,6 +16,54 @@ type SourceLocation struct {
 	Line     int
 	Column   int
 	Length   int // Length of the syntax node that caused the error
+	End      *SourcePosition // Optional: end position of the node (for range-based operations)
+}
+
+// SourcePosition represents a position in source code
+type SourcePosition struct {
+	Line   int
+	Column int
+}
+
+// IsWithin checks if this location is within the given range
+// Returns true if this location falls within the bounds of the given range
+func (loc *SourceLocation) IsWithin(bounds *SourceLocation) bool {
+	if loc == nil || bounds == nil {
+		return false
+	}
+
+	// Check if we're in the same file
+	if loc.Filename != bounds.Filename {
+		return false
+	}
+
+	// Check if we have end position for bounds
+	if bounds.End == nil {
+		// Can't determine range without end position
+		return false
+	}
+
+	// Check if location starts before the bounds
+	if loc.Line < bounds.Line {
+		return false
+	}
+
+	// Check if location starts after the bounds end
+	if loc.Line > bounds.End.Line {
+		return false
+	}
+
+	// If on the same line as bounds start, check column
+	if loc.Line == bounds.Line && loc.Column < bounds.Column {
+		return false
+	}
+
+	// If on the same line as bounds end, check column
+	if loc.Line == bounds.End.Line && loc.Column > bounds.End.Column {
+		return false
+	}
+
+	return true
 }
 
 // SourceError represents an error with source location information

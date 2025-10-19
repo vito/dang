@@ -3,9 +3,11 @@ package lsp
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"path/filepath"
 
 	"github.com/sourcegraph/jsonrpc2"
+	"github.com/vito/dang/pkg/dang"
 )
 
 func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
@@ -27,6 +29,12 @@ func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn,
 	h.rootPath = filepath.Clean(rootPath)
 	h.addFolder(rootPath)
 
+	// Initialize GraphQL schema
+	if err := h.initializeSchema(ctx); err != nil {
+		slog.WarnContext(ctx, "failed to initialize GraphQL schema", "error", err)
+		// Don't fail initialization if schema loading fails - LSP can still provide basic features
+	}
+
 	return InitializeResult{
 		Capabilities: ServerCapabilities{
 			TextDocumentSync: TDSKFull,
@@ -43,4 +51,21 @@ func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn,
 			},
 		},
 	}, nil
+}
+
+// initializeSchema loads the GraphQL schema for use in LSP features
+func (h *langHandler) initializeSchema(ctx context.Context) error {
+	config := dang.LoadGraphQLConfig()
+	h.provider = dang.NewGraphQLClientProvider(config)
+
+	client, schema, err := h.provider.GetClientAndSchema(ctx)
+	if err != nil {
+		return err
+	}
+
+	h.client = client
+	h.schema = schema
+
+	slog.InfoContext(ctx, "loaded GraphQL schema", "types", len(schema.Types))
+	return nil
 }

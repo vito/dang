@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"unicode"
 
+	"github.com/Khan/genqlient/graphql"
 	"github.com/sourcegraph/jsonrpc2"
+	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 )
 
@@ -27,15 +29,19 @@ type langHandler struct {
 	conn     *jsonrpc2.Conn
 	rootPath string
 	folders  []string
+	schema   *introspection.Schema
+	client   graphql.Client
+	provider *dang.GraphQLClientProvider
 }
 
 // File is
 type File struct {
-	LanguageID  string
-	Text        string
-	Version     int
-	Diagnostics []Diagnostic
-	Symbols     *SymbolTable
+	LanguageID      string
+	Text            string
+	Version         int
+	Diagnostics     []Diagnostic
+	Symbols         *SymbolTable
+	LexicalAnalyzer *LexicalAnalyzer
 }
 
 // SymbolTable tracks symbol definitions and references in a file
@@ -144,8 +150,33 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
-	// Build symbol table from the text
-	f.Symbols = h.buildSymbolTable(uri, text)
+	// Parse the Dang code
+	parsed, err := dang.Parse(string(uri), []byte(text))
+	if err != nil {
+		// If parsing fails, set empty structures
+		slog.Warn("failed to parse Dang code for LSP", "error", err)
+		f.Symbols = &SymbolTable{
+			Definitions: make(map[string]*SymbolInfo),
+			References:  make(map[string]*SymbolRef),
+		}
+		f.LexicalAnalyzer = NewLexicalAnalyzer()
+	} else {
+		// The parser returns a Block
+		block, ok := parsed.(dang.Block)
+		if !ok {
+			slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
+			f.Symbols = &SymbolTable{
+				Definitions: make(map[string]*SymbolInfo),
+				References:  make(map[string]*SymbolRef),
+			}
+			f.LexicalAnalyzer = NewLexicalAnalyzer()
+		} else {
+			// Build symbol table and lexical analyzer from the AST
+			f.Symbols = h.buildSymbolTable(uri, block.Forms)
+			f.LexicalAnalyzer = h.buildLexicalAnalyzer(uri, block.Forms)
+		}
+	}
+
 	f.Diagnostics = nil
 
 	// Publish diagnostics to the client
@@ -154,31 +185,23 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	return nil
 }
 
-func (h *langHandler) buildSymbolTable(uri DocumentURI, text string) *SymbolTable {
+func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *SymbolTable {
 	st := &SymbolTable{
 		Definitions: make(map[string]*SymbolInfo),
 		References:  make(map[string]*SymbolRef),
 	}
 
-	// Parse the Dang code using the actual parser
-	parsed, err := dang.Parse(string(uri), []byte(text))
-	if err != nil {
-		// If parsing fails, return empty symbol table
-		slog.Warn("failed to parse Dang code for LSP", "error", err)
-		return st
-	}
-
-	// The parser returns a Block
-	block, ok := parsed.(dang.Block)
-	if !ok {
-		slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
-		return st
-	}
-
 	// Walk the AST and collect symbols
-	h.collectSymbols(uri, block.Forms, st)
+	h.collectSymbols(uri, forms, st)
 
 	return st
+}
+
+// buildLexicalAnalyzer performs lexical analysis on parsed AST forms
+func (h *langHandler) buildLexicalAnalyzer(uri DocumentURI, forms []dang.Node) *LexicalAnalyzer {
+	analyzer := NewLexicalAnalyzer()
+	analyzer.Analyze(uri, forms)
+	return analyzer
 }
 
 // collectSymbols walks the AST and collects symbol definitions and references
