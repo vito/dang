@@ -36,13 +36,24 @@ type Dang {
   }
 
   """
-  Run the Dang tests.
-
-  The filter argument is passed directly to `go test -run`, so be sure to
-  specify the outermost suite, or prepend a / to search beneath all suites.
+  Run the Dang language tests.
   """
   pub test(filter: String! = ""): Void {
-    let args = ["go", "test", "-v", "-count=1", "./..."]
+    let args = ["go", "test", "-v", "-count=1", "./tests"]
+    if filter != "" {
+      args += ["-run", "/"+filter]
+    }
+    generated.
+      withExec(args, experimentalPrivilegedNesting: true).
+      sync
+    null
+  }
+
+  """
+  Run the Dang LSP tests.
+  """
+  pub testLSP(filter: String! = ""): Void {
+    let args = ["go", "test", "-v", "-count=1", "./pkg/lsp/..."]
     if filter != "" {
       args += ["-run", filter]
     }
