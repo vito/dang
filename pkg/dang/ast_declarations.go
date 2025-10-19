@@ -50,9 +50,13 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 
 		var finalArgType hm.Type
 		if definedArgType != nil && inferredValType != nil {
-			if !definedArgType.Eq(inferredValType) {
-				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s", arg.Named, definedArgType, inferredValType)
+			// Try to unify the defined type with the inferred type
+			// This allows [] (inferred as [a]!) to unify with [String!]!
+			_, err := hm.Unify(definedArgType, inferredValType)
+			if err != nil {
+				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s, cannot unify: %w", arg.Named, definedArgType, inferredValType, err)
 			}
+			// Use the defined type since it's the concrete, user-specified type
 			finalArgType = definedArgType
 		} else if definedArgType != nil {
 			finalArgType = definedArgType

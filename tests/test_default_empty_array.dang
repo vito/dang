@@ -1,0 +1,23 @@
+# Test default empty array parameter type inference
+# This tests that `[]` as a default value can unify with `[String!]!`
+
+pub joinNames(names: [String!]! = []): [String!]! {
+  names
+}
+
+# Test auto-calling with empty default
+assert { joinNames == [] }
+
+# Test explicit no-argument call
+assert { joinNames() == [] }
+
+# Test with explicit array
+assert { joinNames(["Alice"]) == ["Alice"] }
+
+# Test with null (should use default)
+assert { joinNames(null) == [] }
+
+# Test with multiple names
+assert { joinNames(["Alice", "Bob"]) == ["Alice", "Bob"] }
+
+print("Default empty array tests passed!")
