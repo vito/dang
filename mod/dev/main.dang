@@ -14,9 +14,6 @@ type Dev {
   """
   pub githubToken: Secret!
 
-  # TODO: would be nice to let these be `let`
-  pub promptFile: File! @defaultPath(path: "./prompt.md")
-
   """
   Start a coding agent with the provided module.
   """
@@ -33,12 +30,6 @@ type Dev {
       withWorkdir("/workspace").
       withDefaultArgs(["gopls", "mcp"])
 
-    let goplsInstructions = gopls.
-      withExec(["gopls", "mcp", "-instructions"]).
-      stdout
-
-    let promptContents = promptFile.contents
-
     doug.agent(
       llm.
         withEnv(
@@ -46,9 +37,19 @@ type Dev {
             withCurrentModule.
             withModule(module).
             withWorkspace(source)).
-        withSystemPrompt(goplsInstructions).
-        withSystemPrompt(promptContents).
-        withMCPServer(name: "gopls", service: gopls.asService)
+        withMCPServer(name: "gopls", service: gopls.asService).
+        withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout).
+        withSystemPrompt(
+          """
+          ## Dev instructions
+
+          When given an GitHub issue, use the Github tool to read it and all of its comments to gain context.
+
+          ## Error handling
+
+          To handle errors or sad path scenarios, simply fail early and return a descriptive wrapped error.
+          """
+        )
     )
   }
 
