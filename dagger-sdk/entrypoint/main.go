@@ -114,9 +114,10 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		}
 	}()
 
-	execCtx := ioctx.StdoutToContext(ctx, os.Stdout)
-	execCtx = ioctx.StderrToContext(ctx, os.Stderr)
-	env, err := dang.RunDir(execCtx, dag.GraphQLClient(), schema, modSrcDir, debug)
+	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
+	ctx = ioctx.StderrToContext(ctx, os.Stderr)
+
+	env, err := dang.RunDir(ctx, dag.GraphQLClient(), schema, modSrcDir, debug)
 	if err != nil {
 		return fmt.Errorf("failed to run dir: %w", err)
 	}

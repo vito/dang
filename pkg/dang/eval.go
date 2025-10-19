@@ -971,7 +971,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 }
 
 // RunDir evaluates all .dang files in a directory as a single module
-func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, debug bool) (EvalEnv, error) {
+func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Discover all .dang files in the directory
 	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
 	if err != nil {
@@ -1018,7 +1018,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		Inline: true,
 	}
 
-	if debug {
+	if isDebug {
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
 		fmt.Printf("Found %d .dang files with %d total forms\n", len(dangFiles), len(masterBlock.Forms))
 		// pretty.Println(masterBlock)
@@ -1028,7 +1028,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	typeEnv := NewEnv(schema)
 
 	// Run type inference using phased approach
-	if debug {
+	if isDebug {
 		fmt.Println("Running phased inference...")
 	}
 
@@ -1043,7 +1043,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
 
 	// Evaluate the combined block using phased evaluation
-	if debug {
+	if isDebug {
 		fmt.Println("Running phased evaluation...")
 	}
 
