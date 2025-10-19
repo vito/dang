@@ -39,7 +39,7 @@ type Dang {
   Run the Dang tests.
   """
   pub test(filter: String! = ""): Void {
-    let args = ["go", "test", "-v"]
+    let args = ["go", "test", "-v", "-count=1"]
     if filter != "" {
       args += ["./tests", "-run", "/"+filter]
     } else {
@@ -101,7 +101,12 @@ type Dang {
   }
 
   let base: Container! {
-    apko.wolfi(["bash", "go", "nodejs", "npm", "golangci-lint"]).
+    apko.wolfi([
+      "bash",
+      "go", "golangci-lint",
+      "nodejs", "npm",
+      "neovim",
+    ]).
       withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
       withEnvVariable("GOMODCACHE", "/go/pkg/mod").
       withMountedCache("/go/build-cache", cacheVolume("go-build")).
