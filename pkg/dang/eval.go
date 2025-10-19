@@ -954,7 +954,6 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 
 	// Now evaluate the program
 	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
-	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
@@ -1042,7 +1041,6 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	// Create evaluation environment
 	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
-	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 
 	// Evaluate the combined block using phased evaluation
 	if debug {
