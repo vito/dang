@@ -5,4 +5,4 @@ Session.vim
 /.env
 /.envrc
 CLAUDE.local.md
-nvim.log
+*.log
