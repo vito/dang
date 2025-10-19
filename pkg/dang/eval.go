@@ -342,6 +342,16 @@ func addBuiltinFunctions(env EvalEnv) {
 				return nil, fmt.Errorf("split: separator must be a string")
 			}
 
+			// Get the optional limit argument (defaults to 0 = no limit)
+			limit := 0
+			if limitVal, ok := args["limit"]; ok {
+				limitInt, ok := limitVal.(IntValue)
+				if !ok {
+					return nil, fmt.Errorf("split: limit must be an integer")
+				}
+				limit = limitInt.Val
+			}
+
 			// Get the receiver (the string to split) from "self"
 			selfVal, ok := env.Get("self")
 			if !ok {
@@ -360,8 +370,20 @@ func addBuiltinFunctions(env EvalEnv) {
 				for _, ch := range strVal.Val {
 					parts = append(parts, string(ch))
 				}
+				// Apply limit if specified
+				if limit > 0 && len(parts) >= limit {
+					// Join remaining parts
+					remaining := strings.Join(parts[limit-1:], "")
+					parts = append(parts[:limit-1], remaining)
+				}
 			} else {
-				parts = strings.Split(strVal.Val, separatorStr.Val)
+				if limit > 0 {
+					// Use SplitN for limited split
+					parts = strings.SplitN(strVal.Val, separatorStr.Val, limit)
+				} else {
+					// Use Split for unlimited split
+					parts = strings.Split(strVal.Val, separatorStr.Val)
+				}
 			}
 
 			// Convert to Value array

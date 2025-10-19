@@ -26,4 +26,18 @@ assert { every_char[0] == "a" }
 assert { every_char[1] == "b" }
 assert { every_char[2] == "c" }
 
+# Split with limit
+pub limited = "a:b:c:d".split(":", limit: 2)
+assert { limited[0] == "a" }
+assert { limited[1] == "b:c:d" }
+
+# Split with limit=1 returns whole string
+pub limit_one = "a:b:c".split(":", limit: 1)
+assert { limit_one[0] == "a:b:c" }
+
+# Split with limit greater than parts returns all parts
+pub limit_large = "a:b".split(":", limit: 10)
+assert { limit_large[0] == "a" }
+assert { limit_large[1] == "b" }
+
 print("String split tests passed!")

@@ -92,9 +92,10 @@ func init() {
 	Prelude.AddClass("Int", IntType)
 	Prelude.AddClass("Boolean", BooleanType)
 
-	// String.split method: split(separator: String!) -> [String!]!
+	// String.split method: split(separator: String!, limit: Int! = 0) -> [String!]!
 	splitArgs := NewRecordType("")
 	splitArgs.Add("separator", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	splitArgs.Add("limit", hm.NewScheme(nil, IntType))
 	splitReturnType := hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}
 	splitType := hm.NewFnType(splitArgs, splitReturnType)
 
