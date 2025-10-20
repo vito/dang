@@ -162,7 +162,7 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		f.LexicalAnalyzer = NewLexicalAnalyzer()
 	} else {
 		// The parser returns a Block
-		block, ok := parsed.(dang.Block)
+		block, ok := parsed.(*dang.Block)
 		if !ok {
 			slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
 			f.Symbols = &SymbolTable{

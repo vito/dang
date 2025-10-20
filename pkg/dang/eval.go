@@ -1006,7 +1006,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
 
-		block := parsed.(Block)
+		block := parsed.(*Block)
 		// Add all forms from this file to the combined block
 		allForms = append(allForms, block.Forms...)
 	}

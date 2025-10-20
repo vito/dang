@@ -386,7 +386,7 @@ func (r *REPL) evaluateExpression(ctx context.Context, expr string) error {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	for _, node := range result.(dang.Block).Forms {
+	for _, node := range result.(*dang.Block).Forms {
 		if r.debug {
 			pretty.Println(node)
 		}

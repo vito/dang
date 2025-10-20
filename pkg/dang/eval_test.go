@@ -83,7 +83,7 @@ func (tr *TestRunner) RunScript(script string) error {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	node := result.(Block)
+	node := result.(*Block)
 
 	// Create type environment and infer types
 	typeEnv := NewEnv(tr.schema)
