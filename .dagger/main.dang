@@ -113,6 +113,17 @@ type Dang {
     null
   }
 
+  """
+  Enter a terminal for debugging the Neovim LSP setup.
+  """
+  pub nvimDebug: Container! {
+    base.
+      withFile("/usr/bin/dang", binary).
+      withFile("/root/.config/nvim/init.vim", source.file("pkg/lsp/testdata/config.vim")).
+      withWorkdir("./pkg/lsp").
+      terminal(experimentalPrivilegedNesting: true)
+  }
+
   let base: Container! {
     apko.wolfi([
       "bash",
