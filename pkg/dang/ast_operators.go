@@ -30,23 +30,23 @@ type BinaryOperator struct {
 }
 
 // Common interface implementations
-func (b BinaryOperator) DeclaredSymbols() []string {
+func (b *BinaryOperator) DeclaredSymbols() []string {
 	return nil // Binary operators don't declare anything
 }
 
-func (b BinaryOperator) ReferencedSymbols() []string {
+func (b *BinaryOperator) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, b.Left.ReferencedSymbols()...)
 	symbols = append(symbols, b.Right.ReferencedSymbols()...)
 	return symbols
 }
 
-func (b BinaryOperator) Body() hm.Expression { return b }
+func (b *BinaryOperator) Body() hm.Expression { return b }
 
-func (b BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
+func (b *BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
 
 // Common type inference based on operator type
-func (b BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		lt, err := b.Left.Infer(ctx, env, fresh)
 		if err != nil {
@@ -75,7 +75,7 @@ func (b BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 }
 
 // Common evaluation logic
-func (b BinaryOperator) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *BinaryOperator) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, b, func() (Value, error) {
 		leftVal, err := EvalNode(ctx, env, b.Left)
 		if err != nil {
@@ -219,10 +219,10 @@ type Default struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Default{}
-var _ Evaluator = Default{}
+var _ Node = (*Default)(nil)
+var _ Evaluator = (*Default)(nil)
 
-func (d Default) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d *Default) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		lt, err := d.Left.Infer(ctx, env, fresh)
 		if err != nil {
@@ -248,22 +248,22 @@ func (d Default) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	})
 }
 
-func (d Default) DeclaredSymbols() []string {
+func (d *Default) DeclaredSymbols() []string {
 	return nil // Default operator doesn't declare anything
 }
 
-func (d Default) ReferencedSymbols() []string {
+func (d *Default) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, d.Left.ReferencedSymbols()...)
 	symbols = append(symbols, d.Right.ReferencedSymbols()...)
 	return symbols
 }
 
-func (d Default) Body() hm.Expression { return d }
+func (d *Default) Body() hm.Expression { return d }
 
-func (d Default) GetSourceLocation() *SourceLocation { return d.Loc }
+func (d *Default) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		leftVal, err := EvalNode(ctx, env, d.Left)
 		if err != nil {
@@ -287,10 +287,10 @@ type Equality struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Equality{}
-var _ Evaluator = Equality{}
+var _ Node = (*Equality)(nil)
+var _ Evaluator = (*Equality)(nil)
 
-func (e Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (e *Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(e, func() (hm.Type, error) {
 		// Type check both sides for validity, but allow cross-type comparison at runtime
 		_, err := e.Left.Infer(ctx, env, fresh)
@@ -307,22 +307,22 @@ func (e Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
-func (e Equality) DeclaredSymbols() []string {
+func (e *Equality) DeclaredSymbols() []string {
 	return nil // Equality operator doesn't declare anything
 }
 
-func (e Equality) ReferencedSymbols() []string {
+func (e *Equality) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, e.Left.ReferencedSymbols()...)
 	symbols = append(symbols, e.Right.ReferencedSymbols()...)
 	return symbols
 }
 
-func (e Equality) Body() hm.Expression { return e }
+func (e *Equality) Body() hm.Expression { return e }
 
-func (e Equality) GetSourceLocation() *SourceLocation { return e.Loc }
+func (e *Equality) GetSourceLocation() *SourceLocation { return e.Loc }
 
-func (e Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (e *Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, e, func() (Value, error) {
 		leftVal, err := EvalNode(ctx, env, e.Left)
 		if err != nil {
@@ -344,11 +344,11 @@ type Addition struct {
 	BinaryOperator
 }
 
-var _ Node = Addition{}
-var _ Evaluator = Addition{}
+var _ Node = (*Addition)(nil)
+var _ Evaluator = (*Addition)(nil)
 
-func NewAddition(left, right Node, loc *SourceLocation) Addition {
-	return Addition{
+func NewAddition(left, right Node, loc *SourceLocation) *Addition {
+	return &Addition{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -364,11 +364,11 @@ type Subtraction struct {
 	BinaryOperator
 }
 
-var _ Node = Subtraction{}
-var _ Evaluator = Subtraction{}
+var _ Node = (*Subtraction)(nil)
+var _ Evaluator = (*Subtraction)(nil)
 
-func NewSubtraction(left, right Node, loc *SourceLocation) Subtraction {
-	return Subtraction{
+func NewSubtraction(left, right Node, loc *SourceLocation) *Subtraction {
+	return &Subtraction{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -384,11 +384,11 @@ type Multiplication struct {
 	BinaryOperator
 }
 
-var _ Node = Multiplication{}
-var _ Evaluator = Multiplication{}
+var _ Node = (*Multiplication)(nil)
+var _ Evaluator = (*Multiplication)(nil)
 
-func NewMultiplication(left, right Node, loc *SourceLocation) Multiplication {
-	return Multiplication{
+func NewMultiplication(left, right Node, loc *SourceLocation) *Multiplication {
+	return &Multiplication{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -404,11 +404,11 @@ type Division struct {
 	BinaryOperator
 }
 
-var _ Node = Division{}
-var _ Evaluator = Division{}
+var _ Node = (*Division)(nil)
+var _ Evaluator = (*Division)(nil)
 
-func NewDivision(left, right Node, loc *SourceLocation) Division {
-	return Division{
+func NewDivision(left, right Node, loc *SourceLocation) *Division {
+	return &Division{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -424,11 +424,11 @@ type Modulo struct {
 	BinaryOperator
 }
 
-var _ Node = Modulo{}
-var _ Evaluator = Modulo{}
+var _ Node = (*Modulo)(nil)
+var _ Evaluator = (*Modulo)(nil)
 
-func NewModulo(left, right Node, loc *SourceLocation) Modulo {
-	return Modulo{
+func NewModulo(left, right Node, loc *SourceLocation) *Modulo {
+	return &Modulo{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -444,11 +444,11 @@ type Inequality struct {
 	BinaryOperator
 }
 
-var _ Node = Inequality{}
-var _ Evaluator = Inequality{}
+var _ Node = (*Inequality)(nil)
+var _ Evaluator = (*Inequality)(nil)
 
-func NewInequality(left, right Node, loc *SourceLocation) Inequality {
-	return Inequality{
+func NewInequality(left, right Node, loc *SourceLocation) *Inequality {
+	return &Inequality{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -464,11 +464,11 @@ type LessThan struct {
 	BinaryOperator
 }
 
-var _ Node = LessThan{}
-var _ Evaluator = LessThan{}
+var _ Node = (*LessThan)(nil)
+var _ Evaluator = (*LessThan)(nil)
 
-func NewLessThan(left, right Node, loc *SourceLocation) LessThan {
-	return LessThan{
+func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
+	return &LessThan{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -484,11 +484,11 @@ type GreaterThan struct {
 	BinaryOperator
 }
 
-var _ Node = GreaterThan{}
-var _ Evaluator = GreaterThan{}
+var _ Node = (*GreaterThan)(nil)
+var _ Evaluator = (*GreaterThan)(nil)
 
-func NewGreaterThan(left, right Node, loc *SourceLocation) GreaterThan {
-	return GreaterThan{
+func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
+	return &GreaterThan{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -504,11 +504,11 @@ type LessThanEqual struct {
 	BinaryOperator
 }
 
-var _ Node = LessThanEqual{}
-var _ Evaluator = LessThanEqual{}
+var _ Node = (*LessThanEqual)(nil)
+var _ Evaluator = (*LessThanEqual)(nil)
 
-func NewLessThanEqual(left, right Node, loc *SourceLocation) LessThanEqual {
-	return LessThanEqual{
+func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
+	return &LessThanEqual{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -524,11 +524,11 @@ type GreaterThanEqual struct {
 	BinaryOperator
 }
 
-var _ Node = GreaterThanEqual{}
-var _ Evaluator = GreaterThanEqual{}
+var _ Node = (*GreaterThanEqual)(nil)
+var _ Evaluator = (*GreaterThanEqual)(nil)
 
-func NewGreaterThanEqual(left, right Node, loc *SourceLocation) GreaterThanEqual {
-	return GreaterThanEqual{
+func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqual {
+	return &GreaterThanEqual{
 		BinaryOperator: BinaryOperator{
 			Left:     left,
 			Right:    right,
@@ -546,10 +546,10 @@ type UnaryNegation struct {
 	Loc  *SourceLocation
 }
 
-var _ Node = UnaryNegation{}
-var _ Evaluator = UnaryNegation{}
+var _ Node = (*UnaryNegation)(nil)
+var _ Evaluator = (*UnaryNegation)(nil)
 
-func (u UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (u *UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(u, func() (hm.Type, error) {
 		exprType, err := u.Expr.Infer(ctx, env, fresh)
 		if err != nil {
@@ -572,19 +572,19 @@ func (u UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 	})
 }
 
-func (u UnaryNegation) DeclaredSymbols() []string {
+func (u *UnaryNegation) DeclaredSymbols() []string {
 	return nil
 }
 
-func (u UnaryNegation) ReferencedSymbols() []string {
+func (u *UnaryNegation) ReferencedSymbols() []string {
 	return u.Expr.ReferencedSymbols()
 }
 
-func (u UnaryNegation) Body() hm.Expression { return u }
+func (u *UnaryNegation) Body() hm.Expression { return u }
 
-func (u UnaryNegation) GetSourceLocation() *SourceLocation { return u.Loc }
+func (u *UnaryNegation) GetSourceLocation() *SourceLocation { return u.Loc }
 
-func (u UnaryNegation) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (u *UnaryNegation) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, u, func() (Value, error) {
 		val, err := EvalNode(ctx, env, u.Expr)
 		if err != nil {

@@ -18,14 +18,14 @@ type FunCall struct {
 	Loc  *SourceLocation
 }
 
-var _ Node = FunCall{}
-var _ Evaluator = FunCall{}
+var _ Node = (*FunCall)(nil)
+var _ Evaluator = (*FunCall)(nil)
 
-func (c FunCall) DeclaredSymbols() []string {
+func (c *FunCall) DeclaredSymbols() []string {
 	return nil // Function calls don't declare anything
 }
 
-func (c FunCall) ReferencedSymbols() []string {
+func (c *FunCall) ReferencedSymbols() []string {
 	var symbols []string
 
 	// Add symbols from the function being called
@@ -39,11 +39,11 @@ func (c FunCall) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (c FunCall) Body() hm.Expression { return c.Fun }
+func (c *FunCall) Body() hm.Expression { return c.Fun }
 
-func (c FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
+func (c *FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
-func (c FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
 		fun, err := c.Fun.Infer(ctx, env, fresh)
 		if err != nil {
@@ -65,7 +65,7 @@ func (c FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 }
 
 // inferFunctionType handles type inference for FunctionType calls
-func (c FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
+func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
 	// Handle positional argument mapping for type inference
 	argMapping, err := c.mapArgumentsForInference(ft)
 	if err != nil {
@@ -91,7 +91,7 @@ func (c FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fre
 }
 
 // getArgumentKey determines the argument key for positional or named arguments
-func (c FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, index int) string {
+func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, index int) string {
 	if arg.Positional {
 		return argMapping[index]
 	}
@@ -99,7 +99,7 @@ func (c FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, inde
 }
 
 // checkArgumentType validates an argument's type against the expected parameter type
-func (c FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
+func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
 	it, err := value.Infer(ctx, env, fresh)
 	if err != nil {
 		return fmt.Errorf("FunCall.Infer: %w", err)
@@ -121,11 +121,11 @@ func (c FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fre
 	return nil
 }
 
-var _ hm.Apply = FunCall{}
+var _ hm.Apply = (*FunCall)(nil)
 
-func (c FunCall) Fn() hm.Expression { return c.Fun }
+func (c *FunCall) Fn() hm.Expression { return c.Fun }
 
-func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		funVal, err := EvalNode(ctx, env, c.Fun)
 		if err != nil {
@@ -145,7 +145,7 @@ func (c FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 // callFunction dispatches function calls to appropriate handlers
-func (c FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, argValues map[string]Value) (Value, error) {
+func (c *FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, argValues map[string]Value) (Value, error) {
 	switch fn := funVal.(type) {
 	case BoundMethod:
 		return c.callBoundMethod(ctx, fn, argValues)
@@ -165,7 +165,7 @@ func (c FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, ar
 }
 
 // callBoundBuiltinMethod handles BoundBuiltinMethod function calls
-func (c FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMethod, argValues map[string]Value) (Value, error) {
+func (c *FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMethod, argValues map[string]Value) (Value, error) {
 	// Create a temporary environment with the receiver bound as "self"
 	tempMod := NewModule("_temp_")
 	tempEnv := NewModuleValue(tempMod)
@@ -176,7 +176,7 @@ func (c FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMeth
 }
 
 // callBoundMethod handles BoundMethod function calls
-func (c FunCall) callBoundMethod(ctx context.Context, fn BoundMethod, argValues map[string]Value) (Value, error) {
+func (c *FunCall) callBoundMethod(ctx context.Context, fn BoundMethod, argValues map[string]Value) (Value, error) {
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := fn.Receiver.Fork()
 	fnEnv := CreateCompositeEnv(recv, fn.Method.Closure)
@@ -192,7 +192,7 @@ func (c FunCall) callBoundMethod(ctx context.Context, fn BoundMethod, argValues 
 }
 
 // callFunctionValue handles FunctionValue function calls
-func (c FunCall) callFunctionValue(ctx context.Context, fn FunctionValue, argValues map[string]Value) (Value, error) {
+func (c *FunCall) callFunctionValue(ctx context.Context, fn FunctionValue, argValues map[string]Value) (Value, error) {
 	// Create new environment with argument bindings
 	fnEnv := fn.Closure.Clone()
 
@@ -206,7 +206,7 @@ func (c FunCall) callFunctionValue(ctx context.Context, fn FunctionValue, argVal
 }
 
 // bindArgumentsToEnv handles the common logic of binding arguments to function environments
-func (c FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNames []string,
+func (c *FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNames []string,
 	defaults map[string]Node, argValues map[string]Value, defaultEvalEnv EvalEnv) error {
 	for _, argName := range paramNames {
 		if val, exists := argValues[argName]; exists {
@@ -237,7 +237,7 @@ func (c FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNam
 }
 
 // evaluateArguments handles both positional and named arguments
-func (c FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Value) (map[string]Value, error) {
+func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Value) (map[string]Value, error) {
 	// Validate argument order first
 	if err := c.validateArgumentOrder(); err != nil {
 		return nil, err
@@ -272,7 +272,7 @@ func (c FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Valu
 }
 
 // validateArgumentOrder ensures positional args come before named args
-func (c FunCall) validateArgumentOrder() error {
+func (c *FunCall) validateArgumentOrder() error {
 	seenNamed := false
 	for _, arg := range c.Args {
 		if arg.Positional && seenNamed {
@@ -286,7 +286,7 @@ func (c FunCall) validateArgumentOrder() error {
 }
 
 // handlePositionalArgument processes a positional argument
-func (c FunCall) handlePositionalArgument(arg Keyed[Node], val Value, argValues map[string]Value,
+func (c *FunCall) handlePositionalArgument(arg Keyed[Node], val Value, argValues map[string]Value,
 	positionallySet map[string]bool, paramNames []string, positionalIndex *int) error {
 	if *positionalIndex >= len(paramNames) {
 		return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
@@ -303,7 +303,7 @@ func (c FunCall) handlePositionalArgument(arg Keyed[Node], val Value, argValues 
 }
 
 // handleNamedArgument processes a named argument
-func (c FunCall) handleNamedArgument(arg Keyed[Node], val Value, argValues map[string]Value,
+func (c *FunCall) handleNamedArgument(arg Keyed[Node], val Value, argValues map[string]Value,
 	positionallySet map[string]bool) error {
 	if _, exists := argValues[arg.Key]; exists {
 		if positionallySet[arg.Key] {
@@ -317,7 +317,7 @@ func (c FunCall) handleNamedArgument(arg Keyed[Node], val Value, argValues map[s
 }
 
 // getParameterNames extracts parameter names from a function value
-func (c FunCall) getParameterNames(funVal Value) []string {
+func (c *FunCall) getParameterNames(funVal Value) []string {
 	switch fn := funVal.(type) {
 	case BoundMethod:
 		return fn.Method.Args
@@ -362,7 +362,7 @@ func (c FunCall) getParameterNames(funVal Value) []string {
 }
 
 // mapArgumentsForInference maps positional arguments to parameter names during type inference
-func (c FunCall) mapArgumentsForInference(ft *hm.FunctionType) (map[int]string, error) {
+func (c *FunCall) mapArgumentsForInference(ft *hm.FunctionType) (map[int]string, error) {
 	argMapping := make(map[int]string)
 
 	// Get parameter names from the function type
@@ -402,7 +402,7 @@ func (c FunCall) mapArgumentsForInference(ft *hm.FunctionType) (map[int]string, 
 }
 
 // validateRequiredArgumentsInInfer checks that all required arguments are provided during type inference
-func (c FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
+func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 	// Get the record type that represents the function arguments
 	rt, ok := ft.Arg().(*RecordType)
 	if !ok {
@@ -461,10 +461,10 @@ type Symbol struct {
 	Loc      *SourceLocation
 }
 
-var _ Node = Symbol{}
-var _ Evaluator = Symbol{}
+var _ Node = (*Symbol)(nil)
+var _ Evaluator = (*Symbol)(nil)
 
-func (s Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		scheme, found := env.SchemeOf(s.Name)
 		if !found {
@@ -479,19 +479,19 @@ func (s Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (s Symbol) Body() hm.Expression { return s }
+func (s *Symbol) Body() hm.Expression { return s }
 
-func (s Symbol) GetSourceLocation() *SourceLocation { return s.Loc }
+func (s *Symbol) GetSourceLocation() *SourceLocation { return s.Loc }
 
-func (s Symbol) DeclaredSymbols() []string {
+func (s *Symbol) DeclaredSymbols() []string {
 	return nil // Symbols don't declare anything
 }
 
-func (s Symbol) ReferencedSymbols() []string {
+func (s *Symbol) ReferencedSymbols() []string {
 	return []string{s.Name} // Symbols reference themselves
 }
 
-func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, found := env.Get(s.Name)
 		if !found {
@@ -520,10 +520,10 @@ type Select struct {
 	Loc      *SourceLocation
 }
 
-var _ Node = Select{}
-var _ Evaluator = Select{}
+var _ Node = (*Select)(nil)
+var _ Evaluator = (*Select)(nil)
 
-func (d Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Handle nil receiver (symbol calls) - look up type in environment
 		if d.Receiver == nil {
@@ -591,11 +591,11 @@ func (d Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (d Select) DeclaredSymbols() []string {
+func (d *Select) DeclaredSymbols() []string {
 	return nil // Select expressions don't declare anything
 }
 
-func (d Select) ReferencedSymbols() []string {
+func (d *Select) ReferencedSymbols() []string {
 	var symbols []string
 
 	// When Receiver is nil, this is a top-level function call like createPerson()
@@ -608,11 +608,11 @@ func (d Select) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (d Select) Body() hm.Expression { return d }
+func (d *Select) Body() hm.Expression { return d }
 
-func (d Select) GetSourceLocation() *SourceLocation { return d.Loc }
+func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		var receiverVal Value
 		var err error
@@ -690,10 +690,10 @@ type Index struct {
 	Loc      *SourceLocation
 }
 
-var _ Node = Index{}
-var _ Evaluator = Index{}
+var _ Node = (*Index)(nil)
+var _ Evaluator = (*Index)(nil)
 
-func (i Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
 		// Infer the type of the receiver (should be a list)
 		receiverType, err := i.Receiver.Infer(ctx, env, fresh)
@@ -759,22 +759,22 @@ func (i Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 	})
 }
 
-func (i Index) DeclaredSymbols() []string {
+func (i *Index) DeclaredSymbols() []string {
 	return nil // Index expressions don't declare anything
 }
 
-func (i Index) ReferencedSymbols() []string {
+func (i *Index) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, i.Receiver.ReferencedSymbols()...)
 	symbols = append(symbols, i.Index.ReferencedSymbols()...)
 	return symbols
 }
 
-func (i Index) Body() hm.Expression { return i }
+func (i *Index) Body() hm.Expression { return i }
 
-func (i Index) GetSourceLocation() *SourceLocation { return i.Loc }
+func (i *Index) GetSourceLocation() *SourceLocation { return i.Loc }
 
-func (i Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (i *Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, i, func() (Value, error) {
 		// Evaluate the receiver
 		receiverVal, err := EvalNode(ctx, env, i.Receiver)
@@ -833,7 +833,7 @@ type FieldSelection struct {
 	Loc       *SourceLocation
 }
 
-func (f FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
+func (f *FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
 
 // ObjectSelection represents multi-field selection like obj.{field1, field2}
 type ObjectSelection struct {
@@ -1338,14 +1338,14 @@ type While struct {
 	Loc       *SourceLocation
 }
 
-var _ Node = Conditional{}
-var _ Evaluator = Conditional{}
+var _ Node = (*Conditional)(nil)
+var _ Evaluator = (*Conditional)(nil)
 
-func (c Conditional) DeclaredSymbols() []string {
+func (c *Conditional) DeclaredSymbols() []string {
 	return nil // Conditionals don't declare anything
 }
 
-func (c Conditional) ReferencedSymbols() []string {
+func (c *Conditional) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, c.Condition.ReferencedSymbols()...)
 	symbols = append(symbols, c.Then.ReferencedSymbols()...)
@@ -1356,11 +1356,11 @@ func (c Conditional) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (c Conditional) Body() hm.Expression { return c }
+func (c *Conditional) Body() hm.Expression { return c }
 
-func (c Conditional) GetSourceLocation() *SourceLocation { return c.Loc }
+func (c *Conditional) GetSourceLocation() *SourceLocation { return c.Loc }
 
-func (c Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
 		condType, err := c.Condition.Infer(ctx, env, fresh)
 		if err != nil {
@@ -1409,7 +1409,7 @@ func (c Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	})
 }
 
-func (c Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		condVal, err := EvalNode(ctx, env, c.Condition)
 		if err != nil {
@@ -1432,25 +1432,25 @@ func (c Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-var _ Node = While{}
-var _ Evaluator = While{}
+var _ Node = (*While)(nil)
+var _ Evaluator = (*While)(nil)
 
-func (w While) DeclaredSymbols() []string {
+func (w *While) DeclaredSymbols() []string {
 	return nil // While loops don't declare anything
 }
 
-func (w While) ReferencedSymbols() []string {
+func (w *While) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, w.Condition.ReferencedSymbols()...)
 	symbols = append(symbols, w.BodyBlock.ReferencedSymbols()...)
 	return symbols
 }
 
-func (w While) Body() hm.Expression { return w }
+func (w *While) Body() hm.Expression { return w }
 
-func (w While) GetSourceLocation() *SourceLocation { return w.Loc }
+func (w *While) GetSourceLocation() *SourceLocation { return w.Loc }
 
-func (w While) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (w *While) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(w, func() (hm.Type, error) {
 		condType, err := w.Condition.Infer(ctx, env, fresh)
 		if err != nil {
@@ -1475,7 +1475,7 @@ func (w While) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 	})
 }
 
-func (w While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (w *While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, w, func() (Value, error) {
 		var lastVal Value = NullValue{}
 
@@ -1516,25 +1516,25 @@ type ForLoop struct {
 	Loc           *SourceLocation
 }
 
-var _ Node = ForLoop{}
-var _ Evaluator = ForLoop{}
+var _ Node = (*ForLoop)(nil)
+var _ Evaluator = (*ForLoop)(nil)
 
-func (f ForLoop) DeclaredSymbols() []string {
+func (f *ForLoop) DeclaredSymbols() []string {
 	return nil // For loops don't declare anything in global scope
 }
 
-func (f ForLoop) ReferencedSymbols() []string {
+func (f *ForLoop) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, f.Iterable.ReferencedSymbols()...)
 	symbols = append(symbols, f.LoopBody.ReferencedSymbols()...)
 	return symbols
 }
 
-func (f ForLoop) Body() hm.Expression { return f }
+func (f *ForLoop) Body() hm.Expression { return f }
 
-func (f ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
+func (f *ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
 
-func (f ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
 		// Infer the type of the iterable
 		iterableType, err := f.Iterable.Infer(ctx, env, fresh)
@@ -1631,7 +1631,7 @@ func (f ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	})
 }
 
-func (f ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
 		// Evaluate the iterable
 		iterableVal, err := EvalNode(ctx, env, f.Iterable)
@@ -1694,25 +1694,25 @@ type Let struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Let{}
-var _ Evaluator = Let{}
+var _ Node = (*Let)(nil)
+var _ Evaluator = (*Let)(nil)
 
-func (l Let) DeclaredSymbols() []string {
+func (l *Let) DeclaredSymbols() []string {
 	return nil // Let expressions don't declare symbols in the global scope
 }
 
-func (l Let) ReferencedSymbols() []string {
+func (l *Let) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, l.Value.ReferencedSymbols()...)
 	symbols = append(symbols, l.Expr.ReferencedSymbols()...)
 	return symbols
 }
 
-func (l Let) Body() hm.Expression { return l }
+func (l *Let) Body() hm.Expression { return l }
 
-func (l Let) GetSourceLocation() *SourceLocation { return l.Loc }
+func (l *Let) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l Let) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (l *Let) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(l, func() (hm.Type, error) {
 		valueType, err := l.Value.Infer(ctx, env, fresh)
 		if err != nil {
@@ -1726,7 +1726,7 @@ func (l Let) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, 
 	})
 }
 
-func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
 		val, err := EvalNode(ctx, env, l.Value)
 		if err != nil {
@@ -1748,22 +1748,22 @@ type TypeHint struct {
 	Loc  *SourceLocation
 }
 
-var _ Node = TypeHint{}
-var _ Evaluator = TypeHint{}
+var _ Node = (*TypeHint)(nil)
+var _ Evaluator = (*TypeHint)(nil)
 
-func (t TypeHint) DeclaredSymbols() []string {
+func (t *TypeHint) DeclaredSymbols() []string {
 	return nil // Type hints don't declare symbols
 }
 
-func (t TypeHint) ReferencedSymbols() []string {
+func (t *TypeHint) ReferencedSymbols() []string {
 	return t.Expr.ReferencedSymbols()
 }
 
-func (t TypeHint) Body() hm.Expression { return t }
+func (t *TypeHint) Body() hm.Expression { return t }
 
-func (t TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
+func (t *TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
 
-func (t TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
 		// Infer the type of the expression
 		exprType, err := t.Expr.Infer(ctx, env, fresh)
@@ -1814,7 +1814,7 @@ func (t TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
-func (t TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
 		// Type hints don't change runtime behavior - just evaluate the expression
 		return EvalNode(ctx, env, t.Expr)

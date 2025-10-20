@@ -194,24 +194,24 @@ type ValueNode struct {
 	Loc *SourceLocation
 }
 
-func (v ValueNode) DeclaredSymbols() []string {
+func (v *ValueNode) DeclaredSymbols() []string {
 	return nil // ValueNodes don't declare anything
 }
 
-func (v ValueNode) ReferencedSymbols() []string {
+func (v *ValueNode) ReferencedSymbols() []string {
 	return nil // ValueNodes don't reference anything
 }
 
-func (v ValueNode) Body() hm.Expression                { return nil }
-func (v ValueNode) GetSourceLocation() *SourceLocation { return v.Loc }
-func (v ValueNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (v *ValueNode) Body() hm.Expression                { return nil }
+func (v *ValueNode) GetSourceLocation() *SourceLocation { return v.Loc }
+func (v *ValueNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return v.Val.Type(), nil
 }
-func (v ValueNode) Eval(ctx context.Context, env EvalEnv) (Value, error) { return v.Val, nil }
+func (v *ValueNode) Eval(ctx context.Context, env EvalEnv) (Value, error) { return v.Val, nil }
 
 // createValueNode creates a simple node that evaluates to the given value
-func createValueNode(val Value) ValueNode {
-	return ValueNode{Val: val, Loc: nil}
+func createValueNode(val Value) *ValueNode {
+	return &ValueNode{Val: val, Loc: nil}
 }
 
 // valuesEqual compares two values for equality
@@ -473,39 +473,39 @@ func (c *CompositeModule) GetDirective(name string) (*DirectiveDecl, bool) {
 // nodeToString converts a Node to a readable string representation for debugging
 func nodeToString(node Node) string {
 	switch n := node.(type) {
-	case Symbol:
+	case *Symbol:
 		return n.Name
-	case Select:
+	case *Select:
 		if n.Receiver == nil {
 			return n.Field
 		}
 		receiver := nodeToString(n.Receiver)
 		return fmt.Sprintf("%s.%s", receiver, n.Field)
-	case FunCall:
+	case *FunCall:
 		fun := nodeToString(n.Fun)
 		return fmt.Sprintf("%s(...)", fun)
-	case String:
+	case *String:
 		return fmt.Sprintf("\"%s\"", n.Value)
-	case Int:
+	case *Int:
 		return fmt.Sprintf("%d", n.Value)
-	case Boolean:
+	case *Boolean:
 		return fmt.Sprintf("%t", n.Value)
-	case Null:
+	case *Null:
 		return "null"
-	case List:
+	case *List:
 		return "[...]"
-	case Default:
+	case *Default:
 		left := nodeToString(n.Left)
 		right := nodeToString(n.Right)
 		return fmt.Sprintf("%s ? %s", left, right)
-	case Equality:
+	case *Equality:
 		left := nodeToString(n.Left)
 		right := nodeToString(n.Right)
 		return fmt.Sprintf("%s == %s", left, right)
-	case Conditional:
+	case *Conditional:
 		condition := nodeToString(n.Condition)
 		return fmt.Sprintf("if %s { ... }", condition)
-	case Let:
+	case *Let:
 		return fmt.Sprintf("let %s = %s in ...", n.Name, nodeToString(n.Value))
 	default:
 		return fmt.Sprintf("%T", node)

@@ -15,13 +15,13 @@ type Match struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Match{}
+var _ Node = (*Match)(nil)
 
-func (m Match) DeclaredSymbols() []string {
+func (m *Match) DeclaredSymbols() []string {
 	return nil // Match expressions don't declare anything
 }
 
-func (m Match) ReferencedSymbols() []string {
+func (m *Match) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, m.Expr.ReferencedSymbols()...)
 	// Add symbols from case expressions
@@ -31,11 +31,11 @@ func (m Match) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (m Match) Body() hm.Expression { return m }
+func (m *Match) Body() hm.Expression { return m }
 
-func (m Match) GetSourceLocation() *SourceLocation { return m.Loc }
+func (m *Match) GetSourceLocation() *SourceLocation { return m.Loc }
 
-func (m Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (m *Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	exprType, err := m.Expr.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, err

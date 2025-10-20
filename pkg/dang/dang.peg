@@ -10,7 +10,7 @@
 }
 
 Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
-  return Block{
+  return &Block{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
   }, nil
@@ -45,7 +45,7 @@ Form <- Conditional / While / ForLoop / Lambda / Match / Assert / DefaultExpr / 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
 UnaryExpr <- '!' _ expr:Term {
-  return UnaryNegation{
+  return &UnaryNegation{
     Expr: expr.(Node),
     Loc: c.Loc(),
   }, nil
@@ -60,8 +60,8 @@ SymbolOrCall <- Call / Symbol
 Call <- name:Id args:ArgValues {
   // Symbol followed by () - create FunCall
   argRecord := Record(args.([]Keyed[Node]))
-  return FunCall{
-    Fun: Symbol{
+  return &FunCall{
+    Fun: &Symbol{
       Name: name.(string),
       Loc: c.Loc(),
     },
@@ -71,7 +71,7 @@ Call <- name:Id args:ArgValues {
 }
 Symbol <- name:Id {
   // Just a Symbol
-  return Symbol{
+  return &Symbol{
     Name: name.(string),
     AutoCall: true,
     Loc: c.Loc(),

@@ -238,25 +238,25 @@ type Reassignment struct {
 	Loc      *SourceLocation
 }
 
-var _ Node = Reassignment{}
-var _ Evaluator = Reassignment{}
+var _ Node = (*Reassignment)(nil)
+var _ Evaluator = (*Reassignment)(nil)
 
-func (r Reassignment) DeclaredSymbols() []string {
+func (r *Reassignment) DeclaredSymbols() []string {
 	return nil // Reassignments don't declare new symbols
 }
 
-func (r Reassignment) ReferencedSymbols() []string {
+func (r *Reassignment) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, r.Target.ReferencedSymbols()...)
 	symbols = append(symbols, r.Value.ReferencedSymbols()...)
 	return symbols
 }
 
-func (r Reassignment) Body() hm.Expression { return r.Target }
+func (r *Reassignment) Body() hm.Expression { return r.Target }
 
-func (r Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
+func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
-func (r Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
 		// Infer the type of the target (left-hand side)
 		targetType, err := r.Target.Infer(ctx, env, fresh)
@@ -291,7 +291,7 @@ func (r Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	})
 }
 
-func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, r, func() (Value, error) {
 		// Evaluate the value first
 		value, err := EvalNode(ctx, env, r.Value)
@@ -301,11 +301,11 @@ func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		// Handle different assignment types based on target
 		switch target := r.Target.(type) {
-		case Symbol:
+		case *Symbol:
 			// Simple variable assignment: x = value or x += value
 			return r.evalVariableAssignment(ctx, env, target.Name, value)
 
-		case Select:
+		case *Select:
 			// Field assignment: obj.field = value or obj.field += value
 			return r.evalFieldAssignment(ctx, env, target, value)
 
@@ -315,7 +315,7 @@ func (r Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, varName string, value Value) (Value, error) {
+func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, varName string, value Value) (Value, error) {
 	if r.Modifier == "=" {
 		// Simple assignment: x = value
 		_, found := env.Get(varName)
@@ -344,7 +344,7 @@ func (r Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, v
 	return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 }
 
-func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode Select, value Value) (Value, error) {
+func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode *Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
 	rootSymbol, path, err := r.getPath(selectNode)
 	if err != nil {
@@ -404,13 +404,13 @@ func (r Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sele
 	return newRoot.(Value), nil
 }
 
-func (r Reassignment) getPath(selectNode Select) (string, []string, error) {
+func (r *Reassignment) getPath(selectNode *Select) (string, []string, error) {
 	var path []string
 	var currentNode Node = selectNode
 
 	// Traverse down the chain of Select nodes, collecting field names
 	for {
-		if s, ok := currentNode.(Select); ok {
+		if s, ok := currentNode.(*Select); ok {
 			path = append([]string{s.Field}, path...)
 			currentNode = s.Receiver
 		} else {
@@ -419,7 +419,7 @@ func (r Reassignment) getPath(selectNode Select) (string, []string, error) {
 	}
 
 	// The final node in the chain should be a Symbol (the root object)
-	rootSymbol, ok := currentNode.(Symbol)
+	rootSymbol, ok := currentNode.(*Symbol)
 	if !ok {
 		return "", nil, fmt.Errorf("complex receivers must start with a symbol")
 	}
@@ -427,7 +427,7 @@ func (r Reassignment) getPath(selectNode Select) (string, []string, error) {
 	return rootSymbol.Name, path, nil
 }
 
-func (r Reassignment) performAddition(left, right Value, varName string) (Value, error) {
+func (r *Reassignment) performAddition(left, right Value, varName string) (Value, error) {
 	switch l := left.(type) {
 	case IntValue:
 		if r, ok := right.(IntValue); ok {
@@ -463,20 +463,20 @@ func (r Reassignment) performAddition(left, right Value, varName string) (Value,
 	}
 }
 
-func (r Reassignment) createValueNode(value Value) Node {
+func (r *Reassignment) createValueNode(value Value) Node {
 	switch v := value.(type) {
 	case IntValue:
-		return Int{Value: int64(v.Val), Loc: r.Loc}
+		return &Int{Value: int64(v.Val), Loc: r.Loc}
 	case StringValue:
-		return String{Value: v.Val, Loc: r.Loc}
+		return &String{Value: v.Val, Loc: r.Loc}
 	case BoolValue:
-		return Boolean{Value: v.Val, Loc: r.Loc}
+		return &Boolean{Value: v.Val, Loc: r.Loc}
 	case NullValue:
-		return Null{Loc: r.Loc}
+		return &Null{Loc: r.Loc}
 	default:
 		// For complex values, we'll need a more sophisticated approach
 		// For now, just create a Symbol that references the value
-		return Symbol{Name: fmt.Sprintf("__temp_value_%p", value), Loc: r.Loc}
+		return &Symbol{Name: fmt.Sprintf("__temp_value_%p", value), Loc: r.Loc}
 	}
 }
 
@@ -487,14 +487,14 @@ type Reopen struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Reopen{}
-var _ Evaluator = Reopen{}
+var _ Node = (*Reopen)(nil)
+var _ Evaluator = (*Reopen)(nil)
 
-func (r Reopen) DeclaredSymbols() []string {
+func (r *Reopen) DeclaredSymbols() []string {
 	return nil // Reopen expressions don't declare new symbols
 }
 
-func (r Reopen) ReferencedSymbols() []string {
+func (r *Reopen) ReferencedSymbols() []string {
 	var symbols []string
 	// Reopen references the module being reopened
 	symbols = append(symbols, r.Name)
@@ -503,11 +503,11 @@ func (r Reopen) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (r Reopen) Body() hm.Expression { return r.Block }
+func (r *Reopen) Body() hm.Expression { return r.Block }
 
-func (r Reopen) GetSourceLocation() *SourceLocation { return r.Loc }
+func (r *Reopen) GetSourceLocation() *SourceLocation { return r.Loc }
 
-func (r Reopen) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (r *Reopen) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	sym := Symbol{
 		Name: r.Name,
 		// low conviction, but allow shadowing?
@@ -549,7 +549,7 @@ func (r Reopen) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return termType, nil
 }
 
-func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (r *Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	reopened, found := env.Get(r.Name)
 	if !found {
 		return nil, fmt.Errorf("cannot reopen %q: not found", r.Name)
@@ -577,14 +577,14 @@ type Assert struct {
 	Loc     *SourceLocation
 }
 
-var _ Node = Assert{}
-var _ Evaluator = Assert{}
+var _ Node = (*Assert)(nil)
+var _ Evaluator = (*Assert)(nil)
 
-func (a Assert) DeclaredSymbols() []string {
+func (a *Assert) DeclaredSymbols() []string {
 	return nil // Assert expressions don't declare anything
 }
 
-func (a Assert) ReferencedSymbols() []string {
+func (a *Assert) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, a.Block.ReferencedSymbols()...)
 	if a.Message != nil {
@@ -593,11 +593,11 @@ func (a Assert) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (a Assert) Body() hm.Expression { return a.Block }
+func (a *Assert) Body() hm.Expression { return a.Block }
 
-func (a Assert) GetSourceLocation() *SourceLocation { return a.Loc }
+func (a *Assert) GetSourceLocation() *SourceLocation { return a.Loc }
 
-func (a Assert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (a *Assert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(a, func() (hm.Type, error) {
 		// Infer the block type - the assertion will be evaluated
 		_, err := a.Block.Infer(ctx, env, fresh)
@@ -618,7 +618,7 @@ func (a Assert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (a Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (a *Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, a, func() (Value, error) {
 		// Evaluate the block (gets the last expression's value)
 		blockVal, err := EvalNode(ctx, env, a.Block)
@@ -642,7 +642,7 @@ func (a Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 // createAssertionError builds a detailed error message with child node values
-func (a Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Node) error {
+func (a *Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Node) error {
 	var message strings.Builder
 
 	// Optional user message
@@ -684,7 +684,7 @@ type ChildNode struct {
 }
 
 // getImmediateChildren extracts immediate child nodes for error reporting
-func (a Assert) getImmediateChildren(expr Node) []ChildNode {
+func (a *Assert) getImmediateChildren(expr Node) []ChildNode {
 	switch n := expr.(type) {
 	case Select:
 		// Handle both field access and method calls
@@ -757,7 +757,7 @@ func (a Assert) getImmediateChildren(expr Node) []ChildNode {
 }
 
 // nodeToString converts a node to its string representation
-func (a Assert) nodeToString(node Node) string {
+func (a *Assert) nodeToString(node Node) string {
 	switch n := node.(type) {
 	case Symbol:
 		return n.Name
@@ -890,11 +890,11 @@ type DirectiveApplication struct {
 
 var _ Node = DirectiveApplication{}
 
-func (d DirectiveApplication) DeclaredSymbols() []string {
+func (d *DirectiveApplication) DeclaredSymbols() []string {
 	return nil // Directive applications don't declare anything
 }
 
-func (d DirectiveApplication) ReferencedSymbols() []string {
+func (d *DirectiveApplication) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, d.Name) // Reference the directive name
 	for _, arg := range d.Args {
@@ -903,11 +903,11 @@ func (d DirectiveApplication) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (d DirectiveApplication) Body() hm.Expression { return nil }
+func (d *DirectiveApplication) Body() hm.Expression { return nil }
 
-func (d DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Loc }
+func (d *DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Validate that the directive exists and arguments match
 		if e, ok := env.(Env); ok {
@@ -928,13 +928,13 @@ func (d DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fr
 	})
 }
 
-func (d DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Directive applications are compile-time annotations, no runtime evaluation
 	return NullValue{}, nil
 }
 
 // validateArguments checks that directive application arguments match the declaration
-func (d DirectiveApplication) validateArguments(ctx context.Context, decl *DirectiveDecl, env hm.Env, fresh hm.Fresher) error {
+func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *DirectiveDecl, env hm.Env, fresh hm.Fresher) error {
 	// Create map of provided arguments
 	providedArgs := make(map[string]Node)
 	for _, arg := range d.Args {

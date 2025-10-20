@@ -26,15 +26,15 @@ func (f SlotDecl) IsDeclarer() bool {
 	return true
 }
 
-var _ Node = SlotDecl{}
-var _ Evaluator = SlotDecl{}
-var _ Hoister = SlotDecl{}
+var _ Node = (*SlotDecl)(nil)
+var _ Evaluator = (*SlotDecl)(nil)
+var _ Hoister = (*SlotDecl)(nil)
 
-func (s SlotDecl) DeclaredSymbols() []string {
+func (s *SlotDecl) DeclaredSymbols() []string {
 	return []string{s.Named} // Slot declarations declare their name
 }
 
-func (s SlotDecl) ReferencedSymbols() []string {
+func (s *SlotDecl) ReferencedSymbols() []string {
 	var symbols []string
 	if s.Value != nil {
 		symbols = append(symbols, s.Value.ReferencedSymbols()...)
@@ -48,14 +48,14 @@ func (s SlotDecl) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (s SlotDecl) Body() hm.Expression {
+func (s *SlotDecl) Body() hm.Expression {
 	// TODO(vito): return Value? unclear how Body is used
 	return s
 }
 
-func (s SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
+func (s *SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
-func (s SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	// If the slot value is a hoister, delegate
 	if funDecl, ok := s.Value.(Hoister); ok {
 		return funDecl.Hoist(ctx, env, fresh, pass)
@@ -65,7 +65,7 @@ func (s SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 	return nil
 }
 
-func (s SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		var err error
 
@@ -131,7 +131,7 @@ func (s SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
-func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, defined := env.GetLocal(s.Named)
 		if defined {

@@ -25,10 +25,10 @@ type List struct {
 	Loc      *SourceLocation
 }
 
-var _ Node = List{}
-var _ Evaluator = List{}
+var _ Node = (*List)(nil)
+var _ Evaluator = (*List)(nil)
 
-func (l List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
+func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
 		// For now, just return the original approach and document this as a known issue
 		// The real fix requires changes to how the HM library handles recursive types
@@ -55,11 +55,11 @@ func (l List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, err
 	return hm.NonNullType{Type: ListType{t}}, nil
 }
 
-func (l List) DeclaredSymbols() []string {
+func (l *List) DeclaredSymbols() []string {
 	return nil // Lists don't declare anything
 }
 
-func (l List) ReferencedSymbols() []string {
+func (l *List) ReferencedSymbols() []string {
 	var symbols []string
 
 	// Add symbols from all elements
@@ -70,11 +70,11 @@ func (l List) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (l List) Body() hm.Expression { return l }
+func (l *List) Body() hm.Expression { return l }
 
-func (l List) GetSourceLocation() *SourceLocation { return l.Loc }
+func (l *List) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (l *List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if len(l.Elements) == 0 {
 		return ListValue{Elements: []Value{}, ElemType: hm.TypeVariable('a')}, nil
 	}
@@ -102,26 +102,26 @@ type Null struct {
 	Loc *SourceLocation
 }
 
-var _ Node = Null{}
-var _ Evaluator = Null{}
+var _ Node = (*Null)(nil)
+var _ Evaluator = (*Null)(nil)
 
-func (n Null) Body() hm.Expression { return n }
+func (n *Null) Body() hm.Expression { return n }
 
-func (n Null) GetSourceLocation() *SourceLocation { return n.Loc }
+func (n *Null) GetSourceLocation() *SourceLocation { return n.Loc }
 
-func (Null) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (*Null) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return fresh.Fresh(), nil
 }
 
-func (n Null) DeclaredSymbols() []string {
+func (n *Null) DeclaredSymbols() []string {
 	return nil // Null literals don't declare anything
 }
 
-func (n Null) ReferencedSymbols() []string {
+func (n *Null) ReferencedSymbols() []string {
 	return nil // Null literals don't reference anything
 }
 
-func (n Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (n *Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return NullValue{}, nil
 }
 
@@ -132,26 +132,26 @@ type String struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = String{}
-var _ Evaluator = String{}
+var _ Node = (*String)(nil)
+var _ Evaluator = (*String)(nil)
 
-func (s String) Body() hm.Expression { return s }
+func (s *String) Body() hm.Expression { return s }
 
-func (s String) GetSourceLocation() *SourceLocation { return s.Loc }
+func (s *String) GetSourceLocation() *SourceLocation { return s.Loc }
 
-func (s String) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (s *String) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return hm.NonNullType{Type: StringType}, nil
 }
 
-func (s String) DeclaredSymbols() []string {
+func (s *String) DeclaredSymbols() []string {
 	return nil // String literals don't declare anything
 }
 
-func (s String) ReferencedSymbols() []string {
+func (s *String) ReferencedSymbols() []string {
 	return nil // String literals don't reference anything
 }
 
-func (s String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return StringValue{Val: s.Value}, nil
 }
 
@@ -169,26 +169,26 @@ type Boolean struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Boolean{}
-var _ Evaluator = Boolean{}
+var _ Node = (*Boolean)(nil)
+var _ Evaluator = (*Boolean)(nil)
 
-func (b Boolean) Body() hm.Expression { return b }
+func (b *Boolean) Body() hm.Expression { return b }
 
-func (b Boolean) GetSourceLocation() *SourceLocation { return b.Loc }
+func (b *Boolean) GetSourceLocation() *SourceLocation { return b.Loc }
 
-func (b Boolean) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (b *Boolean) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return hm.NonNullType{Type: BooleanType}, nil
 }
 
-func (b Boolean) DeclaredSymbols() []string {
+func (b *Boolean) DeclaredSymbols() []string {
 	return nil // Boolean literals don't declare anything
 }
 
-func (b Boolean) ReferencedSymbols() []string {
+func (b *Boolean) ReferencedSymbols() []string {
 	return nil // Boolean literals don't reference anything
 }
 
-func (b Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return BoolValue{Val: b.Value}, nil
 }
 
@@ -199,25 +199,25 @@ type Int struct {
 	Loc   *SourceLocation
 }
 
-var _ Node = Int{}
-var _ Evaluator = Int{}
+var _ Node = (*Int)(nil)
+var _ Evaluator = (*Int)(nil)
 
-func (i Int) Body() hm.Expression { return i }
+func (i *Int) Body() hm.Expression { return i }
 
-func (i Int) GetSourceLocation() *SourceLocation { return i.Loc }
+func (i *Int) GetSourceLocation() *SourceLocation { return i.Loc }
 
-func (i Int) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (i *Int) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return hm.NonNullType{Type: IntType}, nil
 }
 
-func (i Int) DeclaredSymbols() []string {
+func (i *Int) DeclaredSymbols() []string {
 	return nil // Int literals don't declare anything
 }
 
-func (i Int) ReferencedSymbols() []string {
+func (i *Int) ReferencedSymbols() []string {
 	return nil // Int literals don't reference anything
 }
 
-func (i Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (i *Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return IntValue{Val: int(i.Value)}, nil
 }

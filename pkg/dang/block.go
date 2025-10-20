@@ -16,14 +16,15 @@ type Block struct {
 	Loc    *SourceLocation
 }
 
-var _ hm.Expression = Block{}
-var _ Evaluator = Block{}
+var _ hm.Expression = (*Block)(nil)
+var _ Evaluator = (*Block)(nil)
+var _ Node = (*Block)(nil)
 
-func (b Block) DeclaredSymbols() []string {
+func (b *Block) DeclaredSymbols() []string {
 	return nil // Blocks don't declare symbols directly (their forms do)
 }
 
-func (b Block) ReferencedSymbols() []string {
+func (b *Block) ReferencedSymbols() []string {
 	var symbols []string
 
 	// Add symbols from all forms in the block
@@ -34,21 +35,21 @@ func (b Block) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (f Block) Body() hm.Expression { return f }
+func (f *Block) Body() hm.Expression { return f }
 
-func (f Block) GetSourceLocation() *SourceLocation { return f.Loc }
+func (f *Block) GetSourceLocation() *SourceLocation { return f.Loc }
 
 type Hoister interface {
 	Hoist(context.Context, hm.Env, hm.Fresher, int) error
 }
 
-var _ Hoister = Block{}
+var _ Hoister = (*Block)(nil)
 
 type Declarer interface {
 	IsDeclarer() bool
 }
 
-func (b Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
+func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
 	var errs []error
 	for _, form := range b.Forms {
 		if hoister, ok := form.(Hoister); ok {
@@ -495,9 +496,9 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 	return result, nil
 }
 
-var _ hm.Inferer = Block{}
+var _ hm.Inferer = (*Block)(nil)
 
-func (b Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	newEnv := env
 	if !b.Inline {
 		newEnv = env.Clone()
@@ -512,7 +513,7 @@ func (b Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 	return InferFormsWithPhases(ctx, forms, newEnv, fresh)
 }
 
-func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	forms := b.Forms
 	if len(forms) == 0 {
 		return NullValue{}, nil
