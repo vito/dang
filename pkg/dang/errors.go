@@ -32,8 +32,8 @@ func (loc *SourceLocation) IsWithin(bounds *SourceLocation) bool {
 		return false
 	}
 
-	// Check if we're in the same file
-	if loc.Filename != bounds.Filename {
+	// Check if we're in the same file (or if bounds has no filename, accept any file)
+	if bounds.Filename != "" && loc.Filename != bounds.Filename {
 		return false
 	}
 

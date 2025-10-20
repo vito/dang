@@ -40,7 +40,7 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 		cursorLoc := &dang.SourceLocation{
 			Filename: string(params.TextDocument.URI),
 			Line:     params.Position.Line + 1, // LSP is 0-based, Dang is 1-based
-			Column:   params.Position.Character,
+			Column:   params.Position.Character + 1, // LSP is 0-based, Dang is 1-based
 		}
 
 		// Find bindings that are in scope at the cursor position
