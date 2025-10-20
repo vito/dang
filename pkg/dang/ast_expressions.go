@@ -743,19 +743,24 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Return nullable element type since indexing can fail (out of bounds)
 		// or if the original list was nullable
+		var resultType hm.Type
 		if isNullable {
 			// Remove NonNull wrapper if present, since nullable list means nullable result
 			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-				return nonNullElem.Type, nil
+				resultType = nonNullElem.Type
+			} else {
+				resultType = elementType
 			}
-			return elementType, nil
 		} else {
 			// Even for non-null lists, indexing can fail, so return nullable
 			if nonNullElem, ok := elementType.(hm.NonNullType); ok {
-				return nonNullElem.Type, nil
+				resultType = nonNullElem.Type
+			} else {
+				resultType = elementType
 			}
-			return elementType, nil
 		}
+		i.SetInferredType(resultType)
+		return resultType, nil
 	})
 }
 
@@ -876,27 +881,30 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 		}
 
 		// If this is a list selection, wrap the result in a list type
+		var resultType hm.Type
 		if o.IsList {
 			listType := ListType{Type: t}
 
 			// If receiver was nullable, make result nullable too
 			if _, ok := receiverType.(hm.NonNullType); ok {
 				// Receiver was non-null, result should be non-null list
-				return hm.NonNullType{Type: listType}, nil
+				resultType = hm.NonNullType{Type: listType}
 			} else {
 				// Receiver was nullable, result should be nullable list
-				return listType, nil
+				resultType = listType
+			}
+		} else {
+			// If receiver was nullable, make result nullable too
+			if _, ok := receiverType.(hm.NonNullType); ok {
+				// Receiver was non-null, result should be non-null
+				resultType = hm.NonNullType{Type: t}
+			} else {
+				// Receiver was nullable, result should be nullable
+				resultType = t
 			}
 		}
-
-		// If receiver was nullable, make result nullable too
-		if _, ok := receiverType.(hm.NonNullType); ok {
-			// Receiver was non-null, result should be non-null
-			return hm.NonNullType{Type: t}, nil
-		} else {
-			// Receiver was nullable, result should be nullable
-			return t, nil
-		}
+		o.SetInferredType(resultType)
+		return resultType, nil
 	})
 }
 

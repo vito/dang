@@ -33,7 +33,9 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 		// For now, just return the original approach and document this as a known issue
 		// The real fix requires changes to how the HM library handles recursive types
 		tv := f.Fresh()
-		return hm.NonNullType{Type: ListType{tv}}, nil
+		t := hm.NonNullType{Type: ListType{tv}}
+		l.SetInferredType(t)
+		return t, nil
 	}
 
 	var t hm.Type
@@ -52,7 +54,9 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 			t = t.Apply(subs).(hm.Type)
 		}
 	}
-	return hm.NonNullType{Type: ListType{t}}, nil
+	listType := hm.NonNullType{Type: ListType{t}}
+	l.SetInferredType(listType)
+	return listType, nil
 }
 
 func (l *List) DeclaredSymbols() []string {
@@ -109,8 +113,10 @@ func (n *Null) Body() hm.Expression { return n }
 
 func (n *Null) GetSourceLocation() *SourceLocation { return n.Loc }
 
-func (*Null) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return fresh.Fresh(), nil
+func (n *Null) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t := fresh.Fresh()
+	n.SetInferredType(t)
+	return t, nil
 }
 
 func (n *Null) DeclaredSymbols() []string {
@@ -140,7 +146,9 @@ func (s *String) Body() hm.Expression { return s }
 func (s *String) GetSourceLocation() *SourceLocation { return s.Loc }
 
 func (s *String) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return hm.NonNullType{Type: StringType}, nil
+	t := hm.NonNullType{Type: StringType}
+	s.SetInferredType(t)
+	return t, nil
 }
 
 func (s *String) DeclaredSymbols() []string {
@@ -177,7 +185,9 @@ func (b *Boolean) Body() hm.Expression { return b }
 func (b *Boolean) GetSourceLocation() *SourceLocation { return b.Loc }
 
 func (b *Boolean) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return hm.NonNullType{Type: BooleanType}, nil
+	t := hm.NonNullType{Type: BooleanType}
+	b.SetInferredType(t)
+	return t, nil
 }
 
 func (b *Boolean) DeclaredSymbols() []string {
@@ -207,7 +217,9 @@ func (i *Int) Body() hm.Expression { return i }
 func (i *Int) GetSourceLocation() *SourceLocation { return i.Loc }
 
 func (i *Int) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return hm.NonNullType{Type: IntType}, nil
+	t := hm.NonNullType{Type: IntType}
+	i.SetInferredType(t)
+	return t, nil
 }
 
 func (i *Int) DeclaredSymbols() []string {

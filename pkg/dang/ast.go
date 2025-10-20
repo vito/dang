@@ -27,17 +27,17 @@ type Node interface {
 	GetInferredType() hm.Type
 }
 
-// InferredTypeHolder is embedded in AST nodes to support the Node interface
-// Actual type storage for LSP purposes uses InferWithTypes wrapper
-type InferredTypeHolder struct{}
+// InferredTypeHolder is embedded in AST nodes to store inferred types
+type InferredTypeHolder struct {
+	inferredType hm.Type
+}
 
 func (h *InferredTypeHolder) SetInferredType(t hm.Type) {
-	// No-op: type storage is handled externally by InferWithTypes
+	h.inferredType = t
 }
 
 func (h *InferredTypeHolder) GetInferredType() hm.Type {
-	// No-op: type retrieval is handled externally via TypeMap
-	return nil
+	return h.inferredType
 }
 
 type Pattern interface{}

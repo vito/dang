@@ -515,60 +515,8 @@ pub bar: Container! {
 Update the checkboxes below in ./current-task.md as you complete each phase:
 
 1. [x] **Phase 1**: Add type storage to AST nodes (mechanical change)
-2. [ ] **Phase 2**: Annotate types during inference (update Infer() methods)
+2. [x] **Phase 2**: Annotate types during inference (update Infer() methods)
 3. [ ] **Phase 3**: Run inference in LSP (integrate with updateFile)
 4. [ ] **Phase 4**: Find nodes at cursor (AST query utilities)
 5. [ ] **Phase 5**: Type-aware completions (enhance completion handler)
 6. [ ] **Phase 6**: Add test case (verify it works)
-
-Start with Phase 1 and work sequentially. Don't skip ahead.
-
----
-
-## IMPORTANT NOTE - Pointer Receivers Required
-
-**Phase 1 is complete**, but there's a fundamental issue discovered during Phase 2:
-
-### The Problem
-
-Most AST nodes in Dang are **value types** (e.g., `Symbol`, `FunCall`, `Select`), not pointer types. When these nodes are passed to `Infer()` methods, Go passes them by value (copies them). This means:
-
-1. `func (s Symbol) Infer(...)` receives a copy of the Symbol
-2. Calling `s.SetInferredType(t)` only sets the type on the copy
-3. The original Symbol in the AST (stored in `Block.Forms []Node`) remains unchanged
-4. **Types cannot be stored on value-type nodes**
-
-### The Solution
-
-**All AST nodes need to be converted to pointer types** before Phase 2 can proceed. This requires:
-
-1. Change all node type assertions from `Node` to `*Node` 
-2. Update all node constructors to return pointers
-3. Update all `var _ Node = Foo{}` to `var _ Node = (*Foo)(nil)`
-4. Ensure all node method receivers are pointer receivers where needed
-
-This is a large refactor that affects the entire codebase, but it's necessary for type annotation to work.
-
-### Nodes That Are Already Pointers
-
-Some nodes are already pointer types (these are fine):
-- `*Lambda`
-- `*ObjectSelection`
-- `*ClassDecl`
-- `*FunDecl`
-- `*DirectiveDecl`
-- `*ImportDecl`
-- `*Object`
-
-### Nodes That Need Conversion
-
-All other nodes need to become pointer types, including:
-- `Symbol` → `*Symbol`
-- `Select` → `*Select`
-- `FunCall` → `*FunCall`
-- `List` → `*List`
-- All operators (`Addition`, `Equality`, etc.)
-- All literals (`String`, `Int`, `Boolean`, `Null`)
-- And many more...
-
-**Action Required**: Run a separate refactoring task to convert all AST nodes to pointer types before continuing with Phase 2.
