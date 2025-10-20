@@ -16,4 +16,8 @@ pub foo(jxkqv: Int!): [Int!] {
 pub bar: Container! {
   let c = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
   let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
+  container
 }
+
+let url = "https://github.com/vito/dang"
+git(url) # test: ^Ea.he<C-x><C-o>.tr<C-x><C-o> => git(url).head.tree┃
