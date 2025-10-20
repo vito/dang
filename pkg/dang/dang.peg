@@ -143,7 +143,7 @@ IndexOrCall <- left:Term _ '[' _ index:Form _ ']' args:ArgValues? {
 ObjectSelection <- '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}' {
   return &ObjectSelection{
     Receiver: nil, // Will be set by parent SelectOrCall
-    Fields: sliceOfAppend[FieldSelection](fields, last),
+    Fields: sliceOfAppend[*FieldSelection](fields, last),
     Loc: c.Loc(),
   }, nil
 }
@@ -176,7 +176,7 @@ Class <- TypeToken _ name:Id directives:(_ app:DirectiveApplication { return app
     Named: name.(string),
     Value: block.(*Block),
     Visibility: PublicVisibility, // TODO
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -194,7 +194,7 @@ TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualTo
     Type_: type_.(TypeNode),
     Value: value.(Node),
     Visibility: vis.(Visibility),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -204,7 +204,7 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form directives:(_ 
     Named: name.(string),
     Value: val.(Node),
     Visibility: vis.(Visibility),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -214,7 +214,7 @@ TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type directives:(_
     Named: name.(string),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -234,7 +234,7 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -254,7 +254,7 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
@@ -297,7 +297,7 @@ ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplic
   return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Value: value.(Node),
     Loc: c.Loc(),
   }, nil
@@ -306,7 +306,7 @@ ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveA
   return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Value: block.(*Block),
     Loc: c.Loc(),
   }, nil
@@ -315,7 +315,7 @@ ArgWithType <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplicati
   return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
-    Directives: sliceOf[DirectiveApplication](directives),
+    Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }

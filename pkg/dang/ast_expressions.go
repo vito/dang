@@ -844,7 +844,7 @@ func (f *FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
 type ObjectSelection struct {
 	InferredTypeHolder
 	Receiver Node
-	Fields   []FieldSelection
+	Fields   []*FieldSelection
 	Loc      *SourceLocation
 
 	Inferred *Module
@@ -958,7 +958,7 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 	return mod, nil
 }
 
-func (o *ObjectSelection) inferFieldType(ctx context.Context, field FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var fieldType hm.Type
 	var err error
 
@@ -1145,7 +1145,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field)
 }
 
-func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, baseQuery *querybuilder.Selection, fields []FieldSelection) (*querybuilder.Selection, error) {
+func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
 	// Start with the base query (which contains the context like "serverInfo")
 	builder := baseQuery
 	if builder == nil {
@@ -1219,7 +1219,7 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, ba
 	return builder, nil
 }
 
-func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []FieldSelection, schema *introspection.Schema, parentField *introspection.Field) (Value, error) {
+func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field) (Value, error) {
 	// Check if the result is a list/slice
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value

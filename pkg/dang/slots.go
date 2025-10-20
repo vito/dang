@@ -13,7 +13,7 @@ type SlotDecl struct {
 	Type_      TypeNode
 	Value      Node
 	Visibility Visibility
-	Directives []DirectiveApplication
+	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
 }
@@ -166,7 +166,7 @@ type ClassDecl struct {
 	Named      string
 	Value      *Block
 	Visibility Visibility
-	Directives []DirectiveApplication
+	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
 
