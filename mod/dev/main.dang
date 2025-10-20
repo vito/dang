@@ -30,7 +30,7 @@ type Dev {
       withWorkdir("/workspace").
       withDefaultArgs(["gopls", "mcp"])
 
-    doug.agent(
+    let agent = doug.agent(
       llm.
         withEnv(
           env.
@@ -51,6 +51,12 @@ type Dev {
           """
         )
     )
+
+    if source.exists("current-task.md") {
+      agent = agent.withSystemPrompt(source.file("current-task.md").contents)
+    }
+
+    agent
   }
 
   """
