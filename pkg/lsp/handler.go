@@ -42,6 +42,7 @@ type File struct {
 	Diagnostics     []Diagnostic
 	Symbols         *SymbolTable
 	LexicalAnalyzer *LexicalAnalyzer
+	AST             *dang.Block // Parsed and type-annotated AST
 }
 
 // SymbolTable tracks symbol definitions and references in a file
@@ -160,6 +161,7 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			References:  make(map[string]*SymbolRef),
 		}
 		f.LexicalAnalyzer = NewLexicalAnalyzer()
+		f.AST = nil
 	} else {
 		// The parser returns a Block
 		block, ok := parsed.(*dang.Block)
@@ -170,10 +172,26 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				References:  make(map[string]*SymbolRef),
 			}
 			f.LexicalAnalyzer = NewLexicalAnalyzer()
+			f.AST = nil
 		} else {
+			// Store the AST
+			f.AST = block
+
 			// Build symbol table and lexical analyzer from the AST
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 			f.LexicalAnalyzer = h.buildLexicalAnalyzer(uri, block.Forms)
+
+			// Run type inference to annotate AST with types
+			if h.schema != nil {
+				typeEnv := dang.NewEnv(h.schema)
+				// TODO: need to make Infer not error out so early?
+				// also, how can we speed up inference, i.e. not on every keystroke?
+				_, err := dang.Infer(ctx, typeEnv, block, true) // true = run hoisting
+				if err != nil {
+					// Log the error but don't fail - we still want completions to work
+					slog.WarnContext(ctx, "type inference failed for LSP", "error", err)
+				}
+			}
 		}
 	}
 

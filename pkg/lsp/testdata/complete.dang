@@ -1,13 +1,18 @@
 # local bindings
 let hello = 42
 
-[] # test: ahel<C-x><C-o> => [hello┃]
+hel # test: ^ea<C-x><C-o> => hello┃
 
 # global functions (from Query type)
-[] # test: adir<C-x><C-o> => [directory┃]
-[] # test: acont<C-x><C-o> => [container┃]
+dir # test: ^ea<C-x><C-o> => directory┃
+cont # test: ^ea<C-x><C-o> => container┃
 
 # lexical bindings
 pub foo(jxkqv: Int!): [Int!] {
   [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
+}
+
+# type-aware completions
+pub bar: Container! {
+  let c = container # test: ^EEEEa.fr<C-x><C-o> => [c.from┃]
 }

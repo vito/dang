@@ -516,7 +516,9 @@ Update the checkboxes below in ./current-task.md as you complete each phase:
 
 1. [x] **Phase 1**: Add type storage to AST nodes (mechanical change)
 2. [x] **Phase 2**: Annotate types during inference (update Infer() methods)
-3. [ ] **Phase 3**: Run inference in LSP (integrate with updateFile)
-4. [ ] **Phase 4**: Find nodes at cursor (AST query utilities)
-5. [ ] **Phase 5**: Type-aware completions (enhance completion handler)
+3. [x] **Phase 3**: Run inference in LSP (integrate with updateFile)
+4. [x] **Phase 4**: Find nodes at cursor (AST query utilities)
+5. [x] **Phase 5**: Type-aware completions (enhance completion handler)
 6. [ ] **Phase 6**: Add test case (verify it works)
+
+A test has been added, but it doesn't work yet - the journey continues. See TestLsp(Completion) for details.
