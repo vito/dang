@@ -8,6 +8,7 @@ import (
 )
 
 type SlotDecl struct {
+	InferredTypeHolder
 	Named      string
 	Type_      TypeNode
 	Value      Node
@@ -161,6 +162,7 @@ func (s SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type ClassDecl struct {
+	InferredTypeHolder
 	Named      string
 	Value      Block
 	Visibility Visibility

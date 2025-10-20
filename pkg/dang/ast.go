@@ -19,6 +19,25 @@ type Node interface {
 
 	// ReferencedSymbols returns the symbols that this node references (depends on)
 	ReferencedSymbols() []string
+
+	// SetInferredType stores the inferred type for this node
+	SetInferredType(hm.Type)
+
+	// GetInferredType retrieves the inferred type for this node
+	GetInferredType() hm.Type
+}
+
+// InferredTypeHolder is embedded in AST nodes to support the Node interface
+// Actual type storage for LSP purposes uses InferWithTypes wrapper
+type InferredTypeHolder struct{}
+
+func (h *InferredTypeHolder) SetInferredType(t hm.Type) {
+	// No-op: type storage is handled externally by InferWithTypes
+}
+
+func (h *InferredTypeHolder) GetInferredType() hm.Type {
+	// No-op: type retrieval is handled externally via TypeMap
+	return nil
 }
 
 type Pattern interface{}
@@ -170,6 +189,7 @@ func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receive
 
 // ValueNode is a simple node that evaluates to a given value
 type ValueNode struct {
+	InferredTypeHolder
 	Val Value
 	Loc *SourceLocation
 }

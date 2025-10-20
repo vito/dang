@@ -12,6 +12,7 @@ import (
 )
 
 type FunctionBase struct {
+	InferredTypeHolder
 	Args []SlotDecl
 	Body Node
 	Loc  *SourceLocation
@@ -157,6 +158,7 @@ func (f *FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type FunDecl struct {
+	InferredTypeHolder
 	FunctionBase
 	Named      string
 	Ret        TypeNode
@@ -229,6 +231,7 @@ func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 }
 
 type Reassignment struct {
+	InferredTypeHolder
 	Target   Node   // Left-hand side expression (Symbol, Select, etc.)
 	Modifier string // "=" or "+=" etc.
 	Value    Node   // Right-hand side expression
@@ -478,6 +481,7 @@ func (r Reassignment) createValueNode(value Value) Node {
 }
 
 type Reopen struct {
+	InferredTypeHolder
 	Name  string
 	Block Block
 	Loc   *SourceLocation
@@ -567,6 +571,7 @@ func (r Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Assert struct {
+	InferredTypeHolder
 	Message Node  // Optional message expression
 	Block   Block // Block containing the assertion expression
 	Loc     *SourceLocation
@@ -673,6 +678,7 @@ func (a Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Node
 }
 
 type ChildNode struct {
+	InferredTypeHolder
 	Name string
 	Node Node
 }
@@ -794,11 +800,13 @@ func (a Assert) nodeToString(node Node) string {
 
 // DirectiveLocation represents a valid location where a directive can be applied
 type DirectiveLocation struct {
+	InferredTypeHolder
 	Name string
 }
 
 // DirectiveDecl represents a directive declaration
 type DirectiveDecl struct {
+	InferredTypeHolder
 	Name      string
 	Args      []SlotDecl
 	Locations []DirectiveLocation
@@ -874,6 +882,7 @@ func (d *DirectiveDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // DirectiveApplication represents the application of a directive
 type DirectiveApplication struct {
+	InferredTypeHolder
 	Name string
 	Args []Keyed[Node]
 	Loc  *SourceLocation
@@ -994,6 +1003,7 @@ func (d DirectiveApplication) validateArguments(ctx context.Context, decl *Direc
 
 // ImportDecl represents a GraphQL schema import statement
 type ImportDecl struct {
+	InferredTypeHolder
 	Source string  // The source identifier (e.g., "api.github.com", "dagger")
 	Alias  *string // Optional alias (e.g., "GH")
 	Loc    *SourceLocation

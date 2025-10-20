@@ -9,6 +9,7 @@ import (
 )
 
 type Block struct {
+	InferredTypeHolder
 	Forms []Node
 	// Evaluate forms in the current scope, not a nested one.
 	Inline bool
@@ -527,6 +528,7 @@ func (b Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Object struct {
+	InferredTypeHolder
 	Slots []SlotDecl
 	Loc   *SourceLocation
 

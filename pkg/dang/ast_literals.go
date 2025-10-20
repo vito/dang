@@ -20,6 +20,7 @@ var (
 
 // List represents a list literal
 type List struct {
+	InferredTypeHolder
 	Elements []Node
 	Loc      *SourceLocation
 }
@@ -97,6 +98,7 @@ func (l List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Null represents a null literal
 type Null struct {
+	InferredTypeHolder
 	Loc *SourceLocation
 }
 
@@ -125,6 +127,7 @@ func (n Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // String represents a string literal
 type String struct {
+	InferredTypeHolder
 	Value string
 	Loc   *SourceLocation
 }
@@ -154,12 +157,14 @@ func (s String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Quoted represents a quoted string literal
 type Quoted struct {
+	InferredTypeHolder
 	Quoter string
 	Raw    string
 }
 
 // Boolean represents a boolean literal
 type Boolean struct {
+	InferredTypeHolder
 	Value bool
 	Loc   *SourceLocation
 }
@@ -189,6 +194,7 @@ func (b Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Int represents an integer literal
 type Int struct {
+	InferredTypeHolder
 	Value int64
 	Loc   *SourceLocation
 }

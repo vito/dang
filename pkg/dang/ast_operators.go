@@ -20,6 +20,7 @@ type BinaryOperatorEvaluator func(leftVal, rightVal Value) (Value, error)
 
 // BinaryOperator provides common functionality for binary operators
 type BinaryOperator struct {
+	InferredTypeHolder
 	Left     Node
 	Right    Node
 	Loc      *SourceLocation
@@ -212,6 +213,7 @@ func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
 }
 
 type Default struct {
+	InferredTypeHolder
 	Left  Node
 	Right Node
 	Loc   *SourceLocation
@@ -279,6 +281,7 @@ func (d Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 type Equality struct {
+	InferredTypeHolder
 	Left  Node
 	Right Node
 	Loc   *SourceLocation
@@ -538,6 +541,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) GreaterThanEqual
 }
 
 type UnaryNegation struct {
+	InferredTypeHolder
 	Expr Node
 	Loc  *SourceLocation
 }

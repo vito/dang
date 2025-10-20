@@ -9,6 +9,7 @@ import (
 
 // Match represents a pattern matching expression
 type Match struct {
+	InferredTypeHolder
 	Expr  Node
 	Cases []MatchCase
 	Loc   *SourceLocation
@@ -74,6 +75,7 @@ func (m Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 // MatchCase represents a single case in a match expression
 type MatchCase struct {
+	InferredTypeHolder
 	Pattern Pattern
 	Expr    Node
 }
@@ -83,16 +85,19 @@ type WildcardPattern struct{}
 
 // LiteralPattern represents a literal value pattern
 type LiteralPattern struct {
+	InferredTypeHolder
 	Value Node
 }
 
 // ConstructorPattern represents a constructor pattern with arguments
 type ConstructorPattern struct {
+	InferredTypeHolder
 	Name string
 	Args []Pattern
 }
 
 // VariablePattern represents a variable binding pattern
 type VariablePattern struct {
+	InferredTypeHolder
 	Name string
 }

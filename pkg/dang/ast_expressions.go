@@ -12,6 +12,7 @@ import (
 
 // FunCall represents a function call expression
 type FunCall struct {
+	InferredTypeHolder
 	Fun  Node
 	Args Record
 	Loc  *SourceLocation
@@ -51,7 +52,12 @@ func (c FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 		switch ft := fun.(type) {
 		case *hm.FunctionType:
-			return c.inferFunctionType(ctx, env, fresh, ft)
+			t, err := c.inferFunctionType(ctx, env, fresh, ft)
+			if err != nil {
+				return nil, err
+			}
+			c.SetInferredType(t)
+			return t, nil
 		default:
 			return nil, fmt.Errorf("FunCall.Infer: expected function, got %s (%T)", fun, fun)
 		}
@@ -449,6 +455,7 @@ func (c FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 
 // Symbol represents a symbol/variable reference
 type Symbol struct {
+	InferredTypeHolder
 	Name     string
 	AutoCall bool
 	Loc      *SourceLocation
@@ -467,6 +474,7 @@ func (s Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		if s.AutoCall {
 			t, _ = autoCallFnType(t)
 		}
+		s.SetInferredType(t)
 		return t, nil
 	})
 }
@@ -505,6 +513,7 @@ func (s Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Select represents field selection or method call
 type Select struct {
+	InferredTypeHolder
 	Receiver Node
 	Field    string
 	AutoCall bool
@@ -523,6 +532,7 @@ func (d Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 				return nil, fmt.Errorf("%q not found in env", d.Field)
 			}
 			t, _ := scheme.Type()
+			d.SetInferredType(t)
 			return t, nil
 		}
 
@@ -568,12 +578,15 @@ func (d Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		if isNullable {
 			// Remove any existing NonNullType wrapper from the field type
 			if nnType, ok := t.(hm.NonNullType); ok {
+				d.SetInferredType(nnType.Type)
 				return nnType.Type, nil
 			}
 			// Field type is already nullable, return as-is
+			d.SetInferredType(t)
 			return t, nil
 		}
 
+		d.SetInferredType(t)
 		return t, nil
 	})
 }
@@ -670,6 +683,7 @@ func (d Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Index represents list indexing operations like foo[0]
 type Index struct {
+	InferredTypeHolder
 	Receiver Node
 	Index    Node
 	AutoCall bool
@@ -812,6 +826,7 @@ func (i Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
+	InferredTypeHolder
 	Name      string
 	Args      Record           // For arguments like repositories(first: 100)
 	Selection *ObjectSelection // For nested selections like profile.{bio, avatar}
@@ -822,6 +837,7 @@ func (f FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
 
 // ObjectSelection represents multi-field selection like obj.{field1, field2}
 type ObjectSelection struct {
+	InferredTypeHolder
 	Receiver Node
 	Fields   []FieldSelection
 	Loc      *SourceLocation
@@ -1307,6 +1323,7 @@ func (o *ObjectSelection) unwrapType(typeRef *introspection.TypeRef) *introspect
 
 // Conditional represents an if-then-else expression
 type Conditional struct {
+	InferredTypeHolder
 	Condition Node
 	Then      Block
 	Else      any
@@ -1315,6 +1332,7 @@ type Conditional struct {
 
 // While represents a while loop expression
 type While struct {
+	InferredTypeHolder
 	Condition Node
 	BodyBlock Block
 	Loc       *SourceLocation
@@ -1488,6 +1506,7 @@ func (w While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // ForLoop represents a for..in loop expression
 type ForLoop struct {
+	InferredTypeHolder
 	Variable      string   // Loop variable name (for single-variable iteration)
 	KeyVariable   string   // Key/Index variable name (for two-variable iteration)
 	ValueVariable string   // Value variable name (for two-variable iteration)
@@ -1668,6 +1687,7 @@ func (f ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Let represents a let binding expression
 type Let struct {
+	InferredTypeHolder
 	Name  string
 	Value Node
 	Expr  Node
@@ -1722,6 +1742,7 @@ func (l Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // TypeHint represents a type hint expression using :: syntax
 type TypeHint struct {
+	InferredTypeHolder
 	Expr Node
 	Type TypeNode
 	Loc  *SourceLocation
@@ -1802,6 +1823,7 @@ func (t TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // Lambda represents a lambda function expression
 type Lambda struct {
+	InferredTypeHolder
 	FunctionBase
 }
 
