@@ -29,7 +29,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
   case *ClassDecl:
     node.DocString = docstring.(string)
     return node, nil
-  case SlotDecl:
+  case *SlotDecl:
     node.DocString = docstring.(string)
     return node, nil
   case *DirectiveDecl:
@@ -92,8 +92,8 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
     if args != nil {
       // Select followed by () - create FunCall
       argRecord := Record(args.([]Keyed[Node]))
-      return FunCall{
-        Fun: Select{
+      return &FunCall{
+        Fun: &Select{
           Receiver: left.(Node),
           Field:    name,
           Loc:      c.Loc(),
@@ -103,7 +103,7 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
       }, nil
     } else {
       // Just a Select
-      return Select{
+      return &Select{
         Receiver: left.(Node),
         Field:    name,
         AutoCall: true,
@@ -120,8 +120,8 @@ IndexOrCall <- left:Term _ '[' _ index:Form _ ']' args:ArgValues? {
   if args != nil {
     // Index followed by () - create FunCall
     argRecord := Record(args.([]Keyed[Node]))
-    return FunCall{
-      Fun: Index{
+    return &FunCall{
+      Fun: &Index{
         Receiver: left.(Node),
         Index:    index.(Node),
         Loc:      c.Loc(),
@@ -131,7 +131,7 @@ IndexOrCall <- left:Term _ '[' _ index:Form _ ']' args:ArgValues? {
     }, nil
   } else {
     // Just an Index
-    return Index{
+    return &Index{
       Receiver: left.(Node),
       Index:    index.(Node),
       AutoCall: true,
@@ -155,14 +155,14 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   }
 
   if selection != nil {
-    return FieldSelection{
+    return &FieldSelection{
       Name: name.(string),
       Args: argRecord,
       Selection: selection.([]interface{})[1].(*ObjectSelection),
       Loc: c.Loc(),
     }, nil
   } else {
-    return FieldSelection{
+    return &FieldSelection{
       Name: name.(string),
       Args: argRecord,
       Selection: nil,
@@ -174,7 +174,7 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
 Class <- TypeToken _ name:Id directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
   return &ClassDecl{
     Named: name.(string),
-    Value: block.(Block),
+    Value: block.(*Block),
     Visibility: PublicVisibility, // TODO
     Directives: sliceOf[DirectiveApplication](directives),
     Loc: c.Loc(),
@@ -189,7 +189,7 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
 TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form directives:(_ app:DirectiveApplication { return app, nil })* {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Value: value.(Node),
@@ -200,7 +200,7 @@ TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualTo
 }
 
 ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form directives:(_ app:DirectiveApplication { return app, nil })* {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Value: val.(Node),
     Visibility: vis.(Visibility),
@@ -210,7 +210,7 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form directives:(_ 
 }
 
 TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
@@ -220,13 +220,13 @@ TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type directives:(_
 }
 
 TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
     Value: &FunDecl{
       FunctionBase: FunctionBase{
         Args: nil,
-        Body: block.(Block),
+        Body: block.(*Block),
         Loc: c.Loc(),
       },
       Named: name.(string),
@@ -240,13 +240,13 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
 }
 
 TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
-    Type_: FunTypeNode{args.([]SlotDecl), type_.(TypeNode)},
+    Type_: FunTypeNode{args.([]*SlotDecl), type_.(TypeNode)},
     Value: &FunDecl{
       FunctionBase: FunctionBase{
-        Args: args.([]SlotDecl),
-        Body: block.(Block),
+        Args: args.([]*SlotDecl),
+        Body: block.(*Block),
         Loc: c.Loc(),
       },
       Named: name.(string),
@@ -278,11 +278,11 @@ ArgValues <- '(' _ args:(a:Argument Sep { return a, nil })* last:Argument? _ ')'
   return sliceOfAppend[Keyed[Node]](args, last), nil
 }
 ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
-  return sliceOfAppend[SlotDecl](args, last), nil
+  return sliceOfAppend[*SlotDecl](args, last), nil
 }
 ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
-  slotDecl := slot.(SlotDecl)
-  return SlotDecl{
+  slotDecl := slot.(*SlotDecl)
+  return &SlotDecl{
     Named: slotDecl.Named,
     Type_: slotDecl.Type_,
     Value: slotDecl.Value,
@@ -291,10 +291,10 @@ ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / Ar
     Loc: slotDecl.Loc,
   }, nil
 } / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
-  return slot.(SlotDecl), nil
+  return slot.(*SlotDecl), nil
 }
 ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Directives: sliceOf[DirectiveApplication](directives),
@@ -303,16 +303,16 @@ ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplic
   }, nil
 }
 ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ block:Block {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Directives: sliceOf[DirectiveApplication](directives),
-    Value: block.(Block),
+    Value: block.(*Block),
     Loc: c.Loc(),
   }, nil
 }
 ArgWithType <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Type_: type_.(TypeNode),
     Directives: sliceOf[DirectiveApplication](directives),
@@ -360,7 +360,7 @@ BangToken <- '!'
 
 // Precedence levels from lowest to highest
 DefaultExpr <- left:(EqualityExpr / Term) _ InterroToken _ right:(DefaultExpr / Term) {
-  return Default{
+  return &Default{
     Left: left.(Node),
     Right: right.(Node),
     Loc: c.Loc(),
@@ -370,7 +370,7 @@ DefaultExpr <- left:(EqualityExpr / Term) _ InterroToken _ right:(DefaultExpr / 
 EqualityExpr <- left:(EqualityExpr / Term) _ op:EqualityOp _ right:(RelationalExpr / Term) {
   switch op.(string) {
   case "==":
-    return Equality{
+    return &Equality{
       Left: left.(Node),
       Right: right.(Node),
       Loc: c.Loc(),
@@ -435,16 +435,16 @@ ReopenToken <- "<<"
 DotToken <- '.'
 
 List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
-  return List{
+  return &List{
     Elements: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
   }, nil
 }
 
 Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {
-  var slots []SlotDecl
+  var slots []*SlotDecl
   for _, kv := range sliceOfAppend[Keyed[Node]](vals, last) {
-    slots = append(slots, SlotDecl{
+    slots = append(slots, &SlotDecl{
       Named: kv.Key,
       Value: kv.Value,
       Loc: kv.Value.GetSourceLocation(),
@@ -457,7 +457,7 @@ Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" 
 }
 
 Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
-  return Block{
+  return &Block{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
   }, nil
@@ -472,7 +472,7 @@ Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   if err != nil {
     return nil, err
   }
-  return Int{
+  return &Int{
     Value: value,
     Loc: c.Loc(),
   }, nil
@@ -485,12 +485,12 @@ DecimalDigit <- [0-9]
 Exponent <- 'e'i [+-]? DecimalDigit+
 
 TripleQuoteString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
-  return String{
+  return &String{
     Value: normalizeTripleQuoteString(content.([]byte)),
     Loc: c.Loc(),
   }, nil
 } / TripleQuote TripleQuote {
-  return String{
+  return &String{
     Value: "",
     Loc: c.Loc(),
   }, nil
@@ -509,7 +509,7 @@ String <- '"' ( ImmediateStringContent / ImmediateEscape )* ImmediateQuoteToken 
   if err != nil {
     return nil, err
   }
-  return String{
+  return &String{
     Value: value,
     Loc: c.Loc(),
   }, nil
@@ -532,9 +532,9 @@ DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
 }
 
 Quoted <- '%' quoter:WordToken '{' raw:QuotedRawToken '}' {
-  return Quoted{
-    quoter.(string),
-    raw.(string),
+  return &Quoted{
+    Quoter: quoter.(string),
+    Raw:    raw.(string),
   }, nil
 }
 QuotedRawToken <- [^}]* {
@@ -542,12 +542,12 @@ QuotedRawToken <- [^}]* {
 }
 
 Boolean <- TrueToken {
-  return Boolean{
+  return &Boolean{
     Value: true,
     Loc: c.Loc(),
   }, nil
 } / FalseToken {
-  return Boolean{
+  return &Boolean{
     Value: false,
     Loc: c.Loc(),
   }, nil
@@ -556,7 +556,7 @@ TrueToken <- "true" !WordChar
 FalseToken <- "false" !WordChar
 
 Null <- NullToken {
-  return Null{
+  return &Null{
     Loc: c.Loc(),
   }, nil
 }
@@ -567,22 +567,22 @@ CommentToken <- '#' [^\n]*
 // Additional language constructs
 
 Conditional <- IfToken _ cond:Form _ block:Block else_:ElseClause? {
-  return Conditional{
+  return &Conditional{
     Condition: cond.(Node),
-    Then: block.(Block),
+    Then: block.(*Block),
     Else: else_,
     Loc: c.Loc(),
   }, nil
 }
 
 ElseClause <- _ ElseToken _ block:Block {
-  return block.(Block), nil
+  return block.(*Block), nil
 }
 
 While <- WhileToken _ cond:Form _ block:Block {
-  return While{
+  return &While{
     Condition: cond.(Node),
-    BodyBlock: block.(Block),
+    BodyBlock: block.(*Block),
     Loc: c.Loc(),
   }, nil
 }
@@ -598,21 +598,21 @@ ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type
   if typeAnnotation != nil {
     varType = typeAnnotation.([]interface{})[2].(TypeNode)
   }
-  return ForLoop{
+  return &ForLoop{
     Variable: variable.(string),
     Type: varType,
     Iterable: iterable.(Node),
-    LoopBody: body.(Block),
+    LoopBody: body.(*Block),
     Loc: c.Loc(),
   }, nil
 }
 
 ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:Form _ body:Block {
-  return ForLoop{
+  return &ForLoop{
     KeyVariable: key.(string),
     ValueVariable: value.(string),
     Iterable: iterable.(Node),
-    LoopBody: body.(Block),
+    LoopBody: body.(*Block),
     Loc: c.Loc(),
   }, nil
 }
@@ -623,7 +623,7 @@ InToken <- "in" !WordChar
 Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
   return &Lambda{
     FunctionBase: FunctionBase{
-      Args: args.([]SlotDecl),
+      Args: args.([]*SlotDecl),
       Body: expr.(Node),
       Loc: c.Loc(),
     },
@@ -633,22 +633,22 @@ LambdaToken <- '\\'
 ArrowToken <- "->"
 
 LambdaArgs <- '(' _ args:(a:LambdaArg Sep { return a, nil })* last:LambdaArg? _ ')' {
-  return sliceOfAppend[SlotDecl](args, last), nil
+  return sliceOfAppend[*SlotDecl](args, last), nil
 } / arg:LambdaArg {
-  return []SlotDecl{arg.(SlotDecl)}, nil
+  return []*SlotDecl{arg.(*SlotDecl)}, nil
 }
 
 LambdaArg <- ArgWithDefault / ArgWithBlockDefault / ArgWithType / ArgWithoutType
 
 ArgWithoutType <- name:Id {
-  return SlotDecl{
+  return &SlotDecl{
     Named: name.(string),
     Loc: c.Loc(),
   }, nil
 }
 
 Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
-  return Match{
+  return &Match{
     Expr: expr.(Node),
     Cases: sliceOfAppend[MatchCase](cs, last),
   }, nil
@@ -698,9 +698,9 @@ Assert <- AssertToken message:MessageArgs? _ block:Block {
   if message != nil {
     msg = message.(Node)
   }
-  return Assert{
+  return &Assert{
     Message: msg,
-    Block: block.(Block),
+    Block: block.(*Block),
     Loc: c.Loc(),
   }, nil
 }
@@ -712,7 +712,7 @@ MessageArgs <- '(' _ msg:Form _ ')' {
 AssertToken <- "assert" !WordChar
 
 Reassignment <- target:Term _ op:AssignOp _ value:Form {
-  return Reassignment{
+  return &Reassignment{
     Target: target.(Node),
     Modifier: op.(string),
     Value: value.(Node),
@@ -725,7 +725,7 @@ PlusEqualToken <- "+="
 EqualToken <- '='
 
 TypeHint <- expr:Term _ DoubleColonToken _ type_:Type {
-  return TypeHint{
+  return &TypeHint{
     Expr: expr.(Node),
     Type: type_.(TypeNode),
     Loc: c.Loc(),
@@ -735,17 +735,17 @@ TypeHint <- expr:Term _ DoubleColonToken _ type_:Type {
 DoubleColonToken <- "::"
 
 Reopen <- name:Id _ ReopenToken _ b:Block {
-  return Reopen{
+  return &Reopen{
     Name: name.(string),
-    Block: b.(Block),
+    Block: b.(*Block),
     Loc: c.Loc(),
   }, nil
 }
 
 DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken _ locations:DirectiveLocations {
-  var argTypes []SlotDecl
+  var argTypes []*SlotDecl
   if args != nil {
-    argTypes = args.([]SlotDecl)
+    argTypes = args.([]*SlotDecl)
   }
   return &DirectiveDecl{
     Name: name.(string),
@@ -760,7 +760,7 @@ DirectiveApplication <- '@' name:Id args:ArgValues? {
   if args != nil {
     argValues = args.([]Keyed[Node])
   }
-  return DirectiveApplication{
+  return &DirectiveApplication{
     Name: name.(string),
     Args: argValues,
     Loc: c.Loc(),

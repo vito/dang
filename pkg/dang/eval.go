@@ -643,7 +643,7 @@ type FunctionValue struct {
 	Closure  EvalEnv
 	FnType   *hm.FunctionType
 	Defaults map[string]Node // Map of argument name to default value expression
-	ArgDecls []SlotDecl      // Original argument declarations with directives
+	ArgDecls []*SlotDecl     // Original argument declarations with directives
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -871,7 +871,7 @@ func (b BuiltinFunction) String() string {
 type ConstructorFunction struct {
 	Closure        EvalEnv
 	ClassName      string
-	Parameters     []SlotDecl
+	Parameters     []*SlotDecl
 	ClassType      *Module
 	FnType         *hm.FunctionType
 	ClassBodyForms []Node // Only the forms that should be evaluated (excluding constructor params)
@@ -936,7 +936,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 		return err
 	}
 
-	node := parsed.(Block)
+	node := parsed.(*Block)
 
 	if debug {
 		pretty.Println(node)
@@ -1013,7 +1013,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	// Create a master block containing all forms from all files
 	// The phased approach will handle dependency ordering
-	masterBlock := Block{
+	masterBlock := &Block{
 		Forms:  allForms,
 		Inline: true,
 	}
@@ -1087,13 +1087,13 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 
 	// Fallback for nodes that don't implement Evaluator directly
 	switch n := node.(type) {
-	case String:
+	case *String:
 		return StringValue{Val: n.Value}, nil
-	case Int:
+	case *Int:
 		return IntValue{Val: int(n.Value)}, nil
-	case Boolean:
+	case *Boolean:
 		return BoolValue{Val: n.Value}, nil
-	case Null:
+	case *Null:
 		return NullValue{}, nil
 	default:
 		err := fmt.Errorf("evaluation not implemented for node type %T", node)

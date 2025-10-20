@@ -204,7 +204,7 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Directives = append(classified.Directives, f)
 		case *ClassDecl:
 			classified.Types = append(classified.Types, f)
-		case SlotDecl:
+		case *SlotDecl:
 			if isConstantValue(f.Value) {
 				classified.Constants = append(classified.Constants, f)
 			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
@@ -414,7 +414,7 @@ func isConstantValue(value Node) bool {
 	}
 
 	switch value.(type) {
-	case String, Int, Boolean, Null:
+	case *String, *Int, *Boolean, *Null:
 		return true
 	default:
 		return false
@@ -506,7 +506,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 	forms := b.Forms
 	if len(forms) == 0 {
-		forms = append(forms, Null{})
+		forms = append(forms, &Null{})
 	}
 
 	// Use phased inference approach for proper dependency handling
@@ -530,7 +530,7 @@ func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 type Object struct {
 	InferredTypeHolder
-	Slots []SlotDecl
+	Slots []*SlotDecl
 	Loc   *SourceLocation
 
 	// Filled in during inference phase

@@ -235,12 +235,12 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 // collectNestedSymbols recursively collects symbols from nested structures
 func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *SymbolTable) {
 	switch n := node.(type) {
-	case dang.Block:
+	case *dang.Block:
 		h.collectSymbols(uri, n.Forms, st)
 	case *dang.ClassDecl:
 		// Collect symbols from class body
 		h.collectSymbols(uri, n.Value.Forms, st)
-	case dang.SlotDecl:
+	case *dang.SlotDecl:
 		// If the slot value is a block or lambda, collect from it
 		if n.Value != nil {
 			h.collectNestedSymbols(uri, n.Value, st)
@@ -256,9 +256,9 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	switch node.(type) {
 	case *dang.ClassDecl:
 		return ClassCompletion
-	case dang.SlotDecl:
+	case *dang.SlotDecl:
 		// Check if the slot value is a function/lambda
-		if slot, ok := node.(dang.SlotDecl); ok {
+		if slot, ok := node.(*dang.SlotDecl); ok {
 			if _, isLambda := slot.Value.(*dang.Lambda); isLambda {
 				return FunctionCompletion
 			}

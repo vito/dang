@@ -127,9 +127,9 @@ func NewEnv(schema *introspection.Schema) Env {
 	env := &CompositeModule{mod, Prelude}
 
 	for _, t := range schema.Directives {
-		var args []SlotDecl
+		var args []*SlotDecl
 		for _, arg := range t.Args {
-			args = append(args, SlotDecl{
+			args = append(args, &SlotDecl{
 				Named: arg.Name,
 				Type_: introspectionTypeRefToTypeNode(arg.TypeRef),
 			})

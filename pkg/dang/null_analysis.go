@@ -18,12 +18,12 @@ func AnalyzeNullAssertions(condition Node) []NullAssertion {
 	var assertions []NullAssertion
 
 	switch cond := condition.(type) {
-	case Equality:
+	case *Equality:
 		// Check for patterns like "x == null" or "null == x"
 		if assertion := analyzeEqualityForNull(cond, false); assertion != nil {
 			assertions = append(assertions, *assertion)
 		}
-	case Inequality:
+	case *Inequality:
 		// Check for patterns like "x != null" or "null != x"
 		if assertion := analyzeInequalityForNull(cond, true); assertion != nil {
 			assertions = append(assertions, *assertion)
@@ -35,7 +35,7 @@ func AnalyzeNullAssertions(condition Node) []NullAssertion {
 }
 
 // analyzeEqualityForNull checks if an equality expression is a null check
-func analyzeEqualityForNull(eq Equality, isNonNull bool) *NullAssertion {
+func analyzeEqualityForNull(eq *Equality, isNonNull bool) *NullAssertion {
 	// Check "symbol == null"
 	if symbol := extractSymbolName(eq.Left); symbol != "" && isNullLiteral(eq.Right) {
 		return &NullAssertion{
@@ -58,7 +58,7 @@ func analyzeEqualityForNull(eq Equality, isNonNull bool) *NullAssertion {
 }
 
 // analyzeInequalityForNull checks if an inequality expression is a null check
-func analyzeInequalityForNull(ineq Inequality, isNonNull bool) *NullAssertion {
+func analyzeInequalityForNull(ineq *Inequality, isNonNull bool) *NullAssertion {
 	// Check "symbol != null"
 	if symbol := extractSymbolName(ineq.Left); symbol != "" && isNullLiteral(ineq.Right) {
 		return &NullAssertion{
@@ -82,7 +82,7 @@ func analyzeInequalityForNull(ineq Inequality, isNonNull bool) *NullAssertion {
 
 // extractSymbolName extracts the symbol name from a node if it's a simple symbol reference
 func extractSymbolName(node Node) string {
-	if symbol, ok := node.(Symbol); ok {
+	if symbol, ok := node.(*Symbol); ok {
 		return symbol.Name
 	}
 	return ""
@@ -90,7 +90,7 @@ func extractSymbolName(node Node) string {
 
 // isNullLiteral checks if a node is a null literal
 func isNullLiteral(node Node) bool {
-	_, ok := node.(Null)
+	_, ok := node.(*Null)
 	return ok
 }
 

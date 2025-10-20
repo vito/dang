@@ -13,7 +13,7 @@ import (
 
 type FunctionBase struct {
 	InferredTypeHolder
-	Args []SlotDecl
+	Args []*SlotDecl
 	Body Node
 	Loc  *SourceLocation
 
@@ -483,7 +483,7 @@ func (r *Reassignment) createValueNode(value Value) Node {
 type Reopen struct {
 	InferredTypeHolder
 	Name  string
-	Block Block
+	Block *Block
 	Loc   *SourceLocation
 }
 
@@ -572,8 +572,8 @@ func (r *Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 type Assert struct {
 	InferredTypeHolder
-	Message Node  // Optional message expression
-	Block   Block // Block containing the assertion expression
+	Message Node   // Optional message expression
+	Block   *Block // Block containing the assertion expression
 	Loc     *SourceLocation
 }
 
@@ -686,18 +686,21 @@ type ChildNode struct {
 // getImmediateChildren extracts immediate child nodes for error reporting
 func (a *Assert) getImmediateChildren(expr Node) []ChildNode {
 	switch n := expr.(type) {
-	case Select:
+	case *Select:
 		// Handle both field access and method calls
 		var children []ChildNode
 
 		// Add receiver if present
 		if n.Receiver != nil {
-			children = append(children, ChildNode{"receiver", n.Receiver})
+			children = append(children, ChildNode{
+				Name: "receiver",
+				Node: n.Receiver,
+			})
 		}
 
 		return children
 
-	case FunCall:
+	case *FunCall:
 		// Function call arguments
 		var children []ChildNode
 		for i, arg := range n.Args {
@@ -715,7 +718,7 @@ func (a *Assert) getImmediateChildren(expr Node) []ChildNode {
 		}
 		return children
 
-	case List:
+	case *List:
 		// List elements
 		var children []ChildNode
 		for i, elem := range n.Elements {
@@ -726,30 +729,30 @@ func (a *Assert) getImmediateChildren(expr Node) []ChildNode {
 		}
 		return children
 
-	case Default:
+	case *Default:
 		// Default operator children
 		return []ChildNode{
-			{"left", n.Left},
-			{"right", n.Right},
+			{Name: "left", Node: n.Left},
+			{Name: "right", Node: n.Right},
 		}
 
-	case Equality:
+	case *Equality:
 		// Equality operator children
 		return []ChildNode{
-			{"left", n.Left},
-			{"right", n.Right},
+			{Name: "left", Node: n.Left},
+			{Name: "right", Node: n.Right},
 		}
 
-	case Conditional:
+	case *Conditional:
 		// Conditional expression children
 		return []ChildNode{
-			{"condition", n.Condition},
+			{Name: "condition", Node: n.Condition},
 		}
 
-	case Let:
+	case *Let:
 		// Let expression children
 		return []ChildNode{
-			{"value", n.Value},
+			{Name: "value", Node: n.Value},
 		}
 	}
 
@@ -759,39 +762,39 @@ func (a *Assert) getImmediateChildren(expr Node) []ChildNode {
 // nodeToString converts a node to its string representation
 func (a *Assert) nodeToString(node Node) string {
 	switch n := node.(type) {
-	case Symbol:
+	case *Symbol:
 		return n.Name
-	case Select:
+	case *Select:
 		if n.Receiver == nil {
 			return n.Field
 		}
 		receiver := a.nodeToString(n.Receiver)
 		return fmt.Sprintf("%s.%s", receiver, n.Field)
-	case FunCall:
+	case *FunCall:
 		fun := a.nodeToString(n.Fun)
 		return fmt.Sprintf("%s(...)", fun)
-	case String:
+	case *String:
 		return fmt.Sprintf("\"%s\"", n.Value)
-	case Int:
+	case *Int:
 		return fmt.Sprintf("%d", n.Value)
-	case Boolean:
+	case *Boolean:
 		return fmt.Sprintf("%t", n.Value)
-	case Null:
+	case *Null:
 		return "null"
-	case List:
+	case *List:
 		return "[...]"
-	case Default:
+	case *Default:
 		left := a.nodeToString(n.Left)
 		right := a.nodeToString(n.Right)
 		return fmt.Sprintf("%s ? %s", left, right)
-	case Equality:
+	case *Equality:
 		left := a.nodeToString(n.Left)
 		right := a.nodeToString(n.Right)
 		return fmt.Sprintf("%s == %s", left, right)
-	case Conditional:
+	case *Conditional:
 		condition := a.nodeToString(n.Condition)
 		return fmt.Sprintf("if %s { ... }", condition)
-	case Let:
+	case *Let:
 		return fmt.Sprintf("let %s = %s in ...", n.Name, a.nodeToString(n.Value))
 	default:
 		return fmt.Sprintf("%T", node)
@@ -808,7 +811,7 @@ type DirectiveLocation struct {
 type DirectiveDecl struct {
 	InferredTypeHolder
 	Name      string
-	Args      []SlotDecl
+	Args      []*SlotDecl
 	Locations []DirectiveLocation
 	DocString string
 	Loc       *SourceLocation
@@ -888,7 +891,7 @@ type DirectiveApplication struct {
 	Loc  *SourceLocation
 }
 
-var _ Node = DirectiveApplication{}
+var _ Node = (*DirectiveApplication)(nil)
 
 func (d *DirectiveApplication) DeclaredSymbols() []string {
 	return nil // Directive applications don't declare anything

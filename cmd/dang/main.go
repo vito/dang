@@ -692,7 +692,7 @@ func (r *REPL) typeCommand(ctx context.Context, repl *REPL, args []string) error
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	node := result.(dang.Block)
+	node := result.(*dang.Block)
 
 	// Type inference
 	inferredType, err := dang.Infer(ctx, repl.typeEnv, node, false)

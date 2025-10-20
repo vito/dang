@@ -48,7 +48,7 @@ func (la *LexicalAnalyzer) analyzeNode(uri DocumentURI, node dang.Node, parentBo
 		slog.Debug("lexical: found Lambda")
 		la.analyzeLambda(uri, n)
 
-	case dang.Block:
+	case *dang.Block:
 		// Let bindings in blocks
 		slog.Debug("lexical: found Block", "forms", len(n.Forms))
 		la.analyzeBlock(uri, n, parentBounds)
@@ -58,7 +58,7 @@ func (la *LexicalAnalyzer) analyzeNode(uri DocumentURI, node dang.Node, parentBo
 		slog.Debug("lexical: found ClassDecl", "name", n.Named)
 		la.analyzeClass(uri, n)
 
-	case dang.SlotDecl:
+	case *dang.SlotDecl:
 		// Check if this is a function declaration (method)
 		slog.Debug("lexical: found SlotDecl", "name", n.Named)
 		if funDecl, ok := n.Value.(*dang.FunDecl); ok {
@@ -135,7 +135,7 @@ func (la *LexicalAnalyzer) analyzeLambda(uri DocumentURI, lambda *dang.Lambda) {
 }
 
 // analyzeBlock processes block forms
-func (la *LexicalAnalyzer) analyzeBlock(uri DocumentURI, block dang.Block, parentBounds *dang.SourceLocation) {
+func (la *LexicalAnalyzer) analyzeBlock(uri DocumentURI, block *dang.Block, parentBounds *dang.SourceLocation) {
 	// For now, just recursively analyze each form
 	// TODO: Handle let bindings with proper scoping
 	for _, form := range block.Forms {

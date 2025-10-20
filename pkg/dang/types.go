@@ -333,7 +333,7 @@ func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 }
 
 type FunTypeNode struct {
-	Args []SlotDecl
+	Args []*SlotDecl
 	Ret  TypeNode
 }
 

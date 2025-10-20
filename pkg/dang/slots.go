@@ -164,7 +164,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type ClassDecl struct {
 	InferredTypeHolder
 	Named      string
-	Value      Block
+	Value      *Block
 	Visibility Visibility
 	Directives []DirectiveApplication
 	DocString  string
@@ -290,11 +290,11 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots as constructor
 // parameters and returns the filtered forms that should be evaluated in the class body
-func (c *ClassDecl) extractConstructorParameters() []SlotDecl {
-	var params []SlotDecl
+func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
+	var params []*SlotDecl
 
 	for _, form := range c.Value.Forms {
-		if slot, ok := form.(SlotDecl); ok {
+		if slot, ok := form.(*SlotDecl); ok {
 			// Check if this is a public non-function slot (constructor parameter)
 			if slot.Visibility == PublicVisibility {
 				if _, isFun := slot.Value.(*FunDecl); !isFun {
@@ -309,12 +309,12 @@ func (c *ClassDecl) extractConstructorParameters() []SlotDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args: params,
-		Body: Block{
+		Body: &Block{
 			Forms: []Node{
-				ValueNode{Val: NewModuleValue(classType)},
+				&ValueNode{Val: NewModuleValue(classType)},
 			},
 		},
 	}

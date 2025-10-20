@@ -957,14 +957,14 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field FieldSelecti
 	if len(field.Args) > 0 {
 		// Field has arguments - create a Select then FunCall to infer the type
 		// But use a synthetic receiver to get the field from the correct environment
-		selectNode := Select{
+		selectNode := &Select{
 			Receiver: nil, // Will be handled by using rec environment directly
 			Field:    field.Name,
 			AutoCall: false,
 			Loc:      field.Loc,
 		}
 
-		funCall := FunCall{
+		funCall := &FunCall{
 			Fun:  selectNode,
 			Args: field.Args,
 			Loc:  field.Loc,
@@ -982,11 +982,11 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field FieldSelecti
 		}
 	} else {
 		// No arguments - use symbol directly as before
-		fieldType, err = Symbol{
+		fieldType, err = (&Symbol{
 			Name:     field.Name,
 			AutoCall: true,
 			Loc:      o.Loc,
-		}.Infer(ctx, rec, fresh)
+		}).Infer(ctx, rec, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1073,14 +1073,14 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 
 		if len(field.Args) > 0 {
 			// Field has arguments - create a Select then FunCall to evaluate
-			selectNode := Select{
+			selectNode := &Select{
 				Receiver: createValueNode(objVal),
 				Field:    field.Name,
 				AutoCall: false,
 				Loc:      field.Loc,
 			}
 
-			funCall := FunCall{
+			funCall := &FunCall{
 				Fun:  selectNode,
 				Args: field.Args,
 				Loc:  field.Loc,
@@ -1325,7 +1325,7 @@ func (o *ObjectSelection) unwrapType(typeRef *introspection.TypeRef) *introspect
 type Conditional struct {
 	InferredTypeHolder
 	Condition Node
-	Then      Block
+	Then      *Block
 	Else      any
 	Loc       *SourceLocation
 }
@@ -1334,7 +1334,7 @@ type Conditional struct {
 type While struct {
 	InferredTypeHolder
 	Condition Node
-	BodyBlock Block
+	BodyBlock *Block
 	Loc       *SourceLocation
 }
 
@@ -1350,7 +1350,7 @@ func (c *Conditional) ReferencedSymbols() []string {
 	symbols = append(symbols, c.Condition.ReferencedSymbols()...)
 	symbols = append(symbols, c.Then.ReferencedSymbols()...)
 	if c.Else != nil {
-		elseBlock := c.Else.(Block)
+		elseBlock := c.Else.(*Block)
 		symbols = append(symbols, elseBlock.ReferencedSymbols()...)
 	}
 	return symbols
@@ -1386,7 +1386,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		}
 
 		if c.Else != nil {
-			elseBlock := c.Else.(Block)
+			elseBlock := c.Else.(*Block)
 
 			// Apply type refinements to the else branch
 			elseEnv := ApplyTypeRefinements(env, elseRefinements)
@@ -1424,7 +1424,7 @@ func (c *Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		if boolVal.Val {
 			return EvalNode(ctx, env, c.Then)
 		} else if c.Else != nil {
-			elseBlock := c.Else.(Block)
+			elseBlock := c.Else.(*Block)
 			return EvalNode(ctx, env, elseBlock)
 		} else {
 			return NullValue{}, nil
@@ -1512,7 +1512,7 @@ type ForLoop struct {
 	ValueVariable string   // Value variable name (for two-variable iteration)
 	Type          TypeNode // Optional type annotation
 	Iterable      Node     // Expression that produces iterable
-	LoopBody      Block    // Loop body
+	LoopBody      *Block   // Loop body
 	Loc           *SourceLocation
 }
 
