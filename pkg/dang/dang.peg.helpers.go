@@ -10,12 +10,33 @@ func (c current) Loc() *SourceLocation {
 	if ln := bytes.IndexByte(c.text, '\n'); ln != -1 {
 		textEnd = ln
 	}
-	return &SourceLocation{
+	start := SourceLocation{
 		Filename: fn,
 		Line:     c.pos.line,
 		Column:   c.pos.col,
 		Length:   len(string(c.text[:textEnd])),
 	}
+	lineCount := bytes.Count(c.text, []byte("\n"))
+	var endLine int = start.Line + lineCount
+	var endCol int
+	if lineCount == 0 {
+		// Single line: end column is start column + length of text
+		endCol = start.Column + len(c.text)
+	} else {
+		// Multi-line: end column is the length after the last newline + 1 (1-indexed)
+		lastNewline := bytes.LastIndexByte(c.text, '\n')
+		if lastNewline != -1 {
+			endCol = len(c.text) - lastNewline // Already 1-indexed since we're counting from after the newline
+		} else {
+			// Shouldn't happen since lineCount > 0, but fallback
+			endCol = 1
+		}
+	}
+	start.End = &SourcePosition{
+		Line:   endLine,
+		Column: endCol,
+	}
+	return &start
 }
 
 func normalizeDocString(content []byte) (res string) {
@@ -82,17 +103,17 @@ func normalizeDocString(content []byte) (res string) {
 func normalizeTripleQuoteString(content []byte) string {
 	// Trim leading newlines only (preserve leading spaces for indentation detection)
 	content = bytes.TrimLeft(content, "\n\r")
-	
-	// Trim trailing newlines and whitespace  
+
+	// Trim trailing newlines and whitespace
 	content = bytes.TrimRight(content, "\n\r \t")
-	
+
 	// Handle empty content
 	if len(content) == 0 {
 		return ""
 	}
-	
+
 	lines := bytes.Split(content, []byte{'\n'})
-	
+
 	// Single line - trim it and return
 	if len(lines) == 1 {
 		return string(bytes.TrimSpace(content))

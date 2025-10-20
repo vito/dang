@@ -40,7 +40,7 @@ end
 
 configs['dang'] = {
   default_config = {
-    cmd = { 'dang', '--lsp', '--lsp-log-file', vim.env.PWD .. '/dang-lsp.log' };
+    cmd = { 'dang', '--debug', '--lsp', '--lsp-log-file', vim.env.PWD .. '/dang-lsp.log' };
     filetypes = { 'dang' };
     root_dir = function(fname)
       return "."

@@ -1,6 +1,9 @@
 package lsp
 
 import (
+	"fmt"
+	"log/slog"
+
 	"github.com/vito/dang/pkg/dang"
 )
 
@@ -37,24 +40,45 @@ func (la *LexicalAnalyzer) analyzeNode(uri DocumentURI, node dang.Node, parentBo
 		return
 	}
 
+	slog.Debug("lexical: analyzing node", "type", fmt.Sprintf("%T", node))
+
 	switch n := node.(type) {
 	case *dang.Lambda:
 		// Lambda parameters are scoped to the lambda body
+		slog.Debug("lexical: found Lambda")
 		la.analyzeLambda(uri, n)
 
 	case dang.Block:
 		// Let bindings in blocks
+		slog.Debug("lexical: found Block", "forms", len(n.Forms))
 		la.analyzeBlock(uri, n, parentBounds)
 
 	case *dang.ClassDecl:
 		// Class members
+		slog.Debug("lexical: found ClassDecl", "name", n.Named)
 		la.analyzeClass(uri, n)
 
 	case dang.SlotDecl:
-		// Recursively analyze slot values
-		if n.Value != nil {
+		// Check if this is a function declaration (method)
+		slog.Debug("lexical: found SlotDecl", "name", n.Named)
+		if funDecl, ok := n.Value.(*dang.FunDecl); ok {
+			slog.Debug("lexical: SlotDecl contains FunDecl")
+			// Use the SlotDecl's location as bounds since it spans the entire slot including body
+			slotLoc := n.GetSourceLocation()
+			la.analyzeFunDeclWithBounds(uri, funDecl, slotLoc)
+		} else if n.Value != nil {
+			// Recursively analyze non-function slot values
+			slog.Debug("lexical: SlotDecl contains other value", "type", fmt.Sprintf("%T", n.Value))
 			la.analyzeNode(uri, n.Value, parentBounds)
 		}
+
+	case *dang.FunDecl:
+		// Function declarations (can appear standalone or in slots)
+		slog.Debug("lexical: found standalone FunDecl", "name", n.Named)
+		la.analyzeFunDecl(uri, n)
+
+	default:
+		slog.Debug("lexical: unhandled node type", "type", fmt.Sprintf("%T", node))
 	}
 }
 
@@ -130,15 +154,26 @@ func (la *LexicalAnalyzer) analyzeClass(uri DocumentURI, class *dang.ClassDecl) 
 
 // analyzeFunDecl processes function declarations (including methods)
 func (la *LexicalAnalyzer) analyzeFunDecl(uri DocumentURI, funDecl *dang.FunDecl) {
+	la.analyzeFunDeclWithBounds(uri, funDecl, nil)
+}
+
+// analyzeFunDeclWithBounds processes function declarations with optional explicit bounds
+func (la *LexicalAnalyzer) analyzeFunDeclWithBounds(uri DocumentURI, funDecl *dang.FunDecl, explicitBounds *dang.SourceLocation) {
 	slog.Debug("lexical: analyzeFunDecl start", "name", funDecl.Named, "args", len(funDecl.Args))
 
-	// Get the function's source location for bounds
-	funLoc := funDecl.GetSourceLocation()
-	if funLoc == nil {
-		slog.Warn("lexical: funDecl has no location")
-		return
+	// Use explicit bounds if provided, otherwise use function's own location
+	var boundsLoc *dang.SourceLocation
+	if explicitBounds != nil {
+		boundsLoc = explicitBounds
+		slog.Debug("lexical: using explicit bounds from parent", "line", boundsLoc.Line, "col", boundsLoc.Column)
+	} else {
+		boundsLoc = funDecl.GetSourceLocation()
+		if boundsLoc == nil {
+			slog.Warn("lexical: funDecl has no location")
+			return
+		}
+		slog.Debug("lexical: funLoc", "line", boundsLoc.Line, "col", boundsLoc.Column)
 	}
-	slog.Debug("lexical: funLoc", "line", funLoc.Line, "col", funLoc.Column)
 
 	// The scope bounds for parameters is the entire function body
 	// Access the Body field directly from FunctionBase
@@ -147,7 +182,7 @@ func (la *LexicalAnalyzer) analyzeFunDecl(uri DocumentURI, funDecl *dang.FunDecl
 		slog.Warn("lexical: funDecl has no body")
 		return
 	}
-	
+
 	bodyLoc := bodyNode.GetSourceLocation()
 	if bodyLoc == nil {
 		slog.Warn("lexical: body has no location")
@@ -160,29 +195,25 @@ func (la *LexicalAnalyzer) analyzeFunDecl(uri DocumentURI, funDecl *dang.FunDecl
 		paramLoc := arg.GetSourceLocation()
 		if paramLoc == nil {
 			// Use function location as fallback
-			paramLoc = funLoc
+			paramLoc = boundsLoc
 		}
 
 		// Create a scope range for the parameter
-		// It's valid from the parameter declaration through the end of the function body
+		// It's valid from the parameter declaration through the end of the function
 		bounds := &dang.SourceLocation{
-			Filename: funLoc.Filename,
-			Line:     funLoc.Line,
-			Column:   funLoc.Column,
-			End:      bodyLoc.End,
+			Filename: boundsLoc.Filename,
+			Line:     boundsLoc.Line,
+			Column:   boundsLoc.Column,
+			End:      boundsLoc.End,
 		}
 
-		// If the body doesn't have an end position, try to infer it from the body location
-		if bounds.End == nil && bodyLoc.Length > 0 {
-			// Approximate end position based on length (single-line assumption)
-			bounds.End = &dang.SourcePosition{
-				Line:   bodyLoc.Line,
-				Column: bodyLoc.Column + bodyLoc.Length,
-			}
-			slog.Debug("lexical: created inferred End position", "line", bounds.End.Line, "col", bounds.End.Column)
+		// If we don't have an end position, we can't determine scope
+		if bounds.End == nil {
+			slog.Warn("lexical: no End position available, skipping parameter binding", "symbol", arg.Named)
+			continue
 		}
 
-		slog.Debug("lexical: adding parameter binding", 
+		slog.Debug("lexical: adding parameter binding",
 			"symbol", arg.Named,
 			"boundsStart", slog.GroupValue(
 				slog.Int("line", bounds.Line),

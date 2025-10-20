@@ -952,4 +952,3 @@ func (c stdrwc) Close() error {
 	}
 	return os.Stdout.Close()
 }
-
