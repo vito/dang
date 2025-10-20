@@ -194,6 +194,8 @@ func NewEnv(schema *introspection.Schema) Env {
 			}
 			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
 			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
+			// GraphQL schema fields are public by default
+			install.SetVisibility(f.Name, PublicVisibility)
 		}
 	}
 

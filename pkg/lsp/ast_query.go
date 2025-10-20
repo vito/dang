@@ -20,11 +20,12 @@ func FindNodeAt(block *dang.Block, line, col int) dang.Node {
 		// Check if the cursor position is within this node's location
 		if containsPosition(loc, line, col) {
 			found = node
-			return true // continue to find more specific (nested) nodes
+			// Continue walking to find more specific (nested) nodes
 		}
 
-		return false // stop traversing this branch
+		return true // always continue walking
 	})
+
 	return found
 }
 
@@ -50,6 +51,11 @@ func walkNodes(nodes []dang.Node, fn func(dang.Node) bool) {
 		switch n := node.(type) {
 		case *dang.Block:
 			walkNodes(n.Forms, fn)
+		case *dang.SlotDecl:
+			// Walk into the value of the slot
+			if n.Value != nil {
+				walkNodes([]dang.Node{n.Value}, fn)
+			}
 		case *dang.Select:
 			if n.Receiver != nil {
 				walkNodes([]dang.Node{n.Receiver}, fn)
@@ -93,14 +99,28 @@ func walkNodes(nodes []dang.Node, fn func(dang.Node) bool) {
 // FindReceiverAt finds the receiver expression for a Select node at the cursor
 // For "container.withDir", when cursor is after ".", return the "container" Symbol node
 func FindReceiverAt(block *dang.Block, line, col int) dang.Node {
-	node := FindNodeAt(block, line, col)
-	if node == nil {
-		return nil
-	}
+	// Find ALL nodes at this position, looking specifically for Select nodes
+	var selectNode *dang.Select
+	walkNodes(block.Forms, func(node dang.Node) bool {
+		loc := node.GetSourceLocation()
+		if loc == nil {
+			return true
+		}
 
-	// If we found a Select node, return its Receiver
-	if sel, ok := node.(*dang.Select); ok {
-		return sel.Receiver
+		// Check if this node contains the cursor position
+		if containsPosition(loc, line, col) {
+			// Check if it's a Select node
+			if sel, ok := node.(*dang.Select); ok {
+				selectNode = sel
+				// Don't return false - continue walking to find the most specific Select
+			}
+		}
+
+		return true // always continue
+	})
+
+	if selectNode != nil {
+		return selectNode.Receiver
 	}
 
 	return nil

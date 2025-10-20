@@ -25,20 +25,18 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 		return []CompletionItem{}, nil
 	}
 
-	// Check if we're completing after a "." (member access)
-	if h.isAfterDot(f, params.Position) {
-		// Find the receiver expression before the dot
-		if f.AST != nil {
-			receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
-			if receiver != nil {
-				// Get the inferred type of the receiver
-				receiverType := receiver.GetInferredType()
-				if receiverType != nil {
-					// Offer completions for this type's members
-					items := h.getMemberCompletions(receiverType)
-					if len(items) > 0 {
-						return items, nil
-					}
+	// Check if we're completing a member access (e.g., "container.fr<TAB>")
+	// We do this by finding the node at the cursor and checking if it's a Select
+	if f.AST != nil {
+		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
+		if receiver != nil {
+			// Get the inferred type of the receiver
+			receiverType := receiver.GetInferredType()
+			if receiverType != nil {
+				// Offer completions for this type's members
+				items := h.getMemberCompletions(receiverType)
+				if len(items) > 0 {
+					return items, nil
 				}
 			}
 		}
@@ -107,22 +105,6 @@ func (h *langHandler) getSchemaCompletions() []CompletionItem {
 	}
 
 	return items
-}
-
-// isAfterDot checks if the cursor is immediately after a "."
-func (h *langHandler) isAfterDot(f *File, pos Position) bool {
-	lines := strings.Split(f.Text, "\n")
-	if pos.Line >= len(lines) {
-		return false
-	}
-
-	line := lines[pos.Line]
-	if pos.Character == 0 {
-		return false
-	}
-
-	// Check if the previous character is a "."
-	return pos.Character > 0 && pos.Character <= len(line) && line[pos.Character-1] == '.'
 }
 
 // getMemberCompletions returns completion items for a type's members

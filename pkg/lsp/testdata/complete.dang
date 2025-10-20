@@ -14,5 +14,6 @@ pub foo(jxkqv: Int!): [Int!] {
 
 # type-aware completions
 pub bar: Container! {
-  let c = container # test: ^EEEEa.fr<C-x><C-o> => [c.from┃]
+  let c = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
+  let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
 }
