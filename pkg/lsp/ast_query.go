@@ -35,9 +35,29 @@ func containsPosition(loc *dang.SourceLocation, line, col int) bool {
 	dangLine := line + 1
 	dangCol := col + 1
 
-	// For now, just check if it's on the same line
-	// TODO: Handle multi-line nodes properly
-	return loc.Line == dangLine && dangCol >= loc.Column
+	// If we don't have an end position, fall back to simple same-line check
+	if loc.End == nil {
+		return loc.Line == dangLine && dangCol >= loc.Column
+	}
+
+	// Check if the position is within the bounds of this node
+	// Position must be after or at the start
+	if dangLine < loc.Line {
+		return false
+	}
+	if dangLine == loc.Line && dangCol < loc.Column {
+		return false
+	}
+
+	// Position must be before or at the end
+	if dangLine > loc.End.Line {
+		return false
+	}
+	if dangLine == loc.End.Line && dangCol > loc.End.Column {
+		return false
+	}
+
+	return true
 }
 
 // walkNodes recursively walks all nodes in the AST

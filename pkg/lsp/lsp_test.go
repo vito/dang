@@ -107,11 +107,36 @@ func testFile(t *testing.T, client *nvim.Nvim, file string) {
 		eq := strings.Split(segs[1], " => ")
 
 		codes := strings.TrimSpace(eq[0])
-		keys, err := client.ReplaceTermcodes(codes, true, true, true)
-		is.NoErr(err)
+		
+		// Split codes on {delay:...} markers
+		parts := strings.Split(codes, "{delay:")
+		for i, part := range parts {
+			if i > 0 {
+				// Extract delay duration and remaining keys
+				delayEnd := strings.Index(part, "}")
+				if delayEnd == -1 {
+					t.Fatalf("invalid delay syntax: missing }")
+				}
+				delayStr := part[:delayEnd]
+				delay, err := time.ParseDuration(delayStr)
+				is.NoErr(err)
+				
+				t.Logf("L%03d sleeping for %v", testLine, delay)
+				time.Sleep(delay)
+				
+				part = part[delayEnd+1:] // remaining keys after }
+			}
+			
+			if part == "" {
+				continue
+			}
+			
+			keys, err := client.ReplaceTermcodes(part, true, true, true)
+			is.NoErr(err)
 
-		err = client.FeedKeys(keys, "t", true)
-		is.NoErr(err)
+			err = client.FeedKeys(keys, "t", true)
+			is.NoErr(err)
+		}
 
 		targetPos := strings.Index(eq[1], "┃")
 		target := strings.ReplaceAll(eq[1], "┃", "")

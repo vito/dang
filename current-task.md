@@ -519,6 +519,29 @@ Update the checkboxes below in ./current-task.md as you complete each phase:
 3. [x] **Phase 3**: Run inference in LSP (integrate with updateFile)
 4. [x] **Phase 4**: Find nodes at cursor (AST query utilities)
 5. [x] **Phase 5**: Type-aware completions (enhance completion handler)
-6. [ ] **Phase 6**: Add test case (verify it works)
+6. [x] **Phase 6**: Add test case (verify it works)
 
-A test has been added, but it doesn't work yet - the journey continues. See TestLsp(Completion) for details.
+## Final Status
+
+✅ **COMPLETE** - All phases implemented and tested successfully!
+
+### Key Implementation Details
+
+1. **Type storage on AST nodes**: Added `InferredTypeHolder` mixin that all nodes embed
+2. **Type annotation during inference**: Each `Infer()` method stores its result on the node
+3. **LSP integration**: `updateFile()` runs type inference after parsing
+4. **AST querying**: `FindReceiverAt()` finds receiver nodes and their types at cursor position
+5. **Type-aware completions**: Completion handler checks for member access and offers type-specific completions
+6. **Chained completions**: Test framework supports `{delay:Nms}` markers to allow LSP re-parsing between completions
+
+### Test Results
+
+All 8 completion tests pass:
+- ✅ Local bindings (`hello`)
+- ✅ Global functions (`directory`, `container`)
+- ✅ Lexical bindings (`jxkqv`)
+- ✅ Type-aware member access (`container.from`, `container.withDirectory`)
+- ✅ **Chained type-aware completions** (`git(url).head.tree`)
+
+The chained completion test required a 200ms delay between completions to allow the LSP to re-parse and re-infer the file after the first completion inserts text.
+

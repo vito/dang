@@ -20,4 +20,4 @@ pub bar: Container! {
 }
 
 let url = "https://github.com/vito/dang"
-git(url) # test: ^Ea.he<C-x><C-o>.tr<C-x><C-o> => git(url).head.tree┃
+git(url) # test: ^Ea.he<C-x><C-o>{delay:200ms}.tr<C-x><C-o> => git(url).head.tree┃
