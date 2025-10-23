@@ -3,10 +3,55 @@ package dang
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/vito/dang/pkg/hm"
 )
+
+// InferenceErrors accumulates multiple errors during type inference
+type InferenceErrors struct {
+	Errors []error
+}
+
+func (ie *InferenceErrors) Add(err error) {
+	if err != nil {
+		ie.Errors = append(ie.Errors, err)
+	}
+}
+
+func (ie *InferenceErrors) HasErrors() bool {
+	return len(ie.Errors) > 0
+}
+
+func (ie *InferenceErrors) Error() string {
+	if len(ie.Errors) == 0 {
+		return "no errors"
+	}
+	if len(ie.Errors) == 1 {
+		return ie.Errors[0].Error()
+	}
+	var msgs []string
+	for i, err := range ie.Errors {
+		msgs = append(msgs, fmt.Sprintf("  %d. %s", i+1, err.Error()))
+	}
+	return fmt.Sprintf("%d inference errors:\n%s", len(ie.Errors), strings.Join(msgs, "\n"))
+}
+
+type contextKey int
+
+const resilientModeKey contextKey = 0
+
+// WithResilientMode returns a context with resilient inference mode enabled
+func WithResilientMode(ctx context.Context) context.Context {
+	return context.WithValue(ctx, resilientModeKey, true)
+}
+
+// IsResilientMode checks if resilient inference mode is enabled
+func IsResilientMode(ctx context.Context) bool {
+	v, ok := ctx.Value(resilientModeKey).(bool)
+	return ok && v
+}
 
 type inferer struct {
 	env hm.Env
@@ -219,6 +264,28 @@ func closeOver(t Type) (sch *hm.Scheme, err error) {
 	sch = hm.Generalize(nil, t)
 	err = sch.Normalize()
 	return
+}
+
+// assignFallbackType assigns a fresh type variable to a declaration that failed inference
+// This allows downstream code to continue type checking even if this declaration has errors
+func assignFallbackType(decl Node, env hm.Env, fresh hm.Fresher) {
+	// Get the declaration name(s)
+	symbols := decl.DeclaredSymbols()
+	if len(symbols) == 0 {
+		return
+	}
+
+	for _, name := range symbols {
+		// Create a fresh type variable as a fallback
+		tv := fresh.Fresh()
+		scheme := hm.NewScheme(nil, tv)
+
+		// Add to environment so downstream references can resolve
+		if dangEnv, ok := env.(Env); ok {
+			dangEnv.Add(name, scheme)
+			dangEnv.SetVisibility(name, PublicVisibility)
+		}
+	}
 }
 
 type solver struct {

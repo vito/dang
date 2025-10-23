@@ -12,6 +12,7 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/hm"
 )
 
 // NewHandler create JSON-RPC handler for this language server.
@@ -184,12 +185,20 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			// Run type inference to annotate AST with types
 			if h.schema != nil {
 				typeEnv := dang.NewEnv(h.schema)
-				// TODO: need to make Infer not error out so early?
-				// also, how can we speed up inference, i.e. not on every keystroke?
-				_, err := dang.Infer(ctx, typeEnv, block, true) // true = run hoisting
-				if err != nil {
-					// Log the error but don't fail - we still want completions to work
-					slog.WarnContext(ctx, "type inference failed for LSP", "error", err)
+				
+				// Use resilient inference for LSP - continue past errors
+				resilientCtx := dang.WithResilientMode(ctx)
+				fresh := hm.NewSimpleFresher()
+				_, errs := dang.InferFormsWithPhasesResilient(resilientCtx, block.Forms, typeEnv, fresh)
+				
+				if errs.HasErrors() {
+					// Log accumulated errors but don't fail - AST still has partial type annotations
+					for i, err := range errs.Errors {
+						slog.WarnContext(ctx, "type inference error",
+							"index", i,
+							"error", err,
+							"file", uri)
+					}
 				}
 			}
 		}

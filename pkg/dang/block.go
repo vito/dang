@@ -261,6 +261,57 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 	return lastT, nil
 }
 
+// InferFormsWithPhasesResilient runs inference in resilient mode, collecting errors
+// instead of failing fast. Returns the last inferred type and accumulated errors.
+func InferFormsWithPhasesResilient(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, *InferenceErrors) {
+	errs := &InferenceErrors{}
+	classified := classifyForms(forms)
+
+	phases := []struct {
+		name string
+		fn   func(*InferenceErrors) (hm.Type, error)
+	}{
+		{"imports", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferImportsPhaseResilient(ctx, classified.Imports, env, fresh, errs)
+		}},
+		{"directives", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferDirectivesPhaseResilient(ctx, classified.Directives, env, fresh, errs)
+		}},
+		{"constants", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferConstantsPhaseResilient(ctx, classified.Constants, env, fresh, errs)
+		}},
+		{"types", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferTypesPhaseResilient(ctx, classified.Types, env, fresh, errs)
+		}},
+		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+		}},
+		{"variables", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferVariablesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
+		}},
+		{"function bodies", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferFunctionBodiesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+		}},
+		{"non-declarations", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferNonDeclarationsPhaseResilient(ctx, classified.NonDeclarations, env, fresh, errs)
+		}},
+	}
+
+	var lastT hm.Type
+	for _, phase := range phases {
+		t, err := phase.fn(errs)
+		if err != nil {
+			// Critical error that prevents continuing this phase
+			errs.Add(fmt.Errorf("%s phase failed: %w", phase.name, err))
+		}
+		if t != nil {
+			lastT = t
+		}
+	}
+
+	return lastT, errs
+}
+
 // inferImportsPhase processes import declarations first
 func inferImportsPhase(ctx context.Context, imports []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var lastT hm.Type
@@ -591,4 +642,163 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 	}
 	return newMod, nil
+}
+
+// Resilient phase functions for LSP - continue past errors
+
+func inferImportsPhaseResilient(ctx context.Context, imports []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range imports {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
+				errs.Add(fmt.Errorf("import hoisting failed for %v: %w", form, err))
+				continue
+			}
+		}
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("import inference failed for %v: %w", form, err))
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+func inferDirectivesPhaseResilient(ctx context.Context, directives []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range directives {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
+				errs.Add(fmt.Errorf("directive hoisting failed for %v: %w", form, err))
+				continue
+			}
+		}
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("directive inference failed for %v: %w", form, err))
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range constants {
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("constant inference failed for %v: %w", form, err))
+			assignFallbackType(form, env, fresh)
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	// Pass 0: Create class types
+	for _, form := range types {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
+				errs.Add(fmt.Errorf("type hoisting (pass 0) failed for %v: %w", form, err))
+				// Continue to try other types
+			}
+		}
+	}
+
+	// Pass 1: Infer class bodies
+	for _, form := range types {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
+				errs.Add(fmt.Errorf("type hoisting (pass 1) failed for %v: %w", form, err))
+				// Continue to try other types
+			}
+		}
+	}
+
+	// Complete type inference
+	var lastT hm.Type
+	for _, form := range types {
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("type inference failed for %v: %w", form, err))
+			assignFallbackType(form, env, fresh)
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+func inferFunctionSignaturesPhaseResilient(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	for _, form := range functions {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
+				errs.Add(fmt.Errorf("function signature hoisting failed for %v: %w", form, err))
+				// Continue to try other functions
+			}
+		}
+	}
+	return nil, nil
+}
+
+func inferVariablesPhaseResilient(ctx context.Context, variables []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	if len(variables) == 0 {
+		return nil, nil
+	}
+
+	orderedVars, err := orderByDependencies(variables)
+	if err != nil {
+		// Can't continue if we can't order dependencies - return critical error
+		return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
+	}
+
+	var lastT hm.Type
+	for _, form := range orderedVars {
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("variable inference failed for %v: %w", form, err))
+			assignFallbackType(form, env, fresh)
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+func inferFunctionBodiesPhaseResilient(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range functions {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
+				errs.Add(fmt.Errorf("function body hoisting failed for %v: %w", form, err))
+				continue
+			}
+		}
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("function inference failed for %v: %w", form, err))
+			// Function already has signature from earlier phase, so no fallback needed
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
+}
+
+func inferNonDeclarationsPhaseResilient(ctx context.Context, nonDeclarations []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range nonDeclarations {
+		t, err := form.Infer(ctx, env, fresh)
+		if err != nil {
+			errs.Add(fmt.Errorf("non-declaration inference failed for %v: %w", form, err))
+			// Non-declarations don't need fallback types
+			continue
+		}
+		lastT = t
+	}
+	return lastT, nil
 }
