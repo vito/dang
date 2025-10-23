@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	stdErrors "errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -152,11 +153,20 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
+	// Clear diagnostics before collecting new ones
+	f.Diagnostics = []Diagnostic{}
+
 	// Parse the Dang code
 	parsed, err := dang.Parse(string(uri), []byte(text))
 	if err != nil {
-		// If parsing fails, set empty structures
+		// If parsing fails, add parse error as diagnostic and set empty structures
 		slog.Warn("failed to parse Dang code for LSP", "error", err)
+		
+		// Try to extract location info from parse error
+		if diag := h.errorToDiagnostic(err, uri); diag != nil {
+			f.Diagnostics = append(f.Diagnostics, *diag)
+		}
+		
 		f.Symbols = &SymbolTable{
 			Definitions: make(map[string]*SymbolInfo),
 			References:  make(map[string]*SymbolRef),
@@ -190,25 +200,23 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				
 				// InferFormsWithPhases now returns an InferenceErrors type with all accumulated errors
 				if err != nil {
-					// Log all errors but don't fail - AST still has partial type annotations
+					// Convert inference errors to diagnostics
 					if inferErrs, ok := err.(*dang.InferenceErrors); ok {
-						for i, e := range inferErrs.Errors {
-							slog.WarnContext(ctx, "type inference error",
-								"index", i,
-								"error", e,
-								"file", uri)
+						for _, e := range inferErrs.Errors {
+							if diag := h.errorToDiagnostic(e, uri); diag != nil {
+								f.Diagnostics = append(f.Diagnostics, *diag)
+							}
 						}
 					} else {
-						slog.WarnContext(ctx, "type inference error",
-							"error", err,
-							"file", uri)
+						// Single error, convert to diagnostic
+						if diag := h.errorToDiagnostic(err, uri); diag != nil {
+							f.Diagnostics = append(f.Diagnostics, *diag)
+						}
 					}
 				}
 			}
 		}
 	}
-
-	f.Diagnostics = nil
 
 	// Publish diagnostics to the client
 	h.publishDiagnostics(ctx, uri, f)
@@ -319,6 +327,65 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
 	}
 }
+
+// errorToDiagnostic converts a Dang error to an LSP Diagnostic
+func (h *langHandler) errorToDiagnostic(err error, uri DocumentURI) *Diagnostic {
+	// Try to extract InferError with location info
+	var inferErr *dang.InferError
+	if errors, ok := err.(*dang.InferError); ok {
+		inferErr = errors
+	} else {
+		// Try unwrapping
+		var ie *dang.InferError
+		if stdErrors.As(err, &ie) {
+			inferErr = ie
+		}
+	}
+
+	if inferErr != nil && inferErr.Location != nil {
+		loc := inferErr.Location
+		// LSP uses 0-based lines and columns, Dang uses 1-based
+		startLine := loc.Line - 1
+		startCol := loc.Column - 1
+		endCol := startCol + loc.Length
+		if loc.Length == 0 {
+			endCol = startCol + 1 // Default to at least one character
+		}
+
+		// If we have an End position, use it
+		endLine := startLine
+		if loc.End != nil {
+			endLine = loc.End.Line - 1
+			endCol = loc.End.Column - 1
+		}
+
+		return &Diagnostic{
+			Range: Range{
+				Start: Position{Line: startLine, Character: startCol},
+				End:   Position{Line: endLine, Character: endCol},
+			},
+			Severity: 1, // Error
+			Source:   stringPtr("dang"),
+			Message:  inferErr.Message,
+		}
+	}
+
+	// Fallback: create a diagnostic without specific location (line 0)
+	return &Diagnostic{
+		Range: Range{
+			Start: Position{Line: 0, Character: 0},
+			End:   Position{Line: 0, Character: 1},
+		},
+		Severity: 1, // Error
+		Source:   stringPtr("dang"),
+		Message:  err.Error(),
+	}
+}
+
+func stringPtr(s string) *string {
+	return &s
+}
+
 
 func isIdentifierChar(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||

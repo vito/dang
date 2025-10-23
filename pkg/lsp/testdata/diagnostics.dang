@@ -1,0 +1,12 @@
+# Test file for LSP diagnostics
+# This file intentionally contains type errors to test diagnostic reporting
+# NOTE: currently not actually integrated into any tests
+
+# Type mismatch: string + int
+pub bad_add = "hello" + 42
+
+# Undefined symbol
+pub missing = undefined_var
+
+# All good - no errors
+pub good = "hello"
