@@ -36,6 +36,19 @@ type Dang {
   }
 
   """
+  Run `go mod tidy` for each Go module in the repo.
+  """
+  pub tidy: Changeset! {
+    base.withExec(["sh", "-c", """
+      find . -name go.mod | while read path; do
+        go -C $(dirname $path) mod tidy
+      done
+      """]).
+      directory(".").
+      changes(base.directory("."))
+  }
+
+  """
   Run the Dang language tests.
   """
   pub test(filter: String! = ""): Void {
