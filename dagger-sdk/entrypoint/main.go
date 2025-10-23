@@ -198,7 +198,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		argMap[arg.Key] = dangVal
 		args = append(args, dang.Keyed[dang.Node]{
 			Key:   arg.Key,
-			Value: dang.ValueNode{Val: dangVal},
+			Value: &dang.ValueNode{Val: dangVal},
 		})
 	}
 
@@ -234,9 +234,9 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			return fmt.Errorf("evaluating class body for %s: %w", parentConstructor.ClassName, err)
 		}
 
-		call := dang.FunCall{
-			Fun: dang.Select{
-				Receiver: dang.ValueNode{Val: parentModEnv},
+		call := &dang.FunCall{
+			Fun: &dang.Select{
+				Receiver: &dang.ValueNode{Val: parentModEnv},
 				Field:    fnName,
 			},
 			Args: args,
@@ -262,13 +262,13 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 	case string:
 		if modType, ok := fieldType.(*dang.Module); ok && modType != dang.StringType {
 			sel := dang.FunCall{
-				Fun: dang.Select{
+				Fun: &dang.Select{
 					Field: fmt.Sprintf("load%sFromID", modType.Named),
 				},
 				Args: dang.Record{
 					dang.Keyed[dang.Node]{
 						Key:   "id",
-						Value: dang.String{Value: v},
+						Value: &dang.String{Value: v},
 					},
 				},
 			}
@@ -459,13 +459,13 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 // evalConstantValue converts AST nodes to Go values for directive arguments
 func evalConstantValue(node dang.Node) (any, error) {
 	switch n := node.(type) {
-	case dang.String:
+	case *dang.String:
 		return n.Value, nil
-	case dang.Int:
+	case *dang.Int:
 		return n.Value, nil
-	case dang.Boolean:
+	case *dang.Boolean:
 		return n.Value, nil
-	case dang.List:
+	case *dang.List:
 		var elements []any
 		for _, elem := range n.Elements {
 			if evalElem, err := evalConstantValue(elem); err == nil {
