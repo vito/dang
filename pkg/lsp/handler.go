@@ -185,17 +185,21 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			// Run type inference to annotate AST with types
 			if h.schema != nil {
 				typeEnv := dang.NewEnv(h.schema)
-				
-				// Use resilient inference for LSP - continue past errors
-				resilientCtx := dang.WithResilientMode(ctx)
 				fresh := hm.NewSimpleFresher()
-				_, errs := dang.InferFormsWithPhasesResilient(resilientCtx, block.Forms, typeEnv, fresh)
+				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
 				
-				if errs.HasErrors() {
-					// Log accumulated errors but don't fail - AST still has partial type annotations
-					for i, err := range errs.Errors {
+				// InferFormsWithPhases now returns an InferenceErrors type with all accumulated errors
+				if err != nil {
+					// Log all errors but don't fail - AST still has partial type annotations
+					if inferErrs, ok := err.(*dang.InferenceErrors); ok {
+						for i, e := range inferErrs.Errors {
+							slog.WarnContext(ctx, "type inference error",
+								"index", i,
+								"error", e,
+								"file", uri)
+						}
+					} else {
 						slog.WarnContext(ctx, "type inference error",
-							"index", i,
 							"error", err,
 							"file", uri)
 					}

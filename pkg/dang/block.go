@@ -231,39 +231,10 @@ func classifyForms(forms []Node) ClassifiedForms {
 // 4. Declare function signatures (without bodies)
 // 5. Typecheck variables in dependency order (can now reference function signatures)
 // 6. Typecheck function bodies last (can reference all package-level declarations)
+//
+// This function collects all errors instead of failing fast, allowing partial inference
+// to succeed and providing better error messages showing all problems at once.
 func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Phase 1: Classify forms by their compilation requirements
-	classified := classifyForms(forms)
-
-	// Execute each compilation phase in order
-	phases := []func() (hm.Type, error){
-		func() (hm.Type, error) { return inferImportsPhase(ctx, classified.Imports, env, fresh) },
-		func() (hm.Type, error) { return inferDirectivesPhase(ctx, classified.Directives, env, fresh) },
-		func() (hm.Type, error) { return inferConstantsPhase(ctx, classified.Constants, env, fresh) },
-		func() (hm.Type, error) { return inferTypesPhase(ctx, classified.Types, env, fresh) },
-		func() (hm.Type, error) { return inferFunctionSignaturesPhase(ctx, classified.Functions, env, fresh) },
-		func() (hm.Type, error) { return inferVariablesPhase(ctx, classified.Variables, env, fresh) },
-		func() (hm.Type, error) { return inferFunctionBodiesPhase(ctx, classified.Functions, env, fresh) },
-		func() (hm.Type, error) { return inferNonDeclarationsPhase(ctx, classified.NonDeclarations, env, fresh) },
-	}
-
-	var lastT hm.Type
-	for _, phase := range phases {
-		t, err := phase()
-		if err != nil {
-			return nil, err
-		}
-		if t != nil {
-			lastT = t
-		}
-	}
-
-	return lastT, nil
-}
-
-// InferFormsWithPhasesResilient runs inference in resilient mode, collecting errors
-// instead of failing fast. Returns the last inferred type and accumulated errors.
-func InferFormsWithPhasesResilient(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, *InferenceErrors) {
 	errs := &InferenceErrors{}
 	classified := classifyForms(forms)
 
@@ -309,151 +280,8 @@ func InferFormsWithPhasesResilient(ctx context.Context, forms []Node, env hm.Env
 		}
 	}
 
-	return lastT, errs
-}
-
-// inferImportsPhase processes import declarations first
-func inferImportsPhase(ctx context.Context, imports []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var lastT hm.Type
-	for _, form := range imports {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				return nil, fmt.Errorf("import hoisting failed: %w", err)
-			}
-		}
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("import inference failed: %w", err)
-		}
-		lastT = t
-	}
-	return lastT, nil
-}
-
-// inferDirectivesPhase processes directive declarations
-func inferDirectivesPhase(ctx context.Context, directives []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var lastT hm.Type
-	for _, form := range directives {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				return nil, fmt.Errorf("directive hoisting failed: %w", err)
-			}
-		}
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("directive inference failed: %w", err)
-		}
-		lastT = t
-	}
-	return lastT, nil
-}
-
-// inferConstantsPhase processes constant declarations
-func inferConstantsPhase(ctx context.Context, constants []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var lastT hm.Type
-	for _, form := range constants {
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("constant inference failed: %w", err)
-		}
-		lastT = t
-	}
-	return lastT, nil
-}
-
-// inferTypesPhase processes type declarations using multi-pass hoisting
-func inferTypesPhase(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// Pass 0: Create class types
-	for _, form := range types {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				return nil, fmt.Errorf("type hoisting (pass 0) failed: %w", err)
-			}
-		}
-	}
-
-	// Pass 1: Infer class bodies
-	for _, form := range types {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
-				return nil, fmt.Errorf("type hoisting (pass 1) failed: %w", err)
-			}
-		}
-	}
-
-	// Complete type inference
-	var lastT hm.Type
-	for _, form := range types {
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("type inference failed: %w", err)
-		}
-		lastT = t
-	}
-	return lastT, nil
-}
-
-// inferFunctionSignaturesPhase declares function signatures without bodies
-func inferFunctionSignaturesPhase(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	for _, form := range functions {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				return nil, fmt.Errorf("function signature hoisting failed: %w", err)
-			}
-		}
-	}
-	return nil, nil
-}
-
-// inferVariablesPhase processes variable declarations in dependency order
-func inferVariablesPhase(ctx context.Context, variables []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	if len(variables) == 0 {
-		return nil, nil
-	}
-
-	orderedVars, err := orderByDependencies(variables)
-	if err != nil {
-		return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
-	}
-
-	var lastT hm.Type
-	for _, form := range orderedVars {
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("variable inference failed: %w", err)
-		}
-		lastT = t
-	}
-	return lastT, nil
-}
-
-// inferFunctionBodiesPhase processes function bodies
-func inferFunctionBodiesPhase(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var lastT hm.Type
-	for _, form := range functions {
-		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
-				return nil, fmt.Errorf("function body hoisting failed: %w", err)
-			}
-		}
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("function inference failed: %w", err)
-		}
-		lastT = t
-	}
-	return lastT, nil
-}
-
-// inferNonDeclarationsPhase processes non-declaration forms
-func inferNonDeclarationsPhase(ctx context.Context, nonDeclarations []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	var lastT hm.Type
-	for _, form := range nonDeclarations {
-		t, err := form.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("non-declaration inference failed: %w", err)
-		}
-		lastT = t
+	if errs.HasErrors() {
+		return lastT, errs
 	}
 	return lastT, nil
 }

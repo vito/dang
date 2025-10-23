@@ -564,13 +564,10 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 
 		scheme, found := rec.SchemeOf(d.Field)
 		if !found {
-			// In resilient mode, return a type variable instead of failing
-			if IsResilientMode(ctx) {
-				tv := fresh.Fresh()
-				d.SetInferredType(tv)
-				return tv, fmt.Errorf("field %q not found in record %s", d.Field, rec)
-			}
-			return nil, fmt.Errorf("field %q not found in record %s", d.Field, rec)
+			// Return a type variable to allow downstream inference to continue
+			tv := fresh.Fresh()
+			d.SetInferredType(tv)
+			return tv, fmt.Errorf("field %q not found in record %s", d.Field, rec)
 		}
 		t, mono := scheme.Type()
 		if !mono {

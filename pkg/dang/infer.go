@@ -29,28 +29,16 @@ func (ie *InferenceErrors) Error() string {
 		return "no errors"
 	}
 	if len(ie.Errors) == 1 {
-		return ie.Errors[0].Error()
+		// Convert InferError to SourceError for pretty printing
+		return ConvertInferError(ie.Errors[0]).Error()
 	}
 	var msgs []string
 	for i, err := range ie.Errors {
-		msgs = append(msgs, fmt.Sprintf("  %d. %s", i+1, err.Error()))
+		// Convert each InferError to SourceError for pretty printing
+		converted := ConvertInferError(err)
+		msgs = append(msgs, fmt.Sprintf("Error %d:\n%s", i+1, converted.Error()))
 	}
-	return fmt.Sprintf("%d inference errors:\n%s", len(ie.Errors), strings.Join(msgs, "\n"))
-}
-
-type contextKey int
-
-const resilientModeKey contextKey = 0
-
-// WithResilientMode returns a context with resilient inference mode enabled
-func WithResilientMode(ctx context.Context) context.Context {
-	return context.WithValue(ctx, resilientModeKey, true)
-}
-
-// IsResilientMode checks if resilient inference mode is enabled
-func IsResilientMode(ctx context.Context) bool {
-	v, ok := ctx.Value(resilientModeKey).(bool)
-	return ok && v
+	return fmt.Sprintf("%d inference errors:\n\n%s", len(ie.Errors), strings.Join(msgs, "\n\n"))
 }
 
 type inferer struct {
