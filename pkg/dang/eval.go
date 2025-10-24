@@ -1060,7 +1060,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 // EvalNode evaluates any AST node (legacy interface)
 func EvalNode(ctx context.Context, env EvalEnv, node Node) (Value, error) {
-	return EvalNodeWithContext(ctx, env, node, nil)
+	return EvalNodeWithContext(ctx, env, node, GetEvalContext(ctx))
 }
 
 // EvalNodeWithContext evaluates any AST node with enhanced error reporting
@@ -1073,7 +1073,11 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, env)
 		if err != nil {
-			return nil, evalCtx.CreateSourceError(err, node)
+			if evalCtx != nil {
+				return nil, evalCtx.CreateSourceError(err, node)
+			} else {
+				return nil, err
+			}
 		}
 		if val == nil {
 			return nil, fmt.Errorf("Evaluator(%T) returned nil", node)
