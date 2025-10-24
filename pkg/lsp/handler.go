@@ -336,7 +336,7 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 
 // errorToDiagnostic converts a Dang error to an LSP Diagnostic
 func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnostic {
-	slog.Warn("converting error", "err", err)
+	slog.Warn("converting error", "type", fmt.Sprintf("%T", err), "err", err)
 	for e := errors.Unwrap(err); e != nil && e != err; e = errors.Unwrap(e) {
 		slog.Warn("unwrapped", "type", fmt.Sprintf("%T", e), "err", e)
 	}
@@ -350,21 +350,25 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 		return ds
 	}
 
-	var sourceError *dang.SourceError
-	if errors.As(err, &sourceError) {
-		// prevent source errors from showing source code
-		sourceError.Location = nil
-	}
-
 	var startLine, endLine int = 0, 0
 	var startCol, endCol int = 0, 1
 
-	// Try to extract InferError with location info
-	var inferErr *dang.InferError
-	// Try unwrapping
-	if stdErrors.As(err, &inferErr) && inferErr.Location != nil {
-		loc := inferErr.Location
+	var loc *dang.SourceLocation
 
+	// Try to extract parse or infer error with location info
+	var parseErr interface {
+		ParseErrorLocation() *dang.SourceLocation
+	}
+	var inferErr *dang.InferError
+	if errors.As(err, &parseErr) {
+		loc = parseErr.ParseErrorLocation()
+		slog.Warn("got parse error", "err", parseErr, "loc", loc)
+	} else if stdErrors.As(err, &inferErr) {
+		slog.Warn("got infer error error", "err", inferErr)
+		loc = inferErr.Location
+	}
+
+	if loc != nil {
 		// LSP uses 0-based lines and columns, Dang uses 1-based
 		startLine = loc.Line - 1
 		startCol = loc.Column - 1
@@ -381,7 +385,6 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 		}
 	}
 
-	// Fallback: create a diagnostic without specific location (line 0)
 	return []Diagnostic{
 		{
 			Range: Range{

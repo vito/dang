@@ -196,7 +196,7 @@ func GetEvalContext(ctx context.Context) *EvalContext {
 }
 
 // CreateEvalError creates a source error from within an evaluator
-func CreateEvalError(ctx context.Context, err error, node Node) error {
+func CreateEvalError(ctx context.Context, err error, node SourceLocatable) error {
 	if evalCtx := GetEvalContext(ctx); evalCtx != nil {
 		return evalCtx.CreateSourceError(err, node)
 	}
@@ -207,7 +207,7 @@ func CreateEvalError(ctx context.Context, err error, node Node) error {
 type InferError struct {
 	Inner    error
 	Location *SourceLocation
-	Node     Node // Keep reference to the AST node for additional context
+	Node     any // Keep reference to the AST node for additional context
 }
 
 func (e *InferError) Error() string {
@@ -219,7 +219,7 @@ func (e *InferError) Unwrap() error {
 }
 
 // NewInferError creates a new InferError with source location from an AST node
-func NewInferError(inner error, node Node) *InferError {
+func NewInferError(inner error, node SourceLocatable) *InferError {
 	var location *SourceLocation
 	if node != nil {
 		location = node.GetSourceLocation()
@@ -232,7 +232,7 @@ func NewInferError(inner error, node Node) *InferError {
 }
 
 // WrapInferError wraps an existing error with source location information
-func WrapInferError(err error, node Node) error {
+func WrapInferError(err error, node SourceLocatable) error {
 	var inferErr *InferError
 	if errors.As(err, &inferErr) {
 		// Already an InferError, don't double-wrap
@@ -251,8 +251,12 @@ func NewEvalContext(filename, source string) *EvalContext {
 	}
 }
 
+type SourceLocatable interface {
+	GetSourceLocation() *SourceLocation
+}
+
 // CreateSourceError creates a SourceError from a regular error, trying to extract location info
-func (ctx *EvalContext) CreateSourceError(err error, node Node) error {
+func (ctx *EvalContext) CreateSourceError(err error, node SourceLocatable) error {
 	var sourceErr *SourceError
 	if errors.As(err, &sourceErr) {
 		return sourceErr
@@ -298,7 +302,7 @@ func ConvertInferError(origErr error) error {
 }
 
 // WithInferErrorHandling wraps an Infer method implementation with automatic error handling
-func WithInferErrorHandling(node Node, fn func() (hm.Type, error)) (hm.Type, error) {
+func WithInferErrorHandling(node SourceLocatable, fn func() (hm.Type, error)) (hm.Type, error) {
 	typ, err := fn()
 	if err != nil {
 		// Check if error already has source location context
@@ -315,7 +319,7 @@ func WithInferErrorHandling(node Node, fn func() (hm.Type, error)) (hm.Type, err
 }
 
 // WithEvalErrorHandling wraps an Eval method implementation with automatic error handling
-func WithEvalErrorHandling(ctx context.Context, node Node, fn func() (Value, error)) (Value, error) {
+func WithEvalErrorHandling(ctx context.Context, node SourceLocatable, fn func() (Value, error)) (Value, error) {
 	val, err := fn()
 	if err != nil {
 		// Check if error already has source location context

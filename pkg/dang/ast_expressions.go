@@ -707,7 +707,7 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		}
 
 		// Check that index is Int!
-		intType, err := NonNullTypeNode{NamedTypeNode{"Int"}}.Infer(ctx, env, fresh)
+		intType, err := NonNullTypeNode{&NamedTypeNode{"Int", i.Index.GetSourceLocation()}}.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}

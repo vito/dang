@@ -333,7 +333,7 @@ ColonToken <- ':'
 
 Type <- NonNull / NamedType / ListType / ObjectType / TypeVariable
 NamedType <- name:UpperId {
-  return NamedTypeNode{name.(string)}, nil
+  return &NamedTypeNode{name.(string), c.Loc()}, nil
 }
 ListType <- '[' inner:Type ']' {
   return ListTypeNode{inner.(TypeNode)}, nil

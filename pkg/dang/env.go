@@ -217,7 +217,7 @@ func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
 		if ref.Name == "" {
 			name = "-INVALID_NAME_MISSING-"
 		}
-		return NamedTypeNode{
+		return &NamedTypeNode{
 			Named: name,
 		}
 	}

@@ -4,6 +4,17 @@ import (
 	"bytes"
 )
 
+func (e errList) Unwrap() []error {
+	return e
+}
+
+func (p *parserError) ParseErrorLocation() *SourceLocation {
+	return &SourceLocation{
+		Line:   p.pos.line,
+		Column: p.pos.col + 1,
+	}
+}
+
 func (c current) Loc() *SourceLocation {
 	fn, _ := c.globalStore["filePath"].(string)
 	textEnd := len(c.text)
