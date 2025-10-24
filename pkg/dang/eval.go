@@ -16,7 +16,6 @@ import (
 
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/querybuilder"
 )
 
@@ -262,145 +261,53 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 // addBuiltinFunctions adds builtin functions like print to the evaluation environment
 func addBuiltinFunctions(env EvalEnv) {
-	// Create the print function
-	// Type signature: print(value: a) -> Null where 'a' is a type variable (any type)
-	argType := hm.TypeVariable('a')
-	args := NewRecordType("")
-	args.Add("value", hm.NewScheme(nil, argType))
-	printType := hm.NewFnType(args, hm.TypeVariable('n')) // returns null (type variable)
+	// Register all builtin functions
+	ForEachFunction(func(def BuiltinDef) {
+		fnType := createFunctionTypeFromDef(def)
+		builtinFn := BuiltinFunction{
+			Name:   def.Name,
+			FnType: fnType,
+			Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+				// Apply defaults for missing arguments
+				argsWithDefaults := applyDefaults(args, def)
+				return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
+			},
+		}
+		env.Set(def.Name, builtinFn)
+	})
 
-	printFn := BuiltinFunction{
-		Name:   "print",
-		FnType: printType,
-		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-			// Get the value to print
-			val, ok := args["value"]
-			if !ok {
-				return nil, fmt.Errorf("print: missing required argument 'value'")
+	// Register all builtin methods with naming convention
+	for _, receiverType := range []*Module{StringType, IntType, BooleanType} {
+		ForEachMethod(receiverType, func(def BuiltinDef) {
+			fnType := createFunctionTypeFromDef(def)
+			builtinFn := BuiltinFunction{
+				Name:   def.Name,
+				FnType: fnType,
+				Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+					selfVal, _ := env.Get("self")
+					// Apply defaults for missing arguments
+					argsWithDefaults := applyDefaults(args, def)
+					return def.Impl(ctx, selfVal, Args{Values: argsWithDefaults})
+				},
 			}
-
-			// Print the value using the context-based writer from ioctx
-			writer := ioctx.StdoutFromContext(ctx)
-			fmt.Fprintln(writer, val.String())
-
-			// Return null
-			return NullValue{}, nil
-		},
+			methodKey := GetMethodKey(receiverType, def.Name)
+			env.Set(methodKey, builtinFn)
+		})
 	}
+}
 
-	env.Set("print", printFn)
-
-	// Create the json function
-	// Type signature: toJSON(value: a) -> String! where 'a' is a type variable (any type)
-	jsonArgs := NewRecordType("")
-	jsonArgs.Add("value", hm.NewScheme(nil, argType))
-	jsonReturnType := hm.NonNullType{Type: StringType}
-	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
-
-	jsonFn := BuiltinFunction{
-		Name:   "toJSON",
-		FnType: jsonType,
-		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-			// Get the value to marshal
-			val, ok := args["value"]
-			if !ok {
-				return nil, fmt.Errorf("json: missing required argument 'value'")
-			}
-
-			// Marshal the value to JSON
-			jsonBytes, err := json.Marshal(val)
-			if err != nil {
-				return nil, fmt.Errorf("json: failed to marshal value: %w", err)
-			}
-
-			return StringValue{Val: string(jsonBytes)}, nil
-		},
+// applyDefaults fills in default values for missing arguments
+func applyDefaults(args map[string]Value, def BuiltinDef) map[string]Value {
+	result := make(map[string]Value)
+	for k, v := range args {
+		result[k] = v
 	}
-
-	env.Set("toJSON", jsonFn)
-
-	// Create the split builtin for String type
-	// Type signature is defined in env.go init()
-	// Retrieve it from StringType to ensure consistency
-	splitScheme, ok := StringType.LocalSchemeOf("split")
-	if !ok {
-		panic("split method not found in StringType - this should never happen")
+	for _, param := range def.ParamTypes {
+		if _, ok := result[param.Name]; !ok && param.DefaultValue != nil {
+			result[param.Name] = param.DefaultValue
+		}
 	}
-	splitType, _ := splitScheme.Type()
-
-	splitFn := BuiltinFunction{
-		Name:   "split",
-		FnType: splitType.(*hm.FunctionType),
-		Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-			// Get the separator argument
-			separatorVal, ok := args["separator"]
-			if !ok {
-				return nil, fmt.Errorf("split: missing required argument 'separator'")
-			}
-
-			separatorStr, ok := separatorVal.(StringValue)
-			if !ok {
-				return nil, fmt.Errorf("split: separator must be a string")
-			}
-
-			// Get the optional limit argument (defaults to 0 = no limit)
-			limit := 0
-			if limitVal, ok := args["limit"]; ok {
-				limitInt, ok := limitVal.(IntValue)
-				if !ok {
-					return nil, fmt.Errorf("split: limit must be an integer")
-				}
-				limit = limitInt.Val
-			}
-
-			// Get the receiver (the string to split) from "self"
-			selfVal, ok := env.Get("self")
-			if !ok {
-				return nil, fmt.Errorf("split: missing 'self' binding")
-			}
-
-			strVal, ok := selfVal.(StringValue)
-			if !ok {
-				return nil, fmt.Errorf("split: self must be a string, got %T", selfVal)
-			}
-
-			// Perform the split
-			var parts []string
-			if separatorStr.Val == "" {
-				// Split every character
-				for _, ch := range strVal.Val {
-					parts = append(parts, string(ch))
-				}
-				// Apply limit if specified
-				if limit > 0 && len(parts) >= limit {
-					// Join remaining parts
-					remaining := strings.Join(parts[limit-1:], "")
-					parts = append(parts[:limit-1], remaining)
-				}
-			} else {
-				if limit > 0 {
-					// Use SplitN for limited split
-					parts = strings.SplitN(strVal.Val, separatorStr.Val, limit)
-				} else {
-					// Use Split for unlimited split
-					parts = strings.Split(strVal.Val, separatorStr.Val)
-				}
-			}
-
-			// Convert to Value array
-			values := make([]Value, len(parts))
-			for i, part := range parts {
-				values[i] = StringValue{Val: part}
-			}
-
-			return ListValue{
-				Elements: values,
-				ElemType: hm.NonNullType{Type: StringType},
-			}, nil
-		},
-	}
-
-	env.Set("_string_split_builtin", splitFn)
+	return result
 }
 
 // Helper function to determine if a GraphQL type is scalar

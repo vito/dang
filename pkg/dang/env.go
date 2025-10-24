@@ -92,34 +92,11 @@ func init() {
 	Prelude.AddClass("Int", IntType)
 	Prelude.AddClass("Boolean", BooleanType)
 
-	// String.split method: split(separator: String!, limit: Int! = 0) -> [String!]!
-	splitArgs := NewRecordType("")
-	splitArgs.Add("separator", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
-	splitArgs.Add("limit", hm.NewScheme(nil, IntType))
-	splitReturnType := hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}
-	splitType := hm.NewFnType(splitArgs, splitReturnType)
+	// Register standard library builtins
+	registerStdlib()
 
-	slog.Debug("adding builtin method", "type", "String", "method", "split")
-	StringType.Add("split", hm.NewScheme(nil, splitType))
-
-	// print function: print(value: a) -> Null
-	printArgType := hm.TypeVariable('a')
-	printArgs := NewRecordType("")
-	printArgs.Add("value", hm.NewScheme(nil, printArgType))
-	printType := hm.NewFnType(printArgs, hm.TypeVariable('n')) // returns null
-
-	slog.Debug("adding builtin function", "function", "print")
-	Prelude.Add("print", hm.NewScheme(nil, printType))
-
-	// json function: toJSON(value: b) -> String!
-	jsonArgType := hm.TypeVariable('b')
-	jsonArgs := NewRecordType("")
-	jsonArgs.Add("value", hm.NewScheme(nil, jsonArgType))
-	jsonReturnType := hm.NonNullType{Type: StringType}
-	jsonType := hm.NewFnType(jsonArgs, jsonReturnType)
-
-	slog.Debug("adding builtin function", "function", "json")
-	Prelude.Add("toJSON", hm.NewScheme(nil, jsonType))
+	// Register builtin function types from the registry
+	registerBuiltinTypes()
 }
 
 func NewEnv(schema *introspection.Schema) Env {
@@ -343,6 +320,34 @@ func (e *Module) GetDocString(name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// registerBuiltinTypes registers types for all builtins in the Prelude
+func registerBuiltinTypes() {
+	// Register all builtin function types
+	ForEachFunction(func(def BuiltinDef) {
+		fnType := createFunctionTypeFromDef(def)
+		slog.Debug("adding builtin function", "function", def.Name)
+		Prelude.Add(def.Name, hm.NewScheme(nil, fnType))
+	})
+
+	// Register all builtin method types
+	for _, receiverType := range []*Module{StringType, IntType, BooleanType} {
+		ForEachMethod(receiverType, func(def BuiltinDef) {
+			fnType := createFunctionTypeFromDef(def)
+			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
+			receiverType.Add(def.Name, hm.NewScheme(nil, fnType))
+		})
+	}
+}
+
+// createFunctionTypeFromDef creates a FunctionType from a BuiltinDef
+func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
+	args := NewRecordType("")
+	for _, param := range def.ParamTypes {
+		args.Add(param.Name, hm.NewScheme(nil, param.Type))
+	}
+	return hm.NewFnType(args, def.ReturnType)
 }
 
 // SetModuleDocString sets the documentation string for the module itself

@@ -1,0 +1,12 @@
+# Test string toUpper method
+
+pub upper = "hello world".toUpper()
+assert { upper == "HELLO WORLD" }
+
+pub mixed = "HeLLo".toUpper()
+assert { mixed == "HELLO" }
+
+pub already = "ALREADY".toUpper()
+assert { already == "ALREADY" }
+
+print("String.toUpper() tests passed!")
