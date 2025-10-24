@@ -139,7 +139,7 @@ type TextDocumentPositionParams struct {
 // CompletionParams is
 type CompletionParams struct {
 	TextDocumentPositionParams
-	CompletionContext CompletionContext `json:"contentChanges"`
+	CompletionContext CompletionContext `json:"context"`
 }
 
 // CompletionContext is

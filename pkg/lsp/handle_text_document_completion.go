@@ -58,7 +58,7 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 		// Convert LSP position to Dang SourceLocation for scope checking
 		cursorLoc := &dang.SourceLocation{
 			Filename: string(params.TextDocument.URI),
-			Line:     params.Position.Line + 1, // LSP is 0-based, Dang is 1-based
+			Line:     params.Position.Line + 1,      // LSP is 0-based, Dang is 1-based
 			Column:   params.Position.Character + 1, // LSP is 0-based, Dang is 1-based
 		}
 
