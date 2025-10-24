@@ -159,6 +159,16 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (s *SlotDecl) Walk(fn func(Node)) {
+	fn(s)
+	if s.Type_ != nil {
+		// TypeNode doesn't have Walk method - skip
+	}
+	if s.Value != nil {
+		s.Value.Walk(fn)
+	}
+}
+
 type ClassDecl struct {
 	InferredTypeHolder
 	Named      string
@@ -346,4 +356,9 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		return constructor, nil
 	})
+}
+
+func (c *ClassDecl) Walk(fn func(Node)) {
+	fn(c)
+	c.Value.Walk(fn)
 }

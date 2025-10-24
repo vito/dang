@@ -232,6 +232,22 @@ func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
+func (f *FunDecl) Walk(fn func(Node)) {
+	fn(f)
+	for _, arg := range f.Args {
+		if arg.Type_ != nil {
+			// TypeNode doesn't have Walk method - skip
+		}
+		if arg.Value != nil {
+			arg.Value.Walk(fn)
+		}
+	}
+	if f.Ret != nil {
+		// TypeNode doesn't have Walk method - skip
+	}
+	f.FunctionBase.Body.Walk(fn)
+}
+
 type Reassignment struct {
 	InferredTypeHolder
 	Target   Node   // Left-hand side expression (Symbol, Select, etc.)
@@ -482,6 +498,12 @@ func (r *Reassignment) createValueNode(value Value) Node {
 	}
 }
 
+func (r *Reassignment) Walk(fn func(Node)) {
+	fn(r)
+	r.Target.Walk(fn)
+	r.Value.Walk(fn)
+}
+
 type Reopen struct {
 	InferredTypeHolder
 	Name  string
@@ -570,6 +592,11 @@ func (r *Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 	val := compositeEnv.primary.(*ModuleValue)
 	return val, nil
+}
+
+func (r *Reopen) Walk(fn func(Node)) {
+	fn(r)
+	r.Block.Walk(fn)
 }
 
 type Assert struct {
@@ -803,6 +830,14 @@ func (a *Assert) nodeToString(node Node) string {
 	}
 }
 
+func (a *Assert) Walk(fn func(Node)) {
+	fn(a)
+	if a.Message != nil {
+		a.Message.Walk(fn)
+	}
+	a.Block.Walk(fn)
+}
+
 // DirectiveLocation represents a valid location where a directive can be applied
 type DirectiveLocation struct {
 	InferredTypeHolder
@@ -885,6 +920,16 @@ func (d *DirectiveDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return NullValue{}, nil
 }
 
+func (d *DirectiveDecl) Walk(fn func(Node)) {
+	fn(d)
+	for _, arg := range d.Args {
+		if arg.Value != nil {
+			arg.Value.Walk(fn)
+		}
+		// TypeNode doesn't have Walk method - skip arg.Type_
+	}
+}
+
 // DirectiveApplication represents the application of a directive
 type DirectiveApplication struct {
 	InferredTypeHolder
@@ -936,6 +981,13 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 func (d *DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Directive applications are compile-time annotations, no runtime evaluation
 	return NullValue{}, nil
+}
+
+func (d *DirectiveApplication) Walk(fn func(Node)) {
+	fn(d)
+	for _, arg := range d.Args {
+		arg.Value.Walk(fn)
+	}
 }
 
 // validateArguments checks that directive application arguments match the declaration
@@ -1209,6 +1261,11 @@ func (i *ImportDecl) resolveHeaders(source string) map[string]string {
 	}
 
 	return headers
+}
+
+func (i *ImportDecl) Walk(fn func(Node)) {
+	fn(i)
+	// ImportDecl has no child nodes to walk
 }
 
 // checkAliasConflicts checks if an import alias conflicts with existing symbols

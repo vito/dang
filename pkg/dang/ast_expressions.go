@@ -453,6 +453,14 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 	return nil
 }
 
+func (c *FunCall) Walk(fn func(Node)) {
+	fn(c)
+	c.Fun.Walk(fn)
+	for _, arg := range c.Args {
+		arg.Value.Walk(fn)
+	}
+}
+
 // Symbol represents a symbol/variable reference
 type Symbol struct {
 	InferredTypeHolder
@@ -509,6 +517,10 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		return val, nil
 	})
+}
+
+func (s *Symbol) Walk(fn func(Node)) {
+	fn(s)
 }
 
 // Select represents field selection or method call
@@ -680,6 +692,13 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (d *Select) Walk(fn func(Node)) {
+	fn(d)
+	if d.Receiver != nil {
+		d.Receiver.Walk(fn)
+	}
+}
+
 // Index represents list indexing operations like foo[0]
 type Index struct {
 	InferredTypeHolder
@@ -826,6 +845,12 @@ func (i *Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		return element, nil
 	})
+}
+
+func (i *Index) Walk(fn func(Node)) {
+	fn(i)
+	i.Receiver.Walk(fn)
+	i.Index.Walk(fn)
 }
 
 // FieldSelection represents a field name in an object selection
@@ -1328,6 +1353,11 @@ func (o *ObjectSelection) unwrapType(typeRef *introspection.TypeRef) *introspect
 	}
 }
 
+func (o *ObjectSelection) Walk(fn func(Node)) {
+	fn(o)
+	o.Receiver.Walk(fn)
+}
+
 // Conditional represents an if-then-else expression
 type Conditional struct {
 	InferredTypeHolder
@@ -1439,6 +1469,17 @@ func (c *Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (c *Conditional) Walk(fn func(Node)) {
+	fn(c)
+	c.Condition.Walk(fn)
+	c.Then.Walk(fn)
+	if c.Else != nil {
+		if elseBlock, ok := c.Else.(*Block); ok {
+			elseBlock.Walk(fn)
+		}
+	}
+}
+
 var _ Node = (*While)(nil)
 var _ Evaluator = (*While)(nil)
 
@@ -1509,6 +1550,12 @@ func (w *While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		return lastVal, nil
 	})
+}
+
+func (w *While) Walk(fn func(Node)) {
+	fn(w)
+	w.Condition.Walk(fn)
+	w.BodyBlock.Walk(fn)
 }
 
 // ForLoop represents a for..in loop expression
@@ -1692,6 +1739,12 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (f *ForLoop) Walk(fn func(Node)) {
+	fn(f)
+	f.Iterable.Walk(fn)
+	f.LoopBody.Walk(fn)
+}
+
 // Let represents a let binding expression
 type Let struct {
 	InferredTypeHolder
@@ -1745,6 +1798,12 @@ func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		return EvalNode(ctx, newEnv, l.Expr)
 	})
+}
+
+func (l *Let) Walk(fn func(Node)) {
+	fn(l)
+	l.Value.Walk(fn)
+	l.Expr.Walk(fn)
 }
 
 // TypeHint represents a type hint expression using :: syntax
@@ -1828,6 +1887,11 @@ func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (t *TypeHint) Walk(fn func(Node)) {
+	fn(t)
+	t.Expr.Walk(fn)
+}
+
 // Lambda represents a lambda function expression
 type Lambda struct {
 	InferredTypeHolder
@@ -1860,4 +1924,9 @@ func (l *Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
 		return l.FunctionBase.Eval(ctx, env)
 	})
+}
+
+func (l *Lambda) Walk(fn func(Node)) {
+	fn(l)
+	l.FunctionBase.Body.Walk(fn)
 }

@@ -280,6 +280,12 @@ func (d *Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (d *Default) Walk(fn func(Node)) {
+	fn(d)
+	d.Left.Walk(fn)
+	d.Right.Walk(fn)
+}
+
 type Equality struct {
 	InferredTypeHolder
 	Left  Node
@@ -340,6 +346,12 @@ func (e *Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
+func (e *Equality) Walk(fn func(Node)) {
+	fn(e)
+	e.Left.Walk(fn)
+	e.Right.Walk(fn)
+}
+
 type Addition struct {
 	BinaryOperator
 }
@@ -358,6 +370,12 @@ func NewAddition(left, right Node, loc *SourceLocation) *Addition {
 			EvalFunc: additionEval,
 		},
 	}
+}
+
+func (a *Addition) Walk(fn func(Node)) {
+	fn(a)
+	a.Left.Walk(fn)
+	a.Right.Walk(fn)
 }
 
 type Subtraction struct {
@@ -380,6 +398,12 @@ func NewSubtraction(left, right Node, loc *SourceLocation) *Subtraction {
 	}
 }
 
+func (s *Subtraction) Walk(fn func(Node)) {
+	fn(s)
+	s.Left.Walk(fn)
+	s.Right.Walk(fn)
+}
+
 type Multiplication struct {
 	BinaryOperator
 }
@@ -398,6 +422,12 @@ func NewMultiplication(left, right Node, loc *SourceLocation) *Multiplication {
 			EvalFunc: multiplicationEval,
 		},
 	}
+}
+
+func (m *Multiplication) Walk(fn func(Node)) {
+	fn(m)
+	m.Left.Walk(fn)
+	m.Right.Walk(fn)
 }
 
 type Division struct {
@@ -420,6 +450,12 @@ func NewDivision(left, right Node, loc *SourceLocation) *Division {
 	}
 }
 
+func (d *Division) Walk(fn func(Node)) {
+	fn(d)
+	d.Left.Walk(fn)
+	d.Right.Walk(fn)
+}
+
 type Modulo struct {
 	BinaryOperator
 }
@@ -438,6 +474,12 @@ func NewModulo(left, right Node, loc *SourceLocation) *Modulo {
 			EvalFunc: moduloEval,
 		},
 	}
+}
+
+func (m *Modulo) Walk(fn func(Node)) {
+	fn(m)
+	m.Left.Walk(fn)
+	m.Right.Walk(fn)
 }
 
 type Inequality struct {
@@ -460,6 +502,12 @@ func NewInequality(left, right Node, loc *SourceLocation) *Inequality {
 	}
 }
 
+func (i *Inequality) Walk(fn func(Node)) {
+	fn(i)
+	i.Left.Walk(fn)
+	i.Right.Walk(fn)
+}
+
 type LessThan struct {
 	BinaryOperator
 }
@@ -478,6 +526,12 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			EvalFunc: lessThanEval,
 		},
 	}
+}
+
+func (l *LessThan) Walk(fn func(Node)) {
+	fn(l)
+	l.Left.Walk(fn)
+	l.Right.Walk(fn)
 }
 
 type GreaterThan struct {
@@ -500,6 +554,12 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 	}
 }
 
+func (g *GreaterThan) Walk(fn func(Node)) {
+	fn(g)
+	g.Left.Walk(fn)
+	g.Right.Walk(fn)
+}
+
 type LessThanEqual struct {
 	BinaryOperator
 }
@@ -520,6 +580,12 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 	}
 }
 
+func (l *LessThanEqual) Walk(fn func(Node)) {
+	fn(l)
+	l.Left.Walk(fn)
+	l.Right.Walk(fn)
+}
+
 type GreaterThanEqual struct {
 	BinaryOperator
 }
@@ -538,6 +604,12 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			EvalFunc: greaterThanEqualEval,
 		},
 	}
+}
+
+func (g *GreaterThanEqual) Walk(fn func(Node)) {
+	fn(g)
+	g.Left.Walk(fn)
+	g.Right.Walk(fn)
 }
 
 type UnaryNegation struct {
@@ -597,4 +669,9 @@ func (u *UnaryNegation) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		return nil, fmt.Errorf("unary negation requires Boolean value, got %T", val)
 	})
+}
+
+func (u *UnaryNegation) Walk(fn func(Node)) {
+	fn(u)
+	u.Expr.Walk(fn)
 }

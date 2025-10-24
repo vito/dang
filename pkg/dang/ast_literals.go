@@ -100,6 +100,13 @@ func (l *List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return ListValue{Elements: values, ElemType: elemType}, nil
 }
 
+func (l *List) Walk(fn func(Node)) {
+	fn(l)
+	for _, elem := range l.Elements {
+		elem.Walk(fn)
+	}
+}
+
 // Null represents a null literal
 type Null struct {
 	InferredTypeHolder
@@ -129,6 +136,10 @@ func (n *Null) ReferencedSymbols() []string {
 
 func (n *Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return NullValue{}, nil
+}
+
+func (n *Null) Walk(fn func(Node)) {
+	fn(n)
 }
 
 // String represents a string literal
@@ -161,6 +172,10 @@ func (s *String) ReferencedSymbols() []string {
 
 func (s *String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return StringValue{Val: s.Value}, nil
+}
+
+func (s *String) Walk(fn func(Node)) {
+	fn(s)
 }
 
 // Quoted represents a quoted string literal
@@ -202,6 +217,10 @@ func (b *Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return BoolValue{Val: b.Value}, nil
 }
 
+func (b *Boolean) Walk(fn func(Node)) {
+	fn(b)
+}
+
 // Int represents an integer literal
 type Int struct {
 	InferredTypeHolder
@@ -232,4 +251,8 @@ func (i *Int) ReferencedSymbols() []string {
 
 func (i *Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return IntValue{Val: int(i.Value)}, nil
+}
+
+func (i *Int) Walk(fn func(Node)) {
+	fn(i)
 }
