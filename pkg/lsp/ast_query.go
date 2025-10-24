@@ -1,6 +1,9 @@
 package lsp
 
 import (
+	"fmt"
+	"log/slog"
+
 	"github.com/vito/dang/pkg/dang"
 )
 
@@ -87,6 +90,8 @@ func walkNodes(nodes []dang.Node, fn func(dang.Node) bool) {
 			}
 		case *dang.Lambda:
 			walkNodes([]dang.Node{n.FunctionBase.Body}, fn)
+		case *dang.ClassDecl:
+			walkNodes(n.Value.Forms, fn)
 		case *dang.FunDecl:
 			walkNodes([]dang.Node{n.FunctionBase.Body}, fn)
 		case *dang.Let:
@@ -111,7 +116,12 @@ func walkNodes(nodes []dang.Node, fn func(dang.Node) bool) {
 		case *dang.Reassignment:
 			walkNodes([]dang.Node{n.Target}, fn)
 			walkNodes([]dang.Node{n.Value}, fn)
-		// Add more cases as needed for other node types
+			// Add more cases as needed for other node types
+		case *dang.Symbol, *dang.String, *dang.Null, *dang.Int, *dang.Boolean:
+			// nothing to do
+		default:
+			// TODO: we should just have nodes implement the Visitor pattern
+			slog.Warn("unhandled AST node", "type", fmt.Sprintf("%T", n))
 		}
 	}
 }
@@ -124,6 +134,7 @@ func FindReceiverAt(block *dang.Block, line, col int) dang.Node {
 	walkNodes(block.Forms, func(node dang.Node) bool {
 		loc := node.GetSourceLocation()
 		if loc == nil {
+			slog.Warn("no source location for node", "want", []int{line, col}, "have", fmt.Sprintf("%T", node))
 			return true
 		}
 
