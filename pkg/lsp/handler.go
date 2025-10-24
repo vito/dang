@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
-	"time"
 	"unicode"
 
 	"dagger.io/dagger"
@@ -456,12 +455,8 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 	// Load and cache module schema
 	slog.InfoContext(ctx, "loading schema for module", "dir", moduleDir)
 
-	// Use a timeout context for loading module schemas to avoid hanging
-	loadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
 	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
-	client, schema, err := provider.GetDaggerModuleSchema(loadCtx, h.dag, moduleDir)
+	client, schema, err := provider.GetDaggerModuleSchema(ctx, h.dag, moduleDir)
 	if err != nil {
 		// If module schema loading fails, fall back to default schema
 		slog.WarnContext(ctx, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
