@@ -227,7 +227,9 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 }
 
 func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return f.FunctionBase.inferFunctionType(ctx, env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+	return WithInferErrorHandling(f, func() (hm.Type, error) {
+		return f.FunctionBase.inferFunctionType(ctx, env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+	})
 }
 
 type Reassignment struct {

@@ -539,7 +539,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		// Handle normal receiver
 		lt, err := d.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("Receiver.Infer: %w", err)
+			return nil, fmt.Errorf("Receiver.Infer normal: %w", err)
 		}
 
 		// Check if receiver is nullable or non-null
@@ -567,7 +567,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			// Return a type variable to allow downstream inference to continue
 			tv := fresh.Fresh()
 			d.SetInferredType(tv)
-			return tv, fmt.Errorf("field %q not found in record %s", d.Field, rec)
+			return tv, fmt.Errorf("field %q not found in %s", d.Field, rec)
 		}
 		t, mono := scheme.Type()
 		if !mono {

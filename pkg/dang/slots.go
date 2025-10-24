@@ -66,69 +66,67 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 }
 
 func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(s, func() (hm.Type, error) {
-		var err error
+	var err error
 
-		var definedType hm.Type
-		if s.Type_ != nil {
-			definedType, err = s.Type_.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
+	var definedType hm.Type
+	if s.Type_ != nil {
+		definedType, err = s.Type_.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var inferredType hm.Type
+	if s.Value != nil {
+		inferredType, err = s.Value.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		if definedType != nil {
+			if _, err := hm.Unify(definedType, inferredType); err != nil {
+				return nil, NewInferError(err.Error(), s.Value)
+			}
+		} else {
+			definedType = inferredType
+		}
+	}
+
+	if definedType == nil {
+		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
+	}
+
+	if e, ok := env.(Env); ok {
+		cur, defined := e.LocalSchemeOf(s.Named)
+		if defined {
+			curT, curMono := cur.Type()
+			if !curMono {
+				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
+			}
+
+			if !definedType.Eq(curT) {
+				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Named, curT, definedType)
 			}
 		}
 
-		var inferredType hm.Type
-		if s.Value != nil {
-			inferredType, err = s.Value.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
+		e.SetVisibility(s.Named, s.Visibility)
 
-			if definedType != nil {
-				if _, err := hm.Unify(definedType, inferredType); err != nil {
-					return nil, NewInferError(err.Error(), s.Value)
-				}
-			} else {
-				definedType = inferredType
-			}
+		// Store doc string if present
+		if s.DocString != "" {
+			e.SetDocString(s.Named, s.DocString)
 		}
+	}
 
-		if definedType == nil {
-			return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
+	// Validate directive applications
+	for _, directive := range s.Directives {
+		_, err := directive.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
 		}
+	}
 
-		if e, ok := env.(Env); ok {
-			cur, defined := e.LocalSchemeOf(s.Named)
-			if defined {
-				curT, curMono := cur.Type()
-				if !curMono {
-					return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
-				}
-
-				if !definedType.Eq(curT) {
-					return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Named, curT, definedType)
-				}
-			}
-
-			e.SetVisibility(s.Named, s.Visibility)
-
-			// Store doc string if present
-			if s.DocString != "" {
-				e.SetDocString(s.Named, s.DocString)
-			}
-		}
-
-		// Validate directive applications
-		for _, directive := range s.Directives {
-			_, err := directive.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
-			}
-		}
-
-		env.Add(s.Named, hm.NewScheme(nil, definedType))
-		return definedType, nil
-	})
+	env.Add(s.Named, hm.NewScheme(nil, definedType))
+	return definedType, nil
 }
 
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -245,47 +243,45 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 }
 
 func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		mod, ok := env.(Env)
-		if !ok {
-			return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
+	mod, ok := env.(Env)
+	if !ok {
+		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
+	}
+
+	class, found := mod.NamedType(c.Named)
+	if !found {
+		class = NewModule(c.Named)
+		mod.AddClass(c.Named, class)
+
+		// Store doc string for the class name in the environment
+		if c.DocString != "" {
+			mod.SetDocString(c.Named, c.DocString)
 		}
+	}
 
-		class, found := mod.NamedType(c.Named)
-		if !found {
-			class = NewModule(c.Named)
-			mod.AddClass(c.Named, class)
+	inferEnv := &CompositeModule{
+		primary: class,
+		lexical: env.(Env),
+	}
 
-			// Store doc string for the class name in the environment
-			if c.DocString != "" {
-				mod.SetDocString(c.Named, c.DocString)
-			}
+	// Use phased inference approach to handle forward references within the class body
+	if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
+		return nil, err
+	}
+
+	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
+	class.Add("self", self)
+
+	// Validate directive applications
+	for _, directive := range c.Directives {
+		_, err := directive.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
 		}
+	}
 
-		inferEnv := &CompositeModule{
-			primary: class,
-			lexical: env.(Env),
-		}
-
-		// Use phased inference approach to handle forward references within the class body
-		if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
-			return nil, err
-		}
-
-		self := hm.NewScheme(nil, hm.NonNullType{Type: class})
-		class.Add("self", self)
-
-		// Validate directive applications
-		for _, directive := range c.Directives {
-			_, err := directive.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
-			}
-		}
-
-		c.Inferred = class.(*Module)
-		return c.ConstructorFnType, nil
-	})
+	c.Inferred = class.(*Module)
+	return c.ConstructorFnType, nil
 }
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots as constructor

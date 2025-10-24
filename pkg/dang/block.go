@@ -552,7 +552,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("type inference failed for %v: %w", form, err))
+			errs.Add(err)
 			assignFallbackType(form, env, fresh)
 			continue
 		}
@@ -565,7 +565,7 @@ func inferFunctionSignaturesPhaseResilient(ctx context.Context, functions []Node
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				errs.Add(fmt.Errorf("function signature hoisting failed for %v: %w", form, err))
+				errs.Add(err)
 				// Continue to try other functions
 			}
 		}
@@ -588,7 +588,7 @@ func inferVariablesPhaseResilient(ctx context.Context, variables []Node, env hm.
 	for _, form := range orderedVars {
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("variable inference failed for %v: %w", form, err))
+			errs.Add(err)
 			assignFallbackType(form, env, fresh)
 			continue
 		}
@@ -608,7 +608,7 @@ func inferFunctionBodiesPhaseResilient(ctx context.Context, functions []Node, en
 		}
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("function inference failed for %v: %w", form, err))
+			errs.Add(err)
 			// Function already has signature from earlier phase, so no fallback needed
 			continue
 		}
@@ -622,7 +622,7 @@ func inferNonDeclarationsPhaseResilient(ctx context.Context, nonDeclarations []N
 	for _, form := range nonDeclarations {
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("non-declaration inference failed for %v: %w", form, err))
+			errs.Add(err)
 			// Non-declarations don't need fallback types
 			continue
 		}

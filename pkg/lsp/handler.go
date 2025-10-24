@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"errors"
 	stdErrors "errors"
 	"fmt"
 	"log/slog"
@@ -352,6 +353,11 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 
 // errorToDiagnostic converts a Dang error to an LSP Diagnostic
 func (h *langHandler) errorToDiagnostic(err error, uri DocumentURI) *Diagnostic {
+	slog.Warn("converting error", "err", err)
+	for e := errors.Unwrap(err); e != err; e = errors.Unwrap(e) {
+		slog.Warn("unwrapped", "type", fmt.Sprintf("%T", e), "err", e)
+	}
+
 	// Try to extract InferError with location info
 	var inferErr *dang.InferError
 	if errors, ok := err.(*dang.InferError); ok {
