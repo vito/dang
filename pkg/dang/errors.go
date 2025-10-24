@@ -281,14 +281,16 @@ func ConvertInferError(origErr error) error {
 				fmt.Errorf("No location info available for node (%T): %#v", inferErr.Node, inferErr.Node),
 			)
 		}
-		source, err := os.ReadFile(location.Filename)
-		if err != nil {
-			return errors.Join(
-				origErr,
-				fmt.Errorf("Failed to read file %s: %w", location.Filename, err),
-			)
+		if location.Filename != "" {
+			source, err := os.ReadFile(location.Filename)
+			if err != nil {
+				return errors.Join(
+					origErr,
+					fmt.Errorf("Failed to read file %s: %w", location.Filename, err),
+				)
+			}
+			return NewSourceError(inferErr, location, string(source))
 		}
-		return NewSourceError(inferErr, location, string(source))
 	}
 
 	// Not an InferError, handle as regular error

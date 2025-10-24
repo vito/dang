@@ -77,7 +77,7 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		k := c.getArgumentKey(arg, argMapping, i)
 		err := c.checkArgumentType(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
 		if err != nil {
-			return nil, fmt.Errorf("check argument type: %w", err)
+			return nil, fmt.Errorf("argument %q: %w", k, err)
 		}
 	}
 
