@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/sourcegraph/jsonrpc2"
+	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
@@ -73,20 +74,25 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 	}
 
 	// Add global functions from GraphQL schema (Query type fields)
-	if h.schema != nil && h.schema.QueryType.Name != "" {
-		items = append(items, h.getSchemaCompletions()...)
+	// Get schema for this file
+	fp, err := fromURI(params.TextDocument.URI)
+	if err == nil {
+		schema, _, err := h.getSchemaForFile(ctx, fp)
+		if err == nil && schema != nil && schema.QueryType.Name != "" {
+			items = append(items, h.getSchemaCompletions(schema)...)
+		}
 	}
 
 	return items, nil
 }
 
 // getSchemaCompletions returns completion items for global functions from the GraphQL schema
-func (h *langHandler) getSchemaCompletions() []CompletionItem {
+func (h *langHandler) getSchemaCompletions(schema *introspection.Schema) []CompletionItem {
 	var items []CompletionItem
 
 	// Find the Query type in the schema
-	for _, t := range h.schema.Types {
-		if t.Name == h.schema.QueryType.Name {
+	for _, t := range schema.Types {
+		if t.Name == schema.QueryType.Name {
 			// Found the Query type - add all its fields as global functions
 			for _, field := range t.Fields {
 				// Skip internal/deprecated fields if needed

@@ -81,6 +81,37 @@ func (p *GraphQLClientProvider) getDaggerClientAndSchema(ctx context.Context) (g
 	return client, schema, nil
 }
 
+// GetDaggerModuleSchema loads the schema from a Dagger module directory
+// Takes a shared *dagger.Client to avoid spawning multiple Dagger sessions
+func (p *GraphQLClientProvider) GetDaggerModuleSchema(ctx context.Context, dag *dagger.Client, moduleDir string) (graphql.Client, *introspection.Schema, error) {
+	if dag == nil {
+		return nil, nil, fmt.Errorf("dagger client is nil")
+	}
+
+	// Load the module from the directory
+	modSource := dag.ModuleSource(moduleDir)
+
+	// Get the introspection JSON from the module
+	introspectionJSON, err := modSource.IntrospectionSchemaJSON().Contents(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get introspection JSON from module: %w", err)
+	}
+
+	// Parse the introspection JSON into the standard response format
+	// The IntrospectionJSON() returns a JSON object with a "data" field containing the "__schema" object
+	var response introspection.Response
+	if err := json.Unmarshal([]byte(introspectionJSON), &response); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse introspection JSON: %w", err)
+	}
+
+	if response.Schema == nil {
+		return nil, nil, fmt.Errorf("introspection response missing schema")
+	}
+
+	client := dag.GraphQLClient()
+	return client, response.Schema, nil
+}
+
 // getCustomClientAndSchema provides a client and schema for a custom GraphQL endpoint
 func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (graphql.Client, *introspection.Schema, error) {
 	// Create HTTP client with custom headers

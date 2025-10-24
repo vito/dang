@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"time"
 	"unicode"
 
+	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/vito/dang/introspection"
@@ -19,8 +21,9 @@ import (
 // NewHandler create JSON-RPC handler for this language server.
 func NewHandler() jsonrpc2.Handler {
 	handler := &langHandler{
-		files: make(map[DocumentURI]*File),
-		conn:  nil,
+		files:         make(map[DocumentURI]*File),
+		conn:          nil,
+		moduleSchemas: make(map[string]*moduleSchema),
 	}
 
 	return jsonrpc2.HandlerWithError(handler.handle)
@@ -31,9 +34,22 @@ type langHandler struct {
 	conn     *jsonrpc2.Conn
 	rootPath string
 	folders  []string
-	schema   *introspection.Schema
-	client   graphql.Client
-	provider *dang.GraphQLClientProvider
+
+	dag *dagger.Client
+
+	// Per-module schema cache
+	moduleSchemas map[string]*moduleSchema // moduleDir -> schema
+
+	// Default schema/client for non-module files
+	defaultSchema   *introspection.Schema
+	defaultClient   graphql.Client
+	defaultProvider *dang.GraphQLClientProvider
+}
+
+// moduleSchema holds the schema and client for a specific Dagger module
+type moduleSchema struct {
+	schema *introspection.Schema
+	client graphql.Client
 }
 
 // File is
@@ -161,12 +177,12 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	if err != nil {
 		// If parsing fails, add parse error as diagnostic and set empty structures
 		slog.Warn("failed to parse Dang code for LSP", "error", err)
-		
+
 		// Try to extract location info from parse error
 		if diag := h.errorToDiagnostic(err, uri); diag != nil {
 			f.Diagnostics = append(f.Diagnostics, *diag)
 		}
-		
+
 		f.Symbols = &SymbolTable{
 			Definitions: make(map[string]*SymbolInfo),
 			References:  make(map[string]*SymbolRef),
@@ -192,12 +208,18 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 			f.LexicalAnalyzer = h.buildLexicalAnalyzer(uri, block.Forms)
 
+			// Get schema for this file's module
+			schema, _, err := h.getSchemaForFile(ctx, fp)
+			if err != nil {
+				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
+			}
+
 			// Run type inference to annotate AST with types
-			if h.schema != nil {
-				typeEnv := dang.NewEnv(h.schema)
+			if schema != nil {
+				typeEnv := dang.NewEnv(schema)
 				fresh := hm.NewSimpleFresher()
 				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
-				
+
 				// InferFormsWithPhases now returns an InferenceErrors type with all accumulated errors
 				if err != nil {
 					// Convert inference errors to diagnostics
@@ -386,6 +408,90 @@ func stringPtr(s string) *string {
 	return &s
 }
 
+// getSchemaForFile returns the appropriate schema for a given file path.
+// It searches for a dagger.json in the file's directory or parent directories,
+// and caches the result per module directory.
+func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*introspection.Schema, graphql.Client, error) {
+	// Find the module directory for this file
+	moduleDir := findDaggerModule(filepath.Dir(filePath))
+
+	slog.WarnContext(ctx, "getting schema for file", "filePath", filePath)
+	if moduleDir == "" {
+		slog.WarnContext(ctx, "module dir not found", "filePath", filePath)
+
+		// Not in a module, use default schema
+		if h.defaultSchema == nil {
+			// Lazily load default schema on first use
+			if err := h.loadDefaultSchema(ctx); err != nil {
+				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
+			}
+		}
+		return h.defaultSchema, h.defaultClient, nil
+	}
+
+	// Check cache for this module
+	if cached, ok := h.moduleSchemas[moduleDir]; ok {
+		slog.WarnContext(ctx, "module schema cache hit", "filePath", filePath)
+		return cached.schema, cached.client, nil
+	}
+
+	// Check if we have a Dagger client available
+	if h.dag == nil {
+		// No Dagger client, fall back to default schema
+		slog.WarnContext(ctx, "no Dagger client available, falling back to default", "dir", moduleDir)
+		if h.defaultSchema == nil {
+			if err := h.loadDefaultSchema(ctx); err != nil {
+				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
+			}
+		}
+		return h.defaultSchema, h.defaultClient, nil
+	}
+
+	// Load and cache module schema
+	slog.InfoContext(ctx, "loading schema for module", "dir", moduleDir)
+
+	// Use a timeout context for loading module schemas to avoid hanging
+	loadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
+	client, schema, err := provider.GetDaggerModuleSchema(loadCtx, h.dag, moduleDir)
+	if err != nil {
+		// If module schema loading fails, fall back to default schema
+		slog.WarnContext(ctx, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
+		if h.defaultSchema == nil {
+			if err := h.loadDefaultSchema(ctx); err != nil {
+				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
+			}
+		}
+		return h.defaultSchema, h.defaultClient, nil
+	}
+
+	h.moduleSchemas[moduleDir] = &moduleSchema{
+		schema: schema,
+		client: client,
+	}
+
+	slog.InfoContext(ctx, "cached schema for module", "dir", moduleDir, "types", len(schema.Types))
+	return schema, client, nil
+}
+
+// loadDefaultSchema loads the default GraphQL schema from environment/config
+func (h *langHandler) loadDefaultSchema(ctx context.Context) error {
+	config := dang.LoadGraphQLConfig()
+	h.defaultProvider = dang.NewGraphQLClientProvider(config)
+
+	client, schema, err := h.defaultProvider.GetClientAndSchema(ctx)
+	if err != nil {
+		return err
+	}
+
+	h.defaultClient = client
+	h.defaultSchema = schema
+
+	slog.InfoContext(ctx, "loaded default GraphQL schema", "types", len(schema.Types))
+	return nil
+}
 
 func isIdentifierChar(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
