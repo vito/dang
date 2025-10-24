@@ -159,8 +159,10 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (s *SlotDecl) Walk(fn func(Node)) {
-	fn(s)
+func (s *SlotDecl) Walk(fn func(Node) bool) {
+	if !fn(s) {
+		return
+	}
 	if s.Type_ != nil {
 		// TypeNode doesn't have Walk method - skip
 	}
@@ -358,7 +360,9 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (c *ClassDecl) Walk(fn func(Node)) {
-	fn(c)
+func (c *ClassDecl) Walk(fn func(Node) bool) {
+	if !fn(c) {
+		return
+	}
 	c.Value.Walk(fn)
 }

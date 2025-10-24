@@ -26,8 +26,9 @@ type Node interface {
 	// GetInferredType retrieves the inferred type for this node
 	GetInferredType() hm.Type
 
-	// Walk recursively visits this node and all its children, calling fn for each node
-	Walk(fn func(Node))
+	// Walk recursively visits this node and all its children, calling fn for each node.
+	// The callback returns true to continue walking into children, false to skip children.
+	Walk(fn func(Node) bool)
 }
 
 // InferredTypeHolder is embedded in AST nodes to store inferred types
@@ -212,7 +213,7 @@ func (v *ValueNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 }
 func (v *ValueNode) Eval(ctx context.Context, env EvalEnv) (Value, error) { return v.Val, nil }
 
-func (v *ValueNode) Walk(fn func(Node)) {
+func (v *ValueNode) Walk(fn func(Node) bool) {
 	fn(v)
 }
 

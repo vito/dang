@@ -14,17 +14,20 @@ func FindNodeAt(block *dang.Block, line, col int) dang.Node {
 	}
 
 	var found dang.Node
-	block.Walk(func(node dang.Node) {
+	block.Walk(func(node dang.Node) bool {
 		loc := node.GetSourceLocation()
 		if loc == nil {
-			return
+			return true
 		}
 
 		// Check if the cursor position is within this node's location
 		if containsPosition(loc, line, col) {
 			found = node
-			// Continue walking to find more specific (nested) nodes
+			// Continue walking into children to find more specific (nested) nodes
+			return true
 		}
+		// Skip walking into children of nodes that don't contain the position
+		return false
 	})
 
 	return found
@@ -66,11 +69,11 @@ func containsPosition(loc *dang.SourceLocation, line, col int) bool {
 func FindReceiverAt(block *dang.Block, line, col int) dang.Node {
 	// Find ALL nodes at this position, looking specifically for Select nodes
 	var selectNode *dang.Select
-	block.Walk(func(node dang.Node) {
+	block.Walk(func(node dang.Node) bool {
 		loc := node.GetSourceLocation()
 		if loc == nil {
 			slog.Warn("no source location for node", "want", []int{line, col}, "have", fmt.Sprintf("%T", node))
-			return
+			return true
 		}
 
 		// Check if this node contains the cursor position
@@ -80,7 +83,10 @@ func FindReceiverAt(block *dang.Block, line, col int) dang.Node {
 				selectNode = sel
 				// Continue walking to find the most specific Select
 			}
+			return true
 		}
+		// Skip walking into children of nodes that don't contain the position
+		return false
 	})
 
 	if selectNode != nil {

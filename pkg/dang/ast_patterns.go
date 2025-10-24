@@ -73,8 +73,10 @@ func (m *Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return resultType, nil
 }
 
-func (m *Match) Walk(fn func(Node)) {
-	fn(m)
+func (m *Match) Walk(fn func(Node) bool) {
+	if !fn(m) {
+		return
+	}
 	m.Expr.Walk(fn)
 	for _, case_ := range m.Cases {
 		case_.Expr.Walk(fn)

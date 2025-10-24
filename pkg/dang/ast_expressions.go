@@ -453,8 +453,10 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 	return nil
 }
 
-func (c *FunCall) Walk(fn func(Node)) {
-	fn(c)
+func (c *FunCall) Walk(fn func(Node) bool) {
+	if !fn(c) {
+		return
+	}
 	c.Fun.Walk(fn)
 	for _, arg := range c.Args {
 		arg.Value.Walk(fn)
@@ -519,7 +521,7 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (s *Symbol) Walk(fn func(Node)) {
+func (s *Symbol) Walk(fn func(Node) bool) {
 	fn(s)
 }
 
@@ -692,8 +694,10 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (d *Select) Walk(fn func(Node)) {
-	fn(d)
+func (d *Select) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
 	if d.Receiver != nil {
 		d.Receiver.Walk(fn)
 	}
@@ -847,8 +851,10 @@ func (i *Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (i *Index) Walk(fn func(Node)) {
-	fn(i)
+func (i *Index) Walk(fn func(Node) bool) {
+	if !fn(i) {
+		return
+	}
 	i.Receiver.Walk(fn)
 	i.Index.Walk(fn)
 }
@@ -1353,8 +1359,10 @@ func (o *ObjectSelection) unwrapType(typeRef *introspection.TypeRef) *introspect
 	}
 }
 
-func (o *ObjectSelection) Walk(fn func(Node)) {
-	fn(o)
+func (o *ObjectSelection) Walk(fn func(Node) bool) {
+	if !fn(o) {
+		return
+	}
 	o.Receiver.Walk(fn)
 }
 
@@ -1469,8 +1477,10 @@ func (c *Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (c *Conditional) Walk(fn func(Node)) {
-	fn(c)
+func (c *Conditional) Walk(fn func(Node) bool) {
+	if !fn(c) {
+		return
+	}
 	c.Condition.Walk(fn)
 	c.Then.Walk(fn)
 	if c.Else != nil {
@@ -1552,8 +1562,10 @@ func (w *While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (w *While) Walk(fn func(Node)) {
-	fn(w)
+func (w *While) Walk(fn func(Node) bool) {
+	if !fn(w) {
+		return
+	}
 	w.Condition.Walk(fn)
 	w.BodyBlock.Walk(fn)
 }
@@ -1739,8 +1751,10 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (f *ForLoop) Walk(fn func(Node)) {
-	fn(f)
+func (f *ForLoop) Walk(fn func(Node) bool) {
+	if !fn(f) {
+		return
+	}
 	f.Iterable.Walk(fn)
 	f.LoopBody.Walk(fn)
 }
@@ -1800,8 +1814,10 @@ func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (l *Let) Walk(fn func(Node)) {
-	fn(l)
+func (l *Let) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
 	l.Value.Walk(fn)
 	l.Expr.Walk(fn)
 }
@@ -1887,8 +1903,10 @@ func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (t *TypeHint) Walk(fn func(Node)) {
-	fn(t)
+func (t *TypeHint) Walk(fn func(Node) bool) {
+	if !fn(t) {
+		return
+	}
 	t.Expr.Walk(fn)
 }
 
@@ -1926,7 +1944,9 @@ func (l *Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (l *Lambda) Walk(fn func(Node)) {
-	fn(l)
+func (l *Lambda) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
 	l.FunctionBase.Body.Walk(fn)
 }

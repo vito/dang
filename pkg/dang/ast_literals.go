@@ -100,8 +100,10 @@ func (l *List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return ListValue{Elements: values, ElemType: elemType}, nil
 }
 
-func (l *List) Walk(fn func(Node)) {
-	fn(l)
+func (l *List) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
 	for _, elem := range l.Elements {
 		elem.Walk(fn)
 	}
@@ -138,7 +140,7 @@ func (n *Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return NullValue{}, nil
 }
 
-func (n *Null) Walk(fn func(Node)) {
+func (n *Null) Walk(fn func(Node) bool) {
 	fn(n)
 }
 
@@ -174,7 +176,7 @@ func (s *String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return StringValue{Val: s.Value}, nil
 }
 
-func (s *String) Walk(fn func(Node)) {
+func (s *String) Walk(fn func(Node) bool) {
 	fn(s)
 }
 
@@ -217,7 +219,7 @@ func (b *Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return BoolValue{Val: b.Value}, nil
 }
 
-func (b *Boolean) Walk(fn func(Node)) {
+func (b *Boolean) Walk(fn func(Node) bool) {
 	fn(b)
 }
 
@@ -253,6 +255,6 @@ func (i *Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return IntValue{Val: int(i.Value)}, nil
 }
 
-func (i *Int) Walk(fn func(Node)) {
+func (i *Int) Walk(fn func(Node) bool) {
 	fn(i)
 }

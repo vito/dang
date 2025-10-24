@@ -409,8 +409,10 @@ func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return EvaluateFormsWithPhases(ctx, forms, newEnv)
 }
 
-func (b *Block) Walk(fn func(Node)) {
-	fn(b)
+func (b *Block) Walk(fn func(Node) bool) {
+	if !fn(b) {
+		return
+	}
 	for _, form := range b.Forms {
 		form.Walk(fn)
 	}
@@ -481,8 +483,10 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return newMod, nil
 }
 
-func (o *Object) Walk(fn func(Node)) {
-	fn(o)
+func (o *Object) Walk(fn func(Node) bool) {
+	if !fn(o) {
+		return
+	}
 	for _, slot := range o.Slots {
 		slot.Walk(fn)
 	}

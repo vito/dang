@@ -280,8 +280,10 @@ func (d *Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (d *Default) Walk(fn func(Node)) {
-	fn(d)
+func (d *Default) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
 	d.Left.Walk(fn)
 	d.Right.Walk(fn)
 }
@@ -346,8 +348,10 @@ func (e *Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (e *Equality) Walk(fn func(Node)) {
-	fn(e)
+func (e *Equality) Walk(fn func(Node) bool) {
+	if !fn(e) {
+		return
+	}
 	e.Left.Walk(fn)
 	e.Right.Walk(fn)
 }
@@ -372,8 +376,10 @@ func NewAddition(left, right Node, loc *SourceLocation) *Addition {
 	}
 }
 
-func (a *Addition) Walk(fn func(Node)) {
-	fn(a)
+func (a *Addition) Walk(fn func(Node) bool) {
+	if !fn(a) {
+		return
+	}
 	a.Left.Walk(fn)
 	a.Right.Walk(fn)
 }
@@ -398,8 +404,10 @@ func NewSubtraction(left, right Node, loc *SourceLocation) *Subtraction {
 	}
 }
 
-func (s *Subtraction) Walk(fn func(Node)) {
-	fn(s)
+func (s *Subtraction) Walk(fn func(Node) bool) {
+	if !fn(s) {
+		return
+	}
 	s.Left.Walk(fn)
 	s.Right.Walk(fn)
 }
@@ -424,8 +432,10 @@ func NewMultiplication(left, right Node, loc *SourceLocation) *Multiplication {
 	}
 }
 
-func (m *Multiplication) Walk(fn func(Node)) {
-	fn(m)
+func (m *Multiplication) Walk(fn func(Node) bool) {
+	if !fn(m) {
+		return
+	}
 	m.Left.Walk(fn)
 	m.Right.Walk(fn)
 }
@@ -450,8 +460,10 @@ func NewDivision(left, right Node, loc *SourceLocation) *Division {
 	}
 }
 
-func (d *Division) Walk(fn func(Node)) {
-	fn(d)
+func (d *Division) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
 	d.Left.Walk(fn)
 	d.Right.Walk(fn)
 }
@@ -476,8 +488,10 @@ func NewModulo(left, right Node, loc *SourceLocation) *Modulo {
 	}
 }
 
-func (m *Modulo) Walk(fn func(Node)) {
-	fn(m)
+func (m *Modulo) Walk(fn func(Node) bool) {
+	if !fn(m) {
+		return
+	}
 	m.Left.Walk(fn)
 	m.Right.Walk(fn)
 }
@@ -502,8 +516,10 @@ func NewInequality(left, right Node, loc *SourceLocation) *Inequality {
 	}
 }
 
-func (i *Inequality) Walk(fn func(Node)) {
-	fn(i)
+func (i *Inequality) Walk(fn func(Node) bool) {
+	if !fn(i) {
+		return
+	}
 	i.Left.Walk(fn)
 	i.Right.Walk(fn)
 }
@@ -528,8 +544,10 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 	}
 }
 
-func (l *LessThan) Walk(fn func(Node)) {
-	fn(l)
+func (l *LessThan) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
 	l.Left.Walk(fn)
 	l.Right.Walk(fn)
 }
@@ -554,8 +572,10 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 	}
 }
 
-func (g *GreaterThan) Walk(fn func(Node)) {
-	fn(g)
+func (g *GreaterThan) Walk(fn func(Node) bool) {
+	if !fn(g) {
+		return
+	}
 	g.Left.Walk(fn)
 	g.Right.Walk(fn)
 }
@@ -580,8 +600,10 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 	}
 }
 
-func (l *LessThanEqual) Walk(fn func(Node)) {
-	fn(l)
+func (l *LessThanEqual) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
 	l.Left.Walk(fn)
 	l.Right.Walk(fn)
 }
@@ -606,8 +628,10 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 	}
 }
 
-func (g *GreaterThanEqual) Walk(fn func(Node)) {
-	fn(g)
+func (g *GreaterThanEqual) Walk(fn func(Node) bool) {
+	if !fn(g) {
+		return
+	}
 	g.Left.Walk(fn)
 	g.Right.Walk(fn)
 }
@@ -671,7 +695,9 @@ func (u *UnaryNegation) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (u *UnaryNegation) Walk(fn func(Node)) {
-	fn(u)
+func (u *UnaryNegation) Walk(fn func(Node) bool) {
+	if !fn(u) {
+		return
+	}
 	u.Expr.Walk(fn)
 }

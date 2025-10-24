@@ -232,8 +232,10 @@ func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
-func (f *FunDecl) Walk(fn func(Node)) {
-	fn(f)
+func (f *FunDecl) Walk(fn func(Node) bool) {
+	if !fn(f) {
+		return
+	}
 	for _, arg := range f.Args {
 		if arg.Type_ != nil {
 			// TypeNode doesn't have Walk method - skip
@@ -498,8 +500,10 @@ func (r *Reassignment) createValueNode(value Value) Node {
 	}
 }
 
-func (r *Reassignment) Walk(fn func(Node)) {
-	fn(r)
+func (r *Reassignment) Walk(fn func(Node) bool) {
+	if !fn(r) {
+		return
+	}
 	r.Target.Walk(fn)
 	r.Value.Walk(fn)
 }
@@ -594,8 +598,10 @@ func (r *Reopen) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return val, nil
 }
 
-func (r *Reopen) Walk(fn func(Node)) {
-	fn(r)
+func (r *Reopen) Walk(fn func(Node) bool) {
+	if !fn(r) {
+		return
+	}
 	r.Block.Walk(fn)
 }
 
@@ -830,8 +836,10 @@ func (a *Assert) nodeToString(node Node) string {
 	}
 }
 
-func (a *Assert) Walk(fn func(Node)) {
-	fn(a)
+func (a *Assert) Walk(fn func(Node) bool) {
+	if !fn(a) {
+		return
+	}
 	if a.Message != nil {
 		a.Message.Walk(fn)
 	}
@@ -920,8 +928,10 @@ func (d *DirectiveDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return NullValue{}, nil
 }
 
-func (d *DirectiveDecl) Walk(fn func(Node)) {
-	fn(d)
+func (d *DirectiveDecl) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
 	for _, arg := range d.Args {
 		if arg.Value != nil {
 			arg.Value.Walk(fn)
@@ -983,8 +993,10 @@ func (d *DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, er
 	return NullValue{}, nil
 }
 
-func (d *DirectiveApplication) Walk(fn func(Node)) {
-	fn(d)
+func (d *DirectiveApplication) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
 	for _, arg := range d.Args {
 		arg.Value.Walk(fn)
 	}
@@ -1263,7 +1275,7 @@ func (i *ImportDecl) resolveHeaders(source string) map[string]string {
 	return headers
 }
 
-func (i *ImportDecl) Walk(fn func(Node)) {
+func (i *ImportDecl) Walk(fn func(Node) bool) {
 	fn(i)
 	// ImportDecl has no child nodes to walk
 }
