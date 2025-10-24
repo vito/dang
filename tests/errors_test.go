@@ -7,17 +7,30 @@ import (
 	"strings"
 	"testing"
 
+	"dagger.io/dagger/telemetry"
 	"github.com/Khan/genqlient/graphql"
+	"github.com/dagger/testctx"
+	"github.com/dagger/testctx/oteltest"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
+	"go.opentelemetry.io/otel/attribute"
 	"gotest.tools/v3/golden"
 )
 
 // TestErrorMessages tests that error messages match golden files
-func TestErrorMessages(t *testing.T) {
+func TestErrorMessages(tT *testing.T) {
+	t := testctx.New(tT,
+		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
+			Attributes: []attribute.KeyValue{
+				attribute.Bool(telemetry.UIRevealAttr, true),
+			},
+		}),
+		oteltest.WithLogging[*testing.T](),
+	)
+
 	errorsDir := filepath.Join("errors")
 
 	// Find all .dang files in the errors directory
@@ -46,7 +59,7 @@ func TestErrorMessages(t *testing.T) {
 		// Extract test name from filename
 		testName := strings.TrimSuffix(filepath.Base(dangFile), ".dang")
 
-		t.Run(testName, func(t *testing.T) {
+		t.Run(testName, func(ctx context.Context, t *testctx.T) {
 			output := runDangFile(t.Context(), client, schema, dangFile)
 
 			// Compare with golden file

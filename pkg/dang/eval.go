@@ -959,7 +959,8 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
 		// If it's already a SourceError, don't wrap it again
-		if errors.Is(err, &SourceError{}) {
+		var sourceErr *SourceError
+		if errors.As(err, &sourceErr) {
 			return err
 		}
 		return fmt.Errorf("evaluation error: %w", err)

@@ -16,8 +16,12 @@ type InferenceErrors struct {
 
 func (ie *InferenceErrors) Add(err error) {
 	if err != nil {
-		ie.Errors = append(ie.Errors, err)
+		ie.Errors = append(ie.Errors, ConvertInferError(err))
 	}
+}
+
+func (ie *InferenceErrors) Unwrap() []error {
+	return ie.Errors
 }
 
 func (ie *InferenceErrors) HasErrors() bool {
@@ -30,13 +34,12 @@ func (ie *InferenceErrors) Error() string {
 	}
 	if len(ie.Errors) == 1 {
 		// Convert InferError to SourceError for pretty printing
-		return ConvertInferError(ie.Errors[0]).Error()
+		return ie.Errors[0].Error()
 	}
 	var msgs []string
 	for i, err := range ie.Errors {
 		// Convert each InferError to SourceError for pretty printing
-		converted := ConvertInferError(err)
-		msgs = append(msgs, fmt.Sprintf("Error %d:\n%s", i+1, converted.Error()))
+		msgs = append(msgs, fmt.Sprintf("Error %d:\n%s", i+1, err.Error()))
 	}
 	return fmt.Sprintf("%d inference errors:\n\n%s", len(ie.Errors), strings.Join(msgs, "\n\n"))
 }
