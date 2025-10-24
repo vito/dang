@@ -179,9 +179,7 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		slog.Warn("failed to parse Dang code for LSP", "error", err)
 
 		// Try to extract location info from parse error
-		if diag := h.errorToDiagnostic(err, uri); diag != nil {
-			f.Diagnostics = append(f.Diagnostics, *diag)
-		}
+		f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
 
 		f.Symbols = &SymbolTable{
 			Definitions: make(map[string]*SymbolInfo),
@@ -219,22 +217,8 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				typeEnv := dang.NewEnv(schema)
 				fresh := hm.NewSimpleFresher()
 				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
-
-				// InferFormsWithPhases now returns an InferenceErrors type with all accumulated errors
 				if err != nil {
-					// Convert inference errors to diagnostics
-					if inferErrs, ok := err.(*dang.InferenceErrors); ok {
-						for _, e := range inferErrs.Errors {
-							if diag := h.errorToDiagnostic(e, uri); diag != nil {
-								f.Diagnostics = append(f.Diagnostics, *diag)
-							}
-						}
-					} else {
-						// Single error, convert to diagnostic
-						if diag := h.errorToDiagnostic(err, uri); diag != nil {
-							f.Diagnostics = append(f.Diagnostics, *diag)
-						}
-					}
+					f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
 				}
 			}
 		}
@@ -351,61 +335,63 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 }
 
 // errorToDiagnostic converts a Dang error to an LSP Diagnostic
-func (h *langHandler) errorToDiagnostic(err error, uri DocumentURI) *Diagnostic {
+func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnostic {
 	slog.Warn("converting error", "err", err)
-	for e := errors.Unwrap(err); e != err; e = errors.Unwrap(e) {
+	for e := errors.Unwrap(err); e != nil && e != err; e = errors.Unwrap(e) {
 		slog.Warn("unwrapped", "type", fmt.Sprintf("%T", e), "err", e)
 	}
 
-	// Try to extract InferError with location info
-	var inferErr *dang.InferError
-	if errors, ok := err.(*dang.InferError); ok {
-		inferErr = errors
-	} else {
-		// Try unwrapping
-		var ie *dang.InferError
-		if stdErrors.As(err, &ie) {
-			inferErr = ie
+	var inferErrs *dang.InferenceErrors
+	if errors.As(err, &inferErrs) {
+		var ds []Diagnostic
+		for _, e := range inferErrs.Errors {
+			ds = append(ds, h.errorToDiagnostics(e, uri)...)
 		}
+		return ds
 	}
 
-	if inferErr != nil && inferErr.Location != nil {
+	var sourceError *dang.SourceError
+	if errors.As(err, &sourceError) {
+		// prevent source errors from showing source code
+		sourceError.Location = nil
+	}
+
+	var startLine, endLine int = 0, 0
+	var startCol, endCol int = 0, 1
+
+	// Try to extract InferError with location info
+	var inferErr *dang.InferError
+	// Try unwrapping
+	if stdErrors.As(err, &inferErr) && inferErr.Location != nil {
 		loc := inferErr.Location
+
 		// LSP uses 0-based lines and columns, Dang uses 1-based
-		startLine := loc.Line - 1
-		startCol := loc.Column - 1
-		endCol := startCol + loc.Length
+		startLine = loc.Line - 1
+		startCol = loc.Column - 1
+		endCol = startCol + loc.Length
 		if loc.Length == 0 {
 			endCol = startCol + 1 // Default to at least one character
 		}
 
 		// If we have an End position, use it
-		endLine := startLine
+		endLine = startLine
 		if loc.End != nil {
 			endLine = loc.End.Line - 1
 			endCol = loc.End.Column - 1
 		}
+	}
 
-		return &Diagnostic{
+	// Fallback: create a diagnostic without specific location (line 0)
+	return []Diagnostic{
+		{
 			Range: Range{
 				Start: Position{Line: startLine, Character: startCol},
 				End:   Position{Line: endLine, Character: endCol},
 			},
 			Severity: 1, // Error
 			Source:   stringPtr("dang"),
-			Message:  inferErr.Message,
-		}
-	}
-
-	// Fallback: create a diagnostic without specific location (line 0)
-	return &Diagnostic{
-		Range: Range{
-			Start: Position{Line: 0, Character: 0},
-			End:   Position{Line: 0, Character: 1},
+			Message:  err.Error(),
 		},
-		Severity: 1, // Error
-		Source:   stringPtr("dang"),
-		Message:  err.Error(),
 	}
 }
 
