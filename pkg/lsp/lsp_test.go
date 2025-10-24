@@ -8,11 +8,32 @@ import (
 	"testing"
 	"time"
 
+	"dagger.io/dagger/telemetry"
+	"github.com/dagger/testctx"
+	"github.com/dagger/testctx/oteltest"
 	"github.com/neovim/go-client/nvim"
 	"github.com/vito/is"
+	"go.opentelemetry.io/otel/attribute"
 )
 
-func TestNeovimGoToDefinition(t *testing.T) {
+func TestMain(m *testing.M) {
+	os.Exit(oteltest.Main(m))
+}
+
+func TestLSP(tT *testing.T) {
+	testctx.New(tT,
+		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
+			Attributes: []attribute.KeyValue{
+				attribute.Bool(telemetry.UIRevealAttr, true),
+			},
+		}),
+		oteltest.WithLogging[*testing.T](),
+	).RunTests(LSPSuite{})
+}
+
+type LSPSuite struct{}
+
+func (LSPSuite) TestNeovimGoToDefinition(ctx context.Context, t *testctx.T) {
 	if testing.Short() {
 		t.SkipNow()
 		return
@@ -25,7 +46,7 @@ func TestNeovimGoToDefinition(t *testing.T) {
 	testFile(t, sandboxNvim(t), "testdata/gd.dang")
 }
 
-func TestNeovimCompletion(t *testing.T) {
+func (LSPSuite) TestNeovimCompletion(ctx context.Context, t *testctx.T) {
 	if testing.Short() {
 		t.SkipNow()
 		return
@@ -38,7 +59,7 @@ func TestNeovimCompletion(t *testing.T) {
 	testFile(t, sandboxNvim(t), "testdata/complete.dang")
 }
 
-func checkNested(t *testing.T) bool {
+func checkNested(t *testctx.T) bool {
 	if os.Getenv("NVIM") != "" {
 		t.Skip("detected running from neovim; skipping to avoid hanging")
 		return true
@@ -47,7 +68,7 @@ func checkNested(t *testing.T) bool {
 	return false
 }
 
-func testFile(t *testing.T, client *nvim.Nvim, file string) {
+func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 	is := is.New(t)
 
 	err := client.Command(`edit ` + file)
@@ -71,10 +92,6 @@ func testFile(t *testing.T, client *nvim.Nvim, file string) {
 	t.Logf("lines: %d", lineCount)
 
 	t.Cleanup(func() {
-		if !t.Failed() {
-			return
-		}
-
 		lspLogs, err := os.ReadFile("dang-lsp.log")
 		if err == nil {
 			t.Logf("language server logs:\n\n%s", string(lspLogs))
@@ -107,7 +124,7 @@ func testFile(t *testing.T, client *nvim.Nvim, file string) {
 		eq := strings.Split(segs[1], " => ")
 
 		codes := strings.TrimSpace(eq[0])
-		
+
 		// Split codes on {delay:...} markers
 		parts := strings.Split(codes, "{delay:")
 		for i, part := range parts {
@@ -120,17 +137,17 @@ func testFile(t *testing.T, client *nvim.Nvim, file string) {
 				delayStr := part[:delayEnd]
 				delay, err := time.ParseDuration(delayStr)
 				is.NoErr(err)
-				
+
 				t.Logf("L%03d sleeping for %v", testLine, delay)
 				time.Sleep(delay)
-				
+
 				part = part[delayEnd+1:] // remaining keys after }
 			}
-			
+
 			if part == "" {
 				continue
 			}
-			
+
 			keys, err := client.ReplaceTermcodes(part, true, true, true)
 			is.NoErr(err)
 
@@ -173,7 +190,7 @@ func testFile(t *testing.T, client *nvim.Nvim, file string) {
 	}
 }
 
-func sandboxNvim(t *testing.T) *nvim.Nvim {
+func sandboxNvim(t *testctx.T) *nvim.Nvim {
 	is := is.New(t)
 
 	ctx := context.Background()

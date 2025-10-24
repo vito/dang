@@ -80,6 +80,11 @@ func findDaggerModule(startPath string) string {
 			return ""
 		}
 
+		// Stop searching if we're in a testdata directory
+		if filepath.Base(dir) == "testdata" {
+			return ""
+		}
+
 		// Move to parent directory
 		parent := filepath.Dir(dir)
 		if parent == dir {
