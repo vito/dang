@@ -85,7 +85,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		if definedType != nil {
 			if _, err := hm.Unify(definedType, inferredType); err != nil {
-				return nil, NewInferError(err.Error(), s.Value)
+				return nil, NewInferError(err, s.Value)
 			}
 		} else {
 			definedType = inferredType

@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -958,7 +959,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
 		// If it's already a SourceError, don't wrap it again
-		if _, isSourceError := err.(*SourceError); isSourceError {
+		if errors.Is(err, &SourceError{}) {
 			return err
 		}
 		return fmt.Errorf("evaluation error: %w", err)
@@ -1072,11 +1073,6 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, env)
 		if err != nil {
-			// Check if the error is already a SourceError - if so, don't wrap it again
-			if _, isSourceError := err.(*SourceError); isSourceError || evalCtx == nil {
-				return nil, err
-			}
-			// Only create source error if the evaluator didn't already create one
 			return nil, evalCtx.CreateSourceError(err, node)
 		}
 		if val == nil {

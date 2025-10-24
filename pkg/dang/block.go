@@ -378,18 +378,20 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 var _ hm.Inferer = (*Block)(nil)
 
 func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	newEnv := env
-	if !b.Inline {
-		newEnv = env.Clone()
-	}
+	return WithInferErrorHandling(b, func() (hm.Type, error) {
+		newEnv := env
+		if !b.Inline {
+			newEnv = env.Clone()
+		}
 
-	forms := b.Forms
-	if len(forms) == 0 {
-		forms = append(forms, &Null{})
-	}
+		forms := b.Forms
+		if len(forms) == 0 {
+			forms = append(forms, &Null{})
+		}
 
-	// Use phased inference approach for proper dependency handling
-	return InferFormsWithPhases(ctx, forms, newEnv, fresh)
+		// Use phased inference approach for proper dependency handling
+		return InferFormsWithPhases(ctx, forms, newEnv, fresh)
+	})
 }
 
 func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {

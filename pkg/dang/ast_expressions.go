@@ -116,7 +116,7 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 
 	if _, err := hm.Unify(dt, it); err != nil {
-		return NewInferError(err.Error(), value)
+		return NewInferError(err, value)
 	}
 	return nil
 }
@@ -446,7 +446,7 @@ func (c *FunCall) validateRequiredArgumentsInInfer(ft *hm.FunctionType) error {
 		// With our transformation, arguments with defaults are now nullable in the signature,
 		// so only truly required arguments (without defaults) will be NonNull here
 		if _, isNonNull := paramType.(hm.NonNullType); isNonNull {
-			return NewInferError(fmt.Sprintf("missing required argument: %q", paramName), c)
+			return NewInferError(fmt.Errorf("missing required argument: %q", paramName), c)
 		}
 	}
 
@@ -539,7 +539,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		// Handle normal receiver
 		lt, err := d.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("Receiver.Infer normal: %w", err)
+			return nil, err
 		}
 
 		// Check if receiver is nullable or non-null
@@ -624,10 +624,6 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		if d.Receiver != nil {
 			receiverVal, err = EvalNode(ctx, env, d.Receiver)
 			if err != nil {
-				// Don't wrap SourceErrors - let them bubble up directly
-				if _, isSourceError := err.(*SourceError); isSourceError {
-					return nil, err
-				}
 				return nil, fmt.Errorf("evaluating receiver: %w", err)
 			}
 		} else {
@@ -1379,7 +1375,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		}
 
 		if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-			return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), c.Condition)
+			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), c.Condition)
 		}
 
 		// Analyze null assertions in the condition for flow-sensitive type checking
@@ -1412,7 +1408,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				if len(elseBlock.Forms) > 0 {
 					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
 				}
-				return nil, NewInferError(err.Error(), errorNode)
+				return nil, NewInferError(err, errorNode)
 			}
 		}
 
@@ -1469,7 +1465,7 @@ func (w *While) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		}
 
 		if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-			return nil, NewInferError(fmt.Sprintf("condition must be Boolean, got %s", condType), w.Condition)
+			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), w.Condition)
 		}
 
 		bodyType, err := w.BodyBlock.Infer(ctx, env, fresh)
@@ -1565,10 +1561,10 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 				if listType, ok := nonNullListType.Type.(ListType); ok {
 					elementType = listType.Type
 				} else {
-					return nil, NewInferError(fmt.Sprintf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
+					return nil, NewInferError(fmt.Errorf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
 				}
 			} else {
-				return nil, NewInferError(fmt.Sprintf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
+				return nil, NewInferError(fmt.Errorf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
 			}
 
 			// Check if explicit type annotation matches inferred element type
@@ -1578,7 +1574,7 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 					return nil, err
 				}
 				if _, err := hm.Unify(elementType, declaredType); err != nil {
-					return nil, NewInferError(fmt.Sprintf("type annotation %s doesn't match element type %s", declaredType, elementType), f)
+					return nil, NewInferError(fmt.Errorf("type annotation %s doesn't match element type %s", declaredType, elementType), f)
 				}
 			}
 
@@ -1816,7 +1812,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// Core unification failed, try the original approach with subtyping
 		subs, err := hm.Unify(exprType, hintType)
 		if err != nil {
-			return nil, NewInferError(fmt.Sprintf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
+			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 		}
 
 		// Apply substitutions to the hint type and return it

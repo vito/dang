@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/vito/dang/pkg/dang"
@@ -14,7 +15,7 @@ func TestErrorToDiagnostic(t *testing.T) {
 
 	t.Run("InferError with location", func(t *testing.T) {
 		is := is.New(t)
-		
+
 		inferErr := &dang.InferError{
 			Message: "type mismatch: String ~ Int",
 			Location: &dang.SourceLocation{
@@ -36,7 +37,7 @@ func TestErrorToDiagnostic(t *testing.T) {
 
 	t.Run("InferError with end position", func(t *testing.T) {
 		is := is.New(t)
-		
+
 		inferErr := &dang.InferError{
 			Message: "undefined symbol",
 			Location: &dang.SourceLocation{
@@ -61,10 +62,10 @@ func TestErrorToDiagnostic(t *testing.T) {
 
 	t.Run("Generic error without location", func(t *testing.T) {
 		is := is.New(t)
-		
-		err := dang.NewInferError("some error", nil)
 
-		diag := handler.errorToDiagnostic(err, "file:///test.dang")
+		err := dang.NewInferError(errors.New("some error"), nil)
+
+		diag := handler.errorToDiagnostics(err, "file:///test.dang")
 		is.True(diag != nil)
 		is.Equal(diag.Message, "some error")
 		is.Equal(diag.Range.Start.Line, 0) // Fallback to line 0
@@ -74,26 +75,26 @@ func TestErrorToDiagnostic(t *testing.T) {
 
 func TestUpdateFileWithDiagnostics(t *testing.T) {
 	is := is.New(t)
-	
+
 	handler := &langHandler{
 		files: make(map[DocumentURI]*File),
 	}
-	
+
 	uri := DocumentURI("file:///test.dang")
-	
+
 	// Open file
 	err := handler.openFile(uri, "dang", 1)
 	is.NoErr(err)
-	
+
 	// Update with code that has type errors
 	code := `pub bad = "hello" + 42`
 	err = handler.updateFile(context.Background(), uri, code, nil)
 	is.NoErr(err)
-	
+
 	// Check that diagnostics were collected
 	f := handler.files[uri]
 	is.True(f != nil)
-	
+
 	// We should have diagnostics since there's no schema loaded
 	// (or if schema is loaded, we should have a type error)
 	t.Logf("Diagnostics count: %d", len(f.Diagnostics))
