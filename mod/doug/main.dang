@@ -90,10 +90,44 @@ type Doug {
     if fileContents == "" {
       "WARNING: File contents are empty."
     } else {
-      # TODO: Dang doesn't have string.split() built-in yet
-      # We'll need to return the contents as-is or use a GraphQL API method
-      # For now, returning contents without line numbering
-      fileContents
+      # Split contents into lines and add line numbers
+      let lines = fileContents.split("\n", 0)
+      let startLine = offset + 1
+
+      # Build numbered lines using a for loop
+      let result = ""
+      for i, line in lines {
+        let lineNo = startLine + i
+
+        # Format with 6-character width padding
+        let padding = if lineNo < 10 {
+          "     "
+        } else {
+          if lineNo < 100 {
+            "    "
+          } else {
+            if lineNo < 1000 {
+              "   "
+            } else {
+              if lineNo < 10000 {
+                "  "
+              } else {
+                if lineNo < 100000 {
+                  " "
+                } else {
+                  ""
+                }
+              }
+            }
+          }
+        }
+
+        let numberedLine = padding + toJSON(lineNo) + "→" + line
+        result += numberedLine + "\n"
+      }
+
+      # Remove trailing newline
+      result.trimSuffix("\n")
     }
   }
 
@@ -577,9 +611,6 @@ These instructions OVERRIDE any default behavior.
   }
 
   let normalize(path: String!): String! {
-    # TODO: Implement string.trimPrefix when available in Dang
-    # For now, return path as-is
-    # In Go version: strings.TrimPrefix(path, workspacePath)
-    path
+    path.trimPrefix(workspacePath)
   }
 }
