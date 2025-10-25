@@ -1,0 +1,81 @@
+# Test all String trim methods
+
+# trimPrefix tests
+pub prefix_basic = "/workspace/file.txt".trimPrefix("/workspace")
+assert { prefix_basic == "/file.txt" }
+
+pub prefix_no_match = "hello".trimPrefix("goodbye")
+assert { prefix_no_match == "hello" }
+
+pub prefix_empty = "test".trimPrefix("")
+assert { prefix_empty == "test" }
+
+# trimSuffix tests
+pub suffix_basic = "hello.txt".trimSuffix(".txt")
+assert { suffix_basic == "hello" }
+
+pub suffix_no_match = "hello".trimSuffix(".txt")
+assert { suffix_no_match == "hello" }
+
+pub suffix_empty = "test".trimSuffix("")
+assert { suffix_empty == "test" }
+
+# trimSpace tests
+pub space_both = "  hello  ".trimSpace()
+assert { space_both == "hello" }
+
+pub space_left = "  hello".trimSpace()
+assert { space_left == "hello" }
+
+pub space_right = "hello  ".trimSpace()
+assert { space_right == "hello" }
+
+pub space_tabs = "\t\thello\t\t".trimSpace()
+assert { space_tabs == "hello" }
+
+pub space_newlines = "\n\nhello\n\n".trimSpace()
+assert { space_newlines == "hello" }
+
+pub space_none = "hello".trimSpace()
+assert { space_none == "hello" }
+
+# trim tests (cutset)
+pub trim_both = "!!!hello!!!".trim("!")
+assert { trim_both == "hello" }
+
+pub trim_multiple = "xxxhelloxxx".trim("x")
+assert { trim_multiple == "hello" }
+
+pub trim_charset = "abcHELLOcba".trim("abc")
+assert { trim_charset == "HELLO" }
+
+pub trim_none = "hello".trim("x")
+assert { trim_none == "hello" }
+
+# trimLeft tests
+pub trimleft_basic = "!!!hello".trimLeft("!")
+assert { trimleft_basic == "hello" }
+
+pub trimleft_charset = "abchello".trimLeft("abc")
+assert { trimleft_charset == "hello" }
+
+pub trimleft_none = "hello".trimLeft("x")
+assert { trimleft_none == "hello" }
+
+pub trimleft_preserves_right = "!!!hello!!!".trimLeft("!")
+assert { trimleft_preserves_right == "hello!!!" }
+
+# trimRight tests
+pub trimright_basic = "hello!!!".trimRight("!")
+assert { trimright_basic == "hello" }
+
+pub trimright_charset = "helloabc".trimRight("abc")
+assert { trimright_charset == "hello" }
+
+pub trimright_none = "hello".trimRight("x")
+assert { trimright_none == "hello" }
+
+pub trimright_preserves_left = "!!!hello!!!".trimRight("!")
+assert { trimright_preserves_left == "!!!hello" }
+
+print("All String trim tests passed!")

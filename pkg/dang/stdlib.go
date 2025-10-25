@@ -102,4 +102,57 @@ func registerStdlib() {
 			prefix := args.GetString("prefix")
 			return ToValue(strings.TrimPrefix(str, prefix))
 		})
+
+	// String.trimSuffix method: trimSuffix(suffix: String!) -> String!
+	Method(StringType, "trimSuffix").
+		Doc("removes the specified suffix from the string if present").
+		Params("suffix", NonNull(StringType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			suffix := args.GetString("suffix")
+			return ToValue(strings.TrimSuffix(str, suffix))
+		})
+
+	// String.trimSpace method: trimSpace() -> String!
+	Method(StringType, "trimSpace").
+		Doc("removes all leading and trailing whitespace from the string").
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return ToValue(strings.TrimSpace(str))
+		})
+
+	// String.trim method: trim(cutset: String!) -> String!
+	Method(StringType, "trim").
+		Doc("removes all leading and trailing characters in cutset from the string").
+		Params("cutset", NonNull(StringType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			cutset := args.GetString("cutset")
+			return ToValue(strings.Trim(str, cutset))
+		})
+
+	// String.trimLeft method: trimLeft(cutset: String!) -> String!
+	Method(StringType, "trimLeft").
+		Doc("removes all leading characters in cutset from the string").
+		Params("cutset", NonNull(StringType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			cutset := args.GetString("cutset")
+			return ToValue(strings.TrimLeft(str, cutset))
+		})
+
+	// String.trimRight method: trimRight(cutset: String!) -> String!
+	Method(StringType, "trimRight").
+		Doc("removes all trailing characters in cutset from the string").
+		Params("cutset", NonNull(StringType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			cutset := args.GetString("cutset")
+			return ToValue(strings.TrimRight(str, cutset))
+		})
 }
