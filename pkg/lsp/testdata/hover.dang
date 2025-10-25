@@ -42,3 +42,15 @@ type MyModule {
     container.withExec(["./hack/generate"])
   }
 }
+
+# object with lexical scope
+let obj = {
+  """
+  Helper value for the object.
+  """
+  let helper = 42
+
+  pub value: Int! {
+    helper # test: ^K -> hover: Helper value for the object.
+  }
+}

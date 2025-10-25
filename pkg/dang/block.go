@@ -14,6 +14,9 @@ type Block struct {
 	// Evaluate forms in the current scope, not a nested one.
 	Inline bool
 	Loc    *SourceLocation
+
+	// Filled in during inference phase for non-inline blocks
+	Env Env
 }
 
 var _ hm.Expression = (*Block)(nil)
@@ -390,7 +393,16 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		}
 
 		// Use phased inference approach for proper dependency handling
-		return InferFormsWithPhases(ctx, forms, newEnv, fresh)
+		typ, err := InferFormsWithPhases(ctx, forms, newEnv, fresh)
+		
+		// Store the environment for non-inline blocks
+		if !b.Inline {
+			if dangEnv, ok := newEnv.(Env); ok {
+				b.Env = dangEnv
+			}
+		}
+		
+		return typ, err
 	})
 }
 
