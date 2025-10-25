@@ -1,0 +1,14 @@
+# local variable hover
+let hello = 42
+
+hello # test: K -> hover: Int!
+
+# function hover
+pub addNums(x: Int!, y: Int!): Int! {
+  x + y
+}
+
+addNums # test: K -> hover: ({x: Int!, y: Int!} -> Int!)
+
+# builtin hover
+container # test: K -> hover: Container!

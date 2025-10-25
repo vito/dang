@@ -72,6 +72,19 @@ func (LSPSuite) TestNeovimRename(ctx context.Context, t *testctx.T) {
 	testFile(t, sandboxNvim(t), "testdata/rename.dang")
 }
 
+func (LSPSuite) TestNeovimHover(ctx context.Context, t *testctx.T) {
+	if testing.Short() {
+		t.SkipNow()
+		return
+	}
+
+	if checkNested(t) {
+		return
+	}
+
+	testFile(t, sandboxNvim(t), "testdata/hover.dang")
+}
+
 func checkNested(t *testctx.T) bool {
 	if os.Getenv("NVIM") != "" {
 		t.Skip("detected running from neovim; skipping to avoid hanging")
@@ -79,6 +92,57 @@ func checkNested(t *testctx.T) bool {
 	}
 
 	return false
+}
+
+func testHover(t *testctx.T, client *nvim.Nvim, testLine int, codes string, expectedContent string) {
+	is := is.New(t)
+
+	// Execute the key sequence (e.g., "K")
+	keys, err := client.ReplaceTermcodes(codes, true, true, true)
+	is.NoErr(err)
+
+	err = client.FeedKeys(keys, "t", true)
+	is.NoErr(err)
+
+	// Wait for floating window to appear and capture its content
+	is.Eventually(func() bool {
+		// Use Lua to find floating windows and get their content
+		var content string
+		err := client.ExecLua(`
+			local wins = vim.api.nvim_list_wins()
+			for _, win in ipairs(wins) do
+				local config = vim.api.nvim_win_get_config(win)
+				if config.relative ~= '' then
+					local buf = vim.api.nvim_win_get_buf(win)
+					local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+					return table.concat(lines, '\n')
+				end
+			end
+			return ''
+		`, &content)
+
+		if err != nil {
+			t.Logf("L%03d %s\tfailed to get floating window content: %v", testLine, codes, err)
+			return false
+		}
+
+		if content == "" {
+			t.Logf("L%03d %s\tno floating window found", testLine, codes)
+			return false
+		}
+
+		if strings.Contains(content, expectedContent) {
+			t.Logf("L%03d %s\tmatched hover content: %q", testLine, codes, expectedContent)
+			return true
+		}
+
+		t.Logf("L%03d %s\tfloating window content %q does not contain %q", testLine, codes, content, expectedContent)
+		return false
+	}, 2*time.Second, 100*time.Millisecond)
+
+	// Close the hover window
+	err = client.FeedKeys("\x1b", "t", true)
+	is.NoErr(err)
 }
 
 func testFile(t *testctx.T, client *nvim.Nvim, file string) {
@@ -131,6 +195,15 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 
 		segs := strings.Split(line, "# test: ")
 		if len(segs) < 2 {
+			continue
+		}
+
+		// Check for hover test (keys -> hover: expected)
+		if strings.Contains(segs[1], " -> hover: ") {
+			parts := strings.Split(segs[1], " -> hover: ")
+			codes := strings.TrimSpace(parts[0])
+			expectedContent := strings.TrimSpace(parts[1])
+			testHover(t, client, testLine, codes, expectedContent)
 			continue
 		}
 
