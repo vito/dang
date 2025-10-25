@@ -68,7 +68,7 @@ type Dang {
   pub testLSP(filter: String! = ""): Void {
     let args = ["go", "test", "-v", "-count=1", "./pkg/lsp/..."]
     if filter != "" {
-      args += ["-run", filter]
+      args += ["-run", "LSP/" + filter]
     }
     generated.
       withFile("/usr/bin/dang", binary). # install binary for LSP tests
