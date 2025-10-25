@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
 )
 
@@ -36,7 +35,7 @@ func registerStdlib() {
 			if err != nil {
 				return nil, fmt.Errorf("toJSON: %w", err)
 			}
-			return StringValue{Val: string(jsonBytes)}, nil
+			return ToValue(string(jsonBytes))
 		})
 
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
@@ -71,15 +70,8 @@ func registerStdlib() {
 				}
 			}
 
-			values := make([]Value, len(parts))
-			for i, part := range parts {
-				values[i] = StringValue{Val: part}
-			}
-
-			return ListValue{
-				Elements: values,
-				ElemType: hm.NonNullType{Type: StringType},
-			}, nil
+			// Use ToValue helper for conversion
+			return ToValue(parts)
 		})
 
 	// String.toUpper method: toUpper() -> String!
@@ -88,6 +80,15 @@ func registerStdlib() {
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
-			return StringValue{Val: strings.ToUpper(str)}, nil
+			return ToValue(strings.ToUpper(str))
+		})
+
+	// String.toLower method: toLower() -> String!
+	Method(StringType, "toLower").
+		Doc("converts a string to lowercase").
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return ToValue(strings.ToLower(str))
 		})
 }

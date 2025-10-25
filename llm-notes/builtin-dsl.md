@@ -105,6 +105,49 @@ The `Args` type provides type-safe access to function arguments:
 - `args.GetList(name)` - returns `[]Value` (nil if missing)
 - `args.Require(name)` - panics if argument not found
 
+## ToValue Helper
+
+The `ToValue(any) (Value, error)` function converts Go values to Dang Values:
+
+Supported types:
+- `nil` → `NullValue`
+- `Value` → passed through unchanged
+- `string` → `StringValue`
+- `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64` → `IntValue`
+- `float32`, `float64` → `IntValue` (truncated to int for now)
+- `bool` → `BoolValue`
+- `[]string` → `ListValue` of `StringValue`
+- `[]int` → `ListValue` of `IntValue`
+- `[]bool` → `ListValue` of `BoolValue`
+- `[]any` → `ListValue` with inferred element type
+
+Example usage:
+
+```go
+Method(StringType, "split").
+    Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+        str := self.(StringValue).Val
+        sep := args.GetString("separator")
+        parts := strings.Split(str, sep)
+
+        // Convert []string to ListValue automatically
+        return ToValue(parts)
+    })
+```
+
+This eliminates the need for manual conversion loops.
+
+### Where ToValue is Used
+
+The `ToValue` helper is the **single source of truth** for Go→Dang type conversion. It's used in:
+- `pkg/dang/stdlib.go` - all builtin implementations
+- `pkg/dang/eval.go` - converting GraphQL query results to Dang values
+- `pkg/dang/ast_expressions.go` - converting GraphQL field values
+
+The sole exception is `anyToDang()` in `dagger-sdk/entrypoint/main.go` - which
+has specialized GraphQL module handling when converting from strings, to handle
+GraphQL IDs.
+
 ## Optional Parameters with Defaults
 
 To define optional parameters with default values, include the default after the type:
@@ -151,7 +194,7 @@ Method(StringType, "toLower").
     Returns(NonNull(StringType)).
     Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
         str := self.(StringValue).Val
-        return StringValue{Val: strings.ToLower(str)}, nil
+        return ToValue(strings.ToLower(str))
     })
 ```
 

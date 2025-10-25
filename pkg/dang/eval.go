@@ -108,7 +108,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		if err := query.Execute(ctx); err != nil {
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
-		return goValueToDang(result, g.Field.TypeRef)
+		return ToValue(result)
 	}
 
 	// For non-scalar types, return a GraphQLValue that can be further selected
@@ -404,50 +404,6 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	return json.Marshal(id)
-}
-
-// Helper function to convert Go values back to Dang values
-func goValueToDang(val interface{}, typeRef *introspection.TypeRef) (Value, error) {
-	if val == nil {
-		return NullValue{}, nil
-	}
-
-	switch v := val.(type) {
-	case string:
-		return StringValue{Val: v}, nil
-	case int:
-		return IntValue{Val: v}, nil
-	case int64:
-		return IntValue{Val: int(v)}, nil
-	case float64:
-		// For now, treat floats as ints - could be improved
-		return IntValue{Val: int(v)}, nil
-	case bool:
-		return BoolValue{Val: v}, nil
-	case []any:
-		var vals []Value
-		var elemType hm.Type
-		for _, item := range v {
-			val, err := goValueToDang(item, typeRef.OfType)
-			if err != nil {
-				return nil, err
-			}
-			if elemType == nil {
-				elemType = val.Type()
-			} else {
-				if _, err := hm.Unify(elemType, val.Type()); err != nil {
-					return nil, fmt.Errorf("type mismatch: %s vs %s", elemType, val.Type())
-				}
-			}
-			vals = append(vals, val)
-		}
-		if elemType == nil {
-			elemType = hm.TypeVariable('a')
-		}
-		return ListValue{Elements: vals, ElemType: elemType}, nil
-	default:
-		return nil, fmt.Errorf("unsupported Go value type: %T", val)
-	}
 }
 
 // Runtime value implementations

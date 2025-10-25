@@ -76,6 +76,120 @@ func (a Args) Require(name string) Value {
 	return val
 }
 
+// ToValue converts a Go value to a Dang Value
+func ToValue(v any) (Value, error) {
+	if v == nil {
+		return NullValue{}, nil
+	}
+
+	switch val := v.(type) {
+	case Value:
+		// Already a Dang value
+		return val, nil
+
+	case string:
+		return StringValue{Val: val}, nil
+
+	case int:
+		return IntValue{Val: val}, nil
+	case int8:
+		return IntValue{Val: int(val)}, nil
+	case int16:
+		return IntValue{Val: int(val)}, nil
+	case int32:
+		return IntValue{Val: int(val)}, nil
+	case int64:
+		return IntValue{Val: int(val)}, nil
+	case uint:
+		return IntValue{Val: int(val)}, nil
+	case uint8:
+		return IntValue{Val: int(val)}, nil
+	case uint16:
+		return IntValue{Val: int(val)}, nil
+	case uint32:
+		return IntValue{Val: int(val)}, nil
+	case uint64:
+		return IntValue{Val: int(val)}, nil
+
+	case float32:
+		// For now, treat floats as ints - could be improved
+		return IntValue{Val: int(val)}, nil
+	case float64:
+		// For now, treat floats as ints - could be improved
+		return IntValue{Val: int(val)}, nil
+
+	case bool:
+		return BoolValue{Val: val}, nil
+
+	case []string:
+		values := make([]Value, len(val))
+		for i, s := range val {
+			values[i] = StringValue{Val: s}
+		}
+		return ListValue{
+			Elements: values,
+			ElemType: hm.NonNullType{Type: StringType},
+		}, nil
+
+	case []int:
+		values := make([]Value, len(val))
+		for i, n := range val {
+			values[i] = IntValue{Val: n}
+		}
+		return ListValue{
+			Elements: values,
+			ElemType: hm.NonNullType{Type: IntType},
+		}, nil
+
+	case []bool:
+		values := make([]Value, len(val))
+		for i, b := range val {
+			values[i] = BoolValue{Val: b}
+		}
+		return ListValue{
+			Elements: values,
+			ElemType: hm.NonNullType{Type: BooleanType},
+		}, nil
+
+	case []any:
+		if len(val) == 0 {
+			// Empty slice - use a type variable
+			return ListValue{
+				Elements: []Value{},
+				ElemType: hm.TypeVariable('a'),
+			}, nil
+		}
+
+		// Convert all elements and infer common type
+		values := make([]Value, len(val))
+		var elemType hm.Type
+		for i, item := range val {
+			converted, err := ToValue(item)
+			if err != nil {
+				return nil, fmt.Errorf("converting list element %d: %w", i, err)
+			}
+			values[i] = converted
+
+			if elemType == nil {
+				elemType = converted.Type()
+			} else {
+				// Try to unify types - if they don't match, fall back to type variable
+				if _, err := hm.Unify(elemType, converted.Type()); err != nil {
+					elemType = hm.TypeVariable('a')
+				}
+			}
+		}
+
+		return ListValue{
+			Elements: values,
+			ElemType: elemType,
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("cannot convert Go type %T to Dang Value", v)
+	}
+}
+
 // BuiltinBuilder provides a fluent API for defining builtin functions
 type BuiltinBuilder struct {
 	def BuiltinDef

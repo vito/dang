@@ -1296,15 +1296,8 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						resultModuleValue.Set(field.Name, nestedResult)
 					}
 				} else {
-					// Convert GraphQL value to Dang value using proper TypeRef
-					var fieldTypeRef *introspection.TypeRef
-					if parentField != nil && schema != nil {
-						if gqlField := o.getFieldFromParent(field.Name, parentField, schema); gqlField != nil {
-							fieldTypeRef = gqlField.TypeRef
-						}
-					}
-
-					dangVal, err := goValueToDang(fieldValue, fieldTypeRef)
+					// Convert GraphQL value to Dang value
+					dangVal, err := ToValue(fieldValue)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
