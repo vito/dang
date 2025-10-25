@@ -91,4 +91,15 @@ func registerStdlib() {
 			str := self.(StringValue).Val
 			return ToValue(strings.ToLower(str))
 		})
+
+	// String.trimPrefix method: trimPrefix(prefix: String!) -> String!
+	Method(StringType, "trimPrefix").
+		Doc("removes the specified prefix from the string if present").
+		Params("prefix", NonNull(StringType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			prefix := args.GetString("prefix")
+			return ToValue(strings.TrimPrefix(str, prefix))
+		})
 }

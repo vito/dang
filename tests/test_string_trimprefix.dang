@@ -1,0 +1,18 @@
+# Test String.trimPrefix method
+
+pub basic = "/workspace/file.txt".trimPrefix("/workspace")
+assert { basic == "/file.txt" }
+
+pub no_match = "hello".trimPrefix("goodbye")
+assert { no_match == "hello" }
+
+pub empty_prefix = "test".trimPrefix("")
+assert { empty_prefix == "test" }
+
+pub full_string = "prefix".trimPrefix("prefix")
+assert { full_string == "" }
+
+pub partial_match = "prefixed".trimPrefix("pre")
+assert { partial_match == "fixed" }
+
+print("String.trimPrefix() tests passed!")
