@@ -138,25 +138,8 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 			return false
 		}
 
-		loc := n.GetSourceLocation()
-		if loc == nil {
-			return true // Continue walking
-		}
-
-		// Convert to 0-based for comparison
-		startLine := loc.Line - 1
-		startCol := loc.Column - 1
-		endLine := startLine
-		endCol := startCol + loc.Length
-
-		if loc.End != nil {
-			endLine = loc.End.Line - 1
-			endCol = loc.End.Column - 1
-		}
-
 		// Check if position is within this node's range
-		if (pos.Line > startLine || (pos.Line == startLine && pos.Character >= startCol)) &&
-			(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol)) {
+		if positionWithinNode(n, pos) {
 			// This node contains the position, keep it as a candidate
 			// Continue walking to find more specific children
 			result = n
@@ -170,59 +153,9 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 }
 
 // findDocInLexicalScope searches for documentation in any enclosing lexical scope
-// by walking up the AST and checking nodes that store local environments
 func (h *langHandler) findDocInLexicalScope(ctx context.Context, root dang.Node, pos Position, symbolName string) string {
-	var environments []dang.Env
-
-	// Walk the AST to find all enclosing scopes that might have stored environments
-	root.Walk(func(n dang.Node) bool {
-		if n == nil {
-			return false
-		}
-
-		loc := n.GetSourceLocation()
-		if loc == nil {
-			return true
-		}
-
-		// Convert to 0-based for comparison
-		startLine := loc.Line - 1
-		startCol := loc.Column - 1
-		endLine := startLine
-		endCol := startCol + loc.Length
-
-		if loc.End != nil {
-			endLine = loc.End.Line - 1
-			endCol = loc.End.Column - 1
-		}
-
-		// Check if position is within this node's range
-		if (pos.Line > startLine || (pos.Line == startLine && pos.Character >= startCol)) &&
-			(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol)) {
-
-			// Check if this node has a stored environment
-			switch typed := n.(type) {
-			case *dang.ClassDecl:
-				if typed.Inferred != nil {
-					environments = append(environments, typed.Inferred)
-				}
-			case *dang.Block:
-				if typed.Env != nil {
-					environments = append(environments, typed.Env)
-				}
-			case *dang.Object:
-				if typed.Mod != nil {
-					environments = append(environments, typed.Mod)
-				}
-			case *dang.ObjectSelection:
-				if typed.Inferred != nil {
-					environments = append(environments, typed.Inferred)
-				}
-			}
-		}
-
-		return true
-	})
+	// Collect all enclosing environments
+	environments := findEnclosingEnvironments(root, pos)
 
 	// Search environments from innermost to outermost
 	// (reverse order since we collected from outermost to innermost)

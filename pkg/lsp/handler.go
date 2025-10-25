@@ -54,14 +54,13 @@ type moduleSchema struct {
 
 // File is
 type File struct {
-	LanguageID      string
-	Text            string
-	Version         int
-	Diagnostics     []Diagnostic
-	Symbols         *SymbolTable
-	LexicalAnalyzer *LexicalAnalyzer
-	AST             *dang.Block // Parsed and type-annotated AST
-	TypeEnv         dang.Env    // Type environment after inference
+	LanguageID  string
+	Text        string
+	Version     int
+	Diagnostics []Diagnostic
+	Symbols     *SymbolTable
+	AST         *dang.Block // Parsed and type-annotated AST
+	TypeEnv     dang.Env    // Type environment after inference
 }
 
 // SymbolTable tracks symbol definitions and references in a file
@@ -187,7 +186,6 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			Definitions: make(map[string]*SymbolInfo),
 			References:  make(map[string]*SymbolRef),
 		}
-		f.LexicalAnalyzer = NewLexicalAnalyzer()
 		f.AST = nil
 	} else {
 		// The parser returns a Block
@@ -198,15 +196,13 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				Definitions: make(map[string]*SymbolInfo),
 				References:  make(map[string]*SymbolRef),
 			}
-			f.LexicalAnalyzer = NewLexicalAnalyzer()
 			f.AST = nil
 		} else {
 			// Store the AST
 			f.AST = block
 
-			// Build symbol table and lexical analyzer from the AST
+			// Build symbol table from the AST
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
-			f.LexicalAnalyzer = h.buildLexicalAnalyzer(uri, block.Forms)
 
 			// Get schema for this file's module
 			schema, _, err := h.getSchemaForFile(ctx, fp)
@@ -244,13 +240,6 @@ func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *Symb
 	h.collectSymbols(uri, forms, st)
 
 	return st
-}
-
-// buildLexicalAnalyzer performs lexical analysis on parsed AST forms
-func (h *langHandler) buildLexicalAnalyzer(uri DocumentURI, forms []dang.Node) *LexicalAnalyzer {
-	analyzer := NewLexicalAnalyzer()
-	analyzer.Analyze(uri, forms)
-	return analyzer
 }
 
 // collectSymbols walks the AST and collects symbol definitions and references
