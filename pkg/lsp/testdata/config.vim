@@ -3,6 +3,9 @@ set runtimepath=./testdata/bundle/*,$VIMRUNTIME
 autocmd! BufEnter *.dang setlocal filetype=dang
 
 lua <<EOF
+vim.g.mapleader = ','
+vim.g.maplocalleader = ','
+
 local lspconfig = require 'lspconfig'
 local configs = require 'lspconfig.configs'
 

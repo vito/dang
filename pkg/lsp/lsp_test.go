@@ -59,6 +59,19 @@ func (LSPSuite) TestNeovimCompletion(ctx context.Context, t *testctx.T) {
 	testFile(t, sandboxNvim(t), "testdata/complete.dang")
 }
 
+func (LSPSuite) TestNeovimRename(ctx context.Context, t *testctx.T) {
+	if testing.Short() {
+		t.SkipNow()
+		return
+	}
+
+	if checkNested(t) {
+		return
+	}
+
+	testFile(t, sandboxNvim(t), "testdata/rename.dang")
+}
+
 func checkNested(t *testctx.T) bool {
 	if os.Getenv("NVIM") != "" {
 		t.Skip("detected running from neovim; skipping to avoid hanging")

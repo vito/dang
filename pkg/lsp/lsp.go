@@ -79,6 +79,7 @@ type ServerCapabilities struct {
 	DocumentFormattingProvider bool                         `json:"documentFormattingProvider,omitempty"`
 	HoverProvider              bool                         `json:"hoverProvider,omitempty"`
 	CodeActionProvider         bool                         `json:"codeActionProvider,omitempty"`
+	RenameProvider             bool                         `json:"renameProvider,omitempty"`
 	Workspace                  *ServerCapabilitiesWorkspace `json:"workspace,omitempty"`
 }
 
@@ -431,4 +432,11 @@ type WorkspaceFoldersChangeEvent struct {
 type WorkspaceFolder struct {
 	URI  DocumentURI `json:"uri"`
 	Name string      `json:"name"`
+}
+
+// RenameParams is
+type RenameParams struct {
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	NewName      string                 `json:"newName"`
 }

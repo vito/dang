@@ -175,7 +175,8 @@ var _ hm.Expression = &FunDecl{}
 var _ Evaluator = &FunDecl{}
 
 func (f *FunDecl) DeclaredSymbols() []string {
-	return []string{f.Named} // Function declarations declare their name
+	// FunDecl doesn't declare symbols - the parent SlotDecl does
+	return nil
 }
 
 func (f *FunDecl) ReferencedSymbols() []string {
@@ -237,6 +238,9 @@ func (f *FunDecl) Walk(fn func(Node) bool) {
 		return
 	}
 	for _, arg := range f.Args {
+		if !fn(arg) {
+			continue
+		}
 		if arg.Type_ != nil {
 			// TypeNode doesn't have Walk method - skip
 		}

@@ -47,6 +47,7 @@ func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn,
 			},
 			DefinitionProvider: true,
 			HoverProvider:      true,
+			RenameProvider:     true,
 			Workspace: &ServerCapabilitiesWorkspace{
 				WorkspaceFolders: WorkspaceFoldersServerCapabilities{
 					Supported:           true,
