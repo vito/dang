@@ -153,6 +153,9 @@ type Dang {
       withWorkdir("/src")
   }
 
+  """
+  Base with ./hack/generate ran.
+  """
   let generated: Container! {
     base.withExec(["./hack/generate"])
   }
