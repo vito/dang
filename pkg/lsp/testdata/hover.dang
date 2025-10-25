@@ -10,5 +10,16 @@ pub addNums(x: Int!, y: Int!): Int! {
 
 addNums # test: K -> hover: ({x: Int!, y: Int!} -> Int!)
 
+# function with docs
+"""
+Multiplies two numbers together.
+Returns the product of x and y.
+"""
+pub multiply(x: Int!, y: Int!): Int! {
+  x * y
+}
+
+multiply # test: K -> hover: Multiplies two numbers together
+
 # builtin hover
 container # test: K -> hover: Container!

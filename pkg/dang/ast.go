@@ -432,6 +432,23 @@ func (c *CompositeModule) SetDocString(name string, doc string) {
 	c.primary.SetDocString(name, doc)
 }
 
+func (c *CompositeModule) GetDocString(name string) (string, bool) {
+	// First check the primary environment (reopened module)
+	if doc, found := c.primary.GetDocString(name); found {
+		return doc, true
+	}
+	// Then check the lexical environment (current scope)
+	return c.lexical.GetDocString(name)
+}
+
+func (c *CompositeModule) SetModuleDocString(doc string) {
+	c.primary.SetModuleDocString(doc)
+}
+
+func (c *CompositeModule) GetModuleDocString() string {
+	return c.primary.GetModuleDocString()
+}
+
 func (c *CompositeModule) Remove(name string) hm.Env {
 	c.primary.Remove(name)
 	return c

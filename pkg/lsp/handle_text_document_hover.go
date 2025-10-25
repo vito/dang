@@ -67,11 +67,34 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 
 	slog.InfoContext(ctx, "hover result", "symbol", symbolName, "type", typeInfo)
 
+	// Try to get documentation from the symbol definition
+	var docString string
+	if f.Symbols != nil {
+		if def, ok := f.Symbols.Definitions[symbolName]; ok && def.Node != nil {
+			// Check if the node has documentation
+			if slotDecl, ok := def.Node.(*dang.SlotDecl); ok {
+				docString = slotDecl.DocString
+			} else if classDecl, ok := def.Node.(*dang.ClassDecl); ok {
+				docString = classDecl.DocString
+			} else if directiveDecl, ok := def.Node.(*dang.DirectiveDecl); ok {
+				docString = directiveDecl.DocString
+			}
+		}
+	}
+
+	// Build the hover content
+	var content string
+	if docString != "" {
+		content = fmt.Sprintf("%s\n\n```dang\n%s: %s\n```", docString, symbolName, typeInfo)
+	} else {
+		content = fmt.Sprintf("```dang\n%s: %s\n```", symbolName, typeInfo)
+	}
+
 	// Return hover information with the type
 	return &Hover{
 		Contents: MarkupContent{
 			Kind:  Markdown,
-			Value: fmt.Sprintf("```dang\n%s: %s\n```", symbolName, typeInfo),
+			Value: content,
 		},
 	}, nil
 }

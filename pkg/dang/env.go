@@ -17,6 +17,9 @@ type Env interface {
 	NamedType(string) (Env, bool)
 	AddClass(string, Env)
 	SetDocString(string, string)
+	GetDocString(string) (string, bool)
+	SetModuleDocString(string)
+	GetModuleDocString() string
 	SetVisibility(string, Visibility)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
 	AddDirective(string, *DirectiveDecl)
@@ -111,24 +114,31 @@ func NewEnv(schema *introspection.Schema) Env {
 				Name: &Symbol{
 					Name: arg.Name,
 				},
-				Type_: introspectionTypeRefToTypeNode(arg.TypeRef),
+				Type_:     introspectionTypeRefToTypeNode(arg.TypeRef),
+				DocString: arg.Description,
 			})
 		}
 		var locations []DirectiveLocation
 		for _, loc := range t.Locations {
 			locations = append(locations, DirectiveLocation{Name: loc})
 		}
-		mod.AddDirective(t.Name, &DirectiveDecl{
+		directive := &DirectiveDecl{
 			Name:      t.Name,
 			Args:      args,
 			Locations: locations,
-		})
+			DocString: t.Description,
+		}
+		mod.AddDirective(t.Name, directive)
 	}
 
 	for _, t := range schema.Types {
 		sub, found := env.NamedType(t.Name)
 		if !found {
 			sub = NewModule(t.Name)
+			// Store type description as module documentation
+			if t.Description != "" {
+				sub.SetModuleDocString(t.Description)
+			}
 			env.AddClass(t.Name, sub)
 		}
 		if t.Name == schema.QueryType.Name {
@@ -176,6 +186,10 @@ func NewEnv(schema *introspection.Schema) Env {
 			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
 			// GraphQL schema fields are public by default
 			install.SetVisibility(f.Name, PublicVisibility)
+			// Store field description as documentation
+			if f.Description != "" {
+				install.SetDocString(f.Name, f.Description)
+			}
 		}
 	}
 

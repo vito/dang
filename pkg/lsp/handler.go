@@ -76,6 +76,7 @@ type SymbolInfo struct {
 	Name     string
 	Location *Location
 	Kind     CompletionItemKind
+	Node     dang.Node // The AST node that declared this symbol
 }
 
 // SymbolRef describes a symbol reference
@@ -265,6 +266,7 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 					},
 				},
 				Kind: h.symbolKind(node),
+				Node: node,
 			}
 		} else {
 			// For other node types, use the generic DeclaredSymbols method
@@ -283,6 +285,7 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 							},
 						},
 						Kind: h.symbolKind(node),
+						Node: node,
 					}
 				}
 			}
