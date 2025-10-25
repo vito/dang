@@ -177,7 +177,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 131,
+      "value": 132,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -338,7 +338,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 125,
+      "value": 126,
       "content": {
         "type": "SEQ",
         "members": [
@@ -401,7 +401,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 124,
+      "value": 125,
       "content": {
         "type": "SEQ",
         "members": [
@@ -647,7 +647,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -707,7 +707,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -755,7 +755,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -803,7 +803,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -859,7 +859,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -937,6 +937,14 @@
     "id": {
       "type": "SYMBOL",
       "name": "word_token"
+    },
+    "id_symbol": {
+      "type": "FIELD",
+      "name": "name",
+      "content": {
+        "type": "SYMBOL",
+        "name": "word_token"
+      }
     },
     "word_token": {
       "type": "TOKEN",
@@ -1158,7 +1166,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -1206,7 +1214,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -1250,7 +1258,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {
@@ -3039,7 +3047,7 @@
       "name": "name",
       "content": {
         "type": "SYMBOL",
-        "name": "id"
+        "name": "id_symbol"
       }
     },
     "match": {

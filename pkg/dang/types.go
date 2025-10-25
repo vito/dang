@@ -386,7 +386,7 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 
 		// TODO: should we infer from value?
-		args[i] = Keyed[*hm.Scheme]{Key: a.Named, Value: hm.NewScheme(nil, signatureType)}
+		args[i] = Keyed[*hm.Scheme]{Key: a.Name.Name, Value: hm.NewScheme(nil, signatureType)}
 	}
 	ret, err := t.Ret.Infer(ctx, env, fresh)
 	if err != nil {

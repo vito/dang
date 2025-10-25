@@ -353,7 +353,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -399,7 +399,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -459,7 +459,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -495,7 +495,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -1402,6 +1402,22 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "id_symbol",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "word_token",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2643,7 +2659,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -2719,7 +2735,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -2785,7 +2801,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -2901,7 +2917,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
@@ -3003,7 +3019,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]

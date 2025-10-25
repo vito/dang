@@ -9,7 +9,7 @@ import (
 
 type SlotDecl struct {
 	InferredTypeHolder
-	Named      string
+	Name       *Symbol
 	Type_      TypeNode
 	Value      Node
 	Visibility Visibility
@@ -31,7 +31,7 @@ var _ Evaluator = (*SlotDecl)(nil)
 var _ Hoister = (*SlotDecl)(nil)
 
 func (s *SlotDecl) DeclaredSymbols() []string {
-	return []string{s.Named} // Slot declarations declare their name
+	return []string{s.Name.Name} // Slot declarations declare their name
 }
 
 func (s *SlotDecl) ReferencedSymbols() []string {
@@ -97,7 +97,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	}
 
 	if e, ok := env.(Env); ok {
-		cur, defined := e.LocalSchemeOf(s.Named)
+		cur, defined := e.LocalSchemeOf(s.Name.Name)
 		if defined {
 			curT, curMono := cur.Type()
 			if !curMono {
@@ -105,15 +105,15 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			}
 
 			if !definedType.Eq(curT) {
-				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Named, curT, definedType)
+				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType)
 			}
 		}
 
-		e.SetVisibility(s.Named, s.Visibility)
+		e.SetVisibility(s.Name.Name, s.Visibility)
 
 		// Store doc string if present
 		if s.DocString != "" {
-			e.SetDocString(s.Named, s.DocString)
+			e.SetDocString(s.Name.Name, s.DocString)
 		}
 	}
 
@@ -125,13 +125,13 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 	}
 
-	env.Add(s.Named, hm.NewScheme(nil, definedType))
+	env.Add(s.Name.Name, hm.NewScheme(nil, definedType))
 	return definedType, nil
 }
 
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.GetLocal(s.Named)
+		val, defined := env.GetLocal(s.Name.Name)
 		if defined {
 			// already defined (e.g. through constructor), nothing to do
 			return val, nil
@@ -140,7 +140,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		if s.Value == nil {
 			// If no value is provided, this is just a type declaration
 			// Add a null value to the environment as a placeholder
-			env.SetWithVisibility(s.Named, NullValue{}, s.Visibility)
+			env.SetWithVisibility(s.Name.Name, NullValue{}, s.Visibility)
 			return NullValue{}, nil
 		}
 
@@ -153,7 +153,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		// Add the value to the environment for future use
 		// If it's a ModuleValue, use SetWithVisibility to track visibility
-		env.SetWithVisibility(s.Named, val, s.Visibility)
+		env.SetWithVisibility(s.Name.Name, val, s.Visibility)
 
 		return val, nil
 	})

@@ -1,24 +1,19 @@
-# imported binding
-use ./defs.dang as defs
-
-defs.adele ; test: wgd => pub ┃adele = "hello from the other side"
-
 # local binding
-hello = 42
+let hello = 42
 
-hello ; test: gd => ┃hello = 42
+hello # test: gd => ┃hello = 42
 
 # function definition
-add_nums = fn(x, y) {
-  x + y ; test: wgd => add_nums = fn(┃x, y) {
+pub addNums(x: Int!, y: Int!): Int! {
+  x + y # test: ^gd => pub addNums(┃x: Int!, y: Int!): Int! {
 }
 
-add_nums ; test: gd => ┃add_nums = fn(x, y) {
+addNums # test: ^gd => pub ┃addNums(x: Int!, y: Int!): Int! {
 
 # nested scope
-outer = 1
-inner_fn = fn() {
-  inner = 2
-  outer + inner ; test: wwgd => ┃outer = 1
+let outer = 1
+pub innerFn: Int! {
+  let inner = 2
+  outer + inner # test: ^gd => let ┃outer = 1
 }
-inner_fn ; test: gd => ┃inner_fn = fn() {
+innerFn # test: ^gd => pub ┃innerFn: Int! {

@@ -60,7 +60,7 @@ func (la *LexicalAnalyzer) analyzeNode(uri DocumentURI, node dang.Node, parentBo
 
 	case *dang.SlotDecl:
 		// Check if this is a function declaration (method)
-		slog.Debug("lexical: found SlotDecl", "name", n.Named)
+		slog.Debug("lexical: found SlotDecl", "name", n.Name.Name)
 		if funDecl, ok := n.Value.(*dang.FunDecl); ok {
 			slog.Debug("lexical: SlotDecl contains FunDecl")
 			// Use the SlotDecl's location as bounds since it spans the entire slot including body
@@ -123,7 +123,7 @@ func (la *LexicalAnalyzer) analyzeLambda(uri DocumentURI, lambda *dang.Lambda) {
 		}
 
 		la.Bindings = append(la.Bindings, LexicalBinding{
-			Symbol:   arg.Named,
+			Symbol:   arg.Name.Name,
 			Location: paramLoc,
 			Bounds:   bounds,
 			Kind:     VariableCompletion, // Parameters are treated as variables
@@ -209,12 +209,12 @@ func (la *LexicalAnalyzer) analyzeFunDeclWithBounds(uri DocumentURI, funDecl *da
 
 		// If we don't have an end position, we can't determine scope
 		if bounds.End == nil {
-			slog.Warn("lexical: no End position available, skipping parameter binding", "symbol", arg.Named)
+			slog.Warn("lexical: no End position available, skipping parameter binding", "symbol", arg.Name.Name)
 			continue
 		}
 
 		slog.Debug("lexical: adding parameter binding",
-			"symbol", arg.Named,
+			"symbol", arg.Name.Name,
 			"boundsStart", slog.GroupValue(
 				slog.Int("line", bounds.Line),
 				slog.Int("col", bounds.Column),
@@ -231,7 +231,7 @@ func (la *LexicalAnalyzer) analyzeFunDeclWithBounds(uri DocumentURI, funDecl *da
 		)
 
 		la.Bindings = append(la.Bindings, LexicalBinding{
-			Symbol:   arg.Named,
+			Symbol:   arg.Name.Name,
 			Location: paramLoc,
 			Bounds:   bounds,
 			Kind:     VariableCompletion, // Parameters are treated as variables

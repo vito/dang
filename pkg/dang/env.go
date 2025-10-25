@@ -108,7 +108,9 @@ func NewEnv(schema *introspection.Schema) Env {
 		var args []*SlotDecl
 		for _, arg := range t.Args {
 			args = append(args, &SlotDecl{
-				Named: arg.Name,
+				Name: &Symbol{
+					Name: arg.Name,
+				},
 				Type_: introspectionTypeRefToTypeNode(arg.TypeRef),
 			})
 		}

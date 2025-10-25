@@ -354,7 +354,7 @@ func (c *FunCall) getParameterNames(funVal Value) []string {
 		// For constructor functions, get parameter names from the constructor parameters
 		names := make([]string, len(fn.Parameters))
 		for i, param := range fn.Parameters {
-			names[i] = param.Named
+			names[i] = param.Name.Name
 		}
 		return names
 	}

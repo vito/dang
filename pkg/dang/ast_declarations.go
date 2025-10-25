@@ -30,7 +30,7 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 		if arg.Type_ != nil {
 			definedArgType, err = arg.Type_.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("inferring argument %q type: %w", arg.Named, err)
+				return nil, fmt.Errorf("inferring argument %q type: %w", arg.Name.Name, err)
 			}
 		}
 
@@ -38,14 +38,14 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 		if arg.Value != nil {
 			inferredValType, err = arg.Value.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("inferring argument %q value: %w", arg.Named, err)
+				return nil, fmt.Errorf("inferring argument %q value: %w", arg.Name.Name, err)
 			}
 		}
 
 		for _, directive := range arg.Directives {
 			_, err = directive.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("inferring argument %q directive: %w", arg.Named, err)
+				return nil, fmt.Errorf("inferring argument %q directive: %w", arg.Name.Name, err)
 			}
 		}
 
@@ -55,7 +55,7 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 			// This allows [] (inferred as [a]!) to unify with [String!]!
 			_, err := hm.Unify(definedArgType, inferredValType)
 			if err != nil {
-				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s, cannot unify: %w", arg.Named, definedArgType, inferredValType, err)
+				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s, cannot unify: %w", arg.Name.Name, definedArgType, inferredValType, err)
 			}
 			// Use the defined type since it's the concrete, user-specified type
 			finalArgType = definedArgType
@@ -67,11 +67,11 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 			// Allow fresh types when no explicit type is given (for lambdas)
 			finalArgType = fresh.Fresh()
 		} else {
-			return nil, fmt.Errorf("function arg %q has no type or value", arg.Named)
+			return nil, fmt.Errorf("function arg %q has no type or value", arg.Name.Name)
 		}
 
 		scheme := hm.NewScheme(nil, finalArgType)
-		env.Add(arg.Named, scheme)
+		env.Add(arg.Name.Name, scheme)
 
 		// For arguments with defaults, make them nullable in the function signature
 		// This allows callers to pass null or omit the argument
@@ -85,7 +85,7 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 
 		// Add to function signature with the appropriate type
 		signatureScheme := hm.NewScheme(nil, signatureType)
-		args = append(args, Keyed[*hm.Scheme]{Key: arg.Named, Value: signatureScheme, Positional: false})
+		args = append(args, Keyed[*hm.Scheme]{Key: arg.Name.Name, Value: signatureScheme, Positional: false})
 	}
 	return args, nil
 }
@@ -96,9 +96,9 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 	defaults := make(map[string]Node)
 
 	for i, arg := range f.Args {
-		argNames[i] = arg.Named
+		argNames[i] = arg.Name.Name
 		if arg.Value != nil {
-			defaults[arg.Named] = arg.Value
+			defaults[arg.Name.Name] = arg.Value
 		}
 	}
 
@@ -920,13 +920,13 @@ func (d *DirectiveDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		if arg.Type_ != nil {
 			_, err := arg.Type_.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q type: %w", arg.Named, err)
+				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q type: %w", arg.Name.Name, err)
 			}
 		}
 		if arg.Value != nil {
 			_, err := arg.Value.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q default value: %w", arg.Named, err)
+				return nil, fmt.Errorf("DirectiveDecl.Infer: arg %q default value: %w", arg.Name.Name, err)
 			}
 		}
 	}
@@ -1027,7 +1027,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 
 	// Check each declared argument
 	for _, declArg := range decl.Args {
-		providedArg, provided := providedArgs[declArg.Named]
+		providedArg, provided := providedArgs[declArg.Name.Name]
 
 		if !provided {
 			// Check if argument has a default value
@@ -1039,7 +1039,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 						return err
 					}
 					if _, isNonNull := argType.(hm.NonNullType); isNonNull {
-						return fmt.Errorf("required argument %q not provided", declArg.Named)
+						return fmt.Errorf("required argument %q not provided", declArg.Name.Name)
 					}
 				}
 			}
@@ -1050,17 +1050,17 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 		if declArg.Type_ != nil {
 			expectedType, err := declArg.Type_.Infer(ctx, env, fresh)
 			if err != nil {
-				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Named, err)
+				return fmt.Errorf("failed to infer expected type for argument %q: %w", declArg.Name.Name, err)
 			}
 
 			providedType, err := providedArg.Infer(ctx, env, fresh)
 			if err != nil {
-				return fmt.Errorf("failed to infer type for provided argument %q: %w", declArg.Named, err)
+				return fmt.Errorf("failed to infer type for provided argument %q: %w", declArg.Name.Name, err)
 			}
 
 			// Use type unification instead of equality to allow non-null types to be provided where nullable types are expected
 			if _, err := hm.Unify(expectedType, providedType); err != nil {
-				return fmt.Errorf("argument %q type mismatch: expected %s, got %s", declArg.Named, expectedType, providedType)
+				return fmt.Errorf("argument %q type mismatch: expected %s, got %s", declArg.Name.Name, expectedType, providedType)
 			}
 		}
 	}
@@ -1069,7 +1069,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 	for argName := range providedArgs {
 		found := false
 		for _, declArg := range decl.Args {
-			if declArg.Named == argName {
+			if declArg.Name.Name == argName {
 				found = true
 				break
 			}

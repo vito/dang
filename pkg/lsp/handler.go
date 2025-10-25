@@ -252,22 +252,38 @@ func (h *langHandler) buildLexicalAnalyzer(uri DocumentURI, forms []dang.Node) *
 // collectSymbols walks the AST and collects symbol definitions and references
 func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *SymbolTable) {
 	for _, node := range nodes {
-		// Collect declared symbols (definitions)
-		declared := node.DeclaredSymbols()
-		for _, name := range declared {
-			loc := node.GetSourceLocation()
-			if loc != nil {
-				// LSP uses 0-based line/column, SourceLocation uses 1-based
-				st.Definitions[name] = &SymbolInfo{
-					Name: name,
-					Location: &Location{
-						URI: uri,
-						Range: Range{
-							Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-							End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(name)},
-						},
+		// For SlotDecl, use the precise location from the Symbol itself
+		if slotDecl, ok := node.(*dang.SlotDecl); ok && slotDecl.Name != nil && slotDecl.Name.Loc != nil {
+			loc := slotDecl.Name.Loc
+			st.Definitions[slotDecl.Name.Name] = &SymbolInfo{
+				Name: slotDecl.Name.Name,
+				Location: &Location{
+					URI: uri,
+					Range: Range{
+						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
+						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(slotDecl.Name.Name)},
 					},
-					Kind: h.symbolKind(node),
+				},
+				Kind: h.symbolKind(node),
+			}
+		} else {
+			// For other node types, use the generic DeclaredSymbols method
+			declared := node.DeclaredSymbols()
+			for _, name := range declared {
+				loc := node.GetSourceLocation()
+				if loc != nil {
+					// LSP uses 0-based line/column, SourceLocation uses 1-based
+					st.Definitions[name] = &SymbolInfo{
+						Name: name,
+						Location: &Location{
+							URI: uri,
+							Range: Range{
+								Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
+								End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(name)},
+							},
+						},
+						Kind: h.symbolKind(node),
+					}
 				}
 			}
 		}
@@ -291,7 +307,18 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 			h.collectNestedSymbols(uri, n.Value, st)
 		}
 	case *dang.Lambda:
+		// Collect from lambda arguments
+		for _, arg := range n.FunctionBase.Args {
+			h.collectSymbols(uri, []dang.Node{arg}, st)
+		}
 		// Collect from lambda body
+		h.collectNestedSymbols(uri, n.FunctionBase.Body, st)
+	case *dang.FunDecl:
+		// Collect from function arguments
+		for _, arg := range n.FunctionBase.Args {
+			h.collectSymbols(uri, []dang.Node{arg}, st)
+		}
+		// Collect from function body
 		h.collectNestedSymbols(uri, n.FunctionBase.Body, st)
 	}
 }

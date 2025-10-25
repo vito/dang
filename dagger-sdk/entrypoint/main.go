@@ -355,18 +355,18 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 			directives := ProcessedDirectives{}
 			for _, slot := range val.Parameters {
 				for _, dir := range slot.Directives {
-					if directives[slot.Named] == nil {
-						directives[slot.Named] = map[string]map[string]any{}
+					if directives[slot.Name.Name] == nil {
+						directives[slot.Name.Name] = map[string]map[string]any{}
 					}
 					for _, arg := range dir.Args {
-						if directives[slot.Named][dir.Name] == nil {
-							directives[slot.Named][dir.Name] = map[string]any{}
+						if directives[slot.Name.Name][dir.Name] == nil {
+							directives[slot.Name.Name][dir.Name] = map[string]any{}
 						}
 						val, err := evalConstantValue(arg.Value)
 						if err != nil {
-							return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", slot.Named, dir.Name, arg.Key, err)
+							return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", slot.Name.Name, dir.Name, arg.Key, err)
 						}
-						directives[slot.Named][dir.Name][arg.Key] = val
+						directives[slot.Name.Name][dir.Name][arg.Key] = val
 					}
 				}
 			}

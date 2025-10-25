@@ -778,17 +778,17 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 	// Bind constructor arguments to the instance environment
 	for _, param := range c.Parameters {
-		if arg, found := args[param.Named]; found {
-			instanceEnv.SetWithVisibility(param.Named, arg, param.Visibility)
+		if arg, found := args[param.Name.Name]; found {
+			instanceEnv.SetWithVisibility(param.Name.Name, arg, param.Visibility)
 		} else if param.Value != nil {
 			// Evaluate default value with access to self
 			defaultVal, err := EvalNode(ctx, instanceEnv, param.Value)
 			if err != nil {
-				return nil, fmt.Errorf("evaluating default value for parameter %s: %w", param.Named, err)
+				return nil, fmt.Errorf("evaluating default value for parameter %s: %w", param.Name.Name, err)
 			}
-			instanceEnv.SetWithVisibility(param.Named, defaultVal, param.Visibility)
+			instanceEnv.SetWithVisibility(param.Name.Name, defaultVal, param.Visibility)
 		} else {
-			return nil, fmt.Errorf("missing required constructor parameter: %s", param.Named)
+			return nil, fmt.Errorf("missing required constructor parameter: %s", param.Name.Name)
 		}
 	}
 

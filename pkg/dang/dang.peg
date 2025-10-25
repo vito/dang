@@ -188,9 +188,9 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualToken _ value:Form directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndValueSlot <- vis:Visibility _ name:IdSymbol _ ColonToken _ type_:Type _ EqualToken _ value:Form directives:(_ app:DirectiveApplication { return app, nil })* {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Value: value.(Node),
     Visibility: vis.(Visibility),
@@ -199,9 +199,9 @@ TypeAndValueSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ EqualTo
   }, nil
 }
 
-ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form directives:(_ app:DirectiveApplication { return app, nil })* {
+ValueOnlySlot <- vis:Visibility _ name:IdSymbol _ EqualToken _ val:Form directives:(_ app:DirectiveApplication { return app, nil })* {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Value: val.(Node),
     Visibility: vis.(Visibility),
     Directives: sliceOf[*DirectiveApplication](directives),
@@ -209,9 +209,9 @@ ValueOnlySlot <- vis:Visibility _ name:Id _ EqualToken _ val:Form directives:(_ 
   }, nil
 }
 
-TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeOnlySlot <- vis:Visibility _ name:IdSymbol _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
     Directives: sliceOf[*DirectiveApplication](directives),
@@ -219,9 +219,9 @@ TypeOnlySlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type directives:(_
   }, nil
 }
 
-TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndBlockSlot <- vis:Visibility _ name:IdSymbol _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
     Value: &FunDecl{
       FunctionBase: FunctionBase{
@@ -229,7 +229,7 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
         Body: block.(*Block),
         Loc: c.Loc(),
       },
-      Named: name.(string),
+      Named: name.(*Symbol).Name,
       Ret: type_.(TypeNode),
       Visibility: vis.(Visibility),
     },
@@ -239,9 +239,9 @@ TypeAndBlockSlot <- vis:Visibility _ name:Id _ ColonToken _ type_:Type _ block:B
   }, nil
 }
 
-TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndArgsAndBlockSlot <- vis:Visibility _ name:IdSymbol _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: FunTypeNode{args.([]*SlotDecl), type_.(TypeNode)},
     Value: &FunDecl{
       FunctionBase: FunctionBase{
@@ -249,7 +249,7 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Id _ args:ArgTypes _ ColonToken
         Body: block.(*Block),
         Loc: c.Loc(),
       },
-      Named: name.(string),
+      Named: name.(*Symbol).Name,
       Ret: type_.(TypeNode),
       Visibility: vis.(Visibility),
     },
@@ -265,6 +265,12 @@ PubToken <- "pub" !WordChar
 LetToken <- "let" !WordChar
 
 Id <- WordToken
+IdSymbol <- name:WordToken {
+  return &Symbol{
+    Name: name.(string),
+    Loc: c.Loc(),
+  }, nil
+}
 WordToken <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
   return string(c.text), nil
 }
@@ -283,7 +289,7 @@ ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
 ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   slotDecl := slot.(*SlotDecl)
   return &SlotDecl{
-    Named: slotDecl.Named,
+    Name: slotDecl.Name,
     Type_: slotDecl.Type_,
     Value: slotDecl.Value,
     Directives: slotDecl.Directives,
@@ -293,27 +299,27 @@ ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / Ar
 } / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
   return slot.(*SlotDecl), nil
 }
-ArgWithDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
+ArgWithDefault <- name:IdSymbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: sliceOf[*DirectiveApplication](directives),
     Value: value.(Node),
     Loc: c.Loc(),
   }, nil
 }
-ArgWithBlockDefault <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ block:Block {
+ArgWithBlockDefault <- name:IdSymbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ block:Block {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: sliceOf[*DirectiveApplication](directives),
     Value: block.(*Block),
     Loc: c.Loc(),
   }, nil
 }
-ArgWithType <- name:Id _ ColonToken _ type_:Type _ directives:DirectiveApplication* {
+ArgWithType <- name:IdSymbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
@@ -445,7 +451,10 @@ Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" 
   var slots []*SlotDecl
   for _, kv := range sliceOfAppend[Keyed[Node]](vals, last) {
     slots = append(slots, &SlotDecl{
-      Named: kv.Key,
+      Name: &Symbol{
+        Name: kv.Key,
+        Loc: kv.Value.GetSourceLocation(),
+      },
       Value: kv.Value,
       Loc: kv.Value.GetSourceLocation(),
     })
@@ -651,9 +660,9 @@ LambdaArgs <- '(' _ args:(a:LambdaArg Sep { return a, nil })* last:LambdaArg? _ 
 
 LambdaArg <- ArgWithDefault / ArgWithBlockDefault / ArgWithType / ArgWithoutType
 
-ArgWithoutType <- name:Id {
+ArgWithoutType <- name:IdSymbol {
   return &SlotDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Loc: c.Loc(),
   }, nil
 }
