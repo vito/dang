@@ -67,18 +67,11 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 
 	slog.InfoContext(ctx, "hover result", "symbol", symbolName, "type", typeInfo)
 
-	// Try to get documentation from the symbol definition
+	// Try to get documentation from the type environment
 	var docString string
-	if f.Symbols != nil {
-		if def, ok := f.Symbols.Definitions[symbolName]; ok && def.Node != nil {
-			// Check if the node has documentation
-			if slotDecl, ok := def.Node.(*dang.SlotDecl); ok {
-				docString = slotDecl.DocString
-			} else if classDecl, ok := def.Node.(*dang.ClassDecl); ok {
-				docString = classDecl.DocString
-			} else if directiveDecl, ok := def.Node.(*dang.DirectiveDecl); ok {
-				docString = directiveDecl.DocString
-			}
+	if f.TypeEnv != nil {
+		if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
+			docString = doc
 		}
 	}
 

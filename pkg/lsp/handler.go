@@ -61,6 +61,7 @@ type File struct {
 	Symbols         *SymbolTable
 	LexicalAnalyzer *LexicalAnalyzer
 	AST             *dang.Block // Parsed and type-annotated AST
+	TypeEnv         dang.Env    // Type environment after inference
 }
 
 // SymbolTable tracks symbol definitions and references in a file
@@ -221,6 +222,8 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				if err != nil {
 					f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
 				}
+				// Store the type environment in the File for later use (e.g., hover)
+				f.TypeEnv = typeEnv
 			}
 		}
 	}
