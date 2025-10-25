@@ -13,6 +13,7 @@ type Grammar struct {
 	Rules      *OrderedMap[RuleName, Rule] `json:"rules"`
 	Extras     []Rule                      `json:"extras"`
 	Supertypes []string                    `json:"supertypes"`
+	Conflicts  [][]RuleName                `json:"conflicts,omitempty"`
 }
 
 func NewGrammar(name string) Grammar {

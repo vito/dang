@@ -277,7 +277,7 @@ func addBuiltinFunctions(env EvalEnv) {
 	})
 
 	// Register all builtin methods with naming convention
-	for _, receiverType := range []*Module{StringType, IntType, BooleanType} {
+	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType} {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			builtinFn := BuiltinFunction{
@@ -440,6 +440,23 @@ func (i IntValue) String() string {
 
 func (i IntValue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(i.Val)
+}
+
+// FloatValue represents a floating-point value
+type FloatValue struct {
+	Val float64
+}
+
+func (f FloatValue) Type() hm.Type {
+	return hm.NonNullType{Type: FloatType}
+}
+
+func (f FloatValue) String() string {
+	return fmt.Sprintf("%g", f.Val)
+}
+
+func (f FloatValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(f.Val)
 }
 
 // BoolValue represents a boolean value

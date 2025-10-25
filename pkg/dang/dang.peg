@@ -465,7 +465,18 @@ Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
 
 // Literals
 
-Literal <- Int / Boolean / TripleQuoteString / String / Quoted / Null
+Literal <- Float / Int / Boolean / TripleQuoteString / String / Quoted / Null
+
+Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit+) Exponent)) {
+  value, err := strconv.ParseFloat(string(c.text), 64)
+  if err != nil {
+    return nil, err
+  }
+  return &Float{
+    Value: value,
+    Loc: c.Loc(),
+  }, nil
+}
 
 Int <- ('0' / NonZeroDecimalDigit DecimalDigit*) {
   value, err := strconv.ParseInt(string(c.text), 10, 64)

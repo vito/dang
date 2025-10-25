@@ -27,6 +27,9 @@ func TreesitterGrammar() treesitter.Grammar {
 		},
 	}
 	ts.Supertypes = []string{"expr", "form", "term"}
+	ts.Conflicts = [][]treesitter.RuleName{
+		{treesitter.Name("Float"), treesitter.Name("Int")},
+	}
 
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i

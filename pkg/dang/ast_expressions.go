@@ -677,6 +677,18 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				}
 				return nil, fmt.Errorf("string value does not have method %q", d.Field)
 
+			case FloatValue:
+				// Handle methods on float values by looking them up in the evaluation environment
+				// The builtin is registered with a special name
+				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field)
+				if method, found := env.Get(methodKey); found {
+					if builtinFn, ok := method.(BuiltinFunction); ok {
+						// Create a bound method that will pass the float as self
+						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					}
+				}
+				return nil, fmt.Errorf("float value does not have method %q", d.Field)
+
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
 			}

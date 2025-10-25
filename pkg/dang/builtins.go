@@ -112,11 +112,9 @@ func ToValue(v any) (Value, error) {
 		return IntValue{Val: int(val)}, nil
 
 	case float32:
-		// For now, treat floats as ints - could be improved
-		return IntValue{Val: int(val)}, nil
+		return FloatValue{Val: float64(val)}, nil
 	case float64:
-		// For now, treat floats as ints - could be improved
-		return IntValue{Val: int(val)}, nil
+		return FloatValue{Val: val}, nil
 
 	case bool:
 		return BoolValue{Val: val}, nil
@@ -149,6 +147,16 @@ func ToValue(v any) (Value, error) {
 		return ListValue{
 			Elements: values,
 			ElemType: hm.NonNullType{Type: BooleanType},
+		}, nil
+
+	case []float64:
+		values := make([]Value, len(val))
+		for i, f := range val {
+			values[i] = FloatValue{Val: f}
+		}
+		return ListValue{
+			Elements: values,
+			ElemType: hm.NonNullType{Type: FloatType},
 		}, nil
 
 	case []any:

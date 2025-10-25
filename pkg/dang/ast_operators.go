@@ -94,8 +94,18 @@ func (b *BinaryOperator) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 func additionEval(leftVal, rightVal Value) (Value, error) {
 	switch l := leftVal.(type) {
 	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
+		switch r := rightVal.(type) {
+		case IntValue:
 			return IntValue{Val: l.Val + r.Val}, nil
+		case FloatValue:
+			return FloatValue{Val: float64(l.Val) + r.Val}, nil
+		}
+	case FloatValue:
+		switch r := rightVal.(type) {
+		case IntValue:
+			return FloatValue{Val: l.Val + float64(r.Val)}, nil
+		case FloatValue:
+			return FloatValue{Val: l.Val + r.Val}, nil
 		}
 	case StringValue:
 		if r, ok := rightVal.(StringValue); ok {
@@ -123,8 +133,18 @@ func additionEval(leftVal, rightVal Value) (Value, error) {
 func subtractionEval(leftVal, rightVal Value) (Value, error) {
 	switch l := leftVal.(type) {
 	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
+		switch r := rightVal.(type) {
+		case IntValue:
 			return IntValue{Val: l.Val - r.Val}, nil
+		case FloatValue:
+			return FloatValue{Val: float64(l.Val) - r.Val}, nil
+		}
+	case FloatValue:
+		switch r := rightVal.(type) {
+		case IntValue:
+			return FloatValue{Val: l.Val - float64(r.Val)}, nil
+		case FloatValue:
+			return FloatValue{Val: l.Val - r.Val}, nil
 		}
 	}
 	return nil, fmt.Errorf("subtraction not supported for types %T and %T", leftVal, rightVal)
@@ -133,8 +153,18 @@ func subtractionEval(leftVal, rightVal Value) (Value, error) {
 func multiplicationEval(leftVal, rightVal Value) (Value, error) {
 	switch l := leftVal.(type) {
 	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
+		switch r := rightVal.(type) {
+		case IntValue:
 			return IntValue{Val: l.Val * r.Val}, nil
+		case FloatValue:
+			return FloatValue{Val: float64(l.Val) * r.Val}, nil
+		}
+	case FloatValue:
+		switch r := rightVal.(type) {
+		case IntValue:
+			return FloatValue{Val: l.Val * float64(r.Val)}, nil
+		case FloatValue:
+			return FloatValue{Val: l.Val * r.Val}, nil
 		}
 	}
 	return nil, fmt.Errorf("multiplication not supported for types %T and %T", leftVal, rightVal)
@@ -143,11 +173,30 @@ func multiplicationEval(leftVal, rightVal Value) (Value, error) {
 func divisionEval(leftVal, rightVal Value) (Value, error) {
 	switch l := leftVal.(type) {
 	case IntValue:
-		if r, ok := rightVal.(IntValue); ok {
+		switch r := rightVal.(type) {
+		case IntValue:
 			if r.Val == 0 {
 				return nil, fmt.Errorf("division by zero")
 			}
 			return IntValue{Val: l.Val / r.Val}, nil
+		case FloatValue:
+			if r.Val == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return FloatValue{Val: float64(l.Val) / r.Val}, nil
+		}
+	case FloatValue:
+		switch r := rightVal.(type) {
+		case IntValue:
+			if r.Val == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return FloatValue{Val: l.Val / float64(r.Val)}, nil
+		case FloatValue:
+			if r.Val == 0 {
+				return nil, fmt.Errorf("division by zero")
+			}
+			return FloatValue{Val: l.Val / r.Val}, nil
 		}
 	}
 	return nil, fmt.Errorf("division not supported for types %T and %T", leftVal, rightVal)
@@ -175,7 +224,17 @@ func inequalityEval(leftVal, rightVal Value) (Value, error) {
 func lessThanEval(leftVal, rightVal Value) (Value, error) {
 	switch lv := leftVal.(type) {
 	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val < rv.Val}, nil
+		case FloatValue:
+			return BoolValue{Val: float64(lv.Val) < rv.Val}, nil
+		}
+	case FloatValue:
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val < float64(rv.Val)}, nil
+		case FloatValue:
 			return BoolValue{Val: lv.Val < rv.Val}, nil
 		}
 	}
@@ -185,7 +244,17 @@ func lessThanEval(leftVal, rightVal Value) (Value, error) {
 func greaterThanEval(leftVal, rightVal Value) (Value, error) {
 	switch lv := leftVal.(type) {
 	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val > rv.Val}, nil
+		case FloatValue:
+			return BoolValue{Val: float64(lv.Val) > rv.Val}, nil
+		}
+	case FloatValue:
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val > float64(rv.Val)}, nil
+		case FloatValue:
 			return BoolValue{Val: lv.Val > rv.Val}, nil
 		}
 	}
@@ -195,7 +264,17 @@ func greaterThanEval(leftVal, rightVal Value) (Value, error) {
 func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
 	switch lv := leftVal.(type) {
 	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val <= rv.Val}, nil
+		case FloatValue:
+			return BoolValue{Val: float64(lv.Val) <= rv.Val}, nil
+		}
+	case FloatValue:
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val <= float64(rv.Val)}, nil
+		case FloatValue:
 			return BoolValue{Val: lv.Val <= rv.Val}, nil
 		}
 	}
@@ -205,7 +284,17 @@ func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
 func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
 	switch lv := leftVal.(type) {
 	case IntValue:
-		if rv, ok := rightVal.(IntValue); ok {
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val >= rv.Val}, nil
+		case FloatValue:
+			return BoolValue{Val: float64(lv.Val) >= rv.Val}, nil
+		}
+	case FloatValue:
+		switch rv := rightVal.(type) {
+		case IntValue:
+			return BoolValue{Val: lv.Val >= float64(rv.Val)}, nil
+		case FloatValue:
 			return BoolValue{Val: lv.Val >= rv.Val}, nil
 		}
 	}

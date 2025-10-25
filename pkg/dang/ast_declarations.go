@@ -450,10 +450,22 @@ func (r *Reassignment) getPath(selectNode *Select) (string, []string, error) {
 func (r *Reassignment) performAddition(left, right Value, varName string) (Value, error) {
 	switch l := left.(type) {
 	case IntValue:
-		if r, ok := right.(IntValue); ok {
+		switch r := right.(type) {
+		case IntValue:
 			return IntValue{Val: l.Val + r.Val}, nil
+		case FloatValue:
+			return FloatValue{Val: float64(l.Val) + r.Val}, nil
 		}
 		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to int variable %q", right, varName)
+
+	case FloatValue:
+		switch r := right.(type) {
+		case IntValue:
+			return FloatValue{Val: l.Val + float64(r.Val)}, nil
+		case FloatValue:
+			return FloatValue{Val: l.Val + r.Val}, nil
+		}
+		return nil, fmt.Errorf("Reassignment.Eval: cannot add %T to float variable %q", right, varName)
 
 	case StringValue:
 		if r, ok := right.(StringValue); ok {

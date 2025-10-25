@@ -241,7 +241,17 @@ func valuesEqual(left, right Value) bool {
 			return l.Val == r.Val
 		}
 	case IntValue:
-		if r, ok := right.(IntValue); ok {
+		switch r := right.(type) {
+		case IntValue:
+			return l.Val == r.Val
+		case FloatValue:
+			return float64(l.Val) == r.Val
+		}
+	case FloatValue:
+		switch r := right.(type) {
+		case IntValue:
+			return l.Val == float64(r.Val)
+		case FloatValue:
 			return l.Val == r.Val
 		}
 	case BoolValue:

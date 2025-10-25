@@ -177,7 +177,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 130,
+      "value": 131,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -338,7 +338,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 124,
+      "value": 125,
       "content": {
         "type": "SEQ",
         "members": [
@@ -401,7 +401,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 123,
+      "value": 124,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1333,7 +1333,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 94,
+      "value": 95,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1489,7 +1489,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 89,
+      "value": 90,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1577,7 +1577,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1658,7 +1658,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1747,7 +1747,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 81,
+      "value": 82,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1828,7 +1828,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 79,
+      "value": 80,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2070,6 +2070,10 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "float"
+        },
+        {
+          "type": "SYMBOL",
           "name": "int"
         },
         {
@@ -2091,6 +2095,98 @@
         {
           "type": "SYMBOL",
           "name": "null"
+        }
+      ]
+    },
+    "float": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "0"
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "non_zero_decimal_digit"
+                    },
+                    {
+                      "type": "REPEAT",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "decimal_digit"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "STRING",
+              "value": "."
+            },
+            {
+              "type": "REPEAT1",
+              "content": {
+                "type": "SYMBOL",
+                "name": "decimal_digit"
+              }
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "exponent"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "0"
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "non_zero_decimal_digit"
+                    },
+                    {
+                      "type": "REPEAT1",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "decimal_digit"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "exponent"
+            }
+          ]
         }
       ]
     },
@@ -3610,5 +3706,11 @@
     "expr",
     "form",
     "term"
+  ],
+  "conflicts": [
+    [
+      "float",
+      "int"
+    ]
   ]
 }

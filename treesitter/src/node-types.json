@@ -1153,6 +1153,21 @@
     "fields": {}
   },
   {
+    "type": "exponent",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "decimal_digit",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "field_selection",
     "named": true,
     "fields": {
@@ -1196,6 +1211,29 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "float",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "decimal_digit",
+          "named": true
+        },
+        {
+          "type": "exponent",
+          "named": true
+        },
+        {
+          "type": "non_zero_decimal_digit",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1705,6 +1743,10 @@
       "types": [
         {
           "type": "boolean",
+          "named": true
+        },
+        {
+          "type": "float",
           "named": true
         },
         {
@@ -3193,6 +3235,10 @@
   {
     "type": "double_colon_token",
     "named": true
+  },
+  {
+    "type": "e",
+    "named": false
   },
   {
     "type": "else_token",

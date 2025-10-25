@@ -16,6 +16,7 @@ var (
 	BooleanType = NewModule("Boolean")
 	StringType  = NewModule("String")
 	IntType     = NewModule("Int")
+	FloatType   = NewModule("Float")
 )
 
 // List represents a list literal
@@ -257,4 +258,40 @@ func (i *Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 func (i *Int) Walk(fn func(Node) bool) {
 	fn(i)
+}
+
+// Float represents a floating-point literal
+type Float struct {
+	InferredTypeHolder
+	Value float64
+	Loc   *SourceLocation
+}
+
+var _ Node = (*Float)(nil)
+var _ Evaluator = (*Float)(nil)
+
+func (f *Float) Body() hm.Expression { return f }
+
+func (f *Float) GetSourceLocation() *SourceLocation { return f.Loc }
+
+func (f *Float) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t := hm.NonNullType{Type: FloatType}
+	f.SetInferredType(t)
+	return t, nil
+}
+
+func (f *Float) DeclaredSymbols() []string {
+	return nil // Float literals don't declare anything
+}
+
+func (f *Float) ReferencedSymbols() []string {
+	return nil // Float literals don't reference anything
+}
+
+func (f *Float) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return FloatValue{Val: f.Value}, nil
+}
+
+func (f *Float) Walk(fn func(Node) bool) {
+	fn(f)
 }

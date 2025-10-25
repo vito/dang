@@ -1,0 +1,29 @@
+# Test float literal parsing and operations
+
+pub pi = 3.14159
+pub e = 2.71828
+pub scientific = 1.5e10
+pub negative_exp = 2.5e-3
+
+assert { pi > 3.0 }
+assert { pi < 4.0 }
+assert { e > 2.0 }
+assert { e < 3.0 }
+
+# Float arithmetic
+pub float_sum = 1.5 + 2.5
+assert { float_sum == 4.0 }
+
+pub float_product = 2.5 * 3.0
+assert { float_product == 7.5 }
+
+pub float_quotient = 7.5 / 2.5
+assert { float_quotient == 3.0 }
+
+# Comparisons with floats
+assert { 3.14 > 3.0 }
+assert { 3.0 < 3.14 }
+assert { 2.0 == 2.0 }
+assert { 2.5 != 2.0 }
+
+print("Float literal tests passed!")
