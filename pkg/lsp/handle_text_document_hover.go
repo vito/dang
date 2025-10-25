@@ -8,6 +8,7 @@ import (
 
 	"github.com/sourcegraph/jsonrpc2"
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/hm"
 )
 
 func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
@@ -44,11 +45,40 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 		return nil, nil
 	}
 
-	// Get the inferred type from the node
+	// Check if we're hovering over a field access (Select node)
+	var docString string
 	var typeInfo string
-	inferredType := node.GetInferredType()
-	if inferredType != nil {
-		typeInfo = fmt.Sprintf("%v", inferredType)
+	
+	if selectNode, ok := node.(*dang.Select); ok {
+		// Get the receiver's type
+		receiverType := selectNode.Receiver.GetInferredType()
+		if receiverType != nil {
+			// Unwrap NonNullType if needed
+			if nn, ok := receiverType.(hm.NonNullType); ok {
+				receiverType = nn.Type
+			}
+			
+			// Cast as an Env to look up the field's doc
+			if env, ok := receiverType.(dang.Env); ok {
+				if doc, found := env.GetDocString(selectNode.Field); found {
+					docString = doc
+				}
+				
+				// Get the field's type
+				if scheme, found := env.LocalSchemeOf(selectNode.Field); found {
+					fieldType, _ := scheme.Type()
+					typeInfo = fmt.Sprintf("%v", fieldType)
+				}
+			}
+		}
+	}
+	
+	// Get the inferred type from the node if we don't have it yet
+	if typeInfo == "" {
+		inferredType := node.GetInferredType()
+		if inferredType != nil {
+			typeInfo = fmt.Sprintf("%v", inferredType)
+		}
 	}
 
 	// If we couldn't get type info from the node, try to find it in the symbol table
@@ -67,9 +97,8 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 
 	slog.InfoContext(ctx, "hover result", "symbol", symbolName, "type", typeInfo)
 
-	// Try to get documentation from the type environment
-	var docString string
-	if f.TypeEnv != nil {
+	// Try to get documentation from the type environment (if we don't have it yet)
+	if docString == "" && f.TypeEnv != nil {
 		if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
 			docString = doc
 		}

@@ -4,6 +4,9 @@ let hello = 42
 hello # test: K -> hover: Int!
 
 # function hover
+"""
+Adds two numbers.
+"""
 pub addNums(x: Int!, y: Int!): Int! {
   x + y
 }
@@ -23,3 +26,19 @@ multiply # test: K -> hover: Multiplies two numbers together
 
 # builtin hover
 container # test: K -> hover: Container!
+
+# field access hover
+container.from # test: 11lK -> hover: Download a container image
+
+type MyModule {
+  pub build: File! {
+    generated.file("built") # test: ^K -> hover: Base with ./hack/generate ran.
+  }
+
+  """
+  Base with ./hack/generate ran.
+  """
+  let generated: Container! {
+    container.withExec(["./hack/generate"])
+  }
+}

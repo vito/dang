@@ -101,9 +101,10 @@ func (h *langHandler) getSchemaCompletions(schema *introspection.Schema) []Compl
 				}
 
 				items = append(items, CompletionItem{
-					Label:  field.Name,
-					Kind:   FunctionCompletion,
-					Detail: "global function",
+					Label:         field.Name,
+					Kind:          FunctionCompletion,
+					Detail:        "global function",
+					Documentation: field.Description,
 				})
 			}
 			break
@@ -138,10 +139,17 @@ func (h *langHandler) getMemberCompletions(t hm.Type) []CompletionItem {
 			kind = MethodCompletion
 		}
 
+		// Get documentation for this member
+		var documentation string
+		if doc, found := module.GetDocString(name); found {
+			documentation = doc
+		}
+
 		items = append(items, CompletionItem{
-			Label:  name,
-			Kind:   kind,
-			Detail: memberType.String(),
+			Label:         name,
+			Kind:          kind,
+			Detail:        memberType.String(),
+			Documentation: documentation,
 		})
 	}
 
