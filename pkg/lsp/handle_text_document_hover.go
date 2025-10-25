@@ -48,7 +48,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 	// Check if we're hovering over a field access (Select node)
 	var docString string
 	var typeInfo string
-	
+
 	if selectNode, ok := node.(*dang.Select); ok {
 		// Get the receiver's type
 		receiverType := selectNode.Receiver.GetInferredType()
@@ -57,13 +57,13 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 			if nn, ok := receiverType.(hm.NonNullType); ok {
 				receiverType = nn.Type
 			}
-			
+
 			// Cast as an Env to look up the field's doc
 			if env, ok := receiverType.(dang.Env); ok {
 				if doc, found := env.GetDocString(selectNode.Field); found {
 					docString = doc
 				}
-				
+
 				// Get the field's type
 				if scheme, found := env.LocalSchemeOf(selectNode.Field); found {
 					fieldType, _ := scheme.Type()
@@ -72,7 +72,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 			}
 		}
 	}
-	
+
 	// Get the inferred type from the node if we don't have it yet
 	if typeInfo == "" {
 		inferredType := node.GetInferredType()
@@ -105,7 +105,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 				docString = doc
 			}
 		}
-		
+
 		// If not found at file level, try to find in lexical scopes
 		if docString == "" {
 			docString = h.findDocInLexicalScope(ctx, f.AST, params.Position, symbolName)
@@ -199,7 +199,7 @@ func (h *langHandler) findDocInLexicalScope(ctx context.Context, root dang.Node,
 		// Check if position is within this node's range
 		if (pos.Line > startLine || (pos.Line == startLine && pos.Character >= startCol)) &&
 			(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol)) {
-			
+
 			// Check if this node has a stored environment
 			switch typed := n.(type) {
 			case *dang.ClassDecl:

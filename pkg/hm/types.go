@@ -2,6 +2,7 @@ package hm
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Type represents all possible type constructors with nullability support
@@ -73,7 +74,7 @@ func NewFnType(arg, ret Type) *FunctionType {
 }
 
 func (ft *FunctionType) Name() string {
-	return fmt.Sprintf("(%s -> %s)", ft.arg.Name(), ft.ret.Name())
+	return ft.String()
 }
 
 func (ft *FunctionType) Apply(subs Subs) Substitutable {
@@ -111,7 +112,9 @@ func (ft *FunctionType) Eq(other Type) bool {
 }
 
 func (ft *FunctionType) String() string {
-	return fmt.Sprintf("(%s -> %s)", ft.arg.String(), ft.ret.String())
+	return fmt.Sprintf("(%s): %s",
+		strings.TrimSuffix(strings.TrimPrefix(ft.arg.Name(), "{"), "}"),
+		ft.ret.Name())
 }
 
 func (ft *FunctionType) Format(s fmt.State, c rune) {

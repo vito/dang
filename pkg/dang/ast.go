@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
@@ -315,7 +316,19 @@ func (c CompositeEnv) GetLocal(name string) (Value, bool) {
 }
 
 func (c CompositeEnv) Bindings(vis Visibility) []Keyed[Value] {
-	return c.primary.Bindings(vis)
+	var bs []Keyed[Value]
+	seen := map[string]bool{}
+	for _, kv := range c.primary.Bindings(vis) {
+		bs = append(bs, kv)
+		seen[kv.Key] = true
+	}
+	for _, kv := range c.lexical.Bindings(vis) {
+		if seen[kv.Key] {
+			continue
+		}
+		bs = append(bs, kv)
+	}
+	return bs
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue
@@ -503,6 +516,28 @@ func (c *CompositeModule) GetDirective(name string) (*DirectiveDecl, bool) {
 	}
 	// Then check the lexical environment (current scope)
 	return c.lexical.GetDirective(name)
+}
+
+// Bindings iterates over the primary and lexical bindings, with the primary
+// bindings shadowing the lexical ones
+func (c *CompositeModule) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
+	return func(yield func(key string, val *hm.Scheme) bool) {
+		seen := map[string]bool{}
+		for k, v := range c.primary.Bindings(visibility) {
+			if !yield(k, v) {
+				return
+			}
+			seen[k] = true
+		}
+		for k, v := range c.lexical.Bindings(visibility) {
+			if seen[k] {
+				continue
+			}
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
 }
 
 // nodeToString converts a Node to a readable string representation for debugging

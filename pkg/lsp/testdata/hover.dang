@@ -11,7 +11,7 @@ pub addNums(x: Int!, y: Int!): Int! {
   x + y
 }
 
-addNums # test: K -> hover: ({x: Int!, y: Int!} -> Int!)
+addNums # test: K -> hover: (x: Int!, y: Int!): Int!
 
 # function with docs
 """

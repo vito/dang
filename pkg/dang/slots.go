@@ -271,15 +271,8 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 	}
 
-	inferEnv := &CompositeModule{
-		primary: class,
-		lexical: env.(Env),
-	}
-
-	// Use phased inference approach to handle forward references within the class body
-	if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
-		return nil, err
-	}
+	// Set this early so we can at least partially infer.
+	c.Inferred = class.(*Module)
 
 	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
 	class.Add("self", self)
@@ -292,7 +285,16 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 	}
 
-	c.Inferred = class.(*Module)
+	inferEnv := &CompositeModule{
+		primary: class,
+		lexical: env.(Env),
+	}
+
+	// Use phased inference approach to handle forward references within the class body
+	if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
+		return nil, err
+	}
+
 	return c.ConstructorFnType, nil
 }
 

@@ -3,10 +3,8 @@ package lsp
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	"github.com/sourcegraph/jsonrpc2"
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
@@ -43,71 +41,113 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 		}
 	}
 
-	var items []CompletionItem
-
-	// Add all defined symbols from the current file
-	for name, info := range f.Symbols.Definitions {
-		items = append(items, CompletionItem{
-			Label: name,
-			Kind:  info.Kind,
-		})
+	// Add lexical bindings from enclosing scopes
+	if f.AST != nil {
+		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
 	}
 
-	// Add lexical bindings (function parameters, etc.) that are in scope at the cursor position
-	if f.LexicalAnalyzer != nil {
-		// Convert LSP position to Dang SourceLocation for scope checking
-		cursorLoc := &dang.SourceLocation{
-			Filename: string(params.TextDocument.URI),
-			Line:     params.Position.Line + 1,      // LSP is 0-based, Dang is 1-based
-			Column:   params.Position.Character + 1, // LSP is 0-based, Dang is 1-based
-		}
-
-		// Find bindings that are in scope at the cursor position
-		bindings := f.LexicalAnalyzer.FindBindingsAt(cursorLoc)
-		for _, binding := range bindings {
-			items = append(items, CompletionItem{
-				Label:  binding.Symbol,
-				Kind:   binding.Kind,
-				Detail: "lexical binding",
-			})
-		}
-	}
-
-	// Add global functions from GraphQL schema (Query type fields)
-	// Get schema for this file
-	fp, err := fromURI(params.TextDocument.URI)
-	if err == nil {
-		schema, _, err := h.getSchemaForFile(ctx, fp)
-		if err == nil && schema != nil && schema.QueryType.Name != "" {
-			items = append(items, h.getSchemaCompletions(schema)...)
-		}
-	}
-
-	return items, nil
+	return nil, nil
 }
 
-// getSchemaCompletions returns completion items for global functions from the GraphQL schema
-func (h *langHandler) getSchemaCompletions(schema *introspection.Schema) []CompletionItem {
+// getLexicalCompletions returns completion items for symbols in enclosing lexical scopes
+func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node, pos Position, fileEnv dang.Env) []CompletionItem {
+	var environments []dang.Env
+
+	// First add the file-level environment if available
+	if fileEnv != nil {
+		environments = append(environments, fileEnv)
+	}
+
+	// Walk the AST to find all enclosing scopes that might have stored environments
+	root.Walk(func(n dang.Node) bool {
+		if n == nil {
+			return false
+		}
+
+		loc := n.GetSourceLocation()
+		if loc == nil {
+			return true
+		}
+
+		// Convert to 0-based for comparison
+		startLine := loc.Line - 1
+		startCol := loc.Column - 1
+		endLine := startLine
+		endCol := startCol + loc.Length
+
+		if loc.End != nil {
+			endLine = loc.End.Line - 1
+			endCol = loc.End.Column - 1
+		}
+
+		// Check if position is within this node's range
+		if (pos.Line > startLine || (pos.Line == startLine && pos.Character >= startCol)) &&
+			(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol)) {
+
+			// Check if this node has a stored environment
+			switch typed := n.(type) {
+			case *dang.ClassDecl:
+				if typed.Inferred != nil {
+					environments = append(environments, typed.Inferred)
+				}
+			case *dang.FunDecl:
+				if typed.InferredScope != nil {
+					environments = append(environments, typed.InferredScope)
+				}
+			case *dang.Block:
+				if typed.Env != nil {
+					environments = append(environments, typed.Env)
+				}
+			case *dang.Object:
+				if typed.Mod != nil {
+					environments = append(environments, typed.Mod)
+				}
+			case *dang.ObjectSelection:
+				if typed.Inferred != nil {
+					environments = append(environments, typed.Inferred)
+				}
+			default:
+			}
+		}
+
+		return true
+	})
+
+	// Collect all unique symbols from all environments
+	seen := make(map[string]bool)
 	var items []CompletionItem
 
-	// Find the Query type in the schema
-	for _, t := range schema.Types {
-		if t.Name == schema.QueryType.Name {
-			// Found the Query type - add all its fields as global functions
-			for _, field := range t.Fields {
-				// Skip internal/deprecated fields if needed
-				if strings.HasPrefix(field.Name, "__") {
-					continue
-				}
+	// Search environments from innermost to outermost (reverse order)
+	for i := len(environments) - 1; i >= 0; i-- {
+		env := environments[i]
 
-				items = append(items, CompletionItem{
-					Label:         field.Name,
-					Kind:          FunctionCompletion,
-					Detail:        "global function",
-					Documentation: field.Description,
-				})
+		// Get all bindings from this environment (both public and private for completion)
+		for name, scheme := range env.Bindings(dang.PrivateVisibility) {
+			// Skip if we've already seen this symbol
+			if seen[name] {
+				continue
 			}
-			break
+			seen[name] = true
+
+			// Determine type and kind
+			memberType, _ := scheme.Type()
+			kind := VariableCompletion
+			if _, isFn := memberType.(*hm.FunctionType); isFn {
+				kind = FunctionCompletion
+			}
+
+			// Get documentation for this symbol
+			var documentation string
+			if doc, found := env.GetDocString(name); found {
+				documentation = doc
+			}
+
+			items = append(items, CompletionItem{
+				Label:         name,
+				Kind:          kind,
+				Detail:        memberType.String(),
+				Documentation: documentation,
+			})
 		}
 	}
 

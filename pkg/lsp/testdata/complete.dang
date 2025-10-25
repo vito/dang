@@ -7,16 +7,16 @@ hel # test: ^ea<C-x><C-o> => hello┃
 dir # test: ^ea<C-x><C-o> => directory┃
 cont # test: ^ea<C-x><C-o> => container┃
 
-# lexical bindings
+# lexical bindings (function parameters)
 pub foo(jxkqv: Int!): [Int!] {
   [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
 }
 
-# type-aware completions
+# lexical bindings (let within block)
 pub bar: Container! {
-  let c = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
+  let ctr = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
   let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
-  container
+  ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 let url = "https://github.com/vito/dang"

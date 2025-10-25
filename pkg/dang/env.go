@@ -24,6 +24,7 @@ type Env interface {
 	LocalSchemeOf(string) (*hm.Scheme, bool)
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
+	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
 }
 
 // TODO: is this just ClassType? are Classes just named Envs?

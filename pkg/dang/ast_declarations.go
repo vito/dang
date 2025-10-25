@@ -18,6 +18,8 @@ type FunctionBase struct {
 	Loc  *SourceLocation
 
 	Inferred *hm.FunctionType
+
+	InferredScope Env
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
@@ -116,6 +118,9 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
+
+	// Assign early so we can still use partial inference results.
+	f.InferredScope = newEnv.(Env)
 
 	// Process arguments using shared logic
 	args, err := f.inferFunctionArguments(ctx, newEnv, fresh, allowFreshTypes)
