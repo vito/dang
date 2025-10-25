@@ -15,6 +15,11 @@ type Dev {
   pub githubToken: Secret!
 
   """
+  Kagi API token for doing research.
+  """
+  pub kagiToken: Secret!
+
+  """
   Start a coding agent with the provided module.
   """
   pub agent(module: Module!): LLM! {
@@ -51,6 +56,21 @@ type Dev {
           """
         )
     )
+
+    if kagiToken != null {
+      agent = agent.withMCPServer(
+        "kagi"
+        apko.wolfi(["bash", "uv", "python3"]).
+          withDirectory("/workspace", source).
+          withWorkdir("/workspace").
+          withExec(["uv", "venv", "/opt/venv"]).
+          withEnvVariable("VIRTUAL_ENV", "/opt/venv").
+          withExec(["uv", "pip", "install", "kagimcp"]).
+          withSecretVariable(name: "KAGI_API_KEY", secret: kagiToken).
+          withDefaultArgs(["uv", "run", "kagimcp"]).
+          asService
+      )
+    }
 
     if source.exists("current-task.md") {
       agent = agent.withSystemPrompt(source.file("current-task.md").contents)
