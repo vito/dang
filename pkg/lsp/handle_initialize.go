@@ -45,9 +45,10 @@ func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn,
 			CompletionProvider: &CompletionProvider{
 				TriggerCharacters: []string{"."},
 			},
-			DefinitionProvider: true,
-			HoverProvider:      true,
-			RenameProvider:     true,
+			DefinitionProvider:      true,
+			HoverProvider:           true,
+			RenameProvider:          true,
+			WorkspaceSymbolProvider: true,
 			Workspace: &ServerCapabilitiesWorkspace{
 				WorkspaceFolders: WorkspaceFoldersServerCapabilities{
 					Supported:           true,

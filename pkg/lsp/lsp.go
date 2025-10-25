@@ -80,6 +80,7 @@ type ServerCapabilities struct {
 	HoverProvider              bool                         `json:"hoverProvider,omitempty"`
 	CodeActionProvider         bool                         `json:"codeActionProvider,omitempty"`
 	RenameProvider             bool                         `json:"renameProvider,omitempty"`
+	WorkspaceSymbolProvider    bool                         `json:"workspaceSymbolProvider,omitempty"`
 	Workspace                  *ServerCapabilitiesWorkspace `json:"workspace,omitempty"`
 }
 
@@ -222,6 +223,11 @@ type SymbolInformation struct {
 	Deprecated    bool     `json:"deprecated"`
 	Location      Location `json:"location"`
 	ContainerName *string  `json:"containerName"`
+}
+
+// WorkspaceSymbolParams is
+type WorkspaceSymbolParams struct {
+	Query string `json:"query"`
 }
 
 // CompletionItemKind is

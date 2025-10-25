@@ -555,6 +555,8 @@ func (h *langHandler) handle(ctx context.Context, conn *jsonrpc2.Conn, req *json
 		return h.handleTextDocumentHover(ctx, conn, req)
 	case "textDocument/rename":
 		return h.handleTextDocumentRename(ctx, conn, req)
+	case "workspace/symbol":
+		return h.handleWorkspaceSymbol(ctx, conn, req)
 	case "workspace/didChangeConfiguration":
 		return h.handleWorkspaceDidChangeConfiguration(ctx, conn, req)
 	case "workspace/workspaceFolders":
