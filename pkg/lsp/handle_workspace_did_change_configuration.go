@@ -1,11 +1,10 @@
 package lsp
 
 import (
-	"context"
-
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	"github.com/newstack-cloud/ls-builder/lsp_3_17"
 )
 
-func (h *langHandler) handleWorkspaceDidChangeConfiguration(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	return nil, nil
+func (h *langHandler) handleWorkspaceDidChangeConfiguration(ctx *common.LSPContext, params *lsp.DidChangeConfigurationParams) error {
+	return nil
 }

@@ -1,91 +1,81 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
 	"log/slog"
 
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	"github.com/newstack-cloud/ls-builder/lsp_3_17"
 	"github.com/vito/dang/pkg/dang"
 )
 
-func (h *langHandler) handleTextDocumentRename(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
-	}
-
-	var params RenameParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
-	}
-
-	slog.InfoContext(ctx, "rename request", "uri", params.TextDocument.URI, "position", params.Position, "newName", params.NewName)
+func (h *langHandler) handleTextDocumentRename(ctx *common.LSPContext, params *lsp.RenameParams) (*lsp.WorkspaceEdit, error) {
+	slog.InfoContext(ctx.Context, "rename request", "uri", params.TextDocument.URI, "position", params.Position, "newName", params.NewName)
 
 	f, ok := h.files[params.TextDocument.URI]
 	if !ok {
-		slog.WarnContext(ctx, "file not found for rename", "uri", params.TextDocument.URI)
+		slog.WarnContext(ctx.Context, "file not found for rename", "uri", params.TextDocument.URI)
 		return nil, nil
 	}
 
 	if f.AST == nil {
-		slog.WarnContext(ctx, "AST is nil for file", "uri", params.TextDocument.URI)
+		slog.WarnContext(ctx.Context, "AST is nil for file", "uri", params.TextDocument.URI)
 		return nil, nil
 	}
 
-	slog.InfoContext(ctx, "file info", "hasAST", f.AST != nil, "textLength", len(f.Text))
+	slog.InfoContext(ctx.Context, "file info", "hasAST", f.AST != nil, "textLength", len(f.Text))
 
 	// Find the symbol at the cursor position
 	symbolName := h.symbolAtPosition(f, params.Position)
 	if symbolName == "" {
-		slog.WarnContext(ctx, "no symbol found at position", "position", params.Position)
+		slog.WarnContext(ctx.Context, "no symbol found at position", "position", params.Position)
 		return nil, nil
 	}
 
-	slog.InfoContext(ctx, "renaming symbol", "symbol", symbolName, "newName", params.NewName)
+	slog.InfoContext(ctx.Context, "renaming symbol", "symbol", symbolName, "newName", params.NewName)
 
 	// Collect all text edits for renaming this symbol
-	var edits []TextEdit
+	var edits []lsp.TextEdit
 
 	defer func() {
-		slog.InfoContext(ctx, "DEFERRED returning workspace edit", "totalEdits", len(edits))
+		slog.InfoContext(ctx.Context, "DEFERRED returning workspace edit", "totalEdits", len(edits))
 	}()
 
 	// Use precise reference finding with Symbol nodes
-	slog.InfoContext(ctx, "about to find references")
+	slog.InfoContext(ctx.Context, "about to find references")
 	references := h.findPreciseReferences(f, symbolName)
-	slog.InfoContext(ctx, "found references", "count", len(references), "references", references)
+	slog.InfoContext(ctx.Context, "found references", "count", len(references), "references", references)
 	for _, refRange := range references {
-		edits = append(edits, TextEdit{
-			Range:   refRange,
+		edits = append(edits, lsp.TextEdit{
+			Range:   &refRange,
 			NewText: params.NewName,
 		})
 	}
 
 	// Also find and rename declarations
 	declarations := h.findDeclarations(f.AST, symbolName)
-	slog.InfoContext(ctx, "found declarations", "count", len(declarations), "declarations", declarations)
+	slog.InfoContext(ctx.Context, "found declarations", "count", len(declarations), "declarations", declarations)
 	for _, declRange := range declarations {
-		edits = append(edits, TextEdit{
-			Range:   declRange,
+		edits = append(edits, lsp.TextEdit{
+			Range:   &declRange,
 			NewText: params.NewName,
 		})
 	}
 
-	slog.InfoContext(ctx, "returning workspace edit", "totalEdits", len(edits), "edits", edits)
+	slog.InfoContext(ctx.Context, "returning workspace edit", "totalEdits", len(edits), "edits", edits)
 
 	// Return WorkspaceEdit with changes for this file
-	changes := map[string][]TextEdit{
-		string(params.TextDocument.URI): edits,
+	changes := map[lsp.DocumentURI][]lsp.TextEdit{
+		params.TextDocument.URI: edits,
 	}
 
-	return &WorkspaceEdit{
+	return &lsp.WorkspaceEdit{
 		Changes: changes,
 	}, nil
 }
 
 // findDeclarations finds all declaration nodes for a symbol
-func (h *langHandler) findDeclarations(node dang.Node, symbolName string) []Range {
-	var declarations []Range
+func (h *langHandler) findDeclarations(node dang.Node, symbolName string) []lsp.Range {
+	var declarations []lsp.Range
 
 	if node == nil {
 		return declarations
@@ -110,9 +100,9 @@ func (h *langHandler) findDeclarations(node dang.Node, symbolName string) []Rang
 				}
 				
 				if loc != nil {
-					declarations = append(declarations, Range{
-						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(symbolName)},
+					declarations = append(declarations, lsp.Range{
+						Start: lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1)},
+						End:   lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1 + len(symbolName))},
 					})
 				}
 			}
@@ -152,8 +142,8 @@ func (h *langHandler) findSymbolNodes(node dang.Node, symbolName string) []*dang
 }
 
 // More precise reference finding using symbol nodes
-func (h *langHandler) findPreciseReferences(f *File, symbolName string) []Range {
-	var references []Range
+func (h *langHandler) findPreciseReferences(f *File, symbolName string) []lsp.Range {
+	var references []lsp.Range
 
 	if f.AST == nil {
 		return references
@@ -165,9 +155,9 @@ func (h *langHandler) findPreciseReferences(f *File, symbolName string) []Range 
 	for _, sym := range symbols {
 		loc := sym.GetSourceLocation()
 		if loc != nil {
-			references = append(references, Range{
-				Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-				End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(symbolName)},
+			references = append(references, lsp.Range{
+				Start: lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1)},
+				End:   lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1 + len(symbolName))},
 			})
 		}
 	}

@@ -12,13 +12,14 @@ import (
 	"github.com/charmbracelet/fang"
 	"github.com/chzyer/readline"
 	"github.com/kr/pretty"
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/server"
 	"github.com/spf13/cobra"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/lsp"
+	"go.uber.org/zap"
 )
 
 // Config holds the application configuration
@@ -917,20 +918,38 @@ func runLSP(cfg Config) error {
 		level = slog.LevelDebug
 	}
 
-	handler := slog.NewTextHandler(logDest, &slog.HandlerOptions{
+	slogHandler := slog.NewTextHandler(logDest, &slog.HandlerOptions{
 		Level: level,
 	})
-	logger := slog.New(handler)
+	logger := slog.New(slogHandler)
 	slog.SetDefault(logger)
+
+	// Convert slog to zap logger for ls-builder
+	zapLogger, err := zap.NewDevelopment()
+	if err != nil {
+		return fmt.Errorf("create zap logger: %w", err)
+	}
 
 	ctx := context.Background()
 	logger.InfoContext(ctx, "starting LSP server")
 
-	<-jsonrpc2.NewConn(
-		ctx,
-		jsonrpc2.NewBufferedStream(stdrwc{}, jsonrpc2.VSCodeObjectCodec{}),
-		lsp.NewHandler(),
-	).DisconnectNotify()
+	// Create our language handler
+	lspHandler := lsp.NewHandler(ctx)
+
+	// Create a Server instance first (without a connection yet)
+	srv := server.NewServer(lspHandler, cfg.Debug, zapLogger, nil)
+
+	// Use the Server's NewHandler to get a jsonrpc2.Handler wrapper
+	jsonrpcHandler := srv.NewHandler()
+
+	// Create the connection with the jsonrpc2.Handler
+	conn := server.NewStreamConnection(
+		jsonrpcHandler,
+		stdrwc{},
+	)
+
+	// Serve the connection
+	srv.Serve(conn, zapLogger)
 
 	logger.InfoContext(ctx, "LSP server closed")
 	return nil

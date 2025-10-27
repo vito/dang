@@ -1,62 +1,46 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
-	"log/slog"
 	"os"
 	"path/filepath"
 
-	"dagger.io/dagger"
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	lsp "github.com/newstack-cloud/ls-builder/lsp_3_17"
 )
 
-func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
+func (h *langHandler) handleInitialize(ctx *common.LSPContext, params *lsp.InitializeParams) (any, error) {
+	if params.RootURI != nil {
+		rootPath, err := fromURI(*params.RootURI)
+		if err != nil {
+			return nil, err
+		}
+		h.rootPath = filepath.Clean(rootPath)
+		h.addFolder(rootPath)
 	}
 
-	h.conn = conn
-
-	// Initialize a single Dagger client to be shared across all workspaces/modules
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to connect to Dagger, will retry on demand", "error", err)
-		// Don't fail initialization, just log the warning
-	} else {
-		h.dag = dag
-	}
-
-	var params InitializeParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
-	}
-
-	rootPath, err := fromURI(params.RootURI)
-	if err != nil {
-		return nil, err
-	}
-	h.rootPath = filepath.Clean(rootPath)
-	h.addFolder(rootPath)
-
-	return InitializeResult{
-		Capabilities: ServerCapabilities{
-			TextDocumentSync: TDSKFull,
-			CompletionProvider: &CompletionProvider{
+	tdSync := lsp.TextDocumentSyncKindFull
+	return lsp.InitializeResult{
+		Capabilities: lsp.ServerCapabilities{
+			TextDocumentSync: &tdSync,
+			CompletionProvider: &lsp.CompletionOptions{
 				TriggerCharacters: []string{"."},
 			},
 			DefinitionProvider:      true,
 			HoverProvider:           true,
 			RenameProvider:          true,
 			WorkspaceSymbolProvider: true,
-			Workspace: &ServerCapabilitiesWorkspace{
-				WorkspaceFolders: WorkspaceFoldersServerCapabilities{
-					Supported:           true,
-					ChangeNotifications: true,
+			Workspace: &lsp.ServerWorkspaceCapabilities{
+				WorkspaceFolders: &lsp.WorkspaceFoldersServerCapabilities{
+					Supported:           func() *bool { b := true; return &b }(),
+					ChangeNotifications: &lsp.BoolOrString{BoolVal: func() *bool { b := true; return &b }()},
 				},
 			},
 		},
 	}, nil
+}
+
+func (h *langHandler) handleInitialized(ctx *common.LSPContext, params *lsp.InitializedParams) error {
+	return nil
 }
 
 // findDaggerModule searches for a dagger.json file in the given directory or its parents

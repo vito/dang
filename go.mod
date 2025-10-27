@@ -15,13 +15,14 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
+	github.com/newstack-cloud/ls-builder v0.2.4
 	github.com/pkg/errors v0.9.1
-	github.com/sourcegraph/jsonrpc2 v0.2.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vektah/gqlparser/v2 v2.5.30
 	github.com/vito/is v0.0.5
 	go.opentelemetry.io/otel v1.38.0
+	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.17.0
 	gotest.tools/v3 v3.5.2
 )
@@ -43,7 +44,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/gorilla/websocket v1.5.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -62,6 +63,7 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
+	github.com/sourcegraph/jsonrpc2 v0.2.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/urfave/cli/v2 v2.27.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
@@ -81,6 +83,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.8.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/mod v0.28.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
@@ -96,3 +99,5 @@ require (
 tool github.com/mna/pigeon
 
 tool github.com/99designs/gqlgen
+
+replace github.com/newstack-cloud/ls-builder => github.com/vito/ls-builder v0.0.0-20251027210201-a48ac78bc09a

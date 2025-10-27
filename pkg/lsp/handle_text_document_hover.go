@@ -1,26 +1,16 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	lsp "github.com/newstack-cloud/ls-builder/lsp_3_17"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
 
-func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
-	}
-
-	var params HoverParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentHover(ctx *common.LSPContext, params *lsp.HoverParams) (*lsp.Hover, error) {
 	f, ok := h.files[params.TextDocument.URI]
 	if !ok {
 		return nil, nil
@@ -36,12 +26,12 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 		return nil, nil
 	}
 
-	slog.InfoContext(ctx, "hover request", "uri", params.TextDocument.URI, "position", params.Position, "symbol", symbolName)
+	slog.InfoContext(ctx.Context, "hover request", "uri", params.TextDocument.URI, "position", params.Position, "symbol", symbolName)
 
 	// Find the node at this position to get its inferred type
 	node := h.findNodeAtPosition(f.AST, params.Position)
 	if node == nil {
-		slog.InfoContext(ctx, "no node found at position")
+		slog.InfoContext(ctx.Context, "no node found at position")
 		return nil, nil
 	}
 
@@ -95,7 +85,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 		return nil, nil
 	}
 
-	slog.InfoContext(ctx, "hover result", "symbol", symbolName, "type", typeInfo)
+	slog.InfoContext(ctx.Context, "hover result", "symbol", symbolName, "type", typeInfo)
 
 	// Try to get documentation from the type environment (if we don't have it yet)
 	if docString == "" {
@@ -112,25 +102,22 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 		}
 	}
 
-	// Build the hover content
-	var content string
+	// Build hover content
+	var contents string
+	contents = fmt.Sprintf("```dang\n%s\n```", typeInfo)
 	if docString != "" {
-		content = fmt.Sprintf("%s\n\n```dang\n%s: %s\n```", docString, symbolName, typeInfo)
-	} else {
-		content = fmt.Sprintf("```dang\n%s: %s\n```", symbolName, typeInfo)
+		contents += fmt.Sprintf("\n\n%s", docString)
 	}
 
-	// Return hover information with the type
-	return &Hover{
-		Contents: MarkupContent{
-			Kind:  Markdown,
-			Value: content,
+	return &lsp.Hover{
+		Contents: lsp.MarkupContent{
+			Kind:  lsp.MarkupKindMarkdown,
+			Value: contents,
 		},
 	}, nil
 }
 
-// findNodeAtPosition finds the most specific AST node at the given position
-func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node {
+func (h *langHandler) findNodeAtPosition(root dang.Node, pos lsp.Position) dang.Node {
 	var result dang.Node
 
 	root.Walk(func(n dang.Node) bool {
@@ -153,7 +140,7 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 }
 
 // findDocInLexicalScope searches for documentation in any enclosing lexical scope
-func (h *langHandler) findDocInLexicalScope(ctx context.Context, root dang.Node, pos Position, symbolName string) string {
+func (h *langHandler) findDocInLexicalScope(ctx *common.LSPContext, root dang.Node, pos lsp.Position, symbolName string) string {
 	// Collect all enclosing environments
 	environments := findEnclosingEnvironments(root, pos)
 

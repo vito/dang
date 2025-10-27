@@ -1,23 +1,13 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
 	"strings"
 
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	"github.com/newstack-cloud/ls-builder/lsp_3_17"
 )
 
-func (h *langHandler) handleTextDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
-	}
-
-	var params DocumentDefinitionParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentDefinition(ctx *common.LSPContext, params *lsp.DefinitionParams) (any, error) {
 	f, ok := h.files[params.TextDocument.URI]
 	if !ok {
 		return nil, nil
@@ -37,24 +27,24 @@ func (h *langHandler) handleTextDocumentDefinition(ctx context.Context, conn *js
 	return nil, nil
 }
 
-func (h *langHandler) symbolAtPosition(f *File, pos Position) string {
+func (h *langHandler) symbolAtPosition(f *File, pos lsp.Position) string {
 	lines := strings.Split(f.Text, "\n")
-	if pos.Line >= len(lines) {
+	if int(pos.Line) >= len(lines) {
 		return ""
 	}
 
 	line := lines[pos.Line]
-	if pos.Character >= len(line) {
+	if int(pos.Character) >= len(line) {
 		return ""
 	}
 
 	// Find word boundaries around the cursor
-	start := pos.Character
+	start := int(pos.Character)
 	for start > 0 && isIdentifierChar(rune(line[start-1])) {
 		start--
 	}
 
-	end := pos.Character
+	end := int(pos.Character)
 	for end < len(line) && isIdentifierChar(rune(line[end])) {
 		end++
 	}

@@ -1,27 +1,27 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
-
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	lsp "github.com/newstack-cloud/ls-builder/lsp_3_17"
 )
 
-func (h *langHandler) handleTextDocumentDidChange(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
-	}
-
-	var params DidChangeTextDocumentParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentDidChange(ctx *common.LSPContext, params *lsp.DidChangeTextDocumentParams) error {
 	if len(params.ContentChanges) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	// We use full document sync, so just take the last change which should be the full text
-	text := params.ContentChanges[len(params.ContentChanges)-1].Text
-	return nil, h.updateFile(ctx, params.TextDocument.URI, text, &params.TextDocument.Version)
+	// The ContentChanges is []any in lsp_3_17, we need to extract the text
+	lastChange := params.ContentChanges[len(params.ContentChanges)-1]
+
+	// Try to extract text from the change event
+	var text string
+	if changeEvent, ok := lastChange.(lsp.TextDocumentContentChangeEventWhole); ok {
+		text = changeEvent.Text
+	} else if change, ok := lastChange.(lsp.TextDocumentContentChangeEvent); ok {
+		text = change.Text
+	}
+
+	version := int(params.TextDocument.Version)
+	return h.updateFile(ctx, params.TextDocument.URI, text, &version)
 }

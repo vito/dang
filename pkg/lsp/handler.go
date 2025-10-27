@@ -12,26 +12,49 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	lsp "github.com/newstack-cloud/ls-builder/lsp_3_17"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
 
-// NewHandler create JSON-RPC handler for this language server.
-func NewHandler() jsonrpc2.Handler {
+// NewHandler creates an LSP handler for the Dang language server.
+func NewHandler(ctx context.Context) *lsp.Handler {
 	handler := &langHandler{
-		files:         make(map[DocumentURI]*File),
-		conn:          nil,
+		files:         make(map[lsp.DocumentURI]*File),
 		moduleSchemas: make(map[string]*moduleSchema),
 	}
 
-	return jsonrpc2.HandlerWithError(handler.handle)
+	// Initialize a single Dagger client to be shared across all workspaces/modules
+	dag, err := dagger.Connect(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to connect to Dagger, will retry on demand", "error", err)
+		// Don't fail initialization, just log the warning
+	} else {
+		handler.dag = dag
+	}
+
+	return lsp.NewHandler(
+		lsp.WithInitializeHandler(handler.handleInitialize),
+		lsp.WithInitializedHandler(handler.handleInitialized),
+		lsp.WithShutdownHandler(handler.handleShutdown),
+		lsp.WithTextDocumentDidOpenHandler(handler.handleTextDocumentDidOpen),
+		lsp.WithTextDocumentDidChangeHandler(handler.handleTextDocumentDidChange),
+		lsp.WithTextDocumentDidSaveHandler(handler.handleTextDocumentDidSave),
+		lsp.WithTextDocumentDidCloseHandler(handler.handleTextDocumentDidClose),
+		lsp.WithCompletionHandler(handler.handleTextDocumentCompletion),
+		lsp.WithGotoDefinitionHandler(handler.handleTextDocumentDefinition),
+		lsp.WithHoverHandler(handler.handleTextDocumentHover),
+		lsp.WithDocumentRenameHandler(handler.handleTextDocumentRename),
+		lsp.WithWorkspaceSymbolHandler(handler.handleWorkspaceSymbol),
+		lsp.WithWorkspaceDidChangeConfigurationHandler(handler.handleWorkspaceDidChangeConfiguration),
+		lsp.WithWorkspaceDidChangeFoldersHandler(handler.handleWorkspaceDidChangeWorkspaceFolders),
+	)
 }
 
 type langHandler struct {
-	files    map[DocumentURI]*File
-	conn     *jsonrpc2.Conn
+	files    map[lsp.DocumentURI]*File
 	rootPath string
 	folders  []string
 
@@ -57,7 +80,7 @@ type File struct {
 	LanguageID  string
 	Text        string
 	Version     int
-	Diagnostics []Diagnostic
+	Diagnostics []lsp.Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.Block // Parsed and type-annotated AST
 	TypeEnv     dang.Env    // Type environment after inference
@@ -74,15 +97,15 @@ type SymbolTable struct {
 // SymbolInfo describes a symbol definition
 type SymbolInfo struct {
 	Name     string
-	Location *Location
-	Kind     CompletionItemKind
+	Location *lsp.Location
+	Kind     lsp.CompletionItemKind
 	Node     dang.Node // The AST node that declared this symbol
 }
 
 // SymbolRef describes a symbol reference
 type SymbolRef struct {
 	Name     string
-	Location Range
+	Location lsp.Range
 }
 
 func isWindowsDrivePath(path string) bool {
@@ -99,7 +122,7 @@ func isWindowsDriveURI(uri string) bool {
 	return uri[0] == '/' && unicode.IsLetter(rune(uri[1])) && uri[2] == ':'
 }
 
-func fromURI(uri DocumentURI) (string, error) {
+func fromURI(uri lsp.DocumentURI) (string, error) {
 	u, err := url.ParseRequestURI(string(uri))
 	if err != nil {
 		return "", err
@@ -113,36 +136,17 @@ func fromURI(uri DocumentURI) (string, error) {
 	return u.Path, nil
 }
 
-func toURI(path string) DocumentURI {
+func toURI(path string) lsp.DocumentURI {
 	if isWindowsDrivePath(path) {
 		path = "/" + path
 	}
-	return DocumentURI((&url.URL{
+	return lsp.DocumentURI((&url.URL{
 		Scheme: "file",
 		Path:   filepath.ToSlash(path),
 	}).String())
 }
 
-func (h *langHandler) logMessage(typ MessageType, message string) {
-	h.conn.Notify(
-		context.Background(),
-		"window/logMessage",
-		&LogMessageParams{
-			Type:    typ,
-			Message: message,
-		})
-}
-
-func (h *langHandler) closeFile(uri DocumentURI) error {
-	delete(h.files, uri)
-	return nil
-}
-
-func (h *langHandler) saveFile(uri DocumentURI) error {
-	return nil
-}
-
-func (h *langHandler) openFile(uri DocumentURI, languageID string, version int) error {
+func (h *langHandler) openFile(uri lsp.DocumentURI, languageID string, version int) error {
 	f := &File{
 		Text:       "",
 		LanguageID: languageID,
@@ -152,7 +156,16 @@ func (h *langHandler) openFile(uri DocumentURI, languageID string, version int) 
 	return nil
 }
 
-func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text string, version *int) error {
+func (h *langHandler) closeFile(uri lsp.DocumentURI) error {
+	delete(h.files, uri)
+	return nil
+}
+
+func (h *langHandler) saveFile(uri lsp.DocumentURI) error {
+	return nil
+}
+
+func (h *langHandler) updateFile(ctx *common.LSPContext, uri lsp.DocumentURI, text string, version *int) error {
 	f, ok := h.files[uri]
 	if !ok {
 		return fmt.Errorf("document not found: %v", uri)
@@ -168,10 +181,10 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		return fmt.Errorf("file path from URI: %w", err)
 	}
 
-	slog.InfoContext(ctx, "file updated", "path", fp)
+	slog.InfoContext(ctx.Context, "file updated", "path", fp)
 
 	// Clear diagnostics before collecting new ones
-	f.Diagnostics = []Diagnostic{}
+	f.Diagnostics = []lsp.Diagnostic{}
 
 	// Parse the Dang code
 	parsed, err := dang.Parse(string(uri), []byte(text))
@@ -205,16 +218,16 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 
 			// Get schema for this file's module
-			schema, _, err := h.getSchemaForFile(ctx, fp)
+			schema, _, err := h.getSchemaForFile(ctx.Context, fp)
 			if err != nil {
-				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
+				slog.WarnContext(ctx.Context, "failed to get schema for file", "path", fp, "error", err)
 			}
 
 			// Run type inference to annotate AST with types
 			if schema != nil {
 				typeEnv := dang.NewEnv(schema)
 				fresh := hm.NewSimpleFresher()
-				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
+				_, err := dang.InferFormsWithPhases(ctx.Context, block.Forms, typeEnv, fresh)
 				if err != nil {
 					f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
 				}
@@ -230,7 +243,25 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	return nil
 }
 
-func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *SymbolTable {
+func (h *langHandler) publishDiagnostics(ctx *common.LSPContext, uri lsp.DocumentURI, f *File) {
+	dispatcher := lsp.NewDispatcher(ctx)
+
+	diagnostics := f.Diagnostics
+	if diagnostics == nil {
+		diagnostics = []lsp.Diagnostic{}
+	}
+
+	version := lsp.Integer(f.Version)
+	err := dispatcher.PublishDiagnostics(lsp.PublishDiagnosticsParams{
+		URI:         uri,
+		Diagnostics: diagnostics,
+		Version:     &version,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx.Context, "failed to publish diagnostics", "error", err)
+	}
+}
+func (h *langHandler) buildSymbolTable(uri lsp.DocumentURI, forms []dang.Node) *SymbolTable {
 	st := &SymbolTable{
 		Definitions: make(map[string]*SymbolInfo),
 		References:  make(map[string]*SymbolRef),
@@ -243,18 +274,18 @@ func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *Symb
 }
 
 // collectSymbols walks the AST and collects symbol definitions and references
-func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *SymbolTable) {
+func (h *langHandler) collectSymbols(uri lsp.DocumentURI, nodes []dang.Node, st *SymbolTable) {
 	for _, node := range nodes {
 		// For SlotDecl, use the precise location from the Symbol itself
 		if slotDecl, ok := node.(*dang.SlotDecl); ok && slotDecl.Name != nil && slotDecl.Name.Loc != nil {
 			loc := slotDecl.Name.Loc
 			st.Definitions[slotDecl.Name.Name] = &SymbolInfo{
 				Name: slotDecl.Name.Name,
-				Location: &Location{
+				Location: &lsp.Location{
 					URI: uri,
-					Range: Range{
-						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(slotDecl.Name.Name)},
+					Range: &lsp.Range{
+						Start: lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1)},
+						End:   lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1 + len(slotDecl.Name.Name))},
 					},
 				},
 				Kind: h.symbolKind(node),
@@ -265,11 +296,11 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 			loc := classDecl.Name.Loc
 			st.Definitions[classDecl.Name.Name] = &SymbolInfo{
 				Name: classDecl.Name.Name,
-				Location: &Location{
+				Location: &lsp.Location{
 					URI: uri,
-					Range: Range{
-						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(classDecl.Name.Name)},
+					Range: &lsp.Range{
+						Start: lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1)},
+						End:   lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1 + len(classDecl.Name.Name))},
 					},
 				},
 				Kind: h.symbolKind(node),
@@ -284,11 +315,11 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 					// LSP uses 0-based line/column, SourceLocation uses 1-based
 					st.Definitions[name] = &SymbolInfo{
 						Name: name,
-						Location: &Location{
+						Location: &lsp.Location{
 							URI: uri,
-							Range: Range{
-								Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-								End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(name)},
+							Range: &lsp.Range{
+								Start: lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1)},
+								End:   lsp.Position{Line: lsp.UInteger(loc.Line - 1), Character: lsp.UInteger(loc.Column - 1 + len(name))},
 							},
 						},
 						Kind: h.symbolKind(node),
@@ -304,7 +335,7 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 }
 
 // collectNestedSymbols recursively collects symbols from nested structures
-func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *SymbolTable) {
+func (h *langHandler) collectNestedSymbols(uri lsp.DocumentURI, node dang.Node, st *SymbolTable) {
 	switch n := node.(type) {
 	case *dang.Block:
 		h.collectSymbols(uri, n.Forms, st)
@@ -334,45 +365,25 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 }
 
 // symbolKind determines the LSP completion item kind for a node
-func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
+func (h *langHandler) symbolKind(node dang.Node) lsp.CompletionItemKind {
 	switch node.(type) {
 	case *dang.ClassDecl:
-		return ClassCompletion
+		return lsp.CompletionItemKindClass
 	case *dang.SlotDecl:
 		// Check if the slot value is a function/lambda
 		if slot, ok := node.(*dang.SlotDecl); ok {
 			if _, isLambda := slot.Value.(*dang.Lambda); isLambda {
-				return FunctionCompletion
+				return lsp.CompletionItemKindFunction
 			}
 		}
-		return VariableCompletion
+		return lsp.CompletionItemKindVariable
 	default:
-		return VariableCompletion
-	}
-}
-
-func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f *File) {
-	if h.conn == nil {
-		return
-	}
-
-	diagnostics := f.Diagnostics
-	if diagnostics == nil {
-		diagnostics = []Diagnostic{}
-	}
-
-	err := h.conn.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
-		URI:         uri,
-		Diagnostics: diagnostics,
-		Version:     f.Version,
-	})
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
+		return lsp.CompletionItemKindVariable
 	}
 }
 
 // errorToDiagnostic converts a Dang error to an LSP Diagnostic
-func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnostic {
+func (h *langHandler) errorToDiagnostics(err error, uri lsp.DocumentURI) []lsp.Diagnostic {
 	slog.Warn("converting error", "type", fmt.Sprintf("%T", err), "err", err)
 	for e := errors.Unwrap(err); e != nil && e != err; e = errors.Unwrap(e) {
 		slog.Warn("unwrapped", "type", fmt.Sprintf("%T", e), "err", e)
@@ -380,7 +391,7 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 
 	var inferErrs *dang.InferenceErrors
 	if errors.As(err, &inferErrs) {
-		var ds []Diagnostic
+		var ds []lsp.Diagnostic
 		for _, e := range inferErrs.Errors {
 			ds = append(ds, h.errorToDiagnostics(e, uri)...)
 		}
@@ -422,13 +433,13 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 		}
 	}
 
-	return []Diagnostic{
+	return []lsp.Diagnostic{
 		{
-			Range: Range{
-				Start: Position{Line: startLine, Character: startCol},
-				End:   Position{Line: endLine, Character: endCol},
+			Range: lsp.Range{
+				Start: lsp.Position{Line: lsp.UInteger(startLine), Character: lsp.UInteger(startCol)},
+				End:   lsp.Position{Line: lsp.UInteger(endLine), Character: lsp.UInteger(endCol)},
 			},
-			Severity: 1, // Error
+			Severity: func() *lsp.DiagnosticSeverity { s := lsp.DiagnosticSeverityError; return &s }(),
 			Source:   stringPtr("dang"),
 			Message:  err.Error(),
 		},
@@ -537,43 +548,4 @@ func (h *langHandler) addFolder(folder string) {
 	if !found {
 		h.folders = append(h.folders, folder)
 	}
-}
-
-func (h *langHandler) handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	slog.DebugContext(ctx, "handle", "method", req.Method)
-
-	switch req.Method {
-	case "initialize":
-		return h.handleInitialize(ctx, conn, req)
-	case "initialized":
-		return
-	case "shutdown":
-		return h.handleShutdown(ctx, conn, req)
-	case "textDocument/didOpen":
-		return h.handleTextDocumentDidOpen(ctx, conn, req)
-	case "textDocument/didChange":
-		return h.handleTextDocumentDidChange(ctx, conn, req)
-	case "textDocument/didSave":
-		return h.handleTextDocumentDidSave(ctx, conn, req)
-	case "textDocument/didClose":
-		return h.handleTextDocumentDidClose(ctx, conn, req)
-	case "textDocument/completion":
-		return h.handleTextDocumentCompletion(ctx, conn, req)
-	case "textDocument/definition":
-		return h.handleTextDocumentDefinition(ctx, conn, req)
-	case "textDocument/hover":
-		return h.handleTextDocumentHover(ctx, conn, req)
-	case "textDocument/rename":
-		return h.handleTextDocumentRename(ctx, conn, req)
-	case "workspace/symbol":
-		return h.handleWorkspaceSymbol(ctx, conn, req)
-	case "workspace/didChangeConfiguration":
-		return h.handleWorkspaceDidChangeConfiguration(ctx, conn, req)
-	case "workspace/workspaceFolders":
-		return h.handleWorkspaceWorkspaceFolders(ctx, conn, req)
-	case "workspace/didChangeWorkspaceFolders":
-		return h.handleWorkspaceDidChangeWorkspaceFolders(ctx, conn, req)
-	}
-
-	return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: fmt.Sprintf("method not supported: %s", req.Method)}
 }

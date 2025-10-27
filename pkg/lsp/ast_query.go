@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	lsp "github.com/newstack-cloud/ls-builder/lsp_3_17"
 	"github.com/vito/dang/pkg/dang"
 )
 
@@ -65,7 +66,7 @@ func containsPosition(loc *dang.SourceLocation, line, col int) bool {
 }
 
 // positionWithinNode checks if an LSP Position is within a node's source location
-func positionWithinNode(node dang.Node, pos Position) bool {
+func positionWithinNode(node dang.Node, pos lsp.Position) bool {
 	if node == nil {
 		return false
 	}
@@ -87,8 +88,8 @@ func positionWithinNode(node dang.Node, pos Position) bool {
 	}
 
 	// Check if position is within this node's range
-	return (pos.Line > startLine || (pos.Line == startLine && pos.Character >= startCol)) &&
-		(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol))
+	return (int(pos.Line) > startLine || (int(pos.Line) == startLine && int(pos.Character) >= startCol)) &&
+		(int(pos.Line) < endLine || (int(pos.Line) == endLine && int(pos.Character) <= endCol))
 }
 
 // FindReceiverAt finds the receiver expression for a Select node at the cursor
@@ -125,7 +126,7 @@ func FindReceiverAt(block *dang.Block, line, col int) dang.Node {
 
 // findEnclosingEnvironments walks the AST and collects all environments that enclose the given position.
 // Returns environments from outermost to innermost.
-func findEnclosingEnvironments(root dang.Node, pos Position) []dang.Env {
+func findEnclosingEnvironments(root dang.Node, pos lsp.Position) []dang.Env {
 	var environments []dang.Env
 
 	root.Walk(func(n dang.Node) bool {

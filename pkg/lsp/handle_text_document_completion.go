@@ -1,33 +1,22 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
-
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	"github.com/newstack-cloud/ls-builder/lsp_3_17"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
 
-func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
-	}
-
-	var params CompletionParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
-	}
-
+func (h *langHandler) handleTextDocumentCompletion(ctx *common.LSPContext, params *lsp.CompletionParams) (any, error) {
 	f, ok := h.files[params.TextDocument.URI]
 	if !ok {
-		return []CompletionItem{}, nil
+		return []*lsp.CompletionItem{}, nil
 	}
 
 	// Check if we're completing a member access (e.g., "container.fr<TAB>")
 	// We do this by finding the node at the cursor and checking if it's a Select
 	if f.AST != nil {
-		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
+		receiver := FindReceiverAt(f.AST, int(params.Position.Line), int(params.Position.Character))
 		if receiver != nil {
 			// Get the inferred type of the receiver
 			receiverType := receiver.GetInferredType()
@@ -50,7 +39,7 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 }
 
 // getLexicalCompletions returns completion items for symbols in enclosing lexical scopes
-func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node, pos Position, fileEnv dang.Env) []CompletionItem {
+func (h *langHandler) getLexicalCompletions(ctx *common.LSPContext, root dang.Node, pos lsp.Position, fileEnv dang.Env) []*lsp.CompletionItem {
 	var environments []dang.Env
 
 	// First add the file-level environment if available
@@ -63,7 +52,7 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 
 	// Collect all unique symbols from all environments
 	seen := make(map[string]bool)
-	var items []CompletionItem
+	var items []*lsp.CompletionItem
 
 	// Search environments from innermost to outermost (reverse order)
 	for i := len(environments) - 1; i >= 0; i-- {
@@ -79,21 +68,22 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 
 			// Determine type and kind
 			memberType, _ := scheme.Type()
-			kind := VariableCompletion
+			kind := lsp.CompletionItemKindVariable
 			if _, isFn := memberType.(*hm.FunctionType); isFn {
-				kind = FunctionCompletion
+				kind = lsp.CompletionItemKindFunction
 			}
 
 			// Get documentation for this symbol
-			var documentation string
+			var documentation any
 			if doc, found := env.GetDocString(name); found {
 				documentation = doc
 			}
 
-			items = append(items, CompletionItem{
+			detail := memberType.String()
+			items = append(items, &lsp.CompletionItem{
 				Label:         name,
-				Kind:          kind,
-				Detail:        memberType.String(),
+				Kind:          &kind,
+				Detail:        &detail,
 				Documentation: documentation,
 			})
 		}
@@ -103,8 +93,8 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 }
 
 // getMemberCompletions returns completion items for a type's members
-func (h *langHandler) getMemberCompletions(t hm.Type) []CompletionItem {
-	var items []CompletionItem
+func (h *langHandler) getMemberCompletions(t hm.Type) []*lsp.CompletionItem {
+	var items []*lsp.CompletionItem
 
 	// Unwrap NonNullType if needed
 	if nn, ok := t.(hm.NonNullType); ok {
@@ -122,21 +112,22 @@ func (h *langHandler) getMemberCompletions(t hm.Type) []CompletionItem {
 		memberType, _ := scheme.Type()
 
 		// Determine completion kind based on member type
-		kind := VariableCompletion
+		kind := lsp.CompletionItemKindVariable
 		if _, isFn := memberType.(*hm.FunctionType); isFn {
-			kind = MethodCompletion
+			kind = lsp.CompletionItemKindMethod
 		}
 
 		// Get documentation for this member
-		var documentation string
+		var documentation any
 		if doc, found := module.GetDocString(name); found {
 			documentation = doc
 		}
 
-		items = append(items, CompletionItem{
+		detail := memberType.String()
+		items = append(items, &lsp.CompletionItem{
 			Label:         name,
-			Kind:          kind,
-			Detail:        memberType.String(),
+			Kind:          &kind,
+			Detail:        &detail,
 			Documentation: documentation,
 		})
 	}

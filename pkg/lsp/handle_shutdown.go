@@ -1,16 +1,14 @@
 package lsp
 
 import (
-	"context"
-
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
 )
 
-func (h *langHandler) handleShutdown(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
+func (h *langHandler) handleShutdown(ctx *common.LSPContext) error {
 	// Close the shared Dagger client
 	if h.dag != nil {
 		if err := h.dag.Close(); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	
@@ -19,5 +17,5 @@ func (h *langHandler) handleShutdown(ctx context.Context, conn *jsonrpc2.Conn, r
 		h.defaultProvider.Close()
 	}
 	
-	return nil, nil
+	return nil
 }

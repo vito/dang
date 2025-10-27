@@ -1,27 +1,17 @@
 package lsp
 
 import (
-	"context"
-	"encoding/json"
-
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/newstack-cloud/ls-builder/common"
+	"github.com/newstack-cloud/ls-builder/lsp_3_17"
 )
 
-func (h *langHandler) handleTextDocumentDidOpen(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
+func (h *langHandler) handleTextDocumentDidOpen(ctx *common.LSPContext, params *lsp.DidOpenTextDocumentParams) error {
+	if err := h.openFile(params.TextDocument.URI, params.TextDocument.LanguageID, int(params.TextDocument.Version)); err != nil {
+		return err
 	}
-
-	var params DidOpenTextDocumentParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
-		return nil, err
+	version := int(params.TextDocument.Version)
+	if err := h.updateFile(ctx, params.TextDocument.URI, params.TextDocument.Text, &version); err != nil {
+		return err
 	}
-
-	if err := h.openFile(params.TextDocument.URI, params.TextDocument.LanguageID, params.TextDocument.Version); err != nil {
-		return nil, err
-	}
-	if err := h.updateFile(ctx, params.TextDocument.URI, params.TextDocument.Text, &params.TextDocument.Version); err != nil {
-		return nil, err
-	}
-	return nil, nil
+	return nil
 }
