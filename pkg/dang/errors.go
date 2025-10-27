@@ -83,8 +83,15 @@ func (e *SourceError) Error() string {
 
 // FormatWithHighlighting returns a nicely formatted error with syntax highlighting
 func (e *SourceError) FormatWithHighlighting() string {
-	if e.Location == nil || e.Source == "" {
+	if e.Location == nil && e.Source == "" {
 		return e.Inner.Error()
+	}
+
+	if e.Source == "" && e.Location.Filename != "" {
+		contents, err := os.ReadFile(e.Location.Filename)
+		if err == nil {
+			e.Source = string(contents)
+		}
 	}
 
 	lines := strings.Split(e.Source, "\n")
