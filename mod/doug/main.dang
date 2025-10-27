@@ -6,7 +6,7 @@ let maxResponseLength = 30000
 let workspacePath = "/workspace"
 
 type Doug {
-  let source: Directory! @defaultPath(path: "/")
+  pub source: Directory! @defaultPath(path: "/")
 
   """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.
@@ -98,31 +98,7 @@ type Doug {
       let result = ""
       for i, line in lines {
         let lineNo = startLine + i
-
-        # Format with 6-character width padding
-        let padding = if lineNo < 10 {
-          "     "
-        } else {
-          if lineNo < 100 {
-            "    "
-          } else {
-            if lineNo < 1000 {
-              "   "
-            } else {
-              if lineNo < 10000 {
-                "  "
-              } else {
-                if lineNo < 100000 {
-                  " "
-                } else {
-                  ""
-                }
-              }
-            }
-          }
-        }
-
-        let numberedLine = padding + toJSON(lineNo) + "→" + line
+        let numberedLine = sprintf("%6d", [lineNo]) + "→" + line
         result += numberedLine + "\n"
       }
 
@@ -296,10 +272,16 @@ type Doug {
     let output = ""
     for path in result {
       # Check if any path component starts with "."
-      # Since we don't have string.split(), we'll use a simpler approach
-      # and just check if the path contains "/." which would indicate a hidden directory
-      # This is a simplification - the Go version was more thorough
-      output = output + path + "\n"
+      let parts = path.split("/", 0)
+      let hasDotFile = false
+      for part in parts {
+        if part.startsWith(".") {
+          hasDotFile = true
+        }
+      }
+      if !hasDotFile {
+        output = output + path + "\n"
+      }
     }
 
     if output == "" {
@@ -507,30 +489,27 @@ type Doug {
     let updatingDescriptions = pending + inProgress + completed
 
     for todo in currentTodoLines {
-      if todo != "" {
-        # Split on first colon only (limit=2) to handle descriptions with colons
-        let parts = todo.split(":", limit: 2)
-        let state = parts[0] ? "pending"
-        let description = parts[1] ? todo
+      if todo == "" {
+        continue
+      }
 
-        # Check if this TODO is being updated
-        let isUpdating = false
-        for desc in updatingDescriptions {
-          if desc == description {
-            isUpdating = true
-          }
-        }
+      # Split on first colon only (limit=2) to handle descriptions with colons
+      let parts = todo.split(":", limit: 2)
+      let state = parts[0] ?? "pending"
+      let description = parts[1] ?? todo
 
-        # Only keep existing TODOs that aren't being updated
-        if !isUpdating {
-          if state == "completed" {
-            existingCompleted = existingCompleted + [description]
+      # Check if this TODO is being updated
+      let isUpdating = description in updatingDescriptions
+
+      # Only keep existing TODOs that aren't being updated
+      if !isUpdating {
+        if state == "completed" {
+          existingCompleted = existingCompleted + [description]
+        } else {
+          if state == "in_progress" {
+            existingInProgress = existingInProgress + [description]
           } else {
-            if state == "in_progress" {
-              existingInProgress = existingInProgress + [description]
-            } else {
-              existingPending = existingPending + [description]
-            }
+            existingPending = existingPending + [description]
           }
         }
       }
