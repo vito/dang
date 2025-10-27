@@ -567,7 +567,7 @@ func nodeToString(node Node) string {
 	case *Default:
 		left := nodeToString(n.Left)
 		right := nodeToString(n.Right)
-		return fmt.Sprintf("%s ? %s", left, right)
+		return fmt.Sprintf("%s ?? %s", left, right)
 	case *Equality:
 		left := nodeToString(n.Left)
 		right := nodeToString(n.Right)

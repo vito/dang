@@ -510,8 +510,8 @@ type Doug {
       if todo != "" {
         # Split on first colon only (limit=2) to handle descriptions with colons
         let parts = todo.split(":", limit: 2)
-        let state = parts[0] ? "pending"
-        let description = parts[1] ? todo
+        let state = parts[0] ?? "pending"
+        let description = parts[1] ?? todo
 
         # Check if this TODO is being updated
         let isUpdating = false

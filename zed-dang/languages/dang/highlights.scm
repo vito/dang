@@ -68,22 +68,22 @@
 
 ;; Slot definitions
 (type_and_block_slot
-  (id) @function.method)
+  (id_symbol) @function.method)
 (type_and_args_and_block_slot
-  (id) @function.method)
+  (id_symbol) @function.method)
 (type_and_value_slot
-  (id) @function.method)
+  (id_symbol) @function.method)
 (value_only_slot
-  (id) @function.method)
+  (id_symbol) @function.method)
 (type_only_slot
-  (id) @function.method)
+  (id_symbol) @function.method)
 
 (arg_with_block_default
-  (id) @variable.parameter)
+  (id_symbol) @variable.parameter)
 (arg_with_type
-  (id) @variable.parameter)
+  (id_symbol) @variable.parameter)
 (arg_with_default
-  (id) @variable.parameter)
+  (id_symbol) @variable.parameter)
 
 ;; Class definitions
 (class

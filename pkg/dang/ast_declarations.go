@@ -842,7 +842,7 @@ func (a *Assert) nodeToString(node Node) string {
 	case *Default:
 		left := a.nodeToString(n.Left)
 		right := a.nodeToString(n.Right)
-		return fmt.Sprintf("%s ? %s", left, right)
+		return fmt.Sprintf("%s ?? %s", left, right)
 	case *Equality:
 		left := a.nodeToString(n.Left)
 		right := a.nodeToString(n.Right)
