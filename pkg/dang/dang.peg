@@ -171,9 +171,9 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   }
 }
 
-Class <- TypeToken _ name:Id directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
+Class <- TypeToken _ name:IdSymbol directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
   return &ClassDecl{
-    Named: name.(string),
+    Name: name.(*Symbol),
     Value: block.(*Block),
     Visibility: PublicVisibility, // TODO
     Directives: sliceOf[*DirectiveApplication](directives),

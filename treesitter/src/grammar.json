@@ -571,7 +571,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "id"
+            "name": "id_symbol"
           }
         },
         {

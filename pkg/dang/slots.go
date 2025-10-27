@@ -173,12 +173,12 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 
 type ClassDecl struct {
 	InferredTypeHolder
-	Named      string
-	Value      *Block
-	Visibility Visibility
-	Directives []*DirectiveApplication
-	DocString  string
-	Loc        *SourceLocation
+	Name           *Symbol
+	Value          *Block
+	Visibility     Visibility
+	Directives     []*DirectiveApplication
+	DocString      string
+	Loc            *SourceLocation
 
 	Inferred          *Module
 	ConstructorFnType *hm.FunctionType
@@ -192,7 +192,7 @@ var _ Node = &ClassDecl{}
 var _ Evaluator = &ClassDecl{}
 
 func (c *ClassDecl) DeclaredSymbols() []string {
-	return []string{c.Named} // Class declarations declare their name
+	return []string{c.Name.Name} // Class declarations declare their name
 }
 
 func (c *ClassDecl) ReferencedSymbols() []string {
@@ -218,10 +218,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
 	}
 
-	class, found := mod.NamedType(c.Named)
+	class, found := mod.NamedType(c.Name.Name)
 	if !found {
-		class = NewModule(c.Named)
-		mod.AddClass(c.Named, class)
+		class = NewModule(c.Name.Name)
+		mod.AddClass(c.Name.Name, class)
 	}
 
 	inferEnv := &CompositeModule{
@@ -239,7 +239,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 
 	// Add the constructor function type to the environment
 	constructorScheme := hm.NewScheme(nil, constructorType)
-	env.Add(c.Named, constructorScheme)
+	env.Add(c.Name.Name, constructorScheme)
 
 	if pass > 0 {
 		// set special 'self' keyword to match the function signature.
@@ -260,14 +260,14 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
 	}
 
-	class, found := mod.NamedType(c.Named)
+	class, found := mod.NamedType(c.Name.Name)
 	if !found {
-		class = NewModule(c.Named)
-		mod.AddClass(c.Named, class)
+		class = NewModule(c.Name.Name)
+		mod.AddClass(c.Name.Name, class)
 
 		// Store doc string for the class name in the environment
 		if c.DocString != "" {
-			mod.SetDocString(c.Named, c.DocString)
+			mod.SetDocString(c.Name.Name, c.DocString)
 		}
 	}
 
@@ -334,7 +334,7 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
-			panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Named))
+			panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Name.Name))
 		}
 
 		// Set doc string for the class/module itself
@@ -348,7 +348,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Create a constructor function that evaluates the class body when called
 		constructor := &ConstructorFunction{
 			Closure:        env,
-			ClassName:      c.Named,
+			ClassName:      c.Name.Name,
 			Parameters:     constructorParams,
 			ClassType:      c.Inferred,
 			ClassBodyForms: c.Value.Forms,
@@ -356,7 +356,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the constructor to the evaluation environment
-		env.SetWithVisibility(c.Named, constructor, c.Visibility)
+		env.SetWithVisibility(c.Name.Name, constructor, c.Visibility)
 
 		return constructor, nil
 	})

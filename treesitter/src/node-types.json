@@ -710,7 +710,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "id_symbol",
             "named": true
           }
         ]
