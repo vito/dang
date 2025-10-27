@@ -1,6 +1,6 @@
 ;; Type declarations
 (class
-  (id) @name) @item
+  (id_symbol) @name) @item
 
 ;; Directive declarations
 (directive_decl

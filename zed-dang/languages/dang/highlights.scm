@@ -87,7 +87,7 @@
 
 ;; Class definitions
 (class
-  (id) @type)
+  (id_symbol) @type)
 
 ;; Special highlighting for print function
 (symbol) @variable
