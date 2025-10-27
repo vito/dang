@@ -1,0 +1,109 @@
+# Test comprehensive match expressions
+
+# String literal matching
+pub string_match = match "hello" with {
+  "world" -> "not this"
+  "hello" -> "matched hello"
+  _ -> "wildcard"
+}
+
+assert { string_match == "matched hello" }
+
+# Integer literal matching with multiple cases
+pub int_match = match 2 with {
+  1 -> "one"
+  2 -> "two"
+  3 -> "three"
+  _ -> "other"
+}
+
+assert { int_match == "two" }
+
+# Boolean matching
+pub bool_match = match true with {
+  false -> "nope"
+  true -> "yes"
+}
+
+assert { bool_match == "yes" }
+
+# Variable pattern captures value
+pub captured = match 100 with {
+  n -> n
+}
+
+assert { captured == 100 }
+
+# Variable pattern with computation
+pub computed = match 5 with {
+  x -> x + x
+}
+
+assert { computed == 10 }
+
+# Wildcard always matches
+pub wildcard1 = match 999 with {
+  _ -> "caught all"
+}
+
+assert { wildcard1 == "caught all" }
+
+# First match wins
+pub first_wins = match 1 with {
+  1 -> "first"
+  1 -> "second"
+  _ -> "wildcard"
+}
+
+assert { first_wins == "first" }
+
+# Null matching
+pub null_match = match null with {
+  null -> "is null"
+  _ -> "not null"
+}
+
+assert { null_match == "is null" }
+
+# Float matching
+pub float_match = match 3.14 with {
+  3.14 -> "pi"
+  _ -> "not pi"
+}
+
+assert { float_match == "pi" }
+
+# Match in function
+pub matchInFunction(x: Int!): String! {
+  match x with {
+    0 -> "zero"
+    1 -> "one"
+    _ -> "many"
+  }
+}
+
+assert { matchInFunction(0) == "zero" }
+assert { matchInFunction(1) == "one" }
+assert { matchInFunction(42) == "many" }
+
+# Nested match
+pub nested = match 1 with {
+  1 -> match "a" with {
+    "a" -> "nested match works"
+    _ -> "inner wildcard"
+  }
+  _ -> "outer wildcard"
+}
+
+assert { nested == "nested match works" }
+
+# Match with different return types unified
+pub unified = match 1 with {
+  1 -> 100
+  2 -> 200
+  _ -> 0
+}
+
+assert { unified == 100 }
+
+print("Comprehensive match expression tests passed!")

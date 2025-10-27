@@ -83,6 +83,66 @@ func (m *Match) Walk(fn func(Node) bool) {
 	}
 }
 
+func (m *Match) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, m, func() (Value, error) {
+		// Evaluate the expression we're matching against
+		exprVal, err := EvalNode(ctx, env, m.Expr)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating match expression: %w", err)
+		}
+
+		// Try each case in order
+		for i, case_ := range m.Cases {
+			matched, bindings, err := matchPattern(case_.Pattern, exprVal, env)
+			if err != nil {
+				return nil, fmt.Errorf("matching case %d: %w", i, err)
+			}
+
+			if matched {
+				// Create a new environment with pattern bindings
+				caseEnv := env.Clone()
+				for name, value := range bindings {
+					caseEnv.Set(name, value)
+				}
+
+				// Evaluate the case expression
+				return EvalNode(ctx, caseEnv, case_.Expr)
+			}
+		}
+
+		return nil, fmt.Errorf("no match case matched the value: %v", exprVal)
+	})
+}
+
+// matchPattern checks if a value matches a pattern and returns any bindings
+func matchPattern(pattern Pattern, value Value, env EvalEnv) (bool, map[string]Value, error) {
+	switch p := pattern.(type) {
+	case WildcardPattern:
+		// Wildcard always matches
+		return true, nil, nil
+
+	case LiteralPattern:
+		// Evaluate the literal and compare
+		litVal, err := EvalNode(context.Background(), env, p.Value)
+		if err != nil {
+			return false, nil, err
+		}
+		matched := valuesEqual(litVal, value)
+		return matched, nil, nil
+
+	case VariablePattern:
+		// Variable pattern always matches and binds the value
+		return true, map[string]Value{p.Name: value}, nil
+
+	case ConstructorPattern:
+		// Constructor patterns are not yet implemented
+		return false, nil, fmt.Errorf("constructor patterns not yet implemented")
+
+	default:
+		return false, nil, fmt.Errorf("unknown pattern type: %T", pattern)
+	}
+}
+
 // MatchCase represents a single case in a match expression
 type MatchCase struct {
 	InferredTypeHolder
