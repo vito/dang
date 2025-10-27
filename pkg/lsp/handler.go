@@ -260,6 +260,21 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 				Kind: h.symbolKind(node),
 				Node: node,
 			}
+		} else if classDecl, ok := node.(*dang.ClassDecl); ok && classDecl.Name != nil && classDecl.Name.Loc != nil {
+			// For ClassDecl, use the precise location from the Symbol itself
+			loc := classDecl.Name.Loc
+			st.Definitions[classDecl.Name.Name] = &SymbolInfo{
+				Name: classDecl.Name.Name,
+				Location: &Location{
+					URI: uri,
+					Range: Range{
+						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
+						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(classDecl.Name.Name)},
+					},
+				},
+				Kind: h.symbolKind(node),
+				Node: node,
+			}
 		} else {
 			// For other node types, use the generic DeclaredSymbols method
 			declared := node.DeclaredSymbols()

@@ -17,3 +17,11 @@ pub innerFn: Int! {
   outer + inner # test: ^gd => let ┃outer = 1
 }
 innerFn # test: ^gd => pub ┃innerFn: Int! {
+
+# type/class definition
+type Person {
+  pub name: String!
+  pub age: Int!
+}
+
+Person # test: ^gd => type ┃Person {
