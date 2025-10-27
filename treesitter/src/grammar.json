@@ -2708,19 +2708,41 @@
       ]
     },
     "else_clause": {
-      "type": "SEQ",
+      "type": "CHOICE",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "else_token"
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "else_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "elseif",
+              "content": {
+                "type": "SYMBOL",
+                "name": "conditional"
+              }
+            }
+          ]
         },
         {
-          "type": "FIELD",
-          "name": "block",
-          "content": {
-            "type": "SYMBOL",
-            "name": "block"
-          }
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "else_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "block",
+              "content": {
+                "type": "SYMBOL",
+                "name": "block"
+              }
+            }
+          ]
         }
       ]
     },

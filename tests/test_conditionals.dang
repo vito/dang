@@ -27,8 +27,12 @@ assert { nested == "inner_true" }
 pub x = 10
 pub y = 20
 
-pub max = if x == y { x } else {
-  if x == y { x } else { y }
+pub max = if x > y {
+  x
+} else if y > x {
+  y
+} else {
+  x
 }
 
 assert { max == y }

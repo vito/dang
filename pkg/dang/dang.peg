@@ -595,7 +595,13 @@ Conditional <- IfToken _ cond:Form _ block:Block else_:ElseClause? {
   }, nil
 }
 
-ElseClause <- _ ElseToken _ block:Block {
+ElseClause <- _ ElseToken _ elseif:Conditional {
+  // else if - wrap the conditional in a block
+  return &Block{
+    Forms: []Node{elseif.(Node)},
+    Loc: elseif.(Node).GetSourceLocation(),
+  }, nil
+} / _ ElseToken _ block:Block {
   return block.(*Block), nil
 }
 

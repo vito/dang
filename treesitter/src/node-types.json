@@ -1073,10 +1073,20 @@
     "fields": {
       "block": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "elseif": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "conditional",
             "named": true
           }
         ]
