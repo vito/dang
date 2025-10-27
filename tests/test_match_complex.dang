@@ -1,0 +1,52 @@
+# Test match expressions with complex values
+
+# Variable pattern with list - binding the whole list
+pub list_var = match [1, 2, 3] with {
+  xs -> xs[0] + xs[1] + xs[2]
+}
+
+assert { list_var == 6 }
+
+# Variable pattern with empty list
+pub empty_list_var = match [] with {
+  xs -> "matched"
+}
+
+assert { empty_list_var == "matched" }
+
+# Match on list with fallback
+pub list_with_wildcard = match [1, 2] with {
+  xs -> xs[0]
+  _ -> 0
+}
+
+assert { list_with_wildcard == 1 }
+
+# Match with strings and concatenation
+pub string_var = match "hello" with {
+  s -> s + " world"
+}
+
+assert { string_var == "hello world" }
+
+# Match on nested lists
+pub nested_list = match [[1, 2], [3, 4]] with {
+  xs -> xs[0][1] + xs[1][0]
+}
+
+assert { nested_list == 5 }
+
+# Match in a function returning different types unified
+pub matchInClassify(x: Int!): String! {
+  match x with {
+    0 -> "zero"
+    1 -> "one"
+    _ -> "many"
+  }
+}
+
+assert { matchInClassify(0) == "zero" }
+assert { matchInClassify(1) == "one" }
+assert { matchInClassify(5) == "many" }
+
+print("Complex match expression tests passed!")
