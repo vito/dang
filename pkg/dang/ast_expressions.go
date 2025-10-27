@@ -133,6 +133,10 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, err
 		}
 
+		if funVal == (NullValue{}) {
+			return nil, NewSourceError(fmt.Errorf("cannot call null"), c.Fun.GetSourceLocation(), "")
+		}
+
 		// Evaluate arguments and handle positional/named argument mapping
 		argValues, err := c.evaluateArguments(ctx, env, funVal)
 		if err != nil {
