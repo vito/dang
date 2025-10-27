@@ -1,5 +1,5 @@
 # Test operator precedence
-# Should follow standard precedence: * / % > + - > < <= > >= > == != > ?
+# Should follow standard precedence: * / % > + - > < <= > >= > == != > ??
 
 # Basic multiplication vs addition
 assert { 2 + 3 * 4 == 14 }    # Should be 2 + (3 * 4) = 14
@@ -26,7 +26,7 @@ assert { 2 + 2 == 4 }         # Should be (2 + 2) == 4 = true
 assert { 3 * 3 != 8 }         # Should be (3 * 3) != 8 = true
 
 # Default operator (lowest precedence)
-assert { 5 + 3 == 8 ? 42 == 42 }  # Should be ((5 + 3) == 8) ? (42 == 42) = true
+assert { 5 + 3 == 8 ?? 42 == 42 }  # Should be ((5 + 3) == 8) ?? (42 == 42) = true
 
 # Mixed precedence
 assert { 2 * 3 + 4 * 5 == 26 }    # Should be (2 * 3) + (4 * 5) = 26

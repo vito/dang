@@ -1,2 +1,2 @@
 # Test default operator type mismatch
-pub result = "hello" ? 42
+pub result = "hello" ?? 42

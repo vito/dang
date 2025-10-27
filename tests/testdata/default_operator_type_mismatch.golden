@@ -2,7 +2,7 @@
   [2m[34m--> errors/default_operator_type_mismatch.dang:2:14[0m
  [2m    |[0m
  [2m  1 | # Test default operator type mismatch[0m
- [2m[34m[1m  2 | [0mpub result = "hello" ? 42
-[2m                    [31m^^^^^^^^^^^^[0m
+ [2m[34m[1m  2 | [0mpub result = "hello" ?? 42
+[2m                    [31m^^^^^^^^^^^^^[0m
  [2m    |[0m
 

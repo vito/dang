@@ -1556,7 +1556,7 @@
             },
             {
               "type": "SYMBOL",
-              "name": "interro_token"
+              "name": "double_interro_token"
             },
             {
               "type": "FIELD",
@@ -1893,11 +1893,11 @@
         }
       ]
     },
-    "interro_token": {
+    "double_interro_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "?"
+        "value": "??"
       }
     },
     "reopen_token": {
