@@ -37,7 +37,7 @@
 [
   (equal_token)
   (plus_equal_token)
-  (interro_token)
+  (double_interro_token)
   (bang_token)
   (lambda_token)
   (arrow_token)

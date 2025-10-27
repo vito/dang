@@ -878,11 +878,11 @@
       "required": true,
       "types": [
         {
-          "type": "equality_expr",
+          "type": "double_interro_token",
           "named": true
         },
         {
-          "type": "interro_token",
+          "type": "equality_expr",
           "named": true
         }
       ]
@@ -3253,6 +3253,10 @@
     "named": true
   },
   {
+    "type": "double_interro_token",
+    "named": true
+  },
+  {
     "type": "e",
     "named": false
   },
@@ -3298,10 +3302,6 @@
   },
   {
     "type": "in_token",
-    "named": true
-  },
-  {
-    "type": "interro_token",
     "named": true
   },
   {

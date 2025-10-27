@@ -365,7 +365,7 @@ TypeVariable <- v:[a-z] {
 BangToken <- '!'
 
 // Precedence levels from lowest to highest
-DefaultExpr <- left:(EqualityExpr / Term) _ InterroToken _ right:(DefaultExpr / Term) {
+DefaultExpr <- left:(EqualityExpr / Term) _ DoubleInterroToken _ right:(DefaultExpr / Term) {
   return &Default{
     Left: left.(Node),
     Right: right.(Node),
@@ -435,7 +435,7 @@ MultiplicativeExpr <- left:(MultiplicativeExpr / Term) _ op:MultiplicativeOp _ r
 
 MultiplicativeOp <- "*" { return "*", nil } / "/" { return "/", nil } / "%" { return "%", nil }
 
-InterroToken <- '?'
+DoubleInterroToken <- "??"
 ReopenToken <- "<<"
 
 DotToken <- '.'
