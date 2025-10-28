@@ -24,9 +24,9 @@ for num in numbers2 {
 
 assert { sum2 == 12 }  # 1 + 2 + 4 + 5, skips 3
 
-# Test break in while loop
+# Test break in for loop with condition
 pub count = 0
-while count < 10 {
+for count < 10 {
   count += 1
   if count == 5 {
     break
@@ -35,11 +35,11 @@ while count < 10 {
 
 assert { count == 5 }
 
-# Test continue in while loop
+# Test continue in for loop with condition
 pub count2 = 0
 pub evens = 0
 
-while count2 < 10 {
+for count2 < 10 {
   count2 += 1
   if count2 % 2 == 1 {
     continue

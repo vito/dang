@@ -1385,14 +1385,6 @@ type Conditional struct {
 	Loc       *SourceLocation
 }
 
-// While represents a while loop expression
-type While struct {
-	InferredTypeHolder
-	Condition Node
-	BodyBlock *Block
-	Loc       *SourceLocation
-}
-
 var _ Node = (*Conditional)(nil)
 var _ Evaluator = (*Conditional)(nil)
 
@@ -1500,105 +1492,15 @@ func (c *Conditional) Walk(fn func(Node) bool) {
 	}
 }
 
-var _ Node = (*While)(nil)
-var _ Evaluator = (*While)(nil)
-
-func (w *While) DeclaredSymbols() []string {
-	return nil // While loops don't declare anything
-}
-
-func (w *While) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, w.Condition.ReferencedSymbols()...)
-	symbols = append(symbols, w.BodyBlock.ReferencedSymbols()...)
-	return symbols
-}
-
-func (w *While) Body() hm.Expression { return w }
-
-func (w *While) GetSourceLocation() *SourceLocation { return w.Loc }
-
-func (w *While) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(w, func() (hm.Type, error) {
-		condType, err := w.Condition.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, err
-		}
-
-		if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), w.Condition)
-		}
-
-		bodyType, err := w.BodyBlock.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, err
-		}
-
-		// While loops return the last value from the body, or null if never executed
-		// Make the result nullable since the loop might not execute
-		if nonNull, ok := bodyType.(hm.NonNullType); ok {
-			return nonNull.Type, nil
-		}
-		return bodyType, nil
-	})
-}
-
-func (w *While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return WithEvalErrorHandling(ctx, w, func() (Value, error) {
-		var lastVal Value = NullValue{}
-
-		for {
-			condVal, err := EvalNode(ctx, env, w.Condition)
-			if err != nil {
-				return nil, fmt.Errorf("evaluating condition: %w", err)
-			}
-
-			boolVal, ok := condVal.(BoolValue)
-			if !ok {
-				return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
-			}
-
-			if !boolVal.Val {
-				break
-			}
-
-			val, err := EvalNode(ctx, env, w.BodyBlock)
-			if err != nil {
-				// Check if it's a break or continue
-				var breakEx *BreakException
-				var continueEx *ContinueException
-				if errors.As(err, &breakEx) {
-					break
-				}
-				if errors.As(err, &continueEx) {
-					continue
-				}
-				return nil, fmt.Errorf("evaluating body: %w", err)
-			}
-			// Only update lastVal if there was no error
-			lastVal = val
-		}
-
-		return lastVal, nil
-	})
-}
-
-func (w *While) Walk(fn func(Node) bool) {
-	if !fn(w) {
-		return
-	}
-	w.Condition.Walk(fn)
-	w.BodyBlock.Walk(fn)
-}
-
-// ForLoop represents a for..in loop expression
+// ForLoop represents a for..in loop expression or condition-based loop
 type ForLoop struct {
 	InferredTypeHolder
 	Variable      string   // Loop variable name (for single-variable iteration)
 	KeyVariable   string   // Key/Index variable name (for two-variable iteration)
 	ValueVariable string   // Value variable name (for two-variable iteration)
 	Type          TypeNode // Optional type annotation
-	Iterable      Node     // Expression that produces iterable
+	Iterable      Node     // Expression that produces iterable (nil for condition-only loops)
+	Condition     Node     // Condition for condition-only loops (nil for iterator loops)
 	LoopBody      *Block   // Loop body
 	Loc           *SourceLocation
 }
@@ -1612,7 +1514,12 @@ func (f *ForLoop) DeclaredSymbols() []string {
 
 func (f *ForLoop) ReferencedSymbols() []string {
 	var symbols []string
-	symbols = append(symbols, f.Iterable.ReferencedSymbols()...)
+	if f.Iterable != nil {
+		symbols = append(symbols, f.Iterable.ReferencedSymbols()...)
+	}
+	if f.Condition != nil {
+		symbols = append(symbols, f.Condition.ReferencedSymbols()...)
+	}
 	symbols = append(symbols, f.LoopBody.ReferencedSymbols()...)
 	return symbols
 }
@@ -1623,6 +1530,47 @@ func (f *ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
 
 func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
+		// Check if this is a condition-only loop (while-style)
+		if f.Condition != nil {
+			// Infer the condition type
+			condType, err := f.Condition.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			// Unify with boolean
+			if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
+				return nil, NewInferError(fmt.Errorf("condition must be boolean, got %s", condType), f.Condition)
+			}
+
+			// Infer body type
+			bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			// Condition loops return the last value from the body, or null if never executed
+			if nonNull, ok := bodyType.(hm.NonNullType); ok {
+				return nonNull.Type, nil
+			}
+			return bodyType, nil
+		}
+
+		// Check if this is an infinite loop
+		if f.Iterable == nil {
+			// Infer body type
+			bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+
+			// Infinite loops return the last value from the body, or null
+			if nonNull, ok := bodyType.(hm.NonNullType); ok {
+				return nonNull.Type, nil
+			}
+			return bodyType, nil
+		}
+
 		// Infer the type of the iterable
 		iterableType, err := f.Iterable.Infer(ctx, env, fresh)
 		if err != nil {
@@ -1720,13 +1668,71 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 
 func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
+		var lastVal Value = NullValue{}
+
+		// Handle condition-only loop (while-style)
+		if f.Condition != nil {
+			for {
+				condVal, err := EvalNode(ctx, env, f.Condition)
+				if err != nil {
+					return nil, fmt.Errorf("evaluating condition: %w", err)
+				}
+
+				boolVal, ok := condVal.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
+				}
+
+				if !boolVal.Val {
+					break
+				}
+
+				val, err := EvalNode(ctx, env, f.LoopBody)
+				if err != nil {
+					// Check if it's a break or continue
+					var breakEx *BreakException
+					var continueEx *ContinueException
+					if errors.As(err, &breakEx) {
+						break
+					}
+					if errors.As(err, &continueEx) {
+						continue
+					}
+					return nil, fmt.Errorf("evaluating body: %w", err)
+				}
+				// Only update lastVal if there was no error
+				lastVal = val
+			}
+			return lastVal, nil
+		}
+
+		// Handle infinite loop
+		if f.Iterable == nil {
+			for {
+				val, err := EvalNode(ctx, env, f.LoopBody)
+				if err != nil {
+					// Check if it's a break or continue
+					var breakEx *BreakException
+					var continueEx *ContinueException
+					if errors.As(err, &breakEx) {
+						break
+					}
+					if errors.As(err, &continueEx) {
+						continue
+					}
+					return nil, fmt.Errorf("evaluating body: %w", err)
+				}
+				// Only update lastVal if there was no error
+				lastVal = val
+			}
+			return lastVal, nil
+		}
+
 		// Evaluate the iterable
 		iterableVal, err := EvalNode(ctx, env, f.Iterable)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating iterable: %w", err)
 		}
-
-		var lastVal Value = NullValue{}
 
 		if f.KeyVariable == "" {
 			// Single variable iteration
@@ -1798,7 +1804,12 @@ func (f *ForLoop) Walk(fn func(Node) bool) {
 	if !fn(f) {
 		return
 	}
-	f.Iterable.Walk(fn)
+	if f.Iterable != nil {
+		f.Iterable.Walk(fn)
+	}
+	if f.Condition != nil {
+		f.Condition.Walk(fn)
+	}
 	f.LoopBody.Walk(fn)
 }
 

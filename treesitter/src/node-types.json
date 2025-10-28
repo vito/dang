@@ -76,10 +76,6 @@
       {
         "type": "type_hint",
         "named": true
-      },
-      {
-        "type": "while",
-        "named": true
       }
     ]
   },
@@ -1285,6 +1281,68 @@
     }
   },
   {
+    "type": "for_condition_loop",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "cond": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "for_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "for_infinite_loop",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "for_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "for_loop",
     "named": true,
     "fields": {},
@@ -1292,6 +1350,14 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "for_condition_loop",
+          "named": true
+        },
+        {
+          "type": "for_infinite_loop",
+          "named": true
+        },
         {
           "type": "for_single_var_loop",
           "named": true
@@ -3140,42 +3206,6 @@
     }
   },
   {
-    "type": "while",
-    "named": true,
-    "fields": {
-      "block": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "cond": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "while_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "\n",
     "named": false
   },
@@ -3410,10 +3440,6 @@
   },
   {
     "type": "upper_token",
-    "named": true
-  },
-  {
-    "type": "while_token",
     "named": true
   },
   {

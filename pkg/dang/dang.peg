@@ -40,7 +40,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
   }
 }
 
-Form <- Conditional / While / ForLoop / Lambda / Match / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Conditional / ForLoop / Lambda / Match / Assert / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -605,19 +605,10 @@ ElseClause <- _ ElseToken _ elseif:Conditional {
   return block.(*Block), nil
 }
 
-While <- WhileToken _ cond:Form _ block:Block {
-  return &While{
-    Condition: cond.(Node),
-    BodyBlock: block.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
-
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
-WhileToken <- "while" !WordChar
 
-ForLoop <- ForTwoVarLoop / ForSingleVarLoop
+ForLoop <- ForTwoVarLoop / ForSingleVarLoop / ForConditionLoop / ForInfiniteLoop
 
 ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ iterable:Form _ body:Block {
   var varType TypeNode
@@ -638,6 +629,21 @@ ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:
     KeyVariable: key.(string),
     ValueVariable: value.(string),
     Iterable: iterable.(Node),
+    LoopBody: body.(*Block),
+    Loc: c.Loc(),
+  }, nil
+}
+
+ForConditionLoop <- ForToken _ cond:Form _ body:Block {
+  return &ForLoop{
+    Condition: cond.(Node),
+    LoopBody: body.(*Block),
+    Loc: c.Loc(),
+  }, nil
+}
+
+ForInfiniteLoop <- ForToken _ body:Block {
+  return &ForLoop{
     LoopBody: body.(*Block),
     Loc: c.Loc(),
   }, nil

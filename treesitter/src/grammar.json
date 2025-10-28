@@ -143,10 +143,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "while"
-        },
-        {
-          "type": "SYMBOL",
           "name": "for_loop"
         },
         {
@@ -2754,31 +2750,6 @@
         }
       ]
     },
-    "while": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "while_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "cond",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "block",
-          "content": {
-            "type": "SYMBOL",
-            "name": "block"
-          }
-        }
-      ]
-    },
     "if_token": {
       "type": "TOKEN",
       "content": {
@@ -2793,13 +2764,6 @@
         "value": "else"
       }
     },
-    "while_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "while"
-      }
-    },
     "for_loop": {
       "type": "CHOICE",
       "members": [
@@ -2810,6 +2774,14 @@
         {
           "type": "SYMBOL",
           "name": "for_single_var_loop"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "for_condition_loop"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "for_infinite_loop"
         }
       ]
     },
@@ -2917,6 +2889,48 @@
             "type": "SYMBOL",
             "name": "form"
           }
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
+    "for_condition_loop": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "for_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "cond",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
+    "for_infinite_loop": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "for_token"
         },
         {
           "type": "FIELD",

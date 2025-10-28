@@ -1,8 +1,8 @@
-pub simpleWhile: String! {
+pub simpleFor: String! {
   let counter = 0
   let result = ""
   
-  while counter < 3 {
+  for counter < 3 {
     result = result + "loop"
     counter = counter + 1
   }
@@ -10,11 +10,11 @@ pub simpleWhile: String! {
   result
 }
 
-pub whileAccumulate: Int! {
+pub forAccumulate: Int! {
   let sum = 0
   let i = 1
   
-  while i <= 3 {
+  for i <= 3 {
     sum = sum + i
     i = i + 1
   }
@@ -22,5 +22,5 @@ pub whileAccumulate: Int! {
   sum
 }
 
-assert { simpleWhile == "looplooploop" }
-assert { whileAccumulate == 6 }
+assert { simpleFor == "looplooploop" }
+assert { forAccumulate == 6 }
