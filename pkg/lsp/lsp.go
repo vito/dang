@@ -446,3 +446,37 @@ type RenameParams struct {
 	Position     Position               `json:"position"`
 	NewName      string                 `json:"newName"`
 }
+
+// WorkDoneProgressCreateParams is
+type WorkDoneProgressCreateParams struct {
+	Token any `json:"token"`
+}
+
+// WorkDoneProgressBegin is
+type WorkDoneProgressBegin struct {
+	Kind        string  `json:"kind"` // "begin"
+	Title       string  `json:"title"`
+	Cancellable bool    `json:"cancellable,omitempty"`
+	Message     *string `json:"message,omitempty"`
+	Percentage  *int    `json:"percentage,omitempty"`
+}
+
+// WorkDoneProgressReport is
+type WorkDoneProgressReport struct {
+	Kind        string  `json:"kind"` // "report"
+	Cancellable bool    `json:"cancellable,omitempty"`
+	Message     *string `json:"message,omitempty"`
+	Percentage  *int    `json:"percentage,omitempty"`
+}
+
+// WorkDoneProgressEnd is
+type WorkDoneProgressEnd struct {
+	Kind    string  `json:"kind"` // "end"
+	Message *string `json:"message,omitempty"`
+}
+
+// ProgressParams is
+type ProgressParams struct {
+	Token any `json:"token"`
+	Value any `json:"value"`
+}

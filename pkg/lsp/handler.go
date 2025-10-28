@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"sync"
 	"unicode"
 
 	"dagger.io/dagger"
@@ -24,6 +25,7 @@ func NewHandler() jsonrpc2.Handler {
 		files:         make(map[DocumentURI]*File),
 		conn:          nil,
 		moduleSchemas: make(map[string]*moduleSchema),
+		mu:            new(sync.Mutex),
 	}
 
 	return jsonrpc2.HandlerWithError(handler.handle)
@@ -44,6 +46,9 @@ type langHandler struct {
 	defaultSchema   *introspection.Schema
 	defaultClient   graphql.Client
 	defaultProvider *dang.GraphQLClientProvider
+
+	// TODO?: make per-file or something
+	mu *sync.Mutex
 }
 
 // moduleSchema holds the schema and client for a specific Dagger module
@@ -133,6 +138,45 @@ func (h *langHandler) logMessage(typ MessageType, message string) {
 		})
 }
 
+// createWorkDoneProgress creates a work done progress token
+func (h *langHandler) createWorkDoneProgress(ctx context.Context, token string) error {
+	if h.conn == nil {
+		return fmt.Errorf("no connection available")
+	}
+
+	return h.conn.Call(ctx, "window/workDoneProgress/create", &WorkDoneProgressCreateParams{
+		Token: token,
+	}, nil)
+}
+
+// reportProgress reports progress using the work done progress API
+func (h *langHandler) reportProgress(ctx context.Context, token string, value any) error {
+	if h.conn == nil {
+		return nil
+	}
+
+	return h.conn.Notify(ctx, "$/progress", &ProgressParams{
+		Token: token,
+		Value: value,
+	})
+}
+
+// beginProgress starts a progress notification
+func (h *langHandler) beginProgress(ctx context.Context, token, title string) error {
+	return h.reportProgress(ctx, token, &WorkDoneProgressBegin{
+		Kind:  "begin",
+		Title: title,
+	})
+}
+
+// endProgress ends a progress notification
+func (h *langHandler) endProgress(ctx context.Context, token string, message *string) error {
+	return h.reportProgress(ctx, token, &WorkDoneProgressEnd{
+		Kind:    "end",
+		Message: message,
+	})
+}
+
 func (h *langHandler) closeFile(uri DocumentURI) error {
 	delete(h.files, uri)
 	return nil
@@ -153,6 +197,9 @@ func (h *langHandler) openFile(uri DocumentURI, languageID string, version int) 
 }
 
 func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text string, version *int) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	f, ok := h.files[uri]
 	if !ok {
 		return fmt.Errorf("document not found: %v", uri)
@@ -481,6 +528,23 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 	// Load and cache module schema
 	slog.InfoContext(ctx, "loading schema for module", "dir", moduleDir)
 
+	// Create a progress token
+	token := fmt.Sprintf("dang-schema-%s", filepath.Base(moduleDir))
+
+	// Create and begin progress
+	if err := h.createWorkDoneProgress(ctx, token); err != nil {
+		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
+	} else {
+		defer func() {
+			h.endProgress(ctx, token, nil)
+		}()
+
+		message := fmt.Sprintf("initializing module: %s", moduleDir)
+		if err := h.beginProgress(ctx, token, message); err != nil {
+			slog.WarnContext(ctx, "failed to begin progress", "error", err)
+		}
+	}
+
 	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
 	client, schema, err := provider.GetDaggerModuleSchema(ctx, h.dag, moduleDir)
 	if err != nil {
@@ -505,6 +569,22 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 
 // loadDefaultSchema loads the default GraphQL schema from environment/config
 func (h *langHandler) loadDefaultSchema(ctx context.Context) error {
+	// Create a progress token
+	token := "dang-schema-default"
+
+	// Create and begin progress
+	if err := h.createWorkDoneProgress(ctx, token); err != nil {
+		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
+	} else {
+		defer func() {
+			h.endProgress(ctx, token, nil)
+		}()
+
+		if err := h.beginProgress(ctx, token, "initializing module: default"); err != nil {
+			slog.WarnContext(ctx, "failed to begin progress", "error", err)
+		}
+	}
+
 	config := dang.LoadGraphQLConfig()
 	h.defaultProvider = dang.NewGraphQLClientProvider(config)
 
