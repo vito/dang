@@ -69,9 +69,9 @@ It provides type-safe, composable abstractions for container operations.`,
 
 			if len(args) == 1 {
 				cfg.File = args[0]
-				return run(cfg)
+				return run(cmd.Context(), cfg)
 			} else {
-				return runREPL(cfg)
+				return runREPL(cmd.Context(), cfg)
 			}
 		},
 	}
@@ -84,6 +84,8 @@ It provides type-safe, composable abstractions for container operations.`,
 
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
+	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
+	ctx = ioctx.StderrToContext(ctx, os.Stderr)
 	if err := fang.Execute(ctx, rootCmd,
 		fang.WithVersion("v0.1.0"),
 		fang.WithCommit("dev"),
@@ -95,7 +97,7 @@ It provides type-safe, composable abstractions for container operations.`,
 	}
 }
 
-func run(cfg Config) error {
+func run(ctx context.Context, cfg Config) error {
 	// Set up slog with appropriate level
 	level := slog.LevelInfo
 	if cfg.Debug {
@@ -107,8 +109,6 @@ func run(cfg Config) error {
 	})
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
-
-	ctx := context.Background()
 
 	// Load GraphQL configuration
 	config := dang.LoadGraphQLConfig()
@@ -143,7 +143,7 @@ func run(cfg Config) error {
 	return nil
 }
 
-func runREPL(cfg Config) error {
+func runREPL(ctx context.Context, cfg Config) error {
 	// Set up slog with appropriate level
 	level := slog.LevelInfo
 	if cfg.Debug {
@@ -155,8 +155,6 @@ func runREPL(cfg Config) error {
 	})
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
-
-	ctx := context.Background()
 
 	// Load GraphQL configuration
 	config := dang.LoadGraphQLConfig()
@@ -398,7 +396,6 @@ func (r *REPL) evaluateExpression(ctx context.Context, expr string) error {
 		}
 
 		// Evaluation with stdout context
-		ctx := ioctx.StdoutToContext(ctx, os.Stdout)
 		val, err := dang.EvalNode(ctx, r.evalEnv, node)
 		if err != nil {
 			return fmt.Errorf("evaluation error: %w", err)
