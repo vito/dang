@@ -161,6 +161,19 @@ Params(
 
 When the parameter is omitted by the caller, the default value is automatically supplied.
 
+## Design Principle: Methods Over Global Functions
+
+**Prefer methods on types over global functions** to avoid polluting the global namespace. 
+
+Examples:
+- `"hello".toUpper()` instead of `toUpper("hello")`
+- `"a,b,c".split(",")` instead of `split("a,b,c", ",")`
+- `users.length` instead of `len(users)` or `count(users)`
+
+This keeps the language clean and makes autocomplete/discovery easier. Only add global functions when:
+- The operation doesn't naturally belong to a single type
+- It's a fundamental language operation (like `print`, `assert`)
+
 ## Best Practices
 
 1. **Always provide documentation** - Use `.Doc()` to describe what the function/method does
@@ -168,6 +181,7 @@ When the parameter is omitted by the caller, the default value is automatically 
 3. **Handle errors gracefully** - Return descriptive errors wrapped with context
 4. **Follow naming conventions** - Use camelCase for function names
 5. **Keep implementations focused** - Each builtin should do one thing well
+6. **Prefer methods over global functions** - See design principle above
 
 ## Adding New Builtins
 
