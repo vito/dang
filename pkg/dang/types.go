@@ -119,6 +119,52 @@ func (t ListType) Eq(other Type) bool {
 	return false
 }
 
+// GraphQLListType represents a list returned from GraphQL that contains objects.
+// Unlike ListType, it cannot be directly iterated - it must first be converted
+// to a ListType via object selection (.{fields}) to avoid N+1 query problems.
+type GraphQLListType struct {
+	Type
+}
+
+var _ hm.Type = GraphQLListType{}
+
+func (t GraphQLListType) Name() string {
+	return fmt.Sprintf("GraphQL[%s]", t.Type.Name())
+}
+
+func (t GraphQLListType) Apply(subs hm.Subs) hm.Substitutable {
+	return GraphQLListType{t.Type.Apply(subs).(hm.Type)}
+}
+
+func (t GraphQLListType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return GraphQLListType{normalized}, nil
+}
+
+func (t GraphQLListType) Types() hm.Types {
+	ts := hm.BorrowTypes(1)
+	ts[0] = t.Type
+	return ts
+}
+
+func (t GraphQLListType) String() string {
+	return fmt.Sprintf("GraphQL[%s]", t.Type)
+}
+
+func (t GraphQLListType) Format(s fmt.State, c rune) {
+	fmt.Fprintf(s, "GraphQL[%"+string(c)+"]", t.Type)
+}
+
+func (t GraphQLListType) Eq(other Type) bool {
+	if ot, ok := other.(GraphQLListType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
 type RecordType struct {
 	Named  string
 	Fields []Keyed[*hm.Scheme] // TODO this should be a map

@@ -61,6 +61,11 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
 		}
+		// Lists of objects use GraphQLListType (not directly iterable)
+		// Lists of scalars use regular ListType (iterable)
+		if ref.OfType.IsObject() {
+			return GraphQLListType{inner}, nil
+		}
 		return ListType{inner}, nil
 	case introspection.TypeKindNonNull:
 		inner, err := gqlToTypeNode(mod, ref.OfType)

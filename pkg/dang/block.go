@@ -316,7 +316,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 	for _, form := range classified.Imports {
 		result, err = EvalNode(ctx, env, form)
 		if err != nil {
-			return nil, fmt.Errorf("non-declaration evaluation failed: %w", err)
+			return nil, fmt.Errorf("import evaluation failed: %w", err)
 		}
 	}
 
@@ -394,14 +394,14 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Use phased inference approach for proper dependency handling
 		typ, err := InferFormsWithPhases(ctx, forms, newEnv, fresh)
-		
+
 		// Store the environment for non-inline blocks
 		if !b.Inline {
 			if dangEnv, ok := newEnv.(Env); ok {
 				b.Env = dangEnv
 			}
 		}
-		
+
 		return typ, err
 	})
 }

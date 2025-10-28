@@ -894,8 +894,9 @@ type ObjectSelection struct {
 	Fields   []*FieldSelection
 	Loc      *SourceLocation
 
-	Inferred *Module
-	IsList   bool // TODO respect
+	Inferred         *Module
+	IsList           bool // TODO respect
+	ElementIsNonNull bool // Whether list elements are non-null (only used when IsList is true)
 }
 
 var _ Node = (*ObjectSelection)(nil)
@@ -930,7 +931,13 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 		// If this is a list selection, wrap the result in a list type
 		var resultType hm.Type
 		if o.IsList {
-			listType := ListType{Type: t}
+			// Wrap the element module in NonNullType if elements are non-null
+			var elementType hm.Type = t
+			if o.ElementIsNonNull {
+				elementType = hm.NonNullType{Type: t}
+			}
+
+			listType := ListType{Type: elementType}
 
 			// If receiver was nullable, make result nullable too
 			if _, ok := receiverType.(hm.NonNullType); ok {
@@ -961,12 +968,19 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 
 	// Handle list types - apply selection to each element
 	var innerType hm.Type
-	if listType, ok := receiverType.(hm.NonNullType); ok {
-		if innerListType, ok := listType.Type.(ListType); ok {
-			innerType = innerListType.Type
-		}
-	} else if listType, ok := receiverType.(ListType); ok {
+	var elementIsNonNull bool
+	if nonNullType, ok := receiverType.(hm.NonNullType); ok {
+		receiverType = nonNullType.Type
+	}
+	if listType, ok := receiverType.(ListType); ok {
 		innerType = listType.Type
+		// Check if element type is non-null
+		_, elementIsNonNull = innerType.(hm.NonNullType)
+	} else if gqlListType, ok := receiverType.(GraphQLListType); ok {
+		// GraphQL lists can be converted to regular lists via object selection
+		innerType = gqlListType.Type
+		// Check if element type is non-null
+		_, elementIsNonNull = innerType.(hm.NonNullType)
 	}
 
 	if innerType != nil {
@@ -974,8 +988,12 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 		if err != nil {
 			return nil, err
 		}
+
+		// Store both the module and whether elements are non-null
+		// We'll use elementIsNonNull in the caller to wrap appropriately
 		o.Inferred = elementType
 		o.IsList = true
+		o.ElementIsNonNull = elementIsNonNull
 		return elementType, nil
 	}
 
@@ -1582,15 +1600,16 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			// Single variable iteration
 			var elementType hm.Type
 
+			// Unwrap non-nullable iterable type
+			if nonNullType, ok := iterableType.(hm.NonNullType); ok {
+				iterableType = nonNullType.Type
+			}
+
 			// Check if it's a list type
 			if listType, ok := iterableType.(ListType); ok {
 				elementType = listType.Type
-			} else if nonNullListType, ok := iterableType.(hm.NonNullType); ok {
-				if listType, ok := nonNullListType.Type.(ListType); ok {
-					elementType = listType.Type
-				} else {
-					return nil, NewInferError(fmt.Errorf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
-				}
+			} else if _, ok := iterableType.(GraphQLListType); ok {
+				return nil, NewInferError(fmt.Errorf("cannot iterate over GraphQL list of objects directly; use .{field1, field2, ...} to select fields first"), f.Iterable)
 			} else {
 				return nil, NewInferError(fmt.Errorf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
 			}
