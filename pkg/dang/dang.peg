@@ -676,14 +676,16 @@ ArgWithoutType <- name:IdSymbol {
 Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
   return &Match{
     Expr: expr.(Node),
-    Cases: sliceOfAppend[MatchCase](cs, last),
+    Cases: sliceOfAppend[*MatchCase](cs, last),
+    Loc: c.Loc(),
   }, nil
 }
 
 MatchCase <- pattern:Pattern _ "->" _ expr:Form {
-  return MatchCase{
+  return &MatchCase{
     Pattern: pattern.(Pattern),
     Expr: expr.(Node),
+    Loc: c.Loc(),
   }, nil
 }
 
