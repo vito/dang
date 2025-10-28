@@ -73,6 +73,19 @@ type SourceError struct {
 	Source   string // The source code of the file
 }
 
+// NewSourceError creates a new SourceError
+func NewSourceError(inner error, location *SourceLocation, source string) *SourceError {
+	return &SourceError{
+		Inner:    inner,
+		Location: location,
+		Source:   source,
+	}
+}
+
+func (e *SourceError) Unwrap() error {
+	return e.Inner
+}
+
 func (e *SourceError) Error() string {
 	if e.Location == nil {
 		return e.Inner.Error()
@@ -169,15 +182,6 @@ func padLeft(s string, width int) string {
 		return s
 	}
 	return strings.Repeat(" ", width-len(s)) + s
-}
-
-// NewSourceError creates a new SourceError
-func NewSourceError(inner error, location *SourceLocation, source string) *SourceError {
-	return &SourceError{
-		Inner:    inner,
-		Location: location,
-		Source:   source,
-	}
 }
 
 // EvalContext carries evaluation context including source information
@@ -281,6 +285,14 @@ func (ctx *EvalContext) CreateSourceError(err error, node SourceLocatable) error
 
 // ConvertInferError converts an InferError to a SourceError with source context
 func ConvertInferError(origErr error) error {
+	var inferErrs *InferenceErrors
+	if errors.As(origErr, &inferErrs) {
+		cp := *inferErrs
+		for i, e := range inferErrs.Errors {
+			cp.Errors[i] = ConvertInferError(e)
+		}
+		return &cp
+	}
 	var inferErr *InferError
 	if errors.As(origErr, &inferErr) {
 		// Convert InferError to SourceError with full context

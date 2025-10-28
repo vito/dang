@@ -40,7 +40,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Class / Slot / DirectiveDecl) {
   }
 }
 
-Form <- Conditional / While / ForLoop / Lambda / Match / Assert / DefaultExpr / TypeHint / Term
+Form <- Conditional / While / ForLoop / Lambda / Match / Assert / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -738,6 +738,22 @@ MessageArgs <- '(' _ msg:Form _ ')' {
 }
 
 AssertToken <- "assert" !WordChar
+
+Break <- BreakToken {
+  return &Break{
+    Loc: c.Loc(),
+  }, nil
+}
+
+BreakToken <- "break" !WordChar
+
+Continue <- ContinueToken {
+  return &Continue{
+    Loc: c.Loc(),
+  }, nil
+}
+
+ContinueToken <- "continue" !WordChar
 
 Reassignment <- target:Term _ op:AssignOp _ value:Form {
   return &Reassignment{

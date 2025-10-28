@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/vito/dang/introspection"
@@ -1561,10 +1562,21 @@ func (w *While) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				break
 			}
 
-			lastVal, err = EvalNode(ctx, env, w.BodyBlock)
+			val, err := EvalNode(ctx, env, w.BodyBlock)
 			if err != nil {
+				// Check if it's a break or continue
+				var breakEx *BreakException
+				var continueEx *ContinueException
+				if errors.As(err, &breakEx) {
+					break
+				}
+				if errors.As(err, &continueEx) {
+					continue
+				}
 				return nil, fmt.Errorf("evaluating body: %w", err)
 			}
+			// Only update lastVal if there was no error
+			lastVal = val
 		}
 
 		return lastVal, nil
@@ -1726,10 +1738,21 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 					loopEnv.Set(f.Variable, element)
 
 					// Evaluate the body
-					lastVal, err = EvalNode(ctx, loopEnv, f.LoopBody)
+					val, err := EvalNode(ctx, loopEnv, f.LoopBody)
 					if err != nil {
+						// Check if it's a break or continue
+						var breakEx *BreakException
+						var continueEx *ContinueException
+						if errors.As(err, &breakEx) {
+							break
+						}
+						if errors.As(err, &continueEx) {
+							continue
+						}
 						return nil, fmt.Errorf("evaluating loop body: %w", err)
 					}
+					// Only update lastVal if there was no error
+					lastVal = val
 				}
 			} else {
 				return nil, fmt.Errorf("single-variable iteration only supports lists, got %T", iterableVal)
@@ -1745,10 +1768,21 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 					loopEnv.Set(f.ValueVariable, element)             // value = element
 
 					// Evaluate the body
-					lastVal, err = EvalNode(ctx, loopEnv, f.LoopBody)
+					val, err := EvalNode(ctx, loopEnv, f.LoopBody)
 					if err != nil {
+						// Check if it's a break or continue
+						var breakEx *BreakException
+						var continueEx *ContinueException
+						if errors.As(err, &breakEx) {
+							break
+						}
+						if errors.As(err, &continueEx) {
+							continue
+						}
 						return nil, fmt.Errorf("evaluating loop body: %w", err)
 					}
+					// Only update lastVal if there was no error
+					lastVal = val
 				}
 			} else {
 				// Handle object iteration - for now, just return an error since we need more work on object types
@@ -1766,6 +1800,96 @@ func (f *ForLoop) Walk(fn func(Node) bool) {
 	}
 	f.Iterable.Walk(fn)
 	f.LoopBody.Walk(fn)
+}
+
+// Break represents a break statement in a loop
+type Break struct {
+	InferredTypeHolder
+	Loc *SourceLocation
+}
+
+var _ Node = (*Break)(nil)
+var _ Evaluator = (*Break)(nil)
+
+func (b *Break) DeclaredSymbols() []string {
+	return nil // Break doesn't declare anything
+}
+
+func (b *Break) ReferencedSymbols() []string {
+	return nil // Break doesn't reference anything
+}
+
+func (b *Break) Body() hm.Expression { return b }
+
+func (b *Break) GetSourceLocation() *SourceLocation { return b.Loc }
+
+func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(b, func() (hm.Type, error) {
+		// Break returns a fresh type variable that can unify with anything
+		t := fresh.Fresh()
+		b.SetInferredType(t)
+		return t, nil
+	})
+}
+
+func (b *Break) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return nil, &BreakException{}
+}
+
+func (b *Break) Walk(fn func(Node) bool) {
+	fn(b)
+}
+
+// Continue represents a continue statement in a loop
+type Continue struct {
+	InferredTypeHolder
+	Loc *SourceLocation
+}
+
+var _ Node = (*Continue)(nil)
+var _ Evaluator = (*Continue)(nil)
+
+func (c *Continue) DeclaredSymbols() []string {
+	return nil // Continue doesn't declare anything
+}
+
+func (c *Continue) ReferencedSymbols() []string {
+	return nil // Continue doesn't reference anything
+}
+
+func (c *Continue) Body() hm.Expression { return c }
+
+func (c *Continue) GetSourceLocation() *SourceLocation { return c.Loc }
+
+func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		// Continue returns a fresh type variable that can unify with anything
+		t := fresh.Fresh()
+		c.SetInferredType(t)
+		return t, nil
+	})
+}
+
+func (c *Continue) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return nil, &ContinueException{}
+}
+
+func (c *Continue) Walk(fn func(Node) bool) {
+	fn(c)
+}
+
+// BreakException is used to signal a break statement
+type BreakException struct{}
+
+func (e *BreakException) Error() string {
+	return "break outside of loop"
+}
+
+// ContinueException is used to signal a continue statement
+type ContinueException struct{}
+
+func (e *ContinueException) Error() string {
+	return "continue outside of loop"
 }
 
 // Let represents a let binding expression

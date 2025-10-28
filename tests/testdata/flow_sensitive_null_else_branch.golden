@@ -1,7 +1,7 @@
 2 inference errors:
 
 Error 1:
-FuncDecl(testBothBranches).Infer body: [1m[31mError:[0m Unification Fail: String! ~ String cannot be unified
+[1m[31mError:[0m Unification Fail: String! ~ String cannot be unified
   [2m[34m--> errors/flow_sensitive_null_else_branch.dang:12:7[0m
  [2m    |[0m
  [2m 10 |       # This should fail - maybeString is still nullable (String) in the else branch[0m
