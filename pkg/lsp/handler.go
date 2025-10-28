@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"time"
 	"unicode"
 
 	"dagger.io/dagger"
@@ -218,7 +219,7 @@ func (h *langHandler) updateFile(ctx *common.LSPContext, uri lsp.DocumentURI, te
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 
 			// Get schema for this file's module
-			schema, _, err := h.getSchemaForFile(ctx.Context, fp)
+			schema, _, err := h.getSchemaForFile(ctx, fp)
 			if err != nil {
 				slog.WarnContext(ctx.Context, "failed to get schema for file", "path", fp, "error", err)
 			}
@@ -261,6 +262,7 @@ func (h *langHandler) publishDiagnostics(ctx *common.LSPContext, uri lsp.Documen
 		slog.ErrorContext(ctx.Context, "failed to publish diagnostics", "error", err)
 	}
 }
+
 func (h *langHandler) buildSymbolTable(uri lsp.DocumentURI, forms []dang.Node) *SymbolTable {
 	st := &SymbolTable{
 		Definitions: make(map[string]*SymbolInfo),
@@ -453,18 +455,18 @@ func stringPtr(s string) *string {
 // getSchemaForFile returns the appropriate schema for a given file path.
 // It searches for a dagger.json in the file's directory or parent directories,
 // and caches the result per module directory.
-func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*introspection.Schema, graphql.Client, error) {
+func (h *langHandler) getSchemaForFile(ctx *common.LSPContext, filePath string) (*introspection.Schema, graphql.Client, error) {
 	// Find the module directory for this file
 	moduleDir := findDaggerModule(filepath.Dir(filePath))
 
-	slog.WarnContext(ctx, "getting schema for file", "filePath", filePath)
+	slog.WarnContext(ctx.Context, "getting schema for file", "filePath", filePath)
 	if moduleDir == "" {
-		slog.WarnContext(ctx, "module dir not found", "filePath", filePath)
+		slog.WarnContext(ctx.Context, "module dir not found", "filePath", filePath)
 
 		// Not in a module, use default schema
 		if h.defaultSchema == nil {
 			// Lazily load default schema on first use
-			if err := h.loadDefaultSchema(ctx); err != nil {
+			if err := h.loadDefaultSchema(ctx.Context); err != nil {
 				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
 			}
 		}
@@ -473,16 +475,16 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 
 	// Check cache for this module
 	if cached, ok := h.moduleSchemas[moduleDir]; ok {
-		slog.WarnContext(ctx, "module schema cache hit", "filePath", filePath)
+		slog.WarnContext(ctx.Context, "module schema cache hit", "filePath", filePath)
 		return cached.schema, cached.client, nil
 	}
 
 	// Check if we have a Dagger client available
 	if h.dag == nil {
 		// No Dagger client, fall back to default schema
-		slog.WarnContext(ctx, "no Dagger client available, falling back to default", "dir", moduleDir)
+		slog.WarnContext(ctx.Context, "no Dagger client available, falling back to default", "dir", moduleDir)
 		if h.defaultSchema == nil {
-			if err := h.loadDefaultSchema(ctx); err != nil {
+			if err := h.loadDefaultSchema(ctx.Context); err != nil {
 				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
 			}
 		}
@@ -490,15 +492,50 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 	}
 
 	// Load and cache module schema
-	slog.InfoContext(ctx, "loading schema for module", "dir", moduleDir)
+	slog.InfoContext(ctx.Context, "loading schema for module", "dir", moduleDir)
+
+	dispatcher := lsp.NewDispatcher(ctx)
+
+	progressToken := &lsp.ProgressToken{
+		StrVal: stringPtr("load:" + moduleDir),
+	}
+
+	go func() {
+		// TODO: for some reason, this hangs
+		if err := dispatcher.CreateWorkDoneProgress(lsp.WorkDoneProgressCreateParams{
+			Token: progressToken,
+		}); err != nil {
+			slog.WarnContext(ctx.Context, "failed to create work done progress", "error", err)
+		}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	dispatcher.Progress(lsp.ProgressParams{
+		Token: progressToken,
+		Value: &lsp.WorkDoneProgressBegin{
+			Kind:  "begin",
+			Title: "Loading module: " + moduleDir,
+		},
+	})
+
+	defer func() {
+		dispatcher.Progress(lsp.ProgressParams{
+			Token: progressToken,
+			Value: &lsp.WorkDoneProgressEnd{
+				Kind:    "end",
+				Message: stringPtr("Done!"),
+			},
+		})
+	}()
 
 	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
-	client, schema, err := provider.GetDaggerModuleSchema(ctx, h.dag, moduleDir)
+	client, schema, err := provider.GetDaggerModuleSchema(ctx.Context, h.dag, moduleDir)
 	if err != nil {
 		// If module schema loading fails, fall back to default schema
-		slog.WarnContext(ctx, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
+		slog.WarnContext(ctx.Context, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
 		if h.defaultSchema == nil {
-			if err := h.loadDefaultSchema(ctx); err != nil {
+			if err := h.loadDefaultSchema(ctx.Context); err != nil {
 				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
 			}
 		}
@@ -510,7 +547,7 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 		client: client,
 	}
 
-	slog.InfoContext(ctx, "cached schema for module", "dir", moduleDir, "types", len(schema.Types))
+	slog.InfoContext(ctx.Context, "cached schema for module", "dir", moduleDir, "types", len(schema.Types))
 	return schema, client, nil
 }
 
