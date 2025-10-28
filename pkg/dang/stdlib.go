@@ -155,4 +155,37 @@ func registerStdlib() {
 			cutset := args.GetString("cutset")
 			return ToValue(strings.TrimRight(str, cutset))
 		})
+
+	// String.hasPrefix method: hasPrefix(prefix: String!) -> Boolean!
+	Method(StringType, "hasPrefix").
+		Doc("checks if the string starts with the specified prefix").
+		Params("prefix", NonNull(StringType)).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			prefix := args.GetString("prefix")
+			return ToValue(strings.HasPrefix(str, prefix))
+		})
+
+	// String.hasSuffix method: hasSuffix(suffix: String!) -> Boolean!
+	Method(StringType, "hasSuffix").
+		Doc("checks if the string ends with the specified suffix").
+		Params("suffix", NonNull(StringType)).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			suffix := args.GetString("suffix")
+			return ToValue(strings.HasSuffix(str, suffix))
+		})
+
+	// String.contains method: contains(substring: String!) -> Boolean!
+	Method(StringType, "contains").
+		Doc("checks if the string contains the specified substring").
+		Params("substring", NonNull(StringType)).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			substring := args.GetString("substring")
+			return ToValue(strings.Contains(str, substring))
+		})
 }

@@ -1,0 +1,57 @@
+# Test String.hasPrefix, String.hasSuffix, and String.contains methods
+
+# hasPrefix tests
+pub has_prefix_true = "/workspace/file.txt".hasPrefix("/workspace")
+assert { has_prefix_true == true }
+
+pub has_prefix_false = "hello".hasPrefix("goodbye")
+assert { has_prefix_false == false }
+
+pub has_prefix_empty = "test".hasPrefix("")
+assert { has_prefix_empty == true }
+
+pub has_prefix_full = "prefix".hasPrefix("prefix")
+assert { has_prefix_full == true }
+
+pub has_prefix_longer = "pre".hasPrefix("prefix")
+assert { has_prefix_longer == false }
+
+# hasSuffix tests
+pub has_suffix_true = "file.txt".hasSuffix(".txt")
+assert { has_suffix_true == true }
+
+pub has_suffix_false = "hello".hasSuffix("goodbye")
+assert { has_suffix_false == false }
+
+pub has_suffix_empty = "test".hasSuffix("")
+assert { has_suffix_empty == true }
+
+pub has_suffix_full = "suffix".hasSuffix("suffix")
+assert { has_suffix_full == true }
+
+pub has_suffix_longer = "fix".hasSuffix("suffix")
+assert { has_suffix_longer == false }
+
+# contains tests
+pub contains_true = "hello world".contains("world")
+assert { contains_true == true }
+
+pub contains_false = "hello".contains("goodbye")
+assert { contains_false == false }
+
+pub contains_empty = "test".contains("")
+assert { contains_empty == true }
+
+pub contains_full = "exact".contains("exact")
+assert { contains_full == true }
+
+pub contains_middle = "abcdef".contains("cde")
+assert { contains_middle == true }
+
+pub contains_start = "prefix".contains("pre")
+assert { contains_start == true }
+
+pub contains_end = "suffix".contains("fix")
+assert { contains_end == true }
+
+print("String.hasPrefix(), String.hasSuffix(), and String.contains() tests passed!")
