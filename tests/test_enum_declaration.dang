@@ -1,0 +1,9 @@
+# Test declaring enums in Dang source code
+
+enum Color { RED GREEN BLUE }
+
+assert { Color.RED == Color.RED }
+assert { Color.RED != Color.GREEN }
+assert { Color.GREEN != Color.BLUE }
+
+print("Enum declaration tests passed!")

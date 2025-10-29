@@ -205,6 +205,8 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Directives = append(classified.Directives, f)
 		case *ClassDecl:
 			classified.Types = append(classified.Types, f)
+		case *EnumDecl:
+			classified.Types = append(classified.Types, f)
 		case *SlotDecl:
 			if isConstantValue(f.Value) {
 				classified.Constants = append(classified.Constants, f)

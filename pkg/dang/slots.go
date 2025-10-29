@@ -368,3 +368,119 @@ func (c *ClassDecl) Walk(fn func(Node) bool) {
 	}
 	c.Value.Walk(fn)
 }
+
+type EnumDecl struct {
+	InferredTypeHolder
+	Name       *Symbol
+	Values     []*Symbol
+	Visibility Visibility
+	DocString  string
+	Loc        *SourceLocation
+
+	Inferred *Module
+}
+
+func (e *EnumDecl) IsDeclarer() bool {
+	return true
+}
+
+var _ Node = &EnumDecl{}
+var _ Evaluator = &EnumDecl{}
+
+func (e *EnumDecl) DeclaredSymbols() []string {
+	return []string{e.Name.Name}
+}
+
+func (e *EnumDecl) ReferencedSymbols() []string {
+	return nil // Enum declarations don't reference other symbols
+}
+
+func (e *EnumDecl) Body() hm.Expression { return nil }
+
+func (e *EnumDecl) GetSourceLocation() *SourceLocation { return e.Loc }
+
+var _ Hoister = &EnumDecl{}
+
+func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	mod, ok := env.(Env)
+	if !ok {
+		return fmt.Errorf("EnumDecl.Hoist: environment does not support module operations")
+	}
+
+	// Create the enum type (module) if it doesn't exist
+	enumType, found := mod.NamedType(e.Name.Name)
+	if !found {
+		enumType = NewModule(e.Name.Name)
+		mod.AddClass(e.Name.Name, enumType)
+	}
+
+	e.Inferred = enumType.(*Module)
+
+	// Add the enum module to the environment so it can be referenced
+	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
+	enumScheme := hm.NewScheme(nil, enumType)
+	env.Add(e.Name.Name, enumScheme)
+
+	if pass > 0 {
+		// Add each enum value as a field in the enum module
+		for _, value := range e.Values {
+			// Each enum value has the type of the enum itself (not wrapped)
+			valueScheme := hm.NewScheme(nil, enumType)
+			enumType.Add(value.Name, valueScheme)
+
+			// Store doc string if present
+			if e.DocString != "" {
+				mod.SetDocString(e.Name.Name, e.DocString)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	mod, ok := env.(Env)
+	if !ok {
+		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
+	}
+
+	enumType, found := mod.NamedType(e.Name.Name)
+	if !found {
+		enumType = NewModule(e.Name.Name)
+		mod.AddClass(e.Name.Name, enumType)
+
+		if e.DocString != "" {
+			mod.SetDocString(e.Name.Name, e.DocString)
+		}
+	}
+
+	e.Inferred = enumType.(*Module)
+	e.SetInferredType(enumType)
+
+	return enumType, nil
+}
+
+func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Create a module value for the enum
+	enumModule := NewModuleValue(e.Inferred)
+
+	// Add each enum value to the module
+	for _, value := range e.Values {
+		enumModule.Values[value.Name] = EnumValue{
+			Val:      value.Name,
+			EnumType: e.Inferred,
+		}
+	}
+
+	// Register the enum module in the environment
+	env.Set(e.Name.Name, enumModule)
+
+	return enumModule, nil
+}
+
+func (e *EnumDecl) Walk(fn func(Node) bool) {
+	if !fn(e) {
+		return
+	}
+	// Enum values are just symbols, no need to walk them
+}
