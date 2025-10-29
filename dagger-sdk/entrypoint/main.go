@@ -121,7 +121,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 
 	env, err := dang.RunDir(ctx, dag.GraphQLClient(), schema, modSrcDir, debug)
 	if err != nil {
-		return fmt.Errorf("failed to run dir: %w", err)
+		return err
 	}
 
 	dagMod := dag.Module()
