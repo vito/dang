@@ -7,7 +7,6 @@ import (
 
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/querybuilder"
 )
 
@@ -1195,9 +1194,6 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	if err != nil {
 		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err)
 	}
-
-	q, err := query.Build(ctx)
-	fmt.Fprintln(ioctx.StderrFromContext(ctx), q, err)
 
 	// Execute the single optimized query
 	var result any
