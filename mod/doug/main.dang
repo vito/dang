@@ -52,9 +52,10 @@ type Doug {
   }
 
   """
-  Reads a file from the project directory.
+  Reads a file from the project workspace.
 
   HOW TO USE THIS TOOL:
+    - Always make sure the file actually exists before reading it, using Glob.
     - Always use relative paths from the workspace root
     - Reads the first 2000 lines by default
     - Each line is prefixed with a line number followed by an arrow (→).
@@ -94,7 +95,7 @@ type Doug {
   }
 
   """
-  Edits files by replacing text, creating new files, or deleting content. For moving or renaming files, use the BasicShell tool with the 'mv' command instead. For larger file edits, use the Write tool to overwrite files.
+  Edits files by replacing text, creating new files, or deleting content. For larger file edits, use the Write tool to overwrite files.
 
   # Before using this tool, use the ReadFile tool to understand the file's contents and context
 
@@ -169,6 +170,40 @@ type Doug {
   }
 
   """
+  Remove a file or directory from the project workspace.
+  """
+  pub rm(
+    """
+    Relative path within the workspace
+    """
+    path: String!
+  ): Changeset! {
+    source.withoutFile(path).changes(source)
+  }
+
+  # """
+  # Rename (or move) a file within the project workspace.
+
+  # Parent directories for the destination path will be created automatically.
+  # """
+  # pub moveFile(
+  #   """
+  #   Relative path within the workspace of the file or directory to move
+  #   """
+  #   oldPath: String!,
+  #   """
+  #   Destination path within the workspace
+  #   """
+  #   newPath: String!
+  # ): Changeset! {
+  #   source.exists(oldPath, expectedType: "FOO")
+  #   source.
+  #     withFile(newPath, source.file(oldPath)).
+  #     withoutFile(oldPath).
+  #     changes(source)
+  # }
+
+  """
   File writing tool that creates or updates files in the filesystem, allowing you to save or modify text content.
 
   WHEN TO USE THIS TOOL:
@@ -192,8 +227,7 @@ type Doug {
   - Cannot append to files (rewrites the entire file)
 
   TIPS:
-  - Use the View tool first to examine existing files before modifying them
-  - Use the BasicShell tool to verify the correct location when creating new files
+  - Use the ReadFile tool first to examine existing files before modifying them
   - Combine with Glob and Grep tools to find and modify multiple files
   """
   pub write(
@@ -380,16 +414,15 @@ type Doug {
       count += 1
     }
 
-    toJSON({{
-      message: toJSON(count) + " matches found",
-      count: count
-    }})
+    toJSON(count) + " matches found"
   }
 
   """
   Launch a new agent that has access to the same tools and environment.
 
-  When you are searching for a keyword or file and are not confident that you will find the right match on the first try, use the Task tool to perform the search for ou.
+  IMPORTANT: the task's environment is an isolated sandbox. ONLY use this tool for research. All filesystem changes will be discarded.
+
+  When you are searching for a keyword or file and are not confident that you will find the right match on the first try, use the Task tool to perform the search for you.
 
   EXAMPLES:
     - If you are searching for a keyword like "config" or "logger", or for questions like "which file does X?", the Task tool is strongly recommended

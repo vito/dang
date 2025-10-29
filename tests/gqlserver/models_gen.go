@@ -2,6 +2,13 @@
 
 package gqlserver
 
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
+)
+
 type CreateUserInput struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -53,6 +60,7 @@ type User struct {
 	Name   string          `json:"name"`
 	Emails []string        `json:"emails"`
 	Age    *int            `json:"age,omitempty"`
+	Status Status          `json:"status"`
 	Posts  *PostConnection `json:"posts"`
 }
 
@@ -63,4 +71,63 @@ type UserProfile struct {
 	PostCount         *int     `json:"postCount,omitempty"`
 	AveragePostLength *float64 `json:"averagePostLength,omitempty"`
 	Bio               *string  `json:"bio,omitempty"`
+}
+
+type Status string
+
+const (
+	StatusActive   Status = "ACTIVE"
+	StatusInactive Status = "INACTIVE"
+	StatusPending  Status = "PENDING"
+	StatusArchived Status = "ARCHIVED"
+)
+
+var AllStatus = []Status{
+	StatusActive,
+	StatusInactive,
+	StatusPending,
+	StatusArchived,
+}
+
+func (e Status) IsValid() bool {
+	switch e {
+	case StatusActive, StatusInactive, StatusPending, StatusArchived:
+		return true
+	}
+	return false
+}
+
+func (e Status) String() string {
+	return string(e)
+}
+
+func (e *Status) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = Status(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid Status", str)
+	}
+	return nil
+}
+
+func (e Status) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *Status) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e Status) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }

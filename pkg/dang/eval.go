@@ -52,6 +52,7 @@ type GraphQLFunction struct {
 	FnType     *hm.FunctionType
 	Client     graphql.Client
 	Schema     *introspection.Schema
+	TypeEnv    Env                     // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 }
 
@@ -108,6 +109,24 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		if err := query.Execute(ctx); err != nil {
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
+
+		// Check if the return type is an enum
+		if isEnumType(g.Field.TypeRef, g.Schema) {
+			// Convert string result to EnumValue
+			if strVal, ok := result.(string); ok {
+				enumTypeName := getTypeName(g.Field.TypeRef)
+				// Get the enum type from the type environment
+				enumType, found := g.TypeEnv.NamedType(enumTypeName)
+				if !found {
+					return nil, fmt.Errorf("enum type %s not found", enumTypeName)
+				}
+				return EnumValue{
+					Val:      strVal,
+					EnumType: enumType,
+				}, nil
+			}
+		}
+
 		return ToValue(result)
 	}
 
@@ -119,7 +138,8 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		ValType:    g.FnType.Ret(false),
 		Client:     g.Client,
 		Schema:     g.Schema,
-		QueryChain: query, // Pass the query chain for further building
+		TypeEnv:    g.TypeEnv, // Pass along the type environment
+		QueryChain: query,     // Pass the query chain for further building
 	}, nil
 }
 
@@ -131,6 +151,7 @@ type GraphQLValue struct {
 	ValType    hm.Type
 	Client     graphql.Client
 	Schema     *introspection.Schema
+	TypeEnv    Env                     // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 }
 
@@ -139,7 +160,7 @@ func (g GraphQLValue) Type() hm.Type {
 }
 
 func (g GraphQLValue) String() string {
-	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
+	return fmt.Sprintf("gql:Value:%s.%s", g.TypeName, g.Name)
 }
 
 func (g GraphQLValue) MarshalJSON() ([]byte, error) {
@@ -203,6 +224,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		FnType:     fnType,
 		Client:     g.Client,
 		Schema:     g.Schema,
+		TypeEnv:    g.TypeEnv,    // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
 	}, nil
 }
@@ -224,6 +246,29 @@ func NewEvalEnvWithSchema(typeEnv Env, client graphql.Client, schema *introspect
 // populateSchemaFunctions adds GraphQL functions from a schema to an environment
 func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Client, schema *introspection.Schema) {
 	for _, t := range schema.Types {
+		// Add enum values as enum constants for enum types
+		if t.Kind == introspection.TypeKindEnum && len(t.EnumValues) > 0 {
+			// Get the enum type environment
+			enumTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+
+			// Create a module for the enum type
+			enumModuleVal := NewModuleValue(enumTypeEnv)
+
+			// Set each enum value as an EnumValue constant
+			for _, enumVal := range t.EnumValues {
+				enumModuleVal.Set(enumVal.Name, EnumValue{
+					Val:      enumVal.Name,
+					EnumType: enumTypeEnv,
+				})
+			}
+
+			// Add the enum module to the environment
+			env.Set(t.Name, enumModuleVal)
+		}
+
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
 			if err != nil {
@@ -248,7 +293,8 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 				FnType:     fnType,
 				Client:     client,
 				Schema:     schema,
-				QueryChain: nil, // Top-level functions start with no query chain
+				TypeEnv:    typeEnv, // Pass the type environment
+				QueryChain: nil,     // Top-level functions start with no query chain
 			}
 
 			// Add to environment if it's from the Query type
@@ -324,9 +370,27 @@ func isScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) 
 		return true
 	}
 
-	// Check if it's a custom scalar in the schema
+	// Check if it's a custom scalar or enum in the schema
 	for _, t := range schema.Types {
-		if t.Name == currentType.Name && t.Kind == "SCALAR" {
+		if t.Name == currentType.Name && (t.Kind == "SCALAR" || t.Kind == introspection.TypeKindEnum) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Helper function to determine if a GraphQL type is an enum
+func isEnumType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
+	// Unwrap NonNull and List wrappers
+	currentType := typeRef
+	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
+		currentType = currentType.OfType
+	}
+
+	// Check if it's an enum in the schema
+	for _, t := range schema.Types {
+		if t.Name == currentType.Name && t.Kind == introspection.TypeKindEnum {
 			return true
 		}
 	}
@@ -348,6 +412,9 @@ func getTypeName(typeRef *introspection.TypeRef) string {
 func dangValueToGo(val Value) (interface{}, error) {
 	switch v := val.(type) {
 	case StringValue:
+		return v.Val, nil
+	case EnumValue:
+		// Enum values are represented as strings in GraphQL
 		return v.Val, nil
 	case IntValue:
 		return v.Val, nil
@@ -423,6 +490,24 @@ func (s StringValue) String() string {
 
 func (s StringValue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Val)
+}
+
+// EnumValue represents an enum value with a specific enum type
+type EnumValue struct {
+	Val      string
+	EnumType hm.Type
+}
+
+func (e EnumValue) Type() hm.Type {
+	return hm.NonNullType{Type: e.EnumType}
+}
+
+func (e EnumValue) String() string {
+	return e.Val
+}
+
+func (e EnumValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.Val)
 }
 
 // IntValue represents an integer value

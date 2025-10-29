@@ -1,3 +1,10 @@
+enum Status {
+  ACTIVE
+  INACTIVE
+  PENDING
+  ARCHIVED
+}
+
 type Query {
   hello(name: String!): String!
   users: [User!]!
@@ -6,6 +13,7 @@ type Query {
   posts(authorId: String, limit: Int): [Post!]!
   userProfile(userId: String, includeStats: Boolean): UserProfile
   postTitles: [String!]!
+  status: Status!
 }
 
 type Mutation {
@@ -19,6 +27,7 @@ type User {
   name: String!
   emails: [String!]!
   age: Int
+  status: Status!
   posts(first: Int, after: String, last: Int, before: String): PostConnection! @goField(forceResolver: true)
 }
 

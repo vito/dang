@@ -78,6 +78,7 @@ type ComplexityRoot struct {
 		PostTitles  func(childComplexity int) int
 		Posts       func(childComplexity int, authorID *string, limit *int) int
 		ServerInfo  func(childComplexity int) int
+		Status      func(childComplexity int) int
 		User        func(childComplexity int, id string) int
 		UserProfile func(childComplexity int, userID *string, includeStats *bool) int
 		Users       func(childComplexity int) int
@@ -97,6 +98,7 @@ type ComplexityRoot struct {
 		ID     func(childComplexity int) int
 		Name   func(childComplexity int) int
 		Posts  func(childComplexity int, first *int, after *string, last *int, before *string) int
+		Status func(childComplexity int) int
 	}
 
 	UserProfile struct {
@@ -122,6 +124,7 @@ type QueryResolver interface {
 	Posts(ctx context.Context, authorID *string, limit *int) ([]*Post, error)
 	UserProfile(ctx context.Context, userID *string, includeStats *bool) (*UserProfile, error)
 	PostTitles(ctx context.Context) ([]string, error)
+	Status(ctx context.Context) (Status, error)
 }
 type UserResolver interface {
 	Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error)
@@ -283,6 +286,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.ServerInfo(childComplexity), true
+	case "Query.status":
+		if e.complexity.Query.Status == nil {
+			break
+		}
+
+		return e.complexity.Query.Status(childComplexity), true
 	case "Query.user":
 		if e.complexity.Query.User == nil {
 			break
@@ -378,6 +387,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.Posts(childComplexity, args["first"].(*int), args["after"].(*string), args["last"].(*int), args["before"].(*string)), true
+	case "User.status":
+		if e.complexity.User.Status == nil {
+			break
+		}
+
+		return e.complexity.User.Status(childComplexity), true
 
 	case "UserProfile.averagePostLength":
 		if e.complexity.UserProfile.AveragePostLength == nil {
@@ -756,6 +771,8 @@ func (ec *executionContext) fieldContext_Mutation_createUser(ctx context.Context
 				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
 			case "posts":
 				return ec.fieldContext_User_posts(ctx, field)
 			}
@@ -809,6 +826,8 @@ func (ec *executionContext) fieldContext_Mutation_updateUser(ctx context.Context
 				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
 			case "posts":
 				return ec.fieldContext_User_posts(ctx, field)
 			}
@@ -1105,6 +1124,8 @@ func (ec *executionContext) fieldContext_Post_author(_ context.Context, field gr
 				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
 			case "posts":
 				return ec.fieldContext_User_posts(ctx, field)
 			}
@@ -1296,6 +1317,8 @@ func (ec *executionContext) fieldContext_Query_users(_ context.Context, field gr
 				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
 			case "posts":
 				return ec.fieldContext_User_posts(ctx, field)
 			}
@@ -1338,6 +1361,8 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
 			case "posts":
 				return ec.fieldContext_User_posts(ctx, field)
 			}
@@ -1531,6 +1556,35 @@ func (ec *executionContext) fieldContext_Query_postTitles(_ context.Context, fie
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_status(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_status,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Query().Status(ctx)
+		},
+		nil,
+		ec.marshalNStatus2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐStatus,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Status does not have child fields")
 		},
 	}
 	return fc, nil
@@ -1905,6 +1959,35 @@ func (ec *executionContext) fieldContext_User_age(_ context.Context, field graph
 	return fc, nil
 }
 
+func (ec *executionContext) _User_status(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_status,
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		ec.marshalNStatus2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐStatus,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Status does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _User_posts(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1984,6 +2067,8 @@ func (ec *executionContext) fieldContext_UserProfile_user(_ context.Context, fie
 				return ec.fieldContext_User_emails(ctx, field)
 			case "age":
 				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
 			case "posts":
 				return ec.fieldContext_User_posts(ctx, field)
 			}
@@ -4052,6 +4137,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "status":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_status(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -4170,6 +4277,11 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			}
 		case "age":
 			out.Values[i] = ec._User_age(ctx, field, obj)
+		case "status":
+			out.Values[i] = ec._User_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "posts":
 			field := field
 
@@ -4746,6 +4858,16 @@ func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋvitoᚋdangᚋt
 		return graphql.Null
 	}
 	return ec._ServerInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNStatus2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐStatus(ctx context.Context, v any) (Status, error) {
+	var res Status
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNStatus2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐStatus(ctx context.Context, sel ast.SelectionSet, v Status) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {

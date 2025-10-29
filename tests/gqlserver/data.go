@@ -9,8 +9,8 @@ var posts []*Post
 func init() {
 	// Initialize users first
 	users = []*User{
-		{ID: "1", Name: "John Doe", Emails: []string{"john@example.com", "john.doe@work.com"}, Age: func(i int) *int { return &i }(30)},
-		{ID: "2", Name: "Jane Smith", Emails: []string{"jane@example.com"}, Age: func(i int) *int { return &i }(25)},
+		{ID: "1", Name: "John Doe", Emails: []string{"john@example.com", "john.doe@work.com"}, Age: func(i int) *int { return &i }(30), Status: StatusActive},
+		{ID: "2", Name: "Jane Smith", Emails: []string{"jane@example.com"}, Age: func(i int) *int { return &i }(25), Status: StatusPending},
 	}
 
 	// Initialize posts with user references - adding more posts to test pagination

@@ -152,6 +152,18 @@ func NewEnv(schema *introspection.Schema) Env {
 		}
 	}
 
+	// Make enum types available as values in the module
+	for _, t := range schema.Types {
+		if t.Kind == introspection.TypeKindEnum {
+			sub, found := env.NamedType(t.Name)
+			if found {
+				// Add the enum type as a scheme that represents the module itself
+				mod.Add(t.Name, hm.NewScheme(nil, sub))
+				mod.SetVisibility(t.Name, PublicVisibility)
+			}
+		}
+	}
+
 	for _, t := range schema.Types {
 		install, found := env.NamedType(t.Name)
 		if !found {
@@ -163,8 +175,20 @@ func NewEnv(schema *introspection.Schema) Env {
 		// TODO assign input fields, maybe input classes are "just" records?
 		//t.InputFields
 
-		// TODO assign enum constructors
-		//t.EnumValues
+		// Assign enum values as string fields for enum types
+		if t.Kind == introspection.TypeKindEnum {
+			for _, enumVal := range t.EnumValues {
+				slog.Debug("adding enum value", "type", t.Name, "value", enumVal.Name)
+				// Enum values are represented with the enum type itself
+				install.Add(enumVal.Name, hm.NewScheme(nil, install))
+				// Enum values are public by default
+				install.SetVisibility(enumVal.Name, PublicVisibility)
+				// Store enum value description as documentation
+				if enumVal.Description != "" {
+					install.SetDocString(enumVal.Name, enumVal.Description)
+				}
+			}
+		}
 
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(env, f.TypeRef)

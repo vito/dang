@@ -1203,7 +1203,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	}
 
 	// Convert GraphQL result to ModuleValue
-	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field)
+	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeEnv)
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
@@ -1280,12 +1280,12 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, ba
 	return builder, nil
 }
 
-func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field) (Value, error) {
+func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeEnv Env) (Value, error) {
 	// Check if the result is a list/slice
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
 		for _, item := range resultSlice {
-			itemValue, err := o.convertGraphQLResultToModule(item, fields, schema, parentField)
+			itemValue, err := o.convertGraphQLResultToModule(item, fields, schema, parentField, typeEnv)
 			if err != nil {
 				return nil, err
 			}
@@ -1300,19 +1300,17 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 	if resultMap, ok := result.(map[string]any); ok {
 		for _, field := range fields {
 			if fieldValue, exists := resultMap[field.Name]; exists {
+				// Check if fieldValue is a list that needs selection applied to each element
+				// Get the field information for the nested selection
+				nestedField := o.getFieldFromParent(field.Name, parentField, schema)
+
 				// Handle nested selections
 				if field.Selection != nil {
-					// Check if fieldValue is a list that needs selection applied to each element
-					// Get the field information for the nested selection
-					var nestedField *introspection.Field
-					if parentField != nil && schema != nil {
-						nestedField = o.getFieldFromParent(field.Name, parentField, schema)
-					}
-
 					if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
+						// Sub-selecting arrays
 						var elements []Value
 						for _, item := range fieldSlice {
-							itemResult, err := field.Selection.convertGraphQLResultToModule(item, field.Selection.Fields, schema, nestedField)
+							itemResult, err := field.Selection.convertGraphQLResultToModule(item, field.Selection.Fields, schema, nestedField, typeEnv)
 							if err != nil {
 								return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q item: %w", field.Name, err)
 							}
@@ -1320,12 +1318,28 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						}
 						resultModuleValue.Set(field.Name, ListValue{Elements: elements})
 					} else {
-						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField)
+						// Sub-selecting objects
+						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeEnv)
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
 						}
 						resultModuleValue.Set(field.Name, nestedResult)
 					}
+				} else if fieldType := schema.Types.Get(o.unwrapType(nestedField.TypeRef).Name); fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
+					// Convert enums
+					strVal, ok := fieldValue.(string)
+					if !ok {
+						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting enum field %q: expected string value, got %T", field.Name, fieldValue)
+					}
+					// Get the enum type from the type environment
+					enumType, found := typeEnv.NamedType(fieldType.Name)
+					if !found {
+						return nil, fmt.Errorf("type not defined for enum: %q", fieldType.Name)
+					}
+					resultModuleValue.Set(field.Name, EnumValue{
+						Val:      strVal,
+						EnumType: enumType,
+					})
 				} else {
 					// Convert GraphQL value to Dang value
 					dangVal, err := ToValue(fieldValue)

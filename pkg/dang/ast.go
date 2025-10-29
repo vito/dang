@@ -241,6 +241,15 @@ func valuesEqual(left, right Value) bool {
 		if r, ok := right.(StringValue); ok {
 			return l.Val == r.Val
 		}
+	case EnumValue:
+		// Compare enum values - must be same value
+		if r, ok := right.(EnumValue); ok {
+			// TODO: test that enums with same constructor but different type are not equal
+			//
+			// more precisely, that should be caught at type checking time, and the
+			// bottom can be simplified
+			return l.EnumType == r.EnumType && l.Val == r.Val
+		}
 	case IntValue:
 		switch r := right.(type) {
 		case IntValue:

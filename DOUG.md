@@ -14,6 +14,12 @@ Read ./llm-notes/*.md to refresh your memory. These are notes written by yoursel
 
 DO NOT add useless notes to ./llm-notes/. Only record and maintain notes that a future version of yourself would benefit from reading.
 
+When updating notes:
+- Write ONLY about the current state, not the previous state
+- Do NOT use phrases like "not X anymore" or "instead of Y" or "previously Z" - these clutter the notes with obsolete information
+- Assume the reader has no knowledge of past implementations
+- Be direct and describe how things work NOW, not how they changed
+
 ## Code Organization
 
 - Don't look for API implementations backing method calls in Dang code - you won't find them in this codebase, because they're all derived from the Dagger GraphQL schema.

@@ -20,6 +20,7 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input CreateUserInput
 		Name:   input.Name,
 		Emails: []string{input.Email},
 		Age:    input.Age,
+		Status: StatusActive,
 	}
 	users = append(users, user)
 	return user, nil
@@ -170,6 +171,11 @@ func (r *queryResolver) PostTitles(ctx context.Context) ([]string, error) {
 		titles = append(titles, post.Title)
 	}
 	return titles, nil
+}
+
+// Status is the resolver for the status field.
+func (r *queryResolver) Status(ctx context.Context) (Status, error) {
+	return StatusActive, nil
 }
 
 // Posts is the resolver for the posts field.
