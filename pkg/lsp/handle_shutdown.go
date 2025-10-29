@@ -13,11 +13,11 @@ func (h *langHandler) handleShutdown(ctx context.Context, conn *jsonrpc2.Conn, r
 			return nil, err
 		}
 	}
-	
+
 	// Clean up default GraphQL provider connection if it exists
 	if h.defaultProvider != nil {
 		h.defaultProvider.Close()
 	}
-	
+
 	return nil, nil
 }

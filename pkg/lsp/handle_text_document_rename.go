@@ -108,7 +108,7 @@ func (h *langHandler) findDeclarations(node dang.Node, symbolName string) []Rang
 				} else {
 					loc = n.GetSourceLocation()
 				}
-				
+
 				if loc != nil {
 					declarations = append(declarations, Range{
 						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
