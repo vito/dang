@@ -173,12 +173,12 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 
 type ClassDecl struct {
 	InferredTypeHolder
-	Name           *Symbol
-	Value          *Block
-	Visibility     Visibility
-	Directives     []*DirectiveApplication
-	DocString      string
-	Loc            *SourceLocation
+	Name       *Symbol
+	Value      *ModuleBlock
+	Visibility Visibility
+	Directives []*DirectiveApplication
+	DocString  string
+	Loc        *SourceLocation
 
 	Inferred          *Module
 	ConstructorFnType *hm.FunctionType

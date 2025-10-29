@@ -10,7 +10,7 @@
 }
 
 Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
-  return &Block{
+  return &ModuleBlock{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
   }, nil
@@ -174,7 +174,7 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
 Class <- TypeToken _ name:IdSymbol directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
   return &ClassDecl{
     Name: name.(*Symbol),
-    Value: block.(*Block),
+    Value: &ModuleBlock{Forms: block.(*Block).Forms, Loc: block.(*Block).Loc},
     Visibility: PublicVisibility, // TODO
     Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),

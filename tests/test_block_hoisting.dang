@@ -1,0 +1,12 @@
+{
+  let a = "a1"
+
+  for {
+    a = "a2"
+    break
+  }
+
+  let b = [a, "b"]
+
+  assert { b == ["a2", "b"] }
+}

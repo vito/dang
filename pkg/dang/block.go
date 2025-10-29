@@ -392,8 +392,26 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			forms = append(forms, &Null{})
 		}
 
-		// Use phased inference approach for proper dependency handling
-		typ, err := InferFormsWithPhases(ctx, forms, newEnv, fresh)
+		// First pass: hoist declarations to make them available for type inference
+		for _, form := range forms {
+			if hoister, ok := form.(Hoister); ok {
+				if err := hoister.Hoist(ctx, newEnv, fresh, 0); err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		// Second pass: infer types in textual order
+		var typ hm.Type
+		var err error
+		for _, form := range forms {
+			if inferer, ok := form.(hm.Inferer); ok {
+				typ, err = inferer.Infer(ctx, newEnv, fresh)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
 
 		// Store the environment for non-inline blocks
 		if !b.Inline {
@@ -417,8 +435,16 @@ func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		newEnv = env.Clone()
 	}
 
-	// Use phased evaluation to match the inference order
-	return EvaluateFormsWithPhases(ctx, forms, newEnv)
+	// Blocks evaluate forms in textual order
+	var result Value = NullValue{}
+	for _, form := range forms {
+		val, err := EvalNode(ctx, newEnv, form)
+		if err != nil {
+			return nil, err
+		}
+		result = val
+	}
+	return result, nil
 }
 
 func (b *Block) Walk(fn func(Node) bool) {
