@@ -6,22 +6,20 @@ let maxResponseLength = 30000
 let workspacePath = "/workspace"
 
 type Doug {
-  let source: Directory! @defaultPath(path: "/")
+  pub source: Directory! @defaultPath(path: "/")
 
   """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.
   """
   pub dev(
     source: Directory!,
-    module: Module!
+    module: Module
   ): LLM! {
-    let envWithWorkspace = env.withWorkspace(source)
-    let finalEnv = if module != null {
-      envWithWorkspace.withModule(module)
-    } else {
-      envWithWorkspace
+    let e = env.withWorkspace(source)
+    if module != null {
+      e = e.withModule(module)
     }
-    agent(base: llm.withEnv(finalEnv))
+    agent(base: llm.withEnv(e))
   }
 
   """
@@ -30,23 +28,19 @@ type Doug {
   pub agent(base: LLM!): LLM! {
     let provider = base.provider
     let promptsDir = currentModule.source.directory("prompts/system/")
-    let entries = promptsDir.entries
     let providerFile = provider + ".txt"
 
-    let found = false
-    for entry in entries {
-      if entry == providerFile {
-        found = true
+    let hasProvider = false
+    for p in promptsDir.entries {
+      if p == providerFile {
+        hasProvider = true
       }
     }
-
-    let systemPromptContents = if found {
+    let systemPromptContents = if hasProvider {
       currentModule.source.file("prompts/system/" + providerFile).contents
     } else {
       currentModule.source.file("prompts/system/doug.txt").contents
     }
-
-    let reminderPromptText = reminderPrompt(base.env.workspace)
 
     base.
       withEnv(
@@ -54,7 +48,7 @@ type Doug {
           withCurrentModule.
           withStringInput("TODOs", "", "Your TODO list")).
       withSystemPrompt(systemPromptContents).
-      withSystemPrompt(reminderPromptText)
+      withSystemPrompt(reminderPrompt(base.env.workspace))
   }
 
   """
@@ -90,44 +84,12 @@ type Doug {
     if fileContents == "" {
       "WARNING: File contents are empty."
     } else {
-      # Split contents into lines and add line numbers
-      let lines = fileContents.split("\n", 0)
-      let startLine = offset + 1
-
-      # Build numbered lines using a for loop
-      let result = ""
-      for i, line in lines {
-        let lineNo = startLine + i
-
-        # Format with 6-character width padding
-        let padding = if lineNo < 10 {
-          "     "
-        } else {
-          if lineNo < 100 {
-            "    "
-          } else {
-            if lineNo < 1000 {
-              "   "
-            } else {
-              if lineNo < 10000 {
-                "  "
-              } else {
-                if lineNo < 100000 {
-                  " "
-                } else {
-                  ""
-                }
-              }
-            }
-          }
-        }
-
-        let numberedLine = padding + toJSON(lineNo) + "→" + line
-        result += numberedLine + "\n"
+      let numbered = ""
+      for i, line in fileContents.split("\n", 0) {
+        # TODO: template
+        numbered += toJSON(offset+i+1).padLeft(6) + "→" + line + "\n"
       }
-
-      # Remove trailing newline
-      result.trimSuffix("\n")
+      numbered.trimSuffix("\n")
     }
   }
 
@@ -295,11 +257,16 @@ type Doug {
     # Filter out hidden files
     let output = ""
     for path in result {
-      # Check if any path component starts with "."
-      # Since we don't have string.split(), we'll use a simpler approach
-      # and just check if the path contains "/." which would indicate a hidden directory
-      # This is a simplification - the Go version was more thorough
-      output = output + path + "\n"
+      let hasDotFile = false
+      for part in path.split("/") {
+        if part.hasPrefix(".") {
+          hasDotFile = true
+          break
+        }
+      }
+      if !hasDotFile {
+        output += path + "\n"
+      }
     }
 
     if output == "" {
@@ -391,10 +358,8 @@ type Doug {
     limit: Int! = 1000
   ): String! {
     let normalizedPaths = [] :: [String!]!
-    if paths != null {
-      for p in paths {
-        normalizedPaths = normalizedPaths + [normalize(p)]
-      }
+    for p in paths {
+      normalizedPaths += [normalize(p)]
     }
 
     let matches = source.search(
@@ -411,8 +376,8 @@ type Doug {
 
     # Count matches - we need to iterate since we don't have .length
     let count = 0
-    for m in matches {
-      count = count + 1
+    for m in matches.{id} {
+      count += 1
     }
 
     toJSON({{
@@ -524,36 +489,33 @@ type Doug {
         # Only keep existing TODOs that aren't being updated
         if !isUpdating {
           if state == "completed" {
-            existingCompleted = existingCompleted + [description]
+            existingCompleted += [description]
+          } else if state == "in_progress" {
+            existingInProgress += [description]
           } else {
-            if state == "in_progress" {
-              existingInProgress = existingInProgress + [description]
-            } else {
-              existingPending = existingPending + [description]
-            }
+            existingPending = existingPending + [description]
           }
         }
       }
     }
 
-    let completedList = existingCompleted + completed
-    let inProgressList = existingInProgress + inProgress
-    let pendingList = existingPending + pending
+    # TODO: these get hoisted and run before the loop above - ew!
+    # let completedList = existingCompleted + completed
 
     let formattedTodos = ""
     let encodedTodos = ""
 
-    for todo in completedList {
-      encodedTodos = encodedTodos + "completed:" + todo + "\n"
-      formattedTodos = formattedTodos + "■ \u001b[32m\u001b[9m" + todo + "\u001b[0m\n"
+    for todo in existingCompleted + completed {
+      encodedTodos += "completed:" + todo + "\n"
+      formattedTodos += "■ \u001b[32m\u001b[9m" + todo + "\u001b[0m\n"
     }
-    for todo in inProgressList {
-      encodedTodos = encodedTodos + "in_progress:" + todo + "\n"
-      formattedTodos = formattedTodos + "□ \u001b[33m" + todo + "\u001b[0m\n"
+    for todo in existingInProgress + inProgress {
+      encodedTodos += "in_progress:" + todo + "\n"
+      formattedTodos += "□ \u001b[33m" + todo + "\u001b[0m\n"
     }
-    for todo in pendingList {
-      encodedTodos = encodedTodos + "pending:" + todo + "\n"
-      formattedTodos = formattedTodos + "□ \u001b[37m" + todo + "\u001b[0m\n"
+    for todo in  existingPending + pending {
+      encodedTodos += "pending:" + todo + "\n"
+      formattedTodos += "□ \u001b[37m" + todo + "\u001b[0m\n"
     }
 
     print(formattedTodos)

@@ -1,0 +1,5 @@
+{
+  "name": "doug",
+  "engineVersion": "v0.19.2",
+  "sdk": "../../dagger-sdk"
+}

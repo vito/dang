@@ -13,8 +13,7 @@
     },
     {
       "name": "doug",
-      "source": "github.com/dagger/dagger/modules/doug@main",
-      "pin": "94c7f125b573d7b93caa2900d2f97f71f75ebe20"
+      "source": "../doug"
     }
   ]
 }
