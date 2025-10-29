@@ -23,6 +23,7 @@ const (
 
 func New(
 	// +defaultPath="/"
+	// +ignore=["mod", ".dagger", ".claude", "bin"]
 	dangRoot *dagger.Directory,
 ) *DangSdk {
 	return &DangSdk{

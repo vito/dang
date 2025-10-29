@@ -30,6 +30,8 @@ const introspectionJSON = "/introspection.json"
 
 func main() {
 	ctx := context.Background()
+	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
+	ctx = ioctx.StderrToContext(ctx, os.Stderr)
 
 	ctx = telemetry.InitEmbedded(ctx, resource.NewWithAttributes(
 		semconv.SchemaURL,
