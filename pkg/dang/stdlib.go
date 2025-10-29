@@ -188,4 +188,66 @@ func registerStdlib() {
 			substring := args.GetString("substring")
 			return ToValue(strings.Contains(str, substring))
 		})
+
+	// String.padRight method: padRight(width: Int!) -> String!
+	Method(StringType, "padRight").
+		Doc("pads the string with spaces on the right to reach the specified width").
+		Params("width", NonNull(IntType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			width := args.GetInt("width")
+			
+			// If the string is already at or longer than the target width, return as-is
+			if len(str) >= width {
+				return ToValue(str)
+			}
+			
+			// Pad with spaces to reach the target width
+			padded := str + strings.Repeat(" ", width-len(str))
+			return ToValue(padded)
+		})
+
+	// String.padLeft method: padLeft(width: Int!) -> String!
+	Method(StringType, "padLeft").
+		Doc("pads the string with spaces on the left to reach the specified width").
+		Params("width", NonNull(IntType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			width := args.GetInt("width")
+			
+			// If the string is already at or longer than the target width, return as-is
+			if len(str) >= width {
+				return ToValue(str)
+			}
+			
+			// Pad with spaces to reach the target width
+			padded := strings.Repeat(" ", width-len(str)) + str
+			return ToValue(padded)
+		})
+
+	// String.center method: center(width: Int!) -> String!
+	Method(StringType, "center").
+		Doc("centers the string within the specified width by padding with spaces on both sides").
+		Params("width", NonNull(IntType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			width := args.GetInt("width")
+			
+			// If the string is already at or longer than the target width, return as-is
+			if len(str) >= width {
+				return ToValue(str)
+			}
+			
+			// Calculate padding needed
+			totalPad := width - len(str)
+			leftPad := totalPad / 2
+			rightPad := totalPad - leftPad
+			
+			// Center the string
+			centered := strings.Repeat(" ", leftPad) + str + strings.Repeat(" ", rightPad)
+			return ToValue(centered)
+		})
 }

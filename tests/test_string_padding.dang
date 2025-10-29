@@ -1,0 +1,45 @@
+# Test all String padding methods
+
+# padRight tests
+pub padright_basic = "hello".padRight(10)
+assert { padright_basic == "hello     " }
+
+pub padright_already_long = "hello world".padRight(5)
+assert { padright_already_long == "hello world" }
+
+pub padright_exact = "hello".padRight(5)
+assert { padright_exact == "hello" }
+
+pub padright_empty = "".padRight(5)
+assert { padright_empty == "     " }
+
+# padLeft tests
+pub padleft_basic = "hello".padLeft(10)
+assert { padleft_basic == "     hello" }
+
+pub padleft_already_long = "hello world".padLeft(5)
+assert { padleft_already_long == "hello world" }
+
+pub padleft_exact = "hello".padLeft(5)
+assert { padleft_exact == "hello" }
+
+pub padleft_empty = "".padLeft(5)
+assert { padleft_empty == "     " }
+
+# center tests
+pub center_basic = "hello".center(11)
+assert { center_basic == "   hello   " }
+
+pub center_odd_padding = "hello".center(10)
+assert { center_odd_padding == "  hello   " }
+
+pub center_already_long = "hello world".center(5)
+assert { center_already_long == "hello world" }
+
+pub center_exact = "hello".center(5)
+assert { center_exact == "hello" }
+
+pub center_empty = "".center(5)
+assert { center_empty == "     " }
+
+print("All String padding tests passed!")
