@@ -20,7 +20,7 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
 			writer := ioctx.StdoutFromContext(ctx)
-			fmt.Fprintln(writer, val.String())
+			fmt.Fprintln(writer, val)
 			return NullValue{}, nil
 		})
 
@@ -197,12 +197,12 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			width := args.GetInt("width")
-			
+
 			// If the string is already at or longer than the target width, return as-is
 			if len(str) >= width {
 				return ToValue(str)
 			}
-			
+
 			// Pad with spaces to reach the target width
 			padded := str + strings.Repeat(" ", width-len(str))
 			return ToValue(padded)
@@ -216,12 +216,12 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			width := args.GetInt("width")
-			
+
 			// If the string is already at or longer than the target width, return as-is
 			if len(str) >= width {
 				return ToValue(str)
 			}
-			
+
 			// Pad with spaces to reach the target width
 			padded := strings.Repeat(" ", width-len(str)) + str
 			return ToValue(padded)
@@ -235,17 +235,17 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			width := args.GetInt("width")
-			
+
 			// If the string is already at or longer than the target width, return as-is
 			if len(str) >= width {
 				return ToValue(str)
 			}
-			
+
 			// Calculate padding needed
 			totalPad := width - len(str)
 			leftPad := totalPad / 2
 			rightPad := totalPad - leftPad
-			
+
 			// Center the string
 			centered := strings.Repeat(" ", leftPad) + str + strings.Repeat(" ", rightPad)
 			return ToValue(centered)

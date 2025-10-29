@@ -8,13 +8,13 @@ import (
 )
 
 // FindNodeAt returns the most specific AST node at the given position
-func FindNodeAt(block *dang.Block, line, col int) dang.Node {
-	if block == nil {
+func FindNodeAt(root dang.Node, line, col int) dang.Node {
+	if root == nil {
 		return nil
 	}
 
 	var found dang.Node
-	block.Walk(func(node dang.Node) bool {
+	root.Walk(func(node dang.Node) bool {
 		loc := node.GetSourceLocation()
 		if loc == nil {
 			return true
@@ -93,10 +93,10 @@ func positionWithinNode(node dang.Node, pos Position) bool {
 
 // FindReceiverAt finds the receiver expression for a Select node at the cursor
 // For "container.withDir", when cursor is after ".", return the "container" Symbol node
-func FindReceiverAt(block *dang.Block, line, col int) dang.Node {
+func FindReceiverAt(body dang.Node, line, col int) dang.Node {
 	// Find ALL nodes at this position, looking specifically for Select nodes
 	var selectNode *dang.Select
-	block.Walk(func(node dang.Node) bool {
+	body.Walk(func(node dang.Node) bool {
 		loc := node.GetSourceLocation()
 		if loc == nil {
 			slog.Warn("no source location for node", "want", []int{line, col}, "have", fmt.Sprintf("%T", node))
@@ -147,6 +147,10 @@ func findEnclosingEnvironments(root dang.Node, pos Position) []dang.Env {
 		case *dang.FunDecl:
 			if typed.InferredScope != nil {
 				environments = append(environments, typed.InferredScope)
+			}
+		case *dang.ModuleBlock:
+			if typed.Env != nil {
+				environments = append(environments, typed.Env)
 			}
 		case *dang.Block:
 			if typed.Env != nil {

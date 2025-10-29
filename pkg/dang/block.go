@@ -11,9 +11,7 @@ import (
 type Block struct {
 	InferredTypeHolder
 	Forms []Node
-	// Evaluate forms in the current scope, not a nested one.
-	Inline bool
-	Loc    *SourceLocation
+	Loc   *SourceLocation
 
 	// Filled in during inference phase for non-inline blocks
 	Env Env
@@ -382,24 +380,37 @@ var _ hm.Inferer = (*Block)(nil)
 
 func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
-		newEnv := env
-		if !b.Inline {
-			newEnv = env.Clone()
-		}
+		newEnv := env.Clone()
 
 		forms := b.Forms
 		if len(forms) == 0 {
 			forms = append(forms, &Null{})
 		}
 
-		// Use phased inference approach for proper dependency handling
-		typ, err := InferFormsWithPhases(ctx, forms, newEnv, fresh)
-
-		// Store the environment for non-inline blocks
-		if !b.Inline {
-			if dangEnv, ok := newEnv.(Env); ok {
-				b.Env = dangEnv
+		// First pass: hoist declarations to make them available for type inference
+		for _, form := range forms {
+			if hoister, ok := form.(Hoister); ok {
+				if err := hoister.Hoist(ctx, newEnv, fresh, 0); err != nil {
+					return nil, err
+				}
 			}
+		}
+
+		// Second pass: infer types in textual order
+		var typ hm.Type
+		var err error
+		for _, form := range forms {
+			if inferer, ok := form.(hm.Inferer); ok {
+				typ, err = inferer.Infer(ctx, newEnv, fresh)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		// Store the environment
+		if dangEnv, ok := newEnv.(Env); ok {
+			b.Env = dangEnv
 		}
 
 		return typ, err
@@ -412,13 +423,18 @@ func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return NullValue{}, nil
 	}
 
-	newEnv := env
-	if !b.Inline {
-		newEnv = env.Clone()
-	}
+	newEnv := env.Clone()
 
-	// Use phased evaluation to match the inference order
-	return EvaluateFormsWithPhases(ctx, forms, newEnv)
+	// Blocks evaluate forms in textual order
+	var result Value = NullValue{}
+	for _, form := range forms {
+		val, err := EvalNode(ctx, newEnv, form)
+		if err != nil {
+			return nil, err
+		}
+		result = val
+	}
+	return result, nil
 }
 
 func (b *Block) Walk(fn func(Node) bool) {

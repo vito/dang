@@ -64,8 +64,8 @@ type File struct {
 	Version     int
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
-	AST         *dang.Block // Parsed and type-annotated AST
-	TypeEnv     dang.Env    // Type environment after inference
+	AST         *dang.ModuleBlock // Parsed and type-annotated AST
+	TypeEnv     dang.Env          // Type environment after inference
 }
 
 // SymbolTable tracks symbol definitions and references in a file
@@ -236,7 +236,7 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		f.AST = nil
 	} else {
 		// The parser returns a Block
-		block, ok := parsed.(*dang.Block)
+		block, ok := parsed.(*dang.ModuleBlock)
 		if !ok {
 			slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
 			f.Symbols = &SymbolTable{
@@ -354,6 +354,8 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *SymbolTable) {
 	switch n := node.(type) {
 	case *dang.Block:
+		h.collectSymbols(uri, n.Forms, st)
+	case *dang.ModuleBlock:
 		h.collectSymbols(uri, n.Forms, st)
 	case *dang.ClassDecl:
 		// Collect symbols from class body

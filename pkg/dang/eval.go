@@ -817,7 +817,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 		return err
 	}
 
-	node := parsed.(*Block)
+	node := parsed.(*ModuleBlock)
 
 	if debug {
 		pretty.Println(node)
@@ -888,14 +888,14 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
 
-		block := parsed.(*Block)
+		moduleBlock := parsed.(*ModuleBlock)
 		// Add all forms from this file to the combined block
-		allForms = append(allForms, block.Forms...)
+		allForms = append(allForms, moduleBlock.Forms...)
 	}
 
-	// Create a master block containing all forms from all files
+	// Create a master ModuleBlock containing all forms from all files
 	// The phased approach will handle dependency ordering
-	masterBlock := &Block{
+	masterBlock := &ModuleBlock{
 		Forms:  allForms,
 		Inline: true,
 	}
