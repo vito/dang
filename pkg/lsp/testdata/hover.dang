@@ -1,7 +1,7 @@
 # local variable hover
 let hello = 42
 
-hello # test: K -> hover: Int!
+hello # test: K => hover: Int!
 
 # function hover
 """
@@ -11,7 +11,7 @@ pub addNums(x: Int!, y: Int!): Int! {
   x + y
 }
 
-addNums # test: K -> hover: (x: Int!, y: Int!): Int!
+addNums # test: K => hover: (x: Int!, y: Int!): Int!
 
 # function with docs
 """
@@ -22,17 +22,17 @@ pub multiply(x: Int!, y: Int!): Int! {
   x * y
 }
 
-multiply # test: K -> hover: Multiplies two numbers together
+multiply # test: K => hover: Multiplies two numbers together
 
 # builtin hover
-container # test: K -> hover: Container!
+container # test: K => hover: Container!
 
 # field access hover
-container.from # test: 11lK -> hover: Download a container image
+container.from # test: 11lK => hover: Download a container image
 
 type MyModule {
   pub build: File! {
-    generated.file("built") # test: ^K -> hover: Base with ./hack/generate ran.
+    generated.file("built") # test: ^K => hover: Base with ./hack/generate ran.
   }
 
   """
@@ -51,6 +51,6 @@ let obj = {
   let helper = 42
 
   pub value: Int! {
-    helper # test: ^K -> hover: Helper value for the object.
+    helper # test: ^K => hover: Helper value for the object.
   }
 }

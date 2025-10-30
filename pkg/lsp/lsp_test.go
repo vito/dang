@@ -193,23 +193,26 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 		is.NoErr(err)
 		line := string(lineb)
 
-		segs := strings.Split(line, "# test: ")
-		if len(segs) < 2 {
+		line, test, ok := strings.Cut(line, " # test: ")
+		if !ok {
 			continue
 		}
 
 		// Check for hover test (keys -> hover: expected)
-		if strings.Contains(segs[1], " -> hover: ") {
-			parts := strings.Split(segs[1], " -> hover: ")
-			codes := strings.TrimSpace(parts[0])
-			expectedContent := strings.TrimSpace(parts[1])
+		if keys, hover, ok := strings.Cut(test, " => hover: "); ok {
+			codes := strings.TrimSpace(keys)
+			expectedContent := strings.TrimSpace(hover)
 			testHover(t, client, testLine, codes, expectedContent)
 			continue
 		}
 
-		eq := strings.Split(segs[1], " => ")
+		keys, assertion, ok := strings.Cut(test, " => ")
+		if !ok {
+			t.Errorf("invalid test line: %q", line)
+			continue
+		}
 
-		codes := strings.TrimSpace(eq[0])
+		codes := strings.TrimSpace(keys)
 
 		// Split codes on {delay:...} markers
 		parts := strings.Split(codes, "{delay:")
@@ -241,18 +244,20 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 			is.NoErr(err)
 		}
 
-		targetPos := strings.Index(eq[1], "┃")
-		target := strings.ReplaceAll(eq[1], "┃", "")
+		targetPos := strings.Index(assertion, "┃")
+		target := strings.ReplaceAll(assertion, "┃", "")
 		target = strings.ReplaceAll(target, "\\t", "\t")
 
 		is.Eventually(func() bool { // wait for the definition to be found
-			line, err := client.CurrentLine()
+			lineb, err := client.CurrentLine()
 			is.NoErr(err)
+			line := string(lineb)
+			line, _, _ = strings.Cut(line, " # test:")
 
 			pos, err := client.WindowCursor(window)
 			is.NoErr(err)
 
-			idx := strings.Index(string(line), target)
+			idx := strings.Index(line, target)
 			if idx == -1 {
 				t.Logf("L%03d %s\tline %q does not contain %q", testLine, codes, string(line), target)
 				return false
@@ -265,7 +270,7 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 				return false
 			}
 
-			t.Logf("L%03d %s\tmatched: %s", testLine, codes, eq[1])
+			t.Logf("L%03d %s\tmatched: %s", testLine, codes, assertion)
 
 			return true
 		}, 1*time.Second, 100*time.Millisecond)
