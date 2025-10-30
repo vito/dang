@@ -1170,7 +1170,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "caps_symbol",
             "named": true
           }
         ]

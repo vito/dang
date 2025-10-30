@@ -185,7 +185,7 @@ Class <- TypeToken _ name:IdSymbol directives:(_ app:DirectiveApplication { retu
 }
 TypeToken <- "type" !WordChar
 
-Enum <- EnumToken _ name:IdSymbol _ '{' _ values:(first:IdSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfAppend[*Symbol](rest, first), nil }) _ '}' {
+Enum <- EnumToken _ name:IdSymbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfAppend[*Symbol](rest, first), nil }) _ '}' {
   return &EnumDecl{
     Name: name.(*Symbol),
     Values: values.([]*Symbol),

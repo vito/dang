@@ -648,7 +648,7 @@
                 "name": "first",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "id_symbol"
+                  "name": "caps_symbol"
                 }
               },
               {
