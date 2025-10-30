@@ -43,7 +43,7 @@ end
 
 configs['dang'] = {
   default_config = {
-    cmd = { 'dang', '--lsp', '--lsp-log-file', vim.env.PWD .. '/dang-lsp.log' };
+    cmd = { 'dang', '--lsp' };
     filetypes = { 'dang' };
     root_dir = function(fname)
       return "."
@@ -58,4 +58,7 @@ configs['dang'] = {
 lspconfig.dang.setup {
   on_attach = on_attach
 }
+
+vim.lsp.log.set_level 'trace'
+-- require('vim.lsp.log').set_format_func(vim.inspect)
 EOF

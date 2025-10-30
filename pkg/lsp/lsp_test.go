@@ -169,7 +169,11 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 	t.Logf("lines: %d", lineCount)
 
 	t.Cleanup(func() {
-		lspLogs, err := os.ReadFile("dang-lsp.log")
+		var fn string
+		err := client.Eval(`luaeval('vim.lsp.log.get_filename()')`, &fn)
+		is.NoErr(err)
+
+		lspLogs, err := os.ReadFile(fn)
 		if err == nil {
 			t.Logf("language server logs:\n\n%s", string(lspLogs))
 		}

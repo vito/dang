@@ -89,8 +89,8 @@ type File struct {
 	TypeEnv     dang.Env          // Type environment after inference
 
 	// Synchronization for async file processing
-	mu        sync.Mutex
-	cond      *sync.Cond
+	mu         sync.Mutex
+	cond       *sync.Cond
 	processing bool // true while the file is being parsed/typechecked
 }
 
@@ -217,10 +217,13 @@ func (h *langHandler) saveFile(uri DocumentURI) error {
 }
 
 func (h *langHandler) openFile(uri DocumentURI, languageID string, version int) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	f := &File{
 		Text:       "",
 		LanguageID: languageID,
 		Version:    version,
+		processing: true,
 	}
 	f.cond = sync.NewCond(&f.mu)
 	h.files[uri] = f

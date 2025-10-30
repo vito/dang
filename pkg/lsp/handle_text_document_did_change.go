@@ -23,11 +23,9 @@ func (h *langHandler) handleTextDocumentDidChange(ctx context.Context, req *jrpc
 
 	// We use full document sync, so just take the last change which should be the full text
 	text := params.ContentChanges[len(params.ContentChanges)-1].Text
-	go func() {
-		if err := h.updateFile(ctx, params.TextDocument.URI, text, &params.TextDocument.Version); err != nil {
-			slog.WarnContext(ctx, "failed to update file on change", "uri", params.TextDocument.URI, "error", err)
-		}
-	}()
+	if err := h.updateFile(ctx, params.TextDocument.URI, text, &params.TextDocument.Version); err != nil {
+		slog.WarnContext(ctx, "failed to update file on change", "uri", params.TextDocument.URI, "error", err)
+	}
 
 	return nil, nil
 }

@@ -15,10 +15,13 @@ type Dang {
   """
   Return a compiled Dang binary.
   """
-  pub binary: File! {
-    base.
-      withExec(["go", "build", "-o", "/bin/dang", "./cmd/dang"]).
-      file("/bin/dang")
+  pub binary(race: Boolean! = false): File! {
+    let args = ["go", "build"]
+    if race {
+      args += ["-race"]
+    }
+    args += ["-o", "/bin/dang", "./cmd/dang"]
+    base.withExec(args).file("/bin/dang")
   }
 
   """
@@ -71,7 +74,7 @@ type Dang {
       args += ["-run", "LSP/" + filter]
     }
     generated.
-      withFile("/usr/bin/dang", binary). # install binary for LSP tests
+      withFile("/usr/bin/dang", binary(race: true)). # install binary for LSP tests
       withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
