@@ -3,9 +3,9 @@ package lsp
 import (
 	"context"
 
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleWorkspaceDidChangeConfiguration(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
+func (h *langHandler) handleWorkspaceDidChangeConfiguration(ctx context.Context, req *jrpc2.Request) (any, error) {
 	return nil, nil
 }

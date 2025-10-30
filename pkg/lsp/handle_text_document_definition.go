@@ -2,19 +2,18 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleTextDocumentDefinition(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
+func (h *langHandler) handleTextDocumentDefinition(ctx context.Context, req *jrpc2.Request) (any, error) {
+	if !req.HasParams() {
+		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
 	}
 
 	var params DocumentDefinitionParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
+	if err := req.UnmarshalParams(&params); err != nil {
 		return nil, err
 	}
 

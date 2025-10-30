@@ -13,31 +13,52 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
 
 // NewHandler create JSON-RPC handler for this language server.
-func NewHandler() jsonrpc2.Handler {
+func NewHandler(rootCtx context.Context) *langHandler {
 	handler := &langHandler{
+		rootCtx:       rootCtx,
 		files:         make(map[DocumentURI]*File),
-		conn:          nil,
 		moduleSchemas: make(map[string]*moduleSchema),
 		mu:            new(sync.Mutex),
 	}
 
-	return jsonrpc2.HandlerWithError(handler.handle)
+	return handler
+}
+
+// SetServer sets the server instance for the handler.
+func (h *langHandler) SetServer(srv *jrpc2.Server) {
+	h.server = srv
+}
+
+func (h *langHandler) DaggerClient() (*dagger.Client, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.cachedDag != nil {
+		return h.cachedDag, nil
+	}
+	dag, err := dagger.Connect(h.rootCtx)
+	if err != nil {
+		slog.WarnContext(h.rootCtx, "failed to connect to Dagger, will retry on demand", "error", err)
+		return nil, err
+	}
+	h.cachedDag = dag
+	return dag, nil
 }
 
 type langHandler struct {
+	rootCtx  context.Context
 	files    map[DocumentURI]*File
-	conn     *jsonrpc2.Conn
+	server   *jrpc2.Server
 	rootPath string
 	folders  []string
 
-	dag *dagger.Client
+	cachedDag *dagger.Client
 
 	// Per-module schema cache
 	moduleSchemas map[string]*moduleSchema // moduleDir -> schema
@@ -134,7 +155,10 @@ func toURI(path string) DocumentURI {
 }
 
 func (h *langHandler) logMessage(typ MessageType, message string) {
-	h.conn.Notify(
+	if h.server == nil {
+		return
+	}
+	h.server.Notify(
 		context.Background(),
 		"window/logMessage",
 		&LogMessageParams{
@@ -145,22 +169,23 @@ func (h *langHandler) logMessage(typ MessageType, message string) {
 
 // createWorkDoneProgress creates a work done progress token
 func (h *langHandler) createWorkDoneProgress(ctx context.Context, token string) error {
-	if h.conn == nil {
-		return fmt.Errorf("no connection available")
+	if h.server == nil {
+		return fmt.Errorf("no server available")
 	}
 
-	return h.conn.Call(ctx, "window/workDoneProgress/create", &WorkDoneProgressCreateParams{
+	_, err := h.server.Callback(ctx, "window/workDoneProgress/create", &WorkDoneProgressCreateParams{
 		Token: token,
-	}, nil)
+	})
+	return err
 }
 
 // reportProgress reports progress using the work done progress API
 func (h *langHandler) reportProgress(ctx context.Context, token string, value any) error {
-	if h.conn == nil {
+	if h.server == nil {
 		return nil
 	}
 
-	return h.conn.Notify(ctx, "$/progress", &ProgressParams{
+	return h.server.Notify(ctx, "$/progress", &ProgressParams{
 		Token: token,
 		Value: value,
 	})
@@ -441,7 +466,7 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 }
 
 func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f *File) {
-	if h.conn == nil {
+	if h.server == nil {
 		return
 	}
 
@@ -450,7 +475,7 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 		diagnostics = []Diagnostic{}
 	}
 
-	err := h.conn.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
+	err := h.server.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: diagnostics,
 		Version:     f.Version,
@@ -556,7 +581,9 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 	}
 
 	// Check if we have a Dagger client available
-	if h.dag == nil {
+	dag, err := h.DaggerClient()
+	if err != nil {
+		slog.WarnContext(ctx, "failed to get Dagger client", "error", err)
 		// No Dagger client, fall back to default schema
 		slog.WarnContext(ctx, "no Dagger client available, falling back to default", "dir", moduleDir)
 		if h.defaultSchema == nil {
@@ -588,7 +615,7 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 	}
 
 	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
-	client, schema, err := provider.GetDaggerModuleSchema(ctx, h.dag, moduleDir)
+	client, schema, err := provider.GetDaggerModuleSchema(ctx, dag, moduleDir)
 	if err != nil {
 		// If module schema loading fails, fall back to default schema
 		slog.WarnContext(ctx, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
@@ -661,41 +688,42 @@ func (h *langHandler) addFolder(folder string) {
 	}
 }
 
-func (h *langHandler) handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	slog.DebugContext(ctx, "handle", "method", req.Method)
-
-	switch req.Method {
+// Assign implements jrpc2.Assigner
+func (h *langHandler) Assign(ctx context.Context, method string) jrpc2.Handler {
+	switch method {
 	case "initialize":
-		return h.handleInitialize(ctx, conn, req)
+		return h.handleInitialize
 	case "initialized":
-		return
+		return func(ctx context.Context, req *jrpc2.Request) (any, error) {
+			return nil, nil
+		}
 	case "shutdown":
-		return h.handleShutdown(ctx, conn, req)
+		return h.handleShutdown
 	case "textDocument/didOpen":
-		return h.handleTextDocumentDidOpen(ctx, conn, req)
+		return h.handleTextDocumentDidOpen
 	case "textDocument/didChange":
-		return h.handleTextDocumentDidChange(ctx, conn, req)
+		return h.handleTextDocumentDidChange
 	case "textDocument/didSave":
-		return h.handleTextDocumentDidSave(ctx, conn, req)
+		return h.handleTextDocumentDidSave
 	case "textDocument/didClose":
-		return h.handleTextDocumentDidClose(ctx, conn, req)
+		return h.handleTextDocumentDidClose
 	case "textDocument/completion":
-		return h.handleTextDocumentCompletion(ctx, conn, req)
+		return h.handleTextDocumentCompletion
 	case "textDocument/definition":
-		return h.handleTextDocumentDefinition(ctx, conn, req)
+		return h.handleTextDocumentDefinition
 	case "textDocument/hover":
-		return h.handleTextDocumentHover(ctx, conn, req)
+		return h.handleTextDocumentHover
 	case "textDocument/rename":
-		return h.handleTextDocumentRename(ctx, conn, req)
+		return h.handleTextDocumentRename
 	case "workspace/symbol":
-		return h.handleWorkspaceSymbol(ctx, conn, req)
+		return h.handleWorkspaceSymbol
 	case "workspace/didChangeConfiguration":
-		return h.handleWorkspaceDidChangeConfiguration(ctx, conn, req)
+		return h.handleWorkspaceDidChangeConfiguration
 	case "workspace/workspaceFolders":
-		return h.handleWorkspaceWorkspaceFolders(ctx, conn, req)
+		return h.handleWorkspaceWorkspaceFolders
 	case "workspace/didChangeWorkspaceFolders":
-		return h.handleWorkspaceDidChangeWorkspaceFolders(ctx, conn, req)
+		return h.handleWorkspaceDidChangeWorkspaceFolders
 	}
 
-	return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeMethodNotFound, Message: fmt.Sprintf("method not supported: %s", req.Method)}
+	return nil
 }

@@ -11,8 +11,9 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/charmbracelet/fang"
 	"github.com/chzyer/readline"
+	"github.com/creachadair/jrpc2"
+	"github.com/creachadair/jrpc2/channel"
 	"github.com/kr/pretty"
-	"github.com/sourcegraph/jsonrpc2"
 	"github.com/spf13/cobra"
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
@@ -55,7 +56,7 @@ It provides type-safe, composable abstractions for container operations.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Handle LSP mode first
 			if cfg.LSP {
-				return runLSP(cfg)
+				return runLSP(cmd.Context(), cfg)
 			}
 
 			// Handle cache clearing first
@@ -895,7 +896,7 @@ func categorizeTypes(types []*introspection.Type) (objects, interfaces, enums, s
 	return
 }
 
-func runLSP(cfg Config) error {
+func runLSP(ctx context.Context, cfg Config) error {
 	// Set up logging
 	var logDest io.Writer
 	if cfg.LSPLogFile != "" {
@@ -914,22 +915,27 @@ func runLSP(cfg Config) error {
 		level = slog.LevelDebug
 	}
 
-	handler := slog.NewTextHandler(logDest, &slog.HandlerOptions{
+	logHandler := slog.NewTextHandler(logDest, &slog.HandlerOptions{
 		Level: level,
 	})
-	logger := slog.New(handler)
+	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	ctx := context.Background()
 	logger.InfoContext(ctx, "starting LSP server")
 
-	<-jsonrpc2.NewConn(
-		ctx,
-		jsonrpc2.NewBufferedStream(stdrwc{}, jsonrpc2.VSCodeObjectCodec{}),
-		lsp.NewHandler(),
-	).DisconnectNotify()
+	handler := lsp.NewHandler(ctx)
+	srv := jrpc2.NewServer(handler, &jrpc2.ServerOptions{
+		AllowPush: true,
+		Logger:    func(text string) { logger.Debug(text) },
+	})
 
-	logger.InfoContext(ctx, "LSP server closed")
+	// Store server reference in handler for callbacks
+	handler.SetServer(srv)
+
+	// Start handling requests
+	srv.Start(channel.LSP(stdrwc{}, stdrwc{}))
+
+	logger.InfoContext(ctx, "LSP server closed", "error", srv.Wait())
 	return nil
 }
 
@@ -939,11 +945,11 @@ func (stdrwc) Read(p []byte) (int, error) {
 	return os.Stdin.Read(p)
 }
 
-func (c stdrwc) Write(p []byte) (int, error) {
+func (stdrwc) Write(p []byte) (int, error) {
 	return os.Stdout.Write(p)
 }
 
-func (c stdrwc) Close() error {
+func (stdrwc) Close() error {
 	if err := os.Stdin.Close(); err != nil {
 		return err
 	}

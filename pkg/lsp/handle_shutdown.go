@@ -3,13 +3,13 @@ package lsp
 import (
 	"context"
 
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleShutdown(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
+func (h *langHandler) handleShutdown(ctx context.Context, req *jrpc2.Request) (any, error) {
 	// Close the shared Dagger client
-	if h.dag != nil {
-		if err := h.dag.Close(); err != nil {
+	if h.cachedDag != nil {
+		if err := h.cachedDag.Close(); err != nil {
 			return nil, err
 		}
 	}

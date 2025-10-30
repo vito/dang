@@ -2,33 +2,19 @@ package lsp
 
 import (
 	"context"
-	"encoding/json"
-	"log/slog"
 	"os"
 	"path/filepath"
 
-	"dagger.io/dagger"
-	"github.com/sourcegraph/jsonrpc2"
+	"github.com/creachadair/jrpc2"
 )
 
-func (h *langHandler) handleInitialize(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) (result any, err error) {
-	if req.Params == nil {
-		return nil, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams}
-	}
-
-	h.conn = conn
-
-	// Initialize a single Dagger client to be shared across all workspaces/modules
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to connect to Dagger, will retry on demand", "error", err)
-		// Don't fail initialization, just log the warning
-	} else {
-		h.dag = dag
+func (h *langHandler) handleInitialize(ctx context.Context, req *jrpc2.Request) (any, error) {
+	if !req.HasParams() {
+		return nil, jrpc2.Errorf(jrpc2.InvalidParams, "missing parameters")
 	}
 
 	var params InitializeParams
-	if err := json.Unmarshal(*req.Params, &params); err != nil {
+	if err := req.UnmarshalParams(&params); err != nil {
 		return nil, err
 	}
 

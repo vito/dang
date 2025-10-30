@@ -10,13 +10,13 @@ require (
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.2.0
 	github.com/chzyer/readline v1.5.1
+	github.com/creachadair/jrpc2 v1.3.3
 	github.com/dagger/testctx v0.0.5
 	github.com/dagger/testctx/oteltest v0.0.3
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
 	github.com/pkg/errors v0.9.1
-	github.com/sourcegraph/jsonrpc2 v0.2.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vektah/gqlparser/v2 v2.5.30
@@ -37,6 +37,7 @@ require (
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250603201427-c31516f43444 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
+	github.com/creachadair/mds v0.25.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
