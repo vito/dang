@@ -27,9 +27,19 @@ type Env interface {
 	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
 }
 
+// ModuleKind represents the kind of module
+type ModuleKind int
+
+const (
+	ObjectKind ModuleKind = iota
+	EnumKind
+	ScalarKind
+)
+
 // TODO: is this just ClassType? are Classes just named Envs?
 type Module struct {
 	Named string
+	Kind  ModuleKind
 
 	Parent Env
 

@@ -263,6 +263,21 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 	switch v := val.(type) {
 	case string:
 		if modType, ok := fieldType.(*dang.Module); ok && modType != dang.StringType {
+			// Check if this is an enum type
+			if modType.Kind == dang.EnumKind {
+				// It's an enum - return the enum value
+				if enumVal, found := env.Get(modType.Named); found {
+					if enumMod, ok := enumVal.(*dang.ModuleValue); ok {
+						if val, found := enumMod.Get(v); found {
+							return val, nil
+						}
+						return nil, fmt.Errorf("unknown enum value %s.%s", modType.Named, v)
+					}
+				}
+				return nil, fmt.Errorf("enum type %s not found in environment", modType.Named)
+			}
+
+			// Otherwise, assume it's an object ID
 			sel := dang.FunCall{
 				Fun: &dang.Select{
 					Field: fmt.Sprintf("load%sFromID", modType.Named),
@@ -350,7 +365,7 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 		switch val := binding.Value.(type) {
 		case *dang.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
-			objDef, err := createObjectTypeDef(dag, binding.Key, val)
+			objDef, err := createObjectTypeDef(dag, binding.Key, val, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create object %s: %w", binding.Key, err)
 			}
@@ -372,13 +387,25 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 					}
 				}
 			}
-			fnDef, err := createFunction(dag, binding.Key, val.FnType, directives)
+			fnDef, err := createFunction(dag, binding.Key, val.FnType, directives, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create constructor for %s: %w", binding.Key, err)
 			}
 			objDef = objDef.WithConstructor(fnDef)
 
 			dagMod = dagMod.WithObject(objDef)
+
+		case *dang.ModuleValue:
+			// Check if this is an enum by checking its kind
+			if mod, ok := val.Mod.(*dang.Module); ok && mod.Kind == dang.EnumKind {
+				enumDef, err := createEnumTypeDef(dag, binding.Key, val)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create enum %s: %w", binding.Key, err)
+				}
+				dagMod = dagMod.WithEnum(enumDef)
+			} else {
+				slog.Info("skipping non-enum module value", "name", binding.Key)
+			}
 
 		default:
 			// Other values (functions, constants, etc.) - for now skip
@@ -393,9 +420,9 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 // arg => directive => directive args
 type ProcessedDirectives = map[string]map[string]map[string]any
 
-func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, directives ProcessedDirectives) (*dagger.Function, error) {
+func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, directives ProcessedDirectives, env dang.EvalEnv) (*dagger.Function, error) {
 	// Convert Dang function type to Dagger TypeDef
-	retTypeDef, err := dangTypeToTypeDef(dag, fn.Ret(false))
+	retTypeDef, err := dangTypeToTypeDef(dag, fn.Ret(false), env)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type for %s: %w", fn, err)
 	}
@@ -407,7 +434,7 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
 		}
-		typeDef, err := dangTypeToTypeDef(dag, argType)
+		typeDef, err := dangTypeToTypeDef(dag, argType, env)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
@@ -484,7 +511,7 @@ func evalConstantValue(node dang.Node) (any, error) {
 	}
 }
 
-func createObjectTypeDef(dag *dagger.Client, name string, module *dang.ConstructorFunction) (*dagger.TypeDef, error) {
+func createObjectTypeDef(dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv) (*dagger.TypeDef, error) {
 	objDef := dag.TypeDef().WithObject(name)
 
 	// Process public methods in the class
@@ -497,7 +524,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 		case *hm.FunctionType:
 			fn := x
 			// TODO: figure out the directives locally
-			fnDef, err := createFunction(dag, name, fn, nil)
+			fnDef, err := createFunction(dag, name, fn, nil, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
 			}
@@ -506,7 +533,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 			}
 			objDef = objDef.WithFunction(fnDef)
 		default:
-			fieldDef, err := dangTypeToTypeDef(dag, slotType)
+			fieldDef, err := dangTypeToTypeDef(dag, slotType, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create field %s: %w", name, err)
 			}
@@ -521,12 +548,24 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 	return objDef, nil
 }
 
-func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type) (ret *dagger.TypeDef, rerr error) {
+// createEnumTypeDef creates a Dagger enum TypeDef from a Dang enum ModuleValue
+func createEnumTypeDef(dag *dagger.Client, name string, enumMod *dang.ModuleValue) (*dagger.TypeDef, error) {
+	enumDef := dag.TypeDef().WithEnum(name)
+
+	// Add each enum value as a member
+	for memberName := range enumMod.Values {
+		enumDef = enumDef.WithEnumMember(memberName)
+	}
+
+	return enumDef, nil
+}
+
+func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type, env dang.EvalEnv) (ret *dagger.TypeDef, rerr error) {
 	def := dag.TypeDef()
 
 	if nonNull, isNonNull := dangType.(hm.NonNullType); isNonNull {
 		// Handle non-null wrapper
-		sub, err := dangTypeToTypeDef(dag, nonNull.Type)
+		sub, err := dangTypeToTypeDef(dag, nonNull.Type, env)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert non-null type: %w", err)
 		}
@@ -537,7 +576,7 @@ func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type) (ret *dagger.TypeDe
 
 	switch t := dangType.(type) {
 	case dang.ListType:
-		elemTypeDef, err := dangTypeToTypeDef(dag, t.Type)
+		elemTypeDef, err := dangTypeToTypeDef(dag, t.Type, env)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert list element type: %w", err)
 		}
@@ -558,6 +597,16 @@ func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type) (ret *dagger.TypeDe
 			// ad-hoc object type like {{foo: 1}}
 			return nil, fmt.Errorf("cannot directly expose ad-hoc object type: %s", t)
 		default:
+			// Check if this is an enum by looking up the value in the environment
+			if val, found := env.Get(t.Named); found {
+				if modVal, ok := val.(*dang.ModuleValue); ok {
+					if mod, ok := modVal.Mod.(*dang.Module); ok && mod.Kind == dang.EnumKind {
+						// It's an enum type - just reference it by name
+						// The enum TypeDef is already registered in the module
+						return def.WithEnum(t.Named), nil
+					}
+				}
+			}
 			// assume object (TODO?)
 			return def.WithObject(t.Named), nil
 		}

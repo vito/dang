@@ -411,6 +411,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	enumType, found := mod.NamedType(e.Name.Name)
 	if !found {
 		enumType = NewModule(e.Name.Name)
+		enumType.(*Module).Kind = EnumKind
 		mod.AddClass(e.Name.Name, enumType)
 	}
 
@@ -447,6 +448,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	enumType, found := mod.NamedType(e.Name.Name)
 	if !found {
 		enumType = NewModule(e.Name.Name)
+		enumType.(*Module).Kind = EnumKind
 		mod.AddClass(e.Name.Name, enumType)
 
 		if e.DocString != "" {
@@ -473,7 +475,7 @@ func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Register the enum module in the environment
-	env.Set(e.Name.Name, enumModule)
+	env.SetWithVisibility(e.Name.Name, enumModule, e.Visibility)
 
 	return enumModule, nil
 }

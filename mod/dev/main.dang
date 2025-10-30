@@ -102,6 +102,40 @@ type Dev {
       combinedOutput
   }
 
+  let daggerVersion = "0.19.3"
+
+  """
+  Run a dagger command and return its output.
+  """
+  pub dagger(args: [String!]!): String! {
+    let engine = container.
+      from("registry.dagger.io/engine:v"+daggerVersion).
+      withExposedPort(1234).
+      withMountedCache("/var/lib/dagger",
+        cacheVolume("dang-dagger"),
+        sharing: CacheSharingMode.LOCKED).
+      asService(
+        args: [
+          "--addr", "tcp://0.0.0.0:1234",
+          "--network-name", "dang-dagger",
+          "--network-cidr", "10.98.0.0/16",
+        ]
+        useEntrypoint: true
+        insecureRootCapabilities: true
+      )
+
+    apko.wolfi(["bash", "curl"]).
+      withServiceBinding("dagger", engine).
+      withEnvVariable("_EXPERIMENTAL_DAGGER_RUNNER_HOST", engine.endpoint(scheme: "tcp")).
+      withExec(["sh", "-c",
+        "curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION="+daggerVersion+" BIN_DIR=/usr/local/bin sh"
+      ]).
+      withWorkdir("/workspace").
+      withDirectory(".", source).
+      withExec(["dagger", "--progress=report"] + args).
+      combinedOutput
+  }
+
   """
   A common environment just to minimize building for utilities like RunGit,
   RunGithub, etc.
