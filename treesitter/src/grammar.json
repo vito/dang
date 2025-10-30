@@ -189,7 +189,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 138,
+      "value": 140,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -350,7 +350,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 132,
+      "value": 134,
       "content": {
         "type": "SEQ",
         "members": [
@@ -413,7 +413,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 131,
+      "value": 133,
       "content": {
         "type": "SEQ",
         "members": [
@@ -661,7 +661,7 @@
                     "name": "v",
                     "content": {
                       "type": "SYMBOL",
-                      "name": "id_symbol"
+                      "name": "caps_symbol"
                     }
                   }
                 }
@@ -1063,6 +1063,33 @@
             {
               "type": "PATTERN",
               "value": "[a-zA-Z0-9_]*"
+            }
+          ]
+        }
+      }
+    },
+    "caps_symbol": {
+      "type": "FIELD",
+      "name": "name",
+      "content": {
+        "type": "SYMBOL",
+        "name": "caps_token"
+      }
+    },
+    "caps_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "PATTERN",
+              "value": "[A-Z]"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[A-Z0-9_]*"
             }
           ]
         }

@@ -699,6 +699,22 @@
     }
   },
   {
+    "type": "caps_symbol",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "caps_token",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "class",
     "named": true,
     "fields": {
@@ -1174,7 +1190,7 @@
         "required": false,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "caps_symbol",
             "named": true
           }
         ]
@@ -1184,7 +1200,7 @@
         "required": false,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "caps_symbol",
             "named": true
           }
         ]
@@ -3367,6 +3383,10 @@
   },
   {
     "type": "break_token",
+    "named": true
+  },
+  {
+    "type": "caps_token",
     "named": true
   },
   {
