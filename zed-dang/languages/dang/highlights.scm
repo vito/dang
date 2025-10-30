@@ -5,6 +5,7 @@
 ] @keyword
 [
   (type_token)
+  (enum_token)
   (if_token)
   (else_token)
   (for_token)
@@ -89,6 +90,10 @@
 ;; Class definitions
 (class
   (id_symbol) @type)
+(enum
+  (id_symbol) @type)
+(enum
+  (caps_symbol) @property)
 
 ;; Special highlighting for print function
 (symbol) @variable
