@@ -51,10 +51,11 @@ type Declarer interface {
 }
 
 func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
+	newEnv := env.Clone()
 	var errs []error
 	for _, form := range b.Forms {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, env, fresh, depth); err != nil {
+			if err := hoister.Hoist(ctx, newEnv, fresh, depth); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -384,38 +385,40 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		newEnv := env.Clone()
 
+		// Store the environment, even if inference fails
+		if dangEnv, ok := newEnv.(Env); ok {
+			b.Env = dangEnv
+		}
+
 		forms := b.Forms
 		if len(forms) == 0 {
 			forms = append(forms, &Null{})
 		}
 
-		// First pass: hoist declarations to make them available for type inference
-		for _, form := range forms {
-			if hoister, ok := form.(Hoister); ok {
-				if err := hoister.Hoist(ctx, newEnv, fresh, 0); err != nil {
-					return nil, err
-				}
-			}
-		}
+		// Collect all inference errors rather than bailing on the first sign of
+		// trouble, so that the LSP has something to work with
+		errs := &InferenceErrors{}
 
-		// Second pass: infer types in textual order
 		var typ hm.Type
 		var err error
 		for _, form := range forms {
 			if inferer, ok := form.(hm.Inferer); ok {
 				typ, err = inferer.Infer(ctx, newEnv, fresh)
 				if err != nil {
-					return nil, err
+					errs.Add(err)
 				}
 			}
 		}
 
-		// Store the environment
-		if dangEnv, ok := newEnv.(Env); ok {
-			b.Env = dangEnv
+		if errs.HasErrors() {
+			// Return all collected inference errors
+			return nil, errs
 		}
 
-		return typ, err
+		// Set inferred type only if we're able to fully infer
+		b.SetInferredType(typ)
+
+		return typ, nil
 	})
 }
 
