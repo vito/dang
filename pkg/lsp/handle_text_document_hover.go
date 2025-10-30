@@ -21,8 +21,8 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, conn *jsonrpc
 		return nil, err
 	}
 
-	f, ok := h.files[params.TextDocument.URI]
-	if !ok {
+	f := h.waitForFile(params.TextDocument.URI)
+	if f == nil {
 		return nil, nil
 	}
 

@@ -21,8 +21,8 @@ func (h *langHandler) handleTextDocumentRename(ctx context.Context, conn *jsonrp
 
 	slog.InfoContext(ctx, "rename request", "uri", params.TextDocument.URI, "position", params.Position, "newName", params.NewName)
 
-	f, ok := h.files[params.TextDocument.URI]
-	if !ok {
+	f := h.waitForFile(params.TextDocument.URI)
+	if f == nil {
 		slog.WarnContext(ctx, "file not found for rename", "uri", params.TextDocument.URI)
 		return nil, nil
 	}

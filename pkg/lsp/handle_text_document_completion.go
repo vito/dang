@@ -19,8 +19,8 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, conn *js
 		return nil, err
 	}
 
-	f, ok := h.files[params.TextDocument.URI]
-	if !ok {
+	f := h.waitForFile(params.TextDocument.URI)
+	if f == nil {
 		return []CompletionItem{}, nil
 	}
 

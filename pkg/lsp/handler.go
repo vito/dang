@@ -66,6 +66,11 @@ type File struct {
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock // Parsed and type-annotated AST
 	TypeEnv     dang.Env          // Type environment after inference
+
+	// Synchronization for async file processing
+	mu        sync.Mutex
+	cond      *sync.Cond
+	processing bool // true while the file is being parsed/typechecked
 }
 
 // SymbolTable tracks symbol definitions and references in a file
@@ -192,18 +197,32 @@ func (h *langHandler) openFile(uri DocumentURI, languageID string, version int) 
 		LanguageID: languageID,
 		Version:    version,
 	}
+	f.cond = sync.NewCond(&f.mu)
 	h.files[uri] = f
 	return nil
 }
 
 func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text string, version *int) error {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	f, ok := h.files[uri]
 	if !ok {
+		h.mu.Unlock()
 		return fmt.Errorf("document not found: %v", uri)
 	}
+
+	// Mark the file as being processed
+	f.mu.Lock()
+	f.processing = true
+	f.mu.Unlock()
+	h.mu.Unlock()
+
+	// Ensure we signal completion when done
+	defer func() {
+		f.mu.Lock()
+		f.processing = false
+		f.cond.Broadcast() // Wake up all waiting handlers
+		f.mu.Unlock()
+	}()
 
 	f.Text = text
 	if version != nil {
@@ -275,6 +294,27 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	h.publishDiagnostics(ctx, uri, f)
 
 	return nil
+}
+
+// waitForFile waits for a file to finish processing and returns it.
+// Returns nil if the file doesn't exist.
+func (h *langHandler) waitForFile(uri DocumentURI) *File {
+	h.mu.Lock()
+	f, ok := h.files[uri]
+	h.mu.Unlock()
+
+	if !ok {
+		return nil
+	}
+
+	// Wait for processing to complete
+	f.mu.Lock()
+	for f.processing {
+		f.cond.Wait()
+	}
+	f.mu.Unlock()
+
+	return f
 }
 
 func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *SymbolTable {
