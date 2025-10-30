@@ -1,7 +1,9 @@
 {
   "name": "dang",
-  "engineVersion": "v0.18.19-010101000000-dev-5f9e455b2beb",
-  "sdk": "./dagger-sdk",
+  "engineVersion": "v0.19.4",
+  "sdk": {
+    "source": "./dagger-sdk"
+  },
   "dependencies": [
     {
       "name": "apko",
