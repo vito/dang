@@ -1,0 +1,11 @@
+[1m[31mError:[0m required slot "foo" (type String!) has no value
+  [2m[34m--> errors/required_slot_no_value.dang:4:1[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | # This should fail at runtime - can't have a required type without a value[0m
+ [2m[34m[1m  4 | [0mlet foo: String!
+[2m       [31m^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m  6 | print("Should not reach here!")[0m
+ [2m    |[0m
+

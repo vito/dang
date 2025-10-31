@@ -126,6 +126,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	}
 
 	env.Add(s.Name.Name, hm.NewScheme(nil, definedType))
+	s.SetInferredType(definedType)
 	return definedType, nil
 }
 
@@ -138,6 +139,14 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		if s.Value == nil {
+			// Check if this is a required (non-null) type without a value
+			// This is a runtime error - required types must have values
+			if inferredType := s.GetInferredType(); inferredType != nil {
+				if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
+					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType.Name())
+				}
+			}
+
 			// If no value is provided, this is just a type declaration
 			// Add a null value to the environment as a placeholder
 			env.SetWithVisibility(s.Name.Name, NullValue{}, s.Visibility)
