@@ -6,6 +6,7 @@
 [
   (type_token)
   (enum_token)
+  (scalar_token)
   (if_token)
   (else_token)
   (for_token)
@@ -88,12 +89,10 @@
   (id_symbol) @variable.parameter)
 
 ;; Class definitions
-(class
-  (id_symbol) @type)
-(enum
-  (id_symbol) @type)
-(enum
-  (caps_symbol) @property)
+(class (id_symbol) @type)
+(enum (id_symbol) @type)
+(enum (caps_symbol) @property)
+(scalar (id_symbol) @type)
 
 ;; Special highlighting for print function
 (symbol) @variable
