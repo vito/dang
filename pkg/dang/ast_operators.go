@@ -60,7 +60,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 		switch b.OpType {
 		case ArithmeticOp:
 			// Unify types and return the unified type
-			subs, err := hm.Unify(lt, rt)
+			subs, err := hm.Assignable(rt, lt)
 			if err != nil {
 				return nil, err
 			}
@@ -327,7 +327,7 @@ func (d *Default) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 		// left type with the right type.
 
 		// Unify types with subtyping support for nullable/NonNull compatibility
-		subs, err := hm.Unify(lt, rt)
+		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
 			return nil, err
 		}
@@ -747,7 +747,7 @@ func (u *UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 
-		_, err = hm.Unify(exprType, boolType)
+		_, err = hm.Assignable(exprType, boolType)
 		if err != nil {
 			return nil, fmt.Errorf("unary negation requires Boolean type, got %s", exprType)
 		}

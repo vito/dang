@@ -6,59 +6,59 @@ import (
 
 // UnificationError represents errors during unification
 type UnificationError struct {
-	msg string
+	Have, Want Type
 }
 
 func (e UnificationError) Error() string {
-	return e.msg
+	return fmt.Sprintf("cannot use %s as %s", e.Have, e.Want)
 }
 
-// Unify attempts to unify two types, returning a substitution or error
-func Unify(t1, t2 Type) (Subs, error) {
-	return unify(t1, t2)
+// Assignable attempts to unify two types, returning a substitution or error
+func Assignable(have, want Type) (Subs, error) {
+	return unify(have, want)
 }
 
-func unify(t1, t2 Type) (Subs, error) {
+func unify(have, want Type) (Subs, error) {
 	// Handle type variables
-	if tv1, ok := t1.(TypeVariable); ok {
-		return bindVar(tv1, t2)
+	if haveTV, ok := have.(TypeVariable); ok {
+		return bindVar(haveTV, want)
 	}
 
-	if tv2, ok := t2.(TypeVariable); ok {
-		return bindVar(tv2, t1)
+	if wantTV, ok := want.(TypeVariable); ok {
+		return bindVar(wantTV, have)
 	}
 
 	// Handle non-null types
-	if nt1, ok := t1.(NonNullType); ok {
-		if nt2, ok := t2.(NonNullType); ok {
+	if haveNonNull, ok := have.(NonNullType); ok {
+		if wantNonNull, ok := want.(NonNullType); ok {
 			// Both are non-null - unify underlying types
-			return unify(nt1.Type, nt2.Type)
+			return unify(haveNonNull.Type, wantNonNull.Type)
 		}
-		// t1 is non-null, t2 is nullable - unify with underlying type
+		// have non-null, want is nullable - unify with underlying type
 		// NonNull T can unify with T (non-null is subtype of nullable)
-		// return unify(nt1.Type, t2)
-		return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
+		return unify(haveNonNull.Type, want)
+		// return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", have, want)
 	}
 
-	if nt2, ok := t2.(NonNullType); ok {
-		// t2 is non-null, t1 is nullable - not allowed
-		return unify(t1, nt2.Type)
-		// return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
+	if _, ok := want.(NonNullType); ok {
+		// want non-null, t1 is nullable - not allowed
+		// return unify(have, wantNonNull.Type)
+		return nil, UnificationError{have, want}
 	}
 
 	// Handle composite types using Types() method
-	t1Types := t1.Types()
-	t2Types := t2.Types()
+	haveTypes := have.Types()
+	wantTypes := want.Types()
 
-	if t1Types != nil && t2Types != nil {
+	if haveTypes != nil && wantTypes != nil {
 		// Both have component types - check length and unify components
-		if len(t1Types) != len(t2Types) {
-			return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified (different arities)", t1, t2)}
+		if len(haveTypes) != len(wantTypes) {
+			return nil, UnificationError{have, want}
 		}
 
 		var subs Subs = NewSubs()
-		for i, comp1 := range t1Types {
-			comp2 := t2Types[i]
+		for i, comp1 := range haveTypes {
+			comp2 := wantTypes[i]
 			// Apply current substitutions to both components
 			comp1Applied := comp1.Apply(subs).(Type)
 			comp2Applied := comp2.Apply(subs).(Type)
@@ -76,11 +76,11 @@ func unify(t1, t2 Type) (Subs, error) {
 	}
 
 	// Fall back to Type.Eq for atomic types or when only one has component types
-	if t1.Eq(t2) {
+	if have.Eq(want) {
 		return NewSubs(), nil
 	}
 
-	return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
+	return nil, UnificationError{have, want}
 }
 
 // bindVar binds a type variable to a type
@@ -92,7 +92,7 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 
 	// Occurs check
 	if occursCheck(tv, t) {
-		return nil, UnificationError{fmt.Sprintf("Occurs check failed: %s occurs in %s", tv, t)}
+		return nil, fmt.Errorf("Occurs check failed: %s occurs in %s", tv, t)
 	}
 
 	subs := NewSubs()

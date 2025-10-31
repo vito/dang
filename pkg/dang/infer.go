@@ -340,7 +340,7 @@ func (s *solver) solve(cs Constraints) {
 	default:
 		var sub hm.Subs
 		c := cs[0]
-		sub, s.err = hm.Unify(c.a, c.b)
+		sub, s.err = hm.Assignable(c.a, c.b) // TODO: should the order by swapped?
 		defer hm.ReturnSubs(s.sub)
 
 		s.sub = compose(sub, s.sub)

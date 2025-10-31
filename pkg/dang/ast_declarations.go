@@ -55,7 +55,7 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 		if definedArgType != nil && inferredValType != nil {
 			// Try to unify the defined type with the inferred type
 			// This allows [] (inferred as [a]!) to unify with [String!]!
-			_, err := hm.Unify(definedArgType, inferredValType)
+			_, err := hm.Assignable(inferredValType, definedArgType)
 			if err != nil {
 				return nil, fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s, cannot unify: %w", arg.Name.Name, definedArgType, inferredValType, err)
 			}
@@ -145,7 +145,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 
 	// Unify explicit and inferred return types if both exist
 	if definedRet != nil {
-		if _, err := hm.Unify(inferredRet, definedRet); err != nil {
+		if _, err := hm.Assignable(inferredRet, definedRet); err != nil {
 			return nil, NewInferError(fmt.Errorf("return type mismatch: declared %s, inferred %s", definedRet, inferredRet), f.Body)
 		}
 	}
@@ -301,7 +301,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 
 		// For simple assignment, check compatibility
 		if r.Modifier == "=" {
-			if _, err := hm.Unify(targetType, valueType); err != nil {
+			if _, err := hm.Assignable(valueType, targetType); err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
 			return targetType, nil
@@ -1068,7 +1068,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 			}
 
 			// Use type unification instead of equality to allow non-null types to be provided where nullable types are expected
-			if _, err := hm.Unify(expectedType, providedType); err != nil {
+			if _, err := hm.Assignable(providedType, expectedType); err != nil {
 				return fmt.Errorf("argument %q type mismatch: expected %s, got %s", declArg.Name.Name, expectedType, providedType)
 			}
 		}

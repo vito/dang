@@ -48,7 +48,7 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 		if t == nil {
 			t = et
 		} else {
-			subs, err := hm.Unify(t, et)
+			subs, err := hm.Assignable(et, t)
 			if err != nil {
 				return nil, NewInferError(fmt.Errorf("unify index %d: %s", i, err.Error()), l.Elements[i])
 			}

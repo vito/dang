@@ -1,4 +1,4 @@
-[1m[31mError:[0m Unification Fail: String ~ Int cannot be unified
+[1m[31mError:[0m cannot use Int as String
   [2m[34m--> errors/type_mismatch_multiplication.dang:2:14[0m
  [2m    |[0m
  [2m  1 | # Test multiplication type mismatch[0m

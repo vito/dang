@@ -87,6 +87,7 @@ type Dang {
   pub testUpdate: Changeset! {
     generated.
       withExec(["go", "test", "-v", "./tests", "-update"],
+        expect: ReturnType.ANY,
         experimentalPrivilegedNesting: true).
       directory(".").
       changes(generated.directory("."))
