@@ -306,6 +306,21 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			env.Set(t.Name, scalarModuleVal)
 		}
 
+		// Add interface types as available values
+		if t.Kind == introspection.TypeKindInterface {
+			// Get the interface type environment
+			interfaceTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+
+			// Create a module for the interface type (just a type placeholder)
+			interfaceModuleVal := NewModuleValue(interfaceTypeEnv)
+
+			// Add the interface module to the environment
+			env.Set(t.Name, interfaceModuleVal)
+		}
+
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
 			if err != nil {

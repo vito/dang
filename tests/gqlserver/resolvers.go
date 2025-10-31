@@ -188,6 +188,21 @@ func (r *queryResolver) Homepage(ctx context.Context) (string, error) {
 	return "https://dang-lang.dev", nil
 }
 
+// Node is the resolver for the node field.
+func (r *queryResolver) Node(ctx context.Context, id string) (Node, error) {
+	return r.findNodeByID(id)
+}
+
+// Nodes is the resolver for the nodes field.
+func (r *queryResolver) Nodes(ctx context.Context) ([]Node, error) {
+	return r.getAllNodes(), nil
+}
+
+// Timestamped is the resolver for the timestamped field.
+func (r *queryResolver) Timestamped(ctx context.Context) ([]Timestamped, error) {
+	return r.getAllTimestamped(), nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user

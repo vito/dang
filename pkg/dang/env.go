@@ -34,6 +34,7 @@ const (
 	ObjectKind ModuleKind = iota
 	EnumKind
 	ScalarKind
+	InterfaceKind
 )
 
 // TODO: is this just ClassType? are Classes just named Envs?
@@ -49,6 +50,10 @@ type Module struct {
 	directives      map[string]*DirectiveDecl
 	docStrings      map[string]string
 	moduleDocString string
+
+	// Interface tracking
+	interfaces   []Env // Interfaces this type implements
+	implementers []Env // Types that implement this interface (for interface modules)
 }
 
 func NewModule(name string) *Module {
@@ -151,6 +156,10 @@ func NewEnv(schema *introspection.Schema) Env {
 		sub, found := env.NamedType(t.Name)
 		if !found {
 			sub = NewModule(t.Name)
+			// Set module kind based on GraphQL type kind
+			if t.Kind == introspection.TypeKindInterface {
+				sub.(*Module).Kind = InterfaceKind
+			}
 			// Store type description as module documentation
 			if t.Description != "" {
 				sub.SetModuleDocString(t.Description)
@@ -194,6 +203,18 @@ func NewEnv(schema *introspection.Schema) Env {
 			// Add the scalar type as a scheme
 			mod.Add(t.Name, hm.NewScheme(nil, sub))
 			mod.SetVisibility(t.Name, PublicVisibility)
+		}
+	}
+
+	// Make interface types available as values in the module
+	for _, t := range schema.Types {
+		if t.Kind == introspection.TypeKindInterface {
+			sub, found := env.NamedType(t.Name)
+			if found {
+				// Add the interface type as a scheme that represents the module itself
+				mod.Add(t.Name, hm.NewScheme(nil, sub))
+				mod.SetVisibility(t.Name, PublicVisibility)
+			}
 		}
 	}
 
@@ -252,6 +273,39 @@ func NewEnv(schema *introspection.Schema) Env {
 			// Store field description as documentation
 			if f.Description != "" {
 				install.SetDocString(f.Name, f.Description)
+			}
+		}
+	}
+
+	// Link interface implementations
+	for _, t := range schema.Types {
+		// Skip types that don't implement any interfaces
+		if len(t.Interfaces) == 0 {
+			continue
+		}
+
+		// Get the implementing type module
+		implType, found := env.NamedType(t.Name)
+		if !found {
+			continue
+		}
+
+		// For each interface this type implements
+		for _, iface := range t.Interfaces {
+			// Look up the interface module
+			ifaceModule, found := env.NamedType(iface.Name)
+			if !found {
+				slog.Warn("interface not found", "interface", iface.Name, "implementer", t.Name)
+				continue
+			}
+
+			// Link them together
+			if implMod, ok := implType.(*Module); ok {
+				implMod.AddInterface(ifaceModule)
+				slog.Debug("linked interface implementation", "type", t.Name, "interface", iface.Name)
+			}
+			if ifaceMod, ok := ifaceModule.(*Module); ok {
+				ifaceMod.AddImplementer(implType)
 			}
 		}
 	}
@@ -483,7 +537,49 @@ func (t *Module) Eq(other Type) bool {
 		return false
 	}
 	if t.Named != "" {
-		return t == otherMod
+		// Check for exact equality
+		if t == otherMod {
+			return true
+		}
+		// Check for subtyping: if other is an interface that t implements
+		if otherMod.Kind == InterfaceKind && t.ImplementsInterface(otherMod) {
+			return true
+		}
+		// Check reverse: if t is an interface that other implements
+		if t.Kind == InterfaceKind && otherMod.ImplementsInterface(t) {
+			return true
+		}
+		return false
 	}
 	return t.AsRecord().Eq(otherMod.AsRecord())
+}
+
+// AddInterface adds an interface that this type implements
+func (m *Module) AddInterface(iface Env) {
+	m.interfaces = append(m.interfaces, iface)
+}
+
+// GetInterfaces returns the interfaces this type implements
+func (m *Module) GetInterfaces() []Env {
+	return m.interfaces
+}
+
+// AddImplementer adds a type that implements this interface (for interface modules)
+func (m *Module) AddImplementer(impl Env) {
+	m.implementers = append(m.implementers, impl)
+}
+
+// GetImplementers returns the types that implement this interface (for interface modules)
+func (m *Module) GetImplementers() []Env {
+	return m.implementers
+}
+
+// ImplementsInterface checks if this type implements the given interface
+func (m *Module) ImplementsInterface(iface Env) bool {
+	for _, impl := range m.interfaces {
+		if impl == iface {
+			return true
+		}
+	}
+	return false
 }
