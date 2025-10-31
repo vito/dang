@@ -6,7 +6,7 @@ let maxResponseLength = 30000
 let workspacePath = "/workspace"
 
 type Doug {
-  pub source: Directory! @defaultPath(path: "/")
+  let source: Directory! @defaultPath(path: "/")
 
   """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.

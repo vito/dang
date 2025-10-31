@@ -1,0 +1,55 @@
+# Test that private required fields must be included in constructor
+
+# Type with both public and private required fields (no defaults)
+type Foo {
+  pub required: String!
+  let requiredButPrivate: String!
+
+  pub getPrivate: String! {
+    self.requiredButPrivate
+  }
+}
+
+# This should require both arguments to construct
+# The constructor should be: Foo(required: String!, requiredButPrivate: String!)
+let instance = Foo("public_value", "private_value")
+
+assert { instance.required == "public_value" }
+assert { instance.getPrivate == "private_value" }
+
+# Type with private required field and public with default
+type Mixed {
+  pub publicWithDefault: String! = "default"
+  let privateRequired: Int!
+
+  pub getPrivateInt: Int! {
+    self.privateRequired
+  }
+}
+
+# Constructor should require the private field since it has no default
+# Parameters are in declaration order: publicWithDefault, privateRequired
+let mixed1 = Mixed("default", 42)
+assert { mixed1.publicWithDefault == "default" }
+assert { mixed1.getPrivateInt == 42 }
+
+let mixed2 = Mixed("custom", 99)
+assert { mixed2.publicWithDefault == "custom" }
+assert { mixed2.getPrivateInt == 99 }
+
+# Type with private field that HAS a default - should NOT be in constructor
+type WithPrivateDefault {
+  pub publicRequired: String!
+  let privateWithDefault: Int! = 100
+
+  pub getPrivateDefault: Int! {
+    self.privateWithDefault
+  }
+}
+
+# Constructor should only require publicRequired, not privateWithDefault
+let withDefault = WithPrivateDefault("test")
+assert { withDefault.publicRequired == "test" }
+assert { withDefault.getPrivateDefault == 100 }
+
+print("Private required field tests passed!")

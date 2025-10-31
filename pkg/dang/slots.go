@@ -298,19 +298,28 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	return c.ConstructorFnType, nil
 }
 
-// extractConstructorParametersAndCleanBody extracts public non-function slots as constructor
-// parameters and returns the filtered forms that should be evaluated in the class body
+// extractConstructorParametersAndCleanBody extracts public non-function slots and private
+// required slots (no default) as constructor parameters and returns the filtered forms that
+// should be evaluated in the class body
 func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 	var params []*SlotDecl
 
 	for _, form := range c.Value.Forms {
 		if slot, ok := form.(*SlotDecl); ok {
-			// Check if this is a public non-function slot (constructor parameter)
+			// Skip function slots
+			if _, isFun := slot.Value.(*FunDecl); isFun {
+				continue
+			}
+
+			// Include public non-function slots as constructor parameters
 			if slot.Visibility == PublicVisibility {
-				if _, isFun := slot.Value.(*FunDecl); !isFun {
-					// This is a constructor parameter - extract it but don't include in filtered forms
-					params = append(params, slot)
-				}
+				params = append(params, slot)
+				continue
+			}
+
+			// Include private slots that are required (no default value)
+			if slot.Visibility == PrivateVisibility && slot.Value == nil {
+				params = append(params, slot)
 			}
 		}
 	}
