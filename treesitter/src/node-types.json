@@ -28,6 +28,10 @@
         "named": true
       },
       {
+        "type": "interface",
+        "named": true
+      },
+      {
         "type": "reassignment",
         "named": true
       },
@@ -209,11 +213,41 @@
             "named": true
           },
           {
+            "type": "interface",
+            "named": true
+          },
+          {
             "type": "scalar",
             "named": true
           },
           {
             "type": "slot",
+            "named": true
+          }
+        ]
+      },
+      "docstring": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "doc_string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "annotated_header_slot",
+    "named": true,
+    "fields": {
+      "decl": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "header_slot",
             "named": true
           }
         ]
@@ -756,10 +790,54 @@
           }
         ]
       },
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "i": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "implements": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "implements_token",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "&",
+            "named": false
+          },
           {
             "type": "id_symbol",
             "named": true
@@ -1592,6 +1670,69 @@
     }
   },
   {
+    "type": "header_slot",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "annotated_header_slot",
+          "named": true
+        },
+        {
+          "type": "type_and_args_slot",
+          "named": true
+        },
+        {
+          "type": "type_only_fun_slot",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "headers_block",
+    "named": true,
+    "fields": {
+      "e": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "header_slot",
+            "named": true
+          }
+        ]
+      },
+      "eles": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "header_slot",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "header_slot",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "id",
     "named": true,
     "fields": {},
@@ -1737,6 +1878,42 @@
         },
         {
           "type": "non_zero_decimal_digit",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "interface",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "headers_block",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "interface_token",
           "named": true
         }
       ]
@@ -2925,6 +3102,82 @@
     }
   },
   {
+    "type": "type_and_args_slot",
+    "named": true,
+    "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "vis": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "visibility",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "type_and_block_slot",
     "named": true,
     "fields": {
@@ -3111,6 +3364,72 @@
       "types": [
         {
           "type": "double_colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_only_fun_slot",
+    "named": true,
+    "fields": {
+      "app": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "vis": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "visibility",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
           "named": true
         }
       ]
@@ -3340,6 +3659,10 @@
     "named": false
   },
   {
+    "type": "&",
+    "named": false
+  },
+  {
     "type": "(",
     "named": false
   },
@@ -3505,11 +3828,19 @@
     "named": true
   },
   {
+    "type": "implements_token",
+    "named": true
+  },
+  {
     "type": "import_token",
     "named": true
   },
   {
     "type": "in_token",
+    "named": true
+  },
+  {
+    "type": "interface_token",
     "named": true
   },
   {

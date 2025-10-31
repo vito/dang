@@ -235,6 +235,8 @@ func (c *FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNa
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
 			fnEnv.Set(argName, defaultVal)
+		} else {
+			fnEnv.Set(argName, NullValue{})
 		}
 	}
 	return nil

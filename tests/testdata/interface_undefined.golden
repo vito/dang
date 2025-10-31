@@ -1,0 +1,11 @@
+[1m[31mError:[0m interface UndefinedInterface not found
+  [2m[34m--> errors/interface_undefined.dang:3:24[0m
+ [2m    |[0m
+ [2m  1 | # Test implementing an undefined interface[0m
+ [2m  2 | [0m
+ [2m[34m[1m  3 | [0mtype Person implements UndefinedInterface {
+[2m                              [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m  4 |   pub name: String![0m
+ [2m  5 | }[0m
+ [2m    |[0m
+

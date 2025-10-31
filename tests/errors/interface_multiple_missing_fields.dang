@@ -1,0 +1,12 @@
+# Test multiple missing interface fields
+
+interface Contact {
+  pub email: String!
+  pub phone: String!
+  pub name: String!
+}
+
+type Person implements Contact {
+  pub name: String!
+  # Missing: email and phone
+}

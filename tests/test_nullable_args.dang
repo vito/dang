@@ -1,0 +1,7 @@
+type Formatter {
+  pub format(text: String!, prefix: String, suffix: String): String! {
+    (prefix ?? "oh ") + text + (suffix ?? "")
+  }
+}
+
+assert { Formatter.format("hey", suffix: "!") == "oh hey!" }

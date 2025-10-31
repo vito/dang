@@ -204,6 +204,8 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Imports = append(classified.Imports, f)
 		case *DirectiveDecl:
 			classified.Directives = append(classified.Directives, f)
+		case *InterfaceDecl:
+			classified.Types = append(classified.Types, f)
 		case *ClassDecl:
 			classified.Types = append(classified.Types, f)
 		case *EnumDecl:

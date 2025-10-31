@@ -581,3 +581,188 @@ func (m *Module) ImplementsInterface(iface Env) bool {
 	}
 	return false
 }
+
+// validateFieldImplementation validates that a class field correctly implements an interface field
+// according to GraphQL interface implementation rules:
+// - Return types must be covariant (implementation can be more specific)
+// - Argument types must be contravariant (implementation can be more general)
+// - All interface arguments must be present
+// - Additional arguments must be optional
+func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+	// Both must be function types (fields in GraphQL are represented as functions)
+	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
+	classFn, classIsFn := classFieldType.(*hm.FunctionType)
+
+	// If interface field is not a function, class field must match exactly
+	if !ifaceIsFn {
+		if !classIsFn {
+			// Both are non-function types - check covariance
+			if !isSubtypeOf(classFieldType, ifaceFieldType) {
+				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
+					fieldName, classFieldType, ifaceFieldType)
+			}
+			return nil
+		}
+		return fmt.Errorf("field %q: class has function type but interface does not", fieldName)
+	}
+
+	// Interface field is a function
+	// Check if it's a zero-argument function (common for GraphQL fields and properties)
+	isZeroArgFn := false
+	if ifaceFn != nil {
+		if rt, ok := ifaceFn.Arg().(*RecordType); ok {
+			isZeroArgFn = len(rt.Fields) == 0
+		}
+	}
+
+	// If interface has a zero-arg function and class has a simple field, unwrap and compare
+	if isZeroArgFn && !classIsFn {
+		// Unwrap the function to get the return type
+		ifaceRetType := ifaceFn.Ret(false)
+		// Compare the return type with the class field type
+		if !isSubtypeOf(classFieldType, ifaceRetType) {
+			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
+				fieldName, classFieldType, ifaceRetType)
+		}
+		return nil
+	}
+
+	// Interface field is a function - class field must also be a function
+	if !classIsFn {
+		return fmt.Errorf("field %q: interface has function type but class does not", fieldName)
+	}
+
+	// Validate return type (covariant - class can return more specific type)
+	classRetType := classFn.Ret(false)
+	ifaceRetType := ifaceFn.Ret(false)
+	
+	if !isSubtypeOf(classRetType, ifaceRetType) {
+		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
+			fieldName, classRetType, ifaceRetType)
+	}
+
+	// Validate arguments (contravariant - class can accept more general types)
+	ifaceArgs, ifaceArgsOk := ifaceFn.Arg().(*RecordType)
+	classArgs, classArgsOk := classFn.Arg().(*RecordType)
+
+	if !ifaceArgsOk || !classArgsOk {
+		// Arguments must be records
+		return fmt.Errorf("field %q: arguments must be record types", fieldName)
+	}
+
+	// Check that all interface arguments are present in class
+	for _, ifaceArg := range ifaceArgs.Fields {
+		classArgScheme, found := classArgs.SchemeOf(ifaceArg.Key)
+		if !found {
+			return fmt.Errorf("field %q: missing argument %q required by interface", fieldName, ifaceArg.Key)
+		}
+
+		// Validate argument type compatibility (contravariant)
+		classArgType, _ := classArgScheme.Type()
+		ifaceArgType, _ := ifaceArg.Value.Type()
+
+		// For contravariance: class arg type must be a supertype of interface arg type
+		// This means: if interface requires String!, class can accept String or String!
+		// But if interface requires String, class must accept String (can't require String!)
+		if !isSupertypeOf(classArgType, ifaceArgType) {
+			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
+				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
+		}
+	}
+
+	// Check that any additional arguments in class are optional
+	for _, classArg := range classArgs.Fields {
+		// Check if this argument exists in the interface
+		_, found := ifaceArgs.SchemeOf(classArg.Key)
+		if !found {
+			// Additional argument - must be optional (nullable or has default)
+			classArgType, _ := classArg.Value.Type()
+			if _, isNonNull := classArgType.(hm.NonNullType); isNonNull {
+				return fmt.Errorf("field %q, argument %q: additional arguments not in interface must be optional (nullable or have default)",
+					fieldName, classArg.Key)
+			}
+		}
+	}
+
+
+	return nil
+}
+
+// isSubtypeOf checks if sub is a subtype of super (covariance check)
+// For return types: String! is a subtype of String, User is a subtype of Node
+func isSubtypeOf(sub, super hm.Type) bool {
+	// Exact match
+	if sub.Eq(super) {
+		return true
+	}
+
+	// NonNull is a subtype of its nullable version
+	if subNonNull, ok := sub.(hm.NonNullType); ok {
+		if subNonNull.Type.Eq(super) {
+			return true
+		}
+		// Continue checking if the inner type is a subtype
+		return isSubtypeOf(subNonNull.Type, super)
+	}
+
+	// List element covariance: [String!] is a subtype of [String]
+	if subList, ok := sub.(ListType); ok {
+		if superList, ok := super.(ListType); ok {
+			return isSubtypeOf(subList.Type, superList.Type)
+		}
+	}
+
+	// Module/Interface subtyping (handled by Module.Eq already)
+	if subMod, ok := sub.(*Module); ok {
+		if superMod, ok := super.(*Module); ok {
+			// Check if sub implements super interface
+			if superMod.Kind == InterfaceKind && subMod.ImplementsInterface(superMod) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// isSupertypeOf checks if super is a supertype of sub (contravariance check)
+// For argument types: String is a supertype of String!, Node is a supertype of User
+func isSupertypeOf(super, sub hm.Type) bool {
+	// Exact match
+	if super.Eq(sub) {
+		return true
+	}
+
+	// Nullable is a supertype of NonNull
+	if subNonNull, ok := sub.(hm.NonNullType); ok {
+		if super.Eq(subNonNull.Type) {
+			return true
+		}
+		// Continue checking if the inner type has a supertype relationship
+		return isSupertypeOf(super, subNonNull.Type)
+	}
+
+	// NonNull can be supertype if its inner type is
+	if superNonNull, ok := super.(hm.NonNullType); ok {
+		return isSupertypeOf(superNonNull.Type, sub)
+	}
+
+	// List element contravariance: [String] is a supertype of [String!]
+	if superList, ok := super.(ListType); ok {
+		if subList, ok := sub.(ListType); ok {
+			return isSupertypeOf(superList.Type, subList.Type)
+		}
+	}
+
+	// Module/Interface contravariance
+	if superMod, ok := super.(*Module); ok {
+		if subMod, ok := sub.(*Module); ok {
+			// If sub implements super interface, then super is a supertype
+			if superMod.Kind == InterfaceKind && subMod.ImplementsInterface(superMod) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
