@@ -48,20 +48,18 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 		if t == nil {
 			t = et
 		} else {
-			// First, try direct assignability (backwards compatible)
-			subs, err := hm.Assignable(et, t)
-			if err != nil {
-				// If not directly assignable, try to find a common supertype
-				commonType := findCommonSupertype(et, t)
-				if commonType == nil {
-					return nil, NewInferError(fmt.Errorf("unify index %d: %s", i, err.Error()), l.Elements[i])
-				}
-				// Use the common supertype
-				t = commonType
-			} else {
-				// Apply substitutions if assignable
+			// Try to assign new element to accumulated type
+			if subs, err := hm.Assignable(et, t); err == nil {
 				t = t.Apply(subs).(hm.Type)
+				continue
 			}
+
+			// Not assignable, find common supertype
+			commonType := findCommonSupertype(et, t)
+			if commonType == nil {
+				return nil, NewInferError(fmt.Errorf("unify index %d: no common type between %s and %s", i, et, t), l.Elements[i])
+			}
+			t = commonType
 		}
 	}
 	listType := hm.NonNullType{Type: ListType{t}}
