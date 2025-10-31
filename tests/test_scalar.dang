@@ -1,0 +1,16 @@
+# Test GraphQL scalar type support
+# Custom scalars should be represented as typed values
+
+# Test scalar field access - custom scalar values should be accessible
+pub timestampValue = now
+pub urlValue = homepage
+
+# Scalar values should have proper types
+assert { timestampValue == "2024-01-15T10:30:00Z" }
+assert { urlValue == "https://dang-lang.dev" }
+
+# Test that scalars can be compared
+assert { timestampValue == timestampValue }
+assert { urlValue == urlValue }
+
+print("Scalar tests passed!")

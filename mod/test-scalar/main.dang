@@ -1,0 +1,22 @@
+"""
+Test module for scalar support in Dagger SDK.
+"""
+
+scalar Timestamp
+scalar URL
+
+type TestScalar {
+  """
+  Returns the timestamp value as a string
+  """
+  pub getTimestamp(ts: Timestamp!): String! {
+    toJSON(ts)
+  }
+
+  """
+  Returns the URL value as a string
+  """
+  pub getURL(url: URL!): String! {
+    toJSON(url)
+  }
+}

@@ -127,6 +127,23 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 			}
 		}
 
+		// Check if the return type is a custom scalar
+		if isCustomScalarType(g.Field.TypeRef, g.Schema) {
+			// Convert string result to ScalarValue
+			if strVal, ok := result.(string); ok {
+				scalarTypeName := getTypeName(g.Field.TypeRef)
+				// Get the scalar type from the type environment
+				scalarType, found := g.TypeEnv.NamedType(scalarTypeName)
+				if !found {
+					return nil, fmt.Errorf("scalar type %s not found", scalarTypeName)
+				}
+				return ScalarValue{
+					Val:        strVal,
+					ScalarType: scalarType,
+				}, nil
+			}
+		}
+
 		return ToValue(result)
 	}
 
@@ -269,6 +286,26 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			env.Set(t.Name, enumModuleVal)
 		}
 
+		// Add scalar types as available values for custom scalars
+		if t.Kind == introspection.TypeKindScalar {
+			// Skip built-in scalars (String, Int, Float, Boolean, ID)
+			if t.Name == "String" || t.Name == "Int" || t.Name == "Float" || t.Name == "Boolean" || t.Name == "ID" {
+				continue
+			}
+
+			// Get the scalar type environment
+			scalarTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+
+			// Create a module for the scalar type (just a type placeholder)
+			scalarModuleVal := NewModuleValue(scalarTypeEnv)
+
+			// Add the scalar module to the environment
+			env.Set(t.Name, scalarModuleVal)
+		}
+
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
 			if err != nil {
@@ -398,6 +435,30 @@ func isEnumType(typeRef *introspection.TypeRef, schema *introspection.Schema) bo
 	return false
 }
 
+// Helper function to determine if a GraphQL type is a custom scalar
+func isCustomScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
+	// Unwrap NonNull and List wrappers
+	currentType := typeRef
+	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
+		currentType = currentType.OfType
+	}
+
+	// Skip built-in scalars
+	switch currentType.Name {
+	case "String", "Int", "Float", "Boolean", "ID":
+		return false
+	}
+
+	// Check if it's a custom scalar in the schema
+	for _, t := range schema.Types {
+		if t.Name == currentType.Name && t.Kind == introspection.TypeKindScalar {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Helper function to get the type name from a TypeRef
 func getTypeName(typeRef *introspection.TypeRef) string {
 	// Unwrap NonNull and List wrappers to get the base type name
@@ -415,6 +476,9 @@ func dangValueToGo(val Value) (interface{}, error) {
 		return v.Val, nil
 	case EnumValue:
 		// Enum values are represented as strings in GraphQL
+		return v.Val, nil
+	case ScalarValue:
+		// Scalar values are represented as strings in GraphQL
 		return v.Val, nil
 	case IntValue:
 		return v.Val, nil
@@ -498,6 +562,8 @@ type EnumValue struct {
 	EnumType hm.Type
 }
 
+var _ Value = EnumValue{}
+
 func (e EnumValue) Type() hm.Type {
 	return hm.NonNullType{Type: e.EnumType}
 }
@@ -508,6 +574,26 @@ func (e EnumValue) String() string {
 
 func (e EnumValue) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.Val)
+}
+
+// ScalarValue represents a custom scalar value
+type ScalarValue struct {
+	Val        string
+	ScalarType hm.Type
+}
+
+var _ Value = ScalarValue{}
+
+func (s ScalarValue) Type() hm.Type {
+	return hm.NonNullType{Type: s.ScalarType}
+}
+
+func (s ScalarValue) String() string {
+	return s.Val
+}
+
+func (s ScalarValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Val)
 }
 
 // IntValue represents an integer value

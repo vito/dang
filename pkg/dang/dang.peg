@@ -22,11 +22,14 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Import / AnnotatedDecl / Enum / Class / Slot / DirectiveDecl / Reassignment / Form
+Expr <- Import / AnnotatedDecl / Enum / Scalar / Class / Slot / DirectiveDecl / Reassignment / Form
 
-AnnotatedDecl <- docstring:DocString _ decl:(Enum / Class / Slot / DirectiveDecl) {
+AnnotatedDecl <- docstring:DocString _ decl:(Enum / Scalar / Class / Slot / DirectiveDecl) {
   switch node := decl.(type) {
   case *EnumDecl:
+    node.DocString = docstring.(string)
+    return node, nil
+  case *ScalarDecl:
     node.DocString = docstring.(string)
     return node, nil
   case *ClassDecl:
@@ -194,6 +197,15 @@ Enum <- EnumToken _ name:IdSymbol _ '{' _ values:(first:CapsSymbol rest:(_ v:Cap
   }, nil
 }
 EnumToken <- "enum" !WordChar
+
+Scalar <- ScalarToken _ name:IdSymbol {
+  return &ScalarDecl{
+    Name: name.(*Symbol),
+    Visibility: PublicVisibility,
+    Loc: c.Loc(),
+  }, nil
+}
+ScalarToken <- "scalar" !WordChar
 
 Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockSlot         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields

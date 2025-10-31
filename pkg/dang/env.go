@@ -174,6 +174,29 @@ func NewEnv(schema *introspection.Schema) Env {
 		}
 	}
 
+	// Make custom scalar types available as values in the module
+	for _, t := range schema.Types {
+		if t.Kind == introspection.TypeKindScalar {
+			// Skip built-in scalars (String, Int, Float, Boolean, ID)
+			if t.Name == "String" || t.Name == "Int" || t.Name == "Float" || t.Name == "Boolean" || t.Name == "ID" {
+				continue
+			}
+			sub, found := env.NamedType(t.Name)
+			if !found {
+				// Create a scalar type module
+				sub = NewModule(t.Name)
+				sub.(*Module).Kind = ScalarKind
+				if t.Description != "" {
+					sub.SetModuleDocString(t.Description)
+				}
+				env.AddClass(t.Name, sub)
+			}
+			// Add the scalar type as a scheme
+			mod.Add(t.Name, hm.NewScheme(nil, sub))
+			mod.SetVisibility(t.Name, PublicVisibility)
+		}
+	}
+
 	for _, t := range schema.Types {
 		install, found := env.NamedType(t.Name)
 		if !found {

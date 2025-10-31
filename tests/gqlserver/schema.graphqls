@@ -5,6 +5,9 @@ enum Status {
   ARCHIVED
 }
 
+scalar Timestamp
+scalar URL
+
 type Query {
   hello(name: String!): String!
   users: [User!]!
@@ -14,6 +17,8 @@ type Query {
   userProfile(userId: String, includeStats: Boolean): UserProfile
   postTitles: [String!]!
   status: Status!
+  now: Timestamp!
+  homepage: URL!
 }
 
 type Mutation {

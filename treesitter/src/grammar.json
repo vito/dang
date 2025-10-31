@@ -84,6 +84,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "scalar"
+        },
+        {
+          "type": "SYMBOL",
           "name": "class"
         },
         {
@@ -124,6 +128,10 @@
               {
                 "type": "SYMBOL",
                 "name": "enum"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "scalar"
               },
               {
                 "type": "SYMBOL",
@@ -189,7 +197,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 140,
+      "value": 142,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -350,7 +358,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 134,
+      "value": 136,
       "content": {
         "type": "SEQ",
         "members": [
@@ -413,7 +421,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 133,
+      "value": 135,
       "content": {
         "type": "SEQ",
         "members": [
@@ -680,6 +688,30 @@
       "content": {
         "type": "STRING",
         "value": "enum"
+      }
+    },
+    "scalar": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "scalar_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id_symbol"
+          }
+        }
+      ]
+    },
+    "scalar_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "scalar"
       }
     },
     "slot": {

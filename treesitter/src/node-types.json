@@ -32,6 +32,10 @@
         "named": true
       },
       {
+        "type": "scalar",
+        "named": true
+      },
+      {
         "type": "slot",
         "named": true
       }
@@ -202,6 +206,10 @@
           },
           {
             "type": "enum",
+            "named": true
+          },
+          {
+            "type": "scalar",
             "named": true
           },
           {
@@ -2583,6 +2591,32 @@
     "fields": {}
   },
   {
+    "type": "scalar",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "scalar_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "schema_url",
     "named": true,
     "fields": {}
@@ -3512,6 +3546,10 @@
   },
   {
     "type": "quoted_raw_token",
+    "named": true
+  },
+  {
+    "type": "scalar_token",
     "named": true
   },
   {

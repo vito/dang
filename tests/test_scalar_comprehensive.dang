@@ -1,0 +1,40 @@
+# Test comprehensive scalar functionality
+
+# Test 1: Scalar declarations
+scalar Email
+scalar PhoneNumber
+scalar JSON
+
+# Test 2: Scalar values from GraphQL
+pub ts = now
+pub url = homepage
+
+# Test 3: Value comparison
+assert { ts == "2024-01-15T10:30:00Z" }
+assert { url == "https://dang-lang.dev" }
+
+# Test 4: Scalar identity
+assert { ts == ts }
+assert { url == url }
+
+# Test 5: Inequality
+assert { ts != url }
+assert { ts != "different value" }
+
+# Test 6: Using scalars in records
+pub rec = {{timestamp: ts, homepage: url}}
+assert { rec.timestamp == ts }
+assert { rec.homepage == url }
+
+# Test 7: Using scalars in lists
+pub tsList = [ts, ts]
+assert { tsList[0] == ts }
+assert { tsList[1] == ts }
+
+# Test 8: Scalars with functions
+pub getTimestamp() : String! {
+  toJSON(ts)
+}
+assert { getTimestamp() == "\"2024-01-15T10:30:00Z\"" }
+
+print("All comprehensive scalar tests passed!")

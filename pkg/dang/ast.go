@@ -241,6 +241,10 @@ func valuesEqual(left, right Value) bool {
 		if r, ok := right.(StringValue); ok {
 			return l.Val == r.Val
 		}
+		// Allow comparison with ScalarValue
+		if r, ok := right.(ScalarValue); ok {
+			return l.Val == r.Val
+		}
 	case EnumValue:
 		// Compare enum values - must be same value
 		if r, ok := right.(EnumValue); ok {
@@ -249,6 +253,15 @@ func valuesEqual(left, right Value) bool {
 			// more precisely, that should be caught at type checking time, and the
 			// bottom can be simplified
 			return l.EnumType == r.EnumType && l.Val == r.Val
+		}
+	case ScalarValue:
+		// Compare scalar values - must be same value and same type
+		if r, ok := right.(ScalarValue); ok {
+			return l.ScalarType == r.ScalarType && l.Val == r.Val
+		}
+		// Allow comparison with StringValue
+		if r, ok := right.(StringValue); ok {
+			return l.Val == r.Val
 		}
 	case IntValue:
 		switch r := right.(type) {

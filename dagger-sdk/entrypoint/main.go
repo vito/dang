@@ -277,6 +277,12 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 				return nil, fmt.Errorf("enum type %s not found in environment", modType.Named)
 			}
 
+			// Check if this is a scalar type
+			if modType.Kind == dang.ScalarKind {
+				// It's a scalar - return a ScalarValue
+				return dang.ScalarValue{Val: v, ScalarType: modType}, nil
+			}
+
 			// Otherwise, assume it's an object ID
 			sel := dang.FunCall{
 				Fun: &dang.Select{
@@ -403,6 +409,10 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 					return nil, fmt.Errorf("failed to create enum %s: %w", binding.Key, err)
 				}
 				dagMod = dagMod.WithEnum(enumDef)
+			} else if mod, ok := val.Mod.(*dang.Module); ok && mod.Kind == dang.ScalarKind {
+				// Scalars are registered with the module, but we don't need to create TypeDefs for them
+				// They're already handled as basic string types in dangTypeToTypeDef
+				slog.Info("skipping scalar module value (handled as string type)", "name", binding.Key)
 			} else {
 				slog.Info("skipping non-enum module value", "name", binding.Key)
 			}
@@ -604,6 +614,11 @@ func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type, env dang.EvalEnv) (
 						// It's an enum type - just reference it by name
 						// The enum TypeDef is already registered in the module
 						return def.WithEnum(t.Named), nil
+					}
+					if mod, ok := modVal.Mod.(*dang.Module); ok && mod.Kind == dang.ScalarKind {
+						// Scalars are exposed as strings in the Dagger SDK
+						// TODO: revise if/when Dagger supports custom scalars?
+						return def.WithKind(dagger.TypeDefKindStringKind), nil
 					}
 				}
 			}

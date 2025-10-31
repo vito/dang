@@ -486,3 +486,102 @@ func (e *EnumDecl) Walk(fn func(Node) bool) {
 	}
 	// Enum values are just symbols, no need to walk them
 }
+
+type ScalarDecl struct {
+	InferredTypeHolder
+	Name       *Symbol
+	Visibility Visibility
+	DocString  string
+	Loc        *SourceLocation
+
+	Inferred *Module
+}
+
+func (s *ScalarDecl) IsDeclarer() bool {
+	return true
+}
+
+var _ Node = &ScalarDecl{}
+var _ Evaluator = &ScalarDecl{}
+
+func (s *ScalarDecl) DeclaredSymbols() []string {
+	return []string{s.Name.Name}
+}
+
+func (s *ScalarDecl) ReferencedSymbols() []string {
+	return nil // Scalar declarations don't reference other symbols
+}
+
+func (s *ScalarDecl) Body() hm.Expression { return nil }
+
+func (s *ScalarDecl) GetSourceLocation() *SourceLocation { return s.Loc }
+
+var _ Hoister = &ScalarDecl{}
+
+func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	mod, ok := env.(Env)
+	if !ok {
+		return fmt.Errorf("ScalarDecl.Hoist: environment does not support module operations")
+	}
+
+	// Create the scalar type (module) if it doesn't exist
+	scalarType, found := mod.NamedType(s.Name.Name)
+	if !found {
+		scalarType = NewModule(s.Name.Name)
+		scalarType.(*Module).Kind = ScalarKind
+		mod.AddClass(s.Name.Name, scalarType)
+	}
+
+	s.Inferred = scalarType.(*Module)
+
+	// Add the scalar type to the environment
+	scalarScheme := hm.NewScheme(nil, scalarType)
+	env.Add(s.Name.Name, scalarScheme)
+
+	if s.DocString != "" {
+		mod.SetDocString(s.Name.Name, s.DocString)
+	}
+
+	return nil
+}
+
+func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	mod, ok := env.(Env)
+	if !ok {
+		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
+	}
+
+	scalarType, found := mod.NamedType(s.Name.Name)
+	if !found {
+		scalarType = NewModule(s.Name.Name)
+		scalarType.(*Module).Kind = ScalarKind
+		mod.AddClass(s.Name.Name, scalarType)
+
+		if s.DocString != "" {
+			mod.SetDocString(s.Name.Name, s.DocString)
+		}
+	}
+
+	s.Inferred = scalarType.(*Module)
+	s.SetInferredType(scalarType)
+
+	return scalarType, nil
+}
+
+func (s *ScalarDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Scalars are just type placeholders, similar to enums but with no values
+	// The actual scalar values come from GraphQL or are just strings
+	scalarModule := NewModuleValue(s.Inferred)
+
+	// Register the scalar type in the environment
+	env.SetWithVisibility(s.Name.Name, scalarModule, s.Visibility)
+
+	return scalarModule, nil
+}
+
+func (s *ScalarDecl) Walk(fn func(Node) bool) {
+	if !fn(s) {
+		return
+	}
+	// Scalar declarations have no children to walk
+}

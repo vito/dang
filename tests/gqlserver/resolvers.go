@@ -178,6 +178,16 @@ func (r *queryResolver) Status(ctx context.Context) (Status, error) {
 	return StatusActive, nil
 }
 
+// Now is the resolver for the now field.
+func (r *queryResolver) Now(ctx context.Context) (string, error) {
+	return "2024-01-15T10:30:00Z", nil
+}
+
+// Homepage is the resolver for the homepage field.
+func (r *queryResolver) Homepage(ctx context.Context) (string, error) {
+	return "https://dang-lang.dev", nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user
