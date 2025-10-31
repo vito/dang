@@ -588,7 +588,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				errs.Add(fmt.Errorf("type hoisting (pass 0) failed for %v: %w", form, err))
+				errs.Add(fmt.Errorf("type hoisting (pass 0) failed for %T: %w", form, err))
 				// Continue to try other types
 			}
 		}
@@ -598,7 +598,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
-				errs.Add(fmt.Errorf("type hoisting (pass 1) failed for %v: %w", form, err))
+				errs.Add(fmt.Errorf("type hoisting (pass 1) failed for %T: %w", form, err))
 				// Continue to try other types
 			}
 		}

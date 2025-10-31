@@ -16,30 +16,30 @@ interface Entity {
 }
 
 # A concrete type implementing Entity (which structurally implements both Named and Identifiable)
-type User implements Entity {
-  pub id: String! = "user-123"
+type Person implements Entity {
+  pub id: String! = "person-123"
   pub name: String! = "Alice"
   pub email: String! = "alice@example.com"
 }
 
-# Test: User implements Entity
-let user = User
-assert { user.id == "user-123" }
-assert { user.name == "Alice" }
-assert { user.email == "alice@example.com" }
+# Test: Person implements Entity
+let person = Person
+assert { person.id == "person-123" }
+assert { person.name == "Alice" }
+assert { person.email == "alice@example.com" }
 
 # Test: Entity should structurally implement Named (has all required fields)
 # Since Entity has 'name: String!', it should be assignable to Named
 type EntityHolder {
-  pub entity: Entity! = User
+  pub entity: Entity! = Person
 }
 
 let holder = EntityHolder
 let entity: Entity! = holder.entity
-assert { entity.id == "user-123" }
+assert { entity.id == "person-123" }
 assert { entity.name == "Alice" }
 
 # Test: Entity should structurally implement Identifiable (has all required fields)
 # Since Entity has 'id: ID!', it should be assignable to Identifiable
 let entityAsId: Entity! = holder.entity
-assert { entityAsId.id == "user-123" }
+assert { entityAsId.id == "person-123" }

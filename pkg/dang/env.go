@@ -635,7 +635,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	// Validate return type (covariant - class can return more specific type)
 	classRetType := classFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
-	
+
 	if !isSubtypeOf(classRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
 			fieldName, classRetType, ifaceRetType)
@@ -683,7 +683,6 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 			}
 		}
 	}
-
 
 	return nil
 }

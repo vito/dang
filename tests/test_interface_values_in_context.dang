@@ -6,13 +6,17 @@ interface Drawable {
 
 type Circle implements Drawable {
   pub radius: Int! = 5
-  pub draw: String! = "Drawing circle with radius " ++ self.radius.toString
+  pub draw: String! {
+    "Drawing circle with radius " + toJSON(self.radius)
+  }
 }
 
 type Rectangle implements Drawable {
   pub width: Int! = 10
   pub height: Int! = 20
-  pub draw: String! = "Drawing rectangle " ++ self.width.toString ++ "x" ++ self.height.toString
+  pub draw: String! {
+    "Drawing rectangle " + toJSON(self.width) + "x" + toJSON(self.height)
+  }
 }
 
 # Test: Interface-typed values in variables
@@ -29,7 +33,9 @@ assert { canvas.shape.draw == "Drawing rectangle 10x20" }
 
 # Test: Interface-typed values in function parameters
 type Renderer {
-  pub render(drawable: Drawable!): String! = "Rendered: " ++ drawable.draw
+  pub render(drawable: Drawable!): String! {
+    "Rendered: " + drawable.draw
+  }
 }
 
 let renderer = Renderer

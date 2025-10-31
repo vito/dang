@@ -255,6 +255,34 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
 
+	if pass == 0 {
+		// Link the implementation
+		if len(c.Implements) > 0 {
+			classMod := class.(*Module)
+			for _, ifaceSym := range c.Implements {
+				ifaceType, found := mod.NamedType(ifaceSym.Name)
+				if !found {
+					return WrapInferError(
+						fmt.Errorf("interface %s not found", ifaceSym.Name),
+						ifaceSym,
+					)
+				}
+
+				ifaceMod, ok := ifaceType.(*Module)
+				if !ok || ifaceMod.Kind != InterfaceKind {
+					return WrapInferError(
+						fmt.Errorf("%s is not an interface", ifaceSym.Name),
+						ifaceSym,
+					)
+				}
+
+				// Add "blindly" initially, we'll validate later
+				classMod.AddInterface(ifaceType)
+				ifaceMod.AddImplementer(classMod)
+			}
+		}
+	}
+
 	if pass > 0 {
 		// set special 'self' keyword to match the function signature.
 		self := hm.NewScheme(nil, hm.NonNullType{Type: class})
@@ -326,12 +354,14 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, ifaceSym *Symbol) error {
 	ifaceType, found := env.NamedType(ifaceSym.Name)
 	if !found {
-		return fmt.Errorf("interface %s not found", ifaceSym.Name)
+		// no error; this is raised in Hoist instead
+		return nil
 	}
 
 	ifaceMod, ok := ifaceType.(*Module)
 	if !ok || ifaceMod.Kind != InterfaceKind {
-		return fmt.Errorf("%s is not an interface", ifaceSym.Name)
+		// no error; this is raised in Hoist instead
+		return nil
 	}
 
 	// Check that all interface fields are present in the class
@@ -350,10 +380,6 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 			return err
 		}
 	}
-
-	// Link the implementation
-	classMod.AddInterface(ifaceType)
-	ifaceMod.AddImplementer(classMod)
 
 	return nil
 }
