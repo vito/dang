@@ -140,7 +140,6 @@ func run(ctx context.Context, cfg Config) error {
 		}
 	}
 
-	fmt.Println("ok!")
 	return nil
 }
 
