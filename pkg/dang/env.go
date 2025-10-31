@@ -542,11 +542,9 @@ func (t *Module) Eq(other Type) bool {
 			return true
 		}
 		// Check for subtyping: if other is an interface that t implements
+		// This allows User.Eq(Node) when User implements Node
+		// Note: This makes Eq asymmetric, which is intentional for subtyping
 		if otherMod.Kind == InterfaceKind && t.ImplementsInterface(otherMod) {
-			return true
-		}
-		// Check reverse: if t is an interface that other implements
-		if t.Kind == InterfaceKind && otherMod.ImplementsInterface(t) {
 			return true
 		}
 		return false

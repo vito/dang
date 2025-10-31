@@ -463,28 +463,3 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 // 	}
 // 	return NewRecordType(t.Named, fields...), nil
 // }
-
-// IsSubtype checks if sub is a subtype of super, taking into account interface implementations.
-// Returns true if:
-// - sub and super are equal types
-// - super is an interface type and sub implements it
-func IsSubtype(sub hm.Type, super hm.Type) bool {
-	// Check for exact equality first
-	if sub.Eq(super) {
-		return true
-	}
-
-	// Check if super is an interface type
-	superModule, superOk := super.(*Module)
-	if !superOk || superModule.Kind != InterfaceKind {
-		return false
-	}
-
-	// Check if sub is a module that implements the interface
-	subModule, subOk := sub.(*Module)
-	if !subOk {
-		return false
-	}
-
-	return subModule.ImplementsInterface(super.(Env))
-}

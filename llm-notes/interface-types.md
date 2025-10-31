@@ -75,55 +75,44 @@ for _, t := range schema.Types {
 
 This makes interface types accessible like `Node` or `Timestamped`.
 
-### Type Checking & Inference (pkg/dang/types.go)
+### Type Checking & Inference (pkg/dang/env.go)
 
-#### Subtyping Function
+#### Subtyping via Module.Eq
 
-The `IsSubtype(sub, super)` function implements structural subtyping:
-
-```go
-func IsSubtype(sub hm.Type, super hm.Type) bool {
-    if sub.Eq(super) { return true }
-    
-    superModule, superOk := super.(*Module)
-    if !superOk || superModule.Kind != InterfaceKind { 
-        return false 
-    }
-    
-    subModule, subOk := sub.(*Module)
-    if !subOk { return false }
-    
-    return subModule.ImplementsInterface(super.(Env))
-}
-```
-
-This enables:
-- Concrete types can be assigned to interface-typed variables
-- Interface types can be used where their implementers are expected
-
-#### Module Equality with Subtyping (pkg/dang/env.go)
-
-The `Module.Eq(other)` method supports subtyping:
+Subtyping is implemented directly in the `Module.Eq()` method rather than a separate function. This integrates subtyping into Hindley-Milner type unification:
 
 ```go
 func (t *Module) Eq(other Type) bool {
-    // ... existing exact equality check ...
-    
-    // Check for subtyping: if other is an interface that t implements
-    if otherMod.Kind == InterfaceKind && t.ImplementsInterface(otherMod) {
-        return true
+    otherMod, ok := other.(*Module)
+    if !ok {
+        return false
     }
-    
-    // Check reverse: if t is an interface that other implements
-    if t.Kind == InterfaceKind && otherMod.ImplementsInterface(t) {
-        return true
+    if t.Named != "" {
+        // Check for exact equality
+        if t == otherMod {
+            return true
+        }
+        // Check for subtyping: if other is an interface that t implements
+        // This allows User.Eq(Node) when User implements Node
+        // Note: This makes Eq asymmetric, which is intentional for subtyping
+        if otherMod.Kind == InterfaceKind && t.ImplementsInterface(otherMod) {
+            return true
+        }
+        return false
     }
-    
-    return false
+    return t.AsRecord().Eq(otherMod.AsRecord())
 }
 ```
 
-This integrates subtyping into Hindley-Milner type unification, allowing interface types to unify with their implementing types.
+**Key Points:**
+- **Asymmetric by design**: `User.Eq(Node)` returns true (User implements Node), but `Node.Eq(User)` returns false
+- **Direction matters**: Concrete types can be used where interface types are expected, but not vice versa
+- **Unification integration**: This works with Hindley-Milner unification because the asymmetry is sound - you can safely pass a `User` where a `Node` is expected, accessing only `Node` fields
+
+This enables:
+- Concrete types can be assigned to interface-typed variables
+- Interface types can be used in function signatures with concrete implementations
+- Type-safe polymorphism without explicit casts
 
 ### Evaluation Environment (pkg/dang/eval.go)
 
