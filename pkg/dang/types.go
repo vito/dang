@@ -120,7 +120,12 @@ func (t ListType) Eq(other Type) bool {
 }
 
 func (t ListType) Supertypes() []Type {
-	return nil
+	innerSupers := t.Type.Supertypes()
+	for i, t := range innerSupers {
+		// Generalize into list type for each supertype
+		innerSupers[i] = ListType{t}
+	}
+	return innerSupers
 }
 
 // GraphQLListType represents a list returned from GraphQL that contains objects.

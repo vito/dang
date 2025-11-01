@@ -189,7 +189,7 @@ func (t NonNullType) Normalize(k, v TypeVarSet) (Type, error) {
 }
 
 func (t NonNullType) Types() Types {
-	return nil
+	return t.Type.Types()
 }
 
 func (t NonNullType) Eq(other Type) bool {
@@ -200,8 +200,16 @@ func (t NonNullType) Eq(other Type) bool {
 }
 
 func (t NonNullType) Supertypes() []Type {
-	// NonNull T is a subtype of T, so T is a supertype
-	return []Type{t.Type}
+	ts := []Type{
+		// NonNull T is a subtype of T, so T is a supertype
+		t.Type,
+	}
+	innerSupers := t.Type.Supertypes()
+	for _, i := range innerSupers {
+		// Generalize into non-null form of each supertype
+		ts = append(ts, NonNullType{i})
+	}
+	return ts
 }
 
 func (t NonNullType) String() string {

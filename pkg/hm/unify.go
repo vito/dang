@@ -16,22 +16,10 @@ func (e UnificationError) Error() string {
 // isSubtype checks if sub is a subtype of super (transitively)
 // This implements the subtype relationship using the Supertypes() method.
 func isSubtype(sub, super Type) bool {
-	// Unwrap NonNullTypes for subtype checking
-	// NonNull T is a subtype of T (handled by Supertypes)
-	// NonNull T is a subtype of NonNull U if T is a subtype of U
-	if subNN, ok := sub.(NonNullType); ok {
-		if superNN, ok := super.(NonNullType); ok {
-			// Both are NonNull: check if inner types have subtype relationship
-			return isSubtype(subNN.Type, superNN.Type)
-		}
-		// sub is NonNull, super is nullable: use Supertypes() to get nullable version
-		// (This is already handled by Supertypes returning the nullable version)
-	}
-	
 	if sub.Eq(super) {
 		return true
 	}
-	
+
 	// Check composite type covariance (e.g., list element covariance)
 	// If both types have component types with matching structure,
 	// check if all components have subtype relationships
@@ -51,14 +39,14 @@ func isSubtype(sub, super Type) bool {
 			}
 		}
 	}
-	
+
 	// Check direct supertypes recursively
 	for _, supertype := range sub.Supertypes() {
 		if isSubtype(supertype, super) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -76,12 +64,12 @@ func Assignable(have, want Type) (Subs, error) {
 	if err == nil {
 		return subs, nil
 	}
-	
+
 	// If that fails, try subtyping: check if have is a subtype of want
 	if isSubtype(have, want) {
 		return NewSubs(), nil
 	}
-	
+
 	return nil, UnificationError{have, want}
 }
 
@@ -92,22 +80,6 @@ func unify(have, want Type) (Subs, error) {
 	}
 	if wantTV, ok := want.(TypeVariable); ok {
 		return bindVar(wantTV, have)
-	}
-
-	// Handle NonNullType unwrapping for unification
-	// When both sides are NonNull, unify the inner types
-	if haveNN, ok := have.(NonNullType); ok {
-		if wantNN, ok := want.(NonNullType); ok {
-			return unify(haveNN.Type, wantNN.Type)
-		}
-		// have is NonNull, want is nullable: unwrap and unify
-		// This allows [T]! to unify with [U] by unifying T with U
-		return unify(haveNN.Type, want)
-	}
-	if _, ok := want.(NonNullType); ok {
-		// want is NonNull, have is nullable: not allowed
-		// We don't unwrap here because it's unsafe
-		return nil, UnificationError{have, want}
 	}
 
 	// Handle composite types using Types() method
