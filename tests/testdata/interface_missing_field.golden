@@ -1,0 +1,11 @@
+[1m[31mError:[0m class Person is missing `greet(): String!`, required by interface Greetable
+  [2m[34m--> errors/interface_missing_field.dang:7:24[0m
+ [2m    |[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0mtype Person implements Greetable {
+[2m                              [31m^^^^^^^^^[0m
+ [2m  8 |   pub name: String![0m
+ [2m  9 |   # Missing: pub greet: String![0m
+ [2m    |[0m
+

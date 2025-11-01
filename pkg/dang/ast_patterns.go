@@ -65,7 +65,7 @@ func (m *Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			if i == 0 {
 				resultType = caseType
 			} else {
-				subs, err := hm.Unify(resultType, caseType)
+				subs, err := hm.Assignable(caseType, resultType)
 				if err != nil {
 					return nil, WrapInferError(fmt.Errorf("Match.Infer: case %d type mismatch: %s != %s", i, resultType, caseType), case_)
 				}

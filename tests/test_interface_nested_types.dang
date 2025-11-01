@@ -1,0 +1,84 @@
+# Test nested interface types
+
+interface Validator {
+  pub validate(input: String!): Boolean!
+}
+
+interface Container {
+  pub validator: Validator!
+  pub isValid(input: String!): Boolean!
+}
+
+# Concrete validator implementation
+type EmailValidator implements Validator {
+  pub validate(input: String!): Boolean! {
+    input.contains("@")
+  }
+}
+
+# Concrete container implementation
+type Form implements Container {
+  pub validator: Validator! = EmailValidator
+  pub name: String! = "Email Form"
+  pub isValid(input: String!): Boolean! {
+    validator.validate(input)
+  }
+}
+
+# Test: Nested interface field access
+let form = Form
+assert { form.name == "Email Form" }
+assert { form.validator.validate("test@example.com") == true }
+assert { form.validator.validate("invalid") == false }
+assert { form.isValid("user@domain.com") == true }
+
+# Test: Interface containing interface-typed lists
+interface Registry {
+  pub validators: [Validator!]!
+  pub validateAll(input: String!): Boolean!
+}
+
+type ValidationRegistry implements Registry {
+  pub validators: [Validator!]! = [EmailValidator, EmailValidator]
+  pub validateAll(input: String!): Boolean! {
+    pub res = true
+    for v in validators {
+      if !v.validate(input) {
+        res = false
+        break
+      }
+    }
+    res
+  }
+}
+
+let registry = ValidationRegistry
+# TODO: support .length
+# assert { registry.validators.length == 2 }
+assert { registry.validators[0] != null }
+assert { registry.validators[1] != null }
+assert { registry.validateAll("test@example.com") == true }
+assert { registry.validateAll("invalid") == false }
+
+# Test: Deeply nested interfaces
+interface Processor {
+  pub container: Container!
+}
+
+type DataProcessor implements Processor {
+  pub container: Container! = Form
+  pub status: String! = "Ready"
+  pub process(data: String!): String! {
+    if container.isValid(data) {
+      "Valid: " + data
+    } else {
+      "Invalid"
+    }
+  }
+}
+
+let processor = DataProcessor
+assert { processor.status == "Ready" }
+assert { processor.process("test@example.com") == "Valid: test@example.com" }
+assert { processor.process("bad-input") == "Invalid" }
+assert { processor.container.validator.validate("user@site.com") == true }

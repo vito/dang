@@ -94,3 +94,41 @@ func paginatePosts(posts []*Post, first *int, after *string, last *int, before *
 		},
 	}, nil
 }
+
+// findNodeByID finds a node (User or Post) by ID
+func (r *queryResolver) findNodeByID(id string) (Node, error) {
+	// Try to find a user first
+	for _, user := range users {
+		if user.ID == id {
+			return user, nil
+		}
+	}
+	// Try to find a post
+	for _, post := range posts {
+		if post.ID == id {
+			return post, nil
+		}
+	}
+	return nil, nil
+}
+
+// getAllNodes returns all nodes (Users and Posts)
+func (r *queryResolver) getAllNodes() []Node {
+	var nodes []Node
+	for _, user := range users {
+		nodes = append(nodes, user)
+	}
+	for _, post := range posts {
+		nodes = append(nodes, post)
+	}
+	return nodes
+}
+
+// getAllTimestamped returns all timestamped objects (Posts)
+func (r *queryResolver) getAllTimestamped() []Timestamped {
+	var timestamped []Timestamped
+	for _, post := range posts {
+		timestamped = append(timestamped, post)
+	}
+	return timestamped
+}

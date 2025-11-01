@@ -508,6 +508,7 @@ func (t *CompositeModule) Eq(other Type) bool                         { return o
 func (t *CompositeModule) Name() string                               { return t.primary.Name() }
 func (t *CompositeModule) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
 func (t *CompositeModule) Types() hm.Types                            { return nil }
+func (t *CompositeModule) Supertypes() []Type                         { return t.primary.Supertypes() }
 func (t *CompositeModule) String() string                             { return t.primary.String() }
 
 // NamedType looks up class types, needed for NamedTypeNode.Infer compatibility

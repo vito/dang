@@ -204,6 +204,8 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Imports = append(classified.Imports, f)
 		case *DirectiveDecl:
 			classified.Directives = append(classified.Directives, f)
+		case *InterfaceDecl:
+			classified.Types = append(classified.Types, f)
 		case *ClassDecl:
 			classified.Types = append(classified.Types, f)
 		case *EnumDecl:
@@ -486,7 +488,7 @@ func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
 var _ hm.Inferer = &Object{}
 
 func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	inferEnv := &CompositeModule{
 		primary: mod,
 		lexical: env.(Env),
@@ -586,7 +588,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				errs.Add(fmt.Errorf("type hoisting (pass 0) failed for %v: %w", form, err))
+				errs.Add(fmt.Errorf("type hoisting (pass 0) failed for %T: %w", form, err))
 				// Continue to try other types
 			}
 		}
@@ -596,7 +598,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
-				errs.Add(fmt.Errorf("type hoisting (pass 1) failed for %v: %w", form, err))
+				errs.Add(fmt.Errorf("type hoisting (pass 1) failed for %T: %w", form, err))
 				// Continue to try other types
 			}
 		}

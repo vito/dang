@@ -2,85 +2,80 @@ package hm
 
 import (
 	"fmt"
+	"reflect"
 )
 
 // UnificationError represents errors during unification
 type UnificationError struct {
-	msg string
+	Have, Want Type
 }
 
 func (e UnificationError) Error() string {
-	return e.msg
+	return fmt.Sprintf("cannot use %s as %s", e.Have, e.Want)
 }
 
-// Unify attempts to unify two types, returning a substitution or error
-func Unify(t1, t2 Type) (Subs, error) {
-	return unify(t1, t2)
-}
-
-func unify(t1, t2 Type) (Subs, error) {
-	// Handle type variables
-	if tv1, ok := t1.(TypeVariable); ok {
-		return bindVar(tv1, t2)
+// Assignable attempts to unify two types, returning a substitution or error.
+// If unification fails, it checks subtyping: have can be assigned to want if
+// have is a subtype of want.
+func Assignable(have, want Type) (Subs, error) {
+	// Handle type variables first
+	if haveTV, ok := have.(TypeVariable); ok {
+		return bindVar(haveTV, want)
+	}
+	if wantTV, ok := want.(TypeVariable); ok {
+		return bindVar(wantTV, have)
 	}
 
-	if tv2, ok := t2.(TypeVariable); ok {
-		return bindVar(tv2, t1)
-	}
-
-	// Handle non-null types
-	if nt1, ok := t1.(NonNullType); ok {
-		if nt2, ok := t2.(NonNullType); ok {
-			// Both are non-null - unify underlying types
-			return unify(nt1.Type, nt2.Type)
-		}
-		// t1 is non-null, t2 is nullable - unify with underlying type
-		// NonNull T can unify with T (non-null is subtype of nullable)
-		// return unify(nt1.Type, t2)
-		return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
-	}
-
-	if nt2, ok := t2.(NonNullType); ok {
-		// t2 is non-null, t1 is nullable - not allowed
-		return unify(t1, nt2.Type)
-		// return nil, fmt.Errorf("Unification Fail: %s ~ %s cannot be unified", t1, t2)
-	}
-
-	// Handle composite types using Types() method
-	t1Types := t1.Types()
-	t2Types := t2.Types()
-
-	if t1Types != nil && t2Types != nil {
-		// Both have component types - check length and unify components
-		if len(t1Types) != len(t2Types) {
-			return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified (different arities)", t1, t2)}
-		}
-
-		var subs Subs = NewSubs()
-		for i, comp1 := range t1Types {
-			comp2 := t2Types[i]
-			// Apply current substitutions to both components
-			comp1Applied := comp1.Apply(subs).(Type)
-			comp2Applied := comp2.Apply(subs).(Type)
-
-			// Unify the components
-			componentSubs, err := unify(comp1Applied, comp2Applied)
-			if err != nil {
-				return nil, err
-			}
-
-			// Compose the substitutions
-			subs = subs.Compose(componentSubs)
-		}
-		return subs, nil
-	}
-
-	// Fall back to Type.Eq for atomic types or when only one has component types
-	if t1.Eq(t2) {
+	// Try Type.Eq first (simplest check)
+	if have.Eq(want) {
 		return NewSubs(), nil
 	}
 
-	return nil, UnificationError{fmt.Sprintf("Unification Fail: %s ~ %s cannot be unified", t1, t2)}
+	// Handle composite types using Types() method
+	haveTypes := have.Types()
+	wantTypes := want.Types()
+
+	if haveTypes != nil && wantTypes != nil {
+		// Both have component types - but we must ensure they're the same
+		// type constructor before unifying components.
+		// For example, NonNullType{Int} and ListType{Int} both have component
+		// types, but they're different constructors and should not unify.
+		//
+		// TODO: cleaner way to do this
+		if reflect.TypeOf(have) == reflect.TypeOf(want) {
+			// Check length and unify components
+			if len(haveTypes) != len(wantTypes) {
+				return nil, UnificationError{have, want}
+			}
+
+			var subs Subs = NewSubs()
+			for i, comp1 := range haveTypes {
+				comp2 := wantTypes[i]
+				// Apply current substitutions to both components
+				comp1Applied := comp1.Apply(subs).(Type)
+				comp2Applied := comp2.Apply(subs).(Type)
+
+				// Unify the components
+				componentSubs, err := Assignable(comp1Applied, comp2Applied)
+				if err != nil {
+					return nil, UnificationError{have, want}
+				}
+
+				// Compose the substitutions
+				subs = subs.Compose(componentSubs)
+			}
+			return subs, nil
+		}
+	}
+
+	// Fall back on checking supertypes
+	for _, supertype := range have.Supertypes() {
+		if subs, err := Assignable(supertype, want); err == nil {
+			return subs, nil
+		}
+	}
+
+	return nil, UnificationError{have, want}
 }
 
 // bindVar binds a type variable to a type
@@ -92,7 +87,7 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 
 	// Occurs check
 	if occursCheck(tv, t) {
-		return nil, UnificationError{fmt.Sprintf("Occurs check failed: %s occurs in %s", tv, t)}
+		return nil, fmt.Errorf("Occurs check failed: %s occurs in %s", tv, t)
 	}
 
 	subs := NewSubs()

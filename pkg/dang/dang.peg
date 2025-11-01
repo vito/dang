@@ -22,10 +22,13 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Import / AnnotatedDecl / Enum / Scalar / Class / Slot / DirectiveDecl / Reassignment / Form
+Expr <- Import / AnnotatedDecl / Interface / Enum / Scalar / Class / Slot / DirectiveDecl / Reassignment / Form
 
-AnnotatedDecl <- docstring:DocString _ decl:(Enum / Scalar / Class / Slot / DirectiveDecl) {
+AnnotatedDecl <- docstring:DocString _ decl:(Interface / Enum / Scalar / Class / Slot / DirectiveDecl) {
   switch node := decl.(type) {
+  case *InterfaceDecl:
+    node.DocString = docstring.(string)
+    return node, nil
   case *EnumDecl:
     node.DocString = docstring.(string)
     return node, nil
@@ -177,16 +180,32 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   }
 }
 
-Class <- TypeToken _ name:IdSymbol directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
+Interface <- InterfaceToken _ name:IdSymbol _ block:HeadersBlock {
+  return &InterfaceDecl{
+    Name: name.(*Symbol),
+    Value: block.(*Block),
+    Visibility: PublicVisibility,
+    Loc: c.Loc(),
+  }, nil
+}
+InterfaceToken <- "interface" !WordChar
+
+Class <- TypeToken _ name:IdSymbol implements:(_ ImplementsToken _ first:IdSymbol rest:(_ '&' _ i:IdSymbol { return i, nil })* { return sliceOfAppend[*Symbol](rest, first), nil })? directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
+  var implementsList []*Symbol
+  if implements != nil {
+    implementsList = implements.([]*Symbol)
+  }
   return &ClassDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
+    Implements: implementsList,
     Visibility: PublicVisibility, // TODO
     Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
   }, nil
 }
 TypeToken <- "type" !WordChar
+ImplementsToken <- "implements" !WordChar
 
 Enum <- EnumToken _ name:IdSymbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfAppend[*Symbol](rest, first), nil }) _ '}' {
   return &EnumDecl{
@@ -278,6 +297,33 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:IdSymbol _ args:ArgTypes _ Colo
       Ret: type_.(TypeNode),
       Visibility: vis.(Visibility),
     },
+    Visibility: vis.(Visibility),
+    Directives: sliceOf[*DirectiveApplication](directives),
+    Loc: c.Loc(),
+  }, nil
+}
+
+HeaderSlot <- AnnotatedHeaderSlot / TypeAndArgsSlot / TypeOnlyFunSlot
+
+AnnotatedHeaderSlot <- docstring:DocString _ decl:HeaderSlot {
+  decl.(*SlotDecl).DocString = docstring.(string)
+  return decl, nil
+}
+
+TypeAndArgsSlot <- vis:Visibility _ name:IdSymbol _ args:ArgTypes _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
+  return &SlotDecl{
+    Name: name.(*Symbol),
+    Type_: FunTypeNode{args.([]*SlotDecl), type_.(TypeNode)},
+    Visibility: vis.(Visibility),
+    Directives: sliceOf[*DirectiveApplication](directives),
+    Loc: c.Loc(),
+  }, nil
+}
+
+TypeOnlyFunSlot <- vis:Visibility _ name:IdSymbol _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
+  return &SlotDecl{
+    Name: name.(*Symbol),
+    Type_: FunTypeNode{nil, type_.(TypeNode)},
     Visibility: vis.(Visibility),
     Directives: sliceOf[*DirectiveApplication](directives),
     Loc: c.Loc(),
@@ -500,6 +546,13 @@ Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" 
 }
 
 Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
+  return &Block{
+    Forms: sliceOfAppend[Node](eles, last),
+    Loc: c.Loc(),
+  }, nil
+}
+
+HeadersBlock <- '{' _ eles:(e:HeaderSlot Sep { return e, nil })* last:HeaderSlot? _ '}' {
   return &Block{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),

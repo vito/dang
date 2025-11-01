@@ -9,12 +9,16 @@ pub string_var: String! = "hello"
 let private_var = 24
 let private_typed: String! = "private"
 
+# Type variable with non-null constraint (regression test)
+let generic_nonnull: a! = 1
+
 # Test that variables have correct values
 assert { public_var == 42 }
 assert { typed_var == 100 }
 assert { string_var == "hello" }
 assert { private_var == 24 }
 assert { private_typed == "private" }
+assert { generic_nonnull == 1 }
 
 # Type-only declarations (would need default values to test properly)
 # pub type_only: Int!

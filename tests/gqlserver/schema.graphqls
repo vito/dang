@@ -8,6 +8,14 @@ enum Status {
 scalar Timestamp
 scalar URL
 
+interface Node {
+  id: String!
+}
+
+interface Timestamped {
+  createdAt: String!
+}
+
 type Query {
   hello(name: String!): String!
   users: [User!]!
@@ -19,6 +27,9 @@ type Query {
   status: Status!
   now: Timestamp!
   homepage: URL!
+  node(id: String!): Node
+  nodes: [Node!]!
+  timestamped: [Timestamped!]!
 }
 
 type Mutation {
@@ -27,7 +38,7 @@ type Mutation {
   deleteUser(id: String!): Boolean!
 }
 
-type User {
+type User implements Node {
   id: String!
   name: String!
   emails: [String!]!
@@ -36,7 +47,7 @@ type User {
   posts(first: Int, after: String, last: Int, before: String): PostConnection! @goField(forceResolver: true)
 }
 
-type Post {
+type Post implements Node & Timestamped {
   id: String!
   title: String!
   content: String!

@@ -115,7 +115,7 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
 	}
 
-	if _, err := hm.Unify(dt, it); err != nil {
+	if _, err := hm.Assignable(it, dt); err != nil {
 		return NewInferError(err, value)
 	}
 	return nil
@@ -171,7 +171,7 @@ func (c *FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, a
 // callBoundBuiltinMethod handles BoundBuiltinMethod function calls
 func (c *FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMethod, argValues map[string]Value) (Value, error) {
 	// Create a temporary environment with the receiver bound as "self"
-	tempMod := NewModule("_temp_")
+	tempMod := NewModule("_temp_", ObjectKind)
 	tempEnv := NewModuleValue(tempMod)
 	tempEnv.Set("self", fn.Receiver)
 
@@ -235,6 +235,8 @@ func (c *FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNa
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
 			fnEnv.Set(argName, defaultVal)
+		} else {
+			fnEnv.Set(argName, NullValue{})
 		}
 	}
 	return nil
@@ -750,7 +752,7 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		if err != nil {
 			return nil, err
 		}
-		if _, err := hm.Unify(indexType, intType); err != nil {
+		if _, err := hm.Assignable(indexType, intType); err != nil {
 			return nil, fmt.Errorf("index must be Int!, got %s", indexType)
 		}
 
@@ -1010,7 +1012,7 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
 	}
 
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	for _, field := range o.Fields {
 		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
 		if err != nil {
@@ -1442,7 +1444,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			return nil, err
 		}
 
-		if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
+		if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
 			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), c.Condition)
 		}
 
@@ -1470,7 +1472,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, err
 			}
 
-			if _, err := hm.Unify(thenType, elseType); err != nil {
+			if _, err := hm.Assignable(elseType, thenType); err != nil {
 				// Point to the specific else block for better error targeting
 				var errorNode Node = elseBlock
 				if len(elseBlock.Forms) > 0 {
@@ -1567,7 +1569,7 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			}
 
 			// Unify with boolean
-			if _, err := hm.Unify(condType, hm.NonNullType{Type: BooleanType}); err != nil {
+			if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
 				return nil, NewInferError(fmt.Errorf("condition must be boolean, got %s", condType), f.Condition)
 			}
 
@@ -1630,7 +1632,7 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 				if err != nil {
 					return nil, err
 				}
-				if _, err := hm.Unify(elementType, declaredType); err != nil {
+				if _, err := hm.Assignable(elementType, declaredType); err != nil {
 					return nil, NewInferError(fmt.Errorf("type annotation %s doesn't match element type %s", declaredType, elementType), f)
 				}
 			}
@@ -2050,7 +2052,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		// Try to unify the core types to bind type variables
-		if subs, err := hm.Unify(exprCore, hintCore); err == nil {
+		if subs, err := hm.Assignable(exprCore, hintCore); err == nil {
 			// Unification succeeded - apply substitutions to the hint and return it
 			// This allows the hint to override the expression's type (including nullability)
 			result := hintType.Apply(subs).(hm.Type)
@@ -2058,7 +2060,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		// Core unification failed, try the original approach with subtyping
-		subs, err := hm.Unify(exprType, hintType)
+		subs, err := hm.Assignable(exprType, hintType)
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 		}

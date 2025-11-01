@@ -12,11 +12,11 @@ var (
 	// Null does not have a type. Its type is always inferred as a free variable.
 	// NullType    = NewClass("Null")
 
-	IDType      = NewModule("ID")
-	BooleanType = NewModule("Boolean")
-	StringType  = NewModule("String")
-	IntType     = NewModule("Int")
-	FloatType   = NewModule("Float")
+	IDType      = NewModule("ID", ScalarKind)
+	BooleanType = NewModule("Boolean", ScalarKind)
+	StringType  = NewModule("String", ScalarKind)
+	IntType     = NewModule("Int", ScalarKind)
+	FloatType   = NewModule("Float", ScalarKind)
 )
 
 // List represents a list literal
@@ -31,8 +31,6 @@ var _ Evaluator = (*List)(nil)
 
 func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
-		// For now, just return the original approach and document this as a known issue
-		// The real fix requires changes to how the HM library handles recursive types
 		tv := f.Fresh()
 		t := hm.NonNullType{Type: ListType{tv}}
 		l.SetInferredType(t)
@@ -48,11 +46,18 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 		if t == nil {
 			t = et
 		} else {
-			subs, err := hm.Unify(t, et)
-			if err != nil {
-				return nil, NewInferError(fmt.Errorf("unify index %d: %s", i, err.Error()), l.Elements[i])
+			// Try to assign new element to accumulated type
+			if subs, err := hm.Assignable(et, t); err == nil {
+				t = t.Apply(subs).(hm.Type)
+				continue
 			}
-			t = t.Apply(subs).(hm.Type)
+
+			// Not assignable, find common supertype
+			commonType := findCommonSupertype(et, t)
+			if commonType == nil {
+				return nil, NewInferError(fmt.Errorf("unify index %d: no common type between %s and %s", i, et, t), l.Elements[i])
+			}
+			t = commonType
 		}
 	}
 	listType := hm.NonNullType{Type: ListType{t}}

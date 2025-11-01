@@ -1,0 +1,51 @@
+# Test Dang-defined interfaces and interface implementation validation
+
+# Test: Define a simple interface
+interface Named {
+  pub name: String!
+}
+
+# Test: Type implementing an interface
+type Person implements Named {
+  pub name: String!
+  pub age: Int!
+}
+
+# Test: Can instantiate a type that implements an interface
+pub person = Person(name: "Alice", age: 30)
+assert { person.name == "Alice" }
+assert { person.age == 30 }
+
+# Test: Interface with multiple fields
+interface Identifiable {
+  pub id: String!
+  pub title: String!
+}
+
+# Test: Type implementing interface
+type Product implements Identifiable {
+  pub id: String!
+  pub title: String!
+  pub price: Float!
+}
+
+# Test: Instantiate
+pub product = Product(id: "prod-1", title: "Widget", price: 9.99)
+assert { product.id == "prod-1" }
+assert { product.title == "Widget" }
+
+# Test: Multiple interface implementation
+interface Serializable {
+  pub data: String!
+}
+
+type Book implements Named & Serializable {
+  pub name: String!
+  pub author: String!
+  pub data: String!
+}
+
+pub book = Book(name: "1984", author: "George Orwell", data: "{}")
+assert { book.name == "1984" }
+assert { book.author == "George Orwell" }
+assert { book.data != null }

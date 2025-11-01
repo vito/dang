@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -84,7 +85,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		if definedType != nil {
-			if _, err := hm.Unify(definedType, inferredType); err != nil {
+			if _, err := hm.Assignable(inferredType, definedType); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
 		} else {
@@ -105,7 +106,10 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			}
 
 			if !definedType.Eq(curT) {
-				return nil, fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType)
+				return nil, WrapInferError(
+					fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
+					s,
+				)
 			}
 		}
 
@@ -184,6 +188,7 @@ type ClassDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
 	Value      *Block
+	Implements []*Symbol
 	Visibility Visibility
 	Directives []*DirectiveApplication
 	DocString  string
@@ -229,7 +234,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 
 	class, found := mod.NamedType(c.Name.Name)
 	if !found {
-		class = NewModule(c.Name.Name)
+		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
 	}
 
@@ -249,6 +254,34 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// Add the constructor function type to the environment
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
+
+	if pass == 0 {
+		// Link the implementation
+		if len(c.Implements) > 0 {
+			classMod := class.(*Module)
+			for _, ifaceSym := range c.Implements {
+				ifaceType, found := mod.NamedType(ifaceSym.Name)
+				if !found {
+					return WrapInferError(
+						fmt.Errorf("interface %s not found", ifaceSym.Name),
+						ifaceSym,
+					)
+				}
+
+				ifaceMod, ok := ifaceType.(*Module)
+				if !ok || ifaceMod.Kind != InterfaceKind {
+					return WrapInferError(
+						fmt.Errorf("%s is not an interface", ifaceSym.Name),
+						ifaceSym,
+					)
+				}
+
+				// Add "blindly" initially, we'll validate later
+				classMod.AddInterface(ifaceType)
+				ifaceMod.AddImplementer(classMod)
+			}
+		}
+	}
 
 	if pass > 0 {
 		// set special 'self' keyword to match the function signature.
@@ -271,7 +304,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	class, found := mod.NamedType(c.Name.Name)
 	if !found {
-		class = NewModule(c.Name.Name)
+		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
 
 		// Store doc string for the class name in the environment
@@ -304,7 +337,66 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, err
 	}
 
+	// Validate interface implementations after fields have been inferred
+	if len(c.Implements) > 0 {
+		classMod := c.Inferred
+		for _, ifaceSym := range c.Implements {
+			if err := c.validateInterfaceImplementations(classMod, mod, ifaceSym); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return c.ConstructorFnType, nil
+}
+
+// validateInterfaceImplementations checks that this type correctly implements all declared interfaces
+func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, ifaceSym *Symbol) error {
+	ifaceType, found := env.NamedType(ifaceSym.Name)
+	if !found {
+		// no error; this is raised in Hoist instead
+		return nil
+	}
+
+	ifaceMod, ok := ifaceType.(*Module)
+	if !ok || ifaceMod.Kind != InterfaceKind {
+		// no error; this is raised in Hoist instead
+		return nil
+	}
+
+	var missingFields []string
+	// Check that all interface fields are present in the class
+	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
+		classFieldScheme, classHasField := classMod.SchemeOf(field)
+		if !classHasField {
+			missingFields = append(missingFields, field)
+			continue
+		}
+
+		// Get the types from the schemes
+		ifaceFieldType, _ := fieldScheme.Type()
+		classFieldType, _ := classFieldScheme.Type()
+
+		// Validate field type compatibility
+		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceSym.Name, c.Name.Name); err != nil {
+			return err
+		}
+	}
+
+	if len(missingFields) > 0 {
+		errs := &InferenceErrors{}
+		sort.Strings(missingFields)
+		for _, field := range missingFields {
+			fieldScheme, _ := ifaceMod.SchemeOf(field)
+			errs.Add(WrapInferError(
+				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", c.Name.Name, field, fieldScheme, ifaceSym.Name),
+				ifaceSym,
+			))
+		}
+		return errs
+	}
+
+	return nil
 }
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots and private
@@ -428,8 +520,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	// Create the enum type (module) if it doesn't exist
 	enumType, found := mod.NamedType(e.Name.Name)
 	if !found {
-		enumType = NewModule(e.Name.Name)
-		enumType.(*Module).Kind = EnumKind
+		enumType = NewModule(e.Name.Name, EnumKind)
 		mod.AddClass(e.Name.Name, enumType)
 	}
 
@@ -465,8 +556,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 	enumType, found := mod.NamedType(e.Name.Name)
 	if !found {
-		enumType = NewModule(e.Name.Name)
-		enumType.(*Module).Kind = EnumKind
+		enumType = NewModule(e.Name.Name, EnumKind)
 		mod.AddClass(e.Name.Name, enumType)
 
 		if e.DocString != "" {
@@ -545,8 +635,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	// Create the scalar type (module) if it doesn't exist
 	scalarType, found := mod.NamedType(s.Name.Name)
 	if !found {
-		scalarType = NewModule(s.Name.Name)
-		scalarType.(*Module).Kind = ScalarKind
+		scalarType = NewModule(s.Name.Name, ScalarKind)
 		mod.AddClass(s.Name.Name, scalarType)
 	}
 
@@ -571,8 +660,7 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	scalarType, found := mod.NamedType(s.Name.Name)
 	if !found {
-		scalarType = NewModule(s.Name.Name)
-		scalarType.(*Module).Kind = ScalarKind
+		scalarType = NewModule(s.Name.Name, ScalarKind)
 		mod.AddClass(s.Name.Name, scalarType)
 
 		if s.DocString != "" {
@@ -602,4 +690,109 @@ func (s *ScalarDecl) Walk(fn func(Node) bool) {
 		return
 	}
 	// Scalar declarations have no children to walk
+}
+
+type InterfaceDecl struct {
+	InferredTypeHolder
+	Name       *Symbol
+	Value      *Block
+	Visibility Visibility
+	DocString  string
+	Loc        *SourceLocation
+
+	Inferred *Module
+}
+
+func (i *InterfaceDecl) IsDeclarer() bool {
+	return true
+}
+
+var _ Node = &InterfaceDecl{}
+var _ Evaluator = &InterfaceDecl{}
+
+func (i *InterfaceDecl) DeclaredSymbols() []string {
+	return []string{i.Name.Name}
+}
+
+func (i *InterfaceDecl) ReferencedSymbols() []string {
+	var symbols []string
+	// Interface declarations reference symbols from their body (the Block)
+	symbols = append(symbols, i.Value.ReferencedSymbols()...)
+	return symbols
+}
+
+func (i *InterfaceDecl) Body() hm.Expression { return i.Value }
+
+func (i *InterfaceDecl) GetSourceLocation() *SourceLocation { return i.Loc }
+
+var _ Hoister = &InterfaceDecl{}
+
+func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	mod, ok := env.(Env)
+	if !ok {
+		return fmt.Errorf("InterfaceDecl.Hoist: environment does not support module operations")
+	}
+
+	// Pass 0: Register the interface type
+	if pass == 0 {
+		iface := NewModule(i.Name.Name, InterfaceKind)
+		mod.AddClass(i.Name.Name, iface)
+
+		// Add the interface type to the environment so it can be referenced
+		interfaceScheme := hm.NewScheme(nil, iface)
+		env.Add(i.Name.Name, interfaceScheme)
+	}
+
+	// Interface fields are handled in Infer, not Hoist
+	return nil
+}
+
+func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(i, func() (hm.Type, error) {
+		mod, ok := env.(Env)
+		if !ok {
+			return nil, fmt.Errorf("InterfaceDecl.Infer: environment does not support module operations")
+		}
+
+		iface, found := mod.NamedType(i.Name.Name)
+		if !found {
+			return nil, fmt.Errorf("interface %s not found", i.Name.Name)
+		}
+
+		// Infer the interface fields using composite environment
+		inferEnv := &CompositeModule{
+			primary: iface,
+			lexical: env.(Env),
+		}
+
+		// Use phased inference approach (like ClassDecl) to avoid environment cloning
+		if _, err := InferFormsWithPhases(ctx, i.Value.Forms, inferEnv, fresh); err != nil {
+			return nil, err
+		}
+
+		i.Inferred = iface.(*Module)
+		i.SetInferredType(iface)
+
+		// Set doc string
+		if i.DocString != "" {
+			mod.SetDocString(i.Name.Name, i.DocString)
+		}
+
+		return iface, nil
+	})
+}
+
+func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Interfaces are pure type declarations - they don't have runtime values
+	// Just register the interface module in the environment
+	interfaceModule := NewModuleValue(i.Inferred)
+	env.SetWithVisibility(i.Name.Name, interfaceModule, i.Visibility)
+	return interfaceModule, nil
+}
+
+func (i *InterfaceDecl) Walk(fn func(Node) bool) {
+	if !fn(i) {
+		return
+	}
+	i.Value.Walk(fn)
 }

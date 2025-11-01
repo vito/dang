@@ -119,6 +119,15 @@ func (t ListType) Eq(other Type) bool {
 	return false
 }
 
+func (t ListType) Supertypes() []Type {
+	innerSupers := t.Type.Supertypes()
+	for i, t := range innerSupers {
+		// Generalize into list type for each supertype
+		innerSupers[i] = ListType{t}
+	}
+	return innerSupers
+}
+
 // GraphQLListType represents a list returned from GraphQL that contains objects.
 // Unlike ListType, it cannot be directly iterated - it must first be converted
 // to a ListType via object selection (.{fields}) to avoid N+1 query problems.
@@ -163,6 +172,10 @@ func (t GraphQLListType) Eq(other Type) bool {
 		return t.Type.Eq(ot.Type)
 	}
 	return false
+}
+
+func (t GraphQLListType) Supertypes() []Type {
+	return nil
 }
 
 type RecordType struct {
@@ -305,6 +318,10 @@ func (t *RecordType) Eq(other Type) bool {
 	return false
 }
 
+func (t *RecordType) Supertypes() []Type {
+	return nil
+}
+
 func (t *RecordType) Format(f fmt.State, c rune) {
 	if t.Named != "" {
 		fmt.Fprint(f, t.Named)
@@ -373,7 +390,7 @@ func (t ObjectTypeNode) ReferencedSymbols() []string {
 }
 
 func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	for _, field := range t.Fields {
 		fieldType, err := field.Type.Infer(ctx, env, fresh)
 		if err != nil {

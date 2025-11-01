@@ -182,7 +182,7 @@ func ToValue(v any) (Value, error) {
 				elemType = converted.Type()
 			} else {
 				// Try to unify types - if they don't match, fall back to type variable
-				if _, err := hm.Unify(elemType, converted.Type()); err != nil {
+				if _, err := hm.Assignable(converted.Type(), elemType); err != nil {
 					elemType = hm.TypeVariable('a')
 				}
 			}

@@ -9,6 +9,16 @@ import (
 	"strconv"
 )
 
+type Node interface {
+	IsNode()
+	GetID() string
+}
+
+type Timestamped interface {
+	IsTimestamped()
+	GetCreatedAt() string
+}
+
 type CreateUserInput struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -32,6 +42,12 @@ type Post struct {
 	Author    *User  `json:"author"`
 	CreatedAt string `json:"createdAt"`
 }
+
+func (Post) IsNode()            {}
+func (this Post) GetID() string { return this.ID }
+
+func (Post) IsTimestamped()            {}
+func (this Post) GetCreatedAt() string { return this.CreatedAt }
 
 type PostConnection struct {
 	Posts    []*Post   `json:"posts"`
@@ -63,6 +79,9 @@ type User struct {
 	Status Status          `json:"status"`
 	Posts  *PostConnection `json:"posts"`
 }
+
+func (User) IsNode()            {}
+func (this User) GetID() string { return this.ID }
 
 type UserProfile struct {
 	User              *User    `json:"user"`

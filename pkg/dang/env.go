@@ -34,6 +34,7 @@ const (
 	ObjectKind ModuleKind = iota
 	EnumKind
 	ScalarKind
+	InterfaceKind
 )
 
 // TODO: is this just ClassType? are Classes just named Envs?
@@ -49,11 +50,16 @@ type Module struct {
 	directives      map[string]*DirectiveDecl
 	docStrings      map[string]string
 	moduleDocString string
+
+	// Interface tracking
+	interfaces   []Env // Interfaces this type implements
+	implementers []Env // Types that implement this interface (for interface modules)
 }
 
-func NewModule(name string) *Module {
+func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
 		Named:           name,
+		Kind:            kind,
 		classes:         make(map[string]Env),
 		vars:            make(map[string]*hm.Scheme),
 		visibility:      make(map[string]Visibility),
@@ -103,7 +109,7 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 var Prelude *Module
 
 func init() {
-	Prelude = NewModule("Prelude")
+	Prelude = NewModule("Prelude", ObjectKind)
 
 	// Install built-in types
 	Prelude.AddClass("ID", IDType)
@@ -120,7 +126,7 @@ func init() {
 }
 
 func NewEnv(schema *introspection.Schema) Env {
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	env := &CompositeModule{mod, Prelude}
 
 	for _, t := range schema.Directives {
@@ -150,7 +156,7 @@ func NewEnv(schema *introspection.Schema) Env {
 	for _, t := range schema.Types {
 		sub, found := env.NamedType(t.Name)
 		if !found {
-			sub = NewModule(t.Name)
+			sub = NewModule(t.Name, InterfaceKind)
 			// Store type description as module documentation
 			if t.Description != "" {
 				sub.SetModuleDocString(t.Description)
@@ -184,8 +190,7 @@ func NewEnv(schema *introspection.Schema) Env {
 			sub, found := env.NamedType(t.Name)
 			if !found {
 				// Create a scalar type module
-				sub = NewModule(t.Name)
-				sub.(*Module).Kind = ScalarKind
+				sub = NewModule(t.Name, ScalarKind)
 				if t.Description != "" {
 					sub.SetModuleDocString(t.Description)
 				}
@@ -194,6 +199,18 @@ func NewEnv(schema *introspection.Schema) Env {
 			// Add the scalar type as a scheme
 			mod.Add(t.Name, hm.NewScheme(nil, sub))
 			mod.SetVisibility(t.Name, PublicVisibility)
+		}
+	}
+
+	// Make interface types available as values in the module
+	for _, t := range schema.Types {
+		if t.Kind == introspection.TypeKindInterface {
+			sub, found := env.NamedType(t.Name)
+			if found {
+				// Add the interface type as a scheme that represents the module itself
+				mod.Add(t.Name, hm.NewScheme(nil, sub))
+				mod.SetVisibility(t.Name, PublicVisibility)
+			}
 		}
 	}
 
@@ -252,6 +269,39 @@ func NewEnv(schema *introspection.Schema) Env {
 			// Store field description as documentation
 			if f.Description != "" {
 				install.SetDocString(f.Name, f.Description)
+			}
+		}
+	}
+
+	// Link interface implementations
+	for _, t := range schema.Types {
+		// Skip types that don't implement any interfaces
+		if len(t.Interfaces) == 0 {
+			continue
+		}
+
+		// Get the implementing type module
+		implType, found := env.NamedType(t.Name)
+		if !found {
+			continue
+		}
+
+		// For each interface this type implements
+		for _, iface := range t.Interfaces {
+			// Look up the interface module
+			ifaceModule, found := env.NamedType(iface.Name)
+			if !found {
+				slog.Warn("interface not found", "interface", iface.Name, "implementer", t.Name)
+				continue
+			}
+
+			// Link them together
+			if implMod, ok := implType.(*Module); ok {
+				implMod.AddInterface(ifaceModule)
+				slog.Debug("linked interface implementation", "type", t.Name, "interface", iface.Name)
+			}
+			if ifaceMod, ok := ifaceModule.(*Module); ok {
+				ifaceMod.AddImplementer(implType)
 			}
 		}
 	}
@@ -342,7 +392,7 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 }
 
 func (e *Module) Clone() hm.Env {
-	mod := NewModule(e.Named)
+	mod := NewModule(e.Named, e.Kind)
 	mod.Parent = e
 	return mod
 }
@@ -483,7 +533,244 @@ func (t *Module) Eq(other Type) bool {
 		return false
 	}
 	if t.Named != "" {
+		// Named modules are only equal if they're the exact same instance (pointer equality)
 		return t == otherMod
 	}
+	// Unnamed modules (anonymous record-like modules) use structural equality
 	return t.AsRecord().Eq(otherMod.AsRecord())
+}
+
+func (t *Module) Supertypes() []Type {
+	// Only object types have supertypes (their interfaces)
+	if t.Kind != ObjectKind {
+		return nil
+	}
+	if len(t.interfaces) == 0 {
+		return nil
+	}
+	// Convert []Env to []Type
+	result := make([]Type, len(t.interfaces))
+	for i, iface := range t.interfaces {
+		result[i] = iface.(Type)
+	}
+	return result
+}
+
+// AddInterface adds an interface that this type implements
+func (m *Module) AddInterface(iface Env) {
+	m.interfaces = append(m.interfaces, iface)
+}
+
+// GetInterfaces returns the interfaces this type implements
+func (m *Module) GetInterfaces() []Env {
+	return m.interfaces
+}
+
+// AddImplementer adds a type that implements this interface (for interface modules)
+func (m *Module) AddImplementer(impl Env) {
+	m.implementers = append(m.implementers, impl)
+}
+
+// GetImplementers returns the types that implement this interface (for interface modules)
+func (m *Module) GetImplementers() []Env {
+	return m.implementers
+}
+
+// ImplementsInterface checks if this type implements the given interface
+func (m *Module) ImplementsInterface(iface Env) bool {
+	for _, impl := range m.interfaces {
+		if impl == iface {
+			return true
+		}
+	}
+	return false
+}
+
+// validateFieldImplementation validates that a class field correctly implements an interface field
+// according to GraphQL interface implementation rules:
+// - Return types must be covariant (implementation can be more specific)
+// - Argument types must be contravariant (implementation can be more general)
+// - All interface arguments must be present
+// - Additional arguments must be optional
+func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+	// Both must be function types (fields in GraphQL are represented as functions)
+	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
+	classFn, classIsFn := classFieldType.(*hm.FunctionType)
+
+	// If interface field is not a function, class field must match exactly
+	if !ifaceIsFn {
+		if !classIsFn {
+			// Both are non-function types - check covariance
+			if !isSubtypeOf(classFieldType, ifaceFieldType) {
+				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
+					fieldName, classFieldType, ifaceFieldType)
+			}
+			return nil
+		}
+		return fmt.Errorf("field %q: class has function type but interface does not", fieldName)
+	}
+
+	// Interface field is a function
+	// Check if it's a zero-argument function (common for GraphQL fields and properties)
+	isZeroArgFn := false
+	if ifaceFn != nil {
+		if rt, ok := ifaceFn.Arg().(*RecordType); ok {
+			isZeroArgFn = len(rt.Fields) == 0
+		}
+	}
+
+	// If interface has a zero-arg function and class has a simple field, unwrap and compare
+	if isZeroArgFn && !classIsFn {
+		// Unwrap the function to get the return type
+		ifaceRetType := ifaceFn.Ret(false)
+		// Compare the return type with the class field type
+		if !isSubtypeOf(classFieldType, ifaceRetType) {
+			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
+				fieldName, classFieldType, ifaceRetType)
+		}
+		return nil
+	}
+
+	// Interface field is a function - class field must also be a function
+	if !classIsFn {
+		return fmt.Errorf("field %q: interface has function type but class does not", fieldName)
+	}
+
+	// Validate return type (covariant - class can return more specific type)
+	classRetType := classFn.Ret(false)
+	ifaceRetType := ifaceFn.Ret(false)
+
+	if !isSubtypeOf(classRetType, ifaceRetType) {
+		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
+			fieldName, classRetType, ifaceRetType)
+	}
+
+	// Validate arguments (contravariant - class can accept more general types)
+	ifaceArgs, ifaceArgsOk := ifaceFn.Arg().(*RecordType)
+	classArgs, classArgsOk := classFn.Arg().(*RecordType)
+
+	if !ifaceArgsOk || !classArgsOk {
+		// Arguments must be records
+		return fmt.Errorf("field %q: arguments must be record types", fieldName)
+	}
+
+	// Check that all interface arguments are present in class
+	for _, ifaceArg := range ifaceArgs.Fields {
+		classArgScheme, found := classArgs.SchemeOf(ifaceArg.Key)
+		if !found {
+			return fmt.Errorf("field %q: missing argument %q required by interface", fieldName, ifaceArg.Key)
+		}
+
+		// Validate argument type compatibility (contravariant)
+		classArgType, _ := classArgScheme.Type()
+		ifaceArgType, _ := ifaceArg.Value.Type()
+
+		// For contravariance: class arg type must be a supertype of interface arg type
+		// This means: if interface requires String!, class can accept String or String!
+		// But if interface requires String, class must accept String (can't require String!)
+		if !isSupertypeOf(classArgType, ifaceArgType) {
+			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
+				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
+		}
+	}
+
+	// Check that any additional arguments in class are optional
+	for _, classArg := range classArgs.Fields {
+		// Check if this argument exists in the interface
+		_, found := ifaceArgs.SchemeOf(classArg.Key)
+		if !found {
+			// Additional argument - must be optional (nullable or has default)
+			classArgType, _ := classArg.Value.Type()
+			if _, isNonNull := classArgType.(hm.NonNullType); isNonNull {
+				return fmt.Errorf("field %q, argument %q: additional arguments not in interface must be optional (nullable or have default)",
+					fieldName, classArg.Key)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isSubtypeOf checks if sub is a subtype of super (covariance check)
+// For return types: String! is a subtype of String, User is a subtype of Node
+func isSubtypeOf(sub, super hm.Type) bool {
+	_, err := hm.Assignable(sub, super)
+	return err == nil
+}
+
+// isSupertypeOf checks if super is a supertype of sub (contravariance check)
+// For argument types: String is a supertype of String!, Node is a supertype of User
+func isSupertypeOf(super, sub hm.Type) bool {
+	// Contravariance is just flipped subtyping
+	return isSubtypeOf(sub, super)
+}
+
+// findCommonSupertype finds the least common supertype of two types.
+// This is used for inferring list types with heterogeneous elements.
+// Returns nil if no common supertype exists (other than Any).
+func findCommonSupertype(t1, t2 hm.Type) hm.Type {
+	// If types are equal, return either one
+	if t1.Eq(t2) {
+		return t1
+	}
+
+	// If one is a subtype of the other, return the supertype
+	if isSubtypeOf(t1, t2) {
+		return t2
+	}
+	if isSubtypeOf(t2, t1) {
+		return t1
+	}
+
+	// Build supertype sets for both types
+	supers1 := buildSupertypeSet(t1)
+	supers2 := buildSupertypeSet(t2)
+
+	// Find common supertypes
+	var common []hm.Type
+	for super := range supers1 {
+		if supers2[super] {
+			common = append(common, super)
+		}
+	}
+
+	if len(common) == 0 {
+		return nil
+	}
+
+	// Find the most specific common supertype (LUB - Least Upper Bound)
+	// This is the one that is a subtype of all others
+	for _, candidate := range common {
+		isLeast := true
+		for _, other := range common {
+			if candidate.Eq(other) {
+				continue
+			}
+			// If candidate is a supertype of other, then other is more specific
+			if isSubtypeOf(other, candidate) {
+				isLeast = false
+				break
+			}
+		}
+		if isLeast {
+			return candidate
+		}
+	}
+
+	// Fallback: return first common supertype (shouldn't reach here if LUB exists)
+	return common[0]
+}
+
+// buildSupertypeSet builds the transitive closure of all supertypes
+func buildSupertypeSet(t hm.Type) map[hm.Type]bool {
+	result := make(map[hm.Type]bool)
+	result[t] = true
+
+	for _, super := range t.Supertypes() {
+		for s := range buildSupertypeSet(super) {
+			result[s] = true
+		}
+	}
+
+	return result
 }

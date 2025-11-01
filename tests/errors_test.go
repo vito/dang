@@ -60,7 +60,7 @@ func TestErrorMessages(tT *testing.T) {
 		testName := strings.TrimSuffix(filepath.Base(dangFile), ".dang")
 
 		t.Run(testName, func(ctx context.Context, t *testctx.T) {
-			output := runDangFile(t.Context(), client, schema, dangFile)
+			output := runDangFile(ctx, t, client, schema, dangFile)
 
 			// Compare with golden file
 			golden.Assert(t, output, testName+".golden")
@@ -69,7 +69,7 @@ func TestErrorMessages(tT *testing.T) {
 }
 
 // runDangFile runs a Dang file and captures combined stdout/stderr
-func runDangFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, dangFile string) string {
+func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, schema *introspection.Schema, dangFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
 
@@ -79,6 +79,7 @@ func runDangFile(ctx context.Context, client graphql.Client, schema *introspecti
 
 	// Run the Dang file
 	err := dang.RunFile(ctx, client, schema, dangFile, false)
+	require.Error(t, err, "Test expects an error, but did not error.")
 
 	// Combine stdout and stderr output
 	var combined bytes.Buffer
