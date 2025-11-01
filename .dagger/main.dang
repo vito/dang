@@ -54,12 +54,25 @@ type Dang {
   """
   Run the Dang language tests.
   """
-  pub test(filter: String! = ""): Void {
+  pub test(
+    """
+    Only run tests matching this filter.
+    """
+    filter: String! = "",
+    """
+    A unique key to force the tests to re-run.
+    """
+    rerun: String,
+  ): Void {
     let args = ["go", "test", "-v", "-count=1", "./tests"]
     if filter != "" {
       args += ["-run", "/"+filter]
     }
-    generated.
+    let ctr = generated
+    if rerun != null {
+      ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
+    }
+    ctr.
       withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
