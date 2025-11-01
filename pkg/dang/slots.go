@@ -84,7 +84,6 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		if definedType != nil {
-			// TODO: need this order for `pub validator: Validator! = EmailValidator`
 			if _, err := hm.Assignable(inferredType, definedType); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
