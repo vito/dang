@@ -1,4 +1,4 @@
-[1m[31mError:[0m missing field "greet" required by interface Greetable
+[1m[31mError:[0m class Person is missing `greet(): String!`, required by interface Greetable
   [2m[34m--> errors/interface_missing_field.dang:7:24[0m
  [2m    |[0m
  [2m  5 | }[0m

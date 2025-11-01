@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -341,7 +342,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		classMod := c.Inferred
 		for _, ifaceSym := range c.Implements {
 			if err := c.validateInterfaceImplementations(classMod, mod, ifaceSym); err != nil {
-				return nil, WrapInferError(err, ifaceSym)
+				return nil, err
 			}
 		}
 	}
@@ -363,11 +364,13 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		return nil
 	}
 
+	var missingFields []string
 	// Check that all interface fields are present in the class
 	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
 		classFieldScheme, classHasField := classMod.SchemeOf(field)
 		if !classHasField {
-			return fmt.Errorf("missing field %q required by interface %s", field, ifaceSym.Name)
+			missingFields = append(missingFields, field)
+			continue
 		}
 
 		// Get the types from the schemes
@@ -378,6 +381,19 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceSym.Name, c.Name.Name); err != nil {
 			return err
 		}
+	}
+
+	if len(missingFields) > 0 {
+		errs := &InferenceErrors{}
+		sort.Strings(missingFields)
+		for _, field := range missingFields {
+			fieldScheme, _ := ifaceMod.SchemeOf(field)
+			errs.Add(WrapInferError(
+				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", c.Name.Name, field, fieldScheme, ifaceSym.Name),
+				ifaceSym,
+			))
+		}
+		return errs
 	}
 
 	return nil
