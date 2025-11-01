@@ -537,19 +537,27 @@ func (t *Module) Eq(other Type) bool {
 		return false
 	}
 	if t.Named != "" {
-		// Check for exact equality
-		if t == otherMod {
-			return true
-		}
-		// Check for subtyping: if other is an interface that t implements
-		// This allows User.Eq(Node) when User implements Node
-		// Note: This makes Eq asymmetric, which is intentional for subtyping
-		if otherMod.Kind == InterfaceKind && t.ImplementsInterface(otherMod) {
-			return true
-		}
-		return false
+		// Named modules are only equal if they're the exact same instance (pointer equality)
+		return t == otherMod
 	}
+	// Unnamed modules (anonymous record-like modules) use structural equality
 	return t.AsRecord().Eq(otherMod.AsRecord())
+}
+
+func (t *Module) Supertypes() []Type {
+	// Only object types have supertypes (their interfaces)
+	if t.Kind != ObjectKind {
+		return nil
+	}
+	if len(t.interfaces) == 0 {
+		return nil
+	}
+	// Convert []Env to []Type
+	result := make([]Type, len(t.interfaces))
+	for i, iface := range t.interfaces {
+		result[i] = iface.(Type)
+	}
+	return result
 }
 
 // AddInterface adds an interface that this type implements
@@ -690,80 +698,34 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 // isSubtypeOf checks if sub is a subtype of super (covariance check)
 // For return types: String! is a subtype of String, User is a subtype of Node
 func isSubtypeOf(sub, super hm.Type) bool {
-	// Exact match
-	if sub.Eq(super) {
+	// Use the core HM subtype check
+	if hm.IsSubtype(sub, super) {
 		return true
 	}
-
-	// NonNull is a subtype of its nullable version
-	if subNonNull, ok := sub.(hm.NonNullType); ok {
-		if subNonNull.Type.Eq(super) {
-			return true
-		}
-		// Continue checking if the inner type is a subtype
-		return isSubtypeOf(subNonNull.Type, super)
-	}
-
-	// List element covariance: [String!] is a subtype of [String]
+	
+	// Special case: List element covariance
+	// [Cat!] is a subtype of [Animal]
 	if subList, ok := sub.(ListType); ok {
 		if superList, ok := super.(ListType); ok {
 			return isSubtypeOf(subList.Type, superList.Type)
 		}
 	}
-
-	// Module/Interface subtyping (handled by Module.Eq already)
-	if subMod, ok := sub.(*Module); ok {
-		if superMod, ok := super.(*Module); ok {
-			// Check if sub implements super interface
-			if superMod.Kind == InterfaceKind && subMod.ImplementsInterface(superMod) {
-				return true
-			}
+	
+	// Similar for GraphQLListType
+	if subList, ok := sub.(GraphQLListType); ok {
+		if superList, ok := super.(GraphQLListType); ok {
+			return isSubtypeOf(subList.Type, superList.Type)
 		}
 	}
-
+	
 	return false
 }
 
 // isSupertypeOf checks if super is a supertype of sub (contravariance check)
 // For argument types: String is a supertype of String!, Node is a supertype of User
 func isSupertypeOf(super, sub hm.Type) bool {
-	// Exact match
-	if super.Eq(sub) {
-		return true
-	}
-
-	// Nullable is a supertype of NonNull
-	if subNonNull, ok := sub.(hm.NonNullType); ok {
-		if super.Eq(subNonNull.Type) {
-			return true
-		}
-		// Continue checking if the inner type has a supertype relationship
-		return isSupertypeOf(super, subNonNull.Type)
-	}
-
-	// NonNull can be supertype if its inner type is
-	if superNonNull, ok := super.(hm.NonNullType); ok {
-		return isSupertypeOf(superNonNull.Type, sub)
-	}
-
-	// List element contravariance: [String] is a supertype of [String!]
-	if superList, ok := super.(ListType); ok {
-		if subList, ok := sub.(ListType); ok {
-			return isSupertypeOf(superList.Type, subList.Type)
-		}
-	}
-
-	// Module/Interface contravariance
-	if superMod, ok := super.(*Module); ok {
-		if subMod, ok := sub.(*Module); ok {
-			// If sub implements super interface, then super is a supertype
-			if superMod.Kind == InterfaceKind && subMod.ImplementsInterface(superMod) {
-				return true
-			}
-		}
-	}
-
-	return false
+	// Contravariance is just flipped subtyping
+	return hm.IsSubtype(sub, super)
 }
 
 // findCommonSupertype finds the least common supertype of two types.
@@ -783,130 +745,77 @@ func findCommonSupertype(t1, t2 hm.Type) hm.Type {
 		return t1
 	}
 
-	// Handle NonNull types - the common supertype might be nullable
-	var inner1, inner2 hm.Type
-	bothNonNull := false
-
-	if nn1, ok := t1.(hm.NonNullType); ok {
-		inner1 = nn1.Type
-		if nn2, ok := t2.(hm.NonNullType); ok {
-			inner2 = nn2.Type
-			bothNonNull = true
-		} else {
-			inner2 = t2
+	// Handle NonNull types: if both are NonNull, find common supertype of inner types
+	// and wrap result in NonNull
+	t1NonNull, t1IsNonNull := t1.(hm.NonNullType)
+	t2NonNull, t2IsNonNull := t2.(hm.NonNullType)
+	if t1IsNonNull && t2IsNonNull {
+		innerCommon := findCommonSupertype(t1NonNull.Type, t2NonNull.Type)
+		if innerCommon != nil {
+			return hm.NonNullType{Type: innerCommon}
 		}
-	} else {
-		inner1 = t1
-		if nn2, ok := t2.(hm.NonNullType); ok {
-			inner2 = nn2.Type
-		} else {
-			inner2 = t2
-		}
-	}
-
-	// Try to find common supertype of inner types
-	if !inner1.Eq(t1) || !inner2.Eq(t2) {
-		commonInner := findCommonSupertype(inner1, inner2)
-		if commonInner != nil {
-			// If both were NonNull and we found a common inner type, wrap in NonNull
-			if bothNonNull {
-				return hm.NonNullType{Type: commonInner}
-			}
-			// Otherwise return the nullable version
-			return commonInner
-		}
-	}
-
-	// Handle Lists - if both are lists, find common supertype of elements
-	if l1, ok := inner1.(ListType); ok {
-		if l2, ok := inner2.(ListType); ok {
-			commonElem := findCommonSupertype(l1.Type, l2.Type)
-			if commonElem != nil {
-				listType := ListType{Type: commonElem}
-				if bothNonNull {
-					return hm.NonNullType{Type: listType}
-				}
-				return listType
-			}
-		}
-	}
-
-	// Handle Module/Interface subtyping - find common interface
-	mod1, isMod1 := inner1.(*Module)
-	mod2, isMod2 := inner2.(*Module)
-
-	if !isMod1 || !isMod2 {
 		return nil
 	}
 
-	// If one is an interface and the other implements it, return the interface
-	if mod1.Kind == InterfaceKind && mod2.ImplementsInterface(mod1) {
-		if bothNonNull {
-			return hm.NonNullType{Type: mod1}
+	// Handle Lists - if both are lists, find common supertype of elements
+	if l1, ok := t1.(ListType); ok {
+		if l2, ok := t2.(ListType); ok {
+			commonElem := findCommonSupertype(l1.Type, l2.Type)
+			if commonElem != nil {
+				return ListType{Type: commonElem}
+			}
 		}
-		return mod1
-	}
-	if mod2.Kind == InterfaceKind && mod1.ImplementsInterface(mod2) {
-		if bothNonNull {
-			return hm.NonNullType{Type: mod2}
-		}
-		return mod2
 	}
 
-	// Find common interfaces that both types implement
-	// We want the most specific (least common) interface
-	var commonInterfaces []Env
-	interfaces1 := mod1.GetInterfaces()
-	interfaces2 := mod2.GetInterfaces()
+	// Build supertype sets for both types
+	supers1 := buildSupertypeSet(t1)
+	supers2 := buildSupertypeSet(t2)
 
-	for _, iface1 := range interfaces1 {
-		for _, iface2 := range interfaces2 {
-			if iface1 == iface2 {
-				commonInterfaces = append(commonInterfaces, iface1)
+	// Find common supertypes
+	var common []hm.Type
+	for super := range supers1 {
+		if supers2[super] {
+			common = append(common, super)
+		}
+	}
+
+	if len(common) == 0 {
+		return nil
+	}
+
+	// Find the most specific common supertype (LUB - Least Upper Bound)
+	// This is the one that is a subtype of all others
+	for _, candidate := range common {
+		isLeast := true
+		for _, other := range common {
+			if candidate.Eq(other) {
+				continue
+			}
+			// If candidate is a supertype of other, then other is more specific
+			if isSubtypeOf(other, candidate) {
+				isLeast = false
 				break
 			}
 		}
+		if isLeast {
+			return candidate
+		}
 	}
 
-	// If we found common interfaces, we need to pick the most specific one
-	// For now, just return the first one - in a more sophisticated system,
-	// we'd check which interface is a subtype of the others
-	if len(commonInterfaces) > 0 {
-		// Try to find the most specific interface (one that doesn't implement others)
-		for _, candidate := range commonInterfaces {
-			candidateMod, ok := candidate.(*Module)
-			if !ok {
-				continue
-			}
-			isLeast := true
-			for _, other := range commonInterfaces {
-				if candidate == other {
-					continue
-				}
-				otherMod, ok := other.(*Module)
-				if !ok {
-					continue
-				}
-				// If candidate implements other, then other is more general
-				if candidateMod.ImplementsInterface(otherMod) {
-					isLeast = false
-					break
-				}
-			}
-			if isLeast {
-				if bothNonNull {
-					return hm.NonNullType{Type: candidateMod}
-				}
-				return candidateMod
-			}
+	// Fallback: return first common supertype (shouldn't reach here if LUB exists)
+	return common[0]
+}
+
+// buildSupertypeSet builds the transitive closure of all supertypes
+func buildSupertypeSet(t hm.Type) map[hm.Type]bool {
+	result := make(map[hm.Type]bool)
+	result[t] = true
+
+	for _, super := range t.Supertypes() {
+		for s := range buildSupertypeSet(super) {
+			result[s] = true
 		}
-		// Fallback: return first common interface
-		if bothNonNull {
-			return hm.NonNullType{Type: commonInterfaces[0]}
-		}
-		return commonInterfaces[0]
 	}
 
-	// No common supertype found
-	return nil
+	return result
 }

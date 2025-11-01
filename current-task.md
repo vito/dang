@@ -1,436 +1,415 @@
-# GraphQL Interface Support Implementation Plan
+# Extending Hindley-Milner with Supertypes
 
-## Overview
+## Goal
 
-Add support for GraphQL interfaces to Dang, allowing types to implement interfaces and enabling interface-based polymorphism. This will align Dang's type system with GraphQL's interface capabilities.
+Extend the `hm.Type` interface to support subtyping natively by adding a `Supertypes() []hm.Type` method. This will unify the current ad-hoc subtyping implementations (null covariance and interface subtyping) into a single, coherent system.
 
-## Current State
+## Current State Analysis
 
-### What Works
-- **GraphQL Types**: Object types, enums, and scalars are fully supported
-- **Introspection**: The introspection query already fetches `interfaces` and `possibleTypes` fields (lines 37-39, 46-48 in `introspection/introspection.graphql`)
-- **Type System Infrastructure**: Excellent foundation with phased compilation, composite modules, and Hindley-Milner type inference
-- **Data Available**: `introspection.Type` struct has an `Interfaces []*Type` field (line 108 in `introspection/introspection.go`)
+### Current Subtyping Mechanisms
 
-### What's Missing
-- **No Interface Kind**: `ModuleKind` enum only has `ObjectKind`, `EnumKind`, `ScalarKind` (lines 30-37 in `pkg/dang/env.go`)
-- **No Interface Syntax**: Grammar has no `interface` keyword or syntax
-- **No Subtyping**: Type system treats all types independently - no inheritance or implementation relationships
-- **Lost Information**: When loading GraphQL schemas, interface implementation info is discarded
+1. **Null Subtyping**: Implemented directly in `unify()` (pkg/hm/unify.go:32-47)
+   - `NonNullType` has special handling: `T!` is assignable to `T`
+   - Direction matters: `String!` → `String` ✓, but `String` → `String!` ✗
+   - Implemented as hardcoded logic in the unification algorithm
 
-### Current Behavior
-If a GraphQL schema has:
-```graphql
-interface Node {
-  id: ID!
-}
+2. **Interface Subtyping**: Implemented in `Module.Eq()` (pkg/dang/env.go:534-553)
+   - `Module.Eq()` is intentionally asymmetric to support subtyping
+   - `Cat.Eq(Animal)` returns true when Cat implements Animal
+   - Uses `ImplementsInterface()` to check relationships
+   - Works because `unify()` falls back to `Type.Eq()` for atomic types
 
-type User implements Node {
-  id: ID!
-  name: String!
-}
-```
+### Current Helper Functions
 
-Dang currently treats both as independent object types with no relationship. The `implements Node` relationship is **lost**.
+- `isSubtypeOf()` (pkg/dang/env.go:690-725): Checks covariance for return types
+- `isSupertypeOf()` (pkg/dang/env.go:729-767): Checks contravariance for arguments
+- `findCommonSupertype()` (pkg/dang/env.go:772-912): Finds LUB for heterogeneous lists
 
-## Design Decisions
+### Problems with Current Approach
 
-### 1. Interface Representation Strategy
+1. **Fragmented**: Subtyping logic is scattered across multiple files and functions
+2. **Non-Uniform**: Different types handle subtyping differently (unify vs Eq vs helpers)
+3. **Limited Composability**: Hard to combine subtyping rules (e.g., `[Cat!]` as `[Animal]`)
+4. **Asymmetric Eq**: `Type.Eq()` violates normal equality semantics, which is confusing
+5. **Manual Propagation**: Each type system extension needs to manually handle subtyping
 
-**Decision**: Interfaces should be represented as Modules with `InterfaceKind`, similar to how enums and scalars work.
+## Proposed Solution
 
-**Rationale**:
-- Consistent with existing type system architecture
-- Modules already support fields/methods
-- Easy to track which types implement which interfaces
-- Aligns with GraphQL's interface model
+### 1. Extend `hm.Type` Interface
 
-### 2. Syntax Strategy
+Add a new method to the core `hm.Type` interface:
 
-**Option A: Explicit Interface Declarations (Recommended)**
-```dang
-interface Node {
-  pub id: ID!
-}
-
-type User implements Node {
-  pub id: ID!
-  pub name: String!
+```go
+// pkg/hm/types.go
+type Type interface {
+    Substitutable
+    Name() string
+    Normalize(TypeVarSet, TypeVarSet) (Type, error)
+    Types() Types
+    Eq(Type) bool  // Return to being symmetric equality
+    Supertypes() []Type  // NEW: Return direct supertypes
+    fmt.Stringer
 }
 ```
 
-**Option B: No Dang Syntax (GraphQL-Only)**
-- Interfaces exist only at runtime from GraphQL schemas
-- No Dang code can declare interfaces
-- Types automatically inherit interface implementations from GraphQL
+### 2. Implement Supertypes() for All Types
 
-**Recommendation**: Start with **Option B** for initial implementation, add Option A later if needed.
+#### Core HM Types (pkg/hm/types.go)
 
-**Rationale**:
-- GraphQL interfaces are already in the schema
-- Most Dang code queries existing GraphQL APIs
-- Simpler initial implementation
-- Can add syntax later if users need to declare interfaces in pure Dang code
+- **TypeVariable**: Return `nil` (no supertypes)
+- **FunctionType**: Return `nil` (functions don't have supertypes)
+- **NonNullType**: Return `[]Type{t.Type}` (the inner nullable type is a supertype)
 
-### 3. Subtyping Strategy
+#### Dang Types (pkg/dang/types.go)
 
-**Decision**: Use structural subtyping with interface field requirements.
+- **ListType**: Return `nil` (or potentially handle element type covariance)
+- **GraphQLListType**: Return `nil`
+- **RecordType**: Return `nil` (structural types don't have nominal supertypes)
 
-**Rationale**:
-- A type implements an interface if it has all the interface's fields with compatible types
-- Matches GraphQL's structural interface model
-- No need for explicit `implements` checks in type inference
-- Works well with Hindley-Milner type system
+#### Module Types (pkg/dang/env.go)
 
-### 4. Polymorphism Strategy
-
-**Decision**: Interface-typed values can reference any implementing type. Field access on interfaces resolves to the interface's declared fields.
-
-**Example**:
-```dang
-# If 'node' has type 'Node' interface
-let nodeId = node.id  # Works - 'id' is declared on Node interface
-
-# If 'user' has type 'User' which implements 'Node'
-let n: Node = user    # Works - User implements Node
-let userId = n.id     # Works - can access interface fields
-let userName = n.name # Error - 'name' not declared on Node interface
-```
-
-## Implementation Plan
-
-### Phase 1: Type System Foundation
-
-#### 1.1 Add Interface Kind
-**Files**: `pkg/dang/env.go`
-
-- [ ] Add `InterfaceKind` to `ModuleKind` enum (after `ScalarKind`)
-- [ ] Update any `ModuleKind` switch statements to handle `InterfaceKind`
-
-#### 1.2 Track Interface Implementations
-**Files**: `pkg/dang/env.go`, `pkg/dang/types.go`
-
-- [ ] Add `Interfaces []Env` field to `Module` struct to track implemented interfaces
-- [ ] Add `Implementers []Env` field to `Module` struct (for interfaces) to track types that implement them
-- [ ] Add helper methods:
-  - `Module.AddInterface(iface Env)`
-  - `Module.GetInterfaces() []Env`
-  - `Module.AddImplementer(impl Env)` (for interface modules)
-  - `Module.GetImplementers() []Env` (for interface modules)
-  - `Module.ImplementsInterface(iface Env) bool`
-
-### Phase 2: Schema Loading
-
-#### 2.1 Load Interface Types
-**Files**: `pkg/dang/env.go` (function `WithSchema`)
-
-- [ ] In the first loop over `schema.Types` (lines 150-163):
-  - Detect `t.Kind == introspection.TypeKindInterface`
-  - Create interface modules with `Kind: InterfaceKind`
-  - Store in type environment like other types
-
-#### 2.2 Populate Interface Fields
-**Files**: `pkg/dang/env.go` (function `WithSchema`)
-
-- [ ] In the field population loop (lines 226-256):
-  - Interface fields should be added to interface modules
-  - Same logic as object types - convert to function types
-
-#### 2.3 Link Implementations
-**Files**: `pkg/dang/env.go` (function `WithSchema`)
-
-- [ ] Add new loop after field population:
-  - For each type in `schema.Types`
-  - If type has `Interfaces` field populated
-  - For each interface in `t.Interfaces`:
-    - Look up interface module in type environment
-    - Call `type.AddInterface(interfaceModule)`
-    - Call `interfaceModule.AddImplementer(type)`
-
-#### 2.4 Make Interfaces Available
-**Files**: `pkg/dang/env.go` (function `WithSchema`)
-
-- [ ] Add interfaces to root module like enums/scalars (lines 165-175 pattern):
+- **Module**: Return the list of implemented interfaces
   ```go
-  for _, t := range schema.Types {
-    if t.Kind == introspection.TypeKindInterface {
-      sub, found := env.NamedType(t.Name)
-      if found {
-        mod.Add(t.Name, hm.NewScheme(nil, sub))
-        mod.SetVisibility(t.Name, PublicVisibility)
+  func (m *Module) Supertypes() []hm.Type {
+      if m.Kind != ObjectKind {
+          return nil
       }
+      result := make([]hm.Type, len(m.interfaces))
+      for i, iface := range m.interfaces {
+          result[i] = iface.(hm.Type)
+      }
+      return result
+  }
+  ```
+
+### 3. Update Type.Eq() to Be Symmetric
+
+Restore `Type.Eq()` to be a true symmetric equality check:
+
+```go
+// pkg/dang/env.go (Module.Eq)
+func (t *Module) Eq(other Type) bool {
+    otherMod, ok := other.(*Module)
+    if !ok {
+        return false
     }
-  }
-  ```
+    if t.Named != "" {
+        // Only exact equality (pointer comparison)
+        return t == otherMod
+    }
+    return t.AsRecord().Eq(otherMod.AsRecord())
+}
+```
 
-### Phase 3: Type Checking & Inference
+Remove the asymmetric subtyping logic from `Module.Eq()`.
 
-#### 3.1 Subtyping Rules
-**Files**: `pkg/hm/unify.go` or new `pkg/dang/subtyping.go`
+### 4. Update Assignable() to Use Supertypes
 
-- [ ] Implement subtyping check function:
-  ```go
-  func IsSubtype(sub hm.Type, super hm.Type) bool
-  ```
-- [ ] Logic:
-  - If `super` is an interface type (Module with InterfaceKind)
-  - Check if `sub` is a Module that implements `super`
-  - Use `Module.ImplementsInterface()` helper
-  - Return true if implementation exists
+Modify `hm.Assignable()` to check subtyping transitively:
 
-#### 3.2 Unification with Subtyping
-**Files**: `pkg/hm/unify.go`
+```go
+// pkg/hm/assignable.go (NEW FILE)
+func Assignable(have, want Type) (Subs, error) {
+    // First try direct unification
+    subs, err := unify(have, want)
+    if err == nil {
+        return subs, nil
+    }
+    
+    // If that fails, try subtyping: check if have is a subtype of want
+    if isSubtype(have, want) {
+        return NewSubs(), nil
+    }
+    
+    return nil, UnificationError{have, want}
+}
 
-- [ ] Modify `Unify` function to check subtyping:
-  - When unifying two Modules
-  - If exact types don't match
-  - Try `IsSubtype(t1, t2)` and `IsSubtype(t2, t1)`
-  - If either succeeds, allow unification
+// isSubtype checks if sub is a subtype of super (transitively)
+func isSubtype(sub, super Type) bool {
+    if sub.Eq(super) {
+        return true
+    }
+    
+    // Check direct supertypes
+    for _, supertype := range sub.Supertypes() {
+        if isSubtype(supertype, super) {
+            return true
+        }
+    }
+    
+    return false
+}
+```
 
-#### 3.3 Field Access on Interfaces
-**Files**: `pkg/dang/ast.go` or `pkg/dang/ast_expressions.go`
+### 5. Update unify() to Remove Special Cases
 
-- [ ] In `Select.Infer()` method:
-  - When receiver type is an interface Module
-  - Look up field in the interface Module (not implementing types)
-  - Return interface's declared field type
+Remove the special-case null handling from `unify()`:
 
-### Phase 4: Runtime Support
+```go
+// pkg/hm/unify.go
+func unify(have, want Type) (Subs, error) {
+    // Handle type variables
+    if haveTV, ok := have.(TypeVariable); ok {
+        return bindVar(haveTV, want)
+    }
+    if wantTV, ok := want.(TypeVariable); ok {
+        return bindVar(wantTV, have)
+    }
+    
+    // NO MORE SPECIAL NonNullType HANDLING HERE
+    
+    // Handle composite types
+    haveTypes := have.Types()
+    wantTypes := want.Types()
+    
+    if haveTypes != nil && wantTypes != nil {
+        // ... existing composite unification logic ...
+    }
+    
+    // Atomic type equality (now symmetric)
+    if have.Eq(want) {
+        return NewSubs(), nil
+    }
+    
+    return nil, UnificationError{have, want}
+}
+```
 
-#### 4.1 Interface Value Wrapping
-**Files**: `pkg/dang/eval.go`
+### 6. Update Helper Functions
 
-- [ ] Add `InterfaceValue` type:
-  ```go
-  type InterfaceValue struct {
-    Value        Value   // Underlying implementing type value
-    InterfaceType hm.Type // The interface type
-  }
-  ```
-- [ ] When assigning implementing type to interface-typed variable:
-  - Wrap in `InterfaceValue`
-  - Store both concrete value and interface type
+Simplify the helper functions to use the new `Supertypes()` method:
 
-#### 4.2 Field Access on Interface Values
-**Files**: `pkg/dang/eval.go`, `pkg/dang/ast_expressions.go`
+```go
+// pkg/dang/subtyping.go (NEW FILE or refactor in env.go)
 
-- [ ] In `Select.Eval()` method:
-  - If receiver is `InterfaceValue`
-  - Unwrap to get concrete value
-  - Access field on concrete value
-  - Ensure field exists on interface type (should be type-checked already)
+// isSubtypeOf checks if sub is a subtype of super (covariance)
+func isSubtypeOf(sub, super hm.Type) bool {
+    return hm.isSubtype(sub, super)  // Delegate to core HM function
+}
 
-#### 4.3 GraphQL Query Results
-**Files**: `pkg/dang/eval.go`, `pkg/dang/ast_expressions.go`
+// isSupertypeOf checks if super is a supertype of sub (contravariance)
+func isSupertypeOf(super, sub hm.Type) bool {
+    return hm.isSubtype(sub, super)  // Just flip the arguments
+}
 
-- [ ] When GraphQL returns interface-typed results:
-  - Detect field return type is interface
-  - Create `InterfaceValue` wrapping actual returned object
-  - May need to inspect `__typename` field for concrete type
+// findCommonSupertype finds the least upper bound of two types
+func findCommonSupertype(t1, t2 hm.Type) hm.Type {
+    if t1.Eq(t2) {
+        return t1
+    }
+    
+    // Build supertype graphs for both types
+    supers1 := buildSupertypeSet(t1)
+    supers2 := buildSupertypeSet(t2)
+    
+    // Find common supertypes
+    var common []hm.Type
+    for super := range supers1 {
+        if supers2[super] {
+            common = append(common, super)
+        }
+    }
+    
+    // Find the most specific common supertype (closest to leaves)
+    // This is the LUB (Least Upper Bound)
+    // ... implementation details ...
+}
 
-### Phase 5: Testing
+func buildSupertypeSet(t hm.Type) map[hm.Type]bool {
+    result := make(map[hm.Type]bool)
+    result[t] = true
+    
+    for _, super := range t.Supertypes() {
+        for s := range buildSupertypeSet(super) {
+            result[s] = true
+        }
+    }
+    
+    return result
+}
+```
 
-#### 5.1 Update Test Schema
-**Files**: `tests/gqlserver/schema.graphqls`, `tests/gqlserver/resolvers.go`
+### 7. Handle List Element Covariance
 
-- [ ] Add sample interface to test schema:
-  ```graphql
-  interface Node {
-    id: ID!
-  }
-  
-  interface Timestamped {
-    createdAt: Timestamp!
-  }
-  
-  type User implements Node & Timestamped {
-    id: ID!
-    name: String!
-    email: String!
-    createdAt: Timestamp!
-  }
-  
-  type Post implements Node & Timestamped {
-    id: ID!
-    title: String!
-    content: String!
-    authorId: ID!
-    createdAt: Timestamp!
-  }
-  ```
-- [ ] Add query returning interface types:
-  ```graphql
-  type Query {
-    node(id: ID!): Node
-    nodes: [Node!]!
-    timestamped: [Timestamped!]!
-  }
-  ```
-- [ ] Implement resolvers in `resolvers.helpers.go`
+For list element covariance (`[Cat!]` → `[Animal]`), we have two options:
 
-#### 5.2 Create Dang Test File
-**Files**: `tests/test_interface.dang`
+**Option A: Keep special handling in isSubtypeOf()**
+```go
+func isSubtypeOf(sub, super hm.Type) bool {
+    // Use core isSubtype for basic check
+    if hm.isSubtype(sub, super) {
+        return true
+    }
+    
+    // Special case: List element covariance
+    if subList, ok := sub.(ListType); ok {
+        if superList, ok := super.(ListType); ok {
+            return isSubtypeOf(subList.Type, superList.Type)
+        }
+    }
+    
+    // Similar for GraphQLListType
+    
+    return false
+}
+```
 
-- [ ] Test interface type availability
-  ```dang
-  # Interfaces should be available as types
-  assert { Node != null }
-  assert { Timestamped != null }
-  ```
-- [ ] Test querying interfaces
-  ```dang
-  # Query returning interface type
-  pub nodeResult = node({{id: "1"}})
-  assert { nodeResult.id != null }
-  ```
-- [ ] Test field access on interfaces
-  ```dang
-  # Can access interface fields
-  let allNodes = nodes
-  assert { allNodes[0].id != null }
-  ```
-- [ ] Test polymorphism
-  ```dang
-  # Interface can hold different implementing types
-  let items = timestamped
-  assert { items[0].createdAt != null }
-  ```
-- [ ] Test that non-interface fields are inaccessible
-  ```dang
-  # Should fail at type check:
-  # let n = node({{id: "1"}})
-  # let name = n.name  # Error: 'name' not on Node interface
-  ```
+**Option B: Make ListType.Supertypes() return element-covariant supertypes**
+This is more complex and may generate infinite supertypes. Probably not worth it.
 
-#### 5.3 Add Go Tests
-**Files**: `tests/test_interface_test.go`
+**Recommendation**: Use Option A.
 
-- [ ] Create test file following existing test patterns
-- [ ] Test schema loading with interfaces
-- [ ] Test type checking with interface assignments
-- [ ] Test error cases (accessing non-interface fields)
+### 8. Update Type Variable Binding
 
-### Phase 6: Documentation
+Consider whether type variables should be constrained by supertypes:
 
-#### 6.1 Create LLM Notes
-**Files**: `llm-notes/interface-types.md`
+```go
+// pkg/hm/unify.go
+func bindVar(tv TypeVariable, t Type) (Subs, error) {
+    if tv2, ok := t.(TypeVariable); ok && tv == tv2 {
+        return NewSubs(), nil
+    }
+    
+    if occursCheck(tv, t) {
+        return nil, fmt.Errorf("Occurs check failed: %s occurs in %s", tv, t)
+    }
+    
+    // NEW: Should we prevent binding if it creates invalid subtyping?
+    // For now, no - keep it simple.
+    
+    subs := NewSubs()
+    subs.Add(tv, t)
+    return subs, nil
+}
+```
 
-- [ ] Document interface support similar to `enum-types.md` and `scalar-types.md`
-- [ ] Include:
-  - Type environment structure
-  - Schema loading process
-  - Subtyping rules
-  - Runtime representation
-  - Usage examples
-  - GraphQL integration notes
-
-#### 6.2 Update Existing Notes
-**Files**: Various in `llm-notes/`
-
-- [ ] Update any notes that mention "types" to include interfaces
-- [ ] Ensure accuracy of notes about ModuleKind enum
-
-## Future Enhancements (Not in Initial Implementation)
-
-### Future: Interface Declaration Syntax
-- Add `interface` keyword to grammar
-- Support Dang-native interface declarations
-- Pattern similar to `type` but with `InterfaceKind`
-
-### Future: Union Type Support
-- Similar strategy to interfaces
-- GraphQL unions map to Dang union types
-- Type-safe pattern matching
-
-### Future: Type Narrowing
-- Use type guards or pattern matching
-- Narrow interface types to concrete types
-- Access concrete type fields safely
-
-### Future: Interface Extensions
-- Support interface inheritance (interface extends interface)
-- Already in GraphQL spec
-
-## Risk Mitigation
-
-### Breaking Changes
-- **Risk**: Low - interfaces don't exist yet, so no breaking changes
-- **Mitigation**: Ensure existing tests still pass
-
-### Type System Complexity
-- **Risk**: Medium - subtyping adds complexity to type inference
-- **Mitigation**: 
-  - Start with simple structural subtyping
-  - Extensive testing
-  - Clear error messages
-
-### Performance
-- **Risk**: Low - interface checks are structural
-- **Mitigation**: 
-  - Cache interface implementation checks
-  - Avoid unnecessary type conversions
-
-### GraphQL Spec Compliance
-- **Risk**: Low - following standard GraphQL interface semantics
-- **Mitigation**: Test against real GraphQL schemas
-
-## Success Criteria
-
-- [ ] GraphQL schemas with interfaces load successfully
-- [ ] Interface types are available in Dang code
-- [ ] Types implementing interfaces can be assigned to interface-typed variables
-- [ ] Field access on interfaces works correctly
-- [ ] Type checking enforces interface boundaries
-- [ ] All existing tests continue to pass
-- [ ] New interface tests pass
-- [ ] Documentation is complete
+**Recommendation**: Keep variable binding simple for now.
 
 ## Implementation Checklist
 
-### Prerequisites
-- [x] Research GraphQL interfaces in codebase
-- [x] Understand current type system
-- [x] Create implementation plan
-- [x] Write plan to current-task.md
+### Phase 1: Core Infrastructure
+- [ ] Add `Supertypes() []Type` method to `hm.Type` interface (pkg/hm/types.go)
+- [ ] Implement `Supertypes()` for `TypeVariable` (return `nil`)
+- [ ] Implement `Supertypes()` for `FunctionType` (return `nil`)
+- [ ] Implement `Supertypes()` for `NonNullType` (return `[]Type{t.Type}`)
+- [ ] Implement `Supertypes()` for `ListType` (return `nil`)
+- [ ] Implement `Supertypes()` for `GraphQLListType` (return `nil`)
+- [ ] Implement `Supertypes()` for `RecordType` (return `nil`)
+- [ ] Implement `Supertypes()` for `Module` (return interface list for ObjectKind)
 
-### Phase 1: Type System Foundation
-- [ ] Add `InterfaceKind` to `ModuleKind` enum
-- [ ] Add `Interfaces` field to `Module` struct
-- [ ] Add `Implementers` field to `Module` struct
-- [ ] Add helper methods for interface tracking
+### Phase 2: Refactor Assignable
+- [ ] Create new `isSubtype(sub, super Type) bool` function in pkg/hm/
+- [ ] Update `Assignable()` to check subtyping after unification fails
+- [ ] Remove special NonNullType handling from `unify()`
+- [ ] Restore `Module.Eq()` to symmetric equality (remove interface subtyping logic)
 
-### Phase 2: Schema Loading
-- [ ] Load interface types from GraphQL schema
-- [ ] Populate interface fields
-- [ ] Link implementations to interfaces
-- [ ] Make interfaces available in root module
+### Phase 3: Update Helper Functions
+- [ ] Simplify `isSubtypeOf()` to use `hm.isSubtype()`
+- [ ] Simplify `isSupertypeOf()` to use flipped `hm.isSubtype()`
+- [ ] Keep list element covariance as special case in `isSubtypeOf()`
+- [ ] Update `findCommonSupertype()` to use `Supertypes()` transitively
 
-### Phase 3: Type Checking
-- [ ] Implement subtyping check function
-- [ ] Modify unification to support subtyping
-- [ ] Update field access for interface types
+### Phase 4: Testing
+- [ ] Run existing tests to ensure no regressions: `./tests/run_all_tests.sh`
+- [ ] Test null subtyping still works: `String!` → `String`
+- [ ] Test interface subtyping still works: `Cat` → `Animal`
+- [ ] Test transitive subtyping: `Cat` → `Animal` → `Named` (if Cat implements Animal implements Named)
+- [ ] Test list covariance: `[Cat!]` → `[Animal]`
+- [ ] Test function return covariance still works
+- [ ] Test function argument contravariance still works
+- [ ] Test findCommonSupertype with interface hierarchies
 
-### Phase 4: Runtime Support
-- [ ] Add `InterfaceValue` type
-- [ ] Handle interface value wrapping
-- [ ] Update field access evaluation
-- [ ] Handle GraphQL query results
+### Phase 5: Documentation
+- [ ] Update llm-notes/interface-types.md to reflect new approach
+- [ ] Create llm-notes/subtyping-system.md documenting the Supertypes() design
+- [ ] Add comments explaining the subtyping semantics in hm.Type interface
 
-### Phase 5: Testing
-- [ ] Update test GraphQL schema
-- [ ] Implement test resolvers
-- [ ] Create Dang test file
-- [ ] Add Go integration tests
-- [ ] Run full test suite
+## Edge Cases to Consider
 
-### Phase 6: Documentation
-- [ ] Create `llm-notes/interface-types.md`
-- [ ] Update existing documentation
-- [ ] Verify all notes are accurate
+1. **Circular Interface Implementations**: Can interfaces implement other interfaces? If so, need cycle detection in `isSubtype()`.
 
-### Final Steps
-- [ ] Run `./tests/run_all_tests.sh`
-- [ ] Verify all tests pass
-- [ ] Review implementation for edge cases
-- [ ] Clean up debug code
-- [ ] Consider future enhancements
+2. **Multiple Interface Inheritance**: If `Cat implements Animal & Named`, both should be in Supertypes().
+
+3. **Type Variables**: Should `TypeVariable` be able to have subtype constraints? (Not for now.)
+
+4. **List Element Covariance**: `[NonNullType{Module{Cat}}]` → `[Module{Animal}]` requires both unwrapping NonNull and checking interface subtyping.
+
+5. **Empty Supertype Chains**: Types without supertypes should return `nil` or `[]Type{}` consistently.
+
+6. **Performance**: Transitive subtype checking could be O(n²) or worse. May need memoization later.
+
+## Expected Benefits
+
+1. **Uniformity**: All subtyping goes through one mechanism (Supertypes())
+2. **Composability**: Easy to add new subtyping relationships
+3. **Clarity**: Subtyping is explicit in the type interface, not hidden in unification
+4. **Extensibility**: Future type system extensions can easily declare supertypes
+5. **Symmetry**: Type.Eq() becomes truly symmetric, reducing confusion
+6. **Transitivity**: Multi-level interface hierarchies work automatically
+
+## Migration Strategy
+
+1. Add `Supertypes()` to interface (breaks compilation - good, forces implementation)
+2. Implement `Supertypes()` for all existing types (most return `nil`)
+3. Add `isSubtype()` function but don't use it yet
+4. Update `Assignable()` to call `isSubtype()` after `unify()` fails
+5. Run tests - should still pass
+6. Remove special NonNullType handling from `unify()`
+7. Run tests - should still pass
+8. Restore `Module.Eq()` to symmetric equality
+9. Run tests - should still pass
+10. Refactor helper functions to use new mechanism
+
+## Risks
+
+1. **Breaking Change**: Adding a method to `hm.Type` breaks external implementations (if any).
+   - Mitigation: This is an internal package, probably fine.
+
+2. **Performance**: Transitive subtype checking could be slower than direct checks.
+   - Mitigation: Measure first, optimize later. Can add memoization if needed.
+
+3. **Subtle Bugs**: Changing unification behavior might break existing code.
+   - Mitigation: Comprehensive testing at each step.
+
+4. **List Covariance**: Keeping it as a special case feels inconsistent.
+   - Mitigation: Document clearly. Could revisit later with more sophisticated approach.
+
+## Open Questions
+
+1. Should `Supertypes()` return all direct supertypes, or compute transitive closure?
+   - **Answer**: Return only direct supertypes. Compute transitive closure in `isSubtype()`.
+
+2. Should we make `Eq()` truly symmetric, or keep it asymmetric for performance?
+   - **Answer**: Make it symmetric. Subtyping should be explicit, not hidden in equality.
+
+3. Should list covariance be handled specially, or integrated into Supertypes()?
+   - **Answer**: Handle specially for now. Full integration is complex.
+
+4. Do we need contravariance for function arguments in Supertypes()?
+   - **Answer**: No. Contravariance is different from subtyping. Keep using `isSupertypeOf()` helper.
+
+5. Should we implement LUB (Least Upper Bound) / Join using Supertypes()?
+   - **Answer**: Yes, refactor `findCommonSupertype()` to use Supertypes() transitively.
+
+## Success Criteria
+
+- [ ] All existing tests pass
+- [ ] No special cases in `unify()` for NonNullType
+- [ ] `Module.Eq()` is symmetric
+- [ ] Transitive interface subtyping works (if A → B → C, then A → C)
+- [ ] Code is clearer and easier to understand
+- [ ] Adding new subtyping relationships is straightforward
+
+## Timeline Estimate
+
+- Phase 1 (Core Infrastructure): 1-2 hours
+- Phase 2 (Refactor Assignable): 1 hour
+- Phase 3 (Update Helpers): 30 minutes
+- Phase 4 (Testing): 1-2 hours
+- Phase 5 (Documentation): 30 minutes
+
+**Total**: ~4-6 hours
+
+## Notes
+
+This is a refactoring to make the existing subtyping behavior more explicit and uniform. It should NOT change the semantics of the type system, only improve its implementation.

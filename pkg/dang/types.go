@@ -119,6 +119,10 @@ func (t ListType) Eq(other Type) bool {
 	return false
 }
 
+func (t ListType) Supertypes() []Type {
+	return nil
+}
+
 // GraphQLListType represents a list returned from GraphQL that contains objects.
 // Unlike ListType, it cannot be directly iterated - it must first be converted
 // to a ListType via object selection (.{fields}) to avoid N+1 query problems.
@@ -163,6 +167,10 @@ func (t GraphQLListType) Eq(other Type) bool {
 		return t.Type.Eq(ot.Type)
 	}
 	return false
+}
+
+func (t GraphQLListType) Supertypes() []Type {
+	return nil
 }
 
 type RecordType struct {
@@ -303,6 +311,10 @@ func (t *RecordType) Eq(other Type) bool {
 		return true
 	}
 	return false
+}
+
+func (t *RecordType) Supertypes() []Type {
+	return nil
 }
 
 func (t *RecordType) Format(f fmt.State, c rune) {

@@ -12,6 +12,11 @@ type Type interface {
 	Normalize(TypeVarSet, TypeVarSet) (Type, error)
 	Types() Types
 	Eq(Type) bool
+	// Supertypes returns the direct supertypes of this type.
+	// For example, NonNullType{String} returns [String].
+	// Module types implementing interfaces return those interfaces.
+	// Most types return nil (no supertypes).
+	Supertypes() []Type
 	// fmt.Formatter
 	fmt.Stringer
 }
@@ -53,6 +58,10 @@ func (tv TypeVariable) Eq(other Type) bool {
 		return tv == ot
 	}
 	return false
+}
+
+func (tv TypeVariable) Supertypes() []Type {
+	return nil
 }
 
 func (tv TypeVariable) String() string {
@@ -109,6 +118,10 @@ func (ft *FunctionType) Eq(other Type) bool {
 		return ft.arg.Eq(ot.arg) && ft.ret.Eq(ot.ret)
 	}
 	return false
+}
+
+func (ft *FunctionType) Supertypes() []Type {
+	return nil
 }
 
 func (ft *FunctionType) String() string {
@@ -176,7 +189,7 @@ func (t NonNullType) Normalize(k, v TypeVarSet) (Type, error) {
 }
 
 func (t NonNullType) Types() Types {
-	return t.Type.Types()
+	return nil
 }
 
 func (t NonNullType) Eq(other Type) bool {
@@ -184,6 +197,11 @@ func (t NonNullType) Eq(other Type) bool {
 		return t.Type.Eq(ot.Type)
 	}
 	return false
+}
+
+func (t NonNullType) Supertypes() []Type {
+	// NonNull T is a subtype of T, so T is a supertype
+	return []Type{t.Type}
 }
 
 func (t NonNullType) String() string {
