@@ -5,6 +5,8 @@
 ] @keyword
 [
   (type_token)
+  (interface_token)
+  (implements_token)
   (enum_token)
   (scalar_token)
   (if_token)
@@ -80,6 +82,8 @@
   (id_symbol) @function.method)
 (type_only_slot
   (id_symbol) @function.method)
+(type_only_fun_slot
+  (id_symbol) @function.method)
 
 (arg_with_block_default
   (id_symbol) @variable.parameter)
@@ -90,6 +94,7 @@
 
 ;; Class definitions
 (class (id_symbol) @type)
+(interface (id_symbol) @type)
 (enum (id_symbol) @type)
 (enum (caps_symbol) @property)
 (scalar (id_symbol) @type)
