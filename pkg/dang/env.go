@@ -698,34 +698,15 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 // isSubtypeOf checks if sub is a subtype of super (covariance check)
 // For return types: String! is a subtype of String, User is a subtype of Node
 func isSubtypeOf(sub, super hm.Type) bool {
-	// Use the core HM subtype check
-	if hm.IsSubtype(sub, super) {
-		return true
-	}
-	
-	// Special case: List element covariance
-	// [Cat!] is a subtype of [Animal]
-	if subList, ok := sub.(ListType); ok {
-		if superList, ok := super.(ListType); ok {
-			return isSubtypeOf(subList.Type, superList.Type)
-		}
-	}
-	
-	// Similar for GraphQLListType
-	if subList, ok := sub.(GraphQLListType); ok {
-		if superList, ok := super.(GraphQLListType); ok {
-			return isSubtypeOf(subList.Type, superList.Type)
-		}
-	}
-	
-	return false
+	_, err := hm.Assignable(sub, super)
+	return err == nil
 }
 
 // isSupertypeOf checks if super is a supertype of sub (contravariance check)
 // For argument types: String is a supertype of String!, Node is a supertype of User
 func isSupertypeOf(super, sub hm.Type) bool {
 	// Contravariance is just flipped subtyping
-	return hm.IsSubtype(sub, super)
+	return isSubtypeOf(sub, super)
 }
 
 // findCommonSupertype finds the least common supertype of two types.
@@ -743,28 +724,6 @@ func findCommonSupertype(t1, t2 hm.Type) hm.Type {
 	}
 	if isSubtypeOf(t2, t1) {
 		return t1
-	}
-
-	// Handle NonNull types: if both are NonNull, find common supertype of inner types
-	// and wrap result in NonNull
-	t1NonNull, t1IsNonNull := t1.(hm.NonNullType)
-	t2NonNull, t2IsNonNull := t2.(hm.NonNullType)
-	if t1IsNonNull && t2IsNonNull {
-		innerCommon := findCommonSupertype(t1NonNull.Type, t2NonNull.Type)
-		if innerCommon != nil {
-			return hm.NonNullType{Type: innerCommon}
-		}
-		return nil
-	}
-
-	// Handle Lists - if both are lists, find common supertype of elements
-	if l1, ok := t1.(ListType); ok {
-		if l2, ok := t2.(ListType); ok {
-			commonElem := findCommonSupertype(l1.Type, l2.Type)
-			if commonElem != nil {
-				return ListType{Type: commonElem}
-			}
-		}
 	}
 
 	// Build supertype sets for both types

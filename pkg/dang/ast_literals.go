@@ -31,8 +31,6 @@ var _ Evaluator = (*List)(nil)
 
 func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
 	if len(l.Elements) == 0 {
-		// For now, just return the original approach and document this as a known issue
-		// The real fix requires changes to how the HM library handles recursive types
 		tv := f.Fresh()
 		t := hm.NonNullType{Type: ListType{tv}}
 		l.SetInferredType(t)

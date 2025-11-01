@@ -1,0 +1,6 @@
+# Test that [Int] and Int! are not compatible types
+# This should fail - you can't assign a non-null scalar to a list variable
+
+let a: [Int] = [123]
+let y: Int! = 124
+a = y  # ERROR: should not be able to assign Int! to [Int]

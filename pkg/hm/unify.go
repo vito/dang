@@ -2,6 +2,7 @@ package hm
 
 import (
 	"fmt"
+	"reflect"
 )
 
 // UnificationError represents errors during unification
@@ -13,67 +14,10 @@ func (e UnificationError) Error() string {
 	return fmt.Sprintf("cannot use %s as %s", e.Have, e.Want)
 }
 
-// isSubtype checks if sub is a subtype of super (transitively)
-// This implements the subtype relationship using the Supertypes() method.
-func isSubtype(sub, super Type) bool {
-	if sub.Eq(super) {
-		return true
-	}
-
-	// Check composite type covariance (e.g., list element covariance)
-	// If both types have component types with matching structure,
-	// check if all components have subtype relationships
-	subTypes := sub.Types()
-	superTypes := super.Types()
-	if subTypes != nil && superTypes != nil {
-		if len(subTypes) == len(superTypes) {
-			allCovariant := true
-			for i := range subTypes {
-				if !isSubtype(subTypes[i], superTypes[i]) {
-					allCovariant = false
-					break
-				}
-			}
-			if allCovariant {
-				return true
-			}
-		}
-	}
-
-	// Check direct supertypes recursively
-	for _, supertype := range sub.Supertypes() {
-		if isSubtype(supertype, super) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// IsSubtype is the exported version of isSubtype for use by other packages
-func IsSubtype(sub, super Type) bool {
-	return isSubtype(sub, super)
-}
-
 // Assignable attempts to unify two types, returning a substitution or error.
 // If unification fails, it checks subtyping: have can be assigned to want if
 // have is a subtype of want.
 func Assignable(have, want Type) (Subs, error) {
-	// First try direct unification
-	subs, err := unify(have, want)
-	if err == nil {
-		return subs, nil
-	}
-
-	// If that fails, try subtyping: check if have is a subtype of want
-	if isSubtype(have, want) {
-		return NewSubs(), nil
-	}
-
-	return nil, UnificationError{have, want}
-}
-
-func unify(have, want Type) (Subs, error) {
 	// Handle type variables first
 	if haveTV, ok := have.(TypeVariable); ok {
 		return bindVar(haveTV, want)
@@ -82,38 +26,53 @@ func unify(have, want Type) (Subs, error) {
 		return bindVar(wantTV, have)
 	}
 
+	// Try Type.Eq first (simplest check)
+	if have.Eq(want) {
+		return NewSubs(), nil
+	}
+
 	// Handle composite types using Types() method
 	haveTypes := have.Types()
 	wantTypes := want.Types()
 
 	if haveTypes != nil && wantTypes != nil {
-		// Both have component types - check length and unify components
-		if len(haveTypes) != len(wantTypes) {
-			return nil, UnificationError{have, want}
-		}
-
-		var subs Subs = NewSubs()
-		for i, comp1 := range haveTypes {
-			comp2 := wantTypes[i]
-			// Apply current substitutions to both components
-			comp1Applied := comp1.Apply(subs).(Type)
-			comp2Applied := comp2.Apply(subs).(Type)
-
-			// Unify the components
-			componentSubs, err := unify(comp1Applied, comp2Applied)
-			if err != nil {
-				return nil, err
+		// Both have component types - but we must ensure they're the same
+		// type constructor before unifying components.
+		// For example, NonNullType{Int} and ListType{Int} both have component
+		// types, but they're different constructors and should not unify.
+		//
+		// TODO: cleaner way to do this
+		if reflect.TypeOf(have) == reflect.TypeOf(want) {
+			// Check length and unify components
+			if len(haveTypes) != len(wantTypes) {
+				return nil, UnificationError{have, want}
 			}
 
-			// Compose the substitutions
-			subs = subs.Compose(componentSubs)
+			var subs Subs = NewSubs()
+			for i, comp1 := range haveTypes {
+				comp2 := wantTypes[i]
+				// Apply current substitutions to both components
+				comp1Applied := comp1.Apply(subs).(Type)
+				comp2Applied := comp2.Apply(subs).(Type)
+
+				// Unify the components
+				componentSubs, err := Assignable(comp1Applied, comp2Applied)
+				if err != nil {
+					return nil, UnificationError{have, want}
+				}
+
+				// Compose the substitutions
+				subs = subs.Compose(componentSubs)
+			}
+			return subs, nil
 		}
-		return subs, nil
 	}
 
-	// Fall back to Type.Eq for atomic types or when only one has component types
-	if have.Eq(want) {
-		return NewSubs(), nil
+	// Fall back on checking supertypes
+	for _, supertype := range have.Supertypes() {
+		if subs, err := Assignable(supertype, want); err == nil {
+			return subs, nil
+		}
 	}
 
 	return nil, UnificationError{have, want}
