@@ -390,7 +390,7 @@ func (t ObjectTypeNode) ReferencedSymbols() []string {
 }
 
 func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	for _, field := range t.Fields {
 		fieldType, err := field.Type.Infer(ctx, env, fresh)
 		if err != nil {

@@ -178,15 +178,14 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
     // Create/get interface module (pass 0)
     iface, found := mod.NamedType(i.Name.Name)
     if !found {
-        iface = NewModule(i.Name.Name)
-        iface.(*Module).Kind = InterfaceKind
+        iface = NewModule(i.Name.Name, InterfaceKind)
         mod.AddClass(i.Name.Name, iface)
     }
-    
+
     // Add to environment
     interfaceScheme := hm.NewScheme(nil, iface)
     env.Add(i.Name.Name, interfaceScheme)
-    
+
     // Populate fields (pass 1)
     if pass > 0 {
         if err := i.Value.Hoist(ctx, inferEnv, fresh, pass); err != nil {
@@ -215,7 +214,7 @@ Classes link to interfaces and validate implementations:
 ```go
 func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
     // ... create class module ...
-    
+
     // Link interfaces (pass 1 only, after all types are registered)
     if len(c.Implements) > 0 && pass == 1 {
         for _, ifaceSym := range c.Implements {
@@ -223,19 +222,19 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
             if !found {
                 return fmt.Errorf("interface %s not found", ifaceSym.Name)
             }
-            
+
             ifaceMod, ok := ifaceType.(*Module)
             if !ok || ifaceMod.Kind != InterfaceKind {
                 return fmt.Errorf("%s is not an interface", ifaceSym.Name)
             }
-            
+
             classMod.AddInterface(ifaceType)
             ifaceMod.AddImplementer(class)
         }
     }
-    
+
     // ... hoist body ...
-    
+
     // Validate implementations (pass 1, after body is hoisted)
     if pass > 0 && len(c.Implements) > 0 {
         if err := c.validateInterfaceImplementations(classMod, mod); err != nil {
@@ -255,17 +254,17 @@ When a type declares `implements InterfaceName`, Dang validates that the type ac
 func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env) error {
     for _, iface := range classMod.GetInterfaces() {
         ifaceMod := iface.(*Module)
-        
+
         // Check each interface field
         for name, vis := range ifaceMod.Bindings(PrivateVisibility) {
             ifaceFieldScheme := ifaceMod.SchemeOf(name)
             classFieldScheme := classMod.SchemeOf(name)
-            
+
             if classFieldScheme == nil {
                 return fmt.Errorf("missing required field %q from interface %s",
                     name, ifaceMod.Named)
             }
-            
+
             // Validate field type compatibility
             if err := validateFieldImplementation(
                 name,
@@ -306,17 +305,17 @@ func validateFieldImplementation(
     // Check if it's a function (method)
     ifaceFn, ifaceIsFunc := ifaceFieldType.(*hm.FunctionType)
     classFn, classIsFunc := classFieldType.(*hm.FunctionType)
-    
+
     if ifaceIsFunc != classIsFunc {
         return fmt.Errorf("field %q: type mismatch", fieldName)
     }
-    
+
     if ifaceIsFunc {
         // Validate return type (covariant)
         if !isSubtypeOf(classFn.Result, ifaceFn.Result) {
             return fmt.Errorf("field %q: incompatible return type", fieldName)
         }
-        
+
         // Validate all interface arguments are present
         // and argument types are contravariant
         // Implementation details in the full function...
@@ -339,26 +338,26 @@ func isSubtypeOf(subType, superType hm.Type) bool {
     if nonNull, ok := subType.(hm.NonNullType); ok {
         return isSubtypeOf(nonNull.Type, superType)
     }
-    
+
     // Nullable accepts non-null
     if nonNull, ok := superType.(hm.NonNullType); ok {
         return isSubtypeOf(subType, nonNull.Type)
     }
-    
+
     // Lists are covariant
     if subList, ok := subType.(*ListType); ok {
         if superList, ok := superType.(*ListType); ok {
             return isSubtypeOf(subList.Type, superList.Type)
         }
     }
-    
+
     // Modules check interface implementation
     if subMod, ok := subType.(*Module); ok {
         if superMod, ok := superType.(*Module); ok {
             return subMod.Eq(superMod)  // Uses Module.Eq which checks implements
         }
     }
-    
+
     return hm.Eq(subType, superType)
 }
 

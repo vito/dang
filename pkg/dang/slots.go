@@ -233,7 +233,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 
 	class, found := mod.NamedType(c.Name.Name)
 	if !found {
-		class = NewModule(c.Name.Name)
+		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
 	}
 
@@ -303,7 +303,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	class, found := mod.NamedType(c.Name.Name)
 	if !found {
-		class = NewModule(c.Name.Name)
+		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
 
 		// Store doc string for the class name in the environment
@@ -504,8 +504,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	// Create the enum type (module) if it doesn't exist
 	enumType, found := mod.NamedType(e.Name.Name)
 	if !found {
-		enumType = NewModule(e.Name.Name)
-		enumType.(*Module).Kind = EnumKind
+		enumType = NewModule(e.Name.Name, EnumKind)
 		mod.AddClass(e.Name.Name, enumType)
 	}
 
@@ -541,8 +540,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 	enumType, found := mod.NamedType(e.Name.Name)
 	if !found {
-		enumType = NewModule(e.Name.Name)
-		enumType.(*Module).Kind = EnumKind
+		enumType = NewModule(e.Name.Name, EnumKind)
 		mod.AddClass(e.Name.Name, enumType)
 
 		if e.DocString != "" {
@@ -621,8 +619,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	// Create the scalar type (module) if it doesn't exist
 	scalarType, found := mod.NamedType(s.Name.Name)
 	if !found {
-		scalarType = NewModule(s.Name.Name)
-		scalarType.(*Module).Kind = ScalarKind
+		scalarType = NewModule(s.Name.Name, ScalarKind)
 		mod.AddClass(s.Name.Name, scalarType)
 	}
 
@@ -647,8 +644,7 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	scalarType, found := mod.NamedType(s.Name.Name)
 	if !found {
-		scalarType = NewModule(s.Name.Name)
-		scalarType.(*Module).Kind = ScalarKind
+		scalarType = NewModule(s.Name.Name, ScalarKind)
 		mod.AddClass(s.Name.Name, scalarType)
 
 		if s.DocString != "" {
@@ -723,8 +719,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 	// Pass 0: Register the interface type
 	if pass == 0 {
-		iface := NewModule(i.Name.Name)
-		iface.Kind = InterfaceKind
+		iface := NewModule(i.Name.Name, InterfaceKind)
 		mod.AddClass(i.Name.Name, iface)
 
 		// Add the interface type to the environment so it can be referenced

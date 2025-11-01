@@ -171,7 +171,7 @@ func (c *FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, a
 // callBoundBuiltinMethod handles BoundBuiltinMethod function calls
 func (c *FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMethod, argValues map[string]Value) (Value, error) {
 	// Create a temporary environment with the receiver bound as "self"
-	tempMod := NewModule("_temp_")
+	tempMod := NewModule("_temp_", ObjectKind)
 	tempEnv := NewModuleValue(tempMod)
 	tempEnv.Set("self", fn.Receiver)
 
@@ -1012,7 +1012,7 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
 	}
 
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	for _, field := range o.Fields {
 		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
 		if err != nil {

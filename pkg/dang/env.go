@@ -56,9 +56,10 @@ type Module struct {
 	implementers []Env // Types that implement this interface (for interface modules)
 }
 
-func NewModule(name string) *Module {
+func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
 		Named:           name,
+		Kind:            kind,
 		classes:         make(map[string]Env),
 		vars:            make(map[string]*hm.Scheme),
 		visibility:      make(map[string]Visibility),
@@ -108,7 +109,7 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 var Prelude *Module
 
 func init() {
-	Prelude = NewModule("Prelude")
+	Prelude = NewModule("Prelude", ObjectKind)
 
 	// Install built-in types
 	Prelude.AddClass("ID", IDType)
@@ -125,7 +126,7 @@ func init() {
 }
 
 func NewEnv(schema *introspection.Schema) Env {
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	env := &CompositeModule{mod, Prelude}
 
 	for _, t := range schema.Directives {
@@ -155,11 +156,7 @@ func NewEnv(schema *introspection.Schema) Env {
 	for _, t := range schema.Types {
 		sub, found := env.NamedType(t.Name)
 		if !found {
-			sub = NewModule(t.Name)
-			// Set module kind based on GraphQL type kind
-			if t.Kind == introspection.TypeKindInterface {
-				sub.(*Module).Kind = InterfaceKind
-			}
+			sub = NewModule(t.Name, InterfaceKind)
 			// Store type description as module documentation
 			if t.Description != "" {
 				sub.SetModuleDocString(t.Description)
@@ -193,8 +190,7 @@ func NewEnv(schema *introspection.Schema) Env {
 			sub, found := env.NamedType(t.Name)
 			if !found {
 				// Create a scalar type module
-				sub = NewModule(t.Name)
-				sub.(*Module).Kind = ScalarKind
+				sub = NewModule(t.Name, ScalarKind)
 				if t.Description != "" {
 					sub.SetModuleDocString(t.Description)
 				}
@@ -396,7 +392,7 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 }
 
 func (e *Module) Clone() hm.Env {
-	mod := NewModule(e.Named)
+	mod := NewModule(e.Named, e.Kind)
 	mod.Parent = e
 	return mod
 }

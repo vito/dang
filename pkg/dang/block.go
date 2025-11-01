@@ -488,7 +488,7 @@ func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
 var _ hm.Inferer = &Object{}
 
 func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("")
+	mod := NewModule("", ObjectKind)
 	inferEnv := &CompositeModule{
 		primary: mod,
 		lexical: env.(Env),
