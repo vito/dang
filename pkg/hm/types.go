@@ -189,7 +189,10 @@ func (t NonNullType) Normalize(k, v TypeVarSet) (Type, error) {
 }
 
 func (t NonNullType) Types() Types {
-	return t.Type.Types()
+	// Return the inner type as a single-element component list
+	// This allows NonNullType to be treated as a composite type during unification
+	// So NonNull(Int) can unify with NonNull(a) by unifying Int with a
+	return Types{t.Type}
 }
 
 func (t NonNullType) Eq(other Type) bool {
