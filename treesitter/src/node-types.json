@@ -790,32 +790,12 @@
           }
         ]
       },
-      "first": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "id_symbol",
-            "named": true
-          }
-        ]
-      },
-      "i": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "id_symbol",
-            "named": true
-          }
-        ]
-      },
       "implements": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "implements_token",
+            "type": "implements",
             "named": true
           }
         ]
@@ -824,20 +804,6 @@
         "multiple": false,
         "required": true,
         "types": [
-          {
-            "type": "id_symbol",
-            "named": true
-          }
-        ]
-      },
-      "rest": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "&",
-            "named": false
-          },
           {
             "type": "id_symbol",
             "named": true
@@ -1761,6 +1727,56 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "implements",
+    "named": true,
+    "fields": {
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "i": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "and_token",
+            "named": true
+          },
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "implements_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3659,10 +3675,6 @@
     "named": false
   },
   {
-    "type": "&",
-    "named": false
-  },
-  {
     "type": "(",
     "named": false
   },
@@ -3729,6 +3741,10 @@
   {
     "type": "]",
     "named": false
+  },
+  {
+    "type": "and_token",
+    "named": true
   },
   {
     "type": "as_token",

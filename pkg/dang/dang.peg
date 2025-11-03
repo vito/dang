@@ -190,7 +190,7 @@ Interface <- InterfaceToken _ name:IdSymbol _ block:HeadersBlock {
 }
 InterfaceToken <- "interface" !WordChar
 
-Class <- TypeToken _ name:IdSymbol implements:(_ ImplementsToken _ first:IdSymbol rest:(_ '&' _ i:IdSymbol { return i, nil })* { return sliceOfAppend[*Symbol](rest, first), nil })? directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
+Class <- TypeToken _ name:IdSymbol implements:(_ Implements)? directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
   var implementsList []*Symbol
   if implements != nil {
     implementsList = implements.([]*Symbol)
@@ -204,8 +204,13 @@ Class <- TypeToken _ name:IdSymbol implements:(_ ImplementsToken _ first:IdSymbo
     Loc: c.Loc(),
   }, nil
 }
+Implements <-  ImplementsToken _ first:IdSymbol rest:(_ AndToken _ i:IdSymbol { return i, nil })* {
+  return sliceOfAppend[*Symbol](rest, first), nil
+}
 TypeToken <- "type" !WordChar
 ImplementsToken <- "implements" !WordChar
+
+AndToken <- '&'
 
 Enum <- EnumToken _ name:IdSymbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfAppend[*Symbol](rest, first), nil }) _ '}' {
   return &EnumDecl{
