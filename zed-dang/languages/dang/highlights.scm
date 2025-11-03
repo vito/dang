@@ -95,6 +95,7 @@
 
 ;; Class definitions
 (class (id_symbol) @type)
+(implements (id_symbol) @type)
 (interface (id_symbol) @type)
 (enum (id_symbol) @type)
 (enum (caps_symbol) @property)
