@@ -201,12 +201,12 @@ Class <- TypeToken _ name:IdSymbol implements:(_ i:Implements { return i, nil })
   }, nil
 }
 TypeToken <- "type" !WordChar
-Implements <-  ImplementsToken _ first:IdSymbol rest:(_ AndToken _ i:IdSymbol { return i, nil })* {
+Implements <-  ImplementsToken _ first:IdSymbol rest:(_ AmpersandToken _ i:IdSymbol { return i, nil })* {
   return sliceOfAppend[*Symbol](rest, first), nil
 }
 ImplementsToken <- "implements" !WordChar
 
-AndToken <- '&'
+AmpersandToken <- '&'
 
 Enum <- EnumToken _ name:IdSymbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfAppend[*Symbol](rest, first), nil }) _ '}' {
   return &EnumDecl{
@@ -446,8 +446,24 @@ TypeVariable <- v:[a-z] {
 BangToken <- '!'
 
 // Precedence levels from lowest to highest
-DefaultExpr <- left:(EqualityExpr / Term) _ DoubleInterroToken _ right:(DefaultExpr / Term) {
+DefaultExpr <- left:(LogicalOrExpr / Term) _ DoubleInterroToken _ right:(DefaultExpr / Term) {
   return &Default{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: c.Loc(),
+  }, nil
+} / LogicalOrExpr
+
+LogicalOrExpr <- left:(LogicalOrExpr / Term) _ OrToken _ right:(LogicalAndExpr / Term) {
+  return &LogicalOr{
+    Left: left.(Node),
+    Right: right.(Node),
+    Loc: c.Loc(),
+  }, nil
+} / LogicalAndExpr
+
+LogicalAndExpr <- left:(LogicalAndExpr / Term) _ AndToken _ right:(EqualityExpr / Term) {
+  return &LogicalAnd{
     Left: left.(Node),
     Right: right.(Node),
     Loc: c.Loc(),
@@ -695,6 +711,8 @@ ElseClause <- _ ElseToken _ elseif:Conditional {
 
 IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
+OrToken <- "or" !WordChar
+AndToken <- "and" !WordChar
 
 ForLoop <- ForTwoVarLoop / ForSingleVarLoop / ForConditionLoop / ForInfiniteLoop
 

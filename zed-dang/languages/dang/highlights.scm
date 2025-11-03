@@ -57,7 +57,7 @@
 [
   (comma_token)
   (dot_token)
-  (and_token)
+  (ampersand_token)
 ] @punctuation.delimiter
 ["@" "|"] @punctuation.special
 

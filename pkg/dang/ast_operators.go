@@ -790,3 +790,203 @@ func (u *UnaryNegation) Walk(fn func(Node) bool) {
 	}
 	u.Expr.Walk(fn)
 }
+
+// LogicalAnd represents the 'and' operator with short-circuit evaluation
+type LogicalAnd struct {
+	InferredTypeHolder
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = (*LogicalAnd)(nil)
+var _ Evaluator = (*LogicalAnd)(nil)
+
+func (l *LogicalAnd) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(l, func() (hm.Type, error) {
+		// Both sides must be Boolean
+		leftType, err := l.Left.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		rightType, err := l.Right.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		boolType, err := NonNullTypeNode{&NamedTypeNode{"Boolean", l.Loc}}.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Verify left side is Boolean
+		_, err = hm.Assignable(leftType, boolType)
+		if err != nil {
+			return nil, fmt.Errorf("logical 'and' left operand must be Boolean, got %s", leftType)
+		}
+
+		// Verify right side is Boolean
+		_, err = hm.Assignable(rightType, boolType)
+		if err != nil {
+			return nil, fmt.Errorf("logical 'and' right operand must be Boolean, got %s", rightType)
+		}
+
+		return boolType, nil
+	})
+}
+
+func (l *LogicalAnd) DeclaredSymbols() []string {
+	return nil
+}
+
+func (l *LogicalAnd) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, l.Left.ReferencedSymbols()...)
+	symbols = append(symbols, l.Right.ReferencedSymbols()...)
+	return symbols
+}
+
+func (l *LogicalAnd) Body() hm.Expression { return l }
+
+func (l *LogicalAnd) GetSourceLocation() *SourceLocation { return l.Loc }
+
+func (l *LogicalAnd) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
+		// Evaluate left side first
+		leftVal, err := EvalNode(ctx, env, l.Left)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating left side: %w", err)
+		}
+
+		leftBool, ok := leftVal.(BoolValue)
+		if !ok {
+			return nil, fmt.Errorf("logical 'and' requires Boolean operands, left side is %T", leftVal)
+		}
+
+		// Short-circuit: if left is false, return false without evaluating right
+		if !leftBool.Val {
+			return BoolValue{Val: false}, nil
+		}
+
+		// Left is true, evaluate right side
+		rightVal, err := EvalNode(ctx, env, l.Right)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating right side: %w", err)
+		}
+
+		rightBool, ok := rightVal.(BoolValue)
+		if !ok {
+			return nil, fmt.Errorf("logical 'and' requires Boolean operands, right side is %T", rightVal)
+		}
+
+		return BoolValue{Val: rightBool.Val}, nil
+	})
+}
+
+func (l *LogicalAnd) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
+	l.Left.Walk(fn)
+	l.Right.Walk(fn)
+}
+
+// LogicalOr represents the 'or' operator with short-circuit evaluation
+type LogicalOr struct {
+	InferredTypeHolder
+	Left  Node
+	Right Node
+	Loc   *SourceLocation
+}
+
+var _ Node = (*LogicalOr)(nil)
+var _ Evaluator = (*LogicalOr)(nil)
+
+func (l *LogicalOr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(l, func() (hm.Type, error) {
+		// Both sides must be Boolean
+		leftType, err := l.Left.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		rightType, err := l.Right.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		boolType, err := NonNullTypeNode{&NamedTypeNode{"Boolean", l.Loc}}.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Verify left side is Boolean
+		_, err = hm.Assignable(leftType, boolType)
+		if err != nil {
+			return nil, fmt.Errorf("logical 'or' left operand must be Boolean, got %s", leftType)
+		}
+
+		// Verify right side is Boolean
+		_, err = hm.Assignable(rightType, boolType)
+		if err != nil {
+			return nil, fmt.Errorf("logical 'or' right operand must be Boolean, got %s", rightType)
+		}
+
+		return boolType, nil
+	})
+}
+
+func (l *LogicalOr) DeclaredSymbols() []string {
+	return nil
+}
+
+func (l *LogicalOr) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, l.Left.ReferencedSymbols()...)
+	symbols = append(symbols, l.Right.ReferencedSymbols()...)
+	return symbols
+}
+
+func (l *LogicalOr) Body() hm.Expression { return l }
+
+func (l *LogicalOr) GetSourceLocation() *SourceLocation { return l.Loc }
+
+func (l *LogicalOr) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
+		// Evaluate left side first
+		leftVal, err := EvalNode(ctx, env, l.Left)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating left side: %w", err)
+		}
+
+		leftBool, ok := leftVal.(BoolValue)
+		if !ok {
+			return nil, fmt.Errorf("logical 'or' requires Boolean operands, left side is %T", leftVal)
+		}
+
+		// Short-circuit: if left is true, return true without evaluating right
+		if leftBool.Val {
+			return BoolValue{Val: true}, nil
+		}
+
+		// Left is false, evaluate right side
+		rightVal, err := EvalNode(ctx, env, l.Right)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating right side: %w", err)
+		}
+
+		rightBool, ok := rightVal.(BoolValue)
+		if !ok {
+			return nil, fmt.Errorf("logical 'or' requires Boolean operands, right side is %T", rightVal)
+		}
+
+		return BoolValue{Val: rightBool.Val}, nil
+	})
+}
+
+func (l *LogicalOr) Walk(fn func(Node) bool) {
+	if !fn(l) {
+		return
+	}
+	l.Left.Walk(fn)
+	l.Right.Walk(fn)
+}

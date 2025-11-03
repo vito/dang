@@ -959,7 +959,7 @@
         "required": false,
         "types": [
           {
-            "type": "equality_expr",
+            "type": "logical_or_expr",
             "named": true
           },
           {
@@ -992,7 +992,7 @@
           "named": true
         },
         {
-          "type": "equality_expr",
+          "type": "logical_or_expr",
           "named": true
         }
       ]
@@ -2197,6 +2197,102 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "logical_and_expr",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "logical_and_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "equality_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "and_token",
+          "named": true
+        },
+        {
+          "type": "equality_expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "logical_or_expr",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "logical_or_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "logical_and_expr",
+            "named": true
+          },
+          {
+            "type": "term",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "logical_and_expr",
+          "named": true
+        },
+        {
+          "type": "or_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3881,6 +3977,10 @@
   },
   {
     "type": "on_token",
+    "named": true
+  },
+  {
+    "type": "or_token",
     "named": true
   },
   {

@@ -1,0 +1,55 @@
+# Test logical operators: and, or
+
+# Test 'and' operator
+assert { true and true }
+assert { (false and true) == false }
+assert { (true and false) == false }
+assert { (false and false) == false }
+
+# Test 'or' operator
+assert { true or false }
+assert { false or true }
+assert { true or true }
+assert { (false or false) == false }
+
+# Test short-circuiting for 'and'
+# If left side is false, right side should not be evaluated
+pub and_short_circuit = {
+  let side_effect = false
+  let result = false and {
+    side_effect = true
+    true
+  }
+  # side_effect should still be false because right side wasn't evaluated
+  assert { side_effect == false }
+  result
+}
+
+# Test short-circuiting for 'or'
+# If left side is true, right side should not be evaluated
+pub or_short_circuit = {
+  let side_effect = false
+  let result = true or {
+    side_effect = true
+    false
+  }
+  # side_effect should still be false because right side wasn't evaluated
+  assert { side_effect == false }
+  result
+}
+
+# Test precedence
+assert { (true and true or false) == ((true and true) or false) }
+assert { (1 == 1 and 1 == 2 or 2 == 2) == (((1 == 1) and (1 == 2)) or (2 == 2)) }
+assert { (false and false or true) == ((false and false) or true) }
+assert { true and (false or true) }
+assert { (true or false) and (false or true) }
+
+# Test with variables
+pub x = true
+pub y = false
+assert { x and !y }
+assert { x or y }
+assert { !x or !y }
+
+print("Logical operator tests completed")
