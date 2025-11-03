@@ -1758,7 +1758,7 @@
         "required": false,
         "types": [
           {
-            "type": "and_token",
+            "type": "ampersand_token",
             "named": true
           },
           {
@@ -3837,6 +3837,10 @@
   {
     "type": "]",
     "named": false
+  },
+  {
+    "type": "ampersand_token",
+    "named": true
   },
   {
     "type": "and_token",

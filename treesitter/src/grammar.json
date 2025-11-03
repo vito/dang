@@ -711,7 +711,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "and_token"
+                  "name": "ampersand_token"
                 },
                 {
                   "type": "FIELD",
@@ -734,11 +734,11 @@
         "value": "implements"
       }
     },
-    "and_token": {
+    "ampersand_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "and"
+        "value": "\u0026"
       }
     },
     "enum": {
@@ -3338,6 +3338,13 @@
       "content": {
         "type": "STRING",
         "value": "or"
+      }
+    },
+    "and_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "and"
       }
     },
     "for_loop": {
