@@ -413,6 +413,13 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 				// Scalars are registered with the module, but we don't need to create TypeDefs for them
 				// They're already handled as basic string types in dangTypeToTypeDef
 				slog.Info("skipping scalar module value (handled as string type)", "name", binding.Key)
+			} else if mod, ok := val.Mod.(*dang.Module); ok && mod.Kind == dang.InterfaceKind {
+				// Interfaces are registered with the module
+				interfaceDef, err := createInterfaceTypeDef(dag, binding.Key, val, env)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create interface %s: %w", binding.Key, err)
+				}
+				dagMod = dagMod.WithInterface(interfaceDef)
 			} else {
 				slog.Info("skipping non-enum module value", "name", binding.Key)
 			}
@@ -524,6 +531,14 @@ func evalConstantValue(node dang.Node) (any, error) {
 func createObjectTypeDef(dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv) (*dagger.TypeDef, error) {
 	objDef := dag.TypeDef().WithObject(name)
 
+	// Register interface implementations if this type implements any interfaces
+	classMod := module.ClassType
+	for _, iface := range classMod.GetInterfaces() {
+		if ifaceMod, ok := iface.(*dang.Module); ok {
+			objDef = objDef.WithInterface(ifaceMod.Named)
+		}
+	}
+
 	// Process public methods in the class
 	for name, scheme := range module.ClassType.Bindings(dang.PublicVisibility) {
 		slotType, isMono := scheme.Type()
@@ -568,6 +583,51 @@ func createEnumTypeDef(dag *dagger.Client, name string, enumMod *dang.ModuleValu
 	}
 
 	return enumDef, nil
+}
+
+// createInterfaceTypeDef creates a Dagger interface TypeDef from a Dang interface ModuleValue
+func createInterfaceTypeDef(dag *dagger.Client, name string, interfaceMod *dang.ModuleValue, env dang.EvalEnv) (*dagger.TypeDef, error) {
+	interfaceDef := dag.TypeDef().WithInterface(name)
+
+	// Get the Module from the ModuleValue
+	mod, ok := interfaceMod.Mod.(*dang.Module)
+	if !ok {
+		return nil, fmt.Errorf("expected *dang.Module for interface %s, got %T", name, interfaceMod.Mod)
+	}
+
+	// Process public fields/methods in the interface
+	for fieldName, scheme := range mod.Bindings(dang.PublicVisibility) {
+		fieldType, isMono := scheme.Type()
+		if !isMono {
+			return nil, fmt.Errorf("non-monotype field %s in interface %s", fieldName, name)
+		}
+		switch x := fieldType.(type) {
+		case *hm.FunctionType:
+			fn := x
+			// Create function definition for interface method
+			fnDef, err := createFunction(dag, fieldName, fn, nil, env)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create method %s for interface %s: %w", fieldName, name, err)
+			}
+			if desc, ok := mod.GetDocString(fieldName); ok {
+				fnDef = fnDef.WithDescription(desc)
+			}
+			interfaceDef = interfaceDef.WithFunction(fnDef)
+		default:
+			// Regular field (property)
+			fieldTypeDef, err := dangTypeToTypeDef(dag, fieldType, env)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create field %s for interface %s: %w", fieldName, name, err)
+			}
+			opts := dagger.TypeDefWithFieldOpts{}
+			if desc, ok := mod.GetDocString(fieldName); ok {
+				opts.Description = desc
+			}
+			interfaceDef = interfaceDef.WithField(fieldName, fieldTypeDef, opts)
+		}
+	}
+
+	return interfaceDef, nil
 }
 
 func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type, env dang.EvalEnv) (ret *dagger.TypeDef, rerr error) {
@@ -619,6 +679,11 @@ func dangTypeToTypeDef(dag *dagger.Client, dangType hm.Type, env dang.EvalEnv) (
 						// Scalars are exposed as strings in the Dagger SDK
 						// TODO: revise if/when Dagger supports custom scalars?
 						return def.WithKind(dagger.TypeDefKindStringKind), nil
+					}
+					if mod, ok := modVal.Mod.(*dang.Module); ok && mod.Kind == dang.InterfaceKind {
+						// It's an interface type - just reference it by name
+						// The interface TypeDef is already registered in the module
+						return def.WithInterface(t.Named), nil
 					}
 				}
 			}
