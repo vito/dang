@@ -1,6 +1,9 @@
 package dang
 
 func sliceOf[T any](val any) []T {
+	if val == nil {
+		return nil
+	}
 	anys := val.([]any)
 	ts := make([]T, len(anys))
 	for i, node := range anys {
