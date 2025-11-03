@@ -641,8 +641,12 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "SYMBOL",
-                "name": "implements"
+                "type": "FIELD",
+                "name": "i",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "implements"
+                }
               },
               {
                 "type": "BLANK"
@@ -710,8 +714,12 @@
                   "name": "and_token"
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "id_symbol"
+                  "type": "FIELD",
+                  "name": "i",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "id_symbol"
+                  }
                 }
               ]
             }

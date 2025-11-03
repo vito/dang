@@ -4,6 +4,9 @@ func sliceOf[T any](val any) []T {
 	if val == nil {
 		return nil
 	}
+	if ts, ok := val.([]T); ok {
+		return ts
+	}
 	anys := val.([]any)
 	ts := make([]T, len(anys))
 	for i, node := range anys {

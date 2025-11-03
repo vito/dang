@@ -190,7 +190,7 @@ Interface <- InterfaceToken _ name:IdSymbol _ block:HeadersBlock {
 }
 InterfaceToken <- "interface" !WordChar
 
-Class <- TypeToken _ name:IdSymbol implements:(_ Implements)? directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
+Class <- TypeToken _ name:IdSymbol implements:(_ i:Implements { return i, nil })? directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
   return &ClassDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
@@ -201,7 +201,7 @@ Class <- TypeToken _ name:IdSymbol implements:(_ Implements)? directives:(_ app:
   }, nil
 }
 TypeToken <- "type" !WordChar
-Implements <-  ImplementsToken _ first:IdSymbol rest:(_ AndToken _ IdSymbol)* {
+Implements <-  ImplementsToken _ first:IdSymbol rest:(_ AndToken _ i:IdSymbol { return i, nil })* {
   return sliceOfAppend[*Symbol](rest, first), nil
 }
 ImplementsToken <- "implements" !WordChar
