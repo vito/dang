@@ -102,7 +102,7 @@ type Dev {
       combinedOutput
   }
 
-  let daggerVersion = "0.19.3"
+  let daggerVersion = "0.19.4"
 
   """
   Run a dagger command and return its output.
