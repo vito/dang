@@ -286,50 +286,17 @@ func registerStdlib() {
 
 			var result []Value
 			for _, item := range list.Elements {
-				// Call the predicate function with the item
-				var shouldReject bool
-				switch fnVal := fn.(type) {
-				case FunctionValue:
-					// Create environment with the function's closure
-					fnEnv := fnVal.Closure.Clone()
-					// Bind the item to the first (and only) parameter
-					if len(fnVal.Args) > 0 {
-						fnEnv.Set(fnVal.Args[0], item)
-					}
-					// Evaluate the function body
-					res, err := EvalNode(ctx, fnEnv, fnVal.Body)
-					if err != nil {
-						return nil, fmt.Errorf("reject predicate: %w", err)
-					}
-					if boolVal, ok := res.(BoolValue); ok {
-						shouldReject = boolVal.Val
-					} else {
-						return nil, fmt.Errorf("reject predicate must return Boolean!, got %T", res)
-					}
-				case BuiltinFunction:
-					// For builtin functions, use the Call method
-					callArgs := map[string]Value{}
-					// Get parameter name from the function's type
-					if argType, ok := fnVal.FnType.Arg().(*RecordType); ok && len(argType.Fields) > 0 {
-						callArgs[argType.Fields[0].Key] = item
-					}
-					// Create a temporary environment for the builtin call
-					tempMod := NewModule("_temp_", ObjectKind)
-					tempEnv := NewModuleValue(tempMod)
-					res, err := fnVal.Call(ctx, tempEnv, callArgs)
-					if err != nil {
-						return nil, fmt.Errorf("reject predicate: %w", err)
-					}
-					if boolVal, ok := res.(BoolValue); ok {
-						shouldReject = boolVal.Val
-					} else {
-						return nil, fmt.Errorf("reject predicate must return Boolean!, got %T", res)
-					}
-				default:
-					return nil, fmt.Errorf("reject expects a function, got %T", fn)
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("reject predicate: %w", err)
 				}
 
-				if !shouldReject {
+				boolVal, ok := res.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("reject predicate must return Boolean!, got %T", res)
+				}
+
+				if !boolVal.Val {
 					result = append(result, item)
 				}
 			}
@@ -339,4 +306,67 @@ func registerStdlib() {
 				ElemType: list.ElemType,
 			}, nil
 		})
+
+	// List.map method: map(fn: \(a) -> b) -> [b]!
+	Method(ListTypeModule, "map").
+		Doc("returns a new list with each element transformed by the given function").
+		Params("fn", hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			TypeVar('b'),
+		)).
+		Returns(NonNull(ListOf(TypeVar('b')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			fn, _ := args.Get("fn")
+
+			// Get the return type from the function's type
+			callable, ok := fn.(Callable)
+			if !ok {
+				return nil, fmt.Errorf("map expects a function, got %T", fn)
+			}
+			fnType, ok := callable.Type().(*hm.FunctionType)
+			if !ok {
+				return nil, fmt.Errorf("map expects a function type, got %T", callable.Type())
+			}
+			resultElemType := fnType.ReturnType()
+
+			var result []Value
+			for _, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("map function: %w", err)
+				}
+
+				result = append(result, res)
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: resultElemType,
+			}, nil
+		})
+}
+
+// callFunc calls a function with the given values as arguments.
+// The values are mapped to the function's parameters in order.
+func callFunc(ctx context.Context, fn Value, args ...Value) (Value, error) {
+	callable, ok := fn.(Callable)
+	if !ok {
+		return nil, fmt.Errorf("expected a function, got %T", fn)
+	}
+
+	paramNames := callable.ParameterNames()
+	if len(paramNames) < len(args) {
+		return nil, fmt.Errorf("function has %d parameters but %d arguments provided", len(paramNames), len(args))
+	}
+
+	callArgs := make(map[string]Value)
+	for i, arg := range args {
+		callArgs[paramNames[i]] = arg
+	}
+
+	return callable.Call(ctx, NewModuleValue(NewModule("_temp_", ObjectKind)), callArgs)
 }

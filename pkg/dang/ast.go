@@ -93,56 +93,10 @@ func autoCallFnType(t hm.Type) (hm.Type, bool) {
 
 // isAutoCallableFn checks if a function can be auto-called (has no required arguments)
 func isAutoCallableFn(val Value) bool {
-	switch fn := val.(type) {
-	case BoundMethod:
-		// BoundMethods delegate to their underlying function
-		return isAutoCallableFn(fn.Method)
-	case FunctionValue:
-		// For FunctionValue, check if all arguments either have default values or are optional
-		for _, argName := range fn.Args {
-			// If this argument has a default value, it's optional
-			if _, hasDefault := fn.Defaults[argName]; hasDefault {
-				continue
-			}
-
-			// If no default, check if the type is nullable (optional)
-			if rt, ok := fn.FnType.Arg().(*RecordType); ok {
-				scheme, found := rt.SchemeOf(argName)
-				if found {
-					if fieldType, _ := scheme.Type(); fieldType != nil {
-						if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
-							// This is a required argument with no default value
-							return false
-						}
-					}
-				}
-			}
-		}
-		// All arguments are either optional or have defaults, so this function can be auto-called
-		return true
-	case GraphQLFunction:
-		// Check if the function has zero REQUIRED arguments (all args are optional)
-		return hasZeroRequiredArgs(fn.Field)
-	case BuiltinFunction:
-		// For builtin functions, check if all arguments are optional (would need metadata)
-		// For now, only consider truly zero-argument builtins as auto-callable
-		if rt, ok := fn.FnType.Arg().(*RecordType); ok {
-			return len(rt.Fields) == 0
-		}
-		return false
-	case *ConstructorFunction:
-		// For constructor functions, check if all parameters have default values
-		for _, param := range fn.Parameters {
-			if param.Value == nil {
-				// No default value, so this is a required parameter
-				return false
-			}
-		}
-		// All parameters have default values, so constructor can be auto-called
-		return true
-	default:
-		return false
+	if callable, ok := val.(Callable); ok {
+		return callable.IsAutoCallable()
 	}
+	return false
 }
 
 // hasZeroRequiredArgs checks if a GraphQL field has zero required arguments

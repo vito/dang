@@ -30,6 +30,14 @@ type Evaluator interface {
 	Eval(ctx context.Context, env EvalEnv) (Value, error)
 }
 
+// Callable defines the interface for all function-like values that can be called
+type Callable interface {
+	Value
+	Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+	ParameterNames() []string
+	IsAutoCallable() bool
+}
+
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
 	Value
@@ -158,6 +166,21 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		TypeEnv:    g.TypeEnv, // Pass along the type environment
 		QueryChain: query,     // Pass the query chain for further building
 	}, nil
+}
+
+func (g GraphQLFunction) ParameterNames() []string {
+	if ft, ok := g.FnType.Arg().(*RecordType); ok {
+		names := make([]string, len(ft.Fields))
+		for i, field := range ft.Fields {
+			names[i] = field.Key
+		}
+		return names
+	}
+	return nil
+}
+
+func (g GraphQLFunction) IsAutoCallable() bool {
+	return hasZeroRequiredArgs(g.Field)
 }
 
 // GraphQLValue represents a GraphQL object/field value
@@ -365,7 +388,7 @@ func addBuiltinFunctions(env EvalEnv) {
 		builtinFn := BuiltinFunction{
 			Name:   def.Name,
 			FnType: fnType,
-			Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+			CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 				// Apply defaults for missing arguments
 				argsWithDefaults := applyDefaults(args, def)
 				return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
@@ -381,7 +404,7 @@ func addBuiltinFunctions(env EvalEnv) {
 			builtinFn := BuiltinFunction{
 				Name:   def.Name,
 				FnType: fnType,
-				Call: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 					selfVal, _ := env.Get("self")
 					// Apply defaults for missing arguments
 					argsWithDefaults := applyDefaults(args, def)
@@ -725,6 +748,70 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal function value")
 }
 
+func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	// Create new environment with argument bindings
+	fnEnv := f.Closure.Clone()
+
+	// Bind arguments to the function environment
+	for _, argName := range f.Args {
+		if val, exists := args[argName]; exists {
+			// Handle null values with defaults
+			if _, isNull := val.(NullValue); isNull {
+				if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
+					defaultVal, err := EvalNode(ctx, f.Closure, defaultExpr)
+					if err != nil {
+						return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+					}
+					fnEnv.Set(argName, defaultVal)
+				} else {
+					fnEnv.Set(argName, val)
+				}
+			} else {
+				fnEnv.Set(argName, val)
+			}
+		} else if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
+			// Use default value when argument not provided
+			defaultVal, err := EvalNode(ctx, f.Closure, defaultExpr)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+			}
+			fnEnv.Set(argName, defaultVal)
+		} else {
+			fnEnv.Set(argName, NullValue{})
+		}
+	}
+
+	return EvalNode(ctx, fnEnv, f.Body)
+}
+
+func (f FunctionValue) ParameterNames() []string {
+	return f.Args
+}
+
+func (f FunctionValue) IsAutoCallable() bool {
+	for _, argName := range f.Args {
+		// If this argument has a default value, it's optional
+		if _, hasDefault := f.Defaults[argName]; hasDefault {
+			continue
+		}
+
+		// If no default, check if the type is nullable (optional)
+		if rt, ok := f.FnType.Arg().(*RecordType); ok {
+			scheme, found := rt.SchemeOf(argName)
+			if found {
+				if fieldType, _ := scheme.Type(); fieldType != nil {
+					if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
+						// This is a required argument with no default value
+						return false
+					}
+				}
+			}
+		}
+	}
+	// All arguments are either optional or have defaults, so this function can be auto-called
+	return true
+}
+
 // ModuleValue represents a module value that implements EvalEnv
 type ModuleValue struct {
 	Mod          Env
@@ -901,6 +988,52 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound method value")
 }
 
+func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	// Create a composite environment that includes both the receiver and the method's closure
+	recv := b.Receiver.Fork()
+	fnEnv := CreateCompositeEnv(recv, b.Method.Closure)
+	fnEnv.Set("self", recv)
+
+	// Bind arguments to the function environment
+	for _, argName := range b.Method.Args {
+		if val, exists := args[argName]; exists {
+			// Handle null values with defaults
+			if _, isNull := val.(NullValue); isNull {
+				if defaultExpr, hasDefault := b.Method.Defaults[argName]; hasDefault {
+					defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
+					if err != nil {
+						return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+					}
+					fnEnv.Set(argName, defaultVal)
+				} else {
+					fnEnv.Set(argName, val)
+				}
+			} else {
+				fnEnv.Set(argName, val)
+			}
+		} else if defaultExpr, hasDefault := b.Method.Defaults[argName]; hasDefault {
+			// Use default value when argument not provided
+			defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+			}
+			fnEnv.Set(argName, defaultVal)
+		} else {
+			fnEnv.Set(argName, NullValue{})
+		}
+	}
+
+	return EvalNode(ctx, fnEnv, b.Method.Body)
+}
+
+func (b BoundMethod) ParameterNames() []string {
+	return b.Method.Args
+}
+
+func (b BoundMethod) IsAutoCallable() bool {
+	return b.Method.IsAutoCallable()
+}
+
 // BoundBuiltinMethod represents a builtin method bound to a primitive value (like StringValue)
 type BoundBuiltinMethod struct {
 	Method   BuiltinFunction
@@ -919,11 +1052,29 @@ func (b BoundBuiltinMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound builtin method value")
 }
 
+func (b BoundBuiltinMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	// Create a temporary environment with the receiver bound as "self"
+	tempMod := NewModule("_temp_", ObjectKind)
+	tempEnv := NewModuleValue(tempMod)
+	tempEnv.Set("self", b.Receiver)
+
+	// Call the builtin function with the receiver context
+	return b.Method.Call(ctx, tempEnv, args)
+}
+
+func (b BoundBuiltinMethod) ParameterNames() []string {
+	return b.Method.ParameterNames()
+}
+
+func (b BoundBuiltinMethod) IsAutoCallable() bool {
+	return b.Method.IsAutoCallable()
+}
+
 // BuiltinFunction represents a builtin function like print
 type BuiltinFunction struct {
-	Name   string
-	FnType *hm.FunctionType
-	Call   func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+	Name    string
+	FnType  *hm.FunctionType
+	CallFn func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
 }
 
 func (b BuiltinFunction) Type() hm.Type {
@@ -932,6 +1083,28 @@ func (b BuiltinFunction) Type() hm.Type {
 
 func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
+}
+
+func (b BuiltinFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	return b.CallFn(ctx, env, args)
+}
+
+func (b BuiltinFunction) ParameterNames() []string {
+	if ft, ok := b.FnType.Arg().(*RecordType); ok {
+		names := make([]string, len(ft.Fields))
+		for i, field := range ft.Fields {
+			names[i] = field.Key
+		}
+		return names
+	}
+	return nil
+}
+
+func (b BuiltinFunction) IsAutoCallable() bool {
+	if rt, ok := b.FnType.Arg().(*RecordType); ok {
+		return len(rt.Fields) == 0
+	}
+	return false
 }
 
 // ConstructorFunction represents a class constructor that evaluates the class body when called
@@ -985,6 +1158,25 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	}
 
 	return instance, nil
+}
+
+func (c *ConstructorFunction) ParameterNames() []string {
+	names := make([]string, len(c.Parameters))
+	for i, param := range c.Parameters {
+		names[i] = param.Name.Name
+	}
+	return names
+}
+
+func (c *ConstructorFunction) IsAutoCallable() bool {
+	for _, param := range c.Parameters {
+		if param.Value == nil {
+			// No default value, so this is a required parameter
+			return false
+		}
+	}
+	// All parameters have default values, so constructor can be auto-called
+	return true
 }
 
 func RunFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, filePath string, debug bool) error {

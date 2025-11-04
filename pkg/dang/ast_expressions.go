@@ -168,96 +168,11 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 // callFunction dispatches function calls to appropriate handlers
 func (c *FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, argValues map[string]Value) (Value, error) {
-	switch fn := funVal.(type) {
-	case BoundMethod:
-		return c.callBoundMethod(ctx, fn, argValues)
-	case BoundBuiltinMethod:
-		return c.callBoundBuiltinMethod(ctx, fn, argValues)
-	case FunctionValue:
-		return c.callFunctionValue(ctx, fn, argValues)
-	case GraphQLFunction:
-		return fn.Call(ctx, env, argValues)
-	case BuiltinFunction:
-		return fn.Call(ctx, env, argValues)
-	case *ConstructorFunction:
-		return fn.Call(ctx, env, argValues)
-	default:
+	callable, ok := funVal.(Callable)
+	if !ok {
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
-}
-
-// callBoundBuiltinMethod handles BoundBuiltinMethod function calls
-func (c *FunCall) callBoundBuiltinMethod(ctx context.Context, fn BoundBuiltinMethod, argValues map[string]Value) (Value, error) {
-	// Create a temporary environment with the receiver bound as "self"
-	tempMod := NewModule("_temp_", ObjectKind)
-	tempEnv := NewModuleValue(tempMod)
-	tempEnv.Set("self", fn.Receiver)
-
-	// Call the builtin function with the receiver context
-	return fn.Method.Call(ctx, tempEnv, argValues)
-}
-
-// callBoundMethod handles BoundMethod function calls
-func (c *FunCall) callBoundMethod(ctx context.Context, fn BoundMethod, argValues map[string]Value) (Value, error) {
-	// Create a composite environment that includes both the receiver and the method's closure
-	recv := fn.Receiver.Fork()
-	fnEnv := CreateCompositeEnv(recv, fn.Method.Closure)
-	fnEnv.Set("self", recv)
-
-	// Bind arguments to the function environment
-	err := c.bindArgumentsToEnv(ctx, fnEnv, fn.Method.Args, fn.Method.Defaults, argValues, fnEnv)
-	if err != nil {
-		return nil, err
-	}
-
-	return EvalNode(ctx, fnEnv, fn.Method.Body)
-}
-
-// callFunctionValue handles FunctionValue function calls
-func (c *FunCall) callFunctionValue(ctx context.Context, fn FunctionValue, argValues map[string]Value) (Value, error) {
-	// Create new environment with argument bindings
-	fnEnv := fn.Closure.Clone()
-
-	// Bind arguments to the function environment
-	err := c.bindArgumentsToEnv(ctx, fnEnv, fn.Args, fn.Defaults, argValues, fn.Closure)
-	if err != nil {
-		return nil, err
-	}
-
-	return EvalNode(ctx, fnEnv, fn.Body)
-}
-
-// bindArgumentsToEnv handles the common logic of binding arguments to function environments
-func (c *FunCall) bindArgumentsToEnv(ctx context.Context, fnEnv EvalEnv, paramNames []string,
-	defaults map[string]Node, argValues map[string]Value, defaultEvalEnv EvalEnv) error {
-	for _, argName := range paramNames {
-		if val, exists := argValues[argName]; exists {
-			// Handle null values with defaults
-			if _, isNull := val.(NullValue); isNull {
-				if defaultExpr, hasDefault := defaults[argName]; hasDefault {
-					defaultVal, err := EvalNode(ctx, defaultEvalEnv, defaultExpr)
-					if err != nil {
-						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-					}
-					fnEnv.Set(argName, defaultVal)
-				} else {
-					fnEnv.Set(argName, val)
-				}
-			} else {
-				fnEnv.Set(argName, val)
-			}
-		} else if defaultExpr, hasDefault := defaults[argName]; hasDefault {
-			// Use default value when argument not provided
-			defaultVal, err := EvalNode(ctx, defaultEvalEnv, defaultExpr)
-			if err != nil {
-				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-			}
-			fnEnv.Set(argName, defaultVal)
-		} else {
-			fnEnv.Set(argName, NullValue{})
-		}
-	}
-	return nil
+	return callable.Call(ctx, env, argValues)
 }
 
 // evaluateArguments handles both positional and named arguments
@@ -342,45 +257,8 @@ func (c *FunCall) handleNamedArgument(arg Keyed[Node], val Value, argValues map[
 
 // getParameterNames extracts parameter names from a function value
 func (c *FunCall) getParameterNames(funVal Value) []string {
-	switch fn := funVal.(type) {
-	case BoundMethod:
-		return fn.Method.Args
-	case BoundBuiltinMethod:
-		// For bound builtin methods, get parameter names from the function type
-		if ft, ok := fn.Method.FnType.Arg().(*RecordType); ok {
-			names := make([]string, len(ft.Fields))
-			for i, field := range ft.Fields {
-				names[i] = field.Key
-			}
-			return names
-		}
-	case FunctionValue:
-		return fn.Args
-	case GraphQLFunction:
-		// For GraphQL functions, get parameter names from the function type
-		if ft, ok := fn.FnType.Arg().(*RecordType); ok {
-			names := make([]string, len(ft.Fields))
-			for i, field := range ft.Fields {
-				names[i] = field.Key
-			}
-			return names
-		}
-	case BuiltinFunction:
-		// For builtin functions, get parameter names from the function type
-		if ft, ok := fn.FnType.Arg().(*RecordType); ok {
-			names := make([]string, len(ft.Fields))
-			for i, field := range ft.Fields {
-				names[i] = field.Key
-			}
-			return names
-		}
-	case *ConstructorFunction:
-		// For constructor functions, get parameter names from the constructor parameters
-		names := make([]string, len(fn.Parameters))
-		for i, param := range fn.Parameters {
-			names[i] = param.Name.Name
-		}
-		return names
+	if callable, ok := funVal.(Callable); ok {
+		return callable.ParameterNames()
 	}
 	return nil
 }
