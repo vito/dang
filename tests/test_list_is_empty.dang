@@ -1,0 +1,19 @@
+# Test list.isEmpty method
+
+# Empty list
+pub empty: [Int!]! = []
+assert { empty.isEmpty }
+
+# Non-empty list
+pub numbers: [Int!]! = [1, 2, 3]
+assert { !numbers.isEmpty }
+
+# Single element
+pub single: [String!]! = ["hello"]
+assert { !single.isEmpty }
+
+# List with only null elements is not empty
+pub nulls: [Int]! = [null, null]
+assert { !nulls.isEmpty }
+
+print("List isEmpty tests passed!")

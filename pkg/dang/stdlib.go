@@ -348,6 +348,62 @@ func registerStdlib() {
 				ElemType: resultElemType,
 			}, nil
 		})
+
+	// List.filter method: filter(fn: \(a) -> Boolean!) -> [a]!
+	Method(ListTypeModule, "filter").
+		Doc("returns a new list containing only elements for which the predicate returns true").
+		Params("fn", hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			fn, _ := args.Get("fn")
+
+			var result []Value
+			for _, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("filter predicate: %w", err)
+				}
+
+				boolVal, ok := res.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("filter predicate must return Boolean!, got %T", res)
+				}
+
+				if boolVal.Val {
+					result = append(result, item)
+				}
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.length method: length -> Int!
+	Method(ListTypeModule, "length").
+		Doc("returns the number of elements in the list").
+		Returns(NonNull(IntType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			return IntValue{Val: len(list.Elements)}, nil
+		})
+
+	// List.isEmpty method: isEmpty -> Boolean!
+	Method(ListTypeModule, "isEmpty").
+		Doc("returns true if the list contains no elements").
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			return BoolValue{Val: len(list.Elements) == 0}, nil
+		})
 }
 
 // callFunc calls a function with the given values as arguments.
