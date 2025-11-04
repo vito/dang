@@ -70,7 +70,13 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 			finalArgType = inferredValType
 		} else if allowFreshTypes {
 			// Allow fresh types when no explicit type is given (for lambdas)
-			finalArgType = fresh.Fresh()
+			// Check if this parameter already has a type in the environment (from expected types)
+			if existingScheme, found := env.SchemeOf(arg.Name.Name); found {
+				existingType, _ := existingScheme.Type()
+				finalArgType = existingType
+			} else {
+				finalArgType = fresh.Fresh()
+			}
 		} else {
 			return nil, fmt.Errorf("function arg %q has no type or value", arg.Name.Name)
 		}

@@ -117,6 +117,7 @@ func init() {
 	Prelude.AddClass("Int", IntType)
 	Prelude.AddClass("Float", FloatType)
 	Prelude.AddClass("Boolean", BooleanType)
+	Prelude.AddClass("List", ListTypeModule)
 
 	// Register standard library builtins
 	registerStdlib()
@@ -462,7 +463,7 @@ func registerBuiltinTypes() {
 	})
 
 	// Register all builtin method types
-	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType} {
+	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType, ListTypeModule} {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)

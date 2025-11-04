@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
 )
 
@@ -249,5 +250,93 @@ func registerStdlib() {
 			// Center the string
 			centered := strings.Repeat(" ", leftPad) + str + strings.Repeat(" ", rightPad)
 			return ToValue(centered)
+		})
+
+	// List.contains method: contains(element: a) -> Boolean!
+	Method(ListTypeModule, "contains").
+		Doc("checks if the list contains the specified element").
+		Params("element", TypeVar('a')).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			element, _ := args.Get("element")
+
+			for _, item := range list.Elements {
+				if valuesEqual(item, element) {
+					return BoolValue{Val: true}, nil
+				}
+			}
+			return BoolValue{Val: false}, nil
+		})
+
+	// List.reject method: reject(fn: \(a) -> Boolean!) -> [a]!
+	Method(ListTypeModule, "reject").
+		Doc("returns a new list excluding elements for which the predicate returns true").
+		Params("fn", hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			fn, _ := args.Get("fn")
+
+			var result []Value
+			for _, item := range list.Elements {
+				// Call the predicate function with the item
+				var shouldReject bool
+				switch fnVal := fn.(type) {
+				case FunctionValue:
+					// Create environment with the function's closure
+					fnEnv := fnVal.Closure.Clone()
+					// Bind the item to the first (and only) parameter
+					if len(fnVal.Args) > 0 {
+						fnEnv.Set(fnVal.Args[0], item)
+					}
+					// Evaluate the function body
+					res, err := EvalNode(ctx, fnEnv, fnVal.Body)
+					if err != nil {
+						return nil, fmt.Errorf("reject predicate: %w", err)
+					}
+					if boolVal, ok := res.(BoolValue); ok {
+						shouldReject = boolVal.Val
+					} else {
+						return nil, fmt.Errorf("reject predicate must return Boolean!, got %T", res)
+					}
+				case BuiltinFunction:
+					// For builtin functions, use the Call method
+					callArgs := map[string]Value{}
+					// Get parameter name from the function's type
+					if argType, ok := fnVal.FnType.Arg().(*RecordType); ok && len(argType.Fields) > 0 {
+						callArgs[argType.Fields[0].Key] = item
+					}
+					// Create a temporary environment for the builtin call
+					tempMod := NewModule("_temp_", ObjectKind)
+					tempEnv := NewModuleValue(tempMod)
+					res, err := fnVal.Call(ctx, tempEnv, callArgs)
+					if err != nil {
+						return nil, fmt.Errorf("reject predicate: %w", err)
+					}
+					if boolVal, ok := res.(BoolValue); ok {
+						shouldReject = boolVal.Val
+					} else {
+						return nil, fmt.Errorf("reject predicate must return Boolean!, got %T", res)
+					}
+				default:
+					return nil, fmt.Errorf("reject expects a function, got %T", fn)
+				}
+
+				if !shouldReject {
+					result = append(result, item)
+				}
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: list.ElemType,
+			}, nil
 		})
 }

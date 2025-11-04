@@ -12,11 +12,12 @@ var (
 	// Null does not have a type. Its type is always inferred as a free variable.
 	// NullType    = NewClass("Null")
 
-	IDType      = NewModule("ID", ScalarKind)
-	BooleanType = NewModule("Boolean", ScalarKind)
-	StringType  = NewModule("String", ScalarKind)
-	IntType     = NewModule("Int", ScalarKind)
-	FloatType   = NewModule("Float", ScalarKind)
+	IDType         = NewModule("ID", ScalarKind)
+	BooleanType    = NewModule("Boolean", ScalarKind)
+	StringType     = NewModule("String", ScalarKind)
+	IntType        = NewModule("Int", ScalarKind)
+	FloatType      = NewModule("Float", ScalarKind)
+	ListTypeModule = NewModule("List", ScalarKind)
 )
 
 // List represents a list literal

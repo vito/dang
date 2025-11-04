@@ -1,0 +1,22 @@
+# Test list.contains() method
+
+# Basic functionality with integers
+pub int_list: [Int!]! = [1, 2, 3]
+assert { int_list.contains(2) }
+assert { !int_list.contains(4) }
+
+# Basic functionality with strings
+pub string_list: [String!]! = ["hello", "world"]
+assert { string_list.contains("world") }
+assert { !string_list.contains("foo") }
+
+# Empty lists
+pub empty: [Int!]! = []
+assert { !empty.contains(1) }
+
+# Lists with nulls (nullable elements)
+pub nullable_list: [Int]! = [1, null, 3]
+assert { nullable_list.contains(1) }
+assert { nullable_list.contains(3) }
+
+print("List contains tests passed!")

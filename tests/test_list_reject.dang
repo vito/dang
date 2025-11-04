@@ -1,0 +1,24 @@
+# Test list.reject() method
+
+# Basic functionality - reject even numbers
+pub numbers: [Int!]! = [1, 2, 3, 4, 5]
+pub odds: [Int!]! = numbers.reject(\x -> x % 2 == 0)
+assert { odds[0] == 1 }
+assert { odds[1] == 3 }
+assert { odds[2] == 5 }
+
+# Reject strings that start with 'h'
+pub words: [String!]! = ["hello", "world", "hi", "there"]
+pub filtered: [String!]! = words.reject(\w -> w.hasPrefix("h"))
+assert { filtered[0] == "world" }
+assert { filtered[1] == "there" }
+
+# Reject all elements
+pub all_rejected: [Int!]! = [1, 2, 3].reject(\x -> true)
+assert { all_rejected == [] }
+
+# Reject no elements
+pub none_rejected: [Int!]! = [1, 2, 3].reject(\x -> false)
+assert { none_rejected == [1, 2, 3] }
+
+print("List reject tests passed!")

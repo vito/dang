@@ -100,11 +100,6 @@ func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, ind
 
 // checkArgumentType validates an argument's type against the expected parameter type
 func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
-	it, err := value.Infer(ctx, env, fresh)
-	if err != nil {
-		return fmt.Errorf("FunCall.Infer: %w", err)
-	}
-
 	scheme, has := recordType.SchemeOf(key)
 	if !has {
 		return fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
@@ -113,6 +108,44 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 	dt, isMono := scheme.Type()
 	if !isMono {
 		return fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
+	}
+
+	// Special handling for lambda arguments: constrain parameter types before inference
+	if lambda, ok := value.(*Lambda); ok {
+		if fnType, ok := dt.(*hm.FunctionType); ok {
+			// Clone the environment and add expected parameter types
+			envWithConstraints := env.Clone()
+
+			// Get expected parameter types from the function type
+			if argRecord, ok := fnType.Arg().(*RecordType); ok {
+				// Match lambda parameters with expected types
+				for i, arg := range lambda.Args {
+					if i < len(argRecord.Fields) {
+						expectedField := argRecord.Fields[i]
+						expectedType, _ := expectedField.Value.Type()
+						// Add the expected type to the environment for this parameter
+						envWithConstraints.Add(arg.Name.Name, hm.NewScheme(nil, expectedType))
+					}
+				}
+			}
+
+			// Now infer the lambda with the constrained environment
+			it, err := lambda.Infer(ctx, envWithConstraints, fresh)
+			if err != nil {
+				return fmt.Errorf("FunCall.Infer: %w", err)
+			}
+
+			if _, err := hm.Assignable(it, dt); err != nil {
+				return NewInferError(err, value)
+			}
+			return nil
+		}
+	}
+
+	// Normal inference path for non-lambda arguments
+	it, err := value.Infer(ctx, env, fresh)
+	if err != nil {
+		return fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
 	if _, err := hm.Assignable(it, dt); err != nil {
@@ -562,6 +595,32 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 
+		// Check if receiver is a list type - handle methods on lists specially
+		if nn, ok := lt.(hm.NonNullType); ok {
+			if listType, ok := nn.Type.(ListType); ok {
+				// Special handling for list methods
+				elemType := listType.Type
+
+				// Look up method definition
+				def, found := LookupMethod(ListTypeModule, d.Field)
+				if !found {
+					tv := fresh.Fresh()
+					d.SetInferredType(tv)
+					return tv, fmt.Errorf("list does not have method %q", d.Field)
+				}
+
+				// Build method type with element type substituted for type variable
+				methodType := instantiateListMethod(def, elemType)
+
+				if d.AutoCall {
+					methodType, _ = autoCallFnType(methodType)
+				}
+
+				d.SetInferredType(methodType)
+				return methodType, nil
+			}
+		}
+
 		// Check if receiver is nullable or non-null
 		var rec Env
 		var isNullable bool
@@ -694,6 +753,18 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 					}
 				}
 				return nil, fmt.Errorf("float value does not have method %q", d.Field)
+
+			case ListValue:
+				// Handle methods on list values by looking them up in the evaluation environment
+				// The builtin is registered with a special name
+				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field)
+				if method, found := env.Get(methodKey); found {
+					if builtinFn, ok := method.(BuiltinFunction); ok {
+						// Create a bound method that will pass the list as self
+						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					}
+				}
+				return nil, fmt.Errorf("list value does not have method %q", d.Field)
 
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
@@ -2124,4 +2195,50 @@ func (l *Lambda) Walk(fn func(Node) bool) {
 		return
 	}
 	l.FunctionBase.Body.Walk(fn)
+}
+
+// instantiateListMethod instantiates a list method's type by substituting
+// the type variable 'a' with the actual element type of the list.
+func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
+	// Build a record type for the method arguments, replacing TypeVar('a') with elemType
+	args := NewRecordType("")
+	for _, param := range def.ParamTypes {
+		paramType := substituteTypeVar(param.Type, 'a', elemType)
+		args.Add(param.Name, hm.NewScheme(nil, paramType))
+	}
+
+	// Similarly, handle the return type
+	returnType := substituteTypeVar(def.ReturnType, 'a', elemType)
+
+	return hm.NewFnType(args, returnType)
+}
+
+// substituteTypeVar recursively replaces a type variable with a concrete type
+func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Type {
+	switch typ := t.(type) {
+	case hm.TypeVariable:
+		if typ == tv {
+			return replacement
+		}
+		return typ
+	case hm.NonNullType:
+		return hm.NonNullType{Type: substituteTypeVar(typ.Type, tv, replacement)}
+	case ListType:
+		return ListType{Type: substituteTypeVar(typ.Type, tv, replacement)}
+	case *hm.FunctionType:
+		return hm.NewFnType(
+			substituteTypeVar(typ.Arg(), tv, replacement),
+			substituteTypeVar(typ.Ret(false), tv, replacement),
+		)
+	case *RecordType:
+		newRec := NewRecordType(typ.Named)
+		for _, field := range typ.Fields {
+			fieldType, _ := field.Value.Type()
+			newFieldType := substituteTypeVar(fieldType, tv, replacement)
+			newRec.Add(field.Key, hm.NewScheme(nil, newFieldType))
+		}
+		return newRec
+	default:
+		return t
+	}
 }

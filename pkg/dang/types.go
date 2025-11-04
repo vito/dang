@@ -180,7 +180,7 @@ func (t GraphQLListType) Supertypes() []Type {
 
 type RecordType struct {
 	Named  string
-	Fields []Keyed[*hm.Scheme] // TODO this should be a map
+	Fields []Keyed[*hm.Scheme]
 }
 
 var _ hm.Type = (*RecordType)(nil)
