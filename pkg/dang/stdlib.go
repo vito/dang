@@ -404,6 +404,39 @@ func registerStdlib() {
 			list := self.(ListValue)
 			return BoolValue{Val: len(list.Elements) == 0}, nil
 		})
+
+	// List.reduce method: reduce(fn: \(acc: b, item: a) -> b, initial: b) -> b
+	Method(ListTypeModule, "reduce").
+		Doc("reduces the list to a single value using an accumulator function").
+		Params(
+			"fn", hm.NewFnType(
+				NewRecordType("", Keyed[*hm.Scheme]{
+					Key:   "acc",
+					Value: hm.NewScheme(nil, TypeVar('b')),
+				}, Keyed[*hm.Scheme]{
+					Key:   "item",
+					Value: hm.NewScheme(nil, TypeVar('a')),
+				}),
+				TypeVar('b'),
+			),
+			"initial", TypeVar('b'),
+		).
+		Returns(TypeVar('b')).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			fn, _ := args.Get("fn")
+			accumulator, _ := args.Get("initial")
+
+			for _, item := range list.Elements {
+				result, err := callFunc(ctx, fn, accumulator, item)
+				if err != nil {
+					return nil, fmt.Errorf("reduce function: %w", err)
+				}
+				accumulator = result
+			}
+
+			return accumulator, nil
+		})
 }
 
 // callFunc calls a function with the given values as arguments.
