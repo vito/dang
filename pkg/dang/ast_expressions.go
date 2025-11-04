@@ -113,9 +113,6 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 	// Special handling for lambda arguments: constrain parameter types before inference
 	if lambda, ok := value.(*Lambda); ok {
 		if fnType, ok := dt.(*hm.FunctionType); ok {
-			// Clone the environment and add expected parameter types
-			envWithConstraints := env.Clone()
-
 			// Get expected parameter types from the function type
 			if argRecord, ok := fnType.Arg().(*RecordType); ok {
 				// Match lambda parameters with expected types
@@ -123,22 +120,10 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 					if i < len(argRecord.Fields) {
 						expectedField := argRecord.Fields[i]
 						expectedType, _ := expectedField.Value.Type()
-						// Add the expected type to the environment for this parameter
-						envWithConstraints.Add(arg.Name.Name, hm.NewScheme(nil, expectedType))
+						arg.ContextInferredType = expectedType
 					}
 				}
 			}
-
-			// Now infer the lambda with the constrained environment
-			it, err := lambda.Infer(ctx, envWithConstraints, fresh)
-			if err != nil {
-				return fmt.Errorf("FunCall.Infer: %w", err)
-			}
-
-			if _, err := hm.Assignable(it, dt); err != nil {
-				return NewInferError(err, value)
-			}
-			return nil
 		}
 	}
 
@@ -2180,7 +2165,7 @@ func (l *Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc
 
 func (l *Lambda) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(l, func() (hm.Type, error) {
-		return l.FunctionBase.inferFunctionType(ctx, env, fresh, true, nil, "Lambda")
+		return l.FunctionBase.inferFunctionType(ctx, env, fresh, nil, "Lambda")
 	})
 }
 

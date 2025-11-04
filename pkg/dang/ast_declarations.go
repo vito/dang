@@ -23,66 +23,21 @@ type FunctionBase struct {
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
-func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher, allowFreshTypes bool) ([]Keyed[*hm.Scheme], error) {
+func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], error) {
 	args := []Keyed[*hm.Scheme]{}
 	for _, arg := range f.Args {
-		var definedArgType hm.Type
-		var err error
-
-		if arg.Type_ != nil {
-			definedArgType, err = arg.Type_.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("inferring argument %q type: %w", arg.Name.Name, err)
-			}
+		_, err := arg.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
 		}
-
-		var inferredValType hm.Type
-		if arg.Value != nil {
-			inferredValType, err = arg.Value.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("inferring argument %q value: %w", arg.Name.Name, err)
-			}
+		scheme, found := env.SchemeOf(arg.Name.Name)
+		if !found {
+			return nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
 		}
-
-		for _, directive := range arg.Directives {
-			_, err = directive.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, fmt.Errorf("inferring argument %q directive: %w", arg.Name.Name, err)
-			}
+		finalArgType, isMono := scheme.Type()
+		if !isMono {
+			return nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
 		}
-
-		var finalArgType hm.Type
-		if definedArgType != nil && inferredValType != nil {
-			// Try to unify the defined type with the inferred type
-			// This allows [] (inferred as [a]!) to unify with [String!]!
-			_, err := hm.Assignable(inferredValType, definedArgType)
-			if err != nil {
-				return nil, WrapInferError(
-					fmt.Errorf("function arg %q mismatch: defined as %s, inferred as %s, cannot unify: %w", arg.Name.Name, definedArgType, inferredValType, err),
-					arg,
-				)
-			}
-			// Use the defined type since it's the concrete, user-specified type
-			finalArgType = definedArgType
-		} else if definedArgType != nil {
-			finalArgType = definedArgType
-		} else if inferredValType != nil {
-			finalArgType = inferredValType
-		} else if allowFreshTypes {
-			// Allow fresh types when no explicit type is given (for lambdas)
-			// Check if this parameter already has a type in the environment (from expected types)
-			if existingScheme, found := env.SchemeOf(arg.Name.Name); found {
-				existingType, _ := existingScheme.Type()
-				finalArgType = existingType
-			} else {
-				finalArgType = fresh.Fresh()
-			}
-		} else {
-			return nil, fmt.Errorf("function arg %q has no type or value", arg.Name.Name)
-		}
-
-		scheme := hm.NewScheme(nil, finalArgType)
-		env.Add(arg.Name.Name, scheme)
 
 		// For arguments with defaults, make them nullable in the function signature
 		// This allows callers to pass null or omit the argument
@@ -124,7 +79,7 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 }
 
 // inferFunctionType provides shared type inference logic for functions
-func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowFreshTypes bool, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
 
@@ -132,7 +87,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	f.InferredScope = newEnv.(Env)
 
 	// Process arguments using shared logic
-	args, err := f.inferFunctionArguments(ctx, newEnv, fresh, allowFreshTypes)
+	args, err := f.inferFunctionArguments(ctx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
@@ -212,7 +167,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		signatureEnv := env.Clone()
 
 		// Process arguments to get function signature
-		args, err := f.FunctionBase.inferFunctionArguments(ctx, signatureEnv, fresh, false)
+		args, err := f.FunctionBase.inferFunctionArguments(ctx, signatureEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
@@ -243,7 +198,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 
 func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		return f.FunctionBase.inferFunctionType(ctx, env, fresh, false, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+		return f.FunctionBase.inferFunctionType(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 	})
 }
 

@@ -17,6 +17,9 @@ type SlotDecl struct {
 	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
+
+	// A type inferred from context, i.e. a lambda passed as a function argument.
+	ContextInferredType hm.Type
 }
 
 var _ Declarer = SlotDecl{}
@@ -77,6 +80,16 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 	}
 
+	if s.ContextInferredType != nil {
+		if definedType != nil {
+			if _, err := hm.Assignable(definedType, s.ContextInferredType); err != nil {
+				return nil, NewInferError(err, s)
+			}
+		} else {
+			definedType = s.ContextInferredType
+		}
+	}
+
 	var inferredType hm.Type
 	if s.Value != nil {
 		inferredType, err = s.Value.Infer(ctx, env, fresh)
@@ -94,7 +107,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	}
 
 	if definedType == nil {
-		return nil, fmt.Errorf("SlotDecl.Infer: no type or value")
+		definedType = fresh.Fresh()
 	}
 
 	if e, ok := env.(Env); ok {
@@ -438,7 +451,7 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 			},
 		},
 	}
-	return fnDecl.inferFunctionType(ctx, env, fresh, false, nil, classType.Named+" Constructor")
+	return fnDecl.inferFunctionType(ctx, env, fresh, nil, classType.Named+" Constructor")
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
