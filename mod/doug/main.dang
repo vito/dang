@@ -177,27 +177,33 @@ type Doug {
     source.withoutFile(path).changes(source)
   }
 
-  # """
-  # Rename (or move) a file within the project workspace.
+  """
+  Rename (or move) a file within the project workspace.
 
-  # Parent directories for the destination path will be created automatically.
-  # """
-  # pub moveFile(
-  #   """
-  #   Relative path within the workspace of the file or directory to move
-  #   """
-  #   oldPath: String!,
-  #   """
-  #   Destination path within the workspace
-  #   """
-  #   newPath: String!
-  # ): Changeset! {
-  #   source.exists(oldPath, expectedType: "FOO")
-  #   source.
-  #     withFile(newPath, source.file(oldPath)).
-  #     withoutFile(oldPath).
-  #     changes(source)
-  # }
+  Parent directories for the destination path will be created automatically.
+  """
+  pub mv(
+    """
+    Relative path within the workspace of the file or directory to move
+    """
+    oldPath: String!,
+    """
+    Destination path within the workspace
+    """
+    newPath: String!
+  ): Changeset {
+    if (source.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
+      source.
+        withFile(newPath, source.file(oldPath)).
+        withoutFile(oldPath).
+        changes(source)
+    } else if (source.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
+      source.
+        withDirectory(newPath, source.directory(oldPath)).
+        withoutDirectory(oldPath).
+        changes(source)
+    }
+  }
 
   """
   File writing tool that creates or updates files in the filesystem, allowing you to save or modify text content.
