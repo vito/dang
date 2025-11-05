@@ -196,28 +196,7 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
 	}
 
-	// Special handling for lambda arguments: constrain parameter types before inference
-	if lambda, ok := value.(*Lambda); ok {
-		if fnType, ok := dt.(*hm.FunctionType); ok {
-			// Get expected parameter types from the function type
-			if argRecord, ok := fnType.Arg().(*RecordType); ok {
-				// Match lambda parameters with expected types
-				for i, arg := range lambda.Args {
-					if i < len(argRecord.Fields) {
-						expectedField := argRecord.Fields[i]
-						expectedType, _ := expectedField.Value.Type()
-						arg.ContextInferredType = expectedType
-					}
-				}
-			}
-			// NOTE: We don't constrain the return type here because it can lead to
-			// conflicts with nested lambdas. Instead, we let normal type inference
-			// figure out the return type, and the Assignable check below will ensure
-			// the final lambda type is compatible with the expected function type.
-		}
-	}
-
-	// Normal inference path for non-lambda arguments
+	// Infer the argument type
 	it, err := value.Infer(ctx, env, fresh)
 	if err != nil {
 		return fmt.Errorf("FunCall.Infer: %w", err)
@@ -2124,47 +2103,6 @@ func (t *TypeHint) Walk(fn func(Node) bool) {
 		return
 	}
 	t.Expr.Walk(fn)
-}
-
-// Lambda represents a lambda function expression
-type Lambda struct {
-	InferredTypeHolder
-	FunctionBase
-}
-
-var _ Node = &Lambda{}
-var _ Evaluator = &Lambda{}
-
-func (l *Lambda) DeclaredSymbols() []string {
-	return nil // Lambdas don't declare symbols in the global scope
-}
-
-func (l *Lambda) ReferencedSymbols() []string {
-	// Lambdas reference symbols from their body
-	return l.FunctionBase.Body.ReferencedSymbols()
-}
-
-func (l *Lambda) Body() hm.Expression { return l }
-
-func (l *Lambda) GetSourceLocation() *SourceLocation { return l.FunctionBase.Loc }
-
-func (l *Lambda) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(l, func() (hm.Type, error) {
-		return l.FunctionBase.inferFunctionType(ctx, env, fresh, nil, "Lambda")
-	})
-}
-
-func (l *Lambda) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
-		return l.FunctionBase.Eval(ctx, env)
-	})
-}
-
-func (l *Lambda) Walk(fn func(Node) bool) {
-	if !fn(l) {
-		return
-	}
-	l.FunctionBase.Body.Walk(fn)
 }
 
 // BlockArg represents a block argument expression with bidirectional type inference

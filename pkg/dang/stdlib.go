@@ -409,6 +409,7 @@ func registerStdlib() {
 	Method(ListTypeModule, "reduce").
 		Doc("reduces the list to a single value using an accumulator function").
 		Params(
+			"initial", TypeVar('b'),
 			"fn", hm.NewFnType(
 				NewRecordType("", Keyed[*hm.Scheme]{
 					Key:   "acc",
@@ -419,7 +420,6 @@ func registerStdlib() {
 				}),
 				TypeVar('b'),
 			),
-			"initial", TypeVar('b'),
 		).
 		Returns(TypeVar('b')).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {

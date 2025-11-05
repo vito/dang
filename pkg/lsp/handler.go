@@ -429,17 +429,17 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 		// Collect symbols from class body
 		h.collectSymbols(uri, n.Value.Forms, st)
 	case *dang.SlotDecl:
-		// If the slot value is a block or lambda, collect from it
+		// If the slot value is a block, collect from it
 		if n.Value != nil {
 			h.collectNestedSymbols(uri, n.Value, st)
 		}
-	case *dang.Lambda:
-		// Collect from lambda arguments
-		for _, arg := range n.FunctionBase.Args {
+	case *dang.BlockArg:
+		// Collect from block arg parameters
+		for _, arg := range n.Args {
 			h.collectSymbols(uri, []dang.Node{arg}, st)
 		}
-		// Collect from lambda body
-		h.collectNestedSymbols(uri, n.FunctionBase.Body, st)
+		// Collect from block arg body
+		h.collectNestedSymbols(uri, n.BodyNode, st)
 	case *dang.FunDecl:
 		// Collect from function arguments
 		for _, arg := range n.FunctionBase.Args {
@@ -456,9 +456,9 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	case *dang.ClassDecl:
 		return ClassCompletion
 	case *dang.SlotDecl:
-		// Check if the slot value is a function/lambda
+		// Check if the slot value is a function
 		if slot, ok := node.(*dang.SlotDecl); ok {
-			if _, isLambda := slot.Value.(*dang.Lambda); isLambda {
+			if _, isFunDecl := slot.Value.(*dang.FunDecl); isFunDecl {
 				return FunctionCompletion
 			}
 		}

@@ -776,16 +776,6 @@ ForInfiniteLoop <- ForToken _ body:Block {
 ForToken <- "for" !WordChar
 InToken <- "in" !WordChar
 
-Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
-  return &Lambda{
-    FunctionBase: FunctionBase{
-      Args: args.([]*SlotDecl),
-      Body: expr.(Node),
-      Loc: c.Loc(),
-    },
-  }, nil
-}
-LambdaToken <- '\\'
 ArrowToken <- "->"
 
 BlockArg <- _ ':' _ '{' _ params:BlockParams _ ArrowToken _ body:Form _ '}' {
@@ -809,20 +799,7 @@ BlockParam <- name:IdSymbol {
   }, nil
 }
 
-LambdaArgs <- '(' _ args:(a:LambdaArg Sep { return a, nil })* last:LambdaArg? _ ')' {
-  return sliceOfAppend[*SlotDecl](args, last), nil
-} / arg:LambdaArg {
-  return []*SlotDecl{arg.(*SlotDecl)}, nil
-}
 
-LambdaArg <- ArgWithDefault / ArgWithBlockDefault / ArgWithType / ArgWithoutType
-
-ArgWithoutType <- name:IdSymbol {
-  return &SlotDecl{
-    Name: name.(*Symbol),
-    Loc: c.Loc(),
-  }, nil
-}
 
 Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
   return &Match{

@@ -45,13 +45,6 @@ pub named_result = add_nums(a: 30, b: 40)
 assert { mixed_result == 10 }
 assert { named_result == 30 }
 
-# =================== LAMBDA EXPRESSIONS ===================
-pub identity_func = \x -> x
-pub string_processor = \s -> s
-
-# Note: Can't test lambda calls directly without function calling syntax
-# But we can verify they can be assigned
-
 # =================== DECLARATIONS WITH TYPES ===================
 pub typed_int: Int! = 999
 pub typed_string: String! = "typed"
