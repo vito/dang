@@ -16,7 +16,6 @@
   (continue_token)
   (in_token)
   (match_token)
-  (with_token)
   (assert_token)
   (directive_token)
   (on_token)
