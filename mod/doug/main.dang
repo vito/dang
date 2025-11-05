@@ -401,7 +401,11 @@ type Doug {
   }
 
   """
-  Launch a new agent that has access to the same tools and environment.
+  Launch a new READ-ONLY agent to research and respond with a message/report.
+
+  Read-only agents FORK from the initial environment and run in parallel. They
+  have access to the same tools and state, but their environment will be
+  discarded when they return.
 
   IMPORTANT: the task's environment is an isolated sandbox. ONLY use this tool for research. All filesystem changes will be discarded.
 
@@ -419,7 +423,7 @@ type Doug {
     - The agent's outputs should generally be trusted
     - IMPORTANT: The agent runs in a copy-on-write sandboxed environment. Any writes made by the agent will not be visible to the user, but will be available to the agent's next invocation.
   """
-  pub task(
+  pub research(
     """
     A brief description of the task to show to the user
     """
@@ -429,18 +433,74 @@ type Doug {
     """
     prompt: String!
   ): String! {
-    let systemPromptContents = currentModule.source.file("prompts/task_system_prompt.md").contents
-    let reminderPromptText = reminderPrompt(workspace: source)
-
     llm.
       withEnv(currentEnv.withoutOutputs).
-      withBlockedFunction("Doug", "task").
+      withBlockedFunction("Doug", "research").
+      withBlockedFunction("Doug", "rabbithole").
       withoutDefaultSystemPrompt.
-      withSystemPrompt(systemPromptContents).
-      withSystemPrompt(reminderPromptText).
+      withSystemPrompt(
+        """
+        Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
+
+        Notes:
+        - You are running in a sandboxed copy of the original filesystem; your writes will be discarded, so feel free to use it as a scratch space if needed.
+        - You are in an isolated sandboxed environment. Any writes you perform will be discarded. If the task implies they should be kept, fail early.
+        - Your final response should always share relevant file names and code snippets. Paths should always be relative to the project root.
+        - You MUST avoid using emojis.
+        """
+      ).
+      withSystemPrompt(reminderPrompt(workspace: source)).
       withPrompt(prompt).
       loop.
       lastReply
+  }
+
+  """
+  Launch a new READ-WRITE agent to focus on completing a task.
+
+  READ-WRITE agents run in series, and should be only used to mitigate context usage in the top-level agent.
+
+  USE THIS TOOL WHEN:
+  - There is a CLEAR GOAL with known scope
+  - All necessary Research has already been performed
+  """
+  pub rabbithole(
+    """
+    A brief description of the task to show to the user
+    """
+    description: String!,
+    """
+    The prompt for the sub-agent
+    """
+    prompt: String!
+  ): Env! {
+    let reminderPromptText = reminderPrompt(workspace: source)
+
+    let result = llm.
+      withEnv(currentEnv.withoutOutputs).
+      withBlockedFunction("Doug", "research").
+      withBlockedFunction("Doug", "rabbithole").
+      withoutDefaultSystemPrompt.
+      withSystemPrompt(
+        """
+        Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
+
+        Notes:
+        - Don't worry about saying which files you updated; that'll happen automatically.
+        - Put a tl;dr at the bottom so the caller can decide whether it needs to
+        read the rest of the report.
+        - You MUST avoid using emojis.
+        """
+      ).
+      withSystemPrompt(reminderPromptText).
+      withPrompt(prompt).
+      loop
+
+    # show the reply, which will be tl;dred
+    print(result.lastReply)
+
+    # propagate workspace changes
+    currentEnv.withWorkspace(result.env.workspace)
   }
 
   """
