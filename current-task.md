@@ -163,19 +163,19 @@ pub doubled: [[Int!]!]! = nested.map: { inner ->
 
 ### Phase 1: Create BlockArg AST Node
 
-- [ ] Create new `BlockArg` type in `ast_expressions.go`
-- [ ] Implement all Node interface methods (DeclaredSymbols, ReferencedSymbols, etc.)
-- [ ] Implement `Infer()` with bidirectional inference logic
-- [ ] Implement `Eval()` (similar to Lambda)
-- [ ] Implement `Walk()`
+- [x] Create new `BlockArg` type in `ast_expressions.go`
+- [x] Implement all Node interface methods (DeclaredSymbols, ReferencedSymbols, etc.)
+- [x] Implement `Infer()` with bidirectional inference logic
+- [x] Implement `Eval()` (similar to Lambda)
+- [x] Implement `Walk()`
 
 ### Phase 2: Update FunCall Structure
 
-- [ ] Add `BlockArg *BlockArg` field to `FunCall` struct
-- [ ] Update `FunCall.ReferencedSymbols()` to include block arg symbols
-- [ ] Update `FunCall.Walk()` to traverse block arg
-- [ ] Update `FunCall.Infer()` to handle block arg specially
-- [ ] Update `FunCall.Eval()` to pass block arg to function
+- [x] Add `BlockArg *BlockArg` field to `FunCall` struct
+- [x] Update `FunCall.ReferencedSymbols()` to include block arg symbols
+- [x] Update `FunCall.Walk()` to traverse block arg
+- [x] Update `FunCall.Infer()` to handle block arg specially
+- [x] Update `FunCall.Eval()` to pass block arg to function
 
 ### Phase 3: Update Grammar
 
@@ -189,17 +189,17 @@ pub doubled: [[Int!]!]! = nested.map: { inner ->
 
 ### Phase 4: Implement Bidirectional Inference
 
-- [ ] In `FunCall.Infer()`, when block arg is present:
-  - [ ] Infer the function type
-  - [ ] Look for "fn" parameter in the function's argument record
-  - [ ] Extract the expected function type `(params...) -> returnType`
-  - [ ] Pass both parameter types AND return type to block arg
-- [ ] In `BlockArg.Infer()`:
-  - [ ] Accept expected parameter types (set `ContextInferredType` on each param)
-  - [ ] Accept expected return type (store as field or pass through context)
-  - [ ] Infer body with parameters in scope
-  - [ ] Unify body type with expected return type
-  - [ ] Return the function type
+- [x] In `FunCall.Infer()`, when block arg is present:
+  - [x] Infer the function type
+  - [x] Look for "fn" parameter in the function's argument record
+  - [x] Extract the expected function type `(params...) -> returnType`
+  - [x] Pass both parameter types AND return type to block arg
+- [x] In `BlockArg.Infer()`:
+  - [x] Accept expected parameter types (set `ContextInferredType` on each param)
+  - [x] Accept expected return type (store as field or pass through context)
+  - [x] Infer body with parameters in scope
+  - [x] Unify body type with expected return type
+  - [x] Return the function type
 
 ### Phase 5: Update Tests
 
