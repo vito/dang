@@ -82,7 +82,7 @@ type Doug {
       #   .map { (i, x) -> toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
       #   .join("\n")
       let numbered = ""
-      for i, line in (fileContents.split("\n", 0)) {
+      for (i, line in fileContents.split("\n", 0)) {
         # TODO: template
         numbered += toJSON(offset+i+1).padLeft(6) + "→" + line + "\n"
       }
@@ -290,7 +290,7 @@ type Doug {
   ): Void {
     let matches = source.glob(pattern)
     let anyMatched = false
-    for path in (matches) {
+    for (path in matches) {
       if (path.hasPrefix(".") or path.contains("/.")) {
         # Filter out hidden files
         continue
@@ -382,10 +382,7 @@ type Doug {
     """
     limit: Int! = 1000
   ): String! {
-    let normalizedPaths = [] :: [String!]!
-    for p in (paths) {
-      normalizedPaths += [normalize(p)]
-    }
+    let normalizedPaths = paths.map { p -> normalize(p) }
 
     let matches = source.search(
       pattern: pattern,
@@ -549,7 +546,7 @@ type Doug {
     # Build list of all descriptions being updated
     let updatingDescriptions = pending + inProgress + completed
 
-    for todo in (currentTodoLines) {
+    for (todo in currentTodoLines) {
       if (todo != "") {
         # Split on first colon only (limit=2) to handle descriptions with colons
         let parts = todo.split(":", limit: 2)
@@ -572,15 +569,15 @@ type Doug {
     let formattedTodos = ""
     let encodedTodos = ""
 
-    for todo in (existingCompleted + completed) {
+    for (todo in existingCompleted + completed) {
       encodedTodos += "completed:" + todo + "\n"
       formattedTodos += "■ \u001b[32m\u001b[9m" + todo + "\u001b[0m\n"
     }
-    for todo in (existingInProgress + inProgress) {
+    for (todo in existingInProgress + inProgress) {
       encodedTodos += "in_progress:" + todo + "\n"
       formattedTodos += "□ \u001b[33m" + todo + "\u001b[0m\n"
     }
-    for todo in (existingPending + pending) {
+    for (todo in existingPending + pending) {
       encodedTodos += "pending:" + todo + "\n"
       formattedTodos += "□ \u001b[37m" + todo + "\u001b[0m\n"
     }
@@ -607,7 +604,7 @@ type Doug {
 
     # Look for context files
     let contextSegment = ""
-    for file in (contextFiles) {
+    for (file in contextFiles) {
       if (entries.contains(file)) {
         let fileContents = workspace.file(file).contents
         if (fileContents != "") {
