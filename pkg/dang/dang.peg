@@ -69,12 +69,12 @@ SymbolOrCall <- Call / Symbol
 Call <- name:Id args:ArgValues blockArg:BlockArg? {
   // Symbol followed by () - create FunCall
   argRecord := Record(args.([]Keyed[Node]))
-  
+
   var block *BlockArg
   if blockArg != nil {
     block = blockArg.(*BlockArg)
   }
-  
+
   return &FunCall{
     Fun: &Symbol{
       Name: name.(string),
@@ -112,12 +112,12 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
       if args != nil {
         argRecord = Record(args.([]Keyed[Node]))
       }
-      
+
       var block *BlockArg
       if blockArg != nil {
         block = blockArg.(*BlockArg)
       }
-      
+
       return &FunCall{
         Fun: &Select{
           Receiver: left.(Node),
@@ -303,12 +303,29 @@ TypeAndBlockSlot <- vis:Visibility _ name:IdSymbol _ ColonToken _ type_:Type _ b
 }
 
 TypeAndArgsAndBlockSlot <- vis:Visibility _ name:IdSymbol _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
+  // Separate block parameters from regular arguments
+  allArgs := args.([]*SlotDecl)
+  var regularArgs []*SlotDecl
+  var blockParam *SlotDecl
+
+  for _, arg := range allArgs {
+    if arg.IsBlockParam {
+      if blockParam != nil {
+        return nil, fmt.Errorf("function can only have one block parameter")
+      }
+      blockParam = arg
+    } else {
+      regularArgs = append(regularArgs, arg)
+    }
+  }
+
   return &SlotDecl{
     Name: name.(*Symbol),
-    Type_: FunTypeNode{args.([]*SlotDecl), type_.(TypeNode)},
+    Type_: FunTypeNode{allArgs, type_.(TypeNode)},
     Value: &FunDecl{
       FunctionBase: FunctionBase{
-        Args: args.([]*SlotDecl),
+        Args: regularArgs,
+        BlockParam: blockParam,
         Body: block.(*Block),
         Loc: c.Loc(),
       },
@@ -385,7 +402,7 @@ ArgValues <- '(' _ args:(a:Argument Sep { return a, nil })* last:Argument? _ ')'
 ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
   return sliceOfAppend[*SlotDecl](args, last), nil
 }
-ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
+ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
   slotDecl := slot.(*SlotDecl)
   return &SlotDecl{
     Name: slotDecl.Name,
@@ -393,9 +410,10 @@ ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / Ar
     Value: slotDecl.Value,
     Directives: slotDecl.Directives,
     DocString: docstring.(string),
+    IsBlockParam: slotDecl.IsBlockParam,
     Loc: slotDecl.Loc,
   }, nil
-} / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType) {
+} / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
   return slot.(*SlotDecl), nil
 }
 ArgWithDefault <- name:IdSymbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
@@ -421,6 +439,14 @@ ArgWithType <- name:IdSymbol _ ColonToken _ type_:Type _ directives:DirectiveApp
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: sliceOf[*DirectiveApplication](directives),
+    Loc: c.Loc(),
+  }, nil
+}
+BlockParamDecl <- AmpersandToken name:IdSymbol _ args:ArgTypes _ ColonToken _ ret:Type {
+  return &SlotDecl{
+    Name: name.(*Symbol),
+    Type_: FunTypeNode{args.([]*SlotDecl), ret.(TypeNode)},
+    IsBlockParam: true,
     Loc: c.Loc(),
   }, nil
 }

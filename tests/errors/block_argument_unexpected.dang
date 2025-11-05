@@ -1,0 +1,6 @@
+# Test: providing a block argument to a function that doesn't accept one
+
+pub add(x: Int!, y: Int!): Int! { x + y }
+
+# ERROR: function does not accept a block argument
+pub result = add(1, 2) { x -> x * 2 }

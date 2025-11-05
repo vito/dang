@@ -10,13 +10,14 @@ import (
 
 type SlotDecl struct {
 	InferredTypeHolder
-	Name       *Symbol
-	Type_      TypeNode
-	Value      Node
-	Visibility Visibility
-	Directives []*DirectiveApplication
-	DocString  string
-	Loc        *SourceLocation
+	Name         *Symbol
+	Type_        TypeNode
+	Value        Node
+	Visibility   Visibility
+	Directives   []*DirectiveApplication
+	DocString    string
+	IsBlockParam bool // True if this is a block parameter (prefixed with &)
+	Loc          *SourceLocation
 
 	// A type inferred from context, i.e. a lambda passed as a function argument.
 	ContextInferredType hm.Type

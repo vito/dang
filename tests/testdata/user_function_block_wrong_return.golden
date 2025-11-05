@@ -1,0 +1,10 @@
+[1m[31mError:[0m block argument body has type Int! but expected type String!
+  [2m[34m--> errors/user_function_block_wrong_return.dang:8:42[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | # ERROR: block returns Int! but should return String![0m
+ [2m[34m[1m  8 | [0mpub result: String! = withBlock() { x -> x * 2 }
+[2m                                                [31m^^^^^[0m
+ [2m  9 | [0m
+ [2m    |[0m
+

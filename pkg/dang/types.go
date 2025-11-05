@@ -426,36 +426,53 @@ func (t FunTypeNode) ReferencedSymbols() []string {
 }
 
 func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	args := make([]Keyed[*hm.Scheme], len(t.Args))
-	for i, a := range t.Args {
-		// TODO: more scheme/type awkwardness, double check this
-		// scheme, err := Infer(env, a.Value)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("FunType.Infer: %w", err)
-		// }
-		dt, err := a.Type_.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
-		}
-
-		// Apply the same nullable transformation as in inferFunctionArguments
-		// For arguments with defaults, make them nullable in the function signature
-		signatureType := dt
-		if a.Value != nil {
-			// Argument has a default value - make it nullable in the function signature
-			if nonNullType, isNonNull := dt.(hm.NonNullType); isNonNull {
-				signatureType = nonNullType.Type
+	var regularArgs []Keyed[*hm.Scheme]
+	var blockType *hm.FunctionType
+	
+	for _, a := range t.Args {
+		if a.IsBlockParam {
+			// This is a block parameter - infer it as a function type
+			blockFnType, err := a.Type_.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("FunTypeNode.Infer: block parameter: %w", err)
 			}
-		}
+			bt, ok := blockFnType.(*hm.FunctionType)
+			if !ok {
+				return nil, fmt.Errorf("FunTypeNode.Infer: block parameter must be a function type, got %T", blockFnType)
+			}
+			blockType = bt
+		} else {
+			// Regular argument
+			dt, err := a.Type_.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
+			}
 
-		// TODO: should we infer from value?
-		args[i] = Keyed[*hm.Scheme]{Key: a.Name.Name, Value: hm.NewScheme(nil, signatureType)}
+			// Apply the same nullable transformation as in inferFunctionArguments
+			// For arguments with defaults, make them nullable in the function signature
+			signatureType := dt
+			if a.Value != nil {
+				// Argument has a default value - make it nullable in the function signature
+				if nonNullType, isNonNull := dt.(hm.NonNullType); isNonNull {
+					signatureType = nonNullType.Type
+				}
+			}
+
+			regularArgs = append(regularArgs, Keyed[*hm.Scheme]{Key: a.Name.Name, Value: hm.NewScheme(nil, signatureType)})
+		}
 	}
+	
 	ret, err := t.Ret.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 	}
-	return hm.NewFnType(NewRecordType("", args...), ret), nil
+	
+	// Create function type with optional block parameter
+	fnType := hm.NewFnType(NewRecordType("", regularArgs...), ret)
+	if blockType != nil {
+		fnType.SetBlock(blockType)
+	}
+	return fnType, nil
 }
 
 // not needed yet

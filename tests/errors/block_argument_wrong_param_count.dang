@@ -1,0 +1,6 @@
+# Test: block with wrong number of parameters
+
+pub numbers: [Int!]! = [1, 2, 3]
+
+# ERROR: block has 2 parameters but expected 1
+pub result: [Int!]! = numbers.map { (x, y) -> x + y }

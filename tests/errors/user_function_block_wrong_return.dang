@@ -1,0 +1,8 @@
+# Test: user-defined function with wrong block return type
+
+pub withBlock(&block(x: Int!): String!): String! {
+  block(42)
+}
+
+# ERROR: block returns Int! but should return String!
+pub result: String! = withBlock() { x -> x * 2 }

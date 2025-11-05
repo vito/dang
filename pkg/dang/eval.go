@@ -751,12 +751,13 @@ func (l ListValue) MarshalJSON() ([]byte, error) {
 
 // FunctionValue represents a function value
 type FunctionValue struct {
-	Args     []string
-	Body     Node
-	Closure  EvalEnv
-	FnType   *hm.FunctionType
-	Defaults map[string]Node // Map of argument name to default value expression
-	ArgDecls []*SlotDecl     // Original argument declarations with directives
+	Args           []string
+	Body           Node
+	Closure        EvalEnv
+	FnType         *hm.FunctionType
+	Defaults       map[string]Node // Map of argument name to default value expression
+	ArgDecls       []*SlotDecl     // Original argument declarations with directives
+	BlockParamName string          // Name of the block parameter, if any
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -801,6 +802,19 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 			fnEnv.Set(argName, defaultVal)
 		} else {
 			fnEnv.Set(argName, NullValue{})
+		}
+	}
+
+	// Bind block parameter if the function has one
+	if f.FnType.Block() != nil {
+		// Get block parameter name from function type
+		// We need to store this when creating the FunctionValue
+		blockParamName := f.BlockParamName
+		if blockParamName != "" {
+			// Extract block arg from context
+			if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
+				fnEnv.Set(blockParamName, blockVal.(Value))
+			}
 		}
 	}
 

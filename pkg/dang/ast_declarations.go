@@ -13,9 +13,10 @@ import (
 
 type FunctionBase struct {
 	InferredTypeHolder
-	Args []*SlotDecl
-	Body Node
-	Loc  *SourceLocation
+	Args       []*SlotDecl
+	BlockParam *SlotDecl // Optional block parameter (prefixed with &)
+	Body       Node
+	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
 
@@ -71,13 +72,19 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 		}
 	}
 
+	var blockParamName string
+	if f.BlockParam != nil {
+		blockParamName = f.BlockParam.Name.Name
+	}
+
 	return FunctionValue{
-		Args:     argNames,
-		Body:     f.Body,
-		Closure:  env,
-		FnType:   fnType,
-		Defaults: defaults,
-		ArgDecls: f.Args, // Preserve original argument declarations with directives
+		Args:           argNames,
+		Body:           f.Body,
+		Closure:        env,
+		FnType:         fnType,
+		Defaults:       defaults,
+		ArgDecls:       f.Args, // Preserve original argument declarations with directives
+		BlockParamName: blockParamName,
 	}
 }
 
@@ -93,6 +100,27 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	args, err := f.inferFunctionArguments(ctx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
+	}
+
+	// Process block parameter if present
+	var blockType *hm.FunctionType
+	if f.BlockParam != nil {
+		// Infer block parameter type
+		blockParamType, err := f.BlockParam.Type_.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s.Infer block parameter: %w", contextName, err)
+		}
+
+		// Block parameter must be a function type
+		bt, ok := blockParamType.(*hm.FunctionType)
+		if !ok {
+			return nil, fmt.Errorf("%s.Infer: block parameter must be a function type, got %T", contextName, blockParamType)
+		}
+		blockType = bt
+
+		// Add block parameter to environment as a callable value
+		blockParamName := f.BlockParam.Name.Name
+		newEnv.Add(blockParamName, hm.NewScheme(nil, blockType))
 	}
 
 	// Handle explicit return type if provided
@@ -117,7 +145,11 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
+	// Create function type with optional block parameter
 	f.Inferred = hm.NewFnType(NewRecordType("", args...), inferredRet)
+	if blockType != nil {
+		f.Inferred.SetBlock(blockType)
+	}
 	return f.Inferred, nil
 }
 
@@ -175,6 +207,20 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
 
+		// Process block parameter if present
+		var blockType *hm.FunctionType
+		if f.FunctionBase.BlockParam != nil {
+			blockParamType, err := f.FunctionBase.BlockParam.Type_.Infer(ctx, env, fresh)
+			if err != nil {
+				return fmt.Errorf("FuncDecl.Hoist: %s block parameter: %w", f.Named, err)
+			}
+			bt, ok := blockParamType.(*hm.FunctionType)
+			if !ok {
+				return fmt.Errorf("FuncDecl.Hoist: %s block parameter must be a function type, got %T", f.Named, blockParamType)
+			}
+			blockType = bt
+		}
+
 		// Handle explicit return type if provided
 		var retType hm.Type
 		if f.Ret != nil {
@@ -189,6 +235,9 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 
 		// Create function type and add to environment
 		fnType := hm.NewFnType(NewRecordType("", args...), retType)
+		if blockType != nil {
+			fnType.SetBlock(blockType)
+		}
 		env.Add(f.Named, hm.NewScheme(nil, fnType))
 		return nil
 	} else if pass == 1 {

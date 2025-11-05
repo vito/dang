@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use [[String!]!]! as [[Int!]!]!
+  [2m[34m--> errors/block_nested_wrong_return.dang:6:26[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # ERROR: inner block returns String! but should return Int![0m
+ [2m[34m[1m  6 | [0mpub result: [[Int!]!]! = nested.map { inner ->
+[2m                                [31m^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  7 |   inner.map { x -> toJSON(x) + " is wrong" }[0m
+ [2m  8 | }[0m
+ [2m    |[0m
+

@@ -289,6 +289,10 @@
           {
             "type": "arg_with_type",
             "named": true
+          },
+          {
+            "type": "block_param_decl",
+            "named": true
           }
         ]
       }
@@ -710,6 +714,56 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "block_param_decl",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      },
+      "ret": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "ampersand_token",
+          "named": true
+        },
+        {
+          "type": "colon_token",
+          "named": true
+        }
+      ]
     }
   },
   {

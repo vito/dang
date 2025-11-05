@@ -1,0 +1,6 @@
+# Test: filter block must return Boolean!
+
+pub numbers: [Int!]! = [1, 2, 3]
+
+# ERROR: block must return Boolean! for filter
+pub result: [Int!]! = numbers.filter { x -> x * 2 }

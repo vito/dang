@@ -1,0 +1,10 @@
+[1m[31mError:[0m "multiplier" not found
+  [2m[34m--> errors/block_undefined_variable.dang:6:46[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # ERROR: "multiplier" not found in env[0m
+ [2m[34m[1m  6 | [0mpub result: [Int!]! = numbers.map { x -> x * multiplier }
+[2m                                                    [31m^^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

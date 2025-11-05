@@ -2238,6 +2238,7 @@ func (b *BlockArg) Walk(fn func(Node) bool) {
 	b.BodyNode.Walk(fn)
 }
 
+
 // instantiateListMethod instantiates a list method's type by substituting
 // the type variable 'a' with the actual element type of the list.
 func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {

@@ -1,0 +1,10 @@
+[1m[31mError:[0m block argument body has type Int! but expected type String!
+  [2m[34m--> errors/block_wrong_return_type.dang:6:29[0m
+ [2m    |[0m
+ [2m  4 | }[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mpub result = myFun() { x -> x + 10 }
+[2m                                   [31m^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

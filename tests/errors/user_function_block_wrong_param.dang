@@ -1,0 +1,8 @@
+# Test: block parameter type incompatible with usage
+
+pub processor(&block(x: String!): Int!): Int! {
+  block("hello")
+}
+
+# ERROR: cannot use String! in numeric operation
+pub result: Int! = processor() { x -> x * 2 }

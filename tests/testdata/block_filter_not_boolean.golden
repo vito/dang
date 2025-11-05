@@ -1,0 +1,10 @@
+[1m[31mError:[0m block argument body has type Int! but expected type Boolean!
+  [2m[34m--> errors/block_filter_not_boolean.dang:6:45[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # ERROR: block must return Boolean! for filter[0m
+ [2m[34m[1m  6 | [0mpub result: [Int!]! = numbers.filter { x -> x * 2 }
+[2m                                                   [31m^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

@@ -201,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 154,
+      "value": 155,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -378,7 +378,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 148,
+      "value": 149,
       "content": {
         "type": "SEQ",
         "members": [
@@ -457,7 +457,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 147,
+      "value": 148,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1549,6 +1549,10 @@
                   {
                     "type": "SYMBOL",
                     "name": "arg_with_type"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "block_param_decl"
                   }
                 ]
               }
@@ -1572,6 +1576,10 @@
               {
                 "type": "SYMBOL",
                 "name": "arg_with_type"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "block_param_decl"
               }
             ]
           }
@@ -1702,6 +1710,43 @@
               "type": "SYMBOL",
               "name": "directive_application"
             }
+          }
+        }
+      ]
+    },
+    "block_param_decl": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "ampersand_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id_symbol"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "args",
+          "content": {
+            "type": "SYMBOL",
+            "name": "arg_types"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "colon_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "ret",
+          "content": {
+            "type": "SYMBOL",
+            "name": "type"
           }
         }
       ]
