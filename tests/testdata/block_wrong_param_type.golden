@@ -1,1 +1,0 @@
-errors/block_wrong_param_type.dang:6:25 (125): no match found, expected: "#", "->", [ \t\r\n] or [a-zA-Z0-9_]

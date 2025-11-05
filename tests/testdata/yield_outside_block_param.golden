@@ -1,9 +1,0 @@
-[1m[31mError:[0m yield used outside of function with block parameter
-  [2m[34m--> errors/yield_outside_block_param.dang:2:9[0m
- [2m    |[0m
- [2m  1 | # Test yield outside of a function with a block parameter[0m
- [2m[34m[1m  2 | [0mpub x = yield(42)
-[2m               [31m^^^^^^^^^[0m
- [2m  3 | [0m
- [2m    |[0m
-
