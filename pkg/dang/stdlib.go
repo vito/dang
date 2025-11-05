@@ -468,6 +468,34 @@ func registerStdlib() {
 
 			return accumulator, nil
 		})
+
+	// List.join method: join(separator: String!) -> String!
+	Method(ListTypeModule, "join").
+		Doc("joins the list elements into a string, converting each element to string and separating them with the given delimiter").
+		Params("separator", NonNull(StringType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			separator := args.GetString("separator")
+
+			var parts []string
+			for _, item := range list.Elements {
+				// Convert each item to string using the same logic as toString
+				var strVal string
+				if sv, ok := item.(StringValue); ok {
+					strVal = sv.Val
+				} else {
+					jsonBytes, err := json.Marshal(item)
+					if err != nil {
+						return nil, fmt.Errorf("join: failed to convert element to string: %w", err)
+					}
+					strVal = string(jsonBytes)
+				}
+				parts = append(parts, strVal)
+			}
+
+			return ToValue(strings.Join(parts, separator))
+		})
 }
 
 // callFunc calls a function with the given values as arguments.

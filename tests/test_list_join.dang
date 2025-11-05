@@ -1,0 +1,31 @@
+# Tests for List.join
+
+# Join strings
+let strings = ["hello", "world", "test"]
+let result1 = strings.join(", ")
+assert { result1 == "hello, world, test" }
+
+# Join numbers (should be converted to strings)
+let numbers = [1, 2, 3]
+let result2 = numbers.join(", ")
+assert { result2 == "1, 2, 3" }
+
+# Join booleans
+let bools = [true, false, true]
+let result3 = bools.join(" | ")
+assert { result3 == "true | false | true" }
+
+# Join with empty separator
+let items = ["a", "b", "c"]
+let result4 = items.join("")
+assert { result4 == "abc" }
+
+# Join empty list
+let empty = []
+let result5 = empty.join(", ")
+assert { result5 == "" }
+
+# Join single item
+let single = ["only"]
+let result6 = single.join(", ")
+assert { result6 == "only" }
