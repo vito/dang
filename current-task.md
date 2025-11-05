@@ -212,6 +212,10 @@ pub doubled: [[Int!]!]! = nested.map: { inner ->
 
 - [x] Remove `Lambda` type completely (or keep with error message?)
 - [x] Remove lambda-specific handling from `checkArgumentType`
+- [x] Make block args more special - not passed as 'fn' arg
+- [x] Update Args type in stdlib to have a special Block field
+- [x] Update FunCall.Eval() to set the Block field instead of 'fn' arg
+- [x] Update all stdlib functions that use block args to access the Block field
 - [ ] Update `llm-notes/block-arg-syntax.md` with new semantics
 - [ ] Create `llm-notes/type-inference.md` documenting the bidirectional approach
 - [x] Remove or update any Lambda-related comments

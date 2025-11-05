@@ -11,6 +11,7 @@ import (
 // Args provides type-safe access to function arguments
 type Args struct {
 	Values map[string]Value
+	Block  *FunctionValue // Special field for block arguments
 }
 
 // Get retrieves an argument value by name
@@ -265,6 +266,12 @@ func (b *BuiltinBuilder) Params(pairs ...any) *BuiltinBuilder {
 	return b
 }
 
+// Block sets the expected block argument type
+func (b *BuiltinBuilder) Block(fnType *hm.FunctionType) *BuiltinBuilder {
+	b.def.BlockType = fnType
+	return b
+}
+
 // Returns sets the return type
 func (b *BuiltinBuilder) Returns(typ hm.Type) *BuiltinBuilder {
 	b.def.ReturnType = typ
@@ -347,6 +354,12 @@ func (b *MethodBuilder) Params(pairs ...any) *MethodBuilder {
 	return b
 }
 
+// Block sets the expected block argument type
+func (b *MethodBuilder) Block(fnType *hm.FunctionType) *MethodBuilder {
+	b.def.BlockType = fnType
+	return b
+}
+
 // Returns sets the return type
 func (b *MethodBuilder) Returns(typ hm.Type) *MethodBuilder {
 	b.def.ReturnType = typ
@@ -405,6 +418,7 @@ type BuiltinDef struct {
 	IsMethod     bool
 	ReceiverType *Module // nil for functions
 	ParamTypes   []ParamDef
+	BlockType    *hm.FunctionType // nil if no block arg expected
 	ReturnType   hm.Type
 	Impl         func(ctx context.Context, self Value, args Args) (Value, error)
 	Doc          string
@@ -423,6 +437,7 @@ var registry []BuiltinDef
 func Register(def BuiltinDef) {
 	registry = append(registry, def)
 }
+
 
 // ForEachFunction iterates over all registered functions
 func ForEachFunction(fn func(BuiltinDef)) {

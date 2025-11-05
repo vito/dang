@@ -74,8 +74,9 @@ func (tv TypeVariable) Format(s fmt.State, c rune) {
 
 // FunctionType represents a function type
 type FunctionType struct {
-	arg Type
-	ret Type
+	arg   Type
+	ret   Type
+	block *FunctionType // Optional block argument type (Ruby-style blocks)
 }
 
 func NewFnType(arg, ret Type) *FunctionType {
@@ -87,14 +88,22 @@ func (ft *FunctionType) Name() string {
 }
 
 func (ft *FunctionType) Apply(subs Subs) Substitutable {
-	return &FunctionType{
+	result := &FunctionType{
 		arg: ft.arg.Apply(subs).(Type),
 		ret: ft.ret.Apply(subs).(Type),
 	}
+	if ft.block != nil {
+		result.block = ft.block.Apply(subs).(*FunctionType)
+	}
+	return result
 }
 
 func (ft *FunctionType) FreeTypeVar() TypeVarSet {
-	return ft.arg.FreeTypeVar().Union(ft.ret.FreeTypeVar())
+	result := ft.arg.FreeTypeVar().Union(ft.ret.FreeTypeVar())
+	if ft.block != nil {
+		result = result.Union(ft.block.FreeTypeVar())
+	}
+	return result
 }
 
 func (ft *FunctionType) Normalize(k, v TypeVarSet) (Type, error) {
@@ -106,7 +115,15 @@ func (ft *FunctionType) Normalize(k, v TypeVarSet) (Type, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FunctionType{arg: arg, ret: ret}, nil
+	result := &FunctionType{arg: arg, ret: ret}
+	if ft.block != nil {
+		block, err := ft.block.Normalize(k, v)
+		if err != nil {
+			return nil, err
+		}
+		result.block = block.(*FunctionType)
+	}
+	return result, nil
 }
 
 func (ft *FunctionType) Types() Types {
@@ -115,7 +132,11 @@ func (ft *FunctionType) Types() Types {
 
 func (ft *FunctionType) Eq(other Type) bool {
 	if ot, ok := other.(*FunctionType); ok {
-		return ft.arg.Eq(ot.arg) && ft.ret.Eq(ot.ret)
+		argsEq := ft.arg.Eq(ot.arg)
+		retsEq := ft.ret.Eq(ot.ret)
+		blocksEq := (ft.block == nil && ot.block == nil) ||
+			(ft.block != nil && ot.block != nil && ft.block.Eq(ot.block))
+		return argsEq && retsEq && blocksEq
 	}
 	return false
 }
@@ -148,6 +169,16 @@ func (ft *FunctionType) Ret(recursive bool) Type {
 // Convenience method for getting return type
 func (ft *FunctionType) ReturnType() Type {
 	return ft.ret
+}
+
+// Block returns the optional block argument type
+func (ft *FunctionType) Block() *FunctionType {
+	return ft.block
+}
+
+// SetBlock sets the block argument type
+func (ft *FunctionType) SetBlock(block *FunctionType) {
+	ft.block = block
 }
 
 // Types represents a slice of types

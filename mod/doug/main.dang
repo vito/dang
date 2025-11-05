@@ -26,22 +26,20 @@ type Doug {
   Returns a Doug coding agent
   """
   pub agent(base: LLM!): LLM! {
-    let provider = base.provider
-    let promptsDir = currentModule.source.directory("prompts/system/")
-    let providerFile = provider + ".txt"
-
-    let systemPromptContents = if (promptsDir.entries.contains(providerFile)) {
-      currentModule.source.file("prompts/system/" + providerFile).contents
-    } else {
-      currentModule.source.file("prompts/system/doug.txt").contents
-    }
-
     base.
       withEnv(
         base.env.
           withCurrentModule.
           withStringInput("TODOs", "", "Your TODO list")).
-      withSystemPrompt(systemPromptContents).
+      withSystemPrompt({
+        let promptsDir = currentModule.source.directory("prompts/system/")
+        let providerFile = base.provider + ".txt"
+        if (promptsDir.entries.contains(providerFile)) {
+          promptsDir.file(providerFile).contents
+        } else {
+          promptsDir.file("doug.txt").contents
+        }
+      }).
       withSystemPrompt(reminderPrompt(base.env.workspace))
   }
 
@@ -79,6 +77,10 @@ type Doug {
     if (fileContents == "") {
       "WARNING: File contents are empty."
     } else {
+      # fileContents
+      #   .split("\n", 0)
+      #   .map { (i, x) -> toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
+      #   .join("\n")
       let numbered = ""
       for i, line in (fileContents.split("\n", 0)) {
         # TODO: template
@@ -391,13 +393,7 @@ type Doug {
       limit: limit
     )
 
-    # Count matches - we need to iterate since we don't have .length
-    let count = 0
-    for m in (matches.{id}) {
-      count += 1
-    }
-
-    toJSON(count) + " matches found"
+    toJSON(matches.{id}.length) + " matches found"
   }
 
   """

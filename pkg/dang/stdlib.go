@@ -272,7 +272,7 @@ func registerStdlib() {
 	// List.reject method: reject(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "reject").
 		Doc("returns a new list excluding elements for which the predicate returns true").
-		Params("fn", hm.NewFnType(
+		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
 				Value: hm.NewScheme(nil, TypeVar('a')),
@@ -282,7 +282,11 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			fn, _ := args.Get("fn")
+			
+			if args.Block == nil {
+				return nil, fmt.Errorf("reject requires a block argument")
+			}
+			fn := *args.Block
 
 			var result []Value
 			for _, item := range list.Elements {
@@ -310,7 +314,7 @@ func registerStdlib() {
 	// List.map method: map(fn: \(a) -> b) -> [b]!
 	Method(ListTypeModule, "map").
 		Doc("returns a new list with each element transformed by the given function").
-		Params("fn", hm.NewFnType(
+		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
 				Value: hm.NewScheme(nil, TypeVar('a')),
@@ -320,16 +324,16 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('b')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			fn, _ := args.Get("fn")
+			
+			if args.Block == nil {
+				return nil, fmt.Errorf("map requires a block argument")
+			}
+			fn := *args.Block
 
 			// Get the return type from the function's type
-			callable, ok := fn.(Callable)
+			fnType, ok := fn.Type().(*hm.FunctionType)
 			if !ok {
-				return nil, fmt.Errorf("map expects a function, got %T", fn)
-			}
-			fnType, ok := callable.Type().(*hm.FunctionType)
-			if !ok {
-				return nil, fmt.Errorf("map expects a function type, got %T", callable.Type())
+				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
 			}
 			resultElemType := fnType.ReturnType()
 
@@ -352,7 +356,7 @@ func registerStdlib() {
 	// List.filter method: filter(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "filter").
 		Doc("returns a new list containing only elements for which the predicate returns true").
-		Params("fn", hm.NewFnType(
+		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
 				Value: hm.NewScheme(nil, TypeVar('a')),
@@ -362,7 +366,11 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			fn, _ := args.Get("fn")
+			
+			if args.Block == nil {
+				return nil, fmt.Errorf("filter requires a block argument")
+			}
+			fn := *args.Block
 
 			var result []Value
 			for _, item := range list.Elements {
@@ -408,23 +416,25 @@ func registerStdlib() {
 	// List.reduce method: reduce(fn: \(acc: b, item: a) -> b, initial: b) -> b
 	Method(ListTypeModule, "reduce").
 		Doc("reduces the list to a single value using an accumulator function").
-		Params(
-			"initial", TypeVar('b'),
-			"fn", hm.NewFnType(
-				NewRecordType("", Keyed[*hm.Scheme]{
-					Key:   "acc",
-					Value: hm.NewScheme(nil, TypeVar('b')),
-				}, Keyed[*hm.Scheme]{
-					Key:   "item",
-					Value: hm.NewScheme(nil, TypeVar('a')),
-				}),
-				TypeVar('b'),
-			),
-		).
+		Params("initial", TypeVar('b')).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "acc",
+				Value: hm.NewScheme(nil, TypeVar('b')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			TypeVar('b'),
+		)).
 		Returns(TypeVar('b')).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			fn, _ := args.Get("fn")
+			
+			if args.Block == nil {
+				return nil, fmt.Errorf("reduce requires a block argument")
+			}
+			fn := *args.Block
 			accumulator, _ := args.Get("initial")
 
 			for _, item := range list.Elements {

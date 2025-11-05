@@ -19,6 +19,11 @@ import (
 	"github.com/vito/dang/pkg/querybuilder"
 )
 
+// Context key for passing block arguments
+type contextKey string
+
+const blockArgContextKey contextKey = "blockArg"
+
 // Value represents a runtime value in the Dang language
 type Value interface {
 	Type() hm.Type
@@ -391,7 +396,16 @@ func addBuiltinFunctions(env EvalEnv) {
 			CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 				// Apply defaults for missing arguments
 				argsWithDefaults := applyDefaults(args, def)
-				return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
+
+				// Extract block from context if present
+				var blockArg *FunctionValue
+				if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
+					if fnVal, ok := blockVal.(FunctionValue); ok {
+						blockArg = &fnVal
+					}
+				}
+
+				return def.Impl(ctx, nil, Args{Values: argsWithDefaults, Block: blockArg})
 			},
 		}
 		env.Set(def.Name, builtinFn)
@@ -408,7 +422,16 @@ func addBuiltinFunctions(env EvalEnv) {
 					selfVal, _ := env.Get("self")
 					// Apply defaults for missing arguments
 					argsWithDefaults := applyDefaults(args, def)
-					return def.Impl(ctx, selfVal, Args{Values: argsWithDefaults})
+
+					// Extract block from context if present
+					var blockArg *FunctionValue
+					if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
+						if fnVal, ok := blockVal.(FunctionValue); ok {
+							blockArg = &fnVal
+						}
+					}
+
+					return def.Impl(ctx, selfVal, Args{Values: argsWithDefaults, Block: blockArg})
 				},
 			}
 			methodKey := GetMethodKey(receiverType, def.Name)
@@ -1072,8 +1095,8 @@ func (b BoundBuiltinMethod) IsAutoCallable() bool {
 
 // BuiltinFunction represents a builtin function like print
 type BuiltinFunction struct {
-	Name    string
-	FnType  *hm.FunctionType
+	Name   string
+	FnType *hm.FunctionType
 	CallFn func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
 }
 

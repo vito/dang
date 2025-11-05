@@ -478,7 +478,14 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	for _, param := range def.ParamTypes {
 		args.Add(param.Name, hm.NewScheme(nil, param.Type))
 	}
-	return hm.NewFnType(args, def.ReturnType)
+	fnType := hm.NewFnType(args, def.ReturnType)
+	
+	// Set block type if present
+	if def.BlockType != nil {
+		fnType.SetBlock(def.BlockType)
+	}
+	
+	return fnType
 }
 
 // SetModuleDocString sets the documentation string for the module itself

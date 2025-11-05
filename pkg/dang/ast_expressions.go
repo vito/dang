@@ -103,6 +103,11 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return nil, err
 	}
 
+	// Check that a block arg is provided if the function requires one
+	if ft.Block() != nil && c.BlockArg == nil {
+		return nil, NewInferError(fmt.Errorf("function requires a block argument"), c)
+	}
+
 	// Apply block arg substitutions to the return type
 	retType := ft.Ret(false)
 	if blockArgSubs != nil {
@@ -115,33 +120,19 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 // Returns the substitutions produced by unifying the block arg's inferred type
 // with the expected function type.
 func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Subs, error) {
-	// Get the function signature's argument record type
-	recordType, ok := ft.Arg().(*RecordType)
-	if !ok {
-		return nil, fmt.Errorf("expected record type for function arguments, got %T", ft.Arg())
-	}
-
-	// Look for "fn" parameter in the function signature
-	fnScheme, hasFn := recordType.SchemeOf("fn")
-	if !hasFn {
-		return nil, fmt.Errorf("function does not accept a block argument (no 'fn' parameter)")
-	}
-
-	// Get the expected function type for the block arg
-	expectedFnType, isMono := fnScheme.Type()
-	if !isMono {
-		return nil, fmt.Errorf("'fn' parameter is not monomorphic")
-	}
-
-	expectedFn, isFnType := expectedFnType.(*hm.FunctionType)
-	if !isFnType {
-		return nil, fmt.Errorf("'fn' parameter is not a function type, got %s", expectedFnType)
+	// Get the expected block type from the function type
+	// The block type is now stored directly on the FunctionType
+	expectedFnType := ft.Block()
+	
+	// If there's no block type, the function doesn't accept a block argument
+	if expectedFnType == nil {
+		return nil, fmt.Errorf("function does not accept a block argument")
 	}
 
 	// Extract expected parameter types from the function type
-	expectedArgRecord, ok := expectedFn.Arg().(*RecordType)
+	expectedArgRecord, ok := expectedFnType.Arg().(*RecordType)
 	if !ok {
-		return nil, fmt.Errorf("expected record type for block arg parameters, got %T", expectedFn.Arg())
+		return nil, fmt.Errorf("expected record type for block arg parameters, got %T", expectedFnType.Arg())
 	}
 
 	// Set expected parameter types on the block arg
@@ -155,7 +146,7 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	}
 
 	// Set expected return type on the block arg
-	c.BlockArg.ExpectedReturnType = expectedFn.Ret(false)
+	c.BlockArg.ExpectedReturnType = expectedFnType.Ret(false)
 
 	// Now infer the block arg with these constraints
 	inferredType, err := c.BlockArg.Infer(ctx, env, fresh)
@@ -230,6 +221,16 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, err
 		}
 
+		// Evaluate block arg if present and add to context
+		if c.BlockArg != nil {
+			blockVal, err := c.BlockArg.Eval(ctx, env)
+			if err != nil {
+				return nil, err
+			}
+			// Store block in context for builtin functions to access
+			ctx = context.WithValue(ctx, blockArgContextKey, blockVal)
+		}
+
 		// Dispatch to appropriate function call handler
 		return c.callFunction(ctx, env, funVal, argValues)
 	})
@@ -276,18 +277,8 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 		}
 	}
 
-	// Evaluate and add block arg if present
-	if c.BlockArg != nil {
-		blockVal, err := c.BlockArg.Eval(ctx, env)
-		if err != nil {
-			return nil, err
-		}
-		// Block args are always passed as the "fn" parameter
-		if _, exists := argValues["fn"]; exists {
-			return nil, fmt.Errorf("argument \"fn\" specified both as regular argument and block argument")
-		}
-		argValues["fn"] = blockVal
-	}
+	// Don't add block arg to argValues - it will be handled specially
+	// via context and the Args.Block field
 
 	return argValues, nil
 }
@@ -2260,7 +2251,15 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 	// Similarly, handle the return type
 	returnType := substituteTypeVar(def.ReturnType, 'a', elemType)
 
-	return hm.NewFnType(args, returnType)
+	fnType := hm.NewFnType(args, returnType)
+	
+	// Copy the block type if present, substituting type variables
+	if def.BlockType != nil {
+		blockType := substituteTypeVar(def.BlockType, 'a', elemType).(*hm.FunctionType)
+		fnType.SetBlock(blockType)
+	}
+	
+	return fnType
 }
 
 // substituteTypeVar recursively replaces a type variable with a concrete type
@@ -2276,10 +2275,16 @@ func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Ty
 	case ListType:
 		return ListType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case *hm.FunctionType:
-		return hm.NewFnType(
+		newFnType := hm.NewFnType(
 			substituteTypeVar(typ.Arg(), tv, replacement),
 			substituteTypeVar(typ.Ret(false), tv, replacement),
 		)
+		// Preserve the block type
+		if typ.Block() != nil {
+			newBlockType := substituteTypeVar(typ.Block(), tv, replacement).(*hm.FunctionType)
+			newFnType.SetBlock(newBlockType)
+		}
+		return newFnType
 	case *RecordType:
 		newRec := NewRecordType(typ.Named)
 		for _, field := range typ.Fields {

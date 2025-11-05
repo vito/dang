@@ -1,0 +1,10 @@
+[1m[31mError:[0m function requires a block argument
+  [2m[34m--> errors/block_argument_missing.dang:6:23[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # ERROR: function requires a block argument[0m
+ [2m[34m[1m  6 | [0mpub result: [Int!]! = numbers.map()
+[2m                             [31m^^^^^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+
