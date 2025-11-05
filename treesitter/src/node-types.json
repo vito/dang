@@ -2374,15 +2374,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": true,
       "types": [
         {
           "type": "match_token",
-          "named": true
-        },
-        {
-          "type": "with_token",
           "named": true
         }
       ]
@@ -4056,10 +4052,6 @@
   },
   {
     "type": "wildcard_pattern",
-    "named": true
-  },
-  {
-    "type": "with_token",
     "named": true
   },
   {

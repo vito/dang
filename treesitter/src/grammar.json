@@ -201,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 155,
+      "value": 154,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -378,7 +378,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 149,
+      "value": 148,
       "content": {
         "type": "SEQ",
         "members": [
@@ -457,7 +457,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 148,
+      "value": 147,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1806,7 +1806,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 102,
+      "value": 101,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1962,7 +1962,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 97,
+      "value": 96,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2050,7 +2050,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 93,
+      "value": 92,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2114,7 +2114,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 92,
+      "value": 91,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2178,7 +2178,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 91,
+      "value": 90,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2259,7 +2259,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 89,
+      "value": 88,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2348,7 +2348,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 87,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2429,7 +2429,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 84,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3782,10 +3782,6 @@
           "value": ")"
         },
         {
-          "type": "SYMBOL",
-          "name": "with_token"
-        },
-        {
           "type": "STRING",
           "value": "{"
         },
@@ -3988,13 +3984,6 @@
       "content": {
         "type": "STRING",
         "value": "match"
-      }
-    },
-    "with_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "with"
       }
     },
     "assert": {

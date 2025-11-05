@@ -827,7 +827,7 @@ BlockParam <- name:IdSymbol {
 
 
 
-Match <- MatchToken _ '(' _ expr:Form _ ')' _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
+Match <- MatchToken _ '(' _ expr:Form _ ')' _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
   return &Match{
     Expr: expr.(Node),
     Cases: sliceOfAppend[*MatchCase](cs, last),
@@ -873,7 +873,6 @@ VariablePattern <- name:Id {
 }
 
 MatchToken <- "match" !WordChar
-WithToken <- "with" !WordChar
 
 Assert <- AssertToken message:MessageArgs? _ block:Block {
   var msg Node

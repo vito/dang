@@ -1,5 +1,5 @@
 # This should fail: no matching case and no wildcard
-pub result = match (5) with {
+pub result = match (5) {
   1 -> "one"
   2 -> "two"
 }
