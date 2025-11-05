@@ -123,7 +123,7 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	// Get the expected block type from the function type
 	// The block type is now stored directly on the FunctionType
 	expectedFnType := ft.Block()
-	
+
 	// If there's no block type, the function doesn't accept a block argument
 	if expectedFnType == nil {
 		return nil, fmt.Errorf("function does not accept a block argument")
@@ -2238,7 +2238,6 @@ func (b *BlockArg) Walk(fn func(Node) bool) {
 	b.BodyNode.Walk(fn)
 }
 
-
 // instantiateListMethod instantiates a list method's type by substituting
 // the type variable 'a' with the actual element type of the list.
 func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
@@ -2253,13 +2252,13 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 	returnType := substituteTypeVar(def.ReturnType, 'a', elemType)
 
 	fnType := hm.NewFnType(args, returnType)
-	
+
 	// Copy the block type if present, substituting type variables
 	if def.BlockType != nil {
 		blockType := substituteTypeVar(def.BlockType, 'a', elemType).(*hm.FunctionType)
 		fnType.SetBlock(blockType)
 	}
-	
+
 	return fnType
 }
 

@@ -37,6 +37,27 @@ const (
 	InterfaceKind
 )
 
+func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, error) {
+	switch typeKind {
+	case introspection.TypeKindScalar:
+		return ScalarKind, nil
+	case introspection.TypeKindObject:
+		return ObjectKind, nil
+	case introspection.TypeKindInterface:
+		return InterfaceKind, nil
+	// case introspection.TypeKindUnion:
+	// 	slog.Warn("unsupported union type; skipping", "type", t.Name)
+	// 	// return UnionKind
+	case introspection.TypeKindEnum:
+		return EnumKind, nil
+	case introspection.TypeKindInputObject:
+		// TODO: adjust once we support these
+		return ObjectKind, nil
+	default:
+		return -1, fmt.Errorf("unsupported GraphQL type kind: %s", typeKind)
+	}
+}
+
 // TODO: is this just ClassType? are Classes just named Envs?
 type Module struct {
 	Named string
@@ -157,7 +178,12 @@ func NewEnv(schema *introspection.Schema) Env {
 	for _, t := range schema.Types {
 		sub, found := env.NamedType(t.Name)
 		if !found {
-			sub = NewModule(t.Name, InterfaceKind)
+			kind, err := ModuleKindFromGraphQLKind(t.Kind)
+			if err != nil {
+				slog.Warn("skipping unsupported type", "type", t.Name, "kind", t.Kind, "error", err)
+				continue
+			}
+			sub = NewModule(t.Name, kind)
 			// Store type description as module documentation
 			if t.Description != "" {
 				sub.SetModuleDocString(t.Description)
@@ -175,7 +201,7 @@ func NewEnv(schema *introspection.Schema) Env {
 			sub, found := env.NamedType(t.Name)
 			if found {
 				// Add the enum type as a scheme that represents the module itself
-				mod.Add(t.Name, hm.NewScheme(nil, sub))
+				mod.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
 				mod.SetVisibility(t.Name, PublicVisibility)
 			}
 		}
@@ -231,7 +257,7 @@ func NewEnv(schema *introspection.Schema) Env {
 			for _, enumVal := range t.EnumValues {
 				slog.Debug("adding enum value", "type", t.Name, "value", enumVal.Name)
 				// Enum values are represented with the enum type itself
-				install.Add(enumVal.Name, hm.NewScheme(nil, install))
+				install.Add(enumVal.Name, hm.NewScheme(nil, NonNull(install)))
 				// Enum values are public by default
 				install.SetVisibility(enumVal.Name, PublicVisibility)
 				// Store enum value description as documentation
@@ -479,12 +505,12 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 		args.Add(param.Name, hm.NewScheme(nil, param.Type))
 	}
 	fnType := hm.NewFnType(args, def.ReturnType)
-	
+
 	// Set block type if present
 	if def.BlockType != nil {
 		fnType.SetBlock(def.BlockType)
 	}
-	
+
 	return fnType
 }
 
