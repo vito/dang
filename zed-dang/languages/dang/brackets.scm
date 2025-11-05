@@ -29,7 +29,7 @@
   "(" @open
   ")" @close)
 
-(lambda_args
+(block_params
   "(" @open
   ")" @close)
 

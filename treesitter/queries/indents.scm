@@ -11,7 +11,6 @@
   (paren_form)
   (arg_values)
   (arg_types)
-  (lambda_args)
   (pattern_args)
   (message_args)
 ] @indent

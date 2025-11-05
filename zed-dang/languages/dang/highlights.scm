@@ -52,7 +52,6 @@
   (plus_equal_token)
   (double_interro_token)
   (bang_token)
-  (lambda_token)
   (arrow_token)
 ] @operator
 ["{{" "}}" "{" "}" "[" "]" "(" ")"] @punctuation.bracket
