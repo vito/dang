@@ -20,6 +20,9 @@ type FunctionBase struct {
 	Inferred *hm.FunctionType
 
 	InferredScope Env
+	
+	// ExpectedReturnType is set by checkArgumentType for bidirectional type inference
+	ExpectedReturnType hm.Type
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments

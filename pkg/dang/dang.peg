@@ -49,7 +49,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Interface / Enum / Scalar / Class /
   }
 }
 
-Form <- Conditional / ForLoop / Lambda / Match / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Conditional / ForLoop / Match / Assert / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -66,15 +66,22 @@ ParenForm <- '(' _ expr:Form _ ')' {
 
 // Handle Symbol followed by optional ()
 SymbolOrCall <- Call / Symbol
-Call <- name:Id args:ArgValues {
+Call <- name:Id args:ArgValues blockArg:BlockArg? {
   // Symbol followed by () - create FunCall
   argRecord := Record(args.([]Keyed[Node]))
+  
+  var block *BlockArg
+  if blockArg != nil {
+    block = blockArg.(*BlockArg)
+  }
+  
   return &FunCall{
     Fun: &Symbol{
       Name: name.(string),
       Loc: c.Loc(),
     },
     Args: argRecord,
+    BlockArg: block,
     Loc: c.Loc(),
   }, nil
 }
@@ -88,7 +95,7 @@ Symbol <- name:Id {
 }
 
 // Handle Select followed by optional (), or ObjectSelection
-SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args:ArgValues?) {
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args:ArgValues? blockArg:BlockArg?) {
   switch sel := selection.(type) {
   case *ObjectSelection:
     // Object selection: obj.{field1, field2}
@@ -98,9 +105,19 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
     // Regular field access with optional args
     name := sel[0].(string)
     args := sel[1]
-    if args != nil {
-      // Select followed by () - create FunCall
-      argRecord := Record(args.([]Keyed[Node]))
+    blockArg := sel[2]
+    if args != nil || blockArg != nil {
+      // Select followed by () and/or block - create FunCall
+      var argRecord Record
+      if args != nil {
+        argRecord = Record(args.([]Keyed[Node]))
+      }
+      
+      var block *BlockArg
+      if blockArg != nil {
+        block = blockArg.(*BlockArg)
+      }
+      
       return &FunCall{
         Fun: &Select{
           Receiver: left.(Node),
@@ -108,6 +125,7 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
           Loc:      c.Loc(),
         },
         Args: argRecord,
+        BlockArg: block,
         Loc:  c.Loc(),
       }, nil
     } else {
@@ -769,6 +787,27 @@ Lambda <- LambdaToken args:LambdaArgs _ ArrowToken _ expr:Form {
 }
 LambdaToken <- '\\'
 ArrowToken <- "->"
+
+BlockArg <- _ ':' _ '{' _ params:BlockParams _ ArrowToken _ body:Form _ '}' {
+  return &BlockArg{
+    Args: params.([]*SlotDecl),
+    BodyNode: body.(Node),
+    Loc: c.Loc(),
+  }, nil
+}
+
+BlockParams <- '(' _ params:(p:BlockParam Sep { return p, nil })* last:BlockParam? _ ')' {
+  return sliceOfAppend[*SlotDecl](params, last), nil
+} / param:BlockParam {
+  return []*SlotDecl{param.(*SlotDecl)}, nil
+}
+
+BlockParam <- name:IdSymbol {
+  return &SlotDecl{
+    Name: name.(*Symbol),
+    Loc: c.Loc(),
+  }, nil
+}
 
 LambdaArgs <- '(' _ args:(a:LambdaArg Sep { return a, nil })* last:LambdaArg? _ ')' {
   return sliceOfAppend[*SlotDecl](args, last), nil

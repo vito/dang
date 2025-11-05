@@ -74,10 +74,6 @@
         "named": true
       },
       {
-        "type": "lambda",
-        "named": true
-      },
-      {
         "type": "match",
         "named": true
       },
@@ -541,22 +537,6 @@
     }
   },
   {
-    "type": "arg_without_type",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "id_symbol",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "argument",
     "named": true,
     "fields": {},
@@ -681,6 +661,108 @@
     }
   },
   {
+    "type": "block_arg",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block_params",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "block_param",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id_symbol",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "block_params",
+    "named": true,
+    "fields": {
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block_param",
+            "named": true
+          }
+        ]
+      },
+      "p": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "block_param",
+            "named": true
+          }
+        ]
+      },
+      "param": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block_param",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "block_param",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "boolean",
     "named": true,
     "fields": {},
@@ -724,6 +806,16 @@
         "types": [
           {
             "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
+      "block_arg": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block_arg",
             "named": true
           }
         ]
@@ -821,6 +913,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "colon_token",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "conditional",
@@ -1972,123 +2069,6 @@
     }
   },
   {
-    "type": "lambda",
-    "named": true,
-    "fields": {
-      "args": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "lambda_args",
-            "named": true
-          }
-        ]
-      },
-      "expr": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": true,
-      "types": [
-        {
-          "type": "arrow_token",
-          "named": true
-        },
-        {
-          "type": "lambda_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "lambda_arg",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "arg_with_block_default",
-          "named": true
-        },
-        {
-          "type": "arg_with_default",
-          "named": true
-        },
-        {
-          "type": "arg_with_type",
-          "named": true
-        },
-        {
-          "type": "arg_without_type",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "lambda_args",
-    "named": true,
-    "fields": {
-      "a": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "lambda_arg",
-            "named": true
-          }
-        ]
-      },
-      "arg": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "lambda_arg",
-            "named": true
-          }
-        ]
-      },
-      "args": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "lambda_arg",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      },
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "lambda_arg",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "list",
     "named": true,
     "fields": {
@@ -2920,6 +2900,16 @@
         "types": [
           {
             "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
+      "block_arg": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block_arg",
             "named": true
           }
         ]
@@ -3807,6 +3797,10 @@
     "named": false
   },
   {
+    "type": ":",
+    "named": false
+  },
+  {
     "type": "<",
     "named": false
   },
@@ -3860,10 +3854,6 @@
   },
   {
     "type": "caps_token",
-    "named": true
-  },
-  {
-    "type": "colon_token",
     "named": true
   },
   {
@@ -3957,10 +3947,6 @@
   },
   {
     "type": "interface_token",
-    "named": true
-  },
-  {
-    "type": "lambda_token",
     "named": true
   },
   {

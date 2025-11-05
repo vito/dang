@@ -171,10 +171,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "lambda"
-        },
-        {
-          "type": "SYMBOL",
           "name": "match"
         },
         {
@@ -205,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 156,
+      "value": 159,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -353,6 +349,22 @@
             "type": "SYMBOL",
             "name": "arg_values"
           }
+        },
+        {
+          "type": "FIELD",
+          "name": "block_arg",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "block_arg"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
         }
       ]
     },
@@ -366,7 +378,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 150,
+      "value": 153,
       "content": {
         "type": "SEQ",
         "members": [
@@ -418,6 +430,22 @@
                           }
                         ]
                       }
+                    },
+                    {
+                      "type": "FIELD",
+                      "name": "block_arg",
+                      "content": {
+                        "type": "CHOICE",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "block_arg"
+                          },
+                          {
+                            "type": "BLANK"
+                          }
+                        ]
+                      }
                     }
                   ]
                 }
@@ -429,7 +457,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 149,
+      "value": 152,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1733,7 +1761,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 104,
+      "value": 107,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1889,7 +1917,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 99,
+      "value": 102,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1977,7 +2005,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 95,
+      "value": 98,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2041,7 +2069,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 94,
+      "value": 97,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2105,7 +2133,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 93,
+      "value": 96,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2186,7 +2214,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 91,
+      "value": 94,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2275,7 +2303,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 89,
+      "value": 92,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2356,7 +2384,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 87,
+      "value": 90,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3580,6 +3608,117 @@
       "content": {
         "type": "STRING",
         "value": "-\u003e"
+      }
+    },
+    "block_arg": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "FIELD",
+          "name": "params",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block_params"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "arrow_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "block_params": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "("
+            },
+            {
+              "type": "FIELD",
+              "name": "params",
+              "content": {
+                "type": "REPEAT",
+                "content": {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "p",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "block_param"
+                      }
+                    },
+                    {
+                      "type": "SYMBOL",
+                      "name": "sep"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "FIELD",
+              "name": "last",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "block_param"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "STRING",
+              "value": ")"
+            }
+          ]
+        },
+        {
+          "type": "FIELD",
+          "name": "param",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block_param"
+          }
+        }
+      ]
+    },
+    "block_param": {
+      "type": "FIELD",
+      "name": "name",
+      "content": {
+        "type": "SYMBOL",
+        "name": "id_symbol"
       }
     },
     "lambda_args": {

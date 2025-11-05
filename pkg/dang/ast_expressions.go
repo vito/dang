@@ -13,9 +13,10 @@ import (
 // FunCall represents a function call expression
 type FunCall struct {
 	InferredTypeHolder
-	Fun  Node
-	Args Record
-	Loc  *SourceLocation
+	Fun      Node
+	Args     Record
+	BlockArg *BlockArg // Optional block argument for bidirectional inference
+	Loc      *SourceLocation
 }
 
 var _ Node = (*FunCall)(nil)
@@ -34,6 +35,11 @@ func (c *FunCall) ReferencedSymbols() []string {
 	// Add symbols from arguments
 	for _, arg := range c.Args {
 		symbols = append(symbols, arg.Value.ReferencedSymbols()...)
+	}
+
+	// Add symbols from block arg if present
+	if c.BlockArg != nil {
+		symbols = append(symbols, c.BlockArg.ReferencedSymbols()...)
 	}
 
 	return symbols
@@ -66,6 +72,14 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 
 // inferFunctionType handles type inference for FunctionType calls
 func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
+	// Handle block arg first if present (needs special bidirectional inference)
+	if c.BlockArg != nil {
+		err := c.inferBlockArg(ctx, env, fresh, ft)
+		if err != nil {
+			return nil, fmt.Errorf("block argument: %w", err)
+		}
+	}
+
 	// Handle positional argument mapping for type inference
 	argMapping, err := c.mapArgumentsForInference(ft)
 	if err != nil {
@@ -88,6 +102,67 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 
 	return ft.Ret(false), nil
+}
+
+// inferBlockArg performs bidirectional type inference for block arguments
+func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) error {
+	// Get the function signature's argument record type
+	recordType, ok := ft.Arg().(*RecordType)
+	if !ok {
+		return fmt.Errorf("expected record type for function arguments, got %T", ft.Arg())
+	}
+
+	// Look for "fn" parameter in the function signature
+	fnScheme, hasFn := recordType.SchemeOf("fn")
+	if !hasFn {
+		return fmt.Errorf("function does not accept a block argument (no 'fn' parameter)")
+	}
+
+	// Get the expected function type for the block arg
+	expectedFnType, isMono := fnScheme.Type()
+	if !isMono {
+		return fmt.Errorf("'fn' parameter is not monomorphic")
+	}
+
+	expectedFn, isFnType := expectedFnType.(*hm.FunctionType)
+	if !isFnType {
+		return fmt.Errorf("'fn' parameter is not a function type, got %s", expectedFnType)
+	}
+
+	// Extract expected parameter types from the function type
+	expectedArgRecord, ok := expectedFn.Arg().(*RecordType)
+	if !ok {
+		return fmt.Errorf("expected record type for block arg parameters, got %T", expectedFn.Arg())
+	}
+
+	// Set expected parameter types on the block arg
+	c.BlockArg.ExpectedParamTypes = make([]hm.Type, len(c.BlockArg.Args))
+	for i := range c.BlockArg.Args {
+		if i < len(expectedArgRecord.Fields) {
+			expectedField := expectedArgRecord.Fields[i]
+			expectedType, _ := expectedField.Value.Type()
+			c.BlockArg.ExpectedParamTypes[i] = expectedType
+		}
+	}
+
+	// Set expected return type on the block arg
+	c.BlockArg.ExpectedReturnType = expectedFn.Ret(false)
+
+	// Now infer the block arg with these constraints
+	inferredType, err := c.BlockArg.Infer(ctx, env, fresh)
+	if err != nil {
+		return err
+	}
+
+	// Verify the inferred type matches the expected function type
+	if _, err := hm.Assignable(inferredType, expectedFnType); err != nil {
+		return NewInferError(
+			fmt.Errorf("block argument has type %s but expected %s", inferredType, expectedFnType),
+			c.BlockArg,
+		)
+	}
+
+	return nil
 }
 
 // getArgumentKey determines the argument key for positional or named arguments
@@ -124,6 +199,10 @@ func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fr
 					}
 				}
 			}
+			// NOTE: We don't constrain the return type here because it can lead to
+			// conflicts with nested lambdas. Instead, we let normal type inference
+			// figure out the return type, and the Assignable check below will ensure
+			// the final lambda type is compatible with the expected function type.
 		}
 	}
 
@@ -205,6 +284,19 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 				return nil, err
 			}
 		}
+	}
+
+	// Evaluate and add block arg if present
+	if c.BlockArg != nil {
+		blockVal, err := c.BlockArg.Eval(ctx, env)
+		if err != nil {
+			return nil, err
+		}
+		// Block args are always passed as the "fn" parameter
+		if _, exists := argValues["fn"]; exists {
+			return nil, fmt.Errorf("argument \"fn\" specified both as regular argument and block argument")
+		}
+		argValues["fn"] = blockVal
 	}
 
 	return argValues, nil
@@ -362,6 +454,10 @@ func (c *FunCall) Walk(fn func(Node) bool) {
 	c.Fun.Walk(fn)
 	for _, arg := range c.Args {
 		arg.Value.Walk(fn)
+	}
+	// Walk block arg if present
+	if c.BlockArg != nil {
+		c.BlockArg.Walk(fn)
 	}
 }
 
@@ -2058,6 +2154,148 @@ func (l *Lambda) Walk(fn func(Node) bool) {
 		return
 	}
 	l.FunctionBase.Body.Walk(fn)
+}
+
+// BlockArg represents a block argument expression with bidirectional type inference
+// Block args are used in function calls like: numbers.map: { x -> x * 2 }
+// They differ from lambdas in that they receive both parameter types AND
+// expected return type from the function signature they're passed to.
+type BlockArg struct {
+	InferredTypeHolder
+	Args     []*SlotDecl
+	BodyNode Node
+	Loc      *SourceLocation
+
+	// ExpectedParamTypes are the parameter types expected by the function signature.
+	// Set by FunCall.Infer() before calling BlockArg.Infer()
+	ExpectedParamTypes []hm.Type
+
+	// ExpectedReturnType is the return type expected by the function signature.
+	// Set by FunCall.Infer() before calling BlockArg.Infer()
+	ExpectedReturnType hm.Type
+
+	// Inferred is the final inferred function type
+	Inferred *hm.FunctionType
+
+	// InferredScope is the environment with parameters in scope
+	InferredScope Env
+}
+
+var _ Node = &BlockArg{}
+var _ Evaluator = &BlockArg{}
+
+func (b *BlockArg) DeclaredSymbols() []string {
+	return nil // BlockArgs don't declare symbols in the global scope
+}
+
+func (b *BlockArg) ReferencedSymbols() []string {
+	// BlockArgs reference symbols from their body, but not their parameters
+	bodySymbols := b.BodyNode.ReferencedSymbols()
+	
+	// Filter out parameter names since they're bound locally
+	paramNames := make(map[string]bool)
+	for _, arg := range b.Args {
+		paramNames[arg.Name.Name] = true
+	}
+	
+	var referenced []string
+	for _, sym := range bodySymbols {
+		if !paramNames[sym] {
+			referenced = append(referenced, sym)
+		}
+	}
+	
+	return referenced
+}
+
+func (b *BlockArg) Body() hm.Expression { return b }
+
+func (b *BlockArg) GetSourceLocation() *SourceLocation { return b.Loc }
+
+func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(b, func() (hm.Type, error) {
+		// Clone environment for closure semantics
+		newEnv := env.Clone()
+		b.InferredScope = newEnv.(Env)
+
+		// Add parameters to environment with expected types
+		argSchemes := []Keyed[*hm.Scheme]{}
+		for i, arg := range b.Args {
+			var paramType hm.Type
+			if i < len(b.ExpectedParamTypes) && b.ExpectedParamTypes[i] != nil {
+				// Use the expected type from the function signature
+				paramType = b.ExpectedParamTypes[i]
+			} else {
+				// No expected type - create a fresh type variable
+				paramType = fresh.Fresh()
+			}
+
+			// Add parameter to environment
+			newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramType))
+			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
+				Key:   arg.Name.Name,
+				Value: hm.NewScheme(nil, paramType),
+			})
+		}
+
+		// Infer the body with parameters in scope
+		bodyType, err := b.BodyNode.Infer(ctx, newEnv, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("BlockArg body: %w", err)
+		}
+
+		// If we have an expected return type, unify with the body type
+		if b.ExpectedReturnType != nil {
+			if _, err := hm.Assignable(bodyType, b.ExpectedReturnType); err != nil {
+				return nil, NewInferError(
+					fmt.Errorf("block argument body has type %s but expected type %s",
+						bodyType, b.ExpectedReturnType),
+					b.BodyNode,
+				)
+			}
+		}
+
+		// Build the function type
+		b.Inferred = hm.NewFnType(NewRecordType("", argSchemes...), bodyType)
+		t := b.Inferred
+		b.SetInferredType(t)
+		return t, nil
+	})
+}
+
+func (b *BlockArg) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, b, func() (Value, error) {
+		if b.Inferred == nil {
+			return nil, fmt.Errorf("BlockArg.Eval: function type not inferred")
+		}
+
+		// Create a function value similar to FunctionBase
+		argNames := make([]string, len(b.Args))
+		for i, arg := range b.Args {
+			argNames[i] = arg.Name.Name
+		}
+
+		return FunctionValue{
+			Args:     argNames,
+			Body:     b.BodyNode,
+			Closure:  env,
+			FnType:   b.Inferred,
+			Defaults: make(map[string]Node), // Block args don't support defaults
+			ArgDecls: b.Args,
+		}, nil
+	})
+}
+
+func (b *BlockArg) Walk(fn func(Node) bool) {
+	if !fn(b) {
+		return
+	}
+	// Walk parameters
+	for _, arg := range b.Args {
+		arg.Walk(fn)
+	}
+	// Walk body
+	b.BodyNode.Walk(fn)
 }
 
 // instantiateListMethod instantiates a list method's type by substituting
