@@ -760,7 +760,7 @@ AndToken <- "and" !WordChar
 
 ForLoop <- ForTwoVarLoop / ForSingleVarLoop / ForConditionLoop / ForInfiniteLoop
 
-ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ '(' _ iterable:Form _ ')' _ body:Block {
+ForSingleVarLoop <- ForToken _ '(' _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ iterable:Form _ ')' _ body:Block {
   var varType TypeNode
   if typeAnnotation != nil {
     varType = typeAnnotation.([]interface{})[2].(TypeNode)
@@ -774,7 +774,7 @@ ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type
   }, nil
 }
 
-ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ '(' _ iterable:Form _ ')' _ body:Block {
+ForTwoVarLoop <- ForToken _ '(' _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:Form _ ')' _ body:Block {
   return &ForLoop{
     KeyVariable: key.(string),
     ValueVariable: value.(string),

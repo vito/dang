@@ -42,7 +42,7 @@ type ValidationRegistry implements Registry {
   pub validators: [Validator!]! = [EmailValidator, EmailValidator]
   pub validateAll(input: String!): Boolean! {
     pub res = true
-    for v in (validators) {
+    for (v in validators) {
       if (!v.validate(input)) {
         res = false
         break
