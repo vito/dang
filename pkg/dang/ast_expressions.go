@@ -73,11 +73,13 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 // inferFunctionType handles type inference for FunctionType calls
 func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
 	// Handle block arg first if present (needs special bidirectional inference)
+	var blockArgSubs hm.Subs
 	if c.BlockArg != nil {
-		err := c.inferBlockArg(ctx, env, fresh, ft)
+		subs, err := c.inferBlockArg(ctx, env, fresh, ft)
 		if err != nil {
 			return nil, fmt.Errorf("block argument: %w", err)
 		}
+		blockArgSubs = subs
 	}
 
 	// Handle positional argument mapping for type inference
@@ -101,38 +103,45 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return nil, err
 	}
 
-	return ft.Ret(false), nil
+	// Apply block arg substitutions to the return type
+	retType := ft.Ret(false)
+	if blockArgSubs != nil {
+		retType = retType.Apply(blockArgSubs).(hm.Type)
+	}
+	return retType, nil
 }
 
-// inferBlockArg performs bidirectional type inference for block arguments
-func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) error {
+// inferBlockArg performs bidirectional type inference for block arguments.
+// Returns the substitutions produced by unifying the block arg's inferred type
+// with the expected function type.
+func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Subs, error) {
 	// Get the function signature's argument record type
 	recordType, ok := ft.Arg().(*RecordType)
 	if !ok {
-		return fmt.Errorf("expected record type for function arguments, got %T", ft.Arg())
+		return nil, fmt.Errorf("expected record type for function arguments, got %T", ft.Arg())
 	}
 
 	// Look for "fn" parameter in the function signature
 	fnScheme, hasFn := recordType.SchemeOf("fn")
 	if !hasFn {
-		return fmt.Errorf("function does not accept a block argument (no 'fn' parameter)")
+		return nil, fmt.Errorf("function does not accept a block argument (no 'fn' parameter)")
 	}
 
 	// Get the expected function type for the block arg
 	expectedFnType, isMono := fnScheme.Type()
 	if !isMono {
-		return fmt.Errorf("'fn' parameter is not monomorphic")
+		return nil, fmt.Errorf("'fn' parameter is not monomorphic")
 	}
 
 	expectedFn, isFnType := expectedFnType.(*hm.FunctionType)
 	if !isFnType {
-		return fmt.Errorf("'fn' parameter is not a function type, got %s", expectedFnType)
+		return nil, fmt.Errorf("'fn' parameter is not a function type, got %s", expectedFnType)
 	}
 
 	// Extract expected parameter types from the function type
 	expectedArgRecord, ok := expectedFn.Arg().(*RecordType)
 	if !ok {
-		return fmt.Errorf("expected record type for block arg parameters, got %T", expectedFn.Arg())
+		return nil, fmt.Errorf("expected record type for block arg parameters, got %T", expectedFn.Arg())
 	}
 
 	// Set expected parameter types on the block arg
@@ -151,18 +160,20 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	// Now infer the block arg with these constraints
 	inferredType, err := c.BlockArg.Infer(ctx, env, fresh)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Verify the inferred type matches the expected function type
-	if _, err := hm.Assignable(inferredType, expectedFnType); err != nil {
-		return NewInferError(
+	// and capture the substitutions produced by unification
+	subs, err := hm.Assignable(inferredType, expectedFnType)
+	if err != nil {
+		return nil, NewInferError(
 			fmt.Errorf("block argument has type %s but expected %s", inferredType, expectedFnType),
 			c.BlockArg,
 		)
 	}
 
-	return nil
+	return subs, nil
 }
 
 // getArgumentKey determines the argument key for positional or named arguments
@@ -2191,20 +2202,20 @@ func (b *BlockArg) DeclaredSymbols() []string {
 func (b *BlockArg) ReferencedSymbols() []string {
 	// BlockArgs reference symbols from their body, but not their parameters
 	bodySymbols := b.BodyNode.ReferencedSymbols()
-	
+
 	// Filter out parameter names since they're bound locally
 	paramNames := make(map[string]bool)
 	for _, arg := range b.Args {
 		paramNames[arg.Name.Name] = true
 	}
-	
+
 	var referenced []string
 	for _, sym := range bodySymbols {
 		if !paramNames[sym] {
 			referenced = append(referenced, sym)
 		}
 	}
-	
+
 	return referenced
 }
 

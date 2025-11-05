@@ -2,7 +2,9 @@
 
 # Multiple parameter block arg
 pub pairs: [[Int!]!]! = [[1, 2], [3, 4], [5, 6]]
-pub sums: [Int!]! = pairs.map: { pair -> pair[0] + pair[1] }
+# Note: pair[0] returns Int (nullable) because indexing can fail,
+# so the map returns [Int]! not [Int!]!
+pub sums: [Int]! = pairs.map: { pair -> pair[0] + pair[1] }
 assert { sums[0] == 3 }
 assert { sums[1] == 7 }
 assert { sums[2] == 11 }
@@ -22,9 +24,9 @@ pub mapped: [Int!]! = empty.map: { x -> x * 2 }
 assert { mapped == [] }
 
 # TODO: Nested block calls currently don't work due to type variable scoping issues
-# pub nested: [[Int!]!]! = [[1, 2], [3, 4]]
-# pub doubled_nested: [[Int!]!]! = nested.map: { inner ->
-#   inner.map: { x -> x * 2 }
-# }
+pub nested: [[Int!]!]! = [[1, 2], [3, 4]]
+pub doubled_nested: [[Int!]!]! = nested.map: { inner ->
+  inner.map: { x -> x * 2 }
+}
 
 print("Block arg advanced tests passed!")
