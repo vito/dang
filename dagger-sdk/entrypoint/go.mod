@@ -5,7 +5,7 @@ go 1.24.4
 replace github.com/vito/dang => ../../
 
 require (
-	dagger.io/dagger v0.19.4
+	dagger.io/dagger v0.19.5
 	github.com/vektah/gqlparser/v2 v2.5.30
 	github.com/vito/dang v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.38.0

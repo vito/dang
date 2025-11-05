@@ -1,6 +1,6 @@
 {
   "name": "dang-sdk",
-  "engineVersion": "v0.19.4",
+  "engineVersion": "v0.19.5",
   "sdk": {
     "source": "go"
   }
