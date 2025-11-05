@@ -1,18 +1,16 @@
 # Dang Development Workflow
 
-## Essential Commands
-- `./hack/generate` - Regenerate parser and build code (run after grammar changes)
-- `./tests/run_all_tests.sh` - Full test suite (Go tests + Dagger integration)
-- `go test ./tests/ -count -v -run /test_name` - Run specific test
-- `go run ./cmd/dang ./path/to/file.dang` - Execute Dang file
-- `go run ./cmd/dang ./tests/test_dir_module` - Special directory module test
+## Essential Tools
+- Generate - Regenerate parser and build code (run after grammar changes)
+- Test - Full test suite (Go tests + Dagger integration)
+- Test(filter: test_name) - Run specific test
 
 ## Development Process
 1. **Add test first** - Create `.dang` file in `/tests/` with `assert { ... }` statements
 2. **Modify grammar** - Update `pkg/dang/dang.peg` for syntax changes
 3. **Update AST** - Modify structs in `pkg/dang/*.go` as needed
 4. **Implement logic** - Update `Hoist()`, `Infer()`, and `Eval()` methods
-5. **Regenerate** - Run `./hack/generate` after grammar changes
+5. **Regenerate** - Run `Generate` after grammar changes
 6. **Test** - Run specific test, then full suite
 
 ## Language Design Principles

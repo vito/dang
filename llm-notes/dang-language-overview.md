@@ -55,8 +55,8 @@ The language grammar is defined in `pkg/dang/dang.peg` using PEG (Parsing Expres
 2. **Modify grammar**: Update `pkg/dang/dang.peg` for syntax changes
 3. **Update AST**: Add/modify structs in `pkg/dang/ast_*.go`
 4. **Implement methods**: Add `Hoist()`, `Infer()`, `Eval()` methods
-5. **Regenerate**: Run `./hack/generate` after grammar changes
-6. **Test**: Run `./tests/run_all_tests.sh` or specific tests
+5. **Regenerate**: Run Generate tool after grammar changes
+6. **Test**: Run Test tool or specific tests
 
 ## File Organization
 - `pkg/dang/dang.peg` - Grammar definition (PEG format)

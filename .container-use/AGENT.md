@@ -1,1 +1,0 @@
-Working on the Dang project. Tools available: git, go, rg (ripgrep), curl, wget, patch, dagger, tree-sitter v0.25.6, gqlgen. Use ./tests/run_all_tests.sh to validate changes.

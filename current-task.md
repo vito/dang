@@ -303,23 +303,23 @@ Block args evaluate to function values just like lambdas did. The `FunCall.Eval(
 ## Checklist
 
 ### Phase 1: Create BlockArg AST Node
-- [ ] Create `BlockArg` type with fields in `ast_expressions.go`
-- [ ] Add `ExpectedParamTypes []hm.Type` field
-- [ ] Add `ExpectedReturnType hm.Type` field
-- [ ] Implement `DeclaredSymbols()` method
-- [ ] Implement `ReferencedSymbols()` method
-- [ ] Implement `Body()` method
-- [ ] Implement `GetSourceLocation()` method
-- [ ] Implement `Walk()` method
-- [ ] Implement `Infer()` method (bidirectional)
-- [ ] Implement `Eval()` method
+- [x] Create `BlockArg` type with fields in `ast_expressions.go`
+- [x] Add `ExpectedParamTypes []hm.Type` field
+- [x] Add `ExpectedReturnType hm.Type` field
+- [x] Implement `DeclaredSymbols()` method
+- [x] Implement `ReferencedSymbols()` method
+- [x] Implement `Body()` method
+- [x] Implement `GetSourceLocation()` method
+- [x] Implement `Walk()` method
+- [x] Implement `Infer()` method (bidirectional)
+- [x] Implement `Eval()` method
 
 ### Phase 2: Update FunCall Structure
-- [ ] Add `BlockArg *BlockArg` field to `FunCall`
-- [ ] Update `ReferencedSymbols()` to include block arg
-- [ ] Update `Walk()` to traverse block arg
-- [ ] Update `Infer()` to extract expected types and set on block arg
-- [ ] Update `Eval()` to evaluate block arg and pass as "fn" argument
+- [x] Add `BlockArg *BlockArg` field to `FunCall`
+- [x] Update `ReferencedSymbols()` to include block arg
+- [x] Update `Walk()` to traverse block arg
+- [x] Update `Infer()` to extract expected types and set on block arg
+- [x] Update `Eval()` to evaluate block arg and pass as "fn" argument
 
 ### Phase 3: Update Grammar
 - [x] Remove `Lambda` from `Form` rule in `dang.peg`
