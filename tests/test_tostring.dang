@@ -1,0 +1,30 @@
+# Tests for toString helper
+
+# String input returns as-is
+let str = "hello"
+let result1 = toString(str)
+assert { result1 == "hello" }
+
+# Number gets JSON-encoded
+let num = 42
+let result2 = toString(num)
+assert { result2 == "42" }
+
+# Boolean gets JSON-encoded
+let bool = true
+let result3 = toString(bool)
+assert { result3 == "true" }
+
+# List gets JSON-encoded
+let list = [1, 2, 3]
+let result4 = toString(list)
+assert { result4 == "[1,2,3]" }
+
+# Object/record gets JSON-encoded
+let obj = {{a: 1, b: "test"}}
+let result5 = toString(obj)
+assert { result5 == "{\"a\":1,\"b\":\"test\"}" }
+
+# Null gets JSON-encoded
+let result6 = toString(null)
+assert { result6 == "null" }

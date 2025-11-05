@@ -39,6 +39,27 @@ func registerStdlib() {
 			return ToValue(string(jsonBytes))
 		})
 
+	// toString function: toString(value: b) -> String!
+	Builtin("toString").
+		Doc("converts a value to a string, returning strings as-is and serializing other values to JSON").
+		Params("value", TypeVar('b')).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			val, _ := args.Get("value")
+			
+			// If already a string, return as-is
+			if strVal, ok := val.(StringValue); ok {
+				return strVal, nil
+			}
+			
+			// Otherwise, serialize to JSON
+			jsonBytes, err := json.Marshal(val)
+			if err != nil {
+				return nil, fmt.Errorf("toString: %w", err)
+			}
+			return ToValue(string(jsonBytes))
+		})
+
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
 	Method(StringType, "split").
 		Doc("splits a string by separator").
