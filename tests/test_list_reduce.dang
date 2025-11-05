@@ -2,40 +2,40 @@
 
 # Basic sum with integers
 pub numbers: [Int!]! = [1, 2, 3, 4, 5]
-pub sum: Int! = numbers.reduce(0): { (acc, x) -> acc + x }
+pub sum: Int! = numbers.reduce(0) { (acc, x) -> acc + x }
 assert { sum == 15 }
 
 # Product with integers
-pub product: Int! = numbers.reduce(1): { (acc, x) -> acc * x }
+pub product: Int! = numbers.reduce(1) { (acc, x) -> acc * x }
 assert { product == 120 }
 
 # Concatenate strings
 pub words: [String!]! = ["hello", " ", "world"]
-pub sentence: String! = words.reduce(""): { (acc, word) -> acc + word }
+pub sentence: String! = words.reduce("") { (acc, word) -> acc + word }
 assert { sentence == "hello world" }
 
 # Count elements (alternative to length)
-pub count: Int! = numbers.reduce(0): { (acc, x) -> acc + 1 }
+pub count: Int! = numbers.reduce(0) { (acc, x) -> acc + 1 }
 assert { count == 5 }
 
 # Find maximum
-pub max: Int! = [3, 7, 2, 9, 1].reduce(0): { (acc, x) -> if x > acc { x } else { acc } }
+pub max: Int! = [3, 7, 2, 9, 1].reduce(0) { (acc, x) -> if (x > acc) { x } else { acc } }
 assert { max == 9 }
 
 # Empty list returns initial value
 pub empty: [Int!]! = []
-pub empty_sum: Int! = empty.reduce(42): { (acc, x) -> acc + x }
+pub empty_sum: Int! = empty.reduce(42) { (acc, x) -> acc + x }
 assert { empty_sum == 42 }
 
 # Single element
 pub single: [Int!]! = [5]
-pub single_sum: Int! = single.reduce(10): { (acc, x) -> acc + x }
+pub single_sum: Int! = single.reduce(10) { (acc, x) -> acc + x }
 assert { single_sum == 15 }
 
 # Build a list (reverse)
 pub original: [Int!]! = [1, 2, 3]
 pub empty_list: [Int!]! = []
-pub reversed: [Int!]! = original.reduce(empty_list): { (acc, x) -> [x] + acc }
+pub reversed: [Int!]! = original.reduce(empty_list) { (acc, x) -> [x] + acc }
 assert { reversed == [3, 2, 1] }
 
 print("List reduce tests passed!")

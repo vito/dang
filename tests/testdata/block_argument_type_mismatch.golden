@@ -1,9 +1,9 @@
 [1m[31mError:[0m cannot use Int! as String!
-  [2m[34m--> errors/block_argument_type_mismatch.dang:2:23[0m
+  [2m[34m--> errors/block_argument_type_mismatch.dang:2:22[0m
  [2m    |[0m
  [2m  1 | # Test lambda argument type mismatch[0m
- [2m[34m[1m  2 | [0m[1, 2, 3].map: { x -> "not a number" + x }
-[2m                             [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m[34m[1m  2 | [0m[1, 2, 3].map { x -> "not a number" + x }
+[2m                            [31m^^^^^^^^^^^^^^^^^^[0m
  [2m  3 | [0m
  [2m    |[0m
 

@@ -57,7 +57,7 @@ type Dev {
         )
     )
 
-    if kagiToken != null {
+    if (kagiToken != null) {
       agent = agent.withMCPServer(
         "kagi"
         apko.wolfi(["bash", "uv", "python3"]).
@@ -72,7 +72,7 @@ type Dev {
       )
     }
 
-    if source.exists("current-task.md") {
+    if (source.exists("current-task.md")) {
       agent = agent.withSystemPrompt(source.file("current-task.md").contents)
     }
 
@@ -92,7 +92,7 @@ type Dev {
   Run a gh command and return its output.
   """
   pub github(args: [String!]!): String! {
-    let ctr = if githubToken != null {
+    let ctr = if (githubToken != null) {
       sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
     } else {
       sandbox

@@ -708,7 +708,7 @@ CommentToken <- '#' [^\n]*
 
 // Additional language constructs
 
-Conditional <- IfToken _ cond:Form _ block:Block else_:ElseClause? {
+Conditional <- IfToken _ '(' _ cond:Form _ ')' _ block:Block else_:ElseClause? {
   return &Conditional{
     Condition: cond.(Node),
     Then: block.(*Block),
@@ -734,7 +734,7 @@ AndToken <- "and" !WordChar
 
 ForLoop <- ForTwoVarLoop / ForSingleVarLoop / ForConditionLoop / ForInfiniteLoop
 
-ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ iterable:Form _ body:Block {
+ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ '(' _ iterable:Form _ ')' _ body:Block {
   var varType TypeNode
   if typeAnnotation != nil {
     varType = typeAnnotation.([]interface{})[2].(TypeNode)
@@ -748,7 +748,7 @@ ForSingleVarLoop <- ForToken _ variable:Id typeAnnotation:(_ ColonToken _ t:Type
   }, nil
 }
 
-ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:Form _ body:Block {
+ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ '(' _ iterable:Form _ ')' _ body:Block {
   return &ForLoop{
     KeyVariable: key.(string),
     ValueVariable: value.(string),
@@ -758,7 +758,7 @@ ForTwoVarLoop <- ForToken _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:
   }, nil
 }
 
-ForConditionLoop <- ForToken _ cond:Form _ body:Block {
+ForConditionLoop <- ForToken _ '(' _ cond:Form _ ')' _ body:Block {
   return &ForLoop{
     Condition: cond.(Node),
     LoopBody: body.(*Block),
@@ -778,7 +778,7 @@ InToken <- "in" !WordChar
 
 ArrowToken <- "->"
 
-BlockArg <- _ ':' _ '{' _ params:BlockParams _ ArrowToken _ body:Form _ '}' {
+BlockArg <- _ '{' _ params:BlockParams _ ArrowToken _ body:Form _ '}' {
   return &BlockArg{
     Args: params.([]*SlotDecl),
     BodyNode: body.(Node),
@@ -801,7 +801,7 @@ BlockParam <- name:IdSymbol {
 
 
 
-Match <- MatchToken _ expr:Form _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
+Match <- MatchToken _ '(' _ expr:Form _ ')' _ WithToken _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
   return &Match{
     Expr: expr.(Node),
     Cases: sliceOfAppend[*MatchCase](cs, last),

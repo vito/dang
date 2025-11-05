@@ -16,9 +16,9 @@ assert { numbers_list == [1, 2, 3, 4, 5] }
 assert { words_list == ["apple", "banana", "cherry"] }
 
 # =================== CONDITIONALS ===================
-pub max_num = if number == 42 { number } else { 100 }
-pub min_result = if false { "false branch" } else { "true branch" }
-pub no_else_result = if true { "has value" }
+pub max_num = if (number == 42) { number } else { 100 }
+pub min_result = if (false) { "false branch" } else { "true branch" }
+pub no_else_result = if (true) { "has value" }
 
 assert { max_num == 42 }
 assert { min_result == "true branch" }

@@ -1,7 +1,7 @@
 [1m[31mError:[0m Match.Infer: case 1 type mismatch: String! != Int!
   [2m[34m--> errors/match_type_mismatch.dang:4:3[0m
  [2m    |[0m
- [2m  2 | pub result = match 1 with {[0m
+ [2m  2 | pub result = match (1) with {[0m
  [2m  3 |   1 -> "string"[0m
  [2m[34m[1m  4 | [0m  2 -> 42
 [2m         [31m^^^^^^^[0m

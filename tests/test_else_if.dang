@@ -3,13 +3,13 @@
 # Basic else if
 pub score = 85
 
-pub grade = if score >= 90 {
+pub grade = if (score >= 90) {
   "A"
-} else if score >= 80 {
+} else if (score >= 80) {
   "B"
-} else if score >= 70 {
+} else if (score >= 70) {
   "C"
-} else if score >= 60 {
+} else if (score >= 60) {
   "D"
 } else {
   "F"
@@ -20,11 +20,11 @@ assert { grade == "B" }
 # Multiple else if conditions
 pub value = 25
 
-pub category = if value < 10 {
+pub category = if (value < 10) {
   "small"
-} else if value < 20 {
+} else if (value < 20) {
   "medium"
-} else if value < 30 {
+} else if (value < 30) {
   "large"
 } else {
   "extra-large"
@@ -35,18 +35,18 @@ assert { category == "large" }
 # Else if without final else
 pub num = 15
 
-pub result = if num == 10 {
+pub result = if (num == 10) {
   "ten"
-} else if num == 15 {
+} else if (num == 15) {
   "fifteen"
 }
 
 assert { result == "fifteen" }
 
 # Else if with no match and no final else (should return null)
-pub result2 = if num == 5 {
+pub result2 = if (num == 5) {
   "five"
-} else if num == 10 {
+} else if (num == 10) {
   "ten"
 }
 

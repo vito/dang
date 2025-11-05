@@ -8,7 +8,7 @@ Error 1:
  [2m[34m[1m  2 | [0mpub bad_addition = "hello" + 42
 [2m                          [31m^^^^^^^^^^^^[0m
  [2m  3 | pub missing_var = undefined_symbol[0m
- [2m  4 | pub bad_conditional = if true { "string" } else { 123 }[0m
+ [2m  4 | pub bad_conditional = if (true) { "string" } else { 123 }[0m
  [2m    |[0m
 
 
@@ -20,17 +20,17 @@ Error 2:
  [2m  2 | pub bad_addition = "hello" + 42[0m
  [2m[34m[1m  3 | [0mpub missing_var = undefined_symbol
 [2m                         [31m^^^^^^^^^^^^^^^^[0m
- [2m  4 | pub bad_conditional = if true { "string" } else { 123 }[0m
+ [2m  4 | pub bad_conditional = if (true) { "string" } else { 123 }[0m
  [2m    |[0m
 
 
 Error 3:
 [1m[31mError:[0m cannot use Int! as String!
-  [2m[34m--> errors/multiple_type_errors.dang:4:51[0m
+  [2m[34m--> errors/multiple_type_errors.dang:4:53[0m
  [2m    |[0m
  [2m  2 | pub bad_addition = "hello" + 42[0m
  [2m  3 | pub missing_var = undefined_symbol[0m
- [2m[34m[1m  4 | [0mpub bad_conditional = if true { "string" } else { 123 }
-[2m                                                         [31m^^^[0m
+ [2m[34m[1m  4 | [0mpub bad_conditional = if (true) { "string" } else { 123 }
+[2m                                                           [31m^^^[0m
  [2m    |[0m
 

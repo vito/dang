@@ -2,7 +2,7 @@
 
 # Function that can return null
 pub maybeGetString(shouldReturnNull: Boolean!): String {
-  if shouldReturnNull {
+  if (shouldReturnNull) {
     null
   } else {
     "hello"
@@ -16,7 +16,7 @@ pub alwaysNull: String {
 
 # Function with nullable Int return type
 pub maybeGetNumber(value: Int!): Int {
-  if value < 0 {
+  if (value < 0) {
     null
   } else {
     value * 2

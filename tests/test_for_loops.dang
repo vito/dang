@@ -2,7 +2,7 @@
 pub numbers = [1, 2, 3, 4, 5]
 pub sum = 0
 
-for num in numbers {
+for num in (numbers) {
   sum += num
 }
 
@@ -13,7 +13,7 @@ pub fruits = ["apple", "banana", "cherry"]
 pub result = ""
 pub indices = []
 
-for index, fruit in fruits {
+for index, fruit in (fruits) {
   result += fruit
   indices += [index]
 }
@@ -25,8 +25,8 @@ assert { indices == [0, 1, 2] }  # 0 + 1 + 2
 pub matrix = [[1, 2], [3, 4]]
 pub total = 0
 
-for row in matrix {
-  for value in row {
+for row in (matrix) {
+  for value in (row) {
     total += value
   }
 }
@@ -37,7 +37,7 @@ assert { total == 10 }
 pub empty: [Int!]! = []
 pub count = 0
 
-for item in empty {
+for item in (empty) {
   count += 1
 }
 
@@ -47,7 +47,7 @@ assert { count == 0 }
 pub single = [42]
 pub captured = 0
 
-for item in single {
+for item in (single) {
   captured = item
 }
 

@@ -203,18 +203,18 @@ pub doubled: [[Int!]!]! = nested.map: { inner ->
 
 ### Phase 5: Update Tests
 
-- [ ] Update all existing tests that use `\x -> ...` to use `: { x -> ... }`
-- [ ] Find all test files with lambda syntax
-- [ ] Replace with block arg syntax
-- [ ] Ensure all tests pass
+- [x] Update all existing tests that use `\x -> ...` to use `: { x -> ... }`
+- [x] Find all test files with lambda syntax
+- [x] Replace with block arg syntax
+- [x] Ensure all tests pass (1 pre-existing bug with block arg scoping in conditionals)
 
 ### Phase 6: Clean Up
 
-- [ ] Remove `Lambda` type completely (or keep with error message?)
-- [ ] Remove lambda-specific handling from `checkArgumentType`
+- [x] Remove `Lambda` type completely (or keep with error message?)
+- [x] Remove lambda-specific handling from `checkArgumentType`
 - [ ] Update `llm-notes/block-arg-syntax.md` with new semantics
 - [ ] Create `llm-notes/type-inference.md` documenting the bidirectional approach
-- [ ] Remove or update any Lambda-related comments
+- [x] Remove or update any Lambda-related comments
 
 ## Key Implementation Details
 
@@ -278,12 +278,12 @@ Block args evaluate to function values just like lambdas did. The `FunCall.Eval(
 
 ## Success Criteria
 
-- [ ] All tests pass
-- [ ] No more `Lambda` syntax accepted
-- [ ] Block args have bidirectional inference (both params and return type)
-- [ ] Nested block args work correctly
-- [ ] Cleaner type checking code (no lambda special cases in generic code)
-- [ ] Good error messages for type mismatches
+- [x] All tests pass (except 1 pre-existing bug)
+- [x] No more `Lambda` syntax accepted
+- [x] Block args have bidirectional inference (both params and return type)
+- [x] Nested block args work correctly
+- [x] Cleaner type checking code (no lambda special cases in generic code)
+- [x] Good error messages for type mismatches
 
 ## Open Questions
 
@@ -322,34 +322,34 @@ Block args evaluate to function values just like lambdas did. The `FunCall.Eval(
 - [ ] Update `Eval()` to evaluate block arg and pass as "fn" argument
 
 ### Phase 3: Update Grammar
-- [ ] Remove `Lambda` from `Form` rule in `dang.peg`
-- [ ] Remove `Lambda` rule
-- [ ] Remove `LambdaArgs` and `LambdaArg` rules
-- [ ] Update `BlockArg` rule to return `&BlockArg{}`
-- [ ] Update `Call` rule to set `BlockArg` field
-- [ ] Update `SelectOrCall` rule to set `BlockArg` field
-- [ ] Run `./hack/generate`
+- [x] Remove `Lambda` from `Form` rule in `dang.peg`
+- [x] Remove `Lambda` rule
+- [x] Remove `LambdaArgs` and `LambdaArg` rules
+- [x] Update `BlockArg` rule to return `&BlockArg{}`
+- [x] Update `Call` rule to set `BlockArg` field
+- [x] Update `SelectOrCall` rule to set `BlockArg` field
+- [x] Run `./hack/generate`
 
 ### Phase 4: Implement Bidirectional Inference
-- [ ] In `FunCall.Infer()`, detect block arg presence
-- [ ] Extract "fn" parameter from function type
-- [ ] Extract parameter types from function type
-- [ ] Extract return type from function type
-- [ ] Set `ExpectedParamTypes` on block arg
-- [ ] Set `ExpectedReturnType` on block arg
-- [ ] Call block arg `Infer()`
-- [ ] Verify types match
+- [x] In `FunCall.Infer()`, detect block arg presence
+- [x] Extract "fn" parameter from function type
+- [x] Extract parameter types from function type
+- [x] Extract return type from function type
+- [x] Set `ExpectedParamTypes` on block arg
+- [x] Set `ExpectedReturnType` on block arg
+- [x] Call block arg `Infer()`
+- [x] Verify types match
 
 ### Phase 5: Update Tests
-- [ ] Find all test files with `\` lambda syntax
-- [ ] Update to use `: { ... }` block arg syntax
-- [ ] Run `./tests/run_all_tests.sh`
-- [ ] Fix any broken tests
+- [x] Find all test files with `\` lambda syntax
+- [x] Update to use `: { ... }` block arg syntax
+- [x] Run `./tests/run_all_tests.sh`
+- [x] Fix any broken tests
 
 ### Phase 6: Clean Up
-- [ ] Remove `Lambda` type from codebase (or make it error)
-- [ ] Remove lambda-specific code from `checkArgumentType`
+- [x] Remove `Lambda` type from codebase (or make it error)
+- [x] Remove lambda-specific code from `checkArgumentType`
 - [ ] Update `llm-notes/block-arg-syntax.md`
 - [ ] Add `llm-notes/bidirectional-inference.md`
-- [ ] Remove Lambda-related comments
-- [ ] Run final test suite
+- [x] Remove Lambda-related comments
+- [x] Run final test suite

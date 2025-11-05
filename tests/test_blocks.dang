@@ -19,7 +19,7 @@ pub complex_block = {
 assert { complex_block == 42 }
 
 # Block in conditional
-pub conditional_block = if true {
+pub conditional_block = if (true) {
   "yes"
 } else {
   "no"

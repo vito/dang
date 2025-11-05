@@ -3275,12 +3275,20 @@
           "name": "if_token"
         },
         {
+          "type": "STRING",
+          "value": "("
+        },
+        {
           "type": "FIELD",
           "name": "cond",
           "content": {
             "type": "SYMBOL",
             "name": "form"
           }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
         },
         {
           "type": "FIELD",
@@ -3445,12 +3453,20 @@
           "name": "in_token"
         },
         {
+          "type": "STRING",
+          "value": "("
+        },
+        {
           "type": "FIELD",
           "name": "iterable",
           "content": {
             "type": "SYMBOL",
             "name": "form"
           }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
         },
         {
           "type": "FIELD",
@@ -3494,12 +3510,20 @@
           "name": "in_token"
         },
         {
+          "type": "STRING",
+          "value": "("
+        },
+        {
           "type": "FIELD",
           "name": "iterable",
           "content": {
             "type": "SYMBOL",
             "name": "form"
           }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
         },
         {
           "type": "FIELD",
@@ -3519,12 +3543,20 @@
           "name": "for_token"
         },
         {
+          "type": "STRING",
+          "value": "("
+        },
+        {
           "type": "FIELD",
           "name": "cond",
           "content": {
             "type": "SYMBOL",
             "name": "form"
           }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
         },
         {
           "type": "FIELD",
@@ -3577,10 +3609,6 @@
     "block_arg": {
       "type": "SEQ",
       "members": [
-        {
-          "type": "STRING",
-          "value": ":"
-        },
         {
           "type": "STRING",
           "value": "{"
@@ -3693,12 +3721,20 @@
           "name": "match_token"
         },
         {
+          "type": "STRING",
+          "value": "("
+        },
+        {
           "type": "FIELD",
           "name": "expr",
           "content": {
             "type": "SYMBOL",
             "name": "form"
           }
+        },
+        {
+          "type": "STRING",
+          "value": ")"
         },
         {
           "type": "SYMBOL",

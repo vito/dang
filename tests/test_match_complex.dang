@@ -1,21 +1,21 @@
 # Test match expressions with complex values
 
 # Variable pattern with list - binding the whole list
-pub list_var = match [1, 2, 3] with {
+pub list_var = match ([1, 2, 3]) with {
   xs -> xs[0] + xs[1] + xs[2]
 }
 
 assert { list_var == 6 }
 
 # Variable pattern with empty list
-pub empty_list_var = match [] with {
+pub empty_list_var = match ([]) with {
   xs -> "matched"
 }
 
 assert { empty_list_var == "matched" }
 
 # Match on list with fallback
-pub list_with_wildcard = match [1, 2] with {
+pub list_with_wildcard = match ([1, 2]) with {
   xs -> xs[0]
   _ -> 0
 }
@@ -23,14 +23,14 @@ pub list_with_wildcard = match [1, 2] with {
 assert { list_with_wildcard == 1 }
 
 # Match with strings and concatenation
-pub string_var = match "hello" with {
+pub string_var = match ("hello") with {
   s -> s + " world"
 }
 
 assert { string_var == "hello world" }
 
 # Match on nested lists
-pub nested_list = match [[1, 2], [3, 4]] with {
+pub nested_list = match ([[1, 2], [3, 4]]) with {
   xs -> xs[0][1] + xs[1][0]
 }
 
@@ -38,7 +38,7 @@ assert { nested_list == 5 }
 
 # Match in a function returning different types unified
 pub matchInClassify(x: Int!): String! {
-  match x with {
+  match (x) with {
     0 -> "zero"
     1 -> "one"
     _ -> "many"

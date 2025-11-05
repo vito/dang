@@ -16,7 +16,7 @@ type Doug {
     module: Module
   ): LLM! {
     let e = env.withWorkspace(source)
-    if module != null {
+    if (module != null) {
       e = e.withModule(module)
     }
     agent(base: llm.withEnv(e))
@@ -30,7 +30,7 @@ type Doug {
     let promptsDir = currentModule.source.directory("prompts/system/")
     let providerFile = provider + ".txt"
 
-    let systemPromptContents = if promptsDir.entries.contains(providerFile) {
+    let systemPromptContents = if (promptsDir.entries.contains(providerFile)) {
       currentModule.source.file("prompts/system/" + providerFile).contents
     } else {
       currentModule.source.file("prompts/system/doug.txt").contents
@@ -76,11 +76,11 @@ type Doug {
       offsetLines: offset,
       limitLines: limit
     )
-    if fileContents == "" {
+    if (fileContents == "") {
       "WARNING: File contents are empty."
     } else {
       let numbered = ""
-      for i, line in fileContents.split("\n", 0) {
+      for i, line in (fileContents.split("\n", 0)) {
         # TODO: template
         numbered += toJSON(offset+i+1).padLeft(6) + "→" + line + "\n"
       }
@@ -282,15 +282,15 @@ type Doug {
   ): Void {
     let matches = source.glob(pattern)
     let anyMatched = false
-    for path in matches {
-      if path.hasPrefix(".") or path.contains("/.") {
+    for path in (matches) {
+      if (path.hasPrefix(".") or path.contains("/.")) {
         # Filter out hidden files
         continue
       }
       anyMatched = true
       print(path)
     }
-    if !anyMatched {
+    if (!anyMatched) {
       print("No files found.")
     }
   }
@@ -375,7 +375,7 @@ type Doug {
     limit: Int! = 1000
   ): String! {
     let normalizedPaths = [] :: [String!]!
-    for p in paths {
+    for p in (paths) {
       normalizedPaths += [normalize(p)]
     }
 
@@ -393,7 +393,7 @@ type Doug {
 
     # Count matches - we need to iterate since we don't have .length
     let count = 0
-    for m in matches.{id} {
+    for m in (matches.{id}) {
       count += 1
     }
 
@@ -487,18 +487,18 @@ type Doug {
     # Build list of all descriptions being updated
     let updatingDescriptions = pending + inProgress + completed
 
-    for todo in currentTodoLines {
-      if todo != "" {
+    for todo in (currentTodoLines) {
+      if (todo != "") {
         # Split on first colon only (limit=2) to handle descriptions with colons
         let parts = todo.split(":", limit: 2)
         let state = parts[0] ?? "pending"
         let description = parts[1] ?? todo
 
         # Only keep existing TODOs that aren't being updated
-        if !updatingDescriptions.contains(description) {
-          if state == "completed" {
+        if (!updatingDescriptions.contains(description)) {
+          if (state == "completed") {
             existingCompleted += [description]
-          } else if state == "in_progress" {
+          } else if (state == "in_progress") {
             existingInProgress += [description]
           } else {
             existingPending = existingPending + [description]
@@ -510,15 +510,15 @@ type Doug {
     let formattedTodos = ""
     let encodedTodos = ""
 
-    for todo in existingCompleted + completed {
+    for todo in (existingCompleted + completed) {
       encodedTodos += "completed:" + todo + "\n"
       formattedTodos += "■ \u001b[32m\u001b[9m" + todo + "\u001b[0m\n"
     }
-    for todo in existingInProgress + inProgress {
+    for todo in (existingInProgress + inProgress) {
       encodedTodos += "in_progress:" + todo + "\n"
       formattedTodos += "□ \u001b[33m" + todo + "\u001b[0m\n"
     }
-    for todo in  existingPending + pending {
+    for todo in (existingPending + pending) {
       encodedTodos += "pending:" + todo + "\n"
       formattedTodos += "□ \u001b[37m" + todo + "\u001b[0m\n"
     }
@@ -545,10 +545,10 @@ type Doug {
 
     # Look for context files
     let contextSegment = ""
-    for file in contextFiles {
-      if entries.contains(file) {
+    for file in (contextFiles) {
+      if (entries.contains(file)) {
         let fileContents = workspace.file(file).contents
-        if fileContents != "" {
+        if (fileContents != "") {
           contextSegment = """
 
 # Project-Specific Context

@@ -2,13 +2,13 @@
 
 # Single parameter block arg
 pub numbers: [Int!]! = [1, 2, 3]
-pub doubled: [Int!]! = numbers.map: { x -> x * 2 }
+pub doubled: [Int!]! = numbers.map { x -> x * 2 }
 assert { doubled[0] == 2 }
 assert { doubled[1] == 4 }
 assert { doubled[2] == 6 }
 
 # Filter with block arg
-pub evens: [Int!]! = numbers.filter: { x -> x % 2 == 0 }
+pub evens: [Int!]! = numbers.filter { x -> x % 2 == 0 }
 assert { evens[0] == 2 }
 
 print("Block arg basic tests passed!")

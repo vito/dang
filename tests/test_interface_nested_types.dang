@@ -42,8 +42,8 @@ type ValidationRegistry implements Registry {
   pub validators: [Validator!]! = [EmailValidator, EmailValidator]
   pub validateAll(input: String!): Boolean! {
     pub res = true
-    for v in validators {
-      if !v.validate(input) {
+    for v in (validators) {
+      if (!v.validate(input)) {
         res = false
         break
       }
@@ -69,7 +69,7 @@ type DataProcessor implements Processor {
   pub container: Container! = Form
   pub status: String! = "Ready"
   pub process(data: String!): String! {
-    if container.isValid(data) {
+    if (container.isValid(data)) {
       "Valid: " + data
     } else {
       "Invalid"

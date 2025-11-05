@@ -17,7 +17,7 @@ type Dang {
   """
   pub binary(race: Boolean! = false): File! {
     let args = ["go", "build"]
-    if race {
+    if (race) {
       args += ["-race"]
     }
     args += ["-o", "/bin/dang", "./cmd/dang"]
@@ -65,11 +65,11 @@ type Dang {
     rerun: String,
   ): Void {
     let args = ["go", "test", "-v", "-count=1", "./tests"]
-    if filter != "" {
+    if (filter != "") {
       args += ["-run", "/"+filter]
     }
     let ctr = generated
-    if rerun != null {
+    if (rerun != null) {
       ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
     }
     ctr.
@@ -83,7 +83,7 @@ type Dang {
   """
   pub testLSP(filter: String! = ""): Void {
     let args = ["go", "test", "-v", "-count=1", "./pkg/lsp/..."]
-    if filter != "" {
+    if (filter != "") {
       args += ["-run", "LSP/" + filter]
     }
     generated.

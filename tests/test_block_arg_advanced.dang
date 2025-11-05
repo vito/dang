@@ -4,7 +4,7 @@
 pub pairs: [[Int!]!]! = [[1, 2], [3, 4], [5, 6]]
 # Note: pair[0] returns Int (nullable) because indexing can fail,
 # so the map returns [Int]! not [Int!]!
-pub sums: [Int]! = pairs.map: { pair -> pair[0] + pair[1] }
+pub sums: [Int]! = pairs.map { pair -> pair[0] + pair[1] }
 assert { sums[0] == 3 }
 assert { sums[1] == 7 }
 assert { sums[2] == 11 }
@@ -12,21 +12,21 @@ assert { sums[2] == 11 }
 # Chaining with block args
 pub numbers: [Int!]! = [1, 2, 3, 4, 5, 6]
 pub result: [Int!]! = numbers
-  .filter: { x -> x % 2 == 0 }
-  .map: { x -> x * 3 }
+  .filter { x -> x % 2 == 0 }
+  .map { x -> x * 3 }
 assert { result[0] == 6 }
 assert { result[1] == 12 }
 assert { result[2] == 18 }
 
 # Block arg with empty list
 pub empty: [Int!]! = []
-pub mapped: [Int!]! = empty.map: { x -> x * 2 }
+pub mapped: [Int!]! = empty.map { x -> x * 2 }
 assert { mapped == [] }
 
 # TODO: Nested block calls currently don't work due to type variable scoping issues
 pub nested: [[Int!]!]! = [[1, 2], [3, 4]]
-pub doubled_nested: [[Int!]!]! = nested.map: { inner ->
-  inner.map: { x -> x * 2 }
+pub doubled_nested: [[Int!]!]! = nested.map { inner ->
+  inner.map { x -> x * 2 }
 }
 
 print("Block arg advanced tests passed!")

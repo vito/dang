@@ -1,4 +1,4 @@
 # Test multiple type errors in one file
 pub bad_addition = "hello" + 42
 pub missing_var = undefined_symbol
-pub bad_conditional = if true { "string" } else { 123 }
+pub bad_conditional = if (true) { "string" } else { 123 }
