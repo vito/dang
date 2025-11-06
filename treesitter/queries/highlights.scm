@@ -7,7 +7,7 @@
   (type_token)
   (if_token)
   (else_token)
-  (match_token)
+  (case_token)
   (with_token)
   (assert_token)
   (directive_token)

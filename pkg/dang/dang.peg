@@ -842,9 +842,19 @@ BlockParam <- name:Symbol {
 
 
 
-Case <- CaseToken _ '(' _ expr:Form _ ')' _ '{' _ cs:(clause:CaseClause Sep { return clause, nil })* last:CaseClause? _ '}' {
+Case <- CaseToken _ operand:('(' _ expr:Form _ ')' { return expr, nil })? _ '{' _ cs:(clause:CaseClause Sep { return clause, nil })* last:CaseClause? _ '}' {
+  var expr Node
+  if operand != nil {
+    expr = operand.(Node)
+  } else {
+    // Desugar to case (true) when operand is omitted
+    expr = &Boolean{
+      Value: true,
+      Loc: c.Loc(),
+    }
+  }
   return &Case{
-    Expr: expr.(Node),
+    Expr: expr,
     Clauses: sliceOfAppend[*CaseClause](cs, last),
     Loc: c.Loc(),
   }, nil

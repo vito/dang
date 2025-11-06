@@ -982,7 +982,7 @@
       },
       "expr": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "form",
@@ -997,6 +997,20 @@
           {
             "type": "case_clause",
             "named": true
+          }
+        ]
+      },
+      "operand": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "(",
+            "named": false
+          },
+          {
+            "type": ")",
+            "named": false
           }
         ]
       }

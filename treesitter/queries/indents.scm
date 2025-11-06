@@ -6,7 +6,7 @@
   (conditional)
   (else_clause)
   (lambda)
-  (match)
+  (case)
   (object)
   (paren_form)
   (arg_values)

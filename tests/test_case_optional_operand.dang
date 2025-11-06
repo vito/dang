@@ -1,0 +1,33 @@
+# Test case with optional operand
+# When no operand is provided, it desugars to case (true)
+
+pub x = 5
+
+# Case without operand - conditions in clauses
+pub result1 = case {
+  x < 3 => "less than three"
+  x == 5 => "equals five"
+  x > 10 => "greater than ten"
+}
+
+assert { result1 == "equals five" }
+
+# Another example
+pub y = 15
+pub result2 = case {
+  y < 10 => "small"
+  y < 20 => "medium"
+  y >= 20 => "large"
+}
+
+assert { result2 == "medium" }
+
+# With just boolean literals
+pub result3 = case {
+  false => "nope"
+  true => "yep"
+}
+
+assert { result3 == "yep" }
+
+print("Optional case operand tests passed!")
