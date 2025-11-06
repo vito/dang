@@ -52,6 +52,13 @@ type Dang {
   }
 
   """
+  Start a Dang coding agent.
+  """
+  pub coder: LLM! {
+    dev(source).agent(llm.withEnv(env.withCurrentModule))
+  }
+
+  """
   Run the Dang language tests.
   """
   pub test(

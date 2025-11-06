@@ -22,7 +22,14 @@ type Dev {
   """
   Start a coding agent with the provided module.
   """
-  pub agent(module: Module!): LLM! {
+  pub forModule(module: Module!): LLM! {
+    agent(llm.withEnv(env.withModule(module)))
+  }
+
+  """
+  Start a coding agent.
+  """
+  pub agent(base: LLM!): LLM! {
     let gopls = apko.wolfi(["bash", "go"]).
       withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
       withEnvVariable("GOMODCACHE", "/go/pkg/mod").
@@ -36,11 +43,10 @@ type Dev {
       withDefaultArgs(["gopls", "mcp"])
 
     let agent = doug.agent(
-      llm.
+      base.
         withEnv(
-          env.
+          base.env.
             withCurrentModule.
-            withModule(module).
             withWorkspace(source)).
         withMCPServer(name: "gopls", service: gopls.asService).
         withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout).

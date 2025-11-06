@@ -10,10 +10,6 @@
       "source": "../apko"
     },
     {
-      "name": "dang",
-      "source": "../.."
-    },
-    {
       "name": "doug",
       "source": "../doug"
     }

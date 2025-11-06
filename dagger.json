@@ -8,6 +8,10 @@
     {
       "name": "apko",
       "source": "mod/apko"
+    },
+    {
+      "name": "dev",
+      "source": "mod/dev"
     }
   ],
   "source": ".dagger"
