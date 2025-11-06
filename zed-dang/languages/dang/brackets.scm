@@ -22,15 +22,11 @@
   ")" @close)
 
 (arg_values
-  "(" @open
+  (immediate_paren) @open
   ")" @close)
 
 (arg_types
-  "(" @open
-  ")" @close)
-
-(block_params
-  "(" @open
+  (immediate_paren) @open
   ")" @close)
 
 (match

@@ -104,10 +104,10 @@
 ;; Special highlighting for print function
 (symbol) @variable
 (call
-  (id) @function.method)
+  (symbol) @function.method)
 
 ((call
-  (id) @function.builtin)
+  (symbol) @function.builtin)
   (#match? @function.builtin "^(print)$"))
 
 ;; Field selections
