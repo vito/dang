@@ -7,56 +7,63 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-// Match represents a pattern matching expression
-type Match struct {
+// Case represents a case expression that evaluates branches based on equality
+type Case struct {
 	InferredTypeHolder
-	Expr  Node
-	Cases []*MatchCase
-	Loc   *SourceLocation
+	Expr    Node
+	Clauses []*CaseClause
+	Loc     *SourceLocation
 }
 
-var _ Node = (*Match)(nil)
+var _ Node = (*Case)(nil)
 
-func (m *Match) DeclaredSymbols() []string {
-	return nil // Match expressions don't declare anything
+func (c *Case) DeclaredSymbols() []string {
+	return nil // Case expressions don't declare anything
 }
 
-func (m *Match) ReferencedSymbols() []string {
+func (c *Case) ReferencedSymbols() []string {
 	var symbols []string
-	symbols = append(symbols, m.Expr.ReferencedSymbols()...)
-	// Add symbols from case expressions
-	for _, case_ := range m.Cases {
-		symbols = append(symbols, case_.Expr.ReferencedSymbols()...)
+	symbols = append(symbols, c.Expr.ReferencedSymbols()...)
+	// Add symbols from clause expressions
+	for _, clause := range c.Clauses {
+		symbols = append(symbols, clause.Value.ReferencedSymbols()...)
+		symbols = append(symbols, clause.Expr.ReferencedSymbols()...)
 	}
 	return symbols
 }
 
-func (m *Match) Body() hm.Expression { return m }
+func (c *Case) Body() hm.Expression { return c }
 
-func (m *Match) GetSourceLocation() *SourceLocation { return m.Loc }
+func (c *Case) GetSourceLocation() *SourceLocation { return c.Loc }
 
-func (m *Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(m, func() (hm.Type, error) {
-		exprType, err := m.Expr.Infer(ctx, env, fresh)
+func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		exprType, err := c.Expr.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(m.Cases) == 0 {
-			return nil, fmt.Errorf("Match.Infer: no match cases")
+		if len(c.Clauses) == 0 {
+			return nil, fmt.Errorf("Case.Infer: no case clauses")
 		}
 
 		var resultType hm.Type
-		for i, case_ := range m.Cases {
-			caseEnv := env.Clone()
-
-			// TODO: Pattern matching type checking - for now just add pattern variables
-			if varPattern, ok := case_.Pattern.(VariablePattern); ok {
-				caseEnv.Add(varPattern.Name, hm.NewScheme(nil, exprType))
+		for i, clause := range c.Clauses {
+			// Infer the value type and check it's compatible with the expression
+			valueType, err := clause.Value.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
 			}
 
-			caseType, err := WithInferErrorHandling(case_, func() (hm.Type, error) {
-				return case_.Expr.Infer(ctx, caseEnv, fresh)
+			// Check that the value type is assignable to the expression type
+			_, err = hm.Assignable(valueType, exprType)
+			if err != nil {
+				return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause)
+			}
+
+			// Infer the result type
+			caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				return clause.Expr.Infer(ctx, env, fresh)
 			})
 			if err != nil {
 				return nil, err
@@ -67,7 +74,7 @@ func (m *Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			} else {
 				subs, err := hm.Assignable(caseType, resultType)
 				if err != nil {
-					return nil, WrapInferError(fmt.Errorf("Match.Infer: case %d type mismatch: %s != %s", i, resultType, caseType), case_)
+					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
 				}
 				resultType = resultType.Apply(subs).(hm.Type)
 			}
@@ -77,108 +84,54 @@ func (m *Match) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (m *Match) Walk(fn func(Node) bool) {
-	if !fn(m) {
+func (c *Case) Walk(fn func(Node) bool) {
+	if !fn(c) {
 		return
 	}
-	m.Expr.Walk(fn)
-	for _, case_ := range m.Cases {
-		case_.Expr.Walk(fn)
+	c.Expr.Walk(fn)
+	for _, clause := range c.Clauses {
+		clause.Value.Walk(fn)
+		clause.Expr.Walk(fn)
 	}
 }
 
-func (m *Match) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return WithEvalErrorHandling(ctx, m, func() (Value, error) {
+func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		// Evaluate the expression we're matching against
-		exprVal, err := EvalNode(ctx, env, m.Expr)
+		exprVal, err := EvalNode(ctx, env, c.Expr)
 		if err != nil {
-			return nil, fmt.Errorf("evaluating match expression: %w", err)
+			return nil, fmt.Errorf("evaluating case expression: %w", err)
 		}
 
-		// Try each case in order
-		for i, case_ := range m.Cases {
-			matched, bindings, err := matchPattern(case_.Pattern, exprVal, env)
+		// Try each clause in order
+		for i, clause := range c.Clauses {
+			// Evaluate the clause value
+			clauseVal, err := EvalNode(ctx, env, clause.Value)
 			if err != nil {
-				return nil, fmt.Errorf("matching case %d: %w", i, err)
+				return nil, fmt.Errorf("evaluating clause %d value: %w", i, err)
 			}
 
-			if matched {
-				// Create a new environment with pattern bindings
-				caseEnv := env.Clone()
-				for name, value := range bindings {
-					caseEnv.Set(name, value)
-				}
-
-				// Evaluate the case expression
-				return EvalNode(ctx, caseEnv, case_.Expr)
+			// Check for equality
+			if valuesEqual(clauseVal, exprVal) {
+				// Evaluate and return the clause expression
+				return EvalNode(ctx, env, clause.Expr)
 			}
 		}
 
-		return nil, fmt.Errorf("no match case matched the value: %v", exprVal)
+		return nil, fmt.Errorf("no case clause matched the value: %v", exprVal)
 	})
 }
 
-// matchPattern checks if a value matches a pattern and returns any bindings
-func matchPattern(pattern Pattern, value Value, env EvalEnv) (bool, map[string]Value, error) {
-	switch p := pattern.(type) {
-	case WildcardPattern:
-		// Wildcard always matches
-		return true, nil, nil
-
-	case LiteralPattern:
-		// Evaluate the literal and compare
-		litVal, err := EvalNode(context.Background(), env, p.Value)
-		if err != nil {
-			return false, nil, err
-		}
-		matched := valuesEqual(litVal, value)
-		return matched, nil, nil
-
-	case VariablePattern:
-		// Variable pattern always matches and binds the value
-		return true, map[string]Value{p.Name: value}, nil
-
-	case ConstructorPattern:
-		// Constructor patterns are not yet implemented
-		return false, nil, fmt.Errorf("constructor patterns not yet implemented")
-
-	default:
-		return false, nil, fmt.Errorf("unknown pattern type: %T", pattern)
-	}
-}
-
-// MatchCase represents a single case in a match expression
-type MatchCase struct {
-	InferredTypeHolder
-	Pattern Pattern
-	Expr    Node
-	Loc     *SourceLocation
-}
-
-var _ SourceLocatable = (*MatchCase)(nil)
-
-func (c *MatchCase) GetSourceLocation() *SourceLocation {
-	return c.Loc
-}
-
-// WildcardPattern represents the wildcard pattern '_'
-type WildcardPattern struct{}
-
-// LiteralPattern represents a literal value pattern
-type LiteralPattern struct {
+// CaseClause represents a single clause in a case expression
+type CaseClause struct {
 	InferredTypeHolder
 	Value Node
+	Expr  Node
+	Loc   *SourceLocation
 }
 
-// ConstructorPattern represents a constructor pattern with arguments
-type ConstructorPattern struct {
-	InferredTypeHolder
-	Name string
-	Args []Pattern
-}
+var _ SourceLocatable = (*CaseClause)(nil)
 
-// VariablePattern represents a variable binding pattern
-type VariablePattern struct {
-	InferredTypeHolder
-	Name string
+func (c *CaseClause) GetSourceLocation() *SourceLocation {
+	return c.Loc
 }

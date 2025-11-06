@@ -171,7 +171,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "match"
+          "name": "case"
         },
         {
           "type": "SYMBOL",
@@ -201,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 155,
+      "value": 149,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -407,7 +407,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 148,
+      "value": 142,
       "content": {
         "type": "SEQ",
         "members": [
@@ -490,7 +490,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 147,
+      "value": 141,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1861,7 +1861,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 99,
+      "value": 93,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2017,7 +2017,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 94,
+      "value": 88,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2105,7 +2105,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 90,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2169,7 +2169,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 89,
+      "value": 83,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2233,7 +2233,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 88,
+      "value": 82,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2314,7 +2314,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 86,
+      "value": 80,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2403,7 +2403,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 84,
+      "value": 78,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2484,7 +2484,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 76,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3818,12 +3818,12 @@
         "name": "symbol"
       }
     },
-    "match": {
+    "case": {
       "type": "SEQ",
       "members": [
         {
           "type": "SYMBOL",
-          "name": "match_token"
+          "name": "case_token"
         },
         {
           "type": "STRING",
@@ -3855,10 +3855,10 @@
               "members": [
                 {
                   "type": "FIELD",
-                  "name": "m",
+                  "name": "clause",
                   "content": {
                     "type": "SYMBOL",
-                    "name": "match_case"
+                    "name": "case_clause"
                   }
                 },
                 {
@@ -3877,7 +3877,7 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "match_case"
+                "name": "case_clause"
               },
               {
                 "type": "BLANK"
@@ -3891,15 +3891,15 @@
         }
       ]
     },
-    "match_case": {
+    "case_clause": {
       "type": "SEQ",
       "members": [
         {
           "type": "FIELD",
-          "name": "pattern",
+          "name": "value",
           "content": {
             "type": "SYMBOL",
-            "name": "pattern"
+            "name": "form"
           }
         },
         {
@@ -3916,134 +3916,11 @@
         }
       ]
     },
-    "pattern": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "wildcard_pattern"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "literal_pattern"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "constructor_pattern"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "variable_pattern"
-        }
-      ]
-    },
-    "wildcard_pattern": {
-      "type": "STRING",
-      "value": "_"
-    },
-    "literal_pattern": {
-      "type": "FIELD",
-      "name": "lit",
-      "content": {
-        "type": "SYMBOL",
-        "name": "literal"
-      }
-    },
-    "constructor_pattern": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "name",
-          "content": {
-            "type": "SYMBOL",
-            "name": "upper_id"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "args",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "pattern_args"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        }
-      ]
-    },
-    "pattern_args": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "patterns",
-          "content": {
-            "type": "REPEAT",
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "p",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "pattern"
-                  }
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "sep"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "last",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "pattern"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        }
-      ]
-    },
-    "variable_pattern": {
-      "type": "FIELD",
-      "name": "name",
-      "content": {
-        "type": "SYMBOL",
-        "name": "id"
-      }
-    },
-    "match_token": {
+    "case_token": {
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "match"
+        "value": "case"
       }
     },
     "assert": {

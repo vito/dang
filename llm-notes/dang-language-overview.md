@@ -47,7 +47,7 @@ assert { add(2, 3) == 5 }
 The language grammar is defined in `pkg/dang/dang.peg` using PEG (Parsing Expression Grammar):
 
 - **Expressions**: `Expr <- Class / Slot / Reassignment / Form`
-- **Forms**: `Form <- Conditional / Lambda / Match / Assert / DefaultExpr / TypeHint / Term`
+- **Forms**: `Form <- Conditional / Lambda / Case / Assert / DefaultExpr / TypeHint / Term`
 - **Terms**: `Term <- Literal / SelectOrCall / List / Object / Block / ParenForm / SymbolOrCall`
 
 ## Development Workflow

@@ -1,0 +1,5 @@
+# This should fail: case clauses have incompatible types
+pub result = case (1) {
+  1 => "string"
+  2 => 42
+}

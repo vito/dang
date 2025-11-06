@@ -45,8 +45,6 @@ func (h *InferredTypeHolder) GetInferredType() hm.Type {
 	return h.inferredType
 }
 
-type Pattern interface{}
-
 type Keyed[X any] struct {
 	Key        string
 	Value      X

@@ -49,7 +49,7 @@ AnnotatedDecl <- docstring:DocString _ decl:(Interface / Enum / Scalar / Class /
   }
 }
 
-Form <- Conditional / ForLoop / Match / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -842,52 +842,23 @@ BlockParam <- name:Symbol {
 
 
 
-Match <- MatchToken _ '(' _ expr:Form _ ')' _ '{' _ cs:(m:MatchCase Sep { return m, nil })* last:MatchCase? _ '}' {
-  return &Match{
+Case <- CaseToken _ '(' _ expr:Form _ ')' _ '{' _ cs:(clause:CaseClause Sep { return clause, nil })* last:CaseClause? _ '}' {
+  return &Case{
     Expr: expr.(Node),
-    Cases: sliceOfAppend[*MatchCase](cs, last),
+    Clauses: sliceOfAppend[*CaseClause](cs, last),
     Loc: c.Loc(),
   }, nil
 }
 
-MatchCase <- pattern:Pattern _ "=>" _ expr:Form {
-  return &MatchCase{
-    Pattern: pattern.(Pattern),
+CaseClause <- value:Form _ "=>" _ expr:Form {
+  return &CaseClause{
+    Value: value.(Node),
     Expr: expr.(Node),
     Loc: c.Loc(),
   }, nil
 }
 
-Pattern <- WildcardPattern / LiteralPattern / ConstructorPattern / VariablePattern
-
-WildcardPattern <- '_' {
-  return WildcardPattern{}, nil
-}
-
-LiteralPattern <- lit:Literal {
-  return LiteralPattern{Value: lit.(Node)}, nil
-}
-
-ConstructorPattern <- name:UpperId args:PatternArgs? {
-  var patterns []Pattern
-  if args != nil {
-    patterns = args.([]Pattern)
-  }
-  return ConstructorPattern{
-    Name: name.(string),
-    Args: patterns,
-  }, nil
-}
-
-PatternArgs <- '(' _ patterns:(p:Pattern Sep { return p, nil })* last:Pattern? _ ')' {
-  return sliceOfAppend[Pattern](patterns, last), nil
-}
-
-VariablePattern <- name:Id {
-  return VariablePattern{Name: name.(string)}, nil
-}
-
-MatchToken <- "match" !WordChar
+CaseToken <- "case" !WordChar
 
 Assert <- AssertToken message:MessageArgs? _ block:Block {
   var msg Node

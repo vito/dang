@@ -1,5 +1,0 @@
-# This should fail: match cases have incompatible types
-pub result = match (1) {
-  1 => "string"
-  2 => 42
-}

@@ -58,6 +58,10 @@
         "named": true
       },
       {
+        "type": "case",
+        "named": true
+      },
+      {
         "type": "conditional",
         "named": true
       },
@@ -71,10 +75,6 @@
       },
       {
         "type": "for_loop",
-        "named": true
-      },
-      {
-        "type": "match",
         "named": true
       },
       {
@@ -953,6 +953,92 @@
     }
   },
   {
+    "type": "case",
+    "named": true,
+    "fields": {
+      "clause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "case_clause",
+            "named": true
+          }
+        ]
+      },
+      "cs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "case_clause",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "case_clause",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "case_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "case_clause",
+    "named": true,
+    "fields": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "class",
     "named": true,
     "fields": {
@@ -1062,32 +1148,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "constructor_pattern",
-    "named": true,
-    "fields": {
-      "args": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "pattern_args",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "upper_id",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -2257,22 +2317,6 @@
     }
   },
   {
-    "type": "literal_pattern",
-    "named": true,
-    "fields": {
-      "lit": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "literal",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "logical_and_expr",
     "named": true,
     "fields": {
@@ -2366,92 +2410,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "match",
-    "named": true,
-    "fields": {
-      "cs": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "match_case",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      },
-      "expr": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "match_case",
-            "named": true
-          }
-        ]
-      },
-      "m": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "match_case",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "match_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "match_case",
-    "named": true,
-    "fields": {
-      "expr": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      },
-      "pattern": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "pattern",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -2738,73 +2696,6 @@
         "types": [
           {
             "type": "form",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "pattern",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "constructor_pattern",
-          "named": true
-        },
-        {
-          "type": "literal_pattern",
-          "named": true
-        },
-        {
-          "type": "variable_pattern",
-          "named": true
-        },
-        {
-          "type": "wildcard_pattern",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "pattern_args",
-    "named": true,
-    "fields": {
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "pattern",
-            "named": true
-          }
-        ]
-      },
-      "p": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "pattern",
-            "named": true
-          }
-        ]
-      },
-      "patterns": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "pattern",
-            "named": true
-          },
-          {
-            "type": "sep",
             "named": true
           }
         ]
@@ -3825,22 +3716,6 @@
     }
   },
   {
-    "type": "variable_pattern",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "id",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "visibility",
     "named": true,
     "fields": {},
@@ -3972,6 +3847,10 @@
     "named": true
   },
   {
+    "type": "case_token",
+    "named": true
+  },
+  {
     "type": "colon_token",
     "named": true
   },
@@ -4081,10 +3960,6 @@
     "named": true
   },
   {
-    "type": "match_token",
-    "named": true
-  },
-  {
     "type": "non_zero_decimal_digit",
     "named": true
   },
@@ -4130,10 +4005,6 @@
   },
   {
     "type": "upper_token",
-    "named": true
-  },
-  {
-    "type": "wildcard_pattern",
     "named": true
   },
   {
