@@ -136,13 +136,11 @@ func (c *FunCall) inferBlockArg(ctx context.Context, env hm.Env, fresh hm.Freshe
 	}
 
 	// Set expected parameter types on the block arg
-	c.BlockArg.ExpectedParamTypes = make([]hm.Type, len(c.BlockArg.Args))
-	for i := range c.BlockArg.Args {
-		if i < len(expectedArgRecord.Fields) {
-			expectedField := expectedArgRecord.Fields[i]
-			expectedType, _ := expectedField.Value.Type()
-			c.BlockArg.ExpectedParamTypes[i] = expectedType
-		}
+	c.BlockArg.ExpectedParamTypes = make([]hm.Type, len(expectedArgRecord.Fields))
+	for i := range expectedArgRecord.Fields {
+		expectedField := expectedArgRecord.Fields[i]
+		expectedType, _ := expectedField.Value.Type()
+		c.BlockArg.ExpectedParamTypes[i] = expectedType
 	}
 
 	// Set expected return type on the block arg
@@ -2154,11 +2152,20 @@ func (b *BlockArg) GetSourceLocation() *SourceLocation { return b.Loc }
 
 func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
+		// Check if block has too many parameters
+		if len(b.Args) > len(b.ExpectedParamTypes) {
+			return nil, NewInferError(
+				fmt.Errorf("block has %d parameters but expected at most %d",
+					len(b.Args), len(b.ExpectedParamTypes)),
+				b,
+			)
+		}
+
 		// Clone environment for closure semantics
 		newEnv := env.Clone()
 		b.InferredScope = newEnv.(Env)
 
-		// Add parameters to environment with expected types
+		// Add user-provided parameters to environment with expected types
 		argSchemes := []Keyed[*hm.Scheme]{}
 		for i, arg := range b.Args {
 			var paramType hm.Type
@@ -2174,6 +2181,18 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			newEnv.Add(arg.Name.Name, hm.NewScheme(nil, paramType))
 			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
 				Key:   arg.Name.Name,
+				Value: hm.NewScheme(nil, paramType),
+			})
+		}
+
+		// Add any remaining expected parameters to the function type signature
+		// but NOT to the environment (they will be ignored by the block)
+		for i := len(b.Args); i < len(b.ExpectedParamTypes); i++ {
+			paramType := b.ExpectedParamTypes[i]
+			// Generate a parameter name for the type signature
+			paramName := fmt.Sprintf("_unused%d", i)
+			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
+				Key:   paramName,
 				Value: hm.NewScheme(nil, paramType),
 			})
 		}
@@ -2209,10 +2228,16 @@ func (b *BlockArg) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, fmt.Errorf("BlockArg.Eval: function type not inferred")
 		}
 
-		// Create a function value similar to FunctionBase
-		argNames := make([]string, len(b.Args))
-		for i, arg := range b.Args {
-			argNames[i] = arg.Name.Name
+		// Extract all parameter names from the inferred function type
+		// This includes both user-provided and unused parameters
+		recordType, ok := b.Inferred.Arg().(*RecordType)
+		if !ok {
+			return nil, fmt.Errorf("BlockArg.Eval: expected RecordType for function arguments")
+		}
+
+		argNames := make([]string, len(recordType.Fields))
+		for i, field := range recordType.Fields {
+			argNames[i] = field.Key
 		}
 
 		return FunctionValue{
