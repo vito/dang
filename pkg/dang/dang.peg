@@ -577,7 +577,6 @@ MultiplicativeExpr <- left:(MultiplicativeExpr / Term) _ op:MultiplicativeOp _ r
 MultiplicativeOp <- "*" { return "*", nil } / "/" { return "/", nil } / "%" { return "%", nil }
 
 DoubleInterroToken <- "??"
-ReopenToken <- "<<"
 
 DotToken <- '.'
 
@@ -930,14 +929,6 @@ TypeHint <- expr:Term _ DoubleColonToken _ type_:Type {
 }
 
 DoubleColonToken <- "::"
-
-Reopen <- name:Id _ ReopenToken _ b:Block {
-  return &Reopen{
-    Name: name.(string),
-    Block: b.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
 
 DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken _ locations:DirectiveLocations {
   var argTypes []*SlotDecl
