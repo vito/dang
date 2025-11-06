@@ -1481,7 +1481,8 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, err
 			}
 
-			if _, err := hm.Assignable(elseType, thenType); err != nil {
+			thenSubs, err := hm.Assignable(elseType, thenType)
+			if err != nil {
 				// Point to the specific else block for better error targeting
 				var errorNode Node = elseBlock
 				if len(elseBlock.Forms) > 0 {
@@ -1489,6 +1490,10 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				}
 				return nil, NewInferError(err, errorNode)
 			}
+
+			// Propagate substitutions backwards to the 'then'
+			thenType = thenType.Apply(thenSubs).(hm.Type)
+			c.Then.SetInferredType(thenType)
 		}
 
 		return thenType, nil

@@ -1,0 +1,16 @@
+type Foo {
+  pub field: Int!
+}
+
+let foos: [Foo!]! = [Foo(1), Foo(2), Foo(3)]
+
+let conditionaled =
+  if (false) {
+    []
+  } else {
+    foos.map { foo -> Foo(foo.field * 2) }
+  }
+
+assert { conditionaled.map { x -> x.field } == [2, 4, 6] }
+
+print("Conditional inference tests passed!")
