@@ -15,7 +15,7 @@
   (break_token)
   (continue_token)
   (in_token)
-  (match_token)
+  (case_token)
   (assert_token)
   (directive_token)
   (on_token)

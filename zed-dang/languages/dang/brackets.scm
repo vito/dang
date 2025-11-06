@@ -29,6 +29,6 @@
   (immediate_paren) @open
   ")" @close)
 
-(match
+(case
   "{" @open
   "}" @close)
