@@ -26,7 +26,9 @@ func (c *Case) ReferencedSymbols() []string {
 	symbols = append(symbols, c.Expr.ReferencedSymbols()...)
 	// Add symbols from clause expressions
 	for _, clause := range c.Clauses {
-		symbols = append(symbols, clause.Value.ReferencedSymbols()...)
+		if clause.Value != nil {
+			symbols = append(symbols, clause.Value.ReferencedSymbols()...)
+		}
 		symbols = append(symbols, clause.Expr.ReferencedSymbols()...)
 	}
 	return symbols
@@ -49,16 +51,19 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 		var resultType hm.Type
 		for i, clause := range c.Clauses {
-			// Infer the value type and check it's compatible with the expression
-			valueType, err := clause.Value.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
+			// For else clauses, skip value type checking
+			if !clause.IsElse {
+				// Infer the value type and check it's compatible with the expression
+				valueType, err := clause.Value.Infer(ctx, env, fresh)
+				if err != nil {
+					return nil, err
+				}
 
-			// Check that the value type is assignable to the expression type
-			_, err = hm.Assignable(valueType, exprType)
-			if err != nil {
-				return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause)
+				// Check that the value type is assignable to the expression type
+				_, err = hm.Assignable(valueType, exprType)
+				if err != nil {
+					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause)
+				}
 			}
 
 			// Infer the result type
@@ -90,7 +95,9 @@ func (c *Case) Walk(fn func(Node) bool) {
 	}
 	c.Expr.Walk(fn)
 	for _, clause := range c.Clauses {
-		clause.Value.Walk(fn)
+		if clause.Value != nil {
+			clause.Value.Walk(fn)
+		}
 		clause.Expr.Walk(fn)
 	}
 }
@@ -105,6 +112,11 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		// Try each clause in order
 		for i, clause := range c.Clauses {
+			// Else clauses always match
+			if clause.IsElse {
+				return EvalNode(ctx, env, clause.Expr)
+			}
+
 			// Evaluate the clause value
 			clauseVal, err := EvalNode(ctx, env, clause.Value)
 			if err != nil {
@@ -125,9 +137,10 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 // CaseClause represents a single clause in a case expression
 type CaseClause struct {
 	InferredTypeHolder
-	Value Node
-	Expr  Node
-	Loc   *SourceLocation
+	Value  Node
+	Expr   Node
+	IsElse bool // true if this is an else clause
+	Loc    *SourceLocation
 }
 
 var _ SourceLocatable = (*CaseClause)(nil)

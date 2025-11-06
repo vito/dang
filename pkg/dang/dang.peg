@@ -860,10 +860,19 @@ Case <- CaseToken _ operand:('(' _ expr:Form _ ')' { return expr, nil })? _ '{' 
   }, nil
 }
 
-CaseClause <- value:Form _ "=>" _ expr:Form {
+CaseClause <- ElseToken _ ArrowToken _ expr:Form {
+  // else => ... creates a clause that always matches
+  return &CaseClause{
+    Value: nil, // Value is not used for else clauses
+    Expr: expr.(Node),
+    IsElse: true,
+    Loc: c.Loc(),
+  }, nil
+} / value:Form _ ArrowToken _ expr:Form {
   return &CaseClause{
     Value: value.(Node),
     Expr: expr.(Node),
+    IsElse: false,
     Loc: c.Loc(),
   }, nil
 }

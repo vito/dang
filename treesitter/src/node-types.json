@@ -580,11 +580,6 @@
     }
   },
   {
-    "type": "arrow_token",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "assert",
     "named": true,
     "fields": {
@@ -1042,7 +1037,7 @@
       },
       "value": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "form",
@@ -1050,6 +1045,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
+          "named": true
+        },
+        {
+          "type": "else_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3813,10 +3822,6 @@
     "named": false
   },
   {
-    "type": "=>",
-    "named": false
-  },
-  {
     "type": ">",
     "named": false
   },
@@ -3842,6 +3847,10 @@
   },
   {
     "type": "and_token",
+    "named": true
+  },
+  {
+    "type": "arrow_token",
     "named": true
   },
   {

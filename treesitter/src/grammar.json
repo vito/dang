@@ -3909,27 +3909,53 @@
       ]
     },
     "case_clause": {
-      "type": "SEQ",
+      "type": "CHOICE",
       "members": [
         {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "else_token"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "arrow_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "expr",
+              "content": {
+                "type": "SYMBOL",
+                "name": "form"
+              }
+            }
+          ]
         },
         {
-          "type": "STRING",
-          "value": "=\u003e"
-        },
-        {
-          "type": "FIELD",
-          "name": "expr",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "value",
+              "content": {
+                "type": "SYMBOL",
+                "name": "form"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "arrow_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "expr",
+              "content": {
+                "type": "SYMBOL",
+                "name": "form"
+              }
+            }
+          ]
         }
       ]
     },
