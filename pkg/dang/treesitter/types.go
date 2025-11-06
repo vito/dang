@@ -8,12 +8,13 @@ import (
 )
 
 type Grammar struct {
-	Name       string                      `json:"name"`
-	Word       RuleName                    `json:"word"`
-	Rules      *OrderedMap[RuleName, Rule] `json:"rules"`
-	Extras     []Rule                      `json:"extras"`
-	Supertypes []string                    `json:"supertypes"`
-	Conflicts  [][]RuleName                `json:"conflicts,omitempty"`
+	Name        string                      `json:"name"`
+	Word        RuleName                    `json:"word"`
+	Rules       *OrderedMap[RuleName, Rule] `json:"rules"`
+	Extras      []Rule                      `json:"extras,omitempty"`
+	Supertypes  []string                    `json:"supertypes,omitempty"`
+	Conflicts   [][]RuleName                `json:"conflicts,omitempty"`
+	Precedences [][]Rule                    `json:"precedences,omitempty"`
 }
 
 func NewGrammar(name string) Grammar {

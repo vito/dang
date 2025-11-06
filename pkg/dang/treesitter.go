@@ -30,6 +30,22 @@ func TreesitterGrammar() treesitter.Grammar {
 	ts.Conflicts = [][]treesitter.RuleName{
 		{treesitter.Name("Float"), treesitter.Name("Int")},
 	}
+	ts.Precedences = [][]treesitter.Rule{
+		{
+			// Disambiguate block args:
+			// 		{ x }         # x is body
+			//    { x -> y }    # x is arg
+			//    { x, y -> z } # x, y are args
+			{
+				Type: treesitter.RuleTypeSymbol,
+				Name: "symbol",
+			},
+			{
+				Type: treesitter.RuleTypeSymbol,
+				Name: "auto_call_symbol",
+			},
+		},
+	}
 
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i

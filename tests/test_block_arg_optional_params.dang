@@ -1,0 +1,22 @@
+# Test that block args can omit parameters if they're not needed
+
+# Map with constant value - parameters are ignored
+pub ones: [String!]! = [1, 2, 3].map { "whee" }
+assert { ones[0] == "whee" }
+assert { ones[1] == "whee" }
+assert { ones[2] == "whee" }
+
+# Filter that always returns true - parameter ignored
+pub numbers: [Int!]! = [1, 2, 3]
+pub all: [Int!]! = numbers.filter { true }
+assert { all == [1, 2, 3] }
+
+# Filter that always returns false - parameter ignored
+pub none: [Int!]! = numbers.filter { false }
+assert { none == [] }
+
+# Mix with parameter usage - make sure we didn't break anything
+pub doubled: [Int!]! = numbers.map { x -> x * 2 }
+assert { doubled == [2, 4, 6] }
+
+print("Block arg optional params tests passed!")

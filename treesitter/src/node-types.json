@@ -696,24 +696,24 @@
       },
       "params": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "block_params",
             "named": true
           }
         ]
+      },
+      "params_and_arrow": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arrow_token",
+            "named": true
+          }
+        ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "arrow_token",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -788,7 +788,7 @@
     "fields": {
       "last": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "block_param",
@@ -798,16 +798,6 @@
       },
       "p": {
         "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "block_param",
-            "named": true
-          }
-        ]
-      },
-      "param": {
-        "multiple": false,
         "required": false,
         "types": [
           {

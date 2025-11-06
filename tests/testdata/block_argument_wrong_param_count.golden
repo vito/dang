@@ -1,10 +1,10 @@
-[1m[31mError:[0m block argument has type (x: Int!, y: a): Int! but expected (item: Int!): b
+[1m[31mError:[0m block has 2 parameters but expected at most 1
   [2m[34m--> errors/block_argument_wrong_param_count.dang:6:34[0m
  [2m    |[0m
  [2m  4 | [0m
  [2m  5 | # ERROR: block has 2 parameters but expected 1[0m
- [2m[34m[1m  6 | [0mpub result: [Int!]! = numbers.map { (x, y) -> x + y }
-[2m                                        [31m^^^^^^^^^^^^^^^^^^^^[0m
+ [2m[34m[1m  6 | [0mpub result: [Int!]! = numbers.map { x, y -> x + y }
+[2m                                        [31m^^^^^^^^^^^^^^^^^^[0m
  [2m  7 | [0m
  [2m    |[0m
 

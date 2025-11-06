@@ -799,18 +799,20 @@ InToken <- "in" !WordChar
 
 ArrowToken <- "->"
 
-BlockArg <- _ '{' _ params:BlockParams _ ArrowToken _ body:Form _ '}' {
+BlockArg <- _ '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ body:Form _ '}' {
+  var args []*SlotDecl
+  if paramsAndArrow != nil {
+    args = paramsAndArrow.([]*SlotDecl)
+  }
   return &BlockArg{
-    Args: params.([]*SlotDecl),
+    Args: args,
     BodyNode: body.(Node),
     Loc: c.Loc(),
   }, nil
 }
 
-BlockParams <- '(' _ params:(p:BlockParam Sep { return p, nil })* last:BlockParam? _ ')' {
+BlockParams <- params:(p:BlockParam Sep { return p, nil })* last:BlockParam {
   return sliceOfAppend[*SlotDecl](params, last), nil
-} / param:BlockParam {
-  return []*SlotDecl{param.(*SlotDecl)}, nil
 }
 
 BlockParam <- name:Symbol {
