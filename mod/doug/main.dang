@@ -5,8 +5,43 @@ A Dagger-native sandboxed coding agent.
 let maxResponseLength = 30000
 let workspacePath = "/workspace"
 
+enum TODOState {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+type TODO {
+  pub state: TODOState!
+  pub description: String!
+
+  pub encode: String! {
+    toString(state) + ":" + description
+  }
+
+  pub display: String! {
+    match (state) {
+      PENDING     -> "□ \u001b[37m" + description + "\u001b[0m\n"
+      IN_PROGRESS -> "□ \u001b[33m" + description + "\u001b[0m\n"
+      COMPLETED   -> "■ \u001b[32m\u001b[9m" + description + "\u001b[0m\n"
+    }
+  }
+}
+
 type Doug {
   let source: Directory! @defaultPath(path: "/")
+
+  # TODO: why can't i put this up top?
+  let parseTODO(todo: String!): TODO! {
+    let parts = todo.split(":", limit: 2)
+    let state: TODOState = match (parts[1]) {
+      "pending" -> TODOState.PENDING
+      "pending" -> TODOState.PENDING
+      "in_progress" -> TODOState.IN_PROGRESS
+      "completed" -> TODOState.COMPLETED
+    }
+    TODO(state ?? TODOState.PENDING, parts[0] ?? "")
+  }
 
   """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.
@@ -26,21 +61,21 @@ type Doug {
   Returns a Doug coding agent
   """
   pub agent(base: LLM!): LLM! {
-    base.
-      withEnv(
-        base.env.
-          withCurrentModule.
-          withStringInput("TODOs", "", "Your TODO list")).
-      withSystemPrompt({
+    base
+      .withEnv(
+        base.env
+          .withCurrentModule
+          .withStringInput("TODOs", "", "Your TODO list"))
+      .withSystemPrompt({
         let promptsDir = currentModule.source.directory("prompts/system/")
         let providerFile = base.provider + ".txt"
-        if (promptsDir.entries.contains(providerFile)) {
+        if (promptsDir.exists(providerFile)) {
           promptsDir.file(providerFile).contents
         } else {
           promptsDir.file("doug.txt").contents
         }
-      }).
-      withSystemPrompt(reminderPrompt(base.env.workspace))
+      })
+      .withSystemPrompt(reminderPrompt(base.env.workspace))
   }
 
   """
@@ -70,23 +105,19 @@ type Doug {
     """
     limit: Int! = 2000
   ): String! {
-    let fileContents = source.file(normalize(filePath)).contents(
-      offsetLines: offset,
-      limitLines: limit
-    )
+    let fileContents = source
+      .file(normalize(filePath))
+      .contents(offsetLines: offset, limitLines: limit)
+
     if (fileContents == "") {
       "WARNING: File contents are empty."
     } else {
-      # fileContents
-      #   .split("\n", 0)
-      #   .map { (i, x) -> toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
-      #   .join("\n")
-      let numbered = ""
-      for (i, line in fileContents.split("\n", 0)) {
-        # TODO: template
-        numbered += toJSON(offset+i+1).padLeft(6) + "→" + line + "\n"
-      }
-      numbered.trimSuffix("\n")
+      fileContents
+        .split("\n")
+        .map { line, idx ->
+          toJSON(offset+idx+1).padLeft(6) + "→" + line + "\n"
+        }
+        .join("\n")
     }
   }
 
@@ -157,12 +188,12 @@ type Doug {
     """
     replaceAll: Boolean! = false
   ): Changeset! {
-    let normalizedPath = normalize(filePath)
-    source.withFile(
-      normalizedPath,
-      source.file(normalizedPath).
-        withReplaced(oldString, newString, all: replaceAll),
-    ).changes(source)
+    filePath = normalize(filePath)
+    let replaced = source.file(filePath)
+      .withReplaced(oldString, newString, all: replaceAll)
+    source
+      .withFile(filePath, replaced)
+      .changes(source)
   }
 
   """
@@ -288,18 +319,13 @@ type Doug {
     """
     pattern: String!
   ): Void {
-    let matches = source.glob(pattern)
-    let anyMatched = false
-    for (path in matches) {
-      if (path.hasPrefix(".") or path.contains("/.")) {
-        # Filter out hidden files
-        continue
-      }
-      anyMatched = true
-      print(path)
+    let matches = source.glob(pattern).reject { path ->
+      path.hasPrefix(".") or path.contains("/.")
     }
-    if (!anyMatched) {
+    if (matches.isEmpty) {
       print("No files found.")
+    } else {
+      print(matches.join("\n"))
     }
   }
 
@@ -382,12 +408,12 @@ type Doug {
     """
     limit: Int! = 1000
   ): String! {
-    let normalizedPaths = paths.map { p -> normalize(p) }
+    paths = paths.map { p -> normalize(p) }
 
     let matches = source.search(
       pattern: pattern,
       literal: literalText,
-      paths: normalizedPaths,
+      paths: paths,
       globs: glob,
       multiline: multiline,
       dotall: multiline,
@@ -432,12 +458,12 @@ type Doug {
     """
     prompt: String!
   ): String! {
-    llm.
-      withEnv(currentEnv.withoutOutputs).
-      withBlockedFunction("Doug", "research").
-      withBlockedFunction("Doug", "rabbithole").
-      withoutDefaultSystemPrompt.
-      withSystemPrompt(
+    llm
+      .withEnv(currentEnv.withoutOutputs)
+      .withBlockedFunction("Doug", "research")
+      .withBlockedFunction("Doug", "rabbithole")
+      .withoutDefaultSystemPrompt
+      .withSystemPrompt(
         """
         Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
 
@@ -447,11 +473,11 @@ type Doug {
         - Your final response should always share relevant file names and code snippets. Paths should always be relative to the project root.
         - You MUST avoid using emojis.
         """
-      ).
-      withSystemPrompt(reminderPrompt(workspace: source)).
-      withPrompt(prompt).
-      loop.
-      lastReply
+      )
+      .withSystemPrompt(reminderPrompt(workspace: source))
+      .withPrompt(prompt)
+      .loop
+      .lastReply
   }
 
   """
@@ -475,12 +501,12 @@ type Doug {
   ): Env! {
     let reminderPromptText = reminderPrompt(workspace: source)
 
-    let result = llm.
-      withEnv(currentEnv.withoutOutputs).
-      withBlockedFunction("Doug", "research").
-      withBlockedFunction("Doug", "rabbithole").
-      withoutDefaultSystemPrompt.
-      withSystemPrompt(
+    let result = llm
+      .withEnv(currentEnv.withoutOutputs)
+      .withBlockedFunction("Doug", "research")
+      .withBlockedFunction("Doug", "rabbithole")
+      .withoutDefaultSystemPrompt
+      .withSystemPrompt(
         """
         Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
 
@@ -490,10 +516,10 @@ type Doug {
         read the rest of the report.
         - You MUST avoid using emojis.
         """
-      ).
-      withSystemPrompt(reminderPromptText).
-      withPrompt(prompt).
-      loop
+      )
+      .withSystemPrompt(reminderPromptText)
+      .withPrompt(prompt)
+      .loop
 
     # show the reply, which will be tl;dred
     print(result.lastReply)
@@ -531,64 +557,55 @@ type Doug {
     pending: [String!]! = []
     inProgress: [String!]! = []
     completed: [String!]! = []
+    reset: Boolean! = false
   ): Env! {
-    # Try to get current TODOs, default to empty string if not found
-    # Since we don't have try/catch, we'll assume it returns empty string on failure
-    let currentTodos = currentEnv.input("TODOs").asString
+    let currentTodos =
+      if (reset) {
+        []
+      } else {
+        currentEnv.input("TODOs").asString.split("\n")
+          .map { todo -> parseTODO(todo) }
+          .reject { todo -> todo.description == "" }
+      }
 
-    let existingCompleted = [] :: [String!]!
-    let existingInProgress = [] :: [String!]!
-    let existingPending = [] :: [String!]!
 
-    # Parse current TODOs from "state:description" format
-    let currentTodoLines = currentTodos.split("\n")
-
-    # Build list of all descriptions being updated
+    let currentDescriptions = currentTodos.map { todo -> todo.description }
     let updatingDescriptions = pending + inProgress + completed
 
-    for (todo in currentTodoLines) {
-      if (todo != "") {
-        # Split on first colon only (limit=2) to handle descriptions with colons
-        let parts = todo.split(":", limit: 2)
-        let state = parts[0] ?? "pending"
-        let description = parts[1] ?? todo
-
-        # Only keep existing TODOs that aren't being updated
-        if (!updatingDescriptions.contains(description)) {
-          if (state == "completed") {
-            existingCompleted += [description]
-          } else if (state == "in_progress") {
-            existingInProgress += [description]
-          } else {
-            existingPending = existingPending + [description]
-          }
-        }
+    let pendingTODOs: [TODO!]! = []
+    let inProgressTODOs: [TODO!]! = []
+    let doneTODOs: [TODO!]! = []
+    for (todo in currentTodos) {
+      if (updatingDescriptions.contains(todo.description)) {
+        # Skip TODOs that are being updated
+        continue
+      }
+      # Separate them so we can append to each state
+      match (todo.state) {
+        PENDING -> { pendingTODOs += [todo] }
+        IN_PROGRESS -> { inProgressTODOs += [todo] }
+        COMPLETED -> { doneTODOs += [todo] }
       }
     }
 
-    let formattedTodos = ""
-    let encodedTodos = ""
+    # Append all the new/changed items to the unchanged ones
+    pendingTODOs += pending.map { t -> TODO(TODOState.PENDING, t) }
+    inProgressTODOs += inProgress.map { t -> TODO(TODOState.IN_PROGRESS, t) }
+    doneTODOs += completed.map { t -> TODO(TODOState.COMPLETED, t) }
 
-    for (todo in existingCompleted + completed) {
-      encodedTodos += "completed:" + todo + "\n"
-      formattedTodos += "■ \u001b[32m\u001b[9m" + todo + "\u001b[0m\n"
-    }
-    for (todo in existingInProgress + inProgress) {
-      encodedTodos += "in_progress:" + todo + "\n"
-      formattedTodos += "□ \u001b[33m" + todo + "\u001b[0m\n"
-    }
-    for (todo in existingPending + pending) {
-      encodedTodos += "pending:" + todo + "\n"
-      formattedTodos += "□ \u001b[37m" + todo + "\u001b[0m\n"
-    }
+    # Collect all TODOs
+    let todos = doneTODOs + inProgressTODOs + pendingTODOs
 
-    print(formattedTodos)
+    # Display to the user (and LLM)
+    todos.map { t -> print(t.display) }
 
+    # Persist to the env
+    let encodedTodos = todos.map { t -> t.encode }.join("\n")
     currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
   }
 
   let reminderPrompt(workspace: Directory!): String! {
-    let baseSegment =
+    let prompt =
       """
       # System Reminder
 
@@ -605,26 +622,28 @@ type Doug {
     # Look for context files
     let contextSegment = ""
     for (file in contextFiles) {
-      if (entries.contains(file)) {
-        let fileContents = workspace.file(file).contents
-        if (fileContents != "") {
-          contextSegment = """
-
-# Project-Specific Context
-
-Make sure to follow the instructions in the context below:
-
-<project-context>
-""" + fileContents + """
-</project-context>
-
-These instructions OVERRIDE any default behavior.
-"""
-        }
+      if (!entries.contains(file)) {
+        continue
       }
+      let fileContents = workspace.file(file).contents
+      if (fileContents == "") {
+        continue
+      }
+      prompt += "\n"
+      prompt += """
+        # Project-Specific Context
+
+        Make sure to follow the instructions in the context below:
+
+        <project-context>
+        """ + fileContents + """
+        </project-context>
+
+        These instructions OVERRIDE any default behavior.
+      """
     }
 
-    baseSegment + contextSegment
+    prompt
   }
 
   let normalize(path: String!): String! {
