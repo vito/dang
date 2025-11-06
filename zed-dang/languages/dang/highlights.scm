@@ -74,32 +74,32 @@
 
 ;; Slot definitions
 (type_and_block_slot
-  (id_symbol) @function.method)
+  (symbol) @function.method)
 (type_and_args_and_block_slot
-  (id_symbol) @function.method)
+  (symbol) @function.method)
 (type_and_value_slot
-  (id_symbol) @function.method)
+  (symbol) @function.method)
 (value_only_slot
-  (id_symbol) @function.method)
+  (symbol) @function.method)
 (type_only_slot
-  (id_symbol) @function.method)
+  (symbol) @function.method)
 (type_only_fun_slot
-  (id_symbol) @function.method)
+  (symbol) @function.method)
 
 (arg_with_block_default
-  (id_symbol) @variable.parameter)
+  (symbol) @variable.parameter)
 (arg_with_type
-  (id_symbol) @variable.parameter)
+  (symbol) @variable.parameter)
 (arg_with_default
-  (id_symbol) @variable.parameter)
+  (symbol) @variable.parameter)
 
 ;; Class definitions
-(class (id_symbol) @type)
-(implements (id_symbol) @type)
-(interface (id_symbol) @type)
-(enum (id_symbol) @type)
+(class (symbol) @type)
+(implements (symbol) @type)
+(interface (symbol) @type)
+(enum (symbol) @type)
 (enum (caps_symbol) @property)
-(scalar (id_symbol) @type)
+(scalar (symbol) @type)
 
 ;; Special highlighting for print function
 (symbol) @variable

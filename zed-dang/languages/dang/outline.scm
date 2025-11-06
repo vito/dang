@@ -1,6 +1,6 @@
 ;; Type declarations
 (class
-  (id_symbol) @name) @item
+  (symbol) @name) @item
 
 ;; Directive declarations
 (directive_decl
@@ -9,20 +9,20 @@
 ;; Slot declarations (functions/methods/fields)
 ;; Function slots with arguments and body
 (type_and_args_and_block_slot
-  (id_symbol) @name) @item
+  (symbol) @name) @item
 
 ;; Function slots with body (zero-arity functions)
 (type_and_block_slot
-  (id_symbol) @name) @item
+  (symbol) @name) @item
 
 ;; Field slots with value
 (type_and_value_slot
-  (id_symbol) @name) @item
+  (symbol) @name) @item
 
 ;; Field slots with just value (type inferred)
 (value_only_slot
-  (id_symbol) @name) @item
+  (symbol) @name) @item
 
 ;; Field slots with just type (no value)
 (type_only_slot
-  (id_symbol) @name) @item
+  (symbol) @name) @item

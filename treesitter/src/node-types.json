@@ -407,7 +407,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -453,7 +453,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -513,7 +513,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -620,6 +620,22 @@
     }
   },
   {
+    "type": "auto_call_symbol",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "bang_token",
     "named": true,
     "fields": {}
@@ -709,7 +725,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -735,7 +751,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -879,7 +895,7 @@
         "required": true,
         "types": [
           {
-            "type": "id",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -951,7 +967,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -1378,7 +1394,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -1860,22 +1876,6 @@
     }
   },
   {
-    "type": "id_symbol",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "word_token",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "implements",
     "named": true,
     "fields": {
@@ -1884,7 +1884,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -1894,7 +1894,7 @@
         "required": false,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -1908,7 +1908,7 @@
             "named": true
           },
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -2064,7 +2064,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -2913,7 +2913,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3095,11 +3095,11 @@
       "required": true,
       "types": [
         {
-          "type": "call",
+          "type": "auto_call_symbol",
           "named": true
         },
         {
-          "type": "symbol",
+          "type": "call",
           "named": true
         }
       ]
@@ -3211,7 +3211,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3287,7 +3287,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3363,7 +3363,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3429,7 +3429,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3545,7 +3545,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3611,7 +3611,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
@@ -3713,7 +3713,7 @@
         "required": true,
         "types": [
           {
-            "type": "id_symbol",
+            "type": "symbol",
             "named": true
           }
         ]
