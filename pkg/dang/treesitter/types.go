@@ -12,6 +12,7 @@ type Grammar struct {
 	Word        RuleName                    `json:"word"`
 	Rules       *OrderedMap[RuleName, Rule] `json:"rules"`
 	Extras      []Rule                      `json:"extras,omitempty"`
+	Inline      []string                    `json:"inline,omitempty"`
 	Supertypes  []string                    `json:"supertypes,omitempty"`
 	Conflicts   [][]RuleName                `json:"conflicts,omitempty"`
 	Precedences [][]Rule                    `json:"precedences,omitempty"`

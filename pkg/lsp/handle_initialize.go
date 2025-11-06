@@ -69,7 +69,8 @@ func findDaggerModule(startPath string) string {
 		}
 
 		// Stop searching if we're in a testdata directory
-		if filepath.Base(dir) == "testdata" {
+		if filepath.Base(dir) == "tests" {
+			// TODO: hacky
 			return ""
 		}
 

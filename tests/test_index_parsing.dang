@@ -1,0 +1,7 @@
+# test that val\n[val] doesn't parse as val[val]
+pub singleton(val: a): [a] {
+  val
+  [val]
+}
+
+assert { singleton(42) == [42] }

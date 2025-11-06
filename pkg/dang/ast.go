@@ -250,6 +250,7 @@ func valuesEqual(left, right Value) bool {
 	}
 
 	// Different types or unsupported comparison
+	// TODO: object comparison?
 	return false
 }
 

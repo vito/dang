@@ -65,8 +65,8 @@ ParenForm <- '(' _ expr:Form _ ')' {
 }
 
 // Handle Symbol followed by optional ()
-SymbolOrCall <- Call / AutoCallSymbol
-Call <- name:Symbol args:ArgValues blockArg:BlockArg? {
+SymbolOrCall <- Call / SymbolBlock / AutoCallSymbol
+Call <- name:Symbol args:ArgValues blockArg:(_ b:BlockArg { return b, nil })? {
   // Symbol followed by () - create FunCall
   argRecord := Record(args.([]Keyed[Node]))
 
@@ -82,6 +82,14 @@ Call <- name:Symbol args:ArgValues blockArg:BlockArg? {
     Loc: c.Loc(),
   }, nil
 }
+SymbolBlock <- name:Symbol _ blockArg:BlockArg {
+  return &FunCall{
+    Fun: name.(*Symbol),
+    Args: nil,
+    BlockArg: blockArg.(*BlockArg),
+    Loc: c.Loc(),
+  }, nil
+}
 AutoCallSymbol <- name:Id {
   return &Symbol{
     Name: name.(string),
@@ -91,7 +99,7 @@ AutoCallSymbol <- name:Id {
 }
 
 // Handle Select followed by optional (), or ObjectSelection
-SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args:ArgValues? blockArg:BlockArg?) {
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
   switch sel := selection.(type) {
   case *ObjectSelection:
     // Object selection: obj.{field1, field2}
@@ -139,7 +147,7 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
 }
 
 // Handle indexing operations like foo[0]
-IndexOrCall <- left:Term _ '[' _ index:Form _ ']' args:ArgValues? {
+IndexOrCall <- left:Term ImmediateBracket _ index:Form _ ']' args:ArgValues? {
   if args != nil {
     // Index followed by () - create FunCall
     argRecord := Record(args.([]Keyed[Node]))
@@ -162,6 +170,7 @@ IndexOrCall <- left:Term _ '[' _ index:Form _ ']' args:ArgValues? {
     }, nil
   }
 }
+ImmediateBracket <- '['
 
 ObjectSelection <- '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}' {
   return &ObjectSelection{
@@ -392,10 +401,11 @@ CapsToken <- [A-Z][A-Z0-9_]* {
   return string(c.text), nil
 }
 
-ArgValues <- '(' _ args:(a:Argument Sep { return a, nil })* last:Argument? _ ')' {
+ImmediateParen <- '('
+ArgValues <- ImmediateParen _ args:(a:Argument Sep { return a, nil })* last:Argument? _ ')' {
   return sliceOfAppend[Keyed[Node]](args, last), nil
 }
-ArgTypes <- '(' _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
+ArgTypes <- ImmediateParen _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
   return sliceOfAppend[*SlotDecl](args, last), nil
 }
 ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
@@ -438,10 +448,14 @@ ArgWithType <- name:Symbol _ ColonToken _ type_:Type _ directives:DirectiveAppli
     Loc: c.Loc(),
   }, nil
 }
-BlockParamDecl <- AmpersandToken name:Symbol _ args:ArgTypes _ ColonToken _ ret:Type {
+BlockParamDecl <- AmpersandToken name:Symbol _ args:ArgTypes? _ ColonToken _ ret:Type {
+  var argTypes []*SlotDecl
+  if args != nil {
+    argTypes = args.([]*SlotDecl)
+  }
   return &SlotDecl{
     Name: name.(*Symbol),
-    Type_: FunTypeNode{args.([]*SlotDecl), ret.(TypeNode)},
+    Type_: FunTypeNode{argTypes, ret.(TypeNode)},
     IsBlockParam: true,
     Loc: c.Loc(),
   }, nil
@@ -607,6 +621,7 @@ Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
     Loc: c.Loc(),
   }, nil
 }
+
 
 HeadersBlock <- '{' _ eles:(e:HeaderSlot Sep { return e, nil })* last:HeaderSlot? _ '}' {
   return &Block{
@@ -799,14 +814,17 @@ InToken <- "in" !WordChar
 
 ArrowToken <- "->"
 
-BlockArg <- _ '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ body:Form _ '}' {
+BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
   var args []*SlotDecl
   if paramsAndArrow != nil {
     args = paramsAndArrow.([]*SlotDecl)
   }
   return &BlockArg{
     Args: args,
-    BodyNode: body.(Node),
+    BodyNode: &Block{
+      Forms: sliceOfPrepend[Node](node, rest),
+      Loc: c.Loc(),
+    },
     Loc: c.Loc(),
   }, nil
 }

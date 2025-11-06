@@ -46,12 +46,12 @@ func registerStdlib() {
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-			
+
 			// If already a string, return as-is
 			if strVal, ok := val.(StringValue); ok {
 				return strVal, nil
 			}
-			
+
 			// Otherwise, serialize to JSON
 			jsonBytes, err := json.Marshal(val)
 			if err != nil {
@@ -303,7 +303,7 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			
+
 			if args.Block == nil {
 				return nil, fmt.Errorf("reject requires a block argument")
 			}
@@ -339,13 +339,16 @@ func registerStdlib() {
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
 				Value: hm.NewScheme(nil, TypeVar('a')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "index",
+				Value: hm.NewScheme(nil, NonNull(IntType)),
 			}),
 			TypeVar('b'),
 		)).
 		Returns(NonNull(ListOf(TypeVar('b')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			
+
 			if args.Block == nil {
 				return nil, fmt.Errorf("map requires a block argument")
 			}
@@ -359,8 +362,8 @@ func registerStdlib() {
 			resultElemType := fnType.ReturnType()
 
 			var result []Value
-			for _, item := range list.Elements {
-				res, err := callFunc(ctx, fn, item)
+			for i, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item, IntValue{i})
 				if err != nil {
 					return nil, fmt.Errorf("map function: %w", err)
 				}
@@ -387,7 +390,7 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			
+
 			if args.Block == nil {
 				return nil, fmt.Errorf("filter requires a block argument")
 			}
@@ -451,7 +454,7 @@ func registerStdlib() {
 		Returns(TypeVar('b')).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			
+
 			if args.Block == nil {
 				return nil, fmt.Errorf("reduce requires a block argument")
 			}
