@@ -564,8 +564,8 @@ type Doug {
         []
       } else {
         currentEnv.input("TODOs").asString.split("\n")
+          .reject { line -> line == "" }
           .map { todo -> parseTODO(todo) }
-          .reject { todo -> todo.description == "" }
       }
 
 

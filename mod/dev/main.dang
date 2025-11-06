@@ -10,16 +10,6 @@ type Dev {
   ])
 
   """
-  GitHub token to use for fetching issue/PR comments
-  """
-  pub githubToken: Secret!
-
-  """
-  Kagi API token for doing research.
-  """
-  pub kagiToken: Secret!
-
-  """
   Start a coding agent with the provided module.
   """
   pub forModule(module: Module!): LLM! {
@@ -29,7 +19,13 @@ type Dev {
   """
   Start a coding agent.
   """
-  pub agent(base: LLM!): LLM! {
+  pub agent(
+    base: LLM!,
+    """
+    Kagi API token for doing research.
+    """
+    kagiToken: Secret
+  ): LLM! {
     let gopls = apko.wolfi(["bash", "go"]).
       withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
       withEnvVariable("GOMODCACHE", "/go/pkg/mod").
@@ -97,7 +93,13 @@ type Dev {
   """
   Run a gh command and return its output.
   """
-  pub github(args: [String!]!): String! {
+  pub github(
+    args: [String!]!,
+    """
+    GitHub token to use for fetching issue/PR comments
+    """
+    githubToken: Secret!,
+  ): String! {
     let ctr = if (githubToken != null) {
       sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
     } else {
