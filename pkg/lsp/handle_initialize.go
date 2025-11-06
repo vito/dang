@@ -69,8 +69,12 @@ func findDaggerModule(startPath string) string {
 		}
 
 		// Stop searching if we're in a testdata directory
-		if filepath.Base(dir) == "tests" {
-			// TODO: hacky
+		notDaggerPath := filepath.Join(dir, ".not-dagger")
+		if _, err := os.Stat(notDaggerPath); err == nil {
+			// Custom marker for e.g. test specimens to explicitly say they're not a
+			// Dagger module
+			//
+			// There's probably a better idea in the future
 			return ""
 		}
 
