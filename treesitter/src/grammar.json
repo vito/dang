@@ -3696,7 +3696,7 @@
       "type": "TOKEN",
       "content": {
         "type": "STRING",
-        "value": "-\u003e"
+        "value": "=\u003e"
       }
     },
     "block_arg": {
@@ -3904,7 +3904,7 @@
         },
         {
           "type": "STRING",
-          "value": "-\u003e"
+          "value": "=\u003e"
         },
         {
           "type": "FIELD",

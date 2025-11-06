@@ -16,7 +16,7 @@ pub none: [Int!]! = numbers.filter { false }
 assert { none == [] }
 
 # Mix with parameter usage - make sure we didn't break anything
-pub doubled: [Int!]! = numbers.map { x -> x * 2 }
+pub doubled: [Int!]! = numbers.map { x => x * 2 }
 assert { doubled == [2, 4, 6] }
 
 print("Block arg optional params tests passed!")

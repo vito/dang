@@ -5720,9 +5720,9 @@ var g = &grammar{
 			pos:  position{line: 815, col: 1, offset: 22347},
 			expr: &litMatcher{
 				pos:        position{line: 815, col: 15, offset: 22361},
-				val:        "->",
+				val:        "=>",
 				ignoreCase: false,
-				want:       "\"->\"",
+				want:       "\"=>\"",
 			},
 			leader:        false,
 			leftRecursive: false,
@@ -6040,9 +6040,9 @@ var g = &grammar{
 						},
 						&litMatcher{
 							pos:        position{line: 853, col: 32, offset: 23278},
-							val:        "->",
+							val:        "=>",
 							ignoreCase: false,
-							want:       "\"->\"",
+							want:       "\"=>\"",
 						},
 						&ruleRefExpr{
 							pos:  position{line: 853, col: 37, offset: 23283},

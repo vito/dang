@@ -79,7 +79,7 @@ type Doug {
     } else {
       # fileContents
       #   .split("\n", 0)
-      #   .map { (i, x) -> toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
+      #   .map { (i, x) => toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
       #   .join("\n")
       let numbered = ""
       for (i, line in fileContents.split("\n", 0)) {
@@ -382,7 +382,7 @@ type Doug {
     """
     limit: Int! = 1000
   ): String! {
-    let normalizedPaths = paths.map { p -> normalize(p) }
+    let normalizedPaths = paths.map { p => normalize(p) }
 
     let matches = source.search(
       pattern: pattern,

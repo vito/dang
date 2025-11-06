@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  4 | [0m
  [2m  5 | # ERROR: cannot use Int! as String! (trying to concatenate string to int)[0m
- [2m[34m[1m  6 | [0mpub result: [String!]! = numbers.map { x -> "value: " + x }
+ [2m[34m[1m  6 | [0mpub result: [String!]! = numbers.map { x => "value: " + x }
 [2m                                                   [31m^^^^^^^^^^^^^[0m
  [2m  7 | [0m
  [2m    |[0m

@@ -7,8 +7,8 @@ pub is_enabled = true
 pub nullable_value = null
 
 # Function definitions
-pub identity = \x -> x
-pub double = \n -> n * 2
+pub identity = \x => x
+pub double = \n => n * 2
 
 # Conditional expressions
 pub status = if is_enabled { "active" } else { "inactive" }
@@ -35,9 +35,9 @@ type ContainerOps {
 
 # Pattern matching (when implemented)
 pub process_result = match status with
-  | "active" -> "System is running"
-  | "inactive" -> "System is stopped"
-  | _ -> "Unknown status"
+  | "active" => "System is running"
+  | "inactive" => "System is stopped"
+  | _ => "Unknown status"
 
 # Lists and records
 pub numbers = [1, 2, 3, 4, 5]

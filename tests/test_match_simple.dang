@@ -2,23 +2,23 @@
 
 # Simple literal matching
 pub result1 = match (1) {
-  1 -> "one"
-  2 -> "two"
-  _ -> "other"
+  1 => "one"
+  2 => "two"
+  _ => "other"
 }
 
 assert { result1 == "one" }
 
 # Variable pattern matching
 pub result2 = match (42) {
-  x -> x
+  x => x
 }
 
 assert { result2 == 42 }
 
 # Wildcard pattern
 pub result3 = match ("hello") {
-  _ -> "matched"
+  _ => "matched"
 }
 
 assert { result3 == "matched" }

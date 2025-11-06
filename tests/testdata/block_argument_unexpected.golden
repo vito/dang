@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  4 | [0m
  [2m  5 | # ERROR: function does not accept a block argument[0m
- [2m[34m[1m  6 | [0mpub result = add(1, 2) { x -> x * 2 }
+ [2m[34m[1m  6 | [0mpub result = add(1, 2) { x => x * 2 }
 [2m                    [31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
  [2m  7 | [0m
  [2m    |[0m

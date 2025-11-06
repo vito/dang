@@ -812,7 +812,7 @@ ForInfiniteLoop <- ForToken _ body:Block {
 ForToken <- "for" !WordChar
 InToken <- "in" !WordChar
 
-ArrowToken <- "->"
+ArrowToken <- "=>"
 
 BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
   var args []*SlotDecl
@@ -850,7 +850,7 @@ Match <- MatchToken _ '(' _ expr:Form _ ')' _ '{' _ cs:(m:MatchCase Sep { return
   }, nil
 }
 
-MatchCase <- pattern:Pattern _ "->" _ expr:Form {
+MatchCase <- pattern:Pattern _ "=>" _ expr:Form {
   return &MatchCase{
     Pattern: pattern.(Pattern),
     Expr: expr.(Node),

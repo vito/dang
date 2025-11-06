@@ -3,4 +3,4 @@
 pub numbers: [Int!]! = [1, 2, 3]
 
 # ERROR: "multiplier" not found in env
-pub result: [Int!]! = numbers.map { x -> x * multiplier }
+pub result: [Int!]! = numbers.map { x => x * multiplier }

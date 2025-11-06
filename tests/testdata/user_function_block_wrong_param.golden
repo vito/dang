@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  6 | [0m
  [2m  7 | # ERROR: cannot use String! in numeric operation[0m
- [2m[34m[1m  8 | [0mpub result: Int! = processor() { x -> x * 2 }
+ [2m[34m[1m  8 | [0mpub result: Int! = processor() { x => x * 2 }
 [2m                                             [31m^^^^^[0m
  [2m  9 | [0m
  [2m    |[0m

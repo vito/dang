@@ -1,2 +1,2 @@
 # Test lambda argument type mismatch
-[1, 2, 3].map { x -> "not a number" + x }
+[1, 2, 3].map { x => "not a number" + x }

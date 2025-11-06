@@ -2,26 +2,26 @@
 
 # Basic functionality - map numbers to JSON strings
 pub numbers: [Int!]! = [1, 2, 3]
-pub jsonStrings: [String!]! = numbers.map { x -> toJSON(x) }
+pub jsonStrings: [String!]! = numbers.map { x => toJSON(x) }
 assert { jsonStrings[0] == "1" }
 assert { jsonStrings[1] == "2" }
 assert { jsonStrings[2] == "3" }
 
 # Map strings to JSON (identity for strings, but tests the type system)
 pub words: [String!]! = ["hello", "world", "hi"]
-pub jsonWords: [String!]! = words.map { w -> toJSON(w) }
+pub jsonWords: [String!]! = words.map { w => toJSON(w) }
 assert { jsonWords[0] == "\"hello\"" }
 assert { jsonWords[1] == "\"world\"" }
 assert { jsonWords[2] == "\"hi\"" }
 
 # Map numbers by doubling them
-pub doubled: [Int!]! = [1, 2, 3].map { x -> x * 2 }
+pub doubled: [Int!]! = [1, 2, 3].map { x => x * 2 }
 assert { doubled[0] == 2 }
 assert { doubled[1] == 4 }
 assert { doubled[2] == 6 }
 
 # Map empty list
-pub empty: [Int!]! = [].map { x -> x * 2 }
+pub empty: [Int!]! = [].map { x => x * 2 }
 assert { empty == [] }
 
 print("List map tests passed!")
