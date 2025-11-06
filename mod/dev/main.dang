@@ -23,7 +23,11 @@ type Dev {
   Start a coding agent with the provided module.
   """
   pub forModule(module: Module!): LLM! {
-    agent(llm.withEnv(env.withModule(module)))
+    agent(llm.withEnv(
+      env
+        .withModule(module)
+        .withWorkspace(module.source.contextDirectory ?? directory)
+    ))
   }
 
   """
@@ -44,10 +48,7 @@ type Dev {
 
     let agent = doug.agent(
       base.
-        withEnv(
-          base.env.
-            withCurrentModule.
-            withWorkspace(source)).
+        withEnv(base.env.withCurrentModule).
         withMCPServer(name: "gopls", service: gopls.asService).
         withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout).
         withSystemPrompt(
