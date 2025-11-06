@@ -2,7 +2,11 @@
 
 enum Color { RED GREEN BLUE }
 
-assert { Color.RED == Color.RED }
+let red: Color! = Color.RED
+let green: Color! = Color.GREEN
+let blue: Color! = Color.BLUE
+
+assert { Color.RED == red }
 assert { Color.RED != Color.GREEN }
 assert { Color.GREEN != Color.BLUE }
 

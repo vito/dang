@@ -542,14 +542,14 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 
 	// Add the enum module to the environment so it can be referenced
 	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
-	enumScheme := hm.NewScheme(nil, enumType)
+	enumScheme := hm.NewScheme(nil, NonNull(enumType))
 	env.Add(e.Name.Name, enumScheme)
 
 	if pass > 0 {
 		// Add each enum value as a field in the enum module
 		for _, value := range e.Values {
 			// Each enum value has the type of the enum itself (not wrapped)
-			valueScheme := hm.NewScheme(nil, enumType)
+			valueScheme := hm.NewScheme(nil, NonNull(enumType))
 			enumType.Add(value.Name, valueScheme)
 
 			// Store doc string if present
