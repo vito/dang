@@ -600,7 +600,7 @@ type Doug {
       """
 
     let entries = workspace.entries
-    let contextFiles = ["DOUG.md", "AGENT.md", "CLAUDE.md"]
+    let contextFiles = ["DOUG.md", "AGENTS.md", "CLAUDE.md"]
 
     # Look for context files
     let contextSegment = ""
