@@ -18,6 +18,8 @@ type Env interface {
 	AddClass(string, Env)
 	SetDocString(string, string)
 	GetDocString(string) (string, bool)
+	SetDirectives(string, []*DirectiveApplication)
+	GetDirectives(string) []*DirectiveApplication
 	SetModuleDocString(string)
 	GetModuleDocString() string
 	SetVisibility(string, Visibility)
@@ -69,6 +71,7 @@ type Module struct {
 	vars            map[string]*hm.Scheme
 	visibility      map[string]Visibility
 	directives      map[string]*DirectiveDecl
+	slotDirectives  map[string][]*DirectiveApplication
 	docStrings      map[string]string
 	moduleDocString string
 
@@ -85,6 +88,7 @@ func NewModule(name string, kind ModuleKind) *Module {
 		vars:            make(map[string]*hm.Scheme),
 		visibility:      make(map[string]Visibility),
 		directives:      make(map[string]*DirectiveDecl),
+		slotDirectives:  make(map[string][]*DirectiveApplication),
 		docStrings:      make(map[string]string),
 		moduleDocString: "",
 	}
@@ -477,6 +481,24 @@ func (e *Module) GetDocString(name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// SetDirectives sets the documentation string for a symbol
+func (e *Module) SetDirectives(name string, directives []*DirectiveApplication) {
+	e.slotDirectives[name] = directives
+}
+
+// GetDirectives gets the documentation string for a symbol
+func (e *Module) GetDirectives(name string) []*DirectiveApplication {
+	if slotDirectives, ok := e.slotDirectives[name]; ok {
+		return slotDirectives
+	}
+	if e.Parent != nil {
+		if parent, ok := e.Parent.(*Module); ok {
+			return parent.GetDirectives(name)
+		}
+	}
+	return nil
 }
 
 // registerBuiltinTypes registers types for all builtins in the Prelude

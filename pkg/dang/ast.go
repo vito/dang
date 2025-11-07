@@ -429,6 +429,16 @@ func (c *CompositeModule) GetDocString(name string) (string, bool) {
 	return c.lexical.GetDocString(name)
 }
 
+func (c *CompositeModule) SetDirectives(name string, directives []*DirectiveApplication) {
+	c.primary.SetDirectives(name, directives)
+}
+
+func (c *CompositeModule) GetDirectives(name string) []*DirectiveApplication {
+	// This is a bit naive, but I'd rather wait until it becomes a problem so I
+	// can understand the use case
+	return append(c.primary.GetDirectives(name), c.lexical.GetDirectives(name)...)
+}
+
 func (c *CompositeModule) SetModuleDocString(doc string) {
 	c.primary.SetModuleDocString(doc)
 }

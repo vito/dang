@@ -133,6 +133,10 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if s.DocString != "" {
 			e.SetDocString(s.Name.Name, s.DocString)
 		}
+
+		if len(s.Directives) > 0 {
+			e.SetDirectives(s.Name.Name, s.Directives)
+		}
 	}
 
 	// Validate directive applications
@@ -498,6 +502,7 @@ type EnumDecl struct {
 	Name       *Symbol
 	Values     []*Symbol
 	Visibility Visibility
+	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
 
@@ -614,6 +619,7 @@ type ScalarDecl struct {
 	Name       *Symbol
 	Visibility Visibility
 	DocString  string
+	Directives []*DirectiveApplication
 	Loc        *SourceLocation
 
 	Inferred *Module
@@ -711,6 +717,7 @@ type InterfaceDecl struct {
 	Name       *Symbol
 	Value      *Block
 	Visibility Visibility
+	Directives []*DirectiveApplication
 	DocString  string
 	Loc        *SourceLocation
 

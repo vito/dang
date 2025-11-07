@@ -16,12 +16,13 @@ type FunctionBase struct {
 	Args       []*SlotDecl
 	BlockParam *SlotDecl // Optional block parameter (prefixed with &)
 	Body       Node
+	Directives []*DirectiveApplication
 	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
 
 	InferredScope Env
-	
+
 	// ExpectedReturnType is set by checkArgumentType for bidirectional type inference
 	ExpectedReturnType hm.Type
 }
@@ -84,6 +85,7 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 		FnType:         fnType,
 		Defaults:       defaults,
 		ArgDecls:       f.Args, // Preserve original argument declarations with directives
+		Directives:     f.Directives,
 		BlockParamName: blockParamName,
 	}
 }
@@ -795,11 +797,12 @@ type DirectiveLocation struct {
 // DirectiveDecl represents a directive declaration
 type DirectiveDecl struct {
 	InferredTypeHolder
-	Name      string
-	Args      []*SlotDecl
-	Locations []DirectiveLocation
-	DocString string
-	Loc       *SourceLocation
+	Name       string
+	Args       []*SlotDecl
+	Locations  []DirectiveLocation
+	Directives []*DirectiveApplication
+	DocString  string
+	Loc        *SourceLocation
 }
 
 var _ Node = &DirectiveDecl{}

@@ -758,6 +758,7 @@ type FunctionValue struct {
 	Defaults       map[string]Node // Map of argument name to default value expression
 	ArgDecls       []*SlotDecl     // Original argument declarations with directives
 	BlockParamName string          // Name of the block parameter, if any
+	Directives     []*DirectiveApplication
 }
 
 func (f FunctionValue) Type() hm.Type {
