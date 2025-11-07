@@ -96,7 +96,7 @@ type Dang {
     A unique key to force the tests to re-run.
     """
     rerun: String,
-  ): Void {
+  ): Void @check {
     let args = ["go", "test", "-v", "-count=1", "./tests"]
     if (filter != "") {
       args += ["-run", "/"+filter]
@@ -114,7 +114,7 @@ type Dang {
   """
   Run the Dang LSP tests.
   """
-  pub testLSP(filter: String! = ""): Void {
+  pub testLSP(filter: String! = ""): Void @check {
     let args = ["go", "test", "-v", "-count=1", "./pkg/lsp/..."]
     if (filter != "") {
       args += ["-run", "LSP/" + filter]
@@ -142,7 +142,7 @@ type Dang {
   """
   Run the tree-sitter tests.
   """
-  pub treesitterTest: Void {
+  pub treesitterTest: Void @check {
     generated.
       withWorkdir("./treesitter").
       withExec(["tree-sitter", "test"]).
@@ -167,7 +167,7 @@ type Dang {
   """
   Run the linter.
   """
-  pub lint: Void {
+  pub lint: Void @check {
     base.
       withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint").
       withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache")).

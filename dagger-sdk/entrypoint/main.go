@@ -440,11 +440,11 @@ func createFunction(dag *dagger.Client, mod *dang.Module, name string, fn *hm.Fu
 	}
 
 	// TODO: enable once checks ship
-	// for _, directive := range mod.GetDirectives(name) {
-	// 	if directive.Name == "check" {
-	// 		funDef = funDef.WithCheck()
-	// 	}
-	// }
+	for _, directive := range mod.GetDirectives(name) {
+		if directive.Name == "check" {
+			funDef = funDef.WithCheck()
+		}
+	}
 
 	args := fn.Arg().(*dang.RecordType)
 	for _, arg := range args.Fields {
