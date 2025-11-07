@@ -529,10 +529,13 @@ func evalConstantValue(node dang.Node) (any, error) {
 }
 
 func createObjectTypeDef(dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv) (*dagger.TypeDef, error) {
-	objDef := dag.TypeDef().WithObject(name)
-
 	// Register interface implementations if this type implements any interfaces
 	classMod := module.ClassType
+
+	objDef := dag.TypeDef().WithObject(name, dagger.TypeDefWithObjectOpts{
+		Description: classMod.GetModuleDocString(),
+	})
+
 	for _, iface := range classMod.GetInterfaces() {
 		if ifaceMod, ok := iface.(*dang.Module); ok {
 			objDef = objDef.WithInterface(ifaceMod.Named)
@@ -540,7 +543,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 	}
 
 	// Process public methods in the class
-	for name, scheme := range module.ClassType.Bindings(dang.PublicVisibility) {
+	for name, scheme := range classMod.Bindings(dang.PublicVisibility) {
 		slotType, isMono := scheme.Type()
 		if !isMono {
 			return nil, fmt.Errorf("non-monotype method %s", name)
@@ -553,7 +556,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
 			}
-			if desc, ok := module.ClassType.GetDocString(name); ok {
+			if desc, ok := classMod.GetDocString(name); ok {
 				fnDef = fnDef.WithDescription(desc)
 			}
 			objDef = objDef.WithFunction(fnDef)
@@ -563,7 +566,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 				return nil, fmt.Errorf("failed to create field %s: %w", name, err)
 			}
 			opts := dagger.TypeDefWithFieldOpts{}
-			if desc, ok := module.ClassType.GetDocString(name); ok {
+			if desc, ok := classMod.GetDocString(name); ok {
 				opts.Description = desc
 			}
 			objDef = objDef.WithField(name, fieldDef, opts)
