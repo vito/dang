@@ -11,9 +11,9 @@ import (
 	"os"
 	"sort"
 
-	"dagger.io/dagger"
-	"dagger.io/dagger/dag"
-	"dagger.io/dagger/telemetry"
+	"dagger/dang/internal/dagger"
+	"dagger/dang/internal/telemetry"
+
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/vito/dang/pkg/hm"
 
@@ -28,6 +28,8 @@ const debug = false
 
 const introspectionJSON = "/introspection.json"
 
+var dag = dagger.Connect()
+
 func main() {
 	ctx := context.Background()
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
@@ -38,12 +40,6 @@ func main() {
 		semconv.ServiceNameKey.String("dagger-dang-sdk"),
 	))
 	defer telemetry.Close()
-
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
 
 	level := slog.LevelInfo
 	if debug {
