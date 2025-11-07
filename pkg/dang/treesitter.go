@@ -45,16 +45,6 @@ func TreesitterGrammar() treesitter.Grammar {
 				Name: "auto_call_symbol",
 			},
 		},
-		{
-			{
-				Type: treesitter.RuleTypeSymbol,
-				Name: "doc_string",
-			},
-			{
-				Type: treesitter.RuleTypeSymbol,
-				Name: "triple_quote_string",
-			},
-		},
 	}
 
 	for i, rule := range g.rules {

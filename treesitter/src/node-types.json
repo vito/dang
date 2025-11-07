@@ -4,19 +4,7 @@
     "named": true,
     "subtypes": [
       {
-        "type": "annotated_decl",
-        "named": true
-      },
-      {
-        "type": "class",
-        "named": true
-      },
-      {
-        "type": "directive_decl",
-        "named": true
-      },
-      {
-        "type": "enum",
+        "type": "decl",
         "named": true
       },
       {
@@ -28,19 +16,7 @@
         "named": true
       },
       {
-        "type": "interface",
-        "named": true
-      },
-      {
         "type": "reassignment",
-        "named": true
-      },
-      {
-        "type": "scalar",
-        "named": true
-      },
-      {
-        "type": "slot",
         "named": true
       }
     ]
@@ -187,78 +163,6 @@
     "type": "additive_op",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "annotated_decl",
-    "named": true,
-    "fields": {
-      "decl": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "class",
-            "named": true
-          },
-          {
-            "type": "directive_decl",
-            "named": true
-          },
-          {
-            "type": "enum",
-            "named": true
-          },
-          {
-            "type": "interface",
-            "named": true
-          },
-          {
-            "type": "scalar",
-            "named": true
-          },
-          {
-            "type": "slot",
-            "named": true
-          }
-        ]
-      },
-      "docstring": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "doc_string",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "annotated_header_slot",
-    "named": true,
-    "fields": {
-      "decl": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "header_slot",
-            "named": true
-          }
-        ]
-      },
-      "docstring": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "doc_string",
-            "named": true
-          }
-        ]
-      }
-    }
   },
   {
     "type": "arg_type",
@@ -1065,16 +969,6 @@
     "type": "class",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "block": {
         "multiple": false,
         "required": true,
@@ -1223,6 +1117,52 @@
         "types": [
           {
             "type": "expr",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "decl",
+    "named": true,
+    "fields": {
+      "decl": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "class",
+            "named": true
+          },
+          {
+            "type": "directive_decl",
+            "named": true
+          },
+          {
+            "type": "enum",
+            "named": true
+          },
+          {
+            "type": "interface",
+            "named": true
+          },
+          {
+            "type": "scalar",
+            "named": true
+          },
+          {
+            "type": "slot",
+            "named": true
+          }
+        ]
+      },
+      "docstring": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "doc_string",
             "named": true
           }
         ]
@@ -1917,24 +1857,31 @@
   {
     "type": "header_slot",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "annotated_header_slot",
-          "named": true
-        },
-        {
-          "type": "type_and_args_slot",
-          "named": true
-        },
-        {
-          "type": "type_only_fun_slot",
-          "named": true
-        }
-      ]
+    "fields": {
+      "docstring": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "doc_string",
+            "named": true
+          }
+        ]
+      },
+      "slot": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_and_args_slot",
+            "named": true
+          },
+          {
+            "type": "type_only_fun_slot",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -3154,16 +3101,6 @@
     "type": "type_and_args_and_block_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "args": {
         "multiple": false,
         "required": true,
@@ -3240,16 +3177,6 @@
     "type": "type_and_args_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "args": {
         "multiple": false,
         "required": true,
@@ -3316,16 +3243,6 @@
     "type": "type_and_block_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "block": {
         "multiple": false,
         "required": true,
@@ -3392,16 +3309,6 @@
     "type": "type_and_value_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "directives": {
         "multiple": true,
         "required": false,
@@ -3508,16 +3415,6 @@
     "type": "type_only_fun_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "directives": {
         "multiple": true,
         "required": false,
@@ -3574,16 +3471,6 @@
     "type": "type_only_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "directives": {
         "multiple": true,
         "required": false,
@@ -3676,16 +3563,6 @@
     "type": "value_only_slot",
     "named": true,
     "fields": {
-      "app": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      },
       "directives": {
         "multiple": true,
         "required": false,

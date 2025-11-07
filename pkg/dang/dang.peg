@@ -22,27 +22,39 @@ _lineSpace <- [ \t]* CommentToken?
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
 
-Expr <- Import / AnnotatedDecl / Interface / Enum / Scalar / Class / Slot / DirectiveDecl / Reassignment / Form
+Expr <- Import / Decl / Reassignment / Form
 
-AnnotatedDecl <- docstring:DocString _ decl:(Interface / Enum / Scalar / Class / Slot / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(Interface / Enum / Scalar / Class / Slot / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
-    node.DocString = docstring.(string)
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
     return node, nil
   case *EnumDecl:
-    node.DocString = docstring.(string)
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
     return node, nil
   case *ScalarDecl:
-    node.DocString = docstring.(string)
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
     return node, nil
   case *ClassDecl:
-    node.DocString = docstring.(string)
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
     return node, nil
   case *SlotDecl:
-    node.DocString = docstring.(string)
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
     return node, nil
   case *DirectiveDecl:
-    node.DocString = docstring.(string)
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
     return node, nil
   default:
     return decl, nil
@@ -213,7 +225,7 @@ Interface <- InterfaceToken _ name:Symbol _ block:HeadersBlock {
 }
 InterfaceToken <- "interface" !WordChar
 
-Class <- TypeToken _ name:Symbol implements:(_ i:Implements { return i, nil })? directives:(_ app:DirectiveApplication { return app, nil })* _ block:Block {
+Class <- TypeToken _ name:Symbol implements:(_ i:Implements { return i, nil })? directives:DirectiveApplication* _ block:Block {
   return &ClassDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
@@ -256,7 +268,7 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ EqualToken _ value:Form directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndValueSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ EqualToken _ value:Form directives:DirectiveApplication* {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
@@ -267,7 +279,7 @@ TypeAndValueSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ Equ
   }, nil
 }
 
-ValueOnlySlot <- vis:Visibility _ name:Symbol _ EqualToken _ val:Form directives:(_ app:DirectiveApplication { return app, nil })* {
+ValueOnlySlot <- vis:Visibility _ name:Symbol _ EqualToken _ val:Form directives:DirectiveApplication* {
   return &SlotDecl{
     Name: name.(*Symbol),
     Value: val.(Node),
@@ -277,7 +289,7 @@ ValueOnlySlot <- vis:Visibility _ name:Symbol _ EqualToken _ val:Form directives
   }, nil
 }
 
-TypeOnlySlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeOnlySlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type directives:DirectiveApplication* {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
@@ -287,7 +299,7 @@ TypeOnlySlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type directive
   }, nil
 }
 
-TypeAndBlockSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndBlockSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type directives:DirectiveApplication* _ block:Block {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
@@ -295,6 +307,7 @@ TypeAndBlockSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ blo
       FunctionBase: FunctionBase{
         Args: nil,
         Body: block.(*Block),
+        Directives: sliceOf[*DirectiveApplication](directives),
         Loc: c.Loc(),
       },
       Named: name.(*Symbol).Name,
@@ -307,7 +320,7 @@ TypeAndBlockSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ blo
   }, nil
 }
 
-TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type _ block:Block directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type directives:DirectiveApplication* _ block:Block {
   // Separate block parameters from regular arguments
   allArgs := args.([]*SlotDecl)
   var regularArgs []*SlotDecl
@@ -332,6 +345,7 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonT
         Args: regularArgs,
         BlockParam: blockParam,
         Body: block.(*Block),
+        Directives: sliceOf[*DirectiveApplication](directives),
         Loc: c.Loc(),
       },
       Named: name.(*Symbol).Name,
@@ -344,14 +358,14 @@ TypeAndArgsAndBlockSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonT
   }, nil
 }
 
-HeaderSlot <- AnnotatedHeaderSlot / TypeAndArgsSlot / TypeOnlyFunSlot
-
-AnnotatedHeaderSlot <- docstring:DocString _ decl:HeaderSlot {
-  decl.(*SlotDecl).DocString = docstring.(string)
-  return decl, nil
+HeaderSlot <- docstring:DocString? slot:(TypeAndArgsSlot / TypeOnlyFunSlot) {
+  if docstring != nil {
+    slot.(*SlotDecl).DocString = docstring.(string)
+  }
+  return slot, nil
 }
 
-TypeAndArgsSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeAndArgsSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type directives:DirectiveApplication* {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{args.([]*SlotDecl), type_.(TypeNode)},
@@ -361,7 +375,7 @@ TypeAndArgsSlot <- vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ t
   }, nil
 }
 
-TypeOnlyFunSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type directives:(_ app:DirectiveApplication { return app, nil })* {
+TypeOnlyFunSlot <- vis:Visibility _ name:Symbol _ ColonToken _ type_:Type directives:DirectiveApplication* {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
@@ -422,7 +436,7 @@ ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / Ar
 } / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
   return slot.(*SlotDecl), nil
 }
-ArgWithDefault <- name:Symbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ EqualToken _ value:Form {
+ArgWithDefault <- name:Symbol _ ColonToken _ type_:Type directives:DirectiveApplication* _ EqualToken _ value:Form {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
@@ -431,7 +445,7 @@ ArgWithDefault <- name:Symbol _ ColonToken _ type_:Type _ directives:DirectiveAp
     Loc: c.Loc(),
   }, nil
 }
-ArgWithBlockDefault <- name:Symbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* _ block:Block {
+ArgWithBlockDefault <- name:Symbol _ ColonToken _ type_:Type directives:DirectiveApplication* _ block:Block {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
@@ -440,7 +454,7 @@ ArgWithBlockDefault <- name:Symbol _ ColonToken _ type_:Type _ directives:Direct
     Loc: c.Loc(),
   }, nil
 }
-ArgWithType <- name:Symbol _ ColonToken _ type_:Type _ directives:DirectiveApplication* {
+ArgWithType <- name:Symbol _ ColonToken _ type_:Type directives:DirectiveApplication* {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
@@ -703,7 +717,7 @@ ImmediateEscape <- '\\' (
   / [0-7] [0-7] [0-7]
 )
 
-DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
+DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
   return normalizeDocString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
@@ -949,7 +963,7 @@ DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken 
   }, nil
 }
 
-DirectiveApplication <- '@' name:Id args:ArgValues? {
+DirectiveApplication <- _ '@' name:Id args:ArgValues? {
   var argValues []Keyed[Node]
   if args != nil {
     argValues = args.([]Keyed[Node])
