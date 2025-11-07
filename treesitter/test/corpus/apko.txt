@@ -59,566 +59,614 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
 ---
 
 (dang
-  (slot
-    (value_only_slot
-      (visibility
-        (pub_token))
-      (id
-        (word_token))
-      (equal_token)
-      (literal
-        (string
-          (immediate_string_content)
-          (immediate_quote_token)))))
+  (decl
+    (slot
+      (value_only_slot
+        (visibility
+          (pub_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (literal
+          (string
+            (immediate_string_content)
+            (immediate_quote_token))))))
   (sep)
   (comment_token)
-  (slot
-    (value_only_slot
-      (visibility
-        (let_token))
-      (id
-        (word_token))
-      (equal_token)
-      (literal
-        (string
-          (immediate_string_content)
-          (immediate_quote_token)))))
-  (sep)
-  (class
-    (type_token)
-    (id
-      (word_token))
-    (block
-      (slot
-        (value_only_slot
-          (visibility
-            (pub_token))
+  (decl
+    (slot
+      (value_only_slot
+        (visibility
+          (let_token))
+        (symbol
           (id
-            (word_token))
-          (equal_token)
-          (object
-            (key_value
-              (word_token)
-              (colon_token)
+            (word_token)))
+        (equal_token)
+        (literal
+          (string
+            (immediate_string_content)
+            (immediate_quote_token))))))
+  (sep)
+  (decl
+    (class
+      (type_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (slot
+            (value_only_slot
+              (visibility
+                (pub_token))
+              (symbol
+                (id
+                  (word_token)))
+              (equal_token)
               (object
                 (key_value
                   (word_token)
                   (colon_token)
-                  (list))
+                  (object
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (list))
+                    (sep)
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (list))
+                    (sep)
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (list))
+                    (sep)))
                 (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (list))
-                (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (list))
-                (sep)))
-            (sep)
-            (key_value
-              (word_token)
-              (colon_token)
-              (literal
-                (string
-                  (immediate_quote_token))))
-            (sep)
-            (key_value
-              (word_token)
-              (colon_token)
-              (object
                 (key_value
                   (word_token)
                   (colon_token)
                   (literal
                     (string
-                      (immediate_string_content)
                       (immediate_quote_token))))
-                (sep)))
-            (sep)
-            (key_value
-              (word_token)
+                (sep)
+                (key_value
+                  (word_token)
+                  (colon_token)
+                  (object
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (literal
+                        (string
+                          (immediate_string_content)
+                          (immediate_quote_token))))
+                    (sep)))
+                (sep)
+                (key_value
+                  (word_token)
+                  (colon_token)
+                  (list
+                    (symbol_or_call
+                      (auto_call_symbol
+                        (id
+                          (word_token))))))
+                (sep)))))
+        (sep)
+        (decl
+          (slot
+            (type_and_args_and_block_slot
+              (visibility
+                (pub_token))
+              (symbol
+                (id
+                  (word_token)))
+              (arg_types
+                (immediate_paren)
+                (arg_type
+                  (arg_with_default
+                    (symbol
+                      (id
+                        (word_token)))
+                    (colon_token)
+                    (type
+                      (non_null
+                        (type
+                          (named_type
+                            (upper_id
+                              (upper_token))))
+                        (bang_token)))
+                    (equal_token)
+                    (literal
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token))))))
               (colon_token)
-              (list
-                (symbol_or_call
-                  (symbol
-                    (id
-                      (word_token))))))
-            (sep))))
-      (sep)
-      (slot
-        (type_and_args_and_block_slot
-          (visibility
-            (pub_token))
-          (id
-            (word_token))
-          (arg_types
-            (arg_type
-              (arg_with_default
-                (id
-                  (word_token))
-                (colon_token)
-                (type
-                  (non_null
-                    (type
-                      (named_type
-                        (upper_id
-                          (upper_token))))
-                    (bang_token)))
-                (equal_token)
-                (literal
-                  (string
-                    (immediate_string_content)
-                    (immediate_quote_token))))))
-          (colon_token)
-          (type
-            (non_null
               (type
-                (named_type
-                  (upper_id
-                    (upper_token))))
-              (bang_token)))
-          (block
-            (reassignment
-              (select_or_call
-                (select_or_call
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (block
+                (reassignment
                   (select_or_call
-                    (symbol_or_call
-                      (symbol
+                    (select_or_call
+                      (select_or_call
+                        (symbol_or_call
+                          (auto_call_symbol
+                            (id
+                              (word_token))))
+                        (dot_token)
                         (id
-                          (word_token))))
+                          (word_token)))
+                      (dot_token)
+                      (id
+                        (word_token)))
                     (dot_token)
                     (id
                       (word_token)))
-                  (dot_token)
-                  (id
-                    (word_token)))
-                (dot_token)
-                (id
-                  (word_token)))
-              (assign_op
-                (plus_equal_token))
-              (list
-                (literal
-                  (string
-                    (immediate_string_content)
-                    (immediate_quote_token)))))
-            (sep)
-            (reassignment
-              (select_or_call
-                (select_or_call
+                  (assign_op
+                    (plus_equal_token))
+                  (list
+                    (literal
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token)))))
+                (sep)
+                (reassignment
                   (select_or_call
-                    (symbol_or_call
-                      (symbol
+                    (select_or_call
+                      (select_or_call
+                        (symbol_or_call
+                          (auto_call_symbol
+                            (id
+                              (word_token))))
+                        (dot_token)
                         (id
-                          (word_token))))
+                          (word_token)))
+                      (dot_token)
+                      (id
+                        (word_token)))
                     (dot_token)
                     (id
                       (word_token)))
-                  (dot_token)
-                  (id
-                    (word_token)))
-                (dot_token)
+                  (assign_op
+                    (plus_equal_token))
+                  (list
+                    (default_expr
+                      (logical_or_expr
+                        (logical_and_expr
+                          (equality_expr
+                            (relational_expr
+                              (additive_expr
+                                (paren_form
+                                  (default_expr
+                                    (logical_or_expr
+                                      (logical_and_expr
+                                        (equality_expr
+                                          (relational_expr
+                                            (additive_expr
+                                              (literal
+                                                (string
+                                                  (immediate_string_content)
+                                                  (immediate_quote_token)))
+                                              (additive_op)
+                                              (symbol_or_call
+                                                (auto_call_symbol
+                                                  (id
+                                                    (word_token)))))))))))
+                                (additive_op)
+                                (literal
+                                  (string
+                                    (immediate_string_content)
+                                    (immediate_quote_token)))))))))
+                    (sep)))
+                (sep)))))
+        (sep)
+        (decl
+          (slot
+            (type_and_args_and_block_slot
+              (visibility
+                (pub_token))
+              (symbol
                 (id
                   (word_token)))
-              (assign_op
-                (plus_equal_token))
-              (list
-                (default_expr
-                  (equality_expr
-                    (relational_expr
-                      (additive_expr
-                        (paren_form
-                          (default_expr
-                            (equality_expr
-                              (relational_expr
-                                (additive_expr
-                                  (literal
-                                    (string
-                                      (immediate_string_content)
-                                      (immediate_quote_token)))
-                                  (additive_op)
-                                  (symbol_or_call
-                                    (symbol
-                                      (id
-                                        (word_token)))))))))
-                        (additive_op)
-                        (literal
-                          (string
-                            (immediate_string_content)
-                            (immediate_quote_token)))))))
-                (sep)))
-            (sep))))
-      (sep)
-      (slot
-        (type_and_args_and_block_slot
-          (visibility
-            (pub_token))
-          (id
-            (word_token))
-          (arg_types
-            (arg_type
-              (arg_with_type
-                (id
-                  (word_token))
-                (colon_token)
-                (type
-                  (non_null
+              (arg_types
+                (immediate_paren)
+                (arg_type
+                  (arg_with_type
+                    (symbol
+                      (id
+                        (word_token)))
+                    (colon_token)
                     (type
-                      (list_type
+                      (non_null
                         (type
-                          (non_null
+                          (list_type
                             (type
-                              (named_type
-                                (upper_id
-                                  (upper_token))))
-                            (bang_token)))))
-                    (bang_token))))))
-          (colon_token)
-          (type
-            (non_null
+                              (non_null
+                                (type
+                                  (named_type
+                                    (upper_id
+                                      (upper_token))))
+                                (bang_token)))))
+                        (bang_token))))))
+              (colon_token)
               (type
-                (named_type
-                  (upper_id
-                    (upper_token))))
-              (bang_token)))
-          (block
-            (reassignment
-              (select_or_call
-                (select_or_call
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (block
+                (reassignment
                   (select_or_call
-                    (symbol_or_call
-                      (symbol
+                    (select_or_call
+                      (select_or_call
+                        (symbol_or_call
+                          (auto_call_symbol
+                            (id
+                              (word_token))))
+                        (dot_token)
                         (id
-                          (word_token))))
+                          (word_token)))
+                      (dot_token)
+                      (id
+                        (word_token)))
                     (dot_token)
                     (id
                       (word_token)))
-                  (dot_token)
-                  (id
-                    (word_token)))
-                (dot_token)
+                  (assign_op
+                    (plus_equal_token))
+                  (symbol_or_call
+                    (auto_call_symbol
+                      (id
+                        (word_token)))))
+                (sep)))))
+        (sep)
+        (decl
+          (slot
+            (type_and_args_and_block_slot
+              (visibility
+                (pub_token))
+              (symbol
                 (id
                   (word_token)))
-              (assign_op
-                (plus_equal_token))
-              (symbol_or_call
-                (symbol
-                  (id
-                    (word_token)))))
-            (sep))))
-      (sep)
-      (slot
-        (type_and_args_and_block_slot
-          (visibility
-            (pub_token))
-          (id
-            (word_token))
-          (arg_types
-            (arg_type
-              (arg_with_type
-                (id
-                  (word_token))
-                (colon_token)
-                (type
-                  (non_null
+              (arg_types
+                (immediate_paren)
+                (arg_type
+                  (arg_with_type
+                    (symbol
+                      (id
+                        (word_token)))
+                    (colon_token)
                     (type
-                      (list_type
+                      (non_null
                         (type
-                          (non_null
+                          (list_type
                             (type
-                              (named_type
-                                (upper_id
-                                  (upper_token))))
-                            (bang_token)))))
-                    (bang_token))))))
-          (colon_token)
-          (type
-            (non_null
+                              (non_null
+                                (type
+                                  (named_type
+                                    (upper_id
+                                      (upper_token))))
+                                (bang_token)))))
+                        (bang_token))))))
+              (colon_token)
               (type
-                (named_type
-                  (upper_id
-                    (upper_token))))
-              (bang_token)))
-          (block
-            (reassignment
-              (select_or_call
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (block
+                (reassignment
+                  (select_or_call
+                    (select_or_call
+                      (symbol_or_call
+                        (auto_call_symbol
+                          (id
+                            (word_token))))
+                      (dot_token)
+                      (id
+                        (word_token)))
+                    (dot_token)
+                    (id
+                      (word_token)))
+                  (assign_op
+                    (plus_equal_token))
+                  (symbol_or_call
+                    (auto_call_symbol
+                      (id
+                        (word_token)))))
+                (sep)))))
+        (sep)
+        (decl
+          (slot
+            (type_and_block_slot
+              (visibility
+                (pub_token))
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (block
                 (select_or_call
                   (symbol_or_call
-                    (symbol
+                    (auto_call_symbol
                       (id
                         (word_token))))
                   (dot_token)
                   (id
-                    (word_token)))
-                (dot_token)
-                (id
-                  (word_token)))
-              (assign_op
-                (plus_equal_token))
-              (symbol_or_call
-                (symbol
-                  (id
-                    (word_token)))))
-            (sep))))
-      (sep)
-      (slot
-        (type_and_block_slot
-          (visibility
-            (pub_token))
-          (id
-            (word_token))
-          (colon_token)
-          (type
-            (non_null
-              (type
-                (named_type
-                  (upper_id
-                    (upper_token))))
-              (bang_token)))
-          (block
-            (select_or_call
-              (symbol_or_call
-                (symbol
-                  (id
-                    (word_token))))
-              (dot_token)
-              (id
-                (word_token))
-              (arg_values
-                (argument
-                  (positional_value
-                    (select_or_call
-                      (select_or_call
+                    (word_token))
+                  (arg_values
+                    (immediate_paren)
+                    (argument
+                      (positional_value
                         (select_or_call
                           (select_or_call
                             (select_or_call
-                              (symbol_or_call
-                                (symbol
+                              (select_or_call
+                                (select_or_call
+                                  (symbol_or_call
+                                    (auto_call_symbol
+                                      (id
+                                        (word_token))))
+                                  (dot_token)
                                   (id
-                                    (word_token))))
+                                    (word_token))
+                                  (arg_values
+                                    (immediate_paren)
+                                    (argument
+                                      (positional_value
+                                        (literal
+                                          (string
+                                            (immediate_string_content)
+                                            (immediate_quote_token)))))))
+                                (dot_token)
+                                (id
+                                  (word_token))
+                                (arg_values
+                                  (immediate_paren)
+                                  (argument
+                                    (positional_value
+                                      (literal
+                                        (string
+                                          (immediate_string_content)
+                                          (immediate_quote_token)))))
+                                  (sep
+                                    (comma_token))
+                                  (argument
+                                    (positional_value
+                                      (symbol_or_call
+                                        (call
+                                          (symbol
+                                            (id
+                                              (word_token)))
+                                          (arg_values
+                                            (immediate_paren)
+                                            (argument
+                                              (positional_value
+                                                (literal
+                                                  (string
+                                                    (immediate_string_content)
+                                                    (immediate_quote_token))))))))))))
                               (dot_token)
                               (id
                                 (word_token))
                               (arg_values
+                                (immediate_paren)
                                 (argument
                                   (positional_value
                                     (literal
                                       (string
                                         (immediate_string_content)
-                                        (immediate_quote_token)))))))
+                                        (immediate_quote_token)))))
+                                (sep
+                                  (comma_token))
+                                (argument
+                                  (key_value
+                                    (word_token)
+                                    (colon_token)
+                                    (symbol_or_call
+                                      (call
+                                        (symbol
+                                          (id
+                                            (word_token)))
+                                        (arg_values
+                                          (immediate_paren)
+                                          (argument
+                                            (positional_value
+                                              (symbol_or_call
+                                                (auto_call_symbol
+                                                  (id
+                                                    (word_token)))))))))))))
                             (dot_token)
                             (id
                               (word_token))
                             (arg_values
+                              (immediate_paren)
                               (argument
                                 (positional_value
-                                  (literal
-                                    (string
-                                      (immediate_string_content)
-                                      (immediate_quote_token)))))
-                              (sep
-                                (comma_token))
-                              (argument
-                                (positional_value
-                                  (symbol_or_call
-                                    (call
-                                      (id
-                                        (word_token))
-                                      (arg_values
-                                        (argument
-                                          (positional_value
-                                            (literal
-                                              (string
-                                                (immediate_string_content)
-                                                (immediate_quote_token))))))))))))
+                                  (list
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token)))
+                                    (sep
+                                      (comma_token))
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token)))
+                                    (sep
+                                      (comma_token))
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token)))
+                                    (sep
+                                      (comma_token))
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token)))
+                                    (sep
+                                      (comma_token))
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token)))
+                                    (sep
+                                      (comma_token))
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token)))
+                                    (sep
+                                      (comma_token))
+                                    (literal
+                                      (string
+                                        (immediate_string_content)
+                                        (immediate_quote_token))))))))
                           (dot_token)
                           (id
                             (word_token))
                           (arg_values
+                            (immediate_paren)
                             (argument
                               (positional_value
                                 (literal
                                   (string
                                     (immediate_string_content)
-                                    (immediate_quote_token)))))
-                            (sep
-                              (comma_token))
-                            (argument
-                              (key_value
-                                (word_token)
-                                (colon_token)
-                                (symbol_or_call
-                                  (call
-                                    (id
-                                      (word_token))
-                                    (arg_values
-                                      (argument
-                                        (positional_value
-                                          (symbol_or_call
-                                            (symbol
-                                              (id
-                                                (word_token)))))))))))))
-                        (dot_token)
-                        (id
-                          (word_token))
+                                    (immediate_quote_token)))))))))
+                    (sep)))
+                (sep)))))
+        (sep)
+        (decl
+          (slot
+            (type_and_args_and_block_slot
+              (visibility
+                (pub_token))
+              (symbol
+                (id
+                  (word_token)))
+              (arg_types
+                (immediate_paren)
+                (arg_type
+                  (arg_with_type
+                    (symbol
+                      (id
+                        (word_token)))
+                    (colon_token)
+                    (type
+                      (non_null
+                        (type
+                          (list_type
+                            (type
+                              (non_null
+                                (type
+                                  (named_type
+                                    (upper_id
+                                      (upper_token))))
+                                (bang_token)))))
+                        (bang_token)))))
+                (sep
+                  (comma_token))
+                (arg_type
+                  (arg_with_default
+                    (symbol
+                      (id
+                        (word_token)))
+                    (colon_token)
+                    (type
+                      (non_null
+                        (type
+                          (named_type
+                            (upper_id
+                              (upper_token))))
+                        (bang_token)))
+                    (equal_token)
+                    (literal
+                      (string
+                        (immediate_string_content)
+                        (immediate_quote_token))))))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (block
+                (select_or_call
+                  (select_or_call
+                    (symbol_or_call
+                      (call
+                        (symbol
+                          (id
+                            (word_token)))
                         (arg_values
+                          (immediate_paren)
                           (argument
                             (positional_value
-                              (list
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))
-                                (sep
-                                  (comma_token))
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))
-                                (sep
-                                  (comma_token))
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))
-                                (sep
-                                  (comma_token))
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))
-                                (sep
-                                  (comma_token))
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))
-                                (sep
-                                  (comma_token))
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token)))
-                                (sep
-                                  (comma_token))
-                                (literal
-                                  (string
-                                    (immediate_string_content)
-                                    (immediate_quote_token))))))))
-                      (dot_token)
-                      (id
-                        (word_token))
-                      (arg_values
-                        (argument
-                          (positional_value
-                            (literal
-                              (string
-                                (immediate_string_content)
-                                (immediate_quote_token)))))))))
-                (sep)))
-            (sep))))
-      (sep)
-      (slot
-        (type_and_args_and_block_slot
-          (visibility
-            (pub_token))
-          (id
-            (word_token))
-          (arg_types
-            (arg_type
-              (arg_with_type
-                (id
-                  (word_token))
-                (colon_token)
-                (type
-                  (non_null
-                    (type
-                      (list_type
-                        (type
-                          (non_null
-                            (type
-                              (named_type
-                                (upper_id
-                                  (upper_token))))
-                            (bang_token)))))
-                    (bang_token)))))
-            (sep
-              (comma_token))
-            (arg_type
-              (arg_with_default
-                (id
-                  (word_token))
-                (colon_token)
-                (type
-                  (non_null
-                    (type
-                      (named_type
-                        (upper_id
-                          (upper_token))))
-                    (bang_token)))
-                (equal_token)
-                (literal
-                  (string
-                    (immediate_string_content)
-                    (immediate_quote_token))))))
-          (colon_token)
-          (type
-            (non_null
-              (type
-                (named_type
-                  (upper_id
-                    (upper_token))))
-              (bang_token)))
-          (block
-            (select_or_call
-              (select_or_call
-                (symbol_or_call
-                  (call
+                              (symbol_or_call
+                                (auto_call_symbol
+                                  (id
+                                    (word_token)))))))))
+                    (dot_token)
                     (id
                       (word_token))
                     (arg_values
+                      (immediate_paren)
                       (argument
                         (positional_value
                           (symbol_or_call
-                            (symbol
+                            (auto_call_symbol
                               (id
-                                (word_token)))))))))
-                (dot_token)
-                (id
-                  (word_token))
-                (arg_values
-                  (argument
-                    (positional_value
-                      (symbol_or_call
-                        (symbol
-                          (id
-                            (word_token))))))))
-              (dot_token)
-              (id
-                (word_token)))
-            (sep))))
-      (sep)))
+                                (word_token))))))))
+                  (dot_token)
+                  (id
+                    (word_token)))
+                (sep)))))
+        (sep))))
   (sep)
   (symbol_or_call
     (call
-      (id
-        (word_token))
+      (symbol
+        (id
+          (word_token)))
       (arg_values
+        (immediate_paren)
         (argument
           (positional_value
             (symbol_or_call
               (call
-                (id
-                  (word_token))
+                (symbol
+                  (id
+                    (word_token)))
                 (arg_values
+                  (immediate_paren)
                   (argument
                     (positional_value
                       (select_or_call
                         (select_or_call
                           (symbol_or_call
-                            (symbol
+                            (auto_call_symbol
                               (id
                                 (word_token))))
                           (dot_token)
@@ -630,9 +678,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
   (sep)
   (symbol_or_call
     (call
-      (id
-        (word_token))
+      (symbol
+        (id
+          (word_token)))
       (arg_values
+        (immediate_paren)
         (argument
           (positional_value
             (select_or_call
@@ -641,7 +691,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (select_or_call
                     (select_or_call
                       (symbol_or_call
-                        (symbol
+                        (auto_call_symbol
                           (id
                             (word_token))))
                       (dot_token)
@@ -651,6 +701,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (id
                       (word_token))
                     (arg_values
+                      (immediate_paren)
                       (argument
                         (positional_value
                           (list
@@ -665,6 +716,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (id
                   (word_token))
                 (arg_values
+                  (immediate_paren)
                   (argument
                     (positional_value
                       (list
@@ -684,22 +736,25 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
   (sep)
   (symbol_or_call
     (call
-      (id
-        (word_token))
+      (symbol
+        (id
+          (word_token)))
       (arg_values
+        (immediate_paren)
         (argument
           (positional_value
             (select_or_call
               (select_or_call
                 (select_or_call
                   (symbol_or_call
-                    (symbol
+                    (auto_call_symbol
                       (id
                         (word_token))))
                   (dot_token)
                   (id
                     (word_token))
                   (arg_values
+                    (immediate_paren)
                     (argument
                       (positional_value
                         (list
@@ -711,6 +766,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (id
                   (word_token))
                 (arg_values
+                  (immediate_paren)
                   (argument
                     (positional_value
                       (list
