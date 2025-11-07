@@ -6,22 +6,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"sort"
 
-	"dagger/dang/internal/dagger"
-	"dagger/dang/internal/telemetry"
-
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"github.com/vito/dang/pkg/hm"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 
 	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
-	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
+
+	"dagger/dang/internal/dagger"
+	"dagger/dang/internal/telemetry"
 )
 
 const debug = false
@@ -363,7 +362,6 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 
 	binds := env.Bindings(dang.PublicVisibility)
 	for _, binding := range binds {
-		log.Println("Binding:", binding.Key)
 		switch val := binding.Value.(type) {
 		case *dang.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
@@ -371,25 +369,7 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to create object %s: %w", binding.Key, err)
 			}
-			directives := ProcessedDirectives{}
-			for _, slot := range val.Parameters {
-				for _, dir := range slot.Directives {
-					if directives[slot.Name.Name] == nil {
-						directives[slot.Name.Name] = map[string]map[string]any{}
-					}
-					for _, arg := range dir.Args {
-						if directives[slot.Name.Name][dir.Name] == nil {
-							directives[slot.Name.Name][dir.Name] = map[string]any{}
-						}
-						val, err := evalConstantValue(arg.Value)
-						if err != nil {
-							return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", slot.Name.Name, dir.Name, arg.Key, err)
-						}
-						directives[slot.Name.Name][dir.Name][arg.Key] = val
-					}
-				}
-			}
-			fnDef, err := createFunction(dag, binding.Key, val.FnType, directives, env)
+			fnDef, err := createFunction(dag, val.ClassType, binding.Key, val.FnType, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create constructor for %s: %w", binding.Key, err)
 			}
@@ -430,10 +410,7 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 	return dagMod, nil
 }
 
-// arg => directive => directive args
-type ProcessedDirectives = map[string]map[string]map[string]any
-
-func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, directives ProcessedDirectives, env dang.EvalEnv) (*dagger.Function, error) {
+func createFunction(dag *dagger.Client, mod *dang.Module, name string, fn *hm.FunctionType, env dang.EvalEnv) (*dagger.Function, error) {
 	// Convert Dang function type to Dagger TypeDef
 	retTypeDef, err := dangTypeToTypeDef(dag, fn.Ret(false), env)
 	if err != nil {
@@ -442,7 +419,19 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 
 	funDef := dag.Function(name, retTypeDef)
 
-	for _, arg := range fn.Arg().(*dang.RecordType).Fields {
+	if desc, ok := mod.GetDocString(name); ok {
+		funDef = funDef.WithDescription(desc)
+	}
+
+	// TODO: enable once checks ship
+	// for _, directive := range mod.GetDirectives(name) {
+	// 	if directive.Name == "check" {
+	// 		funDef = funDef.WithCheck()
+	// 	}
+	// }
+
+	args := fn.Arg().(*dang.RecordType)
+	for _, arg := range args.Fields {
 		argType, mono := arg.Value.Type()
 		if !mono {
 			return nil, fmt.Errorf("non-monotype argument %s", arg.Key)
@@ -457,29 +446,48 @@ func createFunction(dag *dagger.Client, name string, fn *hm.FunctionType, direct
 			typeDef = typeDef.WithOptional(true)
 		}
 
-		// Check for directives on this argument using processed directives
-		if argDirectives, hasDirectives := directives[arg.Key]; hasDirectives {
-			if defaultPath, hasDefaultPath := argDirectives["defaultPath"]; hasDefaultPath {
-				if path, ok := defaultPath["path"].(string); ok {
-					argOpts.DefaultPath = path
-				}
+		for _, argDirs := range args.Directives {
+			if argDirs.Key != arg.Key {
+				continue
 			}
-			if ignorePatterns, hasIgnorePatterns := argDirectives["ignorePatterns"]; hasIgnorePatterns {
-				ignore, hasIgnore := ignorePatterns["patterns"]
-				if ignore, ok := ignore.([]any); ok {
-					var ignorePatterns []string
-					for _, pattern := range ignore {
-						if str, ok := pattern.(string); ok {
-							ignorePatterns = append(ignorePatterns, str)
-						} else {
-							return nil, fmt.Errorf("invalid ignore argument %s: %T (expected string)", arg.Key, pattern)
+			for _, dir := range argDirs.Value {
+				switch dir.Name {
+				case "defaultPath":
+					for _, arg := range dir.Args {
+						if arg.Key == "path" {
+							val, err := evalConstantValue(arg.Value)
+							if err != nil {
+								return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", arg.Key, dir.Name, arg.Key, err)
+							}
+							if path, ok := val.(string); ok {
+								argOpts.DefaultPath = path
+							}
 						}
 					}
-					if len(ignorePatterns) > 0 {
-						argOpts.Ignore = ignorePatterns
+				case "ignorePatterns":
+					for _, arg := range dir.Args {
+						if arg.Key == "patterns" {
+							val, err := evalConstantValue(arg.Value)
+							if err != nil {
+								return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", arg.Key, dir.Name, arg.Key, err)
+							}
+							if ignore, ok := val.([]any); ok {
+								var ignorePatterns []string
+								for _, pattern := range ignore {
+									if str, ok := pattern.(string); ok {
+										ignorePatterns = append(ignorePatterns, str)
+									} else {
+										return nil, fmt.Errorf("invalid ignore argument %s: %T (expected string)", arg.Key, pattern)
+									}
+								}
+								if len(ignorePatterns) > 0 {
+									argOpts.Ignore = ignorePatterns
+								}
+							} else {
+								return nil, fmt.Errorf("invalid ignore directive for argument %s: %T (expected []any)", arg.Key, ignore)
+							}
+						}
 					}
-				} else if hasIgnore {
-					return nil, fmt.Errorf("invalid ignore directive for argument %s: %T (expected []any)", arg.Key, ignore)
 				}
 			}
 		}
@@ -547,13 +555,9 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 		switch x := slotType.(type) {
 		case *hm.FunctionType:
 			fn := x
-			// TODO: figure out the directives locally
-			fnDef, err := createFunction(dag, name, fn, nil, env)
+			fnDef, err := createFunction(dag, classMod, name, fn, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
-			}
-			if desc, ok := classMod.GetDocString(name); ok {
-				fnDef = fnDef.WithDescription(desc)
 			}
 			objDef = objDef.WithFunction(fnDef)
 		default:
@@ -604,12 +608,9 @@ func createInterfaceTypeDef(dag *dagger.Client, name string, interfaceMod *dang.
 		case *hm.FunctionType:
 			fn := x
 			// Create function definition for interface method
-			fnDef, err := createFunction(dag, fieldName, fn, nil, env)
+			fnDef, err := createFunction(dag, mod, fieldName, fn, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for interface %s: %w", fieldName, name, err)
-			}
-			if desc, ok := mod.GetDocString(fieldName); ok {
-				fnDef = fnDef.WithDescription(desc)
 			}
 			interfaceDef = interfaceDef.WithFunction(fnDef)
 		default:

@@ -151,6 +151,15 @@ type Dang {
   }
 
   """
+  Bump the pinned Dang version in the Dagger SDK and Zed grammar.
+  """
+  pub bump(
+    repo: GitRepository! @defaultPath(path: "/.git"),
+  ): Changeset! {
+    print(repo.head.commit)
+  }
+
+  """
   Enter a terminal for debugging the Neovim LSP setup.
   """
   pub nvimDebug: Container! {
