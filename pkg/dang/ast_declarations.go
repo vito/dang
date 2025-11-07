@@ -28,20 +28,21 @@ type FunctionBase struct {
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
-func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], error) {
+func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], error) {
 	args := []Keyed[*hm.Scheme]{}
+	directives := []Keyed[[]*DirectiveApplication]{}
 	for _, arg := range f.Args {
 		_, err := arg.Infer(ctx, env, fresh)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		scheme, found := env.SchemeOf(arg.Name.Name)
 		if !found {
-			return nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
+			return nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
 		}
 		finalArgType, isMono := scheme.Type()
 		if !isMono {
-			return nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
+			return nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
 		}
 
 		// For arguments with defaults, make them nullable in the function signature
@@ -56,9 +57,20 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 
 		// Add to function signature with the appropriate type
 		signatureScheme := hm.NewScheme(nil, signatureType)
-		args = append(args, Keyed[*hm.Scheme]{Key: arg.Name.Name, Value: signatureScheme, Positional: false})
+		args = append(args, Keyed[*hm.Scheme]{
+			Key:        arg.Name.Name,
+			Value:      signatureScheme,
+			Positional: false,
+		})
+		if len(arg.Directives) > 0 {
+			directives = append(directives, Keyed[[]*DirectiveApplication]{
+				Key:        arg.Name.Name,
+				Value:      arg.Directives,
+				Positional: false,
+			})
+		}
 	}
-	return args, nil
+	return args, directives, nil
 }
 
 // createFunctionValue creates a FunctionValue from processed arguments
@@ -99,10 +111,13 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	f.InferredScope = newEnv.(Env)
 
 	// Process arguments using shared logic
-	args, err := f.inferFunctionArguments(ctx, newEnv, fresh)
+	args, directives, err := f.inferFunctionArguments(ctx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
+
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
 
 	// Process block parameter if present
 	var blockType *hm.FunctionType
@@ -148,7 +163,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 
 	// Create function type with optional block parameter
-	f.Inferred = hm.NewFnType(NewRecordType("", args...), inferredRet)
+	f.Inferred = hm.NewFnType(argsRec, inferredRet)
 	if blockType != nil {
 		f.Inferred.SetBlock(blockType)
 	}
@@ -204,10 +219,12 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		signatureEnv := env.Clone()
 
 		// Process arguments to get function signature
-		args, err := f.FunctionBase.inferFunctionArguments(ctx, signatureEnv, fresh)
+		args, directives, err := f.FunctionBase.inferFunctionArguments(ctx, signatureEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
+		argsRec := NewRecordType("", args...)
+		argsRec.Directives = directives
 
 		// Process block parameter if present
 		var blockType *hm.FunctionType
@@ -236,7 +253,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		}
 
 		// Create function type and add to environment
-		fnType := hm.NewFnType(NewRecordType("", args...), retType)
+		fnType := hm.NewFnType(argsRec, retType)
 		if blockType != nil {
 			fnType.SetBlock(blockType)
 		}

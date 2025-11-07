@@ -179,8 +179,9 @@ func (t GraphQLListType) Supertypes() []Type {
 }
 
 type RecordType struct {
-	Named  string
-	Fields []Keyed[*hm.Scheme]
+	Named      string
+	Fields     []Keyed[*hm.Scheme]
+	Directives []Keyed[[]*DirectiveApplication]
 }
 
 var _ hm.Type = (*RecordType)(nil)
@@ -212,6 +213,7 @@ func (t *RecordType) Clone() hm.Env {
 		ts[i].Value = ts[i].Value.Clone()
 	}
 	retVal.Fields = ts
+	retVal.Directives = t.Directives
 	return retVal
 }
 
@@ -235,7 +237,9 @@ func (t *RecordType) Apply(subs hm.Subs) hm.Substitutable {
 		fields[i] = v
 		fields[i].Value = v.Value.Apply(subs).(*hm.Scheme)
 	}
-	return NewRecordType(t.Named, fields...)
+	dup := NewRecordType(t.Named, fields...)
+	dup.Directives = t.Directives
+	return dup
 }
 
 func (t *RecordType) FreeTypeVar() hm.TypeVarSet {
@@ -427,8 +431,9 @@ func (t FunTypeNode) ReferencedSymbols() []string {
 
 func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var regularArgs []Keyed[*hm.Scheme]
+	var directives []Keyed[[]*DirectiveApplication]
 	var blockType *hm.FunctionType
-	
+
 	for _, a := range t.Args {
 		if a.IsBlockParam {
 			// This is a block parameter - infer it as a function type
@@ -458,17 +463,30 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				}
 			}
 
-			regularArgs = append(regularArgs, Keyed[*hm.Scheme]{Key: a.Name.Name, Value: hm.NewScheme(nil, signatureType)})
+			regularArgs = append(regularArgs, Keyed[*hm.Scheme]{
+				Key:   a.Name.Name,
+				Value: hm.NewScheme(nil, signatureType),
+			})
+			if len(a.Directives) > 0 {
+				directives = append(directives, Keyed[[]*DirectiveApplication]{
+					Key:   a.Name.Name,
+					Value: a.Directives,
+				})
+			}
 		}
 	}
-	
+
 	ret, err := t.Ret.Infer(ctx, env, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 	}
-	
+
+	// Include directives in args type
+	argsRec := NewRecordType("", regularArgs...)
+	argsRec.Directives = directives
+
 	// Create function type with optional block parameter
-	fnType := hm.NewFnType(NewRecordType("", regularArgs...), ret)
+	fnType := hm.NewFnType(argsRec, ret)
 	if blockType != nil {
 		fnType.SetBlock(blockType)
 	}

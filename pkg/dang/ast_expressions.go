@@ -2322,6 +2322,7 @@ func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Ty
 			newFieldType := substituteTypeVar(fieldType, tv, replacement)
 			newRec.Add(field.Key, hm.NewScheme(nil, newFieldType))
 		}
+		newRec.Directives = typ.Directives
 		return newRec
 	default:
 		return t
