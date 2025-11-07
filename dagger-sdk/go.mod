@@ -14,7 +14,7 @@ replace go.opentelemetry.io/otel/sdk/log => go.opentelemetry.io/otel/sdk/log v0.
 
 require (
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/dang v0.0.0-20251107180514-46c4d95e12e7
+	github.com/vito/dang v0.0.0-20251107180941-059191f6f3e5
 	go.opentelemetry.io/otel v1.38.0
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go.opentelemetry.io/otel/trace v1.38.0

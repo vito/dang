@@ -156,7 +156,17 @@ type Dang {
   pub bump(
     repo: GitRepository! @defaultPath(path: "/.git"),
   ): Changeset! {
-    print(repo.head.commit)
+    let commit = repo.head.commit
+    base
+      .withExec(["go", "-C", "dagger-sdk", "get", "github.com/vito/dang@"+commit])
+      .withExec(["go", "-C", "dagger-sdk", "mod", "tidy"])
+      .withExec([
+        "sed",
+        "-i", "zed-dang/extension.toml",
+        "-e", "s/commit = \".*\"/commit = \""+commit+"\"/",
+      ])
+      .directory(".")
+      .changes(base.directory("."))
   }
 
   """
@@ -173,6 +183,7 @@ type Dang {
   let base: Container! {
     apko.wolfi([
       "bash",
+      "git",
       "go", "golangci-lint",
       "nodejs", "npm",
       "neovim",
