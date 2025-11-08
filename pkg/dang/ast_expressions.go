@@ -489,6 +489,28 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
 		}
 
+		// If we found a FunctionValue and there's a `self` in the environment,
+		// bind the function to self. This ensures copy-on-write semantics:
+		// bare symbol lookups like `foo()` behave the same as `self.foo()`.
+		if fn, isFn := val.(FunctionValue); isFn {
+			if self, hasSelf := env.Get("self"); hasSelf {
+				if modSelf, isMod := self.(*ModuleValue); isMod {
+					// Only bind if the function is defined in the same module as self
+					if closureSelf, hasClosureSelf := fn.Closure.Get("self"); hasClosureSelf {
+						if closureMod, isClosureMod := closureSelf.(*ModuleValue); isClosureMod {
+							if modSelf.Mod == closureMod.Mod {
+								// Bind the function to the current self
+								val = BoundMethod{
+									Receiver: modSelf,
+									Method:   fn,
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Auto-call zero-arity functions when accessed as symbols
 		if s.AutoCall && isAutoCallableFn(val) {
 			return autoCallFn(ctx, env, val)
