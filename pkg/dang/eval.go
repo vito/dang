@@ -1066,7 +1066,7 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Fork()
-	fnEnv := CreateCompositeEnv(recv, b.Method.Closure)
+	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
 	fnEnv.SetDynamicScope(recv)
 
 	if err := b.Method.BindArgs(ctx, fnEnv, args); err != nil {
