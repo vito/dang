@@ -90,6 +90,9 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 		blockParamName = f.BlockParam.Name.Name
 	}
 
+	// Check if this function has access to dynamic scope
+	_, hasDynamicScope := env.GetDynamicScope()
+
 	return FunctionValue{
 		Args:           argNames,
 		Body:           f.Body,
@@ -99,6 +102,7 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 		ArgDecls:       f.Args, // Preserve original argument declarations with directives
 		Directives:     f.Directives,
 		BlockParamName: blockParamName,
+		IsDynamic:      hasDynamicScope,
 	}
 }
 
@@ -410,15 +414,29 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 
 func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode *Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
-	rootSymbol, path, err := r.getPath(selectNode)
+	rootNode, path, err := r.getPath(selectNode)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the root object from the environment
-	rootObj, found := env.Get(rootSymbol)
-	if !found {
-		return nil, fmt.Errorf("object %q not found", rootSymbol)
+	// Get the root object from the environment or dynamic scope
+	var rootObj Value
+	var found bool
+	var rootSymbolName string
+	
+	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
+		rootObj, found = env.GetDynamicScope()
+		if !found {
+			return nil, fmt.Errorf("'self' is not available in this context")
+		}
+	} else if rootSymbol, ok := rootNode.(*Symbol); ok {
+		rootSymbolName = rootSymbol.Name
+		rootObj, found = env.Get(rootSymbolName)
+		if !found {
+			return nil, fmt.Errorf("object %q not found", rootSymbolName)
+		}
+	} else {
+		return nil, fmt.Errorf("unexpected root node type: %T", rootNode)
 	}
 
 	// Clone the root object to begin the copy-on-write process
@@ -463,12 +481,17 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	}
 
 	// Update the root object in the environment (respects Fork boundaries)
-	env.Reassign(rootSymbol, newRoot.(Value))
+	// For self, update the dynamic scope so subsequent references see the change
+	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
+		env.SetDynamicScope(newRoot.(Value))
+	} else {
+		env.Reassign(rootSymbolName, newRoot.(Value))
+	}
 
 	return newRoot.(Value), nil
 }
 
-func (r *Reassignment) getPath(selectNode *Select) (string, []string, error) {
+func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
 	var path []string
 	var currentNode Node = selectNode
 
@@ -482,13 +505,14 @@ func (r *Reassignment) getPath(selectNode *Select) (string, []string, error) {
 		}
 	}
 
-	// The final node in the chain should be a Symbol (the root object)
-	rootSymbol, ok := currentNode.(*Symbol)
-	if !ok {
-		return "", nil, fmt.Errorf("complex receivers must start with a symbol")
+	// The final node in the chain should be a Symbol or SelfKeyword (the root object)
+	if _, ok := currentNode.(*Symbol); ok {
+		return currentNode, path, nil
 	}
-
-	return rootSymbol.Name, path, nil
+	if _, ok := currentNode.(*SelfKeyword); ok {
+		return currentNode, path, nil
+	}
+	return nil, nil, fmt.Errorf("complex receivers must start with a symbol or self keyword")
 }
 
 func (r *Reassignment) performAddition(left, right Value, varName string) (Value, error) {

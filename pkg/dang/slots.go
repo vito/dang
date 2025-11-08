@@ -302,9 +302,9 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	}
 
 	if pass > 0 {
-		// set special 'self' keyword to match the function signature.
-		self := hm.NewScheme(nil, hm.NonNullType{Type: class})
-		class.Add("self", self)
+		// Set dynamic scope type to the class type
+		selfType := hm.NonNullType{Type: class}
+		class.SetDynamicScopeType(selfType)
 
 		if err := c.Value.Hoist(ctx, inferEnv, fresh, pass); err != nil {
 			return err
@@ -334,8 +334,9 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	// Set this early so we can at least partially infer.
 	c.Inferred = class.(*Module)
 
-	self := hm.NewScheme(nil, hm.NonNullType{Type: class})
-	class.Add("self", self)
+	// Set dynamic scope type to the class type
+	selfType := hm.NonNullType{Type: class}
+	class.SetDynamicScopeType(selfType)
 
 	// Validate directive applications
 	for _, directive := range c.Directives {

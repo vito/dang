@@ -8,11 +8,14 @@ type Env interface {
 	Remove(name string) Env
 	FreeTypeVar() TypeVarSet
 	Apply(subs Subs) Substitutable
+	GetDynamicScopeType() Type
+	SetDynamicScopeType(t Type)
 }
 
 // SimpleEnv is a simple implementation of Env
 type SimpleEnv struct {
-	schemes map[string]*Scheme
+	schemes          map[string]*Scheme
+	dynamicScopeType Type
 }
 
 // NewSimpleEnv creates a new SimpleEnv
@@ -72,5 +75,16 @@ func (env *SimpleEnv) Apply(subs Subs) Substitutable {
 	for name, scheme := range env.schemes {
 		newEnv.schemes[name] = scheme.Apply(subs).(*Scheme)
 	}
+	newEnv.dynamicScopeType = env.dynamicScopeType
 	return newEnv
+}
+
+// GetDynamicScopeType returns the current dynamic scope type
+func (env *SimpleEnv) GetDynamicScopeType() Type {
+	return env.dynamicScopeType
+}
+
+// SetDynamicScopeType sets the current dynamic scope type
+func (env *SimpleEnv) SetDynamicScopeType(t Type) {
+	env.dynamicScopeType = t
 }

@@ -1,0 +1,30 @@
+type Foo {
+  let x = 0
+
+  pub addOne: Foo! {
+    print("addOne: x before = " + toJSON(self.x))
+    self.x = self.x + 1
+    print("addOne: x after = " + toJSON(self.x))
+    self
+  }
+
+  pub testWithSelf: Foo! {
+    let foo1 = self.addOne
+    let foo2 = self.addOne
+    assert { foo1.x == foo2.x }
+    foo2
+  }
+
+  pub testWithoutSelf: Foo! {
+    let foo1 = addOne
+    let foo2 = addOne
+    assert { foo1.x == foo2.x }
+    foo2
+  }
+}
+
+print("==== TEST WITH SELF ====")
+Foo.testWithSelf
+
+print("\n\n==== TEST WITHOUT SELF ====")
+Foo.testWithoutSelf

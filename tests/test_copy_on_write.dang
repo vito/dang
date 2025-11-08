@@ -1,0 +1,66 @@
+let arch = "x86_64"
+
+type Apko {
+  let config = {{
+    contents: {{
+      packages: []::[String!]!
+      repositories: []::[String!]!
+      keyring: []::[String!]!
+    }}
+    cmd: ""
+    environment: {{ # TODO: how to support arbitrary key-value?
+      PATH: "/usr/local/bin:/usr/bin:/bin"
+    }}
+    archs: [arch]
+  }}
+
+  pub withAlpine(branch: String! = "edge"): Apko! {
+    self.config.contents.packages += ["apk-tools"]
+    self.config.contents.repositories += [
+      "https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main"
+    ]
+    self
+  }
+
+  pub withWolfi: Apko! {
+    self.config.contents.packages += ["wolfi-base"]
+    self.config.contents.keyring += [
+      "https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
+    ]
+    self.config.contents.repositories += [
+      "https://packages.wolfi.dev/os",
+    ]
+    self
+  }
+
+  pub withPackages(packages: [String!]!): Apko! {
+    self.config.contents.packages += packages
+    self
+  }
+
+  pub withArchs(archs: [String!]!): Apko! {
+    self.config.archs += archs
+    self
+  }
+
+  # Test copy-on-write: calling the same method multiple times should NOT accumulate mutations.
+  # Each call to withAlpine gets a fresh forked copy of self, not the original.
+  pub alpine(packages: [String!]!, branch: String! = "edge"): Apko! {
+    let apko1 = withAlpine(branch).withPackages(packages)
+    let apko2 = withAlpine(branch).withPackages(packages)
+    let apko3 = withAlpine(branch).withPackages(packages)
+    let apko4 = withAlpine(branch).withPackages(packages)
+    let apko5 = withAlpine(branch).withPackages(packages)
+    # All should have the same packages list: ["apk-tools", "bash"]
+    # NOT accumulated: ["apk-tools", "apk-tools", "apk-tools", "apk-tools", "apk-tools", "bash"]
+    assert { apko1.config.contents.packages == apko5.config.contents.packages }
+    apko5
+  }
+}
+
+assert { Apko.alpine(["bash"]).config.contents.packages == ["apk-tools", "bash"] }
+
+# USAGE:
+# print(toJSON(Apko.withAlpine.config))
+# print(Apko.withAlpine.withPackages(["git"]).asContainer.withExec(["git", "version"]).stdout)
+# print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)

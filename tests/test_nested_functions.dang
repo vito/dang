@@ -1,0 +1,94 @@
+# Test functions defined within methods
+
+# =============================================================================
+# Test 1: Basic nested function helper
+# =============================================================================
+
+type Counter {
+  pub val: Int = 0
+
+  pub incr: Counter! {
+    # Define a helper function inside the method
+    let helper: Counter! {
+      # This helper has 'self' in its closure, so IsMethod=true
+      # That means it will fork and update self when called
+      incrBy(1)
+    }
+
+    helper
+  }
+
+  pub incrBy(n: Int!): Counter! {
+    self.val = self.val + n
+    self
+  }
+}
+
+let obj = Counter
+
+# Calling incr should increment val to 1
+let obj1 = obj.incr
+assert { obj1.val == 1 }
+
+# Call again to verify it increments to 2, not resets
+let obj2 = obj1.incr
+assert { obj2.val == 2 }
+
+# =============================================================================
+# Test 2: Multiple levels of nesting
+# =============================================================================
+
+type NestedLevels {
+  pub val: Int = 0
+
+  pub outer: NestedLevels! {
+    let middle: NestedLevels! {
+      let inner: NestedLevels! {
+        incrBy(1)
+      }
+      inner
+    }
+    middle
+  }
+
+  pub incrBy(n: Int!): NestedLevels! {
+    self.val = self.val + n
+    self
+  }
+}
+
+let nested = NestedLevels
+let nested1 = nested.outer
+assert { nested1.val == 1 }
+
+# =============================================================================
+# Test 3: Nested function with captured variables
+# =============================================================================
+
+type Accumulator {
+  pub val: Int = 0
+
+  pub addMultiple(a: Int!, b: Int!, c: Int!): Accumulator! {
+    let addFirst: Accumulator! {
+      incrBy(a)
+    }
+    let addSecond: Accumulator! {
+      addFirst.incrBy(b)
+    }
+    let addThird: Accumulator! {
+      addSecond.incrBy(c)
+    }
+    addThird
+  }
+
+  pub incrBy(n: Int!): Accumulator! {
+    self.val = self.val + n
+    self
+  }
+}
+
+let acc = Accumulator
+let acc1 = acc.addMultiple(1, 2, 3)
+assert { acc1.val == 6 }
+
+print("Nested functions test passed!")

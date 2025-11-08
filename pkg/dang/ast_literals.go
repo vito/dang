@@ -151,6 +151,47 @@ func (n *Null) Walk(fn func(Node) bool) {
 	fn(n)
 }
 
+// SelfKeyword represents the 'self' keyword that accesses dynamic scope
+type SelfKeyword struct {
+	InferredTypeHolder
+	Loc *SourceLocation
+}
+
+var _ Node = (*SelfKeyword)(nil)
+var _ Evaluator = (*SelfKeyword)(nil)
+
+func (s *SelfKeyword) Body() hm.Expression { return s }
+
+func (s *SelfKeyword) GetSourceLocation() *SourceLocation { return s.Loc }
+
+func (s *SelfKeyword) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t := env.GetDynamicScopeType()
+	if t == nil {
+		return nil, NewInferError(fmt.Errorf("'self' is not available in this context"), s)
+	}
+	s.SetInferredType(t)
+	return t, nil
+}
+
+func (s *SelfKeyword) DeclaredSymbols() []string {
+	return nil // self doesn't declare anything
+}
+
+func (s *SelfKeyword) ReferencedSymbols() []string {
+	return nil // self doesn't reference a lexical symbol
+}
+
+func (s *SelfKeyword) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if dynScope, ok := env.GetDynamicScope(); ok {
+		return dynScope, nil
+	}
+	return nil, fmt.Errorf("'self' is not available in this context")
+}
+
+func (s *SelfKeyword) Walk(fn func(Node) bool) {
+	fn(s)
+}
+
 // String represents a string literal
 type String struct {
 	InferredTypeHolder

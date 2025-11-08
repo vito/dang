@@ -371,6 +371,17 @@ func (c CompositeEnv) Clone() EvalEnv {
 	}
 }
 
+// GetDynamicScope returns the dynamic scope from the primary environment
+func (c CompositeEnv) GetDynamicScope() (Value, bool) {
+	return c.primary.GetDynamicScope()
+}
+
+// SetDynamicScope sets the dynamic scope in the primary environment
+func (c CompositeEnv) SetDynamicScope(value Value) {
+	c.primary.SetDynamicScope(value)
+}
+
+
 // CreateCompositeEnv creates a composite environment for reopening
 func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
 	return CompositeEnv{
@@ -463,6 +474,19 @@ func (c *CompositeModule) FreeTypeVar() hm.TypeVarSet {
 	primaryVars := c.primary.FreeTypeVar()
 	lexicalVars := c.lexical.FreeTypeVar()
 	return primaryVars.Union(lexicalVars)
+}
+
+func (c *CompositeModule) GetDynamicScopeType() hm.Type {
+	// First check primary (class/module being inferred)
+	if t := c.primary.GetDynamicScopeType(); t != nil {
+		return t
+	}
+	// Then check lexical scope
+	return c.lexical.GetDynamicScopeType()
+}
+
+func (c *CompositeModule) SetDynamicScopeType(t hm.Type) {
+	c.primary.SetDynamicScopeType(t)
 }
 
 var _ Env = &CompositeModule{}

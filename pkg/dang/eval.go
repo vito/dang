@@ -55,6 +55,9 @@ type EvalEnv interface {
 	Visibility(name string) Visibility
 	Clone() EvalEnv
 	Fork() EvalEnv
+	// Dynamic scope support for 'self'
+	GetDynamicScope() (Value, bool)
+	SetDynamicScope(value Value)
 }
 
 // GraphQLFunction represents a GraphQL API function that makes actual calls
@@ -419,7 +422,7 @@ func addBuiltinFunctions(env EvalEnv) {
 				Name:   def.Name,
 				FnType: fnType,
 				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-					selfVal, _ := env.Get("self")
+					selfVal, _ := env.GetDynamicScope()
 					// Apply defaults for missing arguments
 					argsWithDefaults := applyDefaults(args, def)
 
@@ -759,6 +762,7 @@ type FunctionValue struct {
 	ArgDecls       []*SlotDecl     // Original argument declarations with directives
 	BlockParamName string          // Name of the block parameter, if any
 	Directives     []*DirectiveApplication
+	IsDynamic      bool // True if this function has access to dynamic scope
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -774,9 +778,27 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 }
 
 func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-	// Create new environment with argument bindings
 	fnEnv := f.Closure.Clone()
 
+	if f.IsDynamic {
+		// Propagate dynamic scope from calling environment
+		//
+		// A dynamic FunctionValue being called will ALWAYS mean we're coming from a
+		// 'naked' self-call (foo() instead of self.foo()) from a sibling method, so
+		// we can inherit the caller's `self`.
+		if dynScope, hasDynScope := env.GetDynamicScope(); hasDynScope {
+			fnEnv.SetDynamicScope(dynScope)
+		}
+	}
+
+	if err := f.BindArgs(ctx, fnEnv, args); err != nil {
+		return nil, err
+	}
+
+	return EvalNode(ctx, fnEnv, f.Body)
+}
+
+func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
 	// Bind arguments to the function environment
 	for _, argName := range f.Args {
 		if val, exists := args[argName]; exists {
@@ -785,7 +807,7 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 				if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
 					defaultVal, err := EvalNode(ctx, f.Closure, defaultExpr)
 					if err != nil {
-						return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 					}
 					fnEnv.Set(argName, defaultVal)
 				} else {
@@ -798,7 +820,7 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 			// Use default value when argument not provided
 			defaultVal, err := EvalNode(ctx, f.Closure, defaultExpr)
 			if err != nil {
-				return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
 			fnEnv.Set(argName, defaultVal)
 		} else {
@@ -819,7 +841,7 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 		}
 	}
 
-	return EvalNode(ctx, fnEnv, f.Body)
+	return nil
 }
 
 func (f FunctionValue) ParameterNames() []string {
@@ -857,6 +879,7 @@ type ModuleValue struct {
 	Visibilities map[string]Visibility // Track visibility of each field
 	Parent       *ModuleValue          // For hierarchical scoping
 	IsForked     bool                  // Prevents SetInScope from traversing to parent
+	dynamicScope Value                 // The value of 'self' in this scope
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
@@ -944,6 +967,7 @@ func (m *ModuleValue) Clone() EvalEnv {
 		Values:       newValues,
 		Visibilities: newVisibilities,
 		Parent:       m,
+		dynamicScope: m.dynamicScope, // Preserve dynamic scope
 	}
 }
 
@@ -956,7 +980,8 @@ func (m *ModuleValue) Fork() EvalEnv {
 		Values:       newValues,
 		Visibilities: newVisibilities,
 		Parent:       m,
-		IsForked:     true, // This prevents SetInScope from traversing to parent
+		IsForked:     true,           // This prevents SetInScope from traversing to parent
+		dynamicScope: m.dynamicScope, // Preserve dynamic scope
 	}
 }
 
@@ -989,6 +1014,22 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
 	}
+}
+
+// GetDynamicScope returns the dynamic scope value ('self')
+func (m *ModuleValue) GetDynamicScope() (Value, bool) {
+	if m.dynamicScope != nil {
+		return m.dynamicScope, true
+	}
+	if m.Parent != nil {
+		return m.Parent.GetDynamicScope()
+	}
+	return nil, false
+}
+
+// SetDynamicScope sets the dynamic scope value ('self')
+func (m *ModuleValue) SetDynamicScope(value Value) {
+	m.dynamicScope = value
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue
@@ -1030,35 +1071,10 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Fork()
 	fnEnv := CreateCompositeEnv(recv, b.Method.Closure)
-	fnEnv.Set("self", recv)
+	fnEnv.SetDynamicScope(recv)
 
-	// Bind arguments to the function environment
-	for _, argName := range b.Method.Args {
-		if val, exists := args[argName]; exists {
-			// Handle null values with defaults
-			if _, isNull := val.(NullValue); isNull {
-				if defaultExpr, hasDefault := b.Method.Defaults[argName]; hasDefault {
-					defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
-					if err != nil {
-						return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-					}
-					fnEnv.Set(argName, defaultVal)
-				} else {
-					fnEnv.Set(argName, val)
-				}
-			} else {
-				fnEnv.Set(argName, val)
-			}
-		} else if defaultExpr, hasDefault := b.Method.Defaults[argName]; hasDefault {
-			// Use default value when argument not provided
-			defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
-			if err != nil {
-				return nil, fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
-			}
-			fnEnv.Set(argName, defaultVal)
-		} else {
-			fnEnv.Set(argName, NullValue{})
-		}
+	if err := b.Method.BindArgs(ctx, fnEnv, args); err != nil {
+		return nil, err
 	}
 
 	return EvalNode(ctx, fnEnv, b.Method.Body)
@@ -1091,10 +1107,10 @@ func (b BoundBuiltinMethod) MarshalJSON() ([]byte, error) {
 }
 
 func (b BoundBuiltinMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-	// Create a temporary environment with the receiver bound as "self"
+	// Create a temporary environment with the receiver as dynamic scope
 	tempMod := NewModule("_temp_", ObjectKind)
 	tempEnv := NewModuleValue(tempMod)
-	tempEnv.Set("self", b.Receiver)
+	tempEnv.SetDynamicScope(b.Receiver)
 
 	// Call the builtin function with the receiver context
 	return b.Method.Call(ctx, tempEnv, args)
@@ -1169,9 +1185,8 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 	instanceEnv := CreateCompositeEnv(instance, c.Closure)
 
-	// Bind 'self' to the instance first so it's available for default value evaluation
-	// TODO: is this necessary?
-	instanceEnv.Set("self", instance)
+	// Set dynamic scope to the instance so it's available for default value evaluation
+	instanceEnv.SetDynamicScope(instance)
 
 	// Bind constructor arguments to the instance environment
 	for _, param := range c.Parameters {

@@ -250,6 +250,14 @@ func (t *RecordType) FreeTypeVar() hm.TypeVarSet {
 	return tvs
 }
 
+func (t *RecordType) GetDynamicScopeType() hm.Type {
+	return nil // RecordTypes don't have dynamic scope
+}
+
+func (t *RecordType) SetDynamicScopeType(hm.Type) {
+	// RecordTypes don't have dynamic scope - noop
+}
+
 func (t *RecordType) Name() string {
 	if t.Named != "" {
 		return t.Named

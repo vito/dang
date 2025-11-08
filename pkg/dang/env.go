@@ -75,6 +75,9 @@ type Module struct {
 	docStrings      map[string]string
 	moduleDocString string
 
+	// Type-level dynamic scope type
+	dynamicScopeType hm.Type
+
 	// Interface tracking
 	interfaces   []Env // Interfaces this type implements
 	implementers []Env // Types that implement this interface (for interface modules)
@@ -425,7 +428,22 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 func (e *Module) Clone() hm.Env {
 	mod := NewModule(e.Named, e.Kind)
 	mod.Parent = e
+	mod.dynamicScopeType = e.dynamicScopeType
 	return mod
+}
+
+func (e *Module) GetDynamicScopeType() hm.Type {
+	if e.dynamicScopeType != nil {
+		return e.dynamicScopeType
+	}
+	if e.Parent != nil {
+		return e.Parent.GetDynamicScopeType()
+	}
+	return nil
+}
+
+func (e *Module) SetDynamicScopeType(t hm.Type) {
+	e.dynamicScopeType = t
 }
 
 func (e *Module) AddClass(name string, c Env) {
