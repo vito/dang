@@ -646,7 +646,7 @@ HeadersBlock <- '{' _ eles:(e:HeaderSlot Sep { return e, nil })* last:HeaderSlot
 
 // Literals
 
-Literal <- Float / Int / Boolean / TripleQuoteString / String / Quoted / Null
+Literal <- Float / Int / Boolean / TripleQuoteString / String / Quoted / Null / SelfKeyword
 
 Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit+) Exponent)) {
   value, err := strconv.ParseFloat(string(c.text), 64)
@@ -753,6 +753,13 @@ Null <- NullToken {
   }, nil
 }
 NullToken <- "null" !WordChar
+
+SelfKeyword <- SelfToken {
+  return &SelfKeyword{
+    Loc: c.Loc(),
+  }, nil
+}
+SelfToken <- "self" !WordChar
 
 CommentToken <- '#' [^\n]*
 

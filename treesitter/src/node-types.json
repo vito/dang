@@ -2276,6 +2276,10 @@
           "named": true
         },
         {
+          "type": "self_keyword",
+          "named": true
+        },
+        {
           "type": "string",
           "named": true
         },
@@ -2901,6 +2905,21 @@
       "types": [
         {
           "type": "dot_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "self_keyword",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "self_token",
           "named": true
         }
       ]
@@ -3889,6 +3908,10 @@
   },
   {
     "type": "scalar_token",
+    "named": true
+  },
+  {
+    "type": "self_token",
     "named": true
   },
   {
