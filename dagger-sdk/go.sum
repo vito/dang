@@ -50,8 +50,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/vektah/gqlparser/v2 v2.5.30 h1:EqLwGAFLIzt1wpx1IPpY67DwUujF1OfzgEyDsLrN6kE=
 github.com/vektah/gqlparser/v2 v2.5.30/go.mod h1:D1/VCZtV3LPnQrcPBeR/q5jkSQIPti0uYCP/RI0gIeo=
-github.com/vito/dang v0.0.0-20251107180941-059191f6f3e5 h1:AdF0OjDtrG7HEHFT40yF3kS26eFEf4alzAQy5cH6+UM=
-github.com/vito/dang v0.0.0-20251107180941-059191f6f3e5/go.mod h1:OS5RBo8qieI9va/pvze/VjOGzeYAI8umyXwi7KC5lUY=
+github.com/vito/dang v0.0.0-20251108213404-e72d927a635b h1:Q6bkcEFw91Y9Sd7vKAOpJ2lhfHPLGLRypMTbs943flw=
+github.com/vito/dang v0.0.0-20251108213404-e72d927a635b/go.mod h1:OS5RBo8qieI9va/pvze/VjOGzeYAI8umyXwi7KC5lUY=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=
 go.opentelemetry.io/auto/sdk v1.1.0/go.mod h1:3wSPjt5PWp2RhlCcmmOial7AvC4DQqZb7a7wCow3W8A=
 go.opentelemetry.io/otel v1.38.0 h1:RkfdswUDRimDg0m2Az18RKOsnI8UDzppJAtj01/Ymk8=
