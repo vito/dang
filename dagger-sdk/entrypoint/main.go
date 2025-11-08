@@ -207,7 +207,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		}
 	} else {
 		parentModEnv := dang.NewModuleValue(parentModType)
-		parentModEnv.Set("self", parentModEnv)
+		parentModEnv.SetDynamicScope(parentModEnv)
 
 		for name, value := range parentState {
 			scheme, found := parentModType.SchemeOf(name)
