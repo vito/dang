@@ -1,0 +1,40 @@
+3 inference errors:
+
+Error 1:
+[1m[31mError:[0m DirectiveApplication.Infer: positional arguments must come before named arguments
+  [2m[34m--> errors/directive_positional_after_named.dang:7:21[0m
+ [2m    |[0m
+ [2m  5 | type Test {[0m
+ [2m  6 |   # This should fail: positional arg after named arg[0m
+ [2m[34m[1m  7 | [0m  pub field: String! @example(a: "named", "positional")
+[2m                           [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 | }[0m
+ [2m  9 | [0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m DirectiveApplication.Infer: positional arguments must come before named arguments
+  [2m[34m--> errors/directive_positional_after_named.dang:7:21[0m
+ [2m    |[0m
+ [2m  5 | type Test {[0m
+ [2m  6 |   # This should fail: positional arg after named arg[0m
+ [2m[34m[1m  7 | [0m  pub field: String! @example(a: "named", "positional")
+[2m                           [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 | }[0m
+ [2m  9 | [0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m DirectiveApplication.Infer: positional arguments must come before named arguments
+  [2m[34m--> errors/directive_positional_after_named.dang:7:21[0m
+ [2m    |[0m
+ [2m  5 | type Test {[0m
+ [2m  6 |   # This should fail: positional arg after named arg[0m
+ [2m[34m[1m  7 | [0m  pub field: String! @example(a: "named", "positional")
+[2m                           [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  8 | }[0m
+ [2m  9 | [0m
+ [2m    |[0m
+

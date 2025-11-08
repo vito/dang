@@ -1,0 +1,10 @@
+# Test that positional arguments must come before named arguments
+
+directive @example(a: String!, b: String!) on FIELD_DEFINITION
+
+type Test {
+  # This should fail: positional arg after named arg
+  pub field: String! @example(a: "named", "positional")
+}
+
+print("Should not reach here!")

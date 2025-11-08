@@ -964,13 +964,33 @@ func (d *DirectiveApplication) Walk(fn func(Node) bool) {
 
 // validateArguments checks that directive application arguments match the declaration
 func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *DirectiveDecl, env hm.Env, fresh hm.Fresher) error {
-	// Create map of provided arguments
+	// Validate positional args come before named args
+	seenNamed := false
+	for _, arg := range d.Args {
+		if arg.Positional && seenNamed {
+			return fmt.Errorf("positional arguments must come before named arguments")
+		}
+		if !arg.Positional {
+			seenNamed = true
+		}
+	}
+
+	// Map positional arguments to parameter names by index
+	positionalIndex := 0
 	providedArgs := make(map[string]Node)
+	
 	for _, arg := range d.Args {
 		if arg.Positional {
-			return fmt.Errorf("directive arguments must be named, not positional")
+			if positionalIndex >= len(decl.Args) {
+				return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
+					positionalIndex+1, len(decl.Args))
+			}
+			paramName := decl.Args[positionalIndex].Name.Name
+			providedArgs[paramName] = arg.Value
+			positionalIndex++
+		} else {
+			providedArgs[arg.Key] = arg.Value
 		}
-		providedArgs[arg.Key] = arg.Value
 	}
 
 	// Check each declared argument
