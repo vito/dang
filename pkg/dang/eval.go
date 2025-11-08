@@ -1040,10 +1040,6 @@ func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 		if _, isFn := kv.Value.(FunctionValue); isFn {
 			continue
 		}
-		if kv.Key == "self" {
-			// prevent infinite recursion
-			continue
-		}
 		result[kv.Key] = kv.Value
 	}
 	return json.Marshal(result)
