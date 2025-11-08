@@ -22,12 +22,8 @@ type Dev {
   """
   Start a coding agent with the provided module.
   """
-  pub forModule(module: Module!, source: Directory! = directory): LLM! {
-    agent(llm.withEnv(
-      env
-        .withModule(module)
-        .withWorkspace(source)
-    ))
+  pub withTools(tools: Module!): LLM! {
+    agent(llm.withEnv(env.withModule(module)))
   }
 
   """
