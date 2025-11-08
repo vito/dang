@@ -196,10 +196,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (select_or_call
                     (select_or_call
                       (select_or_call
-                        (symbol_or_call
-                          (auto_call_symbol
-                            (id
-                              (word_token))))
+                        (literal
+                          (self_keyword
+                            (self_token)))
                         (dot_token)
                         (id
                           (word_token)))
@@ -221,10 +220,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (select_or_call
                     (select_or_call
                       (select_or_call
-                        (symbol_or_call
-                          (auto_call_symbol
-                            (id
-                              (word_token))))
+                        (literal
+                          (self_keyword
+                            (self_token)))
                         (dot_token)
                         (id
                           (word_token)))
@@ -308,10 +306,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (select_or_call
                     (select_or_call
                       (select_or_call
-                        (symbol_or_call
-                          (auto_call_symbol
-                            (id
-                              (word_token))))
+                        (literal
+                          (self_keyword
+                            (self_token)))
                         (dot_token)
                         (id
                           (word_token)))
@@ -369,10 +366,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (reassignment
                   (select_or_call
                     (select_or_call
-                      (symbol_or_call
-                        (auto_call_symbol
-                          (id
-                            (word_token))))
+                      (literal
+                        (self_keyword
+                          (self_token)))
                       (dot_token)
                       (id
                         (word_token)))

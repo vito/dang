@@ -1,1 +1,1 @@
-(comment_token) @comment
+zed-dang/languages/dang/injections.scm

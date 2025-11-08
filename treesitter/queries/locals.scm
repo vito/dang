@@ -1,10 +1,1 @@
-; Scopes
-
-[
-  (list)
-  (block)
-] @scope
-
-; References
-
-(symbol) @reference
+zed-dang/languages/dang/locals.scm

@@ -25,6 +25,8 @@
   (or_token)
 ] @keyword.control
 
+(self_keyword) @variable.special
+
 ;; Literals
 (string) @string
 (string (immediate_escape) @string.escape) @string
@@ -118,9 +120,6 @@
 (object_selection) @punctuation.bracket
 (field_selection
   (id) @property)
-
-((symbol) @variable.special
-  (#match? @variable.special "^(self)$"))
 
 ;; Error highlighting
 (ERROR) @error

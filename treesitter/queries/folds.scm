@@ -1,4 +1,1 @@
-[
-  (list)
-  (block)
-] @fold
+zed-dang/languages/dang/folds.scm
