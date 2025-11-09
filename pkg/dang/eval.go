@@ -1356,9 +1356,14 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 		fmt.Println("Running phased evaluation...")
 	}
 
-	result, err := EvalNode(ctx, evalEnv, masterBlock)
+	// Create an eval context for error reporting. Since we're evaluating
+	// forms from multiple files, we don't provide a source string here.
+	// The error formatter will read individual source files as needed.
+	evalCtx := NewEvalContext(dirPath, "")
+
+	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
 	if err != nil {
-		return nil, fmt.Errorf("evaluation failed for directory %s: %w", dirPath, err)
+		return nil, err
 	}
 
 	slog.Debug("directory evaluation completed", "result", result.String(), "dir", dirPath)

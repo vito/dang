@@ -131,12 +131,12 @@ func run(ctx context.Context, cfg Config) error {
 	if fileInfo.IsDir() {
 		// Evaluate directory as a module
 		if _, err := dang.RunDir(ctx, client, schema, cfg.File, cfg.Debug); err != nil {
-			return fmt.Errorf("failed to evaluate Dang directory: %w", err)
+			return err
 		}
 	} else {
 		// Evaluate single file
 		if err := dang.RunFile(ctx, client, schema, cfg.File, cfg.Debug); err != nil {
-			return fmt.Errorf("failed to evaluate Dang file: %w", err)
+			return err
 		}
 	}
 
