@@ -64,15 +64,29 @@
 ["@" "|"] @punctuation.special
 
 ;; Identifiers - using more generic patterns
-; (symbol_or_call) @variable
-
-;; Special highlighting for built-in functions
-; ((symbol_or_call) @function.builtin
-;   (#match? @function.builtin "^(print)$"))
+(symbol) @variable
+(call (symbol) @function.method)
 
 ;; Key-value pairs
 (key_value
   (word_token) @property)
+
+;; Special highlighting for built-in functions
+((call
+  (symbol) @function.builtin)
+  (#match? @function.builtin "^(print|toJSON)$"))
+
+;; Field selections
+(select_or_call
+  (id) @function.method)
+
+;; Object selection (multi-field selection)
+(object_selection) @punctuation.bracket
+(field_selection
+  (id) @property)
+
+;; Error highlighting
+(ERROR) @error
 
 ;; Slot definitions
 (type_and_block_slot
@@ -102,24 +116,3 @@
 (enum (symbol) @type)
 (enum (caps_symbol) @property)
 (scalar (symbol) @type)
-
-;; Special highlighting for print function
-(symbol) @variable
-(call
-  (symbol) @function.method)
-
-((call
-  (symbol) @function.builtin)
-  (#match? @function.builtin "^(print)$"))
-
-;; Field selections
-(select_or_call
-  (id) @function.method)
-
-;; Object selection (multi-field selection)
-(object_selection) @punctuation.bracket
-(field_selection
-  (id) @property)
-
-;; Error highlighting
-(ERROR) @error
