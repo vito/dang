@@ -23,7 +23,7 @@ type Dev {
   Start a coding agent with the provided module.
   """
   pub withTools(tools: Module!): LLM! {
-    agent(llm.withEnv(env.withModule(module)))
+    agent(llm.withEnv(env.withModule(tools)))
   }
 
   """
