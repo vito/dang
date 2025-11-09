@@ -52,6 +52,32 @@ type Dang {
   }
 
   """
+  Build and run a `dang` command.
+
+  Example usage:
+
+    # Run a Dang script
+    dang script.dang
+
+    # Run all .dang files in a directory as a module
+    dang ./my-module
+
+    # Start interactive REPL
+    dang
+
+    # Run with debug logging enabled
+    dang --debug script.dang
+    dang -d ./my-module
+  """
+  pub dang(args: [String!]!): Void {
+    base
+      .withFile("/usr/bin/dang", binary)
+      .withExec(["dang"] + args, experimentalPrivilegedNesting: true)
+      .sync
+    null
+  }
+
+  """
   Start a Dang coding agent.
   """
   pub coder: LLM! {

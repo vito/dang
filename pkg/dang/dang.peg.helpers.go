@@ -50,8 +50,8 @@ func (c current) Loc() *SourceLocation {
 	return &start
 }
 
+// TODO: unit test all this
 func normalizeDocString(content []byte) (res string) {
-	content = bytes.TrimSpace(content)
 	lines := bytes.Split(content, []byte{'\n'})
 	if len(lines) == 0 {
 		return string(content)
@@ -86,6 +86,13 @@ func normalizeDocString(content []byte) (res string) {
 	var currentParagraph []byte
 
 	for _, line := range trimmedLines {
+		indented := bytes.HasPrefix(line, []byte(" ")) || bytes.HasPrefix(line, []byte("\t"))
+		if len(currentParagraph) == 0 && indented {
+			// Preserve formatting of lines that are indented (AFTER trimming common
+			// indent level), since they tend to represent code snippets.
+			result = append(result, line)
+			continue
+		}
 		trimmed := bytes.TrimSpace(line)
 		if len(trimmed) == 0 {
 			// Empty line ends current paragraph
