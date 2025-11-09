@@ -4,6 +4,12 @@
   "sdk": {
     "source": "./dagger-sdk"
   },
+  "toolchains": [
+    {
+      "name": "dev",
+      "source": "mod/dev"
+    }
+  ],
   "dependencies": [
     {
       "name": "apko",
