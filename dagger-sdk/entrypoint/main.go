@@ -327,7 +327,7 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 		if !isMod {
 			return nil, fmt.Errorf("expected module type, got %T", fieldType)
 		}
-		modVal := dang.NewModuleValue(mod)
+		args := map[string]dang.Value{}
 		for name, val := range v {
 			expectedT, found := mod.SchemeOf(name)
 			if !found {
@@ -341,10 +341,26 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert map item %q: %w", name, err)
 			}
-			mod.Add(name, hm.NewScheme(nil, dangVal.Type()))
-			modVal.Set(name, dangVal)
+			args[name] = dangVal
 		}
-		return modVal, nil
+		if mod.Name() != "" {
+			constructor, ok := env.Get(mod.Name())
+			if !ok {
+				return nil, fmt.Errorf("module constructor %q not found in environment", mod.Name())
+			}
+			constructorFn, ok := constructor.(dang.Callable)
+			if !ok {
+				return nil, fmt.Errorf("module constructor %q is not callable", mod.Name())
+			}
+			return constructorFn.Call(ctx, env, args)
+		} else {
+			modVal := dang.NewModuleValue(mod)
+			for name, val := range args {
+				mod.Add(name, hm.NewScheme(nil, val.Type()))
+				modVal.Set(name, val)
+			}
+			return modVal, nil
+		}
 	case nil:
 		return dang.NullValue{}, nil
 	default:
