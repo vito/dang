@@ -23,7 +23,13 @@ const (
 
 func New(
 	// +defaultPath="/"
-	// +ignore=["mod", ".dagger", ".claude", "bin"]
+	// +ignore=[
+	//   "*",
+	//   "!**/go.mod",
+	//   "!**/go.sum",
+	//   "!pkg",
+	//   "!dagger-sdk"
+	// ]
 	dangRoot *dagger.Directory,
 ) *DangSdk {
 	return &DangSdk{
