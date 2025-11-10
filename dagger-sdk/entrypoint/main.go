@@ -14,9 +14,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.25.0"
 
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 
 	"dagger/dang/internal/dagger"

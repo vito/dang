@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 )
 
 type FunctionBase struct {
@@ -423,7 +423,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	var rootObj Value
 	var found bool
 	var rootSymbolName string
-	
+
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
 		rootObj, found = env.GetDynamicScope()
 		if !found {
@@ -1002,7 +1002,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 	// Map positional arguments to parameter names by index
 	positionalIndex := 0
 	providedArgs := make(map[string]Node)
-	
+
 	for _, arg := range d.Args {
 		if arg.Positional {
 			if positionalIndex >= len(decl.Args) {

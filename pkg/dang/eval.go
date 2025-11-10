@@ -14,8 +14,8 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/kr/pretty"
 
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/querybuilder"
 )
 

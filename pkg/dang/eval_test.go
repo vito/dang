@@ -9,7 +9,7 @@ import (
 
 	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
-	"github.com/vito/dang/introspection"
+	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 )
 

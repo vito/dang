@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 )
 
 type Env interface {

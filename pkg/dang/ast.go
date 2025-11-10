@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"iter"
 
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 )
 
 type Node interface {
@@ -380,7 +380,6 @@ func (c CompositeEnv) GetDynamicScope() (Value, bool) {
 func (c CompositeEnv) SetDynamicScope(value Value) {
 	c.primary.SetDynamicScope(value)
 }
-
 
 // CreateCompositeEnv creates a composite environment for reopening
 func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {

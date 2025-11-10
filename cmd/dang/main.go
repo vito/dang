@@ -15,9 +15,9 @@ import (
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/kr/pretty"
 	"github.com/spf13/cobra"
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/lsp"
 )

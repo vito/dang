@@ -14,9 +14,9 @@ import (
 	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/creachadair/jrpc2"
-	"github.com/vito/dang/introspection"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/introspection"
 )
 
 // NewHandler create JSON-RPC handler for this language server.
