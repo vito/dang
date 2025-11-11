@@ -65,7 +65,7 @@ func (t *DangSdk) Base() *dagger.Container {
 func (t *DangSdk) Entrypoint() *dagger.File {
 	return t.goBase().
 		WithDirectory("/dang", t.DangRoot).
-		WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/dang=/dang"}).
+		// WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/dang=/dang"}).
 		WithExec([]string{"go", "build", "-o", "/entrypoint", "./entrypoint"}).
 		File("/entrypoint")
 }
