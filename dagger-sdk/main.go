@@ -8,34 +8,13 @@ import (
 	"dagger/dang/internal/dagger"
 )
 
-const Golang = "golang:1.24"
+const Golang = "golang:1.25"
 
-type DangSdk struct {
-	DangRoot *dagger.Directory
-}
+type DangSdk struct{}
 
 const (
-	ModSourceDirPath         = "/src"
-	EntrypointExecutableFile = "/dang"
-	EntrypointExecutablePath = "src/" + EntrypointExecutableFile
-	codegenBinPath           = "/codegen"
+	ModSourceDirPath = "/mod"
 )
-
-func New(
-	// +defaultPath="/"
-	// +ignore=[
-	//   "*",
-	//   "!**/go.mod",
-	//   "!**/go.sum",
-	//   "!pkg",
-	//   "!dagger-sdk"
-	// ]
-	dangRoot *dagger.Directory,
-) *DangSdk {
-	return &DangSdk{
-		DangRoot: dangRoot,
-	}
-}
 
 // ModuleRuntime returns a container with the node entrypoint ready to be called.
 func (t *DangSdk) ModuleRuntime(
@@ -64,8 +43,6 @@ func (t *DangSdk) Base() *dagger.Container {
 
 func (t *DangSdk) Entrypoint() *dagger.File {
 	return t.goBase().
-		WithDirectory("/dang", t.DangRoot).
-		// WithExec([]string{"go", "mod", "edit", "-replace", "github.com/vito/dang=/dang"}).
 		WithExec([]string{"go", "build", "-o", "/entrypoint", "./entrypoint"}).
 		File("/entrypoint")
 }
