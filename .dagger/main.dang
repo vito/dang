@@ -218,11 +218,15 @@ type Test {
   """
   Run the Dang LSP tests.
   """
-  pub lsp(filter: String! = ""): Void @check {
-    let args = ["go", "test", "-v", "-count=1", "./pkg/lsp/..."]
+  pub lsp(filter: String! = "", verbose: Boolean! = false): Void @check {
+    let args = ["go", "test", "-count=1"]
     if (filter != "") {
       args += ["-run", "LSP/" + filter]
     }
+    if (verbose) {
+      args += ["-v"]
+    }
+    args += ["./pkg/lsp/..."]
     dang.generated.
       withFile("/usr/bin/dang", dang.binary(race: true)). # install binary for LSP tests
       withExec(args, experimentalPrivilegedNesting: true).

@@ -173,9 +173,11 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 		err := client.Eval(`luaeval('vim.lsp.log.get_filename()')`, &fn)
 		is.NoErr(err)
 
-		lspLogs, err := os.ReadFile(fn)
-		if err == nil {
-			t.Logf("language server logs:\n\n%s", string(lspLogs))
+		if testing.Verbose() {
+			lspLogs, err := os.ReadFile(fn)
+			if err == nil {
+				t.Logf("language server logs:\n\n%s", string(lspLogs))
+			}
 		}
 	})
 
@@ -316,7 +318,7 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		if t.Failed() {
 			nvimLogs, err := os.ReadFile("nvim.log")
 			if err == nil {
-				for _, line := range lastN(strings.Split(string(nvimLogs), "\n"), 20) {
+				for _, line := range lastN(strings.Split(string(nvimLogs), "\n"), 10) {
 					t.Logf("neovim: %s", line)
 				}
 			}

@@ -76,7 +76,7 @@ func TestIntegration(tT *testing.T) {
 				err = dang.RunFile(ctx, client, schema, testFileOrDir, false)
 			}
 			if err != nil {
-				t.Errorf("Test %s failed: %v", testFileOrDir, err)
+				t.Error(err)
 			}
 		})
 	}
