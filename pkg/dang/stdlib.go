@@ -211,6 +211,25 @@ func registerStdlib() {
 			return ToValue(strings.Contains(str, substring))
 		})
 
+	// String.replace method: replace(old: String!, new: String!, count: Int = -1) -> String!
+	Method(StringType, "replace").
+		Doc("replaces occurrences of old with new in the string. The count parameter controls how many replacements to make: -1 (default) replaces all occurrences, 1 replaces only the first, etc.").
+		Params(
+			"old", NonNull(StringType),
+			"new", NonNull(StringType),
+			"count", IntType, IntValue{Val: -1},
+		).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			old := args.GetString("old")
+			new := args.GetString("new")
+			count := args.GetInt("count")
+
+			result := strings.Replace(str, old, new, count)
+			return ToValue(result)
+		})
+
 	// String.padRight method: padRight(width: Int!) -> String!
 	Method(StringType, "padRight").
 		Doc("pads the string with spaces on the right to reach the specified width").

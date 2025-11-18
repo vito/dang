@@ -1,0 +1,43 @@
+# Test String.replace method
+
+# Test default behavior (replace all occurrences with count=-1)
+pub replace_all = "hello world hello".replace("hello", "hi")
+assert { replace_all == "hi world hi" }
+
+# Test with count=1 to replace only first occurrence
+pub first_only = "hello world hello".replace("hello", "hi", count: 1)
+assert { first_only == "hi world hello" }
+
+# Test with count=2 to replace first two occurrences
+pub first_two = "abc abc abc abc".replace("abc", "xyz", count: 2)
+assert { first_two == "xyz xyz abc abc" }
+
+# Test with no matches
+pub no_match = "hello world".replace("goodbye", "hi")
+assert { no_match == "hello world" }
+
+# Test replacing with empty string (first only)
+pub remove_first = "foo bar foo".replace("foo", "", count: 1)
+assert { remove_first == " bar foo" }
+
+# Test replacing with empty string (all with default count)
+pub remove_all = "foo bar foo".replace("foo", "")
+assert { remove_all == " bar " }
+
+# Test replacing empty string with something (inserts between each character)
+pub empty_old = "test".replace("", "x", count: 1)
+assert { empty_old == "xtest" }
+
+# Test full string replacement
+pub full = "hello".replace("hello", "goodbye")
+assert { full == "goodbye" }
+
+# Test multiple different substrings (count=1)
+pub multiple_first = "abc abc def abc".replace("abc", "xyz", count: 1)
+assert { multiple_first == "xyz abc def abc" }
+
+# Test multiple different substrings (all with default count)
+pub multiple_all = "abc abc def abc".replace("abc", "xyz")
+assert { multiple_all == "xyz xyz def xyz" }
+
+print("String.replace() tests passed!")
