@@ -20,6 +20,7 @@ import (
 	"github.com/vito/dang/pkg/ioctx"
 
 	"dagger/dang/internal/dagger"
+	"dagger/dang/internal/querybuilder"
 	"dagger/dang/internal/telemetry"
 )
 
@@ -126,7 +127,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 
 	// initializing module
 	if parentName == "" {
-		dagMod, err := initModule(dag, env)
+		dagMod, err := initModule(ctx, dag, env)
 		if err != nil {
 			return fmt.Errorf("failed to init module: %w", err)
 		}
@@ -368,7 +369,7 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 	}
 }
 
-func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
+func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 	dagMod := dag.Module()
 
 	// Handle module-level description if present
@@ -381,11 +382,11 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 		switch val := binding.Value.(type) {
 		case *dang.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
-			objDef, err := createObjectTypeDef(dag, binding.Key, val, env)
+			objDef, err := createObjectTypeDef(ctx, dag, binding.Key, val, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create object %s: %w", binding.Key, err)
 			}
-			fnDef, err := createFunction(dag, val.ClassType, binding.Key, val.FnType, env)
+			fnDef, err := createFunction(ctx, dag, val.ClassType, binding.Key, val.FnType, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create constructor for %s: %w", binding.Key, err)
 			}
@@ -407,7 +408,7 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 				slog.Info("skipping scalar module value (handled as string type)", "name", binding.Key)
 			} else if mod, ok := val.Mod.(*dang.Module); ok && mod.Kind == dang.InterfaceKind {
 				// Interfaces are registered with the module
-				interfaceDef, err := createInterfaceTypeDef(dag, binding.Key, val, env)
+				interfaceDef, err := createInterfaceTypeDef(ctx, dag, binding.Key, val, env)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create interface %s: %w", binding.Key, err)
 				}
@@ -426,7 +427,7 @@ func initModule(dag *dagger.Client, env dang.EvalEnv) (*dagger.Module, error) {
 	return dagMod, nil
 }
 
-func createFunction(dag *dagger.Client, mod *dang.Module, name string, fn *hm.FunctionType, env dang.EvalEnv) (*dagger.Function, error) {
+func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, name string, fn *hm.FunctionType, env dang.EvalEnv) (*dagger.Function, error) {
 	// Convert Dang function type to Dagger TypeDef
 	retTypeDef, err := dangTypeToTypeDef(dag, fn.Ret(false), env)
 	if err != nil {
@@ -439,10 +440,20 @@ func createFunction(dag *dagger.Client, mod *dang.Module, name string, fn *hm.Fu
 		funDef = funDef.WithDescription(desc)
 	}
 
-	// TODO: enable once checks ship
 	for _, directive := range mod.GetDirectives(name) {
 		if directive.Name == "check" {
-			funDef = funDef.WithCheck()
+			funDefID, err := funDef.ID(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get function ID for %s: %w", name, err)
+			}
+			// TODO: just call .WithCheck once engine ships
+			funDef = (&dagger.Function{}).
+				WithGraphQLQuery(
+					querybuilder.Query().Select("loadFunctionFromID").
+						Arg("id", funDefID).
+						Client(dag.GraphQLClient()).
+						Select("withCheck"),
+				)
 		}
 	}
 
@@ -548,7 +559,7 @@ func evalConstantValue(node dang.Node) (any, error) {
 	}
 }
 
-func createObjectTypeDef(dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv) (*dagger.TypeDef, error) {
+func createObjectTypeDef(ctx context.Context, dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv) (*dagger.TypeDef, error) {
 	// Register interface implementations if this type implements any interfaces
 	classMod := module.ClassType
 
@@ -571,7 +582,7 @@ func createObjectTypeDef(dag *dagger.Client, name string, module *dang.Construct
 		switch x := slotType.(type) {
 		case *hm.FunctionType:
 			fn := x
-			fnDef, err := createFunction(dag, classMod, name, fn, env)
+			fnDef, err := createFunction(ctx, dag, classMod, name, fn, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
 			}
@@ -605,7 +616,7 @@ func createEnumTypeDef(dag *dagger.Client, name string, enumMod *dang.ModuleValu
 }
 
 // createInterfaceTypeDef creates a Dagger interface TypeDef from a Dang interface ModuleValue
-func createInterfaceTypeDef(dag *dagger.Client, name string, interfaceMod *dang.ModuleValue, env dang.EvalEnv) (*dagger.TypeDef, error) {
+func createInterfaceTypeDef(ctx context.Context, dag *dagger.Client, name string, interfaceMod *dang.ModuleValue, env dang.EvalEnv) (*dagger.TypeDef, error) {
 	interfaceDef := dag.TypeDef().WithInterface(name)
 
 	// Get the Module from the ModuleValue
@@ -624,7 +635,7 @@ func createInterfaceTypeDef(dag *dagger.Client, name string, interfaceMod *dang.
 		case *hm.FunctionType:
 			fn := x
 			// Create function definition for interface method
-			fnDef, err := createFunction(dag, mod, fieldName, fn, env)
+			fnDef, err := createFunction(ctx, dag, mod, fieldName, fn, env)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for interface %s: %w", fieldName, name, err)
 			}
