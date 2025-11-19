@@ -1,7 +1,5 @@
 package lsp
 
-const wildcard = "="
-
 // DocumentURI is
 type DocumentURI string
 

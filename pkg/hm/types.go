@@ -69,7 +69,7 @@ func (tv TypeVariable) String() string {
 }
 
 func (tv TypeVariable) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s", string(tv))
+	_, _ = fmt.Fprintf(s, "%s", string(tv))
 }
 
 // FunctionType represents a function type
@@ -152,7 +152,7 @@ func (ft *FunctionType) String() string {
 }
 
 func (ft *FunctionType) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s", ft.String())
+	_, _ = fmt.Fprintf(s, "%s", ft.String())
 }
 
 // Arg returns the argument type
@@ -251,5 +251,5 @@ func (t NonNullType) String() string {
 }
 
 func (t NonNullType) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "%s!", t.Type)
+	_, _ = fmt.Fprintf(s, "%s!", t.Type)
 }

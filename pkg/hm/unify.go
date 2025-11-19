@@ -48,7 +48,7 @@ func Assignable(have, want Type) (Subs, error) {
 				return nil, UnificationError{have, want}
 			}
 
-			var subs Subs = NewSubs()
+			var subs = NewSubs()
 			for i, comp1 := range haveTypes {
 				comp2 := wantTypes[i]
 				// Apply current substitutions to both components
@@ -87,7 +87,7 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 
 	// Occurs check
 	if occursCheck(tv, t) {
-		return nil, fmt.Errorf("Occurs check failed: %s occurs in %s", tv, t)
+		return nil, fmt.Errorf("occurs check failed: %s occurs in %s", tv, t)
 	}
 
 	subs := NewSubs()

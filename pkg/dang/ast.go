@@ -127,23 +127,6 @@ func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
 	return funCall.Eval(ctx, env)
 }
 
-// autoCallFnWithReceiver calls a zero-arity function with empty arguments and an optional receiver for 'self'
-func autoCallFnWithReceiver(ctx context.Context, env EvalEnv, val Value, receiver *ModuleValue) (Value, error) {
-	// For BoundMethods, just use regular autoCall since they already have their receiver
-	if boundMethod, isBoundMethod := val.(BoundMethod); isBoundMethod {
-		return autoCallFn(ctx, env, boundMethod)
-	}
-
-	// For FunctionValue with receiver, create a BoundMethod and then autoCall
-	if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue && receiver != nil {
-		boundMethod := BoundMethod{Method: fnVal, Receiver: receiver}
-		return autoCallFn(ctx, env, boundMethod)
-	}
-
-	// For everything else, use regular autoCall
-	return autoCallFn(ctx, env, val)
-}
-
 // ValueNode is a simple node that evaluates to a given value
 type ValueNode struct {
 	InferredTypeHolder
@@ -546,47 +529,5 @@ func (c *CompositeModule) Bindings(visibility Visibility) iter.Seq2[string, *hm.
 				return
 			}
 		}
-	}
-}
-
-// nodeToString converts a Node to a readable string representation for debugging
-func nodeToString(node Node) string {
-	switch n := node.(type) {
-	case *Symbol:
-		return n.Name
-	case *Select:
-		if n.Receiver == nil {
-			return n.Field
-		}
-		receiver := nodeToString(n.Receiver)
-		return fmt.Sprintf("%s.%s", receiver, n.Field)
-	case *FunCall:
-		fun := nodeToString(n.Fun)
-		return fmt.Sprintf("%s(...)", fun)
-	case *String:
-		return fmt.Sprintf("\"%s\"", n.Value)
-	case *Int:
-		return fmt.Sprintf("%d", n.Value)
-	case *Boolean:
-		return fmt.Sprintf("%t", n.Value)
-	case *Null:
-		return "null"
-	case *List:
-		return "[...]"
-	case *Default:
-		left := nodeToString(n.Left)
-		right := nodeToString(n.Right)
-		return fmt.Sprintf("%s ?? %s", left, right)
-	case *Equality:
-		left := nodeToString(n.Left)
-		right := nodeToString(n.Right)
-		return fmt.Sprintf("%s == %s", left, right)
-	case *Conditional:
-		condition := nodeToString(n.Condition)
-		return fmt.Sprintf("if %s { ... }", condition)
-	case *Let:
-		return fmt.Sprintf("let %s = %s in ...", n.Name, nodeToString(n.Value))
-	default:
-		return fmt.Sprintf("%T", node)
 	}
 }

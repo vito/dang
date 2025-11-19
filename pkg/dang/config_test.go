@@ -20,16 +20,16 @@ func TestLoadGraphQLConfig(t *testing.T) {
 
 	defer func() {
 		// Restore original env vars
-		os.Setenv("DANG_GRAPHQL_ENDPOINT", originalEndpoint)
-		os.Setenv("DANG_GRAPHQL_AUTHORIZATION", originalAuth)
-		os.Setenv("DANG_GRAPHQL_HEADER_X_API_KEY", originalHeader)
+		_ = os.Setenv("DANG_GRAPHQL_ENDPOINT", originalEndpoint)
+		_ = os.Setenv("DANG_GRAPHQL_AUTHORIZATION", originalAuth)
+		_ = os.Setenv("DANG_GRAPHQL_HEADER_X_API_KEY", originalHeader)
 	}()
 
 	t.Run("default config", func(t *testing.T) {
 		// Clear env vars
-		os.Unsetenv("DANG_GRAPHQL_ENDPOINT")
-		os.Unsetenv("DANG_GRAPHQL_AUTHORIZATION")
-		os.Unsetenv("DANG_GRAPHQL_HEADER_X_API_KEY")
+		_ = os.Unsetenv("DANG_GRAPHQL_ENDPOINT")
+		_ = os.Unsetenv("DANG_GRAPHQL_AUTHORIZATION")
+		_ = os.Unsetenv("DANG_GRAPHQL_HEADER_X_API_KEY")
 
 		config := LoadGraphQLConfig()
 
@@ -39,9 +39,9 @@ func TestLoadGraphQLConfig(t *testing.T) {
 	})
 
 	t.Run("config from env vars", func(t *testing.T) {
-		os.Setenv("DANG_GRAPHQL_ENDPOINT", "https://api.example.com/graphql")
-		os.Setenv("DANG_GRAPHQL_AUTHORIZATION", "Bearer token123")
-		os.Setenv("DANG_GRAPHQL_HEADER_X_API_KEY", "secret-key")
+		_ = os.Setenv("DANG_GRAPHQL_ENDPOINT", "https://api.example.com/graphql")
+		_ = os.Setenv("DANG_GRAPHQL_AUTHORIZATION", "Bearer token123")
+		_ = os.Setenv("DANG_GRAPHQL_HEADER_X_API_KEY", "secret-key")
 
 		config := LoadGraphQLConfig()
 
@@ -57,7 +57,7 @@ func TestCustomTransport(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{}"))
+		_, _ = w.Write([]byte("{}"))
 	}))
 	defer server.Close()
 
@@ -80,7 +80,7 @@ func TestCustomTransport(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	// Verify headers were set
 	assert.Equal(t, "Bearer test-token", receivedHeaders.Get("Authorization"))
@@ -104,7 +104,7 @@ func TestGraphQLClientProvider(t *testing.T) {
 		require.NotEmpty(t, schema.Types)
 
 		// Cleanup
-		provider.Close()
+		_ = provider.Close()
 	})
 
 	t.Run("custom GraphQL endpoint", func(t *testing.T) {
@@ -136,7 +136,7 @@ func TestGraphQLClientProvider(t *testing.T) {
 			}`
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(mockResponse))
+			_, _ = w.Write([]byte(mockResponse))
 		}))
 		defer server.Close()
 
@@ -160,7 +160,7 @@ func TestGraphQLClientProvider(t *testing.T) {
 		require.Len(t, schema.Types, 1)
 
 		// Cleanup
-		provider.Close()
+		_ = provider.Close()
 	})
 }
 
@@ -184,8 +184,8 @@ func TestSchemaCaching(t *testing.T) {
 	// Use a temporary cache directory for testing
 	tempDir := t.TempDir()
 	originalCacheHome := os.Getenv("XDG_CACHE_HOME")
-	os.Setenv("XDG_CACHE_HOME", tempDir)
-	defer os.Setenv("XDG_CACHE_HOME", originalCacheHome)
+	_ = os.Setenv("XDG_CACHE_HOME", tempDir)
+	defer func() { _ = os.Setenv("XDG_CACHE_HOME", originalCacheHome) }()
 
 	// Track introspection calls
 	introspectionCalls := 0
@@ -223,7 +223,7 @@ func TestSchemaCaching(t *testing.T) {
 		}`
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(mockResponse))
+		_, _ = w.Write([]byte(mockResponse))
 	}))
 	defer server.Close()
 
@@ -235,7 +235,7 @@ func TestSchemaCaching(t *testing.T) {
 
 	t.Run("first call should introspect and cache", func(t *testing.T) {
 		provider := NewGraphQLClientProvider(config)
-		defer provider.Close()
+		defer provider.Close() //nolint:errcheck
 
 		client, schema, err := provider.GetClientAndSchema(ctx)
 
@@ -252,7 +252,7 @@ func TestSchemaCaching(t *testing.T) {
 
 	t.Run("second call should use cache", func(t *testing.T) {
 		provider := NewGraphQLClientProvider(config)
-		defer provider.Close()
+		defer provider.Close() //nolint:errcheck
 
 		client, schema, err := provider.GetClientAndSchema(ctx)
 
@@ -277,8 +277,8 @@ func TestClearSchemaCache(t *testing.T) {
 	// Use a temporary cache directory for testing
 	tempDir := t.TempDir()
 	originalCacheHome := os.Getenv("XDG_CACHE_HOME")
-	os.Setenv("XDG_CACHE_HOME", tempDir)
-	defer os.Setenv("XDG_CACHE_HOME", originalCacheHome)
+	_ = os.Setenv("XDG_CACHE_HOME", tempDir)
+	defer func() { _ = os.Setenv("XDG_CACHE_HOME", originalCacheHome) }()
 
 	// Create some dummy cache files
 	cacheDir := filepath.Join(tempDir, "dang", "schemas")
@@ -327,7 +327,7 @@ func TestClearSchemaCache(t *testing.T) {
 	assert.NoError(t, err, "clearing empty cache should not error")
 
 	// Test clearing non-existent cache directory
-	os.RemoveAll(cacheDir)
+	_ = os.RemoveAll(cacheDir)
 	err = ClearSchemaCache()
 	assert.NoError(t, err, "clearing non-existent cache should not error")
 }

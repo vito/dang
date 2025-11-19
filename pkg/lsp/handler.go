@@ -3,7 +3,6 @@ package lsp
 import (
 	"context"
 	"errors"
-	stdErrors "errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -152,19 +151,6 @@ func toURI(path string) DocumentURI {
 		Scheme: "file",
 		Path:   filepath.ToSlash(path),
 	}).String())
-}
-
-func (h *langHandler) logMessage(typ MessageType, message string) {
-	if h.server == nil {
-		return
-	}
-	h.server.Notify(
-		context.Background(),
-		"window/logMessage",
-		&LogMessageParams{
-			Type:    typ,
-			Message: message,
-		})
 }
 
 // createWorkDoneProgress creates a work done progress token
@@ -442,11 +428,11 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 		h.collectNestedSymbols(uri, n.BodyNode, st)
 	case *dang.FunDecl:
 		// Collect from function arguments
-		for _, arg := range n.FunctionBase.Args {
+		for _, arg := range n.FunctionBase.Args { //nolint:staticcheck // Body() method shadows Body field
 			h.collectSymbols(uri, []dang.Node{arg}, st)
 		}
 		// Collect from function body
-		h.collectNestedSymbols(uri, n.FunctionBase.Body, st)
+		h.collectNestedSymbols(uri, n.FunctionBase.Body, st) //nolint:staticcheck // Body() method shadows Body field
 	}
 }
 
@@ -504,8 +490,8 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 		return ds
 	}
 
-	var startLine, endLine int = 0, 0
-	var startCol, endCol int = 0, 1
+	var startLine, endLine = 0, 0
+	var startCol, endCol = 0, 1
 
 	var loc *dang.SourceLocation
 
@@ -517,7 +503,7 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 	if errors.As(err, &parseErr) {
 		loc = parseErr.ParseErrorLocation()
 		slog.Warn("got parse error", "err", parseErr, "loc", loc)
-	} else if stdErrors.As(err, &inferErr) {
+	} else if errors.As(err, &inferErr) {
 		slog.Warn("got infer error error", "err", inferErr)
 		loc = inferErr.Location
 	}
@@ -608,7 +594,7 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
 	} else {
 		defer func() {
-			h.endProgress(ctx, token, nil)
+			_ = h.endProgress(ctx, token, nil)
 		}()
 
 		message := fmt.Sprintf("initializing module: %s", moduleDir)
@@ -649,7 +635,7 @@ func (h *langHandler) loadDefaultSchema(ctx context.Context) error {
 		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
 	} else {
 		defer func() {
-			h.endProgress(ctx, token, nil)
+			_ = h.endProgress(ctx, token, nil)
 		}()
 
 		if err := h.beginProgress(ctx, token, "initializing module: default"); err != nil {

@@ -21,7 +21,7 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
 			writer := ioctx.StdoutFromContext(ctx)
-			fmt.Fprintln(writer, val)
+			_, _ = fmt.Fprintln(writer, val)
 			return NullValue{}, nil
 		})
 

@@ -16,7 +16,7 @@ func (h *langHandler) handleShutdown(ctx context.Context, req *jrpc2.Request) (a
 
 	// Clean up default GraphQL provider connection if it exists
 	if h.defaultProvider != nil {
-		h.defaultProvider.Close()
+		_ = h.defaultProvider.Close()
 	}
 
 	return nil, nil

@@ -36,7 +36,7 @@ func NewTestRunner(t *testing.T) *TestRunner {
 	client := dag.GraphQLClient()
 	schema, err := introspectSchemaForTest(ctx, client)
 	if err != nil {
-		dag.Close()
+		_ = dag.Close()
 		t.Fatalf("Failed to introspect schema: %v", err)
 	}
 
@@ -51,7 +51,7 @@ func NewTestRunner(t *testing.T) *TestRunner {
 // Close cleans up resources
 func (tr *TestRunner) Close() {
 	if tr.dag != nil {
-		tr.dag.Close()
+		_ = tr.dag.Close()
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"io"
 )
 
-type stdinKey struct{}
 type stdoutKey struct{}
 type stderrKey struct{}
 

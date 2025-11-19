@@ -109,7 +109,7 @@ func (t ListType) String() string {
 }
 
 func (t ListType) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "[%"+string(c)+"]", t.Type)
+	_, _ = fmt.Fprintf(s, "[%"+string(c)+"]", t.Type)
 }
 
 func (t ListType) Eq(other Type) bool {
@@ -164,7 +164,7 @@ func (t GraphQLListType) String() string {
 }
 
 func (t GraphQLListType) Format(s fmt.State, c rune) {
-	fmt.Fprintf(s, "GraphQL[%"+string(c)+"]", t.Type)
+	_, _ = fmt.Fprintf(s, "GraphQL[%"+string(c)+"]", t.Type)
 }
 
 func (t GraphQLListType) Eq(other Type) bool {
@@ -336,16 +336,16 @@ func (t *RecordType) Supertypes() []Type {
 
 func (t *RecordType) Format(f fmt.State, c rune) {
 	if t.Named != "" {
-		fmt.Fprint(f, t.Named)
+		_, _ = fmt.Fprint(f, t.Named)
 	}
-	f.Write([]byte("{"))
+	_, _ = f.Write([]byte("{"))
 	for i, v := range t.Fields {
-		fmt.Fprintf(f, "%s: %v", v.Key, v.Value)
+		_, _ = fmt.Fprintf(f, "%s: %v", v.Key, v.Value)
 		if i < len(t.Fields)-1 {
-			fmt.Fprintf(f, ", ")
+			_, _ = fmt.Fprintf(f, ", ")
 		}
 	}
-	f.Write([]byte("}"))
+	_, _ = f.Write([]byte("}"))
 }
 
 func (t *RecordType) String() string { return fmt.Sprintf("%v", t) }

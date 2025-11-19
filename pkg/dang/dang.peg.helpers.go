@@ -28,7 +28,7 @@ func (c current) Loc() *SourceLocation {
 		Length:   len(string(c.text[:textEnd])),
 	}
 	lineCount := bytes.Count(c.text, []byte("\n"))
-	var endLine int = start.Line + lineCount
+	var endLine = start.Line + lineCount
 	var endCol int
 	if lineCount == 0 {
 		// Single line: end column is start column + length of text

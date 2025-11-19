@@ -217,13 +217,14 @@ var _ hm.Inferer = &FunDecl{}
 var _ Hoister = &FunDecl{}
 
 func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	if pass == 0 {
+	switch pass {
+	case 0:
 		// Pass 0: Hoist function signature (declare type without inferring body)
 		// Clone environment to avoid mutating original during signature inference
 		signatureEnv := env.Clone()
 
 		// Process arguments to get function signature
-		args, directives, err := f.FunctionBase.inferFunctionArguments(ctx, signatureEnv, fresh)
+		args, directives, err := f.inferFunctionArguments(ctx, signatureEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
@@ -232,8 +233,8 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 
 		// Process block parameter if present
 		var blockType *hm.FunctionType
-		if f.FunctionBase.BlockParam != nil {
-			blockParamType, err := f.FunctionBase.BlockParam.Type_.Infer(ctx, env, fresh)
+		if f.BlockParam != nil {
+			blockParamType, err := f.BlockParam.Type_.Infer(ctx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("FuncDecl.Hoist: %s block parameter: %w", f.Named, err)
 			}
@@ -263,7 +264,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		}
 		env.Add(f.Named, hm.NewScheme(nil, fnType))
 		return nil
-	} else if pass == 1 {
+	case 1:
 		// Pass 1: Infer function body (function signature already available)
 		// The actual inference will happen in the normal Infer method
 		return nil
@@ -273,7 +274,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 
 func (f *FunDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		return f.FunctionBase.inferFunctionType(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+		return f.inferFunctionType(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 	})
 }
 
@@ -285,16 +286,12 @@ func (f *FunDecl) Walk(fn func(Node) bool) {
 		if !fn(arg) {
 			continue
 		}
-		if arg.Type_ != nil {
-			// TypeNode doesn't have Walk method - skip
-		}
+		// TypeNode doesn't have Walk method - no action needed
 		if arg.Value != nil {
 			arg.Value.Walk(fn)
 		}
 	}
-	if f.Ret != nil {
-		// TypeNode doesn't have Walk method - skip
-	}
+	// TypeNode doesn't have Walk method - no action needed
 	f.FunctionBase.Body.Walk(fn)
 }
 
@@ -339,12 +336,13 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		}
 
 		// For simple assignment, check compatibility
-		if r.Modifier == "=" {
+		switch r.Modifier {
+		case "=":
 			if _, err := hm.Assignable(valueType, targetType); err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
 			return targetType, nil
-		} else if r.Modifier == "+" {
+		case "+":
 			// For compound assignment, check that it's compatible with addition
 			// Create a temporary Addition node to check type compatibility
 			tempAddition := NewAddition(r.Target, r.Value, r.Loc)
@@ -353,9 +351,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
 			}
 			return targetType, nil
+		default:
+			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 		}
-
-		return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 	})
 }
 
@@ -384,7 +382,8 @@ func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, varName string, value Value) (Value, error) {
-	if r.Modifier == "=" {
+	switch r.Modifier {
+	case "=":
 		// Simple assignment: x = value
 		_, found := env.Get(varName)
 		if !found {
@@ -392,7 +391,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 		}
 		env.Reassign(varName, value)
 		return value, nil
-	} else if r.Modifier == "+" {
+	case "+":
 		// Compound assignment: x += value
 		currentValue, found := env.Get(varName)
 		if !found {
@@ -407,9 +406,9 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 
 		env.Reassign(varName, newValue)
 		return newValue, nil
+	default:
+		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
-
-	return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 }
 
 func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode *Select, value Value) (Value, error) {
@@ -459,10 +458,11 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	finalField := path[len(path)-1]
 
 	// Now that we have the final receiver, perform the assignment
-	if r.Modifier == "=" {
+	switch r.Modifier {
+	case "=":
 		// Simple assignment: obj.field = value
 		currentObj.Set(finalField, value)
-	} else if r.Modifier == "+" {
+	case "+":
 		// Compound assignment: obj.field += value
 		currentValue, found := currentObj.Get(finalField)
 		if !found {
@@ -476,7 +476,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		}
 
 		currentObj.Set(finalField, newValue)
-	} else {
+	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 
@@ -560,23 +560,6 @@ func (r *Reassignment) performAddition(left, right Value, varName string) (Value
 
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: addition not supported for type %T", left)
-	}
-}
-
-func (r *Reassignment) createValueNode(value Value) Node {
-	switch v := value.(type) {
-	case IntValue:
-		return &Int{Value: int64(v.Val), Loc: r.Loc}
-	case StringValue:
-		return &String{Value: v.Val, Loc: r.Loc}
-	case BoolValue:
-		return &Boolean{Value: v.Val, Loc: r.Loc}
-	case NullValue:
-		return &Null{Loc: r.Loc}
-	default:
-		// For complex values, we'll need a more sophisticated approach
-		// For now, just create a Symbol that references the value
-		return &Symbol{Name: fmt.Sprintf("__temp_value_%p", value), Loc: r.Loc}
 	}
 }
 
@@ -1128,10 +1111,9 @@ func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	if i.Alias != nil {
 		// Set the module in the evaluation environment
 		env.Set(*i.Alias, moduleEnv)
-	} else {
-		// For global imports, the functions should already be in the global scope
-		// Nothing to do at evaluation time for global imports
 	}
+	// For global imports without alias, functions are already in global scope
+	// Nothing to do at evaluation time
 
 	return moduleEnv, nil
 }
@@ -1182,20 +1164,6 @@ func (i *ImportDecl) loadSchema(ctx context.Context, env hm.Env) error {
 			i.inferred = schemaModule
 		} else {
 			panic("TODO")
-			// Import without alias - check for global import conflicts and add to global scope
-			if err := i.checkGlobalImportConflicts(dangEnv, i.Source); err != nil {
-				return err
-			}
-
-			// Add GraphQL functions directly to global scope
-			err := i.addSchemaToGlobalScope(schema, dangEnv)
-			if err != nil {
-				return fmt.Errorf("ImportDecl.loadSchema: failed to add schema to global scope: %w", err)
-			}
-
-			// Store client and schema information for global imports
-			i.client = client
-			i.schema = schema
 		}
 	}
 
@@ -1301,44 +1269,6 @@ func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
 	for _, builtin := range builtinTypes {
 		if alias == builtin {
 			return fmt.Errorf("import alias %q conflicts with built-in type %s", alias, builtin)
-		}
-	}
-
-	return nil
-}
-
-// checkGlobalImportConflicts checks if a global import conflicts with existing imports
-func (i *ImportDecl) checkGlobalImportConflicts(env Env, source string) error {
-	// For now, allow multiple global imports - conflict detection can be enhanced later
-	// TODO: Implement proper global import conflict detection
-
-	return nil
-}
-
-// addSchemaToGlobalScope adds GraphQL functions directly to the global scope
-func (i *ImportDecl) addSchemaToGlobalScope(schema *introspection.Schema, env Env) error {
-	// Add Query type functions to global scope
-	for _, t := range schema.Types {
-		if t.Name == schema.QueryType.Name {
-			for _, f := range t.Fields {
-				ret, err := gqlToTypeNode(env, f.TypeRef)
-				if err != nil {
-					continue
-				}
-
-				args := NewRecordType("")
-				for _, arg := range f.Args {
-					argType, err := gqlToTypeNode(env, arg.TypeRef)
-					if err != nil {
-						continue
-					}
-					args.Add(arg.Name, hm.NewScheme(nil, argType))
-				}
-
-				fnType := hm.NewFnType(args, ret)
-				env.Add(f.Name, hm.NewScheme(nil, fnType))
-			}
-			break
 		}
 	}
 

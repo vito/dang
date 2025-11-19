@@ -194,9 +194,7 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 	if !fn(s) {
 		return
 	}
-	if s.Type_ != nil {
-		// TypeNode doesn't have Walk method - skip
-	}
+	// TypeNode doesn't have Walk method - skip
 	if s.Value != nil {
 		s.Value.Walk(fn)
 	}

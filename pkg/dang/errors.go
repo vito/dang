@@ -301,7 +301,7 @@ func ConvertInferError(origErr error) error {
 			// Location missing; nothing we can do
 			return errors.Join(
 				origErr,
-				fmt.Errorf("No location info available for node (%T): %#v", inferErr.Node, inferErr.Node),
+				fmt.Errorf("no location info available for node (%T): %#v", inferErr.Node, inferErr.Node),
 			)
 		}
 		if location.Filename != "" {
@@ -309,7 +309,7 @@ func ConvertInferError(origErr error) error {
 			if err != nil {
 				return errors.Join(
 					origErr,
-					fmt.Errorf("Failed to read file %s: %w", location.Filename, err),
+					fmt.Errorf("failed to read file %s: %w", location.Filename, err),
 				)
 			}
 			return NewSourceError(inferErr, location, string(source))

@@ -45,7 +45,7 @@ func TestErrorMessages(tT *testing.T) {
 
 	testGraphQLServer, err := gqlserver.StartServer()
 	require.NoError(t, err)
-	t.Cleanup(func() { testGraphQLServer.Stop() })
+	t.Cleanup(func() { _ = testGraphQLServer.Stop() })
 
 	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
 

@@ -91,7 +91,7 @@ It provides type-safe, composable abstractions for container operations.`,
 		fang.WithVersion("v0.1.0"),
 		fang.WithCommit("dev"),
 		fang.WithErrorHandler(func(w io.Writer, styles fang.Styles, err error) {
-			fmt.Fprintln(w, err.Error())
+			_, _ = fmt.Fprintln(w, err.Error())
 		}),
 	); err != nil {
 		os.Exit(1)
@@ -120,7 +120,7 @@ func run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to setup GraphQL client: %w", err)
 	}
-	defer provider.Close()
+	defer provider.Close() //nolint:errcheck
 
 	// Check if the path is a directory or file
 	fileInfo, err := os.Stat(cfg.File)
@@ -165,7 +165,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to setup GraphQL client: %w", err)
 	}
-	defer provider.Close()
+	defer provider.Close() //nolint:errcheck
 
 	// Create REPL instance
 	repl := &REPL{
@@ -221,7 +221,7 @@ func (r *REPL) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create readline: %w", err)
 	}
-	defer rl.Close()
+	defer rl.Close() //nolint:errcheck
 
 	// Print welcome message
 	r.printWelcome()
@@ -386,7 +386,7 @@ func (r *REPL) evaluateExpression(ctx context.Context, expr string) error {
 
 	for _, node := range result.(*dang.ModuleBlock).Forms {
 		if r.debug {
-			pretty.Println(node)
+			_, _ = pretty.Println(node)
 		}
 
 		// Type inference
@@ -404,7 +404,7 @@ func (r *REPL) evaluateExpression(ctx context.Context, expr string) error {
 		fmt.Printf("=> %s\n", val.String())
 
 		if r.debug {
-			pretty.Println(val)
+			_, _ = pretty.Println(val)
 		}
 	}
 
@@ -903,7 +903,7 @@ func runLSP(ctx context.Context, cfg Config) error {
 		if err != nil {
 			return fmt.Errorf("open lsp log: %w", err)
 		}
-		defer logFile.Close()
+		defer logFile.Close() //nolint:errcheck
 		logDest = logFile
 	} else {
 		logDest = os.Stderr

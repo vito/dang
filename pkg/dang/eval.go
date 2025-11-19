@@ -1247,7 +1247,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	node := parsed.(*ModuleBlock)
 
 	if debug {
-		pretty.Println(node)
+		_, _ = pretty.Println(node)
 	}
 
 	typeEnv := NewEnv(schema)
@@ -1296,19 +1296,8 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 
 	// Parse all files and collect their blocks
 	var allForms []Node
-	var allSources []string
-	var allFilePaths []string
 
 	for _, filePath := range dangFiles {
-		// Read source for error reporting
-		sourceBytes, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read source file %s: %w", filePath, err)
-		}
-		source := string(sourceBytes)
-		allSources = append(allSources, source)
-		allFilePaths = append(allFilePaths, filePath)
-
 		// Parse the file
 		parsed, err := ParseFile(filePath, GlobalStore("filePath", filePath))
 		if err != nil {
