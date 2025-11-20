@@ -10,7 +10,19 @@ import (
 
 const Golang = "golang:1.25"
 
-type DangSdk struct{}
+type DangSdk struct {
+	// +private
+	Source *dagger.Directory
+}
+
+func New(
+	// +defaultPath="/"
+	source *dagger.Directory,
+) *DangSdk {
+	return &DangSdk{
+		Source: source,
+	}
+}
 
 const (
 	ModSourceDirPath = "/mod"
@@ -61,8 +73,9 @@ func (t *DangSdk) Repl() *dagger.Container {
 func (t *DangSdk) goBase() *dagger.Container {
 	return dag.Container().From(Golang).
 		WithEnvVariable("CGO_ENABLED", "0").
-		WithDirectory("/src", dag.CurrentModule().Source()).
-		WithWorkdir("/src").
+		WithDirectory("/src", t.Source).
+		WithDirectory("/src/dagger-sdk", dag.CurrentModule().Source()).
+		WithWorkdir("/src/dagger-sdk").
 		WithMountedCache("/go/pkg/mod", dag.CacheVolume("go-mod")).
 		WithEnvVariable("GOMODCACHE", "/go/pkg/mod").
 		WithMountedCache("/go/build-cache", dag.CacheVolume("go-build")).

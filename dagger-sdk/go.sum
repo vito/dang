@@ -1,5 +1,5 @@
-dagger.io/dagger v0.19.5 h1:0p/jnEtrzdX/FStZmx3YBuAIjzsvh+9tzTTQlQjP4Pk=
-dagger.io/dagger v0.19.5/go.mod h1:BjAJWl4Lx7XRW7nooNjBi0ZAC5Ici2pkthkdBIZdbTI=
+dagger.io/dagger v0.19.6 h1:rxnAe7JSXqnNFGIGt9w+xX+dEDsmAYLpiOVAkWnOVPQ=
+dagger.io/dagger v0.19.6/go.mod h1:BjAJWl4Lx7XRW7nooNjBi0ZAC5Ici2pkthkdBIZdbTI=
 github.com/99designs/gqlgen v0.17.81 h1:kCkN/xVyRb5rEQpuwOHRTYq83i0IuTQg9vdIiwEerTs=
 github.com/99designs/gqlgen v0.17.81/go.mod h1:vgNcZlLwemsUhYim4dC1pvFP5FX0pr2Y+uYUoHFb1ig=
 github.com/Khan/genqlient v0.8.1 h1:wtOCc8N9rNynRLXN3k3CnfzheCUNKBcvXmVv5zt6WCs=
@@ -50,8 +50,6 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/vektah/gqlparser/v2 v2.5.30 h1:EqLwGAFLIzt1wpx1IPpY67DwUujF1OfzgEyDsLrN6kE=
 github.com/vektah/gqlparser/v2 v2.5.30/go.mod h1:D1/VCZtV3LPnQrcPBeR/q5jkSQIPti0uYCP/RI0gIeo=
-github.com/vito/dang v0.0.0-20251110215615-e91e64a94743 h1:EiaPtoa1o1PssY0+1KXpng4oPfg1DbD463iWTVc8S8M=
-github.com/vito/dang v0.0.0-20251110215615-e91e64a94743/go.mod h1:OS5RBo8qieI9va/pvze/VjOGzeYAI8umyXwi7KC5lUY=
 go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=
 go.opentelemetry.io/auto/sdk v1.1.0/go.mod h1:3wSPjt5PWp2RhlCcmmOial7AvC4DQqZb7a7wCow3W8A=
 go.opentelemetry.io/otel v1.38.0 h1:RkfdswUDRimDg0m2Az18RKOsnI8UDzppJAtj01/Ymk8=
