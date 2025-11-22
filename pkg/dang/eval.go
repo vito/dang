@@ -318,14 +318,14 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 			// Set each enum value as an EnumValue constant
 			for _, enumVal := range t.EnumValues {
-				enumModuleVal.Set(enumVal.Name, EnumValue{
+				enumModuleVal.SetWithVisibility(enumVal.Name, EnumValue{
 					Val:      enumVal.Name,
 					EnumType: enumTypeEnv,
-				})
+				}, PublicVisibility)
 			}
 
 			// Add the enum module to the environment
-			env.Set(t.Name, enumModuleVal)
+			env.SetWithVisibility(t.Name, enumModuleVal, PublicVisibility)
 		}
 
 		// Add scalar types as available values for custom scalars
@@ -345,7 +345,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			scalarModuleVal := NewModuleValue(scalarTypeEnv)
 
 			// Add the scalar module to the environment
-			env.Set(t.Name, scalarModuleVal)
+			env.SetWithVisibility(t.Name, scalarModuleVal, PublicVisibility)
 		}
 
 		// Add interface types as available values
@@ -360,7 +360,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			interfaceModuleVal := NewModuleValue(interfaceTypeEnv)
 
 			// Add the interface module to the environment
-			env.Set(t.Name, interfaceModuleVal)
+			env.SetWithVisibility(t.Name, interfaceModuleVal, PublicVisibility)
 		}
 
 		for _, f := range t.Fields {
@@ -393,7 +393,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 			// Add to environment if it's from the Query type
 			if t.Name == schema.QueryType.Name {
-				env.Set(f.Name, gqlFunc)
+				env.SetWithVisibility(f.Name, gqlFunc, PublicVisibility)
 			}
 		}
 	}
