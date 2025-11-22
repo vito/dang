@@ -20,7 +20,7 @@
   (directive_token)
   (on_token)
   (import_token)
-  (as_token)
+  (from_token)
   (and_token)
   (or_token)
 ] @keyword.control
