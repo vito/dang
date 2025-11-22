@@ -285,14 +285,20 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 
 			// Get schema for this file's module
-			schema, _, err := h.getSchemaForFile(ctx, fp)
+			schema, client, err := h.getSchemaForFile(ctx, fp)
 			if err != nil {
 				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
 			}
 
+			ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
+				Name:   "Dagger",
+				Client: client,
+				Schema: schema,
+			})
+
 			// Run type inference to annotate AST with types
 			if schema != nil {
-				typeEnv := dang.NewEnv(schema)
+				typeEnv := dang.NewPreludeEnv()
 				fresh := hm.NewSimpleFresher()
 				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
 				if err != nil {

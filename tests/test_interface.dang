@@ -1,4 +1,5 @@
 # Test GraphQL interface support
+import Test
 
 # Test: Interface types should be available as values
 assert { Node != null }

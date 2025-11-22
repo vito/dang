@@ -1,8 +1,10 @@
+import Dagger
+
 type Dang {
   """
   The source directory for the Dang project.
   """
-  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
+  pub source: Directory! @defaultPath("/") @ignorePatterns([
     # TODO: respecting .gitignore would be nice
     "Session.vim"
     "dang"

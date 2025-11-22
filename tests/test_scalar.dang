@@ -1,5 +1,6 @@
 # Test GraphQL scalar type support
 # Custom scalars should be represented as typed values
+import Test
 
 # Test scalar field access - custom scalar values should be accessible
 pub timestampValue = now
