@@ -29,8 +29,10 @@ type Env interface {
 	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
 	TrackUnqualifiedTypeImport(symbolName, importName string) bool
 	TrackUnqualifiedValueImport(symbolName, importName string) bool
+	TrackUnqualifiedDirectiveImport(directiveName, importName string) bool
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
+	CheckDirectiveConflict(directiveName string) []string
 }
 
 // ModuleKind represents the kind of module
@@ -88,23 +90,25 @@ type Module struct {
 
 	// Import conflict tracking for unqualified imports
 	// Maps symbol name -> list of import names that provide it
-	unqualifiedTypeImports  map[string][]string // For type-level symbols
-	unqualifiedValueImports map[string][]string // For value-level symbols
+	unqualifiedTypeImports      map[string][]string // For type-level symbols
+	unqualifiedValueImports     map[string][]string // For value-level symbols
+	unqualifiedDirectiveImports map[string][]string // For directives
 }
 
 func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
-		Named:                   name,
-		Kind:                    kind,
-		classes:                 make(map[string]Env),
-		vars:                    make(map[string]*hm.Scheme),
-		visibility:              make(map[string]Visibility),
-		directives:              make(map[string]*DirectiveDecl),
-		slotDirectives:          make(map[string][]*DirectiveApplication),
-		docStrings:              make(map[string]string),
-		moduleDocString:         "",
-		unqualifiedTypeImports:  make(map[string][]string),
-		unqualifiedValueImports: make(map[string][]string),
+		Named:                       name,
+		Kind:                        kind,
+		classes:                     make(map[string]Env),
+		vars:                        make(map[string]*hm.Scheme),
+		visibility:                  make(map[string]Visibility),
+		directives:                  make(map[string]*DirectiveDecl),
+		slotDirectives:              make(map[string][]*DirectiveApplication),
+		docStrings:                  make(map[string]string),
+		moduleDocString:             "",
+		unqualifiedTypeImports:      make(map[string][]string),
+		unqualifiedValueImports:     make(map[string][]string),
+		unqualifiedDirectiveImports: make(map[string][]string),
 	}
 	return env
 }
@@ -729,6 +733,35 @@ func (m *Module) CheckValueConflict(symbolName string) []string {
 	if m.Parent != nil {
 		if parent, ok := m.Parent.(*Module); ok {
 			return parent.CheckValueConflict(symbolName)
+		}
+	}
+	return nil
+}
+
+// TrackUnqualifiedDirectiveImport records that an import provides a directive
+// Returns true if this creates a conflict (directive already provided by a different import)
+func (m *Module) TrackUnqualifiedDirectiveImport(directiveName, importName string) bool {
+	existing := m.unqualifiedDirectiveImports[directiveName]
+	for _, imp := range existing {
+		if imp == importName {
+			// Already tracked from this import
+			return len(existing) > 1
+		}
+	}
+	m.unqualifiedDirectiveImports[directiveName] = append(existing, importName)
+	return len(m.unqualifiedDirectiveImports[directiveName]) > 1
+}
+
+// CheckDirectiveConflict checks if a directive has import conflicts
+// Returns the list of imports that provide it (empty if no conflict or not tracked)
+func (m *Module) CheckDirectiveConflict(directiveName string) []string {
+	imports := m.unqualifiedDirectiveImports[directiveName]
+	if len(imports) > 1 {
+		return imports
+	}
+	if m.Parent != nil {
+		if parent, ok := m.Parent.(*Module); ok {
+			return parent.CheckDirectiveConflict(directiveName)
 		}
 	}
 	return nil
