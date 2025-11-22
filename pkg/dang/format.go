@@ -1319,15 +1319,23 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 func (f *Formatter) formatImportDecl(i *ImportDecl) {
 	f.write("import ")
-	f.write(i.Source)
-	if i.Alias != nil {
-		f.write(" as ")
-		f.write(*i.Alias)
+	if i.Source != nil {
+		f.write(i.Source.Value)
+		if i.Name != nil {
+			f.write(" as ")
+			f.write(i.Name.Name)
+		}
+	} else {
+		f.write(i.Name.Name)
 	}
 }
 
 func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
 	f.write("@")
+	if d.Scope != nil {
+		f.write(d.Scope.Name)
+		f.write(".")
+	}
 	f.write(d.Name)
 
 	if len(d.Args) > 0 {
@@ -2411,7 +2419,11 @@ func (f *Formatter) formatType(t TypeNode) {
 func (f *Formatter) formatTypeNode(t TypeNode) {
 	switch tn := t.(type) {
 	case *NamedTypeNode:
-		f.write(tn.Named)
+		if tn.Base != nil {
+			f.write(tn.Base.Name)
+			f.write(".")
+		}
+		f.write(tn.Name)
 	case NonNullTypeNode:
 		f.formatTypeNode(tn.Elem)
 		f.write("!")

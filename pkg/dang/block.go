@@ -536,13 +536,13 @@ func inferImportsPhaseResilient(ctx context.Context, imports []Node, env hm.Env,
 	for _, form := range imports {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				errs.Add(fmt.Errorf("import hoisting failed for %v: %w", form, err))
+				errs.Add(err)
 				continue
 			}
 		}
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("import inference failed for %v: %w", form, err))
+			errs.Add(err)
 			continue
 		}
 		lastT = t
@@ -555,13 +555,13 @@ func inferDirectivesPhaseResilient(ctx context.Context, directives []Node, env h
 	for _, form := range directives {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				errs.Add(fmt.Errorf("directive hoisting failed for %v: %w", form, err))
+				errs.Add(err)
 				continue
 			}
 		}
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("directive inference failed for %v: %w", form, err))
+			errs.Add(err)
 			continue
 		}
 		lastT = t
@@ -574,7 +574,7 @@ func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.
 	for _, form := range constants {
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
-			errs.Add(fmt.Errorf("constant inference failed for %v: %w", form, err))
+			errs.Add(err)
 			assignFallbackType(form, env, fresh)
 			continue
 		}
@@ -588,7 +588,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
-				errs.Add(fmt.Errorf("type hoisting (pass 0) failed for %T: %w", form, err))
+				errs.Add(err)
 				// Continue to try other types
 			}
 		}
@@ -598,7 +598,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
-				errs.Add(fmt.Errorf("type hoisting (pass 1) failed for %T: %w", form, err))
+				errs.Add(err)
 				// Continue to try other types
 			}
 		}
@@ -659,7 +659,7 @@ func inferFunctionBodiesPhaseResilient(ctx context.Context, functions []Node, en
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
-				errs.Add(fmt.Errorf("function body hoisting failed for %v: %w", form, err))
+				errs.Add(err)
 				continue
 			}
 		}

@@ -1324,6 +1324,26 @@
             "named": true
           }
         ]
+      },
+      "s": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          }
+        ]
+      },
+      "scope": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "dot_token",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -2077,32 +2097,32 @@
     "type": "import",
     "named": true,
     "fields": {
-      "alias": {
+      "name": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "as_token",
+            "type": "symbol",
             "named": true
           }
         ]
       },
-      "name": {
+      "s": {
         "multiple": false,
         "required": false,
         "types": [
           {
-            "type": "id",
+            "type": "string",
             "named": true
           }
         ]
       },
       "source": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
-            "type": "import_source",
+            "type": "from_token",
             "named": true
           }
         ]
@@ -2114,25 +2134,6 @@
       "types": [
         {
           "type": "import_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "import_source",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "dagger_keyword",
-          "named": true
-        },
-        {
-          "type": "schema_url",
           "named": true
         }
       ]
@@ -2535,12 +2536,32 @@
     "type": "named_type",
     "named": true,
     "fields": {
+      "n": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "upper_id",
+            "named": true
+          }
+        ]
+      },
+      "qual": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "dot_token",
             "named": true
           }
         ]
@@ -2984,11 +3005,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "schema_url",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "select_or_call",
@@ -4036,10 +4052,6 @@
     "named": true
   },
   {
-    "type": "as_token",
-    "named": true
-  },
-  {
     "type": "assert_token",
     "named": true
   },
@@ -4070,10 +4082,6 @@
   },
   {
     "type": "continue_token",
-    "named": true
-  },
-  {
-    "type": "dagger_keyword",
     "named": true
   },
   {
@@ -4114,6 +4122,10 @@
   },
   {
     "type": "for_token",
+    "named": true
+  },
+  {
+    "type": "from_token",
     "named": true
   },
   {

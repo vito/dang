@@ -1,3 +1,5 @@
+import Test
+
 type MyClass {
 	pub value = 0
 

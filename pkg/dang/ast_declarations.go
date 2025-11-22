@@ -3,7 +3,6 @@ package dang
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
@@ -917,6 +916,7 @@ func (d *DirectiveDecl) Walk(fn func(Node) bool) {
 // DirectiveApplication represents the application of a directive
 type DirectiveApplication struct {
 	InferredTypeHolder
+	Scope    *NamedTypeNode
 	Name     string
 	Args     []Keyed[Node]
 	IsPrefix bool // True if directive appeared before the name (prefix position)
@@ -944,18 +944,31 @@ func (d *DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Lo
 
 func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		// Validate that the directive exists and arguments match
-		if e, ok := env.(Env); ok {
-			directiveDecl, found := e.GetDirective(d.Name)
-			if !found {
-				return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
-			}
-
-			// Validate arguments match the directive declaration
-			err := d.validateArguments(ctx, directiveDecl, env, fresh)
+		env := env.(Env)
+		if d.Scope != nil {
+			// If the directive is scoped, resolve the scope type
+			scopeType, err := d.Scope.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
+				return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
 			}
+			env = scopeType.(Env)
+		}
+
+		// Check for import conflicts before resolving
+		if conflicts := env.CheckDirectiveConflict(d.Name); len(conflicts) > 0 {
+			return nil, fmt.Errorf("ambiguous reference to directive @%s: provided by imports %v", d.Name, conflicts)
+		}
+
+		// Validate that the directive exists and arguments match
+		directiveDecl, found := env.GetDirective(d.Name)
+		if !found {
+			return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
+		}
+
+		// Validate arguments match the directive declaration
+		err := d.validateArguments(ctx, directiveDecl, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
 		}
 
 		// Directive applications don't have a meaningful type for inference
@@ -1001,6 +1014,7 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 					positionalIndex+1, len(decl.Args))
 			}
 			paramName := decl.Args[positionalIndex].Name.Name
+			d.Args[i].Key = paramName
 			providedArgs[paramName] = arg.Value
 			// Resolve the positional argument's key for downstream consumers
 			d.Args[i].Key = paramName
@@ -1070,13 +1084,34 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 // ImportDecl represents a GraphQL schema import statement
 type ImportDecl struct {
 	InferredTypeHolder
-	Source string  // The source identifier (e.g., "api.github.com", "dagger")
-	Alias  *string // Optional alias (e.g., "GH")
+	Name   *Symbol // Optional alias (e.g., "GH")
+	Source *String // The source identifier (e.g., "api.github.com", "dagger")
 	Loc    *SourceLocation
 
 	client   graphql.Client
 	schema   *introspection.Schema
 	inferred Env
+}
+
+type ImportConfig struct {
+	Name   string
+	Client graphql.Client
+	Schema *introspection.Schema
+}
+
+type importConfigsKey struct{}
+
+func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) context.Context {
+	return context.WithValue(ctx, importConfigsKey{}, configs)
+}
+
+func importConfigsFromContext(ctx context.Context) []ImportConfig {
+	if v := ctx.Value(importConfigsKey{}); v != nil {
+		if configs, ok := v.([]ImportConfig); ok {
+			return configs
+		}
+	}
+	return nil
 }
 
 var _ Node = &ImportDecl{}
@@ -1087,10 +1122,7 @@ func (i *ImportDecl) IsDeclarer() bool {
 }
 
 func (i *ImportDecl) DeclaredSymbols() []string {
-	if i.Alias != nil {
-		return []string{*i.Alias} // Import with alias declares the alias symbol
-	}
-	return nil // Import without alias doesn't declare symbols (imported globally)
+	return []string{i.Name.Name}
 }
 
 func (i *ImportDecl) ReferencedSymbols() []string {
@@ -1104,56 +1136,26 @@ func (i *ImportDecl) GetSourceLocation() *SourceLocation { return i.Loc }
 var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	if err := i.loadSchema(ctx, env); err != nil {
-		return nil, err
-	}
-	return i.inferred, nil
-}
+	return WithInferErrorHandling(i, func() (hm.Type, error) {
+		if i.inferred != nil {
+			// If we've already inferred, skip.
+			// (This is defensive.)
+			return NonNull(i.inferred), nil
+		}
 
-func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	if i.inferred == nil {
-		return nil, fmt.Errorf("ImportDecl.Eval: import not properly inferred")
-	}
+		// Perform actual schema introspection now during hoisting
+		config, err := i.loadImportConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		client := config.Client
+		schema := config.Schema
 
-	// Create evaluation environment for the imported schema
-	moduleEnv := NewEvalEnvWithSchema(i.inferred, i.client, i.schema)
-
-	if i.Alias != nil {
-		// Set the module in the evaluation environment
-		env.Set(*i.Alias, moduleEnv)
-	}
-	// For global imports without alias, functions are already in global scope
-	// Nothing to do at evaluation time
-
-	return moduleEnv, nil
-}
-
-// loadSchema performs the actual GraphQL schema loading and type environment setup
-func (i *ImportDecl) loadSchema(ctx context.Context, env hm.Env) error {
-	if i.inferred != nil {
-		// If we've already inferred, skip.
-		// (This is defensive.)
-		return nil
-	}
-
-	// Create the schema provider and perform introspection during hoisting
-	provider, err := i.createSchemaProvider()
-	if err != nil {
-		return fmt.Errorf("ImportDecl.loadSchema: failed to create schema provider: %w", err)
-	}
-
-	// Perform actual schema introspection now during hoisting
-	client, schema, err := provider.GetClientAndSchema(ctx)
-	if err != nil {
-		return fmt.Errorf("ImportDecl.loadSchema: failed to introspect schema for %q: %w", i.Source, err)
-	}
-
-	// Add the import declaration to the environment for later resolution
-	if dangEnv, ok := env.(Env); ok {
-		if i.Alias != nil {
+		// Add the import declaration to the environment for later resolution
+		if dangEnv, ok := env.(Env); ok {
 			// Import with alias - check for conflicts and create schema module
-			if err := i.checkAliasConflicts(dangEnv, *i.Alias); err != nil {
-				return err
+			if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
+				return nil, err
 			}
 
 			// Create module with GraphQL schema types and functions
@@ -1166,95 +1168,54 @@ func (i *ImportDecl) loadSchema(ctx context.Context, env hm.Env) error {
 			// Register type for the module
 			// TOOD: is this useful? i guess it means we can pass GH around which is
 			// kinda neat?
-			dangEnv.AddClass(*i.Alias, schemaModule)
+			dangEnv.AddClass(i.Name.Name, schemaModule)
 
 			// Also add as a scheme so the type checker can find it
-			dangEnv.Add(*i.Alias, hm.NewScheme(nil, schemaModule))
+			dangEnv.Add(i.Name.Name, hm.NewScheme(nil, NonNull(schemaModule)))
+
+			// Import all symbols from the schema module as unqualified names
+			// unless they conflict with existing symbols
+			i.importUnqualifiedSymbols(dangEnv, schemaModule, i.Name.Name)
 
 			i.inferred = schemaModule
-		} else {
-			panic("TODO")
 		}
+
+		return NonNull(i.inferred), nil
+	})
+}
+
+func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	if i.inferred == nil {
+		return nil, fmt.Errorf("ImportDecl.Eval: import not properly inferred")
 	}
 
-	return nil
+	// Create evaluation environment for the imported schema
+	moduleEnv := NewEvalEnvWithSchema(i.inferred, i.client, i.schema)
+
+	// Set the module in the evaluation environment
+	env.Set(i.Name.Name, moduleEnv)
+
+	// Import all runtime values as unqualified symbols (unless they conflict)
+	i.importUnqualifiedValues(env, moduleEnv, i.Name.Name)
+
+	return moduleEnv, nil
 }
 
 // createSchemaProvider creates a GraphQLClientProvider for the import source
-func (i *ImportDecl) createSchemaProvider() (*GraphQLClientProvider, error) {
-	if i.Source == "dagger" {
-		// Special case for Dagger - use empty config to trigger Dagger connection
-		return NewGraphQLClientProvider(GraphQLConfig{}), nil
-	}
-
-	// For other sources, create config based on source URL and environment variables
-	config := i.createConfigForSource(i.Source)
-	return NewGraphQLClientProvider(config), nil
-}
-
-// createConfigForSource creates a GraphQLConfig for a given source
-func (i *ImportDecl) createConfigForSource(source string) GraphQLConfig {
-	// Map common API sources to their GraphQL endpoints
-	endpoint := i.resolveEndpoint(source)
-
-	// Get credentials from environment variables based on source
-	auth := i.resolveAuth(source)
-
-	return GraphQLConfig{
-		Endpoint:      endpoint,
-		Authorization: auth,
-		Headers:       i.resolveHeaders(source),
-	}
-}
-
-// resolveEndpoint maps import sources to GraphQL endpoints
-func (i *ImportDecl) resolveEndpoint(source string) string {
-	switch source {
-	case "api.github.com":
-		return "https://api.github.com/graphql"
-	default:
-		// For other sources, assume they're direct URLs or domain names
-		if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-			return source
-		}
-		// Respect an alternative path
-		if strings.Contains(source, "/") {
-			return fmt.Sprintf("https://%s", source)
-		}
-		// Assume it's a domain and append /graphql
-		return fmt.Sprintf("https://%s/graphql", source)
-	}
-}
-
-// resolveAuth resolves authentication for the given source
-func (i *ImportDecl) resolveAuth(source string) string {
-	switch source {
-	case "api.github.com":
-		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-			return fmt.Sprintf("Bearer %s", token)
+func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error) {
+	for _, config := range importConfigsFromContext(ctx) {
+		if config.Name == i.Name.Name {
+			if config.Schema == nil {
+				var err error
+				config.Schema, err = introspectSchema(ctx, config.Client)
+				if err != nil {
+					return ImportConfig{}, fmt.Errorf("failed to introspect schema for import %q: %w", i.Name.Name, err)
+				}
+			}
+			return config, nil
 		}
 	}
-
-	// Check for generic auth environment variable
-	envVar := fmt.Sprintf("DANG_%s_TOKEN", strings.ToUpper(strings.ReplaceAll(source, ".", "_")))
-	if token := os.Getenv(envVar); token != "" {
-		return fmt.Sprintf("Bearer %s", token)
-	}
-
-	return ""
-}
-
-// resolveHeaders resolves additional headers for the given source
-func (i *ImportDecl) resolveHeaders(source string) map[string]string {
-	headers := make(map[string]string)
-
-	// Add common headers based on source
-	switch source {
-	case "api.github.com":
-		headers["User-Agent"] = "Dang-GraphQL-Client/1.0"
-	}
-
-	return headers
+	return ImportConfig{}, fmt.Errorf("no import config found for %q", i.Name.Name)
 }
 
 func (i *ImportDecl) Walk(fn func(Node) bool) {
@@ -1263,6 +1224,8 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 }
 
 // checkAliasConflicts checks if an import alias conflicts with existing symbols
+//
+// TODO: remove, feels redundant
 func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
 	// Check if alias conflicts with existing classes (types)
 	if _, exists := env.NamedType(alias); exists {
@@ -1283,4 +1246,161 @@ func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
 	}
 
 	return nil
+}
+
+// importUnqualifiedSymbols imports all symbols from an imported module into
+// the parent environment, unless they conflict with existing symbols or
+// symbols from other imports.
+func (i *ImportDecl) importUnqualifiedSymbols(parentEnv Env, schemaModule Env, importName string) {
+	// Import all value bindings (functions, etc.) from the schema module
+	for name, scheme := range schemaModule.Bindings(PublicVisibility) {
+		// Skip the import name itself (e.g., don't import "Test" as unqualified)
+		if name == importName {
+			continue
+		}
+
+		// Check if this name already exists in the parent environment
+		if existing, exists := parentEnv.LocalSchemeOf(name); exists {
+			// Symbol already exists - check if it's from another import or locally defined
+			// For now, we simply skip adding it (qualified access will still work)
+			_ = existing
+			// Track the conflict
+			parentEnv.TrackUnqualifiedTypeImport(name, importName)
+			continue
+		}
+
+		// Add the symbol to the parent environment
+		parentEnv.Add(name, scheme)
+		// Track that this import provides this symbol
+		parentEnv.TrackUnqualifiedTypeImport(name, importName)
+	}
+
+	// Import all type bindings (classes) from the schema module
+	// We need to iterate through all types in the module
+	if mod, ok := schemaModule.(*CompositeModule); ok {
+		// For CompositeModule, get the primary module and import from it
+		if primaryMod, ok := mod.primary.(*Module); ok {
+			i.importTypesFromModule(parentEnv, primaryMod, importName)
+			i.importDirectivesFromModule(parentEnv, primaryMod, importName)
+		}
+	} else if mod, ok := schemaModule.(*Module); ok {
+		// For regular Module
+		i.importTypesFromModule(parentEnv, mod, importName)
+		i.importDirectivesFromModule(parentEnv, mod, importName)
+	}
+}
+
+func (i *ImportDecl) importTypesFromModule(parentEnv Env, mod *Module, importName string) {
+	// Import all classes (types) from the module
+	for name, class := range mod.classes {
+		// Skip the import name itself
+		if name == importName {
+			continue
+		}
+
+		// Check if this type already exists in the parent environment
+		if _, exists := parentEnv.NamedType(name); exists {
+			// Type already exists - track the conflict
+			parentEnv.TrackUnqualifiedTypeImport(name, importName)
+			continue
+		}
+
+		// Add the type to the parent environment
+		parentEnv.AddClass(name, class)
+		// Track that this import provides this type
+		parentEnv.TrackUnqualifiedTypeImport(name, importName)
+
+		// For enum types, also import their values as unqualified symbols
+		if enumMod, ok := class.(*Module); ok && enumMod.Kind == EnumKind {
+			for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
+				// Check if this enum value name conflicts with existing symbols
+				if _, exists := parentEnv.LocalSchemeOf(enumValName); exists {
+					// Conflict - track it
+					parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
+					continue
+				}
+
+				// Add the enum value to the parent environment
+				parentEnv.Add(enumValName, enumValScheme)
+				// Track that this import provides this enum value
+				parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
+			}
+		}
+	}
+}
+
+func (i *ImportDecl) importDirectivesFromModule(parentEnv Env, mod *Module, importName string) {
+	// Import all directives from the module
+	for directiveName, directive := range mod.directives {
+		// Check if this directive already exists in the parent environment
+		if _, exists := parentEnv.GetDirective(directiveName); exists {
+			// Directive already exists - track the conflict
+			parentEnv.TrackUnqualifiedDirectiveImport(directiveName, importName)
+			continue
+		}
+
+		// Add the directive to the parent environment
+		parentEnv.AddDirective(directiveName, directive)
+		// Track that this import provides this directive
+		parentEnv.TrackUnqualifiedDirectiveImport(directiveName, importName)
+	}
+}
+
+// importUnqualifiedValues imports all runtime values from an imported module
+// into the parent environment, unless they conflict with existing values.
+func (i *ImportDecl) importUnqualifiedValues(parentEnv EvalEnv, moduleEnv EvalEnv, importName string) {
+	// Iterate through all bindings in the module environment
+	for _, binding := range moduleEnv.Bindings(PublicVisibility) {
+		name := binding.Key
+		value := binding.Value
+
+		// Skip the import name itself
+		if name == importName {
+			continue
+		}
+
+		// Check if this name already exists in the parent environment
+		if _, exists := parentEnv.GetLocal(name); exists {
+			// Value already exists - track the conflict
+			if mod, ok := parentEnv.(*ModuleValue); ok {
+				mod.Mod.TrackUnqualifiedValueImport(name, importName)
+			}
+			continue
+		}
+
+		// Add the value to the parent environment
+		parentEnv.Set(name, value)
+		// Track that this import provides this value
+		if mod, ok := parentEnv.(*ModuleValue); ok {
+			mod.Mod.TrackUnqualifiedValueImport(name, importName)
+		}
+
+		// If this is an enum module, also import its enum values as unqualified symbols
+		if enumModuleVal, ok := value.(*ModuleValue); ok {
+			// Check if this is an enum type by looking at the module kind
+			if mod, ok := enumModuleVal.Mod.(*Module); ok && mod.Kind == EnumKind {
+				// Import all enum values
+				for _, enumBinding := range enumModuleVal.Bindings(PublicVisibility) {
+					enumValName := enumBinding.Key
+					enumVal := enumBinding.Value
+
+					// Check if this enum value name conflicts with existing symbols
+					if _, exists := parentEnv.GetLocal(enumValName); exists {
+						// Conflict - track it
+						if parentMod, ok := parentEnv.(*ModuleValue); ok {
+							parentMod.Mod.TrackUnqualifiedValueImport(enumValName, importName)
+						}
+						continue
+					}
+
+					// Add the enum value to the parent environment
+					parentEnv.Set(enumValName, enumVal)
+					// Track that this import provides this enum value
+					if parentMod, ok := parentEnv.(*ModuleValue); ok {
+						parentMod.Mod.TrackUnqualifiedValueImport(enumValName, importName)
+					}
+				}
+			}
+		}
+	}
 }

@@ -15,17 +15,18 @@ type TypeNode interface {
 }
 
 type NamedTypeNode struct {
-	Named string
-	Loc   *SourceLocation
+	Base *NamedTypeNode
+	Name string
+	Loc  *SourceLocation
 }
 
 var _ TypeNode = (*NamedTypeNode)(nil)
 
 func (t *NamedTypeNode) ReferencedSymbols() []string {
-	if t.Named == "" {
+	if t.Name == "" {
 		return nil
 	}
-	return []string{t.Named}
+	return []string{t.Name}
 }
 
 type UnresolvedTypeError struct {
@@ -42,19 +43,24 @@ func (t *NamedTypeNode) GetSourceLocation() *SourceLocation {
 
 func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
-		if t.Named == "" {
+		if t.Name == "" {
 			return nil, fmt.Errorf("NamedType.Infer: empty name")
 		}
 
-		if lookup, ok := env.(Env); ok {
-			s, found := lookup.NamedType(t.Named)
-			if !found {
-				return nil, UnresolvedTypeError{t.Named}
+		fromEnv := env.(Env)
+		if t.Base != nil {
+			base, err := t.Base.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("NamedType.Infer: base type: %w", err)
 			}
-			return s, nil
+			fromEnv = base.(Env)
 		}
 
-		return nil, fmt.Errorf("NamedTypeNode.Infer: environment does not support NamedType lookup")
+		s, found := fromEnv.NamedType(t.Name)
+		if !found {
+			return nil, UnresolvedTypeError{t.Name}
+		}
+		return s, nil
 	})
 }
 

@@ -507,8 +507,16 @@ PositionalValue <- value:Form {
 ColonToken <- ':'
 
 Type <- NonNull / NamedType / ListType / ObjectType / TypeVariable
-NamedType <- name:UpperId {
-  return &NamedTypeNode{name.(string), c.Loc()}, nil
+NamedType <- qual:(n:NamedType DotToken { return n, nil })? name:UpperId {
+  var base *NamedTypeNode
+  if qual != nil {
+    base = qual.(*NamedTypeNode)
+  }
+  return &NamedTypeNode{
+    Base: base,
+    Name: name.(string),
+    Loc: c.Loc(),
+  }, nil
 }
 ListType <- '[' inner:Type ']' {
   return ListTypeNode{inner.(TypeNode)}, nil
@@ -993,12 +1001,17 @@ DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken 
   }, nil
 }
 
-DirectiveApplication <- _ '@' name:Id args:ArgValues? {
+DirectiveApplication <- _ '@' scope:(s:NamedType DotToken { return s, nil })? name:Id args:ArgValues? {
   var argValues []Keyed[Node]
   if args != nil {
     argValues = args.([]Keyed[Node])
   }
+  var scopeNode *NamedTypeNode
+  if scope != nil {
+    scopeNode = scope.(*NamedTypeNode)
+  }
   return &DirectiveApplication{
+    Scope: scopeNode,
     Name: name.(string),
     Args: argValues,
     Loc: c.Loc(),
@@ -1033,27 +1046,16 @@ DirectiveName <- '@' name:Id {
 DirectiveToken <- "directive" !WordChar
 OnToken <- "on" !WordChar
 
-Import <- ImportToken _ source:ImportSource alias:(_ AsToken _ name:Id)? {
-  var aliasStr *string
-  if alias != nil {
-    // alias is [_, "as", _, string]
-    aliasValue := alias.([]interface{})[3].(string)
-    aliasStr = &aliasValue
+Import <- ImportToken _ name:Symbol source:(_ FromToken _ s:String { return s, nil })? {
+  var src *String
+  if source != nil {
+    src = source.(*String)
   }
   return &ImportDecl{
-    Source: source.(string),
-    Alias:  aliasStr,
+    Name:  name.(*Symbol),
+    Source: src,
     Loc:    c.Loc(),
   }, nil
 }
-
-ImportSource <- DaggerKeyword / SchemaURL
-DaggerKeyword <- "dagger" !WordChar {
-  return "dagger", nil
-}
-SchemaURL <- [a-zA-Z] [a-zA-Z0-9.-/]* {
-  return string(c.text), nil
-}
-
 ImportToken <- "import" !WordChar
-AsToken <- "as" !WordChar
+FromToken <- "from" !WordChar

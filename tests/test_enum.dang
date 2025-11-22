@@ -1,5 +1,6 @@
 # Test GraphQL enum type support
 # Enums should be represented as Modules with fields for each enum value
+import Test
 
 # Test enum field access - Status enum values should be accessible as fields
 assert { Status.ACTIVE == Status.ACTIVE }

@@ -1,3 +1,4 @@
+import Test
 # Test GraphQL scalar type as function input
 # This tests that string literals can be used as custom scalar types
 
