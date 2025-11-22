@@ -910,9 +910,10 @@ func (d *DirectiveDecl) Walk(fn func(Node) bool) {
 // DirectiveApplication represents the application of a directive
 type DirectiveApplication struct {
 	InferredTypeHolder
-	Name string
-	Args []Keyed[Node]
-	Loc  *SourceLocation
+	Scope *NamedTypeNode
+	Name  string
+	Args  []Keyed[Node]
+	Loc   *SourceLocation
 }
 
 var _ Node = (*DirectiveApplication)(nil)
@@ -936,18 +937,26 @@ func (d *DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Lo
 
 func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		// Validate that the directive exists and arguments match
-		if e, ok := env.(Env); ok {
-			directiveDecl, found := e.GetDirective(d.Name)
-			if !found {
-				return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
-			}
-
-			// Validate arguments match the directive declaration
-			err := d.validateArguments(ctx, directiveDecl, env, fresh)
+		env := env.(Env)
+		if d.Scope != nil {
+			// If the directive is scoped, resolve the scope type
+			scopeType, err := d.Scope.Infer(ctx, env, fresh)
 			if err != nil {
-				return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
+				return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
 			}
+			env = scopeType.(Env)
+		}
+
+		// Validate that the directive exists and arguments match
+		directiveDecl, found := env.GetDirective(d.Name)
+		if !found {
+			return nil, fmt.Errorf("DirectiveApplication.Infer: directive @%s not declared", d.Name)
+		}
+
+		// Validate arguments match the directive declaration
+		err := d.validateArguments(ctx, directiveDecl, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("DirectiveApplication.Infer: %w", err)
 		}
 
 		// Directive applications don't have a meaningful type for inference
@@ -986,13 +995,14 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 	positionalIndex := 0
 	providedArgs := make(map[string]Node)
 
-	for _, arg := range d.Args {
+	for i, arg := range d.Args {
 		if arg.Positional {
 			if positionalIndex >= len(decl.Args) {
 				return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
 					positionalIndex+1, len(decl.Args))
 			}
 			paramName := decl.Args[positionalIndex].Name.Name
+			d.Args[i].Key = paramName
 			providedArgs[paramName] = arg.Value
 			positionalIndex++
 		} else {
@@ -1060,13 +1070,34 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 // ImportDecl represents a GraphQL schema import statement
 type ImportDecl struct {
 	InferredTypeHolder
-	Source string  // The source identifier (e.g., "api.github.com", "dagger")
-	Alias  *string // Optional alias (e.g., "GH")
+	Name   *Symbol // Optional alias (e.g., "GH")
+	Source *String // The source identifier (e.g., "api.github.com", "dagger")
 	Loc    *SourceLocation
 
 	client   graphql.Client
 	schema   *introspection.Schema
 	inferred Env
+}
+
+type ImportConfig struct {
+	Name   string
+	Client graphql.Client
+	Schema *introspection.Schema
+}
+
+type importConfigsKey struct{}
+
+func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) context.Context {
+	return context.WithValue(ctx, importConfigsKey{}, configs)
+}
+
+func importConfigsFromContext(ctx context.Context) []ImportConfig {
+	if v := ctx.Value(importConfigsKey{}); v != nil {
+		if configs, ok := v.([]ImportConfig); ok {
+			return configs
+		}
+	}
+	return nil
 }
 
 var _ Node = &ImportDecl{}
@@ -1077,10 +1108,7 @@ func (i *ImportDecl) IsDeclarer() bool {
 }
 
 func (i *ImportDecl) DeclaredSymbols() []string {
-	if i.Alias != nil {
-		return []string{*i.Alias} // Import with alias declares the alias symbol
-	}
-	return nil // Import without alias doesn't declare symbols (imported globally)
+	return []string{i.Name.Name}
 }
 
 func (i *ImportDecl) ReferencedSymbols() []string {
@@ -1094,10 +1122,46 @@ func (i *ImportDecl) GetSourceLocation() *SourceLocation { return i.Loc }
 var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	if err := i.loadSchema(ctx, env); err != nil {
+	if i.inferred != nil {
+		// If we've already inferred, skip.
+		// (This is defensive.)
+		return NonNull(i.inferred), nil
+	}
+
+	// Perform actual schema introspection now during hoisting
+	config, err := i.loadImportConfig(ctx)
+	if err != nil {
 		return nil, err
 	}
-	return i.inferred, nil
+	client := config.Client
+	schema := config.Schema
+
+	// Add the import declaration to the environment for later resolution
+	if dangEnv, ok := env.(Env); ok {
+		// Import with alias - check for conflicts and create schema module
+		if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
+			return nil, err
+		}
+
+		// Create module with GraphQL schema types and functions
+		schemaModule := NewEnv(schema)
+
+		// Store client and schema information for runtime
+		i.client = client
+		i.schema = schema
+
+		// Register type for the module
+		// TOOD: is this useful? i guess it means we can pass GH around which is
+		// kinda neat?
+		dangEnv.AddClass(i.Name.Name, schemaModule)
+
+		// Also add as a scheme so the type checker can find it
+		dangEnv.Add(i.Name.Name, hm.NewScheme(nil, NonNull(schemaModule)))
+
+		i.inferred = schemaModule
+	}
+
+	return NonNull(i.inferred), nil
 }
 
 func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -1108,78 +1172,22 @@ func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Create evaluation environment for the imported schema
 	moduleEnv := NewEvalEnvWithSchema(i.inferred, i.client, i.schema)
 
-	if i.Alias != nil {
-		// Set the module in the evaluation environment
-		env.Set(*i.Alias, moduleEnv)
-	}
-	// For global imports without alias, functions are already in global scope
-	// Nothing to do at evaluation time
+	// Set the module in the evaluation environment
+	env.Set(i.Name.Name, moduleEnv)
 
 	return moduleEnv, nil
 }
 
-// loadSchema performs the actual GraphQL schema loading and type environment setup
-func (i *ImportDecl) loadSchema(ctx context.Context, env hm.Env) error {
-	if i.inferred != nil {
-		// If we've already inferred, skip.
-		// (This is defensive.)
-		return nil
-	}
-
-	// Create the schema provider and perform introspection during hoisting
-	provider, err := i.createSchemaProvider()
-	if err != nil {
-		return fmt.Errorf("ImportDecl.loadSchema: failed to create schema provider: %w", err)
-	}
-
-	// Perform actual schema introspection now during hoisting
-	client, schema, err := provider.GetClientAndSchema(ctx)
-	if err != nil {
-		return fmt.Errorf("ImportDecl.loadSchema: failed to introspect schema for %q: %w", i.Source, err)
-	}
-
-	// Add the import declaration to the environment for later resolution
-	if dangEnv, ok := env.(Env); ok {
-		if i.Alias != nil {
-			// Import with alias - check for conflicts and create schema module
-			if err := i.checkAliasConflicts(dangEnv, *i.Alias); err != nil {
-				return err
+// createSchemaProvider creates a GraphQLClientProvider for the import source
+func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error) {
+	for _, config := range importConfigsFromContext(ctx) {
+		if config.Name == i.Name.Name {
+			if config.Schema == nil {
 			}
-
-			// Create module with GraphQL schema types and functions
-			schemaModule := NewEnv(schema)
-
-			// Store client and schema information for runtime
-			i.client = client
-			i.schema = schema
-
-			// Register type for the module
-			// TOOD: is this useful? i guess it means we can pass GH around which is
-			// kinda neat?
-			dangEnv.AddClass(*i.Alias, schemaModule)
-
-			// Also add as a scheme so the type checker can find it
-			dangEnv.Add(*i.Alias, hm.NewScheme(nil, schemaModule))
-
-			i.inferred = schemaModule
-		} else {
-			panic("TODO")
+			return config, nil
 		}
 	}
-
-	return nil
-}
-
-// createSchemaProvider creates a GraphQLClientProvider for the import source
-func (i *ImportDecl) createSchemaProvider() (*GraphQLClientProvider, error) {
-	if i.Source == "dagger" {
-		// Special case for Dagger - use empty config to trigger Dagger connection
-		return NewGraphQLClientProvider(GraphQLConfig{}), nil
-	}
-
-	// For other sources, create config based on source URL and environment variables
-	config := i.createConfigForSource(i.Source)
-	return NewGraphQLClientProvider(config), nil
+	return ImportConfig{}, fmt.Errorf("no import config found for %q", i.Name.Name)
 }
 
 // createConfigForSource creates a GraphQLConfig for a given source
@@ -1253,6 +1261,8 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 }
 
 // checkAliasConflicts checks if an import alias conflicts with existing symbols
+//
+// TODO: remove, feels redundant
 func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
 	// Check if alias conflicts with existing classes (types)
 	if _, exists := env.NamedType(alias); exists {
