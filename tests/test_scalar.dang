@@ -3,8 +3,8 @@
 import Test
 
 # Test scalar field access - custom scalar values should be accessible
-pub timestampValue = Test.now
-pub urlValue = Test.homepage
+pub timestampValue = now
+pub urlValue = homepage
 
 # Scalar values should have proper types
 assert { timestampValue == "2024-01-15T10:30:00Z" }
