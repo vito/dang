@@ -1,3 +1,5 @@
+import Test
+
 # Test comprehensive scalar functionality
 
 # Test 1: Scalar declarations
@@ -6,8 +8,8 @@ scalar PhoneNumber
 scalar JSON
 
 # Test 2: Scalar values from GraphQL
-pub ts = now
-pub url = homepage
+pub ts = Test.now
+pub url = Test.homepage
 
 # Test 3: Value comparison
 assert { ts == "2024-01-15T10:30:00Z" }

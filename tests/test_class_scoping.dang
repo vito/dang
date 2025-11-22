@@ -1,3 +1,5 @@
+import Test
+
 type MyClass {
   pub value = 0
 
@@ -12,7 +14,7 @@ type MyClass {
   }
 
   pub currentValue: Int! {
-    serverInfo.totalPosts + self.value
+    Test.serverInfo.totalPosts + self.value
   }
 }
 
