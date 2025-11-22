@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"iter"
+	"slices"
 
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/introspection"
@@ -513,26 +514,46 @@ func (c *CompositeModule) TrackUnqualifiedValueImport(symbolName, importName str
 
 // CheckTypeConflict delegates to the primary module
 func (c *CompositeModule) CheckTypeConflict(symbolName string) []string {
-	if mod, ok := c.primary.(*Module); ok {
-		return mod.CheckTypeConflict(symbolName)
-	}
+	imports := c.primary.CheckTypeConflict(symbolName)
 	// Fall back to lexical scope if primary isn't a Module
-	if mod, ok := c.lexical.(*Module); ok {
-		return mod.CheckTypeConflict(symbolName)
+	for _, importer := range c.lexical.CheckTypeConflict(symbolName) {
+		if !slices.Contains(imports, importer) {
+			imports = append(imports, importer)
+		}
 	}
-	return nil
+	return imports
 }
 
 // CheckValueConflict delegates to the primary module
 func (c *CompositeModule) CheckValueConflict(symbolName string) []string {
-	if mod, ok := c.primary.(*Module); ok {
-		return mod.CheckValueConflict(symbolName)
-	}
+	imports := c.primary.CheckValueConflict(symbolName)
 	// Fall back to lexical scope if primary isn't a Module
-	if mod, ok := c.lexical.(*Module); ok {
-		return mod.CheckValueConflict(symbolName)
+	for _, importer := range c.lexical.CheckValueConflict(symbolName) {
+		if !slices.Contains(imports, importer) {
+			imports = append(imports, importer)
+		}
 	}
-	return nil
+	return imports
+}
+
+// TrackUnqualifiedDirectiveImport delegates to the primary module
+func (c *CompositeModule) TrackUnqualifiedDirectiveImport(directiveName, importName string) bool {
+	if mod, ok := c.primary.(*Module); ok {
+		return mod.TrackUnqualifiedDirectiveImport(directiveName, importName)
+	}
+	return false
+}
+
+// CheckDirectiveConflict delegates to the primary module
+func (c *CompositeModule) CheckDirectiveConflict(directiveName string) []string {
+	imports := c.primary.CheckDirectiveConflict(directiveName)
+	// Fall back to lexical scope if primary isn't a Module
+	for _, importer := range c.lexical.CheckDirectiveConflict(directiveName) {
+		if !slices.Contains(imports, importer) {
+			imports = append(imports, importer)
+		}
+	}
+	return imports
 }
 
 // AddDirective adds a directive to the primary environment

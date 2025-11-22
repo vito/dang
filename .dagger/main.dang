@@ -4,7 +4,7 @@ type Dang {
   """
   The source directory for the Dang project.
   """
-  pub source: Dagger.Directory! @Dagger.defaultPath("/") @Dagger.ignorePatterns([
+  pub source: Directory! @defaultPath("/") @ignorePatterns([
     # TODO: respecting .gitignore would be nice
     "Session.vim"
     "dang"
@@ -24,7 +24,7 @@ type Dang {
   """
   Return a compiled Dang binary.
   """
-  pub binary(race: Boolean! = false): Dagger.File! {
+  pub binary(race: Boolean! = false): File! {
     let args = ["go", "build"]
     if (race) {
       args += ["-race"]
@@ -36,21 +36,21 @@ type Dang {
   """
   Build the Dang binary to ./bin/dang.
   """
-  pub build: Dagger.Changeset! {
+  pub build: Changeset! {
     source.withFile("bin/dang", binary).changes(source)
   }
 
   """
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
-  pub generate: Dagger.Changeset! {
+  pub generate: Changeset! {
     generated.directory(".").changes(base.directory("/src"))
   }
 
   """
   Run `go mod tidy` for each Go module in the repo.
   """
-  pub tidy: Dagger.Changeset! {
+  pub tidy: Changeset! {
     base.withExec(["sh", "-c", """
       find . -name go.mod | while read path; do
         go -C $(dirname $path) mod tidy
@@ -78,7 +78,7 @@ type Dang {
     dang --debug script.dang
     dang -d ./my-module
   """
-  pub dang(args: [String!]!): Dagger.Void {
+  pub dang(args: [String!]!): Void {
     base
       .withFile("/usr/bin/dang", binary)
       .withExec(["dang"] + args, experimentalPrivilegedNesting: true)
@@ -89,18 +89,18 @@ type Dang {
   """
   Start a Dang coding agent.
   """
-  pub coder: Dagger.LLM! {
-    Dagger.dev(source).agent(Dagger.llm.withEnv(Dagger.env.withCurrentModule))
+  pub coder: LLM! {
+    dev(source).agent(llm.withEnv(env.withCurrentModule))
   }
 
   """
   Update the Golden-style test specimens, treating the current output as
   correct.
   """
-  pub testUpdate: Dagger.Changeset! {
+  pub testUpdate: Changeset! {
     generated.
       withExec(["go", "test", "-v", "./tests", "-update"],
-        expect: Dagger.ReturnType.ANY,
+        expect: ReturnType.ANY,
         experimentalPrivilegedNesting: true).
       directory(".").
       changes(generated.directory("."))
@@ -109,7 +109,7 @@ type Dang {
   """
   Update the tree-sitter test corpus.
   """
-  pub treesitterUpdate: Dagger.Changeset! {
+  pub treesitterUpdate: Changeset! {
     generated.
       withDirectory("./treesitter",
         generated.
@@ -123,10 +123,10 @@ type Dang {
   """
   Run the linter.
   """
-  pub lint: Dagger.Void @Dagger.check {
+  pub lint: Void @check {
     base.
       withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint").
-      withMountedCache("/var/cache/golangci-lint", Dagger.cacheVolume("golangci-lint-cache")).
+      withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache")).
       withExec(["golangci-lint", "run"]).
       sync
     null
@@ -136,8 +136,8 @@ type Dang {
   Bump the pinned Dang version in the Dagger SDK and Zed grammar.
   """
   pub bump(
-    repo: Dagger.GitRepository! @Dagger.defaultPath(path: "/.git"),
-  ): Dagger.Changeset! {
+    repo: GitRepository! @defaultPath(path: "/.git"),
+  ): Changeset! {
     let commit = repo.head.commit
     base
       .withExec(["go", "-C", "dagger-sdk", "get", "github.com/vito/dang@"+commit])
@@ -154,7 +154,7 @@ type Dang {
   """
   Enter a terminal for debugging the Neovim LSP setup.
   """
-  pub nvimDebug: Dagger.Container! {
+  pub nvimDebug: Container! {
     base.
       withFile("/usr/bin/dang", binary).
       withFile("/root/.config/nvim/init.vim", source.file("pkg/lsp/testdata/config.vim")).
@@ -162,17 +162,17 @@ type Dang {
       terminal(experimentalPrivilegedNesting: true)
   }
 
-  let base: Dagger.Container! {
-    Dagger.apko.wolfi([
+  let base: Container! {
+    apko.wolfi([
       "bash",
       "git",
       "go", "golangci-lint",
       "nodejs", "npm",
       "neovim",
     ]).
-      withMountedCache("/go/pkg/mod", Dagger.cacheVolume("go-mod")).
+      withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
       withEnvVariable("GOMODCACHE", "/go/pkg/mod").
-      withMountedCache("/go/build-cache", Dagger.cacheVolume("go-build")).
+      withMountedCache("/go/build-cache", cacheVolume("go-build")).
       withEnvVariable("GOCACHE", "/go/build-cache").
       withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"]).
       withDirectory("/src", source).
@@ -182,7 +182,7 @@ type Dang {
   """
   Base with ./hack/generate ran.
   """
-  pub generated: Dagger.Container! {
+  pub generated: Container! {
     base.withExec(["./hack/generate"])
   }
 }
@@ -202,7 +202,7 @@ type Test {
     A unique key to force the tests to re-run.
     """
     rerun: String,
-  ): Dagger.Void @Dagger.check {
+  ): Void @check {
     let args = ["go", "test", "-count=1", "./tests"]
     if (filter != "") {
       args += ["-run", "/"+filter]
@@ -220,7 +220,7 @@ type Test {
   """
   Run the Dang LSP tests.
   """
-  pub lsp(filter: String! = "", verbose: Boolean! = false): Dagger.Void @Dagger.check {
+  pub lsp(filter: String! = "", verbose: Boolean! = false): Void @check {
     let args = ["go", "test", "-count=1"]
     if (filter != "") {
       args += ["-run", "LSP/" + filter]
@@ -239,7 +239,7 @@ type Test {
   """
   Run the tree-sitter tests.
   """
-  pub treesitter: Dagger.Void @Dagger.check {
+  pub treesitter: Void @check {
     dang.generated.
       withWorkdir("./treesitter").
       withExec(["tree-sitter", "test"]).
