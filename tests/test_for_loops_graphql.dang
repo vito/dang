@@ -1,7 +1,7 @@
 import Test
 
 let names: [String!]! = []
-for (user in Test.users.{name}) {
+for (user in users.{name}) {
   names += [user.name]
 }
 assert { names == ["John Doe", "Jane Smith"] }

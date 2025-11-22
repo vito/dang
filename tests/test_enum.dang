@@ -2,8 +2,6 @@
 # Enums should be represented as Modules with fields for each enum value
 import Test
 
-let Status = Test.Status
-
 # Test enum field access - Status enum values should be accessible as fields
 assert { Status.ACTIVE == Status.ACTIVE }
 assert { Status.INACTIVE == Status.INACTIVE }
@@ -16,11 +14,11 @@ assert { Status.ACTIVE != Status.PENDING }
 assert { Status.PENDING != Status.ARCHIVED }
 
 # Test querying enum values from GraphQL
-pub statusValue = Test.status
+pub statusValue = status
 assert { statusValue == Status.ACTIVE }
 
 # Test enum field on a type
-let statuses = Test.users.{status}
+let statuses = users.{status}
 pub john = statuses[0]
 assert { john.status == Status.ACTIVE }
 assert { john.status != Status.PENDING }
