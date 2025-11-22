@@ -1,38 +1,39 @@
-"""
-A Dagger-native sandboxed coding agent.
-"""
+import Dagger
 
 let maxResponseLength = 30000
 let workspacePath = "/workspace"
 
+"""
+A Dagger-native sandboxed coding agent.
+"""
 type Doug {
-  let source: Directory! @defaultPath(path: "/")
+  let source: Dagger.Directory! @Dagger.defaultPath(path: "/")
 
   """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.
   """
   pub dev(
-    source: Directory!,
-    module: Module
-  ): LLM! {
-    let e = env.withWorkspace(source)
+    source: Dagger.Directory!,
+    module: Dagger.Module
+  ): Dagger.LLM! {
+    let e = Dagger.env.withWorkspace(source)
     if (module != null) {
       e = e.withModule(module)
     }
-    agent(base: llm.withEnv(e))
+    agent(base: Dagger.llm.withEnv(e))
   }
 
   """
   Returns a Doug coding agent
   """
-  pub agent(base: LLM!): LLM! {
+  pub agent(base: Dagger.LLM!): Dagger.LLM! {
     base.
       withEnv(
         base.env.
           withCurrentModule.
           withStringInput("TODOs", "", "Your TODO list")).
       withSystemPrompt({
-        let promptsDir = currentModule.source.directory("prompts/system/")
+        let promptsDir = Dagger.currentModule.source.directory("prompts/system/")
         let providerFile = base.provider + ".txt"
         if (promptsDir.entries.contains(providerFile)) {
           promptsDir.file(providerFile).contents
@@ -156,7 +157,7 @@ type Doug {
     Replace all occurrences
     """
     replaceAll: Boolean! = false
-  ): Changeset! {
+  ): Dagger.Changeset! {
     let normalizedPath = normalize(filePath)
     source.withFile(
       normalizedPath,
@@ -173,7 +174,7 @@ type Doug {
     Relative path within the workspace
     """
     path: String!
-  ): Changeset! {
+  ): Dagger.Changeset! {
     source.withoutFile(path).changes(source)
   }
 
@@ -191,13 +192,13 @@ type Doug {
     Destination path within the workspace
     """
     newPath: String!
-  ): Changeset {
-    if (source.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
+  ): Dagger.Changeset {
+    if (source.exists(oldPath, expectedType: Dagger.ExistsType.REGULAR_TYPE)) {
       source.
         withFile(newPath, source.file(oldPath)).
         withoutFile(oldPath).
         changes(source)
-    } else if (source.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
+    } else if (source.exists(oldPath, expectedType: Dagger.ExistsType.DIRECTORY_TYPE)) {
       source.
         withDirectory(newPath, source.directory(oldPath)).
         withoutDirectory(oldPath).
@@ -241,7 +242,7 @@ type Doug {
     Complete file content to write
     """
     contents: String!
-  ): Changeset! {
+  ): Dagger.Changeset! {
     source.withNewFile(normalize(filePath), contents).changes(source)
   }
 
@@ -287,7 +288,7 @@ type Doug {
     Relative glob pattern to find within the workspace
     """
     pattern: String!
-  ): Void {
+  ): Dagger.Void {
     let matches = source.glob(pattern)
     let anyMatched = false
     for (path in matches) {
@@ -432,8 +433,8 @@ type Doug {
     """
     prompt: String!
   ): String! {
-    llm.
-      withEnv(currentEnv.withoutOutputs).
+    Dagger.llm.
+      withEnv(Dagger.currentEnv.withoutOutputs).
       withBlockedFunction("Doug", "research").
       withBlockedFunction("Doug", "rabbithole").
       withoutDefaultSystemPrompt.
@@ -472,11 +473,11 @@ type Doug {
     The prompt for the sub-agent
     """
     prompt: String!
-  ): Env! {
+  ): Dagger.Env! {
     let reminderPromptText = reminderPrompt(workspace: source)
 
-    let result = llm.
-      withEnv(currentEnv.withoutOutputs).
+    let result = Dagger.llm.
+      withEnv(Dagger.currentEnv.withoutOutputs).
       withBlockedFunction("Doug", "research").
       withBlockedFunction("Doug", "rabbithole").
       withoutDefaultSystemPrompt.
@@ -499,7 +500,7 @@ type Doug {
     print(result.lastReply)
 
     # propagate workspace changes
-    currentEnv.withWorkspace(result.env.workspace)
+    Dagger.currentEnv.withWorkspace(result.env.workspace)
   }
 
   """
@@ -531,10 +532,10 @@ type Doug {
     pending: [String!]! = []
     inProgress: [String!]! = []
     completed: [String!]! = []
-  ): Env! {
+  ): Dagger.Env! {
     # Try to get current TODOs, default to empty string if not found
     # Since we don't have try/catch, we'll assume it returns empty string on failure
-    let currentTodos = currentEnv.input("TODOs").asString
+    let currentTodos = Dagger.currentEnv.input("TODOs").asString
 
     let existingCompleted = [] :: [String!]!
     let existingInProgress = [] :: [String!]!
@@ -584,10 +585,10 @@ type Doug {
 
     print(formattedTodos)
 
-    currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
+    Dagger.currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
   }
 
-  let reminderPrompt(workspace: Directory!): String! {
+  let reminderPrompt(workspace: Dagger.Directory!): String! {
     let baseSegment =
       """
       # System Reminder

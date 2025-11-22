@@ -120,7 +120,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 	// For functions that return scalar types, execute the query immediately
 	if isScalarType(g.Field.TypeRef, g.Schema) {
 		// Execute the query and return the scalar value
-		var result interface{}
+		var result any
 		query = query.Bind(&result).Client(g.Client)
 		if err := query.Execute(ctx); err != nil {
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
@@ -275,6 +275,17 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		TypeEnv:    g.TypeEnv,    // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
 	}, nil
+}
+
+// NewEvalEnv creates an evaluation environment with built-in functions
+func NewEvalEnv(typeEnv Env) EvalEnv {
+	// Create a ModuleValue from the type environment
+	env := NewModuleValue(typeEnv)
+
+	// Add builtin functions
+	addBuiltinFunctions(env)
+
+	return env
 }
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
@@ -1228,7 +1239,7 @@ func (c *ConstructorFunction) IsAutoCallable() bool {
 	return true
 }
 
-func RunFile(ctx context.Context, client graphql.Client, schema *introspection.Schema, filePath string, debug bool) error {
+func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Read the source file for error reporting
 	sourceBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -1250,7 +1261,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 		_, _ = pretty.Println(node)
 	}
 
-	typeEnv := NewEnv(schema)
+	typeEnv := NewPreludeEnv()
 
 	inferred, err := Infer(ctx, typeEnv, node, true)
 	if err != nil {
@@ -1261,7 +1272,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 	slog.Debug("type inference completed", "type", inferred)
 
 	// Now evaluate the program
-	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
+	evalEnv := NewEvalEnv(typeEnv)
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
@@ -1280,7 +1291,7 @@ func RunFile(ctx context.Context, client graphql.Client, schema *introspection.S
 }
 
 // RunDir evaluates all .dang files in a directory as a single module
-func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Schema, dirPath string, isDebug bool) (EvalEnv, error) {
+func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Discover all .dang files in the directory
 	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
 	if err != nil {
@@ -1323,7 +1334,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	}
 
 	// Create type environment
-	typeEnv := NewEnv(schema)
+	typeEnv := NewPreludeEnv()
 
 	// Run type inference using phased approach
 	if isDebug {
@@ -1338,7 +1349,7 @@ func RunDir(ctx context.Context, client graphql.Client, schema *introspection.Sc
 	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)
 
 	// Create evaluation environment
-	evalEnv := NewEvalEnvWithSchema(typeEnv, client, schema)
+	evalEnv := NewEvalEnv(typeEnv)
 
 	// Evaluate the combined block using phased evaluation
 	if isDebug {
