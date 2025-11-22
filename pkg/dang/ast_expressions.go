@@ -453,6 +453,13 @@ var _ Evaluator = (*Symbol)(nil)
 
 func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
+		// Check for import conflicts before resolving
+		if dangEnv, ok := env.(Env); ok {
+			if conflicts := dangEnv.CheckTypeConflict(s.Name); len(conflicts) > 0 {
+				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
+			}
+		}
+
 		scheme, found := env.SchemeOf(s.Name)
 		if !found {
 			return nil, fmt.Errorf("%q not found", s.Name)
@@ -480,6 +487,13 @@ func (s *Symbol) ReferencedSymbols() []string {
 
 func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
+		// Check for import conflicts before resolving
+		if modVal, ok := env.(*ModuleValue); ok {
+			if conflicts := modVal.Mod.CheckValueConflict(s.Name); len(conflicts) > 0 {
+				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
+			}
+		}
+
 		val, found := env.Get(s.Name)
 		if !found {
 			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
