@@ -45,12 +45,6 @@ func TestIntegration(tT *testing.T) {
 
 	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
 
-	// Get schema
-	schema, err := introspectSchema(t.Context(), client)
-	if err != nil {
-		t.Fatalf("Failed to introspect schema: %v", err)
-	}
-
 	// Find all test_*.dang files or test_* packages
 	paths, err := filepath.Glob("test_*")
 	if err != nil {
@@ -67,6 +61,11 @@ func TestIntegration(tT *testing.T) {
 			ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
 			ctx = ioctx.StderrToContext(ctx, NewTWriter(t))
 
+			ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
+				Name:   "Test",
+				Client: client,
+			})
+
 			// t.Parallel()
 			fi, err := os.Stat(testFileOrDir)
 			if err != nil {
@@ -74,9 +73,9 @@ func TestIntegration(tT *testing.T) {
 				return
 			}
 			if fi.IsDir() {
-				_, err = dang.RunDir(ctx, client, schema, testFileOrDir, false)
+				_, err = dang.RunDir(ctx, testFileOrDir, false)
 			} else {
-				err = dang.RunFile(ctx, client, schema, testFileOrDir, false)
+				err = dang.RunFile(ctx, testFileOrDir, false)
 			}
 			if err != nil {
 				t.Error(err)

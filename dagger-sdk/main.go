@@ -17,6 +17,13 @@ type DangSdk struct {
 
 func New(
 	// +defaultPath="/"
+	// +ignore=[
+	//   "*",
+	//   "!**/go.mod",
+	//   "!**/go.sum",
+	//   "!pkg",
+	//   "!dagger-sdk"
+	// ]
 	source *dagger.Directory,
 ) *DangSdk {
 	return &DangSdk{

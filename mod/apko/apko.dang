@@ -1,3 +1,5 @@
+import Dagger
+
 pub description =
   "Builds containers from simple lists of packages using the Apko CLI."
 
@@ -47,22 +49,22 @@ type Apko {
     self
   }
 
-  pub asContainer: Container! {
-    container.import(
-      container.
+  pub asContainer: Dagger.Container! {
+    Dagger.container.import(
+      Dagger.container.
         from("cgr.dev/chainguard/apko").
-        withMountedCache("/apkache/", cacheVolume("apko")).
+        withMountedCache("/apkache/", Dagger.cacheVolume("apko")).
         withNewFile("/config.yml", contents: toJSON(config)).
         withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest","layout.tar"]).
         file("layout.tar")
     )
   }
 
-  pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
+  pub alpine(packages: [String!]!, branch: String! = "edge"): Dagger.Container! {
     withAlpine(branch).withPackages(packages).asContainer
   }
 
-  pub wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
+  pub wolfi(packages: [String!]!, branch: String! = "edge"): Dagger.Container! {
     withWolfi.withPackages(packages).asContainer
   }
 }

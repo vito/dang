@@ -154,9 +154,13 @@ func init() {
 	registerBuiltinTypes()
 }
 
-func NewEnv(schema *introspection.Schema) Env {
+func NewPreludeEnv() *CompositeModule {
 	mod := NewModule("", ObjectKind)
-	env := &CompositeModule{mod, Prelude}
+	return &CompositeModule{mod, Prelude}
+}
+
+func NewEnv(schema *introspection.Schema) Env {
+	env := NewPreludeEnv()
 
 	for _, t := range schema.Directives {
 		var args []*SlotDecl
@@ -179,7 +183,7 @@ func NewEnv(schema *introspection.Schema) Env {
 			Locations: locations,
 			DocString: t.Description,
 		}
-		mod.AddDirective(t.Name, directive)
+		env.AddDirective(t.Name, directive)
 	}
 
 	for _, t := range schema.Types {
@@ -198,6 +202,7 @@ func NewEnv(schema *introspection.Schema) Env {
 			env.AddClass(t.Name, sub)
 		}
 		if t.Name == schema.QueryType.Name {
+			// TODO: "lexical" is maybe not the right word anymore
 			env.lexical = &CompositeModule{sub, env.lexical}
 		}
 	}
@@ -208,8 +213,8 @@ func NewEnv(schema *introspection.Schema) Env {
 			sub, found := env.NamedType(t.Name)
 			if found {
 				// Add the enum type as a scheme that represents the module itself
-				mod.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
-				mod.SetVisibility(t.Name, PublicVisibility)
+				env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
+				env.SetVisibility(t.Name, PublicVisibility)
 			}
 		}
 	}
@@ -231,8 +236,8 @@ func NewEnv(schema *introspection.Schema) Env {
 				env.AddClass(t.Name, sub)
 			}
 			// Add the scalar type as a scheme
-			mod.Add(t.Name, hm.NewScheme(nil, sub))
-			mod.SetVisibility(t.Name, PublicVisibility)
+			env.Add(t.Name, hm.NewScheme(nil, sub))
+			env.SetVisibility(t.Name, PublicVisibility)
 		}
 	}
 
@@ -242,8 +247,8 @@ func NewEnv(schema *introspection.Schema) Env {
 			sub, found := env.NamedType(t.Name)
 			if found {
 				// Add the interface type as a scheme that represents the module itself
-				mod.Add(t.Name, hm.NewScheme(nil, sub))
-				mod.SetVisibility(t.Name, PublicVisibility)
+				env.Add(t.Name, hm.NewScheme(nil, sub))
+				env.SetVisibility(t.Name, PublicVisibility)
 			}
 		}
 	}
@@ -359,7 +364,7 @@ func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
 			name = "-INVALID_NAME_MISSING-"
 		}
 		return &NamedTypeNode{
-			Named: name,
+			Name: name,
 		}
 	}
 }
