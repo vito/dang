@@ -1,0 +1,17 @@
+import Test
+
+# Test unqualified type names
+let s: Status = Status.ACTIVE
+assert { s == Status.ACTIVE }
+
+# Test unqualified enum values
+assert { ACTIVE == Status.ACTIVE }
+assert { INACTIVE == Status.INACTIVE }
+
+# Test unqualified GraphQL functions
+pub result = postTitles
+assert { result == ["First Post", "Second Post", "Third Post", "Fourth Post", "Fifth Post", "Sixth Post"] }
+
+# Test unqualified object selection still works
+pub posts_ = posts(limit: 2).{id, title}
+assert { posts_ != null }

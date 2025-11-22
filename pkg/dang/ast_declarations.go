@@ -1159,6 +1159,10 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			// Also add as a scheme so the type checker can find it
 			dangEnv.Add(i.Name.Name, hm.NewScheme(nil, NonNull(schemaModule)))
 
+			// Import all symbols from the schema module as unqualified names
+			// unless they conflict with existing symbols
+			i.importUnqualifiedSymbols(dangEnv, schemaModule, i.Name.Name)
+
 			i.inferred = schemaModule
 		}
 
@@ -1176,6 +1180,9 @@ func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 	// Set the module in the evaluation environment
 	env.Set(i.Name.Name, moduleEnv)
+
+	// Import all runtime values as unqualified symbols (unless they conflict)
+	i.importUnqualifiedValues(env, moduleEnv, i.Name.Name)
 
 	return moduleEnv, nil
 }
@@ -1290,4 +1297,118 @@ func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
 	}
 
 	return nil
+}
+
+// importUnqualifiedSymbols imports all symbols from an imported module into
+// the parent environment, unless they conflict with existing symbols or
+// symbols from other imports.
+func (i *ImportDecl) importUnqualifiedSymbols(parentEnv Env, schemaModule Env, importName string) {
+	// Import all value bindings (functions, etc.) from the schema module
+	for name, scheme := range schemaModule.Bindings(PublicVisibility) {
+		// Skip the import name itself (e.g., don't import "Test" as unqualified)
+		if name == importName {
+			continue
+		}
+
+		// Check if this name already exists in the parent environment
+		if existing, exists := parentEnv.LocalSchemeOf(name); exists {
+			// Symbol already exists - check if it's from another import or locally defined
+			// For now, we simply skip adding it (qualified access will still work)
+			_ = existing
+			continue
+		}
+
+		// Add the symbol to the parent environment
+		parentEnv.Add(name, scheme)
+	}
+
+	// Import all type bindings (classes) from the schema module
+	// We need to iterate through all types in the module
+	if mod, ok := schemaModule.(*CompositeModule); ok {
+		// For CompositeModule, get the primary module and import from it
+		if primaryMod, ok := mod.primary.(*Module); ok {
+			i.importTypesFromModule(parentEnv, primaryMod, importName)
+		}
+	} else if mod, ok := schemaModule.(*Module); ok {
+		// For regular Module
+		i.importTypesFromModule(parentEnv, mod, importName)
+	}
+}
+
+func (i *ImportDecl) importTypesFromModule(parentEnv Env, mod *Module, importName string) {
+	// Import all classes (types) from the module
+	for name, class := range mod.classes {
+		// Skip the import name itself
+		if name == importName {
+			continue
+		}
+
+		// Check if this type already exists in the parent environment
+		if _, exists := parentEnv.NamedType(name); exists {
+			// Type already exists - skip (qualified access will still work)
+			continue
+		}
+
+		// Add the type to the parent environment
+		parentEnv.AddClass(name, class)
+
+		// For enum types, also import their values as unqualified symbols
+		if enumMod, ok := class.(*Module); ok && enumMod.Kind == EnumKind {
+			for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
+				// Check if this enum value name conflicts with existing symbols
+				if _, exists := parentEnv.LocalSchemeOf(enumValName); exists {
+					// Conflict - skip (qualified access will still work)
+					continue
+				}
+
+				// Add the enum value to the parent environment
+				parentEnv.Add(enumValName, enumValScheme)
+			}
+		}
+	}
+}
+
+// importUnqualifiedValues imports all runtime values from an imported module
+// into the parent environment, unless they conflict with existing values.
+func (i *ImportDecl) importUnqualifiedValues(parentEnv EvalEnv, moduleEnv EvalEnv, importName string) {
+	// Iterate through all bindings in the module environment
+	for _, binding := range moduleEnv.Bindings(PublicVisibility) {
+		name := binding.Key
+		value := binding.Value
+
+		// Skip the import name itself
+		if name == importName {
+			continue
+		}
+
+		// Check if this name already exists in the parent environment
+		if _, exists := parentEnv.GetLocal(name); exists {
+			// Value already exists - skip (qualified access will still work)
+			continue
+		}
+
+		// Add the value to the parent environment
+		parentEnv.Set(name, value)
+
+		// If this is an enum module, also import its enum values as unqualified symbols
+		if enumModuleVal, ok := value.(*ModuleValue); ok {
+			// Check if this is an enum type by looking at the module kind
+			if mod, ok := enumModuleVal.Mod.(*Module); ok && mod.Kind == EnumKind {
+				// Import all enum values
+				for _, enumBinding := range enumModuleVal.Bindings(PublicVisibility) {
+					enumValName := enumBinding.Key
+					enumVal := enumBinding.Value
+
+					// Check if this enum value name conflicts with existing symbols
+					if _, exists := parentEnv.GetLocal(enumValName); exists {
+						// Conflict - skip (qualified access will still work)
+						continue
+					}
+
+					// Add the enum value to the parent environment
+					parentEnv.Set(enumValName, enumVal)
+				}
+			}
+		}
+	}
 }
