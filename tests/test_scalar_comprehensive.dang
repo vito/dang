@@ -8,8 +8,8 @@ scalar PhoneNumber
 scalar JSON
 
 # Test 2: Scalar values from GraphQL
-pub ts = Test.now
-pub url = Test.homepage
+pub ts = now
+pub url = homepage
 
 # Test 3: Value comparison
 assert { ts == "2024-01-15T10:30:00Z" }
