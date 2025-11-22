@@ -13,7 +13,6 @@ import (
 	"github.com/dagger/testctx/oteltest"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
 	"go.opentelemetry.io/otel/attribute"
@@ -49,18 +48,12 @@ func TestErrorMessages(tT *testing.T) {
 
 	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
 
-	// Introspect the GraphQL schema (required for Dang execution)
-	schema, err := introspectSchema(t.Context(), client)
-	if err != nil {
-		t.Fatalf("Failed to introspect schema: %v", err)
-	}
-
 	for _, dangFile := range dangFiles {
 		// Extract test name from filename
 		testName := strings.TrimSuffix(filepath.Base(dangFile), ".dang")
 
 		t.Run(testName, func(ctx context.Context, t *testctx.T) {
-			output := runDangFile(ctx, t, client, schema, dangFile)
+			output := runDangFile(ctx, t, client, dangFile)
 
 			// Compare with golden file
 			golden.Assert(t, output, testName+".golden")
@@ -69,7 +62,7 @@ func TestErrorMessages(tT *testing.T) {
 }
 
 // runDangFile runs a Dang file and captures combined stdout/stderr
-func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, schema *introspection.Schema, dangFile string) string {
+func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
 
@@ -77,8 +70,13 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, schem
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
+	ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
+		Name:   "Test",
+		Client: client,
+	})
+
 	// Run the Dang file
-	err := dang.RunFile(ctx, client, schema, dangFile, false)
+	err := dang.RunFile(ctx, dangFile, false)
 	require.Error(t, err, "Test expects an error, but did not error.")
 
 	// Combine stdout and stderr output
