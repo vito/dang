@@ -1,3 +1,5 @@
+import Dagger
+
 # local variable hover
 let hello = 42
 
@@ -25,21 +27,21 @@ pub multiply(x: Int!, y: Int!): Int! {
 multiply # test: K => hover: Multiplies two numbers together
 
 # builtin hover
-container # test: K => hover: Container!
+Dagger.container # test: ^wwK => hover: Container!
 
 # field access hover
-container.from # test: 11lK => hover: Download a container image
+Dagger.container.from # test: ^wwwwK => hover: Download a container image
 
 type MyModule {
-  pub build: File! {
+  pub build: Dagger.File! {
     generated.file("built") # test: ^K => hover: Base with ./hack/generate ran.
   }
 
   """
   Base with ./hack/generate ran.
   """
-  let generated: Container! {
-    container.withExec(["./hack/generate"])
+  let generated: Dagger.Container! {
+    Dagger.container.withExec(["./hack/generate"])
   }
 }
 

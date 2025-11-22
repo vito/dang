@@ -1,7 +1,9 @@
+import Test
+
 assert("auto-calling symbols") {
-  serverInfo().platform() == serverInfo.platform()
+  Test.serverInfo().platform() == Test.serverInfo.platform()
 }
 
 assert("auto-calling selections") {
-  serverInfo.platform == serverInfo.platform()
+  Test.serverInfo.platform == Test.serverInfo.platform()
 }
