@@ -49,22 +49,22 @@ type Apko {
     self
   }
 
-  pub asContainer: Dagger.Container! {
-    Dagger.container.import(
-      Dagger.container.
+  pub asContainer: Container! {
+    container.import(
+      container.
         from("cgr.dev/chainguard/apko").
-        withMountedCache("/apkache/", Dagger.cacheVolume("apko")).
+        withMountedCache("/apkache/", cacheVolume("apko")).
         withNewFile("/config.yml", contents: toJSON(config)).
         withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest","layout.tar"]).
         file("layout.tar")
     )
   }
 
-  pub alpine(packages: [String!]!, branch: String! = "edge"): Dagger.Container! {
+  pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
     withAlpine(branch).withPackages(packages).asContainer
   }
 
-  pub wolfi(packages: [String!]!, branch: String! = "edge"): Dagger.Container! {
+  pub wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
     withWolfi.withPackages(packages).asContainer
   }
 }

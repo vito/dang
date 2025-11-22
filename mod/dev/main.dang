@@ -1,7 +1,7 @@
 import Dagger
 
 type Dev {
-  pub source: Dagger.Directory! @Dagger.defaultPath(path: "/") @Dagger.ignorePatterns(patterns: [
+  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
     # TODO: respecting .gitignore would be nice
     "Session.vim"
     "dang"
@@ -14,30 +14,30 @@ type Dev {
   """
   GitHub token to use for fetching issue/PR comments
   """
-  pub githubToken: Dagger.Secret!
+  pub githubToken: Secret!
 
   """
   Kagi API token for doing research.
   """
-  pub kagiToken: Dagger.Secret!
+  pub kagiToken: Secret!
 
   """
   Start a coding agent with the provided module.
   """
-  pub withTools(tools: Dagger.Module!): Dagger.LLM! {
-    agent(Dagger.llm.withEnv(Dagger.env.withModule(tools)))
+  pub withTools(tools: Module!): LLM! {
+    agent(llm.withEnv(env.withModule(tools)))
   }
 
   """
   Start a coding agent.
   """
-  pub agent(base: Dagger.LLM!): Dagger.LLM! {
+  pub agent(base: LLM!): LLM! {
     let env = base.env.withWorkspace(source).withCurrentModule
 
-    let gopls = Dagger.apko.wolfi(["bash", "go"]).
-      withMountedCache("/go/pkg/mod", Dagger.cacheVolume("go-mod")).
+    let gopls = apko.wolfi(["bash", "go"]).
+      withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
       withEnvVariable("GOMODCACHE", "/go/pkg/mod").
-      withMountedCache("/go/build-cache", Dagger.cacheVolume("go-build")).
+      withMountedCache("/go/build-cache", cacheVolume("go-build")).
       withEnvVariable("GOCACHE", "/go/build-cache").
       withEnvVariable("GOBIN", "/go/bin").
       withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true).
@@ -46,7 +46,7 @@ type Dev {
       withWorkdir("/workspace").
       withDefaultArgs(["gopls", "mcp"])
 
-    let agent = Dagger.doug.agent(
+    let agent = doug.agent(
       base.
         withEnv(env).
         withMCPServer(name: "gopls", service: gopls.asService).
@@ -67,7 +67,7 @@ type Dev {
     if (kagiToken != null) {
       agent = agent.withMCPServer(
         "kagi"
-        Dagger.apko.wolfi(["bash", "uv", "python3"]).
+        apko.wolfi(["bash", "uv", "python3"]).
           withDirectory("/workspace", source).
           withWorkdir("/workspace").
           withExec(["uv", "venv", "/opt/venv"]).
@@ -118,8 +118,8 @@ type Dev {
   We don't expose this directly and instead expose wrappers just to keep the
   agent from going wild and relying too much on the shell.
   """
-  let sandbox: Dagger.Container! {
-    Dagger.apko.wolfi(["bash", "git", "gh"]).
+  let sandbox: Container! {
+    apko.wolfi(["bash", "git", "gh"]).
       withWorkdir("/workspace").
       withDirectory("/workspace", source)
   }
