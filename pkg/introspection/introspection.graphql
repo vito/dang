@@ -12,6 +12,14 @@ query IntrospectionQuery {
     types {
       ...FullType
     }
+    directives {
+      name
+      description
+      locations
+      args {
+        ...InputValue
+      }
+    }
   }
 }
 
