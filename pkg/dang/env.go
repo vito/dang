@@ -27,6 +27,10 @@ type Env interface {
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
 	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
+	TrackUnqualifiedTypeImport(symbolName, importName string) bool
+	TrackUnqualifiedValueImport(symbolName, importName string) bool
+	CheckTypeConflict(symbolName string) []string
+	CheckValueConflict(symbolName string) []string
 }
 
 // ModuleKind represents the kind of module
@@ -81,19 +85,26 @@ type Module struct {
 	// Interface tracking
 	interfaces   []Env // Interfaces this type implements
 	implementers []Env // Types that implement this interface (for interface modules)
+
+	// Import conflict tracking for unqualified imports
+	// Maps symbol name -> list of import names that provide it
+	unqualifiedTypeImports  map[string][]string // For type-level symbols
+	unqualifiedValueImports map[string][]string // For value-level symbols
 }
 
 func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
-		Named:           name,
-		Kind:            kind,
-		classes:         make(map[string]Env),
-		vars:            make(map[string]*hm.Scheme),
-		visibility:      make(map[string]Visibility),
-		directives:      make(map[string]*DirectiveDecl),
-		slotDirectives:  make(map[string][]*DirectiveApplication),
-		docStrings:      make(map[string]string),
-		moduleDocString: "",
+		Named:                   name,
+		Kind:                    kind,
+		classes:                 make(map[string]Env),
+		vars:                    make(map[string]*hm.Scheme),
+		visibility:              make(map[string]Visibility),
+		directives:              make(map[string]*DirectiveDecl),
+		slotDirectives:          make(map[string][]*DirectiveApplication),
+		docStrings:              make(map[string]string),
+		moduleDocString:         "",
+		unqualifiedTypeImports:  make(map[string][]string),
+		unqualifiedValueImports: make(map[string][]string),
 	}
 	return env
 }
@@ -663,6 +674,64 @@ func (m *Module) ImplementsInterface(iface Env) bool {
 		}
 	}
 	return false
+}
+
+// TrackUnqualifiedTypeImport records that an import provides a type-level symbol
+// Returns true if this creates a conflict (symbol already provided by a different import)
+func (m *Module) TrackUnqualifiedTypeImport(symbolName, importName string) bool {
+	existing := m.unqualifiedTypeImports[symbolName]
+	for _, imp := range existing {
+		if imp == importName {
+			// Already tracked from this import
+			return len(existing) > 1
+		}
+	}
+	m.unqualifiedTypeImports[symbolName] = append(existing, importName)
+	return len(m.unqualifiedTypeImports[symbolName]) > 1
+}
+
+// TrackUnqualifiedValueImport records that an import provides a value-level symbol
+// Returns true if this creates a conflict (symbol already provided by a different import)
+func (m *Module) TrackUnqualifiedValueImport(symbolName, importName string) bool {
+	existing := m.unqualifiedValueImports[symbolName]
+	for _, imp := range existing {
+		if imp == importName {
+			// Already tracked from this import
+			return len(existing) > 1
+		}
+	}
+	m.unqualifiedValueImports[symbolName] = append(existing, importName)
+	return len(m.unqualifiedValueImports[symbolName]) > 1
+}
+
+// CheckTypeConflict checks if a type-level symbol has import conflicts
+// Returns the list of imports that provide it (empty if no conflict or not tracked)
+func (m *Module) CheckTypeConflict(symbolName string) []string {
+	imports := m.unqualifiedTypeImports[symbolName]
+	if len(imports) > 1 {
+		return imports
+	}
+	if m.Parent != nil {
+		if parent, ok := m.Parent.(*Module); ok {
+			return parent.CheckTypeConflict(symbolName)
+		}
+	}
+	return nil
+}
+
+// CheckValueConflict checks if a value-level symbol has import conflicts
+// Returns the list of imports that provide it (empty if no conflict or not tracked)
+func (m *Module) CheckValueConflict(symbolName string) []string {
+	imports := m.unqualifiedValueImports[symbolName]
+	if len(imports) > 1 {
+		return imports
+	}
+	if m.Parent != nil {
+		if parent, ok := m.Parent.(*Module); ok {
+			return parent.CheckValueConflict(symbolName)
+		}
+	}
+	return nil
 }
 
 // validateFieldImplementation validates that a class field correctly implements an interface field

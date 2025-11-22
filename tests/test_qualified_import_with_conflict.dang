@@ -1,0 +1,11 @@
+# Test that qualified access still works when there's a conflict
+import Test
+import Other
+
+# These should work because they're qualified, even though Status conflicts
+let testStatus: Test.Status = Test.Status.ACTIVE
+let otherStatus: Other.Status = Other.Status.PENDING
+
+# Verify the values work correctly
+testStatus == Test.Status.ACTIVE
+otherStatus == Other.Status.PENDING

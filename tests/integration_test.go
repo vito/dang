@@ -61,10 +61,16 @@ func TestIntegration(tT *testing.T) {
 			ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
 			ctx = ioctx.StderrToContext(ctx, NewTWriter(t))
 
-			ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
-				Name:   "Test",
-				Client: client,
-			})
+			ctx = dang.ContextWithImportConfigs(ctx,
+				dang.ImportConfig{
+					Name:   "Test",
+					Client: client,
+				},
+				dang.ImportConfig{
+					Name:   "Other",
+					Client: client, // Same client/schema, but different import name
+				},
+			)
 
 			// t.Parallel()
 			fi, err := os.Stat(testFileOrDir)

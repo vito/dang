@@ -1315,11 +1315,15 @@ func (i *ImportDecl) importUnqualifiedSymbols(parentEnv Env, schemaModule Env, i
 			// Symbol already exists - check if it's from another import or locally defined
 			// For now, we simply skip adding it (qualified access will still work)
 			_ = existing
+			// Track the conflict
+			parentEnv.TrackUnqualifiedTypeImport(name, importName)
 			continue
 		}
 
 		// Add the symbol to the parent environment
 		parentEnv.Add(name, scheme)
+		// Track that this import provides this symbol
+		parentEnv.TrackUnqualifiedTypeImport(name, importName)
 	}
 
 	// Import all type bindings (classes) from the schema module
@@ -1345,24 +1349,30 @@ func (i *ImportDecl) importTypesFromModule(parentEnv Env, mod *Module, importNam
 
 		// Check if this type already exists in the parent environment
 		if _, exists := parentEnv.NamedType(name); exists {
-			// Type already exists - skip (qualified access will still work)
+			// Type already exists - track the conflict
+			parentEnv.TrackUnqualifiedTypeImport(name, importName)
 			continue
 		}
 
 		// Add the type to the parent environment
 		parentEnv.AddClass(name, class)
+		// Track that this import provides this type
+		parentEnv.TrackUnqualifiedTypeImport(name, importName)
 
 		// For enum types, also import their values as unqualified symbols
 		if enumMod, ok := class.(*Module); ok && enumMod.Kind == EnumKind {
 			for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
 				// Check if this enum value name conflicts with existing symbols
 				if _, exists := parentEnv.LocalSchemeOf(enumValName); exists {
-					// Conflict - skip (qualified access will still work)
+					// Conflict - track it
+					parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
 					continue
 				}
 
 				// Add the enum value to the parent environment
 				parentEnv.Add(enumValName, enumValScheme)
+				// Track that this import provides this enum value
+				parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
 			}
 		}
 	}
@@ -1383,12 +1393,19 @@ func (i *ImportDecl) importUnqualifiedValues(parentEnv EvalEnv, moduleEnv EvalEn
 
 		// Check if this name already exists in the parent environment
 		if _, exists := parentEnv.GetLocal(name); exists {
-			// Value already exists - skip (qualified access will still work)
+			// Value already exists - track the conflict
+			if mod, ok := parentEnv.(*ModuleValue); ok {
+				mod.Mod.TrackUnqualifiedValueImport(name, importName)
+			}
 			continue
 		}
 
 		// Add the value to the parent environment
 		parentEnv.Set(name, value)
+		// Track that this import provides this value
+		if mod, ok := parentEnv.(*ModuleValue); ok {
+			mod.Mod.TrackUnqualifiedValueImport(name, importName)
+		}
 
 		// If this is an enum module, also import its enum values as unqualified symbols
 		if enumModuleVal, ok := value.(*ModuleValue); ok {
@@ -1401,14 +1418,22 @@ func (i *ImportDecl) importUnqualifiedValues(parentEnv EvalEnv, moduleEnv EvalEn
 
 					// Check if this enum value name conflicts with existing symbols
 					if _, exists := parentEnv.GetLocal(enumValName); exists {
-						// Conflict - skip (qualified access will still work)
+						// Conflict - track it
+						if parentMod, ok := parentEnv.(*ModuleValue); ok {
+							parentMod.Mod.TrackUnqualifiedValueImport(enumValName, importName)
+						}
 						continue
 					}
 
 					// Add the enum value to the parent environment
 					parentEnv.Set(enumValName, enumVal)
+					// Track that this import provides this enum value
+					if parentMod, ok := parentEnv.(*ModuleValue); ok {
+						parentMod.Mod.TrackUnqualifiedValueImport(enumValName, importName)
+					}
 				}
 			}
 		}
 	}
 }
+
