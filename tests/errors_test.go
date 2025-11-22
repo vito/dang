@@ -70,10 +70,16 @@ func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangF
 	ctx = ioctx.StdoutToContext(ctx, &stdout)
 	ctx = ioctx.StderrToContext(ctx, &stderr)
 
-	ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
-		Name:   "Test",
-		Client: client,
-	})
+	ctx = dang.ContextWithImportConfigs(ctx,
+		dang.ImportConfig{
+			Name:   "Test",
+			Client: client,
+		},
+		dang.ImportConfig{
+			Name:   "Other",
+			Client: client, // Same client/schema, but different import name
+		},
+	)
 
 	// Run the Dang file
 	err := dang.RunFile(ctx, dangFile, false)

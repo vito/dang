@@ -495,6 +495,46 @@ func (c *CompositeModule) AddClass(name string, class Env) {
 	c.primary.AddClass(name, class)
 }
 
+// TrackUnqualifiedTypeImport delegates to the primary module
+func (c *CompositeModule) TrackUnqualifiedTypeImport(symbolName, importName string) bool {
+	if mod, ok := c.primary.(*Module); ok {
+		return mod.TrackUnqualifiedTypeImport(symbolName, importName)
+	}
+	return false
+}
+
+// TrackUnqualifiedValueImport delegates to the primary module
+func (c *CompositeModule) TrackUnqualifiedValueImport(symbolName, importName string) bool {
+	if mod, ok := c.primary.(*Module); ok {
+		return mod.TrackUnqualifiedValueImport(symbolName, importName)
+	}
+	return false
+}
+
+// CheckTypeConflict delegates to the primary module
+func (c *CompositeModule) CheckTypeConflict(symbolName string) []string {
+	if mod, ok := c.primary.(*Module); ok {
+		return mod.CheckTypeConflict(symbolName)
+	}
+	// Fall back to lexical scope if primary isn't a Module
+	if mod, ok := c.lexical.(*Module); ok {
+		return mod.CheckTypeConflict(symbolName)
+	}
+	return nil
+}
+
+// CheckValueConflict delegates to the primary module
+func (c *CompositeModule) CheckValueConflict(symbolName string) []string {
+	if mod, ok := c.primary.(*Module); ok {
+		return mod.CheckValueConflict(symbolName)
+	}
+	// Fall back to lexical scope if primary isn't a Module
+	if mod, ok := c.lexical.(*Module); ok {
+		return mod.CheckValueConflict(symbolName)
+	}
+	return nil
+}
+
 // AddDirective adds a directive to the primary environment
 func (c *CompositeModule) AddDirective(name string, directive *DirectiveDecl) {
 	c.primary.AddDirective(name, directive)

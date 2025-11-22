@@ -1,8 +1,0 @@
-# This test will need two imports that define conflicting symbols
-# For now, let's just test the qualification still works when there's a single import
-
-import Test
-
-# Qualified access should always work
-assert { Test.Status.ACTIVE == Test.Status.ACTIVE }
-assert { Test.postTitles == ["First Post", "Second Post", "Third Post", "Fourth Post", "Fifth Post", "Sixth Post"] }
