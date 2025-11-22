@@ -947,6 +947,11 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 			env = scopeType.(Env)
 		}
 
+		// Check for import conflicts before resolving
+		if conflicts := env.CheckDirectiveConflict(d.Name); len(conflicts) > 0 {
+			return nil, fmt.Errorf("ambiguous reference to directive @%s: provided by imports %v", d.Name, conflicts)
+		}
+
 		// Validate that the directive exists and arguments match
 		directiveDecl, found := env.GetDirective(d.Name)
 		if !found {
@@ -1332,10 +1337,12 @@ func (i *ImportDecl) importUnqualifiedSymbols(parentEnv Env, schemaModule Env, i
 		// For CompositeModule, get the primary module and import from it
 		if primaryMod, ok := mod.primary.(*Module); ok {
 			i.importTypesFromModule(parentEnv, primaryMod, importName)
+			i.importDirectivesFromModule(parentEnv, primaryMod, importName)
 		}
 	} else if mod, ok := schemaModule.(*Module); ok {
 		// For regular Module
 		i.importTypesFromModule(parentEnv, mod, importName)
+		i.importDirectivesFromModule(parentEnv, mod, importName)
 	}
 }
 
@@ -1375,6 +1382,23 @@ func (i *ImportDecl) importTypesFromModule(parentEnv Env, mod *Module, importNam
 				parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
 			}
 		}
+	}
+}
+
+func (i *ImportDecl) importDirectivesFromModule(parentEnv Env, mod *Module, importName string) {
+	// Import all directives from the module
+	for directiveName, directive := range mod.directives {
+		// Check if this directive already exists in the parent environment
+		if _, exists := parentEnv.GetDirective(directiveName); exists {
+			// Directive already exists - track the conflict
+			parentEnv.TrackUnqualifiedDirectiveImport(directiveName, importName)
+			continue
+		}
+
+		// Add the directive to the parent environment
+		parentEnv.AddDirective(directiveName, directive)
+		// Track that this import provides this directive
+		parentEnv.TrackUnqualifiedDirectiveImport(directiveName, importName)
 	}
 }
 
@@ -1436,4 +1460,3 @@ func (i *ImportDecl) importUnqualifiedValues(parentEnv EvalEnv, moduleEnv EvalEn
 		}
 	}
 }
-
