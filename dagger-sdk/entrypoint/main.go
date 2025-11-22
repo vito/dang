@@ -302,6 +302,9 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 			// Otherwise, assume it's an object ID
 			sel := dang.FunCall{
 				Fun: &dang.Select{
+					Receiver: &dang.Symbol{
+						Name: "Dagger",
+					},
 					Field: fmt.Sprintf("load%sFromID", modType.Named),
 				},
 				Args: dang.Record{

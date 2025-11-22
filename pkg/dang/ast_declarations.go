@@ -1122,46 +1122,48 @@ func (i *ImportDecl) GetSourceLocation() *SourceLocation { return i.Loc }
 var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	if i.inferred != nil {
-		// If we've already inferred, skip.
-		// (This is defensive.)
-		return NonNull(i.inferred), nil
-	}
-
-	// Perform actual schema introspection now during hoisting
-	config, err := i.loadImportConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	client := config.Client
-	schema := config.Schema
-
-	// Add the import declaration to the environment for later resolution
-	if dangEnv, ok := env.(Env); ok {
-		// Import with alias - check for conflicts and create schema module
-		if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
-			return nil, err
+	return WithInferErrorHandling(i, func() (hm.Type, error) {
+		if i.inferred != nil {
+			// If we've already inferred, skip.
+			// (This is defensive.)
+			return NonNull(i.inferred), nil
 		}
 
-		// Create module with GraphQL schema types and functions
-		schemaModule := NewEnv(schema)
+		// Perform actual schema introspection now during hoisting
+		config, err := i.loadImportConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		client := config.Client
+		schema := config.Schema
 
-		// Store client and schema information for runtime
-		i.client = client
-		i.schema = schema
+		// Add the import declaration to the environment for later resolution
+		if dangEnv, ok := env.(Env); ok {
+			// Import with alias - check for conflicts and create schema module
+			if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
+				return nil, err
+			}
 
-		// Register type for the module
-		// TOOD: is this useful? i guess it means we can pass GH around which is
-		// kinda neat?
-		dangEnv.AddClass(i.Name.Name, schemaModule)
+			// Create module with GraphQL schema types and functions
+			schemaModule := NewEnv(schema)
 
-		// Also add as a scheme so the type checker can find it
-		dangEnv.Add(i.Name.Name, hm.NewScheme(nil, NonNull(schemaModule)))
+			// Store client and schema information for runtime
+			i.client = client
+			i.schema = schema
 
-		i.inferred = schemaModule
-	}
+			// Register type for the module
+			// TOOD: is this useful? i guess it means we can pass GH around which is
+			// kinda neat?
+			dangEnv.AddClass(i.Name.Name, schemaModule)
 
-	return NonNull(i.inferred), nil
+			// Also add as a scheme so the type checker can find it
+			dangEnv.Add(i.Name.Name, hm.NewScheme(nil, NonNull(schemaModule)))
+
+			i.inferred = schemaModule
+		}
+
+		return NonNull(i.inferred), nil
+	})
 }
 
 func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -1183,6 +1185,11 @@ func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error)
 	for _, config := range importConfigsFromContext(ctx) {
 		if config.Name == i.Name.Name {
 			if config.Schema == nil {
+				var err error
+				config.Schema, err = introspectSchema(ctx, config.Client)
+				if err != nil {
+					return ImportConfig{}, fmt.Errorf("failed to introspect schema for import %q: %w", i.Name.Name, err)
+				}
 			}
 			return config, nil
 		}

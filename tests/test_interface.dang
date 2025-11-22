@@ -1,16 +1,17 @@
 # Test GraphQL interface support
+import Test
 
 # Test: Interface types should be available as values
-assert { Node != null }
-assert { Timestamped != null }
+assert { Test.Node != null }
+assert { Test.Timestamped != null }
 
 # Test: Query returning interface type - node(id: "1") should return a User
-pub nodeResult = node(id: "1").{id}
+pub nodeResult = Test.node(id: "1").{id}
 assert { nodeResult != null }
 assert { nodeResult.id == "1" }
 
 # Test: Query returning list of interfaces - nodes should return all Users and Posts
-pub allNodes = nodes.{id}
+pub allNodes = Test.nodes.{id}
 assert { allNodes != null }
 # We have 2 users + 6 posts = 8 nodes - just check a few exist
 assert { allNodes[0].id != null }
@@ -22,7 +23,7 @@ pub firstNode = allNodes[0]
 assert { firstNode.id != null }
 
 # Test: Timestamped interface - should return all Posts
-pub timestampedItems = timestamped.{createdAt}
+pub timestampedItems = Test.timestamped.{createdAt}
 assert { timestampedItems != null }
 # All 6 posts implement Timestamped - check a few exist
 assert { timestampedItems[0].createdAt != null }

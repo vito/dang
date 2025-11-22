@@ -1,11 +1,13 @@
+import Dagger
+
 # local bindings
 let hello = 42
 
 hel # test: ^ea<C-x><C-o> => hello┃
 
 # global functions (from Query type)
-dir # test: ^ea<C-x><C-o> => directory┃
-cont # test: ^ea<C-x><C-o> => container┃
+Dagger.dir # test: ^Ea<C-x><C-o> => Dagger.directory┃
+Dagger.cont # test: ^Ea<C-x><C-o> => Dagger.container┃
 
 # lexical bindings (function parameters)
 pub foo(jxkqv: Int!): [Int!] {
@@ -13,11 +15,11 @@ pub foo(jxkqv: Int!): [Int!] {
 }
 
 # lexical bindings (let within block)
-pub bar: Container! {
-  let ctr = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
-  let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
+pub bar: Dagger.Container! {
+  let ctr = Dagger.container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
+  let d = Dagger.container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
   ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 let url = "https://github.com/vito/dang"
-git(url) # test: ^Ea.he<C-x><C-o>{delay:200ms}.tr<C-x><C-o> => git(url).head.tree┃
+Dagger.git(url) # test: ^Ea.he<C-x><C-o>{delay:200ms}.tr<C-x><C-o> => git(url).head.tree┃
