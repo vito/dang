@@ -11,7 +11,7 @@ import (
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
 	"github.com/neovim/go-client/nvim"
-	"github.com/vito/is"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -89,17 +89,15 @@ func checkNested(t *testctx.T) bool {
 }
 
 func testHover(t *testctx.T, client *nvim.Nvim, testLine int, codes string, expectedContent string) {
-	is := is.New(t)
-
 	// Execute the key sequence (e.g., "K")
 	keys, err := client.ReplaceTermcodes(codes, true, true, true)
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	err = client.FeedKeys(keys, "t", true)
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	// Wait for floating window to appear and capture its content
-	is.Eventually(func() bool {
+	require.Eventually(t, func() bool {
 		// Use Lua to find floating windows and get their content
 		var content string
 		err := client.ExecLua(`
@@ -136,36 +134,34 @@ func testHover(t *testctx.T, client *nvim.Nvim, testLine int, codes string, expe
 
 	// Close the hover window
 	err = client.FeedKeys("\x1b", "t", true)
-	is.NoErr(err)
+	require.NoError(t, err)
 }
 
 func testFile(t *testctx.T, client *nvim.Nvim, file string) {
-	is := is.New(t)
-
 	err := client.Command(`edit ` + file)
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	testBuf, err := client.CurrentBuffer()
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	window, err := client.CurrentWindow()
-	is.NoErr(err)
+	require.NoError(t, err)
 
-	is.Eventually(func() bool { // wait for LSP client to attach
+	require.Eventually(t, func() bool { // wait for LSP client to attach
 		var b bool
 		err := client.Eval(`luaeval('#vim.lsp.get_clients({bufnr = 0}) > 0')`, &b)
 		return err == nil && b
 	}, 5*time.Second, 10*time.Millisecond)
 
 	lineCount, err := client.BufferLineCount(testBuf)
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	t.Logf("lines: %d", lineCount)
 
 	t.Cleanup(func() {
 		var fn string
 		err := client.Eval(`luaeval('vim.lsp.log.get_filename()')`, &fn)
-		is.NoErr(err)
+		require.NoError(t, err)
 
 		if testing.Verbose() {
 			lspLogs, err := os.ReadFile(fn)
@@ -177,20 +173,20 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 
 	for testLine := 1; testLine <= lineCount; testLine++ {
 		mode, err := client.Mode()
-		is.NoErr(err)
+		require.NoError(t, err)
 
 		if mode.Mode != "n" {
 			// reset back to normal mode; some tests can't <esc> immediately because
 			// they have to wait for the language server (e.g. completion)
 			err = client.FeedKeys("\x1b", "t", true)
-			is.NoErr(err)
+			require.NoError(t, err)
 		}
 
 		err = client.SetWindowCursor(window, [2]int{testLine, 0})
-		is.NoErr(err)
+		require.NoError(t, err)
 
 		lineb, err := client.CurrentLine()
-		is.NoErr(err)
+		require.NoError(t, err)
 		line := string(lineb)
 
 		line, test, ok := strings.Cut(line, " # test: ")
@@ -225,7 +221,7 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 				}
 				delayStr := part[:delayEnd]
 				delay, err := time.ParseDuration(delayStr)
-				is.NoErr(err)
+				require.NoError(t, err)
 
 				t.Logf("L%03d sleeping for %v", testLine, delay)
 				time.Sleep(delay)
@@ -238,24 +234,24 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 			}
 
 			keys, err := client.ReplaceTermcodes(part, true, true, true)
-			is.NoErr(err)
+			require.NoError(t, err)
 
 			err = client.FeedKeys(keys, "t", true)
-			is.NoErr(err)
+			require.NoError(t, err)
 		}
 
 		targetPos := strings.Index(assertion, "┃")
 		target := strings.ReplaceAll(assertion, "┃", "")
 		target = strings.ReplaceAll(target, "\\t", "\t")
 
-		is.Eventually(func() bool { // wait for the definition to be found
+		require.Eventually(t, func() bool { // wait for the definition to be found
 			lineb, err := client.CurrentLine()
-			is.NoErr(err)
+			require.NoError(t, err)
 			line := string(lineb)
 			line, _, _ = strings.Cut(line, " # test:")
 
 			pos, err := client.WindowCursor(window)
-			is.NoErr(err)
+			require.NoError(t, err)
 
 			idx := strings.Index(line, target)
 			if idx == -1 {
@@ -277,13 +273,11 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 
 		// go back from definition to initial test buffer
 		err = client.SetCurrentBuffer(testBuf)
-		is.NoErr(err)
+		require.NoError(t, err)
 	}
 }
 
 func sandboxNvim(t *testctx.T) *nvim.Nvim {
-	is := is.New(t)
-
 	ctx := context.Background()
 
 	cmd := os.Getenv("DANG_LSP_NEOVIM_BIN")
@@ -301,7 +295,7 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		nvim.ChildProcessContext(ctx),
 		nvim.ChildProcessLogf(t.Logf),
 	)
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		err := client.Close()
@@ -320,10 +314,10 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 	})
 
 	err = client.Command(`source testdata/config.lua`)
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	paths, err := client.RuntimePaths()
-	is.NoErr(err)
+	require.NoError(t, err)
 
 	t.Logf("runtimepath: %v", paths)
 
