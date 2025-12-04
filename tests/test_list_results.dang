@@ -1,1 +1,3 @@
+import Test
+
 assert { postTitles == ["First Post", "Second Post", "Third Post", "Fourth Post", "Fifth Post", "Sixth Post"] }

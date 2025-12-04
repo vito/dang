@@ -1,5 +1,6 @@
 # Test nested field arguments - the actual feature we implemented
 # Tests the syntax: foo.{bar(arg: 123).{deeper}}
+import Test
 
 # Test the actual pattern with nested field arguments
 pub user_with_limited_posts = user(id: "1").{

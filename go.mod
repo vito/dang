@@ -20,7 +20,6 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/is v0.0.5
 	go.opentelemetry.io/otel v1.38.0
 	golang.org/x/sync v0.17.0
 	gotest.tools/v3 v3.5.2
