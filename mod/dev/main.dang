@@ -12,12 +12,12 @@ type Dev {
   """
   GitHub token to use for fetching issue/PR comments
   """
-  pub githubToken: Secret!
+  pub githubToken: Secret
 
   """
   Kagi API token for doing research.
   """
-  pub kagiToken: Secret!
+  pub kagiToken: Secret
 
   """
   Start a coding agent with the provided module.
