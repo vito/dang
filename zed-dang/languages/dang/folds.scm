@@ -1,6 +1,5 @@
 ;; Basic folding patterns
 [
   (list)
-  (scope)
-  (cons)
+  (block)
 ] @fold

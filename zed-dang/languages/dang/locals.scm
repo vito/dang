@@ -1,6 +1,6 @@
 ;; Scope definitions
 [
-  (scope)
+  (block)
   (list)
 ] @local.scope
 
