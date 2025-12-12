@@ -102,7 +102,7 @@ To that end:
 
   This project sat unfinished for 2 years, and in a day of AI crunching I was
   finally able to bring it to life. If you have ethical concerns with this or
-  think that makes the project "lame," I respect that. If you can, just pretend
+  think that makes the project lame, I respect that. If you can, just pretend
   this project stayed in that unfinished state. Maybe check out [Bass] instead,
   which may be more interesting to language nerds anyway. :)
 
