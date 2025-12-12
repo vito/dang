@@ -31,7 +31,7 @@ type Dang {
 
 ## why?
 
-The initial goal was a "native" language for [Dagger]. Dagger is a polyglot
+The initial goal was a native language for [Dagger]. Dagger is a polyglot
 function engine with an underlying GraphQL API serving as the common layer where
 functions written in different languages call one another.
 
