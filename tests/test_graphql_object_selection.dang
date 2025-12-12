@@ -1,6 +1,8 @@
 # Test GraphQL object selection functionality with real schema
 # Aspirational test covering all object selection syntax patterns
 
+import Test
+
 # Test basic object selection with GraphQL types
 pub server_info = serverInfo.{version, platform, uptime}
 pub server_stats = serverInfo.{totalUsers, totalPosts}

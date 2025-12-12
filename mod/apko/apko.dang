@@ -1,3 +1,5 @@
+import Dagger
+
 pub description =
   "Builds containers from simple lists of packages using the Apko CLI."
 
