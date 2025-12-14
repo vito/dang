@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"dagger.io/dagger/telemetry"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
@@ -16,18 +15,13 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
-	"go.opentelemetry.io/otel/attribute"
 	"gotest.tools/v3/golden"
 )
 
 // TestErrorMessages tests that error messages match golden files
 func TestErrorMessages(tT *testing.T) {
 	t := testctx.New(tT,
-		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
-			Attributes: []attribute.KeyValue{
-				attribute.Bool(telemetry.UIRevealAttr, true),
-			},
-		}),
+		oteltest.WithTracing[*testing.T](),
 		oteltest.WithLogging[*testing.T](),
 	)
 

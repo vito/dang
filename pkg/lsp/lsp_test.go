@@ -8,12 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"dagger.io/dagger/telemetry"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
 	"github.com/neovim/go-client/nvim"
 	"github.com/vito/is"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 func TestMain(m *testing.M) {
@@ -22,11 +20,7 @@ func TestMain(m *testing.M) {
 
 func TestLSP(tT *testing.T) {
 	testctx.New(tT,
-		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
-			Attributes: []attribute.KeyValue{
-				attribute.Bool(telemetry.UIRevealAttr, true),
-			},
-		}),
+		oteltest.WithTracing[*testing.T](),
 		oteltest.WithLogging[*testing.T](),
 	).RunTests(LSPSuite{})
 }
