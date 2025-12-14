@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"dagger.io/dagger/telemetry"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
@@ -18,6 +19,8 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestMain(m *testing.M) {
@@ -26,7 +29,13 @@ func TestMain(m *testing.M) {
 
 func TestIntegration(tT *testing.T) {
 	t := testctx.New(tT,
-		oteltest.WithTracing[*testing.T](),
+		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
+			StartOptions: func(t *testctx.T) []trace.SpanStartOption {
+				return []trace.SpanStartOption{
+					trace.WithAttributes(attribute.String(telemetry.CheckNameAttr, t.BaseName())),
+				}
+			},
+		}),
 		oteltest.WithLogging[*testing.T](),
 	)
 
