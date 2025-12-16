@@ -111,7 +111,7 @@ func (h *langHandler) getMemberCompletions(t hm.Type) []CompletionItem {
 	}
 
 	// Check if the type is a Module
-	module, ok := t.(*dang.Module)
+	module, ok := t.(dang.Env)
 	if !ok {
 		return items
 	}
