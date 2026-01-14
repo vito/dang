@@ -1,0 +1,57 @@
+# Test prefix directives on field declarations
+
+directive @check on FIELD_DEFINITION
+directive @cache(ttl: Int!) on FIELD_DEFINITION
+
+type Person {
+  # Prefix directive on field with body
+  @check pub validated: String! {
+    "validated value"
+  }
+
+  # Prefix directive on field with value
+  @cache(ttl: 300) pub cachedField: String! = "cached"
+
+  # Multiple prefix directives (on separate lines)
+  @check
+  @cache(ttl: 60)
+  pub multiDirective: String! {
+    "multi"
+  }
+
+  # Mix prefix and suffix directives (both should be collected)
+  @check
+  pub mixedField: String! @cache(ttl: 120) {
+    "mixed"
+  }
+
+  # Traditional suffix directive still works
+  pub suffixOnly: String! @check {
+    "suffix"
+  }
+}
+
+let person = Person
+
+# Verify all fields work
+assert {
+  person.validated == "validated value"
+}
+
+assert {
+  person.cachedField == "cached"
+}
+
+assert {
+  person.multiDirective == "multi"
+}
+
+assert {
+  person.mixedField == "mixed"
+}
+
+assert {
+  person.suffixOnly == "suffix"
+}
+
+print("Prefix directive tests passed!")

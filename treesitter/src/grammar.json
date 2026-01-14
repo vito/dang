@@ -185,7 +185,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 150,
+      "value": 151,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -391,7 +391,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 143,
+      "value": 144,
       "content": {
         "type": "SEQ",
         "members": [
@@ -474,7 +474,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 142,
+      "value": 143,
       "content": {
         "type": "SEQ",
         "members": [
@@ -675,6 +675,21 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
           "type": "SYMBOL",
           "name": "type_token"
         },
@@ -708,7 +723,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -907,6 +922,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "vis",
           "content": {
             "type": "SYMBOL",
@@ -947,7 +977,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -961,6 +991,21 @@
     "value_only_slot": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
         {
           "type": "FIELD",
           "name": "vis",
@@ -991,7 +1036,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1007,6 +1052,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "vis",
           "content": {
             "type": "SYMBOL",
@@ -1035,7 +1095,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1051,6 +1111,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "vis",
           "content": {
             "type": "SYMBOL",
@@ -1079,7 +1154,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1101,6 +1176,21 @@
     "type_and_args_and_block_slot": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
         {
           "type": "FIELD",
           "name": "vis",
@@ -1139,7 +1229,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1201,6 +1291,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "vis",
           "content": {
             "type": "SYMBOL",
@@ -1237,7 +1342,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1251,6 +1356,21 @@
     "type_only_fun_slot": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
         {
           "type": "FIELD",
           "name": "vis",
@@ -1281,7 +1401,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1590,6 +1710,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "name",
           "content": {
             "type": "SYMBOL",
@@ -1610,7 +1745,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1638,6 +1773,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "name",
           "content": {
             "type": "SYMBOL",
@@ -1658,7 +1808,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1682,6 +1832,21 @@
       "members": [
         {
           "type": "FIELD",
+          "name": "prefix_directives",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "FIELD",
+              "name": "d",
+              "content": {
+                "type": "SYMBOL",
+                "name": "prefix_directive_application"
+              }
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "name",
           "content": {
             "type": "SYMBOL",
@@ -1702,7 +1867,7 @@
         },
         {
           "type": "FIELD",
-          "name": "directives",
+          "name": "suffix_directives",
           "content": {
             "type": "REPEAT",
             "content": {
@@ -1813,7 +1978,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 95,
+      "value": 96,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -1969,7 +2134,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 90,
+      "value": 91,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2057,7 +2222,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 86,
+      "value": 87,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2121,7 +2286,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2185,7 +2350,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 84,
+      "value": 85,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2266,7 +2431,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 83,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2355,7 +2520,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 80,
+      "value": 81,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2436,7 +2601,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 78,
+      "value": 79,
       "content": {
         "type": "SEQ",
         "members": [
@@ -4150,6 +4315,39 @@
       ]
     },
     "directive_application": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "@"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "id"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "args",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "arg_values"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "prefix_directive_application": {
       "type": "SEQ",
       "members": [
         {
