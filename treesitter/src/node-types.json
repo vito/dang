@@ -316,12 +316,12 @@
           }
         ]
       },
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -332,6 +332,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -362,12 +382,12 @@
     "type": "arg_with_default",
     "named": true,
     "fields": {
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -378,6 +398,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -422,12 +462,12 @@
     "type": "arg_with_type",
     "named": true,
     "fields": {
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -438,6 +478,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -979,12 +1039,12 @@
           }
         ]
       },
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -1005,6 +1065,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -2693,6 +2773,32 @@
     }
   },
   {
+    "type": "prefix_directive_application",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_values",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "id",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "quoted",
     "named": true,
     "fields": {
@@ -3140,12 +3246,12 @@
           }
         ]
       },
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3156,6 +3262,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -3206,12 +3332,12 @@
           }
         ]
       },
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3222,6 +3348,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -3272,12 +3418,12 @@
           }
         ]
       },
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3288,6 +3434,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -3328,12 +3494,12 @@
     "type": "type_and_value_slot",
     "named": true,
     "fields": {
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3344,6 +3510,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -3434,12 +3620,12 @@
     "type": "type_only_fun_slot",
     "named": true,
     "fields": {
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3450,6 +3636,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -3490,12 +3696,12 @@
     "type": "type_only_slot",
     "named": true,
     "fields": {
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3506,6 +3712,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
@@ -3582,12 +3808,12 @@
     "type": "value_only_slot",
     "named": true,
     "fields": {
-      "directives": {
+      "d": {
         "multiple": true,
         "required": false,
         "types": [
           {
-            "type": "directive_application",
+            "type": "prefix_directive_application",
             "named": true
           }
         ]
@@ -3598,6 +3824,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
             "named": true
           }
         ]
