@@ -182,6 +182,7 @@ type RecordType struct {
 	Named      string
 	Fields     []Keyed[*hm.Scheme]
 	Directives []Keyed[[]*DirectiveApplication]
+	DocStrings map[string]string // Maps field names to their doc strings
 }
 
 var _ hm.Type = (*RecordType)(nil)
@@ -214,6 +215,13 @@ func (t *RecordType) Clone() hm.Env {
 	}
 	retVal.Fields = ts
 	retVal.Directives = t.Directives
+	// Clone doc strings map
+	if t.DocStrings != nil {
+		retVal.DocStrings = make(map[string]string, len(t.DocStrings))
+		for k, v := range t.DocStrings {
+			retVal.DocStrings[k] = v
+		}
+	}
 	return retVal
 }
 
@@ -239,6 +247,7 @@ func (t *RecordType) Apply(subs hm.Subs) hm.Substitutable {
 	}
 	dup := NewRecordType(t.Named, fields...)
 	dup.Directives = t.Directives
+	dup.DocStrings = t.DocStrings
 	return dup
 }
 
@@ -440,6 +449,7 @@ func (t FunTypeNode) ReferencedSymbols() []string {
 func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var regularArgs []Keyed[*hm.Scheme]
 	var directives []Keyed[[]*DirectiveApplication]
+	var docStrings = make(map[string]string)
 	var blockType *hm.FunctionType
 
 	for _, a := range t.Args {
@@ -481,6 +491,10 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 					Value: a.Directives,
 				})
 			}
+			// Capture doc string if present
+			if a.DocString != "" {
+				docStrings[a.Name.Name] = a.DocString
+			}
 		}
 	}
 
@@ -489,9 +503,10 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("FunTypeNode.Infer: %w", err)
 	}
 
-	// Include directives in args type
+	// Include directives and doc strings in args type
 	argsRec := NewRecordType("", regularArgs...)
 	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
 
 	// Create function type with optional block parameter
 	fnType := hm.NewFnType(argsRec, ret)

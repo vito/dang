@@ -1,0 +1,15 @@
+# Test that function argument doc strings are preserved in the type system
+
+pub greet("""The name to greet""" name: String!, """Optional greeting prefix""" prefix: String = "Hello"): String {
+  prefix + " " + name
+}
+
+# Verify the function works correctly
+let result = greet("Alice")
+assert { result == "Hello Alice" }
+
+let customResult = greet("Bob", "Hi")
+assert { customResult == "Hi Bob" }
+
+# TODO: Add introspection test to verify doc strings are accessible from RecordType
+# For now, we just verify the function type inference succeeds and execution works

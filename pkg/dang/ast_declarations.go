@@ -28,21 +28,22 @@ type FunctionBase struct {
 }
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
-func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], error) {
+func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
+	docStrings := make(map[string]string)
 	for _, arg := range f.Args {
 		_, err := arg.Infer(ctx, env, fresh)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		scheme, found := env.SchemeOf(arg.Name.Name)
 		if !found {
-			return nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
+			return nil, nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
 		}
 		finalArgType, isMono := scheme.Type()
 		if !isMono {
-			return nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
+			return nil, nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
 		}
 
 		// For arguments with defaults, make them nullable in the function signature
@@ -69,8 +70,12 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 				Positional: false,
 			})
 		}
+		// Capture doc string if present
+		if arg.DocString != "" {
+			docStrings[arg.Name.Name] = arg.DocString
+		}
 	}
-	return args, directives, nil
+	return args, directives, docStrings, nil
 }
 
 // createFunctionValue creates a FunctionValue from processed arguments
@@ -115,13 +120,14 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	f.InferredScope = newEnv.(Env)
 
 	// Process arguments using shared logic
-	args, directives, err := f.inferFunctionArguments(ctx, newEnv, fresh)
+	args, directives, docStrings, err := f.inferFunctionArguments(ctx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
 
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
 
 	// Process block parameter if present
 	var blockType *hm.FunctionType
@@ -224,12 +230,13 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		signatureEnv := env.Clone()
 
 		// Process arguments to get function signature
-		args, directives, err := f.inferFunctionArguments(ctx, signatureEnv, fresh)
+		args, directives, docStrings, err := f.inferFunctionArguments(ctx, signatureEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
 		argsRec := NewRecordType("", args...)
 		argsRec.Directives = directives
+		argsRec.DocStrings = docStrings
 
 		// Process block parameter if present
 		var blockType *hm.FunctionType

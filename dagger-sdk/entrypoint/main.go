@@ -499,9 +499,14 @@ func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, n
 			return nil, fmt.Errorf("failed to convert argument type for %s: %w", arg.Key, err)
 		}
 
-		argOpts := dagger.FunctionWithArgOpts{}
 		if _, isNonNull := argType.(hm.NonNullType); !isNonNull {
 			typeDef = typeDef.WithOptional(true)
+		}
+
+		var argOpts dagger.FunctionWithArgOpts
+
+		if doc := args.DocStrings[arg.Key]; doc != "" {
+			argOpts.Description = doc
 		}
 
 		for _, argDirs := range args.Directives {
