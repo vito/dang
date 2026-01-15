@@ -134,6 +134,16 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			e.SetDocString(s.Name.Name, s.DocString)
 		}
 
+		// If this slot's value is a function declaration, store parameter docstrings
+		if funDecl, ok := s.Value.(*FunDecl); ok {
+			for _, arg := range funDecl.Args {
+				if arg.DocString != "" {
+					// Store with namespaced key: "functionName.paramName"
+					e.SetDocString(s.Name.Name+"."+arg.Name.Name, arg.DocString)
+				}
+			}
+		}
+
 		if len(s.Directives) > 0 {
 			e.SetDirectives(s.Name.Name, s.Directives)
 		}

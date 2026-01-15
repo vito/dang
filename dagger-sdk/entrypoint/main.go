@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -504,6 +505,15 @@ func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, n
 			typeDef = typeDef.WithOptional(true)
 		}
 
+		// Set argument description if available
+		// Try namespaced key first (for function parameters), then fall back to simple key (for constructor arguments)
+		namespacedKey := name + "." + arg.Key
+		if desc, ok := mod.GetDocString(namespacedKey); ok {
+			argOpts.Description = desc
+		} else if desc, ok := mod.GetDocString(arg.Key); ok {
+			argOpts.Description = desc
+		}
+
 		for _, argDirs := range args.Directives {
 			if argDirs.Key != arg.Key {
 				continue
@@ -604,12 +614,45 @@ func createObjectTypeDef(ctx context.Context, dag *dagger.Client, name string, m
 		}
 	}
 
+	// First, add constructor parameters as fields (these won't be in Bindings if they have no value)
+	args := module.FnType.Arg().(*dang.RecordType)
+	for _, arg := range args.Fields {
+		argType, mono := arg.Value.Type()
+		if !mono {
+			return nil, fmt.Errorf("non-monotype constructor parameter %s", arg.Key)
+		}
+		
+		// Add as a field with description from constructor parameter
+		fieldDef, err := dangTypeToTypeDef(dag, argType, env)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create field %s: %w", arg.Key, err)
+		}
+		opts := dagger.TypeDefWithFieldOpts{}
+		if desc, ok := classMod.GetDocString(arg.Key); ok {
+			opts.Description = strings.TrimSpace(desc)
+		}
+		objDef = objDef.WithField(arg.Key, fieldDef, opts)
+	}
+
 	// Process public methods in the class
 	for name, scheme := range classMod.Bindings(dang.PublicVisibility) {
 		slotType, isMono := scheme.Type()
 		if !isMono {
 			return nil, fmt.Errorf("non-monotype method %s", name)
 		}
+		
+		// Skip fields that are constructor parameters (already added above)
+		isConstructorParam := false
+		for _, arg := range args.Fields {
+			if arg.Key == name {
+				isConstructorParam = true
+				break
+			}
+		}
+		if isConstructorParam {
+			continue
+		}
+		
 		switch x := slotType.(type) {
 		case *hm.FunctionType:
 			fn := x
