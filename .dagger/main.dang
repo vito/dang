@@ -150,6 +150,19 @@ type Dang {
   }
 
   """
+  Bump the Dagger version across the repo.
+  """
+  pub bumpDagger(version: String! = "latest"): Changeset! {
+    let ctr = base
+    for (pkg in [".", "dagger-sdk", "treesitter"]) {
+      ctr = ctr
+        .withExec(["go", "-C", pkg, "get", "dagger.io/dagger@"+version])
+        .withExec(["go", "-C", pkg, "mod", "tidy"])
+    }
+    ctr.directory(".").changes(base.directory("."))
+  }
+
+  """
   Enter a terminal for debugging the Neovim LSP setup.
   """
   pub nvimDebug: Container! {
