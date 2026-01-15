@@ -721,7 +721,7 @@ ImmediateEscape <- '\\' (
 )
 
 DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
-  return normalizeDocString(content.([]byte)), nil
+  return normalizeTripleQuoteString(content.([]byte)), nil
 } / TripleQuote TripleQuote {
   return "", nil
 }
