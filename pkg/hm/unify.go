@@ -75,6 +75,14 @@ func Assignable(have, want Type) (Subs, error) {
 		}
 	}
 
+	// Check if want type accepts coercion from have type
+	// This is used for custom scalar types that accept built-in scalar values
+	if coercible, ok := want.(Coercible); ok {
+		if coercible.AcceptsCoercionFrom(have) {
+			return NewSubs(), nil
+		}
+	}
+
 	return nil, UnificationError{have, want}
 }
 

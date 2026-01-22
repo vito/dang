@@ -1,10 +1,12 @@
 pub description =
   "Builds containers from simple lists of packages using the Apko CLI."
 
-# TODO
-let arch = "x86_64"
-
 type Apko {
+  let arch = case (defaultPlatform) {
+    "linux/amd64" => "x86_64"
+    "linux/arm64" => "arm64"
+  }
+
   let config = {{
     contents: {{
       packages: []::[String!]!
