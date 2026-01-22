@@ -188,6 +188,11 @@ func (r *queryResolver) Homepage(ctx context.Context) (string, error) {
 	return "https://dang-lang.dev", nil
 }
 
+// FetchURL is the resolver for the fetchURL field.
+func (r *queryResolver) FetchURL(ctx context.Context, url string) (string, error) {
+	return fmt.Sprintf("Fetched: %s", url), nil
+}
+
 // Node is the resolver for the node field.
 func (r *queryResolver) Node(ctx context.Context, id string) (Node, error) {
 	return r.findNodeByID(id)
@@ -201,6 +206,39 @@ func (r *queryResolver) Nodes(ctx context.Context) ([]Node, error) {
 // Timestamped is the resolver for the timestamped field.
 func (r *queryResolver) Timestamped(ctx context.Context) ([]Timestamped, error) {
 	return r.getAllTimestamped(), nil
+}
+
+// FormatTimestamp is the resolver for the formatTimestamp field.
+func (r *queryResolver) FormatTimestamp(ctx context.Context, ts string) (string, error) {
+	return fmt.Sprintf("Formatted: %s", ts), nil
+}
+
+// ParseJSON is the resolver for the parseJSON field.
+func (r *queryResolver) ParseJSON(ctx context.Context, data string) (string, error) {
+	return fmt.Sprintf("Parsed JSON: %s", data), nil
+}
+
+// AddBigInt is the resolver for the addBigInt field.
+func (r *queryResolver) AddBigInt(ctx context.Context, a string, b string) (string, error) {
+	return fmt.Sprintf("%s+%s", a, b), nil
+}
+
+// FetchURLNullable is the resolver for the fetchURLNullable field.
+func (r *queryResolver) FetchURLNullable(ctx context.Context, url *string) (*string, error) {
+	if url == nil {
+		return nil, nil
+	}
+	result := fmt.Sprintf("Fetched nullable: %s", *url)
+	return &result, nil
+}
+
+// FetchMultipleURLs is the resolver for the fetchMultipleURLs field.
+func (r *queryResolver) FetchMultipleURLs(ctx context.Context, urls []string) ([]string, error) {
+	results := make([]string, len(urls))
+	for i, url := range urls {
+		results[i] = fmt.Sprintf("Fetched[%d]: %s", i, url)
+	}
+	return results, nil
 }
 
 // Posts is the resolver for the posts field.

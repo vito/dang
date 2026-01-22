@@ -7,6 +7,8 @@ enum Status {
 
 scalar Timestamp
 scalar URL
+scalar JSON
+scalar BigInt
 
 interface Node {
   id: String!
@@ -27,9 +29,16 @@ type Query {
   status: Status!
   now: Timestamp!
   homepage: URL!
+  fetchURL(url: URL!): String!
   node(id: String!): Node
   nodes: [Node!]!
   timestamped: [Timestamped!]!
+  # Additional queries for scalar coercion testing
+  formatTimestamp(ts: Timestamp!): String!
+  parseJSON(data: JSON!): String!
+  addBigInt(a: BigInt!, b: BigInt!): BigInt!
+  fetchURLNullable(url: URL): String
+  fetchMultipleURLs(urls: [URL!]!): [String!]!
 }
 
 type Mutation {

@@ -1,0 +1,10 @@
+# Test GraphQL scalar type as function input
+# This tests that string literals can be used as custom scalar types
+
+# Call a query that takes a URL scalar as input
+pub result = fetchURL(url: "https://example.com")
+
+# The query should accept the string literal directly
+assert { result == "Fetched: https://example.com" }
+
+print("Scalar input tests passed!")

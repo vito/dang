@@ -21,6 +21,13 @@ type Type interface {
 	fmt.Stringer
 }
 
+// Coercible is implemented by types that accept coercion from other types.
+// This is used primarily for custom scalar types that can accept values
+// of built-in types (e.g., a URL scalar accepting a String literal).
+type Coercible interface {
+	AcceptsCoercionFrom(Type) bool
+}
+
 // Substitutable is any type that can have substitutions applied and knows its free type variables
 type Substitutable interface {
 	Apply(Subs) Substitutable
