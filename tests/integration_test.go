@@ -29,13 +29,7 @@ func TestMain(m *testing.M) {
 
 func TestIntegration(tT *testing.T) {
 	t := testctx.New(tT,
-		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
-			StartOptions: func(t *testctx.T) []trace.SpanStartOption {
-				return []trace.SpanStartOption{
-					trace.WithAttributes(attribute.String(telemetry.CheckNameAttr, t.BaseName())),
-				}
-			},
-		}),
+		oteltest.WithTracing[*testing.T](),
 		oteltest.WithLogging[*testing.T](),
 	)
 
