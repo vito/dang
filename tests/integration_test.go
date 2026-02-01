@@ -24,12 +24,17 @@ func TestMain(m *testing.M) {
 	os.Exit(oteltest.Main(m))
 }
 
-func TestIntegration(tT *testing.T) {
-	t := testctx.New(tT,
+type DangSuite struct {
+}
+
+func TestDang(tT *testing.T) {
+	testctx.New(tT,
 		oteltest.WithTracing[*testing.T](),
 		oteltest.WithLogging[*testing.T](),
-	)
+	).RunTests(DangSuite{})
+}
 
+func (DangSuite) TestLanguage(ctx context.Context, t *testctx.T) {
 	testGraphQLServer, err := gqlserver.StartServer()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = testGraphQLServer.Stop() })

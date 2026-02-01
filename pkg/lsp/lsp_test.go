@@ -8,13 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"dagger.io/dagger/telemetry"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
 	"github.com/neovim/go-client/nvim"
 	"github.com/vito/is"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func TestMain(m *testing.M) {
@@ -23,13 +20,7 @@ func TestMain(m *testing.M) {
 
 func TestLSP(tT *testing.T) {
 	testctx.New(tT,
-		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
-			StartOptions: func(t *testctx.T) []trace.SpanStartOption {
-				return []trace.SpanStartOption{
-					trace.WithAttributes(attribute.String(telemetry.CheckNameAttr, t.BaseName())),
-				}
-			},
-		}),
+		oteltest.WithTracing[*testing.T](),
 		oteltest.WithLogging[*testing.T](),
 	).RunTests(LSPSuite{})
 }

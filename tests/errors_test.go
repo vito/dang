@@ -5,35 +5,19 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
-	"testing"
 
-	"dagger.io/dagger/telemetry"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
-	"github.com/dagger/testctx/oteltest"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/tests/gqlserver"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"gotest.tools/v3/golden"
 )
 
 // TestErrorMessages tests that error messages match golden files
-func TestErrorMessages(tT *testing.T) {
-	t := testctx.New(tT,
-		oteltest.WithTracing[*testing.T](oteltest.TraceConfig[*testing.T]{
-			StartOptions: func(t *testctx.T) []trace.SpanStartOption {
-				return []trace.SpanStartOption{
-					trace.WithAttributes(attribute.String(telemetry.CheckNameAttr, t.BaseName())),
-				}
-			},
-		}),
-		oteltest.WithLogging[*testing.T](),
-	)
-
+func (DangSuite) TestErrorMessages(ctx context.Context, t *testctx.T) {
 	errorsDir := filepath.Join("errors")
 
 	// Find all .dang files in the errors directory
