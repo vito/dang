@@ -140,5 +140,7 @@ func (tw *tWriter) Write(p []byte) (n int, err error) {
 func (tw *tWriter) flush() {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
-	tw.t.Log(tw.buf.String())
+	if tw.buf.Len() > 0 {
+		tw.t.Log(tw.buf.String())
+	}
 }
