@@ -1174,6 +1174,12 @@ type ConstructorFunction struct {
 	ClassType      *Module
 	FnType         *hm.FunctionType
 	ClassBodyForms []Node // Only the forms that should be evaluated (excluding constructor params)
+
+	// ExplicitArgs is true when the constructor parameters come from an explicit
+	// type Foo(args...) declaration rather than being derived from fields.
+	// When true, parameters are bound as lexical variables during construction
+	// but do NOT become fields on the resulting instance.
+	ExplicitArgs bool
 }
 
 func (c *ConstructorFunction) Type() hm.Type {
@@ -1188,27 +1194,44 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	// Create a new instance of the class
 	instance := NewModuleValue(c.ClassType)
 
-	instanceEnv := CreateCompositeEnv(instance, c.Closure)
+	closure := c.Closure
+	if c.ExplicitArgs {
+		// For explicit constructor args (type Foo(x: Int!) { ... }), bind them
+		// into a forked closure so they are available to field default expressions
+		// but do NOT pre-populate the instance. This ensures SlotDecl.Eval runs
+		// the field's own initializer (which may transform the value).
+		closure = closure.Fork()
+		for _, param := range c.Parameters {
+			if arg, found := args[param.Name.Name]; found {
+				closure.Set(param.Name.Name, arg)
+			} else if param.Value != nil {
+				defaultVal, err := EvalNode(ctx, c.Closure, param.Value)
+				if err != nil {
+					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
+				}
+				closure.Set(param.Name.Name, defaultVal)
+			}
+		}
+	}
+
+	instanceEnv := CreateCompositeEnv(instance, closure)
 
 	// Set dynamic scope to the instance so it's available for default value evaluation
 	instanceEnv.SetDynamicScope(instance)
 
-	// First, bind only the explicitly provided constructor arguments.
-	// This allows SlotDecl.Eval to skip them during body evaluation.
-	for _, param := range c.Parameters {
-		if arg, found := args[param.Name.Name]; found {
-			instanceEnv.SetWithVisibility(param.Name.Name, arg, param.Visibility)
+	if !c.ExplicitArgs {
+		// Field-derived constructor: bind explicitly provided arguments on the
+		// instance. This allows SlotDecl.Eval to skip them during body evaluation.
+		for _, param := range c.Parameters {
+			if arg, found := args[param.Name.Name]; found {
+				instanceEnv.SetWithVisibility(param.Name.Name, arg, param.Visibility)
+			}
 		}
 	}
 
 	// Evaluate the class body using phased evaluation. This ensures that
 	// private fields (constants) are evaluated before public fields with
-	// defaults that may reference them. For constructor parameters that were
-	// already bound above, SlotDecl.Eval will see them via GetLocal and skip
-	// re-evaluation. For constructor parameters with defaults that were NOT
-	// provided, their default expressions will be evaluated in the class's
-	// scope where private fields are available — fixing the bug where defaults
-	// would incorrectly fall back to the outer/lexical scope.
+	// defaults that may reference them.
 	_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
 	if err != nil {
 		return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)

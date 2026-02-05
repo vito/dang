@@ -1,0 +1,7 @@
+type TestPrivateArg(private: Int! = 42) {
+  let private: Int! = private * 2
+
+  pub display: String! {
+    toString(private)
+  }
+}

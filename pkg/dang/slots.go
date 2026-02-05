@@ -202,13 +202,14 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 
 type ClassDecl struct {
 	InferredTypeHolder
-	Name       *Symbol
-	Value      *Block
-	Implements []*Symbol
-	Visibility Visibility
-	Directives []*DirectiveApplication
-	DocString  string
-	Loc        *SourceLocation
+	Name            *Symbol
+	ConstructorArgs []*SlotDecl // Explicit constructor args: type Foo(x: Int!) { ... }
+	Value           *Block
+	Implements      []*Symbol
+	Visibility      Visibility
+	Directives      []*DirectiveApplication
+	DocString       string
+	Loc             *SourceLocation
 
 	Inferred          *Module
 	ConstructorFnType *hm.FunctionType
@@ -259,8 +260,13 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		lexical: env.(Env),
 	}
 
-	// Create a constructor function type based on public non-function slots
-	constructorParams := c.extractConstructorParameters()
+	// Build constructor type: use explicit args if provided, otherwise derive from fields
+	var constructorParams []*SlotDecl
+	if len(c.ConstructorArgs) > 0 {
+		constructorParams = c.ConstructorArgs
+	} else {
+		constructorParams = c.extractConstructorParameters()
+	}
 	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, class.(*Module), fresh)
 	if err != nil {
 		return err
@@ -303,6 +309,12 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		// Set dynamic scope type to the class type
 		selfType := hm.NonNullType{Type: class}
 		class.SetDynamicScopeType(selfType)
+
+		// When explicit constructor args are present, register them as private
+		// bindings on the class module so they're available during body hoisting.
+		if len(c.ConstructorArgs) > 0 {
+			c.addConstructorArgsToClass(class)
+		}
 
 		if err := c.Value.Hoist(ctx, inferEnv, fresh, pass); err != nil {
 			return err
@@ -347,6 +359,12 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	inferEnv := &CompositeModule{
 		primary: class,
 		lexical: env.(Env),
+	}
+
+	// When explicit constructor args are present, register them as private
+	// bindings on the class module so field default expressions can reference them.
+	if len(c.ConstructorArgs) > 0 {
+		c.addConstructorArgsToClass(class)
 	}
 
 	// Use phased inference approach to handle forward references within the class body
@@ -458,6 +476,20 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 	return fnDecl.inferFunctionType(ctx, env, fresh, nil, classType.Named+" Constructor")
 }
 
+// addConstructorArgsToClass registers explicit constructor arg types as private
+// bindings on the class module. This makes them available during body inference
+// and ensures the class type knows about them for serialization (e.g. Dagger).
+func (c *ClassDecl) addConstructorArgsToClass(class Env) {
+	for _, arg := range c.ConstructorArgs {
+		argType := arg.GetInferredType()
+		if argType == nil {
+			continue
+		}
+		class.Add(arg.Name.Name, hm.NewScheme(nil, argType))
+		class.SetVisibility(arg.Name.Name, PrivateVisibility)
+	}
+}
+
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
@@ -469,8 +501,14 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			c.Inferred.SetModuleDocString(c.DocString)
 		}
 
-		// Extract constructor parameters and get filtered class body forms
-		constructorParams := c.extractConstructorParameters()
+		// Use explicit constructor args if provided, otherwise derive from fields
+		var constructorParams []*SlotDecl
+		explicitArgs := len(c.ConstructorArgs) > 0
+		if explicitArgs {
+			constructorParams = c.ConstructorArgs
+		} else {
+			constructorParams = c.extractConstructorParameters()
+		}
 
 		// Create a constructor function that evaluates the class body when called
 		constructor := &ConstructorFunction{
@@ -480,6 +518,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			ClassType:      c.Inferred,
 			ClassBodyForms: c.Value.Forms,
 			FnType:         c.ConstructorFnType,
+			ExplicitArgs:   explicitArgs,
 		}
 
 		// Add the constructor to the evaluation environment

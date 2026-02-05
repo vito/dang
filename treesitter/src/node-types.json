@@ -1039,6 +1039,16 @@
           }
         ]
       },
+      "constructor_args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
       "d": {
         "multiple": true,
         "required": false,

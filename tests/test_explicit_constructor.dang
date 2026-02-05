@@ -1,0 +1,88 @@
+# Test explicit constructor parameters on the type declaration line.
+#
+# type Foo(arg: Type!) { ... }
+#
+# Constructor args are available inside the body for initializing fields,
+# but are NOT themselves exposed as fields.
+
+# Basic: a constructor arg that is used to derive a field
+type Greeter(name: String!) {
+  pub greeting: String! = "Hello, " + name + "!"
+}
+
+assert { Greeter("World").greeting == "Hello, World!" }
+assert { Greeter("Alice").greeting == "Hello, Alice!" }
+
+# Constructor arg is not a field
+type Hidden(secret: String!) {
+  pub hint: String! = secret + "..."
+}
+
+let h = Hidden("shhh")
+assert { h.hint == "shhh..." }
+# h.secret would be a type error — secret is not a field
+
+# Multiple constructor args
+type Point(x: Int!, y: Int!) {
+  pub label: String! = toString(x) + "," + toString(y)
+}
+
+assert { Point(3, 4).label == "3,4" }
+
+# Constructor args with defaults
+type Logger(name: String!, level: String! = "INFO") {
+  pub prefix: String! = "[" + level + "] " + name
+}
+
+assert { Logger("app").prefix == "[INFO] app" }
+assert { Logger("app", "DEBUG").prefix == "[DEBUG] app" }
+
+# All-default constructor args still support auto-calling
+type Config(mode: String! = "production") {
+  pub mode: String! = mode
+}
+
+assert { Config.mode == "production" }
+assert { Config("staging").mode == "staging" }
+
+# Constructor args alongside fields that have their own defaults
+type Counter(label: String!, initial: Int! = 0) {
+  pub label: String! = label
+  let count: Int! = initial
+
+  pub getCount: Int! {
+    self.count
+  }
+}
+
+let counter = Counter("hits", 10)
+assert { counter.label == "hits" }
+assert { counter.getCount == 10 }
+
+let counterDefault = Counter("views")
+assert { counterDefault.getCount == 0 }
+
+# Constructor args used by methods (available during field init, not at method call time)
+type Pair(a: String!, b: String!) {
+  pub combined: String! = a + " & " + b
+  pub reversed: String! = b + " & " + a
+}
+
+let p = Pair("left", "right")
+assert { p.combined == "left & right" }
+assert { p.reversed == "right & left" }
+
+# Constructor args must be assigned to slots for methods to use them.
+# They are only available in field default expressions, NOT in method bodies.
+type PrivateState(value: Int! = 42) {
+  let value: Int! = value * 2
+
+  pub display: String! {
+    toString(value)
+  }
+}
+
+assert { PrivateState.display == "84" }
+assert { PrivateState(100).display == "200" }
+
+print("Explicit constructor tests passed!")
