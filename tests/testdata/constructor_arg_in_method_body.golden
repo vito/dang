@@ -1,0 +1,11 @@
+[1m[31mError:[0m "secret" not found
+  [2m[34m--> errors/constructor_arg_in_method_body.dang:12:5[0m
+ [2m    |[0m
+ [2m 10 | [0m
+ [2m 11 |   pub leak: String! {[0m
+ [2m[34m[1m 12 | [0m    secret  # Error: secret is not in scope here
+[2m           [31m^^^^^^[0m
+ [2m 13 |   }[0m
+ [2m 14 | }[0m
+ [2m    |[0m
+

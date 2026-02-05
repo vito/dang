@@ -24,7 +24,7 @@ CommaToken <- ','
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(Interface / Enum / Scalar / Class / Slot / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(Interface / Enum / Scalar / Class / NewConstructor / Slot / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
     if docstring != nil {
@@ -52,6 +52,11 @@ Decl <- docstring:DocString? decl:(Interface / Enum / Scalar / Class / Slot / Di
     }
     return node, nil
   case *DirectiveDecl:
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
+    return node, nil
+  case *NewConstructorDecl:
     if docstring != nil {
       node.DocString = docstring.(string)
     }
@@ -228,10 +233,9 @@ Interface <- InterfaceToken _ name:Symbol _ block:HeadersBlock {
 }
 InterfaceToken <- "interface" !WordChar
 
-Class <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:Symbol constructorArgs:ArgTypes? implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
+Class <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:Symbol implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
   return &ClassDecl{
     Name: name.(*Symbol),
-    ConstructorArgs: sliceOf[*SlotDecl](constructorArgs),
     Value: block.(*Block),
     Implements: sliceOf[*Symbol](implements),
     Visibility: PublicVisibility, // TODO
@@ -265,6 +269,15 @@ Scalar <- ScalarToken _ name:Symbol {
   }, nil
 }
 ScalarToken <- "scalar" !WordChar
+
+NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
+  return &NewConstructorDecl{
+    Args: args.([]*SlotDecl),
+    BodyBlock: block.(*Block),
+    Loc: c.Loc(),
+  }, nil
+}
+NewToken <- "new" !WordChar
 
 Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockSlot         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields

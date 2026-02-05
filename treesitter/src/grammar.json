@@ -131,6 +131,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "new_constructor"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "slot"
               },
               {
@@ -185,7 +189,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 151,
+      "value": 153,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -391,7 +395,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 144,
+      "value": 146,
       "content": {
         "type": "SEQ",
         "members": [
@@ -474,7 +478,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 143,
+      "value": 145,
       "content": {
         "type": "SEQ",
         "members": [
@@ -703,22 +707,6 @@
         },
         {
           "type": "FIELD",
-          "name": "constructor_args",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "arg_types"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "FIELD",
           "name": "implements",
           "content": {
             "type": "CHOICE",
@@ -906,6 +894,38 @@
       "content": {
         "type": "STRING",
         "value": "scalar"
+      }
+    },
+    "new_constructor": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "new_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "args",
+          "content": {
+            "type": "SYMBOL",
+            "name": "arg_types"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "block",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        }
+      ]
+    },
+    "new_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "new"
       }
     },
     "slot": {

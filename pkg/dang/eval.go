@@ -1173,13 +1173,8 @@ type ConstructorFunction struct {
 	Parameters     []*SlotDecl
 	ClassType      *Module
 	FnType         *hm.FunctionType
-	ClassBodyForms []Node // Only the forms that should be evaluated (excluding constructor params)
-
-	// ExplicitArgs is true when the constructor parameters come from an explicit
-	// type Foo(args...) declaration rather than being derived from fields.
-	// When true, parameters are bound as lexical variables during construction
-	// but do NOT become fields on the resulting instance.
-	ExplicitArgs bool
+	ClassBodyForms []Node  // Field declarations to evaluate (excluding NewConstructorDecl)
+	NewBody        *Block  // Explicit new() body, if present
 }
 
 func (c *ConstructorFunction) Type() hm.Type {
@@ -1194,50 +1189,105 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	// Create a new instance of the class
 	instance := NewModuleValue(c.ClassType)
 
-	closure := c.Closure
-	if c.ExplicitArgs {
-		// For explicit constructor args (type Foo(x: Int!) { ... }), bind them
-		// into a forked closure so they are available to field default expressions
-		// but do NOT pre-populate the instance. This ensures SlotDecl.Eval runs
-		// the field's own initializer (which may transform the value).
-		closure = closure.Fork()
+	instanceEnv := CreateCompositeEnv(instance, c.Closure)
+
+	// Set dynamic scope to the instance so self is available
+	instanceEnv.SetDynamicScope(instance)
+
+	if c.NewBody != nil {
+		// Explicit new() constructor: evaluate field declarations that have
+		// defaults, then execute the new() body (which must assign required fields).
+
+		// Filter to only include SlotDecls with defaults and methods
+		var formsWithDefaults []Node
+		for _, form := range c.ClassBodyForms {
+			if slot, ok := form.(*SlotDecl); ok {
+				// Skip required fields without defaults — new() will set them
+				if slot.Value == nil {
+					continue
+				}
+			}
+			formsWithDefaults = append(formsWithDefaults, form)
+		}
+
+		_, err := EvaluateFormsWithPhases(ctx, formsWithDefaults, instanceEnv)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
+		}
+
+		// Bind constructor args in a forked closure for the new() body
+		newEnv := c.Closure.Fork()
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
-				closure.Set(param.Name.Name, arg)
+				newEnv.Set(param.Name.Name, arg)
 			} else if param.Value != nil {
 				defaultVal, err := EvalNode(ctx, c.Closure, param.Value)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
-				closure.Set(param.Name.Name, defaultVal)
+				newEnv.Set(param.Name.Name, defaultVal)
 			}
 		}
-	}
 
-	instanceEnv := CreateCompositeEnv(instance, closure)
+		// Execute the new() body with access to self and constructor args.
+		// We evaluate forms directly (not via Block.Eval) to avoid cloning
+		// the env, which would lose dynamic scope updates for self assignments.
+		newBodyEnv := CreateCompositeEnv(instance, newEnv)
+		newBodyEnv.SetDynamicScope(instance)
 
-	// Set dynamic scope to the instance so it's available for default value evaluation
-	instanceEnv.SetDynamicScope(instance)
+		for _, form := range c.NewBody.Forms {
+			_, err = EvalNode(ctx, newBodyEnv, form)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
+			}
+			// After each form, update the instance from the dynamic scope
+			// (copy-on-write may have replaced it via self.field = value)
+			if updatedInstance, found := newBodyEnv.GetDynamicScope(); found {
+				instance = updatedInstance.(*ModuleValue)
+				// Update newBodyEnv to use the new instance
+				newBodyEnv = CreateCompositeEnv(instance, newEnv)
+				newBodyEnv.SetDynamicScope(instance)
+			}
+		}
 
-	if !c.ExplicitArgs {
-		// Field-derived constructor: bind explicitly provided arguments on the
-		// instance. This allows SlotDecl.Eval to skip them during body evaluation.
+		// Check that all non-null fields have been assigned
+		if err := c.checkRequiredFields(instance); err != nil {
+			return nil, err
+		}
+	} else {
+		// Field-derived constructor: bind provided arguments on the instance,
+		// then evaluate field declarations.
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
 				instanceEnv.SetWithVisibility(param.Name.Name, arg, param.Visibility)
 			}
 		}
-	}
 
-	// Evaluate the class body using phased evaluation. This ensures that
-	// private fields (constants) are evaluated before public fields with
-	// defaults that may reference them.
-	_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
-	if err != nil {
-		return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
+		_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
+		}
 	}
 
 	return instance, nil
+}
+
+// checkRequiredFields verifies that all non-null fields have been assigned
+func (c *ConstructorFunction) checkRequiredFields(instance *ModuleValue) error {
+	for name, scheme := range c.ClassType.Bindings(PrivateVisibility) {
+		fieldType, _ := scheme.Type()
+		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
+			// Check if this field has a value on the instance
+			val, found := instance.Get(name)
+			if !found {
+				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
+			}
+			if _, isNull := val.(NullValue); isNull {
+				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
+			}
+		}
+	}
+	return nil
 }
 
 func (c *ConstructorFunction) ParameterNames() []string {

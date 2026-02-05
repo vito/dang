@@ -1,0 +1,14 @@
+# Test that constructor args are not available in method bodies
+# This should fail because 'secret' is only visible in new()
+
+type Bad {
+  pub name: String!
+
+  new(secret: String!) {
+    self.name = secret
+  }
+
+  pub leak: String! {
+    secret  # Error: secret is not in scope here
+  }
+}

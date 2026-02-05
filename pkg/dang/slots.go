@@ -202,17 +202,69 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 
 type ClassDecl struct {
 	InferredTypeHolder
-	Name            *Symbol
-	ConstructorArgs []*SlotDecl // Explicit constructor args: type Foo(x: Int!) { ... }
-	Value           *Block
-	Implements      []*Symbol
-	Visibility      Visibility
-	Directives      []*DirectiveApplication
-	DocString       string
-	Loc             *SourceLocation
+	Name       *Symbol
+	Value      *Block
+	Implements []*Symbol
+	Visibility Visibility
+	Directives []*DirectiveApplication
+	DocString  string
+	Loc        *SourceLocation
 
 	Inferred          *Module
 	ConstructorFnType *hm.FunctionType
+}
+
+// NewConstructorDecl represents an explicit `new(...) { ... }` constructor
+type NewConstructorDecl struct {
+	InferredTypeHolder
+	Args      []*SlotDecl
+	BodyBlock *Block
+	DocString string
+	Loc       *SourceLocation
+
+	Inferred *hm.FunctionType
+}
+
+var _ Node = &NewConstructorDecl{}
+var _ Evaluator = &NewConstructorDecl{}
+
+func (n *NewConstructorDecl) DeclaredSymbols() []string {
+	return nil // new doesn't declare a symbol, it's handled specially by ClassDecl
+}
+
+func (n *NewConstructorDecl) ReferencedSymbols() []string {
+	var symbols []string
+	for _, arg := range n.Args {
+		symbols = append(symbols, arg.ReferencedSymbols()...)
+	}
+	symbols = append(symbols, n.BodyBlock.ReferencedSymbols()...)
+	return symbols
+}
+
+func (n *NewConstructorDecl) Body() hm.Expression { return n.BodyBlock }
+
+func (n *NewConstructorDecl) GetSourceLocation() *SourceLocation { return n.Loc }
+
+func (n *NewConstructorDecl) Walk(fn func(Node) bool) {
+	if !fn(n) {
+		return
+	}
+	for _, arg := range n.Args {
+		arg.Walk(fn)
+	}
+	n.BodyBlock.Walk(fn)
+}
+
+// Infer is a no-op since NewConstructorDecl is inferred by ClassDecl.inferNewConstructor
+func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	// The new() constructor is inferred by ClassDecl, not standalone
+	return hm.TypeVariable('n'), nil
+}
+
+// Eval is a no-op since NewConstructorDecl is evaluated as part of ConstructorFunction.Call
+func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// The new() constructor body is evaluated by ConstructorFunction.Call
+	return NullValue{}, nil
 }
 
 func (f *ClassDecl) IsDeclarer() bool {
@@ -243,6 +295,27 @@ func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
 var _ Hoister = &ClassDecl{}
 
+// findNewConstructor returns the NewConstructorDecl from the class body, if any
+func (c *ClassDecl) findNewConstructor() *NewConstructorDecl {
+	for _, form := range c.Value.Forms {
+		if newDecl, ok := form.(*NewConstructorDecl); ok {
+			return newDecl
+		}
+	}
+	return nil
+}
+
+// bodyFormsWithoutNew returns the class body forms excluding the NewConstructorDecl
+func (c *ClassDecl) bodyFormsWithoutNew() []Node {
+	var forms []Node
+	for _, form := range c.Value.Forms {
+		if _, ok := form.(*NewConstructorDecl); !ok {
+			forms = append(forms, form)
+		}
+	}
+	return forms
+}
+
 func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(Env)
 	if !ok {
@@ -260,10 +333,11 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		lexical: env.(Env),
 	}
 
-	// Build constructor type: use explicit args if provided, otherwise derive from fields
+	// Build constructor type: use explicit new() if present, otherwise derive from fields
+	newDecl := c.findNewConstructor()
 	var constructorParams []*SlotDecl
-	if len(c.ConstructorArgs) > 0 {
-		constructorParams = c.ConstructorArgs
+	if newDecl != nil {
+		constructorParams = newDecl.Args
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
@@ -310,13 +384,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		selfType := hm.NonNullType{Type: class}
 		class.SetDynamicScopeType(selfType)
 
-		// When explicit constructor args are present, register them as private
-		// bindings on the class module so they're available during body hoisting.
-		if len(c.ConstructorArgs) > 0 {
-			c.addConstructorArgsToClass(class)
-		}
-
-		if err := c.Value.Hoist(ctx, inferEnv, fresh, pass); err != nil {
+		// Hoist body forms (excluding new() which is handled separately)
+		bodyForms := c.bodyFormsWithoutNew()
+		bodyBlock := &Block{Forms: bodyForms}
+		if err := bodyBlock.Hoist(ctx, inferEnv, fresh, pass); err != nil {
 			return err
 		}
 	}
@@ -361,15 +432,18 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		lexical: env.(Env),
 	}
 
-	// When explicit constructor args are present, register them as private
-	// bindings on the class module so field default expressions can reference them.
-	if len(c.ConstructorArgs) > 0 {
-		c.addConstructorArgsToClass(class)
+	// Infer body forms (excluding new() which is handled separately)
+	bodyForms := c.bodyFormsWithoutNew()
+	if _, err := InferFormsWithPhases(ctx, bodyForms, inferEnv, fresh); err != nil {
+		return nil, err
 	}
 
-	// Use phased inference approach to handle forward references within the class body
-	if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
-		return nil, err
+	// If there's an explicit new(), infer its body with its args in scope
+	newDecl := c.findNewConstructor()
+	if newDecl != nil {
+		if err := c.inferNewConstructor(ctx, newDecl, inferEnv, fresh); err != nil {
+			return nil, err
+		}
 	}
 
 	// Validate interface implementations after fields have been inferred
@@ -476,18 +550,30 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 	return fnDecl.inferFunctionType(ctx, env, fresh, nil, classType.Named+" Constructor")
 }
 
-// addConstructorArgsToClass registers explicit constructor arg types as private
-// bindings on the class module. This makes them available during body inference
-// and ensures the class type knows about them for serialization (e.g. Dagger).
-func (c *ClassDecl) addConstructorArgsToClass(class Env) {
-	for _, arg := range c.ConstructorArgs {
+// inferNewConstructor infers the body of an explicit new() constructor
+func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
+	// Create an environment with the constructor args in scope
+	newEnv := inferEnv.Clone().(*CompositeModule)
+	for _, arg := range newDecl.Args {
 		argType := arg.GetInferredType()
 		if argType == nil {
-			continue
+			// Infer the arg type if not already done
+			var err error
+			argType, err = arg.Infer(ctx, newEnv, fresh)
+			if err != nil {
+				return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
+			}
 		}
-		class.Add(arg.Name.Name, hm.NewScheme(nil, argType))
-		class.SetVisibility(arg.Name.Name, PrivateVisibility)
+		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
+
+	// Infer the new() body
+	_, err := newDecl.BodyBlock.Infer(ctx, newEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("inferring new() body: %w", err)
+	}
+
+	return nil
 }
 
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -501,11 +587,13 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			c.Inferred.SetModuleDocString(c.DocString)
 		}
 
-		// Use explicit constructor args if provided, otherwise derive from fields
+		// Find explicit new() or derive constructor from fields
+		newDecl := c.findNewConstructor()
 		var constructorParams []*SlotDecl
-		explicitArgs := len(c.ConstructorArgs) > 0
-		if explicitArgs {
-			constructorParams = c.ConstructorArgs
+		var newBody *Block
+		if newDecl != nil {
+			constructorParams = newDecl.Args
+			newBody = newDecl.BodyBlock
 		} else {
 			constructorParams = c.extractConstructorParameters()
 		}
@@ -516,9 +604,9 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			ClassName:      c.Name.Name,
 			Parameters:     constructorParams,
 			ClassType:      c.Inferred,
-			ClassBodyForms: c.Value.Forms,
+			ClassBodyForms: c.bodyFormsWithoutNew(),
 			FnType:         c.ConstructorFnType,
-			ExplicitArgs:   explicitArgs,
+			NewBody:        newBody,
 		}
 
 		// Add the constructor to the evaluation environment
