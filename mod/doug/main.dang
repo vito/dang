@@ -1,10 +1,9 @@
-"""
-A Dagger-native sandboxed coding agent.
-"""
-
 let maxResponseLength = 30000
 let workspacePath = "/workspace"
 
+"""
+A Dagger-native sandboxed coding agent.
+"""
 type Doug {
   let source: Directory! @defaultPath(path: "/")
 

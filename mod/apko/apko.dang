@@ -1,6 +1,6 @@
-pub description =
-  "Builds containers from simple lists of packages using the Apko CLI."
-
+"""
+Builds containers from simple lists of packages using the Apko CLI.
+"""
 type Apko {
   let arch = case (defaultPlatform) {
     "linux/amd64" => "x86_64"

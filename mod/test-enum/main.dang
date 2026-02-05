@@ -1,7 +1,3 @@
-"""
-Test module for enum support in Dagger SDK.
-"""
-
 enum Status {
   PENDING
   RUNNING
@@ -16,6 +12,9 @@ enum LogLevel {
   ERROR
 }
 
+"""
+Test module for enum support in Dagger SDK.
+"""
 type TestEnum {
   """
   Returns the status value

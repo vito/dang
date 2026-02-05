@@ -143,11 +143,6 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		return err
 	}
 
-	dagMod := dag.Module()
-	if desc, found := env.Get("description"); found {
-		dagMod = dagMod.WithDescription(desc.String())
-	}
-
 	// initializing module
 	if parentName == "" {
 		dagMod, err := initModule(ctx, dag, env, hasCheck, hasGenerator)
@@ -394,11 +389,6 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 
 func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv, hasCheck, hasGenerator bool) (*dagger.Module, error) {
 	dagMod := dag.Module()
-
-	// Handle module-level description if present
-	if descBinding, found := env.Get("description"); found {
-		dagMod = dagMod.WithDescription(descBinding.String())
-	}
 
 	binds := env.Bindings(dang.PublicVisibility)
 	for _, binding := range binds {

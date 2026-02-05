@@ -322,11 +322,11 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	if !found {
 		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
+	}
 
-		// Store doc string for the class name in the environment
-		if c.DocString != "" {
-			mod.SetDocString(c.Name.Name, c.DocString)
-		}
+	// Store doc string for the class name in the environment
+	if c.DocString != "" {
+		mod.SetDocString(c.Name.Name, c.DocString)
 	}
 
 	// Set this early so we can at least partially infer.

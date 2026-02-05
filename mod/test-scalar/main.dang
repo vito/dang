@@ -1,10 +1,9 @@
-"""
-Test module for scalar support in Dagger SDK.
-"""
-
 scalar Timestamp
 scalar URL
 
+"""
+Test module for scalar support in Dagger SDK.
+"""
 type TestScalar {
   """
   Returns the timestamp value as a string
