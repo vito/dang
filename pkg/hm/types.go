@@ -79,6 +79,37 @@ func (tv TypeVariable) Format(s fmt.State, c rune) {
 	_, _ = fmt.Fprintf(s, "%s", string(tv))
 }
 
+// NullableTypeVariable is a type variable that carries a nullability taint.
+// It is produced by null literals. When unified with a NonNullType during
+// binding, it strips the NonNull wrapper, ensuring that null always resolves
+// to a nullable type.
+type NullableTypeVariable struct {
+	TypeVariable
+}
+
+func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
+	// Look up by the underlying TypeVariable key
+	if t, exists := subs[ntv.TypeVariable]; exists {
+		return t
+	}
+	return ntv
+}
+
+func (ntv NullableTypeVariable) Eq(other Type) bool {
+	if ot, ok := other.(NullableTypeVariable); ok {
+		return ntv.TypeVariable == ot.TypeVariable
+	}
+	return false
+}
+
+func (ntv NullableTypeVariable) String() string {
+	return string(ntv.TypeVariable) + "?"
+}
+
+func (ntv NullableTypeVariable) Format(s fmt.State, c rune) {
+	_, _ = fmt.Fprintf(s, "%s?", string(ntv.TypeVariable))
+}
+
 // FunctionType represents a function type
 type FunctionType struct {
 	arg   Type

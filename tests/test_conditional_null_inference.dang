@@ -1,0 +1,34 @@
+# Test that if/else with a null branch infers a nullable type
+# See: https://github.com/vito/dang/issues/15
+
+# A conditional where one branch is null should produce a nullable type,
+# NOT a non-null type.
+
+# With explicit nullable return type
+pub maybeName(flag: Boolean!): String {
+  if (flag) {
+    "hello"
+  } else {
+    null
+  }
+}
+
+assert("true branch returns value") { maybeName(true) == "hello" }
+assert("false branch returns null") { maybeName(false) == null }
+
+# Without an explicit return type, the conditional should still be nullable.
+# This is the core inference fix: if/else with null must not infer non-null.
+let result = if (true) { "hello" } else { null }
+assert("inline conditional with null") { result == "hello" }
+
+let result2 = if (false) { 42 } else { null }
+assert("inline conditional null int") { result2 == null }
+
+# Null in the then-branch (reversed)
+let result3 = if (true) { null } else { "world" }
+assert("null in then-branch") { result3 == null }
+
+let result4 = if (false) { null } else { "world" }
+assert("value in else when then is null") { result4 == "world" }
+
+print("Conditional null inference tests passed!")

@@ -1,0 +1,8 @@
+# Declaring String! return type but returning null in one branch should be a type error
+pub maybeString(flag: Boolean!): String! {
+  if (flag) {
+    "hello"
+  } else {
+    null
+  }
+}

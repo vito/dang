@@ -130,7 +130,7 @@ func (n *Null) Body() hm.Expression { return n }
 func (n *Null) GetSourceLocation() *SourceLocation { return n.Loc }
 
 func (n *Null) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	t := fresh.Fresh()
+	t := hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
 	n.SetInferredType(t)
 	return t, nil
 }

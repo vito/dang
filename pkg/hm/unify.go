@@ -18,7 +18,16 @@ func (e UnificationError) Error() string {
 // If unification fails, it checks subtyping: have can be assigned to want if
 // have is a subtype of want.
 func Assignable(have, want Type) (Subs, error) {
-	// Handle type variables first
+	// Handle nullable type variables first (before regular TypeVariable,
+	// since NullableTypeVariable embeds TypeVariable)
+	if haveNTV, ok := have.(NullableTypeVariable); ok {
+		return bindNullableVar(haveNTV, want)
+	}
+	if wantNTV, ok := want.(NullableTypeVariable); ok {
+		return bindNullableVar(wantNTV, have)
+	}
+
+	// Handle type variables
 	if haveTV, ok := have.(TypeVariable); ok {
 		return bindVar(haveTV, want)
 	}
@@ -101,6 +110,17 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	subs := NewSubs()
 	subs.Add(tv, t)
 	return subs, nil
+}
+
+// bindNullableVar binds a nullable type variable to a type, stripping
+// NonNull if present. This ensures that null always resolves to a nullable
+// type: binding NullableTypeVariable to String! produces String, not String!.
+func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
+	// Strip NonNull — null is inherently nullable
+	if nn, ok := t.(NonNullType); ok {
+		t = nn.Type
+	}
+	return bindVar(tv.TypeVariable, t)
 }
 
 // occursCheck checks if a type variable occurs in a type

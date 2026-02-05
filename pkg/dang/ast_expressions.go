@@ -1494,6 +1494,17 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			// Propagate substitutions backwards to the 'then'
 			thenType = thenType.Apply(thenSubs).(hm.Type)
 			c.Then.SetInferredType(thenType)
+
+			// If either branch is nullable after substitution, the result
+			// must be nullable. NullableTypeVariable (from null literals)
+			// strips NonNull during binding, so a null branch naturally
+			// resolves to a nullable type here.
+			resolvedElse := elseType.Apply(thenSubs).(hm.Type)
+			_, thenNonNull := thenType.(hm.NonNullType)
+			_, elseNonNull := resolvedElse.(hm.NonNullType)
+			if thenNonNull && !elseNonNull {
+				thenType = thenType.(hm.NonNullType).Type
+			}
 		}
 
 		return thenType, nil

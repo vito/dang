@@ -1,0 +1,10 @@
+[1m[31mError:[0m return type mismatch: declared String!, inferred String
+  [2m[34m--> errors/nonnull_return_with_null_branch.dang:2:42[0m
+ [2m    |[0m
+ [2m  1 | # Declaring String! return type but returning null in one branch should be a type error[0m
+ [2m[34m[1m  2 | [0mpub maybeString(flag: Boolean!): String! {
+[2m                                                [31m^[0m
+ [2m  3 |   if (flag) {[0m
+ [2m  4 |     "hello"[0m
+ [2m    |[0m
+

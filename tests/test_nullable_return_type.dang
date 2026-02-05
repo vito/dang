@@ -1,0 +1,48 @@
+# Test that explicit nullable return type annotations are preserved
+# See: https://github.com/vito/dang/issues/15
+#
+# When a function has an explicit return type annotation like `: String`
+# (nullable), the function type should be nullable even if the body
+# infers a non-null type in some branches.
+
+type NullableReturn {
+  pub maybeString(flag: Boolean!): String {
+    if (flag) {
+      "hello"
+    } else {
+      null
+    }
+  }
+
+  pub alwaysString(flag: Boolean!): String! {
+    if (flag) {
+      "hello"
+    } else {
+      "world"
+    }
+  }
+}
+
+let obj = NullableReturn
+
+# Test that the nullable function returns correctly
+assert("nullable return with true") { obj.maybeString(true) == "hello" }
+assert("nullable return with false") { obj.maybeString(false) == null }
+
+# Test that the non-null function still works
+assert("non-null return with true") { obj.alwaysString(true) == "hello" }
+assert("non-null return with false") { obj.alwaysString(false) == "world" }
+
+# Test standalone function with nullable return
+pub maybePrefixed(value: String, prefix: String! = "pre"): String {
+  if (value != null) {
+    prefix + "_" + value
+  } else {
+    null
+  }
+}
+
+assert("standalone nullable return with value") { maybePrefixed("test") == "pre_test" }
+assert("standalone nullable return with null") { maybePrefixed(null) == null }
+
+print("Nullable return type tests passed!")
