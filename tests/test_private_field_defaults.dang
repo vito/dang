@@ -1,0 +1,29 @@
+# Test that private fields with default values are used in defaults, not outer scope
+# See: https://github.com/vito/dang/issues/17
+
+pub version = "wrong"
+
+type Rust {
+  let version = "1.90"
+
+  pub combined: String! = "rust:" + version
+}
+
+let rust = Rust
+assert("private field should be used in default, not outer scope") { rust.combined == "rust:1.90" }
+
+# Also test that providing a value overrides the default
+assert("provided value should override default") { Rust("custom").combined == "custom" }
+
+# Test that private field is used in a method too
+type WithMethod {
+  let prefix = "hello"
+
+  pub greeting(): String! {
+    prefix + " world"
+  }
+}
+
+assert("private field used in method") { WithMethod.greeting() == "hello world" }
+
+print("Private field default tests passed!")

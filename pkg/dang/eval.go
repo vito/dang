@@ -1184,23 +1184,22 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	// Set dynamic scope to the instance so it's available for default value evaluation
 	instanceEnv.SetDynamicScope(instance)
 
-	// Bind constructor arguments to the instance environment
+	// First, bind only the explicitly provided constructor arguments.
+	// This allows SlotDecl.Eval to skip them during body evaluation.
 	for _, param := range c.Parameters {
 		if arg, found := args[param.Name.Name]; found {
 			instanceEnv.SetWithVisibility(param.Name.Name, arg, param.Visibility)
-		} else if param.Value != nil {
-			// Evaluate default value with access to self
-			defaultVal, err := EvalNode(ctx, instanceEnv, param.Value)
-			if err != nil {
-				return nil, fmt.Errorf("evaluating default value for parameter %s: %w", param.Name.Name, err)
-			}
-			instanceEnv.SetWithVisibility(param.Name.Name, defaultVal, param.Visibility)
-		} else {
-			return nil, fmt.Errorf("missing required constructor parameter: %s", param.Name.Name)
 		}
 	}
 
-	// Evaluate the pre-filtered class body in the instance environment
+	// Evaluate the class body using phased evaluation. This ensures that
+	// private fields (constants) are evaluated before public fields with
+	// defaults that may reference them. For constructor parameters that were
+	// already bound above, SlotDecl.Eval will see them via GetLocal and skip
+	// re-evaluation. For constructor parameters with defaults that were NOT
+	// provided, their default expressions will be evaluated in the class's
+	// scope where private fields are available — fixing the bug where defaults
+	// would incorrectly fall back to the outer/lexical scope.
 	_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
 	if err != nil {
 		return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
