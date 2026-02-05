@@ -243,7 +243,7 @@ ImplementsToken <- "implements" !WordChar
 
 AmpersandToken <- '&'
 
-Enum <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfAppend[*Symbol](rest, first), nil }) _ '}' {
+Enum <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
   return &EnumDecl{
     Name: name.(*Symbol),
     Values: values.([]*Symbol),
