@@ -850,8 +850,8 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		return
 	}
 
-	// Check if block can be single line (only if no comments)
-	if len(b.Forms) == 1 && !f.isMultilineNode(b.Forms[0]) && !f.hasCommentsBeforeNode(b.Forms[0]) && !f.hasTrailingComment(b.Forms[0]) {
+	// Check if block can be single line (only if no comments and wasn't originally multiline)
+	if len(b.Forms) == 1 && !f.isMultilineNode(b.Forms[0]) && !f.hasCommentsBeforeNode(b.Forms[0]) && !f.hasTrailingComment(b.Forms[0]) && !wasMultiline(b) {
 		length := f.estimateLength(b.Forms[0])
 		if f.col+length+4 <= maxLineLength { // +4 for " { " and " }"
 			f.write(" ")
@@ -902,6 +902,56 @@ func (f *Formatter) hasCommentsBeforeNode(node Node) bool {
 			}
 		}
 	}
+	return false
+}
+
+// wasMultiline checks if a node was originally written across multiple lines
+func wasMultiline(node Node) bool {
+	loc := nodeLocation(node)
+	if loc == nil {
+		return false
+	}
+
+	// Check if node has an explicit end position on a different line
+	if loc.End != nil && loc.End.Line > loc.Line {
+		return true
+	}
+
+	// For blocks, check if any form is on a different line than the block start
+	if block, ok := node.(*Block); ok {
+		for _, form := range block.Forms {
+			if formLoc := nodeLocation(form); formLoc != nil && formLoc.Line != loc.Line {
+				return true
+			}
+		}
+	}
+
+	// For function calls, check if args span multiple lines
+	if call, ok := node.(*FunCall); ok {
+		if len(call.Args) > 0 {
+			firstArg := call.Args[0]
+			lastArg := call.Args[len(call.Args)-1]
+			firstLoc := nodeLocation(firstArg.Value)
+			lastLoc := nodeLocation(lastArg.Value)
+			if firstLoc != nil && lastLoc != nil && lastLoc.Line > firstLoc.Line {
+				return true
+			}
+		}
+		// Check if block arg is on different line
+		if call.BlockArg != nil {
+			if argLoc := nodeLocation(call.BlockArg.BodyNode); argLoc != nil && argLoc.Line != loc.Line {
+				return true
+			}
+		}
+	}
+
+	// For method chains (Select), check if receiver is on different line
+	if sel, ok := node.(*Select); ok && sel.Receiver != nil {
+		if recvLoc := nodeLocation(sel.Receiver); recvLoc != nil && recvLoc.Line != loc.Line {
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -978,6 +1028,11 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 }
 
 func (f *Formatter) shouldSplitChain(c *FunCall) bool {
+	// If the original was multiline, preserve that
+	if f.wasChainMultiline(c) {
+		return true
+	}
+
 	// Get the chain depth and total length
 	depth := f.getChainDepth(c)
 	if depth < 2 {
@@ -986,6 +1041,29 @@ func (f *Formatter) shouldSplitChain(c *FunCall) bool {
 
 	length := f.estimateLength(c)
 	return f.col+length > maxLineLength
+}
+
+// wasChainMultiline checks if any part of a method chain was on a different line
+func (f *Formatter) wasChainMultiline(node Node) bool {
+	loc := nodeLocation(node)
+	if loc != nil && loc.End != nil && loc.End.Line > loc.Line {
+		return true
+	}
+
+	switch n := node.(type) {
+	case *FunCall:
+		if sel, ok := n.Fun.(*Select); ok {
+			return f.wasChainMultiline(sel)
+		}
+		return false
+	case *Select:
+		if n.Receiver != nil {
+			return f.wasChainMultiline(n.Receiver)
+		}
+		return false
+	default:
+		return false
+	}
 }
 
 func (f *Formatter) getChainDepth(node Node) int {
@@ -1057,6 +1135,17 @@ func (f *Formatter) collectChain(node Node, chain *[]Node, root *Node) {
 }
 
 func (f *Formatter) shouldSplitArgs(args Record) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	// Check if args were originally on multiple lines
+	firstLoc := nodeLocation(args[0].Value)
+	lastLoc := nodeLocation(args[len(args)-1].Value)
+	if firstLoc != nil && lastLoc != nil && lastLoc.Line > firstLoc.Line {
+		return true
+	}
+
 	totalLen := 0
 	for i, arg := range args {
 		if i > 0 {
@@ -1103,9 +1192,52 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
 }
 
 func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
+	// Check if this is a multiline chain that should be formatted with leading dots
+	if f.wasSelectMultiline(s) || forceMultiline {
+		f.formatSelectChain(s)
+		return
+	}
 	f.formatNode(s.Receiver)
 	f.write(".")
 	f.write(s.Field)
+}
+
+// wasSelectMultiline checks if a select chain was originally on multiple lines
+func (f *Formatter) wasSelectMultiline(s *Select) bool {
+	if s.Loc != nil && s.Loc.End != nil && s.Loc.End.Line > s.Loc.Line {
+		return true
+	}
+	return false
+}
+
+// formatSelectChain formats a select chain with leading dots on new lines
+func (f *Formatter) formatSelectChain(s *Select) {
+	// Collect the chain
+	var fields []string
+	var root Node
+	current := Node(s)
+	for {
+		if sel, ok := current.(*Select); ok {
+			fields = append([]string{sel.Field}, fields...)
+			current = sel.Receiver
+		} else {
+			root = current
+			break
+		}
+	}
+
+	// Format the root
+	f.formatNode(root)
+
+	// Format each field on its own line with a leading dot, indented one level
+	f.indented(func() {
+		for _, field := range fields {
+			f.newline()
+			f.writeIndent()
+			f.write(".")
+			f.write(field)
+		}
+	})
 }
 
 func (f *Formatter) formatSelectInline(s *Select) {
@@ -1165,6 +1297,12 @@ func (f *Formatter) formatList(l *List) {
 		return
 	}
 
+	// Check if list was originally multiline
+	if f.wasListMultiline(l) {
+		f.formatListMultiline(l)
+		return
+	}
+
 	// Estimate inline length
 	length := 2 // []
 	for i, elem := range l.Elements {
@@ -1179,6 +1317,15 @@ func (f *Formatter) formatList(l *List) {
 	} else {
 		f.formatListMultiline(l)
 	}
+}
+
+func (f *Formatter) wasListMultiline(l *List) bool {
+	if len(l.Elements) < 2 {
+		return false
+	}
+	firstLoc := nodeLocation(l.Elements[0])
+	lastLoc := nodeLocation(l.Elements[len(l.Elements)-1])
+	return firstLoc != nil && lastLoc != nil && lastLoc.Line > firstLoc.Line
 }
 
 func (f *Formatter) formatListInline(l *List) {
@@ -1440,8 +1587,8 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 		f.write(" ")
 	}
 
-	if block, ok := b.BodyNode.(*Block); ok && len(block.Forms) == 1 {
-		// Single expression block arg
+	if block, ok := b.BodyNode.(*Block); ok && len(block.Forms) == 1 && !wasMultiline(block) {
+		// Single expression block arg that was originally on one line
 		f.formatNode(block.Forms[0])
 		f.write(" }")
 	} else if block, ok := b.BodyNode.(*Block); ok {
