@@ -13,13 +13,6 @@ type Dang {
   ])
 
   """
-  Access the test suites.
-  """
-  pub test: Test! {
-    Test(self)
-  }
-
-  """
   Return a compiled Dang binary.
   """
   pub binary(race: Boolean! = false): File! {
@@ -197,15 +190,11 @@ type Dang {
   pub generated: Container! {
     base.withExec(["./hack/generate"])
   }
-}
-
-type Test {
-  pub dang: Dang!
 
   """
   Run the Dang language tests.
   """
-  pub language(
+  pub testLanguage(
     """
     Only run tests matching this filter.
     """
@@ -219,7 +208,7 @@ type Test {
     if (filter != "") {
       args += ["-run", "/"+filter]
     }
-    let ctr = dang.generated
+    let ctr = generated
     if (rerun != null) {
       ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
     }
@@ -232,7 +221,7 @@ type Test {
   """
   Run the Dagger SDK tests.
   """
-  pub dagger(
+  pub testDagger(
     """
     Only run tests matching this filter.
     """
@@ -246,7 +235,7 @@ type Test {
     if (filter != "") {
       args += ["-run", "/"+filter]
     }
-    let ctr = dang.generated
+    let ctr = generated
     if (rerun != null) {
       ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
     }
@@ -260,7 +249,7 @@ type Test {
   """
   Run the Dang LSP tests.
   """
-  pub lsp(filter: String! = "", verbose: Boolean! = false): Void @check {
+  pub testLsp(filter: String! = "", verbose: Boolean! = false): Void @check {
     let args = ["go", "test", "-count=1"]
     if (filter != "") {
       args += ["-run", "LSP/" + filter]
@@ -269,8 +258,8 @@ type Test {
       args += ["-v"]
     }
     args += ["./pkg/lsp/..."]
-    dang.generated.
-      withFile("/usr/bin/dang", dang.binary(race: true)). # install binary for LSP tests
+    generated.
+      withFile("/usr/bin/dang", binary(race: true)). # install binary for LSP tests
       withExec(args, experimentalPrivilegedNesting: true).
       sync
     null
@@ -279,8 +268,8 @@ type Test {
   """
   Run the tree-sitter tests.
   """
-  pub treesitter: Void @check {
-    dang.generated.
+  pub testTreesitter: Void @check {
+    generated.
       withWorkdir("./treesitter").
       withExec(["tree-sitter", "test"]).
       sync
