@@ -34,9 +34,14 @@ type TestEnum {
   Gets log level priority
   """
   pub getLevelPriority(level: LogLevel!): Int! {
-    if level == LogLevel.DEBUG { 0 }
-    else if level == LogLevel.INFO { 1 }
-    else if level == LogLevel.WARN { 2 }
-    else { 3 }
+    if (level == LogLevel.DEBUG) {
+      0
+    } else if (level == LogLevel.INFO) {
+      1
+    } else if (level == LogLevel.WARN) {
+      2
+    } else {
+      3
+    }
   }
 }

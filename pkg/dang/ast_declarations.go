@@ -989,11 +989,11 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 		}
 	}
 
-	// Map positional arguments to parameter names by index
+	// Map positional arguments to parameter names by index and resolve their keys
 	positionalIndex := 0
 	providedArgs := make(map[string]Node)
 
-	for _, arg := range d.Args {
+	for i, arg := range d.Args {
 		if arg.Positional {
 			if positionalIndex >= len(decl.Args) {
 				return fmt.Errorf("too many positional arguments: got %d, expected at most %d",
@@ -1001,6 +1001,8 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 			}
 			paramName := decl.Args[positionalIndex].Name.Name
 			providedArgs[paramName] = arg.Value
+			// Resolve the positional argument's key for downstream consumers
+			d.Args[i].Key = paramName
 			positionalIndex++
 		} else {
 			providedArgs[arg.Key] = arg.Value

@@ -1,0 +1,5 @@
+{
+  "name": "test-directives",
+  "engineVersion": "v0.19.5",
+  "sdk": "../.."
+}
