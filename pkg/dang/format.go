@@ -418,6 +418,11 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 
 // needsBlankLineBetween determines if a blank line should separate two forms
 func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
+	// Preserve blank lines from original source
+	if hadBlankLineBetween(prev, next) {
+		return true
+	}
+
 	// Always add blank line before/after type declarations
 	if isTypeDecl(prev) || isTypeDecl(next) {
 		return true
@@ -450,6 +455,29 @@ func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
 
 	// Default: no blank line
 	return false
+}
+
+// hadBlankLineBetween checks if there was a blank line between two nodes in the original source
+func hadBlankLineBetween(prev, next Node) bool {
+	prevLoc := nodeEndLine(prev)
+	nextLoc := nodeLocation(next)
+	if prevLoc > 0 && nextLoc != nil && nextLoc.Line > 0 {
+		// If there's more than 1 line between end of prev and start of next, there was a blank line
+		return nextLoc.Line > prevLoc+1
+	}
+	return false
+}
+
+// nodeEndLine returns the last line of a node (using End if available, otherwise start line)
+func nodeEndLine(node Node) int {
+	loc := nodeLocation(node)
+	if loc == nil {
+		return 0
+	}
+	if loc.End != nil {
+		return loc.End.Line
+	}
+	return loc.Line
 }
 
 func isTypeDecl(node Node) bool {
