@@ -400,8 +400,10 @@ func (f *Formatter) formatNodeInline(node Node) {
 func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 	for i, form := range m.Forms {
 		if i > 0 {
-			// Add blank line between top-level declarations
-			f.newline()
+			// Add blank line only when needed (before/after function definitions)
+			if f.needsBlankLineBetween(m.Forms[i-1], form) {
+				f.newline()
+			}
 		}
 		// Emit any comments that precede this node
 		f.emitCommentsForNode(form)
@@ -412,6 +414,95 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 		}
 		f.newline()
 	}
+}
+
+// needsBlankLineBetween determines if a blank line should separate two forms
+func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
+	// Always add blank line before/after type declarations
+	if isTypeDecl(prev) || isTypeDecl(next) {
+		return true
+	}
+
+	// Always add blank line before/after interface declarations
+	if isInterfaceDecl(prev) || isInterfaceDecl(next) {
+		return true
+	}
+
+	// Always add blank line before/after directive declarations
+	if isDirectiveDecl(prev) || isDirectiveDecl(next) {
+		return true
+	}
+
+	// Always add blank line before/after function definitions
+	if isFunctionDef(prev) || isFunctionDef(next) {
+		return true
+	}
+
+	// No blank line between consecutive asserts
+	if isAssert(prev) && isAssert(next) {
+		return false
+	}
+
+	// No blank line between simple field assignments
+	if isSimpleAssignment(prev) && isSimpleAssignment(next) {
+		return false
+	}
+
+	// Default: no blank line
+	return false
+}
+
+func isTypeDecl(node Node) bool {
+	_, ok := node.(*ClassDecl)
+	return ok
+}
+
+func isInterfaceDecl(node Node) bool {
+	_, ok := node.(*InterfaceDecl)
+	return ok
+}
+
+func isDirectiveDecl(node Node) bool {
+	_, ok := node.(*DirectiveDecl)
+	return ok
+}
+
+func isAssert(node Node) bool {
+	_, ok := node.(*Assert)
+	return ok
+}
+
+func isFunctionDef(node Node) bool {
+	slot, ok := node.(*SlotDecl)
+	if !ok {
+		return false
+	}
+	// Check if the value is a FunDecl (function with args/body)
+	if _, ok := slot.Value.(*FunDecl); ok {
+		return true
+	}
+	// Check if it's a slot with a block body and type annotation (parameterless function)
+	if _, ok := slot.Value.(*Block); ok {
+		return slot.Type_ != nil
+	}
+	return false
+}
+
+func isSimpleAssignment(node Node) bool {
+	slot, ok := node.(*SlotDecl)
+	if !ok {
+		return false
+	}
+	// Simple assignment: has a value that's not a block, or no type annotation with a block
+	if slot.Value == nil {
+		return false
+	}
+	if _, ok := slot.Value.(*Block); ok {
+		// Block with type annotation is a function, not a simple assignment
+		return slot.Type_ == nil
+	}
+	// Non-block value is a simple assignment
+	return true
 }
 
 func (f *Formatter) formatClassDecl(c *ClassDecl) {
@@ -454,12 +545,12 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 	f.write(" {")
 	f.newline()
 
-	// Format block contents with blank lines between members
+	// Format block contents with blank lines between function definitions
 	f.indented(func() {
 		block := c.Value
 		for i, form := range block.Forms {
-			if i > 0 {
-				f.newline() // Blank line between members
+			if i > 0 && f.needsBlankLineBetween(block.Forms[i-1], form) {
+				f.newline()
 			}
 			// Emit comments for this member
 			f.emitCommentsForNode(form)
@@ -489,7 +580,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	f.indented(func() {
 		block := i.Value
 		for j, form := range block.Forms {
-			if j > 0 {
+			if j > 0 && f.needsBlankLineBetween(block.Forms[j-1], form) {
 				f.newline()
 			}
 			// Emit comments for this member
