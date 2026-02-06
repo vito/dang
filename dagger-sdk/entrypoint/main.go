@@ -20,8 +20,9 @@ import (
 	"github.com/vito/dang/pkg/ioctx"
 
 	"dagger/dang/internal/dagger"
-	"dagger/dang/internal/querybuilder"
-	"dagger/dang/internal/telemetry"
+
+	"dagger.io/dagger/querybuilder"
+	"dagger.io/dagger/telemetry"
 )
 
 const debug = false

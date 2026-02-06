@@ -7,7 +7,7 @@ toolchain go1.24.4
 require github.com/vito/dang v0.0.0-20231014151113-edf550c4deca
 
 require (
-	dagger.io/dagger v0.19.10 // indirect
+	dagger.io/dagger v0.19.11 // indirect
 	github.com/99designs/gqlgen v0.17.81 // indirect
 	github.com/Khan/genqlient v0.8.1 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
