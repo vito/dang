@@ -1,0 +1,27 @@
+# Test constructor arg names that don't match field names
+# when passing typed objects
+
+type TestMismatch {
+  pub name: String!
+
+  new(n: String!) {
+    self.name = n
+  }
+
+  pub child: Child! {
+    Child(self)
+  }
+}
+
+type Child {
+  pub parent: TestMismatch!
+
+  # Constructor arg is "p" but field is "parent"
+  new(p: TestMismatch!) {
+    self.parent = p
+  }
+
+  pub parentName: String! {
+    self.parent.name
+  }
+}
