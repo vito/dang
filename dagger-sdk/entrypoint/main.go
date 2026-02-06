@@ -21,7 +21,6 @@ import (
 
 	"dagger/dang/internal/dagger"
 
-	"dagger.io/dagger/querybuilder"
 	"dagger.io/dagger/telemetry"
 )
 
@@ -454,27 +453,13 @@ func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, n
 		funDef = funDef.WithDescription(desc)
 	}
 
-	// TODO: just call .WithCheck/.WithGenerator once engine ships
 	if hasCheck || hasGenerator {
 		for _, directive := range mod.GetDirectives(name) {
-			if directive.Name == "check" || directive.Name == "generator" {
-				var funcName string
-				if directive.Name == "check" {
-					funcName = "withCheck"
-				} else if directive.Name == "generator" {
-					funcName = "withGenerator"
-				}
-				funDefID, err := funDef.ID(ctx)
-				if err != nil {
-					return nil, fmt.Errorf("failed to get function ID for %s: %w", name, err)
-				}
-				funDef = (&dagger.Function{}).
-					WithGraphQLQuery(
-						querybuilder.Query().Select("loadFunctionFromID").
-							Arg("id", funDefID).
-							Client(dag.GraphQLClient()).
-							Select(funcName),
-					)
+			switch directive.Name {
+			case "check":
+				funDef = funDef.WithCheck()
+			case "generator":
+				funDef = funDef.WithGenerator()
 			}
 		}
 	}
