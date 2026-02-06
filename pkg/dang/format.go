@@ -777,7 +777,7 @@ func (f *Formatter) formatArgDecl(arg *SlotDecl) {
 }
 
 func (f *Formatter) formatBlockParamType(funType FunTypeNode) {
-	// Format as (args): retType
+	// Format as (args): retType or just : retType if no args
 	if funType.Args != nil && len(funType.Args) > 0 {
 		f.write("(")
 		for i, arg := range funType.Args {
@@ -789,8 +789,6 @@ func (f *Formatter) formatBlockParamType(funType FunTypeNode) {
 			f.formatTypeNode(arg.Type_)
 		}
 		f.write(")")
-	} else {
-		f.write("()")
 	}
 	f.write(": ")
 	f.formatTypeNode(funType.Ret)
@@ -1002,9 +1000,6 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 		multiline := forceMultiline || f.shouldSplitArgs(c.Args)
 		f.formatCallArgs(c.Args, multiline)
 		f.write(")")
-	} else if c.BlockArg != nil {
-		// Need empty parens before block arg
-		f.write("()")
 	}
 
 	// Block arg
