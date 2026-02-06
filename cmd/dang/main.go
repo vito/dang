@@ -83,6 +83,9 @@ It provides type-safe, composable abstractions for container operations.`,
 	rootCmd.Flags().BoolVar(&cfg.LSP, "lsp", false, "Run in Language Server Protocol mode")
 	rootCmd.Flags().StringVar(&cfg.LSPLogFile, "lsp-log-file", "", "Path to LSP log file (stderr if not specified)")
 
+	// Add fmt subcommand
+	rootCmd.AddCommand(fmtCmd())
+
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
@@ -953,4 +956,110 @@ func (stdrwc) Close() error {
 		return err
 	}
 	return os.Stdout.Close()
+}
+
+func fmtCmd() *cobra.Command {
+	var (
+		write bool
+		list  bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "fmt [flags] [path...]",
+		Short: "Format Dang source files",
+		Long: `Format Dang source files according to the canonical style.
+
+By default, fmt prints the formatted source to stdout.
+Use -w to write the result back to the source file.
+Use -l to list files that would be changed.`,
+		Example: `  # Format a file and print to stdout
+  dang fmt script.dang
+
+  # Format a file in place
+  dang fmt -w script.dang
+
+  # Format all .dang files in a directory
+  dang fmt -w ./my-module
+
+  # List files that need formatting
+  dang fmt -l ./my-module`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFmt(args, write, list)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&write, "write", "w", false, "Write result to source file instead of stdout")
+	cmd.Flags().BoolVarP(&list, "list", "l", false, "List files that would be formatted")
+
+	return cmd
+}
+
+func runFmt(paths []string, write, list bool) error {
+	var files []string
+
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return fmt.Errorf("accessing %s: %w", path, err)
+		}
+
+		if info.IsDir() {
+			// Find all .dang files in directory
+			entries, err := os.ReadDir(path)
+			if err != nil {
+				return fmt.Errorf("reading directory %s: %w", path, err)
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".dang") {
+					files = append(files, path+"/"+entry.Name())
+				}
+			}
+		} else {
+			files = append(files, path)
+		}
+	}
+
+	for _, file := range files {
+		if err := formatFile(file, write, list); err != nil {
+			return fmt.Errorf("formatting %s: %w", file, err)
+		}
+	}
+
+	return nil
+}
+
+func formatFile(path string, write, list bool) error {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	formatted, err := dang.FormatFile(source)
+	if err != nil {
+		return err
+	}
+
+	// Check if file changed
+	changed := string(source) != formatted
+
+	if list {
+		if changed {
+			fmt.Println(path)
+		}
+		return nil
+	}
+
+	if write {
+		if changed {
+			if err := os.WriteFile(path, []byte(formatted), 0644); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// Print to stdout
+	fmt.Print(formatted)
+	return nil
 }

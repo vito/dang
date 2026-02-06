@@ -35,6 +35,14 @@ func TestDang(tT *testing.T) {
 }
 
 func (DangSuite) TestLanguage(ctx context.Context, t *testctx.T) {
+	runLanguageTests(ctx, t, false)
+}
+
+func (DangSuite) TestFormatLanguage(ctx context.Context, t *testctx.T) {
+	runLanguageTests(ctx, t, true)
+}
+
+func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 	testGraphQLServer, err := gqlserver.StartServer()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = testGraphQLServer.Stop() })
@@ -69,16 +77,85 @@ func (DangSuite) TestLanguage(ctx context.Context, t *testctx.T) {
 				t.Errorf("Failed to stat test file or directory %s: %v", testFileOrDir, err)
 				return
 			}
-			if fi.IsDir() {
-				_, err = dang.RunDir(ctx, client, schema, testFileOrDir, false)
+
+			if formatFirst {
+				// Format the file(s) first, then run the formatted version
+				if fi.IsDir() {
+					// Format all .dang files in directory to a temp dir
+					tempDir, err := os.MkdirTemp("", "dang-fmt-test-*")
+					if err != nil {
+						t.Errorf("Failed to create temp dir: %v", err)
+						return
+					}
+					t.Cleanup(func() { os.RemoveAll(tempDir) })
+
+					entries, err := os.ReadDir(testFileOrDir)
+					if err != nil {
+						t.Errorf("Failed to read dir %s: %v", testFileOrDir, err)
+						return
+					}
+
+					for _, entry := range entries {
+						if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".dang") {
+							continue
+						}
+						srcPath := filepath.Join(testFileOrDir, entry.Name())
+						dstPath := filepath.Join(tempDir, entry.Name())
+
+						if err := formatFileTo(srcPath, dstPath); err != nil {
+							t.Errorf("Failed to format %s: %v", srcPath, err)
+							return
+						}
+					}
+
+					_, err = dang.RunDir(ctx, client, schema, tempDir, false)
+				} else {
+					// Format single file to temp file
+					tempFile, err := os.CreateTemp("", "dang-fmt-test-*.dang")
+					if err != nil {
+						t.Errorf("Failed to create temp file: %v", err)
+						return
+					}
+					tempPath := tempFile.Name()
+					tempFile.Close()
+					t.Cleanup(func() { os.Remove(tempPath) })
+
+					if err := formatFileTo(testFileOrDir, tempPath); err != nil {
+						t.Errorf("Failed to format %s: %v", testFileOrDir, err)
+						return
+					}
+
+					err = dang.RunFile(ctx, client, schema, tempPath, false)
+				}
 			} else {
-				err = dang.RunFile(ctx, client, schema, testFileOrDir, false)
+				// Run without formatting
+				if fi.IsDir() {
+					_, err = dang.RunDir(ctx, client, schema, testFileOrDir, false)
+				} else {
+					err = dang.RunFile(ctx, client, schema, testFileOrDir, false)
+				}
 			}
+
 			if err != nil {
 				t.Error(err)
 			}
 		})
 	}
+}
+
+// formatFileTo formats a Dang source file and writes the result to dst
+func formatFileTo(src, dst string) error {
+	source, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	formatted, err := dang.FormatFile(source)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(dst, []byte(formatted), 0644)
 }
 
 // introspectSchema is a helper function to get the GraphQL schema
