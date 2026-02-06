@@ -561,6 +561,10 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 				mod.SetDocString(e.Name.Name, e.DocString)
 			}
 		}
+
+		// Add the values() method that returns all enum values as a list
+		valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(enumType)}))
+		enumType.Add("values", valuesType)
 	}
 
 	return nil
@@ -593,11 +597,20 @@ func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	enumModule := NewModuleValue(e.Inferred)
 
 	// Add each enum value to the module
-	for _, value := range e.Values {
-		enumModule.Values[value.Name] = EnumValue{
+	enumValues := make([]Value, len(e.Values))
+	for i, value := range e.Values {
+		enumVal := EnumValue{
 			Val:      value.Name,
 			EnumType: e.Inferred,
 		}
+		enumModule.Values[value.Name] = enumVal
+		enumValues[i] = enumVal
+	}
+
+	// Add the values() method that returns all enum values as a list
+	enumModule.Values["values"] = ListValue{
+		Elements: enumValues,
+		ElemType: NonNull(e.Inferred),
 	}
 
 	// Register the enum module in the environment

@@ -10,4 +10,16 @@ assert { Color.RED == red }
 assert { Color.RED != Color.GREEN }
 assert { Color.GREEN != Color.BLUE }
 
+# Test enum values() method
+let colors = Color.values
+assert { colors.length == 3 }
+assert { colors[0] == Color.RED }
+assert { colors[1] == Color.GREEN }
+assert { colors[2] == Color.BLUE }
+
+# Test that values contains all enum values
+assert { colors.contains(Color.RED) }
+assert { colors.contains(Color.GREEN) }
+assert { colors.contains(Color.BLUE) }
+
 print("Enum declaration tests passed!")

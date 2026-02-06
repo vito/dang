@@ -26,4 +26,12 @@ pub jane = statuses[1]
 assert { jane.status == Status.PENDING }
 assert { jane.status != Status.ACTIVE }
 
+# Test enum values() method on GraphQL enum
+let statusValues = Status.values
+assert { statusValues.length == 4 }
+assert { statusValues[0] == Status.ACTIVE }
+assert { statusValues[1] == Status.INACTIVE }
+assert { statusValues[2] == Status.PENDING }
+assert { statusValues[3] == Status.ARCHIVED }
+
 print("Enum tests passed!")

@@ -306,12 +306,21 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			enumModuleVal := NewModuleValue(enumTypeEnv)
 
 			// Set each enum value as an EnumValue constant
-			for _, enumVal := range t.EnumValues {
-				enumModuleVal.Set(enumVal.Name, EnumValue{
+			enumValues := make([]Value, len(t.EnumValues))
+			for i, enumVal := range t.EnumValues {
+				ev := EnumValue{
 					Val:      enumVal.Name,
 					EnumType: enumTypeEnv,
-				})
+				}
+				enumModuleVal.Set(enumVal.Name, ev)
+				enumValues[i] = ev
 			}
+
+			// Add the values() method that returns all enum values as a list
+			enumModuleVal.Set("values", ListValue{
+				Elements: enumValues,
+				ElemType: NonNull(enumTypeEnv),
+			})
 
 			// Add the enum module to the environment
 			env.Set(t.Name, enumModuleVal)

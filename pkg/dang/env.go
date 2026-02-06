@@ -272,6 +272,10 @@ func NewEnv(schema *introspection.Schema) Env {
 					install.SetDocString(enumVal.Name, enumVal.Description)
 				}
 			}
+			// Add the values() method that returns all enum values as a list
+			valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(install)}))
+			install.Add("values", valuesType)
+			install.SetVisibility("values", PublicVisibility)
 		}
 
 		for _, f := range t.Fields {
