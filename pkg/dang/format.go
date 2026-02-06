@@ -567,8 +567,24 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 
 	// Type annotation
 	if s.Type_ != nil {
-		f.write(": ")
-		f.formatType(s.Type_)
+		// For FunTypeNode with args, output as method signature: name(args): ret
+		// For other types or FunTypeNode without args, output as: name: type
+		if ft, ok := s.Type_.(FunTypeNode); ok && len(ft.Args) > 0 {
+			f.write("(")
+			for i, arg := range ft.Args {
+				if i > 0 {
+					f.write(", ")
+				}
+				f.write(arg.Name.Name)
+				f.write(": ")
+				f.formatTypeNode(arg.Type_)
+			}
+			f.write("): ")
+			f.formatTypeNode(ft.Ret)
+		} else {
+			f.write(": ")
+			f.formatType(s.Type_)
+		}
 	}
 
 	// Value and directives - placement depends on value type
@@ -1385,8 +1401,12 @@ func (f *Formatter) formatIndex(i *Index) {
 }
 
 func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
-	f.formatNode(o.Receiver)
-	f.write(".{")
+	// Receiver may be nil for nested selections (e.g., the inner {c, d} in a.{b.{c, d}})
+	if o.Receiver != nil {
+		f.formatNode(o.Receiver)
+		f.write(".")
+	}
+	f.write("{")
 	for i, field := range o.Fields {
 		if i > 0 {
 			f.write(", ")
@@ -1612,7 +1632,10 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 		f.write("}}")
 	case FunTypeNode:
 		// Function type: (args): returnType
-		if tn.Args != nil && len(tn.Args) > 0 {
+		// If no args, just output the return type directly (for interface slot types)
+		if tn.Args == nil || len(tn.Args) == 0 {
+			f.formatTypeNode(tn.Ret)
+		} else {
 			f.write("(")
 			for i, arg := range tn.Args {
 				if i > 0 {
@@ -1622,10 +1645,9 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 				f.write(": ")
 				f.formatTypeNode(arg.Type_)
 			}
-			f.write(")")
+			f.write("): ")
+			f.formatTypeNode(tn.Ret)
 		}
-		f.write(": ")
-		f.formatTypeNode(tn.Ret)
 	case VariableTypeNode:
 		f.write(string(tn.Name))
 	default:

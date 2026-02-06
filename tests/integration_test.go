@@ -78,6 +78,7 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 				return
 			}
 
+			var runErr error
 			if formatFirst {
 				// Format the file(s) first, then run the formatted version
 				if fi.IsDir() {
@@ -108,7 +109,7 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 						}
 					}
 
-					_, err = dang.RunDir(ctx, client, schema, tempDir, false)
+					_, runErr = dang.RunDir(ctx, client, schema, tempDir, false)
 				} else {
 					// Format single file to temp file
 					tempFile, err := os.CreateTemp("", "dang-fmt-test-*.dang")
@@ -125,19 +126,19 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 						return
 					}
 
-					err = dang.RunFile(ctx, client, schema, tempPath, false)
+					runErr = dang.RunFile(ctx, client, schema, tempPath, false)
 				}
 			} else {
 				// Run without formatting
 				if fi.IsDir() {
-					_, err = dang.RunDir(ctx, client, schema, testFileOrDir, false)
+					_, runErr = dang.RunDir(ctx, client, schema, testFileOrDir, false)
 				} else {
-					err = dang.RunFile(ctx, client, schema, testFileOrDir, false)
+					runErr = dang.RunFile(ctx, client, schema, testFileOrDir, false)
 				}
 			}
 
-			if err != nil {
-				t.Error(err)
+			if runErr != nil {
+				t.Error(runErr)
 			}
 		})
 	}
