@@ -994,9 +994,10 @@ PrefixDirectiveApplication <- '@' name:Id args:ArgValues? {
     argValues = args.([]Keyed[Node])
   }
   return &DirectiveApplication{
-    Name: name.(string),
-    Args: argValues,
-    Loc: c.Loc(),
+    Name:     name.(string),
+    Args:     argValues,
+    IsPrefix: true,
+    Loc:      c.Loc(),
   }, nil
 }
 

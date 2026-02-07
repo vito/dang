@@ -523,7 +523,7 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 		expected string
 	}{
 		{
-			name: "no blank line after opening brace when args collapsed",
+			name: "no blank line after opening brace with multiline args",
 			input: `pub dev(
 	source: Directory!,
 	module: Module
@@ -531,7 +531,11 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 	let e = env.withWorkspace(source)
 	e
 }`,
-			expected: `pub dev(source: Directory!, module: Module): LLM! {
+			// Multiline args are preserved
+			expected: `pub dev(
+	source: Directory!,
+	module: Module
+): LLM! {
 	let e = env.withWorkspace(source)
 	e
 }

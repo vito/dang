@@ -702,6 +702,14 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 		f.writeIndent()
 	}
 
+	// Prefix directives
+	for _, d := range s.Directives {
+		if d.IsPrefix {
+			f.formatDirectiveApplication(d)
+			f.write(" ")
+		}
+	}
+
 	// Visibility
 	switch s.Visibility {
 	case PublicVisibility:
@@ -740,14 +748,16 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 		}
 	}
 
-	// Value and directives - placement depends on value type
+	// Value and suffix directives - placement depends on value type
 	if s.Value != nil {
 		if block, ok := s.Value.(*Block); ok {
-			// Block value: directives come before block
+			// Block value: suffix directives come before block
 			// pub foo: Type @directive { ... } OR pub foo @directive = { ... }
 			for _, d := range s.Directives {
-				f.write(" ")
-				f.formatDirectiveApplication(d)
+				if !d.IsPrefix {
+					f.write(" ")
+					f.formatDirectiveApplication(d)
+				}
 			}
 			if s.Type_ != nil {
 				f.write(" {")
@@ -759,21 +769,25 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 				f.write("}")
 			}
 		} else {
-			// Non-block value: directives come after value
+			// Non-block value: suffix directives come after value
 			// pub foo: Type = value @directive OR pub foo = value @directive
 			f.write(" = ")
 			f.formatNode(s.Value)
 			for _, d := range s.Directives {
-				f.write(" ")
-				f.formatDirectiveApplication(d)
+				if !d.IsPrefix {
+					f.write(" ")
+					f.formatDirectiveApplication(d)
+				}
 			}
 		}
 	} else {
-		// No value - just type with directives
+		// No value - just type with suffix directives
 		// pub foo: Type @directive
 		for _, d := range s.Directives {
-			f.write(" ")
-			f.formatDirectiveApplication(d)
+			if !d.IsPrefix {
+				f.write(" ")
+				f.formatDirectiveApplication(d)
+			}
 		}
 	}
 }
@@ -836,6 +850,42 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 		hasDocString = true
 	}
 
+	// Check if args were originally on multiple lines
+	// We consider it multiline if any arg starts on a different line than a previous arg,
+	// OR if a single arg has a docstring (already handled above),
+	// OR if any arg has a suffix directive (which often means the user wanted more space)
+	wasMultiline := false
+	for i := 1; i < len(args); i++ {
+		prevLoc := nodeLocation(args[i-1])
+		currLoc := nodeLocation(args[i])
+		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
+			wasMultiline = true
+			break
+		}
+	}
+	// Also check block param
+	if !wasMultiline && blockParam != nil && len(args) > 0 {
+		lastArgLoc := nodeLocation(args[len(args)-1])
+		blockParamLoc := nodeLocation(blockParam)
+		if lastArgLoc != nil && blockParamLoc != nil && blockParamLoc.Line > lastArgLoc.Line {
+			wasMultiline = true
+		}
+	}
+	// Check if any arg has a suffix directive - if so, user likely wanted multiline
+	if !wasMultiline {
+		for _, arg := range args {
+			for _, d := range arg.Directives {
+				if !d.IsPrefix {
+					wasMultiline = true
+					break
+				}
+			}
+			if wasMultiline {
+				break
+			}
+		}
+	}
+
 	// Estimate total length
 	totalLen := 0
 	for i, arg := range args {
@@ -851,7 +901,7 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 		totalLen += f.estimateArgLength(blockParam) + 1 // +1 for &
 	}
 
-	multiline := hasDocString || f.col+totalLen > maxLineLength
+	multiline := hasDocString || wasMultiline || f.col+totalLen > maxLineLength
 
 	if multiline {
 		f.newline()
@@ -907,10 +957,12 @@ func (f *Formatter) formatArgDecl(arg *SlotDecl) {
 		f.writeIndent()
 	}
 
-	// Prefix directives
+	// Prefix directives (those that appeared before the name)
 	for _, d := range arg.Directives {
-		f.formatDirectiveApplication(d)
-		f.write(" ")
+		if d.IsPrefix {
+			f.formatDirectiveApplication(d)
+			f.write(" ")
+		}
 	}
 
 	f.write(arg.Name.Name)
@@ -930,8 +982,13 @@ func (f *Formatter) formatArgDecl(arg *SlotDecl) {
 		}
 	}
 
-	// Suffix directives
-	// (none for args typically)
+	// Suffix directives (those that appeared after the type)
+	for _, d := range arg.Directives {
+		if !d.IsPrefix {
+			f.write(" ")
+			f.formatDirectiveApplication(d)
+		}
+	}
 
 	if arg.Value != nil {
 		f.write(" = ")
