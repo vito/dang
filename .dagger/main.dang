@@ -7,6 +7,7 @@ type Dang {
 		"Session.vim",
 		"dang",
 		"editors",
+		"!editors/zed/extension.toml",
 		".env",
 		".envrc",
 		".dagger",
@@ -136,18 +137,16 @@ type Dang {
 	}
 
 	"""
-	Bump the pinned Dang version in the Dagger SDK and Zed grammar.
+	Bump the pinned Dang version in each editor plugin.
 	"""
-	pub bump(
+	pub bumpEditors(
 		repo: GitRepository! @defaultPath(path: "/.git"),
 	): Changeset! {
 		let commit = repo.head.commit
 		base
-			.withExec(["go", "-C", "dagger-sdk", "get", "github.com/vito/dang@" + commit])
-			.withExec(["go", "-C", "dagger-sdk", "mod", "tidy"])
 			.withExec([
 				"sed",
-				"-i", "zed-dang/extension.toml",
+				"-i", "editors/zed/extension.toml",
 				"-e", "s/commit = \".*\"/commit = \"" + commit + "\"/",
 			])
 			.directory(".")

@@ -1,12 +1,12 @@
 type Dev {
 	pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
 		# TODO: respecting .gitignore would be nice
-		"Session.vim"
-		"dang"
-		"zed-dang/grammars/"
-		".env"
-		".envrc"
-		".dagger"
+		"Session.vim",
+		"dang",
+		"editors",
+		".env",
+		".envrc",
+		".dagger",
 	])
 
 	"""
