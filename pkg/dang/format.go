@@ -25,7 +25,8 @@ type Formatter struct {
 	indent   int
 	col      int // current column (approximate, for line length decisions)
 	comments []Comment
-	lastLine int // last source line we've processed (for comment emission)
+	lastLine int    // last source line we've processed (for comment emission)
+	source   []byte // original source (for #nofmt regions)
 }
 
 // Format formats a node and returns the formatted source code
@@ -37,11 +38,6 @@ func Format(node Node) string {
 
 // FormatFile parses and formats a Dang source file
 func FormatFile(source []byte) (string, error) {
-	// Check for #nofmt directive - if present, return source unchanged
-	if hasNoFmtDirective(source) {
-		return string(source), nil
-	}
-
 	result, err := Parse("format", source)
 	if err != nil {
 		return "", err
@@ -53,6 +49,7 @@ func FormatFile(source []byte) (string, error) {
 	f := &Formatter{
 		comments: comments,
 		lastLine: 0,
+		source:   source,
 	}
 	f.formatNode(result.(*ModuleBlock))
 
@@ -62,34 +59,120 @@ func FormatFile(source []byte) (string, error) {
 	return f.buf.String(), nil
 }
 
-// hasNoFmtDirective checks if the source has a #nofmt comment that should
-// disable formatting. The directive can appear:
-// - At the start of the file (first non-empty line)
-// - As a trailing comment on any line (disables formatting for entire file)
-func hasNoFmtDirective(source []byte) bool {
-	lines := bytes.Split(source, []byte("\n"))
-	for _, line := range lines {
-		trimmed := bytes.TrimSpace(line)
-		// Check for standalone #nofmt comment
-		if bytes.HasPrefix(trimmed, []byte("#")) {
-			commentText := strings.TrimSpace(string(trimmed[1:]))
-			if commentText == "nofmt" || strings.HasPrefix(commentText, "nofmt ") {
+// hasNoFmtComment checks if a node has a #nofmt comment attached to it
+// (either as a preceding standalone comment or a trailing comment on the same line)
+func (f *Formatter) hasNoFmtComment(node Node) bool {
+	// Don't check container nodes - the comment should apply to their contents
+	switch node.(type) {
+	case *ModuleBlock, *Block:
+		return false
+	}
+
+	loc := nodeFullLocation(node)
+	if loc == nil {
+		return false
+	}
+
+	// Check for preceding #nofmt comment (standalone comment on line before)
+	for _, c := range f.comments {
+		if !c.IsTrailing && c.Line == loc.Line-1 {
+			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
+			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
 				return true
 			}
-		}
-		// Check for trailing #nofmt comment
-		if idx := bytes.Index(line, []byte("#")); idx >= 0 {
-			commentText := strings.TrimSpace(string(line[idx+1:]))
-			if commentText == "nofmt" || strings.HasPrefix(commentText, "nofmt ") {
-				return true
-			}
-		}
-		// Stop after first non-empty, non-comment line
-		if len(trimmed) > 0 && !bytes.HasPrefix(trimmed, []byte("#")) {
-			break
 		}
 	}
+
+	// Check for trailing #nofmt comment on the same line
+	for _, c := range f.comments {
+		if c.IsTrailing && c.Line == loc.Line {
+			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
+			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
+				return true
+			}
+		}
+	}
+
 	return false
+}
+
+// getOriginalSource extracts the original source text for a node's span
+// If the node has a trailing #nofmt comment, include it in the span
+func (f *Formatter) getOriginalSource(node Node) string {
+	loc := nodeFullLocation(node)
+	if loc == nil || loc.End == nil {
+		return ""
+	}
+
+	startOffset := f.lineColumnToOffset(loc.Line, loc.Column)
+	endOffset := f.lineColumnToOffset(loc.End.Line, loc.End.Column)
+	if startOffset < 0 || endOffset < 0 || endOffset > len(f.source) {
+		return ""
+	}
+
+	// Check if there's a trailing #nofmt comment on the end line
+	// If so, extend the span to include the entire line
+	for _, c := range f.comments {
+		if c.Line == loc.End.Line && c.IsTrailing {
+			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
+			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
+				// Extend to end of line
+				for endOffset < len(f.source) && f.source[endOffset] != '\n' {
+					endOffset++
+				}
+				break
+			}
+		}
+	}
+
+	return string(f.source[startOffset:endOffset])
+}
+
+// nodeFullLocation returns the full span location of a node (for extracting original source)
+func nodeFullLocation(node Node) *SourceLocation {
+	switch n := node.(type) {
+	case *SlotDecl:
+		return n.Loc
+	case *ClassDecl:
+		return n.Loc
+	case *InterfaceDecl:
+		return n.Loc
+	case *FunDecl:
+		return n.Loc
+	case *ForLoop:
+		return n.Loc
+	case *Conditional:
+		return n.Loc
+	case *Case:
+		return n.Loc
+	default:
+		return nodeLocation(node)
+	}
+}
+
+// lineColumnToOffset converts a 1-indexed line and column to a byte offset
+func (f *Formatter) lineColumnToOffset(line, col int) int {
+	if f.source == nil || line < 1 || col < 1 {
+		return -1
+	}
+
+	offset := 0
+	currentLine := 1
+
+	for offset < len(f.source) && currentLine < line {
+		if f.source[offset] == '\n' {
+			currentLine++
+		}
+		offset++
+	}
+
+	// Add column offset (1-indexed)
+	offset += col - 1
+
+	if offset > len(f.source) {
+		return len(f.source)
+	}
+	return offset
 }
 
 // extractComments extracts all comments from source with their line numbers
@@ -196,6 +279,28 @@ func (f *Formatter) emitTrailingComment(line int) {
 		}
 		if comment.Line > line {
 			break
+		}
+	}
+}
+
+// skipCommentsBeforeLine removes comments before the given line without emitting them
+// (used for #nofmt regions where comments are part of the preserved source)
+func (f *Formatter) skipCommentsBeforeLine(line int) {
+	for len(f.comments) > 0 && f.comments[0].Line < line {
+		f.comments = f.comments[1:]
+	}
+}
+
+// removeTrailingNoFmtComment removes a trailing #nofmt comment on the given line
+// (because it's already included in the preserved original source)
+func (f *Formatter) removeTrailingNoFmtComment(line int) {
+	for i, c := range f.comments {
+		if c.Line == line && c.IsTrailing {
+			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
+			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
+				f.comments = append(f.comments[:i], f.comments[i+1:]...)
+				return
+			}
 		}
 	}
 }
@@ -358,6 +463,15 @@ func (f *Formatter) wouldExceedLineLength(additionalLen int) bool {
 }
 
 func (f *Formatter) formatNode(node Node) {
+	// Check for #nofmt comment - if present, emit original source
+	if f.hasNoFmtComment(node) {
+		orig := f.getOriginalSource(node)
+		if orig != "" {
+			f.write(orig)
+			return
+		}
+	}
+
 	switch n := node.(type) {
 	case *ModuleBlock:
 		f.formatModuleBlock(n)
@@ -485,6 +599,24 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
 					f.lastLine = loc.Line - 1
 				}
+			}
+		}
+		// Check for #nofmt before emitting comments (so we don't consume the comment)
+		if f.hasNoFmtComment(form) {
+			orig := f.getOriginalSource(form)
+			if orig != "" {
+				// Emit the #nofmt comment (if it's a prefix comment)
+				f.emitCommentsForNode(form)
+				f.write(orig)
+				// Skip formatting this node
+				fullLoc := nodeFullLocation(form)
+				if fullLoc != nil && fullLoc.End != nil {
+					// Remove any trailing #nofmt comment (it's part of the original source)
+					f.removeTrailingNoFmtComment(fullLoc.End.Line)
+					f.lastLine = fullLoc.End.Line
+				}
+				f.newline()
+				continue
 			}
 		}
 		// Emit any comments that precede this node

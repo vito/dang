@@ -1,3 +1,5 @@
+#nofmt
+
 assert("auto-calling symbols") {
 	serverInfo().platform() == serverInfo.platform()
 }
