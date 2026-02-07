@@ -56,7 +56,16 @@ func FormatFile(source []byte) (string, error) {
 	// Emit any trailing comments
 	f.emitRemainingComments()
 
-	return f.buf.String(), nil
+	return trimTrailingWhitespace(f.buf.String()), nil
+}
+
+// trimTrailingWhitespace removes trailing whitespace from each line
+func trimTrailingWhitespace(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " \t")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // hasNoFmtComment checks if a node has a #nofmt comment attached to it
@@ -1804,8 +1813,10 @@ func (f *Formatter) formatString(s *String) {
 		// Indent each line of the string
 		lines := strings.Split(s.Value, "\n")
 		for _, line := range lines {
-			f.writeIndent()
-			f.write(line)
+			if line != "" {
+				f.writeIndent()
+				f.write(line)
+			}
 			f.newline()
 		}
 		f.writeIndent()

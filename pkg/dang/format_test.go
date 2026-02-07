@@ -181,6 +181,17 @@ world
 """
 `,
 		},
+		{
+			name: "indented triple-quoted string with empty lines has no trailing whitespace",
+			input: `type Foo {
+	pub x = """
+	First paragraph.
+
+	Second paragraph.
+	"""
+}`,
+			expected: "type Foo {\n\tpub x = \"\"\"\n\tFirst paragraph.\n\n\tSecond paragraph.\n\t\"\"\"\n}\n",
+		},
 	}
 
 	for _, tt := range tests {
