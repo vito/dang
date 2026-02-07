@@ -37,6 +37,11 @@ func Format(node Node) string {
 
 // FormatFile parses and formats a Dang source file
 func FormatFile(source []byte) (string, error) {
+	// Check for #nofmt directive - if present, return source unchanged
+	if hasNoFmtDirective(source) {
+		return string(source), nil
+	}
+
 	result, err := Parse("format", source)
 	if err != nil {
 		return "", err
@@ -55,6 +60,36 @@ func FormatFile(source []byte) (string, error) {
 	f.emitRemainingComments()
 
 	return f.buf.String(), nil
+}
+
+// hasNoFmtDirective checks if the source has a #nofmt comment that should
+// disable formatting. The directive can appear:
+// - At the start of the file (first non-empty line)
+// - As a trailing comment on any line (disables formatting for entire file)
+func hasNoFmtDirective(source []byte) bool {
+	lines := bytes.Split(source, []byte("\n"))
+	for _, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		// Check for standalone #nofmt comment
+		if bytes.HasPrefix(trimmed, []byte("#")) {
+			commentText := strings.TrimSpace(string(trimmed[1:]))
+			if commentText == "nofmt" || strings.HasPrefix(commentText, "nofmt ") {
+				return true
+			}
+		}
+		// Check for trailing #nofmt comment
+		if idx := bytes.Index(line, []byte("#")); idx >= 0 {
+			commentText := strings.TrimSpace(string(line[idx+1:]))
+			if commentText == "nofmt" || strings.HasPrefix(commentText, "nofmt ") {
+				return true
+			}
+		}
+		// Stop after first non-empty, non-comment line
+		if len(trimmed) > 0 && !bytes.HasPrefix(trimmed, []byte("#")) {
+			break
+		}
+	}
+	return false
 }
 
 // extractComments extracts all comments from source with their line numbers

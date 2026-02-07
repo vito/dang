@@ -625,3 +625,53 @@ hello
 		})
 	}
 }
+
+func (FormatSuite) TestNoFmtDirective(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "nofmt at start of file skips formatting",
+			input: `#nofmt
+pub x = foo.bar()
+pub y = foo.bar`,
+			expected: `#nofmt
+pub x = foo.bar()
+pub y = foo.bar`,
+		},
+		{
+			name: "nofmt after header comments skips formatting",
+			input: `# header comment
+#nofmt
+pub x = foo.bar()`,
+			expected: `# header comment
+#nofmt
+pub x = foo.bar()`,
+		},
+		{
+			name: "nofmt with explanation skips formatting",
+			input: `#nofmt testing syntax equivalence
+pub x = foo.bar()`,
+			expected: `#nofmt testing syntax equivalence
+pub x = foo.bar()`,
+		},
+		{
+			name: "without nofmt file is formatted",
+			input: `# regular comment
+pub x = foo.bar()`,
+			expected: `# regular comment
+pub x = foo.bar
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
