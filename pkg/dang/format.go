@@ -1613,9 +1613,19 @@ func (f *Formatter) formatListMultiline(l *List) {
 	f.write("[")
 	f.newline()
 	f.indented(func() {
+		// Reset lastLine to prevent spurious blank line at start of list
+		if len(l.Elements) > 0 {
+			if loc := nodeLocation(l.Elements[0]); loc != nil && loc.Line > 0 {
+				f.lastLine = loc.Line - 1
+			}
+		}
 		for _, elem := range l.Elements {
+			f.emitCommentsForNode(elem)
 			f.writeIndent()
 			f.formatNode(elem)
+			if loc := nodeLocation(elem); loc != nil {
+				f.emitTrailingComment(loc.Line)
+			}
 			f.newline()
 		}
 	})
