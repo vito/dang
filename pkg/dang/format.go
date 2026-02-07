@@ -2246,8 +2246,24 @@ func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 }
 
 func (f *Formatter) formatGrouped(g *Grouped) {
+	// Check if this grouped expression spans multiple lines
+	multiline := false
+	if g.Loc != nil && g.Loc.End != nil && g.Loc.End.Line > g.Loc.Line {
+		multiline = true
+	}
+
 	f.write("(")
-	f.formatNode(g.Expr)
+	if multiline {
+		f.newline()
+		f.indented(func() {
+			f.writeIndent()
+			f.formatNode(g.Expr)
+			f.newline()
+		})
+		f.writeIndent()
+	} else {
+		f.formatNode(g.Expr)
+	}
 	f.write(")")
 }
 

@@ -720,6 +720,20 @@ func (FormatSuite) TestGroupedExpressions(ctx context.Context, t *testctx.T) {
 			input:    `let x = ((a))`,
 			expected: "let x = ((a))\n",
 		},
+		{
+			name: "multiline grouped is indented",
+			input: `let x = (
+foo
+)`,
+			expected: "let x = (\n\tfoo\n)\n",
+		},
+		{
+			name: "multiline grouped with expression",
+			input: `let x = (
+a + b
+)`,
+			expected: "let x = (\n\ta + b\n)\n",
+		},
 	}
 
 	for _, tt := range tests {
