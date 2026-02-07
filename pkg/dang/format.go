@@ -936,18 +936,17 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 	if multiline {
 		f.newline()
 		f.indented(func() {
-			for i, arg := range args {
+			for _, arg := range args {
 				f.writeIndent()
 				f.formatArgDecl(arg)
-				if i < len(args)-1 {
-					f.write(",")
-				}
+				f.write(",")
 				f.newline()
 			}
 			if blockParam != nil {
 				f.writeIndent()
 				f.write("&")
 				f.formatArgDecl(blockParam)
+				f.write(",")
 				f.newline()
 			}
 		})
@@ -1423,19 +1422,17 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
 	if multiline {
 		f.newline()
 		f.indented(func() {
-			for i, arg := range args {
+			for _, arg := range args {
 				f.writeIndent()
 				if !arg.Positional && arg.Key != "" {
 					f.write(arg.Key)
 					f.write(": ")
 				}
 				f.formatNode(arg.Value)
-				if i < len(args)-1 {
-					f.newline()
-				}
+				f.write(",")
+				f.newline()
 			}
 		})
-		f.newline()
 		f.writeIndent()
 	} else {
 		for i, arg := range args {
@@ -1652,6 +1649,9 @@ func (f *Formatter) formatListMultiline(l *List) {
 					break
 				}
 			}
+
+			// Always add trailing comma
+			f.write(",")
 
 			if elemLoc != nil {
 				f.emitTrailingComment(elemLoc.Line)

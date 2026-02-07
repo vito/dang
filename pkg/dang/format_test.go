@@ -295,7 +295,7 @@ func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 	"""
 	Line offset to start reading from
 	"""
-	offset: Int! = 0
+	offset: Int! = 0,
 ): String! {
 	filePath
 }
@@ -368,8 +368,8 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 ]`,
 			expected: `pub x = [
 	# comment inside list
-	"a"
-	"b"
+	"a",
+	"b",
 ]
 `,
 		},
@@ -380,8 +380,8 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 	"b"
 ]`,
 			expected: `pub x = [
-	"a" # trailing comment
-	"b"
+	"a", # trailing comment
+	"b",
 ]
 `,
 		},
@@ -394,8 +394,8 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 ])`,
 			expected: `pub source: Directory! @ignorePatterns(patterns: [
 	# TODO: respecting .gitignore would be nice
-	"Session.vim"
-	"dang"
+	"Session.vim",
+	"dang",
 ])
 `,
 		},
@@ -531,10 +531,10 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 	let e = env.withWorkspace(source)
 	e
 }`,
-			// Multiline args are preserved
+			// Multiline args are preserved, with trailing comma
 			expected: `pub dev(
 	source: Directory!,
-	module: Module
+	module: Module,
 ): LLM! {
 	let e = env.withWorkspace(source)
 	e
@@ -609,9 +609,9 @@ hello
 	c
 )`,
 			expected: `pub x = foo(
-	a
-	b
-	c
+	a,
+	b,
+	c,
 )
 `,
 		},
