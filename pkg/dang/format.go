@@ -216,6 +216,12 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *String:
 		return n.Loc
+	case *Boolean:
+		return n.Loc
+	case *List:
+		return n.Loc
+	case *Object:
+		return n.Loc
 	case *FunCall:
 		return nodeLocation(n.Fun)
 	case *Select:
