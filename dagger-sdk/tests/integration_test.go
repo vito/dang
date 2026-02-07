@@ -109,6 +109,34 @@ func (DaggerSDKSuite) TestEnums(ctx context.Context, t *testctx.T) {
 	})
 }
 
+func (DaggerSDKSuite) TestMismatch(ctx context.Context, t *testctx.T) {
+	t.Run("child parent name", func(ctx context.Context, t *testctx.T) {
+		out := requireDagger(ctx, t, "test-mismatch", "--n", "hello", "child", "parent-name")
+		require.Contains(t, out, "hello")
+	})
+}
+
+func (DaggerSDKSuite) TestPrivateArg(ctx context.Context, t *testctx.T) {
+	t.Run("default private value", func(ctx context.Context, t *testctx.T) {
+		out := requireDagger(ctx, t, "test-private-arg", "display")
+		// default is 42 * 2 = 84
+		require.Contains(t, out, "84")
+	})
+
+	t.Run("custom private value", func(ctx context.Context, t *testctx.T) {
+		out := requireDagger(ctx, t, "test-private-arg", "--private", "10", "display")
+		// 10 * 2 = 20
+		require.Contains(t, out, "20")
+	})
+
+	t.Run("ls with default source", func(ctx context.Context, t *testctx.T) {
+		out := requireDagger(ctx, t, "test-private-arg", "ls")
+		// Should list files from @defaultPath(".")
+		require.Contains(t, out, "main.dang")
+		require.Contains(t, out, "dagger.json")
+	})
+}
+
 func (DaggerSDKSuite) TestScalars(ctx context.Context, t *testctx.T) {
 	t.Run("timestamp", func(ctx context.Context, t *testctx.T) {
 		out := requireDagger(ctx, t, "test-scalar", "get-timestamp", "--ts", "2024-01-01T00:00:00Z")
