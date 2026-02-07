@@ -386,6 +386,8 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Name.Loc
 	case *DirectiveDecl:
 		return n.Loc
+	case *NewConstructorDecl:
+		return n.Loc
 	case *EnumDecl:
 		return n.Loc
 	case *ScalarDecl:
@@ -524,6 +526,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatFunDecl(n)
 	case *DirectiveDecl:
 		f.formatDirectiveDecl(n)
+	case *NewConstructorDecl:
+		f.formatNewConstructorDecl(n)
 	case *ImportDecl:
 		f.formatImportDecl(n)
 	case *Block:
@@ -767,6 +771,9 @@ func isAssert(node Node) bool {
 }
 
 func isFunctionDef(node Node) bool {
+	if _, ok := node.(*NewConstructorDecl); ok {
+		return true
+	}
 	slot, ok := node.(*SlotDecl)
 	if !ok {
 		return false
@@ -873,6 +880,22 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 	})
 
 	f.write("}")
+}
+
+func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
+	if n.DocString != "" {
+		f.formatDocString(n.DocString)
+	}
+
+	f.write("new(")
+	for i, arg := range n.Args {
+		if i > 0 {
+			f.write(", ")
+		}
+		f.formatArgDecl(arg)
+	}
+	f.write(") ")
+	f.formatBlock(n.BodyBlock)
 }
 
 func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
