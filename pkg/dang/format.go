@@ -240,6 +240,36 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *Assert:
 		return n.Loc
+	case *Addition:
+		return n.Loc
+	case *Subtraction:
+		return n.Loc
+	case *Multiplication:
+		return n.Loc
+	case *Division:
+		return n.Loc
+	case *Modulo:
+		return n.Loc
+	case *Default:
+		return n.Loc
+	case *LogicalOr:
+		return n.Loc
+	case *LogicalAnd:
+		return n.Loc
+	case *Equality:
+		return n.Loc
+	case *Inequality:
+		return n.Loc
+	case *LessThan:
+		return n.Loc
+	case *LessThanEqual:
+		return n.Loc
+	case *GreaterThan:
+		return n.Loc
+	case *GreaterThanEqual:
+		return n.Loc
+	case *UnaryNegation:
+		return n.Loc
 	default:
 		return nil
 	}
@@ -1549,9 +1579,10 @@ func (f *Formatter) formatList(l *List) {
 }
 
 func (f *Formatter) wasListMultiline(l *List) bool {
-	if len(l.Elements) < 2 {
+	if len(l.Elements) == 0 {
 		return false
 	}
+
 	// Check if any element STARTS on a different line than the previous element STARTS
 	// This distinguishes between:
 	//   ["a", "b", """multiline"""] - elements start on same line, not multiline
@@ -1564,6 +1595,16 @@ func (f *Formatter) wasListMultiline(l *List) bool {
 			return true
 		}
 	}
+
+	// For single-element lists, check if the element starts on a different line
+	// than the opening bracket (the list's start line)
+	if len(l.Elements) == 1 && l.Loc != nil {
+		elemLoc := nodeLocation(l.Elements[0])
+		if elemLoc != nil && elemLoc.Line > l.Loc.Line {
+			return true
+		}
+	}
+
 	return false
 }
 
