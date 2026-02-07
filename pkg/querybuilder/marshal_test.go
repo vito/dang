@@ -20,7 +20,7 @@ var _ enum = enumType("")
 func TestMarshalGQL(t *testing.T) {
 	var (
 		str         = "hello world"
-		unicode     = "∆?–∂∂√˛viÙ˜Ÿ¿GÆÓ∂Ó˘◊ñ" //nolint:staticcheck // ST1018 unicode test string
+		unicode     = "∆?–∂∂√˛viÙ˜Ÿ¿GÆÓ∂Ó˘◊ñ" //nolint:staticcheck // ST1018 unicode test string
 		strNullPtr  *string
 		strPtrSlice          = []*string{&str}
 		enumVal     enumType = "test"
