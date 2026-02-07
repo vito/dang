@@ -432,6 +432,20 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		lexical: env.(Env),
 	}
 
+	// Check for slots named "new" — the user likely intended a constructor
+	for _, form := range c.Value.Forms {
+		if slot, ok := form.(*SlotDecl); ok && slot.Name.Name == "new" {
+			vis := "pub"
+			if slot.Visibility == PrivateVisibility {
+				vis = "let"
+			}
+			return nil, NewInferError(
+				fmt.Errorf("'new' is a constructor, not a method; use `new(...) { ... }` without `%s` or a return type", vis),
+				slot,
+			)
+		}
+	}
+
 	// Infer body forms (excluding new() which is handled separately)
 	bodyForms := c.bodyFormsWithoutNew()
 	if _, err := InferFormsWithPhases(ctx, bodyForms, inferEnv, fresh); err != nil {
