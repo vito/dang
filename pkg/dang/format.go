@@ -1629,6 +1629,12 @@ func (f *Formatter) formatObject(o *Object) {
 		return
 	}
 
+	// Check if object was originally multiline
+	wasMultiline := false
+	if o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line {
+		wasMultiline = true
+	}
+
 	// Estimate inline length
 	length := 4 // {{}}
 	for i, slot := range o.Slots {
@@ -1638,7 +1644,7 @@ func (f *Formatter) formatObject(o *Object) {
 		length += len(slot.Name.Name) + 2 + f.estimateLength(slot.Value)
 	}
 
-	if f.col+length <= maxLineLength {
+	if !wasMultiline && f.col+length <= maxLineLength {
 		f.formatObjectInline(o)
 	} else {
 		f.formatObjectMultiline(o)
@@ -1660,13 +1666,27 @@ func (f *Formatter) formatObjectInline(o *Object) {
 
 func (f *Formatter) formatObjectMultiline(o *Object) {
 	f.write("{{")
+	// Emit trailing comment on the opening {{ line
+	if o.Loc != nil {
+		f.emitTrailingComment(o.Loc.Line)
+	}
 	f.newline()
 	f.indented(func() {
+		// Reset lastLine to prevent spurious blank line at start
+		if len(o.Slots) > 0 {
+			if loc := nodeLocation(o.Slots[0]); loc != nil && loc.Line > 0 {
+				f.lastLine = loc.Line - 1
+			}
+		}
 		for _, slot := range o.Slots {
+			f.emitCommentsForNode(slot)
 			f.writeIndent()
 			f.write(slot.Name.Name)
 			f.write(": ")
 			f.formatNode(slot.Value)
+			if loc := nodeLocation(slot); loc != nil {
+				f.emitTrailingComment(loc.Line)
+			}
 			f.newline()
 		}
 	})
