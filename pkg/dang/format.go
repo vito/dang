@@ -142,6 +142,11 @@ func (f *Formatter) emitCommentsBeforeLine(line int) {
 		f.newline()
 		f.lastLine = comment.Line
 	}
+
+	// If there's a blank line between the last comment and the node, preserve it
+	if f.lastLine > 0 && line > f.lastLine+1 {
+		f.newline()
+	}
 }
 
 // emitTrailingComment emits a trailing comment for the given line if one exists
@@ -403,6 +408,8 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 			// Add blank line only when needed (before/after function definitions)
 			if f.needsBlankLineBetween(m.Forms[i-1], form) {
 				f.newline()
+				// Update lastLine so comment emission doesn't add duplicate blank lines
+				f.lastLine = nodeEndLine(m.Forms[i-1]) + 1
 			}
 		}
 		// Emit any comments that precede this node
@@ -419,7 +426,7 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 // needsBlankLineBetween determines if a blank line should separate two forms
 func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
 	// Preserve blank lines from original source
-	if hadBlankLineBetween(prev, next) {
+	if f.hadBlankLineBetween(prev, next) {
 		return true
 	}
 
@@ -458,14 +465,25 @@ func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
 }
 
 // hadBlankLineBetween checks if there was a blank line between two nodes in the original source
-func hadBlankLineBetween(prev, next Node) bool {
-	prevLoc := nodeEndLine(prev)
+// (not counting comment lines - those are handled by comment emission)
+func (f *Formatter) hadBlankLineBetween(prev, next Node) bool {
+	prevEnd := nodeEndLine(prev)
 	nextLoc := nodeLocation(next)
-	if prevLoc > 0 && nextLoc != nil && nextLoc.Line > 0 {
-		// If there's more than 1 line between end of prev and start of next, there was a blank line
-		return nextLoc.Line > prevLoc+1
+	if prevEnd <= 0 || nextLoc == nil || nextLoc.Line <= 0 {
+		return false
 	}
-	return false
+
+	// Count how many lines between prev end and next start are comments
+	commentLines := 0
+	for _, c := range f.comments {
+		if c.Line > prevEnd && c.Line < nextLoc.Line && !c.IsTrailing {
+			commentLines++
+		}
+	}
+
+	// There's a blank line if there's more than 1 line gap after accounting for comments
+	gap := nextLoc.Line - prevEnd - 1 // lines between prev and next
+	return gap > commentLines
 }
 
 // nodeEndLine returns the last line of a node (using End if available, otherwise start line)
@@ -579,6 +597,7 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 		for i, form := range block.Forms {
 			if i > 0 && f.needsBlankLineBetween(block.Forms[i-1], form) {
 				f.newline()
+				f.lastLine = nodeEndLine(block.Forms[i-1]) + 1
 			}
 			// Emit comments for this member
 			f.emitCommentsForNode(form)
@@ -610,6 +629,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 		for j, form := range block.Forms {
 			if j > 0 && f.needsBlankLineBetween(block.Forms[j-1], form) {
 				f.newline()
+				f.lastLine = nodeEndLine(block.Forms[j-1]) + 1
 			}
 			// Emit comments for this member
 			f.emitCommentsForNode(form)
