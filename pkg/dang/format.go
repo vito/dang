@@ -25,8 +25,7 @@ type Formatter struct {
 	indent   int
 	col      int // current column (approximate, for line length decisions)
 	comments []Comment
-	lastLine int    // last source line we've processed (for comment emission)
-	source   []byte // original source for checking multiline structures
+	lastLine int // last source line we've processed (for comment emission)
 }
 
 // Format formats a node and returns the formatted source code
@@ -49,7 +48,6 @@ func FormatFile(source []byte) (string, error) {
 	f := &Formatter{
 		comments: comments,
 		lastLine: 0,
-		source:   source,
 	}
 	f.formatNode(result.(*ModuleBlock))
 
@@ -1199,75 +1197,25 @@ func (f *Formatter) shouldSplitChain(c *FunCall) bool {
 		return false
 	}
 
-	// Estimate length, but don't count multiline block arg bodies
-	length := f.estimateChainLength(c)
+	length := f.estimateLength(c)
 	return f.col+length > maxLineLength
 }
 
-// estimateChainLength estimates the length of a chain for splitting decisions,
-// not counting multiline block arg bodies (since those will be on their own lines anyway)
-func (f *Formatter) estimateChainLength(node Node) int {
-	switch n := node.(type) {
-	case *FunCall:
-		length := f.estimateChainLength(n.Fun)
-		length += 2 // "()"
-		for i, arg := range n.Args {
-			if i > 0 {
-				length += 2 // ", "
-			}
-			length += f.estimateLength(arg.Value)
-		}
-		if n.BlockArg != nil {
-			// Just count the opening: " { params =>" or " {"
-			length += 3 // " { "
-			for i, arg := range n.BlockArg.Args {
-				if i > 0 {
-					length += 2 // ", "
-				}
-				length += len(arg.Name.Name)
-			}
-			if len(n.BlockArg.Args) > 0 {
-				length += 4 // " => "
-			}
-			// Don't count the block body - it may be multiline
-		}
-		return length
-	case *Select:
-		length := 0
-		if n.Receiver != nil {
-			length = f.estimateChainLength(n.Receiver)
-		}
-		length += 1 + len(n.Field) // ".field"
-		return length
-	default:
-		return f.estimateLength(node)
-	}
-}
-
-// wasChainMultiline checks if the chain itself was written across multiple lines
-// (i.e., the dots were on different lines), not counting multiline block args
+// wasChainMultiline checks if any part of a method chain was on a different line
 func (f *Formatter) wasChainMultiline(node Node) bool {
+	loc := nodeLocation(node)
+	if loc != nil && loc.End != nil && loc.End.Line > loc.Line {
+		return true
+	}
+
 	switch n := node.(type) {
 	case *FunCall:
 		if sel, ok := n.Fun.(*Select); ok {
-			// Check if the receiver ends on a different line than the select starts
-			// The select's Loc.Line is where the ".field" part begins
-			if sel.Receiver != nil && sel.Loc != nil {
-				recvEnd := nodeEndLine(sel.Receiver)
-				if recvEnd > 0 && sel.Loc.Line > recvEnd {
-					return true
-				}
-			}
 			return f.wasChainMultiline(sel)
 		}
 		return false
 	case *Select:
-		// Check if the receiver ends on a different line than the select starts
-		if n.Receiver != nil && n.Loc != nil {
-			recvEnd := nodeEndLine(n.Receiver)
-			if recvEnd > 0 && n.Loc.Line > recvEnd {
-				return true
-			}
+		if n.Receiver != nil {
 			return f.wasChainMultiline(n.Receiver)
 		}
 		return false
@@ -1280,12 +1228,10 @@ func (f *Formatter) getChainDepth(node Node) int {
 	switch n := node.(type) {
 	case *FunCall:
 		if sel, ok := n.Fun.(*Select); ok {
-			// This is a method call like x.foo() - count it as 1 + depth of receiver
-			return 1 + f.getChainDepth(sel.Receiver)
+			return 1 + f.getChainDepth(sel)
 		}
 		return f.getChainDepth(n.Fun)
 	case *Select:
-		// This is a field access like x.foo - count it as 1 + depth of receiver
 		return 1 + f.getChainDepth(n.Receiver)
 	default:
 		return 0
@@ -1409,71 +1355,11 @@ func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 }
 
 // wasSelectMultiline checks if a select chain was originally on multiple lines
-// (i.e., the dot was on a different line than the receiver), not counting multiline args
 func (f *Formatter) wasSelectMultiline(s *Select) bool {
-	if s.Receiver == nil {
-		return false
+	if s.Loc != nil && s.Loc.End != nil && s.Loc.End.Line > s.Loc.Line {
+		return true
 	}
-
-	// Check if there's a newline between the receiver's end and the dot
-	// by looking at the source between receiver end and this select
-	recvLoc := nodeLocation(s.Receiver)
-	if recvLoc != nil && recvLoc.End != nil && f.source != nil {
-		recvEndLine := recvLoc.End.Line
-		recvEndCol := recvLoc.End.Column
-
-		// Find where in source the receiver ends
-		recvEndOffset := f.lineColToOffset(recvEndLine, recvEndCol)
-		if recvEndOffset >= 0 && recvEndOffset < len(f.source) {
-			// Look for a newline between receiver end and the dot
-			// The dot should be soon after the receiver
-			searchEnd := recvEndOffset + 20 // reasonable lookahead
-			if searchEnd > len(f.source) {
-				searchEnd = len(f.source)
-			}
-			for i := recvEndOffset; i < searchEnd; i++ {
-				if f.source[i] == '.' {
-					break // found the dot, no newline before it
-				}
-				if f.source[i] == '\n' {
-					return true // newline before the dot
-				}
-			}
-		}
-	}
-
-	// Recursively check if the receiver chain is multiline
-	if sel, ok := s.Receiver.(*Select); ok {
-		return f.wasSelectMultiline(sel)
-	}
-
 	return false
-}
-
-// lineColToOffset converts a 1-indexed line and column to a byte offset
-func (f *Formatter) lineColToOffset(line, col int) int {
-	if f.source == nil || line < 1 {
-		return -1
-	}
-
-	offset := 0
-	currentLine := 1
-
-	for offset < len(f.source) && currentLine < line {
-		if f.source[offset] == '\n' {
-			currentLine++
-		}
-		offset++
-	}
-
-	// Now at the start of the target line, add column offset (1-indexed)
-	offset += col - 1
-
-	if offset < 0 || offset > len(f.source) {
-		return -1
-	}
-
-	return offset
 }
 
 // formatSelectChain formats a select chain with leading dots on new lines
@@ -1855,10 +1741,6 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 
 func (f *Formatter) formatBlockArg(b *BlockArg) {
 	f.write("{")
-
-	block, isBlock := b.BodyNode.(*Block)
-	singleLineBody := isBlock && len(block.Forms) == 1 && !wasMultiline(block)
-
 	if len(b.Args) > 0 {
 		f.write(" ")
 		for i, arg := range b.Args {
@@ -1867,20 +1749,16 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 			}
 			f.write(arg.Name.Name)
 		}
-		if singleLineBody {
-			f.write(" => ")
-		} else {
-			f.write(" =>")
-		}
+		f.write(" => ")
 	} else {
 		f.write(" ")
 	}
 
-	if singleLineBody {
+	if block, ok := b.BodyNode.(*Block); ok && len(block.Forms) == 1 && !wasMultiline(block) {
 		// Single expression block arg that was originally on one line
 		f.formatNode(block.Forms[0])
 		f.write(" }")
-	} else if isBlock {
+	} else if block, ok := b.BodyNode.(*Block); ok {
 		// Multi-line block arg
 		f.newline()
 		f.indented(func() {
