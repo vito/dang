@@ -349,3 +349,159 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
 		})
 	}
 }
+
+func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "comment before list element stays inside list",
+			input: `pub x = [
+	# comment inside list
+	"a",
+	"b"
+]`,
+			expected: `pub x = [
+	# comment inside list
+	"a"
+	"b"
+]
+`,
+		},
+		{
+			name: "trailing comment on list element",
+			input: `pub x = [
+	"a", # trailing comment
+	"b"
+]`,
+			expected: `pub x = [
+	"a" # trailing comment
+	"b"
+]
+`,
+		},
+		{
+			name: "comment in directive list arg",
+			input: `pub source: Directory! @ignorePatterns(patterns: [
+	# TODO: respecting .gitignore would be nice
+	"Session.vim"
+	"dang"
+])`,
+			expected: `pub source: Directory! @ignorePatterns(patterns: [
+	# TODO: respecting .gitignore would be nice
+	"Session.vim"
+	"dang"
+])
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "no trailing whitespace on empty lines in docstrings",
+			input: `type Foo {
+	"""
+	Doc line 1
+
+	Doc line 2
+	"""
+	pub x: Int!
+}`,
+			// Empty line in docstring should have no trailing whitespace
+			expected: "type Foo {\n\n\t\"\"\"\n\tDoc line 1\n\n\tDoc line 2\n\t\"\"\"\n\tpub x: Int!\n}\n",
+		},
+		{
+			name: "single blank line between functions with docstrings",
+			input: `type Foo {
+	"""
+	Doc for a
+	"""
+	pub a: Int! { 1 }
+
+	"""
+	Doc for b
+	"""
+	pub b: Int! { 2 }
+}`,
+			expected: `type Foo {
+
+	"""
+	Doc for a
+	"""
+	pub a: Int! { 1 }
+
+	"""
+	Doc for b
+	"""
+	pub b: Int! { 2 }
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "no blank line after opening brace when args collapsed",
+			input: `pub dev(
+	source: Directory!,
+	module: Module
+): LLM! {
+	let e = env.withWorkspace(source)
+	e
+}`,
+			expected: `pub dev(source: Directory!, module: Module): LLM! {
+	let e = env.withWorkspace(source)
+	e
+}
+`,
+		},
+		{
+			name: "no blank line at start of simple function body",
+			input: `pub foo: Int! {
+	42
+}`,
+			expected: `pub foo: Int! {
+	42
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
