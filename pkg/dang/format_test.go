@@ -264,6 +264,53 @@ func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "parameter docstrings force multiline and stay with params",
+			input: `pub readFile(
+	"""
+	Relative path within the workspace
+	"""
+	filePath: String!,
+	"""
+	Line offset to start reading from
+	"""
+	offset: Int! = 0
+): String! {
+	filePath
+}`,
+			// NOTE: extra blank line after { is bug #2, will be fixed
+			expected: `pub readFile(
+	"""
+	Relative path within the workspace
+	"""
+	filePath: String!,
+	"""
+	Line offset to start reading from
+	"""
+	offset: Int! = 0
+): String! {
+
+	filePath
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

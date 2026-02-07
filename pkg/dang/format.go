@@ -812,6 +812,18 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 }
 
 func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
+	// Check if any arg has a docstring - if so, force multiline
+	hasDocString := false
+	for _, arg := range args {
+		if arg.DocString != "" {
+			hasDocString = true
+			break
+		}
+	}
+	if blockParam != nil && blockParam.DocString != "" {
+		hasDocString = true
+	}
+
 	// Estimate total length
 	totalLen := 0
 	for i, arg := range args {
@@ -827,7 +839,7 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 		totalLen += f.estimateArgLength(blockParam) + 1 // +1 for &
 	}
 
-	multiline := f.col+totalLen > maxLineLength
+	multiline := hasDocString || f.col+totalLen > maxLineLength
 
 	if multiline {
 		f.newline()
@@ -835,20 +847,18 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 			for i, arg := range args {
 				f.writeIndent()
 				f.formatArgDecl(arg)
-				if i < len(args)-1 || blockParam != nil {
-					f.newline()
+				if i < len(args)-1 {
+					f.write(",")
 				}
+				f.newline()
 			}
 			if blockParam != nil {
-				if len(args) > 0 {
-					f.newline()
-				}
 				f.writeIndent()
 				f.write("&")
 				f.formatArgDecl(blockParam)
+				f.newline()
 			}
 		})
-		f.newline()
 		f.writeIndent()
 	} else {
 		for i, arg := range args {
