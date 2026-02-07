@@ -12,7 +12,7 @@ type Doug {
 	"""
 	pub dev(
 		source: Directory!,
-		module: Module
+		module: Module,
 	): LLM! {
 		let e = env.withWorkspace(source)
 		if (module != null) {
@@ -25,21 +25,25 @@ type Doug {
 	Returns a Doug coding agent
 	"""
 	pub agent(base: LLM!): LLM! {
-		base.
-			withEnv(
-				base.env.
-					withCurrentModule.
-					withStringInput("TODOs", "", "Your TODO list")).
-			withSystemPrompt({
-				let promptsDir = currentModule.source.directory("prompts/system/")
-				let providerFile = base.provider + ".txt"
-				if (promptsDir.entries.contains(providerFile)) {
-					promptsDir.file(providerFile).contents
-				} else {
-					promptsDir.file("doug.txt").contents
-				}
-			}).
-			withSystemPrompt(reminderPrompt(base.env.workspace))
+		base
+			.withEnv(
+				base
+					.env
+					.withCurrentModule
+					.withStringInput("TODOs", "", "Your TODO list"),
+			)
+			.withSystemPrompt(
+				{
+					let promptsDir = currentModule.source.directory("prompts/system/")
+					let providerFile = base.provider + ".txt"
+					if (promptsDir.entries.contains(providerFile)) {
+						promptsDir.file(providerFile).contents
+					} else {
+						promptsDir.file("doug.txt").contents
+					}
+				},
+			)
+			.withSystemPrompt(reminderPrompt(base.env.workspace))
 	}
 
 	"""
@@ -67,12 +71,15 @@ type Doug {
 		"""
 		Limit the number of lines read
 		"""
-		limit: Int! = 2000
+		limit: Int! = 2000,
 	): String! {
-		let fileContents = source.file(normalize(filePath)).contents(
-			offsetLines: offset,
-			limitLines: limit
-		)
+		let fileContents = source
+			.file(normalize(filePath))
+			.contents(
+				offsetLines: offset,
+				limitLines: limit,
+			)
+
 		if (fileContents == "") {
 			"WARNING: File contents are empty."
 		} else {
@@ -83,7 +90,7 @@ type Doug {
 			let numbered = ""
 			for (i, line in fileContents.split("\n", 0)) {
 				# TODO: template
-				numbered += toJSON(offset+i+1).padLeft(6) + "→" + line + "\n"
+				numbered += toJSON(offset + i + 1).padLeft(6) + "→" + line + "\n"
 			}
 			numbered.trimSuffix("\n")
 		}
@@ -154,14 +161,17 @@ type Doug {
 		"""
 		Replace all occurrences
 		"""
-		replaceAll: Boolean! = false
+		replaceAll: Boolean! = false,
 	): Changeset! {
 		let normalizedPath = normalize(filePath)
-		source.withFile(
-			normalizedPath,
-			source.file(normalizedPath).
-				withReplaced(oldString, newString, all: replaceAll),
-		).changes(source)
+		source
+			.withFile(
+				normalizedPath,
+				source
+					.file(normalizedPath)
+					.withReplaced(oldString, newString, all: replaceAll),
+			)
+			.changes(source)
 	}
 
 	"""
@@ -171,7 +181,7 @@ type Doug {
 		"""
 		Relative path within the workspace
 		"""
-		path: String!
+		path: String!,
 	): Changeset! {
 		source.withoutFile(path).changes(source)
 	}
@@ -189,18 +199,18 @@ type Doug {
 		"""
 		Destination path within the workspace
 		"""
-		newPath: String!
+		newPath: String!,
 	): Changeset {
 		if (source.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
-			source.
-				withFile(newPath, source.file(oldPath)).
-				withoutFile(oldPath).
-				changes(source)
+			source
+				.withFile(newPath, source.file(oldPath))
+				.withoutFile(oldPath)
+				.changes(source)
 		} else if (source.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
-			source.
-				withDirectory(newPath, source.directory(oldPath)).
-				withoutDirectory(oldPath).
-				changes(source)
+			source
+				.withDirectory(newPath, source.directory(oldPath))
+				.withoutDirectory(oldPath)
+				.changes(source)
 		}
 	}
 
@@ -239,7 +249,7 @@ type Doug {
 		"""
 		Complete file content to write
 		"""
-		contents: String!
+		contents: String!,
 	): Changeset! {
 		source.withNewFile(normalize(filePath), contents).changes(source)
 	}
@@ -285,7 +295,7 @@ type Doug {
 		"""
 		Relative glob pattern to find within the workspace
 		"""
-		pattern: String!
+		pattern: String!,
 	): Void {
 		let matches = source.glob(pattern)
 		let anyMatched = false
@@ -379,21 +389,22 @@ type Doug {
 		"""
 		Limit the number of matches
 		"""
-		limit: Int! = 1000
+		limit: Int! = 1000,
 	): String! {
 		let normalizedPaths = paths.map { p => normalize(p) }
 
-		let matches = source.search(
-			pattern: pattern,
-			literal: literalText,
-			paths: normalizedPaths,
-			globs: glob,
-			multiline: multiline,
-			dotall: multiline,
-			filesOnly: !content,
-			insensitive: insensitive,
-			limit: limit
-		)
+		let matches = source
+			.search(
+				pattern: pattern,
+				literal: literalText,
+				paths: normalizedPaths,
+				globs: glob,
+				multiline: multiline,
+				dotall: multiline,
+				filesOnly: !content,
+				insensitive: insensitive,
+				limit: limit,
+			)
 
 		toJSON(matches.{id}.length) + " matches found"
 	}
@@ -429,28 +440,26 @@ type Doug {
 		"""
 		The prompt for the sub-agent
 		"""
-		prompt: String!
+		prompt: String!,
 	): String! {
-		llm.
-			withEnv(currentEnv.withoutOutputs).
-			withBlockedFunction("Doug", "research").
-			withBlockedFunction("Doug", "rabbithole").
-			withoutDefaultSystemPrompt.
-			withSystemPrompt(
-				"""
-				Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
+		llm
+			.withEnv(currentEnv.withoutOutputs)
+			.withBlockedFunction("Doug", "research")
+			.withBlockedFunction("Doug", "rabbithole")
+			.withoutDefaultSystemPrompt
+			.withSystemPrompt("""
+			Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
 
-				Notes:
-				- You are running in a sandboxed copy of the original filesystem; your writes will be discarded, so feel free to use it as a scratch space if needed.
-				- You are in an isolated sandboxed environment. Any writes you perform will be discarded. If the task implies they should be kept, fail early.
-				- Your final response should always share relevant file names and code snippets. Paths should always be relative to the project root.
-				- You MUST avoid using emojis.
-				"""
-			).
-			withSystemPrompt(reminderPrompt(workspace: source)).
-			withPrompt(prompt).
-			loop.
-			lastReply
+			Notes:
+			- You are running in a sandboxed copy of the original filesystem; your writes will be discarded, so feel free to use it as a scratch space if needed.
+			- You are in an isolated sandboxed environment. Any writes you perform will be discarded. If the task implies they should be kept, fail early.
+			- Your final response should always share relevant file names and code snippets. Paths should always be relative to the project root.
+			- You MUST avoid using emojis.
+			""")
+			.withSystemPrompt(reminderPrompt(workspace: source))
+			.withPrompt(prompt)
+			.loop
+			.lastReply
 	}
 
 	"""
@@ -470,29 +479,27 @@ type Doug {
 		"""
 		The prompt for the sub-agent
 		"""
-		prompt: String!
+		prompt: String!,
 	): Env! {
 		let reminderPromptText = reminderPrompt(workspace: source)
 
-		let result = llm.
-			withEnv(currentEnv.withoutOutputs).
-			withBlockedFunction("Doug", "research").
-			withBlockedFunction("Doug", "rabbithole").
-			withoutDefaultSystemPrompt.
-			withSystemPrompt(
-				"""
-				Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
+		let result = llm
+			.withEnv(currentEnv.withoutOutputs)
+			.withBlockedFunction("Doug", "research")
+			.withBlockedFunction("Doug", "rabbithole")
+			.withoutDefaultSystemPrompt
+			.withSystemPrompt("""
+			Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
 
-				Notes:
-				- Don't worry about saying which files you updated; that'll happen automatically.
-				- Put a tl;dr at the bottom so the caller can decide whether it needs to
-				read the rest of the report.
-				- You MUST avoid using emojis.
-				"""
-			).
-			withSystemPrompt(reminderPromptText).
-			withPrompt(prompt).
-			loop
+			Notes:
+			- Don't worry about saying which files you updated; that'll happen automatically.
+			- Put a tl;dr at the bottom so the caller can decide whether it needs to
+			read the rest of the report.
+			- You MUST avoid using emojis.
+			""")
+			.withSystemPrompt(reminderPromptText)
+			.withPrompt(prompt)
+			.loop
 
 		# show the reply, which will be tl;dred
 		print(result.lastReply)
@@ -527,9 +534,9 @@ type Doug {
 		- To print the current TODO list, call this function with no arguments
 	"""
 	pub todoWrite(
-		pending: [String!]! = []
-		inProgress: [String!]! = []
-		completed: [String!]! = []
+		pending: [String!]! = [],
+		inProgress: [String!]! = [],
+		completed: [String!]! = [],
 	): Env! {
 		# Try to get current TODOs, default to empty string if not found
 		# Since we don't have try/catch, we'll assume it returns empty string on failure
@@ -570,15 +577,15 @@ type Doug {
 
 		for (todo in existingCompleted + completed) {
 			encodedTodos += "completed:" + todo + "\n"
-			formattedTodos += "■ \u001b[32m\u001b[9m" + todo + "\u001b[0m\n"
+			formattedTodos += "■ \x1b[32m\x1b[9m" + todo + "\x1b[0m\n"
 		}
 		for (todo in existingInProgress + inProgress) {
 			encodedTodos += "in_progress:" + todo + "\n"
-			formattedTodos += "□ \u001b[33m" + todo + "\u001b[0m\n"
+			formattedTodos += "□ \x1b[33m" + todo + "\x1b[0m\n"
 		}
 		for (todo in existingPending + pending) {
 			encodedTodos += "pending:" + todo + "\n"
-			formattedTodos += "□ \u001b[37m" + todo + "\u001b[0m\n"
+			formattedTodos += "□ \x1b[37m" + todo + "\x1b[0m\n"
 		}
 
 		print(formattedTodos)
@@ -587,16 +594,15 @@ type Doug {
 	}
 
 	let reminderPrompt(workspace: Directory!): String! {
-		let baseSegment =
-			"""
-			# System Reminder
+		let baseSegment = """
+		# System Reminder
 
-			- Do what has been asked; nothing more, nothing less.
-			- NEVER create files unless they're absolutely necessary for achieving your goal.
-			- ALWAYS prefer editing an existing file to creating a new one.
-			- NEVER proactively create documentation files (*.md) or README files.
-			- Only create documentation files if explicitly requested by the User.
-			"""
+		- Do what has been asked; nothing more, nothing less.
+		- NEVER create files unless they're absolutely necessary for achieving your goal.
+		- ALWAYS prefer editing an existing file to creating a new one.
+		- NEVER proactively create documentation files (*.md) or README files.
+		- Only create documentation files if explicitly requested by the User.
+		"""
 
 		let entries = workspace.entries
 		let contextFiles = ["DOUG.md", "AGENTS.md", "CLAUDE.md"]
@@ -608,17 +614,16 @@ type Doug {
 				let fileContents = workspace.file(file).contents
 				if (fileContents != "") {
 					contextSegment = """
+					# Project-Specific Context
 
-# Project-Specific Context
+					Make sure to follow the instructions in the context below:
 
-Make sure to follow the instructions in the context below:
+					<project-context>
+					""" + fileContents + """
+					</project-context>
 
-<project-context>
-""" + fileContents + """
-</project-context>
-
-These instructions OVERRIDE any default behavior.
-"""
+					These instructions OVERRIDE any default behavior.
+					"""
 				}
 				break
 			}

@@ -32,25 +32,26 @@ type Dev {
 	pub agent(base: LLM!): LLM! {
 		let env = base.env.withWorkspace(source).withCurrentModule
 
-		let gopls = apko.wolfi(["bash", "go"]).
-			withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
-			withEnvVariable("GOMODCACHE", "/go/pkg/mod").
-			withMountedCache("/go/build-cache", cacheVolume("go-build")).
-			withEnvVariable("GOCACHE", "/go/build-cache").
-			withEnvVariable("GOBIN", "/go/bin").
-			withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true).
-			withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
-			withDirectory("/workspace", source).
-			withWorkdir("/workspace").
-			withDefaultArgs(["gopls", "mcp"])
+		let gopls = apko
+			.wolfi(["bash", "go"])
+			.withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
+			.withEnvVariable("GOMODCACHE", "/go/pkg/mod")
+			.withMountedCache("/go/build-cache", cacheVolume("go-build"))
+			.withEnvVariable("GOCACHE", "/go/build-cache")
+			.withEnvVariable("GOBIN", "/go/bin")
+			.withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true)
+			.withExec(["go", "install", "golang.org/x/tools/gopls@latest"])
+			.withDirectory("/workspace", source)
+			.withWorkdir("/workspace")
+			.withDefaultArgs(["gopls", "mcp"])
 
-		let agent = doug.agent(
-			base.
-				withEnv(env).
-				withMCPServer(name: "gopls", service: gopls.asService).
-				withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout).
-				withSystemPrompt(
-					"""
+		let agent = doug
+			.agent(
+				base
+					.withEnv(env)
+					.withMCPServer(name: "gopls", service: gopls.asService)
+					.withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout)
+					.withSystemPrompt("""
 					## Dev instructions
 
 					When given an GitHub issue, use the Github tool to read it and all of its comments to gain context.
@@ -58,23 +59,24 @@ type Dev {
 					## Error handling
 
 					To handle errors or sad path scenarios, simply fail early and return a descriptive wrapped error.
-					"""
-				)
-		)
+					"""),
+			)
 
 		if (kagiToken != null) {
-			agent = agent.withMCPServer(
-				"kagi"
-				apko.wolfi(["bash", "uv", "python3"]).
-					withDirectory("/workspace", source).
-					withWorkdir("/workspace").
-					withExec(["uv", "venv", "/opt/venv"]).
-					withEnvVariable("VIRTUAL_ENV", "/opt/venv").
-					withExec(["uv", "pip", "install", "kagimcp"]).
-					withSecretVariable(name: "KAGI_API_KEY", secret: kagiToken).
-					withDefaultArgs(["uv", "run", "kagimcp"]).
-					asService
-			)
+			agent = agent
+				.withMCPServer(
+					"kagi",
+					apko
+						.wolfi(["bash", "uv", "python3"])
+						.withDirectory("/workspace", source)
+						.withWorkdir("/workspace")
+						.withExec(["uv", "venv", "/opt/venv"])
+						.withEnvVariable("VIRTUAL_ENV", "/opt/venv")
+						.withExec(["uv", "pip", "install", "kagimcp"])
+						.withSecretVariable(name: "KAGI_API_KEY", secret: kagiToken)
+						.withDefaultArgs(["uv", "run", "kagimcp"])
+						.asService,
+				)
 		}
 
 		if (source.exists("current-task.md")) {
@@ -88,9 +90,9 @@ type Dev {
 	Run a git command and return its output.
 	"""
 	pub git(args: [String!]!): String! {
-		sandbox.
-			withExec(["git"] + args).
-			combinedOutput
+		sandbox
+			.withExec(["git"] + args)
+			.combinedOutput
 	}
 
 	"""
@@ -102,9 +104,10 @@ type Dev {
 		} else {
 			sandbox
 		}
-		ctr.
-			withExec(["gh"] + args).
-			combinedOutput
+
+		ctr
+			.withExec(["gh"] + args)
+			.combinedOutput
 	}
 
 	let daggerVersion = "0.19.5"
@@ -117,8 +120,9 @@ type Dev {
 	agent from going wild and relying too much on the shell.
 	"""
 	let sandbox: Container! {
-		apko.wolfi(["bash", "git", "gh"]).
-			withWorkdir("/workspace").
-			withDirectory("/workspace", source)
+		apko
+			.wolfi(["bash", "git", "gh"])
+			.withWorkdir("/workspace")
+			.withDirectory("/workspace", source)
 	}
 }
