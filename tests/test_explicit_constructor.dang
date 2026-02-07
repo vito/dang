@@ -106,4 +106,18 @@ type PrivateState {
 assert { PrivateState.display == "84" }
 assert { PrivateState(100).display == "200" }
 
+# Bare assignment (no self.) works when args don't shadow fields
+type Vector {
+  pub x: Int! = 0
+  pub y: Int! = 0
+
+  new(vx: Int!, vy: Int!) {
+    x = vx
+    y = vy
+  }
+}
+
+assert { Vector(3, 4).x == 3 }
+assert { Vector(3, 4).y == 4 }
+
 print("Explicit constructor tests passed!")
