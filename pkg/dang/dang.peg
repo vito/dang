@@ -658,7 +658,8 @@ Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?
   }
   return &Float{
     Value: value,
-    Loc: c.Loc(),
+    Text:  string(c.text),
+    Loc:   c.Loc(),
   }, nil
 }
 

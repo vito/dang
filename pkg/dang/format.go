@@ -1389,8 +1389,14 @@ func (f *Formatter) formatInt(i *Int) {
 }
 
 func (f *Formatter) formatFloat(fl *Float) {
+	// Use original text if available
+	if fl.Text != "" {
+		f.write(fl.Text)
+		return
+	}
+
+	// Fallback: format the value
 	s := strconv.FormatFloat(fl.Value, 'f', -1, 64)
-	// Ensure we have at least one decimal place for floats
 	if !strings.Contains(s, ".") {
 		s += ".0"
 	}

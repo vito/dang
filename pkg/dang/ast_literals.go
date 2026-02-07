@@ -311,6 +311,7 @@ func (i *Int) Walk(fn func(Node) bool) {
 type Float struct {
 	InferredTypeHolder
 	Value float64
+	Text  string // original source text, to preserve formatting
 	Loc   *SourceLocation
 }
 
