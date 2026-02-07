@@ -2030,8 +2030,10 @@ func (f *Formatter) formatDocString(doc string) {
 	f.newline()
 	lines := strings.Split(strings.TrimSpace(doc), "\n")
 	for _, line := range lines {
-		f.writeIndent()
-		f.write(line)
+		if line != "" {
+			f.writeIndent()
+			f.write(line)
+		}
 		f.newline()
 	}
 	f.writeIndent()
