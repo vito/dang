@@ -30,13 +30,14 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 		expected string
 	}{
 		{
-			name: "single-line chain with multiline block stays together",
+			name: "chain with multiline block gets split",
 			input: `pub x = foo.map { a =>
   body
 }`,
-			expected: `pub x = foo.map { a =>
-	body
-}
+			expected: `pub x = foo
+	.map { a =>
+		body
+	}
 `,
 		},
 		{
@@ -56,13 +57,14 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 `,
 		},
 		{
-			name: "nested multiline block args",
+			name: "nested multiline block args get split",
 			input: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
   inner.map { x => x * 2 }
 }`,
-			expected: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
-	inner.map { x => x * 2 }
-}
+			expected: `pub doubled_nested: [[Int!]!]! = nested
+	.map { inner =>
+		inner.map { x => x * 2 }
+	}
 `,
 		},
 	}
@@ -239,13 +241,14 @@ func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 			expected: "pub x = foo.map { x => x * 2 }\n",
 		},
 		{
-			name: "multiline block arg no trailing space after arrow",
+			name: "multiline block arg splits chain",
 			input: `pub x = foo.map { x =>
   x * 2
 }`,
-			expected: `pub x = foo.map { x =>
-	x * 2
-}
+			expected: `pub x = foo
+	.map { x =>
+		x * 2
+	}
 `,
 		},
 		{
@@ -523,17 +526,19 @@ hello
 `,
 		},
 		{
-			name: "list in chain call stays on one line",
+			name: "list in chain call stays on one line even when chain splits",
 			input: `pub x: String! {
 	base.withExec(["sh", "-c", """
 		echo hello
 		"""]).directory(".")
 }`,
-			// Chain stays inline since dots weren't on separate lines originally
+			// Chain gets split, but list elements stay together
 			expected: `pub x: String! {
-	base.withExec(["sh", "-c", """
-	echo hello
-	"""]).directory(".")
+	base
+		.withExec(["sh", "-c", """
+		echo hello
+		"""])
+		.directory(".")
 }
 `,
 		},

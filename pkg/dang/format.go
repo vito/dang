@@ -1191,6 +1191,12 @@ func (f *Formatter) shouldSplitChain(c *FunCall) bool {
 		return true
 	}
 
+	// If the underlying select is multiline, we need to handle it as a chain
+	// to keep args/block args properly indented
+	if sel, ok := c.Fun.(*Select); ok && f.wasSelectMultiline(sel) {
+		return true
+	}
+
 	// Get the chain depth and total length
 	depth := f.getChainDepth(c)
 	if depth < 2 {
@@ -1506,14 +1512,35 @@ func (f *Formatter) formatListMultiline(l *List) {
 				f.lastLine = loc.Line - 1
 			}
 		}
-		for _, elem := range l.Elements {
+
+		// Group elements by their original line - elements on the same line stay together
+		i := 0
+		for i < len(l.Elements) {
+			elem := l.Elements[i]
+			elemLoc := nodeLocation(elem)
+
 			f.emitCommentsForNode(elem)
 			f.writeIndent()
 			f.formatNode(elem)
-			if loc := nodeLocation(elem); loc != nil {
-				f.emitTrailingComment(loc.Line)
+
+			// Check if next elements are on the same line - if so, keep them together
+			for i+1 < len(l.Elements) {
+				nextElem := l.Elements[i+1]
+				nextLoc := nodeLocation(nextElem)
+				if elemLoc != nil && nextLoc != nil && nextLoc.Line == elemLoc.Line {
+					f.write(", ")
+					f.formatNode(nextElem)
+					i++
+				} else {
+					break
+				}
+			}
+
+			if elemLoc != nil {
+				f.emitTrailingComment(elemLoc.Line)
 			}
 			f.newline()
+			i++
 		}
 	})
 	f.writeIndent()
@@ -1741,6 +1768,10 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 
 func (f *Formatter) formatBlockArg(b *BlockArg) {
 	f.write("{")
+
+	block, isBlock := b.BodyNode.(*Block)
+	singleLineBody := isBlock && len(block.Forms) == 1 && !wasMultiline(block)
+
 	if len(b.Args) > 0 {
 		f.write(" ")
 		for i, arg := range b.Args {
@@ -1749,16 +1780,20 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 			}
 			f.write(arg.Name.Name)
 		}
-		f.write(" => ")
+		if singleLineBody {
+			f.write(" => ")
+		} else {
+			f.write(" =>")
+		}
 	} else {
 		f.write(" ")
 	}
 
-	if block, ok := b.BodyNode.(*Block); ok && len(block.Forms) == 1 && !wasMultiline(block) {
+	if singleLineBody {
 		// Single expression block arg that was originally on one line
 		f.formatNode(block.Forms[0])
 		f.write(" }")
-	} else if block, ok := b.BodyNode.(*Block); ok {
+	} else if isBlock {
 		// Multi-line block arg
 		f.newline()
 		f.indented(func() {
