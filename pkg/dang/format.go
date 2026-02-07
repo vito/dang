@@ -410,8 +410,10 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 			// Add blank line only when needed (before/after function definitions)
 			if f.needsBlankLineBetween(m.Forms[i-1], form) {
 				f.newline()
-				// Update lastLine so comment emission doesn't add duplicate blank lines
-				f.lastLine = nodeEndLine(m.Forms[i-1]) + 1
+				// Set lastLine to prevent emitCommentsForNode from adding another blank line
+				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
+					f.lastLine = loc.Line - 1
+				}
 			}
 		}
 		// Emit any comments that precede this node
@@ -599,7 +601,10 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 		for i, form := range block.Forms {
 			if i > 0 && f.needsBlankLineBetween(block.Forms[i-1], form) {
 				f.newline()
-				f.lastLine = nodeEndLine(block.Forms[i-1]) + 1
+				// Set lastLine to prevent emitCommentsForNode from adding another blank line
+				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
+					f.lastLine = loc.Line - 1
+				}
 			}
 			// Emit comments for this member
 			f.emitCommentsForNode(form)
@@ -631,7 +636,10 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 		for j, form := range block.Forms {
 			if j > 0 && f.needsBlankLineBetween(block.Forms[j-1], form) {
 				f.newline()
-				f.lastLine = nodeEndLine(block.Forms[j-1]) + 1
+				// Set lastLine to prevent emitCommentsForNode from adding another blank line
+				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
+					f.lastLine = loc.Line - 1
+				}
 			}
 			// Emit comments for this member
 			f.emitCommentsForNode(form)
