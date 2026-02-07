@@ -476,7 +476,8 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 	pub x: Int!
 }`,
 			// Empty line in docstring should have no trailing whitespace
-			expected: "type Foo {\n\n\t\"\"\"\n\tDoc line 1\n\n\tDoc line 2\n\t\"\"\"\n\tpub x: Int!\n}\n",
+			// No extra blank line after opening brace when docstring follows
+			expected: "type Foo {\n\t\"\"\"\n\tDoc line 1\n\n\tDoc line 2\n\t\"\"\"\n\tpub x: Int!\n}\n",
 		},
 		{
 			name: "single blank line between functions with docstrings",
@@ -491,8 +492,9 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 	"""
 	pub b: Int! { 2 }
 }`,
+			// No extra blank line after opening brace when docstring follows
+			// Blank line between function definitions is preserved
 			expected: `type Foo {
-
 	"""
 	Doc for a
 	"""

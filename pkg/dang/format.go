@@ -307,9 +307,61 @@ func (f *Formatter) removeTrailingNoFmtComment(line int) {
 
 // emitCommentsForNode emits comments that "hug" this node (appear on lines before it)
 func (f *Formatter) emitCommentsForNode(node Node) {
-	if loc := nodeLocation(node); loc != nil && loc.Line > 0 {
-		f.emitCommentsBeforeLine(loc.Line)
-		f.lastLine = loc.Line
+	line := nodeEffectiveStartLine(node)
+	if line > 0 {
+		f.emitCommentsBeforeNode(line, nodeHasDocString(node))
+		f.lastLine = line
+	}
+}
+
+// emitCommentsBeforeNode emits comments before a node, optionally suppressing
+// the blank line that would normally be added for a gap (used when node has docstring)
+func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
+	for len(f.comments) > 0 && f.comments[0].Line < line && !f.comments[0].IsTrailing {
+		comment := f.comments[0]
+		f.comments = f.comments[1:]
+
+		// Add blank lines if there's a gap from the last processed line
+		// (preserves spacing between comment groups)
+		if f.lastLine > 0 && comment.Line > f.lastLine+1 {
+			f.newline()
+		}
+
+		f.writeIndent()
+		f.write(comment.Text)
+		f.newline()
+		f.lastLine = comment.Line
+	}
+
+	// If there's a blank line between the last comment and the node, preserve it
+	// BUT not if the node has a docstring (which fills the gap)
+	if !hasDocString && f.lastLine > 0 && line > f.lastLine+1 {
+		f.newline()
+	}
+}
+
+// nodeEffectiveStartLine returns the first line where a node's content would appear,
+// accounting for docstrings that precede the actual code
+func nodeEffectiveStartLine(node Node) int {
+	if loc := nodeLocation(node); loc != nil {
+		return loc.Line
+	}
+	return 0
+}
+
+// nodeHasDocString returns true if the node has a docstring that would be formatted before it
+func nodeHasDocString(node Node) bool {
+	switch n := node.(type) {
+	case *SlotDecl:
+		return n.DocString != ""
+	case *ClassDecl:
+		return n.DocString != ""
+	case *InterfaceDecl:
+		return n.DocString != ""
+	case *EnumDecl:
+		return n.DocString != ""
+	default:
+		return false
 	}
 }
 
@@ -805,6 +857,12 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 	// Format block contents with blank lines between function definitions
 	f.indented(func() {
 		block := c.Value
+		// Reset lastLine to prevent spurious blank line at start of class body
+		if len(block.Forms) > 0 {
+			if loc := nodeLocation(block.Forms[0]); loc != nil && loc.Line > 0 {
+				f.lastLine = loc.Line - 1
+			}
+		}
 		for i, form := range block.Forms {
 			if i > 0 && f.needsBlankLineBetween(block.Forms[i-1], form) {
 				f.newline()
