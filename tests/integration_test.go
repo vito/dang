@@ -88,7 +88,7 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 						t.Errorf("Failed to create temp dir: %v", err)
 						return
 					}
-					t.Cleanup(func() { os.RemoveAll(tempDir) })
+					t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
 
 					entries, err := os.ReadDir(testFileOrDir)
 					if err != nil {
@@ -118,8 +118,8 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 						return
 					}
 					tempPath := tempFile.Name()
-					tempFile.Close()
-					t.Cleanup(func() { os.Remove(tempPath) })
+					_ = tempFile.Close()
+					t.Cleanup(func() { _ = os.Remove(tempPath) })
 
 					if err := formatFileTo(testFileOrDir, tempPath); err != nil {
 						t.Errorf("Failed to format %s: %v", testFileOrDir, err)

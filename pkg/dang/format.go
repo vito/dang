@@ -283,14 +283,6 @@ func (f *Formatter) emitTrailingComment(line int) {
 	}
 }
 
-// skipCommentsBeforeLine removes comments before the given line without emitting them
-// (used for #nofmt regions where comments are part of the preserved source)
-func (f *Formatter) skipCommentsBeforeLine(line int) {
-	for len(f.comments) > 0 && f.comments[0].Line < line {
-		f.comments = f.comments[1:]
-	}
-}
-
 // removeTrailingNoFmtComment removes a trailing #nofmt comment on the given line
 // (because it's already included in the preserved original source)
 func (f *Formatter) removeTrailingNoFmtComment(line int) {
@@ -481,12 +473,6 @@ func (f *Formatter) write(s string) {
 	}
 }
 
-func (f *Formatter) writeln(s string) {
-	f.write(s)
-	f.write("\n")
-	f.col = 0
-}
-
 func (f *Formatter) newline() {
 	f.write("\n")
 	f.col = 0
@@ -509,11 +495,6 @@ func (f *Formatter) estimateLength(node Node) int {
 	temp := &Formatter{}
 	temp.formatNodeInline(node)
 	return len(temp.buf.String())
-}
-
-// wouldExceedLineLength checks if adding content would exceed max line length
-func (f *Formatter) wouldExceedLineLength(additionalLen int) bool {
-	return f.col+additionalLen > maxLineLength
 }
 
 func (f *Formatter) formatNode(node Node) {
@@ -1270,7 +1251,7 @@ func (f *Formatter) formatArgDecl(arg *SlotDecl) {
 
 func (f *Formatter) formatBlockParamType(funType FunTypeNode) {
 	// Format as (args): retType or just : retType if no args
-	if funType.Args != nil && len(funType.Args) > 0 {
+	if len(funType.Args) > 0 {
 		f.write("(")
 		for i, arg := range funType.Args {
 			if i > 0 {
@@ -1957,10 +1938,7 @@ func (f *Formatter) formatObject(o *Object) {
 	}
 
 	// Check if object was originally multiline
-	wasMultiline := false
-	if o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line {
-		wasMultiline = true
-	}
+	wasMultiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
 
 	// Estimate inline length
 	length := 4 // {{}}
@@ -2254,10 +2232,7 @@ func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 
 func (f *Formatter) formatGrouped(g *Grouped) {
 	// Check if this grouped expression spans multiple lines
-	multiline := false
-	if g.Loc != nil && g.Loc.End != nil && g.Loc.End.Line > g.Loc.Line {
-		multiline = true
-	}
+	multiline := g.Loc != nil && g.Loc.End != nil && g.Loc.End.Line > g.Loc.Line
 
 	f.write("(")
 	if multiline {
@@ -2429,7 +2404,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 	case FunTypeNode:
 		// Function type: (args): returnType
 		// If no args, just output the return type directly (for interface slot types)
-		if tn.Args == nil || len(tn.Args) == 0 {
+		if len(tn.Args) == 0 {
 			f.formatTypeNode(tn.Ret)
 		} else {
 			f.write("(")
