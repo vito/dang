@@ -1,124 +1,124 @@
 type Dev {
-  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
-    # TODO: respecting .gitignore would be nice
-    "Session.vim"
-    "dang"
-    "zed-dang/grammars/"
-    ".env"
-    ".envrc"
-    ".dagger"
-  ])
+	pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
+		# TODO: respecting .gitignore would be nice
+		"Session.vim"
+		"dang"
+		"zed-dang/grammars/"
+		".env"
+		".envrc"
+		".dagger"
+	])
 
-  """
-  GitHub token to use for fetching issue/PR comments
-  """
-  pub githubToken: Secret
+	"""
+	GitHub token to use for fetching issue/PR comments
+	"""
+	pub githubToken: Secret
 
-  """
-  Kagi API token for doing research.
-  """
-  pub kagiToken: Secret
+	"""
+	Kagi API token for doing research.
+	"""
+	pub kagiToken: Secret
 
-  """
-  Start a coding agent with the provided module.
-  """
-  pub withTools(tools: Module!): LLM! {
-    agent(llm.withEnv(env.withModule(tools)))
-  }
+	"""
+	Start a coding agent with the provided module.
+	"""
+	pub withTools(tools: Module!): LLM! {
+		agent(llm.withEnv(env.withModule(tools)))
+	}
 
-  """
-  Start a coding agent.
-  """
-  pub agent(base: LLM!): LLM! {
-    let env = base.env.withWorkspace(source).withCurrentModule
+	"""
+	Start a coding agent.
+	"""
+	pub agent(base: LLM!): LLM! {
+		let env = base.env.withWorkspace(source).withCurrentModule
 
-    let gopls = apko.wolfi(["bash", "go"]).
-      withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
-      withEnvVariable("GOMODCACHE", "/go/pkg/mod").
-      withMountedCache("/go/build-cache", cacheVolume("go-build")).
-      withEnvVariable("GOCACHE", "/go/build-cache").
-      withEnvVariable("GOBIN", "/go/bin").
-      withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true).
-      withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
-      withDirectory("/workspace", source).
-      withWorkdir("/workspace").
-      withDefaultArgs(["gopls", "mcp"])
+		let gopls = apko.wolfi(["bash", "go"]).
+			withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
+			withEnvVariable("GOMODCACHE", "/go/pkg/mod").
+			withMountedCache("/go/build-cache", cacheVolume("go-build")).
+			withEnvVariable("GOCACHE", "/go/build-cache").
+			withEnvVariable("GOBIN", "/go/bin").
+			withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true).
+			withExec(["go", "install", "golang.org/x/tools/gopls@latest"]).
+			withDirectory("/workspace", source).
+			withWorkdir("/workspace").
+			withDefaultArgs(["gopls", "mcp"])
 
-    let agent = doug.agent(
-      base.
-        withEnv(env).
-        withMCPServer(name: "gopls", service: gopls.asService).
-        withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout).
-        withSystemPrompt(
-          """
-          ## Dev instructions
+		let agent = doug.agent(
+			base.
+				withEnv(env).
+				withMCPServer(name: "gopls", service: gopls.asService).
+				withSystemPrompt(gopls.withExec(["gopls", "mcp", "-instructions"]).stdout).
+				withSystemPrompt(
+					"""
+					## Dev instructions
 
-          When given an GitHub issue, use the Github tool to read it and all of its comments to gain context.
+					When given an GitHub issue, use the Github tool to read it and all of its comments to gain context.
 
-          ## Error handling
+					## Error handling
 
-          To handle errors or sad path scenarios, simply fail early and return a descriptive wrapped error.
-          """
-        )
-    )
+					To handle errors or sad path scenarios, simply fail early and return a descriptive wrapped error.
+					"""
+				)
+		)
 
-    if (kagiToken != null) {
-      agent = agent.withMCPServer(
-        "kagi"
-        apko.wolfi(["bash", "uv", "python3"]).
-          withDirectory("/workspace", source).
-          withWorkdir("/workspace").
-          withExec(["uv", "venv", "/opt/venv"]).
-          withEnvVariable("VIRTUAL_ENV", "/opt/venv").
-          withExec(["uv", "pip", "install", "kagimcp"]).
-          withSecretVariable(name: "KAGI_API_KEY", secret: kagiToken).
-          withDefaultArgs(["uv", "run", "kagimcp"]).
-          asService
-      )
-    }
+		if (kagiToken != null) {
+			agent = agent.withMCPServer(
+				"kagi"
+				apko.wolfi(["bash", "uv", "python3"]).
+					withDirectory("/workspace", source).
+					withWorkdir("/workspace").
+					withExec(["uv", "venv", "/opt/venv"]).
+					withEnvVariable("VIRTUAL_ENV", "/opt/venv").
+					withExec(["uv", "pip", "install", "kagimcp"]).
+					withSecretVariable(name: "KAGI_API_KEY", secret: kagiToken).
+					withDefaultArgs(["uv", "run", "kagimcp"]).
+					asService
+			)
+		}
 
-    if (source.exists("current-task.md")) {
-      agent = agent.withSystemPrompt(source.file("current-task.md").contents)
-    }
+		if (source.exists("current-task.md")) {
+			agent = agent.withSystemPrompt(source.file("current-task.md").contents)
+		}
 
-    agent
-  }
+		agent
+	}
 
-  """
-  Run a git command and return its output.
-  """
-  pub git(args: [String!]!): String! {
-    sandbox.
-      withExec(["git"] + args).
-      combinedOutput
-  }
+	"""
+	Run a git command and return its output.
+	"""
+	pub git(args: [String!]!): String! {
+		sandbox.
+			withExec(["git"] + args).
+			combinedOutput
+	}
 
-  """
-  Run a gh command and return its output.
-  """
-  pub github(args: [String!]!): String! {
-    let ctr = if (githubToken != null) {
-      sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
-    } else {
-      sandbox
-    }
-    ctr.
-      withExec(["gh"] + args).
-      combinedOutput
-  }
+	"""
+	Run a gh command and return its output.
+	"""
+	pub github(args: [String!]!): String! {
+		let ctr = if (githubToken != null) {
+			sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
+		} else {
+			sandbox
+		}
+		ctr.
+			withExec(["gh"] + args).
+			combinedOutput
+	}
 
-  let daggerVersion = "0.19.5"
+	let daggerVersion = "0.19.5"
 
-  """
-  A common environment just to minimize building for utilities like RunGit,
-  RunGithub, etc.
+	"""
+	A common environment just to minimize building for utilities like RunGit,
+	RunGithub, etc.
 
-  We don't expose this directly and instead expose wrappers just to keep the
-  agent from going wild and relying too much on the shell.
-  """
-  let sandbox: Container! {
-    apko.wolfi(["bash", "git", "gh"]).
-      withWorkdir("/workspace").
-      withDirectory("/workspace", source)
-  }
+	We don't expose this directly and instead expose wrappers just to keep the
+	agent from going wild and relying too much on the shell.
+	"""
+	let sandbox: Container! {
+		apko.wolfi(["bash", "git", "gh"]).
+			withWorkdir("/workspace").
+			withDirectory("/workspace", source)
+	}
 }

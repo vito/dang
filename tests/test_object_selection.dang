@@ -2,21 +2,21 @@
 
 # Basic object types for testing
 type TestUser {
-  pub name: String! = "Anonymous"
-  pub email: String! = "user@example.com"
-  pub age: Int! = 0
-  pub active: Boolean! = true
+	pub name: String! = "Anonymous"
+	pub email: String! = "user@example.com"
+	pub age: Int! = 0
+	pub active: Boolean! = true
 }
 
 type Profile {
-  pub bio: String! = "No bio"
-  pub avatar: String! = "default.jpg"
+	pub bio: String! = "No bio"
+	pub avatar: String! = "default.jpg"
 }
 
 type TestUserWithProfile {
-  pub name: String! = "Anonymous"
-  pub email: String! = "user@example.com"
-  pub profile: Profile! = Profile("Default bio", "default.jpg")
+	pub name: String! = "Anonymous"
+	pub email: String! = "user@example.com"
+	pub profile: Profile! = Profile("Default bio", "default.jpg")
 }
 
 # Test basic object selection
@@ -44,8 +44,8 @@ assert { user_nested.profile.avatar == "alice.jpg" }
 
 # Test with lists of objects
 pub users = [
-  TestUser("Charlie", "charlie@example.com", 25),
-  TestUser("Diana", "diana@example.com", 28)
+	TestUser("Charlie", "charlie@example.com", 25),
+	TestUser("Diana", "diana@example.com", 28)
 ]
 
 pub user_summaries = users.{name, email}
@@ -55,8 +55,8 @@ assert { user_summaries != null }
 
 # Test with nested lists
 pub users_with_profile = [
-  TestUserWithProfile("Eve", "eve@example.com", Profile("Designer", "eve.jpg")),
-  TestUserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg"))
+	TestUserWithProfile("Eve", "eve@example.com", Profile("Designer", "eve.jpg")),
+	TestUserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg"))
 ]
 
 pub detailed_summaries = users_with_profile.{name, profile.{bio}}

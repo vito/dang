@@ -917,9 +917,10 @@ func (d *DirectiveDecl) Walk(fn func(Node) bool) {
 // DirectiveApplication represents the application of a directive
 type DirectiveApplication struct {
 	InferredTypeHolder
-	Name string
-	Args []Keyed[Node]
-	Loc  *SourceLocation
+	Name     string
+	Args     []Keyed[Node]
+	IsPrefix bool // True if directive appeared before the name (prefix position)
+	Loc      *SourceLocation
 }
 
 var _ Node = (*DirectiveApplication)(nil)

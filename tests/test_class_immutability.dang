@@ -1,12 +1,12 @@
 # Test class method immutability
 
 type Counter {
-  pub value: Int!
+	pub value: Int!
 
-  pub incr: Counter! {
-    value += 1
-    self
-  }
+	pub incr: Counter! {
+		value += 1
+		self
+	}
 }
 
 # Test direct constructor call behavior (like existing tests)

@@ -2,24 +2,24 @@
 
 # Class with only private slots (no constructor parameters)
 type PrivateOnly {
-  let value = 42
-  
-  pub getValue(): Int! {
-    value
-  }
+	let value = 42
+	
+	pub getValue(): Int! {
+		value
+	}
 }
 
 assert { PrivateOnly.getValue() == 42 }
 
 # Class with only function slots (no constructor parameters)
 type FunctionOnly {
-  pub getValue(): Int! {
-    42
-  }
-  
-  pub getString(): String! {
-    "hello"
-  }
+	pub getValue(): Int! {
+		42
+	}
+	
+	pub getString(): String! {
+		"hello"
+	}
 }
 
 assert { FunctionOnly.getValue() == 42 }
@@ -27,12 +27,12 @@ assert { FunctionOnly.getString() == "hello" }
 
 # Class with mix of public/private slots
 type MixedVisibility {
-  pub publicField: String! = "public"
-  let privateField = "private"
-  
-  pub getPrivate(): String! {
-    privateField
-  }
+	pub publicField: String! = "public"
+	let privateField = "private"
+	
+	pub getPrivate(): String! {
+		privateField
+	}
 }
 
 assert { MixedVisibility.publicField == "public" }
@@ -44,20 +44,20 @@ assert { MixedVisibility("custom").getPrivate() == "private" }
 pub globalValue = "global"
 
 type UsingGlobals {
-  pub local: String! = globalValue + "_local"
+	pub local: String! = globalValue + "_local"
 }
 
 assert { UsingGlobals.local == "global_local" }
 
 # Class with nested object default values
 type NestedDefaults {
-  pub person = {{
-    name: "John",
-    details: {{
-      age: 30,
-      active: true
-    }}
-  }}
+	pub person = {{
+		name: "John",
+		details: {{
+			age: 30,
+			active: true
+		}}
+	}}
 }
 
 assert { NestedDefaults.person.name == "John" }
@@ -66,8 +66,8 @@ assert { NestedDefaults.person.details.active == true }
 
 # Constructor with list default values
 type ListDefaults {
-  pub numbers: [Int!]! = [1, 2, 3]
-  pub names: [String!]! = ["a", "b"]
+	pub numbers: [Int!]! = [1, 2, 3]
+	pub names: [String!]! = ["a", "b"]
 }
 
 assert { ListDefaults.numbers == [1, 2, 3] }
@@ -75,10 +75,10 @@ assert { ListDefaults.names == ["a", "b"] }
 
 # Class with constructor parameters that have complex types
 type ComplexTypes {
-  pub config = {{
-    items: ["default"],
-    count: 1
-  }}
+	pub config = {{
+		items: ["default"],
+		count: 1
+	}}
 }
 
 assert { ComplexTypes.config.items == ["default"] }

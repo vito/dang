@@ -17,8 +17,8 @@ assert { json2 == "{\"count\":100,\"user\":{\"active\":true,\"id\":1}}" }
 
 # Object literal created in function scope - this should expose the issue
 pub createObject = {
-    pub localVar = "local"
-    {{data: localVar, timestamp: 1234567890}}
+		pub localVar = "local"
+		{{data: localVar, timestamp: 1234567890}}
 }
 
 pub obj3 = createObject

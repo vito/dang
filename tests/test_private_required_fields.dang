@@ -2,12 +2,12 @@
 
 # Type with both public and private required fields (no defaults)
 type Foo {
-  pub required: String!
-  let requiredButPrivate: String!
+	pub required: String!
+	let requiredButPrivate: String!
 
-  pub getPrivate: String! {
-    self.requiredButPrivate
-  }
+	pub getPrivate: String! {
+		self.requiredButPrivate
+	}
 }
 
 # This should require both arguments to construct
@@ -19,12 +19,12 @@ assert { instance.getPrivate == "private_value" }
 
 # Type with private required field and public with default
 type Mixed {
-  pub publicWithDefault: String! = "default"
-  let privateRequired: Int!
+	pub publicWithDefault: String! = "default"
+	let privateRequired: Int!
 
-  pub getPrivateInt: Int! {
-    self.privateRequired
-  }
+	pub getPrivateInt: Int! {
+		self.privateRequired
+	}
 }
 
 # Constructor should require the private field since it has no default
@@ -39,12 +39,12 @@ assert { mixed2.getPrivateInt == 99 }
 
 # Type with private field that HAS a default - should NOT be in constructor
 type WithPrivateDefault {
-  pub publicRequired: String!
-  let privateWithDefault: Int! = 100
+	pub publicRequired: String!
+	let privateWithDefault: Int! = 100
 
-  pub getPrivateDefault: Int! {
-    self.privateWithDefault
-  }
+	pub getPrivateDefault: Int! {
+		self.privateWithDefault
+	}
 }
 
 # Constructor should only require publicRequired, not privateWithDefault

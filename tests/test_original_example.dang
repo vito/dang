@@ -1,12 +1,12 @@
 # Test the original example: Foo(42).incr.a should return 43
 
 type Foo {
-  pub a: Int!
-  
-  pub incr: Foo! {
-    a += 1
-    self
-  }
+	pub a: Int!
+	
+	pub incr: Foo! {
+		a += 1
+		self
+	}
 }
 
 let result = Foo(42).incr.a

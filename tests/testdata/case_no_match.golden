@@ -4,7 +4,7 @@
  [2m  1 | # This should fail: no matching clause[0m
  [2m[34m[1m  2 | [0mpub result = case (5) {
 [2m                    [31m^^^^^^^^^^[0m
- [2m  3 |   1 => "one"[0m
- [2m  4 |   2 => "two"[0m
+ [2m  3 | 	1 => "one"[0m
+ [2m  4 | 	2 => "two"[0m
  [2m    |[0m
 

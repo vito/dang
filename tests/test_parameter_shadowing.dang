@@ -1,31 +1,31 @@
 # Test parameter shadowing in class methods
 
 type Person {
-  pub name: String! = "Default"
-  pub age: Int! = 0
-  
-  # Test: parameter shadows field name, must use self. prefix
-  pub withName(name: String!): Person! {
-    self.name = name  # Required: parameter 'name' shadows field 'name'
-    self
-  }
-  
-  # Test: parameter doesn't shadow, can omit self. prefix
-  pub withAge(newAge: Int!): Person! {
-    age = newAge      # Optional: no shadowing, self.age also works
-    self
-  }
-  
-  # Test: both syntaxes work when no shadowing
-  pub incrementAge: Person! {
-    age += 1          # Works without self.
-    self
-  }
-  
-  pub incrementAgeExplicit: Person! {
-    self.age += 1     # Also works with self.
-    self
-  }
+	pub name: String! = "Default"
+	pub age: Int! = 0
+	
+	# Test: parameter shadows field name, must use self. prefix
+	pub withName(name: String!): Person! {
+		self.name = name	# Required: parameter 'name' shadows field 'name'
+		self
+	}
+	
+	# Test: parameter doesn't shadow, can omit self. prefix
+	pub withAge(newAge: Int!): Person! {
+		age = newAge			# Optional: no shadowing, self.age also works
+		self
+	}
+	
+	# Test: both syntaxes work when no shadowing
+	pub incrementAge: Person! {
+		age += 1					# Works without self.
+		self
+	}
+	
+	pub incrementAgeExplicit: Person! {
+		self.age += 1		 # Also works with self.
+		self
+	}
 }
 
 # Test parameter shadowing behavior

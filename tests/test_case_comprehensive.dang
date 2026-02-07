@@ -2,62 +2,62 @@
 
 # String literal matching
 pub string_case = case ("hello") {
-  "world" => "not this"
-  "hello" => "matched hello"
-  "foo" => "not this either"
+	"world" => "not this"
+	"hello" => "matched hello"
+	"foo" => "not this either"
 }
 
 assert { string_case == "matched hello" }
 
 # Integer literal matching with multiple cases
 pub int_case = case (2) {
-  1 => "one"
-  2 => "two"
-  3 => "three"
-  4 => "four"
+	1 => "one"
+	2 => "two"
+	3 => "three"
+	4 => "four"
 }
 
 assert { int_case == "two" }
 
 # Boolean matching
 pub bool_case = case (true) {
-  false => "nope"
-  true => "yes"
+	false => "nope"
+	true => "yes"
 }
 
 assert { bool_case == "yes" }
 
 # Float matching
 pub float_case = case (3.14) {
-  3.14 => "pi"
-  2.71 => "e"
+	3.14 => "pi"
+	2.71 => "e"
 }
 
 assert { float_case == "pi" }
 
 # Null matching
 pub null_case = case (null) {
-  null => "is null"
+	null => "is null"
 }
 
 assert { null_case == "is null" }
 
 # First match wins
 pub first_wins = case (1) {
-  1 => "first"
-  1 => "second"
-  2 => "third"
+	1 => "first"
+	1 => "second"
+	2 => "third"
 }
 
 assert { first_wins == "first" }
 
 # Case in function
 pub caseInFunction(x: Int!): String! {
-  case (x) {
-    0 => "zero"
-    1 => "one"
-    5 => "five"
-  }
+	case (x) {
+		0 => "zero"
+		1 => "one"
+		5 => "five"
+	}
 }
 
 assert { caseInFunction(0) == "zero" }
@@ -66,20 +66,20 @@ assert { caseInFunction(5) == "five" }
 
 # Nested case
 pub nested = case (1) {
-  1 => case ("a") {
-    "a" => "nested case works"
-    "b" => "inner not matched"
-  }
-  2 => "outer not matched"
+	1 => case ("a") {
+		"a" => "nested case works"
+		"b" => "inner not matched"
+	}
+	2 => "outer not matched"
 }
 
 assert { nested == "nested case works" }
 
 # Case with different return types unified
 pub unified = case (1) {
-  1 => 100
-  2 => 200
-  3 => 0
+	1 => 100
+	2 => 200
+	3 => 0
 }
 
 assert { unified == 100 }

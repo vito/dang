@@ -2,8 +2,8 @@
 
 # Basic constructor with default values
 type Simple {
-  pub name: String! = "test"
-  pub value: Int! = 42
+	pub name: String! = "test"
+	pub value: Int! = 42
 }
 
 assert { Simple.name == "test" }

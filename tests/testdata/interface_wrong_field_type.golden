@@ -2,25 +2,25 @@
 
 Error 1:
 [1m[31mError:[0m SlotDecl.Infer: "id" already defined as (): String!, trying to redefine as String!
-  [2m[34m--> errors/interface_wrong_field_type.dang:8:3[0m
+  [2m[34m--> errors/interface_wrong_field_type.dang:8:2[0m
  [2m    |[0m
  [2m  6 | [0m
  [2m  7 | type User implements Identifiable {[0m
- [2m[34m[1m  8 | [0m  pub id: String!  # Wrong: should be ID!
-[2m         [31m^^^^^^^^^^^^^^^[0m
- [2m  9 |   pub name: String![0m
+ [2m[34m[1m  8 | [0m	pub id: String!	# Wrong: should be ID!
+[2m        [31m^^^^^^^^^^^^^^^[0m
+ [2m  9 | 	pub name: String![0m
  [2m 10 | }[0m
  [2m    |[0m
 
 
 Error 2:
 [1m[31mError:[0m SlotDecl.Infer: "name" already defined as (): String!, trying to redefine as String!
-  [2m[34m--> errors/interface_wrong_field_type.dang:9:3[0m
+  [2m[34m--> errors/interface_wrong_field_type.dang:9:2[0m
  [2m    |[0m
  [2m  7 | type User implements Identifiable {[0m
- [2m  8 |   pub id: String!  # Wrong: should be ID![0m
- [2m[34m[1m  9 | [0m  pub name: String!
-[2m         [31m^^^^^^^^^^^^^^^^^[0m
+ [2m  8 | 	pub id: String!	# Wrong: should be ID![0m
+ [2m[34m[1m  9 | [0m	pub name: String!
+[2m        [31m^^^^^^^^^^^^^^^^^[0m
  [2m 10 | }[0m
  [2m 11 | [0m
  [2m    |[0m

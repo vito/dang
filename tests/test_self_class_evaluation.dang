@@ -2,19 +2,19 @@
 # This specifically tests the case that was broken before commit ebfec33
 
 type SelfDuringEvaluation {
-  pub config = {{
-    items: [],
-    name: "default"
-  }}
+	pub config = {{
+		items: [],
+		name: "default"
+	}}
 
-  # This computed field uses self during class body evaluation
-  # It should fail if self is not bound during class construction
-  pub computedField = config.name + "_computed"
+	# This computed field uses self during class body evaluation
+	# It should fail if self is not bound during class construction
+	pub computedField = config.name + "_computed"
 
-  # Regular method that should work after construction
-  pub getName(): String! {
-    self.config.name
-  }
+	# Regular method that should work after construction
+	pub getName(): String! {
+		self.config.name
+	}
 }
 
 # Test that self works during class evaluation (the regression)

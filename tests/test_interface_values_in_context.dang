@@ -1,22 +1,22 @@
 # Test using interface-typed values in various contexts
 
 interface Drawable {
-  pub draw: String!
+	pub draw: String!
 }
 
 type Circle implements Drawable {
-  pub radius: Int! = 5
-  pub draw: String! {
-    "Drawing circle with radius " + toJSON(self.radius)
-  }
+	pub radius: Int! = 5
+	pub draw: String! {
+		"Drawing circle with radius " + toJSON(self.radius)
+	}
 }
 
 type Rectangle implements Drawable {
-  pub width: Int! = 10
-  pub height: Int! = 20
-  pub draw: String! {
-    "Drawing rectangle " + toJSON(self.width) + "x" + toJSON(self.height)
-  }
+	pub width: Int! = 10
+	pub height: Int! = 20
+	pub draw: String! {
+		"Drawing rectangle " + toJSON(self.width) + "x" + toJSON(self.height)
+	}
 }
 
 # Test: Interface-typed values in variables
@@ -25,7 +25,7 @@ assert { shape.draw == "Drawing circle with radius 5" }
 
 # Test: Interface-typed values in type fields
 type Canvas {
-  pub shape: Drawable! = Rectangle
+	pub shape: Drawable! = Rectangle
 }
 
 let canvas = Canvas
@@ -33,9 +33,9 @@ assert { canvas.shape.draw == "Drawing rectangle 10x20" }
 
 # Test: Interface-typed values in function parameters
 type Renderer {
-  pub render(drawable: Drawable!): String! {
-    "Rendered: " + drawable.draw
-  }
+	pub render(drawable: Drawable!): String! {
+		"Rendered: " + drawable.draw
+	}
 }
 
 let renderer = Renderer
@@ -44,8 +44,8 @@ assert { result == "Rendered: Drawing circle with radius 5" }
 
 # Test: Interface-typed return values
 type ShapeFactory {
-  pub createCircle: Drawable! = Circle
-  pub createRectangle: Drawable! = Rectangle
+	pub createCircle: Drawable! = Circle
+	pub createRectangle: Drawable! = Rectangle
 }
 
 let factory = ShapeFactory

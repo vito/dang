@@ -16,9 +16,9 @@ assert { result4 == null }
 
 # Nested conditionals
 pub nested = if (true) {
-  if (false) { "inner_false" } else { "inner_true" }
+	if (false) { "inner_false" } else { "inner_true" }
 } else {
-  "outer_false"
+	"outer_false"
 }
 
 assert { nested == "inner_true" }
@@ -28,11 +28,11 @@ pub x = 10
 pub y = 20
 
 pub max = if (x > y) {
-  x
+	x
 } else if (y > x) {
-  y
+	y
 } else {
-  x
+	x
 }
 
 assert { max == y }

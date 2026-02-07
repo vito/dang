@@ -1,25 +1,25 @@
 pub simpleFor: String! {
-  let counter = 0
-  let result = ""
-  
-  for (counter < 3) {
-    result = result + "loop"
-    counter = counter + 1
-  }
-  
-  result
+	let counter = 0
+	let result = ""
+	
+	for (counter < 3) {
+		result = result + "loop"
+		counter = counter + 1
+	}
+	
+	result
 }
 
 pub forAccumulate: Int! {
-  let sum = 0
-  let i = 1
-  
-  for (i <= 3) {
-    sum = sum + i
-    i = i + 1
-  }
-  
-  sum
+	let sum = 0
+	let i = 1
+	
+	for (i <= 3) {
+		sum = sum + i
+		i = i + 1
+	}
+	
+	sum
 }
 
 assert { simpleFor == "looplooploop" }

@@ -73,7 +73,10 @@ UnaryExpr <- '!' _ expr:Term {
 }
 
 ParenForm <- '(' _ expr:Form _ ')' {
-  return expr.(Node), nil
+  return &Grouped{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
 }
 
 // Handle Symbol followed by optional ()
@@ -658,7 +661,8 @@ Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?
   }
   return &Float{
     Value: value,
-    Loc: c.Loc(),
+    Text:  string(c.text),
+    Loc:   c.Loc(),
   }, nil
 }
 
@@ -681,13 +685,15 @@ Exponent <- 'e'i [+-]? DecimalDigit+
 
 TripleQuoteString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
   return &String{
-    Value: normalizeTripleQuoteString(content.([]byte)),
-    Loc: c.Loc(),
+    Value:        normalizeTripleQuoteString(content.([]byte)),
+    TripleQuoted: true,
+    Loc:          c.Loc(),
   }, nil
 } / TripleQuote TripleQuote {
   return &String{
-    Value: "",
-    Loc: c.Loc(),
+    Value:        "",
+    TripleQuoted: true,
+    Loc:          c.Loc(),
   }, nil
 }
 
@@ -991,9 +997,10 @@ PrefixDirectiveApplication <- '@' name:Id args:ArgValues? {
     argValues = args.([]Keyed[Node])
   }
   return &DirectiveApplication{
-    Name: name.(string),
-    Args: argValues,
-    Loc: c.Loc(),
+    Name:     name.(string),
+    Args:     argValues,
+    IsPrefix: true,
+    Loc:      c.Loc(),
   }, nil
 }
 

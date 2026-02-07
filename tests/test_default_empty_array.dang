@@ -2,7 +2,7 @@
 # This tests that `[]` as a default value can unify with `[String!]!`
 
 pub joinNames(names: [String!]! = []): [String!]! {
-  names
+	names
 }
 
 # Test auto-calling with empty default

@@ -31,10 +31,11 @@ func (h *langHandler) handleInitialize(ctx context.Context, req *jrpc2.Request) 
 			CompletionProvider: &CompletionProvider{
 				TriggerCharacters: []string{"."},
 			},
-			DefinitionProvider:      true,
-			HoverProvider:           true,
-			RenameProvider:          true,
-			WorkspaceSymbolProvider: true,
+			DefinitionProvider:         true,
+			HoverProvider:              true,
+			RenameProvider:             true,
+			WorkspaceSymbolProvider:    true,
+			DocumentFormattingProvider: true,
 			Workspace: &ServerCapabilitiesWorkspace{
 				WorkspaceFolders: WorkspaceFoldersServerCapabilities{
 					Supported:           true,
