@@ -1,1 +1,10 @@
-errors/new_outside_class.dang:2:11 (52): no match found, expected: "!=", "#", "%", "(", ")", "*", "+", ",", "-", ".", "/", "::", "<", "<=", "==", ">", ">=", "??", "[", "\n", "and", "or", "{", [ \t\r\n], [ \t] or [a-zA-Z0-9_]
+[1m[31mError:[0m new() constructor can only be defined inside a type body
+  [2m[34m--> errors/new_outside_class.dang:2:1[0m
+ [2m    |[0m
+ [2m  1 | # new() is only valid inside class bodies[0m
+ [2m[34m[1m  2 | [0mnew(x: Int!) {
+[2m       [31m^^^^^^^^^^^^^^[0m
+ [2m  3 |   print(value: x)[0m
+ [2m  4 | }[0m
+ [2m    |[0m
+

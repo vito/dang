@@ -255,10 +255,10 @@ func (n *NewConstructorDecl) Walk(fn func(Node) bool) {
 	n.BodyBlock.Walk(fn)
 }
 
-// Infer is a no-op since NewConstructorDecl is inferred by ClassDecl.inferNewConstructor
+// Infer returns an error since new() is only valid inside a class body.
+// When used inside a class, it is inferred by ClassDecl.inferNewConstructor instead.
 func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	// The new() constructor is inferred by ClassDecl, not standalone
-	return hm.TypeVariable('n'), nil
+	return nil, NewInferError(fmt.Errorf("new() constructor can only be defined inside a type body"), n)
 }
 
 // Eval is a no-op since NewConstructorDecl is evaluated as part of ConstructorFunction.Call
