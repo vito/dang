@@ -459,6 +459,10 @@ func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 		if loc := nodeLocation(form); loc != nil {
 			f.emitTrailingComment(loc.Line)
 		}
+		// Update lastLine to the end of this form to prevent spurious blank lines
+		if endLine := nodeEndLine(form); endLine > 0 {
+			f.lastLine = endLine
+		}
 		f.newline()
 	}
 }
@@ -650,6 +654,10 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 			if loc := nodeLocation(form); loc != nil {
 				f.emitTrailingComment(loc.Line)
 			}
+			// Update lastLine to the end of this form
+			if endLine := nodeEndLine(form); endLine > 0 {
+				f.lastLine = endLine
+			}
 			f.newline()
 		}
 	})
@@ -684,6 +692,10 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 			// Emit trailing comment if this member has one
 			if loc := nodeLocation(form); loc != nil {
 				f.emitTrailingComment(loc.Line)
+			}
+			// Update lastLine to the end of this form
+			if endLine := nodeEndLine(form); endLine > 0 {
+				f.lastLine = endLine
 			}
 			f.newline()
 		}
@@ -1126,6 +1138,10 @@ func (f *Formatter) formatBlockContents(b *Block) {
 			// Emit trailing comment if this form has one
 			if loc := nodeLocation(form); loc != nil {
 				f.emitTrailingComment(loc.Line)
+			}
+			// Update lastLine to the end of this form
+			if endLine := nodeEndLine(form); endLine > 0 {
+				f.lastLine = endLine
 			}
 			if i < len(b.Forms)-1 {
 				f.newline()
