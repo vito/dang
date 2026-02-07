@@ -888,12 +888,7 @@ func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 	}
 
 	f.write("new(")
-	for i, arg := range n.Args {
-		if i > 0 {
-			f.write(", ")
-		}
-		f.formatArgDecl(arg)
-	}
+	f.formatFunctionArgs(n.Args, nil)
 	f.write(") ")
 	f.formatBlock(n.BodyBlock)
 }
