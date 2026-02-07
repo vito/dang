@@ -10,6 +10,47 @@ import (
 	"github.com/vito/dang/pkg/querybuilder"
 )
 
+// Grouped represents a parenthesized expression - used to preserve explicit grouping
+type Grouped struct {
+	InferredTypeHolder
+	Expr Node
+	Loc  *SourceLocation
+}
+
+var _ Node = (*Grouped)(nil)
+var _ Evaluator = (*Grouped)(nil)
+
+func (g *Grouped) DeclaredSymbols() []string {
+	return g.Expr.DeclaredSymbols()
+}
+
+func (g *Grouped) ReferencedSymbols() []string {
+	return g.Expr.ReferencedSymbols()
+}
+
+func (g *Grouped) Body() hm.Expression { return g.Expr }
+
+func (g *Grouped) GetSourceLocation() *SourceLocation { return g.Loc }
+
+func (g *Grouped) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	t, err := g.Expr.Infer(ctx, env, fresh)
+	if err != nil {
+		return nil, err
+	}
+	g.SetInferredType(t)
+	return t, nil
+}
+
+func (g *Grouped) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return EvalNode(ctx, env, g.Expr)
+}
+
+func (g *Grouped) Walk(fn func(Node) bool) {
+	if fn(g) {
+		g.Expr.Walk(fn)
+	}
+}
+
 // FunCall represents a function call expression
 type FunCall struct {
 	InferredTypeHolder

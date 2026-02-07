@@ -73,7 +73,10 @@ UnaryExpr <- '!' _ expr:Term {
 }
 
 ParenForm <- '(' _ expr:Form _ ')' {
-  return expr.(Node), nil
+  return &Grouped{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
 }
 
 // Handle Symbol followed by optional ()

@@ -678,3 +678,55 @@ pub x = foo.bar
 		})
 	}
 }
+
+func (FormatSuite) TestGroupedExpressions(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "grouped arithmetic is preserved",
+			input:    `let x = (a + b) * c`,
+			expected: "let x = (a + b) * c\n",
+		},
+		{
+			name:     "grouped symbol is preserved",
+			input:    `let x = (foo)`,
+			expected: "let x = (foo)\n",
+		},
+		{
+			name:     "grouped receiver is preserved",
+			input:    `let x = (foo).bar`,
+			expected: "let x = (foo).bar\n",
+		},
+		{
+			name:     "grouped chain receiver is preserved",
+			input:    `let x = (foo.bar).baz`,
+			expected: "let x = (foo.bar).baz\n",
+		},
+		{
+			name:     "zero-arg calls still elided",
+			input:    `let x = foo.bar()`,
+			expected: "let x = foo.bar\n",
+		},
+		{
+			name:     "zero-arg chain calls still elided",
+			input:    `let x = foo().bar().baz`,
+			expected: "let x = foo.bar.baz\n",
+		},
+		{
+			name:     "nested grouped preserved",
+			input:    `let x = ((a))`,
+			expected: "let x = ((a))\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}

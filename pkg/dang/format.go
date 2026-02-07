@@ -464,6 +464,8 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *Reassignment:
 		return n.Loc
+	case *Grouped:
+		return n.Loc
 	default:
 		return nil
 	}
@@ -619,6 +621,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatBinaryOp(n.Left, n.Right, ">=")
 	case *Inequality:
 		f.formatBinaryOp(n.Left, n.Right, "!=")
+	case *Grouped:
+		f.formatGrouped(n)
 	default:
 		// Fallback for unknown node types
 		f.write(fmt.Sprintf("/* unknown node type: %T */", node))
@@ -2239,6 +2243,12 @@ func (f *Formatter) formatEquality(e *Equality) {
 func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 	f.write("!")
 	f.formatNode(u.Expr)
+}
+
+func (f *Formatter) formatGrouped(g *Grouped) {
+	f.write("(")
+	f.formatNode(g.Expr)
+	f.write(")")
 }
 
 func (f *Formatter) formatBinaryOp(left, right Node, op string) {
