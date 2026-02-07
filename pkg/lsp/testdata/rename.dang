@@ -1,17 +1,17 @@
 # local variable rename
 let hello = 42
 
-hello # test: ^,rn<C-u>world<CR> => ┃world
+hello # test: ^grn<C-u>world<CR> => ┃world
 
 # function parameter rename
-pub add(x: Int!, y: Int!): Int! { x + y } # test: ^fx,rn<C-u>a<CR> => pub add(┃a: Int!, y: Int!): Int! { a + y }
+pub add(x: Int!, y: Int!): Int! { x + y } # test: ^fxgrn<C-u>a<CR> => pub add(┃a: Int!, y: Int!): Int! { a + y }
 
 # function rename
-pub sub(x: Int!, y: Int!): Int! { x - y } # test: ^w,rn<C-u>minus<CR> => pub ┃minus(a: Int!, y: Int!): Int! { a - y }
+pub sub(x: Int!, y: Int!): Int! { x - y } # test: ^wgrn<C-u>minus<CR> => pub ┃minus(a: Int!, y: Int!): Int! { a - y }
 
 add
 
 # multiple occurrences
 let foo = 10
 
-foo + foo + foo # test: ^,rn<C-u>bar<CR> => ┃bar + bar + bar
+foo + foo + foo # test: ^grn<C-u>bar<CR> => ┃bar + bar + bar

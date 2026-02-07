@@ -153,7 +153,7 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 
 	is.Eventually(func() bool { // wait for LSP client to attach
 		var b bool
-		err := client.Eval(`luaeval('#vim.lsp.buf_get_clients() > 0')`, &b)
+		err := client.Eval(`luaeval('#vim.lsp.get_clients({bufnr = 0}) > 0')`, &b)
 		return err == nil && b
 	}, 5*time.Second, 10*time.Millisecond)
 
@@ -319,7 +319,7 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		}
 	})
 
-	err = client.Command(`source testdata/config.vim`)
+	err = client.Command(`source testdata/config.lua`)
 	is.NoErr(err)
 
 	paths, err := client.RuntimePaths()
