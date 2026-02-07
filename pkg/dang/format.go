@@ -1693,6 +1693,13 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 		}
 	}
 
+	// Check if any arg spans multiple lines (e.g., a multiline chain)
+	for _, arg := range args {
+		if f.isMultilineNode(arg.Value) {
+			return true
+		}
+	}
+
 	// All args were on the same line - keep them that way
 	return false
 }
