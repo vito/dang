@@ -1379,13 +1379,13 @@ func (f *Formatter) wasSelectMultiline(s *Select) bool {
 
 // formatSelectChain formats a select chain with leading dots on new lines
 func (f *Formatter) formatSelectChain(s *Select) {
-	// Collect the chain
-	var fields []string
+	// Collect the chain - keep the Select nodes for trailing comments
+	var selects []*Select
 	var root Node
 	current := Node(s)
 	for {
 		if sel, ok := current.(*Select); ok {
-			fields = append([]string{sel.Field}, fields...)
+			selects = append([]*Select{sel}, selects...)
 			current = sel.Receiver
 		} else {
 			root = current
@@ -1398,11 +1398,15 @@ func (f *Formatter) formatSelectChain(s *Select) {
 
 	// Format each field on its own line with a leading dot, indented one level
 	f.indented(func() {
-		for _, field := range fields {
+		for _, sel := range selects {
 			f.newline()
 			f.writeIndent()
 			f.write(".")
-			f.write(field)
+			f.write(sel.Field)
+			// Emit trailing comment for this select
+			if sel.Loc != nil && sel.Loc.End != nil {
+				f.emitTrailingComment(sel.Loc.End.Line)
+			}
 		}
 	})
 }

@@ -410,6 +410,55 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestTrailingCommentsInChains(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "trailing comment preserved on chain element",
+			input: `pub x = foo.
+	bar(a). # comment on bar
+	baz`,
+			expected: `pub x = foo
+	.bar(a) # comment on bar
+	.baz
+`,
+		},
+		{
+			name: "multiple trailing comments in chain",
+			input: `pub x = foo.
+	bar. # first comment
+	baz. # second comment
+	qux`,
+			expected: `pub x = foo
+	.bar # first comment
+	.baz # second comment
+	.qux
+`,
+		},
+		{
+			name: "trailing comment on last chain element",
+			input: `pub x = foo.
+	bar.
+	baz # final comment`,
+			expected: `pub x = foo
+	.bar
+	.baz # final comment
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
