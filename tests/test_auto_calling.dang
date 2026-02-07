@@ -1,9 +1,7 @@
-#nofmt
-
 assert("auto-calling symbols") {
-	serverInfo().platform() == serverInfo.platform()
+	serverInfo().platform() == serverInfo.platform() #nofmt
 }
 
 assert("auto-calling selections") {
-	serverInfo.platform == serverInfo.platform()
+	serverInfo.platform == serverInfo.platform() #nofmt
 }

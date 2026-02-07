@@ -1298,6 +1298,27 @@ func (f *Formatter) formatBlockContents(b *Block) {
 			}
 		}
 		for i, form := range b.Forms {
+			// Check for #nofmt before emitting comments (so we don't consume the comment)
+			if f.hasNoFmtComment(form) {
+				orig := f.getOriginalSource(form)
+				if orig != "" {
+					// Emit the #nofmt comment (if it's a prefix comment)
+					f.emitCommentsForNode(form)
+					f.writeIndent()
+					f.write(orig)
+					// Skip formatting this node
+					fullLoc := nodeFullLocation(form)
+					if fullLoc != nil && fullLoc.End != nil {
+						// Remove any trailing #nofmt comment (it's part of the original source)
+						f.removeTrailingNoFmtComment(fullLoc.End.Line)
+						f.lastLine = fullLoc.End.Line
+					}
+					if i < len(b.Forms)-1 {
+						f.newline()
+					}
+					continue
+				}
+			}
 			// Emit comments for this form
 			f.emitCommentsForNode(form)
 			f.writeIndent()
