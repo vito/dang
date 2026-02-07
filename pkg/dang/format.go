@@ -1274,8 +1274,17 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 					f.write(" ")
 					f.formatBlockArg(e.BlockArg)
 				}
+				// Emit trailing comment for this chain element
+				// Use the FunCall's Loc directly to get the actual span
+				if e.Loc != nil && e.Loc.End != nil {
+					f.emitTrailingComment(e.Loc.End.Line)
+				}
 			case *Select:
 				f.write(e.Field)
+				// Use the Select's Loc directly to get the actual span
+				if e.Loc != nil && e.Loc.End != nil {
+					f.emitTrailingComment(e.Loc.End.Line)
+				}
 			}
 		}
 	})
