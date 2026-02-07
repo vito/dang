@@ -284,7 +284,6 @@ func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 ): String! {
 	filePath
 }`,
-			// NOTE: extra blank line after { is bug #2, will be fixed
 			expected: `pub readFile(
 	"""
 	Relative path within the workspace
@@ -295,7 +294,6 @@ func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 	"""
 	offset: Int! = 0
 ): String! {
-
 	filePath
 }
 `,

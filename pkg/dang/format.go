@@ -1012,6 +1012,12 @@ func (f *Formatter) formatBlockContents(b *Block) {
 
 	f.newline()
 	f.indented(func() {
+		// Reset lastLine to prevent spurious blank line at start of block
+		if len(b.Forms) > 0 {
+			if loc := nodeLocation(b.Forms[0]); loc != nil && loc.Line > 0 {
+				f.lastLine = loc.Line - 1
+			}
+		}
 		for i, form := range b.Forms {
 			// Emit comments for this form
 			f.emitCommentsForNode(form)
