@@ -47,3 +47,12 @@ a formatter fix, and a new skill file), split them into separate
 commits. Each commit should only stage its relevant files — avoid
 `git add .` or staging unrelated changes. A good test: could you
 write a clear, single-purpose subject line? If not, split it up.
+
+## Staging
+
+Stage specific files with `git add <file>...`. Do **not** use
+`git add -p` — it requires interactive input and will hang.
+
+If you need to commit only part of a file's changes, write the
+file so it contains only the changes for the current commit, commit
+it, then make the remaining changes afterward.
