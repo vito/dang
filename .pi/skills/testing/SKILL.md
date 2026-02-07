@@ -46,6 +46,53 @@ go test ./tests/ -run "TestDang/TestErrorMessages" -update
    ```
 3. Review `tests/testdata/my_error.golden` to confirm the error message is correct.
 
+## Dagger SDK Tests
+
+The Dagger SDK has its own integration test suite in `dagger-sdk/tests/` that exercises modules against a real Dagger engine via `dagger call`.
+
+### Running SDK Tests
+
+```bash
+# Run all SDK tests
+go test ./dagger-sdk/tests/ -v
+
+# Run a specific test
+go test ./dagger-sdk/tests/ -run "TestDaggerSDK/TestMismatch" -v
+```
+
+### Test Structure
+
+- **Test suite**: `DaggerSDKSuite` in `dagger-sdk/tests/integration_test.go`
+- **Test modules**: Each test has a Dagger module in `dagger-sdk/testdata/<module-name>/` containing:
+  - `main.dang` — the module source
+  - `dagger.json` — module config with `"sdk": "../.."` pointing to the SDK
+
+### Adding a New SDK Test
+
+1. Create `dagger-sdk/testdata/my-test/main.dang` with a Dagger module.
+2. Create `dagger-sdk/testdata/my-test/dagger.json`:
+   ```json
+   {
+     "name": "my-test",
+     "engineVersion": "v0.19.11",
+     "sdk": "../.."
+   }
+   ```
+3. Add a test method on `DaggerSDKSuite` in `dagger-sdk/tests/integration_test.go`:
+   ```go
+   func (DaggerSDKSuite) TestMyTest(ctx context.Context, t *testctx.T) {
+       t.Run("sub test", func(ctx context.Context, t *testctx.T) {
+           out := requireDagger(ctx, t, "my-test", "some-function", "--arg", "value")
+           require.Contains(t, out, "expected output")
+       })
+   }
+   ```
+
+### Helpers
+
+- `runDagger(ctx, module, args...)` — runs `dagger -m <testdata/module> call <args>`, returns stdout, stderr, error
+- `requireDagger(ctx, t, module, args...)` — same but fails the test on error, returns stdout
+
 ## Reporting Nice Errors
 
 Dang has two error types for attaching source locations:
