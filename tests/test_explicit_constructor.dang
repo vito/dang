@@ -1,0 +1,123 @@
+# Test explicit `new(...) { ... }` constructor
+
+# Basic: explicit constructor that initializes a field
+type Greeter {
+  pub greeting: String!
+
+  new(name: String!) {
+    self.greeting = "Hello, " + name + "!"
+  }
+}
+
+assert { Greeter("World").greeting == "Hello, World!" }
+assert { Greeter("Alice").greeting == "Hello, Alice!" }
+
+# Multiple fields initialized in constructor
+type Point {
+  pub x: Int!
+  pub y: Int!
+  pub label: String!
+
+  new(x: Int!, y: Int!) {
+    self.x = x
+    self.y = y
+    self.label = toString(x) + "," + toString(y)
+  }
+}
+
+assert { Point(3, 4).x == 3 }
+assert { Point(3, 4).y == 4 }
+assert { Point(3, 4).label == "3,4" }
+
+# Constructor args with defaults
+type Logger {
+  pub prefix: String!
+
+  new(name: String!, level: String! = "INFO") {
+    self.prefix = "[" + level + "] " + name
+  }
+}
+
+assert { Logger("app").prefix == "[INFO] app" }
+assert { Logger("app", "DEBUG").prefix == "[DEBUG] app" }
+
+# All-default constructor args still support auto-calling
+type Config {
+  pub mode: String!
+
+  new(mode: String! = "production") {
+    self.mode = mode
+  }
+}
+
+assert { Config.mode == "production" }
+assert { Config("staging").mode == "staging" }
+
+# Private field initialized in constructor
+type Counter {
+  pub label: String!
+  let count: Int!
+
+  new(label: String!, initial: Int! = 0) {
+    self.label = label
+    self.count = initial
+  }
+
+  pub getCount: Int! {
+    self.count
+  }
+}
+
+let counter = Counter("hits", 10)
+assert { counter.label == "hits" }
+assert { counter.getCount == 10 }
+
+let counterDefault = Counter("views")
+assert { counterDefault.getCount == 0 }
+
+# Fields with defaults can be overwritten by new()
+type Pair {
+  pub first: String! = "default"
+  pub second: String! = "default"
+
+  new(a: String!, b: String!) {
+    self.first = a
+    self.second = b
+  }
+}
+
+let p = Pair("left", "right")
+assert { p.first == "left" }
+assert { p.second == "right" }
+
+# Constructor that transforms its arguments
+type PrivateState {
+  let value: Int!
+
+  new(input: Int! = 42) {
+    self.value = input * 2
+  }
+
+  pub display: String! {
+    toString(self.value)
+  }
+}
+
+assert { PrivateState.display == "84" }
+assert { PrivateState(100).display == "200" }
+
+# Bare assignment (no self.) works when args don't shadow fields
+type Vector {
+  pub x: Int! = 0
+  pub y: Int! = 0
+
+  new(vx: Int!, vy: Int!) {
+    x = vx
+    y = vy
+  }
+}
+
+assert { Vector(3, 4).x == 3 }
+assert { Vector(3, 4).y == 4 }
+
+print("Explicit constructor tests passed!")

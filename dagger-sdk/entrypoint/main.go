@@ -346,7 +346,13 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 		if !isMod {
 			return nil, fmt.Errorf("expected module type, got %T", fieldType)
 		}
-		args := map[string]dang.Value{}
+		// When reconstructing from serialized state, we directly set fields
+		// rather than calling the constructor. This is necessary because:
+		// 1. Constructor arg names may differ from field names (explicit new())
+		// 2. The constructor may have side effects we don't want to re-run
+		// 3. The serialized state represents the object's fields, not constructor args
+		modVal := dang.NewModuleValue(mod)
+		modVal.SetDynamicScope(modVal)
 		for name, val := range v {
 			expectedT, found := mod.SchemeOf(name)
 			if !found {
@@ -360,26 +366,22 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert map item %q: %w", name, err)
 			}
-			args[name] = dangVal
+			modVal.Set(name, dangVal)
 		}
+		// For named types, evaluate the class body to set up computed properties and methods
 		if mod.Name() != "" {
 			constructor, ok := env.Get(mod.Name())
-			if !ok {
-				return nil, fmt.Errorf("module constructor %q not found in environment", mod.Name())
+			if ok {
+				if constructorFn, ok := constructor.(*dang.ConstructorFunction); ok {
+					bodyEnv := dang.CreateCompositeEnv(modVal, env)
+					_, err := dang.EvaluateFormsWithPhases(ctx, constructorFn.ClassBodyForms, bodyEnv)
+					if err != nil {
+						return nil, fmt.Errorf("evaluating class body for %s: %w", mod.Name(), err)
+					}
+				}
 			}
-			constructorFn, ok := constructor.(dang.Callable)
-			if !ok {
-				return nil, fmt.Errorf("module constructor %q is not callable", mod.Name())
-			}
-			return constructorFn.Call(ctx, env, args)
-		} else {
-			modVal := dang.NewModuleValue(mod)
-			for name, val := range args {
-				mod.Add(name, hm.NewScheme(nil, val.Type()))
-				modVal.Set(name, val)
-			}
-			return modVal, nil
 		}
+		return modVal, nil
 	case nil:
 		return dang.NullValue{}, nil
 	default:

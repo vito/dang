@@ -387,17 +387,22 @@ func (r *REPL) evaluateExpression(ctx context.Context, expr string) error {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	for _, node := range result.(*dang.ModuleBlock).Forms {
-		if r.debug {
+	forms := result.(*dang.ModuleBlock).Forms
+
+	if r.debug {
+		for _, node := range forms {
 			_, _ = pretty.Println(node)
 		}
+	}
 
-		// Type inference
-		_, err = dang.Infer(ctx, r.typeEnv, node, true)
-		if err != nil {
-			return fmt.Errorf("type error: %w", err)
-		}
+	// Type inference using phased approach (handles hoisting for type declarations)
+	fresh := hm.NewSimpleFresher()
+	_, err = dang.InferFormsWithPhases(ctx, forms, r.typeEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("type error: %w", err)
+	}
 
+	for _, node := range forms {
 		// Evaluation with stdout context
 		val, err := dang.EvalNode(ctx, r.evalEnv, node)
 		if err != nil {

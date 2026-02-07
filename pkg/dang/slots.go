@@ -214,6 +214,59 @@ type ClassDecl struct {
 	ConstructorFnType *hm.FunctionType
 }
 
+// NewConstructorDecl represents an explicit `new(...) { ... }` constructor
+type NewConstructorDecl struct {
+	InferredTypeHolder
+	Args      []*SlotDecl
+	BodyBlock *Block
+	DocString string
+	Loc       *SourceLocation
+
+	Inferred *hm.FunctionType
+}
+
+var _ Node = &NewConstructorDecl{}
+var _ Evaluator = &NewConstructorDecl{}
+
+func (n *NewConstructorDecl) DeclaredSymbols() []string {
+	return nil // new doesn't declare a symbol, it's handled specially by ClassDecl
+}
+
+func (n *NewConstructorDecl) ReferencedSymbols() []string {
+	var symbols []string
+	for _, arg := range n.Args {
+		symbols = append(symbols, arg.ReferencedSymbols()...)
+	}
+	symbols = append(symbols, n.BodyBlock.ReferencedSymbols()...)
+	return symbols
+}
+
+func (n *NewConstructorDecl) Body() hm.Expression { return n.BodyBlock }
+
+func (n *NewConstructorDecl) GetSourceLocation() *SourceLocation { return n.Loc }
+
+func (n *NewConstructorDecl) Walk(fn func(Node) bool) {
+	if !fn(n) {
+		return
+	}
+	for _, arg := range n.Args {
+		arg.Walk(fn)
+	}
+	n.BodyBlock.Walk(fn)
+}
+
+// Infer returns an error since new() is only valid inside a class body.
+// When used inside a class, it is inferred by ClassDecl.inferNewConstructor instead.
+func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return nil, NewInferError(fmt.Errorf("new() constructor can only be defined inside a type body"), n)
+}
+
+// Eval is a no-op since NewConstructorDecl is evaluated as part of ConstructorFunction.Call
+func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// The new() constructor body is evaluated by ConstructorFunction.Call
+	return NullValue{}, nil
+}
+
 func (f *ClassDecl) IsDeclarer() bool {
 	return true
 }
@@ -242,6 +295,27 @@ func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
 var _ Hoister = &ClassDecl{}
 
+// findNewConstructor returns the NewConstructorDecl from the class body, if any
+func (c *ClassDecl) findNewConstructor() *NewConstructorDecl {
+	for _, form := range c.Value.Forms {
+		if newDecl, ok := form.(*NewConstructorDecl); ok {
+			return newDecl
+		}
+	}
+	return nil
+}
+
+// bodyFormsWithoutNew returns the class body forms excluding the NewConstructorDecl
+func (c *ClassDecl) bodyFormsWithoutNew() []Node {
+	var forms []Node
+	for _, form := range c.Value.Forms {
+		if _, ok := form.(*NewConstructorDecl); !ok {
+			forms = append(forms, form)
+		}
+	}
+	return forms
+}
+
 func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(Env)
 	if !ok {
@@ -259,8 +333,14 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		lexical: env.(Env),
 	}
 
-	// Create a constructor function type based on public non-function slots
-	constructorParams := c.extractConstructorParameters()
+	// Build constructor type: use explicit new() if present, otherwise derive from fields
+	newDecl := c.findNewConstructor()
+	var constructorParams []*SlotDecl
+	if newDecl != nil {
+		constructorParams = newDecl.Args
+	} else {
+		constructorParams = c.extractConstructorParameters()
+	}
 	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, class.(*Module), fresh)
 	if err != nil {
 		return err
@@ -304,7 +384,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		selfType := hm.NonNullType{Type: class}
 		class.SetDynamicScopeType(selfType)
 
-		if err := c.Value.Hoist(ctx, inferEnv, fresh, pass); err != nil {
+		// Hoist body forms (excluding new() which is handled separately)
+		bodyForms := c.bodyFormsWithoutNew()
+		bodyBlock := &Block{Forms: bodyForms}
+		if err := bodyBlock.Hoist(ctx, inferEnv, fresh, pass); err != nil {
 			return err
 		}
 	}
@@ -349,9 +432,32 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		lexical: env.(Env),
 	}
 
-	// Use phased inference approach to handle forward references within the class body
-	if _, err := InferFormsWithPhases(ctx, c.Value.Forms, inferEnv, fresh); err != nil {
+	// Check for slots named "new" — the user likely intended a constructor
+	for _, form := range c.Value.Forms {
+		if slot, ok := form.(*SlotDecl); ok && slot.Name.Name == "new" {
+			vis := "pub"
+			if slot.Visibility == PrivateVisibility {
+				vis = "let"
+			}
+			return nil, NewInferError(
+				fmt.Errorf("'new' is a constructor, not a method; use `new(...) { ... }` without `%s` or a return type", vis),
+				slot,
+			)
+		}
+	}
+
+	// Infer body forms (excluding new() which is handled separately)
+	bodyForms := c.bodyFormsWithoutNew()
+	if _, err := InferFormsWithPhases(ctx, bodyForms, inferEnv, fresh); err != nil {
 		return nil, err
+	}
+
+	// If there's an explicit new(), infer its body with its args in scope
+	newDecl := c.findNewConstructor()
+	if newDecl != nil {
+		if err := c.inferNewConstructor(ctx, newDecl, inferEnv, fresh); err != nil {
+			return nil, err
+		}
 	}
 
 	// Validate interface implementations after fields have been inferred
@@ -458,6 +564,32 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 	return fnDecl.inferFunctionType(ctx, env, fresh, nil, classType.Named+" Constructor")
 }
 
+// inferNewConstructor infers the body of an explicit new() constructor
+func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
+	// Create an environment with the constructor args in scope
+	newEnv := inferEnv.Clone().(*CompositeModule)
+	for _, arg := range newDecl.Args {
+		argType := arg.GetInferredType()
+		if argType == nil {
+			// Infer the arg type if not already done
+			var err error
+			argType, err = arg.Infer(ctx, newEnv, fresh)
+			if err != nil {
+				return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
+			}
+		}
+		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
+	}
+
+	// Infer the new() body
+	_, err := newDecl.BodyBlock.Infer(ctx, newEnv, fresh)
+	if err != nil {
+		return fmt.Errorf("inferring new() body: %w", err)
+	}
+
+	return nil
+}
+
 func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
@@ -469,8 +601,16 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			c.Inferred.SetModuleDocString(c.DocString)
 		}
 
-		// Extract constructor parameters and get filtered class body forms
-		constructorParams := c.extractConstructorParameters()
+		// Find explicit new() or derive constructor from fields
+		newDecl := c.findNewConstructor()
+		var constructorParams []*SlotDecl
+		var newBody *Block
+		if newDecl != nil {
+			constructorParams = newDecl.Args
+			newBody = newDecl.BodyBlock
+		} else {
+			constructorParams = c.extractConstructorParameters()
+		}
 
 		// Create a constructor function that evaluates the class body when called
 		constructor := &ConstructorFunction{
@@ -478,8 +618,9 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			ClassName:      c.Name.Name,
 			Parameters:     constructorParams,
 			ClassType:      c.Inferred,
-			ClassBodyForms: c.Value.Forms,
+			ClassBodyForms: c.bodyFormsWithoutNew(),
 			FnType:         c.ConstructorFnType,
+			NewBody:        newBody,
 		}
 
 		// Add the constructor to the evaluation environment

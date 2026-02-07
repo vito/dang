@@ -1228,6 +1228,10 @@
             "named": true
           },
           {
+            "type": "new_constructor",
+            "named": true
+          },
+          {
             "type": "scalar",
             "named": true
           },
@@ -2541,6 +2545,42 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "new_constructor",
+    "named": true,
+    "fields": {
+      "args": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "arg_types",
+            "named": true
+          }
+        ]
+      },
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "new_token",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -4122,6 +4162,10 @@
   },
   {
     "type": "let_token",
+    "named": true
+  },
+  {
+    "type": "new_token",
     "named": true
   },
   {

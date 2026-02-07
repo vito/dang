@@ -6,10 +6,9 @@ type Person {
 	pub name: String! = "Unknown"
 	pub age: Int! = 0
 
-	pub new(name: String!, age: Int!): Person! {
-		self.name = name
-		self.age = age
-		self
+	new(n: String!, a: Int!) {
+		self.name = n
+		self.age = a
 	}
 
 	pub greet(): String! {

@@ -1,0 +1,5 @@
+{
+  "name": "test-private-arg",
+  "engineVersion": "v0.19.11",
+  "sdk": "../.."
+}
