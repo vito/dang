@@ -38,3 +38,12 @@ the package or subsystem name, e.g. `fmt`, `lsp`, `parser`.
 - If the change is simple enough, the subject line alone is fine
 - Routine fixes (lint, typos, formatting) typically need no body unless
   something particularly interesting or involved was done
+
+## Granularity
+
+Each commit should contain exactly one logical change. If a task
+involves multiple distinct changes (e.g. a refactor, a new feature,
+a formatter fix, and a new skill file), split them into separate
+commits. Each commit should only stage its relevant files — avoid
+`git add .` or staging unrelated changes. A good test: could you
+write a clear, single-purpose subject line? If not, split it up.
