@@ -704,6 +704,8 @@ func (h *langHandler) Assign(ctx context.Context, method string) jrpc2.Handler {
 		return h.handleTextDocumentHover
 	case "textDocument/rename":
 		return h.handleTextDocumentRename
+	case "textDocument/formatting":
+		return h.handleTextDocumentFormatting
 	case "workspace/symbol":
 		return h.handleWorkspaceSymbol
 	case "workspace/didChangeConfiguration":
