@@ -1,8 +1,0 @@
-name = "Dang"
-grammar = "dang"
-path_suffixes = ["dang"]
-line_comments = ["# "]
-first_line_pattern = "^#!.*\\bdang\\b"
-tab_size = 2
-hard_tabs = false
-word_characters = ["_"]

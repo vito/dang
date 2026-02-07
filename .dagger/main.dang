@@ -1,5 +1,4 @@
 type Dang {
-
 	"""
 	The source directory for the Dang project.
 	"""
@@ -7,7 +6,7 @@ type Dang {
 		# TODO: respecting .gitignore would be nice
 		"Session.vim",
 		"dang",
-		"zed-dang/grammars/",
+		"editors",
 		".env",
 		".envrc",
 		".dagger",

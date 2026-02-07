@@ -8,12 +8,7 @@ Here's `.dagger/main.dang` at the time of this writing:
 
 ```graphql
 type Dang {
-  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
-    "Session.vim"
-    "/dang"
-    "/zed-dang/grammars/",
-    "/.env"
-  ])
+  pub source: Directory! @defaultPath(path: "/")
 
   pub build: File! {
     go(source).binary("./cmd/dang")

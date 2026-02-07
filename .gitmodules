@@ -1,3 +1,6 @@
 [submodule "editors/nvim"]
 	path = editors/nvim
 	url = https://codeberg.org/vito/dang.nvim
+[submodule "editors/zed"]
+	path = editors/zed
+	url = https://codeberg.org/vito/zed-dang
