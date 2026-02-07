@@ -1034,7 +1034,7 @@
         "required": true,
         "types": [
           {
-            "type": "class_block",
+            "type": "block",
             "named": true
           }
         ]
@@ -1096,107 +1096,6 @@
       "types": [
         {
           "type": "type_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "class_block",
-    "named": true,
-    "fields": {
-      "e": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "class_expr",
-            "named": true
-          }
-        ]
-      },
-      "eles": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "class_expr",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      },
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "class_expr",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "class_decl",
-    "named": true,
-    "fields": {
-      "decl": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "directive_decl",
-            "named": true
-          },
-          {
-            "type": "new_constructor",
-            "named": true
-          },
-          {
-            "type": "slot",
-            "named": true
-          }
-        ]
-      },
-      "docstring": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "doc_string",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "class_expr",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "class_decl",
-          "named": true
-        },
-        {
-          "type": "form",
-          "named": true
-        },
-        {
-          "type": "import",
-          "named": true
-        },
-        {
-          "type": "reassignment",
           "named": true
         }
       ]
@@ -1326,6 +1225,10 @@
           },
           {
             "type": "interface",
+            "named": true
+          },
+          {
+            "type": "new_constructor",
             "named": true
           },
           {
