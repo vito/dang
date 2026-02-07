@@ -505,3 +505,65 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 		})
 	}
 }
+
+func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "list elements on same line stay together",
+			input: `pub x = ["sh", "-c", """
+	hello
+	"""]`,
+			expected: `pub x = ["sh", "-c", """
+hello
+"""]
+`,
+		},
+		{
+			name: "list in chain call stays on one line",
+			input: `pub x: String! {
+	base.withExec(["sh", "-c", """
+		echo hello
+		"""]).directory(".")
+}`,
+			// Chain stays inline since dots weren't on separate lines originally
+			expected: `pub x: String! {
+	base.withExec(["sh", "-c", """
+	echo hello
+	"""]).directory(".")
+}
+`,
+		},
+		{
+			name: "args on same line stay together",
+			input: `pub x = foo(a, b, c)`,
+			expected: `pub x = foo(a, b, c)
+`,
+		},
+		{
+			name: "args on different lines stay on different lines",
+			input: `pub x = foo(
+	a,
+	b,
+	c
+)`,
+			expected: `pub x = foo(
+	a
+	b
+	c
+)
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}

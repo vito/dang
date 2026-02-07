@@ -1351,24 +1351,18 @@ func (f *Formatter) shouldSplitArgs(args Record) bool {
 		return false
 	}
 
-	// Check if args were originally on multiple lines
-	firstLoc := nodeLocation(args[0].Value)
-	lastLoc := nodeLocation(args[len(args)-1].Value)
-	if firstLoc != nil && lastLoc != nil && lastLoc.Line > firstLoc.Line {
-		return true
+	// Check if any arg STARTS on a different line than the previous arg STARTS
+	// This respects user's intent to keep args on the same line
+	for i := 1; i < len(args); i++ {
+		prevLoc := nodeLocation(args[i-1].Value)
+		currLoc := nodeLocation(args[i].Value)
+		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
+			return true
+		}
 	}
 
-	totalLen := 0
-	for i, arg := range args {
-		if i > 0 {
-			totalLen += 2
-		}
-		totalLen += f.estimateLength(arg.Value)
-		if !arg.Positional {
-			totalLen += len(arg.Key) + 2
-		}
-	}
-	return f.col+totalLen > maxLineLength
+	// All args were on the same line - keep them that way
+	return false
 }
 
 func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
@@ -1575,35 +1569,34 @@ func (f *Formatter) formatList(l *List) {
 		return
 	}
 
-	// Check if list was originally multiline
+	// Check if list was originally multiline (elements on different lines)
 	if f.wasListMultiline(l) {
 		f.formatListMultiline(l)
 		return
 	}
 
-	// Estimate inline length
-	length := 2 // []
-	for i, elem := range l.Elements {
-		if i > 0 {
-			length += 2 // ", "
-		}
-		length += f.estimateLength(elem)
-	}
-
-	if f.col+length <= maxLineLength {
-		f.formatListInline(l)
-	} else {
-		f.formatListMultiline(l)
-	}
+	// List was originally on one line - keep it that way
+	// (respect user's intent over line length)
+	f.formatListInline(l)
 }
 
 func (f *Formatter) wasListMultiline(l *List) bool {
 	if len(l.Elements) < 2 {
 		return false
 	}
-	firstLoc := nodeLocation(l.Elements[0])
-	lastLoc := nodeLocation(l.Elements[len(l.Elements)-1])
-	return firstLoc != nil && lastLoc != nil && lastLoc.Line > firstLoc.Line
+	// Check if any element STARTS on a different line than the previous element STARTS
+	// This distinguishes between:
+	//   ["a", "b", """multiline"""] - elements start on same line, not multiline
+	//   ["a",
+	//    "b"] - elements start on different lines, is multiline
+	for i := 1; i < len(l.Elements); i++ {
+		prevLoc := nodeLocation(l.Elements[i-1])
+		currLoc := nodeLocation(l.Elements[i])
+		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Formatter) formatListInline(l *List) {
