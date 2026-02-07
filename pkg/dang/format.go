@@ -1365,8 +1365,8 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 }
 
 func (f *Formatter) formatString(s *String) {
-	// Check if string contains newlines or is very long - use triple quotes
-	if strings.Contains(s.Value, "\n") || len(s.Value) > 60 {
+	// Preserve triple-quoted strings as triple-quoted
+	if s.TripleQuoted {
 		f.write(`"""`)
 		f.newline()
 		// Indent each line of the string

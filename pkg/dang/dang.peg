@@ -682,13 +682,15 @@ Exponent <- 'e'i [+-]? DecimalDigit+
 
 TripleQuoteString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote {
   return &String{
-    Value: normalizeTripleQuoteString(content.([]byte)),
-    Loc: c.Loc(),
+    Value:        normalizeTripleQuoteString(content.([]byte)),
+    TripleQuoted: true,
+    Loc:          c.Loc(),
   }, nil
 } / TripleQuote TripleQuote {
   return &String{
-    Value: "",
-    Loc: c.Loc(),
+    Value:        "",
+    TripleQuoted: true,
+    Loc:          c.Loc(),
   }, nil
 }
 

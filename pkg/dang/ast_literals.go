@@ -195,8 +195,9 @@ func (s *SelfKeyword) Walk(fn func(Node) bool) {
 // String represents a string literal
 type String struct {
 	InferredTypeHolder
-	Value string
-	Loc   *SourceLocation
+	Value        string
+	TripleQuoted bool // true if originally written with triple quotes
+	Loc          *SourceLocation
 }
 
 var _ Node = (*String)(nil)
