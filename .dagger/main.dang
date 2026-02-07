@@ -5,12 +5,12 @@ type Dang {
 	"""
 	pub source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
 		# TODO: respecting .gitignore would be nice
-		"Session.vim"
-		"dang"
-		"zed-dang/grammars/"
-		".env"
-		".envrc"
-		".dagger"
+		"Session.vim",
+		"dang",
+		"zed-dang/grammars/",
+		".env",
+		".envrc",
+		".dagger",
 	])
 
 	"""
@@ -46,12 +46,12 @@ type Dang {
 	pub tidy: Changeset! {
 		base
 			.withExec([
-				"sh", "-c"
+				"sh", "-c",
 				"""
 				find . -name go.mod | while read path; do
 					go -C $(dirname $path) mod tidy
 				done
-				"""
+				""",
 			])
 			.directory(".")
 			.changes(base.directory("."))
@@ -79,8 +79,8 @@ type Dang {
 		base
 			.withFile("/usr/bin/dang", binary)
 			.withExec(
-				["dang"] + args
-				experimentalPrivilegedNesting: true
+				["dang"] + args,
+				experimentalPrivilegedNesting: true,
 			)
 			.sync
 		null
@@ -100,9 +100,9 @@ type Dang {
 	pub testUpdate: Changeset! {
 		generated
 			.withExec(
-				["go", "test", "-v", "./tests", "-update"]
-				expect: ReturnType.ANY
-				experimentalPrivilegedNesting: true
+				["go", "test", "-v", "./tests", "-update"],
+				expect: ReturnType.ANY,
+				experimentalPrivilegedNesting: true,
 			)
 			.directory(".")
 			.changes(generated.directory("."))
@@ -114,11 +114,11 @@ type Dang {
 	pub treesitterUpdate: Changeset! {
 		generated
 			.withDirectory(
-				"./treesitter"
+				"./treesitter",
 				generated
 					.withWorkdir("./treesitter")
 					.withExec(["tree-sitter", "test", "--update"])
-					.directory(".")
+					.directory("."),
 			)
 			.directory(".")
 			.changes(generated.directory("."))
@@ -140,16 +140,16 @@ type Dang {
 	Bump the pinned Dang version in the Dagger SDK and Zed grammar.
 	"""
 	pub bump(
-		repo: GitRepository! @defaultPath(path: "/.git")
+		repo: GitRepository! @defaultPath(path: "/.git"),
 	): Changeset! {
 		let commit = repo.head.commit
 		base
 			.withExec(["go", "-C", "dagger-sdk", "get", "github.com/vito/dang@" + commit])
 			.withExec(["go", "-C", "dagger-sdk", "mod", "tidy"])
 			.withExec([
-				"sed"
-				"-i", "zed-dang/extension.toml"
-				"-e", "s/commit = \".*\"/commit = \"" + commit + "\"/"
+				"sed",
+				"-i", "zed-dang/extension.toml",
+				"-e", "s/commit = \".*\"/commit = \"" + commit + "\"/",
 			])
 			.directory(".")
 			.changes(base.directory("."))
@@ -184,12 +184,12 @@ type Dang {
 	let base: Container! {
 		apko
 			.wolfi([
-				"bash"
-				"curl"
-				"git"
-				"go", "golangci-lint"
-				"nodejs", "npm"
-				"neovim"
+				"bash",
+				"curl",
+				"git",
+				"go", "golangci-lint",
+				"nodejs", "npm",
+				"neovim",
 			])
 			.withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
 			.withEnvVariable("GOMODCACHE", "/go/pkg/mod")
@@ -218,7 +218,7 @@ type Dang {
 		"""
 		A unique key to force the tests to re-run.
 		"""
-		rerun: String
+		rerun: String,
 	): Void @check {
 		let args = ["go", "test", "-count=1", "./tests"]
 		if (filter != "") {
@@ -247,7 +247,7 @@ type Dang {
 		"""
 		A unique key to force the tests to re-run.
 		"""
-		rerun: String
+		rerun: String,
 	): Void @check {
 		let args = ["go", "-C", "./dagger-sdk/tests", "test", "-count=1"]
 		if (filter != "") {

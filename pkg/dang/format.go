@@ -270,6 +270,8 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *UnaryNegation:
 		return n.Loc
+	case *Reassignment:
+		return n.Loc
 	default:
 		return nil
 	}
@@ -1252,7 +1254,7 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 	// Format arguments
 	if len(c.Args) > 0 {
 		f.write("(")
-		multiline := forceMultiline || f.shouldSplitArgs(c.Args)
+		multiline := forceMultiline || f.shouldSplitArgs(c.Args, c.Loc)
 		f.formatCallArgs(c.Args, multiline)
 		f.write(")")
 	}
@@ -1358,7 +1360,10 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 				}
 				if len(e.Args) > 0 {
 					f.write("(")
-					multiline := f.shouldSplitArgs(e.Args)
+					// In chains, don't use single-arg line check since we've already
+					// reformatted the chain structure. Only split if multiple args
+					// were on different lines.
+					multiline := f.shouldSplitArgs(e.Args, nil)
 					f.formatCallArgs(e.Args, multiline)
 					f.write(")")
 				}
@@ -1399,7 +1404,7 @@ func (f *Formatter) collectChain(node Node, chain *[]Node, root *Node) {
 	}
 }
 
-func (f *Formatter) shouldSplitArgs(args Record) bool {
+func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	if len(args) == 0 {
 		return false
 	}
@@ -1410,6 +1415,14 @@ func (f *Formatter) shouldSplitArgs(args Record) bool {
 		prevLoc := nodeLocation(args[i-1].Value)
 		currLoc := nodeLocation(args[i].Value)
 		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
+			return true
+		}
+	}
+
+	// For a single arg, check if it's on a different line than the opening paren
+	if len(args) == 1 && callLoc != nil {
+		argLoc := nodeLocation(args[0].Value)
+		if argLoc != nil && argLoc.Line > callLoc.Line {
 			return true
 		}
 	}
