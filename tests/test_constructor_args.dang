@@ -1,8 +1,8 @@
 # Test constructor with arguments
 
 type WithArgs {
-  pub name: String! = "default"
-  pub value: Int! = 0
+	pub name: String! = "default"
+	pub value: Int! = 0
 }
 
 # Test default values work

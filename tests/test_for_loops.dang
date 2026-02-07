@@ -3,7 +3,7 @@ pub numbers = [1, 2, 3, 4, 5]
 pub sum = 0
 
 for (num in numbers) {
-  sum += num
+	sum += num
 }
 
 assert { sum == 15 }
@@ -14,21 +14,21 @@ pub result = ""
 pub indices = []
 
 for (index, fruit in fruits) {
-  result += fruit
-  indices += [index]
+	result += fruit
+	indices += [index]
 }
 
 assert { result == "applebananacherry" }
-assert { indices == [0, 1, 2] }  # 0 + 1 + 2
+assert { indices == [0, 1, 2] }	# 0 + 1 + 2
 
 # Test nested for loops
 pub matrix = [[1, 2], [3, 4]]
 pub total = 0
 
 for (row in matrix) {
-  for (value in row) {
-    total += value
-  }
+	for (value in row) {
+		total += value
+	}
 }
 
 assert { total == 10 }
@@ -38,7 +38,7 @@ pub empty: [Int!]! = []
 pub count = 0
 
 for (item in empty) {
-  count += 1
+	count += 1
 }
 
 assert { count == 0 }
@@ -48,7 +48,7 @@ pub single = [42]
 pub captured = 0
 
 for (item in single) {
-  captured = item
+	captured = item
 }
 
 assert { captured == 42 }

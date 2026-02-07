@@ -1,7 +1,7 @@
 # Test that function argument doc strings are preserved in the type system
 
 pub greet("""The name to greet""" name: String!, """Optional greeting prefix""" prefix: String = "Hello"): String {
-  prefix + " " + name
+	prefix + " " + name
 }
 
 # Verify the function works correctly

@@ -1,35 +1,35 @@
 # Test: What if a method references a function from a different module's self?
 
 type Helper {
-  let value = 100
+	let value = 100
 
-  pub addValueScoped(x: Int!): Int! {
-    print("Helper.addValue called with x = " + toJSON(x) + ", value = " + toJSON(self.value))
-    x + value
-  }
+	pub addValueScoped(x: Int!): Int! {
+		print("Helper.addValue called with x = " + toJSON(x) + ", value = " + toJSON(self.value))
+		x + value
+	}
 
-  pub addValueSelf(x: Int!): Int! {
-    print("Helper.addValue called with x = " + toJSON(x) + ", value = " + toJSON(self.value))
-    x + self.value
-  }
+	pub addValueSelf(x: Int!): Int! {
+		print("Helper.addValue called with x = " + toJSON(x) + ", value = " + toJSON(self.value))
+		x + self.value
+	}
 }
 
 type Main {
-  let value = 50
-  let helper = Helper
+	let value = 50
+	let helper = Helper
 
-  pub indirectCall: Main! {
-    print("\n=== Test: Indirect Cross-Module Call ===")
+	pub indirectCall: Main! {
+		print("\n=== Test: Indirect Cross-Module Call ===")
 
-    # Store helper's method in a variable
-    let addValueFn = self.helper.addValueScoped
-    assert { addValueFn(5) == 105 }
+		# Store helper's method in a variable
+		let addValueFn = self.helper.addValueScoped
+		assert { addValueFn(5) == 105 }
 
-    addValueFn = self.helper.addValueSelf
-    assert { addValueFn(5) == 105 }
+		addValueFn = self.helper.addValueSelf
+		assert { addValueFn(5) == 105 }
 
-    self
-  }
+		self
+	}
 }
 
 Main.indirectCall

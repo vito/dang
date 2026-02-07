@@ -2,14 +2,14 @@
 # A class can accept more general (nullable) arguments when the interface requires specific types
 
 interface Processor {
-  pub process(input: String!): String!
+	pub process(input: String!): String!
 }
 
 # Test: Class accepts nullable where interface requires non-null (contravariance)
 type FlexibleProcessor implements Processor {
-  pub process(input: String): String! {
-    input ?? "default"
-  }
+	pub process(input: String): String! {
+		input ?? "default"
+	}
 }
 
 pub processor = FlexibleProcessor
@@ -20,13 +20,13 @@ assert { result2 == "default" }
 
 # Test: Additional optional arguments are allowed
 interface SimpleFormatter {
-  pub format(text: String!): String!
+	pub format(text: String!): String!
 }
 
 type AdvancedFormatter implements SimpleFormatter {
-  pub format(text: String!, prefix: String, suffix: String): String! {
-    (prefix ?? "") + text + (suffix ?? "")
-  }
+	pub format(text: String!, prefix: String, suffix: String): String! {
+		(prefix ?? "") + text + (suffix ?? "")
+	}
 }
 
 pub formatter = AdvancedFormatter

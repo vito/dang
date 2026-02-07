@@ -1,30 +1,30 @@
 # Test list covariance with interfaces
 
 interface Animal {
-  pub name: String!
-  pub makeSound: String!
+	pub name: String!
+	pub makeSound: String!
 }
 
 type Dog implements Animal {
-  pub name: String! = "Buddy"
-  pub makeSound: String! = "Woof!"
-  pub breed: String! = "Labrador"
+	pub name: String! = "Buddy"
+	pub makeSound: String! = "Woof!"
+	pub breed: String! = "Labrador"
 }
 
 type Cat implements Animal {
-  pub name: String! = "Whiskers"
-  pub makeSound: String! = "Meow!"
-  pub indoor: Boolean! = true
+	pub name: String! = "Whiskers"
+	pub makeSound: String! = "Meow!"
+	pub indoor: Boolean! = true
 }
 
 # Test: List of concrete types should be usable as list of interface types
 type AnimalShelter {
-  pub dogs: [Dog!]! = [Dog, Dog]
-  pub cats: [Cat!]! = [Cat, Cat]
+	pub dogs: [Dog!]! = [Dog, Dog]
+	pub cats: [Cat!]! = [Cat, Cat]
 
-  # This should work - lists are covariant
-  pub getDogs: [Animal!]! { self.dogs }
-  pub getCats: [Animal!]! { self.cats }
+	# This should work - lists are covariant
+	pub getDogs: [Animal!]! { self.dogs }
+	pub getCats: [Animal!]! { self.cats }
 }
 
 let shelter = AnimalShelter
@@ -41,7 +41,7 @@ assert { cats[0].makeSound == "Meow!" }
 
 # Test: Nullable lists with covariance
 type PetStore {
-  pub pets: [Animal!] = [Dog, Cat, Dog]
+	pub pets: [Animal!] = [Dog, Cat, Dog]
 }
 
 let store = PetStore

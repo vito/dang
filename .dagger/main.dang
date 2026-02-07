@@ -1,278 +1,278 @@
 type Dang {
-  """
-  The source directory for the Dang project.
-  """
-  pub source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
-    # TODO: respecting .gitignore would be nice
-    "Session.vim"
-    "dang"
-    "zed-dang/grammars/"
-    ".env"
-    ".envrc"
-    ".dagger"
-  ])
+	"""
+	The source directory for the Dang project.
+	"""
+	pub source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
+		# TODO: respecting .gitignore would be nice
+		"Session.vim"
+		"dang"
+		"zed-dang/grammars/"
+		".env"
+		".envrc"
+		".dagger"
+	])
 
-  """
-  Return a compiled Dang binary.
-  """
-  pub binary(race: Boolean! = false): File! {
-    let args = ["go", "build"]
-    if (race) {
-      args += ["-race"]
-    }
-    args += ["-o", "/bin/dang", "./cmd/dang"]
-    base.withExec(args).file("/bin/dang")
-  }
+	"""
+	Return a compiled Dang binary.
+	"""
+	pub binary(race: Boolean! = false): File! {
+		let args = ["go", "build"]
+		if (race) {
+			args += ["-race"]
+		}
+		args += ["-o", "/bin/dang", "./cmd/dang"]
+		base.withExec(args).file("/bin/dang")
+	}
 
-  """
-  Build the Dang binary to ./bin/dang.
-  """
-  pub build: Changeset! {
-    source.withFile("bin/dang", binary).changes(source)
-  }
+	"""
+	Build the Dang binary to ./bin/dang.
+	"""
+	pub build: Changeset! {
+		source.withFile("bin/dang", binary).changes(source)
+	}
 
-  """
-  Runs all code generation procedures, e.g. go generate, tree-sitter generate.
-  """
-  pub generate: Changeset! {
-    generated.directory(".").changes(base.directory("/src"))
-  }
+	"""
+	Runs all code generation procedures, e.g. go generate, tree-sitter generate.
+	"""
+	pub generate: Changeset! {
+		generated.directory(".").changes(base.directory("/src"))
+	}
 
-  """
-  Run `go mod tidy` for each Go module in the repo.
-  """
-  pub tidy: Changeset! {
-    base.withExec(["sh", "-c", """
-      find . -name go.mod | while read path; do
-        go -C $(dirname $path) mod tidy
-      done
-      """]).
-      directory(".").
-      changes(base.directory("."))
-  }
+	"""
+	Run `go mod tidy` for each Go module in the repo.
+	"""
+	pub tidy: Changeset! {
+		base.withExec(["sh", "-c", """
+			find . -name go.mod | while read path; do
+				go -C $(dirname $path) mod tidy
+			done
+			"""]).
+			directory(".").
+			changes(base.directory("."))
+	}
 
-  """
-  Build and run a `dang` command.
+	"""
+	Build and run a `dang` command.
 
-  Example usage:
+	Example usage:
 
-    # Run a Dang script
-    dang script.dang
+		# Run a Dang script
+		dang script.dang
 
-    # Run all .dang files in a directory as a module
-    dang ./my-module
+		# Run all .dang files in a directory as a module
+		dang ./my-module
 
-    # Start interactive REPL
-    dang
+		# Start interactive REPL
+		dang
 
-    # Run with debug logging enabled
-    dang --debug script.dang
-    dang -d ./my-module
-  """
-  pub dang(args: [String!]!): Void {
-    base
-      .withFile("/usr/bin/dang", binary)
-      .withExec(["dang"] + args, experimentalPrivilegedNesting: true)
-      .sync
-    null
-  }
+		# Run with debug logging enabled
+		dang --debug script.dang
+		dang -d ./my-module
+	"""
+	pub dang(args: [String!]!): Void {
+		base
+			.withFile("/usr/bin/dang", binary)
+			.withExec(["dang"] + args, experimentalPrivilegedNesting: true)
+			.sync
+		null
+	}
 
-  """
-  Start a Dang coding agent.
-  """
-  pub coder: LLM! {
-    dev(source).agent(llm.withEnv(env.withCurrentModule))
-  }
+	"""
+	Start a Dang coding agent.
+	"""
+	pub coder: LLM! {
+		dev(source).agent(llm.withEnv(env.withCurrentModule))
+	}
 
-  """
-  Update the Golden-style test specimens, treating the current output as
-  correct.
-  """
-  pub testUpdate: Changeset! {
-    generated.
-      withExec(["go", "test", "-v", "./tests", "-update"],
-        expect: ReturnType.ANY,
-        experimentalPrivilegedNesting: true).
-      directory(".").
-      changes(generated.directory("."))
-  }
+	"""
+	Update the Golden-style test specimens, treating the current output as
+	correct.
+	"""
+	pub testUpdate: Changeset! {
+		generated.
+			withExec(["go", "test", "-v", "./tests", "-update"],
+				expect: ReturnType.ANY,
+				experimentalPrivilegedNesting: true).
+			directory(".").
+			changes(generated.directory("."))
+	}
 
-  """
-  Update the tree-sitter test corpus.
-  """
-  pub treesitterUpdate: Changeset! {
-    generated.
-      withDirectory("./treesitter",
-        generated.
-          withWorkdir("./treesitter").
-          withExec(["tree-sitter", "test", "--update"]).
-          directory(".")).
-      directory(".").
-      changes(generated.directory("."))
-  }
+	"""
+	Update the tree-sitter test corpus.
+	"""
+	pub treesitterUpdate: Changeset! {
+		generated.
+			withDirectory("./treesitter",
+				generated.
+					withWorkdir("./treesitter").
+					withExec(["tree-sitter", "test", "--update"]).
+					directory(".")).
+			directory(".").
+			changes(generated.directory("."))
+	}
 
-  """
-  Run the linter.
-  """
-  pub lint: Void @check {
-    base.
-      withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint").
-      withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache")).
-      withExec(["golangci-lint", "run"]).
-      sync
-    null
-  }
+	"""
+	Run the linter.
+	"""
+	pub lint: Void @check {
+		base.
+			withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint").
+			withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache")).
+			withExec(["golangci-lint", "run"]).
+			sync
+		null
+	}
 
-  """
-  Bump the pinned Dang version in the Dagger SDK and Zed grammar.
-  """
-  pub bump(
-    repo: GitRepository! @defaultPath(path: "/.git"),
-  ): Changeset! {
-    let commit = repo.head.commit
-    base
-      .withExec(["go", "-C", "dagger-sdk", "get", "github.com/vito/dang@"+commit])
-      .withExec(["go", "-C", "dagger-sdk", "mod", "tidy"])
-      .withExec([
-        "sed",
-        "-i", "zed-dang/extension.toml",
-        "-e", "s/commit = \".*\"/commit = \""+commit+"\"/",
-      ])
-      .directory(".")
-      .changes(base.directory("."))
-  }
+	"""
+	Bump the pinned Dang version in the Dagger SDK and Zed grammar.
+	"""
+	pub bump(
+		repo: GitRepository! @defaultPath(path: "/.git"),
+	): Changeset! {
+		let commit = repo.head.commit
+		base
+			.withExec(["go", "-C", "dagger-sdk", "get", "github.com/vito/dang@"+commit])
+			.withExec(["go", "-C", "dagger-sdk", "mod", "tidy"])
+			.withExec([
+				"sed",
+				"-i", "zed-dang/extension.toml",
+				"-e", "s/commit = \".*\"/commit = \""+commit+"\"/",
+			])
+			.directory(".")
+			.changes(base.directory("."))
+	}
 
-  """
-  Bump the Dagger version across the repo.
-  """
-  pub bumpDagger(version: String! = "latest"): Changeset! {
-    let ctr = base
-    for (pkg in [".", "dagger-sdk", "treesitter"]) {
-      ctr = ctr
-        .withExec(["go", "-C", pkg, "get", "dagger.io/dagger@"+version])
-        .withExec(["go", "-C", pkg, "mod", "tidy"])
-    }
-    ctr.directory(".").changes(base.directory("."))
-  }
+	"""
+	Bump the Dagger version across the repo.
+	"""
+	pub bumpDagger(version: String! = "latest"): Changeset! {
+		let ctr = base
+		for (pkg in [".", "dagger-sdk", "treesitter"]) {
+			ctr = ctr
+				.withExec(["go", "-C", pkg, "get", "dagger.io/dagger@"+version])
+				.withExec(["go", "-C", pkg, "mod", "tidy"])
+		}
+		ctr.directory(".").changes(base.directory("."))
+	}
 
-  """
-  Enter a terminal for debugging the Neovim LSP setup.
-  """
-  pub nvimDebug: Container! {
-    base.
-      withFile("/usr/bin/dang", binary).
-      withFile("/root/.config/nvim/init.vim", source.file("pkg/lsp/testdata/config.vim")).
-      withWorkdir("./pkg/lsp").
-      terminal(experimentalPrivilegedNesting: true)
-  }
+	"""
+	Enter a terminal for debugging the Neovim LSP setup.
+	"""
+	pub nvimDebug: Container! {
+		base.
+			withFile("/usr/bin/dang", binary).
+			withFile("/root/.config/nvim/init.vim", source.file("pkg/lsp/testdata/config.vim")).
+			withWorkdir("./pkg/lsp").
+			terminal(experimentalPrivilegedNesting: true)
+	}
 
-  let base: Container! {
-    apko.wolfi([
-      "bash",
-      "curl",
-      "git",
-      "go", "golangci-lint",
-      "nodejs", "npm",
-      "neovim",
-    ]).
-      withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
-      withEnvVariable("GOMODCACHE", "/go/pkg/mod").
-      withMountedCache("/go/build-cache", cacheVolume("go-build")).
-      withEnvVariable("GOCACHE", "/go/build-cache").
-      withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"]).
-      withDirectory("/src", source).
-      withWorkdir("/src")
-  }
+	let base: Container! {
+		apko.wolfi([
+			"bash",
+			"curl",
+			"git",
+			"go", "golangci-lint",
+			"nodejs", "npm",
+			"neovim",
+		]).
+			withMountedCache("/go/pkg/mod", cacheVolume("go-mod")).
+			withEnvVariable("GOMODCACHE", "/go/pkg/mod").
+			withMountedCache("/go/build-cache", cacheVolume("go-build")).
+			withEnvVariable("GOCACHE", "/go/build-cache").
+			withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"]).
+			withDirectory("/src", source).
+			withWorkdir("/src")
+	}
 
-  """
-  Base with ./hack/generate ran.
-  """
-  pub generated: Container! {
-    base.withExec(["./hack/generate"])
-  }
+	"""
+	Base with ./hack/generate ran.
+	"""
+	pub generated: Container! {
+		base.withExec(["./hack/generate"])
+	}
 
-  """
-  Run the Dang language tests.
-  """
-  pub testLanguage(
-    """
-    Only run tests matching this filter.
-    """
-    filter: String! = "",
-    """
-    A unique key to force the tests to re-run.
-    """
-    rerun: String,
-  ): Void @check {
-    let args = ["go", "test", "-count=1", "./tests"]
-    if (filter != "") {
-      args += ["-run", "/"+filter]
-    }
-    let ctr = generated
-    if (rerun != null) {
-      ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
-    }
-    ctr.
-      withExec(args, experimentalPrivilegedNesting: true).
-      sync
-    null
-  }
+	"""
+	Run the Dang language tests.
+	"""
+	pub testLanguage(
+		"""
+		Only run tests matching this filter.
+		"""
+		filter: String! = "",
+		"""
+		A unique key to force the tests to re-run.
+		"""
+		rerun: String,
+	): Void @check {
+		let args = ["go", "test", "-count=1", "./tests"]
+		if (filter != "") {
+			args += ["-run", "/"+filter]
+		}
+		let ctr = generated
+		if (rerun != null) {
+			ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
+		}
+		ctr.
+			withExec(args, experimentalPrivilegedNesting: true).
+			sync
+		null
+	}
 
-  """
-  Run the Dagger SDK tests.
-  """
-  pub testDagger(
-    """
-    Only run tests matching this filter.
-    """
-    filter: String! = "",
-    """
-    A unique key to force the tests to re-run.
-    """
-    rerun: String,
-  ): Void @check {
-    let args = ["go", "-C", "./dagger-sdk/tests", "test", "-count=1"]
-    if (filter != "") {
-      args += ["-run", "/"+filter]
-    }
-    let ctr = generated
-    if (rerun != null) {
-      ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
-    }
-    ctr
-      .withExec(["sh", "-exc", "curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=v0.19.11 BIN_DIR=/usr/local/bin sh"])
-      .withExec(args, experimentalPrivilegedNesting: true)
-      .sync
-    null
-  }
+	"""
+	Run the Dagger SDK tests.
+	"""
+	pub testDagger(
+		"""
+		Only run tests matching this filter.
+		"""
+		filter: String! = "",
+		"""
+		A unique key to force the tests to re-run.
+		"""
+		rerun: String,
+	): Void @check {
+		let args = ["go", "-C", "./dagger-sdk/tests", "test", "-count=1"]
+		if (filter != "") {
+			args += ["-run", "/"+filter]
+		}
+		let ctr = generated
+		if (rerun != null) {
+			ctr = ctr.withEnvVariable("RERUN_KEY", rerun)
+		}
+		ctr
+			.withExec(["sh", "-exc", "curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=v0.19.11 BIN_DIR=/usr/local/bin sh"])
+			.withExec(args, experimentalPrivilegedNesting: true)
+			.sync
+		null
+	}
 
-  """
-  Run the Dang LSP tests.
-  """
-  pub testLsp(filter: String! = "", verbose: Boolean! = false): Void @check {
-    let args = ["go", "test", "-count=1"]
-    if (filter != "") {
-      args += ["-run", "LSP/" + filter]
-    }
-    if (verbose) {
-      args += ["-v"]
-    }
-    args += ["./pkg/lsp/..."]
-    generated.
-      withFile("/usr/bin/dang", binary(race: true)). # install binary for LSP tests
-      withExec(args, experimentalPrivilegedNesting: true).
-      sync
-    null
-  }
+	"""
+	Run the Dang LSP tests.
+	"""
+	pub testLsp(filter: String! = "", verbose: Boolean! = false): Void @check {
+		let args = ["go", "test", "-count=1"]
+		if (filter != "") {
+			args += ["-run", "LSP/" + filter]
+		}
+		if (verbose) {
+			args += ["-v"]
+		}
+		args += ["./pkg/lsp/..."]
+		generated.
+			withFile("/usr/bin/dang", binary(race: true)). # install binary for LSP tests
+			withExec(args, experimentalPrivilegedNesting: true).
+			sync
+		null
+	}
 
-  """
-  Run the tree-sitter tests.
-  """
-  pub testTreesitter: Void @check {
-    generated.
-      withWorkdir("./treesitter").
-      withExec(["tree-sitter", "test"]).
-      sync
-    null
-  }
+	"""
+	Run the tree-sitter tests.
+	"""
+	pub testTreesitter: Void @check {
+		generated.
+			withWorkdir("./treesitter").
+			withExec(["tree-sitter", "test"]).
+			sync
+		null
+	}
 }

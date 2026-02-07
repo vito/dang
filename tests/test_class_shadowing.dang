@@ -3,11 +3,11 @@
 pub shadowed = "outer"
 
 type Foo {
-  let shadowed = 42
-  pub bump: Foo! {
-    shadowed += 3
-    self
-  }
+	let shadowed = 42
+	pub bump: Foo! {
+		shadowed += 3
+		self
+	}
 }
 
 # Basic test

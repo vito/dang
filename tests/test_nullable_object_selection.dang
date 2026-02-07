@@ -2,14 +2,14 @@
 # If foo is nullable, then foo.{bar, baz} should also be nullable
 
 type TestRecord {
-  pub name: String! = "test"
-  pub id: Int! = 42
-  pub active: Boolean! = true
+	pub name: String! = "test"
+	pub id: Int! = 42
+	pub active: Boolean! = true
 }
 
 type NestedRecord {
-  pub inner: TestRecord! = TestRecord
-  pub count: Int! = 10
+	pub inner: TestRecord! = TestRecord
+	pub count: Int! = 10
 }
 
 # Test case 1: nullable object selection
@@ -34,8 +34,8 @@ assert { maybeNested.{inner, count} == null }
 
 # Test case 3: nested field selections in object selection
 type ChainRecord {
-  pub level1: NestedRecord! = NestedRecord
-  pub value: String! = "chain"
+	pub level1: NestedRecord! = NestedRecord
+	pub value: String! = "chain"
 }
 
 pub maybeChain: ChainRecord = ChainRecord
@@ -47,9 +47,9 @@ assert { maybeChain.{level1.{inner}, value} == null }
 
 # Test case 4: object selection with multiple fields on nullable receiver
 type ComplexRecord {
-  pub field1: String! = "value1"
-  pub field2: Int! = 100
-  pub field3: Boolean! = false
+	pub field1: String! = "value1"
+	pub field2: Int! = 100
+	pub field3: Boolean! = false
 }
 
 pub maybeComplex: ComplexRecord = ComplexRecord

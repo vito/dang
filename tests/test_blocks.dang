@@ -2,38 +2,38 @@
 
 # Simple block that returns last expression
 pub block_result = {
-  42,
-  "hello",
-  100
+	42,
+	"hello",
+	100
 }
 
 assert { block_result == 100 }
 
 # Block with let expressions
 pub complex_block = {
-  let x = 10
-  let y = 20
-  42
+	let x = 10
+	let y = 20
+	42
 }
 
 assert { complex_block == 42 }
 
 # Block in conditional
 pub conditional_block = if (true) {
-  "yes"
+	"yes"
 } else {
-  "no"
+	"no"
 }
 
 assert { conditional_block == "yes" }
 
 # Nested blocks
 pub nested_blocks = {
-  let outer = 1,
-  {
-    let inner = 2
-    inner
-  }
+	let outer = 1,
+	{
+		let inner = 2
+		inner
+	}
 }
 
 assert { nested_blocks == 2 }

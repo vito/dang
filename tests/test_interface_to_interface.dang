@@ -2,24 +2,24 @@
 
 # Define a hierarchy of interfaces
 interface Named {
-  pub name: String!
+	pub name: String!
 }
 
 interface Identifiable {
-  pub id: String!
+	pub id: String!
 }
 
 # An interface that extends both (structural subtyping)
 interface Entity {
-  pub id: String!
-  pub name: String!
+	pub id: String!
+	pub name: String!
 }
 
 # A concrete type implementing Entity (which structurally implements both Named and Identifiable)
 type Person implements Entity {
-  pub id: String! = "person-123"
-  pub name: String! = "Alice"
-  pub email: String! = "alice@example.com"
+	pub id: String! = "person-123"
+	pub name: String! = "Alice"
+	pub email: String! = "alice@example.com"
 }
 
 # Test: Person implements Entity
@@ -31,7 +31,7 @@ assert { person.email == "alice@example.com" }
 # Test: Entity should structurally implement Named (has all required fields)
 # Since Entity has 'name: String!', it should be assignable to Named
 type EntityHolder {
-  pub entity: Entity! = Person
+	pub entity: Entity! = Person
 }
 
 let holder = EntityHolder

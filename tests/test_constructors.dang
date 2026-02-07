@@ -2,15 +2,15 @@
 
 # Basic constructor with no parameters
 type Empty {
-  pub val = null
+	pub val = null
 }
 
 assert { Empty.val == null }
 
 # Constructor with required parameters
 type Required {
-  pub name: String!
-  pub age: Int!
+	pub name: String!
+	pub age: Int!
 }
 
 assert { Required("Alice", 25).name == "Alice" }
@@ -18,9 +18,9 @@ assert { Required("Alice", 25).age == 25 }
 
 # Constructor with optional parameters (default values)
 type WithDefaults {
-  pub name: String! = "Unknown"
-  pub age: Int! = 0
-  pub active: Boolean! = true
+	pub name: String! = "Unknown"
+	pub age: Int! = 0
+	pub active: Boolean! = true
 }
 
 assert { WithDefaults.name == "Unknown" }
@@ -34,10 +34,10 @@ assert { WithDefaults("Bob", 30, false).active == false }
 
 # Constructor with mixed required and optional parameters
 type Mixed {
-  pub id: Int!
-  pub name: String!
-  pub description: String! = "No description"
-  pub enabled: Boolean! = true
+	pub id: Int!
+	pub name: String!
+	pub description: String! = "No description"
+	pub enabled: Boolean! = true
 }
 
 assert { Mixed(1, "Test").id == 1 }
@@ -49,16 +49,16 @@ assert { Mixed(1, "Test", "Custom desc", false).enabled == false }
 
 # Constructor with methods
 type WithMethods {
-  pub value: Int! = 42
+	pub value: Int! = 42
 
-  pub getValue: Int! {
-    self.value
-  }
+	pub getValue: Int! {
+		self.value
+	}
 
-  pub increment: WithMethods! {
-    self.value += 1
-    self
-  }
+	pub increment: WithMethods! {
+		self.value += 1
+		self
+	}
 }
 
 assert { WithMethods.getValue == 42 }
@@ -67,9 +67,9 @@ assert { WithMethods(100).getValue == 100 }
 
 # Constructor where default values reference other parameters
 type Computed {
-  pub prefix: String! = "prefix"
-  pub suffix: String! = "suffix"
-  pub combined: String! = prefix + "_" + suffix
+	pub prefix: String! = "prefix"
+	pub suffix: String! = "suffix"
+	pub combined: String! = prefix + "_" + suffix
 }
 
 assert { Computed.combined == "prefix_suffix" }
@@ -78,12 +78,12 @@ assert { Computed("hello", "world").combined == "hello_world" }
 
 # Constructor with complex default values
 type Complex {
-  pub items: [String!]! = ["default"]
-  pub config = {{
-    enabled: true,
-    count: 5
-  }}
-  pub computed: Int! = config.count * 2
+	pub items: [String!]! = ["default"]
+	pub config = {{
+		enabled: true,
+		count: 5
+	}}
+	pub computed: Int! = config.count * 2
 }
 
 assert { Complex.items == ["default"] }
@@ -93,8 +93,8 @@ assert { Complex.computed == 10 }
 
 # Constructor with self-referencing default values
 type SelfRef {
-  pub name: String! = "test"
-  pub greeting: String! = "Hello, " + name + "!"
+	pub name: String! = "test"
+	pub greeting: String! = "Hello, " + name + "!"
 }
 
 assert { SelfRef.greeting == "Hello, test!" }

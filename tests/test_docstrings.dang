@@ -2,28 +2,28 @@
 
 """This is a module-level doc string"""
 type TestClass {
-  """This is a function with a doc string"""
-  pub documented_func(): String! {
-    "result"
-  }
-  
-  """This is a variable with a doc string"""
-  pub documented_var: String! = "hello"
-  
-  pub undocumented_func(): String! {
-    "no doc"
-  }
+	"""This is a function with a doc string"""
+	pub documented_func(): String! {
+		"result"
+	}
+	
+	"""This is a variable with a doc string"""
+	pub documented_var: String! = "hello"
+	
+	pub undocumented_func(): String! {
+		"no doc"
+	}
 }
 
 """This is a standalone function doc string"""
 pub standalone_func(): String! {
-  "standalone"
+	"standalone"
 }
 
 """This is a directive doc string"""
 directive @testDirective(
-  """This is an argument doc string"""
-  arg: String!
+	"""This is an argument doc string"""
+	arg: String!
 ) on CLASS
 
 let instance = TestClass()

@@ -2,9 +2,9 @@
 
 # Case on expression result
 pub expr_result = case (1 + 1) {
-  1 => "one"
-  2 => "two"
-  3 => "three"
+	1 => "one"
+	2 => "two"
+	3 => "three"
 }
 
 assert { expr_result == "two" }
@@ -12,20 +12,20 @@ assert { expr_result == "two" }
 # Case on variable
 pub x = 5
 pub var_result = case (x) {
-  3 => "three"
-  5 => "five"
-  7 => "seven"
+	3 => "three"
+	5 => "five"
+	7 => "seven"
 }
 
 assert { var_result == "five" }
 
 # Case in a function
 pub caseInClassify(x: Int!): String! {
-  case (x) {
-    0 => "zero"
-    1 => "one"
-    2 => "two"
-  }
+	case (x) {
+		0 => "zero"
+		1 => "one"
+		2 => "two"
+	}
 }
 
 assert { caseInClassify(0) == "zero" }
@@ -34,11 +34,11 @@ assert { caseInClassify(2) == "two" }
 
 # Nested case
 pub nested = case (1) {
-  1 => case ("a") {
-    "a" => "nested case works"
-    "b" => "not this"
-  }
-  2 => "outer"
+	1 => case ("a") {
+		"a" => "nested case works"
+		"b" => "not this"
+	}
+	2 => "outer"
 }
 
 assert { nested == "nested case works" }

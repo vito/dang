@@ -6,16 +6,16 @@ hello
 """
 
 pub test2 = """
-  hello
+	hello
 """
 
 pub test3 = """
-  hello
-  world
+	hello
+	world
 """
 
 assert { test1 == "hello" }
-assert { test2 == "hello" }  
+assert { test2 == "hello" }	
 assert { test3 == "hello\nworld" }
 
 # Inline triple-quote

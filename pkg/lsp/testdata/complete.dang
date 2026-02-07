@@ -9,14 +9,14 @@ cont # test: ^ea<C-x><C-o> => container┃
 
 # lexical bindings (function parameters)
 pub foo(jxkqv: Int!): [Int!] {
-  [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
+	[] # test: ^ajx<C-x><C-o> => [jxkqv┃]
 }
 
 # lexical bindings (let within block)
 pub bar: Container! {
-  let ctr = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
-  let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
-  ct # test: ^ea<C-x><C-o> => ctr┃
+	let ctr = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
+	let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
+	ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 let url = "https://github.com/vito/dang"

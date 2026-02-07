@@ -8,7 +8,7 @@ hello # test: K => hover: Int!
 Adds two numbers.
 """
 pub addNums(x: Int!, y: Int!): Int! {
-  x + y
+	x + y
 }
 
 addNums # test: K => hover: (x: Int!, y: Int!): Int!
@@ -19,7 +19,7 @@ Multiplies two numbers together.
 Returns the product of x and y.
 """
 pub multiply(x: Int!, y: Int!): Int! {
-  x * y
+	x * y
 }
 
 multiply # test: K => hover: Multiplies two numbers together
@@ -31,26 +31,26 @@ container # test: K => hover: Container!
 container.from # test: 11lK => hover: Download a container image
 
 type MyModule {
-  pub build: File! {
-    generated.file("built") # test: ^K => hover: Base with ./hack/generate ran.
-  }
+	pub build: File! {
+		generated.file("built") # test: ^K => hover: Base with ./hack/generate ran.
+	}
 
-  """
-  Base with ./hack/generate ran.
-  """
-  let generated: Container! {
-    container.withExec(["./hack/generate"])
-  }
+	"""
+	Base with ./hack/generate ran.
+	"""
+	let generated: Container! {
+		container.withExec(["./hack/generate"])
+	}
 }
 
 # object with lexical scope
 let obj = {
-  """
-  Helper value for the object.
-  """
-  let helper = 42
+	"""
+	Helper value for the object.
+	"""
+	let helper = 42
 
-  pub value: Int! {
-    helper # test: ^K => hover: Helper value for the object.
-  }
+	pub value: Int! {
+		helper # test: ^K => hover: Helper value for the object.
+	}
 }
