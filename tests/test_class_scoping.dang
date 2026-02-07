@@ -1,9 +1,8 @@
 type MyClass {
 	pub value = 0
 
-	pub new(value: Int!): MyClass! {
-		self.value = value
-		self
+	new(v: Int!) {
+		self.value = v
 	}
 
 	pub add(value: Int!): MyClass! {
@@ -16,4 +15,4 @@ type MyClass {
 	}
 }
 
-MyClass.new(42).currentValue
+MyClass(42).currentValue

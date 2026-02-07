@@ -1,6 +1,6 @@
 # Utility functions using types from types.dang
 pub createPerson(name: String!, age: Int!): Person! {
-	Person.new(name, age)
+	Person(name, age)
 }
 
 pub getMagicNumber(): Int! {
