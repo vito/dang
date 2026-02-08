@@ -483,6 +483,10 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *Grouped:
 		return n.Loc
+	case *SelfKeyword:
+		return n.Loc
+	case *Null:
+		return n.Loc
 	default:
 		return nil
 	}
@@ -1022,23 +1026,38 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 
 	f.write("enum ")
 	f.write(e.Name.Name)
-	f.write(" {")
-	f.newline()
 
-	f.indented(func() {
-		for _, val := range e.Values {
-			// Emit comments for this enum value
-			if val.Loc != nil {
-				f.emitCommentsBeforeLine(val.Loc.Line)
-				f.lastLine = val.Loc.Line
+	// Check if enum was originally on a single line
+	singleLine := e.Loc != nil && (e.Loc.End == nil || e.Loc.End.Line == e.Loc.Line)
+
+	if singleLine {
+		f.write(" { ")
+		for i, val := range e.Values {
+			if i > 0 {
+				f.write(" ")
 			}
-			f.writeIndent()
 			f.write(val.Name)
-			f.newline()
 		}
-	})
+		f.write(" }")
+	} else {
+		f.write(" {")
+		f.newline()
 
-	f.write("}")
+		f.indented(func() {
+			for _, val := range e.Values {
+				// Emit comments for this enum value
+				if val.Loc != nil {
+					f.emitCommentsBeforeLine(val.Loc.Line)
+					f.lastLine = val.Loc.Line
+				}
+				f.writeIndent()
+				f.write(val.Name)
+				f.newline()
+			}
+		})
+
+		f.write("}")
+	}
 }
 
 func (f *Formatter) formatScalarDecl(s *ScalarDecl) {
@@ -1058,10 +1077,19 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 	}
 
 	// Prefix directives
+	prevDirectiveLine := 0
 	for _, d := range s.Directives {
 		if d.IsPrefix {
+			// If this directive was on a different line than the previous one, use a newline
+			if prevDirectiveLine > 0 && d.Loc != nil && d.Loc.Line > prevDirectiveLine {
+				f.newline()
+				f.writeIndent()
+			}
 			f.formatDirectiveApplication(d)
 			f.write(" ")
+			if d.Loc != nil {
+				prevDirectiveLine = d.Loc.Line
+			}
 		}
 	}
 
@@ -1425,20 +1453,27 @@ func (f *Formatter) formatBlockContents(b *Block) {
 	}
 
 	// Check if block can be single line (only if no comments and wasn't originally multiline)
-	if len(b.Forms) == 1 && !f.isMultilineNode(b.Forms[0]) && !f.hasCommentsBeforeNode(b.Forms[0]) && !f.hasTrailingComment(b.Forms[0]) && !wasMultiline(b) {
-		length := f.estimateLength(b.Forms[0])
-		if f.col+length+4 <= maxLineLength { // +4 for " { " and " }"
-			// Trial-render the form to check if it actually produces multiline output.
-			// This catches cases where sub-nodes (e.g., inner blocks with multiple forms)
-			// expand to multiline even though the inline estimate fits on one line.
+	if !wasMultiline(b) && f.canFormatBlockInline(b) {
+		// Trial-render all forms to check none produce multiline output
+		allInline := true
+		for _, form := range b.Forms {
 			trial := &Formatter{comments: f.comments, source: f.source}
-			trial.formatNode(b.Forms[0])
-			if !strings.Contains(trial.buf.String(), "\n") {
-				f.write(" ")
-				f.formatNode(b.Forms[0])
-				f.write(" ")
-				return
+			trial.formatNode(form)
+			if strings.Contains(trial.buf.String(), "\n") {
+				allInline = false
+				break
 			}
+		}
+		if allInline {
+			f.write(" ")
+			for i, form := range b.Forms {
+				if i > 0 {
+					f.write(", ")
+				}
+				f.formatNode(form)
+			}
+			f.write(" ")
+			return
 		}
 	}
 
@@ -1491,6 +1526,16 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		f.newline()
 	})
 	f.writeIndent()
+}
+
+// canFormatBlockInline checks if a block's forms can all be rendered inline
+func (f *Formatter) canFormatBlockInline(b *Block) bool {
+	for _, form := range b.Forms {
+		if f.isMultilineNode(form) || f.hasCommentsBeforeNode(form) {
+			return false
+		}
+	}
+	return true
 }
 
 // hasTrailingComment checks if there's a trailing comment for this node's line
@@ -1648,14 +1693,8 @@ func (f *Formatter) shouldSplitChain(c *FunCall) bool {
 		return true
 	}
 
-	// Get the chain depth and total length
-	depth := f.getChainDepth(c)
-	if depth < 2 {
-		return false
-	}
-
-	length := f.estimateLength(c)
-	return f.col+length > maxLineLength
+	// Don't split chains that were originally on one line
+	return false
 }
 
 // wasChainMultiline checks if any part of a method chain was on a different line
@@ -1891,17 +1930,27 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 func (f *Formatter) formatString(s *String) {
 	// Preserve triple-quoted strings as triple-quoted
 	if s.TripleQuoted {
+		// If the original was on a single line, keep it inline: """value"""
+		wasInline := s.Loc != nil && (s.Loc.End == nil || s.Loc.End.Line == s.Loc.Line)
+		if wasInline {
+			f.write(`"""`)
+			f.write(s.Value)
+			f.write(`"""`)
+			return
+		}
 		f.write(`"""`)
 		f.newline()
-		// Indent each line of the string
+		// Indent each line one level deeper than the closing delimiter
 		lines := strings.Split(s.Value, "\n")
-		for _, line := range lines {
-			if line != "" {
-				f.writeIndent()
-				f.write(line)
+		f.indented(func() {
+			for _, line := range lines {
+				if line != "" {
+					f.writeIndent()
+					f.write(line)
+				}
+				f.newline()
 			}
-			f.newline()
-		}
+		})
 		f.writeIndent()
 		f.write(`"""`)
 	} else {
@@ -2095,12 +2144,16 @@ func (f *Formatter) formatObjectMultiline(o *Object) {
 				f.lastLine = loc.Line - 1
 			}
 		}
-		for _, slot := range o.Slots {
+		for i, slot := range o.Slots {
 			f.emitCommentsForNode(slot)
 			f.writeIndent()
 			f.write(slot.Name.Name)
 			f.write(": ")
 			f.formatNode(slot.Value)
+			// Add trailing comma (except for last slot)
+			if i < len(o.Slots)-1 {
+				f.write(",")
+			}
 			if loc := nodeLocation(slot); loc != nil {
 				f.emitTrailingComment(loc.Line)
 			}
@@ -2277,23 +2330,47 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 		f.formatNode(o.Receiver)
 		f.write(".")
 	}
+
+	// Check if the selection was originally multiline
+	multiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
+
 	f.write("{")
-	for i, field := range o.Fields {
-		if i > 0 {
-			f.write(", ")
-		}
-		f.write(field.Name)
-		if len(field.Args) > 0 {
-			f.write("(")
-			f.formatCallArgs(field.Args, false)
-			f.write(")")
-		}
-		if field.Selection != nil {
-			f.write(".")
-			f.formatObjectSelection(field.Selection)
+	if multiline {
+		f.newline()
+		f.indented(func() {
+			for i, field := range o.Fields {
+				if i > 0 {
+					f.write(",")
+					f.newline()
+				}
+				f.writeIndent()
+				f.formatFieldSelection(field)
+			}
+			f.newline()
+		})
+		f.writeIndent()
+	} else {
+		for i, field := range o.Fields {
+			if i > 0 {
+				f.write(", ")
+			}
+			f.formatFieldSelection(field)
 		}
 	}
 	f.write("}")
+}
+
+func (f *Formatter) formatFieldSelection(field *FieldSelection) {
+	f.write(field.Name)
+	if len(field.Args) > 0 {
+		f.write("(")
+		f.formatCallArgs(field.Args, false)
+		f.write(")")
+	}
+	if field.Selection != nil {
+		f.write(".")
+		f.formatObjectSelection(field.Selection)
+	}
 }
 
 func (f *Formatter) formatBlockArg(b *BlockArg) {

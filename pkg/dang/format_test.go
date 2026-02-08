@@ -175,11 +175,7 @@ func (FormatSuite) TestStringFormatting(ctx context.Context, t *testctx.T) {
 hello
 world
 """`,
-			expected: `pub x = """
-hello
-world
-"""
-`,
+			expected: "pub x = \"\"\"\n\thello\n\tworld\n\"\"\"\n",
 		},
 		{
 			name: "indented triple-quoted string with empty lines has no trailing whitespace",
@@ -190,7 +186,7 @@ world
 	Second paragraph.
 	"""
 }`,
-			expected: "type Foo {\n\tpub x = \"\"\"\n\tFirst paragraph.\n\n\tSecond paragraph.\n\t\"\"\"\n}\n",
+			expected: "type Foo {\n\tpub x = \"\"\"\n\t\tFirst paragraph.\n\n\t\tSecond paragraph.\n\t\"\"\"\n}\n",
 		},
 	}
 
@@ -586,10 +582,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			input: `pub x = ["sh", "-c", """
 	hello
 	"""]`,
-			expected: `pub x = ["sh", "-c", """
-hello
-"""]
-`,
+			expected: "pub x = [\"sh\", \"-c\", \"\"\"\n\thello\n\"\"\"]\n",
 		},
 		{
 			name: "list in chain call stays on one line even when chain splits",
@@ -599,14 +592,7 @@ hello
 		"""]).directory(".")
 }`,
 			// Chain gets split, but list elements stay together
-			expected: `pub x: String! {
-	base
-		.withExec(["sh", "-c", """
-		echo hello
-		"""])
-		.directory(".")
-}
-`,
+			expected: "pub x: String! {\n\tbase\n\t\t.withExec([\"sh\", \"-c\", \"\"\"\n\t\t\techo hello\n\t\t\"\"\"])\n\t\t.directory(\".\")\n}\n",
 		},
 		{
 			name: "args on same line stay together",
