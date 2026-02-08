@@ -1594,35 +1594,35 @@ var g = &grammar{
 								name: "Type",
 							},
 						},
+						&labeledExpr{
+							pos:   position{line: 294, col: 145, offset: 7881},
+							label: "suffixDirectives",
+							expr: &zeroOrMoreExpr{
+								pos: position{line: 294, col: 162, offset: 7898},
+								expr: &ruleRefExpr{
+									pos:  position{line: 294, col: 162, offset: 7898},
+									name: "DirectiveApplication",
+								},
+							},
+						},
 						&ruleRefExpr{
-							pos:  position{line: 294, col: 145, offset: 7881},
+							pos:  position{line: 294, col: 184, offset: 7920},
 							name: "_",
 						},
 						&ruleRefExpr{
-							pos:  position{line: 294, col: 147, offset: 7883},
+							pos:  position{line: 294, col: 186, offset: 7922},
 							name: "EqualToken",
 						},
 						&ruleRefExpr{
-							pos:  position{line: 294, col: 158, offset: 7894},
+							pos:  position{line: 294, col: 197, offset: 7933},
 							name: "_",
 						},
 						&labeledExpr{
-							pos:   position{line: 294, col: 160, offset: 7896},
+							pos:   position{line: 294, col: 199, offset: 7935},
 							label: "value",
 							expr: &ruleRefExpr{
-								pos:  position{line: 294, col: 166, offset: 7902},
+								pos:  position{line: 294, col: 205, offset: 7941},
 								name: "Form",
-							},
-						},
-						&labeledExpr{
-							pos:   position{line: 294, col: 171, offset: 7907},
-							label: "suffixDirectives",
-							expr: &zeroOrMoreExpr{
-								pos: position{line: 294, col: 188, offset: 7924},
-								expr: &ruleRefExpr{
-									pos:  position{line: 294, col: 188, offset: 7924},
-									name: "DirectiveApplication",
-								},
 							},
 						},
 					},
@@ -1688,35 +1688,35 @@ var g = &grammar{
 								name: "Symbol",
 							},
 						},
+						&labeledExpr{
+							pos:   position{line: 305, col: 116, offset: 8354},
+							label: "suffixDirectives",
+							expr: &zeroOrMoreExpr{
+								pos: position{line: 305, col: 133, offset: 8371},
+								expr: &ruleRefExpr{
+									pos:  position{line: 305, col: 133, offset: 8371},
+									name: "DirectiveApplication",
+								},
+							},
+						},
 						&ruleRefExpr{
-							pos:  position{line: 305, col: 116, offset: 8354},
+							pos:  position{line: 305, col: 155, offset: 8393},
 							name: "_",
 						},
 						&ruleRefExpr{
-							pos:  position{line: 305, col: 118, offset: 8356},
+							pos:  position{line: 305, col: 157, offset: 8395},
 							name: "EqualToken",
 						},
 						&ruleRefExpr{
-							pos:  position{line: 305, col: 129, offset: 8367},
+							pos:  position{line: 305, col: 168, offset: 8406},
 							name: "_",
 						},
 						&labeledExpr{
-							pos:   position{line: 305, col: 131, offset: 8369},
+							pos:   position{line: 305, col: 170, offset: 8408},
 							label: "val",
 							expr: &ruleRefExpr{
-								pos:  position{line: 305, col: 135, offset: 8373},
+								pos:  position{line: 305, col: 174, offset: 8412},
 								name: "Form",
-							},
-						},
-						&labeledExpr{
-							pos:   position{line: 305, col: 140, offset: 8378},
-							label: "suffixDirectives",
-							expr: &zeroOrMoreExpr{
-								pos: position{line: 305, col: 157, offset: 8395},
-								expr: &ruleRefExpr{
-									pos:  position{line: 305, col: 157, offset: 8395},
-									name: "DirectiveApplication",
-								},
 							},
 						},
 					},
@@ -7632,7 +7632,7 @@ func (p *parser) callonTypeAndValueSlot5() (any, error) {
 	return p.cur.onTypeAndValueSlot5(stack["d"])
 }
 
-func (c *current) onTypeAndValueSlot1(prefixDirectives, vis, name, type_, value, suffixDirectives any) (any, error) {
+func (c *current) onTypeAndValueSlot1(prefixDirectives, vis, name, type_, suffixDirectives, value any) (any, error) {
 	return &SlotDecl{
 		Name:       name.(*Symbol),
 		Type_:      type_.(TypeNode),
@@ -7646,7 +7646,7 @@ func (c *current) onTypeAndValueSlot1(prefixDirectives, vis, name, type_, value,
 func (p *parser) callonTypeAndValueSlot1() (any, error) {
 	stack := p.vstack[len(p.vstack)-1]
 	_ = stack
-	return p.cur.onTypeAndValueSlot1(stack["prefixDirectives"], stack["vis"], stack["name"], stack["type_"], stack["value"], stack["suffixDirectives"])
+	return p.cur.onTypeAndValueSlot1(stack["prefixDirectives"], stack["vis"], stack["name"], stack["type_"], stack["suffixDirectives"], stack["value"])
 }
 
 func (c *current) onValueOnlySlot5(d any) (any, error) {
@@ -7659,7 +7659,7 @@ func (p *parser) callonValueOnlySlot5() (any, error) {
 	return p.cur.onValueOnlySlot5(stack["d"])
 }
 
-func (c *current) onValueOnlySlot1(prefixDirectives, vis, name, val, suffixDirectives any) (any, error) {
+func (c *current) onValueOnlySlot1(prefixDirectives, vis, name, suffixDirectives, val any) (any, error) {
 	return &SlotDecl{
 		Name:       name.(*Symbol),
 		Value:      val.(Node),
@@ -7672,7 +7672,7 @@ func (c *current) onValueOnlySlot1(prefixDirectives, vis, name, val, suffixDirec
 func (p *parser) callonValueOnlySlot1() (any, error) {
 	stack := p.vstack[len(p.vstack)-1]
 	_ = stack
-	return p.cur.onValueOnlySlot1(stack["prefixDirectives"], stack["vis"], stack["name"], stack["val"], stack["suffixDirectives"])
+	return p.cur.onValueOnlySlot1(stack["prefixDirectives"], stack["vis"], stack["name"], stack["suffixDirectives"], stack["val"])
 }
 
 func (c *current) onTypeOnlySlot5(d any) (any, error) {

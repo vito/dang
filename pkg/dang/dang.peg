@@ -291,7 +291,7 @@ Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type _ EqualToken _ value:Form suffixDirectives:DirectiveApplication* {
+TypeAndValueSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ EqualToken _ value:Form {
   return &SlotDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
@@ -302,7 +302,7 @@ TypeAndValueSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d,
   }, nil
 }
 
-ValueOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ EqualToken _ val:Form suffixDirectives:DirectiveApplication* {
+ValueOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol suffixDirectives:DirectiveApplication* _ EqualToken _ val:Form {
   return &SlotDecl{
     Name: name.(*Symbol),
     Value: val.(Node),
