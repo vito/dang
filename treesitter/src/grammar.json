@@ -189,7 +189,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 150,
+      "value": 149,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -395,7 +395,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 143,
+      "value": 142,
       "content": {
         "type": "SEQ",
         "members": [
@@ -478,7 +478,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 142,
+      "value": 141,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2014,7 +2014,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 93,
+      "value": 92,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2063,7 +2063,7 @@
     },
     "named_type": {
       "type": "PREC_LEFT",
-      "value": 92,
+      "value": 91,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2208,7 +2208,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 88,
+      "value": 87,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2296,7 +2296,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 84,
+      "value": 83,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2360,7 +2360,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 82,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2424,7 +2424,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 81,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2505,7 +2505,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 80,
+      "value": 79,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2594,7 +2594,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 78,
+      "value": 77,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2675,7 +2675,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 76,
+      "value": 75,
       "content": {
         "type": "SEQ",
         "members": [
@@ -4573,35 +4573,6 @@
             "type": "SYMBOL",
             "name": "symbol"
           }
-        },
-        {
-          "type": "FIELD",
-          "name": "source",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "SYMBOL",
-                    "name": "from_token"
-                  },
-                  {
-                    "type": "FIELD",
-                    "name": "s",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "string"
-                    }
-                  }
-                ]
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
         }
       ]
     },
@@ -4610,13 +4581,6 @@
       "content": {
         "type": "STRING",
         "value": "import"
-      }
-    },
-    "from_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "from"
       }
     }
   },

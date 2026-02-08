@@ -2106,26 +2106,6 @@
             "named": true
           }
         ]
-      },
-      "s": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "string",
-            "named": true
-          }
-        ]
-      },
-      "source": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "from_token",
-            "named": true
-          }
-        ]
       }
     },
     "children": {
@@ -4122,10 +4102,6 @@
   },
   {
     "type": "for_token",
-    "named": true
-  },
-  {
-    "type": "from_token",
     "named": true
   },
   {
