@@ -245,7 +245,7 @@ Class <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* Ty
 }
 TypeToken <- "type" !WordChar
 Implements <-  ImplementsToken _ first:Symbol rest:(_ AmpersandToken _ i:Symbol { return i, nil })* {
-  return sliceOfAppend[*Symbol](rest, first), nil
+  return sliceOfPrepend[*Symbol](first, rest), nil
 }
 ImplementsToken <- "implements" !WordChar
 
@@ -1038,7 +1038,7 @@ PrefixDirectiveApplication <- '@' name:Id args:ArgValues? {
 }
 
 DirectiveLocations <- first:DirectiveLocation rest:(_ '|' _ loc:DirectiveLocation { return loc, nil })* {
-  return sliceOfAppend[DirectiveLocation](rest, first), nil
+  return sliceOfPrepend[DirectiveLocation](first, rest), nil
 }
 
 DirectiveLocation <- name:UpperId {

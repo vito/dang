@@ -1150,10 +1150,12 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 		f.formatType(fn.Ret)
 	}
 
-	// Directives
+	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
 	for _, d := range fn.Directives {
-		f.write(" ")
-		f.formatDirectiveApplication(d)
+		if !d.IsPrefix {
+			f.write(" ")
+			f.formatDirectiveApplication(d)
+		}
 	}
 
 	// Body

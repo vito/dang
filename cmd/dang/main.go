@@ -1037,7 +1037,7 @@ func formatFile(path string, write, list bool) error {
 	// Check if file changed
 	changed := string(source) != formatted
 
-	if list {
+	if list && !write {
 		if changed {
 			fmt.Println(path)
 		}
@@ -1048,6 +1048,9 @@ func formatFile(path string, write, list bool) error {
 		if changed {
 			if err := os.WriteFile(path, []byte(formatted), 0644); err != nil {
 				return err
+			}
+			if list {
+				fmt.Println(path)
 			}
 		}
 		return nil
