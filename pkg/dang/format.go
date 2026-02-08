@@ -970,8 +970,14 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 			}
 			f.newline()
 		}
+
+		// Emit any remaining comments inside the body (before closing brace)
+		if c.Value.Loc != nil && c.Value.Loc.End != nil {
+			f.emitCommentsBeforeNode(c.Value.Loc.End.Line, false)
+		}
 	})
 
+	f.writeIndent()
 	f.write("}")
 }
 
@@ -982,7 +988,7 @@ func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 
 	if len(n.Args) > 0 {
 		f.write("new(")
-		f.formatFunctionArgs(n.Args, nil)
+		f.formatFunctionArgs(n.Args, nil, n.Loc)
 		f.write(") ")
 	} else {
 		f.write("new ")
@@ -1207,7 +1213,7 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 	// Arguments
 	if len(fn.Args) > 0 || fn.BlockParam != nil {
 		f.write("(")
-		f.formatFunctionArgs(fn.Args, fn.BlockParam)
+		f.formatFunctionArgs(fn.Args, fn.BlockParam, fn.Loc)
 		f.write(")")
 	}
 
@@ -1245,7 +1251,7 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 	}
 }
 
-func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
+func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, parentLoc *SourceLocation) {
 	// Check if any arg has a docstring - if so, force multiline
 	hasDocString := false
 	for _, arg := range args {
@@ -1259,10 +1265,15 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 	}
 
 	// Check if args were originally on multiple lines
-	// We consider it multiline if any arg starts on a different line than a previous arg,
-	// OR if a single arg has a docstring (already handled above),
-	// OR if any arg has a suffix directive (which often means the user wanted more space)
 	wasMultiline := false
+	// If the first arg is on a different line than the parent declaration, it's multiline
+	if parentLoc != nil && len(args) > 0 {
+		firstArgLoc := nodeLocation(args[0])
+		if firstArgLoc != nil && firstArgLoc.Line > parentLoc.Line {
+			wasMultiline = true
+		}
+	}
+	// Also check if any arg starts on a different line than a previous arg
 	for i := 1; i < len(args); i++ {
 		prevLoc := nodeLocation(args[i-1])
 		currLoc := nodeLocation(args[i])
@@ -1418,7 +1429,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 	if len(d.Args) > 0 {
 		f.write("(")
-		f.formatFunctionArgs(d.Args, nil)
+		f.formatFunctionArgs(d.Args, nil, nil)
 		f.write(")")
 	}
 
@@ -2625,8 +2636,8 @@ func (f *Formatter) precedence(op string) int {
 }
 
 func (f *Formatter) isLeftAssociative(op string) bool {
-	// All arithmetic/comparison operators in Dang are left-associative
-	return true
+	// ?? is right-associative; all other operators are left-associative
+	return op != "??"
 }
 
 func (f *Formatter) formatDocString(doc string) {
