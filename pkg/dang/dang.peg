@@ -913,6 +913,7 @@ Case <- CaseToken _ operand:('(' _ expr:Form _ ')' { return expr, nil })? _ '{' 
   }
   return &Case{
     Expr: expr,
+    NoOperand: operand == nil,
     Clauses: sliceOfAppend[*CaseClause](cs, last),
     Loc: c.Loc(),
   }, nil

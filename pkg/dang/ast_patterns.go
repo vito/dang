@@ -10,9 +10,10 @@ import (
 // Case represents a case expression that evaluates branches based on equality
 type Case struct {
 	InferredTypeHolder
-	Expr    Node
-	Clauses []*CaseClause
-	Loc     *SourceLocation
+	Expr        Node
+	Clauses     []*CaseClause
+	NoOperand   bool // true when written as `case { ... }` without an explicit operand
+	Loc         *SourceLocation
 }
 
 var _ Node = (*Case)(nil)

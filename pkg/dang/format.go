@@ -2159,9 +2159,13 @@ func (f *Formatter) formatForLoop(l *ForLoop) {
 }
 
 func (f *Formatter) formatCase(c *Case) {
-	f.write("case (")
-	f.formatNode(c.Expr)
-	f.write(") {")
+	if c.NoOperand {
+		f.write("case {")
+	} else {
+		f.write("case (")
+		f.formatNode(c.Expr)
+		f.write(") {")
+	}
 	f.newline()
 	f.indented(func() {
 		for _, clause := range c.Clauses {
