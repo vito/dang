@@ -68,7 +68,7 @@
       "name": "entity.name.function.macro.dang"
     },
     "keyword-control": {
-      "match": "\\b(type|interface|implements|enum|scalar|if|else|for|break|continue|in|case|assert|directive|on|import|as|and|or)\\b",
+      "match": "\\b(type|interface|implements|enum|scalar|if|else|for|break|continue|in|case|assert|directive|on|import|and|or)\\b",
       "name": "keyword.control.dang"
     },
     "keyword": {
