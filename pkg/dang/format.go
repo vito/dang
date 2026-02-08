@@ -798,7 +798,10 @@ func (f *Formatter) hadBlankLineBetween(prev, next Node) bool {
 
 // nodeEndLine returns the last line of a node (using End if available, otherwise start line)
 func nodeEndLine(node Node) int {
-	loc := nodeLocation(node)
+	// Use nodeFullLocation first to get the full span (e.g., SlotDecl.Loc includes the
+	// value block, whereas nodeLocation returns just the name location). This prevents
+	// hadBlankLineBetween from seeing a false gap when a form expands to multiline.
+	loc := nodeFullLocation(node)
 	if loc == nil {
 		return 0
 	}
@@ -1412,10 +1415,17 @@ func (f *Formatter) formatBlockContents(b *Block) {
 	if len(b.Forms) == 1 && !f.isMultilineNode(b.Forms[0]) && !f.hasCommentsBeforeNode(b.Forms[0]) && !f.hasTrailingComment(b.Forms[0]) && !wasMultiline(b) {
 		length := f.estimateLength(b.Forms[0])
 		if f.col+length+4 <= maxLineLength { // +4 for " { " and " }"
-			f.write(" ")
-			f.formatNode(b.Forms[0])
-			f.write(" ")
-			return
+			// Trial-render the form to check if it actually produces multiline output.
+			// This catches cases where sub-nodes (e.g., inner blocks with multiple forms)
+			// expand to multiline even though the inline estimate fits on one line.
+			trial := &Formatter{comments: f.comments, source: f.source}
+			trial.formatNode(b.Forms[0])
+			if !strings.Contains(trial.buf.String(), "\n") {
+				f.write(" ")
+				f.formatNode(b.Forms[0])
+				f.write(" ")
+				return
+			}
 		}
 	}
 
