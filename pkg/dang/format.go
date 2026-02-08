@@ -255,7 +255,14 @@ func extractComments(source []byte) []Comment {
 
 // emitCommentsBeforeLine emits all standalone comments that should appear before the given line
 func (f *Formatter) emitCommentsBeforeLine(line int) {
-	for len(f.comments) > 0 && f.comments[0].Line < line && !f.comments[0].IsTrailing {
+	for len(f.comments) > 0 && f.comments[0].Line < line {
+		// Skip over trailing comments - they're emitted by emitTrailingComment.
+		// Don't break: there may be standalone comments after a trailing one.
+		if f.comments[0].IsTrailing {
+			f.comments = f.comments[1:]
+			continue
+		}
+
 		comment := f.comments[0]
 		f.comments = f.comments[1:]
 
@@ -319,7 +326,13 @@ func (f *Formatter) emitCommentsForNode(node Node) {
 // emitCommentsBeforeNode emits comments before a node, optionally suppressing
 // the blank line that would normally be added for a gap (used when node has docstring)
 func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
-	for len(f.comments) > 0 && f.comments[0].Line < line && !f.comments[0].IsTrailing {
+	for len(f.comments) > 0 && f.comments[0].Line < line {
+		// Skip over trailing comments - they're emitted by emitTrailingComment.
+		if f.comments[0].IsTrailing {
+			f.comments = f.comments[1:]
+			continue
+		}
+
 		comment := f.comments[0]
 		f.comments = f.comments[1:]
 
@@ -2168,7 +2181,16 @@ func (f *Formatter) formatCase(c *Case) {
 	}
 	f.newline()
 	f.indented(func() {
+		// Reset lastLine to prevent spurious blank line at start of case body
+		if len(c.Clauses) > 0 && c.Clauses[0].Loc != nil {
+			f.lastLine = c.Clauses[0].Loc.Line - 1
+		}
 		for _, clause := range c.Clauses {
+			// Emit standalone comments before this clause
+			if clause.Loc != nil {
+				f.emitCommentsBeforeLine(clause.Loc.Line)
+				f.lastLine = clause.Loc.Line
+			}
 			f.writeIndent()
 			if clause.IsElse {
 				f.write("else")
@@ -2177,6 +2199,10 @@ func (f *Formatter) formatCase(c *Case) {
 			}
 			f.write(" => ")
 			f.formatNode(clause.Expr)
+			// Emit trailing comment on the clause line
+			if clause.Loc != nil {
+				f.emitTrailingComment(clause.Loc.Line)
+			}
 			f.newline()
 		}
 	})
