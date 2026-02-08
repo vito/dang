@@ -755,3 +755,71 @@ a + b
 		})
 	}
 }
+
+func (FormatSuite) TestImportFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "imports are sorted alphabetically",
+			input: `import Zebra
+import Alpha
+import Middle
+
+pub x = 1`,
+			expected: `import Alpha
+import Middle
+import Zebra
+
+pub x = 1
+`,
+		},
+		{
+			name: "blank line after imports before non-import",
+			input: `import Foo
+pub x = 1`,
+			expected: `import Foo
+
+pub x = 1
+`,
+		},
+		{
+			name: "no extra blank lines between imports",
+			input: `import Foo
+
+import Bar`,
+			expected: `import Bar
+import Foo
+`,
+		},
+		{
+			name: "single import with no following code",
+			input: `import Foo`,
+			expected: `import Foo
+`,
+		},
+		{
+			name: "already sorted imports unchanged",
+			input: `import Alpha
+import Beta
+
+pub x = 1`,
+			expected: `import Alpha
+import Beta
+
+pub x = 1
+`,
+		},
+
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
