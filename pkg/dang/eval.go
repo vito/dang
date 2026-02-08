@@ -1322,6 +1322,12 @@ func (c *ConstructorFunction) IsAutoCallable() bool {
 }
 
 func RunFile(ctx context.Context, filePath string, debug bool) error {
+	// Load project config (dang.json) if not already in context
+	ctx, err := ensureProjectImports(ctx, filepath.Dir(filePath))
+	if err != nil {
+		return fmt.Errorf("loading project config: %w", err)
+	}
+
 	// Read the source file for error reporting
 	sourceBytes, err := os.ReadFile(filePath)
 	if err != nil {
@@ -1372,6 +1378,54 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	return nil
 }
 
+// ensureProjectImports discovers dang.json and merges its import configs
+// into the context, without overriding any configs already set (e.g. by
+// the Dagger SDK entrypoint).
+func ensureProjectImports(ctx context.Context, dir string) (context.Context, error) {
+	// Skip if project config is already loaded
+	if _, cfg := projectConfigFromContext(ctx); cfg != nil {
+		return ctx, nil
+	}
+
+	configPath, config, err := FindProjectConfig(dir)
+	if err != nil {
+		return ctx, fmt.Errorf("finding dang.json: %w", err)
+	}
+	if config == nil {
+		return ctx, nil
+	}
+
+	configDir := filepath.Dir(configPath)
+	ctx = ContextWithProjectConfig(ctx, configPath, config)
+
+	resolved, err := ResolveImportConfigs(ctx, config, configDir)
+	if err != nil {
+		return ctx, err
+	}
+
+	// Merge: project configs go first, then any existing context configs
+	// (existing configs take priority by name in loadImportConfig)
+	existing := importConfigsFromContext(ctx)
+
+	// Deduplicate: existing configs override project configs
+	existingNames := make(map[string]bool)
+	for _, c := range existing {
+		existingNames[c.Name] = true
+	}
+	var merged []ImportConfig
+	for _, c := range resolved {
+		if !existingNames[c.Name] {
+			merged = append(merged, c)
+		}
+	}
+	merged = append(merged, existing...)
+
+	if len(merged) > 0 {
+		ctx = ContextWithImportConfigs(ctx, merged...)
+	}
+	return ctx, nil
+}
+
 // injectAutoImports prepends synthetic ImportDecl nodes for any import configs
 // in the context that aren't already explicitly imported by the user's code.
 func injectAutoImports(ctx context.Context, forms []Node) []Node {
@@ -1407,6 +1461,12 @@ func injectAutoImports(ctx context.Context, forms []Node) []Node {
 
 // RunDir evaluates all .dang files in a directory as a single module
 func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
+	// Load project config (dang.json) if not already in context
+	ctx, err := ensureProjectImports(ctx, dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading project config: %w", err)
+	}
+
 	// Discover all .dang files in the directory
 	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
 	if err != nil {

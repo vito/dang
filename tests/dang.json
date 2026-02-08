@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "Test": {
+      "schema": "./gqlserver/schema.graphqls"
+    },
+    "Other": {
+      "schema": "./gqlserver/schema.graphqls"
+    }
+  }
+}
