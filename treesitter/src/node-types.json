@@ -2554,7 +2554,7 @@
     "fields": {
       "args": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "arg_types",

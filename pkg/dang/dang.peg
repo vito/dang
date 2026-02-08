@@ -276,6 +276,12 @@ NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
     BodyBlock: block.(*Block),
     Loc: c.Loc(),
   }, nil
+} / NewToken _ block:Block {
+  return &NewConstructorDecl{
+    Args: nil,
+    BodyBlock: block.(*Block),
+    Loc: c.Loc(),
+  }, nil
 }
 NewToken <- "new" !WordChar
 

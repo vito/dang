@@ -950,9 +950,13 @@ func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 		f.formatDocString(n.DocString)
 	}
 
-	f.write("new(")
-	f.formatFunctionArgs(n.Args, nil)
-	f.write(") ")
+	if len(n.Args) > 0 {
+		f.write("new(")
+		f.formatFunctionArgs(n.Args, nil)
+		f.write(") ")
+	} else {
+		f.write("new ")
+	}
 	f.formatBlock(n.BodyBlock)
 }
 
