@@ -1,8 +1,10 @@
-// service starts the test GraphQL server and prints its endpoint URL
-// to stdout. It stays running until killed.
+// service starts the test GraphQL server and prints its endpoint
+// configuration as JSON to stdout, then closes stdout and stays
+// running until killed.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -18,8 +20,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Print endpoint URL — this is the protocol: first line = endpoint
-	fmt.Println(server.QueryURL())
+	// Print endpoint configuration as a JSON line.
+	// The parent reads the first line to discover how to reach the service.
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+		"endpoint": server.QueryURL(),
+	})
 
 	// Wait for signal
 	c := make(chan os.Signal, 1)

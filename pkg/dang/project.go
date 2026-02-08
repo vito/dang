@@ -1,8 +1,8 @@
 package dang
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -137,14 +137,11 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 
 	// Set up service launcher for lazy endpoint discovery
 	if len(source.Service) > 0 && ic.Client == nil {
-		cmd := source.Service
-		// Resolve the command relative to configDir
 		svc := &serviceProcess{
-			cmd:       cmd,
-			dir:       configDir,
-			authz:     source.Authorization,
-			headers:   source.Headers,
-			services:  servicesFromContext(ctx),
+			cmd:      source.Service,
+			dir:      configDir,
+			parent:   source,
+			services: servicesFromContext(ctx),
 		}
 		ic.Client = svc
 	}
@@ -193,11 +190,17 @@ func makeClient(endpoint, authorization string, headers map[string]string) graph
 
 // serviceProcess implements graphql.Client by lazily starting a service
 // process and proxying requests to it.
+//
+// The service command prints a JSON object to stdout matching the
+// ImportSource schema (e.g. {"endpoint": "http://..."}), then closes
+// stdout and stays running. If the response contains another "service"
+// field, that service is started recursively. Resolution must eventually
+// produce an "endpoint" or it is an error.
 type serviceProcess struct {
 	cmd     []string
 	dir     string
-	authz   string
-	headers map[string]string
+	parent  *ImportSource // static config fields to use as defaults
+	depth   int
 
 	services *ServiceRegistry
 
@@ -205,6 +208,8 @@ type serviceProcess struct {
 	delegate graphql.Client
 	initErr  error
 }
+
+const maxServiceDepth = 10
 
 func (s *serviceProcess) MakeRequest(ctx context.Context, req *graphql.Request, resp *graphql.Response) error {
 	s.once.Do(func() {
@@ -217,6 +222,10 @@ func (s *serviceProcess) MakeRequest(ctx context.Context, req *graphql.Request, 
 }
 
 func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
+	if s.depth >= maxServiceDepth {
+		return nil, fmt.Errorf("service recursion depth exceeded (%d)", maxServiceDepth)
+	}
+
 	slog.Info("starting import service", "cmd", s.cmd, "dir", s.dir)
 
 	cmd := exec.CommandContext(ctx, s.cmd[0], s.cmd[1:]...)
@@ -239,33 +248,53 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 		s.services.register(cmd)
 	}
 
-	// Read the first line (endpoint URL) with a timeout
-	endpointCh := make(chan string, 1)
+	// Read a JSON object from stdout
+	resultCh := make(chan *ImportSource, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		scanner := bufio.NewScanner(stdout)
-		if scanner.Scan() {
-			endpointCh <- strings.TrimSpace(scanner.Text())
-		} else {
-			if err := scanner.Err(); err != nil {
-				errCh <- fmt.Errorf("reading endpoint from service: %w", err)
-			} else {
-				errCh <- fmt.Errorf("service exited without printing endpoint URL")
-			}
+		var source ImportSource
+		if err := json.NewDecoder(stdout).Decode(&source); err != nil {
+			errCh <- fmt.Errorf("reading service configuration: %w", err)
+			return
 		}
+		resultCh <- &source
 	}()
 
+	var source *ImportSource
 	select {
-	case endpoint := <-endpointCh:
-		slog.Info("import service started", "endpoint", endpoint)
-		return makeClient(endpoint, s.authz, s.headers), nil
+	case source = <-resultCh:
 	case err := <-errCh:
-		_ = cmd.Process.Kill()
+		_ = killProcessGroup(cmd)
 		return nil, err
 	case <-time.After(30 * time.Second):
-		_ = cmd.Process.Kill()
-		return nil, fmt.Errorf("timed out waiting for service to print endpoint URL")
+		_ = killProcessGroup(cmd)
+		return nil, fmt.Errorf("timed out waiting for service configuration")
 	}
+
+	return s.resolve(ctx, source)
+}
+
+// resolve turns an ImportSource (returned by a service) into a client,
+// recursively starting nested services if needed.
+func (s *serviceProcess) resolve(ctx context.Context, source *ImportSource) (graphql.Client, error) {
+	if source.Endpoint != "" {
+		endpoint := expandEnvVars(source.Endpoint)
+		slog.Info("import service ready", "endpoint", endpoint)
+		return makeClient(endpoint, source.Authorization, source.Headers), nil
+	}
+
+	if len(source.Service) > 0 {
+		nested := &serviceProcess{
+			cmd:      source.Service,
+			dir:      s.dir,
+			parent:   source,
+			depth:    s.depth + 1,
+			services: s.services,
+		}
+		return nested.start(ctx)
+	}
+
+	return nil, fmt.Errorf("service output must include 'endpoint' or 'service'")
 }
 
 // ServiceRegistry tracks service processes for cleanup.
