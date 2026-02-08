@@ -483,6 +483,8 @@ func nodeLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *Grouped:
 		return n.Loc
+	case *ImportDecl:
+		return n.Loc
 	case *SelfKeyword:
 		return n.Loc
 	case *Null:
