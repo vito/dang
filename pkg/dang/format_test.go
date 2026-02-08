@@ -30,14 +30,13 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 		expected string
 	}{
 		{
-			name: "chain with multiline block gets split",
+			name: "chain with multiline block stays on one line",
 			input: `pub x = foo.map { a =>
   body
 }`,
-			expected: `pub x = foo
-	.map { a =>
-		body
-	}
+			expected: `pub x = foo.map { a =>
+	body
+}
 `,
 		},
 		{
@@ -57,14 +56,13 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 `,
 		},
 		{
-			name: "nested multiline block args get split",
+			name: "nested multiline block args stay on one line",
 			input: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
   inner.map { x => x * 2 }
 }`,
-			expected: `pub doubled_nested: [[Int!]!]! = nested
-	.map { inner =>
-		inner.map { x => x * 2 }
-	}
+			expected: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
+	inner.map { x => x * 2 }
+}
 `,
 		},
 	}
@@ -175,7 +173,7 @@ func (FormatSuite) TestStringFormatting(ctx context.Context, t *testctx.T) {
 hello
 world
 """`,
-			expected: "pub x = \"\"\"\n\thello\n\tworld\n\"\"\"\n",
+			expected: "pub x = \"\"\"\nhello\nworld\n\"\"\"\n",
 		},
 		{
 			name: "indented triple-quoted string with empty lines has no trailing whitespace",
@@ -248,14 +246,13 @@ func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 			expected: "pub x = foo.map { x => x * 2 }\n",
 		},
 		{
-			name: "multiline block arg splits chain",
+			name: "multiline block arg keeps chain on one line",
 			input: `pub x = foo.map { x =>
   x * 2
 }`,
-			expected: `pub x = foo
-	.map { x =>
-		x * 2
-	}
+			expected: `pub x = foo.map { x =>
+	x * 2
+}
 `,
 		},
 		{
@@ -587,11 +584,13 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 		{
 			name: "list in chain call stays on one line even when chain splits",
 			input: `pub x: String! {
-	base.withExec(["sh", "-c", """
-		echo hello
-		"""]).directory(".")
+	base
+		.withExec(["sh", "-c", """
+			echo hello
+			"""])
+		.directory(".")
 }`,
-			// Chain gets split, but list elements stay together
+			// Chain gets split, list elements stay together
 			expected: "pub x: String! {\n\tbase\n\t\t.withExec([\"sh\", \"-c\", \"\"\"\n\t\t\techo hello\n\t\t\"\"\"])\n\t\t.directory(\".\")\n}\n",
 		},
 		{

@@ -358,6 +358,14 @@ func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
 // nodeEffectiveStartLine returns the first line where a node's content would appear,
 // accounting for docstrings that precede the actual code
 func nodeEffectiveStartLine(node Node) int {
+	// For slots with prefix directives, the effective start is the first directive
+	if s, ok := node.(*SlotDecl); ok {
+		for _, d := range s.Directives {
+			if d.IsPrefix && d.Loc != nil {
+				return d.Loc.Line
+			}
+		}
+	}
 	if loc := nodeLocation(node); loc != nil {
 		return loc.Line
 	}
@@ -1082,16 +1090,29 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 	prevDirectiveLine := 0
 	for _, d := range s.Directives {
 		if d.IsPrefix {
-			// If this directive was on a different line than the previous one, use a newline
-			if prevDirectiveLine > 0 && d.Loc != nil && d.Loc.Line > prevDirectiveLine {
-				f.newline()
-				f.writeIndent()
+			if prevDirectiveLine > 0 {
+				if d.Loc != nil && d.Loc.Line > prevDirectiveLine {
+					// Directive on a new line
+					f.newline()
+					f.writeIndent()
+				} else {
+					// Directive on same line as previous
+					f.write(" ")
+				}
 			}
 			f.formatDirectiveApplication(d)
-			f.write(" ")
 			if d.Loc != nil {
 				prevDirectiveLine = d.Loc.Line
 			}
+		}
+	}
+	// If last prefix directive was on a different line than the name, newline; otherwise space
+	if prevDirectiveLine > 0 {
+		if s.Name.Loc != nil && s.Name.Loc.Line > prevDirectiveLine {
+			f.newline()
+			f.writeIndent()
+		} else {
+			f.write(" ")
 		}
 	}
 
@@ -1258,20 +1279,7 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl) {
 			wasMultiline = true
 		}
 	}
-	// Check if any arg has a suffix directive - if so, user likely wanted multiline
-	if !wasMultiline {
-		for _, arg := range args {
-			for _, d := range arg.Directives {
-				if !d.IsPrefix {
-					wasMultiline = true
-					break
-				}
-			}
-			if wasMultiline {
-				break
-			}
-		}
-	}
+
 
 	// Estimate total length
 	totalLen := 0
@@ -1619,7 +1627,7 @@ func (f *Formatter) isMultilineNode(node Node) bool {
 	case *Block:
 		return true
 	case *Conditional:
-		return true
+		return wasMultiline(n)
 	case *ForLoop:
 		return true
 	case *Case:
@@ -1683,36 +1691,97 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 	}
 }
 
-func (f *Formatter) shouldSplitChain(c *FunCall) bool {
-	// If the original was multiline, preserve that
-	if f.wasChainMultiline(c) {
-		return true
+// findCommentStart returns the byte index of a '#' comment start in a line,
+// ignoring '#' inside strings. Returns -1 if no comment found.
+func findCommentStart(line []byte) int {
+	inString := false
+	for i, b := range line {
+		if b == '"' {
+			inString = !inString
+		}
+		if !inString && b == '#' {
+			return i
+		}
 	}
+	return -1
+}
 
-	// If the underlying select is multiline, we need to handle it as a chain
-	// to keep args/block args properly indented
-	if sel, ok := c.Fun.(*Select); ok && f.wasSelectMultiline(sel) {
-		return true
+// chainSpansMultipleLines checks if a chain step (from receiver end to this node)
+// was originally on multiple lines. It looks for the field access dot on a different
+// line than where the receiver ends.
+func (f *Formatter) chainSpansMultipleLines(recvEndLine int, loc *SourceLocation) bool {
+	if f.source == nil || loc == nil || loc.End == nil || recvEndLine <= 0 {
+		return false
 	}
-
-	// Don't split chains that were originally on one line
+	lines := bytes.Split(f.source, []byte("\n"))
+	// Check if there's a dot at the end of a line (trailing dot style: `foo.\n  bar`)
+	// Strip comments first to avoid matching dots inside comments
+	if recvEndLine <= len(lines) {
+		line := lines[recvEndLine-1]
+		// Remove trailing comment
+		if idx := findCommentStart(line); idx >= 0 {
+			line = line[:idx]
+		}
+		trimmed := bytes.TrimRight(line, " \t")
+		if len(trimmed) > 0 && trimmed[len(trimmed)-1] == '.' {
+			return true
+		}
+	}
+	// Check if there's a dot at the start of a subsequent line (leading dot style: `foo\n  .bar`)
+	for lineIdx := recvEndLine + 1; lineIdx <= loc.End.Line && lineIdx <= len(lines); lineIdx++ {
+		trimmed := bytes.TrimLeft(lines[lineIdx-1], " \t")
+		if len(trimmed) > 0 && trimmed[0] == '.' {
+			return true
+		}
+	}
 	return false
+}
+
+// nodeEndLineForChain returns the end line of a node using its direct Loc field,
+// which includes the full span (args, block args, etc.)
+func (f *Formatter) nodeEndLineForChain(node Node) int {
+	switch n := node.(type) {
+	case *FunCall:
+		if n.Loc != nil && n.Loc.End != nil {
+			return n.Loc.End.Line
+		}
+		if n.Loc != nil {
+			return n.Loc.Line
+		}
+	case *Select:
+		if n.Loc != nil && n.Loc.End != nil {
+			return n.Loc.End.Line
+		}
+		if n.Loc != nil {
+			return n.Loc.Line
+		}
+	}
+	// Fall back to nodeEndLine for other types
+	return nodeEndLine(node)
+}
+
+func (f *Formatter) shouldSplitChain(c *FunCall) bool {
+	// Only split if the chain itself was originally on multiple lines
+	return f.wasChainMultiline(c)
 }
 
 // wasChainMultiline checks if any part of a method chain was on a different line
 func (f *Formatter) wasChainMultiline(node Node) bool {
-	loc := nodeLocation(node)
-	if loc != nil && loc.End != nil && loc.End.Line > loc.Line {
-		return true
-	}
-
 	switch n := node.(type) {
 	case *FunCall:
 		if sel, ok := n.Fun.(*Select); ok {
-			return f.wasChainMultiline(sel)
+			recvEndLine := f.nodeEndLineForChain(sel.Receiver)
+			if f.chainSpansMultipleLines(recvEndLine, n.Loc) {
+				return true
+			}
+			return f.wasChainMultiline(sel.Receiver)
 		}
 		return false
 	case *Select:
+		recvEndLine := f.nodeEndLineForChain(n.Receiver)
+		if f.chainSpansMultipleLines(recvEndLine, n.Loc) {
+			return true
+		}
 		if n.Receiver != nil {
 			return f.wasChainMultiline(n.Receiver)
 		}
@@ -1868,7 +1937,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
 
 func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 	// Check if this is a multiline chain that should be formatted with leading dots
-	if f.wasSelectMultiline(s) || forceMultiline {
+	if f.wasChainMultiline(s) || forceMultiline {
 		f.formatSelectChain(s)
 		return
 	}
@@ -1877,13 +1946,6 @@ func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 	f.write(s.Field)
 }
 
-// wasSelectMultiline checks if a select chain was originally on multiple lines
-func (f *Formatter) wasSelectMultiline(s *Select) bool {
-	if s.Loc != nil && s.Loc.End != nil && s.Loc.End.Line > s.Loc.Line {
-		return true
-	}
-	return false
-}
 
 // formatSelectChain formats a select chain with leading dots on new lines
 func (f *Formatter) formatSelectChain(s *Select) {
@@ -1940,11 +2002,25 @@ func (f *Formatter) formatString(s *String) {
 			f.write(`"""`)
 			return
 		}
+		// Check if the original content was indented (first content line has
+		// leading whitespace beyond what's on the closing delimiter line)
+		wasIndented := f.wasTripleQuoteIndented(s)
 		f.write(`"""`)
 		f.newline()
-		// Indent each line one level deeper than the closing delimiter
 		lines := strings.Split(s.Value, "\n")
-		f.indented(func() {
+		if wasIndented {
+			// Indent each line one level deeper than the closing delimiter
+			f.indented(func() {
+				for _, line := range lines {
+					if line != "" {
+						f.writeIndent()
+						f.write(line)
+					}
+					f.newline()
+				}
+			})
+		} else {
+			// Preserve content at same indent level as the closing delimiter
 			for _, line := range lines {
 				if line != "" {
 					f.writeIndent()
@@ -1952,13 +2028,38 @@ func (f *Formatter) formatString(s *String) {
 				}
 				f.newline()
 			}
-		})
+		}
 		f.writeIndent()
 		f.write(`"""`)
 	} else {
 		// Use regular quoted string
 		f.write(strconv.Quote(s.Value))
 	}
+}
+
+// wasTripleQuoteIndented checks if a triple-quoted string's content was indented
+// in the original source. Returns true if any non-empty content line had leading
+// whitespace.
+func (f *Formatter) wasTripleQuoteIndented(s *String) bool {
+	if s.Loc == nil || s.Loc.End == nil || f.source == nil {
+		return false
+	}
+	lines := bytes.Split(f.source, []byte("\n"))
+	closingLine := s.Loc.End.Line
+	contentStart := s.Loc.Line + 1
+	if contentStart >= closingLine {
+		return false
+	}
+	for lineIdx := contentStart; lineIdx < closingLine && lineIdx <= len(lines); lineIdx++ {
+		line := lines[lineIdx-1]
+		trimmed := bytes.TrimSpace(line)
+		if len(trimmed) == 0 {
+			continue // skip empty lines
+		}
+		// Check if first non-empty content line has any leading whitespace
+		return len(line) > len(trimmed)
+	}
+	return false
 }
 
 func (f *Formatter) formatInt(i *Int) {
