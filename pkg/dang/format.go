@@ -669,9 +669,6 @@ func (f *Formatter) sortImports(m *ModuleBlock) {
 
 // importSortKey returns the string to sort an import by
 func importSortKey(imp *ImportDecl) string {
-	if imp.Source != nil {
-		return imp.Source.Value
-	}
 	if imp.Name != nil {
 		return imp.Name.Name
 	}
@@ -1376,15 +1373,7 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 func (f *Formatter) formatImportDecl(i *ImportDecl) {
 	f.write("import ")
-	if i.Source != nil {
-		f.write(i.Source.Value)
-		if i.Name != nil {
-			f.write(" as ")
-			f.write(i.Name.Name)
-		}
-	} else {
-		f.write(i.Name.Name)
-	}
+	f.write(i.Name.Name)
 }
 
 func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {

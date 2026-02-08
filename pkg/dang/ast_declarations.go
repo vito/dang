@@ -1084,9 +1084,8 @@ func (d *DirectiveApplication) validateArguments(ctx context.Context, decl *Dire
 // ImportDecl represents a GraphQL schema import statement
 type ImportDecl struct {
 	InferredTypeHolder
-	Name   *Symbol // Optional alias (e.g., "GH")
-	Source *String // The source identifier (e.g., "api.github.com", "dagger")
-	Loc    *SourceLocation
+	Name *Symbol // The import name (e.g., "Dagger", "Test")
+	Loc  *SourceLocation
 
 	client   graphql.Client
 	schema   *introspection.Schema

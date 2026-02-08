@@ -1046,16 +1046,10 @@ DirectiveName <- '@' name:Id {
 DirectiveToken <- "directive" !WordChar
 OnToken <- "on" !WordChar
 
-Import <- ImportToken _ name:Symbol source:(_ FromToken _ s:String { return s, nil })? {
-  var src *String
-  if source != nil {
-    src = source.(*String)
-  }
+Import <- ImportToken _ name:Symbol {
   return &ImportDecl{
-    Name:  name.(*Symbol),
-    Source: src,
-    Loc:    c.Loc(),
+    Name: name.(*Symbol),
+    Loc:  c.Loc(),
   }, nil
 }
 ImportToken <- "import" !WordChar
-FromToken <- "from" !WordChar

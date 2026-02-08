@@ -7105,42 +7105,6 @@ var g = &grammar{
 								name: "Symbol",
 							},
 						},
-						&labeledExpr{
-							pos:   position{line: 1049, col: 37, offset: 28802},
-							label: "source",
-							expr: &zeroOrOneExpr{
-								pos: position{line: 1049, col: 44, offset: 28809},
-								expr: &actionExpr{
-									pos: position{line: 1049, col: 45, offset: 28810},
-									run: (*parser).callonImport9,
-									expr: &seqExpr{
-										pos: position{line: 1049, col: 45, offset: 28810},
-										exprs: []any{
-											&ruleRefExpr{
-												pos:  position{line: 1049, col: 45, offset: 28810},
-												name: "_",
-											},
-											&ruleRefExpr{
-												pos:  position{line: 1049, col: 47, offset: 28812},
-												name: "FromToken",
-											},
-											&ruleRefExpr{
-												pos:  position{line: 1049, col: 57, offset: 28822},
-												name: "_",
-											},
-											&labeledExpr{
-												pos:   position{line: 1049, col: 59, offset: 28824},
-												label: "s",
-												expr: &ruleRefExpr{
-													pos:  position{line: 1049, col: 61, offset: 28826},
-													name: "String",
-												},
-											},
-										},
-									},
-								},
-							},
-						},
 					},
 				},
 			},
@@ -7149,44 +7113,20 @@ var g = &grammar{
 		},
 		{
 			name: "ImportToken",
-			pos:  position{line: 1060, col: 1, offset: 29023},
+			pos:  position{line: 1055, col: 1, offset: 28882},
 			expr: &seqExpr{
-				pos: position{line: 1060, col: 16, offset: 29038},
+				pos: position{line: 1055, col: 16, offset: 28897},
 				exprs: []any{
 					&litMatcher{
-						pos:        position{line: 1060, col: 16, offset: 29038},
+						pos:        position{line: 1055, col: 16, offset: 28897},
 						val:        "import",
 						ignoreCase: false,
 						want:       "\"import\"",
 					},
 					&notExpr{
-						pos: position{line: 1060, col: 25, offset: 29047},
+						pos: position{line: 1055, col: 25, offset: 28906},
 						expr: &ruleRefExpr{
-							pos:  position{line: 1060, col: 26, offset: 29048},
-							name: "WordChar",
-						},
-					},
-				},
-			},
-			leader:        false,
-			leftRecursive: false,
-		},
-		{
-			name: "FromToken",
-			pos:  position{line: 1061, col: 1, offset: 29057},
-			expr: &seqExpr{
-				pos: position{line: 1061, col: 14, offset: 29070},
-				exprs: []any{
-					&litMatcher{
-						pos:        position{line: 1061, col: 14, offset: 29070},
-						val:        "from",
-						ignoreCase: false,
-						want:       "\"from\"",
-					},
-					&notExpr{
-						pos: position{line: 1061, col: 21, offset: 29077},
-						expr: &ruleRefExpr{
-							pos:  position{line: 1061, col: 22, offset: 29078},
+							pos:  position{line: 1055, col: 26, offset: 28907},
 							name: "WordChar",
 						},
 					},
@@ -9210,32 +9150,17 @@ func (p *parser) callonDirectiveName1() (any, error) {
 	return p.cur.onDirectiveName1(stack["name"])
 }
 
-func (c *current) onImport9(s any) (any, error) {
-	return s, nil
-}
-
-func (p *parser) callonImport9() (any, error) {
-	stack := p.vstack[len(p.vstack)-1]
-	_ = stack
-	return p.cur.onImport9(stack["s"])
-}
-
-func (c *current) onImport1(name, source any) (any, error) {
-	var src *String
-	if source != nil {
-		src = source.(*String)
-	}
+func (c *current) onImport1(name any) (any, error) {
 	return &ImportDecl{
-		Name:   name.(*Symbol),
-		Source: src,
-		Loc:    c.Loc(),
+		Name: name.(*Symbol),
+		Loc:  c.Loc(),
 	}, nil
 }
 
 func (p *parser) callonImport1() (any, error) {
 	stack := p.vstack[len(p.vstack)-1]
 	_ = stack
-	return p.cur.onImport1(stack["name"], stack["source"])
+	return p.cur.onImport1(stack["name"])
 }
 
 var (
