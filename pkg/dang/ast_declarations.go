@@ -1096,6 +1096,11 @@ type ImportConfig struct {
 	Name   string
 	Client graphql.Client
 	Schema *introspection.Schema
+
+	// AutoImport causes this import to be injected into every file
+	// without an explicit import statement. Used by SDKs (e.g. Dagger)
+	// that want their import available implicitly.
+	AutoImport bool
 }
 
 type importConfigsKey struct{}

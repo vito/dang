@@ -1462,10 +1462,10 @@ func injectAutoImports(ctx context.Context, forms []Node) []Node {
 		}
 	}
 
-	// Prepend synthetic imports for any missing configs
+	// Prepend synthetic imports for any auto-import configs not already present
 	var injected []Node
 	for _, config := range configs {
-		if !imported[config.Name] {
+		if config.AutoImport && !imported[config.Name] {
 			injected = append(injected, &ImportDecl{
 				Name: &Symbol{Name: config.Name},
 			})

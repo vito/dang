@@ -113,9 +113,10 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 	}
 
 	ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
-		Name:   "Dagger",
-		Client: dag.GraphQLClient(),
-		Schema: schema,
+		Name:       "Dagger",
+		Client:     dag.GraphQLClient(),
+		Schema:     schema,
+		AutoImport: true,
 	})
 
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
