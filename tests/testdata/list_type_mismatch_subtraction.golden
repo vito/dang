@@ -4,5 +4,6 @@
  [2m  1 | # This should fail: mixing String and Int lists in subtraction[0m
  [2m[34m[1m  2 | [0mpub result = [] - ["foo"] - [3]
 [2m                    [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | [0m
  [2m    |[0m
 

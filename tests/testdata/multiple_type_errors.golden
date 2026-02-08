@@ -21,6 +21,7 @@ Error 2:
  [2m[34m[1m  3 | [0mpub missing_var = undefined_symbol
 [2m                         [31m^^^^^^^^^^^^^^^^[0m
  [2m  4 | pub bad_conditional = if (true) { "string" } else { 123 }[0m
+ [2m  5 | [0m
  [2m    |[0m
 
 
@@ -32,5 +33,6 @@ Error 3:
  [2m  3 | pub missing_var = undefined_symbol[0m
  [2m[34m[1m  4 | [0mpub bad_conditional = if (true) { "string" } else { 123 }
 [2m                                                           [31m^^^[0m
+ [2m  5 | [0m
  [2m    |[0m
 

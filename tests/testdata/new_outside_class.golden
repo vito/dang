@@ -4,7 +4,7 @@
  [2m  1 | # new() is only valid inside class bodies[0m
  [2m[34m[1m  2 | [0mnew(x: Int!) {
 [2m       [31m^^^^^^^^^^^^^^[0m
- [2m  3 |   print(value: x)[0m
+ [2m  3 | 	print(value: x)[0m
  [2m  4 | }[0m
  [2m    |[0m
 

@@ -1,10 +1,11 @@
-[1m[31mError:[0m function requires a block argument
-  [2m[34m--> errors/user_function_block_missing.dang:8:23[0m
+[1m[31mError:[0m Symbol.Eval: "block" not found in env: module {}
+  [2m[34m--> errors/user_function_block_missing.dang:4:2[0m
  [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | pub withBlock(&block(x: Int!): String!): String! {[0m
+ [2m[34m[1m  4 | [0m	block(42)
+[2m        [31m^^^^^[0m
+ [2m  5 | }[0m
  [2m  6 | [0m
- [2m  7 | # ERROR: function requires a block argument[0m
- [2m[34m[1m  8 | [0mpub result: String! = withBlock()
-[2m                             [31m^^^^^^^^^^^[0m
- [2m  9 | [0m
  [2m    |[0m
 

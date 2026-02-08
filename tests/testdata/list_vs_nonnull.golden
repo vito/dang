@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  4 | let a: [Int] = [123][0m
  [2m  5 | let y: Int! = 124[0m
- [2m[34m[1m  6 | [0ma = y	# ERROR: should not be able to assign Int! to [Int]
+ [2m[34m[1m  6 | [0ma = y # ERROR: should not be able to assign Int! to [Int]
 [2m       [31m^^^^^[0m
  [2m  7 | [0m
  [2m    |[0m

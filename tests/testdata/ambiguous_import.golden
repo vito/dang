@@ -1,10 +1,10 @@
-[1m[31mError:[0m ambiguous reference to "Status": provided by imports [Test Other]
-  [2m[34m--> errors/ambiguous_import.dang:6:17[0m
+[1m[31mError:[0m ambiguous reference to "Status": provided by imports [Other Test]
+  [2m[34m--> errors/ambiguous_import.dang:7:17[0m
  [2m    |[0m
- [2m  4 | [0m
- [2m  5 | # This should fail because both Test and Other provide a Status type[0m
- [2m[34m[1m  6 | [0mlet s: Status = Status.ACTIVE
+ [2m  5 | [0m
+ [2m  6 | # This should fail because both Test and Other provide a Status type[0m
+ [2m[34m[1m  7 | [0mlet s: Status = Status.ACTIVE
 [2m                       [31m^^^^^^[0m
- [2m  7 | [0m
+ [2m  8 | [0m
  [2m    |[0m
 
