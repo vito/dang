@@ -1,12 +1,17 @@
 package dang
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/Khan/genqlient/graphql"
@@ -30,6 +35,13 @@ type ImportSource struct {
 	// Endpoint is a GraphQL HTTP endpoint URL for runtime queries.
 	// If set without Schema, the schema is introspected from the endpoint.
 	Endpoint string `toml:"endpoint,omitempty"`
+
+	// Service is a command that starts a GraphQL server. The command must
+	// print its endpoint URL as the first line to stdout, then keep running.
+	// The process is started lazily on first use and killed when Dang exits.
+	// If Schema is also set, the schema is used for type checking and the
+	// service is only started when runtime queries are needed.
+	Service []string `toml:"service,omitempty"`
 
 	// Authorization is the Authorization header value (e.g. "Bearer token").
 	// Supports ${ENV_VAR} expansion.
@@ -120,31 +132,33 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 
 	// Set up HTTP client for endpoint if specified
 	if source.Endpoint != "" {
-		endpoint := expandEnvVars(source.Endpoint)
-		authorization := expandEnvVars(source.Authorization)
-		headers := make(map[string]string)
-		for k, v := range source.Headers {
-			headers[k] = expandEnvVars(v)
-		}
+		ic.Client = makeClient(expandEnvVars(source.Endpoint), source.Authorization, source.Headers)
+	}
 
-		httpClient := &http.Client{
-			Transport: &customTransport{
-				base:          http.DefaultTransport,
-				authorization: authorization,
-				headers:       headers,
-			},
+	// Set up service launcher for lazy endpoint discovery
+	if len(source.Service) > 0 && ic.Client == nil {
+		cmd := source.Service
+		// Resolve the command relative to configDir
+		svc := &serviceProcess{
+			cmd:       cmd,
+			dir:       configDir,
+			authz:     source.Authorization,
+			headers:   source.Headers,
+			services:  servicesFromContext(ctx),
 		}
-		client := graphql.NewClient(endpoint, httpClient)
-		ic.Client = client
+		ic.Client = svc
+	}
 
-		// If no local schema file, introspect from the endpoint
-		if ic.Schema == nil {
-			// Try cache first
+	// If we have a client but no schema, introspect
+	if ic.Client != nil && ic.Schema == nil {
+		endpoint := source.Endpoint
+		if endpoint != "" {
+			endpoint = expandEnvVars(endpoint)
 			cachedSchema, err := loadCachedSchema(endpoint)
 			if err == nil && cachedSchema != nil {
 				ic.Schema = cachedSchema
 			} else {
-				schema, err := introspectSchema(ctx, client)
+				schema, err := introspectSchema(ctx, ic.Client)
 				if err != nil {
 					return ic, fmt.Errorf("introspecting %s: %w", endpoint, err)
 				}
@@ -155,10 +169,144 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	}
 
 	if ic.Schema == nil && ic.Client == nil {
-		return ic, fmt.Errorf("must specify at least one of 'schema' or 'endpoint'")
+		return ic, fmt.Errorf("must specify at least one of 'schema', 'endpoint', or 'service'")
 	}
 
 	return ic, nil
+}
+
+func makeClient(endpoint, authorization string, headers map[string]string) graphql.Client {
+	authz := expandEnvVars(authorization)
+	expandedHeaders := make(map[string]string)
+	for k, v := range headers {
+		expandedHeaders[k] = expandEnvVars(v)
+	}
+	httpClient := &http.Client{
+		Transport: &customTransport{
+			base:          http.DefaultTransport,
+			authorization: authz,
+			headers:       expandedHeaders,
+		},
+	}
+	return graphql.NewClient(endpoint, httpClient)
+}
+
+// serviceProcess implements graphql.Client by lazily starting a service
+// process and proxying requests to it.
+type serviceProcess struct {
+	cmd     []string
+	dir     string
+	authz   string
+	headers map[string]string
+
+	services *ServiceRegistry
+
+	once     sync.Once
+	delegate graphql.Client
+	initErr  error
+}
+
+func (s *serviceProcess) MakeRequest(ctx context.Context, req *graphql.Request, resp *graphql.Response) error {
+	s.once.Do(func() {
+		s.delegate, s.initErr = s.start(ctx)
+	})
+	if s.initErr != nil {
+		return fmt.Errorf("starting service %v: %w", s.cmd, s.initErr)
+	}
+	return s.delegate.MakeRequest(ctx, req, resp)
+}
+
+func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
+	slog.Info("starting import service", "cmd", s.cmd, "dir", s.dir)
+
+	cmd := exec.CommandContext(ctx, s.cmd[0], s.cmd[1:]...)
+	cmd.Dir = s.dir
+	cmd.Stderr = os.Stderr
+	// Use process group so we can kill the whole tree (e.g. go run -> child)
+	setProcessGroup(cmd)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("starting %v: %w", s.cmd, err)
+	}
+
+	// Register for cleanup
+	if s.services != nil {
+		s.services.register(cmd)
+	}
+
+	// Read the first line (endpoint URL) with a timeout
+	endpointCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		if scanner.Scan() {
+			endpointCh <- strings.TrimSpace(scanner.Text())
+		} else {
+			if err := scanner.Err(); err != nil {
+				errCh <- fmt.Errorf("reading endpoint from service: %w", err)
+			} else {
+				errCh <- fmt.Errorf("service exited without printing endpoint URL")
+			}
+		}
+	}()
+
+	select {
+	case endpoint := <-endpointCh:
+		slog.Info("import service started", "endpoint", endpoint)
+		return makeClient(endpoint, s.authz, s.headers), nil
+	case err := <-errCh:
+		_ = cmd.Process.Kill()
+		return nil, err
+	case <-time.After(30 * time.Second):
+		_ = cmd.Process.Kill()
+		return nil, fmt.Errorf("timed out waiting for service to print endpoint URL")
+	}
+}
+
+// ServiceRegistry tracks service processes for cleanup.
+type ServiceRegistry struct {
+	mu    sync.Mutex
+	procs []*exec.Cmd
+}
+
+func (r *ServiceRegistry) register(cmd *exec.Cmd) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.procs = append(r.procs, cmd)
+}
+
+// StopAll kills all registered service processes.
+func (r *ServiceRegistry) StopAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, cmd := range r.procs {
+		if cmd.Process != nil {
+			slog.Info("stopping import service", "pid", cmd.Process.Pid)
+			// Kill the entire process group to handle go run -> child
+			_ = killProcessGroup(cmd)
+		}
+	}
+	r.procs = nil
+}
+
+type servicesKey struct{}
+
+// ContextWithServices adds a ServiceRegistry to the context for tracking
+// service processes that need cleanup.
+func ContextWithServices(ctx context.Context, services *ServiceRegistry) context.Context {
+	return context.WithValue(ctx, servicesKey{}, services)
+}
+
+func servicesFromContext(ctx context.Context) *ServiceRegistry {
+	if v := ctx.Value(servicesKey{}); v != nil {
+		return v.(*ServiceRegistry)
+	}
+	return nil
 }
 
 // expandEnvVars expands ${VAR} references in a string using os.Getenv.
@@ -194,6 +342,16 @@ func SchemaFromSDL(sdl string, filename string) (*introspection.Schema, error) {
 
 // astSchemaToIntrospection converts a gqlparser ast.Schema to an
 // introspection.Schema that Dang's import system understands.
+// astTypeKind maps ast.Definition.Kind to introspection TypeKind for named types.
+var astTypeKindMap = map[ast.DefinitionKind]introspection.TypeKind{
+	ast.Scalar:      introspection.TypeKindScalar,
+	ast.Object:      introspection.TypeKindObject,
+	ast.Interface:   introspection.TypeKindInterface,
+	ast.Union:       introspection.TypeKindUnion,
+	ast.Enum:        introspection.TypeKindEnum,
+	ast.InputObject: introspection.TypeKindInputObject,
+}
+
 func astSchemaToIntrospection(schema *ast.Schema) *introspection.Schema {
 	result := &introspection.Schema{}
 
@@ -218,7 +376,7 @@ func astSchemaToIntrospection(schema *ast.Schema) *introspection.Schema {
 		if strings.HasPrefix(t.Name, "__") {
 			continue
 		}
-		result.Types = append(result.Types, astTypeToIntrospection(t))
+		result.Types = append(result.Types, astTypeToIntrospection(schema, t))
 	}
 
 	// Convert directives
@@ -227,13 +385,13 @@ func astSchemaToIntrospection(schema *ast.Schema) *introspection.Schema {
 		if d.Name == "skip" || d.Name == "include" || d.Name == "deprecated" || d.Name == "specifiedBy" {
 			continue
 		}
-		result.Directives = append(result.Directives, astDirectiveToIntrospection(d))
+		result.Directives = append(result.Directives, astDirectiveToIntrospection(schema, d))
 	}
 
 	return result
 }
 
-func astTypeToIntrospection(t *ast.Definition) *introspection.Type {
+func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspection.Type {
 	it := &introspection.Type{
 		Name:        t.Name,
 		Description: t.Description,
@@ -249,7 +407,7 @@ func astTypeToIntrospection(t *ast.Definition) *introspection.Type {
 			if strings.HasPrefix(f.Name, "__") {
 				continue
 			}
-			it.Fields = append(it.Fields, astFieldToIntrospection(f))
+			it.Fields = append(it.Fields, astFieldToIntrospection(schema, f))
 		}
 		for _, iface := range t.Interfaces {
 			it.Interfaces = append(it.Interfaces, &introspection.Type{
@@ -260,7 +418,7 @@ func astTypeToIntrospection(t *ast.Definition) *introspection.Type {
 	case ast.Interface:
 		it.Kind = introspection.TypeKindInterface
 		for _, f := range t.Fields {
-			it.Fields = append(it.Fields, astFieldToIntrospection(f))
+			it.Fields = append(it.Fields, astFieldToIntrospection(schema, f))
 		}
 	case ast.Union:
 		it.Kind = introspection.TypeKindUnion
@@ -277,32 +435,32 @@ func astTypeToIntrospection(t *ast.Definition) *introspection.Type {
 	case ast.InputObject:
 		it.Kind = introspection.TypeKindInputObject
 		for _, f := range t.Fields {
-			it.InputFields = append(it.InputFields, astInputValueFromField(f))
+			it.InputFields = append(it.InputFields, astInputValueFromField(schema, f))
 		}
 	}
 
 	return it
 }
 
-func astFieldToIntrospection(f *ast.FieldDefinition) *introspection.Field {
+func astFieldToIntrospection(schema *ast.Schema, f *ast.FieldDefinition) *introspection.Field {
 	field := &introspection.Field{
 		Name:              f.Name,
 		Description:       f.Description,
-		TypeRef:           astTypeRefToIntrospection(f.Type),
+		TypeRef:           astTypeRefToIntrospection(schema, f.Type),
 		IsDeprecated:      f.Directives.ForName("deprecated") != nil,
 		DeprecationReason: deprecationReason(f.Directives),
 	}
 	for _, arg := range f.Arguments {
-		field.Args = append(field.Args, astInputValueToIntrospection(arg))
+		field.Args = append(field.Args, astInputValueToIntrospection(schema, arg))
 	}
 	return field
 }
 
-func astInputValueToIntrospection(v *ast.ArgumentDefinition) introspection.InputValue {
+func astInputValueToIntrospection(schema *ast.Schema, v *ast.ArgumentDefinition) introspection.InputValue {
 	iv := introspection.InputValue{
 		Name:        v.Name,
 		Description: v.Description,
-		TypeRef:     astTypeRefToIntrospection(v.Type),
+		TypeRef:     astTypeRefToIntrospection(schema, v.Type),
 	}
 	if v.DefaultValue != nil {
 		s := v.DefaultValue.String()
@@ -311,11 +469,11 @@ func astInputValueToIntrospection(v *ast.ArgumentDefinition) introspection.Input
 	return iv
 }
 
-func astInputValueFromField(f *ast.FieldDefinition) introspection.InputValue {
+func astInputValueFromField(schema *ast.Schema, f *ast.FieldDefinition) introspection.InputValue {
 	iv := introspection.InputValue{
 		Name:        f.Name,
 		Description: f.Description,
-		TypeRef:     astTypeRefToIntrospection(f.Type),
+		TypeRef:     astTypeRefToIntrospection(schema, f.Type),
 	}
 	if f.DefaultValue != nil {
 		s := f.DefaultValue.String()
@@ -324,36 +482,38 @@ func astInputValueFromField(f *ast.FieldDefinition) introspection.InputValue {
 	return iv
 }
 
-func astTypeRefToIntrospection(t *ast.Type) *introspection.TypeRef {
+func astTypeRefToIntrospection(schema *ast.Schema, t *ast.Type) *introspection.TypeRef {
 	if t == nil {
 		return nil
 	}
 	if t.NonNull {
-		// NON_NULL wraps the inner type
 		inner := *t
 		inner.NonNull = false
 		return &introspection.TypeRef{
 			Kind:   introspection.TypeKindNonNull,
-			OfType: astTypeRefToIntrospection(&inner),
+			OfType: astTypeRefToIntrospection(schema, &inner),
 		}
 	}
 	if t.Elem != nil {
-		// LIST wraps the element type
 		return &introspection.TypeRef{
 			Kind:   introspection.TypeKindList,
-			OfType: astTypeRefToIntrospection(t.Elem),
+			OfType: astTypeRefToIntrospection(schema, t.Elem),
 		}
 	}
-	// Named type — determine kind from name (we don't have full schema
-	// context here, so we use OBJECT as a generic placeholder; the Dang
-	// import system looks types up by name anyway).
+	// Named type — look up the actual kind from the schema
+	kind := introspection.TypeKindObject // fallback
+	if def := schema.Types[t.NamedType]; def != nil {
+		if k, ok := astTypeKindMap[def.Kind]; ok {
+			kind = k
+		}
+	}
 	return &introspection.TypeRef{
-		Kind: introspection.TypeKindObject,
+		Kind: kind,
 		Name: t.NamedType,
 	}
 }
 
-func astDirectiveToIntrospection(d *ast.DirectiveDefinition) *introspection.DirectiveDef {
+func astDirectiveToIntrospection(schema *ast.Schema, d *ast.DirectiveDefinition) *introspection.DirectiveDef {
 	dd := &introspection.DirectiveDef{
 		Name:        d.Name,
 		Description: d.Description,
@@ -362,7 +522,7 @@ func astDirectiveToIntrospection(d *ast.DirectiveDefinition) *introspection.Dire
 		dd.Locations = append(dd.Locations, string(loc))
 	}
 	for _, arg := range d.Arguments {
-		dd.Args = append(dd.Args, astInputValueToIntrospection(arg))
+		dd.Args = append(dd.Args, astInputValueToIntrospection(schema, arg))
 	}
 	return dd
 }

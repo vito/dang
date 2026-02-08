@@ -10,13 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
-	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/tests/gqlserver"
 )
 
 func TestMain(m *testing.M) {
@@ -42,11 +39,24 @@ func (DangSuite) TestFormatLanguage(ctx context.Context, t *testctx.T) {
 }
 
 func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
-	testGraphQLServer, err := gqlserver.StartServer()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = testGraphQLServer.Stop() })
+	// Import configs come from dang.toml (schema + service).
+	// Pre-load them so they're available even when running formatted files
+	// from temp directories.
+	services := &dang.ServiceRegistry{}
+	t.Cleanup(func() { services.StopAll() })
 
-	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
+	var importConfigs []dang.ImportConfig
+	configPath, projectConfig, configErr := dang.FindProjectConfig(".")
+	if configErr == nil && projectConfig != nil {
+		ctx = dang.ContextWithServices(ctx, services)
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
+		configDir := filepath.Dir(configPath)
+		resolved, err := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
+		if err != nil {
+			t.Fatalf("Failed to resolve dang.toml imports: %v", err)
+		}
+		importConfigs = resolved
+	}
 
 	// Find all test_*.dang files or test_* packages
 	paths, err := filepath.Glob("test_*")
@@ -62,18 +72,10 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 	for _, testFileOrDir := range paths {
 		t.Run(filepath.Base(testFileOrDir), func(ctx context.Context, t *testctx.T) {
 			ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
-			ctx = ioctx.StderrToContext(ctx, NewTWriter(t))
-
-			ctx = dang.ContextWithImportConfigs(ctx,
-				dang.ImportConfig{
-					Name:   "Test",
-					Client: client,
-				},
-				dang.ImportConfig{
-					Name:   "Other",
-					Client: client, // Same client/schema, but different import name
-				},
-			)
+			ctx = dang.ContextWithServices(ctx, services)
+			if len(importConfigs) > 0 {
+				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+			}
 
 			// t.Parallel()
 			fi, err := os.Stat(testFileOrDir)

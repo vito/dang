@@ -157,8 +157,8 @@ func TestProjectConfigImports(t *testing.T) {
 	require.NotNil(t, testConfig.Schema.Types.Get("User"))
 	require.NotNil(t, testConfig.Schema.Types.Get("Query"))
 
-	// No client for schema-only imports (no endpoint)
-	require.Nil(t, testConfig.Client, "schema-only import should have no client")
+	// Client is a lazy service process (service is configured in dang.toml)
+	require.NotNil(t, testConfig.Client, "import with service should have a lazy client")
 
 	// Verify type inference works with schema-only imports
 	ctx = ContextWithImportConfigs(ctx, resolved...)

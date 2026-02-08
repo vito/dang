@@ -1322,6 +1322,12 @@ func (c *ConstructorFunction) IsAutoCallable() bool {
 }
 
 func RunFile(ctx context.Context, filePath string, debug bool) error {
+	// Ensure service registry exists for cleanup
+	ctx, services := ensureServiceRegistry(ctx)
+	if services != nil {
+		defer services.StopAll()
+	}
+
 	// Load project config (dang.toml) if not already in context
 	ctx, err := ensureProjectImports(ctx, filepath.Dir(filePath))
 	if err != nil {
@@ -1378,12 +1384,26 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	return nil
 }
 
+// ensureServiceRegistry adds a ServiceRegistry to the context if one isn't
+// already present. Returns the new context and the registry (nil if one was
+// already present, meaning the caller shouldn't defer StopAll).
+func ensureServiceRegistry(ctx context.Context) (context.Context, *ServiceRegistry) {
+	if servicesFromContext(ctx) != nil {
+		return ctx, nil // already have one, caller is not responsible
+	}
+	services := &ServiceRegistry{}
+	return ContextWithServices(ctx, services), services
+}
+
 // ensureProjectImports discovers dang.toml and merges its import configs
 // into the context, without overriding any configs already set (e.g. by
 // the Dagger SDK entrypoint).
 func ensureProjectImports(ctx context.Context, dir string) (context.Context, error) {
-	// Skip if project config is already loaded
+	// Skip if project config or import configs are already loaded
 	if _, cfg := projectConfigFromContext(ctx); cfg != nil {
+		return ctx, nil
+	}
+	if len(importConfigsFromContext(ctx)) > 0 {
 		return ctx, nil
 	}
 
@@ -1461,6 +1481,12 @@ func injectAutoImports(ctx context.Context, forms []Node) []Node {
 
 // RunDir evaluates all .dang files in a directory as a single module
 func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
+	// Ensure service registry exists for cleanup
+	ctx, services := ensureServiceRegistry(ctx)
+	if services != nil {
+		defer services.StopAll()
+	}
+
 	// Load project config (dang.toml) if not already in context
 	ctx, err := ensureProjectImports(ctx, dirPath)
 	if err != nil {
