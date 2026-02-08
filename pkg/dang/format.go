@@ -1291,7 +1291,6 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, p
 		}
 	}
 
-
 	// Estimate total length
 	totalLen := 0
 	for i, arg := range args {
@@ -1559,18 +1558,6 @@ func (f *Formatter) canFormatBlockInline(b *Block) bool {
 	return true
 }
 
-// hasTrailingComment checks if there's a trailing comment for this node's line
-func (f *Formatter) hasTrailingComment(node Node) bool {
-	if loc := nodeLocation(node); loc != nil {
-		for _, c := range f.comments {
-			if c.Line == loc.Line && c.IsTrailing {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // hasCommentsBeforeNode checks if there are standalone comments that would precede this node
 func (f *Formatter) hasCommentsBeforeNode(node Node) bool {
 	if loc := nodeLocation(node); loc != nil && loc.Line > 0 {
@@ -1802,20 +1789,6 @@ func (f *Formatter) wasChainMultiline(node Node) bool {
 	}
 }
 
-func (f *Formatter) getChainDepth(node Node) int {
-	switch n := node.(type) {
-	case *FunCall:
-		if sel, ok := n.Fun.(*Select); ok {
-			return 1 + f.getChainDepth(sel)
-		}
-		return f.getChainDepth(n.Fun)
-	case *Select:
-		return 1 + f.getChainDepth(n.Receiver)
-	default:
-		return 0
-	}
-}
-
 func (f *Formatter) formatChainedCall(c *FunCall) {
 	// Collect the chain
 	var chain []Node
@@ -1956,7 +1929,6 @@ func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 	f.write(".")
 	f.write(s.Field)
 }
-
 
 // formatSelectChain formats a select chain with leading dots on new lines
 func (f *Formatter) formatSelectChain(s *Select) {
