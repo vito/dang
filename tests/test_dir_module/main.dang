@@ -1,15 +1,15 @@
 # Main file that uses cross-file references
 let person = createPerson("Alice", 30)
-let magic = getMagicNumber()
+let magic = getMagicNumber
 
 # Test that we can access types and functions from other files
 assert { person.name == "Alice" }
 assert { person.age == 30 }
 assert { magic == 42 }
-assert { formatVersion() == "Version: 1.0.0" }
-assert { person.greet() == "Hello, I'm Alice" }
+assert { formatVersion == "Version: 1.0.0" }
+assert { person.greet == "Hello, I'm Alice" }
 
 print("Cross-file references work!")
-print(formatVersion())
-print(person.greet())
+print(formatVersion)
+print(person.greet)
 print("Magic number: " + toJSON(magic))

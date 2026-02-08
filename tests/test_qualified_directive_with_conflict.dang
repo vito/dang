@@ -1,6 +1,7 @@
 # Test that qualified directive access works even with conflicts
-import Test
+
 import Other
+import Test
 
 # Both Test and Other provide @experimental
 # Qualified access should work fine

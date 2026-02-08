@@ -44,16 +44,16 @@ type MyModule {
 		container.withExec(["./hack/generate"])
 	}
 
-  pub buildQualified: Dagger.File! {
-    generatedQualified.file("built") # test: ^K => hover: Base with ./hack/generate ran.
-  }
+	pub buildQualified: Dagger.File! {
+		generatedQualified.file("built") # test: ^K => hover: Base with ./hack/generate ran.
+	}
 
-  """
-  Base with ./hack/generate ran.
-  """
-  let generatedQualified: Dagger.Container! {
-    Dagger.container.withExec(["./hack/generate"])
-  }
+	"""
+	Base with ./hack/generate ran.
+	"""
+	let generatedQualified: Dagger.Container! {
+		Dagger.container.withExec(["./hack/generate"])
+	}
 }
 
 # object with lexical scope

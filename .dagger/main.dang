@@ -86,6 +86,7 @@ type Dang {
 				experimentalPrivilegedNesting: true,
 			)
 			.sync
+
 		null
 	}
 
@@ -136,15 +137,14 @@ type Dang {
 			.withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache"))
 			.withExec(["golangci-lint", "run"])
 			.sync
+
 		null
 	}
 
 	"""
 	Bump the pinned Dang version in each editor plugin.
 	"""
-	pub bumpEditors(
-		repo: GitRepository! @defaultPath(path: "/.git"),
-	): Changeset! {
+	pub bumpEditors(repo: GitRepository! @defaultPath(path: "/.git")): Changeset! {
 		let commit = repo.head.commit
 		base
 			.withExec([
@@ -234,6 +234,7 @@ type Dang {
 		ctr
 			.withExec(args, experimentalPrivilegedNesting: true)
 			.sync
+
 		null
 	}
 
@@ -264,6 +265,7 @@ type Dang {
 			.withExec(["sh", "-exc", "curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=v0.19.11 BIN_DIR=/usr/local/bin sh"])
 			.withExec(args, experimentalPrivilegedNesting: true)
 			.sync
+
 		null
 	}
 
@@ -285,6 +287,7 @@ type Dang {
 			.withFile("/usr/bin/dang", binary(race: true)) # install binary for LSP tests
 			.withExec(args, experimentalPrivilegedNesting: true)
 			.sync
+
 		null
 	}
 
@@ -296,6 +299,7 @@ type Dang {
 			.withWorkdir("./treesitter")
 			.withExec(["tree-sitter", "test"])
 			.sync
+
 		null
 	}
 }

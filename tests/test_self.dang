@@ -25,7 +25,7 @@ type MyClass {
 	}
 
 	pub dynamicAccess: String! {
-		self.name	# Should resolve to current receiver's name, not static "initial"
+		self.name # Should resolve to current receiver's name, not static "initial"
 	}
 }
 

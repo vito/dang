@@ -5,4 +5,4 @@ pub withBlock(&block(x: Int!): String!): String! {
 }
 
 # ERROR: function requires a block argument
-pub result: String! = withBlock()
+pub result: String! = withBlock

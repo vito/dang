@@ -5,6 +5,6 @@ interface Identifiable {
 }
 
 type User implements Identifiable {
-	pub id: String!	# Wrong: should be ID!
+	pub id: String! # Wrong: should be ID!
 	pub name: String!
 }

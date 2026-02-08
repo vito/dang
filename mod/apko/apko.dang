@@ -11,15 +11,15 @@ type Apko {
 
 	let config = {{
 		contents: {{
-			packages: [] :: [String!]!
-			repositories: [] :: [String!]!
+			packages: [] :: [String!]!,
+			repositories: [] :: [String!]!,
 			keyring: [] :: [String!]!
-		}}
+		}},
 
-		cmd: ""
+		cmd: "",
 		environment: {{ # TODO: how to support arbitrary key-value?
 			PATH: "/usr/local/bin:/usr/bin:/bin"
-		}}
+		}},
 
 		archs: [arch]
 	}}

@@ -52,9 +52,9 @@ assert { UsingGlobals.local == "global_local" }
 # Class with nested object default values
 type NestedDefaults {
 	pub person = {{
-		name: "John"
+		name: "John",
 		details: {{
-			age: 30
+			age: 30,
 			active: true
 		}}
 	}}
@@ -76,7 +76,7 @@ assert { ListDefaults.names == ["a", "b"] }
 # Class with constructor parameters that have complex types
 type ComplexTypes {
 	pub config = {{
-		items: ["default"]
+		items: ["default"],
 		count: 1
 	}}
 }

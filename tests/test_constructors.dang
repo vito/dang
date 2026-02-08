@@ -80,7 +80,7 @@ assert { Computed("hello", "world").combined == "hello_world" }
 type Complex {
 	pub items: [String!]! = ["default"]
 	pub config = {{
-		enabled: true
+		enabled: true,
 		count: 5
 	}}
 	pub computed: Int! = config.count * 2

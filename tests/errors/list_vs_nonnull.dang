@@ -3,4 +3,4 @@
 
 let a: [Int] = [123]
 let y: Int! = 124
-a = y	# ERROR: should not be able to assign Int! to [Int]
+a = y # ERROR: should not be able to assign Int! to [Int]

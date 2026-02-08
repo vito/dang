@@ -11,7 +11,7 @@ type Person {
 		self.age = a
 	}
 
-	pub greet(): String! {
+	pub greet: String! {
 		"Hello, I'm " + self.name
 	}
 }

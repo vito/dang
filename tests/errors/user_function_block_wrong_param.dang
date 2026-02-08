@@ -5,4 +5,4 @@ pub processor(&block(x: String!): Int!): Int! {
 }
 
 # ERROR: cannot use String! in numeric operation
-pub result: Int! = processor() { x => x * 2 }
+pub result: Int! = processor { x => x * 2 }

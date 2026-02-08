@@ -6,12 +6,12 @@ hello
 """
 
 pub test2 = """
-	hello
+hello
 """
 
 pub test3 = """
-	hello
-	world
+hello
+world
 """
 
 assert { test1 == "hello" }

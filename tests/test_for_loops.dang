@@ -19,7 +19,7 @@ for (index, fruit in fruits) {
 }
 
 assert { result == "applebananacherry" }
-assert { indices == [0, 1, 2] }	# 0 + 1 + 2
+assert { indices == [0, 1, 2] } # 0 + 1 + 2
 
 # Test nested for loops
 pub matrix = [[1, 2], [3, 4]]

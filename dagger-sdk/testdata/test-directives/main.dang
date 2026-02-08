@@ -8,9 +8,7 @@ type TestDirectives {
 	Test @defaultPath with positional argument syntax.
 	The source directory defaults to "/" using positional arg.
 	"""
-	pub withPositionalDefaultPath(
-		source: Directory! @defaultPath("/"),
-	): String! {
+	pub withPositionalDefaultPath(source: Directory! @defaultPath("/")): String! {
 		"got source"
 	}
 

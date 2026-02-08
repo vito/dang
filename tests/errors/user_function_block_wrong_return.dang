@@ -5,4 +5,4 @@ pub withBlock(&block(x: Int!): String!): String! {
 }
 
 # ERROR: block returns Int! but should return String!
-pub result: String! = withBlock() { x => x * 2 }
+pub result: String! = withBlock { x => x * 2 }

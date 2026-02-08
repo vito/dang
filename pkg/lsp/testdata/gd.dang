@@ -12,10 +12,12 @@ addNums # test: ^gd => pub ┃addNums(x: Int!, y: Int!): Int! {
 
 # nested scope
 let outer = 1
+
 pub innerFn: Int! {
 	let inner = 2
 	outer + inner # test: ^gd => let ┃outer = 1
 }
+
 innerFn # test: ^gd => pub ┃innerFn: Int! {
 
 # type/class definition

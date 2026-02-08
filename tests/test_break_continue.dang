@@ -9,7 +9,7 @@ for (num in numbers) {
 	sum += num
 }
 
-assert { sum == 3 }	# Only 1 + 2, stops before 3
+assert { sum == 3 } # Only 1 + 2, stops before 3
 
 # Test continue in for loop
 pub numbers2 = [1, 2, 3, 4, 5]
@@ -22,7 +22,7 @@ for (num in numbers2) {
 	sum2 += num
 }
 
-assert { sum2 == 12 }	# 1 + 2 + 4 + 5, skips 3
+assert { sum2 == 12 } # 1 + 2 + 4 + 5, skips 3
 
 # Test break in for loop with condition
 pub count = 0
@@ -47,7 +47,7 @@ for (count2 < 10) {
 	evens += 1
 }
 
-assert { evens == 5 }	# 2, 4, 6, 8, 10
+assert { evens == 5 } # 2, 4, 6, 8, 10
 
 # Test nested loops with break
 pub matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
@@ -113,4 +113,4 @@ for (index, value in items2) {
 	result3 += value
 }
 
-assert { result3 == "acd" }	# Skips index 1 (which is "b")
+assert { result3 == "acd" } # Skips index 1 (which is "b")

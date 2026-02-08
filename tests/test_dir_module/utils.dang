@@ -3,10 +3,10 @@ pub createPerson(name: String!, age: Int!): Person! {
 	Person(name, age)
 }
 
-pub getMagicNumber(): Int! {
+pub getMagicNumber: Int! {
 	MAGIC_NUMBER
 }
 
-pub formatVersion(): String! {
+pub formatVersion: String! {
 	"Version: " + VERSION
 }

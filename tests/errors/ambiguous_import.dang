@@ -1,6 +1,7 @@
 # Test that using a conflicting unqualified symbol produces an error
-import Test
+
 import Other
+import Test
 
 # This should fail because both Test and Other provide a Status type
 let s: Status = Status.ACTIVE

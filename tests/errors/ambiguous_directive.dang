@@ -1,9 +1,10 @@
 # Test that using a conflicting unqualified directive produces an error
-import Test
+
 import Other
+import Test
 
 # Both Test and Other provide @experimental directive
 # Using unqualified @experimental should fail
 type MyType {
-  pub field: String! @experimental
+	pub field: String! @experimental
 }

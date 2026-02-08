@@ -25,9 +25,9 @@ pub bar: Container! {
 }
 
 pub barQualified: Dagger.Container! {
-  let ctr = Dagger.container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
-  let d = Dagger.container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
-  ct # test: ^ea<C-x><C-o> => ctr┃
+	let ctr = Dagger.container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
+	let d = Dagger.container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
+	ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 let url = "https://github.com/vito/dang"

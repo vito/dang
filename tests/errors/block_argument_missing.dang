@@ -3,4 +3,4 @@
 pub numbers: [Int!]! = [1, 2, 3]
 
 # ERROR: function requires a block argument
-pub result: [Int!]! = numbers.map()
+pub result: [Int!]! = numbers.map
