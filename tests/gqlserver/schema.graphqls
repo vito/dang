@@ -111,3 +111,9 @@ directive @goField(
   omittable: Boolean
   type: String
 ) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
+
+directive @customDirective(
+  message: String
+) on FIELD_DEFINITION
+
+directive @experimental on FIELD_DEFINITION | OBJECT

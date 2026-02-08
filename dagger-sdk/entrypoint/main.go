@@ -48,12 +48,6 @@ func main() {
 	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(handler))
 
-	schema, err := Introspect(ctx, dag)
-	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
-
 	fnCall := dag.CurrentFunctionCall()
 	parentName, err := fnCall.ParentName(ctx)
 	if err != nil {
@@ -95,14 +89,14 @@ func main() {
 
 	modSrcDir := os.Args[1]
 
-	err = invoke(ctx, dag, schema, modSrcDir, []byte(parentJson), parentName, fnName, inputArgs)
+	err = invoke(ctx, dag, modSrcDir, []byte(parentJson), parentName, fnName, inputArgs)
 	if err != nil {
 		WriteError(ctx, err)
 		os.Exit(2)
 	}
 }
 
-func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schema, modSrcDir string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (rerr error) {
+func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (rerr error) {
 	fnCall := dag.CurrentFunctionCall()
 	defer func() {
 		if rerr != nil {
@@ -111,6 +105,19 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 			}
 		}
 	}()
+
+	schema, err := Introspect(ctx, dag)
+	if err != nil {
+		WriteError(ctx, err)
+		os.Exit(2)
+	}
+
+	ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
+		Name:       "Dagger",
+		Client:     dag.GraphQLClient(),
+		Schema:     schema,
+		AutoImport: true,
+	})
 
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 	ctx = ioctx.StderrToContext(ctx, os.Stderr)
@@ -138,7 +145,7 @@ func invoke(ctx context.Context, dag *dagger.Client, schema *introspection.Schem
 		})
 	}
 
-	env, err := dang.RunDir(ctx, dag.GraphQLClient(), schema, modSrcDir, debug)
+	env, err := dang.RunDir(ctx, modSrcDir, debug)
 	if err != nil {
 		return err
 	}
@@ -300,6 +307,9 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 			// Otherwise, assume it's an object ID
 			sel := dang.FunCall{
 				Fun: &dang.Select{
+					Receiver: &dang.Symbol{
+						Name: "Dagger",
+					},
 					Field: fmt.Sprintf("load%sFromID", modType.Named),
 				},
 				Args: dang.Record{
@@ -495,7 +505,7 @@ func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, n
 				switch dir.Name {
 				case "defaultPath":
 					for _, arg := range dir.Args {
-						if arg.Key == "path" {
+						if arg.Key == "path" { // TODO: positional
 							val, err := evalConstantValue(arg.Value)
 							if err != nil {
 								return nil, fmt.Errorf("failed to evaluate directive argument %s.%s.%s: %w", arg.Key, dir.Name, arg.Key, err)

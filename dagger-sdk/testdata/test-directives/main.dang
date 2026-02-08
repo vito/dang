@@ -9,7 +9,7 @@ type TestDirectives {
 	The source directory defaults to "/" using positional arg.
 	"""
 	pub withPositionalDefaultPath(
-		source: Directory! @defaultPath("/")
+		source: Directory! @defaultPath("/"),
 	): String! {
 		"got source"
 	}
@@ -19,7 +19,7 @@ type TestDirectives {
 	The source directory defaults to "/" using named arg.
 	"""
 	pub withNamedDefaultPath(
-		source: Directory! @defaultPath(path: "/")
+		source: Directory! @defaultPath(path: "/"),
 	): String! {
 		"got source"
 	}
@@ -28,7 +28,7 @@ type TestDirectives {
 	Test @ignorePatterns with positional argument syntax.
 	"""
 	pub withPositionalIgnore(
-		source: Directory! @defaultPath("/") @ignorePatterns(["*.tmp", "*.log"])
+		source: Directory! @defaultPath("/") @ignorePatterns(["*.tmp", "*.log"]),
 	): String! {
 		"got source"
 	}
@@ -37,7 +37,7 @@ type TestDirectives {
 	Test @ignorePatterns with named argument syntax.
 	"""
 	pub withNamedIgnore(
-		source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: ["*.tmp", "*.log"])
+		source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: ["*.tmp", "*.log"]),
 	): String! {
 		"got source"
 	}
@@ -46,7 +46,7 @@ type TestDirectives {
 	Test mixing positional and named across multiple directives.
 	"""
 	pub withMixedSyntax(
-		source: Directory! @defaultPath("/") @ignorePatterns(patterns: ["*.tmp"])
+		source: Directory! @defaultPath("/") @ignorePatterns(patterns: ["*.tmp"]),
 	): String! {
 		"got source"
 	}

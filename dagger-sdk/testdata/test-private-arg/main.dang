@@ -1,20 +1,20 @@
 type TestPrivateArg {
-  let private: Int!
-  pub source: Directory!
+	let private: Int!
+	pub source: Directory!
 
-  new(
-    private: Int! = 42
-    source: Directory! @defaultPath(path: ".")
-  ) {
-    self.private = private * 2
-    self.source = source
-  }
+	new(
+		private: Int! = 42,
+		source: Directory! @defaultPath(path: "."),
+	) {
+		self.private = private * 2
+		self.source = source
+	}
 
-  pub display: String! {
-    toString(private)
-  }
+	pub display: String! {
+		toString(private)
+	}
 
-  pub ls: [String!]! {
-    source.entries
-  }
+	pub ls: [String!]! {
+		source.entries
+	}
 }

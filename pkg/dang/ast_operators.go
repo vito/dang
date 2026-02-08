@@ -67,7 +67,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 			return lt.Apply(subs).(hm.Type), nil
 		case ComparisonOp:
 			// Validate types but always return Boolean
-			return NonNullTypeNode{&NamedTypeNode{"Boolean", b.Loc}}.Infer(ctx, env, fresh)
+			return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", b.Loc}}.Infer(ctx, env, fresh)
 		default:
 			return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
 		}
@@ -400,7 +400,7 @@ func (e *Equality) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		// Equality always returns a boolean
-		return NonNullTypeNode{&NamedTypeNode{"Boolean", e.Loc}}.Infer(ctx, env, fresh)
+		return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", e.Loc}}.Infer(ctx, env, fresh)
 	})
 }
 
@@ -742,7 +742,7 @@ func (u *UnaryNegation) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		}
 
 		// Verify that the expression is of type Boolean
-		boolType, err := NonNullTypeNode{&NamedTypeNode{"Boolean", u.Loc}}.Infer(ctx, env, fresh)
+		boolType, err := NonNullTypeNode{&NamedTypeNode{nil, "Boolean", u.Loc}}.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -814,7 +814,7 @@ func (l *LogicalAnd) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			return nil, err
 		}
 
-		boolType, err := NonNullTypeNode{&NamedTypeNode{"Boolean", l.Loc}}.Infer(ctx, env, fresh)
+		boolType, err := NonNullTypeNode{&NamedTypeNode{nil, "Boolean", l.Loc}}.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -914,7 +914,7 @@ func (l *LogicalOr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			return nil, err
 		}
 
-		boolType, err := NonNullTypeNode{&NamedTypeNode{"Boolean", l.Loc}}.Infer(ctx, env, fresh)
+		boolType, err := NonNullTypeNode{&NamedTypeNode{nil, "Boolean", l.Loc}}.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}

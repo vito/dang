@@ -1,1 +1,1 @@
-zed-dang/languages/dang/highlights.scm
+../../editors/zed/languages/dang/highlights.scm

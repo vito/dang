@@ -284,15 +284,44 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			// Build symbol table from the AST
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 
-			// Get schema for this file's module
-			schema, _, err := h.getSchemaForFile(ctx, fp)
+			// Load import configs from dang.toml (if present)
+			var importConfigs []dang.ImportConfig
+			fileDir := filepath.Dir(fp)
+			configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
+			if configErr != nil {
+				slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
+			}
+			if projectConfig != nil {
+				configDir := filepath.Dir(configPath)
+				ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
+				resolved, resolveErr := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
+				if resolveErr != nil {
+					slog.WarnContext(ctx, "failed to resolve dang.toml imports", "error", resolveErr)
+				} else {
+					importConfigs = append(importConfigs, resolved...)
+				}
+			}
+
+			// Get Dagger schema for this file's module (if in a Dagger module)
+			schema, client, err := h.getSchemaForFile(ctx, fp)
 			if err != nil {
 				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
 			}
+			if schema != nil {
+				importConfigs = append(importConfigs, dang.ImportConfig{
+					Name:   "Dagger",
+					Client: client,
+					Schema: schema,
+				})
+			}
+
+			if len(importConfigs) > 0 {
+				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+			}
 
 			// Run type inference to annotate AST with types
-			if schema != nil {
-				typeEnv := dang.NewEnv(schema)
+			{
+				typeEnv := dang.NewPreludeEnv()
 				fresh := hm.NewSimpleFresher()
 				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
 				if err != nil {

@@ -1,0 +1,7 @@
+[imports.Test]
+schema = "./gqlserver/schema.graphqls"
+service = ["go", "run", "./gqlserver/service"]
+
+[imports.Other]
+schema = "./gqlserver/schema.graphqls"
+service = ["go", "run", "./gqlserver/service"]

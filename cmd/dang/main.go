@@ -114,17 +114,6 @@ func run(ctx context.Context, cfg Config) error {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	// Load GraphQL configuration
-	config := dang.LoadGraphQLConfig()
-	provider := dang.NewGraphQLClientProvider(config)
-
-	// Get configured GraphQL client and schema
-	client, schema, err := provider.GetClientAndSchema(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to setup GraphQL client: %w", err)
-	}
-	defer provider.Close() //nolint:errcheck
-
 	// Check if the path is a directory or file
 	fileInfo, err := os.Stat(cfg.File)
 	if err != nil {
@@ -133,12 +122,12 @@ func run(ctx context.Context, cfg Config) error {
 
 	if fileInfo.IsDir() {
 		// Evaluate directory as a module
-		if _, err := dang.RunDir(ctx, client, schema, cfg.File, cfg.Debug); err != nil {
+		if _, err := dang.RunDir(ctx, cfg.File, cfg.Debug); err != nil {
 			return err
 		}
 	} else {
 		// Evaluate single file
-		if err := dang.RunFile(ctx, client, schema, cfg.File, cfg.Debug); err != nil {
+		if err := dang.RunFile(ctx, cfg.File, cfg.Debug); err != nil {
 			return err
 		}
 	}

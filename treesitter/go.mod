@@ -9,8 +9,10 @@ require github.com/vito/dang v0.0.0-20231014151113-edf550c4deca
 require (
 	dagger.io/dagger v0.19.11 // indirect
 	github.com/99designs/gqlgen v0.17.81 // indirect
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Khan/genqlient v0.8.1 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
+	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

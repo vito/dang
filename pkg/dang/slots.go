@@ -502,7 +502,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 
 		// Validate field type compatibility
 		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceSym.Name, c.Name.Name); err != nil {
-			return err
+			return WrapInferError(err, ifaceSym)
 		}
 	}
 

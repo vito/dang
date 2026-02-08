@@ -10,14 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
-	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/tests/gqlserver"
 )
 
 func TestMain(m *testing.M) {
@@ -43,16 +39,23 @@ func (DangSuite) TestFormatLanguage(ctx context.Context, t *testctx.T) {
 }
 
 func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
-	testGraphQLServer, err := gqlserver.StartServer()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = testGraphQLServer.Stop() })
+	// Import configs come from dang.toml (schema + service).
+	// Pre-load them so they're available even when running formatted files
+	// from temp directories.
+	services := &dang.ServiceRegistry{}
+	t.Cleanup(func() { services.StopAll() })
 
-	client := graphql.NewClient(testGraphQLServer.QueryURL(), nil)
-
-	// Get schema
-	schema, err := introspectSchema(t.Context(), client)
-	if err != nil {
-		t.Fatalf("Failed to introspect schema: %v", err)
+	var importConfigs []dang.ImportConfig
+	configPath, projectConfig, configErr := dang.FindProjectConfig(".")
+	if configErr == nil && projectConfig != nil {
+		ctx = dang.ContextWithServices(ctx, services)
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
+		configDir := filepath.Dir(configPath)
+		resolved, err := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
+		if err != nil {
+			t.Fatalf("Failed to resolve dang.toml imports: %v", err)
+		}
+		importConfigs = resolved
 	}
 
 	// Find all test_*.dang files or test_* packages
@@ -69,7 +72,10 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 	for _, testFileOrDir := range paths {
 		t.Run(filepath.Base(testFileOrDir), func(ctx context.Context, t *testctx.T) {
 			ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
-			ctx = ioctx.StderrToContext(ctx, NewTWriter(t))
+			ctx = dang.ContextWithServices(ctx, services)
+			if len(importConfigs) > 0 {
+				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+			}
 
 			// t.Parallel()
 			fi, err := os.Stat(testFileOrDir)
@@ -109,7 +115,7 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 						}
 					}
 
-					_, runErr = dang.RunDir(ctx, client, schema, tempDir, false)
+					_, runErr = dang.RunDir(ctx, tempDir, false)
 				} else {
 					// Format single file to temp file
 					tempFile, err := os.CreateTemp("", "dang-fmt-test-*.dang")
@@ -126,14 +132,14 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 						return
 					}
 
-					runErr = dang.RunFile(ctx, client, schema, tempPath, false)
+					runErr = dang.RunFile(ctx, tempPath, false)
 				}
 			} else {
 				// Run without formatting
 				if fi.IsDir() {
-					_, runErr = dang.RunDir(ctx, client, schema, testFileOrDir, false)
+					_, runErr = dang.RunDir(ctx, testFileOrDir, false)
 				} else {
-					runErr = dang.RunFile(ctx, client, schema, testFileOrDir, false)
+					runErr = dang.RunFile(ctx, testFileOrDir, false)
 				}
 			}
 
@@ -157,21 +163,6 @@ func formatFileTo(src, dst string) error {
 	}
 
 	return os.WriteFile(dst, []byte(formatted), 0644)
-}
-
-// introspectSchema is a helper function to get the GraphQL schema
-func introspectSchema(ctx context.Context, client graphql.Client) (*introspection.Schema, error) {
-	var introspectionResp introspection.Response
-	err := client.MakeRequest(ctx, &graphql.Request{
-		Query:  introspection.Query,
-		OpName: "IntrospectionQuery",
-	}, &graphql.Response{
-		Data: &introspectionResp,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return introspectionResp.Schema, nil
 }
 
 // tWriter is a writer that writes to testing.T

@@ -3,6 +3,7 @@ package dang
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -639,7 +640,45 @@ func (f *Formatter) formatNodeInline(node Node) {
 	}
 }
 
+// sortImports sorts import declarations in-place within a module block.
+// Imports are sorted alphabetically by their source/name while preserving
+// their position relative to non-import forms.
+func (f *Formatter) sortImports(m *ModuleBlock) {
+	// Find the range of consecutive imports at the start (after any leading non-imports)
+	// Actually, collect all imports and their indices, then sort and put back
+	var importIndices []int
+	var imports []*ImportDecl
+	for i, form := range m.Forms {
+		if imp, ok := form.(*ImportDecl); ok {
+			importIndices = append(importIndices, i)
+			imports = append(imports, imp)
+		}
+	}
+	if len(imports) <= 1 {
+		return
+	}
+
+	sort.SliceStable(imports, func(i, j int) bool {
+		return importSortKey(imports[i]) < importSortKey(imports[j])
+	})
+
+	for i, idx := range importIndices {
+		m.Forms[idx] = imports[i]
+	}
+}
+
+// importSortKey returns the string to sort an import by
+func importSortKey(imp *ImportDecl) string {
+	if imp.Name != nil {
+		return imp.Name.Name
+	}
+	return ""
+}
+
 func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
+	// Sort imports: collect them, sort, and reorder in the forms slice
+	f.sortImports(m)
+
 	for i, form := range m.Forms {
 		if i > 0 {
 			// Add blank line only when needed (before/after function definitions)
@@ -689,6 +728,16 @@ func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
 	// Preserve blank lines from original source
 	if f.hadBlankLineBetween(prev, next) {
 		return true
+	}
+
+	// Always add blank line after imports when followed by non-import
+	if isImport(prev) && !isImport(next) {
+		return true
+	}
+
+	// No blank line between consecutive imports
+	if isImport(prev) && isImport(next) {
+		return false
 	}
 
 	// Always add blank line before/after type declarations
@@ -771,6 +820,11 @@ func isInterfaceDecl(node Node) bool {
 
 func isDirectiveDecl(node Node) bool {
 	_, ok := node.(*DirectiveDecl)
+	return ok
+}
+
+func isImport(node Node) bool {
+	_, ok := node.(*ImportDecl)
 	return ok
 }
 
@@ -1319,15 +1373,15 @@ func (f *Formatter) formatDirectiveDecl(d *DirectiveDecl) {
 
 func (f *Formatter) formatImportDecl(i *ImportDecl) {
 	f.write("import ")
-	f.write(i.Source)
-	if i.Alias != nil {
-		f.write(" as ")
-		f.write(*i.Alias)
-	}
+	f.write(i.Name.Name)
 }
 
 func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
 	f.write("@")
+	if d.Scope != nil {
+		f.write(d.Scope.Name)
+		f.write(".")
+	}
 	f.write(d.Name)
 
 	if len(d.Args) > 0 {
@@ -2411,7 +2465,11 @@ func (f *Formatter) formatType(t TypeNode) {
 func (f *Formatter) formatTypeNode(t TypeNode) {
 	switch tn := t.(type) {
 	case *NamedTypeNode:
-		f.write(tn.Named)
+		if tn.Base != nil {
+			f.write(tn.Base.Name)
+			f.write(".")
+		}
+		f.write(tn.Name)
 	case NonNullTypeNode:
 		f.formatTypeNode(tn.Elem)
 		f.write("!")
