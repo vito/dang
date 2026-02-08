@@ -38,6 +38,7 @@ pub nested = case (1) {
 		"a" => "nested case works"
 		"b" => "not this"
 	}
+
 	2 => "outer"
 }
 

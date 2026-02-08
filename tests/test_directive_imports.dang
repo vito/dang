@@ -3,8 +3,8 @@ import Test
 
 # Test that directives from imported schema are accessible unqualified
 type MyType {
-  pub field1: String! @customDirective(message: "test")
-  pub field2: String! @experimental
+	pub field1: String! @customDirective(message: "test")
+	pub field2: String! @experimental
 }
 
 print("Directive imports successful!")

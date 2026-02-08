@@ -1,4 +1,5 @@
 import Test
+
 # Test scalar coercion - string literals can be used where custom scalars are expected
 # This is a core language mechanism that allows built-in scalar literals (String, Int, etc.)
 # to be used where custom GraphQL scalars are expected.

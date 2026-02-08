@@ -8,7 +8,7 @@ type TestClass {
 		# Using new deep assignment syntax
 		# self.field should refer to receiver field
 		# config should refer to parameter (lexical scope)
-		self.field = config	# Should use parameter "param_config"
+		self.field = config # Should use parameter "param_config"
 		self
 	}
 }

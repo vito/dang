@@ -45,7 +45,7 @@ assert { user_nested.profile.avatar == "alice.jpg" }
 # Test with lists of objects
 pub users = [
 	TestUser("Charlie", "charlie@example.com", 25),
-	TestUser("Diana", "diana@example.com", 28)
+	TestUser("Diana", "diana@example.com", 28),
 ]
 
 pub user_summaries = users.{name, email}
@@ -56,7 +56,7 @@ assert { user_summaries != null }
 # Test with nested lists
 pub users_with_profile = [
 	TestUserWithProfile("Eve", "eve@example.com", Profile("Designer", "eve.jpg")),
-	TestUserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg"))
+	TestUserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg")),
 ]
 
 pub detailed_summaries = users_with_profile.{name, profile.{bio}}

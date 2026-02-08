@@ -19,11 +19,11 @@ assert("provided value should override default") { Rust("custom").combined == "c
 type WithMethod {
 	let prefix = "hello"
 
-	pub greeting(): String! {
+	pub greeting: String! {
 		prefix + " world"
 	}
 }
 
-assert("private field used in method") { WithMethod.greeting() == "hello world" }
+assert("private field used in method") { WithMethod.greeting == "hello world" }
 
 print("Private field default tests passed!")

@@ -2,7 +2,7 @@
 
 type Foo {
 	pub a: Int!
-	
+
 	pub incr: Foo! {
 		a += 1
 		self

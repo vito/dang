@@ -34,9 +34,10 @@ assert { tsList[0] == ts }
 assert { tsList[1] == ts }
 
 # Test 8: Scalars with functions
-pub getTimestamp() : String! {
+pub getTimestamp: String! {
 	toJSON(ts)
 }
-assert { getTimestamp() == "\"2024-01-15T10:30:00Z\"" }
+
+assert { getTimestamp == "\"2024-01-15T10:30:00Z\"" }
 
 print("All comprehensive scalar tests passed!")

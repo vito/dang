@@ -2,15 +2,16 @@
 
 # Declare directives with arguments
 directive @deprecated(reason: String!) on FIELD_DEFINITION
+
 directive @cache(ttl: Int!, key: String) on FIELD_DEFINITION
 
 type User {
 	# Test positional argument (single arg)
 	pub oldField: String! @deprecated("This field is obsolete")
-	
+
 	# Test mixed positional and named arguments
 	pub cachedField: String! @cache(300, key: "user_cache")
-	
+
 	# Test all positional arguments
 	pub anotherCachedField: String! @cache(60, "another_cache")
 }

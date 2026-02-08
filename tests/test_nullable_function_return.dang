@@ -41,7 +41,7 @@ assert { result5 == 20 }
 
 # Test nullable function return with flow-sensitive typing
 pub testValue = maybeGetString(shouldReturnNull: false)
-assert { 
+assert {
 	if (testValue != null) {
 		# testValue should be String! here
 		testValue + " world" == "hello world"

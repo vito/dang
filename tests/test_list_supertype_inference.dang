@@ -29,6 +29,7 @@ type C implements Base {
 # Test 1: Two types with multiple common interfaces should pick one
 # Note: Currently picks the first common interface found
 let mixedAB = [A, B]
+
 # Can't guarantee which interface is picked, so check both are accessible
 # This might fail depending on which interface is chosen - that's expected for now
 

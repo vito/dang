@@ -17,7 +17,7 @@ pub mixedArgs(required: String!, optional: String! = "default"): String! {
 assert { reqWithDefault == "defaulted!" }
 
 # Test explicit no-argument calls
-assert { reqWithDefault() == "defaulted!" }
+assert { reqWithDefault == "defaulted!" }
 
 # Test explicit argument calls
 assert { reqWithDefault("hey") == "hey!" }
@@ -29,7 +29,7 @@ assert { reqWithDefault(null) == "defaulted!" }
 assert { multipleDefaults == "Hello world!" }
 
 # Test multiple defaults with explicit no-arg call
-assert { multipleDefaults() == "Hello world!" }
+assert { multipleDefaults == "Hello world!" }
 
 # Test partial argument specification (positional)
 assert { multipleDefaults("Alice") == "Hello Alice!" }

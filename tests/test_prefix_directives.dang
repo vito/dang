@@ -1,6 +1,7 @@
 # Test prefix directives on field declarations
 
 directive @check on FIELD_DEFINITION
+
 directive @cache(ttl: Int!) on FIELD_DEFINITION
 
 type Person {

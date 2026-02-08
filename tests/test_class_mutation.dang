@@ -2,17 +2,17 @@
 
 type Counter {
 	pub value: Int!
-	
+
 	pub incr: Counter! {
 		self.value += 1
 		self
 	}
-	
+
 	pub add(amount: Int!): Counter! {
 		self.value += amount
 		self
 	}
-	
+
 	pub getValue: Int! {
 		self.value
 	}
@@ -39,7 +39,7 @@ assert("original should be unchanged") { counter4.value == 20 }
 # Test 4: The specific example from the issue
 type Foo {
 	pub a: Int!
-	
+
 	pub incr: Foo! {
 		self.a += 1
 		self

@@ -2,17 +2,17 @@
 
 # Class with no constructor parameters (only functions)
 type FunctionOnly {
-	pub getValue(): Int! {
+	pub getValue: Int! {
 		42
 	}
 
-	pub getString(): String! {
+	pub getString: String! {
 		"hello"
 	}
 }
 
-assert { FunctionOnly.getValue() == 42 }
-assert { FunctionOnly.getString() == "hello" }
+assert { FunctionOnly.getValue == 42 }
+assert { FunctionOnly.getString == "hello" }
 
 # Constructor with default values that depend on external variables
 pub globalValue = "global"
@@ -26,9 +26,9 @@ assert { UsingGlobals.local == "global_local" }
 # Class with nested object default values
 type NestedDefaults {
 	pub person = {{
-		name: "John",
+		name: "John"
 		details: {{
-			age: 30,
+			age: 30
 			active: true
 		}}
 	}}
@@ -50,11 +50,11 @@ assert { ListDefaults.names == ["a", "b"] }
 # Class with constructor parameters that have complex types
 type ComplexTypes {
 	pub config = {{
-		items: ["default"],
+		items: ["default"]
 		count: 1
 	}}
 	pub metadata = {{
-		version: "1.0",
+		version: "1.0"
 		tags: ["test"]
 	}}
 }

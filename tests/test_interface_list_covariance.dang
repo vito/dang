@@ -24,6 +24,7 @@ type AnimalShelter {
 
 	# This should work - lists are covariant
 	pub getDogs: [Animal!]! { self.dogs }
+
 	pub getCats: [Animal!]! { self.cats }
 }
 

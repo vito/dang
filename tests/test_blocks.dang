@@ -2,8 +2,8 @@
 
 # Simple block that returns last expression
 pub block_result = {
-	42,
-	"hello",
+	42
+	"hello"
 	100
 }
 
@@ -29,7 +29,7 @@ assert { conditional_block == "yes" }
 
 # Nested blocks
 pub nested_blocks = {
-	let outer = 1,
+	let outer = 1
 	{
 		let inner = 2
 		inner

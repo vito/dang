@@ -1,4 +1,5 @@
 import Test
+
 # Test GraphQL scalar type support
 # Custom scalars should be represented as typed values
 

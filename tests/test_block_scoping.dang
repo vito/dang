@@ -7,7 +7,9 @@ pub outer_var = 100
 	outer_var = 200
 	assert { outer_var == 200 }
 }
-assert("outer variable should be updated when block doesn't declare local") { outer_var == 200 }
+assert("outer variable should be updated when block doesn't declare local") {
+	outer_var == 200
+}
 
 # Test 2: Local declaration shadows outer variable (preserves existing behavior)
 pub shadowed_var = 300
@@ -17,7 +19,9 @@ pub shadowed_var = 300
 	shadowed_var = 500
 	assert { shadowed_var == 500 }
 }
-assert("outer variable should be unchanged when block declares local") { shadowed_var == 300 }
+assert("outer variable should be unchanged when block declares local") {
+	shadowed_var == 300
+}
 
 # Test 3: Nested blocks with outer slot reassignment
 pub nested_var = 10
@@ -25,16 +29,18 @@ pub nested_var = 10
 	assert { nested_var == 10 }
 	nested_var = 20
 	assert { nested_var == 20 }
-	
+
 	{
 		assert { nested_var == 20 }
 		nested_var = 30
 		assert { nested_var == 30 }
 	}
-	
+
 	assert("inner block should have updated outer variable") { nested_var == 30 }
 }
-assert("all nested blocks should have updated outer variable") { nested_var == 30 }
+assert("all nested blocks should have updated outer variable") {
+	nested_var == 30
+}
 
 # Test 4: Mixed shadowing and outer reassignment
 pub mixed_var = 1
@@ -42,17 +48,21 @@ pub mixed_var = 1
 	assert { mixed_var == 1 }
 	mixed_var = 2
 	assert { mixed_var == 2 }
-	
+
 	{
-		let mixed_var = 100	# Local declaration shadows outer
+		let mixed_var = 100 # Local declaration shadows outer
 		assert { mixed_var == 100 }
 		mixed_var = 200
 		assert { mixed_var == 200 }
 	}
-	
-	assert("outer variable should be unchanged by shadowed inner block") { mixed_var == 2 }
+
+	assert("outer variable should be unchanged by shadowed inner block") {
+		mixed_var == 2
+	}
 }
-assert("outer variable should reflect only non-shadowed updates") { mixed_var == 2 }
+assert("outer variable should reflect only non-shadowed updates") {
+	mixed_var == 2
+}
 
 # Test 5: Compound assignment with outer slot reassignment
 pub compound_var = 5
@@ -61,7 +71,9 @@ pub compound_var = 5
 	compound_var += 10
 	assert { compound_var == 15 }
 }
-assert("compound assignment should update outer variable") { compound_var == 15 }
+assert("compound assignment should update outer variable") {
+	compound_var == 15
+}
 
 # Test 6: String reassignment
 pub string_var = "hello"
@@ -70,7 +82,9 @@ pub string_var = "hello"
 	string_var = "world"
 	assert { string_var == "world" }
 }
-assert("string reassignment should update outer variable") { string_var == "world" }
+assert("string reassignment should update outer variable") {
+	string_var == "world"
+}
 
 # Test 7: Boolean reassignment
 pub bool_var = true
@@ -79,6 +93,8 @@ pub bool_var = true
 	bool_var = false
 	assert { bool_var == false }
 }
-assert("boolean reassignment should update outer variable") { bool_var == false }
+assert("boolean reassignment should update outer variable") {
+	bool_var == false
+}
 
 print("Block scoping tests passed!")

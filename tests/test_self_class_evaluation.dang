@@ -12,7 +12,7 @@ type SelfDuringEvaluation {
 	pub computedField = config.name + "_computed"
 
 	# Regular method that should work after construction
-	pub getName(): String! {
+	pub getName: String! {
 		self.config.name
 	}
 }
@@ -21,4 +21,4 @@ type SelfDuringEvaluation {
 assert { SelfDuringEvaluation.computedField == "default_computed" }
 
 # Test that regular method calls still work
-assert { SelfDuringEvaluation.getName() == "default" }
+assert { SelfDuringEvaluation.getName == "default" }

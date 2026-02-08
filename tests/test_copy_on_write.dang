@@ -3,21 +3,23 @@ let arch = "x86_64"
 type Apko {
 	let config = {{
 		contents: {{
-			packages: []::[String!]!
-			repositories: []::[String!]!
-			keyring: []::[String!]!
+			packages: [] :: [String!]!
+			repositories: [] :: [String!]!
+			keyring: [] :: [String!]!
 		}}
+
 		cmd: ""
 		environment: {{ # TODO: how to support arbitrary key-value?
 			PATH: "/usr/local/bin:/usr/bin:/bin"
 		}}
+
 		archs: [arch]
 	}}
 
 	pub withAlpine(branch: String! = "edge"): Apko! {
 		self.config.contents.packages += ["apk-tools"]
 		self.config.contents.repositories += [
-			"https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main"
+			"https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main",
 		]
 		self
 	}

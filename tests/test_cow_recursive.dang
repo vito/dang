@@ -14,10 +14,10 @@ type Counter {
 		print("incrementN(" + toJSON(n) + ") called, count = " + toJSON(self.count))
 
 		if (n <= 0) {
-			print("	Base case reached")
+			print("\tBase case reached")
 			self
 		} else {
-			print("	Incrementing and recursing")
+			print("\tIncrementing and recursing")
 			# This should create a new copy each time due to COW
 			let incremented = increment
 			incremented.incrementN(n - 1)

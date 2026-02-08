@@ -3,42 +3,42 @@
 # Class with only private slots (no constructor parameters)
 type PrivateOnly {
 	let value = 42
-	
-	pub getValue(): Int! {
+
+	pub getValue: Int! {
 		value
 	}
 }
 
-assert { PrivateOnly.getValue() == 42 }
+assert { PrivateOnly.getValue == 42 }
 
 # Class with only function slots (no constructor parameters)
 type FunctionOnly {
-	pub getValue(): Int! {
+	pub getValue: Int! {
 		42
 	}
-	
-	pub getString(): String! {
+
+	pub getString: String! {
 		"hello"
 	}
 }
 
-assert { FunctionOnly.getValue() == 42 }
-assert { FunctionOnly.getString() == "hello" }
+assert { FunctionOnly.getValue == 42 }
+assert { FunctionOnly.getString == "hello" }
 
 # Class with mix of public/private slots
 type MixedVisibility {
 	pub publicField: String! = "public"
 	let privateField = "private"
-	
-	pub getPrivate(): String! {
+
+	pub getPrivate: String! {
 		privateField
 	}
 }
 
 assert { MixedVisibility.publicField == "public" }
-assert { MixedVisibility.getPrivate() == "private" }
+assert { MixedVisibility.getPrivate == "private" }
 assert { MixedVisibility("custom").publicField == "custom" }
-assert { MixedVisibility("custom").getPrivate() == "private" }
+assert { MixedVisibility("custom").getPrivate == "private" }
 
 # Constructor with default values that depend on external variables
 pub globalValue = "global"
@@ -52,9 +52,9 @@ assert { UsingGlobals.local == "global_local" }
 # Class with nested object default values
 type NestedDefaults {
 	pub person = {{
-		name: "John",
+		name: "John"
 		details: {{
-			age: 30,
+			age: 30
 			active: true
 		}}
 	}}
@@ -76,7 +76,7 @@ assert { ListDefaults.names == ["a", "b"] }
 # Class with constructor parameters that have complex types
 type ComplexTypes {
 	pub config = {{
-		items: ["default"],
+		items: ["default"]
 		count: 1
 	}}
 }

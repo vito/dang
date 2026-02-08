@@ -6,6 +6,7 @@ interface Drawable {
 
 type Circle implements Drawable {
 	pub radius: Int! = 5
+
 	pub draw: String! {
 		"Drawing circle with radius " + toJSON(self.radius)
 	}
@@ -14,6 +15,7 @@ type Circle implements Drawable {
 type Rectangle implements Drawable {
 	pub width: Int! = 10
 	pub height: Int! = 20
+
 	pub draw: String! {
 		"Drawing rectangle " + toJSON(self.width) + "x" + toJSON(self.height)
 	}

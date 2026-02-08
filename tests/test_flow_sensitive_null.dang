@@ -1,7 +1,7 @@
 # Test flow-sensitive null checking with a simple type
 type TestType {
 	let maybeString: String = null
-	
+
 	pub testNullCheck: String! {
 		if (maybeString != null) {
 			# In this branch, maybeString should be treated as non-null (String!)
@@ -11,7 +11,7 @@ type TestType {
 			"String is null"
 		}
 	}
-	
+
 	pub testEqualityCheck: String! {
 		if (maybeString == null) {
 			"String is null"

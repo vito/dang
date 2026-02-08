@@ -14,8 +14,9 @@ pub nullable_empty_list = [] :: [String!]
 pub empty_list_nullable_strings = [] :: [String]
 
 # Type hints on function calls
-pub getValue(): Int! { 100 }
-pub result = getValue() :: Int!
+pub getValue: Int! { 100 }
+
+pub result = getValue :: Int!
 
 # Type hints on complex expressions
 pub sum = (1 + 2) :: Int!

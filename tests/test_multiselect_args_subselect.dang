@@ -3,11 +3,11 @@
 
 type TestService {
 	pub name = "TestService"
-	
+
 	pub getData(limit: Int!): TestData! {
 		TestData(name: "Data", count: limit)
 	}
-	
+
 	pub getInfo(prefix: String!): String! {
 		prefix + ": " + self.name
 	}
@@ -16,7 +16,7 @@ type TestService {
 type TestData {
 	pub name: String!
 	pub count: Int!
-	
+
 	pub getDetails(suffix: String!): String! {
 		self.name + " - " + suffix
 	}

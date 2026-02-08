@@ -21,22 +21,22 @@ pub suffix_empty = "test".trimSuffix("")
 assert { suffix_empty == "test" }
 
 # trimSpace tests
-pub space_both = "	hello	".trimSpace()
+pub space_both = "\thello\t".trimSpace
 assert { space_both == "hello" }
 
-pub space_left = "	hello".trimSpace()
+pub space_left = "\thello".trimSpace
 assert { space_left == "hello" }
 
-pub space_right = "hello	".trimSpace()
+pub space_right = "hello\t".trimSpace
 assert { space_right == "hello" }
 
-pub space_tabs = "\t\thello\t\t".trimSpace()
+pub space_tabs = "\t\thello\t\t".trimSpace
 assert { space_tabs == "hello" }
 
-pub space_newlines = "\n\nhello\n\n".trimSpace()
+pub space_newlines = "\n\nhello\n\n".trimSpace
 assert { space_newlines == "hello" }
 
-pub space_none = "hello".trimSpace()
+pub space_none = "hello".trimSpace
 assert { space_none == "hello" }
 
 # trim tests (cutset)

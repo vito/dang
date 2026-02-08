@@ -32,7 +32,7 @@ assert { result3 == "caught by else" }
 pub result4 = case (5) {
 	1 => "one"
 	else => "default"
-	5 => "five"	# This won't be reached if else comes first
+	5 => "five" # This won't be reached if else comes first
 }
 
 assert { result4 == "default" }

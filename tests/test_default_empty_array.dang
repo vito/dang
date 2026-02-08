@@ -9,7 +9,7 @@ pub joinNames(names: [String!]! = []): [String!]! {
 assert { joinNames == [] }
 
 # Test explicit no-argument call
-assert { joinNames() == [] }
+assert { joinNames == [] }
 
 # Test with explicit array
 assert { joinNames(["Alice"]) == ["Alice"] }

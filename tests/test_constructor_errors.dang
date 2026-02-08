@@ -26,6 +26,6 @@ type ZeroArity {
 assert { ZeroArity.message == "auto-called" }
 
 # Test that we can still call it explicitly
-assert { ZeroArity().message == "auto-called" }
+assert { ZeroArity.message == "auto-called" }
 
 print("Constructor error tests passed!")

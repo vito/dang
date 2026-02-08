@@ -2,9 +2,9 @@
 
 type Foo {
 	pub a: Int!
-	
+
 	pub incr: Foo! {
-		a += 1	# This should work without self prefix
+		a += 1 # This should work without self prefix
 		self
 	}
 }

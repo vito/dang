@@ -20,6 +20,7 @@ type EmailValidator implements Validator {
 type Form implements Container {
 	pub validator: Validator! = EmailValidator
 	pub name: String! = "Email Form"
+
 	pub isValid(input: String!): Boolean! {
 		validator.validate(input)
 	}
@@ -40,6 +41,7 @@ interface Registry {
 
 type ValidationRegistry implements Registry {
 	pub validators: [Validator!]! = [EmailValidator, EmailValidator]
+
 	pub validateAll(input: String!): Boolean! {
 		pub res = true
 		for (v in validators) {
@@ -68,6 +70,7 @@ interface Processor {
 type DataProcessor implements Processor {
 	pub container: Container! = Form
 	pub status: String! = "Ready"
+
 	pub process(data: String!): String! {
 		if (container.isValid(data)) {
 			"Valid: " + data

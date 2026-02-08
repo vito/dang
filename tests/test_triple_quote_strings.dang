@@ -15,7 +15,7 @@ pub test3 = """
 """
 
 assert { test1 == "hello" }
-assert { test2 == "hello" }	
+assert { test2 == "hello" }
 assert { test3 == "hello\nworld" }
 
 # Inline triple-quote
