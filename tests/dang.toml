@@ -1,0 +1,5 @@
+[imports.Test]
+schema = "./gqlserver/schema.graphqls"
+
+[imports.Other]
+schema = "./gqlserver/schema.graphqls"

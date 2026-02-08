@@ -1322,7 +1322,7 @@ func (c *ConstructorFunction) IsAutoCallable() bool {
 }
 
 func RunFile(ctx context.Context, filePath string, debug bool) error {
-	// Load project config (dang.json) if not already in context
+	// Load project config (dang.toml) if not already in context
 	ctx, err := ensureProjectImports(ctx, filepath.Dir(filePath))
 	if err != nil {
 		return fmt.Errorf("loading project config: %w", err)
@@ -1378,7 +1378,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	return nil
 }
 
-// ensureProjectImports discovers dang.json and merges its import configs
+// ensureProjectImports discovers dang.toml and merges its import configs
 // into the context, without overriding any configs already set (e.g. by
 // the Dagger SDK entrypoint).
 func ensureProjectImports(ctx context.Context, dir string) (context.Context, error) {
@@ -1389,7 +1389,7 @@ func ensureProjectImports(ctx context.Context, dir string) (context.Context, err
 
 	configPath, config, err := FindProjectConfig(dir)
 	if err != nil {
-		return ctx, fmt.Errorf("finding dang.json: %w", err)
+		return ctx, fmt.Errorf("finding dang.toml: %w", err)
 	}
 	if config == nil {
 		return ctx, nil
@@ -1461,7 +1461,7 @@ func injectAutoImports(ctx context.Context, forms []Node) []Node {
 
 // RunDir evaluates all .dang files in a directory as a single module
 func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
-	// Load project config (dang.json) if not already in context
+	// Load project config (dang.toml) if not already in context
 	ctx, err := ensureProjectImports(ctx, dirPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading project config: %w", err)

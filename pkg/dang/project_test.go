@@ -131,7 +131,7 @@ func TestProjectConfigImports(t *testing.T) {
 	// This simulates what the LSP does: type-check using only the SDL schema.
 	ctx := context.Background()
 
-	configPath := "../../tests/dang.json"
+	configPath := "../../tests/dang.toml"
 	config, err := LoadProjectConfig(configPath)
 	require.NoError(t, err)
 
@@ -174,8 +174,8 @@ let x = hello(name: "world")
 }
 
 func TestLoadProjectConfig(t *testing.T) {
-	// Test loading the test dang.json
-	config, err := LoadProjectConfig("../../tests/dang.json")
+	// Test loading the test dang.toml
+	config, err := LoadProjectConfig("../../tests/dang.toml")
 	require.NoError(t, err)
 	require.NotNil(t, config)
 	require.Len(t, config.Imports, 2)

@@ -2,59 +2,55 @@ package dang
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vito/dang/pkg/introspection"
 )
 
-// ProjectConfig represents a dang.json project configuration file.
+// ProjectConfig represents a dang.toml project configuration file.
 type ProjectConfig struct {
 	// Imports maps import names to their source configurations.
-	Imports map[string]*ImportSource `json:"imports,omitempty"`
+	Imports map[string]*ImportSource `toml:"imports"`
 }
 
 // ImportSource describes where an import's GraphQL schema comes from.
 type ImportSource struct {
-	// Schema is a path to a local .graphqls SDL file (relative to dang.json).
+	// Schema is a path to a local .graphqls SDL file (relative to dang.toml).
 	// Provides type information for the LSP and type checker.
-	Schema string `json:"schema,omitempty"`
+	Schema string `toml:"schema,omitempty"`
 
 	// Endpoint is a GraphQL HTTP endpoint URL for runtime queries.
 	// If set without Schema, the schema is introspected from the endpoint.
-	Endpoint string `json:"endpoint,omitempty"`
+	Endpoint string `toml:"endpoint,omitempty"`
 
 	// Authorization is the Authorization header value (e.g. "Bearer token").
 	// Supports ${ENV_VAR} expansion.
-	Authorization string `json:"authorization,omitempty"`
+	Authorization string `toml:"authorization,omitempty"`
 
 	// Headers contains additional HTTP headers for the endpoint.
 	// Values support ${ENV_VAR} expansion.
-	Headers map[string]string `json:"headers,omitempty"`
+	Headers map[string]string `toml:"headers,omitempty"`
 }
 
-// LoadProjectConfig loads a dang.json file from the given path.
+// LoadProjectConfig loads a dang.toml file from the given path.
 func LoadProjectConfig(path string) (*ProjectConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
 	var config ProjectConfig
-	if err := json.Unmarshal(data, &config); err != nil {
+	if _, err := toml.DecodeFile(path, &config); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return &config, nil
 }
 
-// FindProjectConfig searches for a dang.json file starting from dir and
-// walking up to parent directories. Returns the path to dang.json and the
+// FindProjectConfig searches for a dang.toml file starting from dir and
+// walking up to parent directories. Returns the path to dang.toml and the
 // parsed config, or ("", nil, nil) if not found.
 func FindProjectConfig(dir string) (string, *ProjectConfig, error) {
 	dir, err := filepath.Abs(dir)
@@ -62,7 +58,7 @@ func FindProjectConfig(dir string) (string, *ProjectConfig, error) {
 		return "", nil, err
 	}
 	for {
-		path := filepath.Join(dir, "dang.json")
+		path := filepath.Join(dir, "dang.toml")
 		if _, err := os.Stat(path); err == nil {
 			config, err := LoadProjectConfig(path)
 			if err != nil {
@@ -86,7 +82,7 @@ func FindProjectConfig(dir string) (string, *ProjectConfig, error) {
 
 // ResolveImportConfigs converts project config imports into ImportConfigs
 // that can be used with ContextWithImportConfigs. The configDir is the
-// directory containing dang.json (used to resolve relative paths).
+// directory containing dang.toml (used to resolve relative paths).
 //
 // For schema-only imports, the Client will be nil (type info only, no runtime).
 // For endpoint imports, both Client and Schema are provided.

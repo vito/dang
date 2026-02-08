@@ -284,19 +284,19 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			// Build symbol table from the AST
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 
-			// Load import configs from dang.json (if present)
+			// Load import configs from dang.toml (if present)
 			var importConfigs []dang.ImportConfig
 			fileDir := filepath.Dir(fp)
 			configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
 			if configErr != nil {
-				slog.WarnContext(ctx, "failed to find dang.json", "error", configErr)
+				slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
 			}
 			if projectConfig != nil {
 				configDir := filepath.Dir(configPath)
 				ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
 				resolved, resolveErr := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
 				if resolveErr != nil {
-					slog.WarnContext(ctx, "failed to resolve dang.json imports", "error", resolveErr)
+					slog.WarnContext(ctx, "failed to resolve dang.toml imports", "error", resolveErr)
 				} else {
 					importConfigs = append(importConfigs, resolved...)
 				}
