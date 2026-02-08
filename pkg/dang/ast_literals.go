@@ -197,7 +197,6 @@ type String struct {
 	InferredTypeHolder
 	Value        string
 	TripleQuoted bool // true if originally written with triple quotes
-	Indented     bool // true if triple-quoted content was indented relative to delimiter
 	Loc          *SourceLocation
 }
 

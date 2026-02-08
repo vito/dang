@@ -2002,32 +2002,15 @@ func (f *Formatter) formatString(s *String) {
 			f.write(`"""`)
 			return
 		}
-		// Check if the original content was indented (first content line has
-		// leading whitespace beyond what's on the closing delimiter line)
-		wasIndented := f.wasTripleQuoteIndented(s)
 		f.write(`"""`)
 		f.newline()
 		lines := strings.Split(s.Value, "\n")
-		if wasIndented {
-			// Indent each line one level deeper than the closing delimiter
-			f.indented(func() {
-				for _, line := range lines {
-					if line != "" {
-						f.writeIndent()
-						f.write(line)
-					}
-					f.newline()
-				}
-			})
-		} else {
-			// Preserve content at same indent level as the closing delimiter
-			for _, line := range lines {
-				if line != "" {
-					f.writeIndent()
-					f.write(line)
-				}
-				f.newline()
+		for _, line := range lines {
+			if line != "" {
+				f.writeIndent()
+				f.write(line)
 			}
+			f.newline()
 		}
 		f.writeIndent()
 		f.write(`"""`)
@@ -2040,28 +2023,6 @@ func (f *Formatter) formatString(s *String) {
 // wasTripleQuoteIndented checks if a triple-quoted string's content was indented
 // in the original source. Returns true if any non-empty content line had leading
 // whitespace.
-func (f *Formatter) wasTripleQuoteIndented(s *String) bool {
-	if s.Loc == nil || s.Loc.End == nil || f.source == nil {
-		return false
-	}
-	lines := bytes.Split(f.source, []byte("\n"))
-	closingLine := s.Loc.End.Line
-	contentStart := s.Loc.Line + 1
-	if contentStart >= closingLine {
-		return false
-	}
-	for lineIdx := contentStart; lineIdx < closingLine && lineIdx <= len(lines); lineIdx++ {
-		line := lines[lineIdx-1]
-		trimmed := bytes.TrimSpace(line)
-		if len(trimmed) == 0 {
-			continue // skip empty lines
-		}
-		// Check if first non-empty content line has any leading whitespace
-		return len(line) > len(trimmed)
-	}
-	return false
-}
-
 func (f *Formatter) formatInt(i *Int) {
 	f.write(strconv.FormatInt(i.Value, 10))
 }

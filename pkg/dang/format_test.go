@@ -184,7 +184,7 @@ world
 	Second paragraph.
 	"""
 }`,
-			expected: "type Foo {\n\tpub x = \"\"\"\n\t\tFirst paragraph.\n\n\t\tSecond paragraph.\n\t\"\"\"\n}\n",
+			expected: "type Foo {\n\tpub x = \"\"\"\n\tFirst paragraph.\n\n\tSecond paragraph.\n\t\"\"\"\n}\n",
 		},
 	}
 
@@ -579,7 +579,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			input: `pub x = ["sh", "-c", """
 	hello
 	"""]`,
-			expected: "pub x = [\"sh\", \"-c\", \"\"\"\n\thello\n\"\"\"]\n",
+			expected: "pub x = [\"sh\", \"-c\", \"\"\"\nhello\n\"\"\"]\n",
 		},
 		{
 			name: "list in chain call stays on one line even when chain splits",
@@ -591,7 +591,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 		.directory(".")
 }`,
 			// Chain gets split, list elements stay together
-			expected: "pub x: String! {\n\tbase\n\t\t.withExec([\"sh\", \"-c\", \"\"\"\n\t\t\techo hello\n\t\t\"\"\"])\n\t\t.directory(\".\")\n}\n",
+			expected: "pub x: String! {\n\tbase\n\t\t.withExec([\"sh\", \"-c\", \"\"\"\n\t\techo hello\n\t\t\"\"\"])\n\t\t.directory(\".\")\n}\n",
 		},
 		{
 			name: "args on same line stay together",
