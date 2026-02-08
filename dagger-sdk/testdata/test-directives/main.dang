@@ -1,5 +1,3 @@
-import Dagger
-
 """
 Test module for directive argument handling in Dagger SDK.
 

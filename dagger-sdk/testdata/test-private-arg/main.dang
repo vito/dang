@@ -1,5 +1,3 @@
-import Dagger
-
 type TestPrivateArg {
 	let private: Int!
 	pub source: Directory!

@@ -1,5 +1,3 @@
-import Dagger
-
 # Test constructor arg names that don't match field names
 # when passing typed objects
 

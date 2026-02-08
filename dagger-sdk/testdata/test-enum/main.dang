@@ -1,4 +1,3 @@
-import Dagger
 enum Status {
 	PENDING
 	RUNNING

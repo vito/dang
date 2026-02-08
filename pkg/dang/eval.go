@@ -1372,6 +1372,39 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	return nil
 }
 
+// injectAutoImports prepends synthetic ImportDecl nodes for any import configs
+// in the context that aren't already explicitly imported by the user's code.
+func injectAutoImports(ctx context.Context, forms []Node) []Node {
+	configs := importConfigsFromContext(ctx)
+	if len(configs) == 0 {
+		return forms
+	}
+
+	// Collect names that are already imported
+	imported := make(map[string]bool)
+	for _, form := range forms {
+		if imp, ok := form.(*ImportDecl); ok && imp.Name != nil {
+			imported[imp.Name.Name] = true
+		}
+	}
+
+	// Prepend synthetic imports for any missing configs
+	var injected []Node
+	for _, config := range configs {
+		if !imported[config.Name] {
+			injected = append(injected, &ImportDecl{
+				Name: &Symbol{Name: config.Name},
+			})
+		}
+	}
+
+	if len(injected) == 0 {
+		return forms
+	}
+
+	return append(injected, forms...)
+}
+
 // RunDir evaluates all .dang files in a directory as a single module
 func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Discover all .dang files in the directory
@@ -1401,6 +1434,11 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 		// Add all forms from this file to the combined block
 		allForms = append(allForms, moduleBlock.Forms...)
 	}
+
+	// Auto-inject imports for any import configs in context that aren't
+	// already explicitly imported. This allows SDKs (e.g. Dagger) to make
+	// their import available without requiring module authors to write it.
+	allForms = injectAutoImports(ctx, allForms)
 
 	// Create a master ModuleBlock containing all forms from all files
 	// The phased approach will handle dependency ordering
