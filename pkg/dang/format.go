@@ -403,6 +403,27 @@ func nodeHasDocString(node Node) bool {
 	}
 }
 
+// emitChainCommentsBefore emits standalone comments before a given source line
+// within a method chain. Comments are emitted on their own lines at the current
+// indentation level.
+func (f *Formatter) emitChainCommentsBefore(line int) {
+	for len(f.comments) > 0 && f.comments[0].Line < line {
+		if f.comments[0].IsTrailing || f.emittedComments[f.comments[0].Line] {
+			f.comments = f.comments[1:]
+			continue
+		}
+
+		comment := f.comments[0]
+		f.comments = f.comments[1:]
+
+		f.newline()
+		f.writeIndent()
+		f.write(comment.Text)
+		f.emittedComments[comment.Line] = true
+		f.lastLine = comment.Line
+	}
+}
+
 // emitRemainingComments emits any comments at the end of the file
 func (f *Formatter) emitRemainingComments() {
 	for _, comment := range f.comments {
@@ -1871,6 +1892,22 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 	// Format chain elements with leading dots
 	f.indented(func() {
 		for _, elem := range chain {
+			// Emit any standalone comments that precede this chain element
+			var elemLine int
+			switch e := elem.(type) {
+			case *FunCall:
+				if sel, ok := e.Fun.(*Select); ok && sel.Field.Loc != nil {
+					elemLine = sel.Field.Loc.Line
+				}
+			case *Select:
+				if e.Field.Loc != nil {
+					elemLine = e.Field.Loc.Line
+				}
+			}
+			if elemLine > 0 {
+				f.emitChainCommentsBefore(elemLine)
+			}
+
 			f.newline()
 			f.writeIndent()
 			f.write(".")
@@ -2027,6 +2064,11 @@ func (f *Formatter) formatSelectChain(s *Select) {
 	// Format each field on its own line with a leading dot, indented one level
 	f.indented(func() {
 		for _, sel := range selects {
+			// Emit any standalone comments that precede this chain element
+			if sel.Field.Loc != nil && sel.Field.Loc.Line > 0 {
+				f.emitChainCommentsBefore(sel.Field.Loc.Line)
+			}
+
 			f.newline()
 			f.writeIndent()
 			f.write(".")
