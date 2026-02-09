@@ -35,7 +35,7 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
   body
 }`,
 			expected: `pub x = foo.map { a =>
-	body
+  body
 }
 `,
 		},
@@ -45,8 +45,8 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
   .bar
   .baz`,
 			expected: `pub x = foo
-	.bar
-	.baz
+  .bar
+  .baz
 `,
 		},
 		{
@@ -61,7 +61,7 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
   inner.map { x => x * 2 }
 }`,
 			expected: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
-	inner.map { x => x * 2 }
+  inner.map { x => x * 2 }
 }
 `,
 		},
@@ -184,7 +184,7 @@ world
 	Second paragraph.
 	"""
 }`,
-			expected: "type Foo {\n\tpub x = \"\"\"\n\tFirst paragraph.\n\n\tSecond paragraph.\n\t\"\"\"\n}\n",
+			expected: "type Foo {\n  pub x = \"\"\"\n  First paragraph.\n\n  Second paragraph.\n  \"\"\"\n}\n",
 		},
 	}
 
@@ -251,7 +251,7 @@ func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
   x * 2
 }`,
 			expected: `pub x = foo.map { x =>
-	x * 2
+  x * 2
 }
 `,
 		},
@@ -292,16 +292,16 @@ func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 	filePath
 }`,
 			expected: `pub readFile(
-	"""
-	Relative path within the workspace
-	"""
-	filePath: String!,
-	"""
-	Line offset to start reading from
-	"""
-	offset: Int! = 0,
+  """
+  Relative path within the workspace
+  """
+  filePath: String!,
+  """
+  Line offset to start reading from
+  """
+  offset: Int! = 0,
 ): String! {
-	filePath
+  filePath
 }
 `,
 		},
@@ -323,12 +323,12 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
 		expected string
 	}{
 		{
-			name: "uses tabs for indentation",
+			name: "uses two spaces for indentation",
 			input: `type Foo {
   pub x: Int!
 }`,
 			expected: `type Foo {
-	pub x: Int!
+  pub x: Int!
 }
 `,
 		},
@@ -340,9 +340,9 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
   }
 }`,
 			expected: `type Foo {
-	pub bar: Int! {
-		42
-	}
+  pub bar: Int! {
+    42
+  }
 }
 `,
 		},
@@ -371,9 +371,9 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 	"b"
 ]`,
 			expected: `pub x = [
-	# comment inside list
-	"a",
-	"b",
+  # comment inside list
+  "a",
+  "b",
 ]
 `,
 		},
@@ -384,8 +384,8 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 	"b"
 ]`,
 			expected: `pub x = [
-	"a", # trailing comment
-	"b",
+  "a", # trailing comment
+  "b",
 ]
 `,
 		},
@@ -397,9 +397,9 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 	"dang"
 ])`,
 			expected: `pub source: Directory! @ignorePatterns(patterns: [
-	# TODO: respecting .gitignore would be nice
-	"Session.vim",
-	"dang",
+  # TODO: respecting .gitignore would be nice
+  "Session.vim",
+  "dang",
 ])
 `,
 		},
@@ -426,8 +426,8 @@ func (FormatSuite) TestTrailingCommentsInChains(ctx context.Context, t *testctx.
 	bar(a). # comment on bar
 	baz`,
 			expected: `pub x = foo
-	.bar(a) # comment on bar
-	.baz
+  .bar(a) # comment on bar
+  .baz
 `,
 		},
 		{
@@ -437,9 +437,9 @@ func (FormatSuite) TestTrailingCommentsInChains(ctx context.Context, t *testctx.
 	baz. # second comment
 	qux`,
 			expected: `pub x = foo
-	.bar # first comment
-	.baz # second comment
-	.qux
+  .bar # first comment
+  .baz # second comment
+  .qux
 `,
 		},
 		{
@@ -448,8 +448,8 @@ func (FormatSuite) TestTrailingCommentsInChains(ctx context.Context, t *testctx.
 	bar.
 	baz # final comment`,
 			expected: `pub x = foo
-	.bar
-	.baz # final comment
+  .bar
+  .baz # final comment
 `,
 		},
 	}
@@ -481,7 +481,7 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 }`,
 			// Empty line in docstring should have no trailing whitespace
 			// No extra blank line after opening brace when docstring follows
-			expected: "type Foo {\n\t\"\"\"\n\tDoc line 1\n\n\tDoc line 2\n\t\"\"\"\n\tpub x: Int!\n}\n",
+			expected: "type Foo {\n  \"\"\"\n  Doc line 1\n\n  Doc line 2\n  \"\"\"\n  pub x: Int!\n}\n",
 		},
 		{
 			name: "single blank line between functions with docstrings",
@@ -499,15 +499,15 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 			// No extra blank line after opening brace when docstring follows
 			// Blank line between function definitions is preserved
 			expected: `type Foo {
-	"""
-	Doc for a
-	"""
-	pub a: Int! { 1 }
+  """
+  Doc for a
+  """
+  pub a: Int! { 1 }
 
-	"""
-	Doc for b
-	"""
-	pub b: Int! { 2 }
+  """
+  Doc for b
+  """
+  pub b: Int! { 2 }
 }
 `,
 		},
@@ -539,11 +539,11 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 }`,
 			// Multiline args are preserved, with trailing comma
 			expected: `pub dev(
-	source: Directory!,
-	module: Module,
+  source: Directory!,
+  module: Module,
 ): LLM! {
-	let e = env.withWorkspace(source)
-	e
+  let e = env.withWorkspace(source)
+  e
 }
 `,
 		},
@@ -553,7 +553,7 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 	42
 }`,
 			expected: `pub foo: Int! {
-	42
+  42
 }
 `,
 		},
@@ -591,7 +591,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 		.directory(".")
 }`,
 			// Chain gets split, list elements stay together
-			expected: "pub x: String! {\n\tbase\n\t\t.withExec([\"sh\", \"-c\", \"\"\"\n\t\techo hello\n\t\t\"\"\"])\n\t\t.directory(\".\")\n}\n",
+			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n    echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
 		},
 		{
 			name: "args on same line stay together",
@@ -607,9 +607,9 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 	c
 )`,
 			expected: `pub x = foo(
-	a,
-	b,
-	c,
+  a,
+  b,
+  c,
 )
 `,
 		},
@@ -721,14 +721,14 @@ func (FormatSuite) TestGroupedExpressions(ctx context.Context, t *testctx.T) {
 			input: `let x = (
 foo
 )`,
-			expected: "let x = (\n\tfoo\n)\n",
+			expected: "let x = (\n  foo\n)\n",
 		},
 		{
 			name: "multiline grouped with expression",
 			input: `let x = (
 a + b
 )`,
-			expected: "let x = (\n\ta + b\n)\n",
+			expected: "let x = (\n  a + b\n)\n",
 		},
 	}
 

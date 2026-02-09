@@ -10,7 +10,7 @@ import (
 
 const (
 	maxLineLength = 80
-	indentString  = "\t"
+	indentString  = "  "
 )
 
 // Comment represents a comment with its location
