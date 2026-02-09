@@ -602,6 +602,72 @@ func (f *Formatter) indented(fn func()) {
 	f.indent--
 }
 
+// resetLastLineForForms resets lastLine to just before the first form,
+// preventing a spurious blank line at the start of a body.
+func (f *Formatter) resetLastLineForForms(forms []Node) {
+	if len(forms) > 0 {
+		if loc := nodeLocation(forms[0]); loc != nil && loc.Line > 0 {
+			f.lastLine = loc.Line - 1
+		}
+	}
+}
+
+// finishForm emits a trailing comment for the form and updates lastLine.
+func (f *Formatter) finishForm(form Node) {
+	if loc := nodeLocation(form); loc != nil {
+		f.emitTrailingComment(loc.Line)
+	}
+	if endLine := nodeEndLine(form); endLine > 0 {
+		f.lastLine = endLine
+	}
+}
+
+// handleNoFmtForm checks if a form has a #nofmt directive and, if so, emits its
+// original source text (preserving formatting). Returns true when the form was
+// handled; the caller is responsible for any trailing newline.
+func (f *Formatter) handleNoFmtForm(form Node) bool {
+	if !f.hasNoFmtComment(form) {
+		return false
+	}
+	orig := f.getOriginalSource(form)
+	if orig == "" {
+		return false
+	}
+	f.emitCommentsForNode(form)
+	f.writeIndent()
+	f.write(orig)
+	fullLoc := nodeFullLocation(form)
+	if fullLoc != nil && fullLoc.End != nil {
+		f.removeTrailingNoFmtComment(fullLoc.End.Line)
+		f.lastLine = fullLoc.End.Line
+	}
+	return true
+}
+
+// formatDeclForms formats a list of declaration forms with blank-line
+// separation and comment handling. It is used for module, class, and
+// interface bodies.
+func (f *Formatter) formatDeclForms(forms []Node) {
+	f.resetLastLineForForms(forms)
+	for i, form := range forms {
+		if i > 0 && f.needsBlankLineBetween(forms[i-1], form) {
+			f.newline()
+			if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
+				f.lastLine = loc.Line - 1
+			}
+		}
+		if f.handleNoFmtForm(form) {
+			f.newline()
+			continue
+		}
+		f.emitCommentsForNode(form)
+		f.writeIndent()
+		f.formatNode(form)
+		f.finishForm(form)
+		f.newline()
+	}
+}
+
 // estimateLength estimates how long a node would be if rendered on one line
 func (f *Formatter) estimateLength(node Node) int {
 	temp := &Formatter{}
@@ -778,49 +844,7 @@ func importSortKey(imp *ImportDecl) string {
 func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
 	// Sort imports: collect them, sort, and reorder in the forms slice
 	f.sortImports(m)
-
-	for i, form := range m.Forms {
-		if i > 0 {
-			// Add blank line only when needed (before/after function definitions)
-			if f.needsBlankLineBetween(m.Forms[i-1], form) {
-				f.newline()
-				// Set lastLine to prevent emitCommentsForNode from adding another blank line
-				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
-					f.lastLine = loc.Line - 1
-				}
-			}
-		}
-		// Check for #nofmt before emitting comments (so we don't consume the comment)
-		if f.hasNoFmtComment(form) {
-			orig := f.getOriginalSource(form)
-			if orig != "" {
-				// Emit the #nofmt comment (if it's a prefix comment)
-				f.emitCommentsForNode(form)
-				f.write(orig)
-				// Skip formatting this node
-				fullLoc := nodeFullLocation(form)
-				if fullLoc != nil && fullLoc.End != nil {
-					// Remove any trailing #nofmt comment (it's part of the original source)
-					f.removeTrailingNoFmtComment(fullLoc.End.Line)
-					f.lastLine = fullLoc.End.Line
-				}
-				f.newline()
-				continue
-			}
-		}
-		// Emit any comments that precede this node
-		f.emitCommentsForNode(form)
-		f.formatNode(form)
-		// Emit trailing comment if this node has one
-		if loc := nodeLocation(form); loc != nil {
-			f.emitTrailingComment(loc.Line)
-		}
-		// Update lastLine to the end of this form to prevent spurious blank lines
-		if endLine := nodeEndLine(form); endLine > 0 {
-			f.lastLine = endLine
-		}
-		f.newline()
-	}
+	f.formatDeclForms(m.Forms)
 }
 
 // needsBlankLineBetween determines if a blank line should separate two forms
@@ -1020,35 +1044,7 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 
 	// Format block contents with blank lines between function definitions
 	f.indented(func() {
-		block := c.Value
-		// Reset lastLine to prevent spurious blank line at start of class body
-		if len(block.Forms) > 0 {
-			if loc := nodeLocation(block.Forms[0]); loc != nil && loc.Line > 0 {
-				f.lastLine = loc.Line - 1
-			}
-		}
-		for i, form := range block.Forms {
-			if i > 0 && f.needsBlankLineBetween(block.Forms[i-1], form) {
-				f.newline()
-				// Set lastLine to prevent emitCommentsForNode from adding another blank line
-				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
-					f.lastLine = loc.Line - 1
-				}
-			}
-			// Emit comments for this member
-			f.emitCommentsForNode(form)
-			f.writeIndent()
-			f.formatNode(form)
-			// Emit trailing comment if this member has one
-			if loc := nodeLocation(form); loc != nil {
-				f.emitTrailingComment(loc.Line)
-			}
-			// Update lastLine to the end of this form
-			if endLine := nodeEndLine(form); endLine > 0 {
-				f.lastLine = endLine
-			}
-			f.newline()
-		}
+		f.formatDeclForms(c.Value.Forms)
 
 		// Emit any remaining comments inside the body (before closing brace)
 		if c.Value.Loc != nil && c.Value.Loc.End != nil {
@@ -1094,29 +1090,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	}
 
 	f.indented(func() {
-		block := i.Value
-		for j, form := range block.Forms {
-			if j > 0 && f.needsBlankLineBetween(block.Forms[j-1], form) {
-				f.newline()
-				// Set lastLine to prevent emitCommentsForNode from adding another blank line
-				if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
-					f.lastLine = loc.Line - 1
-				}
-			}
-			// Emit comments for this member
-			f.emitCommentsForNode(form)
-			f.writeIndent()
-			f.formatNode(form)
-			// Emit trailing comment if this member has one
-			if loc := nodeLocation(form); loc != nil {
-				f.emitTrailingComment(loc.Line)
-			}
-			// Update lastLine to the end of this form
-			if endLine := nodeEndLine(form); endLine > 0 {
-				f.lastLine = endLine
-			}
-			f.newline()
-		}
+		f.formatDeclForms(i.Value.Forms)
 	})
 
 	f.write("}")
@@ -1663,46 +1637,18 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		f.newline()
 	}
 	f.indented(func() {
-		// Reset lastLine to prevent spurious blank line at start of block
-		if len(b.Forms) > 0 {
-			if loc := nodeLocation(b.Forms[0]); loc != nil && loc.Line > 0 {
-				f.lastLine = loc.Line - 1
-			}
-		}
+		f.resetLastLineForForms(b.Forms)
 		for i, form := range b.Forms {
-			// Check for #nofmt before emitting comments (so we don't consume the comment)
-			if f.hasNoFmtComment(form) {
-				orig := f.getOriginalSource(form)
-				if orig != "" {
-					// Emit the #nofmt comment (if it's a prefix comment)
-					f.emitCommentsForNode(form)
-					f.writeIndent()
-					f.write(orig)
-					// Skip formatting this node
-					fullLoc := nodeFullLocation(form)
-					if fullLoc != nil && fullLoc.End != nil {
-						// Remove any trailing #nofmt comment (it's part of the original source)
-						f.removeTrailingNoFmtComment(fullLoc.End.Line)
-						f.lastLine = fullLoc.End.Line
-					}
-					if i < len(b.Forms)-1 {
-						f.newline()
-					}
-					continue
+			if f.handleNoFmtForm(form) {
+				if i < len(b.Forms)-1 {
+					f.newline()
 				}
+				continue
 			}
-			// Emit comments for this form
 			f.emitCommentsForNode(form)
 			f.writeIndent()
 			f.formatNode(form)
-			// Emit trailing comment if this form has one
-			if loc := nodeLocation(form); loc != nil {
-				f.emitTrailingComment(loc.Line)
-			}
-			// Update lastLine to the end of this form
-			if endLine := nodeEndLine(form); endLine > 0 {
-				f.lastLine = endLine
-			}
+			f.finishForm(form)
 			if i < len(b.Forms)-1 {
 				f.newline()
 			}
