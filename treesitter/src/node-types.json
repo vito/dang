@@ -1238,6 +1238,10 @@
           {
             "type": "slot",
             "named": true
+          },
+          {
+            "type": "union",
+            "named": true
           }
         ]
       },
@@ -1591,6 +1595,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "equal_token",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "equality_expr",
@@ -3831,6 +3840,66 @@
     }
   },
   {
+    "type": "union",
+    "named": true,
+    "fields": {
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          },
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      },
+      "s": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "union_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "upper_id",
     "named": true,
     "fields": {},
@@ -4001,6 +4070,10 @@
     "named": false
   },
   {
+    "type": "=",
+    "named": false
+  },
+  {
     "type": "==",
     "named": false
   },
@@ -4095,10 +4168,6 @@
   },
   {
     "type": "enum_token",
-    "named": true
-  },
-  {
-    "type": "equal_token",
     "named": true
   },
   {
@@ -4207,6 +4276,10 @@
   },
   {
     "type": "type_token",
+    "named": true
+  },
+  {
+    "type": "union_token",
     "named": true
   },
   {

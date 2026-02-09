@@ -24,9 +24,14 @@ CommaToken <- ','
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(Interface / Enum / Scalar / Class / NewConstructor / Slot / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / NewConstructor / Slot / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
+    if docstring != nil {
+      node.DocString = docstring.(string)
+    }
+    return node, nil
+  case *UnionDecl:
     if docstring != nil {
       node.DocString = docstring.(string)
     }
@@ -232,6 +237,16 @@ Interface <- InterfaceToken _ name:Symbol _ block:HeadersBlock {
   }, nil
 }
 InterfaceToken <- "interface" !WordChar
+
+Union <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
+  return &UnionDecl{
+    Name:       name.(*Symbol),
+    Members:    sliceOfPrepend[*Symbol](first, rest),
+    Visibility: PublicVisibility,
+    Loc:        c.Loc(),
+  }, nil
+}
+UnionToken <- "union" !WordChar
 
 Class <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* TypeToken _ name:Symbol implements:(_ i:Implements { return i, nil })? suffixDirectives:DirectiveApplication* _ block:Block {
   return &ClassDecl{

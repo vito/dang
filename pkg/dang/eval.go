@@ -373,6 +373,17 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			env.SetWithVisibility(t.Name, interfaceModuleVal, PublicVisibility)
 		}
 
+		// Add union types as available values
+		if t.Kind == introspection.TypeKindUnion {
+			unionTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+
+			unionModuleVal := NewModuleValue(unionTypeEnv)
+			env.SetWithVisibility(t.Name, unionModuleVal, PublicVisibility)
+		}
+
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
 			if err != nil {

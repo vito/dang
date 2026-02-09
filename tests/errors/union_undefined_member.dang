@@ -1,0 +1,5 @@
+type Cat {
+	pub name: String!
+}
+
+union Pet = Cat | Unicorn

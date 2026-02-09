@@ -39,6 +39,7 @@ type Query {
   addBigInt(a: BigInt!, b: BigInt!): BigInt!
   fetchURLNullable(url: URL): String
   fetchMultipleURLs(urls: [URL!]!): [String!]!
+  search(query: String!): [SearchResult!]!
 }
 
 type Mutation {
@@ -111,6 +112,8 @@ directive @goField(
   omittable: Boolean
   type: String
 ) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
+
+union SearchResult = User | Post
 
 directive @customDirective(
   message: String

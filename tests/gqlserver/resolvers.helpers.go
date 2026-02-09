@@ -1,5 +1,7 @@
 package gqlserver
 
+import "strings"
+
 // paginatePosts implements cursor-based pagination for posts using Post ID as cursor
 func paginatePosts(posts []*Post, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	if len(posts) == 0 {
@@ -122,6 +124,10 @@ func (r *queryResolver) getAllNodes() []Node {
 		nodes = append(nodes, post)
 	}
 	return nodes
+}
+
+func containsIgnoreCase(s, substr string) bool {
+	return len(s) >= len(substr) && strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // getAllTimestamped returns all timestamped objects (Posts)

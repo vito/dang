@@ -1,0 +1,10 @@
+[1m[31mError:[0m union member Unicorn not found
+  [2m[34m--> errors/union_undefined_member.dang:5:19[0m
+ [2m    |[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0munion Pet = Cat | Unicorn
+[2m                         [31m^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

@@ -152,6 +152,8 @@ func nodeFullLocation(node Node) *SourceLocation {
 		return n.Loc
 	case *InterfaceDecl:
 		return n.Loc
+	case *UnionDecl:
+		return n.Loc
 	case *FunDecl:
 		return n.Loc
 	case *ForLoop:
@@ -358,6 +360,8 @@ func nodeHasDocString(node Node) bool {
 		return n.DocString != ""
 	case *InterfaceDecl:
 		return n.DocString != ""
+	case *UnionDecl:
+		return n.DocString != ""
 	case *EnumDecl:
 		return n.DocString != ""
 	default:
@@ -413,6 +417,8 @@ func nodeLocation(node Node) *SourceLocation {
 	case *ClassDecl:
 		return n.Loc
 	case *InterfaceDecl:
+		return n.Loc
+	case *UnionDecl:
 		return n.Loc
 	case *SlotDecl:
 		return n.Name.Loc
@@ -654,6 +660,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatClassDecl(n)
 	case *InterfaceDecl:
 		f.formatInterfaceDecl(n)
+	case *UnionDecl:
+		f.formatUnionDecl(n)
 	case *EnumDecl:
 		f.formatEnumDecl(n)
 	case *ScalarDecl:
@@ -836,6 +844,11 @@ func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
 		return true
 	}
 
+	// Always add blank line before/after union declarations
+	if isUnionDecl(prev) || isUnionDecl(next) {
+		return true
+	}
+
 	// Always add blank line before/after directive declarations
 	if isDirectiveDecl(prev) || isDirectiveDecl(next) {
 		return true
@@ -904,6 +917,11 @@ func isTypeDecl(node Node) bool {
 
 func isInterfaceDecl(node Node) bool {
 	_, ok := node.(*InterfaceDecl)
+	return ok
+}
+
+func isUnionDecl(node Node) bool {
+	_, ok := node.(*UnionDecl)
 	return ok
 }
 
@@ -1059,6 +1077,22 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	// Emit trailing comment on closing brace line
 	if i.Loc != nil && i.Loc.End != nil {
 		f.emitTrailingComment(i.Loc.End.Line)
+	}
+}
+
+func (f *Formatter) formatUnionDecl(u *UnionDecl) {
+	if u.DocString != "" {
+		f.formatDocString(u.DocString)
+	}
+
+	f.write("union ")
+	f.write(u.Name.Name)
+	f.write(" = ")
+	for i, member := range u.Members {
+		if i > 0 {
+			f.write(" | ")
+		}
+		f.write(member.Name)
 	}
 }
 

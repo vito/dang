@@ -1001,3 +1001,126 @@ func (i *InterfaceDecl) Walk(fn func(Node) bool) {
 	}
 	i.Value.Walk(fn)
 }
+
+type UnionDecl struct {
+	InferredTypeHolder
+	Name       *Symbol
+	Members    []*Symbol
+	Visibility Visibility
+	DocString  string
+	Loc        *SourceLocation
+
+	Inferred *Module
+}
+
+func (u *UnionDecl) IsDeclarer() bool {
+	return true
+}
+
+var _ Node = &UnionDecl{}
+var _ Evaluator = &UnionDecl{}
+var _ Hoister = &UnionDecl{}
+
+func (u *UnionDecl) DeclaredSymbols() []string {
+	return []string{u.Name.Name}
+}
+
+func (u *UnionDecl) ReferencedSymbols() []string {
+	symbols := make([]string, len(u.Members))
+	for i, m := range u.Members {
+		symbols[i] = m.Name
+	}
+	return symbols
+}
+
+func (u *UnionDecl) Body() hm.Expression { return nil }
+
+func (u *UnionDecl) GetSourceLocation() *SourceLocation { return u.Loc }
+
+func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	mod, ok := env.(Env)
+	if !ok {
+		return fmt.Errorf("UnionDecl.Hoist: environment does not support module operations")
+	}
+
+	if pass == 0 {
+		// Pass 0: Register the union type
+		unionMod := NewModule(u.Name.Name, UnionKind)
+		mod.AddClass(u.Name.Name, unionMod)
+
+		// Add the union type to the environment so it can be referenced
+		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+	}
+
+	return nil
+}
+
+func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(u, func() (hm.Type, error) {
+		mod, ok := env.(Env)
+		if !ok {
+			return nil, fmt.Errorf("UnionDecl.Infer: environment does not support module operations")
+		}
+
+		unionType, found := mod.NamedType(u.Name.Name)
+		if !found {
+			return nil, fmt.Errorf("union %s not found", u.Name.Name)
+		}
+
+		unionMod := unionType.(*Module)
+
+		// Resolve and link each member type
+		for _, memberSym := range u.Members {
+			memberType, found := mod.NamedType(memberSym.Name)
+			if !found {
+				return nil, NewInferError(
+					fmt.Errorf("union member %s not found", memberSym.Name),
+					memberSym,
+				)
+			}
+
+			memberMod, ok := memberType.(*Module)
+			if !ok {
+				return nil, NewInferError(
+					fmt.Errorf("union member %s is not a type", memberSym.Name),
+					memberSym,
+				)
+			}
+
+			if memberMod.Kind != ObjectKind {
+				return nil, NewInferError(
+					fmt.Errorf("union member %s must be an object type, got %s", memberSym.Name, memberMod.Kind),
+					memberSym,
+				)
+			}
+
+			unionMod.AddMember(memberType)
+		}
+
+		u.Inferred = unionMod
+		u.SetInferredType(unionMod)
+
+		// Set doc string
+		if u.DocString != "" {
+			mod.SetDocString(u.Name.Name, u.DocString)
+		}
+
+		return unionMod, nil
+	})
+}
+
+func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	// Unions are pure type declarations - register the union module
+	unionModule := NewModuleValue(u.Inferred)
+	env.SetWithVisibility(u.Name.Name, unionModule, u.Visibility)
+	return unionModule, nil
+}
+
+func (u *UnionDecl) Walk(fn func(Node) bool) {
+	if !fn(u) {
+		return
+	}
+	for _, m := range u.Members {
+		fn(m)
+	}
+}

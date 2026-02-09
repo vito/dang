@@ -241,6 +241,22 @@ func (r *queryResolver) FetchMultipleURLs(ctx context.Context, urls []string) ([
 	return results, nil
 }
 
+// Search is the resolver for the search field.
+func (r *queryResolver) Search(ctx context.Context, query string) ([]SearchResult, error) {
+	var results []SearchResult
+	for _, user := range users {
+		if containsIgnoreCase(user.Name, query) {
+			results = append(results, user)
+		}
+	}
+	for _, post := range posts {
+		if containsIgnoreCase(post.Title, query) || containsIgnoreCase(post.Content, query) {
+			results = append(results, post)
+		}
+	}
+	return results, nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user

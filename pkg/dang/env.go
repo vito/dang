@@ -43,7 +43,25 @@ const (
 	EnumKind
 	ScalarKind
 	InterfaceKind
+	UnionKind
 )
+
+func (k ModuleKind) String() string {
+	switch k {
+	case ObjectKind:
+		return "object"
+	case EnumKind:
+		return "enum"
+	case ScalarKind:
+		return "scalar"
+	case InterfaceKind:
+		return "interface"
+	case UnionKind:
+		return "union"
+	default:
+		return "unknown"
+	}
+}
 
 func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, error) {
 	switch typeKind {
@@ -53,9 +71,8 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, err
 		return ObjectKind, nil
 	case introspection.TypeKindInterface:
 		return InterfaceKind, nil
-	// case introspection.TypeKindUnion:
-	// 	slog.Warn("unsupported union type; skipping", "type", t.Name)
-	// 	// return UnionKind
+	case introspection.TypeKindUnion:
+		return UnionKind, nil
 	case introspection.TypeKindEnum:
 		return EnumKind, nil
 	case introspection.TypeKindInputObject:
@@ -87,6 +104,10 @@ type Module struct {
 	// Interface tracking
 	interfaces   []Env // Interfaces this type implements
 	implementers []Env // Types that implement this interface (for interface modules)
+
+	// Union tracking
+	members []Env // Member types of this union (for union modules)
+	unions  []Env // Unions this type is a member of
 
 	// Import conflict tracking for unqualified imports
 	// Maps symbol name -> list of import names that provide it
@@ -268,6 +289,18 @@ func NewEnv(schema *introspection.Schema) Env {
 		}
 	}
 
+	// Make union types available as values in the module
+	for _, t := range schema.Types {
+		if t.Kind == introspection.TypeKindUnion {
+			sub, found := env.NamedType(t.Name)
+			if found {
+				// Add the union type as a scheme that represents the module itself
+				env.Add(t.Name, hm.NewScheme(nil, sub))
+				env.SetVisibility(t.Name, PublicVisibility)
+			}
+		}
+	}
+
 	for _, t := range schema.Types {
 		install, found := env.NamedType(t.Name)
 		if !found {
@@ -361,6 +394,34 @@ func NewEnv(schema *introspection.Schema) Env {
 			if ifaceMod, ok := ifaceModule.(*Module); ok {
 				ifaceMod.AddImplementer(implType)
 			}
+		}
+	}
+
+	// Link union members
+	for _, t := range schema.Types {
+		if t.Kind != introspection.TypeKindUnion {
+			continue
+		}
+
+		unionType, found := env.NamedType(t.Name)
+		if !found {
+			continue
+		}
+
+		unionMod, ok := unionType.(*Module)
+		if !ok {
+			continue
+		}
+
+		for _, member := range t.PossibleTypes {
+			memberType, found := env.NamedType(member.Name)
+			if !found {
+				slog.Warn("union member not found", "union", t.Name, "member", member.Name)
+				continue
+			}
+
+			unionMod.AddMember(memberType)
+			slog.Debug("linked union member", "union", t.Name, "member", member.Name)
 		}
 	}
 
@@ -639,17 +700,20 @@ func (t *Module) Eq(other Type) bool {
 }
 
 func (t *Module) Supertypes() []Type {
-	// Only object types have supertypes (their interfaces)
+	// Only object types have supertypes (their interfaces and unions)
 	if t.Kind != ObjectKind {
 		return nil
 	}
-	if len(t.interfaces) == 0 {
+	if len(t.interfaces) == 0 && len(t.unions) == 0 {
 		return nil
 	}
-	// Convert []Env to []Type
-	result := make([]Type, len(t.interfaces))
-	for i, iface := range t.interfaces {
-		result[i] = iface.(Type)
+	// Convert []Env to []Type - include both interfaces and unions
+	result := make([]Type, 0, len(t.interfaces)+len(t.unions))
+	for _, iface := range t.interfaces {
+		result = append(result, iface.(Type))
+	}
+	for _, union := range t.unions {
+		result = append(result, union.(Type))
 	}
 	return result
 }
@@ -703,6 +767,35 @@ func (m *Module) ImplementsInterface(iface Env) bool {
 		}
 	}
 	return false
+}
+
+// AddMember adds a member type to this union (for union modules)
+func (m *Module) AddMember(member Env) {
+	m.members = append(m.members, member)
+	// Also track the reverse relationship on the member
+	if memberMod, ok := member.(*Module); ok {
+		memberMod.unions = append(memberMod.unions, m)
+	}
+}
+
+// GetMembers returns the member types of this union (for union modules)
+func (m *Module) GetMembers() []Env {
+	return m.members
+}
+
+// HasMember checks if this union contains the given type as a member
+func (m *Module) HasMember(t Env) bool {
+	for _, member := range m.members {
+		if member == t {
+			return true
+		}
+	}
+	return false
+}
+
+// GetUnions returns the unions this type is a member of
+func (m *Module) GetUnions() []Env {
+	return m.unions
 }
 
 // TrackUnqualifiedTypeImport records that an import provides a type-level symbol
