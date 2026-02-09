@@ -103,6 +103,15 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			if err != nil {
 				return nil, err
 			}
+
+			// If the function came from a nullable receiver (e.g. t.foo()
+			// where t is nullable), taint the return type as nullable too.
+			if sel, ok := c.Fun.(*Select); ok && sel.NullableReceiver {
+				if nnType, ok := t.(hm.NonNullType); ok {
+					t = nnType.Type
+				}
+			}
+
 			c.SetInferredType(t)
 			return t, nil
 		default:
@@ -251,6 +260,10 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		if funVal == (NullValue{}) {
+			// If the function came from a nullable receiver, short-circuit to null
+			if sel, ok := c.Fun.(*Select); ok && sel.NullableReceiver {
+				return NullValue{}, nil
+			}
 			return nil, NewSourceError(fmt.Errorf("cannot call null"), c.Fun.GetSourceLocation(), "")
 		}
 
@@ -560,10 +573,11 @@ func (s *Symbol) Walk(fn func(Node) bool) {
 // Select represents field selection or method call
 type Select struct {
 	InferredTypeHolder
-	Receiver Node
-	Field    string
-	AutoCall bool
-	Loc      *SourceLocation
+	Receiver         Node
+	Field            string
+	AutoCall         bool
+	NullableReceiver bool // set during Infer when receiver is nullable
+	Loc              *SourceLocation
 }
 
 var _ Node = (*Select)(nil)
@@ -630,6 +644,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			// Nullable receiver - inherit nullability
 			rec = envType
 			isNullable = true
+			d.NullableReceiver = true
 		} else {
 			return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
 		}

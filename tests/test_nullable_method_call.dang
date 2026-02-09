@@ -1,0 +1,32 @@
+# Test nullable propagation for method calls
+# If t is Foo (nullable), then t.foo should be nullable AND t.foo() should also be nullable
+
+type Greeter {
+  let name: String! = "world"
+
+  pub greet: String! {
+    "hello " + name
+  }
+}
+
+# Test case 1: non-null receiver, method call works normally
+pub greeter1: Greeter! = Greeter
+assert { greeter1.greet == "hello world" }
+
+# Test case 2: nullable receiver, field access (auto-called) is nullable
+pub greeter2: Greeter = Greeter
+assert { greeter2.greet == "hello world" }
+greeter2 = null
+assert { greeter2.greet == null }
+
+# Test case 3: nullable receiver, explicit method call is also nullable
+pub greeter3: Greeter = Greeter
+assert {
+  greeter3.greet() == "hello world" #nofmt
+}
+greeter3 = null
+assert {
+  greeter3.greet() == null #nofmt
+}
+
+print("Nullable method call tests passed!")
