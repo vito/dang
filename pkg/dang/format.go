@@ -1237,9 +1237,15 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 
 	f.write(s.Name.Name)
 
+	// Determine the source line of the name for directive multiline detection
+	nameLine := 0
+	if s.Name.Loc != nil {
+		nameLine = s.Name.Loc.Line
+	}
+
 	// Check if this is a function declaration
 	if funDecl, ok := s.Value.(*FunDecl); ok {
-		f.formatFunDeclSignature(funDecl)
+		f.formatFunDeclSignature(funDecl, nameLine)
 		return
 	}
 
@@ -1263,12 +1269,6 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 			f.write(": ")
 			f.formatType(s.Type_)
 		}
-	}
-
-	// Determine the source line of the name for directive multiline detection
-	nameLine := 0
-	if s.Name.Loc != nil {
-		nameLine = s.Name.Loc.Line
 	}
 
 	// Value and suffix directives - placement depends on value type
@@ -1302,10 +1302,14 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 
 func (f *Formatter) formatFunDecl(fn *FunDecl) {
 	// This is typically called via SlotDecl, but handle standalone case
-	f.formatFunDeclSignature(fn)
+	nameLine := 0
+	if fn.Loc != nil {
+		nameLine = fn.Loc.Line
+	}
+	f.formatFunDeclSignature(fn, nameLine)
 }
 
-func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
+func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
 	// Arguments
 	if len(fn.Args) > 0 || fn.BlockParam != nil {
 		f.write("(")
@@ -1320,11 +1324,7 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 	}
 
 	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
-	fnLine := 0
-	if fn.Loc != nil {
-		fnLine = fn.Loc.Line
-	}
-	f.formatSuffixDirectives(fn.Directives, fnLine)
+	f.formatSuffixDirectives(fn.Directives, slotNameLine)
 
 	// Body
 	if fn.FunctionBase.Body != nil {
