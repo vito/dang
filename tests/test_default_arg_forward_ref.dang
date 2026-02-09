@@ -1,0 +1,38 @@
+# Test that default value expressions can reference earlier arguments,
+# not outer-scope bindings of the same name.
+
+# An outer-scope binding that should NOT be picked up by defaults.
+let version = "outer"
+
+# --- Regular functions ---
+
+pub withDefault(version: String! = "latest", tag: String! = "img:" + version): String! {
+  tag
+}
+
+# When omitted, `tag` default should reference the `version` arg ("latest"),
+# not the outer `version` ("outer").
+assert("fn: both defaults") { withDefault == "img:latest" }
+
+# Supplying `version` explicitly should flow into `tag`'s default.
+assert("fn: version supplied") { withDefault("nightly") == "img:nightly" }
+
+# Supplying both overrides everything.
+assert("fn: both supplied") { withDefault("nightly", "custom") == "custom" }
+
+# --- Constructors ---
+
+type MyObj {
+  pub tag: String!
+
+  new(version: String! = "latest", tag: String! = "img:" + version) {
+    self.tag = tag
+    self
+  }
+}
+
+assert("ctor: both defaults") { MyObj.tag == "img:latest" }
+assert("ctor: version supplied") { MyObj("nightly").tag == "img:nightly" }
+assert("ctor: both supplied") { MyObj("nightly", "custom").tag == "custom" }
+
+print("Default arg forward-ref tests passed!")

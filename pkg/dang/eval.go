@@ -826,7 +826,8 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 			// Handle null values with defaults
 			if _, isNull := val.(NullValue); isNull {
 				if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
-					defaultVal, err := EvalNode(ctx, f.Closure, defaultExpr)
+					// Evaluate in fnEnv so earlier args are visible to the default expression
+					defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
 					if err != nil {
 						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 					}
@@ -838,8 +839,9 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 				fnEnv.Set(argName, val)
 			}
 		} else if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
-			// Use default value when argument not provided
-			defaultVal, err := EvalNode(ctx, f.Closure, defaultExpr)
+			// Use default value when argument not provided.
+			// Evaluate in fnEnv so earlier args are visible to the default expression.
+			defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
 			if err != nil {
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
@@ -1232,15 +1234,21 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// only consulted for reads (Get), while writes (Set/Reassign) go
 		// to the instance as before.
 		argEnv := NewModuleValue(NewModule("_constructor_args_", ObjectKind))
+		// Build a temporary env layered on the closure so that default
+		// expressions for later parameters can see earlier parameters.
+		defaultEvalEnv := c.Closure.Clone()
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
 				argEnv.Set(param.Name.Name, arg)
+				defaultEvalEnv.Set(param.Name.Name, arg)
 			} else if param.Value != nil {
-				defaultVal, err := EvalNode(ctx, c.Closure, param.Value)
+				// Evaluate in defaultEvalEnv so earlier args are visible.
+				defaultVal, err := EvalNode(ctx, defaultEvalEnv, param.Value)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
 				argEnv.Set(param.Name.Name, defaultVal)
+				defaultEvalEnv.Set(param.Name.Name, defaultVal)
 			}
 		}
 
