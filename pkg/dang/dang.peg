@@ -798,7 +798,15 @@ SelfKeyword <- SelfToken {
 }
 SelfToken <- "self" !WordChar
 
-CommentToken <- '#' [^\n]*
+CommentToken <- '#' [^\n]* {
+  comments, _ := c.globalStore["comments"].(map[int]string)
+  if comments == nil {
+    comments = make(map[int]string)
+    c.globalStore["comments"] = comments
+  }
+  comments[c.pos.line] = string(c.text)
+  return nil, nil
+}
 
 // Additional language constructs
 

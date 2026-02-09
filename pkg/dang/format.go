@@ -28,29 +28,37 @@ type Formatter struct {
 	comments []Comment
 	lastLine int    // last source line we've processed (for comment emission)
 	source   []byte // original source (for #nofmt regions)
+
+	// Line-based comment map from parser (line number -> comment text).
+	// This is the primary comment data source when available.
+	commentMap map[int]string
+	// Set of line numbers whose comments have already been emitted.
+	emittedComments map[int]bool
 }
 
 // Format formats a node and returns the formatted source code
 func Format(node Node) string {
-	f := &Formatter{}
+	f := &Formatter{emittedComments: make(map[int]bool)}
 	f.formatNode(node)
 	return f.buf.String()
 }
 
 // FormatFile parses and formats a Dang source file
 func FormatFile(source []byte) (string, error) {
-	result, err := Parse("format", source)
+	result, commentMap, err := ParseWithComments("format", source)
 	if err != nil {
 		return "", err
 	}
 
-	// Extract comments from source
+	// Also extract structured comments for nofmt/blank-line logic
 	comments := extractComments(source)
 
 	f := &Formatter{
-		comments: comments,
-		lastLine: 0,
-		source:   source,
+		comments:        comments,
+		lastLine:        0,
+		source:          source,
+		commentMap:      commentMap,
+		emittedComments: make(map[int]bool),
 	}
 	f.formatNode(result.(*ModuleBlock))
 
@@ -258,7 +266,7 @@ func (f *Formatter) emitCommentsBeforeLine(line int) {
 	for len(f.comments) > 0 && f.comments[0].Line < line {
 		// Skip over trailing comments - they're emitted by emitTrailingComment.
 		// Don't break: there may be standalone comments after a trailing one.
-		if f.comments[0].IsTrailing {
+		if f.comments[0].IsTrailing || f.emittedComments[f.comments[0].Line] {
 			f.comments = f.comments[1:]
 			continue
 		}
@@ -274,6 +282,7 @@ func (f *Formatter) emitCommentsBeforeLine(line int) {
 
 		f.writeIndent()
 		f.write(comment.Text)
+		f.emittedComments[comment.Line] = true
 		f.newline()
 		f.lastLine = comment.Line
 	}
@@ -286,10 +295,15 @@ func (f *Formatter) emitCommentsBeforeLine(line int) {
 
 // emitTrailingComment emits a trailing comment for the given line if one exists
 func (f *Formatter) emitTrailingComment(line int) {
+	// Skip if already emitted via nl()
+	if f.emittedComments[line] {
+		return
+	}
 	for i, comment := range f.comments {
 		if comment.Line == line && comment.IsTrailing {
 			f.write(" ")
 			f.write(comment.Text)
+			f.emittedComments[line] = true
 			// Remove this comment from the list
 			f.comments = append(f.comments[:i], f.comments[i+1:]...)
 			return
@@ -328,7 +342,7 @@ func (f *Formatter) emitCommentsForNode(node Node) {
 func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
 	for len(f.comments) > 0 && f.comments[0].Line < line {
 		// Skip over trailing comments - they're emitted by emitTrailingComment.
-		if f.comments[0].IsTrailing {
+		if f.comments[0].IsTrailing || f.emittedComments[f.comments[0].Line] {
 			f.comments = f.comments[1:]
 			continue
 		}
@@ -344,6 +358,7 @@ func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
 
 		f.writeIndent()
 		f.write(comment.Text)
+		f.emittedComments[comment.Line] = true
 		f.newline()
 		f.lastLine = comment.Line
 	}
@@ -391,6 +406,9 @@ func nodeHasDocString(node Node) bool {
 // emitRemainingComments emits any comments at the end of the file
 func (f *Formatter) emitRemainingComments() {
 	for _, comment := range f.comments {
+		if f.emittedComments[comment.Line] {
+			continue
+		}
 		if f.lastLine > 0 && comment.Line > f.lastLine+1 {
 			f.newline()
 		}
@@ -513,6 +531,25 @@ func (f *Formatter) write(s string) {
 }
 
 func (f *Formatter) newline() {
+	f.write("\n")
+	f.col = 0
+}
+
+// nl emits any not-yet-printed trailing comment on the given source line,
+// then writes a newline. This is the preferred way to end a line when the
+// source line number is known.
+func (f *Formatter) nl(line int) {
+	if line > 0 && f.commentMap != nil {
+		if text, ok := f.commentMap[line]; ok && !f.emittedComments[line] {
+			// Only emit as trailing if there's code on this line (i.e., we've
+			// already written something on this output line).
+			if f.col > 0 {
+				f.write(" ")
+				f.write(text)
+			}
+			f.emittedComments[line] = true
+		}
+	}
 	f.write("\n")
 	f.col = 0
 }
@@ -937,7 +974,12 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 	}
 
 	f.write(" {")
-	f.newline()
+	// Emit trailing comment on the "type Foo {" line before the newline
+	if c.Name.Loc != nil {
+		f.nl(c.Name.Loc.Line)
+	} else {
+		f.newline()
+	}
 
 	// Format block contents with blank lines between function definitions
 	f.indented(func() {
@@ -1004,7 +1046,11 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	f.write("interface ")
 	f.write(i.Name.Name)
 	f.write(" {")
-	f.newline()
+	if i.Name.Loc != nil {
+		f.nl(i.Name.Loc.Line)
+	} else {
+		f.newline()
+	}
 
 	f.indented(func() {
 		block := i.Value
@@ -1057,7 +1103,11 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 		f.write(" }")
 	} else {
 		f.write(" {")
-		f.newline()
+		if e.Loc != nil {
+			f.nl(e.Loc.Line)
+		} else {
+			f.newline()
+		}
 
 		f.indented(func() {
 			for _, val := range e.Values {
@@ -1239,7 +1289,11 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 			f.write("}")
 		} else {
 			f.write(" {")
-			f.newline()
+			if fn.Loc != nil {
+				f.nl(fn.Loc.Line)
+			} else {
+				f.newline()
+			}
 			f.indented(func() {
 				f.writeIndent()
 				f.formatNode(fn.FunctionBase.Body)
@@ -1497,7 +1551,12 @@ func (f *Formatter) formatBlockContents(b *Block) {
 		}
 	}
 
-	f.newline()
+	// Use nl() to emit any trailing comment on the opening { line
+	if b.Loc != nil {
+		f.nl(b.Loc.Line)
+	} else {
+		f.newline()
+	}
 	f.indented(func() {
 		// Reset lastLine to prevent spurious blank line at start of block
 		if len(b.Forms) > 0 {
@@ -2279,7 +2338,11 @@ func (f *Formatter) formatCase(c *Case) {
 		f.formatNode(c.Expr)
 		f.write(") {")
 	}
-	f.newline()
+	if c.Loc != nil {
+		f.nl(c.Loc.Line)
+	} else {
+		f.newline()
+	}
 	f.indented(func() {
 		// Reset lastLine to prevent spurious blank line at start of case body
 		if len(c.Clauses) > 0 && c.Clauses[0].Loc != nil {

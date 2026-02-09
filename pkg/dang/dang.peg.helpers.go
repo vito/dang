@@ -4,6 +4,17 @@ import (
 	"bytes"
 )
 
+// ParseWithComments parses source and returns the AST along with a map of
+// line-number to comment text collected during parsing.
+func ParseWithComments(filename string, source []byte) (any, map[int]string, error) {
+	comments := make(map[int]string)
+	result, err := Parse(filename, source, GlobalStore("comments", comments))
+	if err != nil {
+		return nil, nil, err
+	}
+	return result, comments, nil
+}
+
 func (e errList) Unwrap() []error {
 	return e
 }
