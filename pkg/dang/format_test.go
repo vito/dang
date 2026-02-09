@@ -718,6 +718,20 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n    echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
 		},
 		{
+			name: "method args not split by multiline receiver",
+			input: `let strs = [
+  "hello",
+  "world",
+  "!",
+].join("\n")`,
+			expected: `let strs = [
+  "hello",
+  "world",
+  "!",
+].join("\n")
+`,
+		},
+		{
 			name: "args on same line stay together",
 			input: `pub x = foo(a, b, c)`,
 			expected: `pub x = foo(a, b, c)

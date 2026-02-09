@@ -1828,7 +1828,15 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 	// Format arguments
 	if len(c.Args) > 0 {
 		f.write("(")
-		multiline := forceMultiline || f.shouldSplitArgs(c.Args, c.Loc)
+		// Use the opening paren's line for arg splitting decisions. For method
+		// calls (Select), this is the field name's line rather than the overall
+		// expression start, so that e.g. a multiline list receiver doesn't
+		// force the method's args onto separate lines.
+		parenLoc := c.Loc
+		if sel, ok := c.Fun.(*Select); ok && sel.Field.Loc != nil {
+			parenLoc = sel.Field.Loc
+		}
+		multiline := forceMultiline || f.shouldSplitArgs(c.Args, parenLoc)
 		f.formatCallArgs(c.Args, multiline)
 		f.write(")")
 	}
