@@ -1432,12 +1432,14 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, p
 		f.newline()
 		f.indented(func() {
 			for _, arg := range args {
+				f.emitCommentsForNode(arg)
 				f.writeIndent()
 				f.formatArgDecl(arg)
 				f.write(",")
 				f.newline()
 			}
 			if blockParam != nil {
+				f.emitCommentsForNode(blockParam)
 				f.writeIndent()
 				f.write("&")
 				f.formatArgDecl(blockParam)
