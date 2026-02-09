@@ -247,6 +247,74 @@ On match, a forked child environment is created with the binding set to the orig
 - "type {name} is not a member of union {union}" — when pattern type isn't a union member
 - "type {name} does not implement interface {iface}" — when pattern type doesn't implement interface
 
+## Inline Fragment Selection (GraphQL Query Generation)
+
+Union-typed fields are queried using inline fragment syntax inside object selections, mirroring GraphQL's `... on TypeName { fields }`.
+
+### Syntax
+
+```dang
+search(query: "foo").{
+    ... on User { name, email }
+    ... on Post { title, content }
+}
+```
+
+This generates a single GraphQL query:
+```graphql
+{ search(query: "foo") { __typename ... on User { name email } ... on Post { title content } } }
+```
+
+### Grammar (dang.peg)
+
+```peg
+ObjectSelection <- '{' _ first:InlineFragment rest:(Sep f:InlineFragment)* _ '}'
+                 / '{' _ fields:(f:FieldSelection Sep)* last:FieldSelection? _ '}'
+
+InlineFragment <- SpreadToken _ OnToken _ typeName:Symbol _ '{' _ fields:... _ '}'
+SpreadToken <- "..."
+```
+
+PEG ordered choice: the parser tries inline fragments first (starts with `...`), falls back to regular field selection.
+
+### AST (ast_expressions.go)
+
+```go
+type InlineFragment struct {
+    TypeName *Symbol
+    Fields   []*FieldSelection
+    Loc      *SourceLocation
+    Inferred *Module  // Concrete type module, set during inference
+}
+
+type ObjectSelection struct {
+    // ... existing fields ...
+    InlineFragments []*InlineFragment  // For union/interface inline fragments
+}
+```
+
+### Type Inference (`inferInlineFragments`)
+
+1. Unwrap list/non-null wrappers from receiver type
+2. Verify element type is a union or interface (`UnionKind` or `InterfaceKind`)
+3. For each fragment: resolve type name, verify it's a member, validate fields exist on concrete type
+4. Result type preserves the union type with original list/non-null wrapping
+
+### Evaluation
+
+**GraphQL path** (`evalGraphQLInlineFragments`):
+1. Build query with `__typename` + inline fragments using `SelectMultiple`
+2. Execute single query
+3. For each result, read `__typename`, look up concrete type module, create `ModuleValue` with concrete type and populate fields
+
+**Dang-native path** (`evalInlineFragmentOnValue`):
+1. Check concrete type name via `Module.Name()`
+2. Match to fragment, extract fields from existing `ModuleValue`
+
+### SDL Schema Loading Fix
+
+`astTypeToIntrospection` in `project.go` was missing `PossibleTypes` population for union types loaded from `.graphqls` SDL files. Fixed to iterate `t.Types` (the AST union member names) and create `*introspection.Type` entries.
+
 ## Related Files
 
 - `pkg/dang/dang.peg` — Grammar for `union` syntax
