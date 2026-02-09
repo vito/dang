@@ -288,6 +288,9 @@ func (f *FunDecl) Walk(fn func(Node) bool) {
 	if !fn(f) {
 		return
 	}
+	for _, d := range f.Directives {
+		d.Walk(fn)
+	}
 	for _, arg := range f.Args {
 		if !fn(arg) {
 			continue

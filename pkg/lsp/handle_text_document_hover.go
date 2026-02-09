@@ -29,6 +29,14 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 		return nil, nil
 	}
 
+	// Find the node at this position to get its inferred type
+	node := h.findNodeAtPosition(f.AST, params.Position)
+
+	// Check if we're hovering over a directive application
+	if directiveApp, ok := node.(*dang.DirectiveApplication); ok {
+		return h.hoverDirectiveApplication(ctx, f, directiveApp, params.Position)
+	}
+
 	// Find the symbol at the cursor position
 	symbolName := h.symbolAtPosition(f, params.Position)
 	if symbolName == "" {
@@ -37,8 +45,6 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 
 	slog.InfoContext(ctx, "hover request", "uri", params.TextDocument.URI, "position", params.Position, "symbol", symbolName)
 
-	// Find the node at this position to get its inferred type
-	node := h.findNodeAtPosition(f.AST, params.Position)
 	if node == nil {
 		slog.InfoContext(ctx, "no node found at position")
 		return nil, nil
@@ -149,6 +155,49 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 	})
 
 	return result
+}
+
+// hoverDirectiveApplication returns hover info for a directive application by looking up its declaration.
+func (h *langHandler) hoverDirectiveApplication(ctx context.Context, f *File, app *dang.DirectiveApplication, pos Position) (any, error) {
+	// Find the directive declaration from enclosing environments
+	var decl *dang.DirectiveDecl
+	environments := findEnclosingEnvironments(f.AST, pos)
+	for i := len(environments) - 1; i >= 0; i-- {
+		if d, ok := environments[i].GetDirective(app.Name); ok {
+			decl = d
+			break
+		}
+	}
+	// Also check the file-level type env
+	if decl == nil && f.TypeEnv != nil {
+		if d, ok := f.TypeEnv.GetDirective(app.Name); ok {
+			decl = d
+		}
+	}
+
+	if decl == nil {
+		return nil, nil
+	}
+
+	// Format without the doc string so we can show it separately as markdown.
+	savedDoc := decl.DocString
+	decl.DocString = ""
+	schema := dang.Format(decl)
+	decl.DocString = savedDoc
+
+	var content string
+	if decl.DocString != "" {
+		content = fmt.Sprintf("%s\n\n```dang\n%s\n```", decl.DocString, schema)
+	} else {
+		content = fmt.Sprintf("```dang\n%s\n```", schema)
+	}
+
+	return &Hover{
+		Contents: MarkupContent{
+			Kind:  Markdown,
+			Value: content,
+		},
+	}, nil
 }
 
 // findDocInLexicalScope searches for documentation in any enclosing lexical scope

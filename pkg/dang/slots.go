@@ -194,6 +194,9 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 	if !fn(s) {
 		return
 	}
+	for _, d := range s.Directives {
+		d.Walk(fn)
+	}
 	// TypeNode doesn't have Walk method - skip
 	if s.Value != nil {
 		s.Value.Walk(fn)
@@ -634,6 +637,9 @@ func (c *ClassDecl) Walk(fn func(Node) bool) {
 	if !fn(c) {
 		return
 	}
+	for _, d := range c.Directives {
+		d.Walk(fn)
+	}
 	c.Value.Walk(fn)
 }
 
@@ -764,6 +770,9 @@ func (e *EnumDecl) Walk(fn func(Node) bool) {
 	if !fn(e) {
 		return
 	}
+	for _, d := range e.Directives {
+		d.Walk(fn)
+	}
 	// Enum values are just symbols, no need to walk them
 }
 
@@ -862,7 +871,9 @@ func (s *ScalarDecl) Walk(fn func(Node) bool) {
 	if !fn(s) {
 		return
 	}
-	// Scalar declarations have no children to walk
+	for _, d := range s.Directives {
+		d.Walk(fn)
+	}
 }
 
 type InterfaceDecl struct {
@@ -967,6 +978,9 @@ func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 func (i *InterfaceDecl) Walk(fn func(Node) bool) {
 	if !fn(i) {
 		return
+	}
+	for _, d := range i.Directives {
+		d.Walk(fn)
 	}
 	i.Value.Walk(fn)
 }

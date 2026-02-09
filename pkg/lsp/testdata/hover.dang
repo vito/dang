@@ -1,3 +1,23 @@
+# directive hover
+"""
+Marks a field as deprecated.
+"""
+directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | OBJECT
+
+directive @experimental on FIELD_DEFINITION
+
+type Directives {
+	@deprecated(reason: "use new instead")
+	pub old: String! { # test: ^kwK => hover: Marks a field as deprecated.
+		"old"
+	}
+
+	@experimental
+	pub beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
+		"beta"
+	}
+}
+
 # local variable hover
 let hello = 42
 
