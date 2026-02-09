@@ -541,6 +541,21 @@ func nodeLocation(node Node) *SourceLocation {
 	}
 }
 
+// typeNodeLine extracts the source line from a TypeNode if available.
+func typeNodeLine(t TypeNode) int {
+	switch n := t.(type) {
+	case *NamedTypeNode:
+		if n.Loc != nil {
+			return n.Loc.Line
+		}
+	case NonNullTypeNode:
+		return typeNodeLine(n.Elem)
+	case *ListTypeNode:
+		return typeNodeLine(n.Elem)
+	}
+	return 0
+}
+
 func (f *Formatter) write(s string) {
 	f.buf.WriteString(s)
 	// Update column tracking (approximate)
@@ -1345,7 +1360,29 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
 	}
 
 	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
-	f.formatSuffixDirectives(fn.Directives, slotNameLine)
+	// When args are multiline, the closing "): Type @directive" is on a later
+	// line than slotNameLine. Compute the line of the closing paren / return
+	// type so that directives on the same line aren't forced onto a new line.
+	directivePrecedingLine := slotNameLine
+	if fn.Ret != nil {
+		if retLine := typeNodeLine(fn.Ret); retLine > directivePrecedingLine {
+			directivePrecedingLine = retLine
+		}
+	}
+	if directivePrecedingLine == slotNameLine {
+		// No return type or return type on same line as name — check last arg
+		lastArg := fn.BlockParam
+		if lastArg == nil && len(fn.Args) > 0 {
+			lastArg = fn.Args[len(fn.Args)-1]
+		}
+		if lastArg != nil {
+			if argEnd := nodeEndLine(lastArg); argEnd > directivePrecedingLine {
+				// The closing paren is on or after the last arg's line
+				directivePrecedingLine = argEnd
+			}
+		}
+	}
+	f.formatSuffixDirectives(fn.Directives, directivePrecedingLine)
 
 	// Body
 	if fn.FunctionBase.Body != nil {
