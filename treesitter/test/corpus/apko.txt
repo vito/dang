@@ -200,14 +200,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                           (self_keyword
                             (self_token)))
                         (dot_token)
-                        (id
-                          (word_token)))
+                        (field_id))
                       (dot_token)
-                      (id
-                        (word_token)))
+                      (field_id))
                     (dot_token)
-                    (id
-                      (word_token)))
+                    (field_id))
                   (assign_op
                     (plus_equal_token))
                   (list
@@ -224,14 +221,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                           (self_keyword
                             (self_token)))
                         (dot_token)
-                        (id
-                          (word_token)))
+                        (field_id))
                       (dot_token)
-                      (id
-                        (word_token)))
+                      (field_id))
                     (dot_token)
-                    (id
-                      (word_token)))
+                    (field_id))
                   (assign_op
                     (plus_equal_token))
                   (list
@@ -310,14 +304,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                           (self_keyword
                             (self_token)))
                         (dot_token)
-                        (id
-                          (word_token)))
+                        (field_id))
                       (dot_token)
-                      (id
-                        (word_token)))
+                      (field_id))
                     (dot_token)
-                    (id
-                      (word_token)))
+                    (field_id))
                   (assign_op
                     (plus_equal_token))
                   (symbol_or_call
@@ -370,11 +361,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                         (self_keyword
                           (self_token)))
                       (dot_token)
-                      (id
-                        (word_token)))
+                      (field_id))
                     (dot_token)
-                    (id
-                      (word_token)))
+                    (field_id))
                   (assign_op
                     (plus_equal_token))
                   (symbol_or_call
@@ -406,8 +395,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                       (id
                         (word_token))))
                   (dot_token)
-                  (id
-                    (word_token))
+                  (field_id)
                   (arg_values
                     (immediate_paren)
                     (argument
@@ -422,8 +410,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                       (id
                                         (word_token))))
                                   (dot_token)
-                                  (id
-                                    (word_token))
+                                  (field_id)
                                   (arg_values
                                     (immediate_paren)
                                     (argument
@@ -433,8 +420,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                             (immediate_string_content)
                                             (immediate_quote_token)))))))
                                 (dot_token)
-                                (id
-                                  (word_token))
+                                (field_id)
                                 (arg_values
                                   (immediate_paren)
                                   (argument
@@ -461,8 +447,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                                     (immediate_string_content)
                                                     (immediate_quote_token))))))))))))
                               (dot_token)
-                              (id
-                                (word_token))
+                              (field_id)
                               (arg_values
                                 (immediate_paren)
                                 (argument
@@ -491,8 +476,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                                   (id
                                                     (word_token)))))))))))))
                             (dot_token)
-                            (id
-                              (word_token))
+                            (field_id)
                             (arg_values
                               (immediate_paren)
                               (argument
@@ -539,8 +523,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                         (immediate_string_content)
                                         (immediate_quote_token))))))))
                           (dot_token)
-                          (id
-                            (word_token))
+                          (field_id)
                           (arg_values
                             (immediate_paren)
                             (argument
@@ -625,8 +608,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                   (id
                                     (word_token)))))))))
                     (dot_token)
-                    (id
-                      (word_token))
+                    (field_id)
                     (arg_values
                       (immediate_paren)
                       (argument
@@ -636,8 +618,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                               (id
                                 (word_token))))))))
                   (dot_token)
-                  (id
-                    (word_token)))
+                  (field_id))
                 (sep)))))
         (sep))))
   (sep)
@@ -666,11 +647,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                               (id
                                 (word_token))))
                           (dot_token)
-                          (id
-                            (word_token)))
+                          (field_id))
                         (dot_token)
-                        (id
-                          (word_token)))))))))))))
+                        (field_id))))))))))))
   (sep)
   (symbol_or_call
     (call
@@ -691,11 +670,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                           (id
                             (word_token))))
                       (dot_token)
-                      (id
-                        (word_token)))
+                      (field_id))
                     (dot_token)
-                    (id
-                      (word_token))
+                    (field_id)
                     (arg_values
                       (immediate_paren)
                       (argument
@@ -706,11 +683,9 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                 (immediate_string_content)
                                 (immediate_quote_token))))))))
                   (dot_token)
-                  (id
-                    (word_token)))
+                  (field_id))
                 (dot_token)
-                (id
-                  (word_token))
+                (field_id)
                 (arg_values
                   (immediate_paren)
                   (argument
@@ -727,8 +702,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                             (immediate_string_content)
                             (immediate_quote_token))))))))
               (dot_token)
-              (id
-                (word_token))))))))
+              (field_id)))))))
   (sep)
   (symbol_or_call
     (call
@@ -747,8 +721,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                       (id
                         (word_token))))
                   (dot_token)
-                  (id
-                    (word_token))
+                  (field_id)
                   (arg_values
                     (immediate_paren)
                     (argument
@@ -759,8 +732,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                               (immediate_string_content)
                               (immediate_quote_token))))))))
                 (dot_token)
-                (id
-                  (word_token))
+                (field_id)
                 (arg_values
                   (immediate_paren)
                   (argument
@@ -777,5 +749,4 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                             (immediate_string_content)
                             (immediate_quote_token))))))))
               (dot_token)
-              (id
-                (word_token)))))))))
+              (field_id))))))))

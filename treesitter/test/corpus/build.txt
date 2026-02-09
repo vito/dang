@@ -53,8 +53,7 @@ print(test(bin(src)))
               (id
                 (word_token))))
           (dot_token)
-          (id
-            (word_token))
+          (field_id)
           (arg_values
             (immediate_paren)
             (argument
@@ -134,8 +133,7 @@ print(test(bin(src)))
                           (id
                             (word_token))))
                       (dot_token)
-                      (id
-                        (word_token))
+                      (field_id)
                       (arg_values
                         (immediate_paren)
                         (argument
@@ -145,8 +143,7 @@ print(test(bin(src)))
                                 (immediate_string_content)
                                 (immediate_quote_token)))))))
                     (dot_token)
-                    (id
-                      (word_token))
+                    (field_id)
                     (arg_values
                       (immediate_paren)
                       (argument
@@ -164,8 +161,7 @@ print(test(bin(src)))
                               (id
                                 (word_token))))))))
                   (dot_token)
-                  (id
-                    (word_token))
+                  (field_id)
                   (arg_values
                     (immediate_paren)
                     (argument
@@ -175,8 +171,7 @@ print(test(bin(src)))
                             (immediate_string_content)
                             (immediate_quote_token)))))))
                 (dot_token)
-                (id
-                  (word_token))
+                (field_id)
                 (arg_values
                   (immediate_paren)
                   (argument
@@ -194,8 +189,7 @@ print(test(bin(src)))
                           (immediate_string_content)
                           (immediate_quote_token)))))))
               (dot_token)
-              (id
-                (word_token))
+              (field_id)
               (arg_values
                 (immediate_paren)
                 (argument
@@ -230,8 +224,7 @@ print(test(bin(src)))
                           (immediate_string_content)
                           (immediate_quote_token))))))))
             (dot_token)
-            (id
-              (word_token))
+            (field_id)
             (arg_values
               (immediate_paren)
               (argument
@@ -283,8 +276,7 @@ print(test(bin(src)))
                       (id
                         (word_token))))
                   (dot_token)
-                  (id
-                    (word_token))
+                  (field_id)
                   (arg_values
                     (immediate_paren)
                     (argument
@@ -294,8 +286,7 @@ print(test(bin(src)))
                             (immediate_string_content)
                             (immediate_quote_token)))))))
                 (dot_token)
-                (id
-                  (word_token))
+                (field_id)
                 (arg_values
                   (immediate_paren)
                   (argument
@@ -313,8 +304,7 @@ print(test(bin(src)))
                           (id
                             (word_token))))))))
               (dot_token)
-              (id
-                (word_token))
+              (field_id)
               (arg_values
                 (immediate_paren)
                 (argument
@@ -331,8 +321,7 @@ print(test(bin(src)))
                           (immediate_string_content)
                           (immediate_quote_token))))))))
             (dot_token)
-            (id
-              (word_token)))
+            (field_id))
           (sep)))))
   (sep)
   (symbol_or_call

@@ -111,8 +111,7 @@ type Dev {
                             (id
                               (word_token))))
                         (dot_token)
-                        (id
-                          (word_token))
+                        (field_id)
                         (arg_values
                           (immediate_paren)
                           (argument
@@ -185,8 +184,7 @@ type Dev {
                       (id
                         (word_token))))
                   (dot_token)
-                  (id
-                    (word_token))
+                  (field_id)
                   (arg_values
                     (immediate_paren)
                     (argument
@@ -226,8 +224,7 @@ type Dev {
                       (id
                         (word_token))))
                   (dot_token)
-                  (id
-                    (word_token))
+                  (field_id)
                   (arg_values
                     (immediate_paren)
                     (argument

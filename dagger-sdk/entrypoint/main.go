@@ -260,7 +260,7 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 		call := &dang.FunCall{
 			Fun: &dang.Select{
 				Receiver: &dang.ValueNode{Val: parentModEnv},
-				Field:    fnName,
+				Field:    &dang.Symbol{Name: fnName},
 			},
 			Args: args,
 		}
@@ -310,7 +310,9 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 					Receiver: &dang.Symbol{
 						Name: "Dagger",
 					},
-					Field: fmt.Sprintf("load%sFromID", modType.Named),
+					Field: &dang.Symbol{
+						Name: fmt.Sprintf("load%sFromID", modType.Named),
+					},
 				},
 				Args: dang.Record{
 					dang.Keyed[dang.Node]{
