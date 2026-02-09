@@ -309,15 +309,19 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			}
 			if schema != nil {
 				importConfigs = append(importConfigs, dang.ImportConfig{
-					Name:   "Dagger",
-					Client: client,
-					Schema: schema,
+					Name:       "Dagger",
+					Client:     client,
+					Schema:     schema,
+					AutoImport: true,
 				})
 			}
 
 			if len(importConfigs) > 0 {
 				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 			}
+
+			// Inject auto-imports (e.g. Dagger) before inference
+			block.Forms = dang.InjectAutoImports(ctx, block.Forms)
 
 			// Run type inference to annotate AST with types
 			{

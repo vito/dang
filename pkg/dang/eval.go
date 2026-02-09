@@ -1351,6 +1351,9 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 
 	node := parsed.(*ModuleBlock)
 
+	// Inject auto-imports for any import configs in context
+	node.Forms = InjectAutoImports(ctx, node.Forms)
+
 	if debug {
 		_, _ = pretty.Println(node)
 	}
@@ -1446,9 +1449,9 @@ func ensureProjectImports(ctx context.Context, dir string) (context.Context, err
 	return ctx, nil
 }
 
-// injectAutoImports prepends synthetic ImportDecl nodes for any import configs
+// InjectAutoImports prepends synthetic ImportDecl nodes for any import configs
 // in the context that aren't already explicitly imported by the user's code.
-func injectAutoImports(ctx context.Context, forms []Node) []Node {
+func InjectAutoImports(ctx context.Context, forms []Node) []Node {
 	configs := importConfigsFromContext(ctx)
 	if len(configs) == 0 {
 		return forms
@@ -1524,7 +1527,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 	// Auto-inject imports for any import configs in context that aren't
 	// already explicitly imported. This allows SDKs (e.g. Dagger) to make
 	// their import available without requiring module authors to write it.
-	allForms = injectAutoImports(ctx, allForms)
+	allForms = InjectAutoImports(ctx, allForms)
 
 	// Create a master ModuleBlock containing all forms from all files
 	// The phased approach will handle dependency ordering
