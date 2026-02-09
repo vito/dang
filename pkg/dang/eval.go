@@ -1247,8 +1247,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		newBodyEnv := CreateCompositeEnv(instance, newEnv)
 		newBodyEnv.SetDynamicScope(instance)
 
+		var lastVal Value
 		for _, form := range c.NewBody.Forms {
-			_, err = EvalNode(ctx, newBodyEnv, form)
+			lastVal, err = EvalNode(ctx, newBodyEnv, form)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
 			}
@@ -1259,6 +1260,20 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 				// Update newBodyEnv to use the new instance
 				newBodyEnv = CreateCompositeEnv(instance, newEnv)
 				newBodyEnv.SetDynamicScope(instance)
+			}
+		}
+
+		// The new() body behaves like a normal function: its last expression
+		// is the return value. This allows method chains like
+		// self.withFoo() to propagate their changes (see #24).
+		//
+		// The return value must be an instance of the class (enforced by
+		// the constructor's function type). If the last expression is a
+		// self-field assignment or similar, the dynamic-scope-tracked
+		// instance is used as a fallback.
+		if lastVal != nil {
+			if mv, ok := lastVal.(*ModuleValue); ok && mv.Mod.Name() == c.ClassType.Name() {
+				instance = mv
 			}
 		}
 
