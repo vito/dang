@@ -387,11 +387,17 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		selfType := hm.NonNullType{Type: class}
 		class.SetDynamicScopeType(selfType)
 
-		// Hoist body forms (excluding new() which is handled separately)
+		// Hoist body forms directly (not via Block.Hoist which clones the env)
+		// to register method signatures on the class module. This enables
+		// forward references between types defined in any order. We hoist at
+		// pass 0 so that FunDecl.Hoist registers signatures.
 		bodyForms := c.bodyFormsWithoutNew()
-		bodyBlock := &Block{Forms: bodyForms}
-		if err := bodyBlock.Hoist(ctx, inferEnv, fresh, pass); err != nil {
-			return err
+		for _, form := range bodyForms {
+			if hoister, ok := form.(Hoister); ok {
+				if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+					return err
+				}
+			}
 		}
 	}
 

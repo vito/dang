@@ -1,0 +1,21 @@
+# Test that classes can reference other classes defined later in the file.
+# See: https://github.com/vito/dang/issues/22
+
+type App {
+  pub greet(): String! {
+    Greeter("world").hello()
+  }
+}
+
+type Greeter {
+  let name: String!
+
+  pub hello(): String! {
+    "Hello, " + name + "!"
+  }
+}
+
+assert("forward-referenced class") { App().greet() == "Hello, world!" }
+assert("direct usage still works") { Greeter("dang").hello() == "Hello, dang!" }
+
+print("Class forward reference test passed!")
