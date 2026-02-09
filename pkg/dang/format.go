@@ -1148,6 +1148,47 @@ func (f *Formatter) formatScalarDecl(s *ScalarDecl) {
 	f.write(s.Name.Name)
 }
 
+// wereSuffixDirectivesMultiline checks if suffix directives were originally on
+// separate lines from the preceding content (identified by precedingLine).
+func wereSuffixDirectivesMultiline(directives []*DirectiveApplication, precedingLine int) bool {
+	for _, d := range directives {
+		if d.IsPrefix {
+			continue
+		}
+		if d.Loc != nil && d.Loc.Line > precedingLine {
+			return true
+		}
+	}
+	return false
+}
+
+// formatSuffixDirectives emits suffix directives, preserving multiline layout
+// when the directives were originally on separate lines. precedingLine is the
+// source line of the content that appeared before the directives.
+func (f *Formatter) formatSuffixDirectives(directives []*DirectiveApplication, precedingLine int) {
+	multiline := wereSuffixDirectivesMultiline(directives, precedingLine)
+	if multiline {
+		f.indent++
+		defer func() { f.indent-- }()
+	}
+	prevLine := precedingLine
+	for _, d := range directives {
+		if d.IsPrefix {
+			continue
+		}
+		if multiline && d.Loc != nil && d.Loc.Line > prevLine {
+			f.newline()
+			f.writeIndent()
+		} else {
+			f.write(" ")
+		}
+		f.formatDirectiveApplication(d)
+		if d.Loc != nil {
+			prevLine = d.Loc.Line
+		}
+	}
+}
+
 func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 	// Doc string
 	if s.DocString != "" {
@@ -1224,17 +1265,18 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 		}
 	}
 
+	// Determine the source line of the name for directive multiline detection
+	nameLine := 0
+	if s.Name.Loc != nil {
+		nameLine = s.Name.Loc.Line
+	}
+
 	// Value and suffix directives - placement depends on value type
 	if s.Value != nil {
 		if block, ok := s.Value.(*Block); ok {
 			// Block value: suffix directives come before block
 			// pub foo: Type @directive { ... } OR pub foo @directive = { ... }
-			for _, d := range s.Directives {
-				if !d.IsPrefix {
-					f.write(" ")
-					f.formatDirectiveApplication(d)
-				}
-			}
+			f.formatSuffixDirectives(s.Directives, nameLine)
 			if s.Type_ != nil {
 				f.write(" {")
 				f.formatBlockContents(block)
@@ -1249,22 +1291,12 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 			// pub foo: Type = value @directive OR pub foo = value @directive
 			f.write(" = ")
 			f.formatNode(s.Value)
-			for _, d := range s.Directives {
-				if !d.IsPrefix {
-					f.write(" ")
-					f.formatDirectiveApplication(d)
-				}
-			}
+			f.formatSuffixDirectives(s.Directives, nameLine)
 		}
 	} else {
 		// No value - just type with suffix directives
 		// pub foo: Type @directive
-		for _, d := range s.Directives {
-			if !d.IsPrefix {
-				f.write(" ")
-				f.formatDirectiveApplication(d)
-			}
-		}
+		f.formatSuffixDirectives(s.Directives, nameLine)
 	}
 }
 
@@ -1288,12 +1320,11 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl) {
 	}
 
 	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
-	for _, d := range fn.Directives {
-		if !d.IsPrefix {
-			f.write(" ")
-			f.formatDirectiveApplication(d)
-		}
+	fnLine := 0
+	if fn.Loc != nil {
+		fnLine = fn.Loc.Line
 	}
+	f.formatSuffixDirectives(fn.Directives, fnLine)
 
 	// Body
 	if fn.FunctionBase.Body != nil {

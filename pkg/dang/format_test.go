@@ -797,7 +797,71 @@ import Beta
 pub x = 1
 `,
 		},
+	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "multiline suffix directives are preserved",
+			input: `pub workspace: Directory!
+  @defaultPath(path: "/")
+  @ignorePatterns(patterns: [
+    "*",
+    "!sdk/elixir"
+  ])`,
+			expected: `pub workspace: Directory!
+  @defaultPath(path: "/")
+  @ignorePatterns(patterns: [
+    "*",
+    "!sdk/elixir",
+  ])
+`,
+		},
+		{
+			name: "single-line suffix directives stay on one line",
+			input: `pub workspace: Directory! @defaultPath(path: "/")`,
+			expected: `pub workspace: Directory! @defaultPath(path: "/")
+`,
+		},
+		{
+			name: "multiple suffix directives on same line stay on one line",
+			input: `pub x: Int! @foo @bar`,
+			expected: `pub x: Int! @foo @bar
+`,
+		},
+		{
+			name: "multiline directives inside type body",
+			input: `type Foo {
+  pub workspace: Directory!
+    @defaultPath(path: "/")
+    @ignorePatterns(patterns: [
+      "*",
+      "!sdk/elixir"
+    ])
+}`,
+			expected: `type Foo {
+  pub workspace: Directory!
+    @defaultPath(path: "/")
+    @ignorePatterns(patterns: [
+      "*",
+      "!sdk/elixir",
+    ])
+}
+`,
+		},
 	}
 
 	for _, tt := range tests {
