@@ -51,6 +51,10 @@ Dagger.container # test: ^wwK => hover: Container!
 Dagger.container.from # test: ^wwwwK => hover: Download a container image
 
 type MyModule {
+	pub ctr(address: String!): Container! { # test: ^wK => hover: pub ctr(address: String!): Container!
+		container.from(address)
+	}
+
 	pub build: File! {
 		generated.file("built") # test: ^K => hover: Base with ./hack/generate ran.
 	}

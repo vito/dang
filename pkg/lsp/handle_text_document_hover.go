@@ -51,87 +51,42 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 	}
 
 	// Check if we're hovering over a field access (Select node)
-	var docString string
-	var typeInfo string
-
 	if selectNode, ok := node.(*dang.Select); ok {
-		// Get the receiver's type
 		receiverType := selectNode.Receiver.GetInferredType()
 		if receiverType != nil {
-			// Unwrap NonNullType if needed
 			if nn, ok := receiverType.(hm.NonNullType); ok {
 				receiverType = nn.Type
 			}
-
-			// Cast as an Env to look up the field's doc
 			if env, ok := receiverType.(dang.Env); ok {
+				var docString string
 				if doc, found := env.GetDocString(selectNode.Field); found {
 					docString = doc
 				}
-
-				// Get the field's type
 				if scheme, found := env.LocalSchemeOf(selectNode.Field); found {
 					fieldType, _ := scheme.Type()
-					typeInfo = fmt.Sprintf("%v", fieldType)
+					codeBlock := fmt.Sprintf("%s: %s", symbolName, fieldType)
+					return h.hoverResultWithDoc(docString, codeBlock)
 				}
 			}
 		}
 	}
 
-	// Get the inferred type from the node if we don't have it yet
-	if typeInfo == "" {
-		inferredType := node.GetInferredType()
-		if inferredType != nil {
-			typeInfo = fmt.Sprintf("%v", inferredType)
-		}
+	// Try the node's inferred type
+	if inferredType := node.GetInferredType(); inferredType != nil {
+		codeBlock := fmt.Sprintf("%s: %s", symbolName, inferredType)
+		return h.hoverResult(f, params.Position, symbolName, codeBlock)
 	}
 
-	// If we couldn't get type info from the node, try to find it in the symbol table
-	if typeInfo == "" {
-		if f.Symbols != nil {
-			if def, ok := f.Symbols.Definitions[symbolName]; ok {
-				// We have a definition but no type info yet
-				typeInfo = fmt.Sprintf("(symbol: %s)", def.Name)
+	// Try to format the declaring node's signature from the symbol table
+	if f.Symbols != nil {
+		if def, ok := f.Symbols.Definitions[symbolName]; ok {
+			if sig := formatDeclSignature(def.Node); sig != "" {
+				return h.hoverResult(f, params.Position, symbolName, sig)
 			}
 		}
 	}
 
-	if typeInfo == "" {
-		return nil, nil
-	}
-
-	slog.InfoContext(ctx, "hover result", "symbol", symbolName, "type", typeInfo)
-
-	// Try to get documentation from the type environment (if we don't have it yet)
-	if docString == "" {
-		// First try the file's type environment
-		if f.TypeEnv != nil {
-			if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
-				docString = doc
-			}
-		}
-
-		// If not found at file level, try to find in lexical scopes
-		if docString == "" {
-			docString = h.findDocInLexicalScope(ctx, f.AST, params.Position, symbolName)
-		}
-	}
-
-	// Build the hover content
-	var content string
-	if docString != "" {
-		content = fmt.Sprintf("%s\n\n```dang\n%s: %s\n```", docString, symbolName, typeInfo)
-	} else {
-		content = fmt.Sprintf("```dang\n%s: %s\n```", symbolName, typeInfo)
-	}
-
-	// Return hover information with the type
-	return &Hover{
-		Contents: MarkupContent{
-			Kind:  Markdown,
-			Value: content,
-		},
-	}, nil
+	return nil, nil
 }
 
 // findNodeAtPosition finds the most specific AST node at the given position
@@ -155,6 +110,82 @@ func (h *langHandler) findNodeAtPosition(root dang.Node, pos Position) dang.Node
 	})
 
 	return result
+}
+
+// hoverResult builds a hover response, looking up doc strings from the environment.
+func (h *langHandler) hoverResult(f *File, pos Position, symbolName string, codeBlock string) (any, error) {
+	var docString string
+
+	// Try the file's type environment
+	if f.TypeEnv != nil {
+		if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
+			docString = doc
+		}
+	}
+
+	// If not found at file level, try to find in lexical scopes
+	if docString == "" && f.AST != nil {
+		environments := findEnclosingEnvironments(f.AST, pos)
+		for i := len(environments) - 1; i >= 0; i-- {
+			if doc, ok := environments[i].GetDocString(symbolName); ok {
+				docString = doc
+				break
+			}
+		}
+	}
+
+	return h.hoverResultWithDoc(docString, codeBlock)
+}
+
+// hoverResultWithDoc builds a hover response with an explicit doc string.
+func (h *langHandler) hoverResultWithDoc(docString string, codeBlock string) (any, error) {
+	var content string
+	if docString != "" {
+		content = fmt.Sprintf("%s\n\n```dang\n%s\n```", docString, codeBlock)
+	} else {
+		content = fmt.Sprintf("```dang\n%s\n```", codeBlock)
+	}
+
+	return &Hover{
+		Contents: MarkupContent{
+			Kind:  Markdown,
+			Value: content,
+		},
+	}, nil
+}
+
+// formatDeclSignature formats a declaring node's signature without the body.
+func formatDeclSignature(node dang.Node) string {
+	switch n := node.(type) {
+	case *dang.SlotDecl:
+		// Temporarily strip the doc string, value, and body to format just the signature.
+		savedDoc := n.DocString
+		savedValue := n.Value
+		n.DocString = ""
+
+		if funDecl, ok := n.Value.(*dang.FunDecl); ok {
+			// For functions, keep the FunDecl but strip its body.
+			savedBody := funDecl.FunctionBase.Body
+			funDecl.FunctionBase.Body = nil
+			sig := dang.Format(n)
+			funDecl.FunctionBase.Body = savedBody
+			n.DocString = savedDoc
+			return sig
+		}
+
+		// For non-function slots, strip the value so we get just the type annotation.
+		n.Value = nil
+		sig := dang.Format(n)
+		n.Value = savedValue
+		n.DocString = savedDoc
+		return sig
+
+	case *dang.ClassDecl:
+		return fmt.Sprintf("type %s", n.Name.Name)
+
+	default:
+		return ""
+	}
 }
 
 // hoverDirectiveApplication returns hover info for a directive application by looking up its declaration.
@@ -200,18 +231,4 @@ func (h *langHandler) hoverDirectiveApplication(ctx context.Context, f *File, ap
 	}, nil
 }
 
-// findDocInLexicalScope searches for documentation in any enclosing lexical scope
-func (h *langHandler) findDocInLexicalScope(ctx context.Context, root dang.Node, pos Position, symbolName string) string {
-	// Collect all enclosing environments
-	environments := findEnclosingEnvironments(root, pos)
 
-	// Search environments from innermost to outermost
-	// (reverse order since we collected from outermost to innermost)
-	for i := len(environments) - 1; i >= 0; i-- {
-		if doc, ok := environments[i].GetDocString(symbolName); ok {
-			return doc
-		}
-	}
-
-	return ""
-}
