@@ -2502,14 +2502,29 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 		if multiline {
 			f.newline()
 			f.indented(func() {
-				for i, frag := range o.InlineFragments {
-					if i > 0 {
-						f.newline()
+				// Reset lastLine to prevent spurious blank line at start
+				if len(o.InlineFragments) > 0 && o.InlineFragments[0].Loc != nil {
+					f.lastLine = o.InlineFragments[0].Loc.Line - 1
+				}
+
+				for _, frag := range o.InlineFragments {
+					if frag.Loc != nil {
+						f.emitCommentsBeforeNode(frag.Loc.Line, false)
+						f.lastLine = frag.Loc.Line
 					}
 					f.writeIndent()
 					f.formatInlineFragment(frag)
+					if frag.Loc != nil {
+						f.emitTrailingComment(frag.Loc.Line)
+						f.lastLine = frag.Loc.Line
+					}
+					f.newline()
 				}
-				f.newline()
+
+				// Emit comments between last fragment and closing }
+				if o.Loc != nil && o.Loc.End != nil {
+					f.emitCommentsBeforeNode(o.Loc.End.Line, false)
+				}
 			})
 			f.writeIndent()
 		} else {
@@ -2528,15 +2543,36 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 	if multiline {
 		f.newline()
 		f.indented(func() {
+			// Reset lastLine to prevent spurious blank line at start
+			if len(o.Fields) > 0 && o.Fields[0].Loc != nil {
+				f.lastLine = o.Fields[0].Loc.Line - 1
+			}
+
 			for i, field := range o.Fields {
-				if i > 0 {
-					f.write(",")
-					f.newline()
+				if field.Loc != nil {
+					f.emitCommentsBeforeNode(field.Loc.Line, false)
+					f.lastLine = field.Loc.Line
 				}
 				f.writeIndent()
 				f.formatFieldSelection(field)
+				if i < len(o.Fields)-1 {
+					f.write(",")
+				}
+				if field.Loc != nil {
+					f.emitTrailingComment(field.Loc.Line)
+					endLine := field.Loc.Line
+					if field.Selection != nil && field.Selection.Loc != nil && field.Selection.Loc.End != nil {
+						endLine = field.Selection.Loc.End.Line
+					}
+					f.lastLine = endLine
+				}
+				f.newline()
 			}
-			f.newline()
+
+			// Emit comments between last field and closing }
+			if o.Loc != nil && o.Loc.End != nil {
+				f.emitCommentsBeforeNode(o.Loc.End.Line, false)
+			}
 		})
 		f.writeIndent()
 	} else {
