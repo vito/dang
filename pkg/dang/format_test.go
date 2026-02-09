@@ -473,6 +473,120 @@ func (FormatSuite) TestTrailingCommentsInChains(ctx context.Context, t *testctx.
 	}
 }
 
+func (FormatSuite) TestStandaloneCommentsInChains(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "comment before first chain element",
+			input: `pub x = container
+  # set the image
+  .from("alpine")
+  .imageRef`,
+			expected: `pub x = container
+  # set the image
+  .from("alpine")
+  .imageRef
+`,
+		},
+		{
+			name: "comment before middle chain element",
+			input: `pub x = container
+  .from("alpine")
+  # get the ref
+  .imageRef`,
+			expected: `pub x = container
+  .from("alpine")
+  # get the ref
+  .imageRef
+`,
+		},
+		{
+			name: "multiple comments before a chain element",
+			input: `pub x = container
+  # first comment
+  # second comment
+  .from("alpine")
+  .imageRef`,
+			expected: `pub x = container
+  # first comment
+  # second comment
+  .from("alpine")
+  .imageRef
+`,
+		},
+		{
+			name: "comments before each chain element",
+			input: `pub x = container
+  # comment on from
+  .from("alpine")
+  # comment on imageRef
+  .imageRef`,
+			expected: `pub x = container
+  # comment on from
+  .from("alpine")
+  # comment on imageRef
+  .imageRef
+`,
+		},
+		{
+			name: "mixed standalone and trailing comments in chain",
+			input: `pub x = container
+  # standalone before from
+  .from("alpine") # trailing on from
+  # standalone before imageRef
+  .imageRef`,
+			expected: `pub x = container
+  # standalone before from
+  .from("alpine") # trailing on from
+  # standalone before imageRef
+  .imageRef
+`,
+		},
+		{
+			name: "comment in select-only chain",
+			input: `pub x = foo
+  # comment
+  .bar
+  .baz`,
+			expected: `pub x = foo
+  # comment
+  .bar
+  .baz
+`,
+		},
+		{
+			name: "idempotent after formatting",
+			input: `pub x = container
+  # set the image
+  .from("alpine")
+  # another comment
+  .imageRef`,
+			expected: `pub x = container
+  # set the image
+  .from("alpine")
+  # another comment
+  .imageRef
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			// Verify idempotency: formatting the output again should produce the same result
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
