@@ -2,9 +2,9 @@
 
 # Case with operand and else
 pub result1 = case (3) {
-	1 => "one"
-	2 => "two"
-	else => "other"
+  1 => "one"
+  2 => "two"
+  else => "other"
 }
 
 assert { result1 == "other" }
@@ -12,38 +12,38 @@ assert { result1 == "other" }
 # Case without operand and else
 pub x = 15
 pub result2 = case {
-	x < 10 => "small"
-	x > 20 => "large"
-	else => "medium"
+  x < 10 => "small"
+  x > 20 => "large"
+  else => "medium"
 }
 
 assert { result2 == "medium" }
 
 # Else is always last - should match when no other clause does
 pub result3 = case ("hello") {
-	"world" => "not this"
-	"goodbye" => "not this either"
-	else => "caught by else"
+  "world" => "not this"
+  "goodbye" => "not this either"
+  else => "caught by else"
 }
 
 assert { result3 == "caught by else" }
 
 # Else can be matched even if value could match
 pub result4 = case (5) {
-	1 => "one"
-	else => "default"
-	5 => "five" # This won't be reached if else comes first
+  1 => "one"
+  else => "default"
+  5 => "five" # This won't be reached if else comes first
 }
 
 assert { result4 == "default" }
 
 # Test that else works in function
 pub classify(x: Int!): String! {
-	case (x) {
-		0 => "zero"
-		1 => "one"
-		else => "many"
-	}
+  case (x) {
+    0 => "zero"
+    1 => "one"
+    else => "many"
+  }
 }
 
 assert { classify(0) == "zero" }

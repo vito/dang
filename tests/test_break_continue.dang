@@ -3,10 +3,10 @@ pub numbers = [1, 2, 3, 4, 5]
 pub sum = 0
 
 for (num in numbers) {
-	if (num == 3) {
-		break
-	}
-	sum += num
+  if (num == 3) {
+    break
+  }
+  sum += num
 }
 
 assert { sum == 3 } # Only 1 + 2, stops before 3
@@ -16,10 +16,10 @@ pub numbers2 = [1, 2, 3, 4, 5]
 pub sum2 = 0
 
 for (num in numbers2) {
-	if (num == 3) {
-		continue
-	}
-	sum2 += num
+  if (num == 3) {
+    continue
+  }
+  sum2 += num
 }
 
 assert { sum2 == 12 } # 1 + 2 + 4 + 5, skips 3
@@ -27,10 +27,10 @@ assert { sum2 == 12 } # 1 + 2 + 4 + 5, skips 3
 # Test break in for loop with condition
 pub count = 0
 for (count < 10) {
-	count += 1
-	if (count == 5) {
-		break
-	}
+  count += 1
+  if (count == 5) {
+    break
+  }
 }
 
 assert { count == 5 }
@@ -40,11 +40,11 @@ pub count2 = 0
 pub evens = 0
 
 for (count2 < 10) {
-	count2 += 1
-	if (count2 % 2 == 1) {
-		continue
-	}
-	evens += 1
+  count2 += 1
+  if (count2 % 2 == 1) {
+    continue
+  }
+  evens += 1
 }
 
 assert { evens == 5 } # 2, 4, 6, 8, 10
@@ -54,15 +54,15 @@ pub matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 pub found = 0
 
 for (row in matrix) {
-	for (value in row) {
-		if (value == 5) {
-			found = value
-			break
-		}
-	}
-	if (found == 5) {
-		break
-	}
+  for (value in row) {
+    if (value == 5) {
+      found = value
+      break
+    }
+  }
+  if (found == 5) {
+    break
+  }
 }
 
 assert { found == 5 }
@@ -71,15 +71,15 @@ assert { found == 5 }
 # continue should continue the innermost loop
 pub result = 0
 for (i in [1, 2, 3]) {
-	for (j in [1, 2, 3]) {
-		if (i == 2) {
-			continue
-		}
-		if (j == 2) {
-			continue
-		}
-		result += i * j
-	}
+  for (j in [1, 2, 3]) {
+    if (i == 2) {
+      continue
+    }
+    if (j == 2) {
+      continue
+    }
+    result += i * j
+  }
 }
 
 # With i==2, continue skips to next j in the inner loop
@@ -94,10 +94,10 @@ pub items = ["a", "b", "c", "d"]
 pub lastIndex = 0 - 1
 
 for (index, value in items) {
-	if (value == "c") {
-		lastIndex = index
-		break
-	}
+  if (value == "c") {
+    lastIndex = index
+    break
+  }
 }
 
 assert { lastIndex == 2 }
@@ -107,10 +107,10 @@ pub items2 = ["a", "b", "c", "d"]
 pub result3 = ""
 
 for (index, value in items2) {
-	if (index == 1) {
-		continue
-	}
-	result3 += value
+  if (index == 1) {
+    continue
+  }
+  result3 += value
 }
 
 assert { result3 == "acd" } # Skips index 1 (which is "b")

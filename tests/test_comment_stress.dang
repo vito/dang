@@ -8,49 +8,49 @@ pub z = x + 5 # trailing on pub with expression
 
 # standalone before type
 type Greeter { # trailing on type open
-	"""
-	Says hello.
-	"""
-	pub greet(name: String!): String! { # trailing on pub fun with args
-		"Hello, " + name # trailing on body expression
-	}
+  """
+  Says hello.
+  """
+  pub greet(name: String!): String! { # trailing on pub fun with args
+    "Hello, " + name # trailing on body expression
+  }
 
-	pub shout(name: String!): String! { # trailing on another pub fun
-		greet(name).toUpper # trailing on chained expression
-	}
+  pub shout(name: String!): String! { # trailing on another pub fun
+    greet(name).toUpper # trailing on chained expression
+  }
 
-	pub id: Int! { # trailing on parameterless pub fun
-		42 # trailing on literal in block
-	}
+  pub id: Int! { # trailing on parameterless pub fun
+    42 # trailing on literal in block
+  }
 
-	let secret: String! { # trailing on let fun
-		"shhh" # trailing on let fun body
-	}
+  let secret: String! { # trailing on let fun
+    "shhh" # trailing on let fun body
+  }
 } # trailing on type close brace line - standalone after type
 
 # standalone between types
 type Pair { # trailing on second type open
-	pub first: Int! # trailing on type field with no body
-	pub second: Int! # trailing on second type field
+  pub first: Int! # trailing on type field with no body
+  pub second: Int! # trailing on second type field
 
-	pub sum: Int! { # trailing on method
-		first + second # trailing on addition
-	}
+  pub sum: Int! { # trailing on method
+    first + second # trailing on addition
+  }
 } # trailing on second type close
 
 # enum declaration
 enum Color { RED GREEN BLUE } # trailing on single-line enum
 
 enum Direction { # trailing on multi-line enum open
-	NORTH
-	SOUTH
-	EAST
-	WEST
+  NORTH
+  SOUTH
+  EAST
+  WEST
 }
 
 # interface declaration
 interface Printable { # trailing on interface open
-	pub display: String! # trailing on interface field
+  pub display: String! # trailing on interface field
 }
 
 # directives
@@ -58,34 +58,34 @@ directive @cool on FIELD_DEFINITION # trailing on directive
 
 # standalone before function
 pub add(a: Int!, b: Int!): Int! { # trailing on function open
-	a + b # trailing on function body
+  a + b # trailing on function body
 }
 
 # for loop
 let total = 0 # trailing on mutable let
 for (num in [1, 2, 3]) { # trailing on for loop open
-	total += num # trailing on for body
+  total += num # trailing on for body
 }
 
 # conditional
 pub result = if (x > 10) { # trailing on if
-	"big" # trailing on then branch
+  "big" # trailing on then branch
 } else { # trailing on else
-	"small" # trailing on else branch
+  "small" # trailing on else branch
 }
 
 # case expression
 pub matched = case (x) { # trailing on case open
-	1 => "one" # trailing on case clause
-	42 => "the answer" # trailing on matching clause
-	else => "other" # trailing on else clause
+  1 => "one" # trailing on case clause
+  42 => "the answer" # trailing on matching clause
+  else => "other" # trailing on else clause
 }
 
 # list - multiline
 pub nums = [ # trailing on list open
-	1, # trailing on first element
-	2, # trailing on second element
-	3, # trailing on third element
+  1, # trailing on first element
+  2, # trailing on second element
+  3, # trailing on third element
 ]
 
 # list - single line
@@ -96,22 +96,22 @@ pub doubled = nums.map { n => n * 2 } # trailing on block arg
 
 # multiline chain
 pub chainResult = [1, 2, 3] # trailing on chain root
-	.map { n => n * 2 } # trailing on first chain step
-	.filter { n => n > 2 } # trailing on second chain step
+  .map { n => n * 2 } # trailing on first chain step
+  .filter { n => n > 2 } # trailing on second chain step
 
 # assert
 assert { x == 42 } # trailing on assert
 
 assert("custom message") { # trailing on assert with message
-	total == 6 # trailing on assert body
+  total == 6 # trailing on assert body
 }
 
 # nested blocks
 pub outer = { # trailing on outer block open
-	let inner = { # trailing on inner block open
-		42 # trailing on inner value
-	}
-	inner + 1 # trailing on outer body
+  let inner = { # trailing on inner block open
+    42 # trailing on inner value
+  }
+  inner + 1 # trailing on outer body
 }
 
 # binary operations
@@ -120,7 +120,7 @@ pub math = (1 + 2) * 3 # trailing on grouped math
 # for with index
 let indexed = "" # trailing on mutable string
 for (i, val in ["a", "b", "c"]) { # trailing on for with index
-	indexed += val # trailing on indexed for body
+  indexed += val # trailing on indexed for body
 }
 
 # boolean operations
@@ -132,19 +132,19 @@ pub safe = maybe ?? 99 # trailing on default operator
 
 # type with implements and directives
 type Fancy implements Printable { # trailing on type with implements
-	@cool # trailing on prefix directive
-	pub display: String! { # trailing on directive-decorated field
-		"I'm fancy!" # trailing on decorated body
-	}
+  @cool # trailing on prefix directive
+  pub display: String! { # trailing on directive-decorated field
+    "I'm fancy!" # trailing on decorated body
+  }
 }
 
 # deeply nested
 pub deep = if (true) { # trailing on outer if
-	if (true) { # trailing on inner if
-		if (true) { # trailing on innermost if
-			"deep" # trailing on deep value
-		}
-	}
+  if (true) { # trailing on inner if
+    if (true) { # trailing on innermost if
+      "deep" # trailing on deep value
+    }
+  }
 }
 
 # reassignment
@@ -154,19 +154,19 @@ counter += 1 # trailing on compound reassignment
 
 # self keyword in class
 type Counter { # trailing on Counter type
-	pub value: Int! # trailing on Counter field
+  pub value: Int! # trailing on Counter field
 
-	pub incr: Counter! { # trailing on incr method
-		value += 1 # trailing on incr body
-		self # trailing on self return
-	}
+  pub incr: Counter! { # trailing on incr method
+    value += 1 # trailing on incr body
+    self # trailing on self return
+  }
 }
 
 # chained method calls with args
 let ctr = Counter(0) # trailing on ctr init
-	.incr # trailing on first incr
-	.incr # trailing on second incr
-	.incr # trailing on third incr
+  .incr # trailing on first incr
+  .incr # trailing on second incr
+  .incr # trailing on third incr
 
 assert { ctr.value == 3 } # trailing on final assert
 

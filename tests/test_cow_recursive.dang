@@ -1,40 +1,40 @@
 # Test: Recursive calls should maintain COW semantics
 
 type Counter {
-	let count = 0
+  let count = 0
 
-	pub increment: Counter! {
-		print("increment called, count = " + toJSON(self.count))
-		self.count = self.count + 1
-		self
-	}
+  pub increment: Counter! {
+    print("increment called, count = " + toJSON(self.count))
+    self.count = self.count + 1
+    self
+  }
 
-	# Recursively increment n times
-	pub incrementN(n: Int!): Counter! {
-		print("incrementN(" + toJSON(n) + ") called, count = " + toJSON(self.count))
+  # Recursively increment n times
+  pub incrementN(n: Int!): Counter! {
+    print("incrementN(" + toJSON(n) + ") called, count = " + toJSON(self.count))
 
-		if (n <= 0) {
-			print("\tBase case reached")
-			self
-		} else {
-			print("\tIncrementing and recursing")
-			# This should create a new copy each time due to COW
-			let incremented = increment
-			incremented.incrementN(n - 1)
-		}
-	}
+    if (n <= 0) {
+      print("\tBase case reached")
+      self
+    } else {
+      print("\tIncrementing and recursing")
+      # This should create a new copy each time due to COW
+      let incremented = increment
+      incremented.incrementN(n - 1)
+    }
+  }
 
-	pub testRecursive: Counter! {
-		let result1 = self.incrementN(2)
-		let result2 = self.incrementN(2)
+  pub testRecursive: Counter! {
+    let result1 = self.incrementN(2)
+    let result2 = self.incrementN(2)
 
-		# Both should have count=2 if COW works
-		# If mutations accumulate, result2 will have count=4
-		assert { result1.count == 2 }
-		assert { result2.count == 2 }
+    # Both should have count=2 if COW works
+    # If mutations accumulate, result2 will have count=4
+    assert { result1.count == 2 }
+    assert { result2.count == 2 }
 
-		self
-	}
+    self
+  }
 }
 
 Counter.testRecursive

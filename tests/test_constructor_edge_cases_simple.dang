@@ -2,13 +2,13 @@
 
 # Class with no constructor parameters (only functions)
 type FunctionOnly {
-	pub getValue: Int! {
-		42
-	}
+  pub getValue: Int! {
+    42
+  }
 
-	pub getString: String! {
-		"hello"
-	}
+  pub getString: String! {
+    "hello"
+  }
 }
 
 assert { FunctionOnly.getValue == 42 }
@@ -18,15 +18,15 @@ assert { FunctionOnly.getString == "hello" }
 pub globalValue = "global"
 
 type UsingGlobals {
-	pub local: String! = globalValue + "_local"
+  pub local: String! = globalValue + "_local"
 }
 
 assert { UsingGlobals.local == "global_local" }
 
 # Constructor with list default values
 type ListDefaults {
-	pub numbers: [Int!]! = [1, 2, 3]
-	pub names: [String!]! = ["a", "b"]
+  pub numbers: [Int!]! = [1, 2, 3]
+  pub names: [String!]! = ["a", "b"]
 }
 
 assert { ListDefaults.numbers == [1, 2, 3] }

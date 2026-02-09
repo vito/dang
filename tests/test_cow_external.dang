@@ -1,12 +1,12 @@
 # Test 1: Does the fix work when calling methods from outside the module?
 
 type Counter {
-	let count = 0
+  let count = 0
 
-	pub increment: Counter! {
-		self.count = self.count + 1
-		self
-	}
+  pub increment: Counter! {
+    self.count = self.count + 1
+    self
+  }
 }
 
 # Calling from outside - this should still work because we're using self.

@@ -2,17 +2,17 @@
 # See: https://github.com/vito/dang/issues/22
 
 type App {
-	pub greet: String! {
-		Greeter("world").hello
-	}
+  pub greet: String! {
+    Greeter("world").hello
+  }
 }
 
 type Greeter {
-	let name: String!
+  let name: String!
 
-	pub hello: String! {
-		"Hello, " + name + "!"
-	}
+  pub hello: String! {
+    "Hello, " + name + "!"
+  }
 }
 
 assert("forward-referenced class") { App.greet == "Hello, world!" }

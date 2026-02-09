@@ -35,7 +35,7 @@ assert { tsList[1] == ts }
 
 # Test 8: Scalars with functions
 pub getTimestamp: String! {
-	toJSON(ts)
+  toJSON(ts)
 }
 
 assert { getTimestamp == "\"2024-01-15T10:30:00Z\"" }

@@ -1,13 +1,13 @@
 type Calculator {
-	pub x: Int!
+  pub x: Int!
 
-	"""
-	Start a coding agent with the provided module.
-	"""
-	pub addY(y: Int!): Calculator! {
-		self.x += y
-		self
-	}
+  """
+  Start a coding agent with the provided module.
+  """
+  pub addY(y: Int!): Calculator! {
+    self.x += y
+    self
+  }
 }
 
 assert { Calculator(1).addY(4).x == 5 }

@@ -7,8 +7,8 @@
 # For now, we'll focus on positive test cases
 
 type ValidConstructor {
-	pub name: String! = "test"
-	pub value: Int! = 42
+  pub name: String! = "test"
+  pub value: Int! = 42
 }
 
 # Test that constructors work correctly
@@ -19,7 +19,7 @@ assert { ValidConstructor("custom", 100).value == 100 }
 
 # Test constructor auto-calling with zero-arity constructors
 type ZeroArity {
-	pub message: String! = "auto-called"
+  pub message: String! = "auto-called"
 }
 
 # ZeroArity should be auto-called since all parameters have defaults

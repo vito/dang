@@ -6,8 +6,8 @@ import Test
 # Both Test and Other provide @experimental
 # Qualified access should work fine
 type MyType {
-	pub field1: String! @Test.experimental
-	pub field2: String! @Other.experimental
+  pub field1: String! @Test.experimental
+  pub field2: String! @Other.experimental
 }
 
 print("Qualified directive access successful!")

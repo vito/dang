@@ -1,13 +1,13 @@
 import Test
 
 assert("auto-calling symbols") {
-	serverInfo().platform() == serverInfo.platform() #nofmt
+  serverInfo().platform() == serverInfo.platform() #nofmt
 }
 
 assert("auto-calling selections") {
-	serverInfo.platform == serverInfo.platform() #nofmt
+  serverInfo.platform == serverInfo.platform() #nofmt
 }
 
 assert("auto-calling selections (qualified)") {
-	Test.serverInfo().platform() == Test.serverInfo.platform() #nofmt
+  Test.serverInfo().platform() == Test.serverInfo.platform() #nofmt
 }

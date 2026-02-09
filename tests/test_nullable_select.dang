@@ -2,8 +2,8 @@
 # If foo is nullable, then foo.bar should also be nullable even if bar is normally non-null
 
 type TestRecord {
-	let name: String! = "test"
-	let id: Int! = 42
+  let name: String! = "test"
+  let id: Int! = 42
 }
 
 # Test case 1: nullable object field selection
@@ -19,7 +19,7 @@ assert { maybeRecord.id == null }
 
 # Test case 2: nested nullable selection
 type NestedRecord {
-	let inner: TestRecord! = TestRecord
+  let inner: TestRecord! = TestRecord
 }
 
 pub maybeNested: NestedRecord = NestedRecord
@@ -31,7 +31,7 @@ assert { maybeNested.inner.name == null }
 
 # Test case 3: chain of nullable selections
 type ChainRecord {
-	let level1: NestedRecord! = NestedRecord
+  let level1: NestedRecord! = NestedRecord
 }
 
 pub maybeChain: ChainRecord = ChainRecord

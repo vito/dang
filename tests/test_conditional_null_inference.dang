@@ -6,11 +6,11 @@
 
 # With explicit nullable return type
 pub maybeName(flag: Boolean!): String {
-	if (flag) {
-		"hello"
-	} else {
-		null
-	}
+  if (flag) {
+    "hello"
+  } else {
+    null
+  }
 }
 
 assert("true branch returns value") { maybeName(true) == "hello" }

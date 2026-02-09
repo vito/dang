@@ -2,28 +2,28 @@
 # when passing typed objects
 
 type TestMismatch {
-	pub name: String!
+  pub name: String!
 
-	new(n: String!) {
-		self.name = n
-		self
-	}
+  new(n: String!) {
+    self.name = n
+    self
+  }
 
-	pub child: Child! {
-		Child(self)
-	}
+  pub child: Child! {
+    Child(self)
+  }
 }
 
 type Child {
-	pub parent: TestMismatch!
+  pub parent: TestMismatch!
 
-	# Constructor arg is "p" but field is "parent"
-	new(p: TestMismatch!) {
-		self.parent = p
-		self
-	}
+  # Constructor arg is "p" but field is "parent"
+  new(p: TestMismatch!) {
+    self.parent = p
+    self
+  }
 
-	pub parentName: String! {
-		self.parent.name
-	}
+  pub parentName: String! {
+    self.parent.name
+  }
 }

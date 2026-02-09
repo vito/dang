@@ -2,14 +2,14 @@
 # This should fail because 'secret' is only visible in new()
 
 type Bad {
-	pub name: String!
+  pub name: String!
 
-	new(secret: String!) {
-		self.name = secret
-		self
-	}
+  new(secret: String!) {
+    self.name = secret
+    self
+  }
 
-	pub leak: String! {
-		secret # Error: secret is not in scope here
-	}
+  pub leak: String! {
+    secret # Error: secret is not in scope here
+  }
 }

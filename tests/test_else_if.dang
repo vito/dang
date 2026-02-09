@@ -4,15 +4,15 @@
 pub score = 85
 
 pub grade = if (score >= 90) {
-	"A"
+  "A"
 } else if (score >= 80) {
-	"B"
+  "B"
 } else if (score >= 70) {
-	"C"
+  "C"
 } else if (score >= 60) {
-	"D"
+  "D"
 } else {
-	"F"
+  "F"
 }
 
 assert { grade == "B" }
@@ -21,13 +21,13 @@ assert { grade == "B" }
 pub value = 25
 
 pub category = if (value < 10) {
-	"small"
+  "small"
 } else if (value < 20) {
-	"medium"
+  "medium"
 } else if (value < 30) {
-	"large"
+  "large"
 } else {
-	"extra-large"
+  "extra-large"
 }
 
 assert { category == "large" }
@@ -36,18 +36,18 @@ assert { category == "large" }
 pub num = 15
 
 pub result = if (num == 10) {
-	"ten"
+  "ten"
 } else if (num == 15) {
-	"fifteen"
+  "fifteen"
 }
 
 assert { result == "fifteen" }
 
 # Else if with no match and no final else (should return null)
 pub result2 = if (num == 5) {
-	"five"
+  "five"
 } else if (num == 10) {
-	"ten"
+  "ten"
 }
 
 assert { result2 == null }

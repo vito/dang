@@ -2,11 +2,11 @@
 
 # Basic null coalescing in function
 pub get_fallback: String! {
-	null ?? "fallback_value"
+  null ?? "fallback_value"
 }
 
 pub get_existing: String! {
-	"existing" ?? "fallback_value"
+  "existing" ?? "fallback_value"
 }
 
 # Test results
@@ -18,7 +18,7 @@ assert { result2 == "existing" }
 
 # Test with numbers
 pub get_number: Int! {
-	null ?? 42
+  null ?? 42
 }
 
 pub number_result = get_number

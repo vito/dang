@@ -2,13 +2,13 @@
 
 # Class with no constructor parameters (only functions)
 type FunctionOnly {
-	pub getValue: Int! {
-		42
-	}
+  pub getValue: Int! {
+    42
+  }
 
-	pub getString: String! {
-		"hello"
-	}
+  pub getString: String! {
+    "hello"
+  }
 }
 
 assert { FunctionOnly.getValue == 42 }
@@ -18,20 +18,20 @@ assert { FunctionOnly.getString == "hello" }
 pub globalValue = "global"
 
 type UsingGlobals {
-	pub local: String! = globalValue + "_local"
+  pub local: String! = globalValue + "_local"
 }
 
 assert { UsingGlobals.local == "global_local" }
 
 # Class with nested object default values
 type NestedDefaults {
-	pub person = {{
-		name: "John",
-		details: {{
-			age: 30,
-			active: true
-		}}
-	}}
+  pub person = {{
+    name: "John",
+    details: {{
+      age: 30,
+      active: true
+    }}
+  }}
 }
 
 assert { NestedDefaults.person.name == "John" }
@@ -40,8 +40,8 @@ assert { NestedDefaults.person.details.active == true }
 
 # Constructor with list default values
 type ListDefaults {
-	pub numbers: [Int!]! = [1, 2, 3]
-	pub names: [String!]! = ["a", "b"]
+  pub numbers: [Int!]! = [1, 2, 3]
+  pub names: [String!]! = ["a", "b"]
 }
 
 assert { ListDefaults.numbers == [1, 2, 3] }
@@ -49,14 +49,14 @@ assert { ListDefaults.names == ["a", "b"] }
 
 # Class with constructor parameters that have complex types
 type ComplexTypes {
-	pub config = {{
-		items: ["default"],
-		count: 1
-	}}
-	pub metadata = {{
-		version: "1.0",
-		tags: ["test"]
-	}}
+  pub config = {{
+    items: ["default"],
+    count: 1
+  }}
+  pub metadata = {{
+    version: "1.0",
+    tags: ["test"]
+  }}
 }
 
 print(toJSON(ComplexTypes.metadata))

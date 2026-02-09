@@ -5,23 +5,23 @@
 # =============================================================================
 
 type Counter {
-	pub val: Int = 0
+  pub val: Int = 0
 
-	pub incr: Counter! {
-		# Define a helper function inside the method
-		let helper: Counter! {
-			# This helper has 'self' in its closure, so IsMethod=true
-			# That means it will fork and update self when called
-			incrBy(1)
-		}
+  pub incr: Counter! {
+    # Define a helper function inside the method
+    let helper: Counter! {
+      # This helper has 'self' in its closure, so IsMethod=true
+      # That means it will fork and update self when called
+      incrBy(1)
+    }
 
-		helper
-	}
+    helper
+  }
 
-	pub incrBy(n: Int!): Counter! {
-		self.val = self.val + n
-		self
-	}
+  pub incrBy(n: Int!): Counter! {
+    self.val = self.val + n
+    self
+  }
 }
 
 let obj = Counter
@@ -39,22 +39,22 @@ assert { obj2.val == 2 }
 # =============================================================================
 
 type NestedLevels {
-	pub val: Int = 0
+  pub val: Int = 0
 
-	pub outer: NestedLevels! {
-		let middle: NestedLevels! {
-			let inner: NestedLevels! {
-				incrBy(1)
-			}
-			inner
-		}
-		middle
-	}
+  pub outer: NestedLevels! {
+    let middle: NestedLevels! {
+      let inner: NestedLevels! {
+        incrBy(1)
+      }
+      inner
+    }
+    middle
+  }
 
-	pub incrBy(n: Int!): NestedLevels! {
-		self.val = self.val + n
-		self
-	}
+  pub incrBy(n: Int!): NestedLevels! {
+    self.val = self.val + n
+    self
+  }
 }
 
 let nested = NestedLevels
@@ -66,25 +66,25 @@ assert { nested1.val == 1 }
 # =============================================================================
 
 type Accumulator {
-	pub val: Int = 0
+  pub val: Int = 0
 
-	pub addMultiple(a: Int!, b: Int!, c: Int!): Accumulator! {
-		let addFirst: Accumulator! {
-			incrBy(a)
-		}
-		let addSecond: Accumulator! {
-			addFirst.incrBy(b)
-		}
-		let addThird: Accumulator! {
-			addSecond.incrBy(c)
-		}
-		addThird
-	}
+  pub addMultiple(a: Int!, b: Int!, c: Int!): Accumulator! {
+    let addFirst: Accumulator! {
+      incrBy(a)
+    }
+    let addSecond: Accumulator! {
+      addFirst.incrBy(b)
+    }
+    let addThird: Accumulator! {
+      addSecond.incrBy(c)
+    }
+    addThird
+  }
 
-	pub incrBy(n: Int!): Accumulator! {
-		self.val = self.val + n
-		self
-	}
+  pub incrBy(n: Int!): Accumulator! {
+    self.val = self.val + n
+    self
+  }
 }
 
 let acc = Accumulator

@@ -2,14 +2,14 @@ let sum = 0
 let i = 0
 
 for {
-	i = i + 1
-	if (i == 2) {
-		continue
-	}
-	if (i > 3) {
-		break
-	}
-	sum = sum + i
+  i = i + 1
+  if (i == 2) {
+    continue
+  }
+  if (i > 3) {
+    break
+  }
+  sum = sum + i
 }
 
 assert { sum == 4 } # 1 + (2: skipped) + 3 (break)

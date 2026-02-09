@@ -6,5 +6,5 @@ import Test
 # Both Test and Other provide @experimental directive
 # Using unqualified @experimental should fail
 type MyType {
-	pub field: String! @experimental
+  pub field: String! @experimental
 }

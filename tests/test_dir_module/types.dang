@@ -3,16 +3,16 @@ pub MAGIC_NUMBER = 42
 pub VERSION = "1.0.0"
 
 type Person {
-	pub name: String! = "Unknown"
-	pub age: Int! = 0
+  pub name: String! = "Unknown"
+  pub age: Int! = 0
 
-	new(n: String!, a: Int!) {
-		self.name = n
-		self.age = a
-		self
-	}
+  new(n: String!, a: Int!) {
+    self.name = n
+    self.age = a
+    self
+  }
 
-	pub greet: String! {
-		"Hello, I'm " + self.name
-	}
+  pub greet: String! {
+    "Hello, I'm " + self.name
+  }
 }

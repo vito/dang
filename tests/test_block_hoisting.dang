@@ -1,13 +1,13 @@
 {
-	let a = "a1"
+  let a = "a1"
 
-	for {
-		a = "a2"
-		break
-	}
+  for {
+    a = "a2"
+    break
+  }
 
-	# at the top level, this will be ["a1", "b"] thanks to hoisting
-	let b = [a, "b"]
+  # at the top level, this will be ["a1", "b"] thanks to hoisting
+  let b = [a, "b"]
 
-	assert { b == ["a2", "b"] }
+  assert { b == ["a2", "b"] }
 }

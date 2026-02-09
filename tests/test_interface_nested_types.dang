@@ -1,29 +1,29 @@
 # Test nested interface types
 
 interface Validator {
-	pub validate(input: String!): Boolean!
+  pub validate(input: String!): Boolean!
 }
 
 interface Container {
-	pub validator: Validator!
-	pub isValid(input: String!): Boolean!
+  pub validator: Validator!
+  pub isValid(input: String!): Boolean!
 }
 
 # Concrete validator implementation
 type EmailValidator implements Validator {
-	pub validate(input: String!): Boolean! {
-		input.contains("@")
-	}
+  pub validate(input: String!): Boolean! {
+    input.contains("@")
+  }
 }
 
 # Concrete container implementation
 type Form implements Container {
-	pub validator: Validator! = EmailValidator
-	pub name: String! = "Email Form"
+  pub validator: Validator! = EmailValidator
+  pub name: String! = "Email Form"
 
-	pub isValid(input: String!): Boolean! {
-		validator.validate(input)
-	}
+  pub isValid(input: String!): Boolean! {
+    validator.validate(input)
+  }
 }
 
 # Test: Nested interface field access
@@ -35,23 +35,23 @@ assert { form.isValid("user@domain.com") == true }
 
 # Test: Interface containing interface-typed lists
 interface Registry {
-	pub validators: [Validator!]!
-	pub validateAll(input: String!): Boolean!
+  pub validators: [Validator!]!
+  pub validateAll(input: String!): Boolean!
 }
 
 type ValidationRegistry implements Registry {
-	pub validators: [Validator!]! = [EmailValidator, EmailValidator]
+  pub validators: [Validator!]! = [EmailValidator, EmailValidator]
 
-	pub validateAll(input: String!): Boolean! {
-		pub res = true
-		for (v in validators) {
-			if (!v.validate(input)) {
-				res = false
-				break
-			}
-		}
-		res
-	}
+  pub validateAll(input: String!): Boolean! {
+    pub res = true
+    for (v in validators) {
+      if (!v.validate(input)) {
+        res = false
+        break
+      }
+    }
+    res
+  }
 }
 
 let registry = ValidationRegistry
@@ -64,20 +64,20 @@ assert { registry.validateAll("invalid") == false }
 
 # Test: Deeply nested interfaces
 interface Processor {
-	pub container: Container!
+  pub container: Container!
 }
 
 type DataProcessor implements Processor {
-	pub container: Container! = Form
-	pub status: String! = "Ready"
+  pub container: Container! = Form
+  pub status: String! = "Ready"
 
-	pub process(data: String!): String! {
-		if (container.isValid(data)) {
-			"Valid: " + data
-		} else {
-			"Invalid"
-		}
-	}
+  pub process(data: String!): String! {
+    if (container.isValid(data)) {
+      "Valid: " + data
+    } else {
+      "Invalid"
+    }
+  }
 }
 
 let processor = DataProcessor

@@ -1,21 +1,21 @@
 # Test class method mutation behavior
 
 type Counter {
-	pub value: Int!
+  pub value: Int!
 
-	pub incr: Counter! {
-		self.value += 1
-		self
-	}
+  pub incr: Counter! {
+    self.value += 1
+    self
+  }
 
-	pub add(amount: Int!): Counter! {
-		self.value += amount
-		self
-	}
+  pub add(amount: Int!): Counter! {
+    self.value += amount
+    self
+  }
 
-	pub getValue: Int! {
-		self.value
-	}
+  pub getValue: Int! {
+    self.value
+  }
 }
 
 # Test 1: Basic increment
@@ -38,12 +38,12 @@ assert("original should be unchanged") { counter4.value == 20 }
 
 # Test 4: The specific example from the issue
 type Foo {
-	pub a: Int!
+  pub a: Int!
 
-	pub incr: Foo! {
-		self.a += 1
-		self
-	}
+  pub incr: Foo! {
+    self.a += 1
+    self
+  }
 }
 
 let foo_result = Foo(42).incr.a

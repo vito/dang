@@ -15,27 +15,27 @@ assert { (false or false) == false }
 # Test short-circuiting for 'and'
 # If left side is false, right side should not be evaluated
 pub and_short_circuit = {
-	let side_effect = false
-	let result = false and {
-		side_effect = true
-		true
-	}
-	# side_effect should still be false because right side wasn't evaluated
-	assert { side_effect == false }
-	result
+  let side_effect = false
+  let result = false and {
+    side_effect = true
+    true
+  }
+  # side_effect should still be false because right side wasn't evaluated
+  assert { side_effect == false }
+  result
 }
 
 # Test short-circuiting for 'or'
 # If left side is true, right side should not be evaluated
 pub or_short_circuit = {
-	let side_effect = false
-	let result = true or {
-		side_effect = true
-		false
-	}
-	# side_effect should still be false because right side wasn't evaluated
-	assert { side_effect == false }
-	result
+  let side_effect = false
+  let result = true or {
+    side_effect = true
+    false
+  }
+  # side_effect should still be false because right side wasn't evaluated
+  assert { side_effect == false }
+  result
 }
 
 # Test precedence

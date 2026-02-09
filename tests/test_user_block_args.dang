@@ -2,7 +2,7 @@
 
 # Simple block arg that yields a value
 pub myFun(&block(x: Int!): String!): String! {
-	block(42)
+  block(42)
 }
 
 pub result1: String! = myFun { x => toJSON(x) }
@@ -10,7 +10,7 @@ assert { result1 == "42" }
 
 # Block arg with multiple calls
 pub twice(&block(x: Int!): Int!): Int! {
-	block(1) + block(2)
+  block(1) + block(2)
 }
 
 pub result2: Int! = twice { x => x * 10 }
@@ -18,7 +18,7 @@ assert { result2 == 30 }
 
 # Function with both regular args and block arg
 pub withArg(prefix: String!, &block(x: Int!): String!): String! {
-	prefix + block(99)
+  prefix + block(99)
 }
 
 pub result3: String! = withArg("Number: ") { x => toJSON(x) }

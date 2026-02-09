@@ -18,9 +18,9 @@ assert { flag == false }
 
 # Test reassignment in blocks
 {
-	assert("slot inherited type and was assigned locally") { x == 100 }
-	x = 200
-	assert("slot inherited type and was assigned locally") { x == 200 }
+  assert("slot inherited type and was assigned locally") { x == 100 }
+  x = 200
+  assert("slot inherited type and was assigned locally") { x == 200 }
 }
 assert("updates the outer slot, because the block did not declare its own") { x == 200 }
 

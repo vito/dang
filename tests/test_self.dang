@@ -1,32 +1,32 @@
 type MyClass {
-	pub val = 1
-	pub name = "initial"
+  pub val = 1
+  pub name = "initial"
 
-	pub incr: MyClass! {
-		self.incrBy(1)
-	}
+  pub incr: MyClass! {
+    self.incrBy(1)
+  }
 
-	pub incrBy(amount: Int!): MyClass! {
-		print("BEFORE:")
-		print(self.val)
-		self.val += amount # self. still required for re-assignment
-		print("AFTER:")
-		print(self.val)
-		self # TODO: make not required?
-	}
+  pub incrBy(amount: Int!): MyClass! {
+    print("BEFORE:")
+    print(self.val)
+    self.val += amount # self. still required for re-assignment
+    print("AFTER:")
+    print(self.val)
+    self # TODO: make not required?
+  }
 
-	pub withName(branch: String! = "edge"): MyClass! {
-		self.name = branch
-		self # TODO: make not required?
-	}
+  pub withName(branch: String! = "edge"): MyClass! {
+    self.name = branch
+    self # TODO: make not required?
+  }
 
-	pub complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
-		self.withName((prefix + "-") + suffix)
-	}
+  pub complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
+    self.withName((prefix + "-") + suffix)
+  }
 
-	pub dynamicAccess: String! {
-		self.name # Should resolve to current receiver's name, not static "initial"
-	}
+  pub dynamicAccess: String! {
+    self.name # Should resolve to current receiver's name, not static "initial"
+  }
 }
 
 assert { MyClass.val == 1 }

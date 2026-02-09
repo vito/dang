@@ -1,46 +1,46 @@
 # Test nested field assignment in class methods with Fork() semantics
 
 type InnerData {
-	pub value: Int! = 42
-	pub name: String! = "default"
+  pub value: Int! = 42
+  pub name: String! = "default"
 }
 
 type MiddleLayer {
-	pub inner: InnerData!
-	pub count: Int! = 0
+  pub inner: InnerData!
+  pub count: Int! = 0
 }
 
 type Container {
-	pub middle: MiddleLayer!
+  pub middle: MiddleLayer!
 
-	# Test: nested field assignment should work with Fork() semantics
-	# This should: Fork container -> clone middle -> clone inner -> update value
-	pub updateDeepValue(newValue: Int!): Container! {
-		middle.inner.value = newValue # No self. prefix
-		self
-	}
+  # Test: nested field assignment should work with Fork() semantics
+  # This should: Fork container -> clone middle -> clone inner -> update value
+  pub updateDeepValue(newValue: Int!): Container! {
+    middle.inner.value = newValue # No self. prefix
+    self
+  }
 
-	# Test: compound assignment on deeply nested fields
-	pub incrementDeepValue: Container! {
-		middle.inner.value += 10 # No self. prefix
-		self
-	}
+  # Test: compound assignment on deeply nested fields
+  pub incrementDeepValue: Container! {
+    middle.inner.value += 10 # No self. prefix
+    self
+  }
 
-	# Test: update multiple fields in nested structure
-	pub updateMultiple(newValue: Int!, newName: String!): Container! {
-		middle.inner.value = newValue # No self. prefix
-		middle.inner.name = newName # No self. prefix
-		middle.count += 1 # No self. prefix
-		self
-	}
+  # Test: update multiple fields in nested structure
+  pub updateMultiple(newValue: Int!, newName: String!): Container! {
+    middle.inner.value = newValue # No self. prefix
+    middle.inner.name = newName # No self. prefix
+    middle.count += 1 # No self. prefix
+    self
+  }
 }
 
 # Create original with deeply nested structure
 let original = Container(
-	middle: MiddleLayer(
-		inner: InnerData(value: 100, name: "original"),
-		count: 5,
-	),
+  middle: MiddleLayer(
+    inner: InnerData(value: 100, name: "original"),
+    count: 5,
+  ),
 )
 
 # Test 1: Deep nested field assignment with Fork() semantics

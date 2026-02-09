@@ -5,7 +5,7 @@
  [2m  6 | [0m
  [2m[34m[1m  7 | [0mtype Person implements Greetable {
 [2m                              [31m^^^^^^^^^[0m
- [2m  8 | 	pub name: String![0m
- [2m  9 | 	# Missing: pub greet: String![0m
+ [2m  8 |   pub name: String![0m
+ [2m  9 |   # Missing: pub greet: String![0m
  [2m    |[0m
 

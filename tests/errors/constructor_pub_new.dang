@@ -1,8 +1,8 @@
 type Foo {
-	pub name: String!
+  pub name: String!
 
-	pub new(n: String!): Foo! {
-		self.name = n
-		self
-	}
+  pub new(n: String!): Foo! {
+    self.name = n
+    self
+  }
 }

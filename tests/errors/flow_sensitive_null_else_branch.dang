@@ -1,17 +1,17 @@
 # Test flow-sensitive null checking error behavior
 type TestType {
-	let maybeString: String = null
+  let maybeString: String = null
 
-	pub testBothBranches: String! {
-		if (maybeString != null) {
-			# This should work - maybeString is refined to String! in the then branch
-			maybeString + "!"
-		} else {
-			# This should fail - maybeString is still nullable (String) in the else branch
-			# where we know it's null, so we can't use it as non-null
-			maybeString + "!"
-		}
-	}
+  pub testBothBranches: String! {
+    if (maybeString != null) {
+      # This should work - maybeString is refined to String! in the then branch
+      maybeString + "!"
+    } else {
+      # This should fail - maybeString is still nullable (String) in the else branch
+      # where we know it's null, so we can't use it as non-null
+      maybeString + "!"
+    }
+  }
 }
 
 let testObj = TestType

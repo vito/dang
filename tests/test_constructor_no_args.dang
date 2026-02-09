@@ -2,26 +2,26 @@
 
 # Basic: new with no args, just a body
 type Timestamp {
-	pub value: Int!
+  pub value: Int!
 
-	new {
-		self.value = 42
-		self
-	}
+  new {
+    self.value = 42
+    self
+  }
 }
 
 assert { Timestamp.value == 42 }
 
 # No-arg constructor with multiple field initializations
 type Defaults {
-	pub name: String!
-	pub count: Int!
+  pub name: String!
+  pub count: Int!
 
-	new {
-		self.name = "default"
-		self.count = 0
-		self
-	}
+  new {
+    self.name = "default"
+    self.count = 0
+    self
+  }
 }
 
 assert { Defaults.name == "default" }
@@ -29,18 +29,18 @@ assert { Defaults.count == 0 }
 
 # No-arg constructor with computed values
 type Computed {
-	pub label: String!
-	let secret: Int!
+  pub label: String!
+  let secret: Int!
 
-	new {
-		self.label = "a" + "b"
-		self.secret = 10 + 20
-		self
-	}
+  new {
+    self.label = "a" + "b"
+    self.secret = 10 + 20
+    self
+  }
 
-	pub getSecret: Int! {
-		self.secret
-	}
+  pub getSecret: Int! {
+    self.secret
+  }
 }
 
 assert { Computed.label == "ab" }
@@ -48,12 +48,12 @@ assert { Computed.getSecret == 30 }
 
 # Bare assignment (no self.) in no-arg constructor
 type Simple {
-	pub x: Int! = 0
+  pub x: Int! = 0
 
-	new {
-		x = 99
-		self
-	}
+  new {
+    x = 99
+    self
+  }
 }
 
 assert { Simple.x == 99 }

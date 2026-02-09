@@ -29,10 +29,10 @@ assert { single == "just one line" }
 
 # Test in function call
 pub inList = [
-	"sh", "-c",
-	"""
-	echo "Hello"
-	echo "World"
-	""",
+  "sh", "-c",
+  """
+  echo "Hello"
+  echo "World"
+  """,
 ]
 assert { inList == ["sh", "-c", "echo \"Hello\"\necho \"World\""] }

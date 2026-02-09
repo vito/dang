@@ -2,12 +2,12 @@
 
 # Basic: explicit constructor that initializes a field
 type Greeter {
-	pub greeting: String!
+  pub greeting: String!
 
-	new(name: String!) {
-		self.greeting = "Hello, " + name + "!"
-		self
-	}
+  new(name: String!) {
+    self.greeting = "Hello, " + name + "!"
+    self
+  }
 }
 
 assert { Greeter("World").greeting == "Hello, World!" }
@@ -15,16 +15,16 @@ assert { Greeter("Alice").greeting == "Hello, Alice!" }
 
 # Multiple fields initialized in constructor
 type Point {
-	pub x: Int!
-	pub y: Int!
-	pub label: String!
+  pub x: Int!
+  pub y: Int!
+  pub label: String!
 
-	new(x: Int!, y: Int!) {
-		self.x = x
-		self.y = y
-		self.label = toString(x) + "," + toString(y)
-		self
-	}
+  new(x: Int!, y: Int!) {
+    self.x = x
+    self.y = y
+    self.label = toString(x) + "," + toString(y)
+    self
+  }
 }
 
 assert { Point(3, 4).x == 3 }
@@ -33,12 +33,12 @@ assert { Point(3, 4).label == "3,4" }
 
 # Constructor args with defaults
 type Logger {
-	pub prefix: String!
+  pub prefix: String!
 
-	new(name: String!, level: String! = "INFO") {
-		self.prefix = "[" + level + "] " + name
-		self
-	}
+  new(name: String!, level: String! = "INFO") {
+    self.prefix = "[" + level + "] " + name
+    self
+  }
 }
 
 assert { Logger("app").prefix == "[INFO] app" }
@@ -46,12 +46,12 @@ assert { Logger("app", "DEBUG").prefix == "[DEBUG] app" }
 
 # All-default constructor args still support auto-calling
 type Config {
-	pub mode: String!
+  pub mode: String!
 
-	new(mode: String! = "production") {
-		self.mode = mode
-		self
-	}
+  new(mode: String! = "production") {
+    self.mode = mode
+    self
+  }
 }
 
 assert { Config.mode == "production" }
@@ -59,18 +59,18 @@ assert { Config("staging").mode == "staging" }
 
 # Private field initialized in constructor
 type Counter {
-	pub label: String!
-	let count: Int!
+  pub label: String!
+  let count: Int!
 
-	new(label: String!, initial: Int! = 0) {
-		self.label = label
-		self.count = initial
-		self
-	}
+  new(label: String!, initial: Int! = 0) {
+    self.label = label
+    self.count = initial
+    self
+  }
 
-	pub getCount: Int! {
-		self.count
-	}
+  pub getCount: Int! {
+    self.count
+  }
 }
 
 let counter = Counter("hits", 10)
@@ -82,14 +82,14 @@ assert { counterDefault.getCount == 0 }
 
 # Fields with defaults can be overwritten by new()
 type Pair {
-	pub first: String! = "default"
-	pub second: String! = "default"
+  pub first: String! = "default"
+  pub second: String! = "default"
 
-	new(a: String!, b: String!) {
-		self.first = a
-		self.second = b
-		self
-	}
+  new(a: String!, b: String!) {
+    self.first = a
+    self.second = b
+    self
+  }
 }
 
 let p = Pair("left", "right")
@@ -98,16 +98,16 @@ assert { p.second == "right" }
 
 # Constructor that transforms its arguments
 type PrivateState {
-	let value: Int!
+  let value: Int!
 
-	new(input: Int! = 42) {
-		self.value = input * 2
-		self
-	}
+  new(input: Int! = 42) {
+    self.value = input * 2
+    self
+  }
 
-	pub display: String! {
-		toString(self.value)
-	}
+  pub display: String! {
+    toString(self.value)
+  }
 }
 
 assert { PrivateState.display == "84" }
@@ -115,14 +115,14 @@ assert { PrivateState(100).display == "200" }
 
 # Bare assignment (no self.) works when args don't shadow fields
 type Vector {
-	pub x: Int! = 0
-	pub y: Int! = 0
+  pub x: Int! = 0
+  pub y: Int! = 0
 
-	new(vx: Int!, vy: Int!) {
-		x = vx
-		y = vy
-		self
-	}
+  new(vx: Int!, vy: Int!) {
+    x = vx
+    y = vy
+    self
+  }
 }
 
 assert { Vector(3, 4).x == 3 }

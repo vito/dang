@@ -1,9 +1,9 @@
 # Test implementing a non-interface type
 
 type NotAnInterface {
-	pub foo: String!
+  pub foo: String!
 }
 
 type Person implements NotAnInterface {
-	pub name: String!
+  pub name: String!
 }

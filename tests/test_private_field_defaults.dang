@@ -4,9 +4,9 @@
 pub version = "wrong"
 
 type Rust {
-	let version = "1.90"
+  let version = "1.90"
 
-	pub combined: String! = "rust:" + version
+  pub combined: String! = "rust:" + version
 }
 
 let rust = Rust
@@ -17,11 +17,11 @@ assert("provided value should override default") { Rust("custom").combined == "c
 
 # Test that private field is used in a method too
 type WithMethod {
-	let prefix = "hello"
+  let prefix = "hello"
 
-	pub greeting: String! {
-		prefix + " world"
-	}
+  pub greeting: String! {
+    prefix + " world"
+  }
 }
 
 assert("private field used in method") { WithMethod.greeting == "hello world" }

@@ -1,10 +1,10 @@
 pub do(&yield: b): b {
-	yield * 2
+  yield * 2
 }
 
 assert {
-	do {
-		let a = 1
-		a + 2
-	} == 6
+  do {
+    let a = 1
+    a + 2
+  } == 6
 }

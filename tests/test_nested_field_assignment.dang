@@ -1,26 +1,26 @@
 # Test nested field assignment in class methods with Fork() semantics
 
 type Container {
-	pub data = {{a: {{b: {{c: 42}}}}}} # Let type be inferred
+  pub data = {{a: {{b: {{c: 42}}}}}} # Let type be inferred
 
-	# Test: nested field assignment should work with Fork() semantics
-	pub updateNested(newValue: Int!): Container! {
-		data.a.b.c = newValue # No self. prefix - should clone data, data.a, data.a.b and update c
-		self
-	}
+  # Test: nested field assignment should work with Fork() semantics
+  pub updateNested(newValue: Int!): Container! {
+    data.a.b.c = newValue # No self. prefix - should clone data, data.a, data.a.b and update c
+    self
+  }
 
-	# Test: compound assignment on nested fields
-	pub incrementNested: Container! {
-		data.a.b.c += 10 # No self. prefix
-		self
-	}
+  # Test: compound assignment on nested fields
+  pub incrementNested: Container! {
+    data.a.b.c += 10 # No self. prefix
+    self
+  }
 
-	# Test: multiple nested updates in same method
-	pub multipleUpdates: Container! {
-		data.a.b.c = 100 # No self. prefix
-		data.a.b.c += 50 # Should result in 150
-		self
-	}
+  # Test: multiple nested updates in same method
+  pub multipleUpdates: Container! {
+    data.a.b.c = 100 # No self. prefix
+    data.a.b.c += 50 # Should result in 150
+    self
+  }
 }
 
 # Create original with nested structure (uses default)

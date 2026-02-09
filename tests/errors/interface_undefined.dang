@@ -1,5 +1,5 @@
 # Test implementing an undefined interface
 
 type Person implements UndefinedInterface {
-	pub name: String!
+  pub name: String!
 }

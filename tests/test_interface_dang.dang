@@ -2,13 +2,13 @@
 
 # Test: Define a simple interface
 interface Named {
-	pub name: String!
+  pub name: String!
 }
 
 # Test: Type implementing an interface
 type Person implements Named {
-	pub name: String!
-	pub age: Int!
+  pub name: String!
+  pub age: Int!
 }
 
 # Test: Can instantiate a type that implements an interface
@@ -18,15 +18,15 @@ assert { person.age == 30 }
 
 # Test: Interface with multiple fields
 interface Identifiable {
-	pub id: String!
-	pub title: String!
+  pub id: String!
+  pub title: String!
 }
 
 # Test: Type implementing interface
 type Product implements Identifiable {
-	pub id: String!
-	pub title: String!
-	pub price: Float!
+  pub id: String!
+  pub title: String!
+  pub price: Float!
 }
 
 # Test: Instantiate
@@ -36,13 +36,13 @@ assert { product.title == "Widget" }
 
 # Test: Multiple interface implementation
 interface Serializable {
-	pub data: String!
+  pub data: String!
 }
 
 type Book implements Named & Serializable {
-	pub name: String!
-	pub author: String!
-	pub data: String!
+  pub name: String!
+  pub author: String!
+  pub data: String!
 }
 
 pub book = Book(name: "1984", author: "George Orwell", data: "{}")

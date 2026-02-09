@@ -26,11 +26,11 @@ assert { user_posts[0].content == "Hello World!" }
 
 # Test nested object selection
 pub profile_data = userProfile(userId: "1", includeStats: true).{
-	user.{name, emails},
-	joinedDate,
-	bio,
-	postCount,
-	averagePostLength
+  user.{name, emails},
+  joinedDate,
+  bio,
+  postCount,
+  averagePostLength
 }
 
 assert { profile_data.user.name == "John Doe" }
@@ -67,14 +67,14 @@ assert { post_summaries[1].author.name == "Jane Smith" }
 
 # Test deeply nested object selection
 pub deep_selection = userProfile(userId: "1").{
-	user.{
-		name,
-		emails,
-		posts.{
-			posts.{title, author.{name}}
-		}
-	},
-	joinedDate
+  user.{
+    name,
+    emails,
+    posts.{
+      posts.{title, author.{name}}
+    }
+  },
+  joinedDate
 }
 
 assert { deep_selection.user.name == "John Doe" }
@@ -86,10 +86,10 @@ assert { deep_selection.joinedDate == "2024-01-01T00:00:00Z" }
 
 # Test object selection with optional fields
 pub optional_selection = userProfile(userId: "1", includeStats: true).{
-	user.{name, age},
-	postCount,
-	averagePostLength,
-	bio
+  user.{name, age},
+  postCount,
+  averagePostLength,
+  bio
 }
 
 assert { optional_selection.user.name == "John Doe" }
@@ -119,10 +119,10 @@ assert { user_overview.emails[0] == "john@example.com" }
 
 # Test object selection on complex nested structures
 pub complex_query = {{
-	server: serverInfo.{version, platform},
-	users: users.{name, emails},
-	posts: posts.{title, author.{name}},
-	titles: postTitles
+  server: serverInfo.{version, platform},
+  users: users.{name, emails},
+  posts: posts.{title, author.{name}},
+  titles: postTitles
 }}
 
 assert { complex_query.server.version == "1.0.0" }
@@ -139,8 +139,8 @@ assert { complex_query.titles == ["First Post", "Second Post", "Third Post", "Fo
 
 # Test chained method calls with object selection: foo(...).bar(...).baz{fizz, buzz}
 pub chained_method_test = user(id: "1").posts(first: 2).{
-	posts.{title, content},
-	pageInfo.{hasNextPage, endCursor}
+  posts.{title, content},
+  pageInfo.{hasNextPage, endCursor}
 }
 
 assert { chained_method_test.pageInfo.hasNextPage }

@@ -1,5 +1,5 @@
 # This should fail: no matching clause
 pub result = case (5) {
-	1 => "one"
-	2 => "two"
+  1 => "one"
+  2 => "two"
 }

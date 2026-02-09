@@ -2,74 +2,74 @@
 Builds containers from simple lists of packages using the Apko CLI.
 """
 type Apko {
-	let arch = case (defaultPlatform) {
-		"linux/amd64" => "x86_64"
-		"linux/arm64" => "arm64"
-	}
+  let arch = case (defaultPlatform) {
+    "linux/amd64" => "x86_64"
+    "linux/arm64" => "arm64"
+  }
 
-	let config = {{
-		contents: {{
-			packages: [] :: [String!]!,
-			repositories: [] :: [String!]!,
-			keyring: [] :: [String!]!
-		}},
+  let config = {{
+    contents: {{
+      packages: [] :: [String!]!,
+      repositories: [] :: [String!]!,
+      keyring: [] :: [String!]!
+    }},
 
-		cmd: "",
-		environment: {{ # TODO: how to support arbitrary key-value?
-			PATH: "/usr/local/bin:/usr/bin:/bin"
-		}},
+    cmd: "",
+    environment: {{ # TODO: how to support arbitrary key-value?
+      PATH: "/usr/local/bin:/usr/bin:/bin"
+    }},
 
-		archs: [arch]
-	}}
+    archs: [arch]
+  }}
 
-	pub withAlpine(branch: String! = "edge"): Apko! {
-		self.config.contents.packages += ["apk-tools"]
-		self.config.contents.repositories += [
-			"https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main",
-		]
-		self
-	}
+  pub withAlpine(branch: String! = "edge"): Apko! {
+    self.config.contents.packages += ["apk-tools"]
+    self.config.contents.repositories += [
+      "https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main",
+    ]
+    self
+  }
 
-	pub withWolfi: Apko! {
-		self.config.contents.packages += ["wolfi-base"]
-		self.config.contents.keyring += [
-			"https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
-		]
-		self.config.contents.repositories += [
-			"https://packages.wolfi.dev/os",
-		]
-		self
-	}
+  pub withWolfi: Apko! {
+    self.config.contents.packages += ["wolfi-base"]
+    self.config.contents.keyring += [
+      "https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
+    ]
+    self.config.contents.repositories += [
+      "https://packages.wolfi.dev/os",
+    ]
+    self
+  }
 
-	pub withPackages(packages: [String!]!): Apko! {
-		self.config.contents.packages += packages
-		self
-	}
+  pub withPackages(packages: [String!]!): Apko! {
+    self.config.contents.packages += packages
+    self
+  }
 
-	pub withArchs(archs: [String!]!): Apko! {
-		self.config.archs += archs
-		self
-	}
+  pub withArchs(archs: [String!]!): Apko! {
+    self.config.archs += archs
+    self
+  }
 
-	pub asContainer: Container! {
-		container
-			.import(
-				container
-					.from("cgr.dev/chainguard/apko")
-					.withMountedCache("/apkache/", cacheVolume("apko"))
-					.withNewFile("/config.yml", contents: toJSON(config))
-					.withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest", "layout.tar"])
-					.file("layout.tar"),
-			)
-	}
+  pub asContainer: Container! {
+    container
+      .import(
+        container
+          .from("cgr.dev/chainguard/apko")
+          .withMountedCache("/apkache/", cacheVolume("apko"))
+          .withNewFile("/config.yml", contents: toJSON(config))
+          .withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest", "layout.tar"])
+          .file("layout.tar"),
+      )
+  }
 
-	pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
-		withAlpine(branch).withPackages(packages).asContainer
-	}
+  pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
+    withAlpine(branch).withPackages(packages).asContainer
+  }
 
-	pub wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
-		withWolfi.withPackages(packages).asContainer
-	}
+  pub wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
+    withWolfi.withPackages(packages).asContainer
+  }
 }
 
 # USAGE:

@@ -3,7 +3,7 @@ assert { { pub a = "one", a } == "one" }
 assert { a == 1 }
 
 type MyClass {
-	pub a = "two"
+  pub a = "two"
 }
 
 assert { MyClass.a == "two" }

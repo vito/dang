@@ -2,25 +2,25 @@
 
 # Function that can return null
 pub maybeGetString(shouldReturnNull: Boolean!): String {
-	if (shouldReturnNull) {
-		null
-	} else {
-		"hello"
-	}
+  if (shouldReturnNull) {
+    null
+  } else {
+    "hello"
+  }
 }
 
 # Function that always returns null
 pub alwaysNull: String {
-	null
+  null
 }
 
 # Function with nullable Int return type
 pub maybeGetNumber(value: Int!): Int {
-	if (value < 0) {
-		null
-	} else {
-		value * 2
-	}
+  if (value < 0) {
+    null
+  } else {
+    value * 2
+  }
 }
 
 # Test the functions
@@ -42,12 +42,12 @@ assert { result5 == 20 }
 # Test nullable function return with flow-sensitive typing
 pub testValue = maybeGetString(shouldReturnNull: false)
 assert {
-	if (testValue != null) {
-		# testValue should be String! here
-		testValue + " world" == "hello world"
-	} else {
-		false
-	}
+  if (testValue != null) {
+    # testValue should be String! here
+    testValue + " world" == "hello world"
+  } else {
+    false
+  }
 }
 
 print("Nullable function return tests passed!")

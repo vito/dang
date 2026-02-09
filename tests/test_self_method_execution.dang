@@ -2,15 +2,15 @@
 # This reproduces the exact issue: self not found during method execution
 
 type SimpleApko {
-	pub config = {{
-		items: []
-	}}
+  pub config = {{
+    items: []
+  }}
 
-	# This method uses self and should fail if self is not available during method execution
-	pub withItems(items: [String!]!): SimpleApko! {
-		self.config.items += items
-		self
-	}
+  # This method uses self and should fail if self is not available during method execution
+  pub withItems(items: [String!]!): SimpleApko! {
+    self.config.items += items
+    self
+  }
 }
 
 # Test the pattern that was failing: accessing self within method body during execution

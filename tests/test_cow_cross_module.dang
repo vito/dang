@@ -1,35 +1,35 @@
 # Test: Cross-module function calls should respect COW semantics
 
 type ModuleA {
-	let x = 21
+  let x = 21
 
-	pub addOne: ModuleA! {
-		print("ModuleA.addOne called, x = " + toJSON(self.x))
-		self.x = self.x + 1
-		self
-	}
+  pub addOne: ModuleA! {
+    print("ModuleA.addOne called, x = " + toJSON(self.x))
+    self.x = self.x + 1
+    self
+  }
 }
 
 type ModuleB {
-	let x = 42
+  let x = 42
 
-	pub useModuleA: ModuleB! {
-		# Create an instance of ModuleA
-		let a = ModuleA
+  pub useModuleA: ModuleB! {
+    # Create an instance of ModuleA
+    let a = ModuleA
 
-		# Call addOne twice
-		let a1 = a.addOne
-		let a2 = a.addOne
+    # Call addOne twice
+    let a1 = a.addOne
+    let a2 = a.addOne
 
-		# Both should have x=1 (COW semantics)
-		assert { a1.x == 22 }
-		assert { a2.x == 22 }
+    # Both should have x=1 (COW semantics)
+    assert { a1.x == 22 }
+    assert { a2.x == 22 }
 
-		# Did not mutate caller's x
-		assert { x == 42 }
+    # Did not mutate caller's x
+    assert { x == 42 }
 
-		self
-	}
+    self
+  }
 }
 
 ModuleB.useModuleA
