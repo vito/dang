@@ -77,6 +77,12 @@ func trimTrailingWhitespace(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// isNoFmtText returns true if a comment's text is a #nofmt directive.
+func isNoFmtText(commentText string) bool {
+	text := strings.TrimSpace(strings.TrimPrefix(commentText, "#"))
+	return text == "nofmt" || strings.HasPrefix(text, "nofmt ")
+}
+
 // hasNoFmtComment checks if a node has a #nofmt comment attached to it
 // (either as a preceding standalone comment or a trailing comment on the same line)
 func (f *Formatter) hasNoFmtComment(node Node) bool {
@@ -93,21 +99,15 @@ func (f *Formatter) hasNoFmtComment(node Node) bool {
 
 	// Check for preceding #nofmt comment (standalone comment on line before)
 	for _, c := range f.comments {
-		if !c.IsTrailing && c.Line == loc.Line-1 {
-			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
-			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
-				return true
-			}
+		if !c.IsTrailing && c.Line == loc.Line-1 && isNoFmtText(c.Text) {
+			return true
 		}
 	}
 
 	// Check for trailing #nofmt comment on the same line
 	for _, c := range f.comments {
-		if c.IsTrailing && c.Line == loc.Line {
-			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
-			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
-				return true
-			}
+		if c.IsTrailing && c.Line == loc.Line && isNoFmtText(c.Text) {
+			return true
 		}
 	}
 
@@ -131,15 +131,12 @@ func (f *Formatter) getOriginalSource(node Node) string {
 	// Check if there's a trailing #nofmt comment on the end line
 	// If so, extend the span to include the entire line
 	for _, c := range f.comments {
-		if c.Line == loc.End.Line && c.IsTrailing {
-			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
-			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
-				// Extend to end of line
-				for endOffset < len(f.source) && f.source[endOffset] != '\n' {
-					endOffset++
-				}
-				break
+		if c.Line == loc.End.Line && c.IsTrailing && isNoFmtText(c.Text) {
+			// Extend to end of line
+			for endOffset < len(f.source) && f.source[endOffset] != '\n' {
+				endOffset++
 			}
+			break
 		}
 	}
 
@@ -261,38 +258,6 @@ func extractComments(source []byte) []Comment {
 	return comments
 }
 
-// emitCommentsBeforeLine emits all standalone comments that should appear before the given line
-func (f *Formatter) emitCommentsBeforeLine(line int) {
-	for len(f.comments) > 0 && f.comments[0].Line < line {
-		// Skip over trailing comments - they're emitted by emitTrailingComment.
-		// Don't break: there may be standalone comments after a trailing one.
-		if f.comments[0].IsTrailing || f.emittedComments[f.comments[0].Line] {
-			f.comments = f.comments[1:]
-			continue
-		}
-
-		comment := f.comments[0]
-		f.comments = f.comments[1:]
-
-		// Add blank lines if there's a gap from the last processed line
-		// (preserves spacing between comment groups)
-		if f.lastLine > 0 && comment.Line > f.lastLine+1 {
-			f.newline()
-		}
-
-		f.writeIndent()
-		f.write(comment.Text)
-		f.emittedComments[comment.Line] = true
-		f.newline()
-		f.lastLine = comment.Line
-	}
-
-	// If there's a blank line between the last comment and the node, preserve it
-	if f.lastLine > 0 && line > f.lastLine+1 {
-		f.newline()
-	}
-}
-
 // emitTrailingComment emits a trailing comment for the given line if one exists
 func (f *Formatter) emitTrailingComment(line int) {
 	// Skip if already emitted via nl()
@@ -318,12 +283,9 @@ func (f *Formatter) emitTrailingComment(line int) {
 // (because it's already included in the preserved original source)
 func (f *Formatter) removeTrailingNoFmtComment(line int) {
 	for i, c := range f.comments {
-		if c.Line == line && c.IsTrailing {
-			text := strings.TrimSpace(strings.TrimPrefix(c.Text, "#"))
-			if text == "nofmt" || strings.HasPrefix(text, "nofmt ") {
-				f.comments = append(f.comments[:i], f.comments[i+1:]...)
-				return
-			}
+		if c.Line == line && c.IsTrailing && isNoFmtText(c.Text) {
+			f.comments = append(f.comments[:i], f.comments[i+1:]...)
+			return
 		}
 	}
 }
@@ -753,13 +715,13 @@ func (f *Formatter) formatNode(node Node) {
 	case *BlockArg:
 		f.formatBlockArg(n)
 	case *Default:
-		f.formatDefault(n)
+		f.formatBinaryOp(n.Left, n.Right, "??")
 	case *LogicalOr:
-		f.formatLogicalOr(n)
+		f.formatBinaryOp(n.Left, n.Right, "or")
 	case *LogicalAnd:
-		f.formatLogicalAnd(n)
+		f.formatBinaryOp(n.Left, n.Right, "and")
 	case *Equality:
-		f.formatEquality(n)
+		f.formatBinaryOp(n.Left, n.Right, "==")
 	case *UnaryNegation:
 		f.formatUnaryNegation(n)
 	case *Addition:
@@ -1132,7 +1094,7 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 			for _, val := range e.Values {
 				// Emit comments for this enum value
 				if val.Loc != nil {
-					f.emitCommentsBeforeLine(val.Loc.Line)
+					f.emitCommentsBeforeNode(val.Loc.Line, false)
 					f.lastLine = val.Loc.Line
 				}
 				f.writeIndent()
@@ -1277,7 +1239,7 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 			f.formatTypeNode(ft.Ret)
 		} else {
 			f.write(": ")
-			f.formatType(s.Type_)
+			f.formatTypeNode(s.Type_)
 		}
 	}
 
@@ -1330,7 +1292,7 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
 	// Return type
 	if fn.Ret != nil {
 		f.write(": ")
-		f.formatType(fn.Ret)
+		f.formatTypeNode(fn.Ret)
 	}
 
 	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
@@ -1511,11 +1473,11 @@ func (f *Formatter) formatArgDecl(arg *SlotDecl) {
 				f.formatBlockParamType(funType)
 			} else {
 				f.write(": ")
-				f.formatType(arg.Type_)
+				f.formatTypeNode(arg.Type_)
 			}
 		} else {
 			f.write(": ")
-			f.formatType(arg.Type_)
+			f.formatTypeNode(arg.Type_)
 		}
 	}
 
@@ -2113,9 +2075,6 @@ func (f *Formatter) formatString(s *String) {
 	}
 }
 
-// wasTripleQuoteIndented checks if a triple-quoted string's content was indented
-// in the original source. Returns true if any non-empty content line had leading
-// whitespace.
 func (f *Formatter) formatInt(i *Int) {
 	f.write(strconv.FormatInt(i.Value, 10))
 }
@@ -2406,7 +2365,7 @@ func (f *Formatter) formatCase(c *Case) {
 		for _, clause := range c.Clauses {
 			// Emit standalone comments before this clause
 			if clause.Loc != nil {
-				f.emitCommentsBeforeLine(clause.Loc.Line)
+				f.emitCommentsBeforeNode(clause.Loc.Line, false)
 				f.lastLine = clause.Loc.Line
 			}
 			f.writeIndent()
@@ -2453,7 +2412,7 @@ func (f *Formatter) formatReassignment(r *Reassignment) {
 
 func (f *Formatter) formatTypeHint(t *TypeHint) {
 	// Check if expr needs parens (binary ops, etc.)
-	needsParens := f.exprNeedsParensForTypeHint(t.Expr)
+	needsParens := exprNeedsParensForTypeHint(t.Expr)
 	if needsParens {
 		f.write("(")
 	}
@@ -2465,7 +2424,7 @@ func (f *Formatter) formatTypeHint(t *TypeHint) {
 	f.formatTypeNode(t.Type)
 }
 
-func (f *Formatter) exprNeedsParensForTypeHint(node Node) bool {
+func exprNeedsParensForTypeHint(node Node) bool {
 	switch node.(type) {
 	case *Addition, *Subtraction, *Multiplication, *Division, *Modulo:
 		return true
@@ -2580,22 +2539,6 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 	}
 }
 
-func (f *Formatter) formatDefault(d *Default) {
-	f.formatBinaryOp(d.Left, d.Right, "??")
-}
-
-func (f *Formatter) formatLogicalOr(o *LogicalOr) {
-	f.formatBinaryOp(o.Left, o.Right, "or")
-}
-
-func (f *Formatter) formatLogicalAnd(a *LogicalAnd) {
-	f.formatBinaryOp(a.Left, a.Right, "and")
-}
-
-func (f *Formatter) formatEquality(e *Equality) {
-	f.formatBinaryOp(e.Left, e.Right, "==")
-}
-
 func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 	f.write("!")
 	f.formatNode(u.Expr)
@@ -2622,7 +2565,7 @@ func (f *Formatter) formatGrouped(g *Grouped) {
 
 func (f *Formatter) formatBinaryOp(left, right Node, op string) {
 	// Check if left operand needs parentheses
-	leftNeedsParens := f.needsParensForPrecedence(left, op, true)
+	leftNeedsParens := needsParensForPrecedence(left, op, true)
 	if leftNeedsParens {
 		f.write("(")
 	}
@@ -2636,7 +2579,7 @@ func (f *Formatter) formatBinaryOp(left, right Node, op string) {
 	f.write(" ")
 
 	// Check if right operand needs parentheses (for right-associativity issues)
-	rightNeedsParens := f.needsParensForPrecedence(right, op, false)
+	rightNeedsParens := needsParensForPrecedence(right, op, false)
 	if rightNeedsParens {
 		f.write("(")
 	}
@@ -2647,14 +2590,14 @@ func (f *Formatter) formatBinaryOp(left, right Node, op string) {
 }
 
 // needsParensForPrecedence checks if an expression needs parentheses in a binary operation
-func (f *Formatter) needsParensForPrecedence(node Node, parentOp string, isLeft bool) bool {
-	childOp := f.getOperator(node)
+func needsParensForPrecedence(node Node, parentOp string, isLeft bool) bool {
+	childOp := nodeOperator(node)
 	if childOp == "" {
 		return false
 	}
 
-	parentPrec := f.precedence(parentOp)
-	childPrec := f.precedence(childOp)
+	parentPrec := operatorPrecedence(parentOp)
+	childPrec := operatorPrecedence(childOp)
 
 	// If child has lower precedence, needs parens
 	if childPrec < parentPrec {
@@ -2662,14 +2605,14 @@ func (f *Formatter) needsParensForPrecedence(node Node, parentOp string, isLeft 
 	}
 
 	// For same precedence on right side, needs parens for left-associative ops
-	if childPrec == parentPrec && !isLeft && f.isLeftAssociative(parentOp) {
+	if childPrec == parentPrec && !isLeft && isLeftAssociative(parentOp) {
 		return true
 	}
 
 	return false
 }
 
-func (f *Formatter) getOperator(node Node) string {
+func nodeOperator(node Node) string {
 	switch node.(type) {
 	case *Addition:
 		return "+"
@@ -2704,7 +2647,7 @@ func (f *Formatter) getOperator(node Node) string {
 	}
 }
 
-func (f *Formatter) precedence(op string) int {
+func operatorPrecedence(op string) int {
 	switch op {
 	case "??":
 		return 0 // Lowest precedence
@@ -2725,7 +2668,7 @@ func (f *Formatter) precedence(op string) int {
 	}
 }
 
-func (f *Formatter) isLeftAssociative(op string) bool {
+func isLeftAssociative(op string) bool {
 	// ?? is right-associative; all other operators are left-associative
 	return op != "??"
 }
@@ -2744,10 +2687,6 @@ func (f *Formatter) formatDocString(doc string) {
 	f.writeIndent()
 	f.write(`"""`)
 	f.newline()
-}
-
-func (f *Formatter) formatType(t TypeNode) {
-	f.formatTypeNode(t)
 }
 
 func (f *Formatter) formatTypeNode(t TypeNode) {
