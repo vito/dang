@@ -373,6 +373,130 @@ func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
 	}
 }
 
+// ConstructorEnv is a specialized environment for new() constructor bodies.
+// Reads check constructor args first (shadowing fields and outer scope),
+// while writes go to the instance so bare assignments like `x = val` work.
+type ConstructorEnv struct {
+	instance EvalEnv // Class instance (target for writes)
+	args     EvalEnv // Constructor arguments (shadow everything on reads)
+	closure  EvalEnv // Lexical closure (outer scope)
+
+	dynamicScope Value
+}
+
+func CreateConstructorEnv(instance EvalEnv, args EvalEnv, closure EvalEnv) *ConstructorEnv {
+	return &ConstructorEnv{
+		instance: instance,
+		args:     args,
+		closure:  closure,
+	}
+}
+
+func (e *ConstructorEnv) Get(name string) (Value, bool) {
+	// Constructor args shadow everything
+	if val, found := e.args.Get(name); found {
+		return val, true
+	}
+	// Then instance fields
+	if val, found := e.instance.Get(name); found {
+		return val, true
+	}
+	// Then lexical closure
+	return e.closure.Get(name)
+}
+
+func (e *ConstructorEnv) GetLocal(name string) (Value, bool) {
+	return e.instance.GetLocal(name)
+}
+
+func (e *ConstructorEnv) Bindings(vis Visibility) []Keyed[Value] {
+	var bs []Keyed[Value]
+	seen := map[string]bool{}
+	for _, kv := range e.args.Bindings(vis) {
+		bs = append(bs, kv)
+		seen[kv.Key] = true
+	}
+	for _, kv := range e.instance.Bindings(vis) {
+		if !seen[kv.Key] {
+			bs = append(bs, kv)
+			seen[kv.Key] = true
+		}
+	}
+	for _, kv := range e.closure.Bindings(vis) {
+		if !seen[kv.Key] {
+			bs = append(bs, kv)
+		}
+	}
+	return bs
+}
+
+func (e *ConstructorEnv) MarshalJSON() ([]byte, error) {
+	return json.Marshal(e.instance)
+}
+
+func (e *ConstructorEnv) GetForAssignment(name string) (Value, bool) {
+	// For assignments, use the instance
+	if val, found := e.instance.Get(name); found {
+		return val, true
+	}
+	return e.closure.Get(name)
+}
+
+func (e *ConstructorEnv) Set(name string, value Value) EvalEnv {
+	e.instance.Set(name, value)
+	return e
+}
+
+func (e *ConstructorEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
+	e.instance.SetWithVisibility(name, value, visibility)
+}
+
+func (e *ConstructorEnv) Reassign(name string, value Value) {
+	// Reassign on the instance (where fields live)
+	e.instance.Reassign(name, value)
+}
+
+func (e *ConstructorEnv) Visibility(name string) Visibility {
+	return e.instance.Visibility(name)
+}
+
+func (e *ConstructorEnv) Fork() EvalEnv {
+	return &ConstructorEnv{
+		instance:     e.instance.Fork(),
+		args:         e.args,
+		closure:      e.closure,
+		dynamicScope: e.dynamicScope,
+	}
+}
+
+func (e *ConstructorEnv) Clone() EvalEnv {
+	return &ConstructorEnv{
+		instance:     e.instance.Clone(),
+		args:         e.args,
+		closure:      e.closure,
+		dynamicScope: e.dynamicScope,
+	}
+}
+
+func (e *ConstructorEnv) GetDynamicScope() (Value, bool) {
+	if e.dynamicScope != nil {
+		return e.dynamicScope, true
+	}
+	return nil, false
+}
+
+func (e *ConstructorEnv) SetDynamicScope(value Value) {
+	e.dynamicScope = value
+}
+
+func (e *ConstructorEnv) Type() hm.Type {
+	return e.instance.Type()
+}
+
+func (e *ConstructorEnv) String() string {
+	return fmt.Sprintf("ConstructorEnv(%s)", e.instance)
+}
+
 // CompositeModule combines two type environments for Reopen type inference
 type CompositeModule struct {
 	primary Env // The reopened module (where new bindings go)

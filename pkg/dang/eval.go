@@ -1227,24 +1227,27 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
 		}
 
-		// Bind constructor args in a forked closure for the new() body
-		newEnv := c.Closure.Fork()
+		// Bind constructor args so they shadow both instance fields and
+		// the outer closure (see #23). Args go in a separate env that is
+		// only consulted for reads (Get), while writes (Set/Reassign) go
+		// to the instance as before.
+		argEnv := NewModuleValue(NewModule("_constructor_args_", ObjectKind))
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
-				newEnv.Set(param.Name.Name, arg)
+				argEnv.Set(param.Name.Name, arg)
 			} else if param.Value != nil {
 				defaultVal, err := EvalNode(ctx, c.Closure, param.Value)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
-				newEnv.Set(param.Name.Name, defaultVal)
+				argEnv.Set(param.Name.Name, defaultVal)
 			}
 		}
 
 		// Execute the new() body with access to self and constructor args.
 		// We evaluate forms directly (not via Block.Eval) to avoid cloning
 		// the env, which would lose dynamic scope updates for self assignments.
-		newBodyEnv := CreateCompositeEnv(instance, newEnv)
+		newBodyEnv := CreateConstructorEnv(instance, argEnv, c.Closure)
 		newBodyEnv.SetDynamicScope(instance)
 
 		var lastVal Value
@@ -1258,7 +1261,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			if updatedInstance, found := newBodyEnv.GetDynamicScope(); found {
 				instance = updatedInstance.(*ModuleValue)
 				// Update newBodyEnv to use the new instance
-				newBodyEnv = CreateCompositeEnv(instance, newEnv)
+				newBodyEnv = CreateConstructorEnv(instance, argEnv, c.Closure)
 				newBodyEnv.SetDynamicScope(instance)
 			}
 		}

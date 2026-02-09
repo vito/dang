@@ -1,0 +1,52 @@
+# Test that constructor args properly shadow fields and outer scope (issue #23)
+
+pub version = "outer"
+
+# Constructor arg shadows outer variable
+type ShadowOuter {
+	pub result: String!
+
+	new(version: String = null) {
+		self.result = version ?? "default"
+		self
+	}
+}
+
+assert { ShadowOuter.result == "default" }
+assert { ShadowOuter("custom").result == "custom" }
+
+# Constructor arg shadows field of the same name
+type ShadowField {
+	pub version: String!
+	pub result: String!
+
+	new(version: String = null) {
+		self.version = version ?? "default_version"
+		# bare `version` should still be the arg (null), not the field
+		self.result = version ?? "default_result"
+		self
+	}
+}
+
+assert { ShadowField.version == "default_version" }
+assert { ShadowField.result == "default_result" }
+assert { ShadowField("v1").version == "v1" }
+assert { ShadowField("v1").result == "v1" }
+
+# Constructor arg with same name as field, used after assignment
+type MultiUse {
+	pub name: String!
+	pub greeting: String!
+
+	new(name: String!) {
+		self.name = name
+		# `name` should still be the arg, not self.name
+		self.greeting = "Hello, " + name + "!"
+		self
+	}
+}
+
+assert { MultiUse("Alice").name == "Alice" }
+assert { MultiUse("Alice").greeting == "Hello, Alice!" }
+
+print("Constructor arg scope tests passed!")
