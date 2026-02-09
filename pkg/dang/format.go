@@ -946,6 +946,7 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 	for _, d := range c.Directives {
 		if d.Loc != nil && c.Name.Loc != nil && d.Loc.Line < c.Name.Loc.Line {
 			f.formatDirectiveApplication(d)
+			f.emitTrailingComment(d.Loc.Line)
 			f.newline()
 			f.writeIndent()
 		}
@@ -1021,6 +1022,10 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 
 	f.writeIndent()
 	f.write("}")
+	// Emit trailing comment on closing brace line
+	if c.Loc != nil && c.Loc.End != nil {
+		f.emitTrailingComment(c.Loc.End.Line)
+	}
 }
 
 func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
@@ -1079,6 +1084,10 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 	})
 
 	f.write("}")
+	// Emit trailing comment on closing brace line
+	if i.Loc != nil && i.Loc.End != nil {
+		f.emitTrailingComment(i.Loc.End.Line)
+	}
 }
 
 func (f *Formatter) formatEnumDecl(e *EnumDecl) {
@@ -1123,6 +1132,10 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 		})
 
 		f.write("}")
+		// Emit trailing comment on closing brace line
+		if e.Loc != nil && e.Loc.End != nil {
+			f.emitTrailingComment(e.Loc.End.Line)
+		}
 	}
 }
 
@@ -1158,6 +1171,7 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 			}
 			f.formatDirectiveApplication(d)
 			if d.Loc != nil {
+				f.emitTrailingComment(d.Loc.Line)
 				prevDirectiveLine = d.Loc.Line
 			}
 		}
@@ -1857,6 +1871,11 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 	// Format root
 	f.formatNode(root)
 
+	// Emit trailing comment on the root's line before breaking to chain
+	if rootEndLine := nodeEndLine(root); rootEndLine > 0 {
+		f.emitTrailingComment(rootEndLine)
+	}
+
 	// Format chain elements with leading dots
 	f.indented(func() {
 		for _, elem := range chain {
@@ -2008,6 +2027,11 @@ func (f *Formatter) formatSelectChain(s *Select) {
 	// Format the root
 	f.formatNode(root)
 
+	// Emit trailing comment on the root's line before breaking to chain
+	if rootEndLine := nodeEndLine(root); rootEndLine > 0 {
+		f.emitTrailingComment(rootEndLine)
+	}
+
 	// Format each field on its own line with a leading dot, indented one level
 	f.indented(func() {
 		for _, sel := range selects {
@@ -2152,7 +2176,11 @@ func (f *Formatter) formatListInline(l *List) {
 
 func (f *Formatter) formatListMultiline(l *List) {
 	f.write("[")
-	f.newline()
+	if l.Loc != nil {
+		f.nl(l.Loc.Line)
+	} else {
+		f.newline()
+	}
 	f.indented(func() {
 		// Reset lastLine to prevent spurious blank line at start of list
 		if len(l.Elements) > 0 {
