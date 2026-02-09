@@ -1,5 +1,3 @@
-import Dagger
-
 type Dev {
 	pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
 		# TODO: respecting .gitignore would be nice

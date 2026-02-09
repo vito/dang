@@ -1,5 +1,3 @@
-import Dagger
-
 # local variable hover
 let hello = 42
 

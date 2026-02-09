@@ -1,5 +1,3 @@
-import Dagger
-
 type Dang {
 	"""
 	The source directory for the Dang project.
