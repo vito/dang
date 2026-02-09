@@ -6,6 +6,7 @@ type Greeter {
 
 	new(name: String!) {
 		self.greeting = "Hello, " + name + "!"
+		self
 	}
 }
 
@@ -22,6 +23,7 @@ type Point {
 		self.x = x
 		self.y = y
 		self.label = toString(x) + "," + toString(y)
+		self
 	}
 }
 
@@ -35,6 +37,7 @@ type Logger {
 
 	new(name: String!, level: String! = "INFO") {
 		self.prefix = "[" + level + "] " + name
+		self
 	}
 }
 
@@ -47,6 +50,7 @@ type Config {
 
 	new(mode: String! = "production") {
 		self.mode = mode
+		self
 	}
 }
 
@@ -61,6 +65,7 @@ type Counter {
 	new(label: String!, initial: Int! = 0) {
 		self.label = label
 		self.count = initial
+		self
 	}
 
 	pub getCount: Int! {
@@ -83,6 +88,7 @@ type Pair {
 	new(a: String!, b: String!) {
 		self.first = a
 		self.second = b
+		self
 	}
 }
 
@@ -96,6 +102,7 @@ type PrivateState {
 
 	new(input: Int! = 42) {
 		self.value = input * 2
+		self
 	}
 
 	pub display: String! {
@@ -114,6 +121,7 @@ type Vector {
 	new(vx: Int!, vy: Int!) {
 		x = vx
 		y = vy
+		self
 	}
 }
 

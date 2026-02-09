@@ -1263,19 +1263,17 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			}
 		}
 
-		// The new() body behaves like a normal function: its last expression
-		// is the return value. This allows method chains like
-		// self.withFoo() to propagate their changes (see #24).
-		//
-		// The return value must be an instance of the class (enforced by
-		// the constructor's function type). If the last expression is a
-		// self-field assignment or similar, the dynamic-scope-tracked
-		// instance is used as a fallback.
-		if lastVal != nil {
-			if mv, ok := lastVal.(*ModuleValue); ok && mv.Mod.Name() == c.ClassType.Name() {
-				instance = mv
-			}
+		// The new() body must return self, just like a normal function
+		// returns its last expression. This ensures method chains like
+		// self.withFoo() propagate their changes (see #24).
+		if lastVal == nil {
+			return nil, fmt.Errorf("new() for %s: body must return self", c.ClassName)
 		}
+		mv, ok := lastVal.(*ModuleValue)
+		if !ok {
+			return nil, fmt.Errorf("new() for %s: body must return self (got %T)", c.ClassName, lastVal)
+		}
+		instance = mv
 
 		// Check that all non-null fields have been assigned
 		if err := c.checkRequiredFields(instance); err != nil {

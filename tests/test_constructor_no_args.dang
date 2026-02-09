@@ -6,6 +6,7 @@ type Timestamp {
 
 	new {
 		self.value = 42
+		self
 	}
 }
 
@@ -19,6 +20,7 @@ type Defaults {
 	new {
 		self.name = "default"
 		self.count = 0
+		self
 	}
 }
 
@@ -33,6 +35,7 @@ type Computed {
 	new {
 		self.label = "a" + "b"
 		self.secret = 10 + 20
+		self
 	}
 
 	pub getSecret: Int! {
@@ -49,6 +52,7 @@ type Simple {
 
 	new {
 		x = 99
+		self
 	}
 }
 

@@ -5,6 +5,7 @@ type MyClass {
 
 	new(v: Int!) {
 		self.value = v
+		self
 	}
 
 	pub add(value: Int!): MyClass! {

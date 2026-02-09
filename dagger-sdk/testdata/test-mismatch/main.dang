@@ -6,6 +6,7 @@ type TestMismatch {
 
 	new(n: String!) {
 		self.name = n
+		self
 	}
 
 	pub child: Child! {
@@ -19,6 +20,7 @@ type Child {
 	# Constructor arg is "p" but field is "parent"
 	new(p: TestMismatch!) {
 		self.parent = p
+		self
 	}
 
 	pub parentName: String! {

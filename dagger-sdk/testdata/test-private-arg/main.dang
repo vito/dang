@@ -8,6 +8,7 @@ type TestPrivateArg {
 	) {
 		self.private = private * 2
 		self.source = source
+		self
 	}
 
 	pub display: String! {

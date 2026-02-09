@@ -9,6 +9,7 @@ type Person {
 	new(n: String!, a: Int!) {
 		self.name = n
 		self.age = a
+		self
 	}
 
 	pub greet: String! {
