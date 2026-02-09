@@ -1793,52 +1793,6 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 	}
 }
 
-// findCommentStart returns the byte index of a '#' comment start in a line,
-// ignoring '#' inside strings. Returns -1 if no comment found.
-func findCommentStart(line []byte) int {
-	inString := false
-	for i, b := range line {
-		if b == '"' {
-			inString = !inString
-		}
-		if !inString && b == '#' {
-			return i
-		}
-	}
-	return -1
-}
-
-// chainSpansMultipleLines checks if a chain step (from receiver end to this node)
-// was originally on multiple lines. It looks for the field access dot on a different
-// line than where the receiver ends.
-func (f *Formatter) chainSpansMultipleLines(recvEndLine int, loc *SourceLocation) bool {
-	if f.source == nil || loc == nil || loc.End == nil || recvEndLine <= 0 {
-		return false
-	}
-	lines := bytes.Split(f.source, []byte("\n"))
-	// Check if there's a dot at the end of a line (trailing dot style: `foo.\n  bar`)
-	// Strip comments first to avoid matching dots inside comments
-	if recvEndLine <= len(lines) {
-		line := lines[recvEndLine-1]
-		// Remove trailing comment
-		if idx := findCommentStart(line); idx >= 0 {
-			line = line[:idx]
-		}
-		trimmed := bytes.TrimRight(line, " \t")
-		if len(trimmed) > 0 && trimmed[len(trimmed)-1] == '.' {
-			return true
-		}
-	}
-	// Check if there's a dot at the start of a subsequent line (leading dot style: `foo\n  .bar`)
-	for lineIdx := recvEndLine + 1; lineIdx <= loc.End.Line && lineIdx <= len(lines); lineIdx++ {
-		trimmed := bytes.TrimLeft(lines[lineIdx-1], " \t")
-		if len(trimmed) > 0 && trimmed[0] == '.' {
-			return true
-		}
-	}
-	return false
-}
-
 // nodeEndLineForChain returns the end line of a node using its direct Loc field,
 // which includes the full span (args, block args, etc.)
 func (f *Formatter) nodeEndLineForChain(node Node) int {
@@ -1872,17 +1826,24 @@ func (f *Formatter) wasChainMultiline(node Node) bool {
 	switch n := node.(type) {
 	case *FunCall:
 		if sel, ok := n.Fun.(*Select); ok {
-			recvEndLine := f.nodeEndLineForChain(sel.Receiver)
-			if f.chainSpansMultipleLines(recvEndLine, n.Loc) {
-				return true
+			// Use Field.Loc to precisely check if the field name is on a
+			// different line than the receiver ends. This avoids false
+			// positives from dots elsewhere on the same source line.
+			if sel.Field.Loc != nil {
+				recvEndLine := f.nodeEndLineForChain(sel.Receiver)
+				if recvEndLine > 0 && sel.Field.Loc.Line > recvEndLine {
+					return true
+				}
 			}
 			return f.wasChainMultiline(sel.Receiver)
 		}
 		return false
 	case *Select:
-		recvEndLine := f.nodeEndLineForChain(n.Receiver)
-		if f.chainSpansMultipleLines(recvEndLine, n.Loc) {
-			return true
+		if n.Field.Loc != nil && n.Receiver != nil {
+			recvEndLine := f.nodeEndLineForChain(n.Receiver)
+			if recvEndLine > 0 && n.Field.Loc.Line > recvEndLine {
+				return true
+			}
 		}
 		if n.Receiver != nil {
 			return f.wasChainMultiline(n.Receiver)

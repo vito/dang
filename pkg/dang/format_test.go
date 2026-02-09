@@ -56,6 +56,16 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 `,
 		},
 		{
+			name: "field access in chain arg is not split",
+			input: `pub x = foo.
+  withExec(["is-semver", version], expect: ReturnType.ANY).
+  exitCode`,
+			expected: `pub x = foo
+  .withExec(["is-semver", version], expect: ReturnType.ANY)
+  .exitCode
+`,
+		},
+		{
 			name: "nested multiline block args stay on one line",
 			input: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
   inner.map { x => x * 2 }
