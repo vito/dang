@@ -50,6 +50,12 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 		return nil, nil
 	}
 
+	// Skip hover for literal nodes — the word under cursor is just content, not a symbol.
+	switch node.(type) {
+	case *dang.String, *dang.Int, *dang.Float, *dang.Boolean, *dang.Null:
+		return nil, nil
+	}
+
 	// Check if we're hovering over a field access (Select node)
 	if selectNode, ok := node.(*dang.Select); ok {
 		receiverType := selectNode.Receiver.GetInferredType()
