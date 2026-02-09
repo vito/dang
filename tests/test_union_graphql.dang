@@ -1,0 +1,29 @@
+# Test GraphQL union types with inline fragment selection
+
+import Test
+
+# Search returns [SearchResult!]! where SearchResult = User | Post
+pub results = search(query: "John").{
+	... on User { name, age }
+	... on Post { title, content }
+}
+
+assert { results != null }
+
+# Discriminate first result with case
+pub first = results[0]
+pub desc = case (first) {
+	u: User => "user: " + u.name
+	p: Post => "post: " + p.title
+	else => "unknown"
+}
+assert { desc == "user: John Doe" }
+
+# Check that User fields are accessible after discrimination
+pub userResult = case (first) {
+	u: User => u.age
+	else => null
+}
+assert { userResult == 30 }
+
+print("GraphQL union tests passed!")

@@ -2204,6 +2204,70 @@
     }
   },
   {
+    "type": "inline_fragment",
+    "named": true,
+    "fields": {
+      "f": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          }
+        ]
+      },
+      "fields": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "field_selection",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "on_token",
+          "named": true
+        },
+        {
+          "type": "spread_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "int",
     "named": true,
     "fields": {},
@@ -2714,6 +2778,10 @@
           {
             "type": "field_selection",
             "named": true
+          },
+          {
+            "type": "inline_fragment",
+            "named": true
           }
         ]
       },
@@ -2731,12 +2799,36 @@
           }
         ]
       },
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "inline_fragment",
+            "named": true
+          }
+        ]
+      },
       "last": {
         "multiple": false,
         "required": false,
         "types": [
           {
             "type": "field_selection",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "inline_fragment",
+            "named": true
+          },
+          {
+            "type": "sep",
             "named": true
           }
         ]
@@ -4288,6 +4380,10 @@
   },
   {
     "type": "self_token",
+    "named": true
+  },
+  {
+    "type": "spread_token",
     "named": true
   },
   {

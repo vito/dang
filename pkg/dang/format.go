@@ -2496,6 +2496,34 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 	// Check if the selection was originally multiline
 	multiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
 
+	// Handle inline fragments
+	if len(o.InlineFragments) > 0 {
+		f.write("{")
+		if multiline {
+			f.newline()
+			f.indented(func() {
+				for i, frag := range o.InlineFragments {
+					if i > 0 {
+						f.newline()
+					}
+					f.writeIndent()
+					f.formatInlineFragment(frag)
+				}
+				f.newline()
+			})
+			f.writeIndent()
+		} else {
+			for i, frag := range o.InlineFragments {
+				if i > 0 {
+					f.write(", ")
+				}
+				f.formatInlineFragment(frag)
+			}
+		}
+		f.write("}")
+		return
+	}
+
 	f.write("{")
 	if multiline {
 		f.newline()
@@ -2520,6 +2548,20 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 		}
 	}
 	f.write("}")
+}
+
+func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
+	f.write("... on ")
+	f.write(frag.TypeName.Name)
+	f.write(" {")
+	for i, field := range frag.Fields {
+		if i > 0 {
+			f.write(",")
+		}
+		f.write(" ")
+		f.formatFieldSelection(field)
+	}
+	f.write(" }")
 }
 
 func (f *Formatter) formatFieldSelection(field *FieldSelection) {

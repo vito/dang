@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/introspection"
@@ -967,12 +968,25 @@ type FieldSelection struct {
 
 func (f *FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
 
-// ObjectSelection represents multi-field selection like obj.{field1, field2}
-type ObjectSelection struct {
-	InferredTypeHolder
-	Receiver Node
+// InlineFragment represents a type-conditional selection like ... on User { name, email }
+type InlineFragment struct {
+	TypeName *Symbol
 	Fields   []*FieldSelection
 	Loc      *SourceLocation
+
+	Inferred *Module // The concrete type module for this fragment
+}
+
+func (f *InlineFragment) GetSourceLocation() *SourceLocation { return f.Loc }
+
+// ObjectSelection represents multi-field selection like obj.{field1, field2}
+// or union selection like obj.{... on User { name }, ... on Post { title }}
+type ObjectSelection struct {
+	InferredTypeHolder
+	Receiver        Node
+	Fields          []*FieldSelection
+	InlineFragments []*InlineFragment // For union/interface inline fragments
+	Loc             *SourceLocation
 
 	Inferred         *Module
 	IsList           bool // TODO respect
@@ -987,7 +1001,11 @@ func (o *ObjectSelection) DeclaredSymbols() []string {
 }
 
 func (o *ObjectSelection) ReferencedSymbols() []string {
-	return o.Receiver.ReferencedSymbols()
+	symbols := o.Receiver.ReferencedSymbols()
+	for _, frag := range o.InlineFragments {
+		symbols = append(symbols, frag.TypeName.Name)
+	}
+	return symbols
 }
 
 func (o *ObjectSelection) Body() hm.Expression { return o }
@@ -1000,6 +1018,11 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 		receiverType, err := o.Receiver.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("ObjectSelection.Infer: %w", err)
+		}
+
+		// Handle inline fragments (union/interface selection)
+		if len(o.InlineFragments) > 0 {
+			return o.inferInlineFragments(ctx, receiverType, env, fresh)
 		}
 
 		// Handle regular object types
@@ -1040,6 +1063,102 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 		o.SetInferredType(resultType)
 		return resultType, nil
 	})
+}
+
+// inferInlineFragments validates inline fragment selections on a union or interface type.
+// The result type preserves the union/interface type and list wrapping from the receiver.
+func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	modEnv, ok := env.(Env)
+	if !ok {
+		return nil, fmt.Errorf("inline fragments require a module environment")
+	}
+
+	// Unwrap list and non-null to find the element type
+	unwrapped := receiverType
+	isList := false
+	elementIsNonNull := false
+	receiverIsNonNull := false
+	if nn, ok := unwrapped.(hm.NonNullType); ok {
+		receiverIsNonNull = true
+		unwrapped = nn.Type
+	}
+	if lt, ok := unwrapped.(ListType); ok {
+		isList = true
+		unwrapped = lt.Type
+		if nn, ok := unwrapped.(hm.NonNullType); ok {
+			elementIsNonNull = true
+			unwrapped = nn.Type
+		}
+	} else if lt, ok := unwrapped.(GraphQLListType); ok {
+		isList = true
+		unwrapped = lt.Type
+		if nn, ok := unwrapped.(hm.NonNullType); ok {
+			elementIsNonNull = true
+			unwrapped = nn.Type
+		}
+	}
+
+	// The element type must be a union or interface
+	unionOrIface, ok := unwrapped.(*Module)
+	if !ok {
+		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s", unwrapped), o.Receiver)
+	}
+	if unionOrIface.Kind != UnionKind && unionOrIface.Kind != InterfaceKind {
+		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s type %s", unionOrIface.Kind, unionOrIface.Name()), o.Receiver)
+	}
+
+	// Validate each fragment
+	for _, frag := range o.InlineFragments {
+		memberType, found := modEnv.NamedType(frag.TypeName.Name)
+		if !found {
+			return nil, NewInferError(fmt.Errorf("unknown type %s in inline fragment", frag.TypeName.Name), frag.TypeName)
+		}
+
+		memberMod, ok := memberType.(*Module)
+		if !ok {
+			return nil, NewInferError(fmt.Errorf("type %s in inline fragment is not an object type", frag.TypeName.Name), frag.TypeName)
+		}
+
+		// Check membership
+		if unionOrIface.Kind == UnionKind {
+			if !unionOrIface.HasMember(memberMod) {
+				return nil, NewInferError(fmt.Errorf("type %s is not a member of union %s", frag.TypeName.Name, unionOrIface.Name()), frag.TypeName)
+			}
+		}
+
+		// Validate each field in the fragment exists on the concrete type
+		for _, field := range frag.Fields {
+			_, err := (&Symbol{
+				Name:     field.Name,
+				AutoCall: true,
+				Loc:      field.Loc,
+			}).Infer(ctx, memberMod, fresh)
+			if err != nil {
+				return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
+			}
+		}
+
+		frag.Inferred = memberMod
+	}
+
+	o.IsList = isList
+	o.ElementIsNonNull = elementIsNonNull
+
+	// The result type is the union/interface type, preserving list/non-null wrapping
+	var resultType hm.Type = unionOrIface
+	if isList {
+		var elemType hm.Type = unionOrIface
+		if elementIsNonNull {
+			elemType = hm.NonNullType{Type: elemType}
+		}
+		resultType = ListType{Type: elemType}
+	}
+	if receiverIsNonNull {
+		resultType = hm.NonNullType{Type: resultType}
+	}
+
+	o.SetInferredType(resultType)
+	return resultType, nil
 }
 
 func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
@@ -1180,6 +1299,27 @@ func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) 
 			return NullValue{}, nil
 		}
 
+		// Handle inline fragments on GraphQL values
+		if len(o.InlineFragments) > 0 {
+			if gqlVal, ok := receiverVal.(GraphQLValue); ok {
+				return o.evalGraphQLInlineFragments(gqlVal, ctx, env)
+			}
+			// For Dang-native values, inline fragments work like regular selection
+			// but we need to handle lists
+			if listVal, ok := receiverVal.(ListValue); ok {
+				var results []Value
+				for _, elem := range listVal.Elements {
+					result, err := o.evalInlineFragmentOnValue(elem, ctx, env)
+					if err != nil {
+						return nil, err
+					}
+					results = append(results, result)
+				}
+				return ListValue{Elements: results, ElemType: o.GetInferredType()}, nil
+			}
+			return o.evalInlineFragmentOnValue(receiverVal, ctx, env)
+		}
+
 		// Handle list types - apply selection to each element
 		if listVal, ok := receiverVal.(ListValue); ok {
 			var results []Value
@@ -1196,6 +1336,149 @@ func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) 
 		// Handle regular object types
 		return o.evalSelectionOnValue(receiverVal, ctx, env)
 	})
+}
+
+// evalInlineFragmentOnValue handles inline fragment selection on a Dang-native value.
+// The value passes through with its original type identity — fragments just validate at compile time.
+func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
+	modVal, ok := val.(*ModuleValue)
+	if !ok {
+		return nil, fmt.Errorf("inline fragment selection requires an object value, got %T", val)
+	}
+
+	// Find the matching fragment based on the concrete type name
+	mod, ok := modVal.Mod.(*Module)
+	if !ok {
+		return nil, fmt.Errorf("inline fragment selection: expected Module, got %T", modVal.Mod)
+	}
+
+	for _, frag := range o.InlineFragments {
+		if frag.TypeName.Name == mod.Name() {
+			// Build a result with the selected fields, preserving the concrete type
+			resultModuleValue := NewModuleValue(frag.Inferred)
+			for _, field := range frag.Fields {
+				fieldVal, exists := modVal.Get(field.Name)
+				if !exists {
+					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod.Name())
+				}
+				resultModuleValue.Set(field.Name, fieldVal)
+			}
+			return resultModuleValue, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no inline fragment matched type %s", mod.Name())
+}
+
+// evalGraphQLInlineFragments builds a GraphQL query with __typename and inline fragments,
+// executes it, and returns properly-typed results.
+func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+	// Build the query with __typename and inline fragments
+	query := gqlVal.QueryChain
+	if query == nil {
+		return nil, fmt.Errorf("GraphQL inline fragments: no query chain")
+	}
+
+	// Build inline fragment query string
+	// We need: { __typename ... on User { name email } ... on Post { title } }
+	var fragParts []string
+	fragParts = append(fragParts, "__typename")
+	for _, frag := range o.InlineFragments {
+		var fieldNames []string
+		for _, field := range frag.Fields {
+			fieldNames = append(fieldNames, field.Name)
+		}
+		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldNames, " ")))
+	}
+
+	// Use SelectMultiple to inject the raw fragment selection
+	query = query.SelectMultiple(fragParts...)
+
+	// Execute the query
+	var result any
+	err := query.Client(gqlVal.Client).Bind(&result).Execute(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GraphQL inline fragments: executing query: %w", err)
+	}
+
+	// Convert results to properly-typed ModuleValues
+	return o.convertInlineFragmentResult(result, gqlVal.Schema, gqlVal.TypeEnv)
+}
+
+// convertInlineFragmentResult converts a GraphQL response with __typename into typed ModuleValues.
+func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *introspection.Schema, typeEnv Env) (Value, error) {
+	// Handle list results
+	if resultSlice, ok := result.([]any); ok {
+		var elements []Value
+		for _, item := range resultSlice {
+			elem, err := o.convertInlineFragmentResult(item, schema, typeEnv)
+			if err != nil {
+				return nil, err
+			}
+			elements = append(elements, elem)
+		}
+		return ListValue{Elements: elements, ElemType: o.GetInferredType()}, nil
+	}
+
+	// Handle single object result
+	resultMap, ok := result.(map[string]any)
+	if !ok {
+		if result == nil {
+			return NullValue{}, nil
+		}
+		return nil, fmt.Errorf("expected map or slice from GraphQL inline fragment query, got %T", result)
+	}
+
+	typeName, ok := resultMap["__typename"].(string)
+	if !ok {
+		return nil, fmt.Errorf("GraphQL inline fragment response missing __typename")
+	}
+
+	// Find the matching fragment
+	for _, frag := range o.InlineFragments {
+		if frag.TypeName.Name == typeName {
+			// Look up the concrete type module
+			concreteType, found := typeEnv.NamedType(typeName)
+			if !found {
+				return nil, fmt.Errorf("type %s not found in type environment", typeName)
+			}
+
+			resultModuleValue := NewModuleValue(concreteType)
+			for _, field := range frag.Fields {
+				if fieldValue, exists := resultMap[field.Name]; exists {
+					// Look up field type info for enum conversion
+					concreteSchemaType := schema.Types.Get(typeName)
+					if concreteSchemaType != nil {
+						for _, schemaField := range concreteSchemaType.Fields {
+							if schemaField.Name == field.Name {
+								fieldType := schema.Types.Get(o.unwrapType(schemaField.TypeRef).Name)
+								if fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
+									if strVal, ok := fieldValue.(string); ok {
+										enumType, found := typeEnv.NamedType(fieldType.Name)
+										if found {
+											resultModuleValue.Set(field.Name, EnumValue{Val: strVal, EnumType: enumType})
+											continue
+										}
+									}
+								}
+								break
+							}
+						}
+					}
+
+					dangVal, err := ToValue(fieldValue)
+					if err != nil {
+						return nil, fmt.Errorf("converting field %s: %w", field.Name, err)
+					}
+					resultModuleValue.Set(field.Name, dangVal)
+				}
+			}
+
+			return resultModuleValue, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no inline fragment matched __typename %q", typeName)
 }
 
 func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
