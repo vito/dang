@@ -1667,6 +1667,11 @@
     }
   },
   {
+    "type": "field_id",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "field_selection",
     "named": true,
     "fields": {
@@ -3025,7 +3030,7 @@
         "required": false,
         "types": [
           {
-            "type": "id",
+            "type": "field_id",
             "named": true
           }
         ]

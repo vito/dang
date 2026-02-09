@@ -1916,7 +1916,7 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 			switch e := elem.(type) {
 			case *FunCall:
 				if sel, ok := e.Fun.(*Select); ok {
-					f.write(sel.Field)
+					f.write(sel.Field.Name)
 				}
 				if len(e.Args) > 0 {
 					f.write("(")
@@ -1937,7 +1937,7 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 					f.emitTrailingComment(e.Loc.End.Line)
 				}
 			case *Select:
-				f.write(e.Field)
+				f.write(e.Field.Name)
 				// Use the Select's Loc directly to get the actual span
 				if e.Loc != nil && e.Loc.End != nil {
 					f.emitTrailingComment(e.Loc.End.Line)
@@ -2036,7 +2036,7 @@ func (f *Formatter) formatSelect(s *Select, forceMultiline bool) {
 	}
 	f.formatNode(s.Receiver)
 	f.write(".")
-	f.write(s.Field)
+	f.write(s.Field.Name)
 }
 
 // formatSelectChain formats a select chain with leading dots on new lines
@@ -2069,7 +2069,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 			f.newline()
 			f.writeIndent()
 			f.write(".")
-			f.write(sel.Field)
+			f.write(sel.Field.Name)
 			// Emit trailing comment for this select
 			if sel.Loc != nil && sel.Loc.End != nil {
 				f.emitTrailingComment(sel.Loc.End.Line)
@@ -2081,7 +2081,7 @@ func (f *Formatter) formatSelectChain(s *Select) {
 func (f *Formatter) formatSelectInline(s *Select) {
 	f.formatNodeInline(s.Receiver)
 	f.write(".")
-	f.write(s.Field)
+	f.write(s.Field.Name)
 }
 
 func (f *Formatter) formatSymbol(s *Symbol) {

@@ -119,7 +119,7 @@ AutoCallSymbol <- name:Id {
 }
 
 // Handle Select followed by optional (), or ObjectSelection
-SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
   switch sel := selection.(type) {
   case *ObjectSelection:
     // Object selection: obj.{field1, field2}
@@ -127,7 +127,7 @@ SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:Id args
     return sel, nil
   case []interface{}:
     // Regular field access with optional args
-    name := sel[0].(string)
+    name := sel[0].(*Symbol)
     args := sel[1]
     blockArg := sel[2]
     if args != nil || blockArg != nil {
@@ -423,6 +423,12 @@ Symbol <- name:Id {
   }, nil
 }
 Id <- WordToken
+FieldId <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
+  return &Symbol{
+    Name: string(c.text),
+    Loc: c.Loc(),
+  }, nil
+}
 WordToken <- !NullToken [a-zA-Z_][a-zA-Z0-9_]* {
   return string(c.text), nil
 }

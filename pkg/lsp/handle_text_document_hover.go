@@ -65,10 +65,10 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 			}
 			if env, ok := receiverType.(dang.Env); ok {
 				var docString string
-				if doc, found := env.GetDocString(selectNode.Field); found {
+				if doc, found := env.GetDocString(selectNode.Field.Name); found {
 					docString = doc
 				}
-				if scheme, found := env.LocalSchemeOf(selectNode.Field); found {
+				if scheme, found := env.LocalSchemeOf(selectNode.Field.Name); found {
 					fieldType, _ := scheme.Type()
 					codeBlock := fmt.Sprintf("%s: %s", symbolName, fieldType)
 					return h.hoverResultWithDoc(docString, codeBlock)

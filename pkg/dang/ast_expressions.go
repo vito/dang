@@ -574,7 +574,7 @@ func (s *Symbol) Walk(fn func(Node) bool) {
 type Select struct {
 	InferredTypeHolder
 	Receiver         Node
-	Field            string
+	Field            *Symbol
 	AutoCall         bool
 	NullableReceiver bool // set during Infer when receiver is nullable
 	Loc              *SourceLocation
@@ -587,9 +587,9 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
 		// Handle nil receiver (symbol calls) - look up type in environment
 		if d.Receiver == nil {
-			scheme, found := env.SchemeOf(d.Field)
+			scheme, found := env.SchemeOf(d.Field.Name)
 			if !found {
-				return nil, fmt.Errorf("%q not found in env", d.Field)
+				return nil, fmt.Errorf("%q not found in env", d.Field.Name)
 			}
 			t, _ := scheme.Type()
 			d.SetInferredType(t)
@@ -609,11 +609,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 				elemType := listType.Type
 
 				// Look up method definition
-				def, found := LookupMethod(ListTypeModule, d.Field)
+				def, found := LookupMethod(ListTypeModule, d.Field.Name)
 				if !found {
 					tv := fresh.Fresh()
 					d.SetInferredType(tv)
-					return tv, fmt.Errorf("list does not have method %q", d.Field)
+					return tv, fmt.Errorf("list does not have method %q", d.Field.Name)
 				}
 
 				// Build method type with element type substituted for type variable
@@ -649,16 +649,16 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
 		}
 
-		scheme, found := rec.SchemeOf(d.Field)
+		scheme, found := rec.SchemeOf(d.Field.Name)
 		if !found {
 			// Return a type variable to allow downstream inference to continue
 			tv := fresh.Fresh()
 			d.SetInferredType(tv)
-			return tv, fmt.Errorf("field %q not found in %s", d.Field, rec)
+			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
 		t, mono := scheme.Type()
 		if !mono {
-			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field)
+			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
 		}
 		if d.AutoCall {
 			t, _ = autoCallFnType(t)
@@ -690,7 +690,7 @@ func (d *Select) ReferencedSymbols() []string {
 
 	// When Receiver is nil, this is a top-level function call like createPerson()
 	if d.Receiver == nil {
-		symbols = append(symbols, d.Field)
+		symbols = append(symbols, d.Field.Name)
 	} else {
 		symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
 	}
@@ -724,7 +724,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return NullValue{}, nil
 
 			case EvalEnv:
-				if val, found := rec.Get(d.Field); found {
+				if val, found := rec.Get(d.Field.Name); found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
 					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
 						return BoundMethod{Method: fnVal, Receiver: rec}, nil
@@ -732,50 +732,50 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 					return val, nil
 				}
 				// this shouldn't happen (should be caught at type checking)
-				return nil, fmt.Errorf("module %q does not have a field %q", rec, d.Field)
+				return nil, fmt.Errorf("module %q does not have a field %q", rec, d.Field.Name)
 
 			case GraphQLValue:
 				// Handle GraphQL field selection
-				return rec.SelectField(ctx, d.Field)
+				return rec.SelectField(ctx, d.Field.Name)
 
 			case StringValue:
 				// Handle methods on string values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
-				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field)
+				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field.Name)
 				if method, found := env.Get(methodKey); found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the string as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 					}
 				}
-				return nil, fmt.Errorf("string value does not have method %q", d.Field)
+				return nil, fmt.Errorf("string value does not have method %q", d.Field.Name)
 
 			case FloatValue:
 				// Handle methods on float values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
-				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field)
+				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field.Name)
 				if method, found := env.Get(methodKey); found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the float as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 					}
 				}
-				return nil, fmt.Errorf("float value does not have method %q", d.Field)
+				return nil, fmt.Errorf("float value does not have method %q", d.Field.Name)
 
 			case ListValue:
 				// Handle methods on list values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
-				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field)
+				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field.Name)
 				if method, found := env.Get(methodKey); found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the list as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 					}
 				}
-				return nil, fmt.Errorf("list value does not have method %q", d.Field)
+				return nil, fmt.Errorf("list value does not have method %q", d.Field.Name)
 
 			default:
-				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field, receiverVal, receiverVal.String(), receiverVal)
+				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
 			}
 		})()
 		if err != nil {
@@ -1112,7 +1112,7 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		// But use a synthetic receiver to get the field from the correct environment
 		selectNode := &Select{
 			Receiver: nil, // Will be handled by using rec environment directly
-			Field:    field.Name,
+			Field:    &Symbol{Name: field.Name, Loc: field.Loc},
 			AutoCall: false,
 			Loc:      field.Loc,
 		}
@@ -1228,7 +1228,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 			// Field has arguments - create a Select then FunCall to evaluate
 			selectNode := &Select{
 				Receiver: createValueNode(objVal),
-				Field:    field.Name,
+				Field:    &Symbol{Name: field.Name, Loc: field.Loc},
 				AutoCall: false,
 				Loc:      field.Loc,
 			}

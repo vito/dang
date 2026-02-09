@@ -189,7 +189,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 149,
+      "value": 150,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -395,7 +395,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 142,
+      "value": 143,
       "content": {
         "type": "SEQ",
         "members": [
@@ -429,7 +429,7 @@
                       "name": "name",
                       "content": {
                         "type": "SYMBOL",
-                        "name": "id"
+                        "name": "field_id"
                       }
                     },
                     {
@@ -478,7 +478,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 141,
+      "value": 142,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1508,6 +1508,19 @@
     "id": {
       "type": "SYMBOL",
       "name": "word_token"
+    },
+    "field_id": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "PATTERN",
+          "value": "[a-zA-Z_]"
+        },
+        {
+          "type": "PATTERN",
+          "value": "[a-zA-Z0-9_]*"
+        }
+      ]
     },
     "word_token": {
       "type": "TOKEN",
@@ -3575,17 +3588,20 @@
     "comment_token": {
       "type": "TOKEN",
       "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "#"
-          },
-          {
-            "type": "PATTERN",
-            "value": "[^\\n]*"
-          }
-        ]
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "#"
+            },
+            {
+              "type": "PATTERN",
+              "value": "[^\\n]*"
+            }
+          ]
+        }
       }
     },
     "conditional": {

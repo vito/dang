@@ -507,7 +507,7 @@ func (r *Reassignment) getPath(selectNode *Select) (Node, []string, error) {
 	// Traverse down the chain of Select nodes, collecting field names
 	for {
 		if s, ok := currentNode.(*Select); ok {
-			path = append([]string{s.Field}, path...)
+			path = append([]string{s.Field.Name}, path...)
 			currentNode = s.Receiver
 		} else {
 			break
@@ -776,10 +776,10 @@ func (a *Assert) nodeToString(node Node) string {
 		return n.Name
 	case *Select:
 		if n.Receiver == nil {
-			return n.Field
+			return n.Field.Name
 		}
 		receiver := a.nodeToString(n.Receiver)
-		return fmt.Sprintf("%s.%s", receiver, n.Field)
+		return fmt.Sprintf("%s.%s", receiver, n.Field.Name)
 	case *FunCall:
 		fun := a.nodeToString(n.Fun)
 		return fmt.Sprintf("%s(...)", fun)
