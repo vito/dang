@@ -28,9 +28,10 @@
 
 ### Phase 3: Type Discrimination (case with type patterns)
 
-* [ ] Extend `CaseClause` in the grammar to support type patterns: `binding: TypeName => expr`
-* [ ] Type narrowing in `Case.Infer`: when the operand is a union type and the clause has a type pattern, introduce the binding with the narrowed concrete type
-* [ ] Runtime discrimination for Dang-native unions: check the concrete type at runtime
+* [x] Extend `CaseClause` in the grammar to support type patterns: `binding: TypeName => expr`
+* [x] Type narrowing in `Case.Infer`: when the operand is a union/interface type and the clause has a type pattern, introduce the binding with the narrowed concrete type
+* [x] Runtime discrimination for Dang-native unions: check the concrete type name at runtime
+* [x] Runtime discrimination for Dang-native interfaces: check the concrete type name at runtime
 * [ ] Runtime discrimination for GraphQL unions: emit `__typename` in the query, dispatch on it
 
 ### Phase 4: GraphQL Query Generation

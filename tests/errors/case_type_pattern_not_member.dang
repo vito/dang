@@ -1,0 +1,19 @@
+type Cat {
+	pub name: String!
+}
+
+type Dog {
+	pub name: String!
+}
+
+type Fish {
+	pub name: String!
+}
+
+union Pet = Cat | Dog
+
+pub describe(pet: Pet!): String! {
+	case (pet) {
+		f: Fish => f.name
+	}
+}

@@ -1,0 +1,11 @@
+[1m[31mError:[0m type pattern requires a union or interface operand, got object type Cat
+  [2m[34m--> errors/case_type_pattern_not_union.dang:7:20[0m
+ [2m    |[0m
+ [2m  5 | pub x = Cat(name: "Whiskers")[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0mpub result = case (x) {
+[2m                          [31m^[0m
+ [2m  8 | 	c: Cat => c.name[0m
+ [2m  9 | }[0m
+ [2m    |[0m
+

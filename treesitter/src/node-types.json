@@ -989,12 +989,32 @@
     "type": "case_clause",
     "named": true,
     "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
       "expr": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
             "named": true
           }
         ]
@@ -1016,6 +1036,10 @@
       "types": [
         {
           "type": "arrow_token",
+          "named": true
+        },
+        {
+          "type": "colon_token",
           "named": true
         },
         {
