@@ -189,6 +189,64 @@ type Query {
 4. **Subtyping via Supertypes** — concrete types list their unions as supertypes, reusing the existing `Assignable` mechanism
 5. **No shared fields** — unlike interfaces, unions have no fields of their own
 
+## Type Pattern Discrimination
+
+Union (and interface) types can be discriminated using type patterns in `case` expressions.
+
+### Syntax
+
+```dang
+case (value) {
+  binding: TypeName => expr   # type pattern: binding is typed as TypeName
+  else => default_expr        # fallback for unmatched types
+}
+```
+
+### Grammar (dang.peg)
+
+```peg
+CaseClause <- ... / binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form { ... }
+```
+
+The type pattern clause is tried after `else` but before generic value match, using PEG ordered choice with backtracking.
+
+### AST (CaseClause fields)
+
+```go
+type CaseClause struct {
+    // ... existing fields ...
+    Binding     string   // variable name (e.g. "user")
+    TypePattern *Symbol  // type name (e.g. "User")
+}
+
+func (c *CaseClause) IsTypePattern() bool { return c.TypePattern != nil }
+```
+
+### Type Inference
+
+In `Case.Infer`, when a clause has a type pattern:
+
+1. The operand type must be a union (`UnionKind`) or interface (`InterfaceKind`)
+2. The type pattern must name a valid member of that union/interface
+3. A scoped environment is created with the binding typed as `NonNull{memberType}`
+4. The clause body is inferred in that scoped environment
+
+This gives full typed access to member-specific fields within the branch.
+
+### Runtime Evaluation
+
+In `Case.Eval`, type pattern clauses use `matchesType()` which checks:
+- `ModuleValue`: compares `mod.Name()` against the pattern type name
+- `GraphQLValue`: compares `TypeName` field against the pattern type name
+
+On match, a forked child environment is created with the binding set to the original value.
+
+### Error Messages
+
+- "type pattern requires a union or interface operand, got {kind} type {name}" — when operand isn't a union/interface
+- "type {name} is not a member of union {union}" — when pattern type isn't a union member
+- "type {name} does not implement interface {iface}" — when pattern type doesn't implement interface
+
 ## Related Files
 
 - `pkg/dang/dang.peg` — Grammar for `union` syntax
