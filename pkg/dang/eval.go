@@ -1263,18 +1263,13 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			}
 		}
 
-		// The new() body must return self, just like a normal function
-		// returns its last expression. This ensures method chains like
-		// self.withFoo() propagate their changes (see #24).
-		lastForm := c.NewBody.Forms[len(c.NewBody.Forms)-1]
-		if lastVal == nil {
-			return nil, CreateEvalError(ctx, fmt.Errorf("new() for %s: body must return self", c.ClassName), lastForm)
+		// The new() body returns self as its last expression, just like a
+		// normal function. This is enforced at inference time. Using the
+		// last value (rather than the tracked instance) ensures method
+		// chains like self.withFoo() propagate their changes (see #24).
+		if mv, ok := lastVal.(*ModuleValue); ok {
+			instance = mv
 		}
-		mv, ok := lastVal.(*ModuleValue)
-		if !ok {
-			return nil, CreateEvalError(ctx, fmt.Errorf("new() for %s: body must return self (got %s)", c.ClassName, lastVal.Type().Name()), lastForm)
-		}
-		instance = mv
 
 		// Check that all non-null fields have been assigned
 		if err := c.checkRequiredFields(instance); err != nil {

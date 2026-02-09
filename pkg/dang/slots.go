@@ -585,9 +585,19 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	}
 
 	// Infer the new() body
-	_, err := newDecl.BodyBlock.Infer(ctx, newEnv, fresh)
+	bodyType, err := newDecl.BodyBlock.Infer(ctx, newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() body: %w", err)
+	}
+
+	// The new() body must return self (the class type)
+	expectedType := hm.NonNullType{Type: c.Inferred}
+	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
+		lastForm := newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		return NewInferError(
+			fmt.Errorf("new() must return self (expected %s, got %s)", expectedType.Name(), bodyType.Name()),
+			lastForm,
+		)
 	}
 
 	return nil
