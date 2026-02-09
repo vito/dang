@@ -3,5 +3,6 @@ type Foo {
 
 	pub new(n: String!): Foo! {
 		self.name = n
+		self
 	}
 }

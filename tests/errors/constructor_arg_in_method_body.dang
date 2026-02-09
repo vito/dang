@@ -6,6 +6,7 @@ type Bad {
 
 	new(secret: String!) {
 		self.name = secret
+		self
 	}
 
 	pub leak: String! {

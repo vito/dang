@@ -1271,7 +1271,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		}
 		mv, ok := lastVal.(*ModuleValue)
 		if !ok {
-			return nil, fmt.Errorf("new() for %s: body must return self (got %T)", c.ClassName, lastVal)
+			return nil, fmt.Errorf("new() for %s: body must return self (got %s)", c.ClassName, lastVal.Type().Name())
 		}
 		instance = mv
 

@@ -1,0 +1,12 @@
+# Test that a constructor returning the wrong type produces a clear error
+
+type Wrong {
+	pub name: String!
+
+	new(name: String!) {
+		self.name = name
+		"not self"
+	}
+}
+
+Wrong("test")
