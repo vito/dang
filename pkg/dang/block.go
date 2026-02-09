@@ -610,7 +610,9 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 		t, err := form.Infer(ctx, env, fresh)
 		if err != nil {
 			errs.Add(err)
-			assignFallbackType(form, env, fresh)
+			if t == nil {
+				assignFallbackType(form, env, fresh)
+			}
 			continue
 		}
 		lastT = t

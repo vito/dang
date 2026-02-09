@@ -1,6 +1,3 @@
-2 inference errors:
-
-Error 1:
 [1m[31mError:[0m new() must return Wrong!, got String!
   [2m[34m--> errors/constructor_wrong_return.dang:8:3[0m
  [2m    |[0m
@@ -10,17 +7,5 @@ Error 1:
 [2m         [31m^^^^^^^^^^[0m
  [2m  9 | 	}[0m
  [2m 10 | }[0m
- [2m    |[0m
-
-
-Error 2:
-[1m[31mError:[0m FunCall.Infer: expected function, got a (hm.TypeVariable)
-  [2m[34m--> errors/constructor_wrong_return.dang:12:1[0m
- [2m    |[0m
- [2m 10 | }[0m
- [2m 11 | [0m
- [2m[34m[1m 12 | [0mWrong("test")
-[2m       [31m^^^^^^^^^^^^^[0m
- [2m 13 | [0m
  [2m    |[0m
 

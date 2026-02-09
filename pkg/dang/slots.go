@@ -455,12 +455,13 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, err
 	}
 
-	// If there's an explicit new(), infer its body with its args in scope
+	// If there's an explicit new(), infer its body with its args in scope.
+	// Errors here (e.g. wrong return type) are collected but don't prevent
+	// the class from being usable, avoiding cascading type errors.
 	newDecl := c.findNewConstructor()
+	var newBodyErr error
 	if newDecl != nil {
-		if err := c.inferNewConstructor(ctx, newDecl, inferEnv, fresh); err != nil {
-			return nil, err
-		}
+		newBodyErr = c.inferNewConstructor(ctx, newDecl, inferEnv, fresh)
 	}
 
 	// Validate interface implementations after fields have been inferred
@@ -473,7 +474,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 	}
 
-	return c.ConstructorFnType, nil
+	return c.ConstructorFnType, newBodyErr
 }
 
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
