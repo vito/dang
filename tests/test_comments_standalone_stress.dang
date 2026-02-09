@@ -1,0 +1,223 @@
+# Stress test: comments interspersed between all forms of syntax.
+# Every comment should survive formatting and remain in place.
+
+# comment before import
+import Test
+
+# comment before enum
+enum Color {
+  # comment before first value
+  RED
+  # comment between values
+  GREEN
+  # comment before last value
+  BLUE
+}
+
+# comment before interface
+interface Greeter {
+  # comment inside interface
+  pub greet(name: String!): String!
+}
+
+# comment before type
+type Dog implements Greeter {
+  # comment before field
+  pub name: String!
+  # comment between fields
+  pub age: Int!
+
+  # comment before constructor
+  new(
+    # comment before constructor arg
+    n: String!,
+    # comment before second arg
+    a: Int!,
+  ) {
+    # comment inside constructor
+    self.name = n
+    self.age = a
+    self
+  }
+
+  # comment before method
+  pub greet(name: String!): String! {
+    # comment inside method body
+    "woof " + name
+  }
+}
+
+# comment before simple slot
+pub simple = 42
+
+# comment before let
+let local = "hello"
+
+# comment before typed slot
+pub typed: Int! = 100
+
+# comment before function
+pub add(a: Int!, b: Int!): Int! {
+  # comment inside function
+  a + b
+}
+
+# comment before block
+pub block_result = {
+  # comment at start of block
+  let x = 1
+  # comment between block forms
+  let y = 2
+  # comment before last expression
+  x + y
+}
+
+# comment before conditional
+pub cond_result = if (true) {
+  # comment in true branch
+  "yes"
+} else {
+  # comment in false branch
+  "no"
+}
+
+# comment before case
+pub case_result = case ("b") {
+  # comment before first arm
+  "a" => "alpha"
+  # comment before second arm
+  "b" => "beta"
+  # comment before last arm
+  "c" => "gamma"
+}
+
+# comment before for loop
+pub sum = 0
+for (n in [1, 2, 3]) {
+  # comment inside for body
+  sum += n
+}
+
+# comment before list
+pub nums = [
+  # comment before first element
+  1,
+  # comment between elements
+  2,
+  # comment before last element
+  3,
+]
+
+# comment before chain
+pub chain_result = Dog("Rex", 5)
+  # comment before chained method
+  .greet("world")
+
+# comment before multiline chain
+pub chain2 = [10, 20, 30]
+  # comment before map
+  .map { x => x * 2 }
+  # comment before filter
+  .filter { x => x > 20 }
+
+# comment before assert
+assert { simple == 42 }
+# comment between asserts
+assert { typed == 100 }
+# comment between more asserts
+assert { add(1, 2) == 3 }
+assert { block_result == 3 }
+assert { cond_result == "yes" }
+assert { case_result == "beta" }
+assert { sum == 6 }
+assert { nums == [1, 2, 3] }
+assert { chain_result == "woof world" }
+assert { chain2 == [40, 60] }
+
+# comment before reassignment
+pub counter = 0
+# comment between reassignment
+counter = 10
+# comment after reassignment
+assert { counter == 10 }
+
+# comment before nested type
+type Pair {
+  pub left: Int!
+  pub right: Int!
+
+  # comment before pair method
+  pub sum: Int! {
+    # comment inside pair method
+    left + right
+  }
+}
+
+# comment before instantiation
+pub pair = Pair(3, 7)
+assert { pair.sum == 10 }
+
+# comment before default operator
+pub maybe: Int = null
+pub safe = maybe ?? 99
+# comment after default
+assert { safe == 99 }
+
+# comment before boolean operators
+pub logic_and = true and true
+pub logic_or = false or true
+# comment between logic asserts
+assert { logic_and == true }
+assert { logic_or == true }
+
+# comment before comparison operators
+assert { 1 < 2 }
+# comment between comparisons
+assert { 2 > 1 }
+assert { 1 <= 1 }
+assert { 2 >= 2 }
+assert { 1 != 2 }
+assert { 1 == 1 }
+
+# comment before arithmetic
+pub math = (2 + 3) * 4 - 1
+# comment after arithmetic
+assert { math == 19 }
+
+# comment before negation
+assert { (!false) == true }
+
+# comment before for with index
+pub index_sum = 0
+for (i, color in Color.values) {
+  # comment inside indexed for
+  index_sum += i
+}
+assert { index_sum == 3 }
+
+# comment before break/continue
+pub break_sum = 0
+for (n in [1, 2, 3, 4, 5]) {
+  # comment before conditional break
+  if (n > 3) {
+    # comment before break
+    break
+  }
+  break_sum += n
+}
+assert { break_sum == 6 }
+
+pub skip_sum = 0
+for (n in [1, 2, 3, 4, 5]) {
+  # comment before conditional continue
+  if (n == 3) {
+    # comment before continue
+    continue
+  }
+  skip_sum += n
+}
+assert { skip_sum == 12 }
+
+# comment before final print
+print("Comment stress tests passed!")
+# trailing comment at end of file
