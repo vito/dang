@@ -1,7 +1,7 @@
 2 inference errors:
 
 Error 1:
-[1m[31mError:[0m new() must return self (expected Wrong!, got String!)
+[1m[31mError:[0m new() must return Wrong!, got String!
   [2m[34m--> errors/constructor_wrong_return.dang:8:3[0m
  [2m    |[0m
  [2m  6 | 	new(name: String!) {[0m
