@@ -1266,12 +1266,13 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// The new() body must return self, just like a normal function
 		// returns its last expression. This ensures method chains like
 		// self.withFoo() propagate their changes (see #24).
+		lastForm := c.NewBody.Forms[len(c.NewBody.Forms)-1]
 		if lastVal == nil {
-			return nil, fmt.Errorf("new() for %s: body must return self", c.ClassName)
+			return nil, CreateEvalError(ctx, fmt.Errorf("new() for %s: body must return self", c.ClassName), lastForm)
 		}
 		mv, ok := lastVal.(*ModuleValue)
 		if !ok {
-			return nil, fmt.Errorf("new() for %s: body must return self (got %s)", c.ClassName, lastVal.Type().Name())
+			return nil, CreateEvalError(ctx, fmt.Errorf("new() for %s: body must return self (got %s)", c.ClassName, lastVal.Type().Name()), lastForm)
 		}
 		instance = mv
 
