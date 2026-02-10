@@ -1135,13 +1135,9 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
 
 		// Validate each field in the fragment exists on the concrete type
-		// and add it to the narrowed module
+		// and add it to the narrowed module (including nested selections)
 		for _, field := range frag.Fields {
-			fieldType, err := (&Symbol{
-				Name:     field.Name,
-				AutoCall: true,
-				Loc:      field.Loc,
-			}).Infer(ctx, memberMod, fresh)
+			fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
 			if err != nil {
 				return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
 			}
@@ -1401,15 +1397,19 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 	}
 
 	// Build inline fragment query string
-	// We need: { __typename ... on User { name email } ... on Post { title } }
+	// We need: { __typename ... on User { name email } ... on Post { title author { name } } }
 	var fragParts []string
 	fragParts = append(fragParts, "__typename")
 	for _, frag := range o.InlineFragments {
-		var fieldNames []string
+		var fieldParts []string
 		for _, field := range frag.Fields {
-			fieldNames = append(fieldNames, field.Name)
+			if field.Selection != nil {
+				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
+			} else {
+				fieldParts = append(fieldParts, field.Name)
+			}
 		}
-		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldNames, " ")))
+		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
 	}
 
 	// Use SelectMultiple to inject the raw fragment selection
@@ -1467,6 +1467,16 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 			resultModuleValue := NewModuleValue(concreteType)
 			for _, field := range frag.Fields {
 				if fieldValue, exists := resultMap[field.Name]; exists {
+					// Handle nested selections recursively
+					if field.Selection != nil {
+						nestedVal, err := o.convertNestedSelectionResult(fieldValue, field.Selection, schema, typeName, field.Name, typeEnv)
+						if err != nil {
+							return nil, fmt.Errorf("converting nested field %s: %w", field.Name, err)
+						}
+						resultModuleValue.Set(field.Name, nestedVal)
+						continue
+					}
+
 					// Look up field type info for enum conversion
 					concreteSchemaType := schema.Types.Get(typeName)
 					if concreteSchemaType != nil {
@@ -1500,6 +1510,40 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 	}
 
 	return nil, fmt.Errorf("no inline fragment matched __typename %q", typeName)
+}
+
+// convertNestedSelectionResult converts a nested JSON value using the
+// inferred type from a nested ObjectSelection inside an inline fragment.
+func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSelection, schema *introspection.Schema, parentTypeName string, fieldName string, typeEnv Env) (Value, error) {
+	if value == nil {
+		return NullValue{}, nil
+	}
+	resultMap, ok := value.(map[string]any)
+	if !ok {
+		return ToValue(value)
+	}
+	if sel.Inferred == nil {
+		return ToValue(value)
+	}
+	mod := NewModuleValue(sel.Inferred)
+	for _, f := range sel.Fields {
+		if fv, exists := resultMap[f.Name]; exists {
+			if f.Selection != nil {
+				nested, err := o.convertNestedSelectionResult(fv, f.Selection, schema, "", f.Name, typeEnv)
+				if err != nil {
+					return nil, err
+				}
+				mod.Set(f.Name, nested)
+			} else {
+				dv, err := ToValue(fv)
+				if err != nil {
+					return nil, fmt.Errorf("converting field %s: %w", f.Name, err)
+				}
+				mod.Set(f.Name, dv)
+			}
+		}
+	}
+	return mod, nil
 }
 
 func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
@@ -1680,13 +1724,43 @@ func (o *ObjectSelection) buildInlineFragmentQuery(baseQuery *querybuilder.Selec
 	var fragParts []string
 	fragParts = append(fragParts, "__typename")
 	for _, frag := range o.InlineFragments {
-		var fieldNames []string
+		var fieldParts []string
 		for _, field := range frag.Fields {
-			fieldNames = append(fieldNames, field.Name)
+			if field.Selection != nil {
+				// Nested selection: build sub-selection string
+				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
+			} else {
+				fieldParts = append(fieldParts, field.Name)
+			}
 		}
-		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldNames, " ")))
+		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
 	}
 	return baseQuery.SelectMultiple(fragParts...), nil
+}
+
+// buildSelectionString recursively builds a GraphQL selection set string
+// like "{ name login }" from an ObjectSelection.
+func buildSelectionString(sel *ObjectSelection) string {
+	var parts []string
+	for _, field := range sel.Fields {
+		if field.Selection != nil {
+			parts = append(parts, field.Name+" "+buildSelectionString(field.Selection))
+		} else {
+			parts = append(parts, field.Name)
+		}
+	}
+	for _, frag := range sel.InlineFragments {
+		var fieldParts []string
+		for _, field := range frag.Fields {
+			if field.Selection != nil {
+				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
+			} else {
+				fieldParts = append(fieldParts, field.Name)
+			}
+		}
+		parts = append(parts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
+	}
+	return "{ " + strings.Join(parts, " ") + " }"
 }
 
 func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeEnv Env) (Value, error) {

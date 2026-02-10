@@ -33,7 +33,7 @@ pub results = search(
   first: 5,
 ).edges.{
   node.{
-    ... on Repository { name, description, stargazerCount }
+    ... on Repository { name, stargazerCount, owner.{ login } }
   }
 }
 
@@ -41,7 +41,7 @@ print("Top GraphQL clients for Go:")
 
 for (result in results) {
   case (result.node) {
-    r: Repository => print("  " + r.name + " (" + toString(r.stargazerCount) + " stars)")
+    r: Repository => print("  " + r.owner.login + "/" + r.name + " (" + toString(r.stargazerCount) + " stars)")
     else => print("  (other)")
   }
 }
