@@ -1257,7 +1257,7 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		fieldType, err = (&Symbol{
 			Name:     field.Name,
 			AutoCall: true,
-			Loc:      o.Loc,
+			Loc:      field.Loc,
 		}).Infer(ctx, rec, fresh)
 		if err != nil {
 			return nil, err
