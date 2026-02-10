@@ -61,12 +61,28 @@ func (s *SlotDecl) Body() hm.Expression {
 func (s *SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
 func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	// If the slot value is a hoister, delegate
+	// If the slot value is a hoister (e.g. wraps a FunDecl), delegate.
 	if funDecl, ok := s.Value.(Hoister); ok {
 		return funDecl.Hoist(ctx, env, fresh, pass)
 	}
 
-	// For non-function slots, hoisting is handled in the normal inference phase
+	// For non-function slots with an explicit type annotation, register
+	// the declared type during pass 0.  This mirrors what FunDecl.Hoist
+	// does for function signatures: it makes the binding available early
+	// so that sibling declarations (e.g. method default-value expressions)
+	// can reference it before full inference runs.
+	//
+	// Slots without a type annotation are skipped — their type can only
+	// be determined by inferring the value expression, which is deferred
+	// to the normal Infer phase.
+	if pass == 0 && s.Type_ != nil {
+		declaredType, err := s.Type_.Infer(ctx, env, fresh)
+		if err != nil {
+			return err
+		}
+		env.Add(s.Name.Name, hm.NewScheme(nil, declaredType))
+	}
+
 	return nil
 }
 
@@ -390,7 +406,8 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		// Hoist body forms directly (not via Block.Hoist which clones the env)
 		// to register method signatures on the class module. This enables
 		// forward references between types defined in any order. We hoist at
-		// pass 0 so that FunDecl.Hoist registers signatures.
+		// pass 0 so that FunDecl.Hoist registers signatures and
+		// SlotDecl.Hoist registers typed field declarations.
 		bodyForms := c.bodyFormsWithoutNew()
 		for _, form := range bodyForms {
 			if hoister, ok := form.(Hoister); ok {

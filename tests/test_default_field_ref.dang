@@ -1,0 +1,46 @@
+# Test that default value expressions in class methods can reference
+# fields of the same class, and that regular functions can reference
+# outer-scope bindings.
+
+# --- Regular functions referencing outer scope ---
+
+let prefix = "img"
+
+pub withPrefix(tag: String! = prefix + ":latest"): String! {
+    tag
+}
+
+assert("fn: default refs outer scope") { withPrefix == "img:latest" }
+assert("fn: explicit arg") { withPrefix("custom") == "custom" }
+
+# --- Class methods referencing fields via bare name ---
+
+type Builder {
+    pub defaultVersion: String! = "20.18.1"
+
+    pub container(nodeVersion: String! = defaultVersion): String! {
+        "node:" + nodeVersion
+    }
+}
+
+assert("method: default refs field") { Builder.container == "node:20.18.1" }
+assert("method: explicit arg") { Builder.container("22.0.0") == "node:22.0.0" }
+
+# --- Constructor with arg forward-ref in defaults ---
+
+type Config {
+    pub version: String! = "latest"
+    pub tag: String!
+
+    new(version: String! = "latest", tag: String! = "img:" + version) {
+        self.version = version
+        self.tag = tag
+        self
+    }
+}
+
+assert("ctor: both defaults") { Config.tag == "img:latest" }
+assert("ctor: version supplied") { Config("nightly").tag == "img:nightly" }
+assert("ctor: both supplied") { Config("nightly", "custom").tag == "custom" }
+
+print("Default field-ref tests passed!")
