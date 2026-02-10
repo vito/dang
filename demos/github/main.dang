@@ -9,9 +9,13 @@ print(repo.name + " — " + repo.description)
 print(toString(repo.stargazerCount) + " stars · " + toString(repo.forkCount) + " forks")
 print("")
 
-# Fetch recent open issues through the Relay connection pattern
+# Fetch recently updated open issues using an input object for ordering
 pub issues = repository(owner: "golang", name: "go")
-  .issues(states: [IssueState.OPEN], first: 5)
+  .issues(
+    states: [IssueState.OPEN],
+    first: 5,
+    orderBy: IssueOrder(field: IssueOrderField.UPDATED_AT, direction: OrderDirection.DESC),
+  )
   .edges.{
     node.{ number, title }
   }
