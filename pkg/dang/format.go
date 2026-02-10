@@ -1947,6 +1947,25 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 		}
 	}
 
+	// When there are multiple args and any arg would start past
+	// maxLineLength, force splitting even if the original was one line.
+	if len(args) > 1 {
+		col := f.col
+		for i, arg := range args {
+			if i > 0 {
+				col += 2 // ", "
+			}
+			if col >= maxLineLength {
+				return true
+			}
+			// Skip past this arg's rendered length
+			if !arg.Positional && arg.Key != "" {
+				col += len(arg.Key) + 2 // "key: "
+			}
+			col += f.estimateLength(arg.Value)
+		}
+	}
+
 	// All args were on the same line - keep them that way
 	return false
 }

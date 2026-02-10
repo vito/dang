@@ -738,6 +738,26 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 `,
 		},
 		{
+			name: "multiple args past column 80 are split",
+			input: `pub testBase: Void @check {
+  testSkip(skip: ["TestProvision", "TestTelemetry", "TestModule"], pkg: "./...", race: true)
+}`,
+			expected: `pub testBase: Void @check {
+  testSkip(
+    skip: ["TestProvision", "TestTelemetry", "TestModule"],
+    pkg: "./...",
+    race: true,
+  )
+}
+`,
+		},
+		{
+			name: "short multi-arg calls stay on one line",
+			input: `pub x = foo(a: 1, b: 2)`,
+			expected: `pub x = foo(a: 1, b: 2)
+`,
+		},
+		{
 			name: "args on different lines stay on different lines",
 			input: `pub x = foo(
 	a,
