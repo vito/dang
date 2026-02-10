@@ -1270,6 +1270,16 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 	if field.Selection != nil {
 		// Set the receiver for the nested selection to match the field we're selecting from
 		field.Selection.Receiver = nil // Will be inferred from the receiver type
+
+		if len(field.Selection.InlineFragments) > 0 {
+			// Nested inline fragments: infer as union/interface type
+			t, err := field.Selection.inferInlineFragments(ctx, ret, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			return t, nil
+		}
+
 		t, err := field.Selection.inferSelectionType(ctx, ret, env, fresh)
 		if err != nil {
 			return nil, err
@@ -1628,11 +1638,20 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, ba
 
 			// Handle nested selections
 			if field.Selection != nil {
-				nestedResult, err := field.Selection.buildGraphQLQuery(ctx, env, querybuilder.Query(), field.Selection.Fields)
-				if err != nil {
-					return nil, err
+				if len(field.Selection.InlineFragments) > 0 {
+					// Nested inline fragments: build __typename + ... on Type { fields }
+					nestedResult, err := field.Selection.buildInlineFragmentQuery(querybuilder.Query())
+					if err != nil {
+						return nil, err
+					}
+					fieldBuilder = nestedResult
+				} else {
+					nestedResult, err := field.Selection.buildGraphQLQuery(ctx, env, querybuilder.Query(), field.Selection.Fields)
+					if err != nil {
+						return nil, err
+					}
+					fieldBuilder = nestedResult
 				}
-				fieldBuilder = nestedResult
 			}
 
 			fieldsWithSelections[field.Name] = fieldBuilder
@@ -1642,6 +1661,21 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, ba
 	builder = builder.SelectMixed(simpleFields, fieldsWithSelections)
 
 	return builder, nil
+}
+
+// buildInlineFragmentQuery builds a query with __typename and inline fragments
+// for use as a nested selection inside a parent field.
+func (o *ObjectSelection) buildInlineFragmentQuery(baseQuery *querybuilder.Selection) (*querybuilder.Selection, error) {
+	var fragParts []string
+	fragParts = append(fragParts, "__typename")
+	for _, frag := range o.InlineFragments {
+		var fieldNames []string
+		for _, field := range frag.Fields {
+			fieldNames = append(fieldNames, field.Name)
+		}
+		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldNames, " ")))
+	}
+	return baseQuery.SelectMultiple(fragParts...), nil
 }
 
 func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeEnv Env) (Value, error) {
@@ -1670,7 +1704,14 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 
 				// Handle nested selections
 				if field.Selection != nil {
-					if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
+					if len(field.Selection.InlineFragments) > 0 {
+						// Nested inline fragments: dispatch to inline fragment result converter
+						nestedResult, err := field.Selection.convertInlineFragmentResult(fieldValue, schema, typeEnv)
+						if err != nil {
+							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q inline fragments: %w", field.Name, err)
+						}
+						resultModuleValue.Set(field.Name, nestedResult)
+					} else if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
 						// Sub-selecting arrays
 						var elements []Value
 						for _, item := range fieldSlice {
