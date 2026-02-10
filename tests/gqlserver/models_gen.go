@@ -14,6 +14,10 @@ type Node interface {
 	GetID() string
 }
 
+type SearchResult interface {
+	IsSearchResult()
+}
+
 type Timestamped interface {
 	IsTimestamped()
 	GetCreatedAt() string
@@ -49,12 +53,23 @@ func (this Post) GetID() string { return this.ID }
 func (Post) IsTimestamped()            {}
 func (this Post) GetCreatedAt() string { return this.CreatedAt }
 
+func (Post) IsSearchResult() {}
+
 type PostConnection struct {
 	Posts    []*Post   `json:"posts"`
 	PageInfo *PageInfo `json:"pageInfo"`
 }
 
 type Query struct {
+}
+
+type SearchResultConnection struct {
+	Edges      []*SearchResultEdge `json:"edges"`
+	TotalCount int                 `json:"totalCount"`
+}
+
+type SearchResultEdge struct {
+	Node SearchResult `json:"node"`
 }
 
 type ServerInfo struct {
@@ -82,6 +97,8 @@ type User struct {
 
 func (User) IsNode()            {}
 func (this User) GetID() string { return this.ID }
+
+func (User) IsSearchResult() {}
 
 type UserProfile struct {
 	User              *User    `json:"user"`

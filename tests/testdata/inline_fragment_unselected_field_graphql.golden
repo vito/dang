@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "age" not found in User
+  [2m[34m--> errors/inline_fragment_unselected_field_graphql.dang:12:14[0m
+ [2m    |[0m
+ [2m 10 | pub first = results[0][0m
+ [2m 11 | pub desc = case (first) {[0m
+ [2m[34m[1m 12 | [0m  u: User => u.age
+[2m                    [31m^^^^^[0m
+ [2m 13 |   p: Post => p.title[0m
+ [2m 14 | }[0m
+ [2m    |[0m
+

@@ -1,0 +1,5 @@
+# Test that selecting a nonexistent field in an object selection raises an error
+
+import Test
+
+pub result = user(id: "1").{name, nonexistent}

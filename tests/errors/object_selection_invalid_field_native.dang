@@ -1,0 +1,9 @@
+# Test that selecting a nonexistent field in a native object selection raises an error
+
+type Foo {
+  pub name: String! = "hello"
+  pub age: Int! = 25
+}
+
+pub foo = Foo()
+pub result = foo.{name, unknown}

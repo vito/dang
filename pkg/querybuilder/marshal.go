@@ -55,6 +55,10 @@ func marshalValue(ctx context.Context, v reflect.Value) (string, error) {
 		return marshalCustom(ctx, v)
 	}
 
+	if t.Implements(enumT) {
+		return marshalEnumName(v), nil
+	}
+
 	switch t.Kind() {
 	case reflect.Bool:
 		return fmt.Sprintf("%t", v.Bool()), nil

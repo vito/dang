@@ -373,6 +373,17 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			env.SetWithVisibility(t.Name, interfaceModuleVal, PublicVisibility)
 		}
 
+		// Add union types as available values
+		if t.Kind == introspection.TypeKindUnion {
+			unionTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+
+			unionModuleVal := NewModuleValue(unionTypeEnv)
+			env.SetWithVisibility(t.Name, unionModuleVal, PublicVisibility)
+		}
+
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
 			if err != nil {
@@ -560,8 +571,7 @@ func dangValueToGo(val Value) (interface{}, error) {
 	case StringValue:
 		return v.Val, nil
 	case EnumValue:
-		// Enum values are represented as strings in GraphQL
-		return v.Val, nil
+		return gqlEnumValue{val: v.Val}, nil
 	case ScalarValue:
 		// Scalar values are represented as strings in GraphQL
 		return v.Val, nil
@@ -591,6 +601,17 @@ func dangValueToGo(val Value) (interface{}, error) {
 		return nil, fmt.Errorf("unsupported value type: %T", val)
 	}
 }
+
+// gqlEnumValue implements the querybuilder enum interface so enum values
+// are serialized as bare identifiers (REPOSITORY) rather than strings ("REPOSITORY").
+type gqlEnumValue struct {
+	val string
+}
+
+func (e gqlEnumValue) IsEnum()        {}
+func (e gqlEnumValue) Name() string   { return e.val }
+func (e gqlEnumValue) Value() string  { return e.val }
+func (e gqlEnumValue) String() string { return e.val }
 
 type gqlObjectMarshaller struct {
 	val GraphQLValue

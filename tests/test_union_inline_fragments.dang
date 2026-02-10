@@ -1,0 +1,41 @@
+# Test inline fragment selection on unions
+
+type Cat {
+  pub name: String!
+  pub lives: Int! = 9
+}
+
+type Dog {
+  pub name: String!
+  pub tricks: Int! = 3
+}
+
+union Pet = Cat | Dog
+
+pub cat: Pet! = Cat(name: "Whiskers")
+pub dog: Pet! = Dog(name: "Rex", tricks: 5)
+
+pub pets: [Pet!]! = [cat, dog]
+
+# Select different fields from different types using inline fragments
+pub results = pets.{
+  ... on Cat { name, lives }
+  ... on Dog { name, tricks }
+}
+
+# Discriminate with case after inline fragment selection
+pub first = results[0]
+pub desc = case (first) {
+  c: Cat => c.name + " has " + toString(c.lives) + " lives"
+  d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+}
+assert { desc == "Whiskers has 9 lives" }
+
+pub second = results[1]
+pub desc2 = case (second) {
+  c: Cat => c.name + " (cat)"
+  d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+}
+assert { desc2 == "Rex knows 5 tricks" }
+
+print("Inline fragment tests passed!")

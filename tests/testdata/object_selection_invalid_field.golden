@@ -1,0 +1,10 @@
+[1m[31mError:[0m "nonexistent" not found
+  [2m[34m--> errors/object_selection_invalid_field.dang:5:35[0m
+ [2m    |[0m
+ [2m  3 | import Test[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mpub result = user(id: "1").{name, nonexistent}
+[2m                                         [31m^^^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

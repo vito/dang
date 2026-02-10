@@ -1,0 +1,30 @@
+# Test case expression with type patterns on interfaces
+
+interface Named {
+  pub name: String!
+}
+
+type Person implements Named {
+  pub name: String!
+  pub age: Int! = 25
+}
+
+type Company implements Named {
+  pub name: String!
+  pub employees: Int! = 10
+}
+
+pub describe(named: Named!): String! {
+  case (named) {
+    p: Person => p.name + " (age " + toString(p.age) + ")"
+    c: Company => c.name + " (" + toString(c.employees) + " employees)"
+  }
+}
+
+pub person = Person(name: "Alice", age: 30)
+pub company = Company(name: "Acme", employees: 50)
+
+assert { describe(person) == "Alice (age 30)" }
+assert { describe(company) == "Acme (50 employees)" }
+
+print("Interface case discrimination tests passed!")

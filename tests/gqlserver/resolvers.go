@@ -241,6 +241,49 @@ func (r *queryResolver) FetchMultipleURLs(ctx context.Context, urls []string) ([
 	return results, nil
 }
 
+// Search is the resolver for the search field.
+func (r *queryResolver) Search(ctx context.Context, query string) ([]SearchResult, error) {
+	var results []SearchResult
+	for _, user := range users {
+		if containsIgnoreCase(user.Name, query) {
+			results = append(results, user)
+		}
+	}
+	for _, post := range posts {
+		if containsIgnoreCase(post.Title, query) || containsIgnoreCase(post.Content, query) {
+			results = append(results, post)
+		}
+	}
+	return results, nil
+}
+
+// SearchConnection is the resolver for the searchConnection field.
+func (r *queryResolver) SearchConnection(ctx context.Context, query string) (*SearchResultConnection, error) {
+	results, err := r.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	var edges []*SearchResultEdge
+	for _, result := range results {
+		edges = append(edges, &SearchResultEdge{Node: result})
+	}
+	return &SearchResultConnection{
+		Edges:      edges,
+		TotalCount: len(edges),
+	}, nil
+}
+
+// UsersByStatus is the resolver for the usersByStatus field.
+func (r *queryResolver) UsersByStatus(ctx context.Context, status Status) ([]*User, error) {
+	var result []*User
+	for _, user := range users {
+		if user.Status == status {
+			result = append(result, user)
+		}
+	}
+	return result, nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user

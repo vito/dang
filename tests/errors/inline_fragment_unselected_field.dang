@@ -1,0 +1,27 @@
+# Test that accessing a field not selected in an inline fragment is caught at type-checking time
+
+type Cat {
+  pub name: String! = "Whiskers"
+  pub lives: Int! = 9
+}
+
+type Dog {
+  pub name: String! = "Rex"
+  pub tricks: Int! = 3
+}
+
+union Pet = Cat | Dog
+
+pub cat: Pet! = Cat()
+pub pets: [Pet!]! = [cat]
+
+pub results = pets.{
+  ... on Cat { name }
+  ... on Dog { name }
+}
+
+pub first = results[0]
+pub desc = case (first) {
+  c: Cat => c.lives
+  d: Dog => d.name
+}

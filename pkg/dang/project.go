@@ -451,6 +451,12 @@ func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspectio
 		}
 	case ast.Union:
 		it.Kind = introspection.TypeKindUnion
+		for _, memberName := range t.Types {
+			it.PossibleTypes = append(it.PossibleTypes, &introspection.Type{
+				Kind: introspection.TypeKindObject,
+				Name: memberName,
+			})
+		}
 	case ast.Enum:
 		it.Kind = introspection.TypeKindEnum
 		for _, v := range t.EnumValues {

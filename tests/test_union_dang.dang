@@ -1,0 +1,29 @@
+# Test Dang-defined union types
+
+# Define some types
+type Cat {
+  pub name: String!
+  pub lives: Int! = 9
+}
+
+type Dog {
+  pub name: String!
+  pub tricks: Int! = 0
+}
+
+# Define a union of those types
+union Pet = Cat | Dog
+
+# Union type is available as a value
+assert { Pet != null }
+
+# Cat and Dog can be created
+pub cat = Cat(name: "Whiskers")
+assert { cat.name == "Whiskers" }
+assert { cat.lives == 9 }
+
+pub dog = Dog(name: "Rex", tricks: 3)
+assert { dog.name == "Rex" }
+assert { dog.tricks == 3 }
+
+print("Union type tests passed!")

@@ -79,6 +79,26 @@ type MyModule {
   }
 }
 
+# enum hover
+enum Color { RED GREEN BLUE }
+
+Color # test: K => hover: // Values:
+Color # test: K => hover: //   RED
+
+# union hover
+type Cat {
+  pub name: String! { "cat" }
+}
+
+type Dog {
+  pub name: String! { "dog" }
+}
+
+union Pet = Cat | Dog
+
+Pet # test: K => hover: // Members:
+Pet # test: K => hover: //   Cat
+
 # object with lexical scope
 let obj = {
   """
