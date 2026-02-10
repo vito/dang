@@ -1372,6 +1372,11 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Load project config (dang.toml) if not already in context
 	ctx, err := ensureProjectImports(ctx, filepath.Dir(filePath))
 	if err != nil {
+		// Don't wrap SourceErrors — they already carry full context
+		var sourceErr *SourceError
+		if errors.As(err, &sourceErr) {
+			return err
+		}
 		return fmt.Errorf("loading project config: %w", err)
 	}
 

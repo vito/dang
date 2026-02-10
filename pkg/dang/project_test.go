@@ -2,9 +2,12 @@ package dang
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vito/dang/pkg/introspection"
 )
@@ -182,4 +185,102 @@ func TestLoadProjectConfig(t *testing.T) {
 	require.NotNil(t, config.Imports["Test"])
 	require.Equal(t, "./gqlserver/schema.graphqls", config.Imports["Test"].Schema)
 	require.NotNil(t, config.Imports["Other"])
+}
+
+func TestExpandEnvVars(t *testing.T) {
+	t.Run("no variables", func(t *testing.T) {
+		result, err := expandEnvVars("hello world")
+		require.NoError(t, err)
+		assert.Equal(t, "hello world", result)
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		result, err := expandEnvVars("")
+		require.NoError(t, err)
+		assert.Equal(t, "", result)
+	})
+
+	t.Run("defined variable", func(t *testing.T) {
+		t.Setenv("DANG_TEST_VAR", "expanded")
+		result, err := expandEnvVars("Bearer ${DANG_TEST_VAR}")
+		require.NoError(t, err)
+		assert.Equal(t, "Bearer expanded", result)
+	})
+
+	t.Run("multiple defined variables", func(t *testing.T) {
+		t.Setenv("DANG_TEST_A", "foo")
+		t.Setenv("DANG_TEST_B", "bar")
+		result, err := expandEnvVars("${DANG_TEST_A}/${DANG_TEST_B}")
+		require.NoError(t, err)
+		assert.Equal(t, "foo/bar", result)
+	})
+
+	t.Run("undefined variable", func(t *testing.T) {
+		os.Unsetenv("DANG_TEST_UNDEFINED")
+		_, err := expandEnvVars("Bearer ${DANG_TEST_UNDEFINED}")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "${DANG_TEST_UNDEFINED}")
+		assert.Contains(t, err.Error(), "not set")
+
+		// Should be an expandError with the pattern for source highlighting
+		var expErr *expandError
+		require.ErrorAs(t, err, &expErr)
+		assert.Equal(t, "${DANG_TEST_UNDEFINED}", expErr.pattern)
+	})
+
+	t.Run("command substitution", func(t *testing.T) {
+		_, err := expandEnvVars("Bearer $(gh auth token)")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "$() command substitution is not supported")
+		assert.Contains(t, err.Error(), "${VAR}")
+
+		var expErr *expandError
+		require.ErrorAs(t, err, &expErr)
+		assert.Equal(t, "$(gh auth token)", expErr.pattern)
+	})
+}
+
+func TestTomlSourceError(t *testing.T) {
+	// Write a temporary dang.toml
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "dang.toml")
+	tomlSource := `[imports.GitHub]
+endpoint = "https://api.github.com/graphql"
+authorization = "Bearer ${GH_TOKEN}"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(tomlSource), 0644))
+
+	t.Run("wraps expandError with source location", func(t *testing.T) {
+		inner := &expandError{
+			msg:     "environment variable ${GH_TOKEN} is not set",
+			pattern: "${GH_TOKEN}",
+		}
+		err := tomlSourceError(configPath, inner)
+
+		var sourceErr *SourceError
+		require.ErrorAs(t, err, &sourceErr)
+		assert.Equal(t, configPath, sourceErr.Location.Filename)
+		assert.Equal(t, 3, sourceErr.Location.Line)
+		assert.Equal(t, len("${GH_TOKEN}"), sourceErr.Location.Length)
+	})
+
+	t.Run("unwraps through fmt.Errorf wrapping", func(t *testing.T) {
+		inner := &expandError{
+			msg:     "environment variable ${GH_TOKEN} is not set",
+			pattern: "${GH_TOKEN}",
+		}
+		wrapped := fmt.Errorf("authorization: %w", inner)
+		err := tomlSourceError(configPath, wrapped)
+
+		var sourceErr *SourceError
+		require.ErrorAs(t, err, &sourceErr)
+		assert.Contains(t, sourceErr.Error(), "authorization:")
+		assert.Equal(t, 3, sourceErr.Location.Line)
+	})
+
+	t.Run("returns original error if not an expandError", func(t *testing.T) {
+		plain := fmt.Errorf("something else")
+		err := tomlSourceError(configPath, plain)
+		assert.Equal(t, plain, err)
+	})
 }

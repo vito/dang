@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -107,6 +108,11 @@ func ResolveImportConfigs(ctx context.Context, config *ProjectConfig, configDir 
 	for name, source := range config.Imports {
 		ic, err := resolveImportSource(ctx, name, source, configDir)
 		if err != nil {
+			// Don't wrap SourceErrors — they already carry full context
+			var sourceErr *SourceError
+			if errors.As(err, &sourceErr) {
+				return nil, err
+			}
 			return nil, fmt.Errorf("import %q: %w", name, err)
 		}
 		configs = append(configs, ic)
@@ -116,6 +122,7 @@ func ResolveImportConfigs(ctx context.Context, config *ProjectConfig, configDir 
 
 func resolveImportSource(ctx context.Context, name string, source *ImportSource, configDir string) (ImportConfig, error) {
 	ic := ImportConfig{Name: name}
+	configPath := filepath.Join(configDir, "dang.toml")
 
 	// Load schema from SDL file if specified
 	if source.Schema != "" {
@@ -132,7 +139,15 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 
 	// Set up HTTP client for endpoint if specified
 	if source.Endpoint != "" {
-		ic.Client = makeClient(expandEnvVars(source.Endpoint), source.Authorization, source.Headers)
+		endpoint, err := expandEnvVars(source.Endpoint)
+		if err != nil {
+			return ic, tomlSourceError(configPath, fmt.Errorf("endpoint: %w", err))
+		}
+		client, err := makeClient(endpoint, source.Authorization, source.Headers)
+		if err != nil {
+			return ic, tomlSourceError(configPath, err)
+		}
+		ic.Client = client
 	}
 
 	// Set up service launcher for lazy endpoint discovery
@@ -150,7 +165,10 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	if ic.Client != nil && ic.Schema == nil {
 		endpoint := source.Endpoint
 		if endpoint != "" {
-			endpoint = expandEnvVars(endpoint)
+			endpoint, err := expandEnvVars(endpoint)
+			if err != nil {
+				return ic, tomlSourceError(configPath, fmt.Errorf("endpoint: %w", err))
+			}
 			cachedSchema, err := loadCachedSchema(endpoint)
 			if err == nil && cachedSchema != nil {
 				ic.Schema = cachedSchema
@@ -172,11 +190,18 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	return ic, nil
 }
 
-func makeClient(endpoint, authorization string, headers map[string]string) graphql.Client {
-	authz := expandEnvVars(authorization)
+func makeClient(endpoint, authorization string, headers map[string]string) (graphql.Client, error) {
+	authz, err := expandEnvVars(authorization)
+	if err != nil {
+		return nil, fmt.Errorf("authorization: %w", err)
+	}
 	expandedHeaders := make(map[string]string)
 	for k, v := range headers {
-		expandedHeaders[k] = expandEnvVars(v)
+		expanded, err := expandEnvVars(v)
+		if err != nil {
+			return nil, fmt.Errorf("header %s: %w", k, err)
+		}
+		expandedHeaders[k] = expanded
 	}
 	httpClient := &http.Client{
 		Transport: &customTransport{
@@ -185,7 +210,7 @@ func makeClient(endpoint, authorization string, headers map[string]string) graph
 			headers:       expandedHeaders,
 		},
 	}
-	return graphql.NewClient(endpoint, httpClient)
+	return graphql.NewClient(endpoint, httpClient), nil
 }
 
 // serviceProcess implements graphql.Client by lazily starting a service
@@ -278,9 +303,16 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 // recursively starting nested services if needed.
 func (s *serviceProcess) resolve(ctx context.Context, source *ImportSource) (graphql.Client, error) {
 	if source.Endpoint != "" {
-		endpoint := expandEnvVars(source.Endpoint)
+		endpoint, err := expandEnvVars(source.Endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("endpoint: %w", err)
+		}
 		slog.Info("import service ready", "endpoint", endpoint)
-		return makeClient(endpoint, source.Authorization, source.Headers), nil
+		client, err := makeClient(endpoint, source.Authorization, source.Headers)
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
 	}
 
 	if len(source.Service) > 0 {
@@ -338,11 +370,85 @@ func servicesFromContext(ctx context.Context) *ServiceRegistry {
 	return nil
 }
 
+// expandError is returned by expandEnvVars when variable expansion fails.
+// It carries the literal pattern to search for in source files so that
+// callers can produce highlighted source errors.
+type expandError struct {
+	msg     string
+	pattern string // literal text to search for, e.g. "${GH_TOKEN}" or "$(cmd)"
+}
+
+func (e *expandError) Error() string { return e.msg }
+
 // expandEnvVars expands ${VAR} references in a string using os.Getenv.
-func expandEnvVars(s string) string {
-	return os.Expand(s, func(key string) string {
-		return os.Getenv(key)
+// Returns an error if a referenced variable is not set, or if unsupported
+// syntax like $() command substitution is used.
+func expandEnvVars(s string) (string, error) {
+	if idx := strings.Index(s, "$("); idx != -1 {
+		// Find the full $(...) expression for the error highlight
+		pattern := s[idx:]
+		if end := strings.Index(pattern, ")"); end != -1 {
+			pattern = pattern[:end+1]
+		}
+		return "", &expandError{
+			msg:     "$() command substitution is not supported; set the value in an environment variable and use ${VAR} instead",
+			pattern: pattern,
+		}
+	}
+	var expandErr error
+	result := os.Expand(s, func(key string) string {
+		if expandErr != nil {
+			return ""
+		}
+		val, ok := os.LookupEnv(key)
+		if !ok {
+			expandErr = &expandError{
+				msg:     fmt.Sprintf("environment variable ${%s} is not set", key),
+				pattern: "${" + key + "}",
+			}
+			return ""
+		}
+		return val
 	})
+	if expandErr != nil {
+		return "", expandErr
+	}
+	return result, nil
+}
+
+// tomlSourceError wraps an expandError with source location from a TOML
+// config file. If the error doesn't contain an expandError or the pattern
+// can't be found in the source, returns the original error unchanged.
+func tomlSourceError(configPath string, err error) error {
+	var expErr *expandError
+	if !errors.As(err, &expErr) {
+		return err
+	}
+	source, readErr := os.ReadFile(configPath)
+	if readErr != nil {
+		return err
+	}
+	srcStr := string(source)
+	idx := strings.Index(srcStr, expErr.pattern)
+	if idx < 0 {
+		return err
+	}
+	line, col := 1, 1
+	for i := range idx {
+		if srcStr[i] == '\n' {
+			line++
+			col = 1
+		} else {
+			col++
+		}
+	}
+	loc := &SourceLocation{
+		Filename: configPath,
+		Line:     line,
+		Column:   col,
+		Length:   len(expErr.pattern),
+	}
+	return NewSourceError(err, loc, srcStr)
 }
 
 // SchemaFromSDLFile parses a .graphqls SDL file and converts it to an
