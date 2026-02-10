@@ -201,7 +201,7 @@ func typeDetailSuffix(t hm.Type) string {
 		return result
 
 	case dang.EnumKind:
-		bindings := mod.Bindings(dang.PrivateVisibility)
+		bindings := mod.Bindings(dang.PublicVisibility)
 		// Filter out "values" method
 		var names []string
 		for name := range bindings {

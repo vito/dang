@@ -719,6 +719,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 			// Each enum value has the type of the enum itself (not wrapped)
 			valueScheme := hm.NewScheme(nil, NonNull(enumType))
 			enumType.Add(value.Name, valueScheme)
+			enumType.SetVisibility(value.Name, PublicVisibility)
 
 			// Store doc string if present
 			if e.DocString != "" {
@@ -729,6 +730,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		// Add the values() method that returns all enum values as a list
 		valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(enumType)}))
 		enumType.Add("values", valuesType)
+		enumType.SetVisibility("values", PublicVisibility)
 	}
 
 	return nil
