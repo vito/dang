@@ -1107,6 +1107,11 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s type %s", unionOrIface.Kind, unionOrIface.Name()), o.Receiver)
 	}
 
+	// Create a narrowed union whose members only have the selected fields.
+	// This ensures downstream code (e.g. case type patterns) can only access
+	// fields that were actually selected in the inline fragment.
+	narrowedUnion := NewModule(unionOrIface.Name(), UnionKind)
+
 	// Validate each fragment
 	for _, frag := range o.InlineFragments {
 		memberType, found := modEnv.NamedType(frag.TypeName.Name)
@@ -1126,9 +1131,13 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			}
 		}
 
+		// Create a narrowed module with only the selected fields
+		narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
+
 		// Validate each field in the fragment exists on the concrete type
+		// and add it to the narrowed module
 		for _, field := range frag.Fields {
-			_, err := (&Symbol{
+			fieldType, err := (&Symbol{
 				Name:     field.Name,
 				AutoCall: true,
 				Loc:      field.Loc,
@@ -1136,18 +1145,20 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			if err != nil {
 				return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
 			}
+			narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
 		}
 
-		frag.Inferred = memberMod
+		narrowedUnion.AddMember(narrowedMember)
+		frag.Inferred = narrowedMember
 	}
 
 	o.IsList = isList
 	o.ElementIsNonNull = elementIsNonNull
 
-	// The result type is the union/interface type, preserving list/non-null wrapping
-	var resultType hm.Type = unionOrIface
+	// The result type is the narrowed union, preserving list/non-null wrapping
+	var resultType hm.Type = narrowedUnion
 	if isList {
-		var elemType hm.Type = unionOrIface
+		var elemType hm.Type = narrowedUnion
 		if elementIsNonNull {
 			elemType = hm.NonNullType{Type: elemType}
 		}

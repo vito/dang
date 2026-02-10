@@ -61,11 +61,12 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 					return nil, err
 				}
 
-				// Infer the clause body in a scoped env with the binding
+				// Infer the clause body in a scoped env with the binding.
+				// Use resolvedMemberType which respects narrowed unions from
+				// inline fragment selections.
 				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
-					memberType, _ := env.(Env).NamedType(clause.TypePattern.Name)
-					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: memberType}))
+					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
 					return clause.Expr.Infer(ctx, clauseEnv, fresh)
 				})
 				if err != nil {
@@ -159,36 +160,45 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod.Name()), c.Expr)
 	}
 
-	// Resolve the type pattern
-	memberType, found := modEnv.NamedType(clause.TypePattern.Name)
-	if !found {
-		return NewInferError(fmt.Errorf("unknown type %s in type pattern", clause.TypePattern.Name), clause.TypePattern)
-	}
-
-	// Check the pattern type is a member of the union/interface
-	memberMod, ok := memberType.(*Module)
-	if !ok {
-		return NewInferError(fmt.Errorf("type pattern %s is not an object type", clause.TypePattern.Name), clause.TypePattern)
-	}
-
+	// Resolve the type pattern from the operand's members first (handles
+	// narrowed unions from inline fragments), falling back to the environment.
+	var memberMod *Module
 	if operandMod.Kind == UnionKind {
-		if !operandMod.HasMember(memberMod) {
-			return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
-		}
-	} else if operandMod.Kind == InterfaceKind {
-		// For interfaces, check if the type implements it
-		found := false
-		for _, iface := range memberMod.Supertypes() {
-			if iface == operandMod {
-				found = true
+		for _, m := range operandMod.GetMembers() {
+			if mod, ok := m.(*Module); ok && mod.Name() == clause.TypePattern.Name {
+				memberMod = mod
 				break
 			}
 		}
+		if memberMod == nil {
+			return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+		}
+	} else if operandMod.Kind == InterfaceKind {
+		memberType, found := modEnv.NamedType(clause.TypePattern.Name)
 		if !found {
+			return NewInferError(fmt.Errorf("unknown type %s in type pattern", clause.TypePattern.Name), clause.TypePattern)
+		}
+		mod, ok := memberType.(*Module)
+		if !ok {
+			return NewInferError(fmt.Errorf("type pattern %s is not an object type", clause.TypePattern.Name), clause.TypePattern)
+		}
+		memberMod = mod
+
+		// For interfaces, check if the type implements it
+		found2 := false
+		for _, iface := range memberMod.Supertypes() {
+			if iface == operandMod {
+				found2 = true
+				break
+			}
+		}
+		if !found2 {
 			return NewInferError(fmt.Errorf("type %s does not implement interface %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
 		}
 	}
 
+	// Store the resolved member type for use when inferring the clause body
+	clause.resolvedMemberType = memberMod
 	return nil
 }
 
@@ -276,6 +286,11 @@ type CaseClause struct {
 	Binding     string  // variable name for type pattern (e.g. "user" in "user: User => ...")
 	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User => ...")
 	Loc         *SourceLocation
+
+	// resolvedMemberType is set during inference to the concrete member type
+	// for this type pattern clause. For narrowed unions (from inline fragment
+	// selections), this is the narrowed type with only the selected fields.
+	resolvedMemberType *Module
 }
 
 var _ SourceLocatable = (*CaseClause)(nil)
