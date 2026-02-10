@@ -122,14 +122,14 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 	ctx = ioctx.StderrToContext(ctx, os.Stderr)
 
-	var hasCheck, hasGenerator bool
+	var hasCheck, hasGenerate bool
 	for _, dir := range schema.Directives {
 		if dir.Name == "check" {
 			hasCheck = true
 		}
-		if dir.Name == "generator" {
-			hasGenerator = true
-			slog.Info("Generator directive found")
+		if dir.Name == "generate" {
+			hasGenerate = true
+			slog.Info("Generate directive found")
 		}
 	}
 	if !hasCheck {
@@ -138,9 +138,9 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 			Locations: []string{"FIELD_DEFINITION"},
 		})
 	}
-	if !hasGenerator {
+	if !hasGenerate {
 		schema.Directives = append(schema.Directives, &introspection.DirectiveDef{
-			Name:      "generator",
+			Name:      "generate",
 			Locations: []string{"FIELD_DEFINITION"},
 		})
 	}
@@ -152,7 +152,7 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 
 	// initializing module
 	if parentName == "" {
-		dagMod, err := initModule(ctx, dag, env, hasCheck, hasGenerator)
+		dagMod, err := initModule(ctx, dag, env, hasCheck, hasGenerate)
 		if err != nil {
 			return fmt.Errorf("failed to init module: %w", err)
 		}
@@ -401,7 +401,7 @@ func anyToDang(ctx context.Context, env dang.EvalEnv, val any, fieldType hm.Type
 	}
 }
 
-func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv, hasCheck, hasGenerator bool) (*dagger.Module, error) {
+func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv, hasCheck, hasGenerate bool) (*dagger.Module, error) {
 	dagMod := dag.Module()
 
 	binds := env.Bindings(dang.PublicVisibility)
@@ -409,11 +409,11 @@ func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv, hasCh
 		switch val := binding.Value.(type) {
 		case *dang.ConstructorFunction:
 			// Classes/objects - register as TypeDefs with their methods
-			objDef, err := createObjectTypeDef(ctx, dag, binding.Key, val, env, hasCheck, hasGenerator)
+			objDef, err := createObjectTypeDef(ctx, dag, binding.Key, val, env, hasCheck, hasGenerate)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create object %s: %w", binding.Key, err)
 			}
-			fnDef, err := createFunction(ctx, dag, val.ClassType, binding.Key, val.FnType, env, hasCheck, hasGenerator)
+			fnDef, err := createFunction(ctx, dag, val.ClassType, binding.Key, val.FnType, env, hasCheck, hasGenerate)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create constructor for %s: %w", binding.Key, err)
 			}
@@ -435,7 +435,7 @@ func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv, hasCh
 				slog.Info("skipping scalar module value (handled as string type)", "name", binding.Key)
 			} else if mod, ok := val.Mod.(*dang.Module); ok && mod.Kind == dang.InterfaceKind {
 				// Interfaces are registered with the module
-				interfaceDef, err := createInterfaceTypeDef(ctx, dag, binding.Key, val, env, hasCheck, hasGenerator)
+				interfaceDef, err := createInterfaceTypeDef(ctx, dag, binding.Key, val, env, hasCheck, hasGenerate)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create interface %s: %w", binding.Key, err)
 				}
@@ -454,7 +454,7 @@ func initModule(ctx context.Context, dag *dagger.Client, env dang.EvalEnv, hasCh
 	return dagMod, nil
 }
 
-func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, name string, fn *hm.FunctionType, env dang.EvalEnv, hasCheck, hasGenerator bool) (*dagger.Function, error) {
+func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, name string, fn *hm.FunctionType, env dang.EvalEnv, hasCheck, hasGenerate bool) (*dagger.Function, error) {
 	// Convert Dang function type to Dagger TypeDef
 	retTypeDef, err := dangTypeToTypeDef(dag, fn.Ret(false), env)
 	if err != nil {
@@ -467,12 +467,12 @@ func createFunction(ctx context.Context, dag *dagger.Client, mod *dang.Module, n
 		funDef = funDef.WithDescription(desc)
 	}
 
-	if hasCheck || hasGenerator {
+	if hasCheck || hasGenerate {
 		for _, directive := range mod.GetDirectives(name) {
 			switch directive.Name {
 			case "check":
 				funDef = funDef.WithCheck()
-			case "generator":
+			case "generate":
 				funDef = funDef.WithGenerator()
 			}
 		}
@@ -585,7 +585,7 @@ func evalConstantValue(node dang.Node) (any, error) {
 	}
 }
 
-func createObjectTypeDef(ctx context.Context, dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv, hasCheck, hasGenerator bool) (*dagger.TypeDef, error) {
+func createObjectTypeDef(ctx context.Context, dag *dagger.Client, name string, module *dang.ConstructorFunction, env dang.EvalEnv, hasCheck, hasGenerate bool) (*dagger.TypeDef, error) {
 	// Register interface implementations if this type implements any interfaces
 	classMod := module.ClassType
 
@@ -608,7 +608,7 @@ func createObjectTypeDef(ctx context.Context, dag *dagger.Client, name string, m
 		switch x := slotType.(type) {
 		case *hm.FunctionType:
 			fn := x
-			fnDef, err := createFunction(ctx, dag, classMod, name, fn, env, hasCheck, hasGenerator)
+			fnDef, err := createFunction(ctx, dag, classMod, name, fn, env, hasCheck, hasGenerate)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for %s: %w", name, name, err)
 			}
@@ -642,7 +642,7 @@ func createEnumTypeDef(dag *dagger.Client, name string, enumMod *dang.ModuleValu
 }
 
 // createInterfaceTypeDef creates a Dagger interface TypeDef from a Dang interface ModuleValue
-func createInterfaceTypeDef(ctx context.Context, dag *dagger.Client, name string, interfaceMod *dang.ModuleValue, env dang.EvalEnv, hasCheck, hasGenerator bool) (*dagger.TypeDef, error) {
+func createInterfaceTypeDef(ctx context.Context, dag *dagger.Client, name string, interfaceMod *dang.ModuleValue, env dang.EvalEnv, hasCheck, hasGenerate bool) (*dagger.TypeDef, error) {
 	interfaceDef := dag.TypeDef().WithInterface(name)
 
 	// Get the Module from the ModuleValue
@@ -661,7 +661,7 @@ func createInterfaceTypeDef(ctx context.Context, dag *dagger.Client, name string
 		case *hm.FunctionType:
 			fn := x
 			// Create function definition for interface method
-			fnDef, err := createFunction(ctx, dag, mod, fieldName, fn, env, hasCheck, hasGenerator)
+			fnDef, err := createFunction(ctx, dag, mod, fieldName, fn, env, hasCheck, hasGenerate)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create method %s for interface %s: %w", fieldName, name, err)
 			}
