@@ -1,31 +1,13 @@
 # Test Error type fields
 
-# raise with full Error constructor
+# raise with Error constructor
 pub result = try {
-  raise Error(message: "not found", path: ["query", "user"])
+  raise Error(message: "not found")
 } catch { err =>
   err.message
 }
 
 assert { result == "not found" }
-
-# error path can be set
-pub pathResult = try {
-  raise Error(message: "err", path: ["a", "b"])
-} catch { err =>
-  err.path
-}
-
-assert { pathResult == ["a", "b"] }
-
-# error path defaults to empty list
-pub defaultPath = try {
-  raise "simple error"
-} catch { err =>
-  err.path
-}
-
-assert { defaultPath == [] }
 
 # error message from a string raise
 pub msgResult = try {
@@ -35,5 +17,20 @@ pub msgResult = try {
 }
 
 assert { msgResult == "kaboom" }
+
+# Error constructor and string raise produce the same interface
+pub fromConstructor = try {
+  raise Error(message: "oops")
+} catch { err =>
+  err.message
+}
+
+pub fromString = try {
+  raise "oops"
+} catch { err =>
+  err.message
+}
+
+assert { fromConstructor == fromString }
 
 print("Error field tests passed!")

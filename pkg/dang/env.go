@@ -183,14 +183,10 @@ func init() {
 	Prelude.AddClass("Boolean", BooleanType)
 	Prelude.AddClass("List", ListTypeModule)
 
-	// Install Error type with message, path, extensions fields
+	// Install Error interface with message field
 	Prelude.AddClass("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	ErrorType.SetVisibility("message", PublicVisibility)
-	ErrorType.Add("path", hm.NewScheme(nil, hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}))
-	ErrorType.SetVisibility("path", PublicVisibility)
-	ErrorType.Add("extensions", hm.NewScheme(nil, hm.NonNullType{Type: NewModule("", ObjectKind)}))
-	ErrorType.SetVisibility("extensions", PublicVisibility)
 
 	// Register standard library builtins
 	registerStdlib()

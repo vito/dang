@@ -60,46 +60,13 @@ func registerStdlib() {
 			return ToValue(string(jsonBytes))
 		})
 
-	// Error constructor: Error(message: String!, path: [String!]! = [], extensions: {{}} = {{}}) -> Error!
+	// Error constructor: Error(message: String!) -> Error!
 	Builtin("Error").
 		Doc("creates an Error value").
-		Params(
-			"message", NonNull(StringType),
-			"path", NonNull(ListOf(NonNull(StringType))), ListValue{Elements: []Value{}, ElemType: hm.NonNullType{Type: StringType}},
-			"extensions", TypeVar('e'), NewModuleValue(NewModule("", ObjectKind)),
-		).
+		Params("message", NonNull(StringType)).
 		Returns(NonNull(ErrorType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			message := args.GetString("message")
-			var path []string
-			if pathVal, ok := args.Get("path"); ok {
-				if lv, ok := pathVal.(ListValue); ok {
-					for _, item := range lv.Elements {
-						if sv, ok := item.(StringValue); ok {
-							path = append(path, sv.Val)
-						}
-					}
-				}
-			}
-			if path == nil {
-				path = []string{}
-			}
-			extensions := make(map[string]Value)
-			if extVal, ok := args.Get("extensions"); ok {
-				if mv, ok := extVal.(*ModuleValue); ok {
-					for _, kv := range mv.Bindings(PublicVisibility) {
-						extensions[kv.Key] = kv.Value
-					}
-					for _, kv := range mv.Bindings(PrivateVisibility) {
-						extensions[kv.Key] = kv.Value
-					}
-				}
-			}
-			return &ErrorValue{
-				Message:    message,
-				Path:       path,
-				Extensions: extensions,
-			}, nil
+			return &ErrorValue{Message: args.GetString("message")}, nil
 		})
 
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!

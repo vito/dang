@@ -114,11 +114,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if errors.As(err, &sourceErr) {
 				msg = sourceErr.Inner.Error()
 			}
-			errVal = &ErrorValue{
-				Message:    msg,
-				Path:       []string{},
-				Extensions: map[string]Value{},
-			}
+			errVal = &ErrorValue{Message: msg}
 		}
 
 		// Evaluate the catch handler with the error value bound.
@@ -197,11 +193,7 @@ func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	switch v := val.(type) {
 	case StringValue:
 		return nil, &RaisedError{
-			Value: &ErrorValue{
-				Message:    v.Val,
-				Path:       []string{},
-				Extensions: map[string]Value{},
-			},
+			Value:    &ErrorValue{Message: v.Val},
 			Location: r.Loc,
 		}
 	case *ErrorValue:
@@ -220,9 +212,7 @@ func (r *Raise) Walk(fn func(Node) bool) {
 
 // ErrorValue is the runtime representation of a Dang error.
 type ErrorValue struct {
-	Message    string
-	Path       []string
-	Extensions map[string]Value
+	Message string
 }
 
 func (e *ErrorValue) Type() hm.Type {
@@ -237,23 +227,11 @@ func (e *ErrorValue) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`{"message":%q}`, e.Message)), nil
 }
 
-// SelectField allows err.message, err.path, err.extensions access.
+// SelectField allows err.message access.
 func (e *ErrorValue) SelectField(name string) (Value, error) {
 	switch name {
 	case "message":
 		return StringValue{Val: e.Message}, nil
-	case "path":
-		items := make([]Value, len(e.Path))
-		for i, p := range e.Path {
-			items[i] = StringValue{Val: p}
-		}
-		return ListValue{Elements: items, ElemType: hm.NonNullType{Type: StringType}}, nil
-	case "extensions":
-		mod := NewModuleValue(NewModule("", ObjectKind))
-		for k, v := range e.Extensions {
-			mod.Set(k, v)
-		}
-		return mod, nil
 	default:
 		return nil, fmt.Errorf("Error has no field %q", name)
 	}

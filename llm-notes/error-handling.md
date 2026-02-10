@@ -24,31 +24,34 @@ Both the `try` body and the `catch` handler must return the same type.
 
 ```dang
 raise "something went wrong"
-raise Error(message: "not found", path: ["query", "user"])
+raise Error(message: "not found")
 ```
 
-Bare strings are sugar for `Error(message: "...")`. Errors propagate up the call stack until caught by a `try`/`catch` — uncaught errors crash the program.
+Bare strings are sugar for `Error(message: "...")`. Errors propagate up the call stack until caught by a `try`/`catch` — uncaught errors crash the program with a source-highlighted error pointing at the `raise` statement.
 
-## The Error Type
+## The Error Interface
 
-`Error` is a built-in type with three fields:
+`Error` is a built-in interface with one field:
 
-| Field | Type | Default |
-|---|---|---|
-| `message` | `String!` | *(required)* |
-| `path` | `[String!]!` | `[]` |
-| `extensions` | open record | `{{}}` |
+| Field | Type |
+|---|---|
+| `message` | `String!` |
 
-The `path` and `extensions` fields mirror GraphQL error structure. For user-raised string errors, `path` defaults to `[]` and `extensions` to `{{}}`.
-
-Access error fields on the catch parameter:
+Access the error message on the catch parameter:
 
 ```dang
 try { ... } catch { err =>
   err.message     # String!
-  err.path        # [String!]!
 }
 ```
+
+The `Error()` constructor creates an Error value:
+
+```dang
+raise Error(message: "not found")
+```
+
+For simple cases, `raise "msg"` is equivalent.
 
 ## Runtime Errors
 
@@ -89,17 +92,18 @@ Raise <- RaiseToken _ value:Form
 
 - **TryCatch**: `TryBody *Block`, `Handler *BlockArg`, `Loc *SourceLocation`
 - **Raise**: `Value Node`, `Loc *SourceLocation`
-- **ErrorValue**: Runtime value with `Message string`, `Path []string`, `Extensions map[string]Value`
-- **RaisedError**: Go `error` wrapper that carries an `ErrorValue` for propagation
+- **ErrorValue**: Runtime value with `Message string`
+- **RaisedError**: Go `error` wrapper that carries an `ErrorValue` and `*SourceLocation` for propagation
 
-### Type Inference
+### Type System
 
+- `ErrorType` is an `InterfaceKind` module with one field: `message: String!`
 - **TryCatch.Infer**: Infers body type, sets handler's expected param to `Error!`, unifies body and handler return types.
 - **Raise.Infer**: Validates the value is `String!` or `Error!`. Returns a fresh type variable (bottom type — `raise` never completes normally).
 
 ### Evaluation
 
-- **Raise.Eval**: Creates a `RaisedError` wrapping an `ErrorValue` and returns it as a Go error.
+- **Raise.Eval**: Creates a `RaisedError` wrapping an `ErrorValue` and the raise location, returns it as a Go error.
 - **TryCatch.Eval**: Evaluates the body. On error, extracts or wraps the `ErrorValue`, binds it to the handler parameter, and evaluates the handler block.
 - **RaisedError propagation**: `WithEvalErrorHandling` and `EvalNodeWithContext` pass `RaisedError` through without wrapping, so `TryCatch` can intercept it cleanly.
 
@@ -107,22 +111,20 @@ Raise <- RaiseToken _ value:Form
 
 ```go
 Builtin("Error").
-    Params("message", NonNull(StringType),
-           "path", NonNull(ListOf(NonNull(StringType))), defaultEmptyList,
-           "extensions", TypeVar('e'), defaultEmptyModule).
+    Params("message", NonNull(StringType)).
     Returns(NonNull(ErrorType))
 ```
 
 ### Uncaught Errors
 
-Uncaught `RaisedError` values that reach `RunFile` produce a clear message: `"uncaught error: <message>"`.
+Uncaught `RaisedError` values that reach `RunFile` produce a `SourceError` pointing at the `raise` statement.
 
 ## Related Files
 
 - `pkg/dang/dang.peg` — Grammar for `try`, `catch`, `raise` tokens
 - `pkg/dang/ast_errors.go` — `TryCatch`, `Raise`, `ErrorValue`, `RaisedError`
-- `pkg/dang/ast_literals.go` — `ErrorType` definition
-- `pkg/dang/env.go` — `Error` type fields registered in Prelude
+- `pkg/dang/ast_literals.go` — `ErrorType` definition (InterfaceKind)
+- `pkg/dang/env.go` — `Error` interface registered in Prelude
 - `pkg/dang/stdlib.go` — `Error()` constructor builtin
 - `pkg/dang/errors.go` — `RaisedError` pass-through in `WithEvalErrorHandling`
 - `pkg/dang/eval.go` — `RaisedError` pass-through in `EvalNodeWithContext`; uncaught error formatting
