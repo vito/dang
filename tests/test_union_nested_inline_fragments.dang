@@ -1,0 +1,25 @@
+# Test inline fragments nested inside field selections
+# This mirrors the GitHub API pattern: connection.edges.{ node.{ ... on Type { fields } } }
+
+import Test
+
+# searchConnection returns SearchResultConnection with edges containing SearchResult nodes
+pub results = searchConnection(query: "John").edges.{
+	node.{
+		... on User { name, age }
+		... on Post { title, content }
+	}
+}
+
+assert { results.length > 0 }
+
+# Discriminate the first result
+pub first = results[0]
+pub desc = case (first.node) {
+	u: User => "user: " + u.name
+	p: Post => "post: " + p.title
+	else => "unknown"
+}
+assert { desc == "user: John Doe" }
+
+print("Nested inline fragment tests passed!")

@@ -257,6 +257,22 @@ func (r *queryResolver) Search(ctx context.Context, query string) ([]SearchResul
 	return results, nil
 }
 
+// SearchConnection is the resolver for the searchConnection field.
+func (r *queryResolver) SearchConnection(ctx context.Context, query string) (*SearchResultConnection, error) {
+	results, err := r.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	var edges []*SearchResultEdge
+	for _, result := range results {
+		edges = append(edges, &SearchResultEdge{Node: result})
+	}
+	return &SearchResultConnection{
+		Edges:      edges,
+		TotalCount: len(edges),
+	}, nil
+}
+
 // UsersByStatus is the resolver for the usersByStatus field.
 func (r *queryResolver) UsersByStatus(ctx context.Context, status Status) ([]*User, error) {
 	var result []*User

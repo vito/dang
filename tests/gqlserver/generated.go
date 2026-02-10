@@ -90,6 +90,7 @@ type ComplexityRoot struct {
 		PostTitles        func(childComplexity int) int
 		Posts             func(childComplexity int, authorID *string, limit *int) int
 		Search            func(childComplexity int, query string) int
+		SearchConnection  func(childComplexity int, query string) int
 		ServerInfo        func(childComplexity int) int
 		Status            func(childComplexity int) int
 		Timestamped       func(childComplexity int) int
@@ -97,6 +98,15 @@ type ComplexityRoot struct {
 		UserProfile       func(childComplexity int, userID *string, includeStats *bool) int
 		Users             func(childComplexity int) int
 		UsersByStatus     func(childComplexity int, status Status) int
+	}
+
+	SearchResultConnection struct {
+		Edges      func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	SearchResultEdge struct {
+		Node func(childComplexity int) int
 	}
 
 	ServerInfo struct {
@@ -152,6 +162,7 @@ type QueryResolver interface {
 	FetchURLNullable(ctx context.Context, url *string) (*string, error)
 	FetchMultipleURLs(ctx context.Context, urls []string) ([]string, error)
 	Search(ctx context.Context, query string) ([]SearchResult, error)
+	SearchConnection(ctx context.Context, query string) (*SearchResultConnection, error)
 	UsersByStatus(ctx context.Context, status Status) ([]*User, error)
 }
 type UserResolver interface {
@@ -414,6 +425,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Search(childComplexity, args["query"].(string)), true
+	case "Query.searchConnection":
+		if e.complexity.Query.SearchConnection == nil {
+			break
+		}
+
+		args, err := ec.field_Query_searchConnection_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.SearchConnection(childComplexity, args["query"].(string)), true
 	case "Query.serverInfo":
 		if e.complexity.Query.ServerInfo == nil {
 			break
@@ -471,6 +493,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.UsersByStatus(childComplexity, args["status"].(Status)), true
+
+	case "SearchResultConnection.edges":
+		if e.complexity.SearchResultConnection.Edges == nil {
+			break
+		}
+
+		return e.complexity.SearchResultConnection.Edges(childComplexity), true
+	case "SearchResultConnection.totalCount":
+		if e.complexity.SearchResultConnection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.SearchResultConnection.TotalCount(childComplexity), true
+
+	case "SearchResultEdge.node":
+		if e.complexity.SearchResultEdge.Node == nil {
+			break
+		}
+
+		return e.complexity.SearchResultEdge.Node(childComplexity), true
 
 	case "ServerInfo.platform":
 		if e.complexity.ServerInfo.Platform == nil {
@@ -874,6 +916,17 @@ func (ec *executionContext) field_Query_posts_args(ctx context.Context, rawArgs 
 		return nil, err
 	}
 	args["limit"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_searchConnection_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "query", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["query"] = arg0
 	return args, nil
 }
 
@@ -2300,6 +2353,53 @@ func (ec *executionContext) fieldContext_Query_search(ctx context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_searchConnection(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_searchConnection,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().SearchConnection(ctx, fc.Args["query"].(string))
+		},
+		nil,
+		ec.marshalNSearchResultConnection2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultConnection,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_searchConnection(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "edges":
+				return ec.fieldContext_SearchResultConnection_edges(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_SearchResultConnection_totalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SearchResultConnection", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_searchConnection_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_usersByStatus(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2458,6 +2558,97 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 				return ec.fieldContext___Schema_directives(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type __Schema", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SearchResultConnection_edges(ctx context.Context, field graphql.CollectedField, obj *SearchResultConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_SearchResultConnection_edges,
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		ec.marshalNSearchResultEdge2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultEdgeᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_SearchResultConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SearchResultConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "node":
+				return ec.fieldContext_SearchResultEdge_node(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SearchResultEdge", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SearchResultConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *SearchResultConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_SearchResultConnection_totalCount,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_SearchResultConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SearchResultConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SearchResultEdge_node(ctx context.Context, field graphql.CollectedField, obj *SearchResultEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_SearchResultEdge_node,
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		ec.marshalNSearchResult2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResult,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_SearchResultEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SearchResultEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type SearchResult does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5244,6 +5435,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "searchConnection":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_searchConnection(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "usersByStatus":
 			field := field
 
@@ -5274,6 +5487,89 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___schema(ctx, field)
 			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var searchResultConnectionImplementors = []string{"SearchResultConnection"}
+
+func (ec *executionContext) _SearchResultConnection(ctx context.Context, sel ast.SelectionSet, obj *SearchResultConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, searchResultConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SearchResultConnection")
+		case "edges":
+			out.Values[i] = ec._SearchResultConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._SearchResultConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var searchResultEdgeImplementors = []string{"SearchResultEdge"}
+
+func (ec *executionContext) _SearchResultEdge(ctx context.Context, sel ast.SelectionSet, obj *SearchResultEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, searchResultEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SearchResultEdge")
+		case "node":
+			out.Values[i] = ec._SearchResultEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -6091,6 +6387,74 @@ func (ec *executionContext) marshalNSearchResult2ᚕgithubᚗcomᚋvitoᚋdang�
 	}
 
 	return ret
+}
+
+func (ec *executionContext) marshalNSearchResultConnection2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultConnection(ctx context.Context, sel ast.SelectionSet, v SearchResultConnection) graphql.Marshaler {
+	return ec._SearchResultConnection(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNSearchResultConnection2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultConnection(ctx context.Context, sel ast.SelectionSet, v *SearchResultConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SearchResultConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNSearchResultEdge2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*SearchResultEdge) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNSearchResultEdge2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSearchResultEdge2ᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSearchResultEdge(ctx context.Context, sel ast.SelectionSet, v *SearchResultEdge) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SearchResultEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNServerInfo2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v ServerInfo) graphql.Marshaler {
