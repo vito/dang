@@ -1598,6 +1598,15 @@ func (f *Formatter) formatBlock(b *Block) {
 
 func (f *Formatter) formatBlockContents(b *Block) {
 	if len(b.Forms) == 0 {
+		// Even with no forms, there may be comments inside the block
+		if b.Loc != nil && b.Loc.End != nil && f.hasCommentsInBlock(b) {
+			f.nl(b.Loc.Line)
+			f.indented(func() {
+				f.lastLine = b.Loc.Line
+				f.emitCommentsBeforeNode(b.Loc.End.Line, false)
+			})
+			f.writeIndent()
+		}
 		return
 	}
 
@@ -1634,22 +1643,22 @@ func (f *Formatter) formatBlockContents(b *Block) {
 	}
 	f.indented(func() {
 		f.resetLastLineForForms(b.Forms)
-		for i, form := range b.Forms {
+		for _, form := range b.Forms {
 			if f.handleNoFmtForm(form) {
-				if i < len(b.Forms)-1 {
-					f.newline()
-				}
+				f.newline()
 				continue
 			}
 			f.emitCommentsForNode(form)
 			f.writeIndent()
 			f.formatNode(form)
 			f.finishForm(form)
-			if i < len(b.Forms)-1 {
-				f.newline()
-			}
+			f.newline()
 		}
-		f.newline()
+
+		// Emit comments between last form and closing }
+		if b.Loc != nil && b.Loc.End != nil {
+			f.emitCommentsBeforeNode(b.Loc.End.Line, false)
+		}
 	})
 	f.writeIndent()
 }
@@ -1661,7 +1670,37 @@ func (f *Formatter) canFormatBlockInline(b *Block) bool {
 			return false
 		}
 	}
+	// Also reject inlining if there are comments after the last form
+	if f.hasCommentsInBlock(b) {
+		lastForm := b.Forms[len(b.Forms)-1]
+		lastLine := nodeEndLine(lastForm)
+		if lastLine == 0 {
+			if loc := nodeLocation(lastForm); loc != nil {
+				lastLine = loc.Line
+			}
+		}
+		if b.Loc != nil && b.Loc.End != nil && lastLine > 0 {
+			for _, c := range f.comments {
+				if c.Line > lastLine && c.Line < b.Loc.End.Line && !c.IsTrailing {
+					return false
+				}
+			}
+		}
+	}
 	return true
+}
+
+// hasCommentsInBlock checks if there are standalone comments inside a block's line range
+func (f *Formatter) hasCommentsInBlock(b *Block) bool {
+	if b.Loc == nil || b.Loc.End == nil {
+		return false
+	}
+	for _, c := range f.comments {
+		if c.Line > b.Loc.Line && c.Line < b.Loc.End.Line && !c.IsTrailing {
+			return true
+		}
+	}
+	return false
 }
 
 // hasCommentsBeforeNode checks if there are standalone comments that would precede this node
