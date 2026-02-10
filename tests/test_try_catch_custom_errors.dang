@@ -1,0 +1,74 @@
+# Test custom error types implementing the Error interface
+
+type NotFoundError implements Error {
+  pub message: String!
+  pub resource: String!
+}
+
+type ValidationError implements Error {
+  pub message: String!
+  pub field: String!
+}
+
+# raise a custom error type
+pub result = try {
+  raise NotFoundError(message: "user not found", resource: "User")
+} catch { err =>
+  err.message
+}
+
+assert { result == "user not found" }
+
+# case-match on the concrete error type in the catch handler
+pub matched = try {
+  raise ValidationError(message: "too short", field: "name")
+} catch { err =>
+  case (err) {
+    v: ValidationError => "invalid " + v.field + ": " + v.message
+    n: NotFoundError => "missing " + n.resource
+  }
+}
+
+assert { matched == "invalid name: too short" }
+
+# match the other branch
+pub matched2 = try {
+  raise NotFoundError(message: "gone", resource: "Post")
+} catch { err =>
+  case (err) {
+    v: ValidationError => "invalid " + v.field
+    n: NotFoundError => "missing " + n.resource
+  }
+}
+
+assert { matched2 == "missing Post" }
+
+# custom errors propagate through function calls
+pub validate(name: String!): String! {
+  if (name == "") {
+    raise ValidationError(message: "must not be empty", field: "name")
+  } else {
+    name
+  }
+}
+
+pub validated = try {
+  validate("")
+} catch { err =>
+  case (err) {
+    v: ValidationError => v.field + " " + v.message
+  }
+}
+
+assert { validated == "name must not be empty" }
+
+# non-error path works normally
+pub ok = try {
+  validate("Alice")
+} catch { err =>
+  "unreachable"
+}
+
+assert { ok == "Alice" }
+
+print("Custom error type tests passed!")

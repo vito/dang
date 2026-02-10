@@ -118,9 +118,15 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Evaluate the catch handler with the error value bound.
+		// When the error wraps a custom type (Original), bind that so
+		// case-matching on the concrete type works naturally.
+		var bindVal Value = errVal
+		if errVal.Original != nil {
+			bindVal = errVal.Original
+		}
 		handlerEnv := env.Clone()
 		if len(t.Handler.Args) > 0 {
-			handlerEnv.Set(t.Handler.Args[0].Name.Name, errVal)
+			handlerEnv.Set(t.Handler.Args[0].Name.Name, bindVal)
 		}
 
 		return EvalNode(ctx, handlerEnv, t.Handler.BodyNode)
@@ -198,6 +204,20 @@ func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 	case *ErrorValue:
 		return nil, &RaisedError{Value: v, Location: r.Loc}
+	case *ModuleValue:
+		// Custom type implementing Error — extract the message field.
+		msgVal, ok := v.Get("message")
+		if !ok {
+			return nil, fmt.Errorf("raise: error value has no message field")
+		}
+		msg, ok := msgVal.(StringValue)
+		if !ok {
+			return nil, fmt.Errorf("raise: error message must be a String, got %T", msgVal)
+		}
+		return nil, &RaisedError{
+			Value:    &ErrorValue{Message: msg.Val, Original: v},
+			Location: r.Loc,
+		}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)
 	}
@@ -211,8 +231,12 @@ func (r *Raise) Walk(fn func(Node) bool) {
 }
 
 // ErrorValue is the runtime representation of a Dang error.
+// Original holds the full value when raised from a custom type
+// implementing the Error interface, so catch handlers can pattern
+// match on the concrete type.
 type ErrorValue struct {
-	Message string
+	Message  string
+	Original Value // non-nil when raised from a custom Error type
 }
 
 func (e *ErrorValue) Type() hm.Type {
@@ -227,8 +251,18 @@ func (e *ErrorValue) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`{"message":%q}`, e.Message)), nil
 }
 
-// SelectField allows err.message access.
+// SelectField allows field access on error values. If the error wraps
+// a custom type (Original), fields are looked up on that value first.
 func (e *ErrorValue) SelectField(name string) (Value, error) {
+	// If we have the original custom error, delegate to it so that
+	// catch handlers can access type-specific fields.
+	if e.Original != nil {
+		if mv, ok := e.Original.(*ModuleValue); ok {
+			if val, found := mv.Get(name); found {
+				return val, nil
+			}
+		}
+	}
 	switch name {
 	case "message":
 		return StringValue{Val: e.Message}, nil
