@@ -6,25 +6,36 @@ Dang supports user-level error handling via `try`/`catch` expressions and `raise
 
 ### try/catch
 
-`try`/`catch` is a single expression. The `catch` block uses block-arg syntax (`{ err => ... }`):
+`try`/`catch` is a single expression. The `catch` block uses the same clause syntax as `case` — type patterns for discrimination, or a bare name for catch-all:
 
 ```dang
+# catch-all: bind the error and handle it
 pub result = try {
   user(id: "999").name
-} catch { err =>
-  "unknown: " + err.message
+} catch {
+  err => "unknown: " + err.message
+}
+
+# type patterns: discriminate by error type
+pub result = try {
+  doSomething()
+} catch {
+  v: ValidationError => "invalid " + v.field
+  n: NotFoundError   => "missing " + n.resource
+  err                => "other: " + err.message
 }
 ```
 
-Both the `try` body and the `catch` handler must return the same type.
+Both the `try` body and every `catch` clause must return the same type.
 
 ### raise
 
-`raise` throws an error. It accepts a `String!` or an `Error!`:
+`raise` throws an error. It accepts a `String!` or any type implementing `Error`:
 
 ```dang
 raise "something went wrong"
 raise Error(message: "not found")
+raise ValidationError(message: "too short", field: "name")
 ```
 
 Bare strings are sugar for `Error(message: "...")`. Errors propagate up the call stack until caught by a `try`/`catch` — uncaught errors crash the program with a source-highlighted error pointing at the `raise` statement.
@@ -37,15 +48,21 @@ Bare strings are sugar for `Error(message: "...")`. Errors propagate up the call
 |---|---|
 | `message` | `String!` |
 
-Access the error message on the catch parameter:
+Custom error types implement it:
 
 ```dang
-try { ... } catch { err =>
-  err.message     # String!
+type NotFoundError implements Error {
+  pub message: String!
+  pub resource: String!
+}
+
+type ValidationError implements Error {
+  pub message: String!
+  pub field: String!
 }
 ```
 
-The `Error()` constructor creates an Error value:
+The `Error()` constructor creates a plain Error value:
 
 ```dang
 raise Error(message: "not found")
@@ -53,9 +70,28 @@ raise Error(message: "not found")
 
 For simple cases, `raise "msg"` is equivalent.
 
+## Catch Clauses
+
+Catch clauses use the same syntax as `case`:
+
+- **Type pattern**: `v: ValidationError => expr` — matches if the error is the named type, binds it
+- **Catch-all**: `err => expr` — always matches, binds the error as `Error`
+
+If no clause matches, the error is re-raised.
+
+```dang
+try {
+  riskyOperation()
+} catch {
+  v: ValidationError => "field " + v.field + ": " + v.message
+  n: NotFoundError   => "missing: " + n.resource
+  err                => "unexpected: " + err.message
+}
+```
+
 ## Runtime Errors
 
-`try`/`catch` catches both user-level `raise` errors and runtime errors (division by zero, null access, GraphQL failures, etc.). Runtime errors are wrapped into `ErrorValue` automatically, with the error message available via `err.message`.
+`try`/`catch` catches both user-level `raise` errors and runtime errors (division by zero, null access, GraphQL failures, etc.). Runtime errors are wrapped into an Error value automatically.
 
 ```dang
 pub safeDivide(a: Int!, b: Int!): Int! {
@@ -65,15 +101,12 @@ pub safeDivide(a: Int!, b: Int!): Int! {
 
 ## Re-raising
 
-Pass an `Error` value to `raise` to re-throw:
+Use `raise` inside a catch clause to re-throw:
 
 ```dang
-try { ... } catch { err =>
-  if (err.message == "expected") {
-    "handled"
-  } else {
-    raise err  # re-raise to outer handler
-  }
+try { ... } catch {
+  v: ValidationError => raise v  # let it propagate
+  err => "handled"
 }
 ```
 
@@ -82,47 +115,41 @@ try { ... } catch { err =>
 ### Grammar (`pkg/dang/dang.peg`)
 
 ```peg
-TryCatch <- TryToken _ body:Block _ CatchToken _ handler:BlockArg
+TryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ CatchClause* _ '}'
+CatchClause <- binding:Symbol ':' typeName:Symbol '=>' expr:Form   # type pattern
+             / binding:Symbol '=>' expr:Form                        # catch-all
 Raise <- RaiseToken _ value:Form
 ```
 
-`TryCatch` is a `Form` (expression-level), parsed before `Conditional` and other forms. `Raise` is also a `Form`.
+Catch clauses reuse `CaseClause` AST nodes.
 
 ### AST (`pkg/dang/ast_errors.go`)
 
-- **TryCatch**: `TryBody *Block`, `Handler *BlockArg`, `Loc *SourceLocation`
+- **TryCatch**: `TryBody *Block`, `Clauses []*CaseClause`, `Loc *SourceLocation`
 - **Raise**: `Value Node`, `Loc *SourceLocation`
-- **ErrorValue**: Runtime value with `Message string`
-- **RaisedError**: Go `error` wrapper that carries an `ErrorValue` and `*SourceLocation` for propagation
+- **ErrorValue**: Runtime value with `Message string`, `Original Value`
+- **RaisedError**: Go `error` wrapper carrying `ErrorValue` + `*SourceLocation`
 
-### Type System
+### Type Inference
 
-- `ErrorType` is an `InterfaceKind` module with one field: `message: String!`
-- **TryCatch.Infer**: Infers body type, sets handler's expected param to `Error!`, unifies body and handler return types.
-- **Raise.Infer**: Validates the value is `String!` or `Error!`. Returns a fresh type variable (bottom type — `raise` never completes normally).
+- **TryCatch.Infer**: Infers body type, validates each catch clause (type patterns must implement Error), unifies all clause return types with the body type.
+- **Raise.Infer**: Validates the value is `String!` or implements `Error`. Returns a fresh type variable (bottom type).
 
 ### Evaluation
 
-- **Raise.Eval**: Creates a `RaisedError` wrapping an `ErrorValue` and the raise location, returns it as a Go error.
-- **TryCatch.Eval**: Evaluates the body. On error, extracts or wraps the `ErrorValue`, binds it to the handler parameter, and evaluates the handler block.
-- **RaisedError propagation**: `WithEvalErrorHandling` and `EvalNodeWithContext` pass `RaisedError` through without wrapping, so `TryCatch` can intercept it cleanly.
-
-### Error Constructor (`pkg/dang/stdlib.go`)
-
-```go
-Builtin("Error").
-    Params("message", NonNull(StringType)).
-    Returns(NonNull(ErrorType))
-```
+- **Raise.Eval**: Creates a `RaisedError` wrapping an `ErrorValue`. For custom types (`*ModuleValue`), extracts `message` and stores the original value.
+- **TryCatch.Eval**: Evaluates the body. On error, dispatches through catch clauses using `matchesType` (same as `case`). If no clause matches, re-raises.
+- **RaisedError propagation**: `WithEvalErrorHandling` and `EvalNodeWithContext` pass `RaisedError` through without wrapping.
 
 ### Uncaught Errors
 
-Uncaught `RaisedError` values that reach `RunFile` produce a `SourceError` pointing at the `raise` statement.
+Uncaught `RaisedError` values produce a `SourceError` pointing at the `raise` statement.
 
 ## Related Files
 
-- `pkg/dang/dang.peg` — Grammar for `try`, `catch`, `raise` tokens
+- `pkg/dang/dang.peg` — Grammar for `try`, `catch`, `raise`, `CatchClause`
 - `pkg/dang/ast_errors.go` — `TryCatch`, `Raise`, `ErrorValue`, `RaisedError`
+- `pkg/dang/ast_patterns.go` — `CaseClause`, `Case.inferTypePatternClause` (reused by catch)
 - `pkg/dang/ast_literals.go` — `ErrorType` definition (InterfaceKind)
 - `pkg/dang/env.go` — `Error` interface registered in Prelude
 - `pkg/dang/stdlib.go` — `Error()` constructor builtin

@@ -2376,8 +2376,39 @@ func (f *Formatter) formatAssert(a *Assert) {
 func (f *Formatter) formatTryCatch(t *TryCatch) {
 	f.write("try {")
 	f.formatBlockContents(t.TryBody)
-	f.write("} catch ")
-	f.formatBlockArg(t.Handler)
+	f.write("} catch {")
+	if t.Loc != nil {
+		f.nl(t.Loc.Line)
+	} else {
+		f.newline()
+	}
+	f.indented(func() {
+		if len(t.Clauses) > 0 && t.Clauses[0].Loc != nil {
+			f.lastLine = t.Clauses[0].Loc.Line - 1
+		}
+		for _, clause := range t.Clauses {
+			if clause.Loc != nil {
+				f.emitCommentsBeforeNode(clause.Loc.Line, false)
+				f.lastLine = clause.Loc.Line
+			}
+			f.writeIndent()
+			if clause.IsTypePattern() {
+				f.write(clause.Binding)
+				f.write(": ")
+				f.write(clause.TypePattern.Name)
+			} else if clause.Binding != "" {
+				f.write(clause.Binding)
+			}
+			f.write(" => ")
+			f.formatNode(clause.Expr)
+			if clause.Loc != nil {
+				f.emitTrailingComment(clause.Loc.Line)
+			}
+			f.newline()
+		}
+	})
+	f.writeIndent()
+	f.write("}")
 }
 
 func (f *Formatter) formatRaise(r *Raise) {

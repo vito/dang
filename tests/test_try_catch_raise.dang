@@ -7,8 +7,8 @@ pub failing: String! {
 
 pub result = try {
   failing
-} catch { err =>
-  "caught: " + err.message
+} catch {
+  err => "caught: " + err.message
 }
 
 assert { result == "caught: kaboom" }
@@ -24,8 +24,8 @@ pub outer: String! {
 
 pub nested = try {
   outer
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 assert { nested == "inner error" }
@@ -34,11 +34,11 @@ assert { nested == "inner error" }
 pub rethrow = try {
   try {
     raise "original"
-  } catch { err =>
-    raise err
+  } catch {
+    err => raise err
   }
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 assert { rethrow == "original" }

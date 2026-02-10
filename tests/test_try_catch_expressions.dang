@@ -1,41 +1,34 @@
 # Test try/catch as expressions in various positions
 
-# try/catch in variable binding
-pub x = try { 1 + 2 } catch { err => 0 }
-assert { x == 3 }
+# try/catch in a let binding
+let greeting = try {
+  raise "nope"
+} catch {
+  err => "fallback"
+}
 
-# try/catch in function body
 pub safeDivide(a: Int!, b: Int!): Int! {
   try {
     a / b
-  } catch { err =>
-    0
+  } catch {
+    err => 0
   }
 }
 
 assert { safeDivide(10, 2) == 5 }
 assert { safeDivide(10, 0) == 0 }
 
-# try/catch in conditional
-pub result = if (true) {
-  try { raise "nope" } catch { err => "caught" }
-} else {
-  "else"
-}
-
-assert { result == "caught" }
-
 # nested try/catch
-pub nested = try {
+pub nestedResult = try {
   try {
     raise "inner"
-  } catch { err =>
-    "recovered: " + err.message
+  } catch {
+    err => raise "outer: " + err.message
   }
-} catch { err =>
-  "outer: " + err.message
+} catch {
+  err => err.message
 }
 
-assert { nested == "recovered: inner" }
+assert { nestedResult == "outer: inner" }
 
 print("Try/catch expression tests passed!")

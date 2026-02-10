@@ -3,8 +3,8 @@
 # raise with Error constructor
 pub result = try {
   raise Error(message: "not found")
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 assert { result == "not found" }
@@ -12,8 +12,8 @@ assert { result == "not found" }
 # error message from a string raise
 pub msgResult = try {
   raise "kaboom"
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 assert { msgResult == "kaboom" }
@@ -21,14 +21,14 @@ assert { msgResult == "kaboom" }
 # Error constructor and string raise produce the same interface
 pub fromConstructor = try {
   raise Error(message: "oops")
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 pub fromString = try {
   raise "oops"
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 assert { fromConstructor == fromString }

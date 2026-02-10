@@ -9,12 +9,18 @@ import (
 )
 
 // TryCatch is an expression that evaluates a body block and, if it raises
-// an error, evaluates a catch handler block with the error bound to a
-// parameter.  The try and catch blocks must return the same type.
+// an error, dispatches to catch clauses.  The catch block uses the same
+// clause syntax as case:
+//
+//	try { ... } catch {
+//	  v: ValidationError => handle(v)
+//	  n: NotFoundError   => handle(n)
+//	  err                => fallback(err)  # catch-all
+//	}
 type TryCatch struct {
 	InferredTypeHolder
 	TryBody *Block
-	Handler *BlockArg
+	Clauses []*CaseClause
 	Loc     *SourceLocation
 }
 
@@ -26,7 +32,15 @@ func (t *TryCatch) DeclaredSymbols() []string { return nil }
 func (t *TryCatch) ReferencedSymbols() []string {
 	var symbols []string
 	symbols = append(symbols, t.TryBody.ReferencedSymbols()...)
-	symbols = append(symbols, t.Handler.ReferencedSymbols()...)
+	for _, clause := range t.Clauses {
+		if clause.Value != nil {
+			symbols = append(symbols, clause.Value.ReferencedSymbols()...)
+		}
+		if clause.TypePattern != nil {
+			symbols = append(symbols, clause.TypePattern.Name)
+		}
+		symbols = append(symbols, clause.Expr.ReferencedSymbols()...)
+	}
 	return symbols
 }
 
@@ -36,44 +50,84 @@ func (t *TryCatch) GetSourceLocation() *SourceLocation { return t.Loc }
 
 func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
-		// Infer the try body type
+		// Infer the try body type.
 		bodyType, err := t.TryBody.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		// The handler receives one parameter of type Error! and must
-		// return a type compatible with the body.
 		errorType := hm.NonNullType{Type: ErrorType}
-		t.Handler.ExpectedParamTypes = []hm.Type{errorType}
-		t.Handler.ExpectedReturnType = bodyType
 
-		handlerType, err := t.Handler.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, err
+		// Build an implicit Case over Error! and infer each clause the
+		// same way case does.
+		implicitCase := &Case{
+			Expr:    nil, // not used directly; we set the type below
+			Clauses: t.Clauses,
+			Loc:     t.Loc,
 		}
+		_ = implicitCase
 
-		// The handler must be a function type; extract its return type.
-		handlerFn, ok := handlerType.(*hm.FunctionType)
-		if !ok {
-			return nil, NewInferError(fmt.Errorf("catch handler must be a function, got %s", handlerType), t.Handler)
+		var resultType hm.Type = bodyType
+
+		for i, clause := range t.Clauses {
+			var clauseType hm.Type
+
+			if clause.IsTypePattern() {
+				// Type pattern: v: SomeError => ...
+				// Validate that the type implements Error.
+				if err := implicitCase.inferTypePatternClause(ctx, env, fresh, clause, errorType); err != nil {
+					return nil, err
+				}
+
+				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
+					clauseEnv := env.Clone()
+					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
+					return clause.Expr.Infer(ctx, clauseEnv, fresh)
+				})
+				if err != nil {
+					return nil, err
+				}
+			} else if clause.IsElse {
+				// Catch-all: err => ...
+				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
+					clauseEnv := env.Clone()
+					if clause.Binding != "" {
+						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, errorType))
+					}
+					return clause.Expr.Infer(ctx, clauseEnv, fresh)
+				})
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				return nil, NewInferError(fmt.Errorf("catch clauses must be type patterns or a catch-all"), clause)
+			}
+
+			// Unify this clause's return type with the body type.
+			subs, err := hm.Assignable(clauseType, resultType)
+			if err != nil {
+				if i == 0 {
+					// First clause determines the handler type; unify
+					// handler with body.
+					return nil, NewInferError(err, clause)
+				}
+				return nil, NewInferError(fmt.Errorf("catch clause type mismatch: %s vs %s", clauseType, resultType), clause)
+			}
+			resultType = resultType.Apply(subs).(hm.Type)
 		}
-
-		handlerRet := handlerFn.Ret(false)
-
-		// Unify the body and handler return types.
-		subs, err := hm.Assignable(handlerRet, bodyType)
-		if err != nil {
-			return nil, NewInferError(err, t.Handler)
-		}
-
-		resultType := bodyType.Apply(subs).(hm.Type)
 
 		// If either side is nullable the result is nullable.
 		_, bodyNonNull := resultType.(hm.NonNullType)
-		_, handlerNonNull := handlerRet.Apply(subs).(hm.Type).(hm.NonNullType)
+		lastClause := t.Clauses[len(t.Clauses)-1]
+		lastClauseType := lastClause.GetInferredType()
+		if lastClauseType == nil {
+			lastClauseType = resultType
+		}
+		_, handlerNonNull := lastClauseType.(hm.NonNullType)
 		if bodyNonNull && !handlerNonNull {
-			resultType = resultType.(hm.NonNullType).Type
+			if nn, ok := resultType.(hm.NonNullType); ok {
+				resultType = nn.Type
+			}
 		}
 
 		return resultType, nil
@@ -117,19 +171,35 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			errVal = &ErrorValue{Message: msg}
 		}
 
-		// Evaluate the catch handler with the error value bound.
-		// When the error wraps a custom type (Original), bind that so
-		// case-matching on the concrete type works naturally.
+		// Resolve the value to bind in catch clauses.  Custom error
+		// types expose the original ModuleValue so type patterns work.
 		var bindVal Value = errVal
 		if errVal.Original != nil {
 			bindVal = errVal.Original
 		}
-		handlerEnv := env.Clone()
-		if len(t.Handler.Args) > 0 {
-			handlerEnv.Set(t.Handler.Args[0].Name.Name, bindVal)
+
+		// Dispatch through clauses just like case does.
+		for _, clause := range t.Clauses {
+			if clause.IsElse {
+				childEnv := env.Fork()
+				if clause.Binding != "" {
+					childEnv.Set(clause.Binding, bindVal)
+				}
+				return EvalNode(ctx, childEnv, clause.Expr)
+			}
+
+			if clause.IsTypePattern() {
+				if matchesType(bindVal, clause.TypePattern.Name) {
+					childEnv := env.Fork()
+					childEnv.Set(clause.Binding, bindVal)
+					return EvalNode(ctx, childEnv, clause.Expr)
+				}
+				continue
+			}
 		}
 
-		return EvalNode(ctx, handlerEnv, t.Handler.BodyNode)
+		// No clause matched — re-raise the original error.
+		return nil, err
 	})
 }
 
@@ -138,7 +208,15 @@ func (t *TryCatch) Walk(fn func(Node) bool) {
 		return
 	}
 	t.TryBody.Walk(fn)
-	t.Handler.Walk(fn)
+	for _, clause := range t.Clauses {
+		if clause.Value != nil {
+			clause.Value.Walk(fn)
+		}
+		if clause.TypePattern != nil {
+			fn(clause.TypePattern)
+		}
+		clause.Expr.Walk(fn)
+	}
 }
 
 // Raise is a statement that raises an error.  The value can be a bare

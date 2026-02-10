@@ -10,23 +10,21 @@ type ValidationError implements Error {
   pub field: String!
 }
 
-# raise a custom error type
+# raise a custom error type, catch-all
 pub result = try {
   raise NotFoundError(message: "user not found", resource: "User")
-} catch { err =>
-  err.message
+} catch {
+  err => err.message
 }
 
 assert { result == "user not found" }
 
-# case-match on the concrete error type in the catch handler
+# catch with type patterns — like case but directly in catch
 pub matched = try {
   raise ValidationError(message: "too short", field: "name")
-} catch { err =>
-  case (err) {
-    v: ValidationError => "invalid " + v.field + ": " + v.message
-    n: NotFoundError => "missing " + n.resource
-  }
+} catch {
+  v: ValidationError => "invalid " + v.field + ": " + v.message
+  n: NotFoundError => "missing " + n.resource
 }
 
 assert { matched == "invalid name: too short" }
@@ -34,14 +32,22 @@ assert { matched == "invalid name: too short" }
 # match the other branch
 pub matched2 = try {
   raise NotFoundError(message: "gone", resource: "Post")
-} catch { err =>
-  case (err) {
-    v: ValidationError => "invalid " + v.field
-    n: NotFoundError => "missing " + n.resource
-  }
+} catch {
+  v: ValidationError => "invalid " + v.field
+  n: NotFoundError => "missing " + n.resource
 }
 
 assert { matched2 == "missing Post" }
+
+# type patterns with a catch-all fallback
+pub withFallback = try {
+  raise "plain error"
+} catch {
+  v: ValidationError => "validation"
+  err => "other: " + err.message
+}
+
+assert { withFallback == "other: plain error" }
 
 # custom errors propagate through function calls
 pub validate(name: String!): String! {
@@ -54,10 +60,8 @@ pub validate(name: String!): String! {
 
 pub validated = try {
   validate("")
-} catch { err =>
-  case (err) {
-    v: ValidationError => v.field + " " + v.message
-  }
+} catch {
+  v: ValidationError => v.field + " " + v.message
 }
 
 assert { validated == "name must not be empty" }
@@ -65,8 +69,8 @@ assert { validated == "name must not be empty" }
 # non-error path works normally
 pub ok = try {
   validate("Alice")
-} catch { err =>
-  "unreachable"
+} catch {
+  err => "unreachable"
 }
 
 assert { ok == "Alice" }

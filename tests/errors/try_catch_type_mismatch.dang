@@ -1,6 +1,6 @@
 # try body returns Int! but catch returns String! — type mismatch
 pub result = try {
   42
-} catch { err =>
-  "not a number"
+} catch {
+  err => "not a number"
 }
