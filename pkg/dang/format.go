@@ -574,6 +574,10 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatList(n)
 	case *Object:
 		f.formatObject(n)
+	case *TryCatch:
+		f.formatTryCatch(n)
+	case *Raise:
+		f.formatRaise(n)
 	case *Conditional:
 		f.formatConditional(n)
 	case *ForLoop:
@@ -2367,6 +2371,18 @@ func (f *Formatter) formatAssert(a *Assert) {
 	f.write(" {")
 	f.formatBlockContents(a.Block)
 	f.write("}")
+}
+
+func (f *Formatter) formatTryCatch(t *TryCatch) {
+	f.write("try {")
+	f.formatBlockContents(t.TryBody)
+	f.write("} catch ")
+	f.formatBlockArg(t.Handler)
+}
+
+func (f *Formatter) formatRaise(r *Raise) {
+	f.write("raise ")
+	f.formatNode(r.Value)
 }
 
 func (f *Formatter) formatReassignment(r *Reassignment) {

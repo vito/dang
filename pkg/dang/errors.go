@@ -344,8 +344,9 @@ func WithEvalErrorHandling(ctx context.Context, node SourceLocatable, fn func() 
 		// Check if error already has source location context
 		var sourceErr *SourceError
 		var assertionErr *AssertionError
-		if errors.As(err, &sourceErr) || errors.As(err, &assertionErr) {
-			// Already has source location context, preserve it
+		var raisedErr *RaisedError
+		if errors.As(err, &sourceErr) || errors.As(err, &assertionErr) || errors.As(err, &raisedErr) {
+			// Already has context or is a user-level raise; preserve it
 			return nil, err
 		}
 		// No source location context, wrap it

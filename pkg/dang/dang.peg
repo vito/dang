@@ -71,7 +71,7 @@ Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / N
   }
 }
 
-Form <- Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- TryCatch / Raise / Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -846,6 +846,26 @@ CommentToken <- '#' [^\n]* {
 }
 
 // Additional language constructs
+
+TryCatch <- TryToken _ body:Block _ CatchToken _ handler:BlockArg {
+  return &TryCatch{
+    TryBody: body.(*Block),
+    Handler: handler.(*BlockArg),
+    Loc: c.Loc(),
+  }, nil
+}
+
+TryToken <- "try" !WordChar
+CatchToken <- "catch" !WordChar
+
+Raise <- RaiseToken _ value:Form {
+  return &Raise{
+    Value: value.(Node),
+    Loc: c.Loc(),
+  }, nil
+}
+
+RaiseToken <- "raise" !WordChar
 
 Conditional <- IfToken _ '(' _ cond:Form _ ')' _ block:Block else_:ElseClause? {
   return &Conditional{

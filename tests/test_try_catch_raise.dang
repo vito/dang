@@ -1,0 +1,46 @@
+# Test raise and error propagation
+
+# raise propagates through function calls
+pub failing: String! {
+  raise "kaboom"
+}
+
+pub result = try {
+  failing
+} catch { err =>
+  "caught: " + err.message
+}
+
+assert { result == "caught: kaboom" }
+
+# raise in nested calls
+pub inner: String! {
+  raise "inner error"
+}
+
+pub outer: String! {
+  inner + " unreachable"
+}
+
+pub nested = try {
+  outer
+} catch { err =>
+  err.message
+}
+
+assert { nested == "inner error" }
+
+# re-raise an error
+pub rethrow = try {
+  try {
+    raise "original"
+  } catch { err =>
+    raise err
+  }
+} catch { err =>
+  err.message
+}
+
+assert { rethrow == "original" }
+
+print("Raise and propagation tests passed!")

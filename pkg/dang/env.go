@@ -183,6 +183,15 @@ func init() {
 	Prelude.AddClass("Boolean", BooleanType)
 	Prelude.AddClass("List", ListTypeModule)
 
+	// Install Error type with message, path, extensions fields
+	Prelude.AddClass("Error", ErrorType)
+	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	ErrorType.SetVisibility("message", PublicVisibility)
+	ErrorType.Add("path", hm.NewScheme(nil, hm.NonNullType{Type: ListType{hm.NonNullType{Type: StringType}}}))
+	ErrorType.SetVisibility("path", PublicVisibility)
+	ErrorType.Add("extensions", hm.NewScheme(nil, hm.NonNullType{Type: NewModule("", ObjectKind)}))
+	ErrorType.SetVisibility("extensions", PublicVisibility)
+
 	// Register standard library builtins
 	registerStdlib()
 
@@ -671,7 +680,15 @@ func registerBuiltinTypes() {
 func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	args := NewRecordType("")
 	for _, param := range def.ParamTypes {
-		args.Add(param.Name, hm.NewScheme(nil, param.Type))
+		paramType := param.Type
+		// Parameters with defaults are optional — strip NonNull so the
+		// type checker treats them as nullable (not required).
+		if param.DefaultValue != nil {
+			if nn, ok := paramType.(hm.NonNullType); ok {
+				paramType = nn.Type
+			}
+		}
+		args.Add(param.Name, hm.NewScheme(nil, paramType))
 	}
 	fnType := hm.NewFnType(args, def.ReturnType)
 

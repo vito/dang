@@ -1,0 +1,30 @@
+# Test basic try/catch expression
+
+# raise a string error and catch it
+pub result = try {
+  raise "something went wrong"
+} catch { err =>
+  err.message
+}
+
+assert { result == "something went wrong" }
+
+# catch returns the value when no error occurs
+pub ok = try {
+  42
+} catch { err =>
+  0
+}
+
+assert { ok == 42 }
+
+# try/catch with string values
+pub greeting = try {
+  "hello"
+} catch { err =>
+  "fallback"
+}
+
+assert { greeting == "hello" }
+
+print("Basic try/catch tests passed!")
