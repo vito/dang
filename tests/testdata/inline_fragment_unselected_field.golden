@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "lives" not found in Cat
+  [2m[34m--> errors/inline_fragment_unselected_field.dang:25:13[0m
+ [2m    |[0m
+ [2m 23 | pub first = results[0][0m
+ [2m 24 | pub desc = case (first) {[0m
+ [2m[34m[1m 25 | [0m  c: Cat => c.lives
+[2m                   [31m^^^^^^^[0m
+ [2m 26 |   d: Dog => d.name[0m
+ [2m 27 | }[0m
+ [2m    |[0m
+
