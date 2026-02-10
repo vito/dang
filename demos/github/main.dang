@@ -1,0 +1,19 @@
+import GitHub
+
+pub results = GitHub.search(
+  query: "dagger language:go",
+  type: SearchType.REPOSITORY,
+  first: 10,
+).edges.{
+  node.{
+    ... on Repository { name, description, stargazerCount }
+  }
+}
+
+for (result in results) {
+  pub repo = case (result.node) {
+    r: Repository => r.name + " (" + toString(r.stargazerCount) + " stars)"
+    else => "(other)"
+  }
+  print(repo)
+}

@@ -1,0 +1,3 @@
+[imports.GitHub]
+endpoint = "https://api.github.com/graphql"
+authorization = "Bearer ${GITHUB_TOKEN}"
