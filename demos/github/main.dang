@@ -9,6 +9,22 @@ print(repo.name + " — " + repo.description)
 print(toString(repo.stargazerCount) + " stars · " + toString(repo.forkCount) + " forks")
 print("")
 
+# Fetch recent open issues through the Relay connection pattern
+pub issues = repository(owner: "golang", name: "go")
+  .issues(states: [IssueState.OPEN], first: 5)
+  .edges.{
+    node.{ number, title }
+  }
+
+for (edge in issues) {
+  let node = edge.node
+  if (node != null) {
+    print("  #" + toString(node.number) + "  " + node.title)
+  }
+}
+
+print("")
+
 # Search returns a union type — select type-specific fields with inline
 # fragments, then pattern match each result with case
 pub results = search(
