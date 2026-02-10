@@ -284,6 +284,19 @@ func (r *queryResolver) UsersByStatus(ctx context.Context, status Status) ([]*Us
 	return result, nil
 }
 
+// SortedUsers is the resolver for the sortedUsers field.
+func (r *queryResolver) SortedUsers(ctx context.Context, sort UserSort) ([]*User, error) {
+	result := make([]*User, len(users))
+	copy(result, users)
+	if sort.Direction == SortDirectionDesc {
+		// Reverse
+		for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+			result[i], result[j] = result[j], result[i]
+		}
+	}
+	return result, nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user

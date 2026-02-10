@@ -301,6 +301,32 @@ func NewEnv(schema *introspection.Schema) Env {
 		}
 	}
 
+	// Make input object types available as constructors:
+	// UserSort(field: ..., direction: ...) creates a UserSort value
+	for _, t := range schema.Types {
+		if t.Kind == introspection.TypeKindInputObject {
+			sub, found := env.NamedType(t.Name)
+			if found {
+				args := NewRecordType("")
+				for _, f := range t.InputFields {
+					fieldType, err := gqlToTypeNode(env, f.TypeRef)
+					if err != nil {
+						continue
+					}
+					if f.DefaultValue != nil {
+						if nn, ok := fieldType.(hm.NonNullType); ok {
+							fieldType = nn.Type
+						}
+					}
+					args.Add(f.Name, hm.NewScheme(nil, fieldType))
+				}
+				constructorType := hm.NewFnType(args, NonNull(sub))
+				env.Add(t.Name, hm.NewScheme(nil, constructorType))
+				env.SetVisibility(t.Name, PublicVisibility)
+			}
+		}
+	}
+
 	for _, t := range schema.Types {
 		install, found := env.NamedType(t.Name)
 		if !found {
@@ -309,8 +335,26 @@ func NewEnv(schema *introspection.Schema) Env {
 			continue
 		}
 
-		// TODO assign input fields, maybe input classes are "just" records?
-		//t.InputFields
+		// Input objects: register their fields so they can be used as constructors
+		if t.Kind == introspection.TypeKindInputObject {
+			for _, f := range t.InputFields {
+				fieldType, err := gqlToTypeNode(env, f.TypeRef)
+				if err != nil {
+					panic(err)
+				}
+				if f.DefaultValue != nil {
+					// Optional field: make nullable in the type
+					if nn, ok := fieldType.(hm.NonNullType); ok {
+						fieldType = nn.Type
+					}
+				}
+				install.Add(f.Name, hm.NewScheme(nil, fieldType))
+				install.SetVisibility(f.Name, PublicVisibility)
+				if f.Description != "" {
+					install.SetDocString(f.Name, f.Description)
+				}
+			}
+		}
 
 		// Assign enum values as string fields for enum types
 		if t.Kind == introspection.TypeKindEnum {

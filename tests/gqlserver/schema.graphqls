@@ -42,6 +42,22 @@ type Query {
   search(query: String!): [SearchResult!]!
   searchConnection(query: String!): SearchResultConnection!
   usersByStatus(status: Status!): [User!]!
+  sortedUsers(sort: UserSort!): [User!]!
+}
+
+enum UserSortField {
+  NAME
+  AGE
+}
+
+enum SortDirection {
+  ASC
+  DESC
+}
+
+input UserSort {
+  field: UserSortField!
+  direction: SortDirection!
 }
 
 type Mutation {

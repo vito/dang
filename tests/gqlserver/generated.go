@@ -92,6 +92,7 @@ type ComplexityRoot struct {
 		Search            func(childComplexity int, query string) int
 		SearchConnection  func(childComplexity int, query string) int
 		ServerInfo        func(childComplexity int) int
+		SortedUsers       func(childComplexity int, sort UserSort) int
 		Status            func(childComplexity int) int
 		Timestamped       func(childComplexity int) int
 		User              func(childComplexity int, id string) int
@@ -164,6 +165,7 @@ type QueryResolver interface {
 	Search(ctx context.Context, query string) ([]SearchResult, error)
 	SearchConnection(ctx context.Context, query string) (*SearchResultConnection, error)
 	UsersByStatus(ctx context.Context, status Status) ([]*User, error)
+	SortedUsers(ctx context.Context, sort UserSort) ([]*User, error)
 }
 type UserResolver interface {
 	Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error)
@@ -442,6 +444,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.ServerInfo(childComplexity), true
+	case "Query.sortedUsers":
+		if e.complexity.Query.SortedUsers == nil {
+			break
+		}
+
+		args, err := ec.field_Query_sortedUsers_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.SortedUsers(childComplexity, args["sort"].(UserSort)), true
 	case "Query.status":
 		if e.complexity.Query.Status == nil {
 			break
@@ -634,6 +647,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
 		ec.unmarshalInputCreateUserInput,
 		ec.unmarshalInputUpdateUserInput,
+		ec.unmarshalInputUserSort,
 	)
 	first := true
 
@@ -938,6 +952,17 @@ func (ec *executionContext) field_Query_search_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["query"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_sortedUsers_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "sort", ec.unmarshalNUserSort2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserSort)
+	if err != nil {
+		return nil, err
+	}
+	args["sort"] = arg0
 	return args, nil
 }
 
@@ -2449,6 +2474,61 @@ func (ec *executionContext) fieldContext_Query_usersByStatus(ctx context.Context
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_usersByStatus_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_sortedUsers(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_sortedUsers,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().SortedUsers(ctx, fc.Args["sort"].(UserSort))
+		},
+		nil,
+		ec.marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_sortedUsers(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
+			case "age":
+				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
+			case "posts":
+				return ec.fieldContext_User_posts(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_sortedUsers_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -4707,6 +4787,40 @@ func (ec *executionContext) unmarshalInputUpdateUserInput(ctx context.Context, o
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputUserSort(ctx context.Context, obj any) (UserSort, error) {
+	var it UserSort
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"field", "direction"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "field":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("field"))
+			data, err := ec.unmarshalNUserSortField2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserSortField(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Field = data
+		case "direction":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("direction"))
+			data, err := ec.unmarshalNSortDirection2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSortDirection(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Direction = data
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
@@ -5467,6 +5581,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_usersByStatus(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "sortedUsers":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_sortedUsers(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -6471,6 +6607,16 @@ func (ec *executionContext) marshalNServerInfo2ᚖgithubᚗcomᚋvitoᚋdangᚋt
 	return ec._ServerInfo(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNSortDirection2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSortDirection(ctx context.Context, v any) (SortDirection, error) {
+	var res SortDirection
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSortDirection2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐSortDirection(ctx context.Context, sel ast.SelectionSet, v SortDirection) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) unmarshalNStatus2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐStatus(ctx context.Context, v any) (Status, error) {
 	var res Status
 	err := res.UnmarshalGQL(v)
@@ -6704,6 +6850,21 @@ func (ec *executionContext) marshalNUser2ᚖgithubᚗcomᚋvitoᚋdangᚋtests�
 		return graphql.Null
 	}
 	return ec._User(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNUserSort2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserSort(ctx context.Context, v any) (UserSort, error) {
+	res, err := ec.unmarshalInputUserSort(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNUserSortField2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserSortField(ctx context.Context, v any) (UserSortField, error) {
+	var res UserSortField
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNUserSortField2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserSortField(ctx context.Context, sel ast.SelectionSet, v UserSortField) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {

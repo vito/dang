@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 
 	gqlgen "github.com/99designs/gqlgen/graphql"
@@ -138,6 +139,17 @@ func marshalValue(ctx context.Context, v reflect.Value) (string, error) {
 			}
 		}
 		return fmt.Sprintf("{%s}", strings.Join(nonNullElems, ",")), nil
+	case reflect.Map:
+		elems := make([]string, 0, v.Len())
+		for _, key := range v.MapKeys() {
+			m, err := marshalValue(ctx, v.MapIndex(key))
+			if err != nil {
+				return "", err
+			}
+			elems = append(elems, fmt.Sprintf("%s:%s", key, m))
+		}
+		sort.Strings(elems)
+		return fmt.Sprintf("{%s}", strings.Join(elems, ",")), nil
 	default:
 		return "", fmt.Errorf("unsupported argument of kind %s", t.Kind())
 	}

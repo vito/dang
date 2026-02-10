@@ -60,6 +60,35 @@ type EvalEnv interface {
 	SetDynamicScope(value Value)
 }
 
+// InputObjectConstructor creates a ModuleValue from named arguments,
+// used for GraphQL input types like UserSort(field: ..., direction: ...).
+type InputObjectConstructor struct {
+	TypeName string
+	TypeEnv  *Module
+	FnType   *hm.FunctionType
+}
+
+func (c InputObjectConstructor) Type() hm.Type    { return c.FnType }
+func (c InputObjectConstructor) String() string    { return fmt.Sprintf("input:%s", c.TypeName) }
+func (c InputObjectConstructor) IsAutoCallable() bool { return false }
+
+func (c InputObjectConstructor) ParameterNames() []string {
+	rec := c.FnType.Arg().(*RecordType)
+	names := make([]string, len(rec.Fields))
+	for i, f := range rec.Fields {
+		names[i] = f.Key
+	}
+	return names
+}
+
+func (c InputObjectConstructor) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	instance := NewModuleValue(c.TypeEnv)
+	for name, val := range args {
+		instance.Set(name, val)
+	}
+	return instance, nil
+}
+
 // GraphQLFunction represents a GraphQL API function that makes actual calls
 type GraphQLFunction struct {
 	Name       string
@@ -384,6 +413,31 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			env.SetWithVisibility(t.Name, unionModuleVal, PublicVisibility)
 		}
 
+		// Add input object constructors: UserSort(field: ..., direction: ...)
+		if t.Kind == introspection.TypeKindInputObject {
+			inputTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+
+			args := NewRecordType("")
+			for _, f := range t.InputFields {
+				argType, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				if err != nil {
+					continue
+				}
+				args.Add(f.Name, hm.NewScheme(nil, argType))
+			}
+			fnType := hm.NewFnType(args, NonNull(inputTypeEnv))
+
+			constructor := InputObjectConstructor{
+				TypeName:  t.Name,
+				TypeEnv:   inputTypeEnv.(*Module),
+				FnType:    fnType,
+			}
+			env.SetWithVisibility(t.Name, constructor, PublicVisibility)
+		}
+
 		for _, f := range t.Fields {
 			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
 			if err != nil {
@@ -590,6 +644,17 @@ func dangValueToGo(val Value) (interface{}, error) {
 				return nil, fmt.Errorf("converting list element %d: %w", i, err)
 			}
 			result[i] = goVal
+		}
+		return result, nil
+	case *ModuleValue:
+		// Convert module value to map (used for input objects)
+		result := make(map[string]interface{})
+		for name, fieldVal := range v.Values {
+			goVal, err := dangValueToGo(fieldVal)
+			if err != nil {
+				return nil, fmt.Errorf("converting field %s: %w", name, err)
+			}
+			result[name] = goVal
 		}
 		return result, nil
 	case GraphQLValue:

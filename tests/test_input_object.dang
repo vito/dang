@@ -1,0 +1,7 @@
+import Test
+
+# Test passing input objects to GraphQL queries using named constructors
+pub sorted = sortedUsers(sort: UserSort(field: UserSortField.NAME, direction: SortDirection.DESC)).{name}
+
+assert { sorted[0].name == "Jane Smith" }
+assert { sorted[1].name == "John Doe" }
