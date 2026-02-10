@@ -7,7 +7,7 @@
 let prefix = "img"
 
 pub withPrefix(tag: String! = prefix + ":latest"): String! {
-    tag
+  tag
 }
 
 assert("fn: default refs outer scope") { withPrefix == "img:latest" }
@@ -16,11 +16,11 @@ assert("fn: explicit arg") { withPrefix("custom") == "custom" }
 # --- Class methods referencing typed fields ---
 
 type Builder {
-    pub defaultVersion: String! = "20.18.1"
+  pub defaultVersion: String! = "20.18.1"
 
-    pub container(nodeVersion: String! = defaultVersion): String! {
-        "node:" + nodeVersion
-    }
+  pub container(nodeVersion: String! = defaultVersion): String! {
+    "node:" + nodeVersion
+  }
 }
 
 assert("method: default refs field") { Builder.container == "node:20.18.1" }
@@ -29,21 +29,21 @@ assert("method: explicit arg") { Builder.container("22.0.0") == "node:22.0.0" }
 # --- Class methods referencing untyped constant fields ---
 
 type Defaults {
-    pub strVal = "hello"
-    pub intVal = 42
-    pub boolVal = true
+  pub strVal = "hello"
+  pub intVal = 42
+  pub boolVal = true
 
-    pub greet(name: String! = strVal): String! {
-        name
-    }
+  pub greet(name: String! = strVal): String! {
+    name
+  }
 
-    pub count(n: Int! = intVal): Int! {
-        n
-    }
+  pub count(n: Int! = intVal): Int! {
+    n
+  }
 
-    pub flag(b: Boolean! = boolVal): Boolean! {
-        b
-    }
+  pub flag(b: Boolean! = boolVal): Boolean! {
+    b
+  }
 }
 
 assert("untyped string field") { Defaults.greet == "hello" }
@@ -53,14 +53,14 @@ assert("untyped bool field") { Defaults.flag == true }
 # --- Constructor with arg forward-ref in defaults ---
 
 type Config {
-    pub version: String! = "latest"
-    pub tag: String!
+  pub version: String! = "latest"
+  pub tag: String!
 
-    new(version: String! = "latest", tag: String! = "img:" + version) {
-        self.version = version
-        self.tag = tag
-        self
-    }
+  new(version: String! = "latest", tag: String! = "img:" + version) {
+    self.version = version
+    self.tag = tag
+    self
+  }
 }
 
 assert("ctor: both defaults") { Config.tag == "img:latest" }
