@@ -257,6 +257,17 @@ func (r *queryResolver) Search(ctx context.Context, query string) ([]SearchResul
 	return results, nil
 }
 
+// UsersByStatus is the resolver for the usersByStatus field.
+func (r *queryResolver) UsersByStatus(ctx context.Context, status Status) ([]*User, error) {
+	var result []*User
+	for _, user := range users {
+		if user.Status == status {
+			result = append(result, user)
+		}
+	}
+	return result, nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user

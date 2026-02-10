@@ -571,8 +571,7 @@ func dangValueToGo(val Value) (interface{}, error) {
 	case StringValue:
 		return v.Val, nil
 	case EnumValue:
-		// Enum values are represented as strings in GraphQL
-		return v.Val, nil
+		return gqlEnumValue{val: v.Val}, nil
 	case ScalarValue:
 		// Scalar values are represented as strings in GraphQL
 		return v.Val, nil
@@ -602,6 +601,17 @@ func dangValueToGo(val Value) (interface{}, error) {
 		return nil, fmt.Errorf("unsupported value type: %T", val)
 	}
 }
+
+// gqlEnumValue implements the querybuilder enum interface so enum values
+// are serialized as bare identifiers (REPOSITORY) rather than strings ("REPOSITORY").
+type gqlEnumValue struct {
+	val string
+}
+
+func (e gqlEnumValue) IsEnum()        {}
+func (e gqlEnumValue) Name() string   { return e.val }
+func (e gqlEnumValue) Value() string  { return e.val }
+func (e gqlEnumValue) String() string { return e.val }
 
 type gqlObjectMarshaller struct {
 	val GraphQLValue

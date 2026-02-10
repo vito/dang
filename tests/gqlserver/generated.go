@@ -96,6 +96,7 @@ type ComplexityRoot struct {
 		User              func(childComplexity int, id string) int
 		UserProfile       func(childComplexity int, userID *string, includeStats *bool) int
 		Users             func(childComplexity int) int
+		UsersByStatus     func(childComplexity int, status Status) int
 	}
 
 	ServerInfo struct {
@@ -151,6 +152,7 @@ type QueryResolver interface {
 	FetchURLNullable(ctx context.Context, url *string) (*string, error)
 	FetchMultipleURLs(ctx context.Context, urls []string) ([]string, error)
 	Search(ctx context.Context, query string) ([]SearchResult, error)
+	UsersByStatus(ctx context.Context, status Status) ([]*User, error)
 }
 type UserResolver interface {
 	Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error)
@@ -458,6 +460,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.Users(childComplexity), true
+	case "Query.usersByStatus":
+		if e.complexity.Query.UsersByStatus == nil {
+			break
+		}
+
+		args, err := ec.field_Query_usersByStatus_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.UsersByStatus(childComplexity, args["status"].(Status)), true
 
 	case "ServerInfo.platform":
 		if e.complexity.ServerInfo.Platform == nil {
@@ -899,6 +912,17 @@ func (ec *executionContext) field_Query_user_args(ctx context.Context, rawArgs m
 		return nil, err
 	}
 	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_usersByStatus_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "status", ec.unmarshalNStatus2githubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐStatus)
+	if err != nil {
+		return nil, err
+	}
+	args["status"] = arg0
 	return args, nil
 }
 
@@ -2270,6 +2294,61 @@ func (ec *executionContext) fieldContext_Query_search(ctx context.Context, field
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_search_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_usersByStatus(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_usersByStatus,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().UsersByStatus(ctx, fc.Args["status"].(Status))
+		},
+		nil,
+		ec.marshalNUser2ᚕᚖgithubᚗcomᚋvitoᚋdangᚋtestsᚋgqlserverᚐUserᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_usersByStatus(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
+			case "emails":
+				return ec.fieldContext_User_emails(ctx, field)
+			case "age":
+				return ec.fieldContext_User_age(ctx, field)
+			case "status":
+				return ec.fieldContext_User_status(ctx, field)
+			case "posts":
+				return ec.fieldContext_User_posts(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_usersByStatus_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5153,6 +5232,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_search(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "usersByStatus":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_usersByStatus(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}

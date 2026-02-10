@@ -1,0 +1,14 @@
+# Test passing enum values as GraphQL arguments
+
+import Test
+
+# Query users filtered by status enum
+pub activeUsers = usersByStatus(status: Status.ACTIVE).{name}
+assert { activeUsers.length == 1 }
+assert { activeUsers[0].name == "John Doe" }
+
+pub pendingUsers = usersByStatus(status: Status.PENDING).{name}
+assert { pendingUsers.length == 1 }
+assert { pendingUsers[0].name == "Jane Smith" }
+
+print("Enum argument tests passed!")
