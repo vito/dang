@@ -66,21 +66,28 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		return funDecl.Hoist(ctx, env, fresh, pass)
 	}
 
-	// For non-function slots with an explicit type annotation, register
-	// the declared type during pass 0.  This mirrors what FunDecl.Hoist
-	// does for function signatures: it makes the binding available early
-	// so that sibling declarations (e.g. method default-value expressions)
-	// can reference it before full inference runs.
+	// For non-function slots, register the type during pass 0 so that
+	// sibling declarations (e.g. method default-value expressions) can
+	// reference it before full inference runs.  This mirrors what
+	// FunDecl.Hoist does for function signatures.
 	//
-	// Slots without a type annotation are skipped — their type can only
-	// be determined by inferring the value expression, which is deferred
-	// to the normal Infer phase.
-	if pass == 0 && s.Type_ != nil {
-		declaredType, err := s.Type_.Infer(ctx, env, fresh)
-		if err != nil {
-			return err
+	// The type is determined from the explicit annotation if present,
+	// otherwise from the value if it implements Constant (literals whose
+	// type is known without consulting the environment).
+	if pass == 0 {
+		var slotType hm.Type
+		if s.Type_ != nil {
+			var err error
+			slotType, err = s.Type_.Infer(ctx, env, fresh)
+			if err != nil {
+				return err
+			}
+		} else if c, ok := s.Value.(Constant); ok {
+			slotType = c.ConstantType()
 		}
-		env.Add(s.Name.Name, hm.NewScheme(nil, declaredType))
+		if slotType != nil {
+			env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+		}
 	}
 
 	return nil

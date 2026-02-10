@@ -13,7 +13,7 @@ pub withPrefix(tag: String! = prefix + ":latest"): String! {
 assert("fn: default refs outer scope") { withPrefix == "img:latest" }
 assert("fn: explicit arg") { withPrefix("custom") == "custom" }
 
-# --- Class methods referencing fields via bare name ---
+# --- Class methods referencing typed fields ---
 
 type Builder {
     pub defaultVersion: String! = "20.18.1"
@@ -25,6 +25,30 @@ type Builder {
 
 assert("method: default refs field") { Builder.container == "node:20.18.1" }
 assert("method: explicit arg") { Builder.container("22.0.0") == "node:22.0.0" }
+
+# --- Class methods referencing untyped constant fields ---
+
+type Defaults {
+    pub strVal = "hello"
+    pub intVal = 42
+    pub boolVal = true
+
+    pub greet(name: String! = strVal): String! {
+        name
+    }
+
+    pub count(n: Int! = intVal): Int! {
+        n
+    }
+
+    pub flag(b: Boolean! = boolVal): Boolean! {
+        b
+    }
+}
+
+assert("untyped string field") { Defaults.greet == "hello" }
+assert("untyped int field") { Defaults.count == 42 }
+assert("untyped bool field") { Defaults.flag == true }
 
 # --- Constructor with arg forward-ref in defaults ---
 

@@ -20,6 +20,18 @@ var (
 	ListTypeModule = NewModule("List", ScalarKind)
 )
 
+// Constant is implemented by nodes whose type can be determined without
+// inspecting the surrounding environment (e.g. string, int, and boolean
+// literals).  SlotDecl.Hoist uses this to register field types early so
+// that sibling method default-value expressions can reference them.
+type Constant interface {
+	ConstantType() hm.Type
+}
+
+var _ Constant = (*String)(nil)
+var _ Constant = (*Int)(nil)
+var _ Constant = (*Boolean)(nil)
+
 // List represents a list literal
 type List struct {
 	InferredTypeHolder
@@ -207,8 +219,10 @@ func (s *String) Body() hm.Expression { return s }
 
 func (s *String) GetSourceLocation() *SourceLocation { return s.Loc }
 
+func (s *String) ConstantType() hm.Type { return hm.NonNullType{Type: StringType} }
+
 func (s *String) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	t := hm.NonNullType{Type: StringType}
+	t := s.ConstantType()
 	s.SetInferredType(t)
 	return t, nil
 }
@@ -250,8 +264,10 @@ func (b *Boolean) Body() hm.Expression { return b }
 
 func (b *Boolean) GetSourceLocation() *SourceLocation { return b.Loc }
 
+func (b *Boolean) ConstantType() hm.Type { return hm.NonNullType{Type: BooleanType} }
+
 func (b *Boolean) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	t := hm.NonNullType{Type: BooleanType}
+	t := b.ConstantType()
 	b.SetInferredType(t)
 	return t, nil
 }
@@ -286,8 +302,10 @@ func (i *Int) Body() hm.Expression { return i }
 
 func (i *Int) GetSourceLocation() *SourceLocation { return i.Loc }
 
+func (i *Int) ConstantType() hm.Type { return hm.NonNullType{Type: IntType} }
+
 func (i *Int) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	t := hm.NonNullType{Type: IntType}
+	t := i.ConstantType()
 	i.SetInferredType(t)
 	return t, nil
 }
