@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
@@ -71,6 +72,9 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 				if scheme, found := env.LocalSchemeOf(selectNode.Field.Name); found {
 					fieldType, _ := scheme.Type()
 					codeBlock := fmt.Sprintf("%s: %s", symbolName, fieldType)
+					if extra := typeDetailSuffix(fieldType); extra != "" {
+						codeBlock += extra
+					}
 					return h.hoverResultWithDoc(docString, codeBlock)
 				}
 			}
@@ -80,6 +84,12 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 	// Try the node's inferred type
 	if inferredType := node.GetInferredType(); inferredType != nil {
 		codeBlock := fmt.Sprintf("%s: %s", symbolName, inferredType)
+
+		// Enrich hover for union and enum types with member details
+		if extra := typeDetailSuffix(inferredType); extra != "" {
+			codeBlock += extra
+		}
+
 		return h.hoverResult(f, params.Position, symbolName, codeBlock)
 	}
 
@@ -158,6 +168,69 @@ func (h *langHandler) hoverResultWithDoc(docString string, codeBlock string) (an
 			Value: content,
 		},
 	}, nil
+}
+
+// typeDetailSuffix returns additional hover text for union and enum types,
+// showing their members or values.
+func typeDetailSuffix(t hm.Type) string {
+	// Unwrap NonNull
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+
+	mod, ok := t.(*dang.Module)
+	if !ok {
+		return ""
+	}
+
+	switch mod.Kind {
+	case dang.UnionKind:
+		members := mod.GetMembers()
+		if len(members) == 0 {
+			return ""
+		}
+		result := "\n\n// Members:\n"
+		for i, member := range members {
+			if i > 0 {
+				result += "\n"
+			}
+			if m, ok := member.(*dang.Module); ok {
+				result += "//   " + m.Name()
+			}
+		}
+		return result
+
+	case dang.EnumKind:
+		bindings := mod.Bindings(dang.PublicVisibility)
+		// Filter out "values" method
+		var names []string
+		for name := range bindings {
+			if name == "values" {
+				continue
+			}
+			names = append(names, name)
+		}
+		if len(names) == 0 {
+			return ""
+		}
+		// Sort for deterministic output
+		sortStrings(names)
+		result := "\n\n// Values:\n"
+		for i, name := range names {
+			if i > 0 {
+				result += "\n"
+			}
+			result += "//   " + name
+		}
+		return result
+	}
+
+	return ""
+}
+
+// sortStrings sorts a slice of strings in place.
+func sortStrings(s []string) {
+	sort.Strings(s)
 }
 
 // formatDeclSignature formats a declaring node's signature without the body.
