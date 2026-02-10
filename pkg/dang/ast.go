@@ -452,7 +452,13 @@ func (e *ConstructorEnv) SetWithVisibility(name string, value Value, visibility 
 }
 
 func (e *ConstructorEnv) Reassign(name string, value Value) {
-	// Reassign on the instance (where fields live)
+	// If the name is a constructor arg, reassign there so that
+	// subsequent reads (which check args first) see the new value.
+	if _, found := e.args.Get(name); found {
+		e.args.Reassign(name, value)
+		return
+	}
+	// Otherwise reassign on the instance (where fields live)
 	e.instance.Reassign(name, value)
 }
 

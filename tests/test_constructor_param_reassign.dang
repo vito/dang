@@ -1,0 +1,29 @@
+# Test that constructor parameters can be reassigned (issue #27)
+
+type Foo {
+    pub bar: String!
+
+    new(bar: String!) {
+        bar = "foo"
+        self.bar = bar
+        self
+    }
+}
+
+assert("reassigned param") { Foo("bar").bar == "foo" }
+
+# Also test with multiple reassignments and non-shadowing names
+type Baz {
+    pub result: String!
+
+    new(x: String!) {
+        x = x + "!"
+        x = x + "?"
+        self.result = x
+        self
+    }
+}
+
+assert("multiple reassignments") { Baz("hi").result == "hi!?" }
+
+print("Constructor param reassignment tests passed!")
