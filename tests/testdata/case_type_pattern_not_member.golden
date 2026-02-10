@@ -1,11 +1,11 @@
 [1m[31mError:[0m type Fish is not a member of union Pet
-  [2m[34m--> errors/case_type_pattern_not_member.dang:17:6[0m
+  [2m[34m--> errors/case_type_pattern_not_member.dang:17:8[0m
  [2m    |[0m
  [2m 15 | pub describe(pet: Pet!): String! {[0m
- [2m 16 | 	case (pet) {[0m
- [2m[34m[1m 17 | [0m		f: Fish => f.name
-[2m            [31m^^^^[0m
- [2m 18 | 	}[0m
+ [2m 16 |   case (pet) {[0m
+ [2m[34m[1m 17 | [0m    f: Fish => f.name
+[2m              [31m^^^^[0m
+ [2m 18 |   }[0m
  [2m 19 | }[0m
  [2m    |[0m
 

@@ -1,7 +1,7 @@
 enum Color { RED GREEN BLUE }
 
 type Dog {
-	pub name: String!
+  pub name: String!
 }
 
 union Bad = Dog | Color

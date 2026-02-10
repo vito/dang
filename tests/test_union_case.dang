@@ -1,23 +1,23 @@
 # Test case expression with type patterns on unions
 
 type Cat {
-	pub name: String!
-	pub lives: Int! = 9
+  pub name: String!
+  pub lives: Int! = 9
 }
 
 type Dog {
-	pub name: String!
-	pub tricks: Int! = 3
+  pub name: String!
+  pub tricks: Int! = 3
 }
 
 union Pet = Cat | Dog
 
 # Function that takes a Pet and returns a description
 pub describe(pet: Pet!): String! {
-	case (pet) {
-		c: Cat => c.name + " has " + toString(c.lives) + " lives"
-		d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
-	}
+  case (pet) {
+    c: Cat => c.name + " has " + toString(c.lives) + " lives"
+    d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+  }
 }
 
 pub cat = Cat(name: "Whiskers")
@@ -28,10 +28,10 @@ assert { describe(dog) == "Rex knows 5 tricks" }
 
 # Case with else branch
 pub describeOrUnknown(pet: Pet!): String! {
-	case (pet) {
-		c: Cat => "cat: " + c.name
-		else => "something else"
-	}
+  case (pet) {
+    c: Cat => "cat: " + c.name
+    else => "something else"
+  }
 }
 
 assert { describeOrUnknown(cat) == "cat: Whiskers" }

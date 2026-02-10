@@ -92,7 +92,7 @@ func (f *Formatter) hasNoFmtComment(node Node) bool {
 		return false
 	}
 
-	loc := nodeFullLocation(node)
+	loc := node.GetSourceLocation()
 	if loc == nil {
 		return false
 	}
@@ -117,7 +117,7 @@ func (f *Formatter) hasNoFmtComment(node Node) bool {
 // getOriginalSource extracts the original source text for a node's span
 // If the node has a trailing #nofmt comment, include it in the span
 func (f *Formatter) getOriginalSource(node Node) string {
-	loc := nodeFullLocation(node)
+	loc := node.GetSourceLocation()
 	if loc == nil || loc.End == nil {
 		return ""
 	}
@@ -141,30 +141,6 @@ func (f *Formatter) getOriginalSource(node Node) string {
 	}
 
 	return string(f.source[startOffset:endOffset])
-}
-
-// nodeFullLocation returns the full span location of a node (for extracting original source)
-func nodeFullLocation(node Node) *SourceLocation {
-	switch n := node.(type) {
-	case *SlotDecl:
-		return n.Loc
-	case *ClassDecl:
-		return n.Loc
-	case *InterfaceDecl:
-		return n.Loc
-	case *UnionDecl:
-		return n.Loc
-	case *FunDecl:
-		return n.Loc
-	case *ForLoop:
-		return n.Loc
-	case *Conditional:
-		return n.Loc
-	case *Case:
-		return n.Loc
-	default:
-		return nodeLocation(node)
-	}
 }
 
 // lineColumnToOffset converts a 1-indexed line and column to a byte offset
@@ -345,7 +321,7 @@ func nodeEffectiveStartLine(node Node) int {
 			}
 		}
 	}
-	if loc := nodeLocation(node); loc != nil {
+	if loc := node.GetSourceLocation(); loc != nil {
 		return loc.Line
 	}
 	return 0
@@ -405,108 +381,6 @@ func (f *Formatter) emitRemainingComments() {
 		f.lastLine = comment.Line
 	}
 	f.comments = nil
-}
-
-// nodeLocation extracts the source location from a node if available
-func nodeLocation(node Node) *SourceLocation {
-	switch n := node.(type) {
-	case *ModuleBlock:
-		return n.Loc
-	case *Block:
-		return n.Loc
-	case *ClassDecl:
-		return n.Loc
-	case *InterfaceDecl:
-		return n.Loc
-	case *UnionDecl:
-		return n.Loc
-	case *SlotDecl:
-		return n.Name.Loc
-	case *DirectiveDecl:
-		return n.Loc
-	case *NewConstructorDecl:
-		return n.Loc
-	case *EnumDecl:
-		return n.Loc
-	case *ScalarDecl:
-		return n.Loc
-	case *FunDecl:
-		return n.Loc
-	case *Symbol:
-		return n.Loc
-	case *Int:
-		return n.Loc
-	case *Float:
-		return n.Loc
-	case *String:
-		return n.Loc
-	case *Boolean:
-		return n.Loc
-	case *List:
-		return n.Loc
-	case *Object:
-		return n.Loc
-	case *FunCall:
-		return nodeLocation(n.Fun)
-	case *Select:
-		return nodeLocation(n.Receiver)
-	case *Conditional:
-		return n.Loc
-	case *ForLoop:
-		return n.Loc
-	case *Let:
-		return n.Loc
-	case *Break:
-		return n.Loc
-	case *Continue:
-		return n.Loc
-	case *Case:
-		return n.Loc
-	case *Assert:
-		return n.Loc
-	case *Addition:
-		return n.Loc
-	case *Subtraction:
-		return n.Loc
-	case *Multiplication:
-		return n.Loc
-	case *Division:
-		return n.Loc
-	case *Modulo:
-		return n.Loc
-	case *Default:
-		return n.Loc
-	case *LogicalOr:
-		return n.Loc
-	case *LogicalAnd:
-		return n.Loc
-	case *Equality:
-		return n.Loc
-	case *Inequality:
-		return n.Loc
-	case *LessThan:
-		return n.Loc
-	case *LessThanEqual:
-		return n.Loc
-	case *GreaterThan:
-		return n.Loc
-	case *GreaterThanEqual:
-		return n.Loc
-	case *UnaryNegation:
-		return n.Loc
-	case *Reassignment:
-		return n.Loc
-	case *Grouped:
-		return n.Loc
-	case *ImportDecl:
-		return n.Loc
-	case *SelfKeyword:
-		return n.Loc
-	case *Null:
-		return n.Loc
-	default:
-		return nil
-	}
 }
 
 // typeNodeLine extracts the source line from a TypeNode if available.
@@ -574,7 +448,7 @@ func (f *Formatter) indented(fn func()) {
 // preventing a spurious blank line at the start of a body.
 func (f *Formatter) resetLastLineForForms(forms []Node) {
 	if len(forms) > 0 {
-		if loc := nodeLocation(forms[0]); loc != nil && loc.Line > 0 {
+		if loc := forms[0].GetSourceLocation(); loc != nil && loc.Line > 0 {
 			f.lastLine = loc.Line - 1
 		}
 	}
@@ -582,7 +456,7 @@ func (f *Formatter) resetLastLineForForms(forms []Node) {
 
 // finishForm emits a trailing comment for the form and updates lastLine.
 func (f *Formatter) finishForm(form Node) {
-	if loc := nodeLocation(form); loc != nil {
+	if loc := form.GetSourceLocation(); loc != nil {
 		f.emitTrailingComment(loc.Line)
 	}
 	if endLine := nodeEndLine(form); endLine > 0 {
@@ -604,7 +478,7 @@ func (f *Formatter) handleNoFmtForm(form Node) bool {
 	f.emitCommentsForNode(form)
 	f.writeIndent()
 	f.write(orig)
-	fullLoc := nodeFullLocation(form)
+	fullLoc := form.GetSourceLocation()
 	if fullLoc != nil && fullLoc.End != nil {
 		f.removeTrailingNoFmtComment(fullLoc.End.Line)
 		f.lastLine = fullLoc.End.Line
@@ -620,7 +494,7 @@ func (f *Formatter) formatDeclForms(forms []Node) {
 	for i, form := range forms {
 		if i > 0 && f.needsBlankLineBetween(forms[i-1], form) {
 			f.newline()
-			if loc := nodeLocation(form); loc != nil && loc.Line > 0 {
+			if loc := form.GetSourceLocation(); loc != nil && loc.Line > 0 {
 				f.lastLine = loc.Line - 1
 			}
 		}
@@ -877,7 +751,7 @@ func (f *Formatter) needsBlankLineBetween(prev, next Node) bool {
 // (not counting comment lines - those are handled by comment emission)
 func (f *Formatter) hadBlankLineBetween(prev, next Node) bool {
 	prevEnd := nodeEndLine(prev)
-	nextLoc := nodeLocation(next)
+	nextLoc := next.GetSourceLocation()
 	if prevEnd <= 0 || nextLoc == nil || nextLoc.Line <= 0 {
 		return false
 	}
@@ -900,7 +774,7 @@ func nodeEndLine(node Node) int {
 	// Use nodeFullLocation first to get the full span (e.g., SlotDecl.Loc includes the
 	// value block, whereas nodeLocation returns just the name location). This prevents
 	// hadBlankLineBetween from seeing a false gap when a form expands to multiline.
-	loc := nodeFullLocation(node)
+	loc := node.GetSourceLocation()
 	if loc == nil {
 		return 0
 	}
@@ -1395,15 +1269,15 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, p
 	wasMultiline := false
 	// If the first arg is on a different line than the parent declaration, it's multiline
 	if parentLoc != nil && len(args) > 0 {
-		firstArgLoc := nodeLocation(args[0])
+		firstArgLoc := args[0].GetSourceLocation()
 		if firstArgLoc != nil && firstArgLoc.Line > parentLoc.Line {
 			wasMultiline = true
 		}
 	}
 	// Also check if any arg starts on a different line than a previous arg
 	for i := 1; i < len(args); i++ {
-		prevLoc := nodeLocation(args[i-1])
-		currLoc := nodeLocation(args[i])
+		prevLoc := args[i-1].GetSourceLocation()
+		currLoc := args[i].GetSourceLocation()
 		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
 			wasMultiline = true
 			break
@@ -1411,8 +1285,8 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, p
 	}
 	// Also check block param
 	if !wasMultiline && blockParam != nil && len(args) > 0 {
-		lastArgLoc := nodeLocation(args[len(args)-1])
-		blockParamLoc := nodeLocation(blockParam)
+		lastArgLoc := args[len(args)-1].GetSourceLocation()
+		blockParamLoc := blockParam.GetSourceLocation()
 		if lastArgLoc != nil && blockParamLoc != nil && blockParamLoc.Line > lastArgLoc.Line {
 			wasMultiline = true
 		}
@@ -1675,7 +1549,7 @@ func (f *Formatter) canFormatBlockInline(b *Block) bool {
 		lastForm := b.Forms[len(b.Forms)-1]
 		lastLine := nodeEndLine(lastForm)
 		if lastLine == 0 {
-			if loc := nodeLocation(lastForm); loc != nil {
+			if loc := lastForm.GetSourceLocation(); loc != nil {
 				lastLine = loc.Line
 			}
 		}
@@ -1705,7 +1579,7 @@ func (f *Formatter) hasCommentsInBlock(b *Block) bool {
 
 // hasCommentsBeforeNode checks if there are standalone comments that would precede this node
 func (f *Formatter) hasCommentsBeforeNode(node Node) bool {
-	if loc := nodeLocation(node); loc != nil && loc.Line > 0 {
+	if loc := node.GetSourceLocation(); loc != nil && loc.Line > 0 {
 		for _, c := range f.comments {
 			if c.Line < loc.Line && !c.IsTrailing {
 				return true
@@ -1717,7 +1591,7 @@ func (f *Formatter) hasCommentsBeforeNode(node Node) bool {
 
 // wasMultiline checks if a node was originally written across multiple lines
 func wasMultiline(node Node) bool {
-	loc := nodeLocation(node)
+	loc := node.GetSourceLocation()
 	if loc == nil {
 		return false
 	}
@@ -1730,7 +1604,7 @@ func wasMultiline(node Node) bool {
 	// For blocks, check if any form is on a different line than the block start
 	if block, ok := node.(*Block); ok {
 		for _, form := range block.Forms {
-			if formLoc := nodeLocation(form); formLoc != nil && formLoc.Line != loc.Line {
+			if formLoc := form.GetSourceLocation(); formLoc != nil && formLoc.Line != loc.Line {
 				return true
 			}
 		}
@@ -1741,15 +1615,15 @@ func wasMultiline(node Node) bool {
 		if len(call.Args) > 0 {
 			firstArg := call.Args[0]
 			lastArg := call.Args[len(call.Args)-1]
-			firstLoc := nodeLocation(firstArg.Value)
-			lastLoc := nodeLocation(lastArg.Value)
+			firstLoc := firstArg.Value.GetSourceLocation()
+			lastLoc := lastArg.Value.GetSourceLocation()
 			if firstLoc != nil && lastLoc != nil && lastLoc.Line > firstLoc.Line {
 				return true
 			}
 		}
 		// Check if block arg is on different line
 		if call.BlockArg != nil {
-			if argLoc := nodeLocation(call.BlockArg.BodyNode); argLoc != nil && argLoc.Line != loc.Line {
+			if argLoc := call.BlockArg.BodyNode.GetSourceLocation(); argLoc != nil && argLoc.Line != loc.Line {
 				return true
 			}
 		}
@@ -1757,7 +1631,7 @@ func wasMultiline(node Node) bool {
 
 	// For method chains (Select), check if receiver is on different line
 	if sel, ok := node.(*Select); ok && sel.Receiver != nil {
-		if recvLoc := nodeLocation(sel.Receiver); recvLoc != nil && recvLoc.Line != loc.Line {
+		if recvLoc := sel.Receiver.GetSourceLocation(); recvLoc != nil && recvLoc.Line != loc.Line {
 			return true
 		}
 	}
@@ -1998,8 +1872,8 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	// Check if any arg STARTS on a different line than the previous arg STARTS
 	// This respects user's intent to keep args on the same line
 	for i := 1; i < len(args); i++ {
-		prevLoc := nodeLocation(args[i-1].Value)
-		currLoc := nodeLocation(args[i].Value)
+		prevLoc := args[i-1].Value.GetSourceLocation()
+		currLoc := args[i].Value.GetSourceLocation()
 		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
 			return true
 		}
@@ -2007,7 +1881,7 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 
 	// For a single arg, check if it's on a different line than the opening paren
 	if len(args) == 1 && callLoc != nil {
-		argLoc := nodeLocation(args[0].Value)
+		argLoc := args[0].Value.GetSourceLocation()
 		if argLoc != nil && argLoc.Line > callLoc.Line {
 			return true
 		}
@@ -2203,8 +2077,8 @@ func (f *Formatter) wasListMultiline(l *List) bool {
 	//   ["a",
 	//    "b"] - elements start on different lines, is multiline
 	for i := 1; i < len(l.Elements); i++ {
-		prevLoc := nodeLocation(l.Elements[i-1])
-		currLoc := nodeLocation(l.Elements[i])
+		prevLoc := l.Elements[i-1].GetSourceLocation()
+		currLoc := l.Elements[i].GetSourceLocation()
 		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
 			return true
 		}
@@ -2213,7 +2087,7 @@ func (f *Formatter) wasListMultiline(l *List) bool {
 	// For single-element lists, check if the element starts on a different line
 	// than the opening bracket (the list's start line)
 	if len(l.Elements) == 1 && l.Loc != nil {
-		elemLoc := nodeLocation(l.Elements[0])
+		elemLoc := l.Elements[0].GetSourceLocation()
 		if elemLoc != nil && elemLoc.Line > l.Loc.Line {
 			return true
 		}
@@ -2243,7 +2117,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 	f.indented(func() {
 		// Reset lastLine to prevent spurious blank line at start of list
 		if len(l.Elements) > 0 {
-			if loc := nodeLocation(l.Elements[0]); loc != nil && loc.Line > 0 {
+			if loc := l.Elements[0].GetSourceLocation(); loc != nil && loc.Line > 0 {
 				f.lastLine = loc.Line - 1
 			}
 		}
@@ -2252,7 +2126,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 		i := 0
 		for i < len(l.Elements) {
 			elem := l.Elements[i]
-			elemLoc := nodeLocation(elem)
+			elemLoc := elem.GetSourceLocation()
 
 			f.emitCommentsForNode(elem)
 			f.writeIndent()
@@ -2261,7 +2135,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 			// Check if next elements are on the same line - if so, keep them together
 			for i+1 < len(l.Elements) {
 				nextElem := l.Elements[i+1]
-				nextLoc := nodeLocation(nextElem)
+				nextLoc := nextElem.GetSourceLocation()
 				if elemLoc != nil && nextLoc != nil && nextLoc.Line == elemLoc.Line {
 					f.write(", ")
 					f.formatNode(nextElem)
@@ -2333,7 +2207,7 @@ func (f *Formatter) formatObjectMultiline(o *Object) {
 	f.indented(func() {
 		// Reset lastLine to prevent spurious blank line at start
 		if len(o.Slots) > 0 {
-			if loc := nodeLocation(o.Slots[0]); loc != nil && loc.Line > 0 {
+			if loc := o.Slots[0].GetSourceLocation(); loc != nil && loc.Line > 0 {
 				f.lastLine = loc.Line - 1
 			}
 		}
@@ -2347,7 +2221,7 @@ func (f *Formatter) formatObjectMultiline(o *Object) {
 			if i < len(o.Slots)-1 {
 				f.write(",")
 			}
-			if loc := nodeLocation(slot); loc != nil {
+			if loc := slot.GetSourceLocation(); loc != nil {
 				f.emitTrailingComment(loc.Line)
 			}
 			f.newline()

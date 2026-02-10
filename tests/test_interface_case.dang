@@ -1,24 +1,24 @@
 # Test case expression with type patterns on interfaces
 
 interface Named {
-	pub name: String!
+  pub name: String!
 }
 
 type Person implements Named {
-	pub name: String!
-	pub age: Int! = 25
+  pub name: String!
+  pub age: Int! = 25
 }
 
 type Company implements Named {
-	pub name: String!
-	pub employees: Int! = 10
+  pub name: String!
+  pub employees: Int! = 10
 }
 
 pub describe(named: Named!): String! {
-	case (named) {
-		p: Person => p.name + " (age " + toString(p.age) + ")"
-		c: Company => c.name + " (" + toString(c.employees) + " employees)"
-	}
+  case (named) {
+    p: Person => p.name + " (age " + toString(p.age) + ")"
+    c: Company => c.name + " (" + toString(c.employees) + " employees)"
+  }
 }
 
 pub person = Person(name: "Alice", age: 30)

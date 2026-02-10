@@ -2,13 +2,13 @@
 
 # Define some types
 type Cat {
-	pub name: String!
-	pub lives: Int! = 9
+  pub name: String!
+  pub lives: Int! = 9
 }
 
 type Dog {
-	pub name: String!
-	pub tricks: Int! = 0
+  pub name: String!
+  pub tricks: Int! = 0
 }
 
 # Define a union of those types

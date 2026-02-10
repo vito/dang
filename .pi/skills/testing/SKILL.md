@@ -156,5 +156,4 @@ This regenerates `pkg/dang/dang.peg.go`.
 The formatter lives in `pkg/dang/format.go`. When adding a new AST node type, update:
 
 - `formatNode()` — add a case to format the node
-- `nodeLocation()` — return the node's `*SourceLocation`
-- Any relevant classification helpers (e.g. `isFunctionDef`) for blank line insertion logic
+- Any relevant classification helpers e.g. `.GetSourceLocation() for blank line insertion logic

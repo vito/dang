@@ -1,5 +1,5 @@
 type Cat {
-	pub name: String!
+  pub name: String!
 }
 
 union Pet = Cat | Unicorn

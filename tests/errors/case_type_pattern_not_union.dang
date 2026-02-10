@@ -1,9 +1,9 @@
 type Cat {
-	pub name: String!
+  pub name: String!
 }
 
 pub x = Cat(name: "Whiskers")
 
 pub result = case (x) {
-	c: Cat => c.name
+  c: Cat => c.name
 }
