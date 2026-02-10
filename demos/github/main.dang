@@ -1,19 +1,31 @@
 import GitHub
 
-pub results = GitHub.search(
-  query: "dagger language:go",
+# Look up a repo and show its stats
+pub repo = repository(owner: "golang", name: "go").{
+  name, description, stargazerCount, forkCount
+}
+
+print(repo.name + " — " + repo.description)
+print(toString(repo.stargazerCount) + " stars · " + toString(repo.forkCount) + " forks")
+print("")
+
+# Search returns a union type — select type-specific fields with inline
+# fragments, then pattern match each result with case
+pub results = search(
+  query: "graphql client language:go stars:>100",
   type: SearchType.REPOSITORY,
-  first: 10,
+  first: 5,
 ).edges.{
   node.{
     ... on Repository { name, description, stargazerCount }
   }
 }
 
+print("Top GraphQL clients for Go:")
+
 for (result in results) {
-  pub repo = case (result.node) {
-    r: Repository => r.name + " (" + toString(r.stargazerCount) + " stars)"
-    else => "(other)"
+  case (result.node) {
+    r: Repository => print("  " + r.name + " (" + toString(r.stargazerCount) + " stars)")
+    else => print("  (other)")
   }
-  print(repo)
 }
