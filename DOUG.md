@@ -6,6 +6,8 @@ Always favor correctness, cleanliness, and expressiveness over performance.
 
 NEVER GUESS DANG CODE SYNTAX. You do NOT know this language already. Study other Dang code, and the Dang grammar (pkg/dang/dang.peg) BEFORE attempting to write any Dang code.
 
+Dang uses **two-space indentation**, not tabs. See `docs/formatter-examples.md` for style conventions.
+
 ## Testing
 
 Tests are created as tests/test_SOME_NAME.dang. ALWAYS start by adding a test if one is missing, and work towards making the test pass.
