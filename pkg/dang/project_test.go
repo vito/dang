@@ -216,7 +216,7 @@ func TestExpandEnvVars(t *testing.T) {
 	})
 
 	t.Run("undefined variable", func(t *testing.T) {
-		os.Unsetenv("DANG_TEST_UNDEFINED")
+		_ = os.Unsetenv("DANG_TEST_UNDEFINED")
 		_, err := expandEnvVars("Bearer ${DANG_TEST_UNDEFINED}")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "${DANG_TEST_UNDEFINED}")

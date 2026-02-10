@@ -103,9 +103,9 @@ func (h *langHandler) loadEnvrc(ctx context.Context, configDir string) {
 	loaded := 0
 	for k, v := range envVars {
 		if v == nil {
-			os.Unsetenv(k)
+			_ = os.Unsetenv(k)
 		} else {
-			os.Setenv(k, *v)
+			_ = os.Setenv(k, *v)
 			loaded++
 		}
 	}
