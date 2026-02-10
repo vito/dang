@@ -1489,10 +1489,14 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		if errors.As(err, &sourceErr) {
 			return err
 		}
-		// Surface uncaught raise errors with a clear message.
+		// Surface uncaught raise errors with source highlighting.
 		var raised *RaisedError
 		if errors.As(err, &raised) {
-			return fmt.Errorf("uncaught error: %s", raised.Value.Message)
+			return NewSourceError(
+				fmt.Errorf("uncaught error: %s", raised.Value.Message),
+				raised.Location,
+				evalCtx.Source,
+			)
 		}
 		return fmt.Errorf("evaluation error: %w", err)
 	}

@@ -1,1 +1,9 @@
-uncaught error: unhandled error
+[1m[31mError:[0m uncaught error: unhandled error
+  [2m[34m--> errors/raise_uncaught.dang:2:14[0m
+ [2m    |[0m
+ [2m  1 | # An uncaught raise should crash the program[0m
+ [2m[34m[1m  2 | [0mpub result = raise "unhandled error"
+[2m                    [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

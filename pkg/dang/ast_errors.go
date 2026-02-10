@@ -84,7 +84,8 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 // Go's error interface so that Eval methods propagate it up the call
 // stack until a TryCatch catches it.
 type RaisedError struct {
-	Value *ErrorValue
+	Value    *ErrorValue
+	Location *SourceLocation
 }
 
 func (r *RaisedError) Error() string {
@@ -201,9 +202,10 @@ func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				Path:       []string{},
 				Extensions: map[string]Value{},
 			},
+			Location: r.Loc,
 		}
 	case *ErrorValue:
-		return nil, &RaisedError{Value: v}
+		return nil, &RaisedError{Value: v, Location: r.Loc}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)
 	}
