@@ -24,6 +24,7 @@ func NewHandler(rootCtx context.Context) *langHandler {
 		rootCtx:       rootCtx,
 		files:         make(map[DocumentURI]*File),
 		moduleSchemas: make(map[string]*moduleSchema),
+		loadedEnvDirs: make(map[string]bool),
 		mu:            new(sync.Mutex),
 	}
 
@@ -61,6 +62,9 @@ type langHandler struct {
 
 	// Per-module schema cache
 	moduleSchemas map[string]*moduleSchema // moduleDir -> schema
+
+	// Directories where we've already loaded .envrc via direnv
+	loadedEnvDirs map[string]bool
 
 	// Default schema/client for non-module files
 	defaultSchema   *introspection.Schema
@@ -293,6 +297,11 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			}
 			if projectConfig != nil {
 				configDir := filepath.Dir(configPath)
+
+				// Load .envrc before resolving imports, so that ${VAR}
+				// expansion in dang.toml picks up direnv variables.
+				h.loadEnvrc(ctx, configDir)
+
 				ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
 				resolved, resolveErr := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
 				if resolveErr != nil {
