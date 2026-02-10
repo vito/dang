@@ -67,7 +67,7 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 		_ = implicitCase
 
-		var resultType hm.Type = bodyType
+		resultType := bodyType
 
 		for i, clause := range t.Clauses {
 			var clauseType hm.Type
