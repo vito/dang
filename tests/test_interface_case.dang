@@ -27,4 +27,25 @@ pub company = Company(name: "Acme", employees: 50)
 assert { describe(person) == "Alice (age 30)" }
 assert { describe(company) == "Acme (50 employees)" }
 
+# interface as a type pattern — matches any implementer
+pub getName(named: Named!): String! {
+  case (named) {
+    n: Named => n.name
+  }
+}
+
+assert { getName(person) == "Alice" }
+assert { getName(company) == "Acme" }
+
+# interface as a fallback after specific types
+pub describeWithFallback(named: Named!): String! {
+  case (named) {
+    p: Person => "person: " + p.name
+    n: Named => "other: " + n.name
+  }
+}
+
+assert { describeWithFallback(person) == "person: Alice" }
+assert { describeWithFallback(company) == "other: Acme" }
+
 print("Interface case discrimination tests passed!")

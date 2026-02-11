@@ -184,16 +184,20 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		}
 		memberMod = mod
 
-		// For interfaces, check if the type implements it
-		found2 := false
-		for _, iface := range memberMod.Supertypes() {
-			if iface == operandMod {
-				found2 = true
-				break
+		// Allow the interface itself as a type pattern (matches any
+		// implementer, like a typed catch-all).
+		if memberMod != operandMod {
+			// Otherwise the type must implement the interface.
+			found2 := false
+			for _, iface := range memberMod.Supertypes() {
+				if iface == operandMod {
+					found2 = true
+					break
+				}
 			}
-		}
-		if !found2 {
-			return NewInferError(fmt.Errorf("type %s does not implement interface %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+			if !found2 {
+				return NewInferError(fmt.Errorf("type %s does not implement interface %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+			}
 		}
 	}
 
@@ -268,9 +272,21 @@ func matchesType(val Value, typeName string) bool {
 	case *ModuleValue:
 		if v.Mod != nil {
 			if mod, ok := v.Mod.(*Module); ok {
-				return mod.Name() == typeName
+				if mod.Name() == typeName {
+					return true
+				}
+				// Check if the value's type implements the named interface.
+				for _, iface := range mod.Supertypes() {
+					if ifaceMod, ok := iface.(*Module); ok && ifaceMod.Name() == typeName {
+						return true
+					}
+				}
 			}
 		}
+	case *ErrorValue:
+		// ErrorValue is the runtime representation for plain string
+		// raises and wrapped runtime errors. It matches "Error".
+		return typeName == "Error"
 	case GraphQLValue:
 		return v.TypeName == typeName
 	}
