@@ -5,7 +5,7 @@ import Test
 pub results = searchConnection(query: "Hello").edges.{
   node.{
     ... on User { name }
-    ... on Post { title, author.{ name } }
+    ... on Post { title, author.{name} }
   }
 }
 
