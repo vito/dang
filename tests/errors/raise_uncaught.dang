@@ -1,0 +1,2 @@
+# An uncaught raise should crash the program
+pub result = raise "unhandled error"

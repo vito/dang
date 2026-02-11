@@ -5,5 +5,5 @@ type Foo {
   pub age: Int! = 25
 }
 
-pub foo = Foo()
+pub foo = Foo
 pub result = foo.{name, unknown}

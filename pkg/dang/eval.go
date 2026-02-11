@@ -1489,6 +1489,15 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		if errors.As(err, &sourceErr) {
 			return err
 		}
+		// Surface uncaught raise errors with source highlighting.
+		var raised *RaisedError
+		if errors.As(err, &raised) {
+			return NewSourceError(
+				fmt.Errorf("uncaught error: %s", raised.Error()),
+				raised.Location,
+				evalCtx.Source,
+			)
+		}
 		return fmt.Errorf("evaluation error: %w", err)
 	}
 
@@ -1706,6 +1715,12 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, env)
 		if err != nil {
+			// Let user-level raise errors propagate unwrapped so
+			// TryCatch can intercept them cleanly.
+			var raised *RaisedError
+			if errors.As(err, &raised) {
+				return nil, err
+			}
 			if evalCtx != nil {
 				return nil, evalCtx.CreateSourceError(err, node)
 			} else {

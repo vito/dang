@@ -184,16 +184,20 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		}
 		memberMod = mod
 
-		// For interfaces, check if the type implements it
-		found2 := false
-		for _, iface := range memberMod.Supertypes() {
-			if iface == operandMod {
-				found2 = true
-				break
+		// Allow the interface itself as a type pattern (matches any
+		// implementer, like a typed catch-all).
+		if memberMod != operandMod {
+			// Otherwise the type must implement the interface.
+			found2 := false
+			for _, iface := range memberMod.Supertypes() {
+				if iface == operandMod {
+					found2 = true
+					break
+				}
 			}
-		}
-		if !found2 {
-			return NewInferError(fmt.Errorf("type %s does not implement interface %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+			if !found2 {
+				return NewInferError(fmt.Errorf("type %s does not implement interface %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+			}
 		}
 	}
 
@@ -233,10 +237,9 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return EvalNode(ctx, env, clause.Expr)
 			}
 
-			// Type pattern clauses: check the concrete type name
+			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() {
-				typeName := clause.TypePattern.Name
-				if matchesType(exprVal, typeName) {
+				if matchesType(exprVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding
 					childEnv := env.Fork()
 					childEnv.Set(clause.Binding, exprVal)
@@ -262,19 +265,47 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-// matchesType checks if a value's concrete type matches the given type name.
-func matchesType(val Value, typeName string) bool {
+// matchesType checks if a value's concrete type matches the given pattern
+// module.  It uses pointer identity, following Canonical links on narrowed
+// projections, and ImplementsInterface for interface patterns.
+func matchesType(val Value, pattern *Module) bool {
+	valMod := valueModule(val)
+	if valMod == nil {
+		return false
+	}
+	// Resolve both sides to their canonical type so that narrowed
+	// projections compare against the same identity.
+	valCanon := canonicalModule(valMod)
+	patCanon := canonicalModule(pattern)
+	if valCanon == patCanon {
+		return true
+	}
+	// Interface: check if the value's type implements the pattern.
+	if patCanon.Kind == InterfaceKind {
+		return valCanon.ImplementsInterface(patCanon)
+	}
+	return false
+}
+
+// canonicalModule follows the Canonical link to the full type module.
+func canonicalModule(m *Module) *Module {
+	if m.Canonical != nil {
+		return m.Canonical
+	}
+	return m
+}
+
+// valueModule extracts the *Module backing a runtime value.
+func valueModule(val Value) *Module {
 	switch v := val.(type) {
 	case *ModuleValue:
 		if v.Mod != nil {
 			if mod, ok := v.Mod.(*Module); ok {
-				return mod.Name() == typeName
+				return mod
 			}
 		}
-	case GraphQLValue:
-		return v.TypeName == typeName
 	}
-	return false
+	return nil
 }
 
 // CaseClause represents a single clause in a case expression

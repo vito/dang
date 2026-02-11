@@ -1,0 +1,30 @@
+# Test basic try/catch expressions
+
+# catch a raised error
+pub caught = try {
+  raise "oops"
+} catch {
+  err => "caught: " + err.message
+}
+
+assert { caught == "caught: oops" }
+
+# success path passes through
+pub ok = try {
+  "hello"
+} catch {
+  err => "unreachable"
+}
+
+assert { ok == "hello" }
+
+# catch with no error returns the body value
+pub number = try {
+  42
+} catch {
+  err => 0
+}
+
+assert { number == 42 }
+
+print("Basic try/catch tests passed!")

@@ -1,0 +1,40 @@
+# Test that Error is a real interface you can reference
+
+type AppError implements Error {
+  pub message: String!
+  pub code: Int!
+}
+
+# catch with Error type pattern matches any error
+pub result = try {
+  raise "hell"
+} catch {
+  e: Error => e.message
+}
+
+assert { result == "hell" }
+
+# functions can accept the Error interface
+pub describe(err: Error!): String! {
+  "error: " + err.message
+}
+
+pub described = try {
+  raise AppError(message: "broken", code: 500)
+} catch {
+  e: AppError => describe(e) + " (" + toString(e.code) + ")"
+}
+
+assert { described == "error: broken (500)" }
+
+# Error interface as a catch-all type pattern alongside specific types
+pub triaged = try {
+  raise "surprise"
+} catch {
+  a: AppError => "app: " + a.message
+  e: Error => "generic: " + e.message
+}
+
+assert { triaged == "generic: surprise" }
+
+print("Error interface tests passed!")

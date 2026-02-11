@@ -1,0 +1,22 @@
+# Test error message access
+
+# error message from a string raise
+pub result = try {
+  raise "not found"
+} catch {
+  err => err.message
+}
+
+assert { result == "not found" }
+
+# error message from a runtime error
+pub divResult = try {
+  let x = 1 / 0
+  "ok"
+} catch {
+  err => err.message
+}
+
+assert { divResult == "division by zero" }
+
+print("Error field tests passed!")

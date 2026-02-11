@@ -105,6 +105,11 @@ type Module struct {
 	interfaces   []Env // Interfaces this type implements
 	implementers []Env // Types that implement this interface (for interface modules)
 
+	// Narrowed projections (inline fragment selections) create modules
+	// with a subset of fields.  Canonical points back to the full type
+	// so that runtime type matching can use identity instead of names.
+	Canonical *Module
+
 	// Union tracking
 	members []Env // Member types of this union (for union modules)
 	unions  []Env // Unions this type is a member of
@@ -182,6 +187,18 @@ func init() {
 	Prelude.AddClass("Float", FloatType)
 	Prelude.AddClass("Boolean", BooleanType)
 	Prelude.AddClass("List", ListTypeModule)
+
+	// Install Error interface with message field
+	Prelude.AddClass("Error", ErrorType)
+	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	ErrorType.SetVisibility("message", PublicVisibility)
+
+	// Install BasicError — the concrete type behind raise "msg"
+	Prelude.AddClass("BasicError", BasicErrorType)
+	BasicErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	BasicErrorType.SetVisibility("message", PublicVisibility)
+	BasicErrorType.AddInterface(ErrorType)
+	ErrorType.AddImplementer(BasicErrorType)
 
 	// Register standard library builtins
 	registerStdlib()
@@ -671,7 +688,15 @@ func registerBuiltinTypes() {
 func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	args := NewRecordType("")
 	for _, param := range def.ParamTypes {
-		args.Add(param.Name, hm.NewScheme(nil, param.Type))
+		paramType := param.Type
+		// Parameters with defaults are optional — strip NonNull so the
+		// type checker treats them as nullable (not required).
+		if param.DefaultValue != nil {
+			if nn, ok := paramType.(hm.NonNullType); ok {
+				paramType = nn.Type
+			}
+		}
+		args.Add(param.Name, hm.NewScheme(nil, paramType))
 	}
 	fnType := hm.NewFnType(args, def.ReturnType)
 

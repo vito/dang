@@ -574,6 +574,10 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatList(n)
 	case *Object:
 		f.formatObject(n)
+	case *TryCatch:
+		f.formatTryCatch(n)
+	case *Raise:
+		f.formatRaise(n)
 	case *Conditional:
 		f.formatConditional(n)
 	case *ForLoop:
@@ -2367,6 +2371,49 @@ func (f *Formatter) formatAssert(a *Assert) {
 	f.write(" {")
 	f.formatBlockContents(a.Block)
 	f.write("}")
+}
+
+func (f *Formatter) formatTryCatch(t *TryCatch) {
+	f.write("try {")
+	f.formatBlockContents(t.TryBody)
+	f.write("} catch {")
+	if t.Loc != nil {
+		f.nl(t.Loc.Line)
+	} else {
+		f.newline()
+	}
+	f.indented(func() {
+		if len(t.Clauses) > 0 && t.Clauses[0].Loc != nil {
+			f.lastLine = t.Clauses[0].Loc.Line - 1
+		}
+		for _, clause := range t.Clauses {
+			if clause.Loc != nil {
+				f.emitCommentsBeforeNode(clause.Loc.Line, false)
+				f.lastLine = clause.Loc.Line
+			}
+			f.writeIndent()
+			if clause.IsTypePattern() {
+				f.write(clause.Binding)
+				f.write(": ")
+				f.write(clause.TypePattern.Name)
+			} else if clause.Binding != "" {
+				f.write(clause.Binding)
+			}
+			f.write(" => ")
+			f.formatNode(clause.Expr)
+			if clause.Loc != nil {
+				f.emitTrailingComment(clause.Loc.Line)
+			}
+			f.newline()
+		}
+	})
+	f.writeIndent()
+	f.write("}")
+}
+
+func (f *Formatter) formatRaise(r *Raise) {
+	f.write("raise ")
+	f.formatNode(r.Value)
 }
 
 func (f *Formatter) formatReassignment(r *Reassignment) {

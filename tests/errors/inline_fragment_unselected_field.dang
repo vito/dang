@@ -12,7 +12,7 @@ type Dog {
 
 union Pet = Cat | Dog
 
-pub cat: Pet! = Cat()
+pub cat: Pet! = Cat
 pub pets: [Pet!]! = [cat]
 
 pub results = pets.{

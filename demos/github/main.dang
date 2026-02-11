@@ -2,7 +2,10 @@ import GitHub
 
 # Look up a repo and show its stats
 pub repo = repository(owner: "golang", name: "go").{
-  name, description, stargazerCount, forkCount
+  name,
+  description,
+  stargazerCount,
+  forkCount
 }
 
 print(repo.name + " — " + repo.description)
@@ -17,8 +20,8 @@ pub issues = repository(owner: "golang", name: "go")
     orderBy: IssueOrder(field: IssueOrderField.UPDATED_AT, direction: OrderDirection.DESC),
   )
   .edges.{
-    node.{ number, title }
-  }
+  node.{number, title}
+}
 
 for (edge in issues) {
   let node = edge.node
@@ -37,7 +40,7 @@ pub results = search(
   first: 5,
 ).edges.{
   node.{
-    ... on Repository { name, stargazerCount, owner.{ login } }
+    ... on Repository { name, stargazerCount, owner.{login} }
   }
 }
 

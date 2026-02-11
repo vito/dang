@@ -1,0 +1,34 @@
+# Test try/catch as expressions in various positions
+
+# try/catch in a let binding
+let greeting = try {
+  raise "nope"
+} catch {
+  err => "fallback"
+}
+
+pub safeDivide(a: Int!, b: Int!): Int! {
+  try {
+    a / b
+  } catch {
+    err => 0
+  }
+}
+
+assert { safeDivide(10, 2) == 5 }
+assert { safeDivide(10, 0) == 0 }
+
+# nested try/catch
+pub nestedResult = try {
+  try {
+    raise "inner"
+  } catch {
+    err => raise "outer: " + err.message
+  }
+} catch {
+  err => err.message
+}
+
+assert { nestedResult == "outer: inner" }
+
+print("Try/catch expression tests passed!")

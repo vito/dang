@@ -1,0 +1,9 @@
+[1m[31mError:[0m raise requires a String! or Error!, got Int!
+  [2m[34m--> errors/raise_wrong_type.dang:2:20[0m
+ [2m    |[0m
+ [2m  1 | # raise requires a String! or Error!, not an Int[0m
+ [2m[34m[1m  2 | [0mpub result = raise 42
+[2m                          [31m^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

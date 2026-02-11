@@ -71,7 +71,7 @@ Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / N
   }
 }
 
-Form <- Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- TryCatch / Raise / Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -846,6 +846,46 @@ CommentToken <- '#' [^\n]* {
 }
 
 // Additional language constructs
+
+TryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:CatchClause Sep { return clause, nil })* last:CatchClause? _ '}' {
+  return &TryCatch{
+    TryBody: body.(*Block),
+    Clauses: sliceOfAppend[*CaseClause](cs, last),
+    Loc: c.Loc(),
+  }, nil
+}
+
+CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
+  // binding: TypeName => ... (typed pattern, same as case)
+  return &CaseClause{
+    Value: nil,
+    Expr: expr.(Node),
+    Binding: binding.(*Symbol).Name,
+    TypePattern: typeName.(*Symbol),
+    Loc: c.Loc(),
+  }, nil
+} / binding:Symbol _ ArrowToken _ expr:Form {
+  // name => ... (catch-all, binds the error)
+  return &CaseClause{
+    Value: nil,
+    Expr: expr.(Node),
+    IsElse: true,
+    Binding: binding.(*Symbol).Name,
+    Loc: c.Loc(),
+  }, nil
+}
+
+TryToken <- "try" !WordChar
+CatchToken <- "catch" !WordChar
+
+Raise <- RaiseToken _ value:Form {
+  return &Raise{
+    Value: value.(Node),
+    Loc: c.Loc(),
+  }, nil
+}
+
+RaiseToken <- "raise" !WordChar
 
 Conditional <- IfToken _ '(' _ cond:Form _ ')' _ block:Block else_:ElseClause? {
   return &Conditional{
