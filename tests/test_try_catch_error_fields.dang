@@ -1,36 +1,22 @@
-# Test Error type fields
+# Test error message access
 
-# raise with Error constructor
+# error message from a string raise
 pub result = try {
-  raise Error(message: "not found")
+  raise "not found"
 } catch {
   err => err.message
 }
 
 assert { result == "not found" }
 
-# error message from a string raise
-pub msgResult = try {
-  raise "kaboom"
+# error message from a runtime error
+pub divResult = try {
+  let x = 1 / 0
+  "ok"
 } catch {
   err => err.message
 }
 
-assert { msgResult == "kaboom" }
-
-# Error constructor and string raise produce the same interface
-pub fromConstructor = try {
-  raise Error(message: "oops")
-} catch {
-  err => err.message
-}
-
-pub fromString = try {
-  raise "oops"
-} catch {
-  err => err.message
-}
-
-assert { fromConstructor == fromString }
+assert { divResult == "division by zero" }
 
 print("Error field tests passed!")

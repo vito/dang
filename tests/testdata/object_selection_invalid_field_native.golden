@@ -2,7 +2,7 @@
   [2m[34m--> errors/object_selection_invalid_field_native.dang:9:25[0m
  [2m    |[0m
  [2m  7 | [0m
- [2m  8 | pub foo = Foo()[0m
+ [2m  8 | pub foo = Foo[0m
  [2m[34m[1m  9 | [0mpub result = foo.{name, unknown}
 [2m                               [31m^^^^^^^[0m
  [2m 10 | [0m

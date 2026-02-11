@@ -60,14 +60,6 @@ func registerStdlib() {
 			return ToValue(string(jsonBytes))
 		})
 
-	// Error constructor: Error(message: String!) -> Error!
-	Builtin("Error").
-		Doc("creates an Error value").
-		Params("message", NonNull(StringType)).
-		Returns(NonNull(ErrorType)).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			return &ErrorValue{Message: args.GetString("message")}, nil
-		})
 
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
 	Method(StringType, "split").
