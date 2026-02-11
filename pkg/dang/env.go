@@ -188,6 +188,13 @@ func init() {
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	ErrorType.SetVisibility("message", PublicVisibility)
 
+	// Install BasicError — the concrete type behind raise "msg"
+	Prelude.AddClass("BasicError", BasicErrorType)
+	BasicErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	BasicErrorType.SetVisibility("message", PublicVisibility)
+	BasicErrorType.AddInterface(ErrorType)
+	ErrorType.AddImplementer(BasicErrorType)
+
 	// Register standard library builtins
 	registerStdlib()
 

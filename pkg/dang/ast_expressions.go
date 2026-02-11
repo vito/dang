@@ -775,9 +775,6 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				}
 				return nil, fmt.Errorf("list value does not have method %q", d.Field.Name)
 
-			case *ErrorValue:
-				return rec.SelectField(d.Field.Name)
-
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
 			}

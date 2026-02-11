@@ -1493,7 +1493,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		var raised *RaisedError
 		if errors.As(err, &raised) {
 			return NewSourceError(
-				fmt.Errorf("uncaught error: %s", raised.Value.Message),
+				fmt.Errorf("uncaught error: %s", raised.Error()),
 				raised.Location,
 				evalCtx.Source,
 			)

@@ -61,11 +61,10 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// Build an implicit Case over Error! and infer each clause the
 		// same way case does.
 		implicitCase := &Case{
-			Expr:    nil, // not used directly; we set the type below
+			Expr:    nil,
 			Clauses: t.Clauses,
 			Loc:     t.Loc,
 		}
-		_ = implicitCase
 
 		resultType := bodyType
 
@@ -107,8 +106,6 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			subs, err := hm.Assignable(clauseType, resultType)
 			if err != nil {
 				if i == 0 {
-					// First clause determines the handler type; unify
-					// handler with body.
 					return nil, NewInferError(err, clause)
 				}
 				return nil, NewInferError(fmt.Errorf("catch clause type mismatch: %s vs %s", clauseType, resultType), clause)
@@ -134,16 +131,21 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-// RaisedError is a sentinel wrapper that carries an ErrorValue through
+// RaisedError is a sentinel wrapper that carries an error value through
 // Go's error interface so that Eval methods propagate it up the call
 // stack until a TryCatch catches it.
 type RaisedError struct {
-	Value    *ErrorValue
+	Value    Value // always a *ModuleValue implementing Error
 	Location *SourceLocation
 }
 
 func (r *RaisedError) Error() string {
-	return r.Value.Message
+	if mv, ok := r.Value.(*ModuleValue); ok {
+		if msg, found := mv.Get("message"); found {
+			return msg.String()
+		}
+	}
+	return "unknown error"
 }
 
 func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -153,45 +155,23 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return val, nil
 		}
 
-		// Extract the ErrorValue: either from a user-level raise or by
-		// wrapping a runtime error.
-		var errVal *ErrorValue
-		var raised *RaisedError
-		if errors.As(err, &raised) {
-			errVal = raised.Value
-		} else {
-			// Wrap runtime errors (division by zero, null access, GraphQL
-			// failures, etc.) so the catch handler can inspect them.
-			msg := err.Error()
-			// Unwrap SourceError to get the underlying message.
-			var sourceErr *SourceError
-			if errors.As(err, &sourceErr) {
-				msg = sourceErr.Inner.Error()
-			}
-			errVal = &ErrorValue{Message: msg}
-		}
+		// Resolve the error value to bind in catch clauses.
+		errVal := extractErrorValue(err)
 
-		// Resolve the value to bind in catch clauses.  Custom error
-		// types expose the original ModuleValue so type patterns work.
-		var bindVal Value = errVal
-		if errVal.Original != nil {
-			bindVal = errVal.Original
-		}
-
-		// Dispatch through clauses just like case does.
+		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
 			if clause.IsElse {
 				childEnv := env.Fork()
 				if clause.Binding != "" {
-					childEnv.Set(clause.Binding, bindVal)
+					childEnv.Set(clause.Binding, errVal)
 				}
 				return EvalNode(ctx, childEnv, clause.Expr)
 			}
 
 			if clause.IsTypePattern() {
-				if matchesType(bindVal, clause.TypePattern.Name) {
+				if matchesType(errVal, clause.resolvedMemberType) {
 					childEnv := env.Fork()
-					childEnv.Set(clause.Binding, bindVal)
+					childEnv.Set(clause.Binding, errVal)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}
 				continue
@@ -201,6 +181,32 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// No clause matched — re-raise the original error.
 		return nil, err
 	})
+}
+
+// extractErrorValue turns any caught error into a *ModuleValue.  User-
+// level raises already carry one; runtime errors are wrapped in a
+// BasicError.
+func extractErrorValue(err error) Value {
+	var raised *RaisedError
+	if errors.As(err, &raised) {
+		return raised.Value
+	}
+	// Wrap runtime errors in a BasicError.
+	msg := err.Error()
+	var sourceErr *SourceError
+	if errors.As(err, &sourceErr) {
+		msg = sourceErr.Inner.Error()
+	}
+	return newBasicError(msg)
+}
+
+// newBasicError creates a *ModuleValue of type BasicError with the given
+// message.
+func newBasicError(message string) *ModuleValue {
+	mv := NewModuleValue(BasicErrorType)
+	mv.Set("message", StringValue{Val: message})
+	mv.Visibilities["message"] = PublicVisibility
+	return mv
 }
 
 func (t *TryCatch) Walk(fn func(Node) bool) {
@@ -220,7 +226,8 @@ func (t *TryCatch) Walk(fn func(Node) bool) {
 }
 
 // Raise is a statement that raises an error.  The value can be a bare
-// string (sugar for Error(message: "...")) or a full Error value.
+// string (sugar for BasicError(message: "...")) or any value implementing
+// the Error interface.
 type Raise struct {
 	InferredTypeHolder
 	Value Node
@@ -247,17 +254,12 @@ func (r *Raise) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			return nil, err
 		}
 
-		// The raise value must be either a String! or an Error!.
-		strSubs, strErr := hm.Assignable(valType, hm.NonNullType{Type: StringType})
-		if strErr == nil {
-			_ = strSubs
-			// raise "message" is valid — returns bottom type (never completes).
+		// The raise value must be either a String! or implement Error.
+		if _, strErr := hm.Assignable(valType, hm.NonNullType{Type: StringType}); strErr == nil {
 			return hm.TypeVariable(fresh.Fresh()), nil
 		}
 
-		errSubs, errErr := hm.Assignable(valType, hm.NonNullType{Type: ErrorType})
-		if errErr == nil {
-			_ = errSubs
+		if _, errErr := hm.Assignable(valType, hm.NonNullType{Type: ErrorType}); errErr == nil {
 			return hm.TypeVariable(fresh.Fresh()), nil
 		}
 
@@ -277,25 +279,11 @@ func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	switch v := val.(type) {
 	case StringValue:
 		return nil, &RaisedError{
-			Value:    &ErrorValue{Message: v.Val},
+			Value:    newBasicError(v.Val),
 			Location: r.Loc,
 		}
-	case *ErrorValue:
-		return nil, &RaisedError{Value: v, Location: r.Loc}
 	case *ModuleValue:
-		// Custom type implementing Error — extract the message field.
-		msgVal, ok := v.Get("message")
-		if !ok {
-			return nil, fmt.Errorf("raise: error value has no message field")
-		}
-		msg, ok := msgVal.(StringValue)
-		if !ok {
-			return nil, fmt.Errorf("raise: error message must be a String, got %T", msgVal)
-		}
-		return nil, &RaisedError{
-			Value:    &ErrorValue{Message: msg.Val, Original: v},
-			Location: r.Loc,
-		}
+		return nil, &RaisedError{Value: v, Location: r.Loc}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)
 	}
@@ -306,45 +294,4 @@ func (r *Raise) Walk(fn func(Node) bool) {
 		return
 	}
 	r.Value.Walk(fn)
-}
-
-// ErrorValue is the runtime representation of a Dang error.
-// Original holds the full value when raised from a custom type
-// implementing the Error interface, so catch handlers can pattern
-// match on the concrete type.
-type ErrorValue struct {
-	Message  string
-	Original Value // non-nil when raised from a custom Error type
-}
-
-func (e *ErrorValue) Type() hm.Type {
-	return hm.NonNullType{Type: ErrorType}
-}
-
-func (e *ErrorValue) String() string {
-	return fmt.Sprintf("Error(%s)", e.Message)
-}
-
-func (e *ErrorValue) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`{"message":%q}`, e.Message)), nil
-}
-
-// SelectField allows field access on error values. If the error wraps
-// a custom type (Original), fields are looked up on that value first.
-func (e *ErrorValue) SelectField(name string) (Value, error) {
-	// If we have the original custom error, delegate to it so that
-	// catch handlers can access type-specific fields.
-	if e.Original != nil {
-		if mv, ok := e.Original.(*ModuleValue); ok {
-			if val, found := mv.Get(name); found {
-				return val, nil
-			}
-		}
-	}
-	switch name {
-	case "message":
-		return StringValue{Val: e.Message}, nil
-	default:
-		return nil, fmt.Errorf("Error has no field %q", name)
-	}
 }

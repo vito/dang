@@ -19,6 +19,7 @@ var (
 	FloatType      = NewModule("Float", ScalarKind)
 	ListTypeModule = NewModule("List", ScalarKind)
 	ErrorType      = NewModule("Error", InterfaceKind)
+	BasicErrorType = NewModule("BasicError", ObjectKind)
 )
 
 // Constant is implemented by nodes whose type can be determined without

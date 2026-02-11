@@ -237,10 +237,9 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return EvalNode(ctx, env, clause.Expr)
 			}
 
-			// Type pattern clauses: check the concrete type name
+			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() {
-				typeName := clause.TypePattern.Name
-				if matchesType(exprVal, typeName) {
+				if matchesType(exprVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding
 					childEnv := env.Fork()
 					childEnv.Set(clause.Binding, exprVal)
@@ -266,31 +265,43 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-// matchesType checks if a value's concrete type matches the given type name.
-func matchesType(val Value, typeName string) bool {
+// matchesType checks if a value's concrete type matches the given pattern
+// module.  It checks by pointer identity first, then by name for named
+// types (needed because inline-fragment narrowing creates distinct module
+// objects for the same schema type), and finally by interface
+// implementation.
+func matchesType(val Value, pattern *Module) bool {
+	valMod := valueModule(val)
+	if valMod == nil {
+		return false
+	}
+	// Exact identity.
+	if valMod == pattern {
+		return true
+	}
+	// Named types: two modules with the same name from the schema are
+	// the same type even if one is a narrowed projection.
+	if valMod.Named != "" && valMod.Named == pattern.Named {
+		return true
+	}
+	// Interface: check if the value's type implements the pattern.
+	if pattern.Kind == InterfaceKind {
+		return valMod.ImplementsInterface(pattern)
+	}
+	return false
+}
+
+// valueModule extracts the *Module backing a runtime value.
+func valueModule(val Value) *Module {
 	switch v := val.(type) {
 	case *ModuleValue:
 		if v.Mod != nil {
 			if mod, ok := v.Mod.(*Module); ok {
-				if mod.Name() == typeName {
-					return true
-				}
-				// Check if the value's type implements the named interface.
-				for _, iface := range mod.Supertypes() {
-					if ifaceMod, ok := iface.(*Module); ok && ifaceMod.Name() == typeName {
-						return true
-					}
-				}
+				return mod
 			}
 		}
-	case *ErrorValue:
-		// ErrorValue is the runtime representation for plain string
-		// raises and wrapped runtime errors. It matches "Error".
-		return typeName == "Error"
-	case GraphQLValue:
-		return v.TypeName == typeName
 	}
-	return false
+	return nil
 }
 
 // CaseClause represents a single clause in a case expression
