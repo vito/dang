@@ -1131,8 +1131,10 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			}
 		}
 
-		// Create a narrowed module with only the selected fields
+		// Create a narrowed module with only the selected fields.
+		// Link back to the canonical type for runtime matching.
 		narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
+		narrowedMember.Canonical = memberMod
 
 		// Validate each field in the fragment exists on the concrete type
 		// and add it to the narrowed module (including nested selections)

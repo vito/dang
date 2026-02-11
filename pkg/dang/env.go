@@ -105,6 +105,11 @@ type Module struct {
 	interfaces   []Env // Interfaces this type implements
 	implementers []Env // Types that implement this interface (for interface modules)
 
+	// Narrowed projections (inline fragment selections) create modules
+	// with a subset of fields.  Canonical points back to the full type
+	// so that runtime type matching can use identity instead of names.
+	Canonical *Module
+
 	// Union tracking
 	members []Env // Member types of this union (for union modules)
 	unions  []Env // Unions this type is a member of

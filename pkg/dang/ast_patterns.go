@@ -266,29 +266,33 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 // matchesType checks if a value's concrete type matches the given pattern
-// module.  It checks by pointer identity first, then by name for named
-// types (needed because inline-fragment narrowing creates distinct module
-// objects for the same schema type), and finally by interface
-// implementation.
+// module.  It uses pointer identity, following Canonical links on narrowed
+// projections, and ImplementsInterface for interface patterns.
 func matchesType(val Value, pattern *Module) bool {
 	valMod := valueModule(val)
 	if valMod == nil {
 		return false
 	}
-	// Exact identity.
-	if valMod == pattern {
-		return true
-	}
-	// Named types: two modules with the same name from the schema are
-	// the same type even if one is a narrowed projection.
-	if valMod.Named != "" && valMod.Named == pattern.Named {
+	// Resolve both sides to their canonical type so that narrowed
+	// projections compare against the same identity.
+	valCanon := canonicalModule(valMod)
+	patCanon := canonicalModule(pattern)
+	if valCanon == patCanon {
 		return true
 	}
 	// Interface: check if the value's type implements the pattern.
-	if pattern.Kind == InterfaceKind {
-		return valMod.ImplementsInterface(pattern)
+	if patCanon.Kind == InterfaceKind {
+		return valCanon.ImplementsInterface(patCanon)
 	}
 	return false
+}
+
+// canonicalModule follows the Canonical link to the full type module.
+func canonicalModule(m *Module) *Module {
+	if m.Canonical != nil {
+		return m.Canonical
+	}
+	return m
 }
 
 // valueModule extracts the *Module backing a runtime value.
