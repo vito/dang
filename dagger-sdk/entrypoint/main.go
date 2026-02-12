@@ -129,7 +129,6 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 		}
 		if dir.Name == "generate" {
 			hasGenerate = true
-			slog.Info("Generate directive found")
 		}
 	}
 	if !hasCheck {
