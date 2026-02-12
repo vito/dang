@@ -48,55 +48,15 @@ func main() {
 	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	slog.SetDefault(slog.New(handler))
 
-	fnCall := dag.CurrentFunctionCall()
-	parentName, err := fnCall.ParentName(ctx)
-	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
-	fnName, err := fnCall.Name(ctx)
-	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
-	parentJson, err := fnCall.Parent(ctx)
-	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
-	fnArgs, err := fnCall.InputArgs(ctx)
-	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
-	}
-
-	inputArgs := make(map[string][]byte)
-	for _, fnArg := range fnArgs {
-		argName, err := fnArg.Name(ctx)
-		if err != nil {
-			WriteError(ctx, err)
-			os.Exit(2)
-		}
-		argValue, err := fnArg.Value(ctx)
-		if err != nil {
-			WriteError(ctx, err)
-			os.Exit(2)
-		}
-		inputArgs[argName] = []byte(argValue)
-	}
-
-	slog.Debug("invoking", "parentName", parentName, "fnName", fnName)
-
 	modSrcDir := os.Args[1]
 
-	err = invoke(ctx, dag, modSrcDir, []byte(parentJson), parentName, fnName, inputArgs)
+	err := invoke(ctx, dag, modSrcDir)
 	if err != nil {
-		WriteError(ctx, err)
 		os.Exit(2)
 	}
 }
 
-func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSON []byte, parentName string, fnName string, inputArgs map[string][]byte) (rerr error) {
+func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string) (rerr error) {
 	fnCall := dag.CurrentFunctionCall()
 	defer func() {
 		if rerr != nil {
@@ -106,10 +66,41 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 		}
 	}()
 
+	parentName, err := fnCall.ParentName(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get parent name: %w", err)
+	}
+	fnName, err := fnCall.Name(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get function name: %w", err)
+	}
+	parentJSON, err := fnCall.Parent(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get parent JSON: %w", err)
+	}
+	fnArgs, err := fnCall.InputArgs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get function arguments: %w", err)
+	}
+
+	inputArgs := make(map[string][]byte)
+	for _, fnArg := range fnArgs {
+		argName, err := fnArg.Name(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get argument name: %w", err)
+		}
+		argValue, err := fnArg.Value(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get argument value: %w", err)
+		}
+		inputArgs[argName] = []byte(argValue)
+	}
+
+	slog.Debug("invoking", "parentName", parentName, "fnName", fnName)
+
 	schema, err := Introspect(ctx, dag)
 	if err != nil {
-		WriteError(ctx, err)
-		os.Exit(2)
+		return fmt.Errorf("failed to introspect schema: %w", err)
 	}
 
 	ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
@@ -167,7 +158,7 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 		return fmt.Errorf("unknown parent type: %s", parentName)
 	}
 	var parentState map[string]any
-	dec := json.NewDecoder(bytes.NewReader(parentJSON))
+	dec := json.NewDecoder(bytes.NewReader([]byte(parentJSON)))
 	dec.UseNumber()
 	if err := dec.Decode(&parentState); err != nil {
 		return fmt.Errorf("failed to unmarshal parent JSON: %w", err)
@@ -265,7 +256,7 @@ func invoke(ctx context.Context, dag *dagger.Client, modSrcDir string, parentJSO
 		}
 		result, err = call.Eval(ctx, env)
 		if err != nil {
-			return fmt.Errorf("failed to evaluate call: %w", err)
+			return err
 		}
 	}
 
@@ -766,29 +757,12 @@ func Introspect(ctx context.Context, dag *dagger.Client) (*introspection.Schema,
 	return response.Schema, nil
 }
 
-func WriteError(ctx context.Context, err error) {
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
-// func initPlatform(ctx context.Context, dag *dagger.Client, scope *bass.Scope) error {
-// 	// Set the default OCI platform as *platform*.
-// 	platStr, err := dag.DefaultPlatform(ctx)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get default platform: %w", err)
-// 	}
-// 	scope.Set("*platform*", bass.String(platStr))
-
-// 	// Set the non-OS portion of the OCI platform as *arch* so that we include v7
-// 	// in arm/v7.
-// 	_, arch, _ := strings.Cut(string(platStr), "/")
-// 	scope.Set("*arch*", bass.String(arch))
-
-// 	return nil
-// }
-
 func convertError(rerr error) *dagger.Error {
+	var sourceErr *dang.SourceError
+	if errors.As(rerr, &sourceErr) {
+		fmt.Fprintln(os.Stderr, sourceErr.FormatWithHighlighting())
+		rerr = sourceErr.Inner
+	}
 	var gqlErr *gqlerror.Error
 	if errors.As(rerr, &gqlErr) {
 		dagErr := dag.Error(gqlErr.Message)
