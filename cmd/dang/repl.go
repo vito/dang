@@ -233,17 +233,7 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m replModel) View() tea.View {
 	var b strings.Builder
-
-	// Calculate available height for output
-	// Reserve: 1 for input, 1 for status bar, menu height
-	menuHeight := 0
-	if m.menuVisible {
-		menuHeight = min(len(m.menuItems), m.menuMaxVisible) + 1 // +1 for border
-	}
-	availHeight := m.height - 2 - menuHeight
-	if availHeight < 0 {
-		availHeight = 0
-	}
+	linesAbove := 0
 
 	// Welcome message if no output yet
 	if len(m.output) == 0 {
@@ -256,27 +246,23 @@ func (m replModel) View() tea.View {
 		}
 		for _, line := range welcome {
 			b.WriteString(line + "\n")
+			linesAbove++
 		}
-		availHeight -= len(welcome)
 	}
 
-	// Show output (scrolled to bottom)
+	// Show recent output (keep last N lines to avoid flooding)
+	maxLines := 50
+	if m.height > 0 {
+		maxLines = max(10, m.height-5)
+	}
 	startIdx := 0
-	if len(m.output) > availHeight {
-		startIdx = len(m.output) - availHeight
+	if len(m.output) > maxLines {
+		startIdx = len(m.output) - maxLines
 	}
 	for i := startIdx; i < len(m.output); i++ {
 		line := m.output[i]
 		b.WriteString(line.style.Render(line.text) + "\n")
-	}
-
-	// Pad remaining space
-	outputLines := len(m.output) - startIdx
-	if len(m.output) == 0 {
-		outputLines = 0 // welcome takes care of padding
-	}
-	for i := outputLines; i < availHeight; i++ {
-		b.WriteString("\n")
+		linesAbove++
 	}
 
 	// Input line
@@ -291,20 +277,7 @@ func (m replModel) View() tea.View {
 	v := tea.NewView(b.String())
 	c := m.textInput.Cursor()
 	if c != nil {
-		// Adjust cursor Y for output lines above
-		outputLineCount := 0
-		if len(m.output) == 0 {
-			outputLineCount = 5 // welcome message lines
-		} else if len(m.output) > availHeight {
-			outputLineCount = availHeight
-		} else {
-			outputLineCount = len(m.output)
-		}
-		// Add padding lines
-		if len(m.output) > 0 {
-			outputLineCount += max(0, availHeight-len(m.output)+startIdx)
-		}
-		c.Y += outputLineCount
+		c.Y += linesAbove
 	}
 	v.Cursor = c
 	return v
