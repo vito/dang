@@ -146,11 +146,13 @@ type docBrowserModel struct {
 	height int
 }
 
-func newDocBrowser(typeEnv dang.Env) docBrowserModel {
+func newDocBrowser(typeEnv dang.Env, width, height int) docBrowserModel {
 	root := buildColumn("(root)", "Top-level scope", typeEnv)
 
 	m := docBrowserModel{
 		columns: []docColumn{root},
+		width:   width,
+		height:  height,
 	}
 	// Pre-expand the first selection
 	m.expandSelection()

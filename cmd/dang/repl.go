@@ -755,7 +755,7 @@ func (m *replModel) handleCommand(cmdLine string) {
 		}
 
 	case "doc":
-		db := newDocBrowser(m.typeEnv)
+		db := newDocBrowser(m.typeEnv, m.width, m.height)
 		m.docBrowser = &db
 
 	default:
