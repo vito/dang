@@ -73,11 +73,13 @@ func (k itemKind) color() string {
 
 // docItem is a single entry in a column.
 type docItem struct {
-	name    string
-	kind    itemKind
-	typeStr string
-	doc     string
-	args    []docArg
+	name      string
+	kind      itemKind
+	typeStr   string
+	doc       string
+	args      []docArg
+	blockArgs []docArg // block/callback parameters
+	blockRet  string   // block return type
 	// If selecting this item can produce a deeper column, retEnv is set.
 	retEnv dang.Env
 }
@@ -160,6 +162,7 @@ func buildColumn(title, doc string, env dang.Env) docColumn {
 			item.kind = kindField
 			item.args = extractArgs(fn)
 			item.typeStr = formatReturnType(fn)
+			extractBlockInfo(fn, &item)
 
 			// The return type env lets us drill deeper
 			ret := unwrapType(fn.Ret(true))
@@ -210,6 +213,12 @@ func buildColumn(title, doc string, env dang.Env) docColumn {
 			// Format return type
 			if def.ReturnType != nil {
 				item.typeStr = "→ " + formatType(def.ReturnType)
+			}
+
+			// Block args
+			if def.BlockType != nil {
+				item.blockArgs = extractArgs(def.BlockType)
+				item.blockRet = formatType(def.BlockType.Ret(true))
 			}
 
 			// Check if return type is drillable
@@ -277,6 +286,16 @@ func extractArgs(fn *hm.FunctionType) []docArg {
 		args = append(args, a)
 	}
 	return args
+}
+
+// extractBlockInfo populates blockArgs/blockRet on a docItem from a FunctionType's block.
+func extractBlockInfo(fn *hm.FunctionType, item *docItem) {
+	block := fn.Block()
+	if block == nil {
+		return
+	}
+	item.blockArgs = extractArgs(block)
+	item.blockRet = formatType(block.Ret(true))
 }
 
 // formatReturnType shows "→ RetType" for a function.
@@ -802,7 +821,29 @@ func (m docBrowserModel) renderDetail(item docItem, w int, docStyle, argNameStyl
 		}
 	}
 
-	if len(lines) == 1 && item.doc == "" && len(item.args) == 0 {
+	// Block args section
+	if len(item.blockArgs) > 0 {
+		lines = append(lines, "")
+		blockHeader := "Block:"
+		if item.blockRet != "" {
+			blockHeader = fmt.Sprintf("Block → %s:", argTypeStyle.Render(item.blockRet))
+		}
+		lines = append(lines, blockHeader)
+		for _, arg := range item.blockArgs {
+			lines = append(lines, fmt.Sprintf("  %s %s",
+				argNameStyle.Render(arg.name+":"),
+				argTypeStyle.Render(arg.typeStr),
+			))
+			if arg.doc != "" {
+				wrapped := wordWrap(arg.doc, w-4)
+				for _, line := range strings.Split(wrapped, "\n") {
+					lines = append(lines, "    "+dimStyle.Render(line))
+				}
+			}
+		}
+	}
+
+	if len(lines) == 1 && item.doc == "" && len(item.args) == 0 && len(item.blockArgs) == 0 {
 		lines = append(lines, dimStyle.Render("(no documentation)"))
 	}
 
