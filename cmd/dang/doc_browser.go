@@ -270,34 +270,91 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
-		// Mouse wheel scrolls the detail pane regardless of active column
 		mouse := msg.Mouse()
-		switch mouse.Button {
-		case tea.MouseWheelUp:
-			if m.detailOffset > 0 {
-				m.detailOffset -= 3
-				if m.detailOffset < 0 {
-					m.detailOffset = 0
-				}
+		if mouse.Button != tea.MouseWheelUp && mouse.Button != tea.MouseWheelDown {
+			break
+		}
+
+		delta := 3
+		if mouse.Button == tea.MouseWheelUp {
+			delta = -3
+		}
+
+		// Determine which column the mouse is over
+		colIdx := m.columnAtX(mouse.X)
+		if colIdx < 0 {
+			break
+		}
+
+		col := &m.columns[colIdx]
+		if len(col.items) > 0 {
+			// Navigable column: scroll the item list
+			col.offset += delta
+			maxOffset := len(col.items) - m.listHeight()
+			if maxOffset < 0 {
+				maxOffset = 0
 			}
-			return m, nil
-		case tea.MouseWheelDown:
-			// Recompute detail lines at actual column width
+			if col.offset < 0 {
+				col.offset = 0
+			}
+			if col.offset > maxOffset {
+				col.offset = maxOffset
+			}
+		} else {
+			// Detail column: scroll the detail pane
 			if item, ok := m.selectedDetailItem(); ok {
 				m.recomputeDetailLines(item)
 			}
+			m.detailOffset += delta
 			maxOffset := m.detailLines - m.listHeight()
 			if maxOffset < 0 {
 				maxOffset = 0
 			}
-			m.detailOffset += 3
+			if m.detailOffset < 0 {
+				m.detailOffset = 0
+			}
 			if m.detailOffset > maxOffset {
 				m.detailOffset = maxOffset
 			}
-			return m, nil
 		}
+		return m, nil
 	}
 	return m, nil
+}
+
+// columnAtX returns the absolute column index under screen X coordinate,
+// or -1 if X is outside visible columns (e.g. on a separator).
+func (m docBrowserModel) columnAtX(x int) int {
+	visStart, visEnd := m.visibleRange()
+	numVis := visEnd - visStart
+	if numVis < 1 {
+		return -1
+	}
+
+	sepW := 3 * (numVis - 1)
+	colW := (m.width - sepW) / numVis
+	if colW < 15 {
+		colW = 15
+	}
+	lastColW := m.width - sepW - colW*(numVis-1)
+	if lastColW < colW {
+		lastColW = colW
+	}
+
+	// Account for breadcrumb line: mouse Y=0 is breadcrumb, columns start at Y=1.
+	// But X mapping is the same regardless of Y.
+	pos := 0
+	for i := 0; i < numVis; i++ {
+		w := colW
+		if i == numVis-1 {
+			w = lastColW
+		}
+		if x >= pos && x < pos+w {
+			return visStart + i
+		}
+		pos += w + 3 // +3 for separator " │ "
+	}
+	return -1
 }
 
 // detailColWidth returns the width of the detail column based on current layout.
