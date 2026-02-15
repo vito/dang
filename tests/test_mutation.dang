@@ -1,0 +1,13 @@
+import Test
+
+# Create a user via mutation and verify the result
+let alice = Mutation.createUser(input: CreateUserInput(name: "Alice", email: "alice@example.com"))
+assert { alice.name == "Alice" }
+assert { alice.emails == ["alice@example.com"] }
+assert { alice.status == Status.ACTIVE }
+
+# Create another user and select a scalar field directly
+assert { Mutation.createUser(input: CreateUserInput(name: "Bob", email: "bob@example.com")).name == "Bob" }
+
+# Delete a user (returns scalar directly)
+assert { Mutation.deleteUser(id: "1") == true }

@@ -26,7 +26,8 @@ type QueryBuilder struct {
 
 	prev *QueryBuilder
 
-	client graphql.Client
+	client     graphql.Client
+	isMutation bool
 }
 
 // Query creates a new QueryBuilder
@@ -37,6 +38,11 @@ func Query() *QueryBuilder {
 // Keep the old name for backward compatibility
 func QueryV2() *QueryBuilder {
 	return Query()
+}
+
+// Mutation creates a new QueryBuilder for a mutation operation.
+func Mutation() *QueryBuilder {
+	return &QueryBuilder{isMutation: true}
 }
 
 // Type alias for backward compatibility
@@ -52,16 +58,18 @@ func (q *QueryBuilder) path() []*QueryBuilder {
 
 func (q *QueryBuilder) Root() *QueryBuilder {
 	return &QueryBuilder{
-		client: q.client,
+		client:     q.client,
+		isMutation: q.isMutation,
 	}
 }
 
 func (q *QueryBuilder) SelectWithAlias(alias, name string) *QueryBuilder {
 	sel := &QueryBuilder{
-		name:   name,
-		prev:   q,
-		alias:  alias,
-		client: q.client,
+		name:       name,
+		prev:       q,
+		alias:      alias,
+		client:     q.client,
+		isMutation: q.isMutation,
 	}
 	return sel
 }
@@ -81,6 +89,7 @@ func (q *QueryBuilder) SelectFields(fields ...string) *QueryBuilder {
 	sel := &QueryBuilder{
 		prev:          q,
 		client:        q.client,
+		isMutation:    q.isMutation,
 		fields:        fields,
 		subSelections: make(map[string]*QueryBuilder),
 	}
@@ -92,6 +101,7 @@ func (q *QueryBuilder) SelectNested(field string, subSelection *QueryBuilder) *Q
 	sel := &QueryBuilder{
 		prev:          q,
 		client:        q.client,
+		isMutation:    q.isMutation,
 		subSelections: make(map[string]*QueryBuilder),
 	}
 	sel.subSelections[field] = subSelection
@@ -103,6 +113,7 @@ func (q *QueryBuilder) SelectMixed(simpleFields []string, nestedSelections map[s
 	sel := &QueryBuilder{
 		prev:          q,
 		client:        q.client,
+		isMutation:    q.isMutation,
 		fields:        simpleFields,
 		subSelections: nestedSelections,
 	}
@@ -275,11 +286,18 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 		return err
 	}
 
+	opType := "query"
+	opName := "Query"
+	if q.isMutation {
+		opType = "mutation"
+		opName = "Mutation"
+	}
+
 	var response any
 	err = q.client.MakeRequest(ctx,
 		&graphql.Request{
-			Query:  "query Query " + query,
-			OpName: "Query",
+			Query:  opType + " " + opName + " " + query,
+			OpName: opName,
 		},
 		&graphql.Response{Data: &response},
 	)
