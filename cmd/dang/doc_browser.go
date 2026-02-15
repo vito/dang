@@ -15,13 +15,58 @@ import (
 // docColumn represents one column in the Miller-column browser.
 type docColumn struct {
 	title        string
-	doc          string   // doc string for the column header (type/module doc)
-	items        []docItem // selectable items
-	index        int      // selected index
-	offset       int      // scroll offset (for item lists)
-	detailOffset int      // scroll offset (for detail panes)
-	detailLines  int      // total rendered detail lines
-	typeEnv      dang.Env // the env this column lists members of (nil for detail)
+	doc          string    // doc string for the column header (type/module doc)
+	items        []docItem // all items (unfiltered)
+	filtered     []int     // indices into items matching filter (nil = show all)
+	filter       string    // current filter text
+	index        int       // selected index within visible() items
+	offset       int       // scroll offset (for item lists)
+	detailOffset int       // scroll offset (for detail panes)
+	detailLines  int       // total rendered detail lines
+	typeEnv      dang.Env  // the env this column lists members of (nil for detail)
+}
+
+// visible returns the items to display, respecting the filter.
+func (c *docColumn) visible() []docItem {
+	if c.filtered == nil {
+		return c.items
+	}
+	vis := make([]docItem, len(c.filtered))
+	for i, idx := range c.filtered {
+		vis[i] = c.items[idx]
+	}
+	return vis
+}
+
+// selectedItem returns the currently selected item, if any.
+func (c *docColumn) selectedItem() (docItem, bool) {
+	vis := c.visible()
+	if c.index >= 0 && c.index < len(vis) {
+		return vis[c.index], true
+	}
+	return docItem{}, false
+}
+
+// applyFilter updates the filtered indices based on the current filter string.
+func (c *docColumn) applyFilter() {
+	if c.filter == "" {
+		c.filtered = nil
+		return
+	}
+	lower := strings.ToLower(c.filter)
+	c.filtered = nil
+	for i, item := range c.items {
+		if strings.Contains(strings.ToLower(item.name), lower) {
+			c.filtered = append(c.filtered, i)
+		}
+	}
+	// Clamp selection
+	if len(c.filtered) == 0 {
+		c.index = 0
+	} else if c.index >= len(c.filtered) {
+		c.index = len(c.filtered) - 1
+	}
+	c.offset = 0
 }
 
 // itemKind classifies a doc browser entry.
@@ -326,10 +371,10 @@ func (m *docBrowserModel) expandSelection() {
 	m.columns = m.columns[:m.activeCol+1]
 
 	col := &m.columns[m.activeCol]
-	if col.index >= len(col.items) {
+	item, ok := col.selectedItem()
+	if !ok {
 		return
 	}
-	item := col.items[col.index]
 
 	// Always add a detail column for the selected item
 	detail := buildDetailColumn(item)
@@ -369,18 +414,39 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "q", "escape":
+		case "q":
 			return m, func() tea.Msg { return docBrowserExitMsg{} }
 
-		case "left", "h":
-			if m.activeCol > 0 {
-				m.activeCol--
-				// Trim everything beyond active+1 and re-expand
+		case "escape":
+			col := &m.columns[m.activeCol]
+			if col.filter != "" {
+				col.filter = ""
+				col.applyFilter()
+				m.expandSelection()
+				return m, nil
+			}
+			return m, func() tea.Msg { return docBrowserExitMsg{} }
+
+		case "backspace":
+			col := &m.columns[m.activeCol]
+			if len(col.filter) > 0 {
+				col.filter = col.filter[:len(col.filter)-1]
+				col.applyFilter()
 				m.expandSelection()
 			}
 			return m, nil
 
-		case "right", "l", "enter":
+		case "left":
+			if m.activeCol > 0 {
+				// Clear filter on current column when leaving
+				m.columns[m.activeCol].filter = ""
+				m.columns[m.activeCol].applyFilter()
+				m.activeCol--
+				m.expandSelection()
+			}
+			return m, nil
+
+		case "right", "enter":
 			// Move into the next navigable column (skip detail columns)
 			for i := m.activeCol + 1; i < len(m.columns); i++ {
 				if len(m.columns[i].items) > 0 {
@@ -391,7 +457,7 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "up", "k":
+		case "up":
 			col := &m.columns[m.activeCol]
 			if col.index > 0 {
 				col.index--
@@ -400,9 +466,10 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "down", "j":
+		case "down":
 			col := &m.columns[m.activeCol]
-			if col.index < len(col.items)-1 {
+			vis := col.visible()
+			if col.index < len(vis)-1 {
 				col.index++
 				m.clampScroll(col)
 				m.expandSelection()
@@ -419,6 +486,19 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+
+		default:
+			// Printable characters filter the active column
+			r := msg.String()
+			if len(r) == 1 && r[0] >= 32 && r[0] < 127 {
+				col := &m.columns[m.activeCol]
+				if len(col.items) > 0 {
+					col.filter += r
+					col.applyFilter()
+					m.expandSelection()
+				}
+				return m, nil
+			}
 		}
 
 	case tea.MouseMsg:
@@ -442,7 +522,8 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(col.items) > 0 {
 			// Navigable column: scroll the item list
 			col.offset += delta
-			maxOffset := len(col.items) - m.listHeight()
+			vis := col.visible()
+			maxOffset := len(vis) - m.listHeight()
 			if maxOffset < 0 {
 				maxOffset = 0
 			}
@@ -542,10 +623,8 @@ func (m *docBrowserModel) recomputeDetailLines(col *docColumn, item docItem) {
 // Detail columns are placed right after the navigable column whose selection they describe.
 func (m docBrowserModel) detailItemForColumn(colIdx int) (docItem, bool) {
 	if colIdx > 0 {
-		prev := m.columns[colIdx-1]
-		if prev.index < len(prev.items) {
-			return prev.items[prev.index], true
-		}
+		prev := &m.columns[colIdx-1]
+		return prev.selectedItem()
 	}
 	return docItem{}, false
 }
@@ -622,8 +701,12 @@ func (m docBrowserModel) View() tea.View {
 
 		var lines []string
 
-		// Title
+		// Title (with filter indicator if active)
 		t := col.title
+		if col.filter != "" {
+			filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+			t = truncate(t, w-len(col.filter)-3) + " " + filterStyle.Render("/"+col.filter)
+		}
 		if isActive {
 			lines = append(lines, activeTitle.Render(truncate(t, w)))
 		} else {
@@ -631,14 +714,15 @@ func (m docBrowserModel) View() tea.View {
 		}
 		lines = append(lines, sepStyle.Render(strings.Repeat("─", w)))
 
+		vis := col.visible()
 		if len(col.items) > 0 {
 			// Navigable column: show item list
 			end := col.offset + listH
-			if end > len(col.items) {
-				end = len(col.items)
+			if end > len(vis) {
+				end = len(vis)
 			}
 			for i := col.offset; i < end; i++ {
-				item := col.items[i]
+				item := vis[i]
 				label := item.name
 				if len(item.args) > 0 {
 					label += "(…)"
@@ -684,9 +768,8 @@ func (m docBrowserModel) View() tea.View {
 		} else {
 			// Detail column: show item info with scroll support
 			if ci > 0 {
-				prevCol := m.columns[ci-1]
-				if prevCol.index < len(prevCol.items) {
-					item := prevCol.items[prevCol.index]
+				prevCol := &m.columns[ci-1]
+				if item, ok := prevCol.selectedItem(); ok {
 					detailContent := m.renderDetail(item, w, docTextStyle, argNameStyle, argTypeStyle, dimStyle)
 
 					// Apply per-column scroll offset
@@ -752,7 +835,7 @@ func (m docBrowserModel) View() tea.View {
 	breadcrumb := dimStyle.Render(strings.Join(crumbs, " → "))
 
 	// Help
-	help := dimStyle.Render("↑/↓ navigate • ←/→ drill in/out • scroll detail • Tab cycle • q/Esc exit")
+	help := dimStyle.Render("↑/↓ navigate • ←/→ drill in/out • type to filter • Esc clear/exit • q quit")
 
 	content := breadcrumb + "\n" + strings.Join(rows, "\n") + "\n" + help
 
