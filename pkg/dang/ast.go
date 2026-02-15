@@ -621,6 +621,25 @@ func (c *CompositeModule) NamedType(name string) (Env, bool) {
 	return c.lexical.NamedType(name)
 }
 
+func (c *CompositeModule) NamedTypes() iter.Seq2[string, Env] {
+	return func(yield func(string, Env) bool) {
+		seen := map[string]bool{}
+		for name, env := range c.primary.NamedTypes() {
+			seen[name] = true
+			if !yield(name, env) {
+				return
+			}
+		}
+		for name, env := range c.lexical.NamedTypes() {
+			if !seen[name] {
+				if !yield(name, env) {
+					return
+				}
+			}
+		}
+	}
+}
+
 // AddClass adds a class type to the primary environment
 func (c *CompositeModule) AddClass(name string, class Env) {
 	c.primary.AddClass(name, class)

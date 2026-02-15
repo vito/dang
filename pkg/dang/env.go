@@ -33,6 +33,7 @@ type Env interface {
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
 	CheckDirectiveConflict(directiveName string) []string
+	NamedTypes() iter.Seq2[string, Env]
 }
 
 // ModuleKind represents the kind of module
@@ -604,6 +605,16 @@ func (e *Module) GetDynamicScopeType() hm.Type {
 
 func (e *Module) SetDynamicScopeType(t hm.Type) {
 	e.dynamicScopeType = t
+}
+
+func (e *Module) NamedTypes() iter.Seq2[string, Env] {
+	return func(yield func(string, Env) bool) {
+		for name, env := range e.classes {
+			if !yield(name, env) {
+				break
+			}
+		}
+	}
 }
 
 func (e *Module) AddClass(name string, c Env) {

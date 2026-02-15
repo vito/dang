@@ -180,6 +180,29 @@ func buildColumn(title, doc string, env dang.Env) docColumn {
 		col.items = append(col.items, item)
 	}
 
+	// Also include named types (classes) that aren't already in bindings.
+	// These are built-in types like String, Boolean, List, etc.
+	seen := make(map[string]bool, len(col.items))
+	for _, item := range col.items {
+		seen[item.name] = true
+	}
+	for name, namedEnv := range env.NamedTypes() {
+		if seen[name] {
+			continue
+		}
+
+		item := docItem{
+			name:    name,
+			typeStr: namedEnv.Name(),
+			retEnv:  namedEnv,
+			kind:    classifyEnv(namedEnv),
+		}
+		if d := namedEnv.GetModuleDocString(); d != "" {
+			item.doc = d
+		}
+		col.items = append(col.items, item)
+	}
+
 	// Sort by kind order, then alphabetically within each kind
 	sort.Slice(col.items, func(i, j int) bool {
 		if col.items[i].kind != col.items[j].kind {
