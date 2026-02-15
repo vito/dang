@@ -125,11 +125,13 @@ func newREPLModel(ctx context.Context, schema *introspection.Schema, client grap
 func (m replModel) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
-		tea.Println(welcomeStyle.Render("Welcome to Dang REPL v0.1.0")),
-		tea.Println(dimStyle.Render(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types)))),
-		tea.Println(""),
-		tea.Println(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit")),
-		tea.Println(""),
+		tea.Sequence(
+			tea.Println(welcomeStyle.Render("Welcome to Dang REPL v0.1.0")),
+			tea.Println(dimStyle.Render(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types)))),
+			tea.Println(""),
+			tea.Println(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit")),
+			tea.Println(""),
+		),
 	)
 }
 
@@ -151,7 +153,7 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, line := range msg.output {
 			cmds = append(cmds, tea.Println(line))
 		}
-		return m, tea.Batch(cmds...)
+		return m, tea.Sequence(cmds...)
 
 	case evalCancelledMsg:
 		m.evaluating = false
@@ -254,21 +256,23 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.handleCommand(line[1:])
 				flushCmd := m.flushOutput()
 				if m.quitting {
-					return m, tea.Batch(echoCmd, flushCmd, tea.Quit)
+					return m, tea.Sequence(echoCmd, flushCmd, tea.Quit)
 				}
 				if m.clearScreen {
 					m.clearScreen = false
 					return m, func() tea.Msg { return tea.ClearScreen() }
 				}
 				m.updateCompletionMenu()
-				return m, tea.Batch(echoCmd, flushCmd)
+				return m, tea.Sequence(echoCmd, flushCmd)
 			}
 
-			// Expressions run asynchronously with a spinner
+			// Expressions run asynchronously with a spinner.
+			// Sequence the echo + any sync errors, then batch the eval
+			// (which itself batches spinner tick + goroutine).
 			evalCmd := m.startEval(line)
-			// startEval may produce synchronous errors (parse/type)
 			flushCmd := m.flushOutput()
-			return m, tea.Batch(echoCmd, flushCmd, evalCmd)
+			printCmds := tea.Sequence(echoCmd, flushCmd)
+			return m, tea.Sequence(printCmds, evalCmd)
 
 		case "up":
 			if !m.menuVisible {
@@ -980,7 +984,7 @@ func (m *replModel) flushOutput() tea.Cmd {
 		cmds = append(cmds, tea.Println(line))
 	}
 	m.pendingOutput = nil
-	return tea.Batch(cmds...)
+	return tea.Sequence(cmds...)
 }
 
 // History management
