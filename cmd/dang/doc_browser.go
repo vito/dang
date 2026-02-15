@@ -273,9 +273,10 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case tea.MouseWheelMsg:
-		// Mouse wheel always scrolls the detail pane
-		switch msg.Button {
+	case tea.MouseMsg:
+		// Mouse wheel scrolls the detail pane regardless of active column
+		mouse := msg.Mouse()
+		switch mouse.Button {
 		case tea.MouseWheelUp:
 			if m.detailOffset > 0 {
 				m.detailOffset -= 3
@@ -321,6 +322,7 @@ func (m docBrowserModel) View() tea.View {
 	if m.width == 0 || m.height == 0 {
 		v := tea.NewView("Loading...")
 		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
 		return v
 	}
 
