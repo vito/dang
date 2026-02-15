@@ -1022,8 +1022,23 @@ func buildEnvFromImports(configs []dang.ImportConfig) (dang.Env, dang.EvalEnv) {
 		if config.Schema == nil {
 			continue
 		}
-		moduleEnv := dang.NewEvalEnvWithSchema(typeEnv, config.Client, config.Schema)
+		// Create module eval env with the GraphQL client wired up
+		schemaModule := dang.NewEnv(config.Schema)
+		moduleEnv := dang.NewEvalEnvWithSchema(schemaModule, config.Client, config.Schema)
+
+		// Set the module as a named value (for qualified access: Dagger.container)
 		evalEnv.Set(config.Name, moduleEnv)
+
+		// Import all runtime values unqualified (for: container())
+		for _, binding := range moduleEnv.Bindings(dang.PublicVisibility) {
+			if binding.Key == config.Name {
+				continue
+			}
+			if _, exists := evalEnv.GetLocal(binding.Key); exists {
+				continue
+			}
+			evalEnv.Set(binding.Key, binding.Value)
+		}
 	}
 
 	return typeEnv, evalEnv
