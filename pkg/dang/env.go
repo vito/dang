@@ -419,6 +419,12 @@ func NewEnv(schema *introspection.Schema) Env {
 					}
 				}
 				args.Add(arg.Name, hm.NewScheme(nil, argType))
+				if arg.Description != "" {
+					if args.DocStrings == nil {
+						args.DocStrings = make(map[string]string)
+					}
+					args.DocStrings[arg.Name] = arg.Description
+				}
 			}
 			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
 			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
