@@ -327,7 +327,7 @@ func (m replModel) View() tea.View {
 
 	// Input line or spinner
 	if m.evaluating {
-		b.WriteString(m.spinner.View() + dimStyle.Render(" Evaluating... (Ctrl+C to cancel)"))
+		b.WriteString(m.spinner.View() + dimStyle.Render("Evaluating... (Ctrl+C to cancel)"))
 	} else {
 		b.WriteString(m.textInput.View())
 
