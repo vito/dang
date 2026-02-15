@@ -140,6 +140,7 @@ type docArg struct {
 type docBrowserModel struct {
 	columns   []docColumn // stack of columns
 	activeCol int         // which column is focused
+	filtering bool        // true when filter input is active on the focused column
 
 	width  int
 	height int
@@ -413,40 +414,92 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "q":
-			return m, func() tea.Msg { return docBrowserExitMsg{} }
-
-		case "escape":
-			col := &m.columns[m.activeCol]
-			if col.filter != "" {
+		// Filter input mode: typing goes to filter
+		if m.filtering {
+			switch msg.String() {
+			case "escape":
+				// Clear filter and exit filter mode
+				col := &m.columns[m.activeCol]
 				col.filter = ""
 				col.applyFilter()
+				m.filtering = false
 				m.expandSelection()
 				return m, nil
+
+			case "enter":
+				// Confirm filter, return to navigation
+				m.filtering = false
+				return m, nil
+
+			case "backspace":
+				col := &m.columns[m.activeCol]
+				if len(col.filter) > 0 {
+					col.filter = col.filter[:len(col.filter)-1]
+					col.applyFilter()
+					m.expandSelection()
+				} else {
+					// Empty filter + backspace exits filter mode
+					m.filtering = false
+				}
+				return m, nil
+
+			case "up":
+				col := &m.columns[m.activeCol]
+				if col.index > 0 {
+					col.index--
+					m.clampScroll(col)
+					m.expandSelection()
+				}
+				return m, nil
+
+			case "down":
+				col := &m.columns[m.activeCol]
+				vis := col.visible()
+				if col.index < len(vis)-1 {
+					col.index++
+					m.clampScroll(col)
+					m.expandSelection()
+				}
+				return m, nil
+
+			default:
+				r := msg.String()
+				if len(r) == 1 && r[0] >= 32 && r[0] < 127 {
+					col := &m.columns[m.activeCol]
+					col.filter += r
+					col.applyFilter()
+					m.expandSelection()
+					return m, nil
+				}
 			}
+			return m, nil
+		}
+
+		// Normal navigation mode
+		switch msg.String() {
+		case "q", "escape":
 			return m, func() tea.Msg { return docBrowserExitMsg{} }
 
-		case "backspace":
+		case "/":
+			// Enter filter mode on the active column
 			col := &m.columns[m.activeCol]
-			if len(col.filter) > 0 {
-				col.filter = col.filter[:len(col.filter)-1]
-				col.applyFilter()
-				m.expandSelection()
+			if len(col.items) > 0 {
+				m.filtering = true
 			}
 			return m, nil
 
-		case "left":
+		case "left", "h":
 			if m.activeCol > 0 {
 				// Clear filter on current column when leaving
 				m.columns[m.activeCol].filter = ""
 				m.columns[m.activeCol].applyFilter()
+				m.filtering = false
 				m.activeCol--
 				m.expandSelection()
 			}
 			return m, nil
 
-		case "right", "enter":
+		case "right", "l", "enter":
 			// Move into the next navigable column (skip detail columns)
 			for i := m.activeCol + 1; i < len(m.columns); i++ {
 				if len(m.columns[i].items) > 0 {
@@ -457,7 +510,7 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "up":
+		case "up", "k":
 			col := &m.columns[m.activeCol]
 			if col.index > 0 {
 				col.index--
@@ -466,7 +519,7 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "down":
+		case "down", "j":
 			col := &m.columns[m.activeCol]
 			vis := col.visible()
 			if col.index < len(vis)-1 {
@@ -486,19 +539,6 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-
-		default:
-			// Printable characters filter the active column
-			r := msg.String()
-			if len(r) == 1 && r[0] >= 32 && r[0] < 127 {
-				col := &m.columns[m.activeCol]
-				if len(col.items) > 0 {
-					col.filter += r
-					col.applyFilter()
-					m.expandSelection()
-				}
-				return m, nil
-			}
 		}
 
 	case tea.MouseMsg:
@@ -700,13 +740,10 @@ func (m docBrowserModel) View() tea.View {
 		isActive := ci == m.activeCol
 
 		var lines []string
+		isFiltering := m.filtering && isActive
 
-		// Title (with filter indicator if active)
+		// Title
 		t := col.title
-		if col.filter != "" {
-			filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-			t = truncate(t, w-len(col.filter)-3) + " " + filterStyle.Render("/"+col.filter)
-		}
 		if isActive {
 			lines = append(lines, activeTitle.Render(truncate(t, w)))
 		} else {
@@ -715,9 +752,30 @@ func (m docBrowserModel) View() tea.View {
 		lines = append(lines, sepStyle.Render(strings.Repeat("─", w)))
 
 		vis := col.visible()
+		filterLineH := 0
+		if len(col.items) > 0 && (isFiltering || col.filter != "") {
+			// Show filter input line, reducing available list height
+			filterLineH = 1
+			filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+			filterText := "/" + col.filter
+			if isFiltering {
+				filterText += "█" // cursor
+			}
+			countText := dimStyle.Render(fmt.Sprintf(" %d/%d", len(vis), len(col.items)))
+			countW := lipgloss.Width(countText)
+			filterDisp := filterStyle.Render(truncate(filterText, w-countW))
+			dispW := lipgloss.Width(filterDisp)
+			gap := w - dispW - countW
+			if gap < 0 {
+				gap = 0
+			}
+			lines = append(lines, filterDisp+strings.Repeat(" ", gap)+countText)
+		}
+
+		itemListH := listH - filterLineH
 		if len(col.items) > 0 {
 			// Navigable column: show item list
-			end := col.offset + listH
+			end := col.offset + itemListH
 			if end > len(vis) {
 				end = len(vis)
 			}
@@ -835,7 +893,7 @@ func (m docBrowserModel) View() tea.View {
 	breadcrumb := dimStyle.Render(strings.Join(crumbs, " → "))
 
 	// Help
-	help := dimStyle.Render("↑/↓ navigate • ←/→ drill in/out • type to filter • Esc clear/exit • q quit")
+	help := dimStyle.Render("↑/↓/hjkl navigate • / filter • Tab cycle • q/Esc exit")
 
 	content := breadcrumb + "\n" + strings.Join(rows, "\n") + "\n" + help
 
