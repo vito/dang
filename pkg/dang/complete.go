@@ -108,9 +108,9 @@ func inferReceiverType(ctx context.Context, typeEnv Env, expr string) hm.Type {
 		return nil
 	}
 
-	// Type-check the expression
+	// Type-check the expression in a cloned env to avoid mutating the original
 	fresh := hm.NewSimpleFresher()
-	_, err = InferFormsWithPhases(ctx, block.Forms, typeEnv.Clone().(*Module), fresh)
+	_, err = InferFormsWithPhases(ctx, block.Forms, typeEnv.Clone(), fresh)
 	if err != nil {
 		return nil
 	}
