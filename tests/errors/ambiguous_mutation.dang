@@ -1,0 +1,7 @@
+# Test that bare Mutation is ambiguous when multiple imports provide it
+
+import Test
+import Other
+
+# This should fail because both Test and Other provide Mutation
+let deleted = Mutation.deleteUser(id: "99")

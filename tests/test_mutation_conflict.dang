@@ -1,0 +1,7 @@
+import Test
+import Other
+
+# Both Test and Other provide Mutation — disambiguate with qualified access
+let alice = Test.Mutation.createUser(input: Test.CreateUserInput(name: "Alice", email: "alice@example.com"))
+assert { alice.name == "Alice" }
+assert { Test.Mutation.deleteUser(id: alice.id) == true }

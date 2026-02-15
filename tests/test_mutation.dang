@@ -9,5 +9,6 @@ assert { alice.status == Status.ACTIVE }
 # Create another user and select a scalar field directly
 assert { Mutation.createUser(input: CreateUserInput(name: "Bob", email: "bob@example.com")).name == "Bob" }
 
-# Delete a user (returns scalar directly)
-assert { Mutation.deleteUser(id: "1") == true }
+# Delete a created user (returns scalar directly)
+# Use alice's id to avoid mutating seed data used by other tests
+assert { Mutation.deleteUser(id: alice.id) == true }
