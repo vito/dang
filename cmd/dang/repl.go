@@ -32,11 +32,12 @@ type replModel struct {
 	evalEnv dang.EvalEnv
 
 	// UI state
-	textInput textinput.Model
-	output    []styledLine // scrollback buffer
-	width     int
-	height    int
-	quitting  bool
+	textInput     textinput.Model
+	pendingOutput []string // lines to flush via tea.Println
+	width         int
+	height        int
+	quitting      bool
+	clearScreen   bool
 
 	// Completion state
 	completions    []string // all available completions
@@ -61,17 +62,11 @@ type replModel struct {
 
 // evalResultMsg is sent when a background evaluation completes.
 type evalResultMsg struct {
-	output []styledLine // lines to append
+	output []string // rendered lines to print
 }
 
 // evalCancelledMsg is sent when an evaluation is cancelled.
 type evalCancelledMsg struct{}
-
-// styledLine holds a line of output with optional styling.
-type styledLine struct {
-	text  string
-	style lipgloss.Style
-}
 
 // Styles
 var (
@@ -128,7 +123,14 @@ func newREPLModel(ctx context.Context, schema *introspection.Schema, client grap
 }
 
 func (m replModel) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(
+		textinput.Blink,
+		tea.Println(welcomeStyle.Render("Welcome to Dang REPL v0.1.0")),
+		tea.Println(dimStyle.Render(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types)))),
+		tea.Println(""),
+		tea.Println(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit")),
+		tea.Println(""),
+	)
 }
 
 func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -142,16 +144,19 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case evalResultMsg:
 		m.evaluating = false
 		m.cancelEval = nil
-		m.output = append(m.output, msg.output...)
 		// Refresh completions since env may have changed
 		m.refreshCompletions()
-		return m, nil
+		// Print result lines above the prompt
+		var cmds []tea.Cmd
+		for _, line := range msg.output {
+			cmds = append(cmds, tea.Println(line))
+		}
+		return m, tea.Batch(cmds...)
 
 	case evalCancelledMsg:
 		m.evaluating = false
 		m.cancelEval = nil
-		m.appendOutput("cancelled", errorStyle)
-		return m, nil
+		return m, tea.Println(errorStyle.Render("cancelled"))
 
 	case spinner.TickMsg:
 		if m.evaluating {
@@ -237,8 +242,8 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Add to history
 			m.addHistory(line)
 
-			// Show the input in output
-			m.appendOutput(promptStyle.Render("dang> ")+line, lipgloss.NewStyle())
+			// Echo the input above the prompt
+			echoCmd := tea.Println(promptStyle.Render("dang> ") + line)
 
 			// Clear input immediately
 			m.textInput.SetValue("")
@@ -247,15 +252,23 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Commands run synchronously (they're fast)
 			if strings.HasPrefix(line, ":") {
 				m.handleCommand(line[1:])
+				flushCmd := m.flushOutput()
 				if m.quitting {
-					return m, tea.Quit
+					return m, tea.Batch(echoCmd, flushCmd, tea.Quit)
+				}
+				if m.clearScreen {
+					m.clearScreen = false
+					return m, func() tea.Msg { return tea.ClearScreen() }
 				}
 				m.updateCompletionMenu()
-				return m, nil
+				return m, tea.Batch(echoCmd, flushCmd)
 			}
 
 			// Expressions run asynchronously with a spinner
-			return m, m.startEval(line)
+			evalCmd := m.startEval(line)
+			// startEval may produce synchronous errors (parse/type)
+			flushCmd := m.flushOutput()
+			return m, tea.Batch(echoCmd, flushCmd, evalCmd)
 
 		case "up":
 			if !m.menuVisible {
@@ -271,8 +284,7 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "ctrl+l":
-			m.output = nil
-			return m, nil
+			return m, func() tea.Msg { return tea.ClearScreen() }
 		}
 	}
 
@@ -293,37 +305,6 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m replModel) View() tea.View {
 	var b strings.Builder
-	linesAbove := 0
-
-	// Welcome message if no output yet
-	if len(m.output) == 0 {
-		welcome := []string{
-			welcomeStyle.Render("Welcome to Dang REPL v0.1.0"),
-			dimStyle.Render(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types))),
-			"",
-			dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit"),
-			"",
-		}
-		for _, line := range welcome {
-			b.WriteString(line + "\n")
-			linesAbove++
-		}
-	}
-
-	// Show recent output (keep last N lines to avoid flooding)
-	maxLines := 50
-	if m.height > 0 {
-		maxLines = max(10, m.height-5)
-	}
-	startIdx := 0
-	if len(m.output) > maxLines {
-		startIdx = len(m.output) - maxLines
-	}
-	for i := startIdx; i < len(m.output); i++ {
-		line := m.output[i]
-		b.WriteString(line.style.Render(line.text) + "\n")
-		linesAbove++
-	}
 
 	// Input line or spinner
 	if m.evaluating {
@@ -340,11 +321,7 @@ func (m replModel) View() tea.View {
 
 	v := tea.NewView(b.String())
 	if !m.evaluating {
-		c := m.textInput.Cursor()
-		if c != nil {
-			c.Y += linesAbove
-		}
-		v.Cursor = c
+		v.Cursor = m.textInput.Cursor()
 	}
 	return v
 }
@@ -621,7 +598,7 @@ func (m *replModel) startEval(expr string) tea.Cmd {
 
 	// Start spinner and evaluation concurrently
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
-		var output []styledLine
+		var output []string
 
 		// Capture stdout from print() calls
 		var stdoutBuf bytes.Buffer
@@ -639,29 +616,20 @@ func (m *replModel) startEval(expr string) tea.Cmd {
 			// Flush any captured stdout
 			if stdoutBuf.Len() > 0 {
 				for _, line := range strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n") {
-					output = append(output, styledLine{text: line, style: lipgloss.NewStyle()})
+					output = append(output, line)
 				}
 				stdoutBuf.Reset()
 			}
 
 			if err != nil {
-				output = append(output, styledLine{
-					text:  fmt.Sprintf("evaluation error: %v", err),
-					style: errorStyle,
-				})
+				output = append(output, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
 				return evalResultMsg{output: output}
 			}
 
-			output = append(output, styledLine{
-				text:  fmt.Sprintf("=> %s", val.String()),
-				style: resultStyle,
-			})
+			output = append(output, resultStyle.Render(fmt.Sprintf("=> %s", val.String())))
 
 			if debug {
-				output = append(output, styledLine{
-					text:  fmt.Sprintf("%# v", pretty.Formatter(val)),
-					style: dimStyle,
-				})
+				output = append(output, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
 			}
 		}
 
@@ -703,7 +671,7 @@ func (m *replModel) handleCommand(cmdLine string) {
 		m.quitting = true
 
 	case "clear":
-		m.output = nil
+		m.clearScreen = true
 
 	case "reset":
 		m.typeEnv = dang.NewEnv(m.schema)
@@ -991,14 +959,28 @@ func (m *replModel) findCommand(args []string) {
 	}
 }
 
-// appendOutput adds a line to the output buffer.
+// appendOutput adds a styled line to the pending output buffer.
 func (m *replModel) appendOutput(text string, style lipgloss.Style) {
-	m.output = append(m.output, styledLine{text: text, style: style})
+	m.pendingOutput = append(m.pendingOutput, style.Render(text))
 }
 
-// appendError adds an error line to the output buffer.
+// appendError adds an error line to the pending output buffer.
 func (m *replModel) appendError(text string) {
-	m.output = append(m.output, styledLine{text: text, style: errorStyle})
+	m.pendingOutput = append(m.pendingOutput, errorStyle.Render(text))
+}
+
+// flushOutput returns a tea.Cmd that prints all pending output lines above
+// the Bubbletea-managed area, then clears the buffer.
+func (m *replModel) flushOutput() tea.Cmd {
+	if len(m.pendingOutput) == 0 {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, line := range m.pendingOutput {
+		cmds = append(cmds, tea.Println(line))
+	}
+	m.pendingOutput = nil
+	return tea.Batch(cmds...)
 }
 
 // History management
