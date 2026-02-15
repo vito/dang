@@ -14,12 +14,14 @@ import (
 
 // docColumn represents one column in the Miller-column browser.
 type docColumn struct {
-	title   string
-	doc     string     // doc string for the column header (type/module doc)
-	items   []docItem  // selectable items
-	index   int        // selected index
-	offset  int        // scroll offset
-	typeEnv dang.Env   // the env this column lists members of (nil for detail)
+	title        string
+	doc          string   // doc string for the column header (type/module doc)
+	items        []docItem // selectable items
+	index        int      // selected index
+	offset       int      // scroll offset (for item lists)
+	detailOffset int      // scroll offset (for detail panes)
+	detailLines  int      // total rendered detail lines
+	typeEnv      dang.Env // the env this column lists members of (nil for detail)
 }
 
 // docItem is a single entry in a column.
@@ -43,10 +45,6 @@ type docArg struct {
 type docBrowserModel struct {
 	columns   []docColumn // stack of columns
 	activeCol int         // which column is focused
-
-	// Detail pane scroll offset (scrolls independently of column selection)
-	detailOffset int
-	detailLines  int // total rendered detail lines (set during View)
 
 	width  int
 	height int
@@ -167,15 +165,11 @@ func unwrapType(t hm.Type) hm.Type {
 // expandSelection appends (or replaces) a column for the currently selected
 // item, and also a detail column if the item has docs/args.
 func (m *docBrowserModel) expandSelection() {
-	// Reset detail scroll when selection changes
-	m.detailOffset = 0
-
 	// Trim columns to the right of the active one
 	m.columns = m.columns[:m.activeCol+1]
 
 	col := &m.columns[m.activeCol]
 	if col.index >= len(col.items) {
-		m.detailLines = 0
 		return
 	}
 	item := col.items[col.index]
@@ -184,7 +178,8 @@ func (m *docBrowserModel) expandSelection() {
 	detail := buildDetailColumn(item)
 	m.columns = append(m.columns, detail)
 
-	m.recomputeDetailLines(item)
+	// Precompute detail line count for the new column
+	m.recomputeDetailLines(&m.columns[len(m.columns)-1], item)
 
 	// If the item has a return env, add a members column too
 	if item.retEnv != nil {
@@ -301,20 +296,20 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				col.offset = maxOffset
 			}
 		} else {
-			// Detail column: scroll the detail pane
-			if item, ok := m.selectedDetailItem(); ok {
-				m.recomputeDetailLines(item)
+			// Detail column: scroll this specific detail pane
+			if item, ok := m.detailItemForColumn(colIdx); ok {
+				m.recomputeDetailLines(col, item)
 			}
-			m.detailOffset += delta
-			maxOffset := m.detailLines - m.listHeight()
+			col.detailOffset += delta
+			maxOffset := col.detailLines - m.listHeight()
 			if maxOffset < 0 {
 				maxOffset = 0
 			}
-			if m.detailOffset < 0 {
-				m.detailOffset = 0
+			if col.detailOffset < 0 {
+				col.detailOffset = 0
 			}
-			if m.detailOffset > maxOffset {
-				m.detailOffset = maxOffset
+			if col.detailOffset > maxOffset {
+				col.detailOffset = maxOffset
 			}
 		}
 		return m, nil
@@ -376,25 +371,21 @@ func (m docBrowserModel) detailColWidth() int {
 	return lastColW
 }
 
-// recomputeDetailLines recalculates detailLines using the actual column width.
-func (m *docBrowserModel) recomputeDetailLines(item docItem) {
+// recomputeDetailLines recalculates detailLines on a column using the actual column width.
+func (m *docBrowserModel) recomputeDetailLines(col *docColumn, item docItem) {
 	w := m.detailColWidth()
 	if w <= 0 {
 		w = 80
 	}
 	noStyle := lipgloss.NewStyle()
-	m.detailLines = len(m.renderDetail(item, w, noStyle, noStyle, noStyle, noStyle))
+	col.detailLines = len(m.renderDetail(item, w, noStyle, noStyle, noStyle, noStyle))
 }
 
-// selectedDetailItem returns the currently selected item that the detail pane shows.
-func (m docBrowserModel) selectedDetailItem() (docItem, bool) {
-	col := m.columns[m.activeCol]
-	if col.index < len(col.items) {
-		return col.items[col.index], true
-	}
-	// Check previous column if active column is non-navigable
-	if m.activeCol > 0 {
-		prev := m.columns[m.activeCol-1]
+// detailItemForColumn returns the item whose detail is shown in column colIdx.
+// Detail columns are placed right after the navigable column whose selection they describe.
+func (m docBrowserModel) detailItemForColumn(colIdx int) (docItem, bool) {
+	if colIdx > 0 {
+		prev := m.columns[colIdx-1]
 		if prev.index < len(prev.items) {
 			return prev.items[prev.index], true
 		}
@@ -515,31 +506,30 @@ func (m docBrowserModel) View() tea.View {
 					item := prevCol.items[prevCol.index]
 					detailContent := m.renderDetail(item, w, docTextStyle, argNameStyle, argTypeStyle, dimStyle)
 
-					// Apply scroll offset
-					contentH := listH // available height after header
-					start := m.detailOffset
-					if start > len(detailContent) {
-						start = len(detailContent)
+					// Apply per-column scroll offset
+					contentH := listH
+					dOffset := col.detailOffset
+					if dOffset > len(detailContent) {
+						dOffset = len(detailContent)
 					}
-					end := start + contentH
+					end := dOffset + contentH
 					if end > len(detailContent) {
 						end = len(detailContent)
 					}
-					visible := detailContent[start:end]
+					visible := detailContent[dOffset:end]
 					lines = append(lines, visible...)
 
 					// Show scroll indicator
-					if m.detailLines > contentH {
+					if len(detailContent) > contentH {
 						scrollPct := ""
-						if m.detailOffset == 0 {
+						if dOffset == 0 {
 							scrollPct = "top"
-						} else if m.detailOffset >= m.detailLines-contentH {
+						} else if dOffset >= len(detailContent)-contentH {
 							scrollPct = "end"
 						} else {
-							pct := m.detailOffset * 100 / (m.detailLines - contentH)
+							pct := dOffset * 100 / (len(detailContent) - contentH)
 							scrollPct = fmt.Sprintf("%d%%", pct)
 						}
-						// Replace last line with scroll indicator
 						if len(lines) >= listH+2 {
 							lines[listH+1] = dimStyle.Render(fmt.Sprintf("── scroll: %s ──", scrollPct))
 						}
