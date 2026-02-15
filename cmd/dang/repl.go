@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -38,11 +39,16 @@ type replModel struct {
 	quitting  bool
 
 	// Completion state
-	completions     []string // all available completions
-	menuVisible     bool     // whether the completion menu is shown
-	menuItems       []string // current filtered menu items
-	menuIndex       int      // selected item in menu
-	menuMaxVisible  int      // max items shown at once
+	completions    []string // all available completions
+	menuVisible    bool     // whether the completion menu is shown
+	menuItems      []string // current filtered menu items
+	menuIndex      int      // selected item in menu
+	menuMaxVisible int      // max items shown at once
+
+	// Evaluation state
+	evaluating bool               // true while an expression is being evaluated
+	spinner    spinner.Model      // spinner shown during evaluation
+	cancelEval context.CancelFunc // cancels the in-flight evaluation
 
 	// History
 	history      []string
@@ -52,6 +58,14 @@ type replModel struct {
 	// Context for evaluation
 	ctx context.Context
 }
+
+// evalResultMsg is sent when a background evaluation completes.
+type evalResultMsg struct {
+	output []styledLine // lines to append
+}
+
+// evalCancelledMsg is sent when an evaluation is cancelled.
+type evalCancelledMsg struct{}
 
 // styledLine holds a line of output with optional styling.
 type styledLine struct {
@@ -87,6 +101,9 @@ func newREPLModel(ctx context.Context, schema *introspection.Schema, client grap
 	s.Focused.Suggestion = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	ti.SetStyles(s)
 
+	sp := spinner.New(spinner.WithSpinner(spinner.Dot))
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+
 	m := replModel{
 		schema:         schema,
 		client:         client,
@@ -94,6 +111,7 @@ func newREPLModel(ctx context.Context, schema *introspection.Schema, client grap
 		typeEnv:        typeEnv,
 		evalEnv:        evalEnv,
 		textInput:      ti,
+		spinner:        sp,
 		menuMaxVisible: 8,
 		historyIndex:   -1,
 		historyFile:    "/tmp/dang_history",
@@ -121,7 +139,41 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.SetWidth(msg.Width - lipgloss.Width(promptStyle.Render("dang> ")) - 1)
 		return m, nil
 
+	case evalResultMsg:
+		m.evaluating = false
+		m.cancelEval = nil
+		m.output = append(m.output, msg.output...)
+		// Refresh completions since env may have changed
+		m.refreshCompletions()
+		return m, nil
+
+	case evalCancelledMsg:
+		m.evaluating = false
+		m.cancelEval = nil
+		m.appendOutput("cancelled", errorStyle)
+		return m, nil
+
+	case spinner.TickMsg:
+		if m.evaluating {
+			var cmd tea.Cmd
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
+		// While evaluating, only handle Ctrl+C to cancel
+		if m.evaluating {
+			if msg.String() == "ctrl+c" {
+				if m.cancelEval != nil {
+					m.cancelEval()
+				}
+				return m, nil
+			}
+			// Ignore all other keys during evaluation
+			return m, nil
+		}
+
 		// Handle menu navigation when menu is visible
 		if m.menuVisible {
 			switch msg.String() {
@@ -188,19 +240,22 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Show the input in output
 			m.appendOutput(promptStyle.Render("dang> ")+line, lipgloss.NewStyle())
 
-			// Process the line
-			m.processLine(line)
-
-			// Check if a command requested quit
-			if m.quitting {
-				return m, tea.Quit
-			}
-
-			// Clear input
+			// Clear input immediately
 			m.textInput.SetValue("")
 			m.menuVisible = false
-			m.updateCompletionMenu()
-			return m, nil
+
+			// Commands run synchronously (they're fast)
+			if strings.HasPrefix(line, ":") {
+				m.handleCommand(line[1:])
+				if m.quitting {
+					return m, tea.Quit
+				}
+				m.updateCompletionMenu()
+				return m, nil
+			}
+
+			// Expressions run asynchronously with a spinner
+			return m, m.startEval(line)
 
 		case "up":
 			if !m.menuVisible {
@@ -219,6 +274,11 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.output = nil
 			return m, nil
 		}
+	}
+
+	// Don't process text input while evaluating
+	if m.evaluating {
+		return m, nil
 	}
 
 	// Update text input
@@ -265,21 +325,27 @@ func (m replModel) View() tea.View {
 		linesAbove++
 	}
 
-	// Input line
-	b.WriteString(m.textInput.View())
+	// Input line or spinner
+	if m.evaluating {
+		b.WriteString(m.spinner.View() + dimStyle.Render(" Evaluating... (Ctrl+C to cancel)"))
+	} else {
+		b.WriteString(m.textInput.View())
 
-	// Completion menu below input
-	if m.menuVisible && len(m.menuItems) > 0 {
-		b.WriteString("\n")
-		b.WriteString(m.renderMenu())
+		// Completion menu below input
+		if m.menuVisible && len(m.menuItems) > 0 {
+			b.WriteString("\n")
+			b.WriteString(m.renderMenu())
+		}
 	}
 
 	v := tea.NewView(b.String())
-	c := m.textInput.Cursor()
-	if c != nil {
-		c.Y += linesAbove
+	if !m.evaluating {
+		c := m.textInput.Cursor()
+		if c != nil {
+			c.Y += linesAbove
+		}
+		v.Cursor = c
 	}
-	v.Cursor = c
 	return v
 }
 
@@ -518,22 +584,14 @@ func (m *replModel) refreshCompletions() {
 	m.textInput.SetSuggestions(m.completions)
 }
 
-// processLine processes a line of REPL input.
-func (m *replModel) processLine(line string) {
-	if strings.HasPrefix(line, ":") {
-		m.handleCommand(line[1:])
-		return
-	}
-	m.evaluateExpression(line)
-}
-
-// evaluateExpression evaluates a Dang expression.
-func (m *replModel) evaluateExpression(expr string) {
-	// Parse the expression
+// startEval begins asynchronous evaluation of a Dang expression.
+// Returns a tea.Cmd that runs the evaluation in a goroutine.
+func (m *replModel) startEval(expr string) tea.Cmd {
+	// Parse synchronously (fast) so we can show errors immediately
 	result, err := dang.Parse("repl", []byte(expr))
 	if err != nil {
 		m.appendError(fmt.Sprintf("parse error: %v", err))
-		return
+		return nil
 	}
 
 	forms := result.(*dang.ModuleBlock).Forms
@@ -544,43 +602,71 @@ func (m *replModel) evaluateExpression(expr string) {
 		}
 	}
 
-	// Type inference
+	// Type inference synchronously (fast)
 	fresh := hm.NewSimpleFresher()
 	_, err = dang.InferFormsWithPhases(m.ctx, forms, m.typeEnv, fresh)
 	if err != nil {
 		m.appendError(fmt.Sprintf("type error: %v", err))
-		return
+		return nil
 	}
 
-	// Capture stdout from print() calls
-	var stdoutBuf bytes.Buffer
-	evalCtx := ioctx.StdoutToContext(m.ctx, &stdoutBuf)
-	evalCtx = ioctx.StderrToContext(evalCtx, &stdoutBuf)
+	// Set up cancellable context for evaluation
+	evalCtx, cancel := context.WithCancel(m.ctx)
+	m.evaluating = true
+	m.cancelEval = cancel
 
-	for _, node := range forms {
-		val, err := dang.EvalNode(evalCtx, m.evalEnv, node)
+	// Capture references needed by the goroutine
+	evalEnv := m.evalEnv
+	debug := m.debug
 
-		// Flush any captured stdout
-		if stdoutBuf.Len() > 0 {
-			for _, line := range strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n") {
-				m.appendOutput(line, lipgloss.NewStyle())
+	// Start spinner and evaluation concurrently
+	return tea.Batch(m.spinner.Tick, func() tea.Msg {
+		var output []styledLine
+
+		// Capture stdout from print() calls
+		var stdoutBuf bytes.Buffer
+		ctx := ioctx.StdoutToContext(evalCtx, &stdoutBuf)
+		ctx = ioctx.StderrToContext(ctx, &stdoutBuf)
+
+		for _, node := range forms {
+			val, err := dang.EvalNode(ctx, evalEnv, node)
+
+			// Check for cancellation
+			if evalCtx.Err() != nil {
+				return evalCancelledMsg{}
 			}
-			stdoutBuf.Reset()
+
+			// Flush any captured stdout
+			if stdoutBuf.Len() > 0 {
+				for _, line := range strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n") {
+					output = append(output, styledLine{text: line, style: lipgloss.NewStyle()})
+				}
+				stdoutBuf.Reset()
+			}
+
+			if err != nil {
+				output = append(output, styledLine{
+					text:  fmt.Sprintf("evaluation error: %v", err),
+					style: errorStyle,
+				})
+				return evalResultMsg{output: output}
+			}
+
+			output = append(output, styledLine{
+				text:  fmt.Sprintf("=> %s", val.String()),
+				style: resultStyle,
+			})
+
+			if debug {
+				output = append(output, styledLine{
+					text:  fmt.Sprintf("%# v", pretty.Formatter(val)),
+					style: dimStyle,
+				})
+			}
 		}
 
-		if err != nil {
-			m.appendError(fmt.Sprintf("evaluation error: %v", err))
-			return
-		}
-		m.appendOutput(fmt.Sprintf("=> %s", val.String()), resultStyle)
-
-		if m.debug {
-			m.appendOutput(fmt.Sprintf("%# v", pretty.Formatter(val)), dimStyle)
-		}
-	}
-
-	// Refresh completions since env may have changed
-	m.refreshCompletions()
+		return evalResultMsg{output: output}
+	})
 }
 
 // handleCommand handles REPL :commands.
