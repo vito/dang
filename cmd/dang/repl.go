@@ -13,23 +13,20 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/Khan/genqlient/graphql"
 	"github.com/kr/pretty"
 
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 )
 
 // replModel is the Bubbletea model for the Dang REPL.
 type replModel struct {
 	// Dang state
-	schema  *introspection.Schema
-	client  graphql.Client
-	debug   bool
-	typeEnv dang.Env
-	evalEnv dang.EvalEnv
+	importConfigs []dang.ImportConfig
+	debug         bool
+	typeEnv       dang.Env
+	evalEnv       dang.EvalEnv
 
 	// UI state
 	textInput     textinput.Model
@@ -83,9 +80,8 @@ var (
 	dimStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 
-func newREPLModel(ctx context.Context, schema *introspection.Schema, client graphql.Client, debug bool) replModel {
-	typeEnv := dang.NewEnv(schema)
-	evalEnv := dang.NewEvalEnvWithSchema(typeEnv, client, schema)
+func newREPLModel(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) replModel {
+	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
 
 	ti := textinput.New()
 	ti.Prompt = promptStyle.Render("dang> ")
@@ -103,13 +99,12 @@ func newREPLModel(ctx context.Context, schema *introspection.Schema, client grap
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
 	m := replModel{
-		schema:         schema,
-		client:         client,
-		debug:          debug,
-		typeEnv:        typeEnv,
-		evalEnv:        evalEnv,
-		textInput:      ti,
-		spinner:        sp,
+		importConfigs: importConfigs,
+		debug:         debug,
+		typeEnv:       typeEnv,
+		evalEnv:       evalEnv,
+		textInput:     ti,
+		spinner:       sp,
 		menuMaxVisible: 8,
 		historyIndex:   -1,
 		historyFile:    "/tmp/dang_history",
@@ -126,15 +121,26 @@ func newREPLModel(ctx context.Context, schema *introspection.Schema, client grap
 }
 
 func (m replModel) Init() tea.Cmd {
+	welcomePrints := []tea.Cmd{
+		tea.Println(welcomeStyle.Render("Welcome to Dang REPL v0.1.0")),
+	}
+	if len(m.importConfigs) > 0 {
+		var names []string
+		for _, ic := range m.importConfigs {
+			names = append(names, ic.Name)
+		}
+		welcomePrints = append(welcomePrints,
+			tea.Println(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", ")))),
+		)
+	}
+	welcomePrints = append(welcomePrints,
+		tea.Println(""),
+		tea.Println(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit")),
+		tea.Println(""),
+	)
 	return tea.Batch(
 		textinput.Blink,
-		tea.Sequence(
-			tea.Println(welcomeStyle.Render("Welcome to Dang REPL v0.1.0")),
-			tea.Println(dimStyle.Render(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types)))),
-			tea.Println(""),
-			tea.Println(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit")),
-			tea.Println(""),
-		),
+		tea.Sequence(welcomePrints...),
 	)
 }
 
@@ -562,25 +568,15 @@ func (m *replModel) buildCompletions() []string {
 		add(kw)
 	}
 
-	// Environment bindings (from type env)
+	// Environment bindings (from type env, includes all imports)
 	for name := range m.typeEnv.Bindings(dang.PublicVisibility) {
 		add(name)
 	}
 
-	// GraphQL schema types (exclude ID scalar types)
-	for _, t := range m.schema.Types {
-		if !isBuiltinType(t.Name) && !isIDType(t.Name) {
-			add(t.Name)
-		}
-	}
-
-	// Query type fields (top-level functions)
-	if m.schema.QueryType.Name != "" {
-		queryType := findType(m.schema, m.schema.QueryType.Name)
-		if queryType != nil {
-			for _, field := range queryType.Fields {
-				add(field.Name)
-			}
+	// Named types
+	for name := range m.typeEnv.NamedTypes() {
+		if !isIDType(name) {
+			add(name)
 		}
 	}
 
@@ -684,19 +680,17 @@ func (m *replModel) handleCommand(cmdLine string) {
 	switch cmd {
 	case "help":
 		m.appendOutput("Available commands:", lipgloss.NewStyle())
-		m.appendOutput("  :help      - Show this help message", dimStyle)
+		m.appendOutput("  :help      - Show this help", dimStyle)
 		m.appendOutput("  :exit      - Exit the REPL", dimStyle)
-		m.appendOutput("  :quit      - Exit the REPL", dimStyle)
-		m.appendOutput("  :clear     - Clear the screen", dimStyle)
-		m.appendOutput("  :reset     - Reset the evaluation environment", dimStyle)
-		m.appendOutput("  :debug     - Toggle debug mode", dimStyle)
-		m.appendOutput("  :env       - Show current environment bindings", dimStyle)
-		m.appendOutput("  :version   - Show version information", dimStyle)
-		m.appendOutput("  :schema    - Show GraphQL schema information", dimStyle)
-		m.appendOutput("  :type      - Show type of an expression", dimStyle)
-		m.appendOutput("  :inspect   - Inspect a GraphQL type", dimStyle)
-		m.appendOutput("  :find      - Find functions/types by pattern", dimStyle)
 		m.appendOutput("  :doc       - Interactive API browser", dimStyle)
+		m.appendOutput("  :env       - Show environment bindings", dimStyle)
+		m.appendOutput("  :type      - Show type of an expression", dimStyle)
+		m.appendOutput("  :find      - Find functions/types by pattern", dimStyle)
+		m.appendOutput("  :reset     - Reset the environment", dimStyle)
+		m.appendOutput("  :clear     - Clear the screen", dimStyle)
+		m.appendOutput("  :debug     - Toggle debug mode", dimStyle)
+		m.appendOutput("  :version   - Show version info", dimStyle)
+		m.appendOutput("  :quit      - Exit the REPL", dimStyle)
 		m.appendOutput("", lipgloss.NewStyle())
 		m.appendOutput("Type Dang expressions to evaluate them.", dimStyle)
 		m.appendOutput("Tab for completion, ↑/↓ for history, Ctrl+L to clear.", dimStyle)
@@ -708,8 +702,7 @@ func (m *replModel) handleCommand(cmdLine string) {
 		m.clearScreen = true
 
 	case "reset":
-		m.typeEnv = dang.NewEnv(m.schema)
-		m.evalEnv = dang.NewEvalEnvWithSchema(m.typeEnv, m.client, m.schema)
+		m.typeEnv, m.evalEnv = buildEnvFromImports(m.importConfigs)
 		m.refreshCompletions()
 		m.appendOutput("Environment reset.", resultStyle)
 
@@ -726,22 +719,20 @@ func (m *replModel) handleCommand(cmdLine string) {
 
 	case "version":
 		m.appendOutput("Dang REPL v0.1.0", resultStyle)
-		m.appendOutput(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types)), dimStyle)
-
-	case "schema":
-		m.schemaCommand(args)
+		if len(m.importConfigs) > 0 {
+			var names []string
+			for _, ic := range m.importConfigs {
+				names = append(names, ic.Name)
+			}
+			m.appendOutput(fmt.Sprintf("Imports: %s", strings.Join(names, ", ")), dimStyle)
+		} else {
+			m.appendOutput("No imports configured (create a dang.toml)", dimStyle)
+		}
 
 	case "type":
 		m.typeCommand(args)
 
-	case "inspect":
-		if len(args) == 0 {
-			m.appendOutput("Usage: :inspect <type-name>", dimStyle)
-			return
-		}
-		m.inspectTypeByName(args[0])
-
-	case "find":
+	case "find", "search":
 		m.findCommand(args)
 
 	case "history":
@@ -775,80 +766,27 @@ func (m *replModel) envCommand(args []string) {
 	}
 
 	m.appendOutput("Current environment bindings:", lipgloss.NewStyle())
-	m.appendOutput(fmt.Sprintf("Connected to GraphQL API with %d types", len(m.schema.Types)), dimStyle)
 	m.appendOutput("", lipgloss.NewStyle())
 
-	m.appendOutput("Built-in functions:", lipgloss.NewStyle())
-	m.appendOutput("  print(value: a) -> Null", dimStyle)
-	m.appendOutput("", lipgloss.NewStyle())
-
-	if m.schema.QueryType.Name != "" {
-		queryType := findType(m.schema, m.schema.QueryType.Name)
-		if queryType != nil && len(queryType.Fields) > 0 {
-			m.appendOutput("Global functions (Query type):", lipgloss.NewStyle())
-			count := 0
-			for _, field := range queryType.Fields {
-				if filter != "" && !strings.Contains(strings.ToLower(field.Name), strings.ToLower(filter)) {
-					continue
-				}
-				if !showAll && count >= 10 {
-					m.appendOutput(fmt.Sprintf("  ... and %d more (use ':env all' to see all)", len(queryType.Fields)-count), dimStyle)
-					break
-				}
-				m.appendOutput(fmt.Sprintf("  %s", formatFieldSignature(field)), dimStyle)
-				count++
-			}
-			m.appendOutput("", lipgloss.NewStyle())
+	count := 0
+	for name, scheme := range m.typeEnv.Bindings(dang.PublicVisibility) {
+		if filter != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
+			continue
 		}
-	}
-}
-
-func (m *replModel) schemaCommand(args []string) {
-	if len(args) > 0 {
-		m.inspectTypeByName(args[0])
-		return
-	}
-
-	m.appendOutput("GraphQL Schema Overview:", lipgloss.NewStyle())
-	m.appendOutput(fmt.Sprintf("Query Type: %s", m.schema.QueryType.Name), dimStyle)
-	if m.schema.Mutation() != nil && m.schema.Mutation().Name != "" {
-		m.appendOutput(fmt.Sprintf("Mutation Type: %s", m.schema.Mutation().Name), dimStyle)
-	}
-	m.appendOutput(fmt.Sprintf("Total Types: %d", len(m.schema.Types)), dimStyle)
-	m.appendOutput("", lipgloss.NewStyle())
-
-	objects, _, enums, scalars, _ := categorizeTypes(m.schema.Types)
-
-	m.appendOutput(fmt.Sprintf("Object Types (%d):", len(objects)), lipgloss.NewStyle())
-	for i, t := range objects {
-		if i >= 10 {
-			m.appendOutput(fmt.Sprintf("  ... and %d more", len(objects)-10), dimStyle)
+		if !showAll && count >= 20 {
+			m.appendOutput("  ... use ':env all' to see all", dimStyle)
 			break
 		}
-		m.appendOutput(fmt.Sprintf("  %s (%d fields)", t.Name, len(t.Fields)), dimStyle)
-	}
-
-	if len(enums) > 0 {
-		m.appendOutput(fmt.Sprintf("\nEnum Types (%d):", len(enums)), lipgloss.NewStyle())
-		for i, t := range enums {
-			if i >= 5 {
-				m.appendOutput(fmt.Sprintf("  ... and %d more", len(enums)-5), dimStyle)
-				break
-			}
-			m.appendOutput(fmt.Sprintf("  %s", t.Name), dimStyle)
+		t, _ := scheme.Type()
+		if t != nil {
+			m.appendOutput(fmt.Sprintf("  %s : %s", name, t), dimStyle)
+		} else {
+			m.appendOutput(fmt.Sprintf("  %s", name), dimStyle)
 		}
+		count++
 	}
-
-	if len(scalars) > 0 {
-		m.appendOutput(fmt.Sprintf("\nScalar Types (%d):", len(scalars)), lipgloss.NewStyle())
-		for _, t := range scalars {
-			if !isBuiltinType(t.Name) {
-				m.appendOutput(fmt.Sprintf("  %s", t.Name), dimStyle)
-			}
-		}
-	}
-
-	m.appendOutput("\nUse ':schema <type>' to inspect a specific type", dimStyle)
+	m.appendOutput("", lipgloss.NewStyle())
+	m.appendOutput("Use ':doc' for interactive API browsing", dimStyle)
 }
 
 func (m *replModel) typeCommand(args []string) {
@@ -887,41 +825,6 @@ func (m *replModel) typeCommand(args []string) {
 	}
 }
 
-func (m *replModel) inspectTypeByName(typeName string) {
-	gqlType := findType(m.schema, typeName)
-	if gqlType == nil {
-		m.appendError(fmt.Sprintf("type '%s' not found", typeName))
-		return
-	}
-
-	m.appendOutput(fmt.Sprintf("Type: %s (%s)", gqlType.Name, gqlType.Kind), lipgloss.NewStyle())
-	if gqlType.Description != "" {
-		m.appendOutput(fmt.Sprintf("  %s", gqlType.Description), dimStyle)
-	}
-
-	if len(gqlType.Fields) > 0 {
-		m.appendOutput(fmt.Sprintf("\nFields (%d):", len(gqlType.Fields)), lipgloss.NewStyle())
-		for _, field := range gqlType.Fields {
-			m.appendOutput(fmt.Sprintf("  %s", formatFieldSignature(field)), dimStyle)
-			if field.Description != "" {
-				// Truncate long descriptions
-				desc := field.Description
-				if len(desc) > 80 {
-					desc = desc[:77] + "..."
-				}
-				m.appendOutput(fmt.Sprintf("    %s", desc), hintStyle)
-			}
-		}
-	}
-
-	if len(gqlType.EnumValues) > 0 {
-		m.appendOutput(fmt.Sprintf("\nEnum Values (%d):", len(gqlType.EnumValues)), lipgloss.NewStyle())
-		for _, val := range gqlType.EnumValues {
-			m.appendOutput(fmt.Sprintf("  %s", val.Name), dimStyle)
-		}
-	}
-}
-
 func (m *replModel) findCommand(args []string) {
 	if len(args) == 0 {
 		m.appendOutput("Usage: :find <pattern>", dimStyle)
@@ -933,63 +836,33 @@ func (m *replModel) findCommand(args []string) {
 
 	found := false
 
-	// Search in global functions
-	if m.schema.QueryType.Name != "" {
-		queryType := findType(m.schema, m.schema.QueryType.Name)
-		if queryType != nil {
-			var matches []string
-			for _, field := range queryType.Fields {
-				if strings.Contains(strings.ToLower(field.Name), pattern) {
-					matches = append(matches, fmt.Sprintf("  %s", formatFieldSignature(field)))
-				}
+	// Search bindings
+	for name, scheme := range m.typeEnv.Bindings(dang.PublicVisibility) {
+		if strings.Contains(strings.ToLower(name), pattern) {
+			t, _ := scheme.Type()
+			if t != nil {
+				m.appendOutput(fmt.Sprintf("  %s : %s", name, t), dimStyle)
+			} else {
+				m.appendOutput(fmt.Sprintf("  %s", name), dimStyle)
 			}
-			if len(matches) > 0 {
-				m.appendOutput("\nGlobal Functions:", lipgloss.NewStyle())
-				for _, match := range matches {
-					m.appendOutput(match, dimStyle)
-				}
-				found = true
-			}
+			found = true
 		}
 	}
 
-	// Search in types
-	var typeMatches []string
-	for _, t := range m.schema.Types {
-		if strings.Contains(strings.ToLower(t.Name), pattern) && !isBuiltinType(t.Name) {
-			typeMatches = append(typeMatches, fmt.Sprintf("  %s (%s, %d fields)", t.Name, t.Kind, len(t.Fields)))
-		}
-	}
-	if len(typeMatches) > 0 {
-		m.appendOutput("\nTypes:", lipgloss.NewStyle())
-		for _, match := range typeMatches {
-			m.appendOutput(match, dimStyle)
-		}
-		found = true
-	}
-
-	// Search in type fields
-	var fieldMatches []string
-	for _, t := range m.schema.Types {
-		if isBuiltinType(t.Name) {
-			continue
-		}
-		for _, field := range t.Fields {
-			if strings.Contains(strings.ToLower(field.Name), pattern) {
-				fieldMatches = append(fieldMatches, fmt.Sprintf("  %s.%s", t.Name, formatFieldSignature(field)))
+	// Search named types
+	for name, env := range m.typeEnv.NamedTypes() {
+		if strings.Contains(strings.ToLower(name), pattern) {
+			doc := env.GetModuleDocString()
+			if doc != "" {
+				if len(doc) > 60 {
+					doc = doc[:57] + "..."
+				}
+				m.appendOutput(fmt.Sprintf("  %s — %s", name, doc), dimStyle)
+			} else {
+				m.appendOutput(fmt.Sprintf("  %s", name), dimStyle)
 			}
+			found = true
 		}
-	}
-	if len(fieldMatches) > 0 {
-		m.appendOutput("\nType Fields:", lipgloss.NewStyle())
-		for i, match := range fieldMatches {
-			if i >= 20 {
-				m.appendOutput(fmt.Sprintf("  ... and %d more matches", len(fieldMatches)-20), dimStyle)
-				break
-			}
-			m.appendOutput(match, dimStyle)
-		}
-		found = true
 	}
 
 	if !found {
@@ -1098,8 +971,66 @@ func replCommands() []string {
 }
 
 // runREPLBubbletea runs the REPL using Bubbletea v2.
-func runREPLBubbletea(ctx context.Context, schema *introspection.Schema, client graphql.Client, debug bool) error {
-	m := newREPLModel(ctx, schema, client, debug)
+// buildEnvFromImports creates type and eval environments from import configs,
+// mimicking what ImportDecl.Infer/Eval does for each configured import.
+func buildEnvFromImports(configs []dang.ImportConfig) (dang.Env, dang.EvalEnv) {
+	typeEnv := dang.NewPreludeEnv()
+
+	for _, config := range configs {
+		if config.Schema == nil {
+			continue
+		}
+
+		// Create a schema module (same as ImportDecl.Infer)
+		schemaModule := dang.NewEnv(config.Schema)
+
+		// Register as a named type so it can be accessed qualified (e.g. Dagger.container)
+		typeEnv.AddClass(config.Name, schemaModule)
+
+		// Add as a binding so the type checker can find it
+		typeEnv.Add(config.Name, hm.NewScheme(nil, dang.NonNull(schemaModule)))
+		typeEnv.SetVisibility(config.Name, dang.PublicVisibility)
+
+		// Import all symbols unqualified into the top-level env
+		for name, scheme := range schemaModule.Bindings(dang.PublicVisibility) {
+			if name == config.Name {
+				continue
+			}
+			if _, exists := typeEnv.LocalSchemeOf(name); exists {
+				continue // don't shadow existing bindings
+			}
+			typeEnv.Add(name, scheme)
+			typeEnv.SetVisibility(name, dang.PublicVisibility)
+		}
+
+		// Import named types too
+		for name, namedEnv := range schemaModule.NamedTypes() {
+			if name == config.Name {
+				continue
+			}
+			if _, exists := typeEnv.NamedType(name); exists {
+				continue
+			}
+			typeEnv.AddClass(name, namedEnv)
+		}
+	}
+
+	evalEnv := dang.NewEvalEnv(typeEnv)
+
+	// Set up eval env with schema modules for each import
+	for _, config := range configs {
+		if config.Schema == nil {
+			continue
+		}
+		moduleEnv := dang.NewEvalEnvWithSchema(typeEnv, config.Client, config.Schema)
+		evalEnv.Set(config.Name, moduleEnv)
+	}
+
+	return typeEnv, evalEnv
+}
+
+func runREPLBubbletea(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) error {
+	m := newREPLModel(ctx, importConfigs, debug)
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

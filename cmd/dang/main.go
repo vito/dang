@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/fang"
@@ -13,7 +14,6 @@ import (
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/spf13/cobra"
 	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/ioctx"
 	"github.com/vito/dang/pkg/lsp"
 )
@@ -144,98 +144,32 @@ func runREPL(ctx context.Context, cfg Config) error {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	// Load GraphQL configuration
-	config := dang.LoadGraphQLConfig()
-	provider := dang.NewGraphQLClientProvider(config)
+	// Set up service registry for service-based imports
+	services := &dang.ServiceRegistry{}
+	defer services.StopAll()
+	ctx = dang.ContextWithServices(ctx, services)
 
-	// Get configured GraphQL client and schema
-	client, schema, err := provider.GetClientAndSchema(ctx)
+	// Find and resolve dang.toml imports
+	cwd, _ := os.Getwd()
+	var importConfigs []dang.ImportConfig
+	configPath, config, err := dang.FindProjectConfig(cwd)
 	if err != nil {
-		return fmt.Errorf("failed to setup GraphQL client: %w", err)
-	}
-	defer provider.Close() //nolint:errcheck
-
-	return runREPLBubbletea(ctx, schema, client, cfg.Debug)
-}
-
-// Helper functions shared between REPL and main
-
-// findType finds a GraphQL type by name
-func findType(schema *introspection.Schema, name string) *introspection.Type {
-	for _, t := range schema.Types {
-		if t.Name == name {
-			return t
+		fmt.Fprintf(os.Stderr, "warning: failed to find dang.toml: %v\n", err)
+	} else if config != nil {
+		configDir := filepath.Dir(configPath)
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, config)
+		resolved, err := dang.ResolveImportConfigs(ctx, config, configDir)
+		if err != nil {
+			return fmt.Errorf("failed to resolve imports from %s: %w", configPath, err)
 		}
-	}
-	return nil
-}
-
-// formatFieldSignature formats a GraphQL field signature for display
-func formatFieldSignature(field *introspection.Field) string {
-	var parts []string
-	parts = append(parts, field.Name)
-
-	if len(field.Args) > 0 {
-		args := []string{}
-		for _, arg := range field.Args {
-			argStr := fmt.Sprintf("%s: %s", arg.Name, formatTypeRef(arg.TypeRef))
-			args = append(args, argStr)
-		}
-		parts = append(parts, fmt.Sprintf("(%s)", strings.Join(args, ", ")))
-	} else {
-		parts = append(parts, "()")
+		importConfigs = resolved
 	}
 
-	parts = append(parts, "->", formatTypeRef(field.TypeRef))
-	return strings.Join(parts, " ")
-}
-
-// formatTypeRef formats a GraphQL type reference for display
-func formatTypeRef(ref *introspection.TypeRef) string {
-	switch ref.Kind {
-	case introspection.TypeKindNonNull:
-		return formatTypeRef(ref.OfType) + "!"
-	case introspection.TypeKindList:
-		return "[" + formatTypeRef(ref.OfType) + "]"
-	default:
-		if ref.Name != "" {
-			return ref.Name
-		}
-		return "Unknown"
+	if len(importConfigs) > 0 {
+		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
-}
 
-// isBuiltinType checks if a type name is a GraphQL builtin
-func isBuiltinType(name string) bool {
-	builtins := []string{"String", "Int", "Float", "Boolean", "ID", "__Schema", "__Type", "__Field", "__InputValue", "__EnumValue", "__Directive"}
-	for _, builtin := range builtins {
-		if name == builtin || strings.HasPrefix(name, "__") {
-			return true
-		}
-	}
-	return false
-}
-
-// categorizeTypes categorizes GraphQL types by kind
-func categorizeTypes(types []*introspection.Type) (objects, interfaces, enums, scalars, inputTypes []*introspection.Type) {
-	for _, t := range types {
-		if isBuiltinType(t.Name) {
-			continue
-		}
-		switch t.Kind {
-		case introspection.TypeKindObject:
-			objects = append(objects, t)
-		case introspection.TypeKindInterface:
-			interfaces = append(interfaces, t)
-		case introspection.TypeKindEnum:
-			enums = append(enums, t)
-		case introspection.TypeKindScalar:
-			scalars = append(scalars, t)
-		case introspection.TypeKindInputObject:
-			inputTypes = append(inputTypes, t)
-		}
-	}
-	return
+	return runREPLBubbletea(ctx, importConfigs, cfg.Debug)
 }
 
 func runLSP(ctx context.Context, cfg Config) error {
