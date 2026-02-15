@@ -180,12 +180,52 @@ func buildColumn(title, doc string, env dang.Env) docColumn {
 		col.items = append(col.items, item)
 	}
 
-	// Also include named types (classes) that aren't already in bindings.
-	// These are built-in types like String, Boolean, List, etc.
+	// Include built-in methods registered via the global registry
+	// (e.g. String.padLeft, List.map, etc.)
 	seen := make(map[string]bool, len(col.items))
 	for _, item := range col.items {
 		seen[item.name] = true
 	}
+	if mod, ok := env.(*dang.Module); ok {
+		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
+			if seen[def.Name] {
+				return
+			}
+			seen[def.Name] = true
+
+			item := docItem{
+				name: def.Name,
+				kind: kindField,
+				doc:  def.Doc,
+			}
+
+			// Build args
+			for _, p := range def.ParamTypes {
+				item.args = append(item.args, docArg{
+					name:    p.Name,
+					typeStr: formatType(p.Type),
+				})
+			}
+
+			// Format return type
+			if def.ReturnType != nil {
+				item.typeStr = "→ " + formatType(def.ReturnType)
+			}
+
+			// Check if return type is drillable
+			if def.ReturnType != nil {
+				ret := unwrapType(def.ReturnType)
+				if retEnv, ok := ret.(dang.Env); ok {
+					item.retEnv = retEnv
+				}
+			}
+
+			col.items = append(col.items, item)
+		})
+	}
+
+	// Also include named types (classes) that aren't already in bindings.
+	// These are built-in types like String, Boolean, List, etc.
 	for name, namedEnv := range env.NamedTypes() {
 		if seen[name] {
 			continue
