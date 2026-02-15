@@ -359,12 +359,18 @@ func formatType(t hm.Type) string {
 	return t.String()
 }
 
-// unwrapType removes NonNull and follows function return types.
+// unwrapType removes NonNull and List wrappers to find the inner named type.
 func unwrapType(t hm.Type) hm.Type {
-	if nn, ok := t.(hm.NonNullType); ok {
-		t = nn.Type
+	for {
+		switch inner := t.(type) {
+		case hm.NonNullType:
+			t = inner.Type
+		case dang.ListType:
+			t = inner.Type
+		default:
+			return t
+		}
 	}
-	return t
 }
 
 // expandSelection appends (or replaces) a column for the currently selected
