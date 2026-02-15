@@ -184,11 +184,7 @@ func (m *docBrowserModel) expandSelection() {
 	detail := buildDetailColumn(item)
 	m.columns = append(m.columns, detail)
 
-	// Pre-compute detail line count for scroll clamping.
-	// Use a generous width estimate; the exact width depends on layout
-	// but this is close enough for scroll bounds.
-	noStyle := lipgloss.NewStyle()
-	m.detailLines = len(m.renderDetail(item, 80, noStyle, noStyle, noStyle, noStyle))
+	m.recomputeDetailLines(item)
 
 	// If the item has a return env, add a members column too
 	if item.retEnv != nil {
@@ -286,6 +282,10 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case tea.MouseWheelDown:
+			// Recompute detail lines at actual column width
+			if item, ok := m.selectedDetailItem(); ok {
+				m.recomputeDetailLines(item)
+			}
 			maxOffset := m.detailLines - m.listHeight()
 			if maxOffset < 0 {
 				maxOffset = 0
@@ -298,6 +298,51 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// detailColWidth returns the width of the detail column based on current layout.
+func (m docBrowserModel) detailColWidth() int {
+	visStart, visEnd := m.visibleRange()
+	numVis := visEnd - visStart
+	if numVis < 1 {
+		numVis = 1
+	}
+	sepW := 3 * (numVis - 1)
+	colW := (m.width - sepW) / numVis
+	if colW < 15 {
+		colW = 15
+	}
+	lastColW := m.width - sepW - colW*(numVis-1)
+	if lastColW < colW {
+		lastColW = colW
+	}
+	return lastColW
+}
+
+// recomputeDetailLines recalculates detailLines using the actual column width.
+func (m *docBrowserModel) recomputeDetailLines(item docItem) {
+	w := m.detailColWidth()
+	if w <= 0 {
+		w = 80
+	}
+	noStyle := lipgloss.NewStyle()
+	m.detailLines = len(m.renderDetail(item, w, noStyle, noStyle, noStyle, noStyle))
+}
+
+// selectedDetailItem returns the currently selected item that the detail pane shows.
+func (m docBrowserModel) selectedDetailItem() (docItem, bool) {
+	col := m.columns[m.activeCol]
+	if col.index < len(col.items) {
+		return col.items[col.index], true
+	}
+	// Check previous column if active column is non-navigable
+	if m.activeCol > 0 {
+		prev := m.columns[m.activeCol-1]
+		if prev.index < len(prev.items) {
+			return prev.items[prev.index], true
+		}
+	}
+	return docItem{}, false
 }
 
 func (m *docBrowserModel) clampScroll(col *docColumn) {
