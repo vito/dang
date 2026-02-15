@@ -24,9 +24,57 @@ type docColumn struct {
 	typeEnv      dang.Env // the env this column lists members of (nil for detail)
 }
 
+// itemKind classifies a doc browser entry.
+type itemKind int
+
+const (
+	kindField     itemKind = iota // functions, methods, fields
+	kindType                      // object types (Container, File, ...)
+	kindInterface                 // interface types
+	kindEnum                      // enum types
+	kindScalar                    // scalar types (String, Int, ...)
+	kindUnion                     // union types
+	kindInput                     // input object types
+)
+
+var kindOrder = [...]string{
+	kindField:     "field",
+	kindType:      "type",
+	kindInterface: "interface",
+	kindEnum:      "enum",
+	kindScalar:    "scalar",
+	kindUnion:     "union",
+	kindInput:     "input",
+}
+
+var kindColors = [...]string{
+	kindField:     "117", // blue
+	kindType:      "213", // pink
+	kindInterface: "141", // purple
+	kindEnum:      "221", // yellow
+	kindScalar:    "114", // green
+	kindUnion:     "209", // orange
+	kindInput:     "183", // lavender
+}
+
+func (k itemKind) label() string {
+	if int(k) < len(kindOrder) {
+		return kindOrder[k]
+	}
+	return "?"
+}
+
+func (k itemKind) color() string {
+	if int(k) < len(kindColors) {
+		return kindColors[k]
+	}
+	return "247"
+}
+
 // docItem is a single entry in a column.
 type docItem struct {
 	name    string
+	kind    itemKind
 	typeStr string
 	doc     string
 	args    []docArg
@@ -61,6 +109,25 @@ func newDocBrowser(typeEnv dang.Env) docBrowserModel {
 	return m
 }
 
+// classifyEnv determines the itemKind for a module/env based on its ModuleKind.
+func classifyEnv(env dang.Env) itemKind {
+	if mod, ok := env.(*dang.Module); ok {
+		switch mod.Kind {
+		case dang.EnumKind:
+			return kindEnum
+		case dang.ScalarKind:
+			return kindScalar
+		case dang.InterfaceKind:
+			return kindInterface
+		case dang.UnionKind:
+			return kindUnion
+		case dang.InputKind:
+			return kindInput
+		}
+	}
+	return kindType
+}
+
 // buildColumn creates a column listing public members of an Env.
 func buildColumn(title, doc string, env dang.Env) docColumn {
 	col := docColumn{
@@ -90,6 +157,7 @@ func buildColumn(title, doc string, env dang.Env) docColumn {
 
 		// Extract function args and return type
 		if fn, ok := t.(*hm.FunctionType); ok {
+			item.kind = kindField
 			item.args = extractArgs(fn)
 			item.typeStr = formatReturnType(fn)
 
@@ -103,13 +171,20 @@ func buildColumn(title, doc string, env dang.Env) docColumn {
 			inner := unwrapType(t)
 			if mod, ok := inner.(dang.Env); ok {
 				item.retEnv = mod
+				item.kind = classifyEnv(mod)
+			} else {
+				item.kind = kindField
 			}
 		}
 
 		col.items = append(col.items, item)
 	}
 
+	// Sort by kind order, then alphabetically within each kind
 	sort.Slice(col.items, func(i, j int) bool {
+		if col.items[i].kind != col.items[j].kind {
+			return col.items[i].kind < col.items[j].kind
+		}
 		return strings.ToLower(col.items[i].name) < strings.ToLower(col.items[j].name)
 	})
 
@@ -425,7 +500,6 @@ func (m docBrowserModel) View() tea.View {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
 	activeTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	normalStyle := lipgloss.NewStyle()
 	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
 	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
@@ -487,15 +561,42 @@ func (m docBrowserModel) View() tea.View {
 				if len(item.args) > 0 {
 					label += "(…)"
 				}
-				label = truncate(label, w-2)
+
+				// Build kind tag
+				tag := item.kind.label()
+				tagStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(item.kind.color())).Render(tag)
+				tagW := lipgloss.Width(tagStyled)
+
+				// Truncate label to fit: "▸ " (2) + label + " " (1) + tag
+				maxLabel := w - 3 - tagW
+				if maxLabel < 4 {
+					maxLabel = 4
+				}
+				label = truncate(label, maxLabel)
+
+				// Compose line with right-aligned tag
+				prefix := "  "
+				if i == col.index {
+					prefix = "▸ "
+				}
+				leftPart := prefix + label
+				leftW := lipgloss.Width(leftPart)
+				gap := w - leftW - tagW
+				if gap < 1 {
+					gap = 1
+				}
+				raw := leftPart + strings.Repeat(" ", gap) + tagStyled
+
 				if i == col.index {
 					if isActive {
-						lines = append(lines, selectedStyle.Render("▸ "+label))
+						// Re-render left part in selected style, keep tag colored
+						leftStyled := selectedStyle.Render(prefix+label) + strings.Repeat(" ", gap) + tagStyled
+						lines = append(lines, leftStyled)
 					} else {
-						lines = append(lines, normalStyle.Render("▸ "+label))
+						lines = append(lines, raw)
 					}
 				} else {
-					lines = append(lines, normalStyle.Render("  "+label))
+					lines = append(lines, raw)
 				}
 			}
 		} else {

@@ -44,6 +44,7 @@ const (
 	ScalarKind
 	InterfaceKind
 	UnionKind
+	InputKind
 )
 
 func (k ModuleKind) String() string {
@@ -58,6 +59,8 @@ func (k ModuleKind) String() string {
 		return "interface"
 	case UnionKind:
 		return "union"
+	case InputKind:
+		return "input"
 	default:
 		return "unknown"
 	}
@@ -76,8 +79,7 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, err
 	case introspection.TypeKindEnum:
 		return EnumKind, nil
 	case introspection.TypeKindInputObject:
-		// TODO: adjust once we support these
-		return ObjectKind, nil
+		return InputKind, nil
 	default:
 		return -1, fmt.Errorf("unsupported GraphQL type kind: %s", typeKind)
 	}
