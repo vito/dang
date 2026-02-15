@@ -367,6 +367,8 @@ func unwrapType(t hm.Type) hm.Type {
 			t = inner.Type
 		case dang.ListType:
 			t = inner.Type
+		case dang.GraphQLListType:
+			t = inner.Type
 		default:
 			return t
 		}
