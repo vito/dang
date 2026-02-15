@@ -99,6 +99,7 @@ type GraphQLFunction struct {
 	Schema     *introspection.Schema
 	TypeEnv    Env                     // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
+	IsMutation bool                    // True if this is a mutation field
 }
 
 func (g GraphQLFunction) Type() hm.Type {
@@ -120,17 +121,21 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		query = g.QueryChain.Select(fieldName)
 	} else {
 		// Build from scratch for top-level functions
+		root := querybuilder.Query()
+		if g.IsMutation {
+			root = querybuilder.Mutation()
+		}
 		// Check if this is a method call (contains a dot) or a top-level function
 		if strings.Contains(g.Name, ".") {
 			// This is a method call like "container.from" - we need to build a nested query
 			parts := strings.Split(g.Name, ".")
-			query = querybuilder.Query()
+			query = root
 			for _, part := range parts {
 				query = query.Select(part)
 			}
 		} else {
 			// This is a top-level function call
-			query = querybuilder.Query().Select(g.Name)
+			query = root.Select(g.Name)
 		}
 	}
 
@@ -200,8 +205,9 @@ func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]
 		ValType:    g.FnType.Ret(false),
 		Client:     g.Client,
 		Schema:     g.Schema,
-		TypeEnv:    g.TypeEnv, // Pass along the type environment
-		QueryChain: query,     // Pass the query chain for further building
+		TypeEnv:    g.TypeEnv,    // Pass along the type environment
+		QueryChain: query,        // Pass the query chain for further building
+		IsMutation: g.IsMutation, // Propagate mutation flag
 	}, nil
 }
 
@@ -230,6 +236,7 @@ type GraphQLValue struct {
 	Schema     *introspection.Schema
 	TypeEnv    Env                     // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
+	IsMutation bool                    // True if this value came from a mutation
 }
 
 func (g GraphQLValue) Type() hm.Type {
@@ -303,6 +310,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		Schema:     g.Schema,
 		TypeEnv:    g.TypeEnv,    // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
+		IsMutation: g.IsMutation, // Propagate mutation flag
 	}, nil
 }
 
@@ -470,6 +478,43 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			if t.Name == schema.QueryType.Name {
 				env.SetWithVisibility(f.Name, gqlFunc, PublicVisibility)
 			}
+		}
+
+		// Collect mutation fields into a Mutation module
+		if schema.MutationType != nil && t.Name == schema.MutationType.Name {
+			mutTypeEnv, found := typeEnv.NamedType(t.Name)
+			if !found {
+				continue
+			}
+			mutModule := NewModuleValue(mutTypeEnv)
+			for _, f := range t.Fields {
+				ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				if err != nil {
+					continue
+				}
+				args := NewRecordType("")
+				for _, arg := range f.Args {
+					argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+					if err != nil {
+						continue
+					}
+					args.Add(arg.Name, hm.NewScheme(nil, argType))
+				}
+				fnType := hm.NewFnType(args, ret)
+				mutFunc := GraphQLFunction{
+					Name:       f.Name,
+					TypeName:   t.Name,
+					Field:      f,
+					FnType:     fnType,
+					Client:     client,
+					Schema:     schema,
+					TypeEnv:    typeEnv,
+					QueryChain: nil,
+					IsMutation: true,
+				}
+				mutModule.SetWithVisibility(f.Name, mutFunc, PublicVisibility)
+			}
+			env.SetWithVisibility("Mutation", mutModule, PublicVisibility)
 		}
 	}
 }

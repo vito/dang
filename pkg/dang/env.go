@@ -258,6 +258,12 @@ func NewEnv(schema *introspection.Schema) Env {
 			// TODO: "lexical" is maybe not the right word anymore
 			env.lexical = &CompositeModule{sub, env.lexical}
 		}
+		// Expose the Mutation type as a named value (not lexical) so fields
+		// are accessed via Mutation.fieldName rather than bare names.
+		if schema.MutationType != nil && t.Name == schema.MutationType.Name {
+			env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
+			env.SetVisibility(t.Name, PublicVisibility)
+		}
 	}
 
 	// Make enum types available as values in the module
