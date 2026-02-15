@@ -51,6 +51,9 @@ type replModel struct {
 	spinner    spinner.Model      // spinner shown during evaluation
 	cancelEval context.CancelFunc // cancels the in-flight evaluation
 
+	// Doc browser (nil when not active)
+	docBrowser *docBrowserModel
+
 	// History
 	history      []string
 	historyIndex int
@@ -136,6 +139,28 @@ func (m replModel) Init() tea.Cmd {
 }
 
 func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Delegate to doc browser when active
+	if m.docBrowser != nil {
+		switch msg := msg.(type) {
+		case docBrowserExitMsg:
+			m.docBrowser = nil
+			return m, nil
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.textInput.SetWidth(msg.Width - lipgloss.Width(promptStyle.Render("dang> ")) - 1)
+			updated, cmd := m.docBrowser.Update(msg)
+			db := updated.(docBrowserModel)
+			m.docBrowser = &db
+			return m, cmd
+		default:
+			updated, cmd := m.docBrowser.Update(msg)
+			db := updated.(docBrowserModel)
+			m.docBrowser = &db
+			return m, cmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -308,6 +333,10 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m replModel) View() tea.View {
+	if m.docBrowser != nil {
+		return m.docBrowser.View()
+	}
+
 	var b strings.Builder
 
 	// Input line or spinner
@@ -667,6 +696,7 @@ func (m *replModel) handleCommand(cmdLine string) {
 		m.appendOutput("  :type      - Show type of an expression", dimStyle)
 		m.appendOutput("  :inspect   - Inspect a GraphQL type", dimStyle)
 		m.appendOutput("  :find      - Find functions/types by pattern", dimStyle)
+		m.appendOutput("  :doc       - Interactive API browser", dimStyle)
 		m.appendOutput("", lipgloss.NewStyle())
 		m.appendOutput("Type Dang expressions to evaluate them.", dimStyle)
 		m.appendOutput("Tab for completion, ↑/↓ for history, Ctrl+L to clear.", dimStyle)
@@ -723,6 +753,10 @@ func (m *replModel) handleCommand(cmdLine string) {
 		for i := start; i < len(m.history); i++ {
 			m.appendOutput(fmt.Sprintf("  %d: %s", i+1, m.history[i]), dimStyle)
 		}
+
+	case "doc":
+		db := newDocBrowser(m.typeEnv)
+		m.docBrowser = &db
 
 	default:
 		m.appendError(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd))
@@ -1059,7 +1093,7 @@ func (m *replModel) saveHistory() {
 func replCommands() []string {
 	return []string{
 		"help", "exit", "quit", "clear", "reset", "debug",
-		"env", "version", "schema", "type", "inspect", "find", "history",
+		"env", "version", "schema", "type", "inspect", "find", "history", "doc",
 	}
 }
 
