@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"dagger.io/dagger"
 	"github.com/charmbracelet/fang"
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/channel"
@@ -165,11 +166,62 @@ func runREPL(ctx context.Context, cfg Config) error {
 		importConfigs = resolved
 	}
 
+	// Detect dagger.json and load the module + deps
+	var daggerConn *dagger.Client
+	moduleDir := findDaggerModule(cwd)
+	if moduleDir != "" {
+		fmt.Fprintf(os.Stderr, "Loading Dagger module from %s...\n", moduleDir)
+
+		dag, err := dagger.Connect(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to connect to Dagger: %v\n", err)
+		} else {
+			daggerConn = dag
+
+			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
+			client, schema, err := provider.GetDaggerModuleSchema(ctx, dag, moduleDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: failed to load Dagger module schema: %v\n", err)
+			} else {
+				importConfigs = append(importConfigs, dang.ImportConfig{
+					Name:       "Dagger",
+					Client:     client,
+					Schema:     schema,
+					AutoImport: true,
+				})
+			}
+		}
+	}
+	if daggerConn != nil {
+		defer daggerConn.Close()
+	}
+
 	if len(importConfigs) > 0 {
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
 	return runREPLBubbletea(ctx, importConfigs, cfg.Debug)
+}
+
+// findDaggerModule searches for a dagger.json starting from dir, walking up.
+func findDaggerModule(startPath string) string {
+	dir, err := filepath.Abs(startPath)
+	if err != nil {
+		return ""
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "dagger.json")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return "" // stop at repo boundary
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 func runLSP(ctx context.Context, cfg Config) error {
