@@ -337,8 +337,39 @@ func (m *replModel) updateCompletionMenu() {
 		return
 	}
 
-	// Find the current word being typed (last token)
-	word := lastWord(val)
+	// Use dang.CompleteInput for context-aware completions (handles dotted
+	// member access like "container.fr" as well as lexical completions).
+	cursorPos := len(val) // cursor is always at the end in REPL
+	completions := dang.CompleteInput(m.ctx, m.typeEnv, val, cursorPos)
+
+	if len(completions) > 0 {
+		// We got context-aware completions (possibly member completions).
+		// Figure out what prefix the user typed for the current token so
+		// we can build full suggestion strings for the textinput bubble.
+		prefix, partial := splitForSuggestion(val)
+
+		var matches []string
+		partialLower := strings.ToLower(partial)
+		for _, c := range completions {
+			cLower := strings.ToLower(c.Label)
+			if cLower == partialLower {
+				continue
+			}
+			if strings.HasPrefix(cLower, partialLower) {
+				matches = append(matches, prefix+c.Label)
+			}
+		}
+
+		// Sort: exact-case first
+		matches = sortByCase(matches, prefix, partial)
+
+		m.textInput.SetSuggestions(matches)
+		m.setMenu(matches)
+		return
+	}
+
+	// Fall back to static completions for simple prefix matching
+	word := lastIdent(val)
 	if word == "" {
 		m.menuVisible = false
 		m.menuItems = nil
@@ -346,13 +377,13 @@ func (m *replModel) updateCompletionMenu() {
 		return
 	}
 
-	// Filter completions, sorting exact-case matches first
+	// Filter and sort by case preference
 	var exactCase, otherCase []string
 	wordLower := strings.ToLower(word)
 	for _, c := range m.completions {
 		cLower := strings.ToLower(c)
 		if cLower == wordLower {
-			continue // don't suggest what's already typed
+			continue
 		}
 		if strings.HasPrefix(c, word) {
 			exactCase = append(exactCase, c)
@@ -362,17 +393,17 @@ func (m *replModel) updateCompletionMenu() {
 	}
 	matches := append(exactCase, otherCase...)
 
-	// Update inline hint suggestions with case-preferred ordering so the
-	// textinput bubble picks the best case match first.
 	m.textInput.SetSuggestions(matches)
+	m.setMenu(matches)
+}
 
+// setMenu updates the completion menu state from a matches list.
+func (m *replModel) setMenu(matches []string) {
 	if len(matches) <= 1 {
-		// 0 or 1 match: just use inline hint, no menu
 		m.menuVisible = false
 		m.menuItems = nil
 		return
 	}
-
 	m.menuItems = matches
 	m.menuVisible = true
 	if m.menuIndex >= len(matches) {
@@ -380,18 +411,46 @@ func (m *replModel) updateCompletionMenu() {
 	}
 }
 
-// lastWord extracts the last word/identifier from the input for completion.
-func lastWord(s string) string {
-	// Walk backwards to find the start of the current identifier
+// splitForSuggestion splits input into a prefix (everything before the current
+// token being completed) and the partial token. For "container.fr" it returns
+// ("container.", "fr"). For "dir" it returns ("", "dir").
+func splitForSuggestion(val string) (prefix, partial string) {
+	i := len(val) - 1
+	for i >= 0 && isIdentByte(val[i]) {
+		i--
+	}
+	if i >= 0 && val[i] == '.' {
+		return val[:i+1], val[i+1:]
+	}
+	return val[:i+1], val[i+1:]
+}
+
+func isIdentByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+}
+
+// sortByCase re-orders matches so that entries whose suffix (after prefix)
+// matches the case of partial come first.
+func sortByCase(matches []string, prefix, partial string) []string {
+	var exact, other []string
+	for _, m := range matches {
+		suffix := strings.TrimPrefix(m, prefix)
+		if strings.HasPrefix(suffix, partial) {
+			exact = append(exact, m)
+		} else {
+			other = append(other, m)
+		}
+	}
+	return append(exact, other...)
+}
+
+// lastIdent extracts the last plain identifier from text (no dots).
+func lastIdent(s string) string {
 	i := len(s) - 1
-	for i >= 0 && (isIdentChar(s[i]) || s[i] == '.') {
+	for i >= 0 && isIdentByte(s[i]) {
 		i--
 	}
 	return s[i+1:]
-}
-
-func isIdentChar(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 // isIDType returns true for GraphQL ID scalar types (e.g. "ContainerID",

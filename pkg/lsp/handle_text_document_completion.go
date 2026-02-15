@@ -31,8 +31,9 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 			// Get the inferred type of the receiver
 			receiverType := receiver.GetInferredType()
 			if receiverType != nil {
-				// Offer completions for this type's members
-				items := h.getMemberCompletions(receiverType)
+				// Use shared completion logic for member access
+				completions := dang.MembersOf(receiverType, "")
+				items := completionsToItems(completions)
 				if len(items) > 0 {
 					return items, nil
 				}
@@ -101,44 +102,20 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 	return items
 }
 
-// getMemberCompletions returns completion items for a type's members
-func (h *langHandler) getMemberCompletions(t hm.Type) []CompletionItem {
-	var items []CompletionItem
-
-	// Unwrap NonNullType if needed
-	if nn, ok := t.(hm.NonNullType); ok {
-		t = nn.Type
-	}
-
-	// Check if the type is a Module
-	module, ok := t.(dang.Env)
-	if !ok {
-		return items
-	}
-
-	// Iterate over all public members of the type
-	for name, scheme := range module.Bindings(dang.PublicVisibility) {
-		memberType, _ := scheme.Type()
-
-		// Determine completion kind based on member type
+// completionsToItems converts shared dang.Completion values to LSP CompletionItems.
+func completionsToItems(completions []dang.Completion) []CompletionItem {
+	items := make([]CompletionItem, len(completions))
+	for i, c := range completions {
 		kind := VariableCompletion
-		if _, isFn := memberType.(*hm.FunctionType); isFn {
+		if c.IsFunction {
 			kind = MethodCompletion
 		}
-
-		// Get documentation for this member
-		var documentation string
-		if doc, found := module.GetDocString(name); found {
-			documentation = doc
-		}
-
-		items = append(items, CompletionItem{
-			Label:         name,
+		items[i] = CompletionItem{
+			Label:         c.Label,
 			Kind:          kind,
-			Detail:        memberType.String(),
-			Documentation: documentation,
-		})
+			Detail:        c.Detail,
+			Documentation: c.Documentation,
+		}
 	}
-
 	return items
 }
