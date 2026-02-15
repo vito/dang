@@ -333,6 +333,7 @@ func (m *replModel) updateCompletionMenu() {
 	if val == "" || strings.HasPrefix(val, ":") {
 		m.menuVisible = false
 		m.menuItems = nil
+		m.textInput.SetSuggestions(m.completions)
 		return
 	}
 
@@ -341,17 +342,29 @@ func (m *replModel) updateCompletionMenu() {
 	if word == "" {
 		m.menuVisible = false
 		m.menuItems = nil
+		m.textInput.SetSuggestions(m.completions)
 		return
 	}
 
-	// Filter completions
-	var matches []string
+	// Filter completions, sorting exact-case matches first
+	var exactCase, otherCase []string
 	wordLower := strings.ToLower(word)
 	for _, c := range m.completions {
-		if strings.HasPrefix(strings.ToLower(c), wordLower) && strings.ToLower(c) != wordLower {
-			matches = append(matches, c)
+		cLower := strings.ToLower(c)
+		if cLower == wordLower {
+			continue // don't suggest what's already typed
+		}
+		if strings.HasPrefix(c, word) {
+			exactCase = append(exactCase, c)
+		} else if strings.HasPrefix(cLower, wordLower) {
+			otherCase = append(otherCase, c)
 		}
 	}
+	matches := append(exactCase, otherCase...)
+
+	// Update inline hint suggestions with case-preferred ordering so the
+	// textinput bubble picks the best case match first.
+	m.textInput.SetSuggestions(matches)
 
 	if len(matches) <= 1 {
 		// 0 or 1 match: just use inline hint, no menu
@@ -379,6 +392,12 @@ func lastWord(s string) string {
 
 func isIdentChar(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+}
+
+// isIDType returns true for GraphQL ID scalar types (e.g. "ContainerID",
+// "DirectoryID") which are internal plumbing and not useful to complete.
+func isIDType(name string) bool {
+	return len(name) > 2 && strings.HasSuffix(name, "ID")
 }
 
 // buildCompletions builds the full list of completions from the environment.
@@ -413,9 +432,9 @@ func (m *replModel) buildCompletions() []string {
 		add(name)
 	}
 
-	// GraphQL schema types
+	// GraphQL schema types (exclude ID scalar types)
 	for _, t := range m.schema.Types {
-		if !isBuiltinType(t.Name) {
+		if !isBuiltinType(t.Name) && !isIDType(t.Name) {
 			add(t.Name)
 		}
 	}
