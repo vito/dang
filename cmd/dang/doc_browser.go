@@ -44,6 +44,10 @@ type docBrowserModel struct {
 	columns   []docColumn // stack of columns
 	activeCol int         // which column is focused
 
+	// Detail pane scroll offset (scrolls independently of column selection)
+	detailOffset int
+	detailLines  int // total rendered detail lines (set during View)
+
 	width  int
 	height int
 }
@@ -163,11 +167,15 @@ func unwrapType(t hm.Type) hm.Type {
 // expandSelection appends (or replaces) a column for the currently selected
 // item, and also a detail column if the item has docs/args.
 func (m *docBrowserModel) expandSelection() {
+	// Reset detail scroll when selection changes
+	m.detailOffset = 0
+
 	// Trim columns to the right of the active one
 	m.columns = m.columns[:m.activeCol+1]
 
 	col := &m.columns[m.activeCol]
 	if col.index >= len(col.items) {
+		m.detailLines = 0
 		return
 	}
 	item := col.items[col.index]
@@ -175,6 +183,12 @@ func (m *docBrowserModel) expandSelection() {
 	// Always add a detail column for the selected item
 	detail := buildDetailColumn(item)
 	m.columns = append(m.columns, detail)
+
+	// Pre-compute detail line count for scroll clamping.
+	// Use a generous width estimate; the exact width depends on layout
+	// but this is close enough for scroll bounds.
+	noStyle := lipgloss.NewStyle()
+	m.detailLines = len(m.renderDetail(item, 80, noStyle, noStyle, noStyle, noStyle))
 
 	// If the item has a return env, add a members column too
 	if item.retEnv != nil {
@@ -255,6 +269,29 @@ func (m docBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.columns[m.activeCol].items) > 0 || m.activeCol == start {
 					break
 				}
+			}
+			return m, nil
+		}
+
+	case tea.MouseWheelMsg:
+		// Mouse wheel always scrolls the detail pane
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			if m.detailOffset > 0 {
+				m.detailOffset -= 3
+				if m.detailOffset < 0 {
+					m.detailOffset = 0
+				}
+			}
+			return m, nil
+		case tea.MouseWheelDown:
+			maxOffset := m.detailLines - m.listHeight()
+			if maxOffset < 0 {
+				maxOffset = 0
+			}
+			m.detailOffset += 3
+			if m.detailOffset > maxOffset {
+				m.detailOffset = maxOffset
 			}
 			return m, nil
 		}
@@ -367,13 +404,42 @@ func (m docBrowserModel) View() tea.View {
 				}
 			}
 		} else {
-			// Detail column: show item info
+			// Detail column: show item info with scroll support
 			if ci > 0 {
-				// Find the item this detail column describes
 				prevCol := m.columns[ci-1]
 				if prevCol.index < len(prevCol.items) {
 					item := prevCol.items[prevCol.index]
-					lines = append(lines, m.renderDetail(item, w, docTextStyle, argNameStyle, argTypeStyle, dimStyle)...)
+					detailContent := m.renderDetail(item, w, docTextStyle, argNameStyle, argTypeStyle, dimStyle)
+
+					// Apply scroll offset
+					contentH := listH // available height after header
+					start := m.detailOffset
+					if start > len(detailContent) {
+						start = len(detailContent)
+					}
+					end := start + contentH
+					if end > len(detailContent) {
+						end = len(detailContent)
+					}
+					visible := detailContent[start:end]
+					lines = append(lines, visible...)
+
+					// Show scroll indicator
+					if m.detailLines > contentH {
+						scrollPct := ""
+						if m.detailOffset == 0 {
+							scrollPct = "top"
+						} else if m.detailOffset >= m.detailLines-contentH {
+							scrollPct = "end"
+						} else {
+							pct := m.detailOffset * 100 / (m.detailLines - contentH)
+							scrollPct = fmt.Sprintf("%d%%", pct)
+						}
+						// Replace last line with scroll indicator
+						if len(lines) >= listH+2 {
+							lines[listH+1] = dimStyle.Render(fmt.Sprintf("── scroll: %s ──", scrollPct))
+						}
+					}
 				}
 			}
 		}
@@ -409,12 +475,13 @@ func (m docBrowserModel) View() tea.View {
 	breadcrumb := dimStyle.Render(strings.Join(crumbs, " → "))
 
 	// Help
-	help := dimStyle.Render("↑/↓ navigate • ←/→ drill in/out • Tab cycle • q/Esc exit")
+	help := dimStyle.Render("↑/↓ navigate • ←/→ drill in/out • scroll detail • Tab cycle • q/Esc exit")
 
 	content := breadcrumb + "\n" + strings.Join(rows, "\n") + "\n" + help
 
 	v := tea.NewView(content)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
