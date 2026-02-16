@@ -203,6 +203,44 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 	return menuBorderStyle.Render(inner)
 }
 
+// ── detail bubble (viewport-relative overlay) ───────────────────────────────
+
+// detailBubble shows the type signature and documentation for the currently
+// selected completion item. Rendered as a TUI overlay in the top-right corner.
+type detailBubble struct {
+	label string
+	detail string
+	doc   string
+}
+
+func (d *detailBubble) Invalidate() {}
+
+func (d *detailBubble) Render(width int) []string {
+	if d.label == "" && d.detail == "" && d.doc == "" {
+		return nil
+	}
+
+	var sections []string
+
+	if d.label != "" {
+		sections = append(sections, detailTitleStyle.Render(d.label))
+	}
+	if d.detail != "" {
+		sections = append(sections, detailSigStyle.Render(d.detail))
+	}
+	if d.doc != "" {
+		// Word-wrap documentation to fit within the bubble.
+		wrapped := wordWrap(d.doc, max(10, width-2))
+		sections = append(sections, detailDocStyle.Render(wrapped))
+	}
+
+	inner := strings.Join(sections, "\n")
+	box := detailBorderStyle.Width(max(10, width-2)).Render(inner)
+	return strings.Split(box, "\n")
+}
+
+// wordWrap is defined in doc_browser.go
+
 // ── REPL component ─────────────────────────────────────────────────────────
 
 type replComponent struct {
@@ -225,11 +263,14 @@ type replComponent struct {
 	quit    chan struct{}
 
 	// Completion
-	completions    []string
-	menuVisible    bool
-	menuItems      []string
-	menuIndex      int
-	menuMaxVisible int
+	completions      []string
+	menuVisible      bool
+	menuItems        []string
+	menuCompletions  []dang.Completion // parallel to menuItems; Detail/Documentation
+	menuIndex        int
+	menuMaxVisible   int
+	detailBubble     *detailBubble
+	detailHandle     *pitui.OverlayHandle
 
 	// Eval
 	evaluating bool
@@ -555,10 +596,56 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 func (r *replComponent) hideCompletionMenu() {
 	r.menuVisible = false
 	r.menuItems = nil
+	r.menuCompletions = nil
+	r.hideDetailBubble()
 }
 
 func (r *replComponent) syncMenu() {
+	r.syncDetailBubble()
 	r.tui.RequestRender(false)
+}
+
+func (r *replComponent) showDetailBubble() {
+	if r.detailBubble == nil {
+		r.detailBubble = &detailBubble{}
+		r.detailHandle = r.tui.ShowOverlay(r.detailBubble, &pitui.OverlayOptions{
+			Width:     pitui.SizePct(35),
+			MaxHeight: pitui.SizeAbs(15),
+			Anchor:    pitui.AnchorTopRight,
+			Margin:    pitui.OverlayMargin{Top: 1, Right: 1},
+		})
+		// Keep focus on the text input, not the overlay.
+		r.tui.SetFocus(r.textInput)
+	}
+}
+
+func (r *replComponent) hideDetailBubble() {
+	if r.detailHandle != nil {
+		r.detailHandle.Hide()
+		r.detailHandle = nil
+		r.detailBubble = nil
+	}
+}
+
+func (r *replComponent) syncDetailBubble() {
+	if !r.menuVisible || len(r.menuCompletions) == 0 {
+		r.hideDetailBubble()
+		return
+	}
+	idx := r.menuIndex
+	if idx < 0 || idx >= len(r.menuCompletions) {
+		r.hideDetailBubble()
+		return
+	}
+	c := r.menuCompletions[idx]
+	if c.Detail == "" && c.Documentation == "" {
+		r.hideDetailBubble()
+		return
+	}
+	r.showDetailBubble()
+	r.detailBubble.label = c.Label
+	r.detailBubble.detail = c.Detail
+	r.detailBubble.doc = c.Documentation
 }
 
 func (r *replComponent) completionXOffsetPitui() int {
@@ -593,6 +680,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 	if len(completions) > 0 {
 		prefix, partial := splitForSuggestion(val)
 		var matches []string
+		var matchCompletions []dang.Completion
 		partialLower := strings.ToLower(partial)
 		for _, c := range completions {
 			cLower := strings.ToLower(c.Label)
@@ -601,10 +689,11 @@ func (r *replComponent) updateCompletionMenuPitui() {
 			}
 			if strings.HasPrefix(cLower, partialLower) {
 				matches = append(matches, prefix+c.Label)
+				matchCompletions = append(matchCompletions, c)
 			}
 		}
-		matches = sortByCase(matches, prefix, partial)
-		r.setMenuPitui(matches)
+		matches, matchCompletions = sortByCaseWithCompletions(matches, matchCompletions, prefix, partial)
+		r.setMenuPitui(matches, matchCompletions)
 		if len(matches) > 0 {
 			r.textInput.Suggestion = matches[0]
 		} else {
@@ -635,7 +724,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 		}
 	}
 	matches := append(exactCase, otherCase...)
-	r.setMenuPitui(matches)
+	r.setMenuPitui(matches, nil) // static completions have no detail
 	if len(matches) > 0 {
 		r.textInput.Suggestion = matches[0]
 	} else {
@@ -643,16 +732,40 @@ func (r *replComponent) updateCompletionMenuPitui() {
 	}
 }
 
-func (r *replComponent) setMenuPitui(matches []string) {
+func (r *replComponent) setMenuPitui(matches []string, completions []dang.Completion) {
 	if len(matches) <= 1 {
 		r.hideCompletionMenu()
 		return
 	}
 	r.menuItems = matches
+	r.menuCompletions = completions
 	r.menuVisible = true
 	if r.menuIndex >= len(matches) {
 		r.menuIndex = 0
 	}
+	r.syncDetailBubble()
+}
+
+// sortByCaseWithCompletions sorts matches (and their parallel completions)
+// so that exact-case-prefix matches come before case-insensitive ones.
+func sortByCaseWithCompletions(matches []string, completions []dang.Completion, prefix, partial string) ([]string, []dang.Completion) {
+	var exactM, otherM []string
+	var exactC, otherC []dang.Completion
+	for i, m := range matches {
+		suffix := strings.TrimPrefix(m, prefix)
+		if strings.HasPrefix(suffix, partial) {
+			exactM = append(exactM, m)
+			if i < len(completions) {
+				exactC = append(exactC, completions[i])
+			}
+		} else {
+			otherM = append(otherM, m)
+			if i < len(completions) {
+				otherC = append(otherC, completions[i])
+			}
+		}
+	}
+	return append(exactM, otherM...), append(exactC, otherC...)
 }
 
 // ── commands ────────────────────────────────────────────────────────────────

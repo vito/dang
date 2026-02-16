@@ -44,9 +44,18 @@ var (
 	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	menuStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
 	menuSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("63")).Bold(true)
-	menuBorderStyle   = lipgloss.NewStyle().
+	menuBorderStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63"))
+	detailBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("63"))
+				BorderForeground(lipgloss.Color("241"))
+	detailTitleStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("255")).Bold(true)
+	detailSigStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("63"))
+	detailDocStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252"))
 	welcomeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
