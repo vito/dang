@@ -39,6 +39,9 @@ func CompleteInput(ctx context.Context, typeEnv Env, input string, cursorPos int
 // splitDotExpr checks if text ends with a dotted expression like "foo.bar.ba".
 // Returns the index of the last dot, the receiver text ("foo.bar"), and the
 // partial member name ("ba"). Returns dotIdx=-1 if there's no dot expression.
+//
+// It handles chained method calls with arguments, e.g.
+// "apko.wolfi(["go"]).std" -> receiver="apko.wolfi(["go"])", partial="std".
 func splitDotExpr(text string) (dotIdx int, receiver, partial string) {
 	// Find the last dot that's part of an identifier chain
 	i := len(text) - 1
@@ -57,10 +60,32 @@ func splitDotExpr(text string) (dotIdx int, receiver, partial string) {
 	receiver = text[:dotIdx]
 
 	// Walk back further to find the start of the receiver expression.
-	// Only include identifier chars and dots (chained access like a.b.c).
+	// Handle identifier chars, dots, and balanced parens/brackets for
+	// chained calls like a.b(args).c or a.b([x, y]).c.
 	j := dotIdx - 1
-	for j >= 0 && (isIdentByte(text[j]) || text[j] == '.') {
-		j--
+	for j >= 0 {
+		c := text[j]
+		if isIdentByte(c) || c == '.' {
+			j--
+		} else if c == ')' || c == ']' {
+			// Walk back over the balanced group
+			open := matchingOpen(c)
+			depth := 1
+			j--
+			for j >= 0 && depth > 0 {
+				switch text[j] {
+				case c:
+					depth++
+				case open:
+					depth--
+				}
+				j--
+			}
+			// After the loop j is one before the opening bracket, which
+			// is correct for the next iteration.
+		} else {
+			break
+		}
 	}
 	receiver = text[j+1 : dotIdx]
 
@@ -69,6 +94,18 @@ func splitDotExpr(text string) (dotIdx int, receiver, partial string) {
 	}
 
 	return dotIdx, receiver, partial
+}
+
+// matchingOpen returns the opening bracket for a closing bracket.
+func matchingOpen(close byte) byte {
+	switch close {
+	case ')':
+		return '('
+	case ']':
+		return '['
+	default:
+		return 0
+	}
 }
 
 func isIdentByte(c byte) bool {
