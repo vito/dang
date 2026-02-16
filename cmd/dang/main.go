@@ -195,7 +195,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 			daggerConn = dag
 
 			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
-			client, schema, err := provider.GetDaggerModuleSchema(ctx, dag, moduleDir)
+			client, schema, err := provider.ServeDaggerModule(ctx, dag, moduleDir)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "warning: failed to load Dagger module schema: %v\n", err)
 			} else {
