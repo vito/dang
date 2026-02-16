@@ -59,8 +59,22 @@ type replView struct {
 func (v *replView) Invalidate() {}
 
 func (v *replView) Render(width int) []string {
+	// Snapshot all entry data under the lock to avoid races with the eval
+	// goroutine writing to logs/result concurrently.
+	type entrySnapshot struct {
+		input  string
+		logs   string
+		result string
+	}
 	v.repl.mu.Lock()
-	entries := v.repl.entries
+	snaps := make([]entrySnapshot, len(v.repl.entries))
+	for i, e := range v.repl.entries {
+		snaps[i] = entrySnapshot{
+			input:  e.input,
+			logs:   e.logs.String(),
+			result: e.result.String(),
+		}
+	}
 	evaluating := v.repl.evaluating
 	menuVisible := v.repl.menuVisible
 	menuItems := v.repl.menuItems
@@ -70,19 +84,19 @@ func (v *replView) Render(width int) []string {
 
 	// 1. Render output lines from entries.
 	var outputLines []string
-	for _, e := range entries {
-		if e.input != "" {
-			outputLines = append(outputLines, e.input)
+	for _, snap := range snaps {
+		if snap.input != "" {
+			outputLines = append(outputLines, snap.input)
 		}
-		if logStr := e.logs.String(); logStr != "" {
-			logLines := strings.Split(logStr, "\n")
+		if snap.logs != "" {
+			logLines := strings.Split(snap.logs, "\n")
 			if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
 				logLines = logLines[:len(logLines)-1]
 			}
 			outputLines = append(outputLines, logLines...)
 		}
-		if resStr := e.result.String(); resStr != "" {
-			resLines := strings.Split(resStr, "\n")
+		if snap.result != "" {
+			resLines := strings.Split(snap.result, "\n")
 			if len(resLines) > 0 && resLines[len(resLines)-1] == "" {
 				resLines = resLines[:len(resLines)-1]
 			}
