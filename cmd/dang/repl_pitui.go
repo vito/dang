@@ -50,8 +50,8 @@ func (w *pituiSyncWriter) SetRepl(r *replComponent) {
 
 // replView is a single pitui component that renders the entire REPL:
 // output log + (optionally composited completion menu) + input/spinner line.
-// The completion menu is composited as a lipgloss layer *on top of* the output
-// lines, just above the input, so it doesn't push content around.
+// The completion menu is composited on top of the output lines using pitui's
+// own CompositeLineAt, just above the input, so it doesn't push content around.
 type replView struct {
 	repl *replComponent
 }
