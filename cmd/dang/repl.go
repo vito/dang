@@ -535,12 +535,6 @@ func lastIdent(s string) string {
 	return s[i+1:]
 }
 
-// isIDType returns true for GraphQL ID scalar types (e.g. "ContainerID",
-// "DirectoryID") which are internal plumbing and not useful to complete.
-func isIDType(name string) bool {
-	return len(name) > 2 && strings.HasSuffix(name, "ID")
-}
-
 // buildCompletions builds the full list of completions from the environment.
 func (m *replModel) buildCompletions() []string {
 	seen := map[string]bool{}
@@ -568,16 +562,14 @@ func (m *replModel) buildCompletions() []string {
 		add(kw)
 	}
 
-	// Environment bindings (from type env, includes all imports)
-	for name := range m.typeEnv.Bindings(dang.PublicVisibility) {
-		add(name)
-	}
-
-	// Named types
-	for name := range m.typeEnv.NamedTypes() {
-		if !isIDType(name) {
-			add(name)
+	// Environment bindings (from type env, includes all imports).
+	// Use the same filtering as completeLexical to exclude type
+	// definitions and ID types.
+	for name, scheme := range m.typeEnv.Bindings(dang.PublicVisibility) {
+		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) {
+			continue
 		}
+		add(name)
 	}
 
 	sort.Strings(completions)

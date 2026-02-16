@@ -204,6 +204,8 @@ func MembersOf(t hm.Type, partial string) []Completion {
 }
 
 // completeLexical returns completions from the type environment matching a prefix.
+// It filters out type definitions (scalars, enums, etc.) and ID types, which
+// are not useful as standalone expressions.
 func completeLexical(typeEnv Env, prefix string) []Completion {
 	if prefix == "" {
 		return nil
@@ -214,6 +216,9 @@ func completeLexical(typeEnv Env, prefix string) []Completion {
 
 	for name, scheme := range typeEnv.Bindings(PublicVisibility) {
 		if !strings.HasPrefix(strings.ToLower(name), prefixLower) {
+			continue
+		}
+		if IsTypeDefBinding(scheme) || IsIDTypeName(name) {
 			continue
 		}
 
@@ -234,4 +239,28 @@ func completeLexical(typeEnv Env, prefix string) []Completion {
 	}
 
 	return completions
+}
+
+// IsTypeDefBinding returns true if the scheme represents a type definition
+// (scalar, enum, input, interface, union) rather than a callable field.
+func IsTypeDefBinding(scheme *hm.Scheme) bool {
+	t, _ := scheme.Type()
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	mod, ok := t.(*Module)
+	if !ok {
+		return false
+	}
+	switch mod.Kind {
+	case ScalarKind, EnumKind, InputKind, InterfaceKind, UnionKind:
+		return true
+	}
+	return false
+}
+
+// IsIDTypeName returns true for GraphQL ID scalar type names (e.g.
+// "ContainerID", "DirectoryID") which are internal plumbing.
+func IsIDTypeName(name string) bool {
+	return len(name) > 2 && strings.HasSuffix(name, "ID")
 }
