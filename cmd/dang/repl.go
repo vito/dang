@@ -114,9 +114,6 @@ type replModel struct {
 	height    int
 	quitting  bool
 
-	// Scrollback: how many lines the viewport is scrolled up from the bottom.
-	scrollOffset int
-
 	// Completion state
 	completions    []string // all available completions
 	menuVisible    bool     // whether the completion menu is shown
@@ -254,20 +251,10 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.SetWidth(msg.Width - lipgloss.Width(promptStyle.Render("dang> ")) - 1)
 		return m, nil
 
-	case tea.MouseWheelMsg:
-		maxScroll := len(m.renderedLines())
-		if msg.Button == tea.MouseWheelUp {
-			m.scrollOffset = min(m.scrollOffset+3, maxScroll)
-		} else if msg.Button == tea.MouseWheelDown {
-			m.scrollOffset = max(m.scrollOffset-3, 0)
-		}
-		return m, nil
-
 	case daggerLogMsg:
 		// Append raw chunk to the last entry's log region — partial
 		// lines (like progress dots) stay on the same line naturally.
 		m.lastEntry().writeLog(string(msg))
-		m.scrollOffset = 0
 		return m, nil
 
 	case evalResultMsg:
@@ -281,14 +268,12 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, line := range msg.results {
 			e.writeResult(line)
 		}
-		m.scrollOffset = 0
 		return m, nil
 
 	case evalCancelledMsg:
 		m.evaluating = false
 		m.cancelEval = nil
 		m.lastEntry().writeLogLine(errorStyle.Render("cancelled"))
-		m.scrollOffset = 0
 		return m, nil
 
 	case spinner.TickMsg:
@@ -384,7 +369,6 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Clear input immediately
 			m.textInput.SetValue("")
 			m.menuVisible = false
-			m.scrollOffset = 0
 
 			// Commands run synchronously (they're fast)
 			if strings.HasPrefix(line, ":") {
@@ -415,16 +399,6 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "ctrl+l":
 			m.entries = nil
-			m.scrollOffset = 0
-			return m, nil
-
-		// Scroll through output
-		case "pgup", "shift+up":
-			maxScroll := len(m.renderedLines())
-			m.scrollOffset = min(m.scrollOffset+5, maxScroll)
-			return m, nil
-		case "pgdown", "shift+down":
-			m.scrollOffset = max(m.scrollOffset-5, 0)
 			return m, nil
 		}
 	}
@@ -449,14 +423,7 @@ func (m replModel) View() tea.View {
 		return m.docBrowser.View()
 	}
 
-	// Reserve 1 line for the input.
-	outputHeight := m.height - 1
-	if outputHeight < 0 {
-		outputHeight = 0
-	}
-
-	// Build the visible portion of the output log.
-	visibleOutput := m.visibleOutputLines(outputHeight)
+	lines := m.renderedLines()
 
 	// Build the input line.
 	var inputLine string
@@ -466,17 +433,21 @@ func (m replModel) View() tea.View {
 		inputLine = m.textInput.View()
 	}
 
-	// Compose the full view: output + input at the bottom.
-	base := visibleOutput + "\n" + inputLine
+	// Full output + input at the bottom.
+	base := strings.Join(lines, "\n")
+	if len(lines) > 0 {
+		base += "\n"
+	}
+	base += inputLine
 
 	// When the completion menu is visible, composite it as a floating layer
-	// over the output area so the input line doesn't move.
+	// over the output so the input line doesn't move.
 	if !m.evaluating && m.menuVisible && len(m.menuItems) > 0 {
 		menu := m.renderMenu()
 		menuH := lipgloss.Height(menu)
 
 		// Position the menu just above the input line.
-		menuY := outputHeight - menuH
+		menuY := len(lines) - menuH
 		if menuY < 0 {
 			menuY = 0
 		}
@@ -490,21 +461,17 @@ func (m replModel) View() tea.View {
 		)
 
 		v := tea.NewView(comp)
-		v.AltScreen = true
-		v.MouseMode = tea.MouseModeCellMotion
 		if cursor := m.textInput.Cursor(); cursor != nil {
-			cursor.Y += outputHeight
+			cursor.Y += len(lines)
 			v.Cursor = cursor
 		}
 		return v
 	}
 
 	v := tea.NewView(base)
-	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
 	if !m.evaluating {
 		if cursor := m.textInput.Cursor(); cursor != nil {
-			cursor.Y += outputHeight
+			cursor.Y += len(lines)
 			v.Cursor = cursor
 		}
 	}
@@ -543,41 +510,6 @@ func (m replModel) renderedLines() []string {
 // visibleOutputLines returns the output text that fits in the given height,
 // respecting the current scroll offset. The returned string always has
 // exactly `height` newline-delimited lines (padded with blanks if needed).
-func (m replModel) visibleOutputLines(height int) string {
-	if height <= 0 {
-		return ""
-	}
-
-	all := m.renderedLines()
-	total := len(all)
-
-	// end is the index just past the last visible line (from the bottom).
-	end := total - m.scrollOffset
-	if end < 0 {
-		end = 0
-	}
-	if end > total {
-		end = total
-	}
-
-	start := end - height
-	if start < 0 {
-		start = 0
-	}
-
-	visible := all[start:end]
-
-	// Pad with empty lines so the output region is always `height` tall,
-	// pushing the input to the bottom of the screen.
-	padCount := height - len(visible)
-	lines := make([]string, 0, height)
-	for i := 0; i < padCount; i++ {
-		lines = append(lines, "")
-	}
-	lines = append(lines, visible...)
-
-	return strings.Join(lines, "\n")
-}
 
 // completionXOffset returns the column at which to place the completion popup,
 // aligned to the start of the token being completed.
@@ -948,7 +880,6 @@ func (m *replModel) handleCommand(cmdLine string) {
 
 	case "clear":
 		m.entries = nil
-		m.scrollOffset = 0
 
 	case "reset":
 		m.typeEnv, m.evalEnv = buildEnvFromImports(m.importConfigs)
