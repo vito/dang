@@ -54,12 +54,18 @@ type TUI struct {
 
 // New creates a TUI backed by the given terminal.
 func New(term Terminal) *TUI {
-	t := &TUI{
+	t := newTUI(term)
+	go t.renderLoop()
+	return t
+}
+
+// newTUI creates a TUI without starting the render loop. Used by tests
+// that call doRender synchronously.
+func newTUI(term Terminal) *TUI {
+	return &TUI{
 		terminal: term,
 		renderCh: make(chan struct{}, 1),
 	}
-	go t.renderLoop()
-	return t
 }
 
 // renderLoop processes render requests serially on a dedicated goroutine.
@@ -597,14 +603,16 @@ func (t *TUI) doRender() {
 // ---------- overlay compositing ---------------------------------------------
 
 func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW, termH, maxLinesRendered int) []string {
-	result := make([]string, len(lines))
+	contentH := len(lines)
+	result := make([]string, contentH)
 	copy(result, lines)
 
 	type rendered struct {
-		lines []string
-		row   int
-		col   int
-		w     int
+		lines           []string
+		row             int
+		col             int
+		w               int
+		contentRelative bool
 	}
 	var items []rendered
 	minNeeded := len(result)
@@ -613,19 +621,27 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 		if !t.isOverlayVisible(e) {
 			continue
 		}
-		w, _, _, _, _ := t.resolveOverlayLayout(e.options, 0, termW, termH)
+		cr := e.options != nil && e.options.ContentRelative
+		// Content-relative overlays use content height as the reference;
+		// viewport-relative overlays use terminal height.
+		refH := termH
+		if cr {
+			refH = contentH
+		}
+		w, _, _, _, _ := t.resolveOverlayLayout(e.options, 0, termW, refH)
 		oLines := e.component.Render(w)
-		_, _, _, maxH, maxHSet := t.resolveOverlayLayout(e.options, len(oLines), termW, termH)
+		_, _, _, maxH, maxHSet := t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
 		if maxHSet && len(oLines) > maxH {
 			oLines = oLines[:maxH]
 		}
-		_, row, col, _, _ := t.resolveOverlayLayout(e.options, len(oLines), termW, termH)
-		items = append(items, rendered{lines: oLines, row: row, col: col, w: w})
-		if row+len(oLines) > minNeeded {
+		_, row, col, _, _ := t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
+		items = append(items, rendered{lines: oLines, row: row, col: col, w: w, contentRelative: cr})
+		if !cr && row+len(oLines) > minNeeded {
 			minNeeded = row + len(oLines)
 		}
 	}
 
+	// Only viewport-relative overlays can extend the working height.
 	workingH := max(maxLinesRendered, minNeeded)
 	for len(result) < workingH {
 		result = append(result, "")
@@ -635,7 +651,14 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 
 	for _, item := range items {
 		for i, ol := range item.lines {
-			idx := viewportStart + item.row + i
+			var idx int
+			if item.contentRelative {
+				// Index directly into content lines.
+				idx = item.row + i
+			} else {
+				// Offset by viewport position.
+				idx = viewportStart + item.row + i
+			}
 			if idx >= 0 && idx < len(result) {
 				result[idx] = CompositeLineAt(result[idx], ol, item.col, item.w, termW)
 			}

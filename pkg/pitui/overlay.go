@@ -61,6 +61,13 @@ type OverlayOptions struct {
 
 	Margin OverlayMargin
 
+	// ContentRelative positions the overlay relative to the rendered content
+	// bounds rather than the terminal viewport. For example, AnchorBottomLeft
+	// with ContentRelative places the overlay at the bottom of the content
+	// (not the bottom of the screen), which is useful for menus that should
+	// float just above the last content line.
+	ContentRelative bool
+
 	// Visible is called each render cycle. If non-nil, the overlay is only
 	// rendered when it returns true.
 	Visible func(termWidth, termHeight int) bool

@@ -46,124 +46,94 @@ func (w *pituiSyncWriter) SetRepl(r *replComponent) {
 	w.repl = r
 }
 
-// ── replView component ──────────────────────────────────────────────────────
+// ── output log component ────────────────────────────────────────────────────
 
-// replView is a single pitui component that renders the entire REPL:
-// output log + (optionally composited completion menu) + input/spinner line.
-// The completion menu is composited on top of the output lines using pitui's
-// own CompositeLineAt, just above the input, so it doesn't push content around.
-type replView struct {
+// outputLog renders the structured entries list (past prompts, logs, results).
+// It snapshots entry data under the repl mutex to avoid races with the eval
+// goroutine writing to logs/result concurrently.
+type outputLog struct {
 	repl *replComponent
 }
 
-func (v *replView) Invalidate() {}
+func (o *outputLog) Invalidate() {}
 
-func (v *replView) Render(width int) []string {
-	// Snapshot all entry data under the lock to avoid races with the eval
-	// goroutine writing to logs/result concurrently.
+func (o *outputLog) Render(width int) []string {
 	type entrySnapshot struct {
 		input  string
 		logs   string
 		result string
 	}
-	v.repl.mu.Lock()
-	snaps := make([]entrySnapshot, len(v.repl.entries))
-	for i, e := range v.repl.entries {
+	o.repl.mu.Lock()
+	snaps := make([]entrySnapshot, len(o.repl.entries))
+	for i, e := range o.repl.entries {
 		snaps[i] = entrySnapshot{
 			input:  e.input,
 			logs:   e.logs.String(),
 			result: e.result.String(),
 		}
 	}
-	evaluating := v.repl.evaluating
-	menuVisible := v.repl.menuVisible
-	menuItems := v.repl.menuItems
-	menuIndex := v.repl.menuIndex
-	menuMaxVisible := v.repl.menuMaxVisible
-	v.repl.mu.Unlock()
+	o.repl.mu.Unlock()
 
-	// 1. Render output lines from entries.
-	var outputLines []string
+	var lines []string
 	for _, snap := range snaps {
 		if snap.input != "" {
-			outputLines = append(outputLines, snap.input)
+			lines = append(lines, snap.input)
 		}
 		if snap.logs != "" {
 			logLines := strings.Split(snap.logs, "\n")
 			if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
 				logLines = logLines[:len(logLines)-1]
 			}
-			outputLines = append(outputLines, logLines...)
+			lines = append(lines, logLines...)
 		}
 		if snap.result != "" {
 			resLines := strings.Split(snap.result, "\n")
 			if len(resLines) > 0 && resLines[len(resLines)-1] == "" {
 				resLines = resLines[:len(resLines)-1]
 			}
-			outputLines = append(outputLines, resLines...)
+			lines = append(lines, resLines...)
 		}
 	}
-	for i, line := range outputLines {
-		outputLines[i] = pitui.ExpandTabs(line, 8)
+	for i, line := range lines {
+		lines[i] = pitui.ExpandTabs(line, 8)
 	}
-	for i, line := range outputLines {
+	for i, line := range lines {
 		if pitui.VisibleWidth(line) > width {
-			outputLines[i] = pitui.Truncate(line, width, "")
+			lines[i] = pitui.Truncate(line, width, "")
 		}
 	}
+	return lines
+}
 
-	// 2. Render the input line (or spinner).
-	var inputLine string
-	if evaluating {
-		inputLines := v.repl.spinner.Render(width)
-		if len(inputLines) > 0 {
-			inputLine = inputLines[0]
-		}
-	} else {
-		tiLines := v.repl.textInput.Render(width)
-		if len(tiLines) > 0 {
-			inputLine = tiLines[0]
-		}
+// ── spinner line component ──────────────────────────────────────────────────
+
+type evalSpinnerLine struct {
+	spinner *pitui.Spinner
+}
+
+func (e *evalSpinnerLine) Invalidate() {}
+func (e *evalSpinnerLine) Render(width int) []string {
+	return e.spinner.Render(width)
+}
+
+// ── completion menu overlay ─────────────────────────────────────────────────
+
+// completionOverlay renders the completion dropdown. It is shown as a
+// content-relative overlay so it floats on top of the output lines just
+// above the input line, without pushing content around.
+type completionOverlay struct {
+	items      []string
+	index      int
+	maxVisible int
+}
+
+func (c *completionOverlay) Invalidate() {}
+
+func (c *completionOverlay) Render(width int) []string {
+	if len(c.items) == 0 {
+		return nil
 	}
-
-	// 3. If the completion menu is visible, composite it on top of output.
-	if !evaluating && menuVisible && len(menuItems) > 0 {
-		menuBox := renderMenuBox(menuItems, menuIndex, menuMaxVisible, width)
-		menuLines := strings.Split(menuBox, "\n")
-		menuH := len(menuLines)
-
-		// Position: just above the last output line (which is where the
-		// input will be appended). If there aren't enough output lines,
-		// place it at the top.
-		menuY := len(outputLines) - menuH
-		if menuY < 0 {
-			menuY = 0
-		}
-		menuX := v.repl.completionXOffsetPitui()
-
-		// Ensure we have enough output lines to composite onto.
-		for len(outputLines) < menuY+menuH {
-			outputLines = append(outputLines, "")
-		}
-
-		// Splice each menu line into the corresponding output line.
-		menuW := 0
-		for _, ml := range menuLines {
-			if w := pitui.VisibleWidth(ml); w > menuW {
-				menuW = w
-			}
-		}
-		for i, ml := range menuLines {
-			idx := menuY + i
-			if idx >= 0 && idx < len(outputLines) {
-				outputLines[idx] = pitui.CompositeLineAt(outputLines[idx], ml, menuX, menuW, width)
-			}
-		}
-	}
-
-	// 4. Combine output + input.
-	result := append(outputLines, inputLine)
-	return result
+	return strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, width), "\n")
 }
 
 // renderMenuBox renders the completion dropdown as a bordered box string.
@@ -265,10 +235,11 @@ type replComponent struct {
 	ctx           context.Context
 
 	// UI state
-	tui       *pitui.TUI
-	textInput *pitui.TextInput
-	view      *replView
-	spinner   *pitui.Spinner
+	tui         *pitui.TUI
+	textInput   *pitui.TextInput
+	output      *outputLog
+	spinner     *pitui.Spinner
+	spinnerLine *evalSpinnerLine
 
 	entries []*replEntry
 	quit    chan struct{}
@@ -280,6 +251,8 @@ type replComponent struct {
 	menuCompletions  []dang.Completion // parallel to menuItems; Detail/Documentation
 	menuIndex        int
 	menuMaxVisible   int
+	menuOverlay      *completionOverlay
+	menuHandle       *pitui.OverlayHandle
 	detailBubble     *detailBubble
 	detailHandle     *pitui.OverlayHandle
 
@@ -315,7 +288,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		historyFile:    "/tmp/dang_history",
 		quit:           make(chan struct{}),
 	}
-	r.view = &replView{repl: r}
+	r.output = &outputLog{repl: r}
 
 	// Spinner
 	sp := pitui.NewSpinner(tui)
@@ -324,6 +297,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
+	r.spinnerLine = &evalSpinnerLine{spinner: sp}
 
 	// Text input callbacks.
 	ti.SuggestionStyle = func(s string) string {
@@ -360,9 +334,10 @@ func (r *replComponent) lastEntry() *replEntry {
 	return r.entries[len(r.entries)-1]
 }
 
-// install adds the repl's view component to the TUI.
+// install adds the repl's components to the TUI.
 func (r *replComponent) install() {
-	r.tui.AddChild(r.view)
+	r.tui.AddChild(r.output)
+	r.tui.AddChild(r.textInput)
 	r.tui.SetFocus(r.textInput)
 }
 
@@ -524,7 +499,9 @@ func (r *replComponent) startEvalPitui(expr string) {
 	debug := r.debug
 	r.mu.Unlock()
 
-	// Show spinner (replView checks r.evaluating to switch display).
+	// Swap text input for spinner line.
+	r.tui.RemoveChild(r.textInput)
+	r.tui.AddChild(r.spinnerLine)
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval.
@@ -597,7 +574,9 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	}
 	r.mu.Unlock()
 
-	// Restore UI (replView will see evaluating=false and show textInput).
+	// Swap spinner back to text input.
+	r.tui.RemoveChild(r.spinnerLine)
+	r.tui.AddChild(r.textInput)
 	r.tui.SetFocus(r.textInput)
 	r.tui.RequestRender(false)
 }
@@ -608,10 +587,44 @@ func (r *replComponent) hideCompletionMenu() {
 	r.menuVisible = false
 	r.menuItems = nil
 	r.menuCompletions = nil
+	if r.menuHandle != nil {
+		r.menuHandle.Hide()
+		r.menuHandle = nil
+		r.menuOverlay = nil
+	}
 	r.hideDetailBubble()
 }
 
+func (r *replComponent) showCompletionMenu() {
+	// Always recreate the overlay so OffsetX tracks the cursor position.
+	if r.menuHandle != nil {
+		r.menuHandle.Hide()
+		r.menuHandle = nil
+	}
+	r.menuOverlay = &completionOverlay{
+		items:      r.menuItems,
+		index:      r.menuIndex,
+		maxVisible: r.menuMaxVisible,
+	}
+	xOff := r.completionXOffsetPitui()
+	r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, &pitui.OverlayOptions{
+		Width:           pitui.SizeAbs(40),
+		MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
+		Anchor:          pitui.AnchorBottomLeft,
+		ContentRelative: true,
+		OffsetX:         xOff,
+		OffsetY:         -1, // above the input line
+	})
+	// Keep focus on the text input.
+	r.tui.SetFocus(r.textInput)
+	r.syncDetailBubble()
+}
+
 func (r *replComponent) syncMenu() {
+	if r.menuOverlay != nil {
+		r.menuOverlay.items = r.menuItems
+		r.menuOverlay.index = r.menuIndex
+	}
 	r.syncDetailBubble()
 	r.tui.RequestRender(false)
 }
@@ -798,7 +811,7 @@ func (r *replComponent) setMenuPitui(matches []string, completions []dang.Comple
 	if r.menuIndex >= len(matches) {
 		r.menuIndex = 0
 	}
-	r.syncDetailBubble()
+	r.showCompletionMenu()
 }
 
 // sortByCaseWithCompletions sorts matches (and their parallel completions)

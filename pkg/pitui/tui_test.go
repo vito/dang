@@ -54,14 +54,15 @@ func (s *staticComponent) Render(width int) []string {
 }
 func (s *staticComponent) Invalidate() {}
 
-// renderSync calls doRender directly (bypasses channel scheduling).
+// renderSync calls doRender directly. Tests use newTUI (no renderLoop),
+// so there's no concurrency to worry about.
 func renderSync(t *TUI) {
 	t.doRender()
 }
 
 func TestFirstRender(t *testing.T) {
 	term := newMockTerminal(40, 10)
-	tui := New(term)
+	tui := newTUI(term)
 	tui.AddChild(&staticComponent{lines: []string{"hello", "world"}})
 
 	// Simulate start without goroutines.
@@ -80,7 +81,7 @@ func TestFirstRender(t *testing.T) {
 
 func TestDifferentialRender(t *testing.T) {
 	term := newMockTerminal(40, 10)
-	tui := New(term)
+	tui := newTUI(term)
 	comp := &staticComponent{lines: []string{"line1", "line2", "line3"}}
 	tui.AddChild(comp)
 	tui.stopped = false
@@ -108,7 +109,7 @@ func TestDifferentialRender(t *testing.T) {
 
 func TestAppendLines(t *testing.T) {
 	term := newMockTerminal(40, 10)
-	tui := New(term)
+	tui := newTUI(term)
 	comp := &staticComponent{lines: []string{"a"}}
 	tui.AddChild(comp)
 	tui.stopped = false
@@ -130,7 +131,7 @@ func TestAppendLines(t *testing.T) {
 
 func TestWidthChangeTriggersFullRedraw(t *testing.T) {
 	term := newMockTerminal(40, 10)
-	tui := New(term)
+	tui := newTUI(term)
 	tui.AddChild(&staticComponent{lines: []string{"hello"}})
 	tui.stopped = false
 
@@ -146,7 +147,7 @@ func TestWidthChangeTriggersFullRedraw(t *testing.T) {
 
 func TestOffscreenChangeTriggersFullRedraw(t *testing.T) {
 	term := newMockTerminal(40, 5) // only 5 rows visible
-	tui := New(term)
+	tui := newTUI(term)
 
 	// Create enough content to scroll.
 	lines := make([]string, 20)
@@ -174,7 +175,7 @@ func TestOffscreenChangeTriggersFullRedraw(t *testing.T) {
 
 func TestNoChangeNoOutput(t *testing.T) {
 	term := newMockTerminal(40, 10)
-	tui := New(term)
+	tui := newTUI(term)
 	tui.AddChild(&staticComponent{lines: []string{"stable"}})
 	tui.stopped = false
 
@@ -207,7 +208,7 @@ func TestCursorMarkerExtraction(t *testing.T) {
 
 func TestOverlayCompositing(t *testing.T) {
 	term := newMockTerminal(20, 5)
-	tui := New(term)
+	tui := newTUI(term)
 	bg := &staticComponent{lines: []string{
 		strings.Repeat(".", 20),
 		strings.Repeat(".", 20),
@@ -240,6 +241,45 @@ func TestOverlayCompositing(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "overlay content should appear in rendered output")
+}
+
+func TestContentRelativeOverlay(t *testing.T) {
+	// Content has 3 lines but terminal is 10 rows tall.
+	// A viewport-relative AnchorBottomLeft overlay would appear at row 8-9.
+	// A content-relative AnchorBottomLeft overlay should appear at row 1-2
+	// (just above the last content line).
+	term := newMockTerminal(30, 10)
+	tui := newTUI(term)
+	bg := &staticComponent{lines: []string{
+		"line-0",
+		"line-1",
+		"line-2",
+	}}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	menu := &staticComponent{lines: []string{"MENU-A", "MENU-B"}}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:           SizeAbs(10),
+		Anchor:          AnchorBottomLeft,
+		ContentRelative: true,
+		OffsetY:         -1, // above the last content line
+	})
+	// Don't let it steal focus for this test.
+	tui.SetFocus(nil)
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// Menu should be composited at rows 0 and 1 (content has 3 lines,
+	// AnchorBottomLeft = row 3-2=1, OffsetY=-1 → row 0).
+	require.True(t, len(prev) >= 3, "should have at least 3 lines")
+	assert.Contains(t, prev[0], "MENU-A", "first menu line at content row 0")
+	assert.Contains(t, prev[1], "MENU-B", "second menu line at content row 1")
+	assert.Contains(t, prev[2], "line-2", "last content line untouched")
 }
 
 func TestVisibleWidth(t *testing.T) {
@@ -319,7 +359,7 @@ func TestCompositeWithTabExpandedLine(t *testing.T) {
 
 func TestForceRender(t *testing.T) {
 	term := newMockTerminal(40, 10)
-	tui := New(term)
+	tui := newTUI(term)
 	tui.AddChild(&staticComponent{lines: []string{"content"}})
 	tui.stopped = false
 
