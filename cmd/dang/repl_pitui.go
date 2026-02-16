@@ -111,8 +111,9 @@ func (v *replView) Render(width int) []string {
 
 	// 3. If the completion menu is visible, composite it on top of output.
 	if !evaluating && menuVisible && len(menuItems) > 0 {
-		menuStr := renderMenuBox(menuItems, menuIndex, menuMaxVisible, width)
-		menuH := lipgloss.Height(menuStr)
+		menuBox := renderMenuBox(menuItems, menuIndex, menuMaxVisible, width)
+		menuLines := strings.Split(menuBox, "\n")
+		menuH := len(menuLines)
 
 		// Position: just above the last output line (which is where the
 		// input will be appended). If there aren't enough output lines,
@@ -123,18 +124,22 @@ func (v *replView) Render(width int) []string {
 		}
 		menuX := v.repl.completionXOffsetPitui()
 
-		outputStr := strings.Join(outputLines, "\n")
-		comp := lipgloss.NewCompositor(
-			lipgloss.NewLayer(outputStr),
-			lipgloss.NewLayer(menuStr).X(menuX).Y(menuY).Z(1),
-		)
-		composited := comp.Render()
-		outputLines = strings.Split(composited, "\n")
+		// Ensure we have enough output lines to composite onto.
+		for len(outputLines) < menuY+menuH {
+			outputLines = append(outputLines, "")
+		}
 
-		// Width guard after compositing.
-		for i, line := range outputLines {
-			if pitui.VisibleWidth(line) > width {
-				outputLines[i] = pitui.Truncate(line, width, "")
+		// Splice each menu line into the corresponding output line.
+		menuW := 0
+		for _, ml := range menuLines {
+			if w := pitui.VisibleWidth(ml); w > menuW {
+				menuW = w
+			}
+		}
+		for i, ml := range menuLines {
+			idx := menuY + i
+			if idx >= 0 && idx < len(outputLines) {
+				outputLines[idx] = pitui.CompositeLineAt(outputLines[idx], ml, menuX, menuW, width)
 			}
 		}
 	}

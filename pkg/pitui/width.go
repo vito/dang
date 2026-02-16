@@ -126,3 +126,57 @@ func parseEscape(s string) (string, int) {
 
 // segmentReset resets all SGR attributes and cancels any active hyperlink.
 const segmentReset = "\x1b[0m\x1b]8;;\x07"
+
+// CompositeLineAt splices overlay content into a base line at a specific
+// column offset. The base line's content is preserved on both sides of the
+// overlay, and the result is exactly totalWidth visible columns.
+func CompositeLineAt(baseLine, overlayLine string, startCol, overlayWidth, totalWidth int) string {
+	// Extract the "before" segment (columns 0..startCol) and the "after"
+	// segment (columns startCol+overlayWidth..totalWidth) from the base.
+	before := ""
+	beforeW := 0
+	if startCol > 0 {
+		before = ansi.Truncate(baseLine, startCol, "")
+		beforeW = VisibleWidth(before)
+	}
+
+	afterStart := startCol + overlayWidth
+	after := ""
+	afterW := 0
+	if afterStart < totalWidth {
+		after = SliceByColumn(baseLine, afterStart, totalWidth-afterStart)
+		afterW = VisibleWidth(after)
+	}
+
+	overlayTrunc := ansi.Truncate(overlayLine, overlayWidth, "")
+	overlayW := VisibleWidth(overlayTrunc)
+
+	var buf strings.Builder
+
+	// Before segment + padding to reach startCol.
+	buf.WriteString(before)
+	for i := beforeW; i < startCol; i++ {
+		buf.WriteByte(' ')
+	}
+	buf.WriteString(segmentReset)
+
+	// Overlay content + padding to fill overlayWidth.
+	buf.WriteString(overlayTrunc)
+	for i := overlayW; i < overlayWidth; i++ {
+		buf.WriteByte(' ')
+	}
+	buf.WriteString(segmentReset)
+
+	// After segment + padding to reach totalWidth.
+	buf.WriteString(after)
+	usedWidth := max(startCol, beforeW) + max(overlayWidth, overlayW) + afterW
+	for i := usedWidth; i < totalWidth; i++ {
+		buf.WriteByte(' ')
+	}
+
+	result := buf.String()
+	if VisibleWidth(result) > totalWidth {
+		result = ansi.Truncate(result, totalWidth, "")
+	}
+	return result
+}
