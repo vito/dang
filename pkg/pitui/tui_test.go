@@ -9,6 +9,7 @@ import (
 )
 
 // mockTerminal records writes and simulates a fixed-size terminal.
+// x
 type mockTerminal struct {
 	cols, rows int
 	written    strings.Builder
@@ -25,13 +26,13 @@ func (m *mockTerminal) Start(onInput func([]byte), onResize func()) error {
 	m.onResize = onResize
 	return nil
 }
-func (m *mockTerminal) Stop()               {}
-func (m *mockTerminal) Write(p []byte)      { m.written.Write(p) }
+func (m *mockTerminal) Stop()                {}
+func (m *mockTerminal) Write(p []byte)       { m.written.Write(p) }
 func (m *mockTerminal) WriteString(s string) { m.written.WriteString(s) }
-func (m *mockTerminal) Columns() int        { return m.cols }
-func (m *mockTerminal) Rows() int           { return m.rows }
-func (m *mockTerminal) HideCursor()         { m.written.WriteString("\x1b[?25l") }
-func (m *mockTerminal) ShowCursor()         { m.written.WriteString("\x1b[?25h") }
+func (m *mockTerminal) Columns() int         { return m.cols }
+func (m *mockTerminal) Rows() int            { return m.rows }
+func (m *mockTerminal) HideCursor()          { m.written.WriteString("\x1b[?25l") }
+func (m *mockTerminal) ShowCursor()          { m.written.WriteString("\x1b[?25h") }
 
 func (m *mockTerminal) reset() { m.written.Reset() }
 
@@ -53,11 +54,8 @@ func (s *staticComponent) Render(width int) []string {
 }
 func (s *staticComponent) Invalidate() {}
 
-// renderSync calls doRender directly (bypasses goroutine scheduling).
+// renderSync calls doRender directly (bypasses channel scheduling).
 func renderSync(t *TUI) {
-	t.mu.Lock()
-	t.renderRequested = false
-	t.mu.Unlock()
 	t.doRender()
 }
 

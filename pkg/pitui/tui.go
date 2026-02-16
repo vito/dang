@@ -38,7 +38,6 @@ type TUI struct {
 	focusedComponent Component
 	inputListeners   []inputListenerEntry
 
-	renderRequested    bool
 	cursorRow          int
 	hardwareCursorRow  int
 	showHardwareCursor bool
@@ -49,12 +48,24 @@ type TUI struct {
 	stopped            bool
 
 	overlayStack []*overlayEntry
+
+	renderCh chan struct{} // serialized render requests
 }
 
 // New creates a TUI backed by the given terminal.
 func New(term Terminal) *TUI {
-	return &TUI{
+	t := &TUI{
 		terminal: term,
+		renderCh: make(chan struct{}, 1),
+	}
+	go t.renderLoop()
+	return t
+}
+
+// renderLoop processes render requests serially on a dedicated goroutine.
+func (t *TUI) renderLoop() {
+	for range t.renderCh {
+		t.doRender()
 	}
 }
 
@@ -223,6 +234,7 @@ func (t *TUI) Stop() {
 
 	t.terminal.ShowCursor()
 	t.terminal.Stop()
+	close(t.renderCh)
 }
 
 // RequestRender schedules a render on the next iteration. If force is true,
@@ -241,22 +253,13 @@ func (t *TUI) RequestRender(force bool) {
 		t.maxLinesRendered = 0
 		t.previousViewportTop = 0
 	}
-	if t.renderRequested {
-		t.mu.Unlock()
-		return
-	}
-	t.renderRequested = true
 	t.mu.Unlock()
 
-	// Render synchronously. In a real application you may want to coalesce
-	// via a channel or timer; for now this matches the TS version's
-	// process.nextTick behaviour closely enough.
-	go func() {
-		t.mu.Lock()
-		t.renderRequested = false
-		t.mu.Unlock()
-		t.doRender()
-	}()
+	// Non-blocking send to coalesce multiple rapid requests.
+	select {
+	case t.renderCh <- struct{}{}:
+	default:
+	}
 }
 
 // Invalidate clears cached rendering state of all components (including
