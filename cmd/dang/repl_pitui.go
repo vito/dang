@@ -100,17 +100,20 @@ func (e *evalSpinnerLine) Render(width int) []string {
 	return e.spinner.Render(width)
 }
 
-// ── completion menu (overlay) ───────────────────────────────────────────────
+// ── completion menu (inline component) ──────────────────────────────────────
 
-type completionOverlay struct {
+// completionMenu renders as a regular component placed between the output log
+// and the text input. When hidden (no items), it renders zero lines.
+type completionMenu struct {
 	items      []string
 	index      int
 	maxVisible int
+	xOffset    int // column offset for horizontal alignment
 }
 
-func (c *completionOverlay) Invalidate() {}
+func (c *completionMenu) Invalidate() {}
 
-func (c *completionOverlay) Render(width int) []string {
+func (c *completionMenu) Render(width int) []string {
 	if len(c.items) == 0 {
 		return nil
 	}
@@ -134,15 +137,14 @@ func (c *completionOverlay) Render(width int) []string {
 	if maxW < 20 {
 		maxW = 20
 	}
-	// Clamp to overlay width.
-	if maxW+4 > width { // account for " %-*s " padding
+	if maxW+4 > width {
 		maxW = width - 4
 	}
 	if maxW < 4 {
 		maxW = 4
 	}
 
-	var lines []string
+	var menuLines []string
 	for i := start; i < end && i < len(c.items); i++ {
 		item := c.items[i]
 		if lipgloss.Width(item) > maxW {
@@ -150,23 +152,32 @@ func (c *completionOverlay) Render(width int) []string {
 		}
 		padded := fmt.Sprintf(" %-*s ", maxW, item)
 		if i == c.index {
-			lines = append(lines, menuSelectedStyle.Render(padded))
+			menuLines = append(menuLines, menuSelectedStyle.Render(padded))
 		} else {
-			lines = append(lines, menuStyle.Render(padded))
+			menuLines = append(menuLines, menuStyle.Render(padded))
 		}
 	}
 
 	if len(c.items) > visible {
 		info := fmt.Sprintf(" %d/%d ", c.index+1, len(c.items))
-		lines = append(lines, dimStyle.Render(info))
+		menuLines = append(menuLines, dimStyle.Render(info))
 	}
 
-	// Wrap with a border.
-	inner := strings.Join(lines, "\n")
-	return strings.Split(menuBorderStyle.Render(inner), "\n")
-}
+	inner := strings.Join(menuLines, "\n")
+	box := menuBorderStyle.Render(inner)
 
-func (c *completionOverlay) HandleInput(data []byte) {}
+	// Indent each line by xOffset spaces to align with the token.
+	pad := strings.Repeat(" ", c.xOffset)
+	boxLines := strings.Split(box, "\n")
+	for i, line := range boxLines {
+		indented := pad + line
+		if pitui.VisibleWidth(indented) > width {
+			indented = pitui.Truncate(indented, width, "")
+		}
+		boxLines[i] = indented
+	}
+	return boxLines
+}
 
 // ── REPL component ─────────────────────────────────────────────────────────
 
@@ -195,8 +206,7 @@ type replComponent struct {
 	menuItems      []string
 	menuIndex      int
 	menuMaxVisible int
-	menuOverlay    *completionOverlay
-	menuHandle     *pitui.OverlayHandle
+	menu           *completionMenu
 
 	// Eval
 	evaluating bool
@@ -265,6 +275,9 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	welcome.writeLogLine("")
 	r.entries = append(r.entries, welcome)
 
+	// Completion menu (inline component, between output and input).
+	r.menu = &completionMenu{maxVisible: r.menuMaxVisible}
+
 	r.completions = r.buildCompletionsPitui()
 	r.loadHistoryPitui()
 
@@ -281,6 +294,7 @@ func (r *replComponent) lastEntry() *replEntry {
 // install adds the repl's components to the TUI.
 func (r *replComponent) install() {
 	r.tui.AddChild(r.output)
+	r.tui.AddChild(r.menu) // between output and input; renders nothing when empty
 	r.tui.AddChild(r.textInput)
 	r.tui.SetFocus(r.textInput)
 }
@@ -342,14 +356,14 @@ func (r *replComponent) onKey(data []byte) bool {
 			if r.menuIndex >= len(r.menuItems) {
 				r.menuIndex = 0
 			}
-			r.syncMenuOverlay()
+			r.syncMenu()
 			return true
 		case pitui.KeyUp, pitui.KeyCtrlP:
 			r.menuIndex--
 			if r.menuIndex < 0 {
 				r.menuIndex = len(r.menuItems) - 1
 			}
-			r.syncMenuOverlay()
+			r.syncMenu()
 			return true
 		case pitui.KeyEscape:
 			r.hideCompletionMenu()
@@ -528,42 +542,22 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 // ── completion menu ─────────────────────────────────────────────────────────
 
 func (r *replComponent) showCompletionMenu() {
-	if r.menuHandle != nil {
-		return
-	}
-	r.menuOverlay = &completionOverlay{
-		items:      r.menuItems,
-		index:      r.menuIndex,
-		maxVisible: r.menuMaxVisible,
-	}
-	// Position above the input line, aligned to the token start.
-	xOff := r.completionXOffsetPitui()
-	r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, &pitui.OverlayOptions{
-		Width:     pitui.SizeAbs(40),
-		MaxHeight: pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
-		Anchor:    pitui.AnchorBottomLeft,
-		OffsetX:   xOff,
-		OffsetY:   -1, // above the input line
-	})
-	// Focus stays on text input.
-	r.tui.SetFocus(r.textInput)
+	r.menu.items = r.menuItems
+	r.menu.index = r.menuIndex
+	r.menu.xOffset = r.completionXOffsetPitui()
 }
 
 func (r *replComponent) hideCompletionMenu() {
 	r.menuVisible = false
 	r.menuItems = nil
-	if r.menuHandle != nil {
-		r.menuHandle.Hide()
-		r.menuHandle = nil
-		r.menuOverlay = nil
-	}
+	r.menu.items = nil
+	r.menu.index = 0
 }
 
-func (r *replComponent) syncMenuOverlay() {
-	if r.menuOverlay != nil {
-		r.menuOverlay.items = r.menuItems
-		r.menuOverlay.index = r.menuIndex
-	}
+func (r *replComponent) syncMenu() {
+	r.menu.items = r.menuItems
+	r.menu.index = r.menuIndex
+	r.menu.xOffset = r.completionXOffsetPitui()
 	r.tui.RequestRender(false)
 }
 
@@ -659,11 +653,7 @@ func (r *replComponent) setMenuPitui(matches []string) {
 	if r.menuIndex >= len(matches) {
 		r.menuIndex = 0
 	}
-	if r.menuHandle == nil {
-		r.showCompletionMenu()
-	} else {
-		r.syncMenuOverlay()
-	}
+	r.showCompletionMenu()
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
