@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -263,15 +264,19 @@ func TestSliceByColumn(t *testing.T) {
 	assert.Equal(t, "ell", stripped)
 }
 
-func TestCompositeLineAt(t *testing.T) {
+func TestLipglossCompositing(t *testing.T) {
+	// Test that lipgloss Compositor correctly overlays content.
 	base := strings.Repeat(".", 20)
-	result := compositeLineAt(base, "HI", 5, 4, 20)
-	w := VisibleWidth(result)
-	assert.Equal(t, 20, w, "composited line should be exactly terminal width")
-	// The overlay "HI" (2 chars) should appear padded to 4 cols at column 5.
+	overlay := "HI"
+
+	comp := lipgloss.NewCompositor(
+		lipgloss.NewLayer(base),
+		lipgloss.NewLayer(overlay).X(5).Y(0).Z(1),
+	)
+	result := comp.Render()
 	stripped := stripANSI(result)
-	// Before: 5 dots, overlay: "HI" + 2 spaces, after: 11 dots
-	assert.Equal(t, ".....HI  ...........", stripped)
+	// "HI" at column 5 overwrites two dots.
+	assert.Equal(t, ".....HI.............", stripped)
 }
 
 func stripANSI(s string) string {

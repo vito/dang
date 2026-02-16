@@ -46,88 +46,116 @@ func (w *pituiSyncWriter) SetRepl(r *replComponent) {
 	w.repl = r
 }
 
-// ── output log component ────────────────────────────────────────────────────
+// ── replView component ──────────────────────────────────────────────────────
 
-// outputLog renders the structured entries list (past prompts, logs, results).
-type outputLog struct {
+// replView is a single pitui component that renders the entire REPL:
+// output log + (optionally composited completion menu) + input/spinner line.
+// The completion menu is composited as a lipgloss layer *on top of* the output
+// lines, just above the input, so it doesn't push content around.
+type replView struct {
 	repl *replComponent
 }
 
-func (o *outputLog) Invalidate() {}
+func (v *replView) Invalidate() {}
 
-func (o *outputLog) Render(width int) []string {
-	o.repl.mu.Lock()
-	entries := o.repl.entries
-	o.repl.mu.Unlock()
+func (v *replView) Render(width int) []string {
+	v.repl.mu.Lock()
+	entries := v.repl.entries
+	evaluating := v.repl.evaluating
+	menuVisible := v.repl.menuVisible
+	menuItems := v.repl.menuItems
+	menuIndex := v.repl.menuIndex
+	menuMaxVisible := v.repl.menuMaxVisible
+	v.repl.mu.Unlock()
 
-	var lines []string
+	// 1. Render output lines from entries.
+	var outputLines []string
 	for _, e := range entries {
 		if e.input != "" {
-			lines = append(lines, e.input)
+			outputLines = append(outputLines, e.input)
 		}
 		if logStr := e.logs.String(); logStr != "" {
 			logLines := strings.Split(logStr, "\n")
 			if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
 				logLines = logLines[:len(logLines)-1]
 			}
-			lines = append(lines, logLines...)
+			outputLines = append(outputLines, logLines...)
 		}
 		if resStr := e.result.String(); resStr != "" {
 			resLines := strings.Split(resStr, "\n")
 			if len(resLines) > 0 && resLines[len(resLines)-1] == "" {
 				resLines = resLines[:len(resLines)-1]
 			}
-			lines = append(lines, resLines...)
+			outputLines = append(outputLines, resLines...)
 		}
 	}
-	// Truncate any line that exceeds width.
-	for i, line := range lines {
+	for i, line := range outputLines {
 		if pitui.VisibleWidth(line) > width {
-			lines[i] = pitui.Truncate(line, width, "")
+			outputLines[i] = pitui.Truncate(line, width, "")
 		}
 	}
-	return lines
-}
 
-// ── spinner line component ──────────────────────────────────────────────────
-
-type evalSpinnerLine struct {
-	spinner *pitui.Spinner
-}
-
-func (e *evalSpinnerLine) Invalidate() {}
-func (e *evalSpinnerLine) Render(width int) []string {
-	return e.spinner.Render(width)
-}
-
-// ── completion menu (inline component) ──────────────────────────────────────
-
-// completionMenu renders as a regular component placed between the output log
-// and the text input. When hidden (no items), it renders zero lines.
-type completionMenu struct {
-	items      []string
-	index      int
-	maxVisible int
-	xOffset    int // column offset for horizontal alignment
-}
-
-func (c *completionMenu) Invalidate() {}
-
-func (c *completionMenu) Render(width int) []string {
-	if len(c.items) == 0 {
-		return nil
+	// 2. Render the input line (or spinner).
+	var inputLine string
+	if evaluating {
+		inputLines := v.repl.spinner.Render(width)
+		if len(inputLines) > 0 {
+			inputLine = inputLines[0]
+		}
+	} else {
+		tiLines := v.repl.textInput.Render(width)
+		if len(tiLines) > 0 {
+			inputLine = tiLines[0]
+		}
 	}
 
-	visible := min(len(c.items), c.maxVisible)
+	// 3. If the completion menu is visible, composite it on top of output.
+	if !evaluating && menuVisible && len(menuItems) > 0 {
+		menuStr := renderMenuBox(menuItems, menuIndex, menuMaxVisible, width)
+		menuH := lipgloss.Height(menuStr)
+
+		// Position: just above the last output line (which is where the
+		// input will be appended). If there aren't enough output lines,
+		// place it at the top.
+		menuY := len(outputLines) - menuH
+		if menuY < 0 {
+			menuY = 0
+		}
+		menuX := v.repl.completionXOffsetPitui()
+
+		outputStr := strings.Join(outputLines, "\n")
+		comp := lipgloss.NewCompositor(
+			lipgloss.NewLayer(outputStr),
+			lipgloss.NewLayer(menuStr).X(menuX).Y(menuY).Z(1),
+		)
+		composited := comp.Render()
+		outputLines = strings.Split(composited, "\n")
+
+		// Width guard after compositing.
+		for i, line := range outputLines {
+			if pitui.VisibleWidth(line) > width {
+				outputLines[i] = pitui.Truncate(line, width, "")
+			}
+		}
+	}
+
+	// 4. Combine output + input.
+	result := append(outputLines, inputLine)
+	return result
+}
+
+// renderMenuBox renders the completion dropdown as a bordered box string.
+func renderMenuBox(items []string, index, maxVisible, width int) string {
+	visible := min(len(items), maxVisible)
 	start := 0
-	if c.index >= visible {
-		start = c.index - visible + 1
+	if index >= visible {
+		start = index - visible + 1
 	}
 	end := start + visible
 
 	maxW := 0
-	for i := start; i < end && i < len(c.items); i++ {
-		if w := lipgloss.Width(c.items[i]); w > maxW {
+	for i := start; i < end && i < len(items); i++ {
+		if w := lipgloss.Width(items[i]); w > maxW {
 			maxW = w
 		}
 	}
@@ -145,38 +173,26 @@ func (c *completionMenu) Render(width int) []string {
 	}
 
 	var menuLines []string
-	for i := start; i < end && i < len(c.items); i++ {
-		item := c.items[i]
+	for i := start; i < end && i < len(items); i++ {
+		item := items[i]
 		if lipgloss.Width(item) > maxW {
 			item = item[:maxW-3] + "..."
 		}
 		padded := fmt.Sprintf(" %-*s ", maxW, item)
-		if i == c.index {
+		if i == index {
 			menuLines = append(menuLines, menuSelectedStyle.Render(padded))
 		} else {
 			menuLines = append(menuLines, menuStyle.Render(padded))
 		}
 	}
 
-	if len(c.items) > visible {
-		info := fmt.Sprintf(" %d/%d ", c.index+1, len(c.items))
+	if len(items) > visible {
+		info := fmt.Sprintf(" %d/%d ", index+1, len(items))
 		menuLines = append(menuLines, dimStyle.Render(info))
 	}
 
 	inner := strings.Join(menuLines, "\n")
-	box := menuBorderStyle.Render(inner)
-
-	// Indent each line by xOffset spaces to align with the token.
-	pad := strings.Repeat(" ", c.xOffset)
-	boxLines := strings.Split(box, "\n")
-	for i, line := range boxLines {
-		indented := pad + line
-		if pitui.VisibleWidth(indented) > width {
-			indented = pitui.Truncate(indented, width, "")
-		}
-		boxLines[i] = indented
-	}
-	return boxLines
+	return menuBorderStyle.Render(inner)
 }
 
 // ── REPL component ─────────────────────────────────────────────────────────
@@ -194,7 +210,7 @@ type replComponent struct {
 	// UI state
 	tui       *pitui.TUI
 	textInput *pitui.TextInput
-	output    *outputLog
+	view      *replView
 	spinner   *pitui.Spinner
 
 	entries []*replEntry
@@ -206,12 +222,10 @@ type replComponent struct {
 	menuItems      []string
 	menuIndex      int
 	menuMaxVisible int
-	menu           *completionMenu
 
 	// Eval
 	evaluating bool
 	cancelEval context.CancelFunc
-	spinnerLine *evalSpinnerLine
 
 	// History
 	history      []string
@@ -236,13 +250,12 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		ctx:            ctx,
 		tui:            tui,
 		textInput:      ti,
-		output:         &outputLog{},
 		menuMaxVisible: 8,
 		historyIndex:   -1,
 		historyFile:    "/tmp/dang_history",
 		quit:           make(chan struct{}),
 	}
-	r.output.repl = r
+	r.view = &replView{repl: r}
 
 	// Spinner
 	sp := pitui.NewSpinner(tui)
@@ -251,7 +264,6 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
-	r.spinnerLine = &evalSpinnerLine{spinner: sp}
 
 	// Text input callbacks.
 	ti.SuggestionStyle = func(s string) string {
@@ -275,9 +287,6 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	welcome.writeLogLine("")
 	r.entries = append(r.entries, welcome)
 
-	// Completion menu (inline component, between output and input).
-	r.menu = &completionMenu{maxVisible: r.menuMaxVisible}
-
 	r.completions = r.buildCompletionsPitui()
 	r.loadHistoryPitui()
 
@@ -291,11 +300,9 @@ func (r *replComponent) lastEntry() *replEntry {
 	return r.entries[len(r.entries)-1]
 }
 
-// install adds the repl's components to the TUI.
+// install adds the repl's view component to the TUI.
 func (r *replComponent) install() {
-	r.tui.AddChild(r.output)
-	r.tui.AddChild(r.menu) // between output and input; renders nothing when empty
-	r.tui.AddChild(r.textInput)
+	r.tui.AddChild(r.view)
 	r.tui.SetFocus(r.textInput)
 }
 
@@ -457,9 +464,7 @@ func (r *replComponent) startEvalPitui(expr string) {
 	debug := r.debug
 	r.mu.Unlock()
 
-	// Show spinner, hide text input.
-	r.tui.RemoveChild(r.textInput)
-	r.tui.AddChild(r.spinnerLine)
+	// Show spinner (replView checks r.evaluating to switch display).
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval.
@@ -532,32 +537,19 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	}
 	r.mu.Unlock()
 
-	// Restore UI.
-	r.tui.RemoveChild(r.spinnerLine)
-	r.tui.AddChild(r.textInput)
+	// Restore UI (replView will see evaluating=false and show textInput).
 	r.tui.SetFocus(r.textInput)
 	r.tui.RequestRender(false)
 }
 
 // ── completion menu ─────────────────────────────────────────────────────────
 
-func (r *replComponent) showCompletionMenu() {
-	r.menu.items = r.menuItems
-	r.menu.index = r.menuIndex
-	r.menu.xOffset = r.completionXOffsetPitui()
-}
-
 func (r *replComponent) hideCompletionMenu() {
 	r.menuVisible = false
 	r.menuItems = nil
-	r.menu.items = nil
-	r.menu.index = 0
 }
 
 func (r *replComponent) syncMenu() {
-	r.menu.items = r.menuItems
-	r.menu.index = r.menuIndex
-	r.menu.xOffset = r.completionXOffsetPitui()
 	r.tui.RequestRender(false)
 }
 
@@ -653,7 +645,6 @@ func (r *replComponent) setMenuPitui(matches []string) {
 	if r.menuIndex >= len(matches) {
 		r.menuIndex = 0
 	}
-	r.showCompletionMenu()
 }
 
 // ── commands ────────────────────────────────────────────────────────────────

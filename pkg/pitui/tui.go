@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"charm.land/lipgloss/v2"
 )
 
 // InputListenerResult controls how input propagates through listeners.
@@ -594,10 +596,9 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 	copy(result, lines)
 
 	type rendered struct {
-		lines []string
-		row   int
-		col   int
-		w     int
+		content string // joined overlay lines
+		row     int
+		col     int
 	}
 	var items []rendered
 	minNeeded := len(result)
@@ -613,7 +614,11 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 			oLines = oLines[:maxH]
 		}
 		_, row, col, _, _ := t.resolveOverlayLayout(e.options, len(oLines), termW, termH)
-		items = append(items, rendered{lines: oLines, row: row, col: col, w: w})
+		items = append(items, rendered{
+			content: strings.Join(oLines, "\n"),
+			row:     row,
+			col:     col,
+		})
 		if row+len(oLines) > minNeeded {
 			minNeeded = row + len(oLines)
 		}
@@ -626,33 +631,36 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 
 	viewportStart := max(0, workingH-termH)
 
-	for _, item := range items {
-		for i, ol := range item.lines {
-			idx := viewportStart + item.row + i
-			if idx >= 0 && idx < len(result) {
-				result[idx] = compositeLineAt(result[idx], ol, item.col, item.w, termW)
-			}
+	// Use lipgloss Compositor for layer-based compositing.
+	baseContent := strings.Join(result, "\n")
+	baseLyr := lipgloss.NewLayer(baseContent)
+
+	var overlayLyrs []*lipgloss.Layer
+	for i, item := range items {
+		lyr := lipgloss.NewLayer(item.content).
+			X(item.col).
+			Y(viewportStart + item.row).
+			Z(i + 1)
+		overlayLyrs = append(overlayLyrs, lyr)
+	}
+
+	allLayers := append([]*lipgloss.Layer{baseLyr}, overlayLyrs...)
+	comp := lipgloss.NewCompositor(allLayers...)
+	composited := comp.Render()
+
+	// Split back into lines.
+	outLines := strings.Split(composited, "\n")
+
+	// Width guard: truncate any line that exceeds terminal width.
+	for i, line := range outLines {
+		if VisibleWidth(line) > termW {
+			outLines[i] = Truncate(line, termW, "")
 		}
 	}
 
-	// Final width guard on composited lines.
-	for _, item := range items {
-		for i := range item.lines {
-			idx := viewportStart + item.row + i
-			if idx >= 0 && idx < len(result) {
-				if VisibleWidth(result[idx]) > termW {
-					result[idx] = ansiTruncate(result[idx], termW)
-				}
-			}
-		}
-	}
-
-	return result
+	return outLines
 }
 
-func ansiTruncate(s string, w int) string {
-	return Truncate(s, w, "")
-}
 
 // ---------- cursor ----------------------------------------------------------
 
