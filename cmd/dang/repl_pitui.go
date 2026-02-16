@@ -90,6 +90,9 @@ func (v *replView) Render(width int) []string {
 		}
 	}
 	for i, line := range outputLines {
+		outputLines[i] = pitui.ExpandTabs(line, 8)
+	}
+	for i, line := range outputLines {
 		if pitui.VisibleWidth(line) > width {
 			outputLines[i] = pitui.Truncate(line, width, "")
 		}

@@ -12,6 +12,49 @@ func VisibleWidth(s string) int {
 	return ansi.StringWidth(s)
 }
 
+// ExpandTabs replaces each tab character with spaces to reach the next
+// tab stop (every tabWidth columns), accounting for ANSI escape sequences
+// and wide characters.
+func ExpandTabs(s string, tabWidth int) string {
+	if !strings.Contains(s, "\t") {
+		return s
+	}
+	if tabWidth <= 0 {
+		tabWidth = 8
+	}
+	var buf strings.Builder
+	buf.Grow(len(s))
+	col := 0
+	remaining := s
+	for len(remaining) > 0 {
+		if remaining[0] == '\t' {
+			spaces := tabWidth - (col % tabWidth)
+			for i := 0; i < spaces; i++ {
+				buf.WriteByte(' ')
+			}
+			col += spaces
+			remaining = remaining[1:]
+			continue
+		}
+		if remaining[0] == '\x1b' {
+			seq, seqLen := parseEscape(remaining)
+			if seqLen > 0 {
+				buf.WriteString(seq)
+				remaining = remaining[seqLen:]
+				continue
+			}
+		}
+		cluster, clusterWidth := ansi.FirstGraphemeCluster(remaining, ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		buf.WriteString(cluster)
+		col += clusterWidth
+		remaining = remaining[len(cluster):]
+	}
+	return buf.String()
+}
+
 // Truncate truncates s to at most maxWidth visible columns, appending tail
 // (e.g. "...") if truncation occurred.
 func Truncate(s string, maxWidth int, tail string) string {

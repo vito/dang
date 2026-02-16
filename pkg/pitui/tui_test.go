@@ -299,6 +299,26 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
+func TestExpandTabs(t *testing.T) {
+	assert.Equal(t, "ok      github.com/foo", ExpandTabs("ok\tgithub.com/foo", 8))
+	assert.Equal(t, "a       b", ExpandTabs("a\tb", 8))
+	assert.Equal(t, "abcd    e", ExpandTabs("abcd\te", 8))
+	assert.Equal(t, "abcdefgh        x", ExpandTabs("abcdefgh\tx", 8))
+	// No tabs, unchanged.
+	assert.Equal(t, "hello world", ExpandTabs("hello world", 8))
+}
+
+func TestCompositeWithTabExpandedLine(t *testing.T) {
+	// Simulates the real scenario: "ok\tgithub..." with a menu overlay.
+	base := ExpandTabs("ok\tgithub.com/foo/bar/baz  3.682s", 8)
+	result := CompositeLineAt(base, "XY", 10, 4, 40)
+	stripped := stripANSI(result)
+	// "ok      gi" = 10 cols, then "XY  " (4 cols), then rest
+	assert.Contains(t, stripped, "ok      gi")
+	assert.Contains(t, stripped, "XY")
+	assert.Equal(t, 40, VisibleWidth(result))
+}
+
 func TestForceRender(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := New(term)
