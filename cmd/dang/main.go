@@ -184,7 +184,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 
 	// Detect dagger.json and load the module + deps
 	var daggerConn *dagger.Client
-	daggerLog := &syncWriter{}
+	daggerLog := &pituiSyncWriter{}
 	moduleDir := findDaggerModule(cwd)
 	if moduleDir != "" {
 		fmt.Fprintf(os.Stderr, "Loading Dagger module from %s...\n", moduleDir)
@@ -220,7 +220,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
-	return runREPLBubbletea(ctx, importConfigs, cfg.Debug, daggerLog)
+	return runREPLPitui(ctx, importConfigs, cfg.Debug, daggerLog)
 }
 
 // findDaggerModule searches for a dagger.json starting from dir, walking up.

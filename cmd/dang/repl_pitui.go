@@ -1,0 +1,986 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+
+	"charm.land/lipgloss/v2"
+
+	"github.com/kr/pretty"
+
+	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/pkg/pitui"
+)
+
+// ── sync writer (streams dagger output into TUI) ────────────────────────────
+
+type pituiSyncWriter struct {
+	mu   sync.Mutex
+	repl *replComponent
+}
+
+func (w *pituiSyncWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	r := w.repl
+	w.mu.Unlock()
+	if r != nil {
+		r.mu.Lock()
+		r.lastEntry().writeLog(string(p))
+		r.mu.Unlock()
+		r.tui.RequestRender(false)
+	}
+	return len(p), nil
+}
+
+func (w *pituiSyncWriter) SetRepl(r *replComponent) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.repl = r
+}
+
+// ── output log component ────────────────────────────────────────────────────
+
+// outputLog renders the structured entries list (past prompts, logs, results).
+type outputLog struct {
+	repl *replComponent
+}
+
+func (o *outputLog) Invalidate() {}
+
+func (o *outputLog) Render(width int) []string {
+	o.repl.mu.Lock()
+	entries := o.repl.entries
+	o.repl.mu.Unlock()
+
+	var lines []string
+	for _, e := range entries {
+		if e.input != "" {
+			lines = append(lines, e.input)
+		}
+		if logStr := e.logs.String(); logStr != "" {
+			logLines := strings.Split(logStr, "\n")
+			if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
+				logLines = logLines[:len(logLines)-1]
+			}
+			lines = append(lines, logLines...)
+		}
+		if resStr := e.result.String(); resStr != "" {
+			resLines := strings.Split(resStr, "\n")
+			if len(resLines) > 0 && resLines[len(resLines)-1] == "" {
+				resLines = resLines[:len(resLines)-1]
+			}
+			lines = append(lines, resLines...)
+		}
+	}
+	// Truncate any line that exceeds width.
+	for i, line := range lines {
+		if pitui.VisibleWidth(line) > width {
+			lines[i] = pitui.Truncate(line, width, "")
+		}
+	}
+	return lines
+}
+
+// ── spinner line component ──────────────────────────────────────────────────
+
+type evalSpinnerLine struct {
+	spinner *pitui.Spinner
+}
+
+func (e *evalSpinnerLine) Invalidate() {}
+func (e *evalSpinnerLine) Render(width int) []string {
+	return e.spinner.Render(width)
+}
+
+// ── completion menu (overlay) ───────────────────────────────────────────────
+
+type completionOverlay struct {
+	items      []string
+	index      int
+	maxVisible int
+}
+
+func (c *completionOverlay) Invalidate() {}
+
+func (c *completionOverlay) Render(width int) []string {
+	if len(c.items) == 0 {
+		return nil
+	}
+
+	visible := min(len(c.items), c.maxVisible)
+	start := 0
+	if c.index >= visible {
+		start = c.index - visible + 1
+	}
+	end := start + visible
+
+	maxW := 0
+	for i := start; i < end && i < len(c.items); i++ {
+		if w := lipgloss.Width(c.items[i]); w > maxW {
+			maxW = w
+		}
+	}
+	if maxW > 60 {
+		maxW = 60
+	}
+	if maxW < 20 {
+		maxW = 20
+	}
+	// Clamp to overlay width.
+	if maxW+4 > width { // account for " %-*s " padding
+		maxW = width - 4
+	}
+	if maxW < 4 {
+		maxW = 4
+	}
+
+	var lines []string
+	for i := start; i < end && i < len(c.items); i++ {
+		item := c.items[i]
+		if lipgloss.Width(item) > maxW {
+			item = item[:maxW-3] + "..."
+		}
+		padded := fmt.Sprintf(" %-*s ", maxW, item)
+		if i == c.index {
+			lines = append(lines, menuSelectedStyle.Render(padded))
+		} else {
+			lines = append(lines, menuStyle.Render(padded))
+		}
+	}
+
+	if len(c.items) > visible {
+		info := fmt.Sprintf(" %d/%d ", c.index+1, len(c.items))
+		lines = append(lines, dimStyle.Render(info))
+	}
+
+	// Wrap with a border.
+	inner := strings.Join(lines, "\n")
+	return strings.Split(menuBorderStyle.Render(inner), "\n")
+}
+
+func (c *completionOverlay) HandleInput(data []byte) {}
+
+// ── REPL component ─────────────────────────────────────────────────────────
+
+type replComponent struct {
+	mu sync.Mutex
+
+	// Dang state
+	importConfigs []dang.ImportConfig
+	debug         bool
+	typeEnv       dang.Env
+	evalEnv       dang.EvalEnv
+	ctx           context.Context
+
+	// UI state
+	tui       *pitui.TUI
+	textInput *pitui.TextInput
+	output    *outputLog
+	spinner   *pitui.Spinner
+
+	entries []*replEntry
+	quit    chan struct{}
+
+	// Completion
+	completions    []string
+	menuVisible    bool
+	menuItems      []string
+	menuIndex      int
+	menuMaxVisible int
+	menuOverlay    *completionOverlay
+	menuHandle     *pitui.OverlayHandle
+
+	// Eval
+	evaluating bool
+	cancelEval context.CancelFunc
+	spinnerLine *evalSpinnerLine
+
+	// History
+	history      []string
+	historyIndex int
+	historyFile  string
+
+	// Doc browser
+	docBrowser *docBrowserOverlay
+	docHandle  *pitui.OverlayHandle
+}
+
+func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.ImportConfig, debug bool) *replComponent {
+	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
+
+	ti := pitui.NewTextInput(promptStyle.Render("dang> "))
+
+	r := &replComponent{
+		importConfigs:  importConfigs,
+		debug:          debug,
+		typeEnv:        typeEnv,
+		evalEnv:        evalEnv,
+		ctx:            ctx,
+		tui:            tui,
+		textInput:      ti,
+		output:         &outputLog{},
+		menuMaxVisible: 8,
+		historyIndex:   -1,
+		historyFile:    "/tmp/dang_history",
+		quit:           make(chan struct{}),
+	}
+	r.output.repl = r
+
+	// Spinner
+	sp := pitui.NewSpinner(tui)
+	sp.Style = func(s string) string {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
+	}
+	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
+	r.spinner = sp
+	r.spinnerLine = &evalSpinnerLine{spinner: sp}
+
+	// Text input callbacks.
+	ti.SuggestionStyle = func(s string) string {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(s)
+	}
+	ti.OnSubmit = r.onSubmit
+	ti.OnKey = r.onKey
+
+	// Welcome message.
+	welcome := newReplEntry("")
+	welcome.writeLogLine(welcomeStyle.Render("Welcome to Dang REPL v0.1.0"))
+	if len(importConfigs) > 0 {
+		var names []string
+		for _, ic := range importConfigs {
+			names = append(names, ic.Name)
+		}
+		welcome.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
+	}
+	welcome.writeLogLine("")
+	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit"))
+	welcome.writeLogLine("")
+	r.entries = append(r.entries, welcome)
+
+	r.completions = r.buildCompletionsPitui()
+	r.loadHistoryPitui()
+
+	return r
+}
+
+func (r *replComponent) lastEntry() *replEntry {
+	if len(r.entries) == 0 {
+		r.entries = append(r.entries, newReplEntry(""))
+	}
+	return r.entries[len(r.entries)-1]
+}
+
+// install adds the repl's components to the TUI.
+func (r *replComponent) install() {
+	r.tui.AddChild(r.output)
+	r.tui.AddChild(r.textInput)
+	r.tui.SetFocus(r.textInput)
+}
+
+// onSubmit handles Enter in the text input.
+func (r *replComponent) onSubmit(line string) bool {
+	if line == "" {
+		return false
+	}
+
+	r.addHistoryPitui(line)
+
+	r.mu.Lock()
+	r.entries = append(r.entries, newReplEntry(
+		promptStyle.Render("dang> ")+line,
+	))
+	r.mu.Unlock()
+
+	r.hideCompletionMenu()
+
+	if strings.HasPrefix(line, ":") {
+		r.handleCommandPitui(line[1:])
+		r.updateCompletionMenuPitui()
+		return true
+	}
+
+	r.startEvalPitui(line)
+	return true
+}
+
+// onKey handles keys not consumed by the text input editor.
+func (r *replComponent) onKey(data []byte) bool {
+	s := string(data)
+
+	// While evaluating: Ctrl+C cancels.
+	if r.evaluating {
+		if s == pitui.KeyCtrlC {
+			if r.cancelEval != nil {
+				r.cancelEval()
+			}
+			return true
+		}
+		return true // swallow everything else
+	}
+
+	// Completion menu navigation.
+	if r.menuVisible {
+		switch s {
+		case pitui.KeyTab:
+			if r.menuIndex < len(r.menuItems) {
+				r.textInput.SetValue(r.menuItems[r.menuIndex])
+				r.textInput.CursorEnd()
+			}
+			r.hideCompletionMenu()
+			r.updateCompletionMenuPitui()
+			return true
+		case pitui.KeyDown, pitui.KeyCtrlN:
+			r.menuIndex++
+			if r.menuIndex >= len(r.menuItems) {
+				r.menuIndex = 0
+			}
+			r.syncMenuOverlay()
+			return true
+		case pitui.KeyUp, pitui.KeyCtrlP:
+			r.menuIndex--
+			if r.menuIndex < 0 {
+				r.menuIndex = len(r.menuItems) - 1
+			}
+			r.syncMenuOverlay()
+			return true
+		case pitui.KeyEscape:
+			r.hideCompletionMenu()
+			return true
+		case pitui.KeyEnter:
+			if r.menuIndex < len(r.menuItems) {
+				r.textInput.SetValue(r.menuItems[r.menuIndex])
+				r.textInput.CursorEnd()
+			}
+			r.hideCompletionMenu()
+			// Fall through — onSubmit will be called by the text input.
+			return false
+		}
+	}
+
+	switch s {
+	case pitui.KeyCtrlC:
+		if r.textInput.Value() != "" {
+			r.textInput.SetValue("")
+			r.hideCompletionMenu()
+			return true
+		}
+		close(r.quit)
+		return true
+
+	case pitui.KeyCtrlD:
+		if r.textInput.Value() == "" {
+			close(r.quit)
+			return true
+		}
+		return false
+
+	case pitui.KeyUp:
+		if !r.menuVisible {
+			r.navigateHistoryPitui(-1)
+			return true
+		}
+	case pitui.KeyDown:
+		if !r.menuVisible {
+			r.navigateHistoryPitui(1)
+			return true
+		}
+
+	case pitui.KeyCtrlL:
+		r.mu.Lock()
+		r.entries = nil
+		r.mu.Unlock()
+		return true
+	}
+
+	// After any key that modifies input, update completions.
+	// This runs after the text input handles the key normally.
+	defer r.updateCompletionMenuPitui()
+
+	return false
+}
+
+// ── eval ────────────────────────────────────────────────────────────────────
+
+func (r *replComponent) startEvalPitui(expr string) {
+	r.mu.Lock()
+	e := r.lastEntry()
+
+	result, err := dang.Parse("repl", []byte(expr))
+	if err != nil {
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
+		r.mu.Unlock()
+		return
+	}
+
+	forms := result.(*dang.ModuleBlock).Forms
+
+	if r.debug {
+		for _, node := range forms {
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(node))))
+		}
+	}
+
+	fresh := hm.NewSimpleFresher()
+	_, err = dang.InferFormsWithPhases(r.ctx, forms, r.typeEnv, fresh)
+	if err != nil {
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
+		r.mu.Unlock()
+		return
+	}
+
+	evalCtx, cancel := context.WithCancel(r.ctx)
+	r.evaluating = true
+	r.cancelEval = cancel
+	evalEnv := r.evalEnv
+	debug := r.debug
+	r.mu.Unlock()
+
+	// Show spinner, hide text input.
+	r.tui.RemoveChild(r.textInput)
+	r.tui.AddChild(r.spinnerLine)
+	r.spinner.Start()
+	r.tui.SetFocus(nil)
+	// Route input to onKey during eval.
+	removeListener := r.tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
+		if r.onKey(data) {
+			r.tui.RequestRender(false)
+			return &pitui.InputListenerResult{Consume: true}
+		}
+		return nil
+	})
+	r.tui.RequestRender(false)
+
+	go func() {
+		var logs []string
+		var results []string
+
+		var stdoutBuf bytes.Buffer
+		ctx := ioctx.StdoutToContext(evalCtx, &stdoutBuf)
+		ctx = ioctx.StderrToContext(ctx, &stdoutBuf)
+
+		for _, node := range forms {
+			val, err := dang.EvalNode(ctx, evalEnv, node)
+
+			if evalCtx.Err() != nil {
+				r.finishEval(nil, nil, true, removeListener)
+				return
+			}
+
+			if stdoutBuf.Len() > 0 {
+				for _, line := range strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n") {
+					logs = append(logs, line)
+				}
+				stdoutBuf.Reset()
+			}
+
+			if err != nil {
+				results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
+				r.finishEval(logs, results, false, removeListener)
+				return
+			}
+
+			results = append(results, resultStyle.Render(fmt.Sprintf("=> %s", val.String())))
+			if debug {
+				results = append(results, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
+			}
+		}
+
+		r.finishEval(logs, results, false, removeListener)
+	}()
+}
+
+func (r *replComponent) finishEval(logs, results []string, cancelled bool, removeListener func()) {
+	r.spinner.Stop()
+	removeListener()
+
+	r.mu.Lock()
+	r.evaluating = false
+	r.cancelEval = nil
+	e := r.lastEntry()
+	if cancelled {
+		e.writeLogLine(errorStyle.Render("cancelled"))
+	} else {
+		for _, line := range logs {
+			e.writeLogLine(line)
+		}
+		for _, line := range results {
+			e.writeResult(line)
+		}
+		r.refreshCompletionsPitui()
+	}
+	r.mu.Unlock()
+
+	// Restore UI.
+	r.tui.RemoveChild(r.spinnerLine)
+	r.tui.AddChild(r.textInput)
+	r.tui.SetFocus(r.textInput)
+	r.tui.RequestRender(false)
+}
+
+// ── completion menu ─────────────────────────────────────────────────────────
+
+func (r *replComponent) showCompletionMenu() {
+	if r.menuHandle != nil {
+		return
+	}
+	r.menuOverlay = &completionOverlay{
+		items:      r.menuItems,
+		index:      r.menuIndex,
+		maxVisible: r.menuMaxVisible,
+	}
+	// Position above the input line, aligned to the token start.
+	xOff := r.completionXOffsetPitui()
+	r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, &pitui.OverlayOptions{
+		Width:     pitui.SizeAbs(40),
+		MaxHeight: pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
+		Anchor:    pitui.AnchorBottomLeft,
+		OffsetX:   xOff,
+		OffsetY:   -1, // above the input line
+	})
+	// Focus stays on text input.
+	r.tui.SetFocus(r.textInput)
+}
+
+func (r *replComponent) hideCompletionMenu() {
+	r.menuVisible = false
+	r.menuItems = nil
+	if r.menuHandle != nil {
+		r.menuHandle.Hide()
+		r.menuHandle = nil
+		r.menuOverlay = nil
+	}
+}
+
+func (r *replComponent) syncMenuOverlay() {
+	if r.menuOverlay != nil {
+		r.menuOverlay.items = r.menuItems
+		r.menuOverlay.index = r.menuIndex
+	}
+	r.tui.RequestRender(false)
+}
+
+func (r *replComponent) completionXOffsetPitui() int {
+	val := r.textInput.Value()
+	promptWidth := lipgloss.Width(promptStyle.Render("dang> "))
+	i := len(val) - 1
+	for i >= 0 && isIdentByte(val[i]) {
+		i--
+	}
+	if i >= 0 && val[i] == '.' {
+		i--
+		for i >= 0 && isIdentByte(val[i]) {
+			i--
+		}
+	}
+	tokenStart := i + 1
+	return promptWidth + tokenStart
+}
+
+func (r *replComponent) updateCompletionMenuPitui() {
+	val := r.textInput.Value()
+
+	if val == "" || strings.HasPrefix(val, ":") {
+		r.hideCompletionMenu()
+		r.textInput.Suggestion = ""
+		return
+	}
+
+	cursorPos := len(val)
+	completions := dang.CompleteInput(r.ctx, r.typeEnv, val, cursorPos)
+
+	if len(completions) > 0 {
+		prefix, partial := splitForSuggestion(val)
+		var matches []string
+		partialLower := strings.ToLower(partial)
+		for _, c := range completions {
+			cLower := strings.ToLower(c.Label)
+			if cLower == partialLower {
+				continue
+			}
+			if strings.HasPrefix(cLower, partialLower) {
+				matches = append(matches, prefix+c.Label)
+			}
+		}
+		matches = sortByCase(matches, prefix, partial)
+		r.setMenuPitui(matches)
+		if len(matches) > 0 {
+			r.textInput.Suggestion = matches[0]
+		} else {
+			r.textInput.Suggestion = ""
+		}
+		return
+	}
+
+	// Fallback: static completions.
+	word := lastIdent(val)
+	if word == "" {
+		r.hideCompletionMenu()
+		r.textInput.Suggestion = ""
+		return
+	}
+
+	var exactCase, otherCase []string
+	wordLower := strings.ToLower(word)
+	for _, c := range r.completions {
+		cLower := strings.ToLower(c)
+		if cLower == wordLower {
+			continue
+		}
+		if strings.HasPrefix(c, word) {
+			exactCase = append(exactCase, c)
+		} else if strings.HasPrefix(cLower, wordLower) {
+			otherCase = append(otherCase, c)
+		}
+	}
+	matches := append(exactCase, otherCase...)
+	r.setMenuPitui(matches)
+	if len(matches) > 0 {
+		r.textInput.Suggestion = matches[0]
+	} else {
+		r.textInput.Suggestion = ""
+	}
+}
+
+func (r *replComponent) setMenuPitui(matches []string) {
+	if len(matches) <= 1 {
+		r.hideCompletionMenu()
+		return
+	}
+	r.menuItems = matches
+	r.menuVisible = true
+	if r.menuIndex >= len(matches) {
+		r.menuIndex = 0
+	}
+	if r.menuHandle == nil {
+		r.showCompletionMenu()
+	} else {
+		r.syncMenuOverlay()
+	}
+}
+
+// ── commands ────────────────────────────────────────────────────────────────
+
+func (r *replComponent) handleCommandPitui(cmdLine string) {
+	r.mu.Lock()
+	e := r.lastEntry()
+
+	parts := strings.Fields(cmdLine)
+	if len(parts) == 0 {
+		e.writeLogLine(errorStyle.Render("empty command"))
+		r.mu.Unlock()
+		return
+	}
+
+	cmd := parts[0]
+	args := parts[1:]
+
+	switch cmd {
+	case "help":
+		e.writeLogLine("Available commands:")
+		e.writeLogLine(dimStyle.Render("  :help      - Show this help"))
+		e.writeLogLine(dimStyle.Render("  :exit      - Exit the REPL"))
+		e.writeLogLine(dimStyle.Render("  :doc       - Interactive API browser"))
+		e.writeLogLine(dimStyle.Render("  :env       - Show environment bindings"))
+		e.writeLogLine(dimStyle.Render("  :type      - Show type of an expression"))
+		e.writeLogLine(dimStyle.Render("  :find      - Find functions/types by pattern"))
+		e.writeLogLine(dimStyle.Render("  :reset     - Reset the environment"))
+		e.writeLogLine(dimStyle.Render("  :clear     - Clear the screen"))
+		e.writeLogLine(dimStyle.Render("  :debug     - Toggle debug mode"))
+		e.writeLogLine(dimStyle.Render("  :version   - Show version info"))
+		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
+		e.writeLogLine("")
+		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
+		e.writeLogLine(dimStyle.Render("Tab for completion, Up/Down for history, Ctrl+L to clear."))
+
+	case "exit", "quit":
+		r.mu.Unlock()
+		close(r.quit)
+		return
+
+	case "clear":
+		r.entries = nil
+
+	case "reset":
+		r.typeEnv, r.evalEnv = buildEnvFromImports(r.importConfigs)
+		r.refreshCompletionsPitui()
+		e.writeLogLine(resultStyle.Render("Environment reset."))
+
+	case "debug":
+		r.debug = !r.debug
+		status := "disabled"
+		if r.debug {
+			status = "enabled"
+		}
+		e.writeLogLine(resultStyle.Render(fmt.Sprintf("Debug mode %s.", status)))
+
+	case "env":
+		r.envCommandPitui(e, args)
+
+	case "version":
+		e.writeLogLine(resultStyle.Render("Dang REPL v0.1.0"))
+		if len(r.importConfigs) > 0 {
+			var names []string
+			for _, ic := range r.importConfigs {
+				names = append(names, ic.Name)
+			}
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
+		} else {
+			e.writeLogLine(dimStyle.Render("No imports configured (create a dang.toml)"))
+		}
+
+	case "type":
+		r.typeCommandPitui(e, args)
+
+	case "find", "search":
+		r.findCommandPitui(e, args)
+
+	case "history":
+		e.writeLogLine("Recent history:")
+		start := 0
+		if len(r.history) > 20 {
+			start = len(r.history) - 20
+		}
+		for i := start; i < len(r.history); i++ {
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %d: %s", i+1, r.history[i])))
+		}
+
+	case "doc":
+		r.mu.Unlock()
+		r.showDocBrowser()
+		return
+
+	default:
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
+	}
+	r.mu.Unlock()
+}
+
+func (r *replComponent) envCommandPitui(e *replEntry, args []string) {
+	filter := ""
+	showAll := false
+	if len(args) > 0 {
+		if args[0] == "all" {
+			showAll = true
+		} else {
+			filter = args[0]
+		}
+	}
+	e.writeLogLine("Current environment bindings:")
+	e.writeLogLine("")
+	count := 0
+	for name, scheme := range r.typeEnv.Bindings(dang.PublicVisibility) {
+		if filter != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
+			continue
+		}
+		if !showAll && count >= 20 {
+			e.writeLogLine(dimStyle.Render("  ... use ':env all' to see all"))
+			break
+		}
+		t, _ := scheme.Type()
+		if t != nil {
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
+		} else {
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
+		}
+		count++
+	}
+	e.writeLogLine("")
+	e.writeLogLine(dimStyle.Render("Use ':doc' for interactive API browsing"))
+}
+
+func (r *replComponent) typeCommandPitui(e *replEntry, args []string) {
+	if len(args) == 0 {
+		e.writeLogLine(dimStyle.Render("Usage: :type <expression>"))
+		return
+	}
+	expr := strings.Join(args, " ")
+	result, err := dang.Parse("type-check", []byte(expr))
+	if err != nil {
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
+		return
+	}
+	node := result.(*dang.Block)
+	inferredType, err := dang.Infer(r.ctx, r.typeEnv, node, false)
+	if err != nil {
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
+		return
+	}
+	e.writeLogLine(fmt.Sprintf("Expression: %s", expr))
+	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", inferredType)))
+	trimmed := strings.TrimSpace(expr)
+	if !strings.Contains(trimmed, " ") {
+		if scheme, found := r.typeEnv.SchemeOf(trimmed); found {
+			if t, _ := scheme.Type(); t != nil {
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", scheme)))
+			}
+		}
+	}
+}
+
+func (r *replComponent) findCommandPitui(e *replEntry, args []string) {
+	if len(args) == 0 {
+		e.writeLogLine(dimStyle.Render("Usage: :find <pattern>"))
+		return
+	}
+	pattern := strings.ToLower(args[0])
+	e.writeLogLine(fmt.Sprintf("Searching for '%s'...", pattern))
+	found := false
+	for name, scheme := range r.typeEnv.Bindings(dang.PublicVisibility) {
+		if strings.Contains(strings.ToLower(name), pattern) {
+			t, _ := scheme.Type()
+			if t != nil {
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
+			} else {
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
+			}
+			found = true
+		}
+	}
+	for name, env := range r.typeEnv.NamedTypes() {
+		if strings.Contains(strings.ToLower(name), pattern) {
+			doc := env.GetModuleDocString()
+			if doc != "" {
+				if len(doc) > 60 {
+					doc = doc[:57] + "..."
+				}
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s - %s", name, doc)))
+			} else {
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
+			}
+			found = true
+		}
+	}
+	if !found {
+		e.writeLogLine(dimStyle.Render(fmt.Sprintf("No matches found for '%s'", pattern)))
+	}
+}
+
+// ── completions ─────────────────────────────────────────────────────────────
+
+func (r *replComponent) buildCompletionsPitui() []string {
+	return buildCompletionList(r.typeEnv)
+}
+
+func (r *replComponent) refreshCompletionsPitui() {
+	r.completions = r.buildCompletionsPitui()
+}
+
+// ── history ─────────────────────────────────────────────────────────────────
+
+func (r *replComponent) addHistoryPitui(line string) {
+	if len(r.history) > 0 && r.history[len(r.history)-1] == line {
+		r.historyIndex = -1
+		return
+	}
+	r.history = append(r.history, line)
+	r.historyIndex = -1
+	r.saveHistoryPitui()
+}
+
+func (r *replComponent) navigateHistoryPitui(direction int) {
+	if len(r.history) == 0 {
+		return
+	}
+	if direction < 0 {
+		if r.historyIndex == -1 {
+			r.historyIndex = len(r.history) - 1
+		} else if r.historyIndex > 0 {
+			r.historyIndex--
+		}
+	} else {
+		if r.historyIndex == -1 {
+			return
+		}
+		r.historyIndex++
+		if r.historyIndex >= len(r.history) {
+			r.historyIndex = -1
+			r.textInput.SetValue("")
+			return
+		}
+	}
+	if r.historyIndex >= 0 && r.historyIndex < len(r.history) {
+		r.textInput.SetValue(r.history[r.historyIndex])
+		r.textInput.CursorEnd()
+	}
+}
+
+func (r *replComponent) loadHistoryPitui() {
+	data, err := os.ReadFile(r.historyFile)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			r.history = append(r.history, line)
+		}
+	}
+}
+
+func (r *replComponent) saveHistoryPitui() {
+	entries := r.history
+	if len(entries) > 1000 {
+		entries = entries[len(entries)-1000:]
+	}
+	data := strings.Join(entries, "\n") + "\n"
+	_ = os.WriteFile(r.historyFile, []byte(data), 0644)
+}
+
+// ── doc browser ─────────────────────────────────────────────────────────────
+
+func (r *replComponent) showDocBrowser() {
+	db := newDocBrowserOverlay(r.typeEnv, r.tui)
+	db.onExit = func() {
+		if r.docHandle != nil {
+			r.docHandle.Hide()
+			r.docHandle = nil
+			r.docBrowser = nil
+		}
+	}
+	r.docBrowser = db
+	r.docHandle = r.tui.ShowOverlay(db, &pitui.OverlayOptions{
+		Width:     pitui.SizePct(100),
+		MaxHeight: pitui.SizePct(100),
+		Anchor:    pitui.AnchorTopLeft,
+	})
+}
+
+// ── entry point ─────────────────────────────────────────────────────────────
+
+func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, debug bool, daggerLog *pituiSyncWriter) error {
+	term := pitui.NewProcessTerminal()
+	tui := pitui.New(term)
+	tui.SetShowHardwareCursor(true)
+
+	repl := newReplComponent(ctx, tui, importConfigs, debug)
+	daggerLog.SetRepl(repl)
+	repl.install()
+
+	if err := tui.Start(); err != nil {
+		return fmt.Errorf("TUI start: %w", err)
+	}
+
+	// Wait for quit signal or interrupt.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case <-repl.quit:
+	case <-sigCh:
+	case <-ctx.Done():
+	}
+
+	signal.Stop(sigCh)
+	tui.Stop()
+	fmt.Println("Goodbye!")
+	return nil
+}
