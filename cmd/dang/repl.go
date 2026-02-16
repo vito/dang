@@ -254,6 +254,15 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.SetWidth(msg.Width - lipgloss.Width(promptStyle.Render("dang> ")) - 1)
 		return m, nil
 
+	case tea.MouseWheelMsg:
+		maxScroll := len(m.renderedLines())
+		if msg.Button == tea.MouseWheelUp {
+			m.scrollOffset = min(m.scrollOffset+3, maxScroll)
+		} else if msg.Button == tea.MouseWheelDown {
+			m.scrollOffset = max(m.scrollOffset-3, 0)
+		}
+		return m, nil
+
 	case daggerLogMsg:
 		// Append raw chunk to the last entry's log region — partial
 		// lines (like progress dots) stay on the same line naturally.
@@ -482,6 +491,7 @@ func (m replModel) View() tea.View {
 
 		v := tea.NewView(comp)
 		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
 		if cursor := m.textInput.Cursor(); cursor != nil {
 			cursor.Y += outputHeight
 			v.Cursor = cursor
@@ -491,6 +501,7 @@ func (m replModel) View() tea.View {
 
 	v := tea.NewView(base)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	if !m.evaluating {
 		if cursor := m.textInput.Cursor(); cursor != nil {
 			cursor.Y += outputHeight
