@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
@@ -20,6 +21,84 @@ import (
 	"github.com/vito/dang/pkg/ioctx"
 )
 
+// syncWriter is a thread-safe writer that streams output into the REPL.
+// Dagger's WithLogOutput writes to it from arbitrary goroutines; each
+// write sends a tea message so progress appears in real-time.
+type syncWriter struct {
+	mu   sync.Mutex
+	prog *tea.Program
+}
+
+// lastEntry returns a pointer to the most recent entry, creating one if
+// needed. All streaming output (dagger logs, eval results) goes here.
+func (m *replModel) lastEntry() *replEntry {
+	if len(m.entries) == 0 {
+		m.entries = append(m.entries, newReplEntry(""))
+	}
+	return m.entries[len(m.entries)-1]
+}
+
+// daggerLogMsg is sent when Dagger writes progress output.
+type daggerLogMsg string
+
+func (w *syncWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	prog := w.prog
+	w.mu.Unlock()
+	if prog != nil {
+		prog.Send(daggerLogMsg(string(p)))
+	}
+	return len(p), nil
+}
+
+// SetProgram wires up the tea.Program so writes become messages.
+// Called after tea.NewProgram is created.
+func (w *syncWriter) SetProgram(p *tea.Program) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.prog = p
+}
+
+// replEntry groups an input line with its associated output. There are
+// three regions rendered in order:
+//
+//	input  — the echoed prompt line
+//	logs   — streaming raw output (Dagger progress dots, print(), etc.)
+//	result — the final "=> value" line(s), always rendered last
+//
+// Late-arriving log chunks update the logs section while the result
+// stays anchored at the bottom.
+type replEntry struct {
+	input  string          // echoed prompt line ("" for system/welcome messages)
+	logs   *strings.Builder // raw streaming output (no per-chunk styling)
+	result *strings.Builder // final result lines
+}
+
+func newReplEntry(input string) *replEntry {
+	return &replEntry{
+		input:  input,
+		logs:   &strings.Builder{},
+		result: &strings.Builder{},
+	}
+}
+
+// writeLog appends raw text to the log region.
+func (e *replEntry) writeLog(s string) {
+	e.logs.WriteString(s)
+}
+
+// writeLogLine appends a complete line to the log region.
+func (e *replEntry) writeLogLine(s string) {
+	e.logs.WriteString(s)
+	e.logs.WriteByte('\n')
+}
+
+// writeResult appends a complete line to the result region.
+func (e *replEntry) writeResult(s string) {
+	e.result.WriteString(s)
+	e.result.WriteByte('\n')
+}
+
 // replModel is the Bubbletea model for the Dang REPL.
 type replModel struct {
 	// Dang state
@@ -29,12 +108,14 @@ type replModel struct {
 	evalEnv       dang.EvalEnv
 
 	// UI state
-	textInput     textinput.Model
-	pendingOutput []string // lines to flush via tea.Println
-	width         int
-	height        int
-	quitting      bool
-	clearScreen   bool
+	textInput textinput.Model
+	entries   []*replEntry // structured output log
+	width     int
+	height    int
+	quitting  bool
+
+	// Scrollback: how many lines the viewport is scrolled up from the bottom.
+	scrollOffset int
 
 	// Completion state
 	completions    []string // all available completions
@@ -62,7 +143,8 @@ type replModel struct {
 
 // evalResultMsg is sent when a background evaluation completes.
 type evalResultMsg struct {
-	output []string // rendered lines to print
+	logs    []string // stdout/print output lines
+	results []string // "=> value" result lines
 }
 
 // evalCancelledMsg is sent when an evaluation is cancelled.
@@ -70,14 +152,17 @@ type evalCancelledMsg struct{}
 
 // Styles
 var (
-	promptStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
-	resultStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	errorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	menuStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
+	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
+	resultStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	menuStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
 	menuSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("63")).Bold(true)
-	hintStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	welcomeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-	dimStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	menuBorderStyle   = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("63"))
+	hintStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	welcomeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 
 func newREPLModel(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) replModel {
@@ -99,17 +184,32 @@ func newREPLModel(ctx context.Context, importConfigs []dang.ImportConfig, debug 
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
 	m := replModel{
-		importConfigs: importConfigs,
-		debug:         debug,
-		typeEnv:       typeEnv,
-		evalEnv:       evalEnv,
-		textInput:     ti,
-		spinner:       sp,
+		importConfigs:  importConfigs,
+		debug:          debug,
+		typeEnv:        typeEnv,
+		evalEnv:        evalEnv,
+		textInput:      ti,
+		spinner:        sp,
 		menuMaxVisible: 8,
 		historyIndex:   -1,
 		historyFile:    "/tmp/dang_history",
 		ctx:            ctx,
 	}
+
+	// Welcome message
+	welcome := newReplEntry("")
+	welcome.writeLogLine(welcomeStyle.Render("Welcome to Dang REPL v0.1.0"))
+	if len(m.importConfigs) > 0 {
+		var names []string
+		for _, ic := range m.importConfigs {
+			names = append(names, ic.Name)
+		}
+		welcome.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
+	}
+	welcome.writeLogLine("")
+	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit"))
+	welcome.writeLogLine("")
+	m.entries = append(m.entries, welcome)
 
 	m.completions = m.buildCompletions()
 	m.textInput.SetSuggestions(m.completions)
@@ -121,27 +221,7 @@ func newREPLModel(ctx context.Context, importConfigs []dang.ImportConfig, debug 
 }
 
 func (m replModel) Init() tea.Cmd {
-	welcomePrints := []tea.Cmd{
-		tea.Println(welcomeStyle.Render("Welcome to Dang REPL v0.1.0")),
-	}
-	if len(m.importConfigs) > 0 {
-		var names []string
-		for _, ic := range m.importConfigs {
-			names = append(names, ic.Name)
-		}
-		welcomePrints = append(welcomePrints,
-			tea.Println(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", ")))),
-		)
-	}
-	welcomePrints = append(welcomePrints,
-		tea.Println(""),
-		tea.Println(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit")),
-		tea.Println(""),
-	)
-	return tea.Batch(
-		textinput.Blink,
-		tea.Sequence(welcomePrints...),
-	)
+	return textinput.Blink
 }
 
 func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -174,22 +254,33 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.SetWidth(msg.Width - lipgloss.Width(promptStyle.Render("dang> ")) - 1)
 		return m, nil
 
+	case daggerLogMsg:
+		// Append raw chunk to the last entry's log region — partial
+		// lines (like progress dots) stay on the same line naturally.
+		m.lastEntry().writeLog(string(msg))
+		m.scrollOffset = 0
+		return m, nil
+
 	case evalResultMsg:
 		m.evaluating = false
 		m.cancelEval = nil
-		// Refresh completions since env may have changed
 		m.refreshCompletions()
-		// Print result lines above the prompt
-		var cmds []tea.Cmd
-		for _, line := range msg.output {
-			cmds = append(cmds, tea.Println(line))
+		e := m.lastEntry()
+		for _, line := range msg.logs {
+			e.writeLogLine(line)
 		}
-		return m, tea.Sequence(cmds...)
+		for _, line := range msg.results {
+			e.writeResult(line)
+		}
+		m.scrollOffset = 0
+		return m, nil
 
 	case evalCancelledMsg:
 		m.evaluating = false
 		m.cancelEval = nil
-		return m, tea.Println(errorStyle.Render("cancelled"))
+		m.lastEntry().writeLogLine(errorStyle.Render("cancelled"))
+		m.scrollOffset = 0
+		return m, nil
 
 	case spinner.TickMsg:
 		if m.evaluating {
@@ -275,35 +366,30 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Add to history
 			m.addHistory(line)
 
-			// Echo the input above the prompt
-			echoCmd := tea.Println(promptStyle.Render("dang> ") + line)
+			// Create a new entry for this input — all output
+			// (eval results, dagger logs) streams into it.
+			m.entries = append(m.entries, newReplEntry(
+				promptStyle.Render("dang> ")+line,
+			))
 
 			// Clear input immediately
 			m.textInput.SetValue("")
 			m.menuVisible = false
+			m.scrollOffset = 0
 
 			// Commands run synchronously (they're fast)
 			if strings.HasPrefix(line, ":") {
 				m.handleCommand(line[1:])
-				flushCmd := m.flushOutput()
 				if m.quitting {
-					return m, tea.Sequence(echoCmd, flushCmd, tea.Quit)
-				}
-				if m.clearScreen {
-					m.clearScreen = false
-					return m, func() tea.Msg { return tea.ClearScreen() }
+					return m, tea.Quit
 				}
 				m.updateCompletionMenu()
-				return m, tea.Sequence(echoCmd, flushCmd)
+				return m, nil
 			}
 
 			// Expressions run asynchronously with a spinner.
-			// Sequence the echo + any sync errors, then batch the eval
-			// (which itself batches spinner tick + goroutine).
 			evalCmd := m.startEval(line)
-			flushCmd := m.flushOutput()
-			printCmds := tea.Sequence(echoCmd, flushCmd)
-			return m, tea.Sequence(printCmds, evalCmd)
+			return m, evalCmd
 
 		case "up":
 			if !m.menuVisible {
@@ -319,7 +405,18 @@ func (m replModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "ctrl+l":
-			return m, func() tea.Msg { return tea.ClearScreen() }
+			m.entries = nil
+			m.scrollOffset = 0
+			return m, nil
+
+		// Scroll through output
+		case "pgup", "shift+up":
+			maxScroll := len(m.renderedLines())
+			m.scrollOffset = min(m.scrollOffset+5, maxScroll)
+			return m, nil
+		case "pgdown", "shift+down":
+			m.scrollOffset = max(m.scrollOffset-5, 0)
+			return m, nil
 		}
 	}
 
@@ -343,29 +440,158 @@ func (m replModel) View() tea.View {
 		return m.docBrowser.View()
 	}
 
-	var b strings.Builder
-
-	// Input line or spinner
-	if m.evaluating {
-		b.WriteString(m.spinner.View() + dimStyle.Render("Evaluating... (Ctrl+C to cancel)"))
-	} else {
-		b.WriteString(m.textInput.View())
-
-		// Completion menu below input
-		if m.menuVisible && len(m.menuItems) > 0 {
-			b.WriteString("\n")
-			b.WriteString(m.renderMenu())
-		}
+	// Reserve 1 line for the input.
+	outputHeight := m.height - 1
+	if outputHeight < 0 {
+		outputHeight = 0
 	}
 
-	v := tea.NewView(b.String())
+	// Build the visible portion of the output log.
+	visibleOutput := m.visibleOutputLines(outputHeight)
+
+	// Build the input line.
+	var inputLine string
+	if m.evaluating {
+		inputLine = m.spinner.View() + dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
+	} else {
+		inputLine = m.textInput.View()
+	}
+
+	// Compose the full view: output + input at the bottom.
+	base := visibleOutput + "\n" + inputLine
+
+	// When the completion menu is visible, composite it as a floating layer
+	// over the output area so the input line doesn't move.
+	if !m.evaluating && m.menuVisible && len(m.menuItems) > 0 {
+		menu := m.renderMenu()
+		menuH := lipgloss.Height(menu)
+
+		// Position the menu just above the input line.
+		menuY := outputHeight - menuH
+		if menuY < 0 {
+			menuY = 0
+		}
+
+		// Align horizontally to the token being completed.
+		menuX := m.completionXOffset()
+
+		comp := lipgloss.NewCompositor(
+			lipgloss.NewLayer(base),
+			lipgloss.NewLayer(menu).X(menuX).Y(menuY).Z(1),
+		)
+
+		v := tea.NewView(comp)
+		v.AltScreen = true
+		if cursor := m.textInput.Cursor(); cursor != nil {
+			cursor.Y += outputHeight
+			v.Cursor = cursor
+		}
+		return v
+	}
+
+	v := tea.NewView(base)
+	v.AltScreen = true
 	if !m.evaluating {
-		v.Cursor = m.textInput.Cursor()
+		if cursor := m.textInput.Cursor(); cursor != nil {
+			cursor.Y += outputHeight
+			v.Cursor = cursor
+		}
 	}
 	return v
 }
 
-// renderMenu renders the completion dropdown menu.
+// renderedLines flattens all entries into display lines.
+// Each entry renders as: input, then logs, then result.
+func (m replModel) renderedLines() []string {
+	var lines []string
+	for _, e := range m.entries {
+		if e.input != "" {
+			lines = append(lines, e.input)
+		}
+		// Logs region (streaming Dagger progress, print() output, etc.)
+		if logStr := e.logs.String(); logStr != "" {
+			logLines := strings.Split(logStr, "\n")
+			// Drop trailing empty element from a final newline
+			if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
+				logLines = logLines[:len(logLines)-1]
+			}
+			lines = append(lines, logLines...)
+		}
+		// Result region ("=> value" lines, always last)
+		if resStr := e.result.String(); resStr != "" {
+			resLines := strings.Split(resStr, "\n")
+			if len(resLines) > 0 && resLines[len(resLines)-1] == "" {
+				resLines = resLines[:len(resLines)-1]
+			}
+			lines = append(lines, resLines...)
+		}
+	}
+	return lines
+}
+
+// visibleOutputLines returns the output text that fits in the given height,
+// respecting the current scroll offset. The returned string always has
+// exactly `height` newline-delimited lines (padded with blanks if needed).
+func (m replModel) visibleOutputLines(height int) string {
+	if height <= 0 {
+		return ""
+	}
+
+	all := m.renderedLines()
+	total := len(all)
+
+	// end is the index just past the last visible line (from the bottom).
+	end := total - m.scrollOffset
+	if end < 0 {
+		end = 0
+	}
+	if end > total {
+		end = total
+	}
+
+	start := end - height
+	if start < 0 {
+		start = 0
+	}
+
+	visible := all[start:end]
+
+	// Pad with empty lines so the output region is always `height` tall,
+	// pushing the input to the bottom of the screen.
+	padCount := height - len(visible)
+	lines := make([]string, 0, height)
+	for i := 0; i < padCount; i++ {
+		lines = append(lines, "")
+	}
+	lines = append(lines, visible...)
+
+	return strings.Join(lines, "\n")
+}
+
+// completionXOffset returns the column at which to place the completion popup,
+// aligned to the start of the token being completed.
+func (m replModel) completionXOffset() int {
+	val := m.textInput.Value()
+	promptWidth := lipgloss.Width(promptStyle.Render("dang> "))
+
+	// Walk backwards to find the start of the current token (including dot prefix).
+	i := len(val) - 1
+	for i >= 0 && isIdentByte(val[i]) {
+		i--
+	}
+	// Include a leading dot (for member completions like "container.fr")
+	if i >= 0 && val[i] == '.' {
+		i--
+		for i >= 0 && isIdentByte(val[i]) {
+			i--
+		}
+	}
+	tokenStart := i + 1
+
+	return promptWidth + tokenStart
+}
+
+// renderMenu renders the completion dropdown menu with a border.
 func (m replModel) renderMenu() string {
 	if len(m.menuItems) == 0 {
 		return ""
@@ -380,15 +606,28 @@ func (m replModel) renderMenu() string {
 	}
 	end := start + visible
 
+	// Find the widest item for consistent padding
+	maxWidth := 0
+	for i := start; i < end && i < len(m.menuItems); i++ {
+		if w := lipgloss.Width(m.menuItems[i]); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	// Clamp
+	if maxWidth > 60 {
+		maxWidth = 60
+	}
+	if maxWidth < 20 {
+		maxWidth = 20
+	}
+
 	var lines []string
 	for i := start; i < end && i < len(m.menuItems); i++ {
 		item := m.menuItems[i]
 		// Truncate long items
-		maxWidth := 60
 		if len(item) > maxWidth {
 			item = item[:maxWidth-3] + "..."
 		}
-		// Pad to consistent width
 		padded := fmt.Sprintf(" %-*s ", maxWidth, item)
 
 		if i == m.menuIndex {
@@ -398,13 +637,14 @@ func (m replModel) renderMenu() string {
 		}
 	}
 
-	// Show scroll indicator
+	// Show scroll indicator inside the box
 	if len(m.menuItems) > visible {
 		info := fmt.Sprintf(" %d/%d ", m.menuIndex+1, len(m.menuItems))
 		lines = append(lines, dimStyle.Render(info))
 	}
 
-	return strings.Join(lines, "\n")
+	inner := strings.Join(lines, "\n")
+	return menuBorderStyle.Render(inner)
 }
 
 // updateCompletionMenu updates the completion menu based on current input.
@@ -585,10 +825,12 @@ func (m *replModel) refreshCompletions() {
 // startEval begins asynchronous evaluation of a Dang expression.
 // Returns a tea.Cmd that runs the evaluation in a goroutine.
 func (m *replModel) startEval(expr string) tea.Cmd {
+	e := m.lastEntry()
+
 	// Parse synchronously (fast) so we can show errors immediately
 	result, err := dang.Parse("repl", []byte(expr))
 	if err != nil {
-		m.appendError(fmt.Sprintf("parse error: %v", err))
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		return nil
 	}
 
@@ -596,7 +838,7 @@ func (m *replModel) startEval(expr string) tea.Cmd {
 
 	if m.debug {
 		for _, node := range forms {
-			m.appendOutput(fmt.Sprintf("%# v", pretty.Formatter(node)), dimStyle)
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(node))))
 		}
 	}
 
@@ -604,7 +846,7 @@ func (m *replModel) startEval(expr string) tea.Cmd {
 	fresh := hm.NewSimpleFresher()
 	_, err = dang.InferFormsWithPhases(m.ctx, forms, m.typeEnv, fresh)
 	if err != nil {
-		m.appendError(fmt.Sprintf("type error: %v", err))
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		return nil
 	}
 
@@ -619,7 +861,8 @@ func (m *replModel) startEval(expr string) tea.Cmd {
 
 	// Start spinner and evaluation concurrently
 	return tea.Batch(m.spinner.Tick, func() tea.Msg {
-		var output []string
+		var logs []string
+		var results []string
 
 		// Capture stdout from print() calls
 		var stdoutBuf bytes.Buffer
@@ -634,35 +877,37 @@ func (m *replModel) startEval(expr string) tea.Cmd {
 				return evalCancelledMsg{}
 			}
 
-			// Flush any captured stdout
+			// Flush captured stdout into logs
 			if stdoutBuf.Len() > 0 {
 				for _, line := range strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n") {
-					output = append(output, line)
+					logs = append(logs, line)
 				}
 				stdoutBuf.Reset()
 			}
 
 			if err != nil {
-				output = append(output, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
-				return evalResultMsg{output: output}
+				results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
+				return evalResultMsg{logs: logs, results: results}
 			}
 
-			output = append(output, resultStyle.Render(fmt.Sprintf("=> %s", val.String())))
+			results = append(results, resultStyle.Render(fmt.Sprintf("=> %s", val.String())))
 
 			if debug {
-				output = append(output, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
+				results = append(results, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
 			}
 		}
 
-		return evalResultMsg{output: output}
+		return evalResultMsg{logs: logs, results: results}
 	})
 }
 
 // handleCommand handles REPL :commands.
 func (m *replModel) handleCommand(cmdLine string) {
+	e := m.lastEntry()
+
 	parts := strings.Fields(cmdLine)
 	if len(parts) == 0 {
-		m.appendError("empty command")
+		e.writeLogLine(errorStyle.Render("empty command"))
 		return
 	}
 
@@ -671,32 +916,33 @@ func (m *replModel) handleCommand(cmdLine string) {
 
 	switch cmd {
 	case "help":
-		m.appendOutput("Available commands:", lipgloss.NewStyle())
-		m.appendOutput("  :help      - Show this help", dimStyle)
-		m.appendOutput("  :exit      - Exit the REPL", dimStyle)
-		m.appendOutput("  :doc       - Interactive API browser", dimStyle)
-		m.appendOutput("  :env       - Show environment bindings", dimStyle)
-		m.appendOutput("  :type      - Show type of an expression", dimStyle)
-		m.appendOutput("  :find      - Find functions/types by pattern", dimStyle)
-		m.appendOutput("  :reset     - Reset the environment", dimStyle)
-		m.appendOutput("  :clear     - Clear the screen", dimStyle)
-		m.appendOutput("  :debug     - Toggle debug mode", dimStyle)
-		m.appendOutput("  :version   - Show version info", dimStyle)
-		m.appendOutput("  :quit      - Exit the REPL", dimStyle)
-		m.appendOutput("", lipgloss.NewStyle())
-		m.appendOutput("Type Dang expressions to evaluate them.", dimStyle)
-		m.appendOutput("Tab for completion, ↑/↓ for history, Ctrl+L to clear.", dimStyle)
+		e.writeLogLine("Available commands:")
+		e.writeLogLine(dimStyle.Render("  :help      - Show this help"))
+		e.writeLogLine(dimStyle.Render("  :exit      - Exit the REPL"))
+		e.writeLogLine(dimStyle.Render("  :doc       - Interactive API browser"))
+		e.writeLogLine(dimStyle.Render("  :env       - Show environment bindings"))
+		e.writeLogLine(dimStyle.Render("  :type      - Show type of an expression"))
+		e.writeLogLine(dimStyle.Render("  :find      - Find functions/types by pattern"))
+		e.writeLogLine(dimStyle.Render("  :reset     - Reset the environment"))
+		e.writeLogLine(dimStyle.Render("  :clear     - Clear the screen"))
+		e.writeLogLine(dimStyle.Render("  :debug     - Toggle debug mode"))
+		e.writeLogLine(dimStyle.Render("  :version   - Show version info"))
+		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
+		e.writeLogLine("")
+		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
+		e.writeLogLine(dimStyle.Render("Tab for completion, ↑/↓ for history, Ctrl+L to clear."))
 
 	case "exit", "quit":
 		m.quitting = true
 
 	case "clear":
-		m.clearScreen = true
+		m.entries = nil
+		m.scrollOffset = 0
 
 	case "reset":
 		m.typeEnv, m.evalEnv = buildEnvFromImports(m.importConfigs)
 		m.refreshCompletions()
-		m.appendOutput("Environment reset.", resultStyle)
+		e.writeLogLine(resultStyle.Render("Environment reset."))
 
 	case "debug":
 		m.debug = !m.debug
@@ -704,37 +950,37 @@ func (m *replModel) handleCommand(cmdLine string) {
 		if m.debug {
 			status = "enabled"
 		}
-		m.appendOutput(fmt.Sprintf("Debug mode %s.", status), resultStyle)
+		e.writeLogLine(resultStyle.Render(fmt.Sprintf("Debug mode %s.", status)))
 
 	case "env":
-		m.envCommand(args)
+		m.envCommand(e, args)
 
 	case "version":
-		m.appendOutput("Dang REPL v0.1.0", resultStyle)
+		e.writeLogLine(resultStyle.Render("Dang REPL v0.1.0"))
 		if len(m.importConfigs) > 0 {
 			var names []string
 			for _, ic := range m.importConfigs {
 				names = append(names, ic.Name)
 			}
-			m.appendOutput(fmt.Sprintf("Imports: %s", strings.Join(names, ", ")), dimStyle)
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
 		} else {
-			m.appendOutput("No imports configured (create a dang.toml)", dimStyle)
+			e.writeLogLine(dimStyle.Render("No imports configured (create a dang.toml)"))
 		}
 
 	case "type":
-		m.typeCommand(args)
+		m.typeCommand(e, args)
 
 	case "find", "search":
-		m.findCommand(args)
+		m.findCommand(e, args)
 
 	case "history":
-		m.appendOutput("Recent history:", lipgloss.NewStyle())
+		e.writeLogLine("Recent history:")
 		start := 0
 		if len(m.history) > 20 {
 			start = len(m.history) - 20
 		}
 		for i := start; i < len(m.history); i++ {
-			m.appendOutput(fmt.Sprintf("  %d: %s", i+1, m.history[i]), dimStyle)
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %d: %s", i+1, m.history[i])))
 		}
 
 	case "doc":
@@ -742,11 +988,11 @@ func (m *replModel) handleCommand(cmdLine string) {
 		m.docBrowser = &db
 
 	default:
-		m.appendError(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd))
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
 	}
 }
 
-func (m *replModel) envCommand(args []string) {
+func (m *replModel) envCommand(e *replEntry, args []string) {
 	filter := ""
 	showAll := false
 	if len(args) > 0 {
@@ -757,8 +1003,8 @@ func (m *replModel) envCommand(args []string) {
 		}
 	}
 
-	m.appendOutput("Current environment bindings:", lipgloss.NewStyle())
-	m.appendOutput("", lipgloss.NewStyle())
+	e.writeLogLine("Current environment bindings:")
+	e.writeLogLine("")
 
 	count := 0
 	for name, scheme := range m.typeEnv.Bindings(dang.PublicVisibility) {
@@ -766,24 +1012,24 @@ func (m *replModel) envCommand(args []string) {
 			continue
 		}
 		if !showAll && count >= 20 {
-			m.appendOutput("  ... use ':env all' to see all", dimStyle)
+			e.writeLogLine(dimStyle.Render("  ... use ':env all' to see all"))
 			break
 		}
 		t, _ := scheme.Type()
 		if t != nil {
-			m.appendOutput(fmt.Sprintf("  %s : %s", name, t), dimStyle)
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
 		} else {
-			m.appendOutput(fmt.Sprintf("  %s", name), dimStyle)
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 		}
 		count++
 	}
-	m.appendOutput("", lipgloss.NewStyle())
-	m.appendOutput("Use ':doc' for interactive API browsing", dimStyle)
+	e.writeLogLine("")
+	e.writeLogLine(dimStyle.Render("Use ':doc' for interactive API browsing"))
 }
 
-func (m *replModel) typeCommand(args []string) {
+func (m *replModel) typeCommand(e *replEntry, args []string) {
 	if len(args) == 0 {
-		m.appendOutput("Usage: :type <expression>", dimStyle)
+		e.writeLogLine(dimStyle.Render("Usage: :type <expression>"))
 		return
 	}
 
@@ -791,7 +1037,7 @@ func (m *replModel) typeCommand(args []string) {
 
 	result, err := dang.Parse("type-check", []byte(expr))
 	if err != nil {
-		m.appendError(fmt.Sprintf("parse error: %v", err))
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		return
 	}
 
@@ -799,32 +1045,32 @@ func (m *replModel) typeCommand(args []string) {
 
 	inferredType, err := dang.Infer(m.ctx, m.typeEnv, node, false)
 	if err != nil {
-		m.appendError(fmt.Sprintf("type error: %v", err))
+		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		return
 	}
 
-	m.appendOutput(fmt.Sprintf("Expression: %s", expr), lipgloss.NewStyle())
-	m.appendOutput(fmt.Sprintf("Type: %s", inferredType), resultStyle)
+	e.writeLogLine(fmt.Sprintf("Expression: %s", expr))
+	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", inferredType)))
 
 	// Additional context for single symbols
 	trimmed := strings.TrimSpace(expr)
 	if !strings.Contains(trimmed, " ") {
 		if scheme, found := m.typeEnv.SchemeOf(trimmed); found {
 			if t, _ := scheme.Type(); t != nil {
-				m.appendOutput(fmt.Sprintf("Scheme: %s", scheme), dimStyle)
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", scheme)))
 			}
 		}
 	}
 }
 
-func (m *replModel) findCommand(args []string) {
+func (m *replModel) findCommand(e *replEntry, args []string) {
 	if len(args) == 0 {
-		m.appendOutput("Usage: :find <pattern>", dimStyle)
+		e.writeLogLine(dimStyle.Render("Usage: :find <pattern>"))
 		return
 	}
 
 	pattern := strings.ToLower(args[0])
-	m.appendOutput(fmt.Sprintf("Searching for '%s'...", pattern), lipgloss.NewStyle())
+	e.writeLogLine(fmt.Sprintf("Searching for '%s'...", pattern))
 
 	found := false
 
@@ -833,9 +1079,9 @@ func (m *replModel) findCommand(args []string) {
 		if strings.Contains(strings.ToLower(name), pattern) {
 			t, _ := scheme.Type()
 			if t != nil {
-				m.appendOutput(fmt.Sprintf("  %s : %s", name, t), dimStyle)
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
 			} else {
-				m.appendOutput(fmt.Sprintf("  %s", name), dimStyle)
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 			}
 			found = true
 		}
@@ -849,41 +1095,17 @@ func (m *replModel) findCommand(args []string) {
 				if len(doc) > 60 {
 					doc = doc[:57] + "..."
 				}
-				m.appendOutput(fmt.Sprintf("  %s — %s", name, doc), dimStyle)
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s — %s", name, doc)))
 			} else {
-				m.appendOutput(fmt.Sprintf("  %s", name), dimStyle)
+				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 			}
 			found = true
 		}
 	}
 
 	if !found {
-		m.appendOutput(fmt.Sprintf("No matches found for '%s'", pattern), dimStyle)
+		e.writeLogLine(dimStyle.Render(fmt.Sprintf("No matches found for '%s'", pattern)))
 	}
-}
-
-// appendOutput adds a styled line to the pending output buffer.
-func (m *replModel) appendOutput(text string, style lipgloss.Style) {
-	m.pendingOutput = append(m.pendingOutput, style.Render(text))
-}
-
-// appendError adds an error line to the pending output buffer.
-func (m *replModel) appendError(text string) {
-	m.pendingOutput = append(m.pendingOutput, errorStyle.Render(text))
-}
-
-// flushOutput returns a tea.Cmd that prints all pending output lines above
-// the Bubbletea-managed area, then clears the buffer.
-func (m *replModel) flushOutput() tea.Cmd {
-	if len(m.pendingOutput) == 0 {
-		return nil
-	}
-	var cmds []tea.Cmd
-	for _, line := range m.pendingOutput {
-		cmds = append(cmds, tea.Println(line))
-	}
-	m.pendingOutput = nil
-	return tea.Sequence(cmds...)
 }
 
 // History management
@@ -1036,9 +1258,10 @@ func buildEnvFromImports(configs []dang.ImportConfig) (dang.Env, dang.EvalEnv) {
 	return typeEnv, evalEnv
 }
 
-func runREPLBubbletea(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) error {
+func runREPLBubbletea(ctx context.Context, importConfigs []dang.ImportConfig, debug bool, daggerLog *syncWriter) error {
 	m := newREPLModel(ctx, importConfigs, debug)
 	p := tea.NewProgram(m)
+	daggerLog.SetProgram(p)
 	finalModel, err := p.Run()
 	if err != nil {
 		return fmt.Errorf("REPL error: %w", err)
@@ -1050,5 +1273,3 @@ func runREPLBubbletea(ctx context.Context, importConfigs []dang.ImportConfig, de
 	}
 	return nil
 }
-
-

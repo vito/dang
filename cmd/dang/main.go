@@ -184,11 +184,15 @@ func runREPL(ctx context.Context, cfg Config) error {
 
 	// Detect dagger.json and load the module + deps
 	var daggerConn *dagger.Client
+	daggerLog := &syncWriter{}
 	moduleDir := findDaggerModule(cwd)
 	if moduleDir != "" {
 		fmt.Fprintf(os.Stderr, "Loading Dagger module from %s...\n", moduleDir)
 
-		dag, err := dagger.Connect(ctx)
+		dag, err := dagger.Connect(ctx,
+			dagger.WithLogOutput(daggerLog),
+			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
+		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to connect to Dagger: %v\n", err)
 		} else {
@@ -216,7 +220,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
-	return runREPLBubbletea(ctx, importConfigs, cfg.Debug)
+	return runREPLBubbletea(ctx, importConfigs, cfg.Debug, daggerLog)
 }
 
 // findDaggerModule searches for a dagger.json starting from dir, walking up.
