@@ -315,10 +315,18 @@ func (d *docBrowserOverlay) Render(width int) []string {
 }
 
 func (d *docBrowserOverlay) renderDetailPitui(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
+	return renderDocDetail(item, w, docStyle, argNameStyle, argTypeStyle, dimSt)
+}
+
+// renderDocDetail renders structured documentation for a docItem. Shared by
+// the doc browser detail column and the completion detail bubble.
+func renderDocDetail(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
 	var lines []string
 
-	lines = append(lines, argTypeStyle.Render(truncate(item.typeStr, w)))
-	lines = append(lines, "")
+	if item.typeStr != "" {
+		lines = append(lines, argTypeStyle.Render(truncate(item.typeStr, w)))
+		lines = append(lines, "")
+	}
 
 	if item.doc != "" {
 		wrapped := wordWrap(item.doc, w)
@@ -365,7 +373,7 @@ func (d *docBrowserOverlay) renderDetailPitui(item docItem, w int, docStyle, arg
 		}
 	}
 
-	if len(lines) == 1 && item.doc == "" && len(item.args) == 0 && len(item.blockArgs) == 0 {
+	if len(lines) <= 1 && item.doc == "" && len(item.args) == 0 && len(item.blockArgs) == 0 {
 		lines = append(lines, dimSt.Render("(no documentation)"))
 	}
 

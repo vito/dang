@@ -124,7 +124,7 @@ func lastIdent(text string) string {
 // completeMember tries to parse and type-check the receiver expression, then
 // returns completions for its members filtered by the partial name.
 func completeMember(ctx context.Context, typeEnv Env, receiverText, partial string) []Completion {
-	receiverType := inferReceiverType(ctx, typeEnv, receiverText)
+	receiverType := InferReceiverType(ctx, typeEnv, receiverText)
 	if receiverType == nil {
 		return nil
 	}
@@ -132,9 +132,9 @@ func completeMember(ctx context.Context, typeEnv Env, receiverText, partial stri
 	return MembersOf(receiverType, partial)
 }
 
-// inferReceiverType parses and type-checks a receiver expression, returning
+// InferReceiverType parses and type-checks a receiver expression, returning
 // its inferred type. Returns nil if parsing or inference fails.
-func inferReceiverType(ctx context.Context, typeEnv Env, expr string) hm.Type {
+func InferReceiverType(ctx context.Context, typeEnv Env, expr string) hm.Type {
 	parsed, err := Parse("completion", []byte(expr))
 	if err != nil {
 		return nil

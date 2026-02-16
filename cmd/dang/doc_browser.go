@@ -383,4 +383,95 @@ func wordWrap(s string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
+// docItemFromEnv builds a docItem for a named binding in env. Returns the item
+// and true if found; zero value and false otherwise. Used by the completion
+// detail bubble to get structured info (args, block, doc) for a completion.
+func docItemFromEnv(env dang.Env, name string) (docItem, bool) {
+	if env == nil {
+		return docItem{}, false
+	}
+
+	// Try bindings first.
+	for bName, scheme := range env.Bindings(dang.PublicVisibility) {
+		if bName != name {
+			continue
+		}
+		t, _ := scheme.Type()
+		if t == nil {
+			return docItem{}, false
+		}
+		item := docItem{
+			name:    name,
+			typeStr: t.String(),
+		}
+		if d, found := env.GetDocString(name); found {
+			item.doc = d
+		}
+		if fn, ok := t.(*hm.FunctionType); ok {
+			item.kind = kindField
+			item.args = extractArgs(fn)
+			item.typeStr = formatReturnType(fn)
+			extractBlockInfo(fn, &item)
+		} else {
+			inner := unwrapType(t)
+			if mod, ok := inner.(dang.Env); ok {
+				item.kind = classifyEnv(mod)
+			} else {
+				item.kind = kindField
+			}
+		}
+		return item, true
+	}
+
+	// Try builtin methods.
+	if mod, ok := env.(*dang.Module); ok {
+		var found docItem
+		var matched bool
+		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
+			if matched || def.Name != name {
+				return
+			}
+			matched = true
+			found = docItem{
+				name: def.Name,
+				kind: kindField,
+				doc:  def.Doc,
+			}
+			for _, p := range def.ParamTypes {
+				found.args = append(found.args, docArg{
+					name:    p.Name,
+					typeStr: formatType(p.Type),
+				})
+			}
+			if def.ReturnType != nil {
+				found.typeStr = "-> " + formatType(def.ReturnType)
+			}
+			if def.BlockType != nil {
+				found.blockArgs = extractArgs(def.BlockType)
+				found.blockRet = formatType(def.BlockType.Ret(true))
+			}
+		})
+		if matched {
+			return found, true
+		}
+	}
+
+	// Try named types.
+	for tName, namedEnv := range env.NamedTypes() {
+		if tName == name {
+			item := docItem{
+				name:    name,
+				typeStr: namedEnv.Name(),
+				kind:    classifyEnv(namedEnv),
+			}
+			if d := namedEnv.GetModuleDocString(); d != "" {
+				item.doc = d
+			}
+			return item, true
+		}
+	}
+
+	return docItem{}, false
+}
+
 

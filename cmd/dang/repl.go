@@ -52,10 +52,6 @@ var (
 				BorderForeground(lipgloss.Color("241"))
 	detailTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("255")).Bold(true)
-	detailSigStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("63"))
-	detailDocStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
 	welcomeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )

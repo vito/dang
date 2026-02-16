@@ -205,41 +205,38 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 
 // ── detail bubble (viewport-relative overlay) ───────────────────────────────
 
-// detailBubble shows the type signature and documentation for the currently
-// selected completion item. Rendered as a TUI overlay in the top-right corner.
+// detailBubble shows structured documentation for the currently selected
+// completion item, reusing the same detail rendering as the doc browser.
 type detailBubble struct {
-	label string
-	detail string
-	doc   string
+	item docItem
 }
 
 func (d *detailBubble) Invalidate() {}
 
 func (d *detailBubble) Render(width int) []string {
-	if d.label == "" && d.detail == "" && d.doc == "" {
+	if d.item.name == "" {
 		return nil
 	}
 
-	var sections []string
+	innerW := max(10, width-2)
 
-	if d.label != "" {
-		sections = append(sections, detailTitleStyle.Render(d.label))
-	}
-	if d.detail != "" {
-		sections = append(sections, detailSigStyle.Render(d.detail))
-	}
-	if d.doc != "" {
-		// Word-wrap documentation to fit within the bubble.
-		wrapped := wordWrap(d.doc, max(10, width-2))
-		sections = append(sections, detailDocStyle.Render(wrapped))
-	}
+	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
+	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
-	inner := strings.Join(sections, "\n")
-	box := detailBorderStyle.Width(max(10, width-2)).Render(inner)
+	// Title line.
+	titleLine := detailTitleStyle.Render(d.item.name)
+	lines := []string{titleLine}
+
+	// Reuse the doc browser's detail renderer for type sig, doc, args, block.
+	detail := renderDocDetail(d.item, innerW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
+	lines = append(lines, detail...)
+
+	inner := strings.Join(lines, "\n")
+	box := detailBorderStyle.Width(innerW).Render(inner)
 	return strings.Split(box, "\n")
 }
-
-// wordWrap is defined in doc_browser.go
 
 // ── REPL component ─────────────────────────────────────────────────────────
 
@@ -638,14 +635,58 @@ func (r *replComponent) syncDetailBubble() {
 		return
 	}
 	c := r.menuCompletions[idx]
-	if c.Detail == "" && c.Documentation == "" {
-		r.hideDetailBubble()
-		return
+
+	// Try to build a full docItem from the type env for rich detail.
+	// The completion label is the bare name (from dang.CompleteInput),
+	// but menuItems may have a prefix prepended. Use c.Label directly.
+	item, found := docItemFromEnv(r.typeEnv, c.Label)
+	if !found {
+		// Also try resolving the receiver type for member completions.
+		item, found = r.resolveCompletionDocItem(c)
 	}
+	if !found {
+		// Fall back to flat completion data.
+		if c.Detail == "" && c.Documentation == "" {
+			r.hideDetailBubble()
+			return
+		}
+		item = docItem{
+			name:    c.Label,
+			typeStr: c.Detail,
+			doc:     c.Documentation,
+		}
+	}
+
 	r.showDetailBubble()
-	r.detailBubble.label = c.Label
-	r.detailBubble.detail = c.Detail
-	r.detailBubble.doc = c.Documentation
+	r.detailBubble.item = item
+}
+
+// resolveCompletionDocItem tries to resolve a member completion's docItem
+// by inferring the receiver type from the current input.
+func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bool) {
+	val := r.textInput.Value()
+	// Find the last dot to get the receiver expression.
+	dotIdx := -1
+	for i := len(val) - 1; i >= 0; i-- {
+		if val[i] == '.' {
+			dotIdx = i
+			break
+		}
+	}
+	if dotIdx < 0 {
+		return docItem{}, false
+	}
+	receiverText := val[:dotIdx]
+	receiverType := dang.InferReceiverType(r.ctx, r.typeEnv, receiverText)
+	if receiverType == nil {
+		return docItem{}, false
+	}
+	unwrapped := unwrapType(receiverType)
+	env, ok := unwrapped.(dang.Env)
+	if !ok {
+		return docItem{}, false
+	}
+	return docItemFromEnv(env, c.Label)
 }
 
 func (r *replComponent) completionXOffsetPitui() int {
