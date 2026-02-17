@@ -17,6 +17,7 @@
     --orange: #d29922;
     --red: #f85149;
     --purple: #bc8cff;
+    --cyan: #56d4dd;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -48,7 +49,7 @@
 
   .stats-bar {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     flex-wrap: wrap;
     margin-bottom: 12px;
   }
@@ -57,7 +58,7 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 10px 16px;
-    min-width: 120px;
+    min-width: 110px;
   }
   .stat .label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; }
   .stat .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -102,6 +103,8 @@
   <div class="stat"><div class="label">Full Redraws</div><div class="value" id="fullRedraws">0</div></div>
   <div class="stat"><div class="label">Cache Hit Rate</div><div class="value" id="cacheRate">-</div><span class="unit">%</span></div>
   <div class="stat"><div class="label">Avg Lines</div><div class="value" id="avgLines">-</div></div>
+  <div class="stat"><div class="label">Avg Bytes/Frame</div><div class="value" id="avgBytes">-</div><span class="unit">B</span></div>
+  <div class="stat"><div class="label">Wasted Renders</div><div class="value" id="wastedRenders">0</div></div>
 </div>
 
 <div class="controls">
@@ -119,7 +122,7 @@
 
 <div class="grid">
   <div class="card">
-    <h2>Frame Duration (µs)</h2>
+    <h2>Frame Duration (µs) — red dots = full redraws</h2>
     <canvas id="timingChart"></canvas>
   </div>
   <div class="card">
@@ -133,6 +136,14 @@
   <div class="card">
     <h2>Cache Hit Rate (%)</h2>
     <canvas id="cacheChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Bytes Written to Terminal</h2>
+    <canvas id="bytesChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Changed Line Range (first → last)</h2>
+    <canvas id="rangeChart"></canvas>
   </div>
 </div>
 
@@ -151,13 +162,8 @@ Chart.defaults.elements.point.hoverRadius = 3;
 Chart.defaults.elements.line.borderWidth = 1.5;
 
 const commonScales = {
-  x: {
-    display: false,
-  },
-  y: {
-    beginAtZero: true,
-    grid: { color: '#21262d' },
-  }
+  x: { display: false },
+  y: { beginAtZero: true, grid: { color: '#21262d' } }
 };
 
 function makeChart(id, datasets, opts = {}) {
@@ -184,6 +190,7 @@ const timingChart = makeChart('timingChart', [
 
 const breakdownChart = makeChart('breakdownChart', [
   { label: 'Render', borderColor: '#3fb950', data: [] },
+  { label: 'Composite', borderColor: '#56d4dd', data: [] },
   { label: 'Diff', borderColor: '#d29922', data: [] },
   { label: 'Write', borderColor: '#f85149', data: [] },
 ]);
@@ -200,7 +207,17 @@ const cacheChart = makeChart('cacheChart', [
   scales: { y: { beginAtZero: true, max: 100, grid: { color: '#21262d' } } }
 });
 
-const charts = [timingChart, breakdownChart, linesChart, cacheChart];
+const bytesChart = makeChart('bytesChart', [
+  { label: 'Bytes', borderColor: '#bc8cff', backgroundColor: 'rgba(188,140,255,0.1)', fill: true, data: [] },
+]);
+
+const rangeChart = makeChart('rangeChart', [
+  { label: 'First Changed', borderColor: '#d29922', data: [] },
+  { label: 'Last Changed', borderColor: '#f85149', data: [] },
+  { label: 'Total Lines', borderColor: '#58a6ff', borderDash: [4, 4], data: [] },
+]);
+
+const charts = [timingChart, breakdownChart, linesChart, cacheChart, bytesChart, rangeChart];
 
 // ── Update logic ───────────────────────────────────────────────────────────
 function getWindow() {
@@ -233,6 +250,13 @@ function updateStats() {
 
   const avgL = (allData.reduce((a, d) => a + d.total_lines, 0) / n).toFixed(0);
   document.getElementById('avgLines').textContent = avgL;
+
+  const avgB = (allData.reduce((a, d) => a + d.bytes_written, 0) / n).toFixed(0);
+  document.getElementById('avgBytes').textContent = avgB;
+
+  // Wasted renders: component tree not dirty AND no lines changed.
+  const wasted = allData.filter(d => !d.component_dirty && d.first_changed === -1).length;
+  document.getElementById('wastedRenders').textContent = wasted;
 }
 
 function updateCharts() {
@@ -254,8 +278,9 @@ function updateCharts() {
   // Breakdown chart
   breakdownChart.data.labels = labels;
   breakdownChart.data.datasets[0].data = slice.map(d => d.render_us);
-  breakdownChart.data.datasets[1].data = slice.map(d => d.diff_us);
-  breakdownChart.data.datasets[2].data = slice.map(d => d.write_us);
+  breakdownChart.data.datasets[1].data = slice.map(d => d.composite_us);
+  breakdownChart.data.datasets[2].data = slice.map(d => d.diff_us);
+  breakdownChart.data.datasets[3].data = slice.map(d => d.write_us);
 
   // Lines chart
   linesChart.data.labels = labels;
@@ -269,6 +294,16 @@ function updateCharts() {
     const total = d.total_lines;
     return total > 0 ? ((d.cache_hits / total) * 100).toFixed(1) : 100;
   });
+
+  // Bytes chart
+  bytesChart.data.labels = labels;
+  bytesChart.data.datasets[0].data = slice.map(d => d.bytes_written);
+
+  // Changed line range chart
+  rangeChart.data.labels = labels;
+  rangeChart.data.datasets[0].data = slice.map(d => d.first_changed >= 0 ? d.first_changed : null);
+  rangeChart.data.datasets[1].data = slice.map(d => d.last_changed >= 0 ? d.last_changed : null);
+  rangeChart.data.datasets[2].data = slice.map(d => d.total_lines);
 
   for (const c of charts) c.update();
 }
