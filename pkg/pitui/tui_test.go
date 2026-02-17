@@ -1,11 +1,14 @@
 package pitui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gotest.tools/v3/golden"
 )
 
 // mockTerminal records writes and simulates a fixed-size terminal.
@@ -422,6 +425,408 @@ func TestCompositeWithTabExpandedLine(t *testing.T) {
 	assert.Contains(t, stripped, "ok      gi")
 	assert.Contains(t, stripped, "XY")
 	assert.Equal(t, 40, VisibleWidth(result))
+}
+
+func TestOverlayMaxHeightPassedToComponent(t *testing.T) {
+	term := newMockTerminal(80, 24)
+	tui := newTUI(term)
+	bg := &staticComponent{lines: []string{
+		"content 0", "content 1", "content 2", "content 3", "content 4",
+		"content 5", "content 6", "content 7", "content 8", "content 9",
+	}}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	// Component that records the Height it received.
+	var gotHeight int
+	overlay := &callbackComponent{render: func(ctx RenderContext) RenderResult {
+		gotHeight = ctx.Height
+		lines := []string{"line 0", "line 1", "line 2", "line 3", "line 4"}
+		return RenderResult{Lines: lines, Dirty: true}
+	}}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:     SizeAbs(20),
+		MaxHeight: SizeAbs(8),
+		Anchor:    AnchorTopRight,
+		Margin:    OverlayMargin{Top: 1, Right: 1},
+		NoFocus:   true,
+	})
+
+	renderSync(tui)
+
+	assert.Equal(t, 8, gotHeight, "MaxHeight should be passed as ctx.Height")
+}
+
+// callbackComponent calls a render function.
+type callbackComponent struct {
+	render func(RenderContext) RenderResult
+}
+
+func (c *callbackComponent) Invalidate() {}
+func (c *callbackComponent) Render(ctx RenderContext) RenderResult {
+	return c.render(ctx)
+}
+
+// borderedOverlay renders a lipgloss-bordered box that respects ctx.Height.
+type borderedOverlay struct {
+	title string
+	lines []string
+}
+
+func (b *borderedOverlay) Invalidate() {}
+
+func (b *borderedOverlay) Render(ctx RenderContext) RenderResult {
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("63"))
+
+	innerW := max(10, ctx.Width-2)
+
+	inner := append([]string{b.title}, b.lines...)
+
+	// Respect height budget: reserve 2 lines for top/bottom border.
+	if ctx.Height > 0 && len(inner) > ctx.Height-2 {
+		maxInner := ctx.Height - 2
+		if maxInner > 1 {
+			inner = inner[:maxInner-1]
+			inner = append(inner, "...")
+		} else if maxInner > 0 {
+			inner = inner[:maxInner]
+		}
+	}
+
+	box := borderStyle.Width(innerW).Render(strings.Join(inner, "\n"))
+	return RenderResult{
+		Lines: strings.Split(box, "\n"),
+		Dirty: true,
+	}
+}
+
+// snapshotRenderedLines renders the TUI and returns the previousLines joined
+// with newlines, with ANSI stripped. Each line is padded to terminal width
+// using visible-width accounting (correct for multi-byte UTF-8).
+func snapshotRenderedLines(tui *TUI, term *mockTerminal) string {
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	w := term.Columns()
+	var sb strings.Builder
+	for i, line := range prev {
+		stripped := stripANSI(line)
+		vw := VisibleWidth(stripped)
+		if vw < w {
+			stripped += strings.Repeat(" ", w-vw)
+		} else if vw > w {
+			stripped = Truncate(stripped, w, "")
+		}
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		sb.WriteString(stripped)
+	}
+	sb.WriteByte('\n')
+	return sb.String()
+}
+
+func TestOverlayBorderedBoxWithMaxHeight(t *testing.T) {
+	term := newMockTerminal(60, 20)
+	tui := newTUI(term)
+
+	// Background content.
+	var bgLines []string
+	for i := 0; i < 10; i++ {
+		bgLines = append(bgLines, fmt.Sprintf("content line %d", i))
+	}
+	tui.AddChild(&staticComponent{lines: bgLines})
+	tui.stopped = false
+
+	// Bordered overlay with more content than MaxHeight allows.
+	var detailLines []string
+	for i := 0; i < 20; i++ {
+		detailLines = append(detailLines, fmt.Sprintf("detail %d", i))
+	}
+	overlay := &borderedOverlay{
+		title: "MyFunction",
+		lines: detailLines,
+	}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:     SizeAbs(30),
+		MaxHeight: SizeAbs(12),
+		Anchor:    AnchorTopRight,
+		Margin:    OverlayMargin{Top: 1, Right: 1},
+		NoFocus:   true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_bordered_max_height.golden")
+}
+
+func TestOverlayBorderedBoxFitsNaturally(t *testing.T) {
+	term := newMockTerminal(60, 20)
+	tui := newTUI(term)
+
+	var bgLines []string
+	for i := 0; i < 10; i++ {
+		bgLines = append(bgLines, fmt.Sprintf("content line %d", i))
+	}
+	tui.AddChild(&staticComponent{lines: bgLines})
+	tui.stopped = false
+
+	// Bordered overlay that fits within MaxHeight without truncation.
+	overlay := &borderedOverlay{
+		title: "SmallFunc",
+		lines: []string{"returns String!", "", "A short description."},
+	}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:     SizeAbs(30),
+		MaxHeight: SizeAbs(12),
+		Anchor:    AnchorTopRight,
+		Margin:    OverlayMargin{Top: 1, Right: 1},
+		NoFocus:   true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_bordered_fits.golden")
+}
+
+
+func TestOverlayLastLineNotDropped(t *testing.T) {
+	// Regression test: the last line of an overlay was silently dropped
+	// during compositing, causing bottom borders to disappear.
+	term := newMockTerminal(60, 20)
+	tui := newTUI(term)
+
+	// Short background — fewer content lines than the terminal height.
+	tui.AddChild(&staticComponent{lines: []string{
+		"line 0", "line 1", "line 2",
+	}})
+	tui.stopped = false
+
+	// Overlay that returns exactly 5 lines.
+	overlay := &staticComponent{lines: []string{
+		"TOP-BORDER",
+		"content-a",
+		"content-b",
+		"content-c",
+		"BOTTOM-BORDER",
+	}}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:  SizeAbs(20),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 1, Right: 1},
+		NoFocus: true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_last_line.golden")
+}
+
+func TestOverlayLastLineWithScrolling(t *testing.T) {
+	// Same test but with content that fills the terminal, forcing viewport
+	// calculations.
+	term := newMockTerminal(60, 12)
+	tui := newTUI(term)
+
+	var bgLines []string
+	for i := 0; i < 15; i++ {
+		bgLines = append(bgLines, fmt.Sprintf("bg line %d", i))
+	}
+	tui.AddChild(&staticComponent{lines: bgLines})
+	tui.stopped = false
+
+	overlay := &staticComponent{lines: []string{
+		"TOP-BORDER",
+		"content-a",
+		"content-b",
+		"content-c",
+		"BOTTOM-BORDER",
+	}}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:  SizeAbs(20),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 1, Right: 1},
+		NoFocus: true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_last_line_scrolling.golden")
+}
+
+func TestOverlayTwoOverlaysLastLine(t *testing.T) {
+	// Two overlays simultaneously (like completion menu + detail bubble).
+	term := newMockTerminal(60, 20)
+	tui := newTUI(term)
+
+	tui.AddChild(&staticComponent{lines: []string{
+		"line 0", "line 1", "line 2", "line 3", "line 4",
+	}})
+	tui.stopped = false
+
+	// Completion menu overlay (content-relative, above input).
+	menu := &staticComponent{lines: []string{"menu-a", "menu-b", "menu-c"}}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:           SizeAbs(15),
+		Anchor:          AnchorBottomLeft,
+		ContentRelative: true,
+		OffsetY:         -1,
+		NoFocus:         true,
+	})
+
+	// Detail bubble overlay (viewport-relative, top-right).
+	detail := &staticComponent{lines: []string{
+		"TOP-BORDER",
+		"content-a",
+		"content-b",
+		"BOTTOM-BORDER",
+	}}
+	tui.ShowOverlay(detail, &OverlayOptions{
+		Width:  SizeAbs(20),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 1, Right: 1},
+		NoFocus: true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_two_overlays.golden")
+}
+
+func TestOverlayAtBottomOfViewport(t *testing.T) {
+	// Overlay positioned near the bottom of the viewport when content
+	// causes scrolling. The bottom border could get clipped if the overlay
+	// extends past the working area.
+	term := newMockTerminal(60, 10)
+	tui := newTUI(term)
+
+	// Content that exceeds terminal height.
+	var bgLines []string
+	for i := 0; i < 8; i++ {
+		bgLines = append(bgLines, fmt.Sprintf("bg line %d", i))
+	}
+	tui.AddChild(&staticComponent{lines: bgLines})
+	tui.stopped = false
+
+	// Tall overlay anchored at the top — should extend most of the viewport.
+	overlay := &staticComponent{lines: []string{
+		"╭───────────────╮",
+		"│ line 1        │",
+		"│ line 2        │",
+		"│ line 3        │",
+		"│ line 4        │",
+		"│ line 5        │",
+		"│ line 6        │",
+		"│ line 7        │",
+		"╰───────────────╯",
+	}}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:  SizeAbs(18),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 0, Right: 1},
+		NoFocus: true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_at_bottom_viewport.golden")
+}
+
+func TestOverlayTallerThanViewport(t *testing.T) {
+	// Overlay is taller than the terminal. The overlay system must clamp
+	// and the last visible line should still appear.
+	term := newMockTerminal(60, 8)
+	tui := newTUI(term)
+
+	tui.AddChild(&staticComponent{lines: []string{
+		"bg 0", "bg 1", "bg 2", "bg 3",
+	}})
+	tui.stopped = false
+
+	// 12-line overlay in an 8-row terminal.
+	overlay := &staticComponent{lines: []string{
+		"╭───────────────╮",
+		"│ line 1        │",
+		"│ line 2        │",
+		"│ line 3        │",
+		"│ line 4        │",
+		"│ line 5        │",
+		"│ line 6        │",
+		"│ line 7        │",
+		"│ line 8        │",
+		"│ line 9        │",
+		"│ line 10       │",
+		"╰───────────────╯",
+	}}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:  SizeAbs(18),
+		Anchor: AnchorTopLeft,
+		NoFocus: true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_taller_than_viewport.golden")
+}
+
+func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
+	// Reproduces the real detail bubble bug: content is prepared for
+	// ctx.Width-2 columns, but lipgloss Width(n) means TOTAL width = n
+	// (including borders), so the inner area is actually n-2. Long content
+	// lines get wrapped by lipgloss, adding extra height, which causes
+	// the overlay truncation to chop the bottom border.
+	term := newMockTerminal(80, 24)
+	tui := newTUI(term)
+
+	var bgLines []string
+	for i := 0; i < 15; i++ {
+		bgLines = append(bgLines, fmt.Sprintf("content line %d", i))
+	}
+	tui.AddChild(&staticComponent{lines: bgLines})
+	tui.stopped = false
+
+	// This mimics the detailBubble.Render pattern. lipgloss Width(n) is the
+	// TOTAL width including borders, so content must be wrapped to n-2.
+	overlay := &callbackComponent{render: func(ctx RenderContext) RenderResult {
+		borderStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("63"))
+
+		contentW := max(8, ctx.Width-2)
+
+		var lines []string
+		lines = append(lines, "Title")
+		for i := 0; i < 8; i++ {
+			// Use wordWrap-style content that fits contentW.
+			line := fmt.Sprintf("detail line %d with extra text padding here", i)
+			if len(line) > contentW {
+				line = line[:contentW]
+			}
+			lines = append(lines, line)
+		}
+
+		// Truncate inner content to fit height budget (2 for borders).
+		if ctx.Height > 0 && len(lines) > ctx.Height-2 {
+			maxInner := ctx.Height - 2
+			if maxInner > 1 {
+				lines = lines[:maxInner-1]
+				lines = append(lines, "...")
+			}
+		}
+
+		inner := strings.Join(lines, "\n")
+		box := borderStyle.Width(ctx.Width).Render(inner)
+		return RenderResult{Lines: strings.Split(box, "\n"), Dirty: true}
+	}}
+
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:     SizeAbs(35),
+		MaxHeight: SizeAbs(14),
+		Anchor:    AnchorTopRight,
+		Margin:    OverlayMargin{Top: 1, Right: 1},
+		NoFocus:   true,
+	})
+
+	snap := snapshotRenderedLines(tui, term)
+	golden.Assert(t, snap, "overlay_bordered_width_mismatch.golden")
 }
 
 func TestForceRender(t *testing.T) {

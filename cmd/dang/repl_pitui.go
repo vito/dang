@@ -208,7 +208,9 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		return pitui.RenderResult{Dirty: true}
 	}
 
-	innerW := max(10, ctx.Width-2)
+	// lipgloss Width(n) sets the TOTAL width including borders, so the
+	// usable content area is n-2 (left border + right border).
+	contentW := max(8, ctx.Width-2)
 
 	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
 	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
@@ -218,11 +220,23 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	titleLine := detailTitleStyle.Render(d.item.name)
 	lines := []string{titleLine}
 
-	detail := renderDocDetail(d.item, innerW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
+	detail := renderDocDetail(d.item, contentW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
 	lines = append(lines, detail...)
 
+	// Truncate inner content so the border fits within the height budget.
+	// The border adds 2 lines (top + bottom).
+	if ctx.Height > 0 && len(lines) > ctx.Height-2 {
+		maxInner := ctx.Height - 2
+		if maxInner > 1 {
+			lines = lines[:maxInner-1]
+			lines = append(lines, dimSt.Render("..."))
+		} else if maxInner > 0 {
+			lines = lines[:maxInner]
+		}
+	}
+
 	inner := strings.Join(lines, "\n")
-	box := detailBorderStyle.Width(innerW).Render(inner)
+	box := detailBorderStyle.Width(ctx.Width).Render(inner)
 	return pitui.RenderResult{
 		Lines: strings.Split(box, "\n"),
 		Dirty: true,
@@ -253,17 +267,17 @@ type replComponent struct {
 	quit    chan struct{}
 
 	// Completion
-	completions      []string
-	menuVisible      bool
-	menuItems        []string          // replacement values (full input text)
-	menuLabels       []string          // display labels for the menu
-	menuCompletions  []dang.Completion // parallel to menuItems; Detail/Documentation
-	menuIndex        int
-	menuMaxVisible   int
-	menuOverlay      *completionOverlay
-	menuHandle       *pitui.OverlayHandle
-	detailBubble     *detailBubble
-	detailHandle     *pitui.OverlayHandle
+	completions     []string
+	menuVisible     bool
+	menuItems       []string          // replacement values (full input text)
+	menuLabels      []string          // display labels for the menu
+	menuCompletions []dang.Completion // parallel to menuItems; Detail/Documentation
+	menuIndex       int
+	menuMaxVisible  int
+	menuOverlay     *completionOverlay
+	menuHandle      *pitui.OverlayHandle
+	detailBubble    *detailBubble
+	detailHandle    *pitui.OverlayHandle
 
 	// Eval
 	evaluating bool
@@ -633,7 +647,7 @@ func (r *replComponent) showCompletionMenu() {
 	xOff := r.completionXOffsetPitui()
 	displayItems := r.menuDisplayItems()
 	menuH := min(len(displayItems), r.menuMaxVisible) + 2 // items + border
-	linesAbove := len(r.output.cachedLines)                // content lines above the input
+	linesAbove := len(r.output.cachedLines)               // content lines above the input
 
 	var opts *pitui.OverlayOptions
 	if linesAbove >= menuH {
@@ -690,7 +704,7 @@ func (r *replComponent) showDetailBubble() {
 		r.detailBubble = &detailBubble{}
 		r.detailHandle = r.tui.ShowOverlay(r.detailBubble, &pitui.OverlayOptions{
 			Width:     pitui.SizePct(35),
-			MaxHeight: pitui.SizeAbs(15),
+			MaxHeight: pitui.SizePct(80),
 			Anchor:    pitui.AnchorTopRight,
 			Margin:    pitui.OverlayMargin{Top: 1, Right: 1},
 			NoFocus:   true,
