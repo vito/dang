@@ -51,21 +51,24 @@
   `onKey` while focus is nil). There should be a single model for "who
   owns input right now" instead of three overlapping ones.
 
-- [x] **Remove doc browser's direct `tui.Terminal().Rows()` dependency**
+- [ ] **Remove doc browser's direct `tui.Terminal().Rows()` dependency**
   `docBrowserOverlay` stores `*pitui.TUI` and calls `Terminal().Rows()`
   in `listHeight()` and as a fallback in `Render()`. This breaks the
   contract that `RenderContext` is sufficient and makes the doc browser
-  untestable without a real TUI. Blocked on: overlay system reliably
-  passing `Height` in `RenderContext` (it already does, but the doc
-  browser doesn't trust it because base container passes 0).
+  untestable without a real TUI. Attempted and reverted — the replacement
+  (cached height defaulting to 24) was less obviously correct than the
+  explicit dependency. Revisit if the overlay system gains reliable height
+  negotiation, or if testability actually becomes a blocker.
 
-- [x] **Decouple `outputLog` from `replComponent` internals**
+- [ ] **Decouple `outputLog` from `replComponent` internals**
   `outputLog.Render` locks `repl.mu` to snapshot entries. The component
-  doesn't own its data — it's a view into shared mutable state. This
-  means you can't test it in isolation, and the render path holds a
-  user-space mutex that could block if eval is writing logs concurrently.
-  Give `outputLog` its own append-only data or have the REPL push
-  snapshots to it.
+  doesn't own its data — it's a view into shared mutable state.
+  Attempted and reverted — replacing `replEntry`'s structural ordering
+  (input/logs/result fields) with a flat append-only buffer lost the
+  guarantee that logs render before results, causing a regression that
+  required Drain/Resume complexity to fix. The structural model is
+  simpler and correct by construction. Revisit only if the mutex
+  contention becomes a measured problem.
 
 - [x] **Collapse `resolveOverlayLayout` triple-call**
   `compositeOverlays` calls `resolveOverlayLayout` 3 times per overlay
