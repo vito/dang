@@ -135,7 +135,6 @@ type completionOverlay struct {
 	items      []string
 	index      int
 	maxVisible int
-	detail     *docItem // optional detail shown beside the menu
 }
 
 func (c *completionOverlay) Invalidate() {}
@@ -144,21 +143,7 @@ func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if len(c.items) == 0 {
 		return pitui.RenderResult{Dirty: true}
 	}
-
-	menuBox := renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width)
-
-	if c.detail == nil || c.detail.name == "" {
-		lines := strings.Split(menuBox, "\n")
-		return pitui.RenderResult{Lines: lines, Dirty: true}
-	}
-
-	// Render the detail panel and join it horizontally with the menu.
-	menuW := lipgloss.Width(menuBox)
-	detailW := max(20, ctx.Width-menuW-1) // 1 col gap
-	detailBox := renderDetailBox(*c.detail, detailW, ctx.Height)
-
-	combined := lipgloss.JoinHorizontal(lipgloss.Top, menuBox, " ", detailBox)
-	lines := strings.Split(combined, "\n")
+	lines := strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width), "\n")
 	return pitui.RenderResult{Lines: lines, Dirty: true}
 }
 
@@ -210,24 +195,38 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 	return menuBorderStyle.Render(inner)
 }
 
-// renderDetailBox renders the detail panel as a bordered box string.
-func renderDetailBox(item docItem, totalW, maxHeight int) string {
-	contentW := max(8, totalW-2)
+// ── detail bubble (viewport-relative overlay) ───────────────────────────────
+
+type detailBubble struct {
+	item docItem
+}
+
+func (d *detailBubble) Invalidate() {}
+
+func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	if d.item.name == "" {
+		return pitui.RenderResult{Dirty: true}
+	}
+
+	// lipgloss Width(n) sets the TOTAL width including borders, so the
+	// usable content area is n-2 (left border + right border).
+	contentW := max(8, ctx.Width-2)
 
 	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
 	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
-	titleLine := detailTitleStyle.Render(item.name)
+	titleLine := detailTitleStyle.Render(d.item.name)
 	lines := []string{titleLine}
 
-	detail := renderDocDetail(item, contentW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
+	detail := renderDocDetail(d.item, contentW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
 	lines = append(lines, detail...)
 
 	// Truncate inner content so the border fits within the height budget.
-	if maxHeight > 0 && len(lines) > maxHeight-2 {
-		maxInner := maxHeight - 2
+	// The border adds 2 lines (top + bottom).
+	if ctx.Height > 0 && len(lines) > ctx.Height-2 {
+		maxInner := ctx.Height - 2
 		if maxInner > 1 {
 			lines = lines[:maxInner-1]
 			lines = append(lines, dimSt.Render("..."))
@@ -237,7 +236,11 @@ func renderDetailBox(item docItem, totalW, maxHeight int) string {
 	}
 
 	inner := strings.Join(lines, "\n")
-	return detailBorderStyle.Width(totalW).Render(inner)
+	box := detailBorderStyle.Width(ctx.Width).Render(inner)
+	return pitui.RenderResult{
+		Lines: strings.Split(box, "\n"),
+		Dirty: true,
+	}
 }
 
 // ── REPL component ─────────────────────────────────────────────────────────
@@ -271,8 +274,10 @@ type replComponent struct {
 	menuCompletions []dang.Completion // parallel to menuItems; Detail/Documentation
 	menuIndex       int
 	menuMaxVisible  int
-	menuOverlay *completionOverlay
-	menuHandle  *pitui.OverlayHandle
+	menuOverlay     *completionOverlay
+	menuHandle      *pitui.OverlayHandle
+	detailBubble    *detailBubble
+	detailHandle    *pitui.OverlayHandle
 
 	// Eval
 	evaluating bool
@@ -614,6 +619,7 @@ func (r *replComponent) hideCompletionMenu() {
 		r.menuHandle = nil
 		r.menuOverlay = nil
 	}
+	r.hideDetailBubble()
 }
 
 func (r *replComponent) menuDisplayItems() []string {
@@ -637,62 +643,51 @@ func (r *replComponent) menuBoxWidth() int {
 	return maxW + 4 // 2 for padding (" item ") + 2 for border
 }
 
-func (r *replComponent) completionOverlayWidth() int {
-	w := r.menuBoxWidth()
-	if r.menuOverlay != nil && r.menuOverlay.detail != nil {
-		w += 1 + max(20, w) // gap + detail panel
-	}
-	return w
-}
-
 func (r *replComponent) showCompletionMenu() {
+	xOff := r.completionXOffsetPitui()
 	displayItems := r.menuDisplayItems()
+	menuH := min(len(displayItems), r.menuMaxVisible) + 2 // items + border
+	linesAbove := len(r.output.cachedLines)               // content lines above the input
 
+	var opts *pitui.OverlayOptions
+	if linesAbove >= menuH {
+		// Enough room above: show the menu above the input line.
+		opts = &pitui.OverlayOptions{
+			Width:           pitui.SizeAbs(r.menuBoxWidth()),
+			MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2),
+			Anchor:          pitui.AnchorBottomLeft,
+			ContentRelative: true,
+			OffsetX:         xOff,
+			OffsetY:         -1, // above the input line
+			NoFocus:         true,
+		}
+	} else {
+		// Not enough room above: show below the input line.
+		// With little content there's no scrolling, so viewport rows
+		// match content rows and we can position without ContentRelative.
+		opts = &pitui.OverlayOptions{
+			Width:     pitui.SizeAbs(r.menuBoxWidth()),
+			MaxHeight: pitui.SizeAbs(r.menuMaxVisible + 2),
+			Anchor:    pitui.AnchorTopLeft,
+			Row:       pitui.SizeAbs(linesAbove + 1), // right below the input
+			OffsetX:   xOff,
+			NoFocus:   true,
+		}
+	}
 	if r.menuHandle != nil {
+		// Reuse existing overlay — just update position and data.
 		r.menuOverlay.items = displayItems
 		r.menuOverlay.index = r.menuIndex
+		r.menuHandle.SetOptions(opts)
 	} else {
 		r.menuOverlay = &completionOverlay{
 			items:      displayItems,
 			index:      r.menuIndex,
 			maxVisible: r.menuMaxVisible,
 		}
-	}
-
-	// Sync detail before calculating width so it accounts for the panel.
-	r.syncDetailBubble()
-
-	xOff := r.completionXOffsetPitui()
-	menuH := min(len(displayItems), r.menuMaxVisible) + 2
-	linesAbove := len(r.output.cachedLines)
-
-	var opts *pitui.OverlayOptions
-	if linesAbove >= menuH {
-		opts = &pitui.OverlayOptions{
-			Width:           pitui.SizeAbs(r.completionOverlayWidth()),
-			MaxHeight:       pitui.SizePct(80),
-			Anchor:          pitui.AnchorBottomLeft,
-			ContentRelative: true,
-			OffsetX:         xOff,
-			OffsetY:         -1,
-			NoFocus:         true,
-		}
-	} else {
-		opts = &pitui.OverlayOptions{
-			Width:     pitui.SizeAbs(r.completionOverlayWidth()),
-			MaxHeight: pitui.SizePct(80),
-			Anchor:    pitui.AnchorTopLeft,
-			Row:       pitui.SizeAbs(linesAbove + 1),
-			OffsetX:   xOff,
-			NoFocus:   true,
-		}
-	}
-
-	if r.menuHandle != nil {
-		r.menuHandle.SetOptions(opts)
-	} else {
 		r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, opts)
 	}
+	r.syncDetailBubble()
 }
 
 func (r *replComponent) syncMenu() {
@@ -704,33 +699,76 @@ func (r *replComponent) syncMenu() {
 	r.tui.RequestRender(false)
 }
 
-func (r *replComponent) syncDetailBubble() {
-	if r.menuOverlay == nil {
-		return
+func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
+	xOff := r.completionXOffsetPitui()
+	menuW := r.menuBoxWidth()
+	detailX := xOff + menuW + 1 // 1 col gap between menu and detail
+
+	linesAbove := len(r.output.cachedLines)
+	menuH := min(len(r.menuDisplayItems()), r.menuMaxVisible) + 2
+
+	// Match the menu's vertical positioning strategy.
+	if linesAbove >= menuH {
+		// Menu is above input — detail anchors to same region.
+		return &pitui.OverlayOptions{
+			Width:           pitui.SizePct(35),
+			MaxHeight:       pitui.SizePct(80),
+			Anchor:          pitui.AnchorBottomLeft,
+			ContentRelative: true,
+			OffsetX:         detailX,
+			OffsetY:         -1,
+			NoFocus:         true,
+		}
 	}
+	// Menu is below input.
+	return &pitui.OverlayOptions{
+		Width:     pitui.SizePct(35),
+		MaxHeight: pitui.SizePct(80),
+		Anchor:    pitui.AnchorTopLeft,
+		Row:       pitui.SizeAbs(linesAbove + 1),
+		OffsetX:   detailX,
+		NoFocus:   true,
+	}
+}
+
+func (r *replComponent) showDetailBubble() {
+	opts := r.detailBubbleOptions()
+	if r.detailBubble == nil {
+		r.detailBubble = &detailBubble{}
+		r.detailHandle = r.tui.ShowOverlay(r.detailBubble, opts)
+	} else {
+		r.detailHandle.SetOptions(opts)
+	}
+}
+
+func (r *replComponent) hideDetailBubble() {
+	if r.detailHandle != nil {
+		r.detailHandle.Hide()
+		r.detailHandle = nil
+		r.detailBubble = nil
+	}
+}
+
+func (r *replComponent) syncDetailBubble() {
 	if !r.menuVisible || len(r.menuCompletions) == 0 {
-		r.menuOverlay.detail = nil
+		r.hideDetailBubble()
 		return
 	}
 	idx := r.menuIndex
 	if idx < 0 || idx >= len(r.menuCompletions) {
-		r.menuOverlay.detail = nil
+		r.hideDetailBubble()
 		return
 	}
+	c := r.menuCompletions[idx]
 
-	r.menuOverlay.detail = r.resolveCompletionItem(r.menuCompletions[idx])
-}
-
-// resolveCompletionItem builds a docItem for a completion, returning nil
-// if no documentation is available.
-func (r *replComponent) resolveCompletionItem(c dang.Completion) *docItem {
 	item, found := docItemFromEnv(r.typeEnv, c.Label)
 	if !found {
 		item, found = r.resolveCompletionDocItem(c)
 	}
 	if !found {
 		if c.Detail == "" && c.Documentation == "" {
-			return nil
+			r.hideDetailBubble()
+			return
 		}
 		item = docItem{
 			name:    c.Label,
@@ -738,7 +776,32 @@ func (r *replComponent) resolveCompletionItem(c dang.Completion) *docItem {
 			doc:     c.Documentation,
 		}
 	}
-	return &item
+
+	r.showDetailBubble()
+	r.detailBubble.item = item
+}
+
+// showDetailForCompletion shows the detail bubble for a single completion
+// item, without requiring the dropdown menu to be visible.
+func (r *replComponent) showDetailForCompletion(c dang.Completion) {
+	item, found := docItemFromEnv(r.typeEnv, c.Label)
+	if !found {
+		item, found = r.resolveCompletionDocItem(c)
+	}
+	if !found {
+		if c.Detail == "" && c.Documentation == "" {
+			r.hideDetailBubble()
+			return
+		}
+		item = docItem{
+			name:    c.Label,
+			typeStr: c.Detail,
+			doc:     c.Documentation,
+		}
+	}
+
+	r.showDetailBubble()
+	r.detailBubble.item = item
 }
 
 // resolveCompletionDocItem tries to resolve a member completion's docItem
@@ -871,7 +934,11 @@ func (r *replComponent) setMenuPitui(matches []string, completions []dang.Comple
 		return
 	}
 	if len(matches) == 1 {
+		// Single match: no dropdown, but show the detail bubble.
 		r.hideCompletionMenu()
+		if len(completions) == 1 {
+			r.showDetailForCompletion(completions[0])
+		}
 		return
 	}
 	r.menuItems = matches
