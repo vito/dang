@@ -27,6 +27,7 @@ func (c *Counter) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{
 		Lines:  []string{line},
 		Cursor: cursor,
+		Dirty:  true,
 	}
 }
 
@@ -51,6 +52,7 @@ func (b *Banner) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	}
 	return pitui.RenderResult{
 		Lines: lines,
+		Dirty: true,
 	}
 }
 

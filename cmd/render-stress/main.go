@@ -323,7 +323,7 @@ func (s *stressLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	defer s.mu.Unlock()
 
 	if !s.dirty && s.cached != nil {
-		return pitui.RenderResult{Lines: s.cached}
+		return pitui.RenderResult{Lines: s.cached, Dirty: false}
 	}
 
 	lines := make([]string, 0, len(s.entries)*2)
@@ -367,7 +367,7 @@ func (s *stressLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
 
 	s.cached = lines
 	s.dirty = false
-	return pitui.RenderResult{Lines: lines}
+	return pitui.RenderResult{Lines: lines, Dirty: true}
 }
 
 func randomStack() string {
@@ -418,7 +418,7 @@ func (s *statusBarComponent) Render(ctx pitui.RenderContext) pitui.RenderResult 
 	if pitui.VisibleWidth(line) > ctx.Width {
 		line = pitui.Truncate(line, ctx.Width, "")
 	}
-	return pitui.RenderResult{Lines: []string{line}}
+	return pitui.RenderResult{Lines: []string{line}, Dirty: true}
 }
 
 type staticLines struct {
@@ -426,7 +426,7 @@ type staticLines struct {
 }
 
 func (s *staticLines) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return pitui.RenderResult{Lines: s.lines}
+	return pitui.RenderResult{Lines: s.lines, Dirty: true}
 }
 
 type spinnerLine struct {
