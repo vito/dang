@@ -233,7 +233,6 @@ func (c *Container) LineCount() int {
 }
 
 func (c *Container) Render(ctx RenderContext) RenderResult {
-	c.needsRender.Store(false) // clear own dirty; children are checked individually
 	var lines []string
 	var cursor *CursorPos
 	dirty := false
@@ -298,7 +297,6 @@ func (s *Slot) Get() Component {
 }
 
 func (s *Slot) Render(ctx RenderContext) RenderResult {
-	s.needsRender.Store(false) // clear own dirty; child is checked by renderComponent
 	if s.child == nil {
 		return RenderResult{}
 	}
