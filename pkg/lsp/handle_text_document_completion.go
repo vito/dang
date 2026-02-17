@@ -2,11 +2,25 @@ package lsp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
+
+// getLineUpToCursor returns the text of the given line up to the cursor column.
+func getLineUpToCursor(text string, line, col int) string {
+	lines := strings.Split(text, "\n")
+	if line < 0 || line >= len(lines) {
+		return ""
+	}
+	l := lines[line]
+	if col > len(l) {
+		col = len(l)
+	}
+	return strings.TrimLeft(l[:col], " \t")
+}
 
 func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {
 	if !req.HasParams() {
@@ -23,27 +37,19 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	if f.AST != nil {
-		// Check if we're inside a function call's argument list
-		fc := FindFunCallAt(f.AST, params.Position.Line, params.Position.Character)
-		if fc != nil {
-			funType := fc.Fun.GetInferredType()
-			if funType != nil {
-				// Collect already-provided argument names
-				var provided []string
-				for _, arg := range fc.Args {
-					if !arg.Positional {
-						provided = append(provided, arg.Key)
-					}
-				}
-				completions := dang.ArgsOf(funType, "", provided)
-				items := completionsToItems(completions)
-				if len(items) > 0 {
-					return items, nil
-				}
+	// Try text-based argument completion first, since incomplete function
+	// calls (no closing paren yet) won't parse into a FunCall AST node.
+	if f.TypeEnv != nil {
+		lineText := getLineUpToCursor(f.Text, params.Position.Line, params.Position.Character)
+		if lineText != "" {
+			argCompletions := dang.CompleteInput(ctx, f.TypeEnv, lineText, len(lineText))
+			if len(argCompletions) > 0 && argCompletions[0].IsArg {
+				return completionsToItems(argCompletions), nil
 			}
 		}
+	}
 
+	if f.AST != nil {
 		// Check if we're completing a member access (e.g., "container.fr<TAB>")
 		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
 		if receiver != nil {
