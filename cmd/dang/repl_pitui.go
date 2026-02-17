@@ -652,6 +652,7 @@ func (r *replComponent) showCompletionMenu() {
 		opts = &pitui.OverlayOptions{
 			Width:           pitui.SizeAbs(r.menuBoxWidth()),
 			MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2),
+			Anchor:          pitui.AnchorTopLeft,
 			ContentRelative: true,
 			Row:             pitui.SizeAbs(linesAbove + 1), // right below the input
 			OffsetX:         xOff,
