@@ -229,6 +229,10 @@ func (t *TUI) Stop() {
 // all cached state is discarded and a full repaint occurs.
 func (t *TUI) RequestRender(force bool) {
 	t.mu.Lock()
+	if t.stopped {
+		t.mu.Unlock()
+		return
+	}
 	if force {
 		t.previousLines = nil
 		t.previousWidth = -1
