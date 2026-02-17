@@ -36,7 +36,6 @@ func (c *Counter) HandleInput(data []byte) {
 }
 
 func (c *Counter) SetFocused(focused bool) { c.focused = focused }
-func (c *Counter) Invalidate()             {}
 
 // Banner is a static component that renders a multi-line banner.
 type Banner struct {
@@ -56,8 +55,6 @@ func (b *Banner) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		Dirty: true,
 	}
 }
-
-func (b *Banner) Invalidate() {}
 
 func Example() {
 	// This example shows the basic wiring. In a real app you'd use

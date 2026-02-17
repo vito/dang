@@ -318,13 +318,6 @@ func newStressLog(n int) *stressLog {
 	return &stressLog{entries: entries, dirty: true}
 }
 
-func (s *stressLog) Invalidate() {
-	s.mu.Lock()
-	s.dirty = true
-	s.cached = nil
-	s.mu.Unlock()
-}
-
 func (s *stressLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -413,7 +406,6 @@ type statusBarComponent struct {
 	line string
 }
 
-func (s *statusBarComponent) Invalidate() {}
 func (s *statusBarComponent) set(line string) {
 	s.mu.Lock()
 	s.line = line
@@ -433,7 +425,6 @@ type staticLines struct {
 	lines []string
 }
 
-func (s *staticLines) Invalidate() {}
 func (s *staticLines) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: s.lines, Dirty: true}
 }
@@ -442,7 +433,6 @@ type spinnerLine struct {
 	spinner *pitui.Spinner
 }
 
-func (s *spinnerLine) Invalidate() {}
 func (s *spinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return s.spinner.Render(ctx)
 }
