@@ -10,7 +10,6 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	"dagger.io/dagger"
 	"github.com/charmbracelet/fang"
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/channel"
@@ -182,45 +181,9 @@ func runREPL(ctx context.Context, cfg Config) error {
 		importConfigs = resolved
 	}
 
-	// Detect dagger.json and load the module + deps
-	var daggerConn *dagger.Client
-	daggerLog := &pituiSyncWriter{}
 	moduleDir := findDaggerModule(cwd)
-	if moduleDir != "" {
-		fmt.Fprintf(os.Stderr, "Loading Dagger module from %s...\n", moduleDir)
 
-		dag, err := dagger.Connect(ctx,
-			dagger.WithLogOutput(daggerLog),
-			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
-		)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to connect to Dagger: %v\n", err)
-		} else {
-			daggerConn = dag
-
-			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
-			client, schema, err := provider.ServeDaggerModule(ctx, dag, moduleDir)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "warning: failed to load Dagger module schema: %v\n", err)
-			} else {
-				importConfigs = append(importConfigs, dang.ImportConfig{
-					Name:       "Dagger",
-					Client:     client,
-					Schema:     schema,
-					AutoImport: true,
-				})
-			}
-		}
-	}
-	if daggerConn != nil {
-		defer daggerConn.Close()
-	}
-
-	if len(importConfigs) > 0 {
-		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
-	}
-
-	return runREPLPitui(ctx, importConfigs, cfg.Debug, daggerLog)
+	return runREPLPitui(ctx, importConfigs, moduleDir, cfg.Debug)
 }
 
 // findDaggerModule searches for a dagger.json starting from dir, walking up.

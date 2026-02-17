@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"charm.land/lipgloss/v2"
+	"dagger.io/dagger"
 
 	"github.com/kr/pretty"
 
@@ -1222,17 +1223,67 @@ func (r *replComponent) showDocBrowser() {
 
 // ── entry point ─────────────────────────────────────────────────────────────
 
-func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, debug bool, daggerLog *pituiSyncWriter) error {
+func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, moduleDir string, debug bool) error {
 	term := pitui.NewProcessTerminal()
 	tui := pitui.New(term)
 	tui.SetShowHardwareCursor(true)
+
+	if err := tui.Start(); err != nil {
+		return fmt.Errorf("TUI start: %w", err)
+	}
+
+	// If there's a Dagger module, load it with a spinner visible.
+	daggerLog := &pituiSyncWriter{}
+	var daggerConn *dagger.Client
+	if moduleDir != "" {
+		loadSp := pitui.NewSpinner(tui)
+		loadSp.Style = func(s string) string {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
+		}
+		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
+		loadLine := &evalSpinnerLine{spinner: loadSp}
+		tui.AddChild(loadLine)
+		loadSp.Start()
+
+		dag, err := dagger.Connect(ctx,
+			dagger.WithLogOutput(daggerLog),
+			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
+		)
+		if err != nil {
+			loadSp.Stop()
+			loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to connect to Dagger: %v", err))
+			tui.RequestRender(false)
+		} else {
+			daggerConn = dag
+			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
+			client, schema, err := provider.ServeDaggerModule(ctx, dag, moduleDir)
+			if err != nil {
+				loadSp.Stop()
+				loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to load Dagger module: %v", err))
+				tui.RequestRender(false)
+			} else {
+				importConfigs = append(importConfigs, dang.ImportConfig{
+					Name:       "Dagger",
+					Client:     client,
+					Schema:     schema,
+					AutoImport: true,
+				})
+			}
+			loadSp.Stop()
+		}
+		tui.RemoveChild(loadLine)
+	}
+
+	if len(importConfigs) > 0 {
+		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+	}
 
 	repl := newReplComponent(ctx, tui, importConfigs, debug)
 	daggerLog.SetRepl(repl)
 	repl.install()
 
-	if err := tui.Start(); err != nil {
-		return fmt.Errorf("TUI start: %w", err)
+	if daggerConn != nil {
+		defer daggerConn.Close()
 	}
 
 	// Wait for quit signal or interrupt.
