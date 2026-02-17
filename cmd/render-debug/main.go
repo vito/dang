@@ -1,9 +1,22 @@
+// Command render-debug launches a live web dashboard for pitui render
+// performance metrics. It tails a JSONL log file and streams data to
+// the browser via Server-Sent Events.
+//
+// Usage:
+//
+//	# Terminal 1: start the REPL with render debug
+//	DANG_DEBUG_RENDER=1 dang
+//
+//	# Terminal 2: launch the dashboard
+//	go run ./cmd/render-debug
+//	go run ./cmd/render-debug -file /path/to/custom.log
 package main
 
 import (
 	"bufio"
 	"embed"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -13,59 +26,31 @@ import (
 	"runtime"
 	"sync"
 	"time"
-
-	"github.com/spf13/cobra"
 )
 
-//go:embed render_debug_dashboard.html
+//go:embed dashboard.html
 var dashboardFS embed.FS
 
-func renderDebugCmd() *cobra.Command {
-	var (
-		addr    string
-		logFile string
-		open    bool
-	)
+func main() {
+	addr := flag.String("addr", "127.0.0.1:0", "address to listen on (port 0 = auto)")
+	logFile := flag.String("file", "/tmp/dang_render_debug.log", "path to JSONL render debug log")
+	noBrowser := flag.Bool("no-open", false, "don't open browser automatically")
+	flag.Parse()
 
-	cmd := &cobra.Command{
-		Use:   "render-debug",
-		Short: "Launch a live dashboard for pitui render performance",
-		Long: `Starts a local web server that displays real-time charts of
-pitui rendering performance metrics. Use alongside a REPL session
-that has :debug-render enabled (or DANG_DEBUG_RENDER=1).
-
-The dashboard reads JSONL data from the log file and streams it
-to the browser via Server-Sent Events.`,
-		Example: `  # In terminal 1: start the REPL with render debug
-  DANG_DEBUG_RENDER=1 dang
-
-  # In terminal 2: launch the dashboard
-  dang render-debug
-  dang render-debug --open
-  dang render-debug --file /path/to/custom.log`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRenderDebug(addr, logFile, open)
-		},
+	if err := run(*addr, *logFile, !*noBrowser); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
-
-	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:0", "Address to listen on (use port 0 for auto)")
-	cmd.Flags().StringVar(&logFile, "file", "/tmp/dang_render_debug.log", "Path to the JSONL render debug log")
-	cmd.Flags().BoolVar(&open, "open", true, "Open browser automatically")
-
-	return cmd
 }
 
-func runRenderDebug(addr, logFile string, openBrowser bool) error {
-	// SSE hub: fans out JSONL records to all connected browsers.
+func run(addr, logFile string, openBrowser bool) error {
 	hub := newSSEHub()
 	go hub.run()
-
-	// Tail the log file.
 	go tailFile(logFile, hub)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		data, _ := dashboardFS.ReadFile("render_debug_dashboard.html")
+		data, _ := dashboardFS.ReadFile("dashboard.html")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(data) //nolint:errcheck
 	})
@@ -144,7 +129,6 @@ func (h *sseHub) run() {
 				select {
 				case c <- msg:
 				default:
-					// slow client, drop
 				}
 			}
 		}
@@ -163,7 +147,6 @@ func (h *sseHub) serveSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Send history first so newly connected browsers see past data.
 	for _, line := range h.getHistory() {
 		fmt.Fprintf(w, "data: %s\n\n", line)
 	}
@@ -200,32 +183,26 @@ func tailFile(path string, hub *sseHub) {
 			continue
 		}
 
-		// Seek to end — only show new data.
 		f.Seek(0, io.SeekEnd) //nolint:errcheck
 		scanner := bufio.NewScanner(f)
 		for {
 			for scanner.Scan() {
 				line := scanner.Bytes()
-				// Validate JSON.
 				if json.Valid(line) {
 					send(line)
 				}
 			}
-			// EOF — wait for more data.
 			time.Sleep(50 * time.Millisecond)
 
-			// Check if file was truncated/rotated.
 			info, err := f.Stat()
 			if err != nil {
 				break
 			}
 			pos, _ := f.Seek(0, io.SeekCurrent)
 			if info.Size() < pos {
-				// File was truncated — reopen.
 				f.Close()
 				break
 			}
-			// Reset scanner to keep reading from current position.
 			scanner = bufio.NewScanner(f)
 		}
 		f.Close()
@@ -235,7 +212,6 @@ func tailFile(path string, hub *sseHub) {
 // ---------- browser opener --------------------------------------------------
 
 func openURL(url string) {
-	// Small delay so the server is ready.
 	time.Sleep(200 * time.Millisecond)
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
