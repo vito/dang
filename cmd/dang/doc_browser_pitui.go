@@ -13,6 +13,7 @@ import (
 // docBrowserOverlay wraps the existing doc browser data model as a pitui
 // overlay component.
 type docBrowserOverlay struct {
+	pitui.Compo
 	columns   []docColumn
 	activeCol int
 	filtering bool
@@ -33,6 +34,7 @@ func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
 
 
 func (d *docBrowserOverlay) HandleInput(data []byte) {
+	defer d.Update()
 	s := string(data)
 
 	if d.filtering {
@@ -140,7 +142,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	width := ctx.Width
 	height := ctx.Height
 	if width < 20 {
-		return pitui.RenderResult{Lines: []string{"(too narrow)"}, Dirty: true}
+		return pitui.RenderResult{Lines: []string{"(too narrow)"}}
 	}
 
 	// Use the provided height, falling back to terminal rows if unconstrained.
@@ -316,7 +318,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		}
 	}
 
-	return pitui.RenderResult{Lines: result, Dirty: true}
+	return pitui.RenderResult{Lines: result}
 }
 
 func (d *docBrowserOverlay) renderDetailPitui(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {

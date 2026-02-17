@@ -38,8 +38,9 @@ func (m *mockTerminal) ShowCursor()          { m.written.WriteString("\x1b[?25h"
 
 func (m *mockTerminal) reset() { m.written.Reset() }
 
-// staticComponent renders fixed lines.
+// staticComponent renders fixed lines. Always dirty (re-renders every frame).
 type staticComponent struct {
+	Compo
 	lines  []string
 	cursor *CursorPos
 }
@@ -56,7 +57,6 @@ func (s *staticComponent) Render(ctx RenderContext) RenderResult {
 	return RenderResult{
 		Lines:  out,
 		Cursor: s.cursor,
-		Dirty:  true,
 	}
 }
 
@@ -98,6 +98,7 @@ func TestDifferentialRender(t *testing.T) {
 
 	// Change only the second line.
 	comp.lines[1] = "LINE2"
+	comp.Update()
 	term.reset()
 	renderSync(tui)
 
@@ -125,6 +126,7 @@ func TestAppendLines(t *testing.T) {
 
 	// Append new lines.
 	comp.lines = []string{"a", "b", "c"}
+	comp.Update()
 	renderSync(tui)
 
 	out := term.written.String()
@@ -169,6 +171,7 @@ func TestOffscreenChangeTriggersFullRedraw(t *testing.T) {
 	// Change a line that is above the viewport (line 0 is off-screen when
 	// we have 20 lines and 5 rows).
 	comp.lines[0] = "CHANGED"
+	comp.Update()
 	term.reset()
 	renderSync(tui)
 
@@ -340,17 +343,17 @@ func TestSlotComponent(t *testing.T) {
 
 	slot := NewSlot(a)
 
-	// Initial render.
+	// Initial render — child has no cache yet, so it renders.
 	r := slot.Render(RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-a"}, r.Lines)
 	assert.True(t, r.Dirty)
 
-	// Second render, slot not dirty, child always dirty.
+	// Second render — child is clean (nobody called Update), cached.
 	r = slot.Render(RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-a"}, r.Lines)
-	assert.True(t, r.Dirty) // child is always dirty
+	assert.False(t, r.Dirty) // cached, no changes
 
-	// Swap child.
+	// Swap child — Slot.Set marks dirty.
 	slot.Set(b)
 	r = slot.Render(RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-b-1", "child-b-2"}, r.Lines)
@@ -441,7 +444,7 @@ func TestOverlayMaxHeightPassedToComponent(t *testing.T) {
 	overlay := &callbackComponent{render: func(ctx RenderContext) RenderResult {
 		gotHeight = ctx.Height
 		lines := []string{"line 0", "line 1", "line 2", "line 3", "line 4"}
-		return RenderResult{Lines: lines, Dirty: true}
+		return RenderResult{Lines: lines}
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
 		Width:     SizeAbs(20),
@@ -458,6 +461,7 @@ func TestOverlayMaxHeightPassedToComponent(t *testing.T) {
 
 // callbackComponent calls a render function.
 type callbackComponent struct {
+	Compo
 	render func(RenderContext) RenderResult
 }
 
@@ -467,6 +471,7 @@ func (c *callbackComponent) Render(ctx RenderContext) RenderResult {
 
 // borderedOverlay renders a lipgloss-bordered box that respects ctx.Height.
 type borderedOverlay struct {
+	Compo
 	title string
 	lines []string
 }
@@ -494,7 +499,6 @@ func (b *borderedOverlay) Render(ctx RenderContext) RenderResult {
 	box := borderStyle.Width(innerW).Render(strings.Join(inner, "\n"))
 	return RenderResult{
 		Lines: strings.Split(box, "\n"),
-		Dirty: true,
 	}
 }
 
@@ -810,7 +814,7 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 
 		inner := strings.Join(lines, "\n")
 		box := borderStyle.Width(ctx.Width).Render(inner)
-		return RenderResult{Lines: strings.Split(box, "\n"), Dirty: true}
+		return RenderResult{Lines: strings.Split(box, "\n")}
 	}}
 
 	tui.ShowOverlay(overlay, &OverlayOptions{

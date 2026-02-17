@@ -812,7 +812,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		if maxHSet {
 			renderH = maxH
 		}
-		oResult := e.component.Render(RenderContext{Width: w, Height: renderH})
+		oResult := renderComponent(e.component, RenderContext{Width: w, Height: renderH})
 		oLines := oResult.Lines
 		// Second pass: resolve placement with actual height; clamp if needed.
 		var row, col int

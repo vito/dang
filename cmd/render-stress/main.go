@@ -104,10 +104,9 @@ func run(initialLines int) error {
 		case "v":
 			log.mu.Lock()
 			log.verbose = !log.verbose
-			log.dirty = true
-			log.cached = nil
 			v := log.verbose
 			log.mu.Unlock()
+			log.Update()
 			if v {
 				statusBar.set("\x1b[7m VERBOSE ON — all lines expanded (off-screen repaint!) \x1b[0m")
 			} else {
@@ -119,10 +118,9 @@ func run(initialLines int) error {
 		case "c":
 			log.mu.Lock()
 			log.colorize = !log.colorize
-			log.dirty = true
-			log.cached = nil
 			c := log.colorize
 			log.mu.Unlock()
+			log.Update()
 			if c {
 				statusBar.set("\x1b[7m COLOR ON — ANSI styles changed on every line \x1b[0m")
 			} else {
@@ -150,10 +148,9 @@ func run(initialLines int) error {
 			} else {
 				log.entries = nil
 			}
-			log.dirty = true
-			log.cached = nil
 			n := len(log.entries)
 			log.mu.Unlock()
+			log.Update()
 			statusBar.set(fmt.Sprintf("\x1b[7m deleted 10 lines (now %d) \x1b[0m", n))
 			tui.RequestRender(false)
 			return &pitui.InputListenerResult{Consume: true}
@@ -195,7 +192,7 @@ func run(initialLines int) error {
 				spinnerRunning = false
 				statusBar.set("\x1b[7m spinner stopped \x1b[0m")
 			} else {
-				spinnerSlot.Set(&spinnerLine{spinner: spinner})
+				spinnerSlot.Set(newSpinnerLine(spinner))
 				spinner.Start()
 				spinnerRunning = true
 				statusBar.set("\x1b[7m spinner running (continuous repaints) \x1b[0m")
@@ -227,11 +224,9 @@ func run(initialLines int) error {
 						if target < len(log.entries) {
 							log.entries[target].message = fmt.Sprintf("[continuous] tick %d latency=%dµs",
 								time.Now().UnixMicro()%100000, rand.Intn(5000))
-							log.dirty = true
-							log.cached = nil
 						}
 						log.mu.Unlock()
-						tui.RequestRender(false)
+						log.Update()
 					}
 				}
 			}()
@@ -270,12 +265,11 @@ func run(initialLines int) error {
 // ── stress log component ───────────────────────────────────────────────────
 
 type stressLog struct {
+	pitui.Compo
 	mu       sync.Mutex
 	entries  []stressEntry
 	verbose  bool
 	colorize bool
-	dirty    bool
-	cached   []string
 }
 
 type stressEntry struct {
@@ -315,16 +309,14 @@ func newStressLog(n int) *stressLog {
 			message: fmt.Sprintf("[%s] %s id=%d latency=%dµs", modules[rand.Intn(len(modules))], messages[rand.Intn(len(messages))], rand.Intn(10000), rand.Intn(5000)),
 		}
 	}
-	return &stressLog{entries: entries, dirty: true}
+	s := &stressLog{entries: entries}
+	s.Update()
+	return s
 }
 
 func (s *stressLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if !s.dirty && s.cached != nil {
-		return pitui.RenderResult{Lines: s.cached, Dirty: false}
-	}
 
 	lines := make([]string, 0, len(s.entries)*2)
 	for _, e := range s.entries {
@@ -365,9 +357,7 @@ func (s *stressLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		}
 	}
 
-	s.cached = lines
-	s.dirty = false
-	return pitui.RenderResult{Lines: lines, Dirty: true}
+	return pitui.RenderResult{Lines: lines}
 }
 
 func randomStack() string {
@@ -394,14 +384,14 @@ func appendLines(log *stressLog, n int) {
 			message: fmt.Sprintf("[append] new line %d val=%d", len(log.entries), rand.Intn(99999)),
 		})
 	}
-	log.dirty = true
-	log.cached = nil
 	log.mu.Unlock()
+	log.Update()
 }
 
 // ── helper components ──────────────────────────────────────────────────────
 
 type statusBarComponent struct {
+	pitui.Compo
 	mu   sync.Mutex
 	line string
 }
@@ -410,6 +400,7 @@ func (s *statusBarComponent) set(line string) {
 	s.mu.Lock()
 	s.line = line
 	s.mu.Unlock()
+	s.Update()
 }
 func (s *statusBarComponent) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	s.mu.Lock()
@@ -418,19 +409,27 @@ func (s *statusBarComponent) Render(ctx pitui.RenderContext) pitui.RenderResult 
 	if pitui.VisibleWidth(line) > ctx.Width {
 		line = pitui.Truncate(line, ctx.Width, "")
 	}
-	return pitui.RenderResult{Lines: []string{line}, Dirty: true}
+	return pitui.RenderResult{Lines: []string{line}}
 }
 
 type staticLines struct {
+	pitui.Compo
 	lines []string
 }
 
 func (s *staticLines) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return pitui.RenderResult{Lines: s.lines, Dirty: true}
+	return pitui.RenderResult{Lines: s.lines}
 }
 
 type spinnerLine struct {
+	pitui.Compo
 	spinner *pitui.Spinner
+}
+
+func newSpinnerLine(spinner *pitui.Spinner) *spinnerLine {
+	s := &spinnerLine{spinner: spinner}
+	spinner.GetCompo().SetParent(s.GetCompo())
+	return s
 }
 
 func (s *spinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
