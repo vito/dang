@@ -156,9 +156,11 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 	}
 	end := start + visible
 
+	// Compute max width from ALL items so the box doesn't resize as the
+	// user scrolls through the list.
 	maxW := 0
-	for i := start; i < end && i < len(items); i++ {
-		if w := lipgloss.Width(items[i]); w > maxW {
+	for _, item := range items {
+		if w := lipgloss.Width(item); w > maxW {
 			maxW = w
 		}
 	}
