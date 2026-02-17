@@ -9,17 +9,15 @@ entirely and returns cached output.
 
 ## ✅ Compo-based render caching — DONE
 
-Components embed `pitui.Compo` to get automatic render caching. Call
-`Update()` when state changes — the framework re-renders on the next
-frame. Between `Update()` calls, `Render()` is skipped entirely and
-the cached result is reused.
+All components embed `pitui.Compo` (required by the `Component`
+interface via `GetCompo()`). Call `Update()` when state changes — the
+framework re-renders on the next frame. Between `Update()` calls,
+`Render()` is skipped entirely and the cached result is reused.
 
 `Update()` propagates upward through parent Containers/Slots, and
-the root Compo automatically calls `TUI.RequestRender`. So a single
-`component.Update()` call is all that's needed to schedule a repaint.
-
-Components without Compo (legacy or simple) always render — the
-framework treats them as always-dirty.
+the root Compo automatically calls `TUI.RequestRender`. Components
+that wrap another (e.g. evalSpinnerLine wrapping Spinner) use
+`SetParent` to wire propagation.
 
 ## Per-component debug stats
 
@@ -28,8 +26,8 @@ dashboard can show which components are cached vs rendered and how
 long each takes.
 
 1. **`componentStats` in `RenderContext`.** Already wired: Container
-   and Slot collect timing data. `renderComponent` now also records
-   cache hits with a `Cached: true` flag.
+   and Slot collect timing data. `renderComponent` records cache hits
+   with a `Cached: true` flag.
 
 2. **Dashboard.** Add a per-component table: name, render count,
    cache hit rate, avg/max render time, avg lines.
