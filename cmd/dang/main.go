@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 
 	"dagger.io/dagger"
@@ -26,6 +27,7 @@ type Config struct {
 	File       string
 	LSP        bool
 	LSPLogFile string
+	CPUProfile string
 }
 
 func main() {
@@ -51,6 +53,19 @@ It provides type-safe, composable abstractions for container operations.`,
   dang -d ./my-module`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Start CPU profile if requested.
+			if cfg.CPUProfile != "" {
+				f, err := os.Create(cfg.CPUProfile)
+				if err != nil {
+					return fmt.Errorf("create CPU profile: %w", err)
+				}
+				defer f.Close()
+				if err := pprof.StartCPUProfile(f); err != nil {
+					return fmt.Errorf("start CPU profile: %w", err)
+				}
+				defer pprof.StopCPUProfile()
+			}
+
 			// Handle LSP mode first
 			if cfg.LSP {
 				return runLSP(cmd.Context(), cfg)
@@ -79,6 +94,7 @@ It provides type-safe, composable abstractions for container operations.`,
 	rootCmd.Flags().BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear GraphQL schema cache and exit")
 	rootCmd.Flags().BoolVar(&cfg.LSP, "lsp", false, "Run in Language Server Protocol mode")
 	rootCmd.Flags().StringVar(&cfg.LSPLogFile, "lsp-log-file", "", "Path to LSP log file (stderr if not specified)")
+	rootCmd.Flags().StringVar(&cfg.CPUProfile, "cpuprofile", "", "Write CPU profile to file")
 
 	// Add fmt subcommand
 	rootCmd.AddCommand(fmtCmd())
