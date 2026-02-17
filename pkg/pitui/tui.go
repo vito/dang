@@ -1,6 +1,7 @@
 package pitui
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -58,6 +59,20 @@ type RenderStats struct {
 
 	// OverlayCount is the number of active overlays composited.
 	OverlayCount int
+}
+
+// renderStatsJSON is the JSONL record written by the debug writer.
+type renderStatsJSON struct {
+	Ts             int64 `json:"ts"`
+	TotalUs        int64 `json:"total_us"`
+	RenderUs       int64 `json:"render_us"`
+	DiffUs         int64 `json:"diff_us"`
+	WriteUs        int64 `json:"write_us"`
+	TotalLines     int   `json:"total_lines"`
+	LinesRepainted int   `json:"lines_repainted"`
+	CacheHits      int   `json:"cache_hits"`
+	FullRedraw     bool  `json:"full_redraw"`
+	OverlayCount   int   `json:"overlay_count"`
 }
 
 // TUI is the main renderer. It extends Container with differential rendering
@@ -411,16 +426,27 @@ func (t *TUI) doRender() {
 
 	widthChanged := prevWidth != 0 && prevWidth != width
 
-	// emitStats writes the debug stats line if a debug writer is configured.
+	// emitStats writes the debug stats as JSONL if a debug writer is configured.
 	emitStats := func() {
 		if debugW == nil {
 			return
 		}
 		stats.TotalTime = time.Since(totalStart)
-		fmt.Fprintf(debugW, "[pitui] render total=%s content=%s diff=%s write=%s lines=%d repainted=%d cached=%d full=%v overlays=%d\n",
-			stats.TotalTime, stats.RenderTime, stats.DiffTime, stats.WriteTime,
-			stats.TotalLines, stats.LinesRepainted, stats.CacheHits,
-			stats.FullRedraw, stats.OverlayCount)
+		rec := renderStatsJSON{
+			Ts:             time.Now().UnixMilli(),
+			TotalUs:        stats.TotalTime.Microseconds(),
+			RenderUs:       stats.RenderTime.Microseconds(),
+			DiffUs:         stats.DiffTime.Microseconds(),
+			WriteUs:        stats.WriteTime.Microseconds(),
+			TotalLines:     stats.TotalLines,
+			LinesRepainted: stats.LinesRepainted,
+			CacheHits:      stats.CacheHits,
+			FullRedraw:     stats.FullRedraw,
+			OverlayCount:   stats.OverlayCount,
+		}
+		data, _ := json.Marshal(rec)
+		data = append(data, '\n')
+		debugW.Write(data) //nolint:errcheck
 	}
 
 	// --- full render helper ---
