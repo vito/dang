@@ -131,7 +131,6 @@ func (t *TUI) setFocusLocked(comp Component) {
 func (t *TUI) AddInputListener(l InputListener) func() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	// Use a unique token to identify this listener for removal.
 	type token struct{}
 	tok := &token{}
 	t.inputListeners = append(t.inputListeners, inputListenerEntry{fn: l, tok: tok})
@@ -148,7 +147,7 @@ func (t *TUI) AddInputListener(l InputListener) func() {
 }
 
 // ShowOverlay displays a component as a modal overlay on top of the base
-// content.
+// content. If NoFocus is set in opts, focus is not changed.
 func (t *TUI) ShowOverlay(comp Component, opts *OverlayOptions) *OverlayHandle {
 	t.mu.Lock()
 	entry := &overlayEntry{
@@ -157,7 +156,8 @@ func (t *TUI) ShowOverlay(comp Component, opts *OverlayOptions) *OverlayHandle {
 		preFocus:  t.focusedComponent,
 	}
 	t.overlayStack = append(t.overlayStack, entry)
-	if t.isOverlayVisible(entry) {
+	noFocus := opts != nil && opts.NoFocus
+	if !noFocus && t.isOverlayVisible(entry) {
 		t.setFocusLocked(comp)
 	}
 	t.mu.Unlock()
@@ -334,15 +334,14 @@ func (t *TUI) doRender() {
 	t.mu.Unlock()
 
 	// Render all components.
-	newLines := t.Container.Render(width)
+	baseResult := t.Container.Render(RenderContext{Width: width})
+	newLines := baseResult.Lines
+	cursorPos := baseResult.Cursor
 
 	// Composite overlays.
 	if len(overlays) > 0 {
-		newLines = t.compositeOverlays(newLines, overlays, width, height, maxLinesRendered)
+		newLines, cursorPos = t.compositeOverlays(newLines, cursorPos, overlays, width, height, maxLinesRendered)
 	}
-
-	// Extract cursor position before adding resets.
-	cursorPos := extractCursorPosition(newLines, height)
 
 	// Append reset to each line.
 	for i := range newLines {
@@ -602,10 +601,11 @@ func (t *TUI) doRender() {
 
 // ---------- overlay compositing ---------------------------------------------
 
-func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW, termH, maxLinesRendered int) []string {
+func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays []*overlayEntry, termW, termH, maxLinesRendered int) ([]string, *CursorPos) {
 	contentH := len(lines)
 	result := make([]string, contentH)
 	copy(result, lines)
+	cursor := baseCursor
 
 	type rendered struct {
 		lines           []string
@@ -613,6 +613,7 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 		col             int
 		w               int
 		contentRelative bool
+		cursor          *CursorPos
 	}
 	var items []rendered
 	minNeeded := len(result)
@@ -622,20 +623,26 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 			continue
 		}
 		cr := e.options != nil && e.options.ContentRelative
-		// Content-relative overlays use content height as the reference;
-		// viewport-relative overlays use terminal height.
 		refH := termH
 		if cr {
 			refH = contentH
 		}
 		w, _, _, _, _ := t.resolveOverlayLayout(e.options, 0, termW, refH)
-		oLines := e.component.Render(w)
+		oResult := e.component.Render(RenderContext{Width: w, Height: termH})
+		oLines := oResult.Lines
 		_, _, _, maxH, maxHSet := t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
 		if maxHSet && len(oLines) > maxH {
 			oLines = oLines[:maxH]
 		}
 		_, row, col, _, _ := t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
-		items = append(items, rendered{lines: oLines, row: row, col: col, w: w, contentRelative: cr})
+		items = append(items, rendered{
+			lines:           oLines,
+			row:             row,
+			col:             col,
+			w:               w,
+			contentRelative: cr,
+			cursor:          oResult.Cursor,
+		})
 		if !cr && row+len(oLines) > minNeeded {
 			minNeeded = row + len(oLines)
 		}
@@ -653,52 +660,54 @@ func (t *TUI) compositeOverlays(lines []string, overlays []*overlayEntry, termW,
 		for i, ol := range item.lines {
 			var idx int
 			if item.contentRelative {
-				// Index directly into content lines.
 				idx = item.row + i
 			} else {
-				// Offset by viewport position.
 				idx = viewportStart + item.row + i
 			}
 			if idx >= 0 && idx < len(result) {
 				result[idx] = CompositeLineAt(result[idx], ol, item.col, item.w, termW)
 			}
 		}
+		// If the overlay's component has focus and provides a cursor,
+		// translate it to the composited coordinate space.
+		if item.cursor != nil {
+			t.mu.Lock()
+			focused := t.focusedComponent
+			t.mu.Unlock()
+			// Check if this overlay has focus by comparing its component
+			// We check via the overlay stack entries.
+			for _, e := range overlays {
+				if e.component == focused {
+					// This is the focused overlay; use its cursor.
+					var baseRow int
+					if item.contentRelative {
+						baseRow = item.row
+					} else {
+						baseRow = viewportStart + item.row
+					}
+					cursor = &CursorPos{
+						Row: baseRow + item.cursor.Row,
+						Col: item.col + item.cursor.Col,
+					}
+					break
+				}
+			}
+		}
 	}
 
-	return result
+	return result, cursor
 }
-
 
 // ---------- cursor ----------------------------------------------------------
 
-type cursorPosition struct {
-	row, col int
-}
-
-func extractCursorPosition(lines []string, height int) *cursorPosition {
-	viewportTop := max(0, len(lines)-height)
-	for row := len(lines) - 1; row >= viewportTop; row-- {
-		idx := strings.Index(lines[row], CursorMarker)
-		if idx < 0 {
-			continue
-		}
-		before := lines[row][:idx]
-		col := VisibleWidth(before)
-		// Strip marker.
-		lines[row] = lines[row][:idx] + lines[row][idx+len(CursorMarker):]
-		return &cursorPosition{row: row, col: col}
-	}
-	return nil
-}
-
-func (t *TUI) positionHardwareCursor(pos *cursorPosition, totalLines int) {
+func (t *TUI) positionHardwareCursor(pos *CursorPos, totalLines int) {
 	if pos == nil || totalLines <= 0 {
 		t.terminal.HideCursor()
 		return
 	}
 
-	targetRow := clamp(pos.row, 0, totalLines-1)
-	targetCol := max(0, pos.col)
+	targetRow := clamp(pos.Row, 0, totalLines-1)
+	targetCol := max(0, pos.Col)
 
 	t.mu.Lock()
 	hcr := t.hardwareCursorRow

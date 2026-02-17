@@ -35,6 +35,7 @@ func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 		r.mu.Lock()
 		r.lastEntry().writeLog(string(p))
 		r.mu.Unlock()
+		r.output.markDirty()
 		r.tui.RequestRender(false)
 	}
 	return len(p), nil
@@ -49,15 +50,23 @@ func (w *pituiSyncWriter) SetRepl(r *replComponent) {
 // ── output log component ────────────────────────────────────────────────────
 
 // outputLog renders the structured entries list (past prompts, logs, results).
-// It snapshots entry data under the repl mutex to avoid races with the eval
-// goroutine writing to logs/result concurrently.
+// It caches rendered lines and only re-renders when marked dirty.
 type outputLog struct {
 	repl *replComponent
+
+	dirty       bool
+	cachedLines []string
 }
 
-func (o *outputLog) Invalidate() {}
+func (o *outputLog) markDirty() { o.dirty = true }
 
-func (o *outputLog) Render(width int) []string {
+func (o *outputLog) Invalidate() { o.dirty = true }
+
+func (o *outputLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	if !o.dirty && o.cachedLines != nil {
+		return pitui.RenderResult{Lines: o.cachedLines, Dirty: false}
+	}
+
 	type entrySnapshot struct {
 		input  string
 		logs   string
@@ -98,11 +107,14 @@ func (o *outputLog) Render(width int) []string {
 		lines[i] = pitui.ExpandTabs(line, 8)
 	}
 	for i, line := range lines {
-		if pitui.VisibleWidth(line) > width {
-			lines[i] = pitui.Truncate(line, width, "")
+		if pitui.VisibleWidth(line) > ctx.Width {
+			lines[i] = pitui.Truncate(line, ctx.Width, "")
 		}
 	}
-	return lines
+
+	o.cachedLines = lines
+	o.dirty = false
+	return pitui.RenderResult{Lines: lines, Dirty: true}
 }
 
 // ── spinner line component ──────────────────────────────────────────────────
@@ -112,15 +124,12 @@ type evalSpinnerLine struct {
 }
 
 func (e *evalSpinnerLine) Invalidate() {}
-func (e *evalSpinnerLine) Render(width int) []string {
-	return e.spinner.Render(width)
+func (e *evalSpinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	return e.spinner.Render(ctx)
 }
 
 // ── completion menu overlay ─────────────────────────────────────────────────
 
-// completionOverlay renders the completion dropdown. It is shown as a
-// content-relative overlay so it floats on top of the output lines just
-// above the input line, without pushing content around.
 type completionOverlay struct {
 	items      []string
 	index      int
@@ -129,11 +138,12 @@ type completionOverlay struct {
 
 func (c *completionOverlay) Invalidate() {}
 
-func (c *completionOverlay) Render(width int) []string {
+func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if len(c.items) == 0 {
-		return nil
+		return pitui.RenderResult{Dirty: true}
 	}
-	return strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, width), "\n")
+	lines := strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width), "\n")
+	return pitui.RenderResult{Lines: lines, Dirty: true}
 }
 
 // renderMenuBox renders the completion dropdown as a bordered box string.
@@ -189,37 +199,36 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 
 // ── detail bubble (viewport-relative overlay) ───────────────────────────────
 
-// detailBubble shows structured documentation for the currently selected
-// completion item, reusing the same detail rendering as the doc browser.
 type detailBubble struct {
 	item docItem
 }
 
 func (d *detailBubble) Invalidate() {}
 
-func (d *detailBubble) Render(width int) []string {
+func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if d.item.name == "" {
-		return nil
+		return pitui.RenderResult{Dirty: true}
 	}
 
-	innerW := max(10, width-2)
+	innerW := max(10, ctx.Width-2)
 
 	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
 	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
-	// Title line.
 	titleLine := detailTitleStyle.Render(d.item.name)
 	lines := []string{titleLine}
 
-	// Reuse the doc browser's detail renderer for type sig, doc, args, block.
 	detail := renderDocDetail(d.item, innerW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
 	lines = append(lines, detail...)
 
 	inner := strings.Join(lines, "\n")
 	box := detailBorderStyle.Width(innerW).Render(inner)
-	return strings.Split(box, "\n")
+	return pitui.RenderResult{
+		Lines: strings.Split(box, "\n"),
+		Dirty: true,
+	}
 }
 
 // ── REPL component ─────────────────────────────────────────────────────────
@@ -240,6 +249,7 @@ type replComponent struct {
 	output      *outputLog
 	spinner     *pitui.Spinner
 	spinnerLine *evalSpinnerLine
+	inputSlot   *pitui.Slot // swaps between textInput and spinnerLine
 
 	entries []*replEntry
 	quit    chan struct{}
@@ -288,7 +298,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		historyFile:    "/tmp/dang_history",
 		quit:           make(chan struct{}),
 	}
-	r.output = &outputLog{repl: r}
+	r.output = &outputLog{repl: r, dirty: true}
 
 	// Spinner
 	sp := pitui.NewSpinner(tui)
@@ -298,6 +308,9 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
 	r.spinnerLine = &evalSpinnerLine{spinner: sp}
+
+	// Input slot starts with text input.
+	r.inputSlot = pitui.NewSlot(ti)
 
 	// Text input callbacks.
 	ti.SuggestionStyle = func(s string) string {
@@ -337,7 +350,7 @@ func (r *replComponent) lastEntry() *replEntry {
 // install adds the repl's components to the TUI.
 func (r *replComponent) install() {
 	r.tui.AddChild(r.output)
-	r.tui.AddChild(r.textInput)
+	r.tui.AddChild(r.inputSlot)
 	r.tui.SetFocus(r.textInput)
 }
 
@@ -354,6 +367,7 @@ func (r *replComponent) onSubmit(line string) bool {
 		promptStyle.Render("dang> ")+line,
 	))
 	r.mu.Unlock()
+	r.output.markDirty()
 
 	r.hideCompletionMenu()
 
@@ -453,11 +467,11 @@ func (r *replComponent) onKey(data []byte) bool {
 		r.mu.Lock()
 		r.entries = nil
 		r.mu.Unlock()
+		r.output.markDirty()
 		return true
 	}
 
 	// After any key that modifies input, update completions.
-	// This runs after the text input handles the key normally.
 	defer r.updateCompletionMenuPitui()
 
 	return false
@@ -473,6 +487,7 @@ func (r *replComponent) startEvalPitui(expr string) {
 	if err != nil {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		r.mu.Unlock()
+		r.output.markDirty()
 		return
 	}
 
@@ -489,6 +504,7 @@ func (r *replComponent) startEvalPitui(expr string) {
 	if err != nil {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		r.mu.Unlock()
+		r.output.markDirty()
 		return
 	}
 
@@ -499,9 +515,8 @@ func (r *replComponent) startEvalPitui(expr string) {
 	debug := r.debug
 	r.mu.Unlock()
 
-	// Swap text input for spinner line.
-	r.tui.RemoveChild(r.textInput)
-	r.tui.AddChild(r.spinnerLine)
+	// Swap text input for spinner via the slot.
+	r.inputSlot.Set(r.spinnerLine)
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval.
@@ -574,10 +589,10 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	}
 	r.mu.Unlock()
 
-	// Swap spinner back to text input.
-	r.tui.RemoveChild(r.spinnerLine)
-	r.tui.AddChild(r.textInput)
+	// Swap spinner back to text input via the slot.
+	r.inputSlot.Set(r.textInput)
 	r.tui.SetFocus(r.textInput)
+	r.output.markDirty()
 	r.tui.RequestRender(false)
 }
 
@@ -614,9 +629,8 @@ func (r *replComponent) showCompletionMenu() {
 		ContentRelative: true,
 		OffsetX:         xOff,
 		OffsetY:         -1, // above the input line
+		NoFocus:         true,
 	})
-	// Keep focus on the text input.
-	r.tui.SetFocus(r.textInput)
 	r.syncDetailBubble()
 }
 
@@ -637,9 +651,8 @@ func (r *replComponent) showDetailBubble() {
 			MaxHeight: pitui.SizeAbs(15),
 			Anchor:    pitui.AnchorTopRight,
 			Margin:    pitui.OverlayMargin{Top: 1, Right: 1},
+			NoFocus:   true,
 		})
-		// Keep focus on the text input, not the overlay.
-		r.tui.SetFocus(r.textInput)
 	}
 }
 
@@ -663,16 +676,11 @@ func (r *replComponent) syncDetailBubble() {
 	}
 	c := r.menuCompletions[idx]
 
-	// Try to build a full docItem from the type env for rich detail.
-	// The completion label is the bare name (from dang.CompleteInput),
-	// but menuItems may have a prefix prepended. Use c.Label directly.
 	item, found := docItemFromEnv(r.typeEnv, c.Label)
 	if !found {
-		// Also try resolving the receiver type for member completions.
 		item, found = r.resolveCompletionDocItem(c)
 	}
 	if !found {
-		// Fall back to flat completion data.
 		if c.Detail == "" && c.Documentation == "" {
 			r.hideDetailBubble()
 			return
@@ -692,7 +700,6 @@ func (r *replComponent) syncDetailBubble() {
 // by inferring the receiver type from the current input.
 func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bool) {
 	val := r.textInput.Value()
-	// Find the last dot to get the receiver expression.
 	dotIdx := -1
 	for i := len(val) - 1; i >= 0; i-- {
 		if val[i] == '.' {
@@ -792,7 +799,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 		}
 	}
 	matches := append(exactCase, otherCase...)
-	r.setMenuPitui(matches, nil) // static completions have no detail
+	r.setMenuPitui(matches, nil)
 	if len(matches) > 0 {
 		r.textInput.Suggestion = matches[0]
 	} else {
@@ -846,6 +853,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 	if len(parts) == 0 {
 		e.writeLogLine(errorStyle.Render("empty command"))
 		r.mu.Unlock()
+		r.output.markDirty()
 		return
 	}
 
@@ -924,6 +932,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 
 	case "doc":
 		r.mu.Unlock()
+		r.output.markDirty()
 		r.showDocBrowser()
 		return
 
@@ -931,6 +940,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
 	}
 	r.mu.Unlock()
+	r.output.markDirty()
 }
 
 func (r *replComponent) envCommandPitui(e *replEntry, args []string) {

@@ -53,7 +53,7 @@ func (s *Spinner) Stop() {
 
 func (s *Spinner) Invalidate() {}
 
-func (s *Spinner) Render(width int) []string {
+func (s *Spinner) Render(ctx RenderContext) RenderResult {
 	elapsed := time.Since(s.start)
 	idx := int(elapsed/s.interval) % len(s.frames)
 	frame := s.frames[idx]
@@ -61,8 +61,11 @@ func (s *Spinner) Render(width int) []string {
 		frame = s.Style(frame)
 	}
 	line := frame + " " + s.Label
-	if VisibleWidth(line) > width {
-		line = Truncate(line, width, "")
+	if VisibleWidth(line) > ctx.Width {
+		line = Truncate(line, ctx.Width, "")
 	}
-	return []string{line}
+	return RenderResult{
+		Lines: []string{line},
+		Dirty: true, // always dirty (animating)
+	}
 }

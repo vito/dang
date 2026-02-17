@@ -1,4 +1,4 @@
-package pitui_test
+package main
 
 import (
 	"fmt"
@@ -51,39 +51,29 @@ func (b *Banner) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		}
 		lines = append(lines, line)
 	}
-	return pitui.RenderResult{
-		Lines: lines,
-		Dirty: true,
-	}
+	return pitui.RenderResult{Lines: lines, Dirty: true}
 }
 
 func (b *Banner) Invalidate() {}
 
-func Example() {
-	// This example shows the basic wiring. In a real app you'd use
-	// NewProcessTerminal() and handle Ctrl-C properly.
-	_ = func() {
-		term := pitui.NewProcessTerminal()
-		tui := pitui.New(term)
+func main() {
+	term := pitui.NewProcessTerminal()
+	tui := pitui.New(term)
 
-		// Add a static banner.
-		tui.AddChild(&Banner{Text: "=== My App ==="})
+	// Add a static banner.
+	tui.AddChild(&Banner{Text: "=== My App ==="})
 
-		// Add an interactive counter and give it focus.
-		counter := &Counter{}
-		tui.AddChild(counter)
-		tui.SetFocus(counter)
+	// Add an interactive counter and give it focus.
+	counter := &Counter{}
+	tui.AddChild(counter)
+	tui.SetFocus(counter)
 
-		// Start the TUI.
-		if err := tui.Start(); err != nil {
-			panic(err)
-		}
-		defer tui.Stop()
-
-		// In a real app, you'd block on a signal or channel.
-		time.Sleep(10 * time.Second)
+	// Start the TUI.
+	if err := tui.Start(); err != nil {
+		panic(err)
 	}
+	defer tui.Stop()
 
-	fmt.Println("ok")
-	// Output: ok
+	// In a real app, you'd block on a signal or channel.
+	time.Sleep(10 * time.Second)
 }

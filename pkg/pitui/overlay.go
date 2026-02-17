@@ -68,6 +68,10 @@ type OverlayOptions struct {
 	// float just above the last content line.
 	ContentRelative bool
 
+	// NoFocus, when true, prevents the overlay from stealing focus when
+	// shown. Useful for non-modal popups like completion menus.
+	NoFocus bool
+
 	// Visible is called each render cycle. If non-nil, the overlay is only
 	// rendered when it returns true.
 	Visible func(termWidth, termHeight int) bool

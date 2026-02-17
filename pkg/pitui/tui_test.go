@@ -9,7 +9,6 @@ import (
 )
 
 // mockTerminal records writes and simulates a fixed-size terminal.
-// x
 type mockTerminal struct {
 	cols, rows int
 	written    strings.Builder
@@ -38,19 +37,24 @@ func (m *mockTerminal) reset() { m.written.Reset() }
 
 // staticComponent renders fixed lines.
 type staticComponent struct {
-	lines []string
+	lines  []string
+	cursor *CursorPos
 }
 
-func (s *staticComponent) Render(width int) []string {
+func (s *staticComponent) Render(ctx RenderContext) RenderResult {
 	out := make([]string, len(s.lines))
 	for i, l := range s.lines {
-		if VisibleWidth(l) > width {
-			out[i] = Truncate(l, width, "")
+		if VisibleWidth(l) > ctx.Width {
+			out[i] = Truncate(l, ctx.Width, "")
 		} else {
 			out[i] = l
 		}
 	}
-	return out
+	return RenderResult{
+		Lines:  out,
+		Cursor: s.cursor,
+		Dirty:  true,
+	}
 }
 func (s *staticComponent) Invalidate() {}
 
@@ -125,7 +129,6 @@ func TestAppendLines(t *testing.T) {
 	assert.Contains(t, out, "b")
 	assert.Contains(t, out, "c")
 	// "a" is unchanged, should not appear.
-	// (It will appear as part of ANSI sequences but not as a standalone line.)
 	assert.NotContains(t, out, "\x1b[2Ka"+segmentReset) // not rewritten
 }
 
@@ -191,19 +194,48 @@ func TestNoChangeNoOutput(t *testing.T) {
 	assert.NotContains(t, out, "\x1b[2K") // no line clears
 }
 
-func TestCursorMarkerExtraction(t *testing.T) {
-	lines := []string{
-		"first line",
-		"cur" + CursorMarker + "sor here",
-		"last line",
-	}
+func TestStructuralCursorPosition(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.showHardwareCursor = true
 
-	pos := extractCursorPosition(lines, 10)
-	require.NotNil(t, pos)
-	assert.Equal(t, 1, pos.row)
-	assert.Equal(t, 3, pos.col) // "cur" = 3 columns
-	// Marker should be stripped.
-	assert.Equal(t, "cursor here", lines[1])
+	comp := &staticComponent{
+		lines:  []string{"first line", "cursor here", "last line"},
+		cursor: &CursorPos{Row: 1, Col: 3},
+	}
+	tui.AddChild(comp)
+	tui.stopped = false
+
+	renderSync(tui)
+
+	// Verify cursor was positioned (row 1, col 3).
+	// The hardware cursor should be at row 1.
+	tui.mu.Lock()
+	hcr := tui.hardwareCursorRow
+	tui.mu.Unlock()
+	assert.Equal(t, 1, hcr)
+}
+
+func TestContainerPropagatesCursor(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	// First child: 2 lines, no cursor.
+	c1 := &staticComponent{lines: []string{"a", "b"}}
+	// Second child: 1 line, cursor at (0, 5).
+	c2 := &staticComponent{
+		lines:  []string{"hello world"},
+		cursor: &CursorPos{Row: 0, Col: 5},
+	}
+	tui.AddChild(c1)
+	tui.AddChild(c2)
+	tui.stopped = false
+
+	result := tui.Container.Render(RenderContext{Width: 40})
+	require.NotNil(t, result.Cursor)
+	// c2's row 0 is line 2 in the assembled output (after c1's 2 lines).
+	assert.Equal(t, 2, result.Cursor.Row)
+	assert.Equal(t, 5, result.Cursor.Col)
 }
 
 func TestOverlayCompositing(t *testing.T) {
@@ -228,7 +260,6 @@ func TestOverlayCompositing(t *testing.T) {
 	renderSync(tui)
 
 	// The overlay should be composited into the rendered output.
-	// We can verify by checking previousLines.
 	tui.mu.Lock()
 	prev := tui.previousLines
 	tui.mu.Unlock()
@@ -244,10 +275,6 @@ func TestOverlayCompositing(t *testing.T) {
 }
 
 func TestContentRelativeOverlay(t *testing.T) {
-	// Content has 3 lines but terminal is 10 rows tall.
-	// A viewport-relative AnchorBottomLeft overlay would appear at row 8-9.
-	// A content-relative AnchorBottomLeft overlay should appear at row 1-2
-	// (just above the last content line).
 	term := newMockTerminal(30, 10)
 	tui := newTUI(term)
 	bg := &staticComponent{lines: []string{
@@ -274,12 +301,58 @@ func TestContentRelativeOverlay(t *testing.T) {
 	prev := tui.previousLines
 	tui.mu.Unlock()
 
-	// Menu should be composited at rows 0 and 1 (content has 3 lines,
-	// AnchorBottomLeft = row 3-2=1, OffsetY=-1 → row 0).
 	require.True(t, len(prev) >= 3, "should have at least 3 lines")
 	assert.Contains(t, prev[0], "MENU-A", "first menu line at content row 0")
 	assert.Contains(t, prev[1], "MENU-B", "second menu line at content row 1")
 	assert.Contains(t, prev[2], "line-2", "last content line untouched")
+}
+
+func TestNoFocusOverlay(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// Create a main component and give it focus.
+	main := &staticComponent{lines: []string{"main"}}
+	tui.AddChild(main)
+	tui.SetFocus(main)
+
+	// Show overlay with NoFocus.
+	overlay := &staticComponent{lines: []string{"popup"}}
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:   SizeAbs(10),
+		Anchor:  AnchorCenter,
+		NoFocus: true,
+	})
+
+	// Focus should remain on main.
+	tui.mu.Lock()
+	focused := tui.focusedComponent
+	tui.mu.Unlock()
+	assert.Equal(t, main, focused)
+}
+
+func TestSlotComponent(t *testing.T) {
+	a := &staticComponent{lines: []string{"child-a"}}
+	b := &staticComponent{lines: []string{"child-b-1", "child-b-2"}}
+
+	slot := NewSlot(a)
+
+	// Initial render.
+	r := slot.Render(RenderContext{Width: 40})
+	assert.Equal(t, []string{"child-a"}, r.Lines)
+	assert.True(t, r.Dirty)
+
+	// Second render, slot not dirty, child always dirty.
+	r = slot.Render(RenderContext{Width: 40})
+	assert.Equal(t, []string{"child-a"}, r.Lines)
+	assert.True(t, r.Dirty) // child is always dirty
+
+	// Swap child.
+	slot.Set(b)
+	r = slot.Render(RenderContext{Width: 40})
+	assert.Equal(t, []string{"child-b-1", "child-b-2"}, r.Lines)
+	assert.True(t, r.Dirty)
 }
 
 func TestVisibleWidth(t *testing.T) {
@@ -307,16 +380,13 @@ func TestCompositeLineAt(t *testing.T) {
 	w := VisibleWidth(result)
 	assert.Equal(t, 20, w, "composited line should be exactly terminal width")
 	stripped := stripANSI(result)
-	// Before: 5 dots, overlay: "HI" + 2 spaces (padded to width 4), after: 11 dots
 	assert.Equal(t, ".....HI  ...........", stripped)
 }
 
 func TestCompositeLineAtPreservesSpaces(t *testing.T) {
-	// Ensure that spaces in the base line outside the overlay region are preserved.
 	base := "hello    world      end"
 	result := CompositeLineAt(base, "XX", 9, 2, 30)
 	stripped := stripANSI(result)
-	// "hello    " (9 cols) + "XX" (2 cols) + "rld      end" (remaining)
 	assert.Equal(t, "hello    XXrld      end       ", stripped)
 	assert.Equal(t, 30, VisibleWidth(result))
 }
@@ -342,16 +412,13 @@ func TestExpandTabs(t *testing.T) {
 	assert.Equal(t, "a       b", ExpandTabs("a\tb", 8))
 	assert.Equal(t, "abcd    e", ExpandTabs("abcd\te", 8))
 	assert.Equal(t, "abcdefgh        x", ExpandTabs("abcdefgh\tx", 8))
-	// No tabs, unchanged.
 	assert.Equal(t, "hello world", ExpandTabs("hello world", 8))
 }
 
 func TestCompositeWithTabExpandedLine(t *testing.T) {
-	// Simulates the real scenario: "ok\tgithub..." with a menu overlay.
 	base := ExpandTabs("ok\tgithub.com/foo/bar/baz  3.682s", 8)
 	result := CompositeLineAt(base, "XY", 10, 4, 40)
 	stripped := stripANSI(result)
-	// "ok      gi" = 10 cols, then "XY  " (4 cols), then rest
 	assert.Contains(t, stripped, "ok      gi")
 	assert.Contains(t, stripped, "XY")
 	assert.Equal(t, 40, VisibleWidth(result))

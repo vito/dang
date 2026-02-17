@@ -56,22 +56,22 @@ func (t *TextInput) SetValue(s string) {
 // CursorEnd moves the cursor to the end of the input.
 func (t *TextInput) CursorEnd() { t.cursor = len(t.value) }
 
-// Render returns a single line: prompt + input + cursor marker.
-func (t *TextInput) Render(width int) []string {
+// Render returns a single line: prompt + input, with cursor position.
+func (t *TextInput) Render(ctx RenderContext) RenderResult {
 	var buf strings.Builder
 	buf.WriteString(t.Prompt)
 
 	before := string(t.value[:t.cursor])
 	after := string(t.value[t.cursor:])
 	buf.WriteString(before)
-	if t.focused {
-		buf.WriteString(CursorMarker)
-	}
+
+	// Calculate cursor column position.
+	cursorCol := VisibleWidth(t.Prompt + before)
+
 	buf.WriteString(after)
 
 	// Append ghost suggestion if present.
 	if t.Suggestion != "" && t.cursor == len(t.value) {
-		// Show the part of the suggestion that extends beyond current input.
 		hint := t.Suggestion
 		current := string(t.value)
 		if strings.HasPrefix(hint, current) {
@@ -87,10 +87,20 @@ func (t *TextInput) Render(width int) []string {
 	}
 
 	line := buf.String()
-	if VisibleWidth(line) > width {
-		line = Truncate(line, width, "")
+	if VisibleWidth(line) > ctx.Width {
+		line = Truncate(line, ctx.Width, "")
 	}
-	return []string{line}
+
+	var cursor *CursorPos
+	if t.focused {
+		cursor = &CursorPos{Row: 0, Col: cursorCol}
+	}
+
+	return RenderResult{
+		Lines:  []string{line},
+		Cursor: cursor,
+		Dirty:  true, // always dirty — no caching for a 1-line component
+	}
 }
 
 // HandleInput processes raw terminal input.
@@ -189,16 +199,15 @@ func (t *TextInput) HandleInput(data []byte) {
 }
 
 func (t *TextInput) insertPrintable(data []byte) {
-	// Only insert if every byte decodes to valid, printable runes.
 	rest := data
 	var runes []rune
 	for len(rest) > 0 {
 		r, size := utf8.DecodeRune(rest)
 		if r == utf8.RuneError && size <= 1 {
-			return // not valid UTF-8
+			return
 		}
 		if r < 0x20 && r != '\t' {
-			return // control character
+			return
 		}
 		runes = append(runes, r)
 		rest = rest[size:]
@@ -207,7 +216,6 @@ func (t *TextInput) insertPrintable(data []byte) {
 		return
 	}
 
-	// Insert runes at cursor.
 	newVal := make([]rune, 0, len(t.value)+len(runes))
 	newVal = append(newVal, t.value[:t.cursor]...)
 	newVal = append(newVal, runes...)
@@ -218,11 +226,9 @@ func (t *TextInput) insertPrintable(data []byte) {
 
 func (t *TextInput) wordLeft() int {
 	i := t.cursor
-	// Skip whitespace
 	for i > 0 && isSpace(t.value[i-1]) {
 		i--
 	}
-	// Skip word
 	for i > 0 && !isSpace(t.value[i-1]) {
 		i--
 	}
@@ -231,11 +237,9 @@ func (t *TextInput) wordLeft() int {
 
 func (t *TextInput) wordRight() int {
 	i := t.cursor
-	// Skip word
 	for i < len(t.value) && !isSpace(t.value[i]) {
 		i++
 	}
-	// Skip whitespace
 	for i < len(t.value) && isSpace(t.value[i]) {
 		i++
 	}

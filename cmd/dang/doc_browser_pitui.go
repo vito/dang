@@ -136,12 +136,17 @@ func (d *docBrowserOverlay) handleFilterInput(s string) {
 	}
 }
 
-func (d *docBrowserOverlay) Render(width int) []string {
+func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	width := ctx.Width
+	height := ctx.Height
 	if width < 20 {
-		return []string{"(too narrow)"}
+		return pitui.RenderResult{Lines: []string{"(too narrow)"}, Dirty: true}
 	}
 
-	height := d.tui.Terminal().Rows()
+	// Use the provided height, falling back to terminal rows if unconstrained.
+	if height <= 0 {
+		height = d.tui.Terminal().Rows()
+	}
 	listH := height - 4
 	if listH < 5 {
 		listH = 5
@@ -311,7 +316,7 @@ func (d *docBrowserOverlay) Render(width int) []string {
 		}
 	}
 
-	return result
+	return pitui.RenderResult{Lines: result, Dirty: true}
 }
 
 func (d *docBrowserOverlay) renderDetailPitui(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
