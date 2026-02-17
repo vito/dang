@@ -2,8 +2,10 @@ package pitui
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"sync"
+	"time"
 )
 
 // InputListenerResult controls how input propagates through listeners.
@@ -22,6 +24,40 @@ type InputListener func(data []byte) *InputListenerResult
 type inputListenerEntry struct {
 	fn  InputListener
 	tok any // unique token for removal
+}
+
+// RenderStats captures performance metrics for a single render cycle.
+type RenderStats struct {
+	// RenderTime is how long it took to generate the rendered content
+	// (calling Component.Render on the tree).
+	RenderTime time.Duration
+
+	// DiffTime is how long the differential update computation took.
+	DiffTime time.Duration
+
+	// WriteTime is how long it took to write the escape sequences to
+	// the terminal.
+	WriteTime time.Duration
+
+	// TotalTime is the wall-clock duration of the entire doRender call.
+	TotalTime time.Duration
+
+	// TotalLines is the total number of lines in the rendered output.
+	TotalLines int
+
+	// LinesRepainted is the number of lines that were actually written
+	// to the terminal (changed lines).
+	LinesRepainted int
+
+	// CacheHits is the number of lines that matched the previous frame
+	// and were skipped.
+	CacheHits int
+
+	// FullRedraw is true when the entire screen was repainted (no diff).
+	FullRedraw bool
+
+	// OverlayCount is the number of active overlays composited.
+	OverlayCount int
 }
 
 // TUI is the main renderer. It extends Container with differential rendering
@@ -49,7 +85,8 @@ type TUI struct {
 
 	overlayStack []*overlayEntry
 
-	renderCh chan struct{} // serialized render requests
+	renderCh    chan struct{} // serialized render requests
+	debugWriter io.Writer    // if non-nil, render stats are logged here
 }
 
 // New creates a TUI backed by the given terminal.
@@ -77,6 +114,14 @@ func (t *TUI) renderLoop() {
 
 // Terminal returns the underlying terminal.
 func (t *TUI) Terminal() Terminal { return t.terminal }
+
+// SetDebugWriter enables render performance logging. Each render cycle
+// writes a single stats line to w. Pass nil to disable.
+func (t *TUI) SetDebugWriter(w io.Writer) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.debugWriter = w
+}
 
 // FullRedraws returns the number of full (non-differential) redraws performed.
 func (t *TUI) FullRedraws() int {
@@ -313,6 +358,8 @@ func (t *TUI) handleInput(data []byte) {
 // ---------- differential rendering ------------------------------------------
 
 func (t *TUI) doRender() {
+	totalStart := time.Now()
+
 	t.mu.Lock()
 	if t.stopped {
 		t.mu.Unlock()
@@ -326,11 +373,16 @@ func (t *TUI) doRender() {
 	maxLinesRendered := t.maxLinesRendered
 	prevViewportTop := t.previousViewportTop
 	clearOnShrink := t.clearOnShrink
+	debugW := t.debugWriter
 	overlays := make([]*overlayEntry, len(t.overlayStack))
 	copy(overlays, t.overlayStack)
 	t.mu.Unlock()
 
+	var stats RenderStats
+	stats.OverlayCount = len(overlays)
+
 	// Render all components.
+	renderStart := time.Now()
 	baseResult := t.Render(RenderContext{Width: width})
 	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
@@ -344,6 +396,8 @@ func (t *TUI) doRender() {
 	for i := range newLines {
 		newLines[i] += segmentReset
 	}
+	stats.RenderTime = time.Since(renderStart)
+	stats.TotalLines = len(newLines)
 
 	viewportTop := max(0, maxLinesRendered-height)
 
@@ -357,12 +411,29 @@ func (t *TUI) doRender() {
 
 	widthChanged := prevWidth != 0 && prevWidth != width
 
+	// emitStats writes the debug stats line if a debug writer is configured.
+	emitStats := func() {
+		if debugW == nil {
+			return
+		}
+		stats.TotalTime = time.Since(totalStart)
+		fmt.Fprintf(debugW, "[pitui] render total=%s content=%s diff=%s write=%s lines=%d repainted=%d cached=%d full=%v overlays=%d\n",
+			stats.TotalTime, stats.RenderTime, stats.DiffTime, stats.WriteTime,
+			stats.TotalLines, stats.LinesRepainted, stats.CacheHits,
+			stats.FullRedraw, stats.OverlayCount)
+	}
+
 	// --- full render helper ---
 	fullRender := func(clear bool) {
 		t.mu.Lock()
 		t.fullRedrawCount++
 		t.mu.Unlock()
 
+		stats.FullRedraw = true
+		stats.LinesRepainted = len(newLines)
+		stats.CacheHits = 0
+
+		diffStart := time.Now()
 		var buf strings.Builder
 		buf.WriteString("\x1b[?2026h") // begin synchronized output
 		if clear {
@@ -375,7 +446,11 @@ func (t *TUI) doRender() {
 			buf.WriteString(line)
 		}
 		buf.WriteString("\x1b[?2026l") // end synchronized output
+		stats.DiffTime = time.Since(diffStart)
+
+		writeStart := time.Now()
 		t.terminal.WriteString(buf.String())
+		stats.WriteTime = time.Since(writeStart)
 
 		cr := max(0, len(newLines)-1)
 		ml := maxLinesRendered
@@ -399,6 +474,8 @@ func (t *TUI) doRender() {
 		t.previousLines = newLines
 		t.previousWidth = width
 		t.mu.Unlock()
+
+		emitStats()
 	}
 
 	// First render.
@@ -420,6 +497,8 @@ func (t *TUI) doRender() {
 	}
 
 	// --- diff ---
+	diffStart := time.Now()
+
 	firstChanged := -1
 	lastChanged := -1
 	maxLen := max(len(newLines), len(prevLines))
@@ -451,15 +530,21 @@ func (t *TUI) doRender() {
 
 	// No changes.
 	if firstChanged == -1 {
+		stats.DiffTime = time.Since(diffStart)
+		stats.CacheHits = len(newLines)
+		stats.LinesRepainted = 0
 		t.positionHardwareCursor(cursorPos, len(newLines))
 		t.mu.Lock()
 		t.previousViewportTop = max(0, t.maxLinesRendered-height)
 		t.mu.Unlock()
+		emitStats()
 		return
 	}
 
 	// All changes in deleted tail.
 	if firstChanged >= len(newLines) {
+		stats.CacheHits = len(newLines)
+		stats.LinesRepainted = 0
 		if len(prevLines) > len(newLines) {
 			var buf strings.Builder
 			buf.WriteString("\x1b[?2026h")
@@ -489,12 +574,18 @@ func (t *TUI) doRender() {
 				fmt.Fprintf(&buf, "\x1b[%dA", extra)
 			}
 			buf.WriteString("\x1b[?2026l")
+			stats.DiffTime = time.Since(diffStart)
+
+			writeStart := time.Now()
 			t.terminal.WriteString(buf.String())
+			stats.WriteTime = time.Since(writeStart)
 
 			t.mu.Lock()
 			t.cursorRow = targetRow
 			t.hardwareCursorRow = targetRow
 			t.mu.Unlock()
+		} else {
+			stats.DiffTime = time.Since(diffStart)
 		}
 		t.positionHardwareCursor(cursorPos, len(newLines))
 		t.mu.Lock()
@@ -502,6 +593,7 @@ func (t *TUI) doRender() {
 		t.previousWidth = width
 		t.previousViewportTop = max(0, t.maxLinesRendered-height)
 		t.mu.Unlock()
+		emitStats()
 		return
 	}
 
@@ -576,7 +668,15 @@ func (t *TUI) doRender() {
 	}
 
 	buf.WriteString("\x1b[?2026l")
+	stats.DiffTime = time.Since(diffStart)
+
+	// Compute repainted/cached stats.
+	stats.LinesRepainted = renderEnd - firstChanged + 1
+	stats.CacheHits = len(newLines) - stats.LinesRepainted
+
+	writeStart := time.Now()
 	t.terminal.WriteString(buf.String())
+	stats.WriteTime = time.Since(writeStart)
 
 	cr := max(0, len(newLines)-1)
 	ml := max(maxLinesRendered, len(newLines))
@@ -594,6 +694,8 @@ func (t *TUI) doRender() {
 	t.previousLines = newLines
 	t.previousWidth = width
 	t.mu.Unlock()
+
+	emitStats()
 }
 
 // ---------- overlay compositing ---------------------------------------------

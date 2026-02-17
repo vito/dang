@@ -95,7 +95,7 @@ func buildCompletionList(typeEnv dang.Env) []string {
 // replCommands returns the list of REPL command names.
 func replCommands() []string {
 	return []string{
-		"help", "exit", "quit", "clear", "reset", "debug",
+		"help", "exit", "quit", "clear", "reset", "debug", "debug-render",
 		"env", "version", "schema", "type", "inspect", "find", "history", "doc",
 	}
 }
