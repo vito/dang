@@ -1,8 +1,8 @@
 package pitui
 
 import (
-	"fmt"
 	"reflect"
+	"sync/atomic"
 	"time"
 )
 
@@ -25,12 +25,10 @@ type ComponentStat struct {
 	Name     string `json:"name"`
 	RenderUs int64  `json:"render_us"`
 	Lines    int    `json:"lines"`
-	Dirty    bool   `json:"dirty"`
+	Cached   bool   `json:"cached"`
 }
 
 // componentName returns a short human-readable name for a component.
-// Uses the Named interface if available, otherwise the type name from
-// reflect (package path stripped for brevity in the dashboard).
 func componentName(c Component) string {
 	if n, ok := c.(interface{ Name() string }); ok {
 		return n.Name()
@@ -39,7 +37,7 @@ func componentName(c Component) string {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	return fmt.Sprintf("%s.%s", t.PkgPath(), t.Name())
+	return t.PkgPath() + "." + t.Name()
 }
 
 // CursorPos represents a cursor position within a component's rendered output.
@@ -58,8 +56,130 @@ type RenderResult struct {
 
 	// Dirty reports whether this result differs from the previous render.
 	// When false, the framework may skip diffing this component's line
-	// range. Components that don't cache should always return true.
+	// range.
+	//
+	// This field is managed by the framework when using Compo — component
+	// authors do not need to set it. Components without Compo should set
+	// it to true.
 	Dirty bool
+}
+
+// ── Compo ──────────────────────────────────────────────────────────────────
+
+// Compo provides automatic render caching and dirty propagation for
+// components. Embed it in your component struct:
+//
+//	type MyWidget struct {
+//	    pitui.Compo
+//	    // ... your fields ...
+//	}
+//
+// Call Update() when your component's state changes. The framework will
+// re-render the component on the next frame. Between Update() calls,
+// Render() is skipped entirely and the cached result is reused.
+//
+// Update() propagates upward through the component tree, so parent
+// Containers automatically know a child changed. If the tree is rooted
+// in a TUI, Update() also schedules a render automatically.
+type Compo struct {
+	needsRender   atomic.Bool
+	cache         *renderCache
+	parent        *Compo
+	requestRender func() // set on the root by TUI
+}
+
+type renderCache struct {
+	result RenderResult
+	width  int
+}
+
+// Update marks the component as needing re-render on the next frame.
+// Propagates upward so parent containers are also marked dirty.
+// If the component tree is rooted in a TUI, a render is scheduled
+// automatically.
+func (c *Compo) Update() {
+	c.needsRender.Store(true)
+	if c.parent != nil {
+		c.parent.Update()
+	} else if c.requestRender != nil {
+		c.requestRender()
+	}
+}
+
+// GetCompo returns the embedded Compo. This method is promoted to any
+// struct that embeds Compo, allowing the framework to detect and use it.
+func (c *Compo) GetCompo() *Compo { return c }
+
+// compoOf returns the embedded Compo if the component has one, or nil.
+func compoOf(c Component) *Compo {
+	type getter interface {
+		GetCompo() *Compo
+	}
+	if g, ok := c.(getter); ok {
+		return g.GetCompo()
+	}
+	return nil
+}
+
+// renderComponent renders a child component, using its Compo cache when
+// the component is clean and the width hasn't changed. This is the core
+// function that makes finalized components O(1).
+func renderComponent(ch Component, ctx RenderContext) RenderResult {
+	cp := compoOf(ch)
+
+	if cp != nil {
+		if cp.cache != nil && !cp.needsRender.Load() && cp.cache.width == ctx.Width {
+			// Cache hit — skip Render entirely.
+			if ctx.componentStats != nil {
+				*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
+					Name:   componentName(ch),
+					Lines:  len(cp.cache.result.Lines),
+					Cached: true,
+				})
+			}
+			r := cp.cache.result
+			r.Dirty = false
+			return r
+		}
+
+		// Cache miss — render and store.
+		var r RenderResult
+		if ctx.componentStats != nil {
+			start := time.Now()
+			r = ch.Render(ctx)
+			elapsed := time.Since(start)
+			*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
+				Name:     componentName(ch),
+				RenderUs: elapsed.Microseconds(),
+				Lines:    len(r.Lines),
+			})
+		} else {
+			r = ch.Render(ctx)
+		}
+		r.Dirty = true // we rendered fresh content
+		cp.cache = &renderCache{result: r, width: ctx.Width}
+		cp.needsRender.Store(false)
+		return r
+	}
+
+	// No Compo — always render, always dirty.
+	var r RenderResult
+	if ctx.componentStats != nil {
+		start := time.Now()
+		r = ch.Render(ctx)
+		elapsed := time.Since(start)
+		*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
+			Name:     componentName(ch),
+			RenderUs: elapsed.Microseconds(),
+			Lines:    len(r.Lines),
+		})
+	} else {
+		r = ch.Render(ctx)
+	}
+	if !r.Dirty {
+		r.Dirty = true
+	}
+	return r
 }
 
 // Component is the interface all UI components must implement.
@@ -84,107 +204,78 @@ type Focusable interface {
 	SetFocused(focused bool)
 }
 
-// Container is a Component that holds child components and renders them
-// sequentially (vertical stack).
-//
-// Container caches each child's rendered lines. When a child returns
-// Dirty: false, the Container reuses its cached copy, avoiding any
-// string work for that child. This makes finalized (immutable) children
-// essentially free on subsequent renders.
-type Container struct {
-	Children []Component
+// ── Container ──────────────────────────────────────────────────────────────
 
-	// prevChildLines caches each child's rendered lines from the last
-	// render. Indexed by child pointer identity via prevChildMap.
-	prevChildMap map[Component][]string
-	prevWidth    int
+// Container is a Component that holds child components and renders them
+// sequentially (vertical stack). It embeds Compo, so parent containers
+// can cache entire subtrees when nothing changes.
+//
+// Container uses renderComponent for each child, so children with Compo
+// that haven't called Update() are skipped entirely.
+type Container struct {
+	Compo
+	Children  []Component
+	lineCount int
 }
 
 func (c *Container) AddChild(comp Component) {
 	c.Children = append(c.Children, comp)
+	if cp := compoOf(comp); cp != nil {
+		cp.parent = &c.Compo
+	}
+	c.Update()
 }
 
 func (c *Container) RemoveChild(comp Component) {
 	for i, ch := range c.Children {
 		if ch == comp {
 			c.Children = append(c.Children[:i], c.Children[i+1:]...)
-			delete(c.prevChildMap, comp)
+			if cp := compoOf(comp); cp != nil {
+				cp.parent = nil
+			}
+			c.Update()
 			return
 		}
 	}
 }
 
 func (c *Container) Clear() {
-	c.Children = nil
-	c.prevChildMap = nil
-}
-
-// LineCount returns the total number of cached lines across all children
-// from the most recent render. This is useful for positioning overlays
-// relative to content height without triggering a re-render.
-func (c *Container) LineCount() int {
-	n := 0
 	for _, ch := range c.Children {
-		if cached, ok := c.prevChildMap[ch]; ok {
-			n += len(cached)
+		if cp := compoOf(ch); cp != nil {
+			cp.parent = nil
 		}
 	}
-	return n
+	c.Children = nil
+	c.lineCount = 0
+	c.Update()
+}
+
+// LineCount returns the total number of lines produced by the most recent
+// render. This is useful for positioning overlays relative to content
+// height without triggering a re-render.
+func (c *Container) LineCount() int {
+	return c.lineCount
 }
 
 func (c *Container) Render(ctx RenderContext) RenderResult {
+	c.needsRender.Store(false) // clear own dirty; children are checked individually
 	var lines []string
 	var cursor *CursorPos
 	dirty := false
-	widthChanged := c.prevWidth != ctx.Width
-
-	newMap := make(map[Component][]string, len(c.Children))
-
 	for _, ch := range c.Children {
-		var r RenderResult
-		if ctx.componentStats != nil {
-			start := time.Now()
-			r = ch.Render(ctx)
-			elapsed := time.Since(start)
-			*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
-				Name:     componentName(ch),
-				RenderUs: elapsed.Microseconds(),
-				Lines:    len(r.Lines),
-				Dirty:    r.Dirty,
-			})
-		} else {
-			r = ch.Render(ctx)
-		}
+		r := renderComponent(ch, ctx)
 		if r.Cursor != nil {
 			cursor = &CursorPos{
 				Row: len(lines) + r.Cursor.Row,
 				Col: r.Cursor.Col,
 			}
 		}
-
-		childDirty := r.Dirty || widthChanged
-		if childDirty {
+		if r.Dirty {
 			dirty = true
-			newMap[ch] = r.Lines
-			lines = append(lines, r.Lines...)
-		} else {
-			// Child is clean. Reuse cached lines if available (same
-			// slice, no allocation). Fall back to the child's returned
-			// lines if this is the first render or the child is new.
-			cached, ok := c.prevChildMap[ch]
-			if ok {
-				newMap[ch] = cached
-				lines = append(lines, cached...)
-			} else {
-				newMap[ch] = r.Lines
-				lines = append(lines, r.Lines...)
-			}
 		}
+		lines = append(lines, r.Lines...)
 	}
-
-	c.prevChildMap = newMap
-	c.prevWidth = ctx.Width
-
+	c.lineCount = len(lines)
 	return RenderResult{
 		Lines:  lines,
 		Cursor: cursor,
@@ -192,23 +283,42 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 	}
 }
 
+// ── Slot ───────────────────────────────────────────────────────────────────
+
 // Slot is a component that delegates to a single replaceable child.
 // Use it to swap between components (e.g. text input vs spinner)
 // without modifying the parent container's child list.
 type Slot struct {
+	Compo
 	child Component
-	dirty bool
 }
 
 // NewSlot creates a Slot with the given initial child.
 func NewSlot(child Component) *Slot {
-	return &Slot{child: child, dirty: true}
+	s := &Slot{}
+	s.setChild(child)
+	s.needsRender.Store(true) // first render
+	return s
 }
 
 // Set replaces the current child.
 func (s *Slot) Set(c Component) {
+	s.setChild(c)
+	s.Update()
+}
+
+func (s *Slot) setChild(c Component) {
+	if s.child != nil {
+		if cp := compoOf(s.child); cp != nil {
+			cp.parent = nil
+		}
+	}
 	s.child = c
-	s.dirty = true
+	if c != nil {
+		if cp := compoOf(c); cp != nil {
+			cp.parent = &s.Compo
+		}
+	}
 }
 
 // Get returns the current child.
@@ -217,28 +327,9 @@ func (s *Slot) Get() Component {
 }
 
 func (s *Slot) Render(ctx RenderContext) RenderResult {
+	s.needsRender.Store(false) // clear own dirty; child is checked by renderComponent
 	if s.child == nil {
-		r := RenderResult{Dirty: s.dirty}
-		s.dirty = false
-		return r
+		return RenderResult{}
 	}
-	var r RenderResult
-	if ctx.componentStats != nil {
-		start := time.Now()
-		r = s.child.Render(ctx)
-		elapsed := time.Since(start)
-		*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
-			Name:     componentName(s.child),
-			RenderUs: elapsed.Microseconds(),
-			Lines:    len(r.Lines),
-			Dirty:    r.Dirty,
-		})
-	} else {
-		r = s.child.Render(ctx)
-	}
-	r.Dirty = r.Dirty || s.dirty
-	s.dirty = false
-	return r
+	return renderComponent(s.child, ctx)
 }
-
-

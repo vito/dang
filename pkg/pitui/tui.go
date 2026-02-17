@@ -146,10 +146,16 @@ func New(term Terminal) *TUI {
 // newTUI creates a TUI without starting the render loop. Used by tests
 // that call doRender synchronously.
 func newTUI(term Terminal) *TUI {
-	return &TUI{
+	t := &TUI{
 		terminal: term,
 		renderCh: make(chan struct{}, 1),
 	}
+	// Wire upward propagation: when any child calls Update(), the root
+	// Compo's requestRender triggers TUI.RequestRender.
+	t.Container.requestRender = func() {
+		t.RequestRender(false)
+	}
+	return t
 }
 
 // renderLoop processes render requests serially on a dedicated goroutine.
