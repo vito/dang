@@ -647,16 +647,16 @@ func (r *replComponent) showCompletionMenu() {
 			NoFocus:         true,
 		}
 	} else {
-		// Not enough room above: show below the input line using an
-		// absolute row. The content is output lines + 1 input line.
+		// Not enough room above: show below the input line.
+		// With little content there's no scrolling, so viewport rows
+		// match content rows and we can position without ContentRelative.
 		opts = &pitui.OverlayOptions{
-			Width:           pitui.SizeAbs(r.menuBoxWidth()),
-			MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2),
-			Anchor:          pitui.AnchorTopLeft,
-			ContentRelative: true,
-			Row:             pitui.SizeAbs(linesAbove + 1), // right below the input
-			OffsetX:         xOff,
-			NoFocus:         true,
+			Width:     pitui.SizeAbs(r.menuBoxWidth()),
+			MaxHeight: pitui.SizeAbs(r.menuMaxVisible + 2),
+			Anchor:    pitui.AnchorTopLeft,
+			Row:       pitui.SizeAbs(linesAbove + 1), // right below the input
+			OffsetX:   xOff,
+			NoFocus:   true,
 		}
 	}
 	if r.menuHandle != nil {

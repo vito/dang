@@ -618,22 +618,20 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 			continue
 		}
 		cr := e.options != nil && e.options.ContentRelative
-		anchorH := termH
-		clampH := termH
+		refH := termH
 		if cr {
-			anchorH = contentH
-			// clampH stays termH so overlays can extend below content
+			refH = contentH
 		}
 		// First pass: resolve width (height-independent).
-		w, _, _, _, _ := t.resolveOverlayLayout(e.options, 0, termW, anchorH, clampH)
+		w, _, _, _, _ := t.resolveOverlayLayout(e.options, 0, termW, refH)
 		oResult := e.component.Render(RenderContext{Width: w, Height: termH})
 		oLines := oResult.Lines
 		// Second pass: resolve placement with clamped height.
-		_, row, col, maxH, maxHSet := t.resolveOverlayLayout(e.options, len(oLines), termW, anchorH, clampH)
+		_, row, col, maxH, maxHSet := t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
 		if maxHSet && len(oLines) > maxH {
 			oLines = oLines[:maxH]
 			// Row may shift if we clamped height (e.g. bottom-anchored).
-			_, row, col, _, _ = t.resolveOverlayLayout(e.options, len(oLines), termW, anchorH, clampH)
+			_, row, col, _, _ = t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
 		}
 		items = append(items, rendered{
 			lines:           oLines,
