@@ -234,7 +234,7 @@ func TestContainerPropagatesCursor(t *testing.T) {
 	tui.AddChild(c2)
 	tui.stopped = false
 
-	result := tui.Container.Render(RenderContext{Width: 40})
+	result := tui.Render(RenderContext{Width: 40})
 	require.NotNil(t, result.Cursor)
 	// c2's row 0 is line 2 in the assembled output (after c1's 2 lines).
 	assert.Equal(t, 2, result.Cursor.Row)

@@ -78,9 +78,7 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 	if t.Suggestion != "" && t.cursor == len(t.value) {
 		hint := t.Suggestion
 		current := string(t.value)
-		if strings.HasPrefix(hint, current) {
-			hint = hint[len(current):]
-		}
+		hint = strings.TrimPrefix(hint, current)
 		if hint != "" {
 			if t.SuggestionStyle != nil {
 				buf.WriteString(t.SuggestionStyle(hint))
@@ -120,9 +118,9 @@ func (t *TextInput) HandleInput(data []byte) {
 		}
 	}()
 
-	switch {
+	switch s {
 	// Enter
-	case s == KeyEnter:
+	case KeyEnter:
 		if t.OnSubmit != nil {
 			val := strings.TrimSpace(string(t.value))
 			if t.OnSubmit(val) {
@@ -132,7 +130,7 @@ func (t *TextInput) HandleInput(data []byte) {
 		}
 
 	// Tab: accept suggestion or delegate
-	case s == KeyTab:
+	case KeyTab:
 		if savedSuggestion != "" {
 			t.SetValue(savedSuggestion)
 			return
@@ -142,7 +140,7 @@ func (t *TextInput) HandleInput(data []byte) {
 		}
 
 	// Right arrow: accept suggestion at end of input (fish-style), else move cursor
-	case s == KeyRight || s == KeyCtrlF:
+	case KeyRight, KeyCtrlF:
 		if savedSuggestion != "" && t.cursor == len(t.value) {
 			t.SetValue(savedSuggestion)
 			return
@@ -152,54 +150,54 @@ func (t *TextInput) HandleInput(data []byte) {
 		}
 
 	// Backspace
-	case s == KeyBackspace || s == KeyCtrlH:
+	case KeyBackspace, KeyCtrlH:
 		if t.cursor > 0 {
 			t.value = append(t.value[:t.cursor-1], t.value[t.cursor:]...)
 			t.cursor--
 		}
 
 	// Delete
-	case s == KeyDelete:
+	case KeyDelete:
 		if t.cursor < len(t.value) {
 			t.value = append(t.value[:t.cursor], t.value[t.cursor+1:]...)
 		}
 
 	// Cursor movement
-	case s == KeyLeft || s == KeyCtrlB:
+	case KeyLeft, KeyCtrlB:
 		if t.cursor > 0 {
 			t.cursor--
 		}
-	case s == KeyHome || s == KeyHome2 || s == KeyCtrlA:
+	case KeyHome, KeyHome2, KeyCtrlA:
 		t.cursor = 0
-	case s == KeyEnd || s == KeyEnd2 || s == KeyCtrlE:
+	case KeyEnd, KeyEnd2, KeyCtrlE:
 		t.cursor = len(t.value)
 
 	// Word movement
-	case s == KeyAltLeft || s == KeyCtrlLeft || s == KeyAltB:
+	case KeyAltLeft, KeyCtrlLeft, KeyAltB:
 		t.cursor = t.wordLeft()
-	case s == KeyAltRight || s == KeyCtrlRight || s == KeyAltF:
+	case KeyAltRight, KeyCtrlRight, KeyAltF:
 		t.cursor = t.wordRight()
 
 	// Kill line
-	case s == KeyCtrlU:
+	case KeyCtrlU:
 		t.value = t.value[t.cursor:]
 		t.cursor = 0
-	case s == KeyCtrlK:
+	case KeyCtrlK:
 		t.value = t.value[:t.cursor]
 
 	// Kill word backward (Ctrl+W)
-	case s == KeyCtrlW:
+	case KeyCtrlW:
 		start := t.wordLeft()
 		t.value = append(t.value[:start], t.value[t.cursor:]...)
 		t.cursor = start
 
 	// Kill word forward (Alt+D)
-	case s == KeyAltD:
+	case KeyAltD:
 		end := t.wordRight()
 		t.value = append(t.value[:t.cursor], t.value[end:]...)
 
 	// Transpose (Ctrl+T)
-	case s == KeyCtrlT:
+	case KeyCtrlT:
 		if t.cursor > 0 && t.cursor < len(t.value) {
 			t.value[t.cursor-1], t.value[t.cursor] = t.value[t.cursor], t.value[t.cursor-1]
 			t.cursor++

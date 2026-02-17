@@ -117,19 +117,6 @@ func isIdentByte(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
-func sortByCase(matches []string, prefix, partial string) []string {
-	var exact, other []string
-	for _, m := range matches {
-		suffix := strings.TrimPrefix(m, prefix)
-		if strings.HasPrefix(suffix, partial) {
-			exact = append(exact, m)
-		} else {
-			other = append(other, m)
-		}
-	}
-	return append(exact, other...)
-}
-
 func lastIdent(s string) string {
 	i := len(s) - 1
 	for i >= 0 && isIdentByte(s[i]) {

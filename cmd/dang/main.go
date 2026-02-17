@@ -58,7 +58,7 @@ It provides type-safe, composable abstractions for container operations.`,
 				if err != nil {
 					return fmt.Errorf("create CPU profile: %w", err)
 				}
-				defer f.Close()
+				defer f.Close() //nolint:errcheck
 				if err := pprof.StartCPUProfile(f); err != nil {
 					return fmt.Errorf("start CPU profile: %w", err)
 				}

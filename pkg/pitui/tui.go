@@ -331,7 +331,7 @@ func (t *TUI) doRender() {
 	t.mu.Unlock()
 
 	// Render all components.
-	baseResult := t.Container.Render(RenderContext{Width: width})
+	baseResult := t.Render(RenderContext{Width: width})
 	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
 

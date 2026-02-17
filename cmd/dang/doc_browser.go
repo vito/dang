@@ -20,7 +20,6 @@ type docColumn struct {
 	index        int       // selected index within visible() items
 	offset       int       // scroll offset (for item lists)
 	detailOffset int       // scroll offset (for detail panes)
-	detailLines  int       // total rendered detail lines
 	typeEnv      dang.Env  // the env this column lists members of (nil for detail)
 }
 

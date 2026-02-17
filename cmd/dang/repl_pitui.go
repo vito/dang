@@ -559,9 +559,7 @@ func (r *replComponent) startEvalPitui(expr string) {
 			}
 
 			if stdoutBuf.Len() > 0 {
-				for _, line := range strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n") {
-					logs = append(logs, line)
-				}
+				logs = append(logs, strings.Split(strings.TrimRight(stdoutBuf.String(), "\n"), "\n")...)
 				stdoutBuf.Reset()
 			}
 
@@ -1337,7 +1335,7 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, module
 	repl.install()
 
 	if daggerConn != nil {
-		defer daggerConn.Close()
+		defer daggerConn.Close() //nolint:errcheck
 	}
 
 	// Wait for quit signal or interrupt.

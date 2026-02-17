@@ -63,7 +63,6 @@ func splitDotExpr(text string) (dotIdx int, receiver, partial string) {
 
 	dotIdx = i
 	partial = text[dotIdx+1:]
-	receiver = text[:dotIdx]
 
 	// Walk back further to find the start of the receiver expression.
 	// Handle identifier chars, dots, and balanced parens/brackets for
