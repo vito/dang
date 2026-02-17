@@ -16,7 +16,7 @@ type Spinner struct {
 	start    time.Time
 	tui      *TUI
 	ticker   *time.Ticker
-	stopped  bool
+	done     chan struct{}
 }
 
 // NewSpinner creates a dot-style spinner.
@@ -31,23 +31,28 @@ func NewSpinner(tui *TUI) *Spinner {
 // Start begins the spinner animation.
 func (s *Spinner) Start() {
 	s.start = time.Now()
-	s.stopped = false
+	s.done = make(chan struct{})
 	s.ticker = time.NewTicker(s.interval)
 	go func() {
-		for range s.ticker.C {
-			if s.stopped {
+		for {
+			select {
+			case <-s.ticker.C:
+				s.tui.RequestRender(false)
+			case <-s.done:
 				return
 			}
-			s.tui.RequestRender(false)
 		}
 	}()
 }
 
 // Stop ends the spinner animation.
 func (s *Spinner) Stop() {
-	s.stopped = true
 	if s.ticker != nil {
 		s.ticker.Stop()
+	}
+	if s.done != nil {
+		close(s.done)
+		s.done = nil
 	}
 }
 
