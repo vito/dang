@@ -30,7 +30,7 @@ func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
 	return db
 }
 
-func (d *docBrowserOverlay) Invalidate() {}
+
 
 func (d *docBrowserOverlay) HandleInput(data []byte) {
 	s := string(data)

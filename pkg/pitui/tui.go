@@ -356,17 +356,6 @@ func (t *TUI) RequestRender(force bool) {
 	}
 }
 
-// Invalidate clears cached rendering state of all components (including
-// overlays).
-func (t *TUI) Invalidate() {
-	t.Container.Invalidate()
-	t.mu.Lock()
-	for _, o := range t.overlayStack {
-		o.component.Invalidate()
-	}
-	t.mu.Unlock()
-}
-
 // ---------- input handling --------------------------------------------------
 
 func (t *TUI) handleInput(data []byte) {

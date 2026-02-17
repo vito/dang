@@ -56,8 +56,6 @@ func (s *Spinner) Stop() {
 	}
 }
 
-func (s *Spinner) Invalidate() {}
-
 func (s *Spinner) Render(ctx RenderContext) RenderResult {
 	elapsed := time.Since(s.start)
 	idx := int(elapsed/s.interval) % len(s.frames)

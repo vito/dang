@@ -46,7 +46,6 @@ func NewTextInput(prompt string) *TextInput {
 }
 
 func (t *TextInput) SetFocused(focused bool) { t.focused = focused }
-func (t *TextInput) Invalidate()             {}
 
 // Value returns the current input string.
 func (t *TextInput) Value() string { return string(t.value) }
