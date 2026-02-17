@@ -23,98 +23,115 @@ import (
 // ── sync writer (streams dagger output into TUI) ────────────────────────────
 
 type pituiSyncWriter struct {
-	mu   sync.Mutex
-	repl *replComponent
+	mu     sync.Mutex
+	output *outputLog
+	tui    *pitui.TUI
 }
 
 func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	r := w.repl
+	o := w.output
+	t := w.tui
 	w.mu.Unlock()
-	if r != nil {
-		r.mu.Lock()
-		r.lastEntry().writeLog(string(p))
-		r.mu.Unlock()
-		r.output.markDirty()
-		r.tui.RequestRender(false)
+	if o != nil {
+		o.WriteString(string(p))
+		if t != nil {
+			t.RequestRender(false)
+		}
 	}
 	return len(p), nil
 }
 
-func (w *pituiSyncWriter) SetRepl(r *replComponent) {
+func (w *pituiSyncWriter) SetTarget(output *outputLog, tui *pitui.TUI) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.repl = r
+	w.output = output
+	w.tui = tui
 }
 
 // ── output log component ────────────────────────────────────────────────────
 
-// outputLog renders the structured entries list (past prompts, logs, results).
-// It caches rendered lines and only re-renders when marked dirty.
+// outputLog renders an append-only list of lines. The REPL pushes content
+// via WriteString and WriteLine; the component owns its data and needs no
+// external locking during render.
 type outputLog struct {
-	repl *replComponent
+	mu    sync.Mutex
+	lines []string // raw lines (may contain ANSI)
+	dirty bool
 
-	dirty       bool
-	cachedLines []string
+	cachedRendered []string
+	cachedWidth    int
 }
 
-func (o *outputLog) markDirty() { o.dirty = true }
+// WriteString appends raw text (may contain newlines) to the log.
+func (o *outputLog) WriteString(s string) {
+	if s == "" {
+		return
+	}
+	o.mu.Lock()
+	parts := strings.Split(s, "\n")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	o.lines = append(o.lines, parts...)
+	o.dirty = true
+	o.mu.Unlock()
+}
 
-func (o *outputLog) Invalidate() { o.dirty = true }
+// WriteLine appends a single line to the log.
+func (o *outputLog) WriteLine(line string) {
+	o.mu.Lock()
+	o.lines = append(o.lines, line)
+	o.dirty = true
+	o.mu.Unlock()
+}
+
+// Clear removes all content.
+func (o *outputLog) Clear() {
+	o.mu.Lock()
+	o.lines = nil
+	o.dirty = true
+	o.cachedRendered = nil
+	o.mu.Unlock()
+}
+
+func (o *outputLog) Invalidate() {
+	o.mu.Lock()
+	o.dirty = true
+	o.cachedRendered = nil
+	o.mu.Unlock()
+}
 
 func (o *outputLog) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	if !o.dirty && o.cachedLines != nil {
-		return pitui.RenderResult{Lines: o.cachedLines, Dirty: false}
+	o.mu.Lock()
+	dirty := o.dirty
+	if !dirty && o.cachedRendered != nil && o.cachedWidth == ctx.Width {
+		out := o.cachedRendered
+		o.mu.Unlock()
+		return pitui.RenderResult{Lines: out, Dirty: false}
 	}
 
-	type entrySnapshot struct {
-		input  string
-		logs   string
-		result string
-	}
-	o.repl.mu.Lock()
-	snaps := make([]entrySnapshot, len(o.repl.entries))
-	for i, e := range o.repl.entries {
-		snaps[i] = entrySnapshot{
-			input:  e.input,
-			logs:   e.logs.String(),
-			result: e.result.String(),
-		}
-	}
-	o.repl.mu.Unlock()
+	// Snapshot raw lines under lock, then release for processing.
+	raw := make([]string, len(o.lines))
+	copy(raw, o.lines)
+	o.mu.Unlock()
 
-	var lines []string
-	for _, snap := range snaps {
-		if snap.input != "" {
-			lines = append(lines, snap.input)
-		}
-		if snap.logs != "" {
-			logLines := strings.Split(snap.logs, "\n")
-			if len(logLines) > 0 && logLines[len(logLines)-1] == "" {
-				logLines = logLines[:len(logLines)-1]
-			}
-			lines = append(lines, logLines...)
-		}
-		if snap.result != "" {
-			resLines := strings.Split(snap.result, "\n")
-			if len(resLines) > 0 && resLines[len(resLines)-1] == "" {
-				resLines = resLines[:len(resLines)-1]
-			}
-			lines = append(lines, resLines...)
-		}
-	}
-	for i, line := range lines {
-		lines[i] = pitui.ExpandTabs(line, 8)
-	}
-	for i, line := range lines {
+	rendered := make([]string, len(raw))
+	for i, line := range raw {
+		line = pitui.ExpandTabs(line, 8)
 		if pitui.VisibleWidth(line) > ctx.Width {
-			lines[i] = pitui.Truncate(line, ctx.Width, "")
+			line = pitui.Truncate(line, ctx.Width, "")
 		}
+		rendered[i] = line
 	}
 
-	o.cachedLines = lines
+	o.mu.Lock()
+	o.cachedRendered = rendered
+	o.cachedWidth = ctx.Width
 	o.dirty = false
-	return pitui.RenderResult{Lines: lines, Dirty: true}
+	o.mu.Unlock()
+
+	return pitui.RenderResult{Lines: rendered, Dirty: true}
 }
 
 // ── spinner line component ──────────────────────────────────────────────────
@@ -251,8 +268,7 @@ type replComponent struct {
 	spinnerLine *evalSpinnerLine
 	inputSlot   *pitui.Slot // swaps between textInput and spinnerLine
 
-	entries []*replEntry
-	quit    chan struct{}
+	quit chan struct{}
 
 	// Completion
 	completions      []string
@@ -298,7 +314,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		historyFile:    "/tmp/dang_history",
 		quit:           make(chan struct{}),
 	}
-	r.output = &outputLog{repl: r, dirty: true}
+	r.output = &outputLog{dirty: true}
 
 	// Spinner
 	sp := pitui.NewSpinner(tui)
@@ -320,31 +336,22 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	ti.OnKey = r.onKey
 
 	// Welcome message.
-	welcome := newReplEntry("")
-	welcome.writeLogLine(welcomeStyle.Render("Welcome to Dang REPL v0.1.0"))
+	r.output.WriteLine(welcomeStyle.Render("Welcome to Dang REPL v0.1.0"))
 	if len(importConfigs) > 0 {
 		var names []string
 		for _, ic := range importConfigs {
 			names = append(names, ic.Name)
 		}
-		welcome.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
+		r.output.WriteLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
 	}
-	welcome.writeLogLine("")
-	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit"))
-	welcome.writeLogLine("")
-	r.entries = append(r.entries, welcome)
+	r.output.WriteLine("")
+	r.output.WriteLine(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit"))
+	r.output.WriteLine("")
 
 	r.completions = r.buildCompletionsPitui()
 	r.loadHistoryPitui()
 
 	return r
-}
-
-func (r *replComponent) lastEntry() *replEntry {
-	if len(r.entries) == 0 {
-		r.entries = append(r.entries, newReplEntry(""))
-	}
-	return r.entries[len(r.entries)-1]
 }
 
 // install adds the repl's components to the TUI.
@@ -362,12 +369,7 @@ func (r *replComponent) onSubmit(line string) bool {
 
 	r.addHistoryPitui(line)
 
-	r.mu.Lock()
-	r.entries = append(r.entries, newReplEntry(
-		promptStyle.Render("dang> ")+line,
-	))
-	r.mu.Unlock()
-	r.output.markDirty()
+	r.output.WriteLine(promptStyle.Render("dang> ") + line)
 
 	r.hideCompletionMenu()
 
@@ -464,10 +466,7 @@ func (r *replComponent) onKey(data []byte) bool {
 		}
 
 	case pitui.KeyCtrlL:
-		r.mu.Lock()
-		r.entries = nil
-		r.mu.Unlock()
-		r.output.markDirty()
+		r.output.Clear()
 		return true
 	}
 
@@ -481,13 +480,11 @@ func (r *replComponent) onKey(data []byte) bool {
 
 func (r *replComponent) startEvalPitui(expr string) {
 	r.mu.Lock()
-	e := r.lastEntry()
 
 	result, err := dang.Parse("repl", []byte(expr))
 	if err != nil {
-		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		r.mu.Unlock()
-		r.output.markDirty()
+		r.output.WriteLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		return
 	}
 
@@ -495,16 +492,15 @@ func (r *replComponent) startEvalPitui(expr string) {
 
 	if r.debug {
 		for _, node := range forms {
-			e.writeLogLine(dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(node))))
+			r.output.WriteLine(dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(node))))
 		}
 	}
 
 	fresh := hm.NewSimpleFresher()
 	_, err = dang.InferFormsWithPhases(r.ctx, forms, r.typeEnv, fresh)
 	if err != nil {
-		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		r.mu.Unlock()
-		r.output.markDirty()
+		r.output.WriteLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		return
 	}
 
@@ -572,27 +568,28 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	r.spinner.Stop()
 	removeListener()
 
+	if cancelled {
+		r.output.WriteLine(errorStyle.Render("cancelled"))
+	} else {
+		for _, line := range logs {
+			r.output.WriteLine(line)
+		}
+		for _, line := range results {
+			r.output.WriteLine(line)
+		}
+		r.mu.Lock()
+		r.refreshCompletionsPitui()
+		r.mu.Unlock()
+	}
+
 	r.mu.Lock()
 	r.evaluating = false
 	r.cancelEval = nil
-	e := r.lastEntry()
-	if cancelled {
-		e.writeLogLine(errorStyle.Render("cancelled"))
-	} else {
-		for _, line := range logs {
-			e.writeLogLine(line)
-		}
-		for _, line := range results {
-			e.writeResult(line)
-		}
-		r.refreshCompletionsPitui()
-	}
 	r.mu.Unlock()
 
 	// Swap spinner back to text input via the slot.
 	r.inputSlot.Set(r.textInput)
 	r.tui.SetFocus(r.textInput)
-	r.output.markDirty()
 	r.tui.RequestRender(false)
 }
 
@@ -849,14 +846,9 @@ func sortByCaseWithCompletions(matches []string, completions []dang.Completion, 
 // ── commands ────────────────────────────────────────────────────────────────
 
 func (r *replComponent) handleCommandPitui(cmdLine string) {
-	r.mu.Lock()
-	e := r.lastEntry()
-
 	parts := strings.Fields(cmdLine)
 	if len(parts) == 0 {
-		e.writeLogLine(errorStyle.Render("empty command"))
-		r.mu.Unlock()
-		r.output.markDirty()
+		r.output.WriteLine(errorStyle.Render("empty command"))
 		return
 	}
 
@@ -865,88 +857,90 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 
 	switch cmd {
 	case "help":
-		e.writeLogLine("Available commands:")
-		e.writeLogLine(dimStyle.Render("  :help      - Show this help"))
-		e.writeLogLine(dimStyle.Render("  :exit      - Exit the REPL"))
-		e.writeLogLine(dimStyle.Render("  :doc       - Interactive API browser"))
-		e.writeLogLine(dimStyle.Render("  :env       - Show environment bindings"))
-		e.writeLogLine(dimStyle.Render("  :type      - Show type of an expression"))
-		e.writeLogLine(dimStyle.Render("  :find      - Find functions/types by pattern"))
-		e.writeLogLine(dimStyle.Render("  :reset     - Reset the environment"))
-		e.writeLogLine(dimStyle.Render("  :clear     - Clear the screen"))
-		e.writeLogLine(dimStyle.Render("  :debug     - Toggle debug mode"))
-		e.writeLogLine(dimStyle.Render("  :version   - Show version info"))
-		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
-		e.writeLogLine("")
-		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
-		e.writeLogLine(dimStyle.Render("Tab for completion, Up/Down for history, Ctrl+L to clear."))
+		r.output.WriteLine("Available commands:")
+		r.output.WriteLine(dimStyle.Render("  :help      - Show this help"))
+		r.output.WriteLine(dimStyle.Render("  :exit      - Exit the REPL"))
+		r.output.WriteLine(dimStyle.Render("  :doc       - Interactive API browser"))
+		r.output.WriteLine(dimStyle.Render("  :env       - Show environment bindings"))
+		r.output.WriteLine(dimStyle.Render("  :type      - Show type of an expression"))
+		r.output.WriteLine(dimStyle.Render("  :find      - Find functions/types by pattern"))
+		r.output.WriteLine(dimStyle.Render("  :reset     - Reset the environment"))
+		r.output.WriteLine(dimStyle.Render("  :clear     - Clear the screen"))
+		r.output.WriteLine(dimStyle.Render("  :debug     - Toggle debug mode"))
+		r.output.WriteLine(dimStyle.Render("  :version   - Show version info"))
+		r.output.WriteLine(dimStyle.Render("  :quit      - Exit the REPL"))
+		r.output.WriteLine("")
+		r.output.WriteLine(dimStyle.Render("Type Dang expressions to evaluate them."))
+		r.output.WriteLine(dimStyle.Render("Tab for completion, Up/Down for history, Ctrl+L to clear."))
 
 	case "exit", "quit":
-		r.mu.Unlock()
 		close(r.quit)
 		return
 
 	case "clear":
-		r.entries = nil
+		r.output.Clear()
 
 	case "reset":
+		r.mu.Lock()
 		r.typeEnv, r.evalEnv = buildEnvFromImports(r.importConfigs)
 		r.refreshCompletionsPitui()
-		e.writeLogLine(resultStyle.Render("Environment reset."))
+		r.mu.Unlock()
+		r.output.WriteLine(resultStyle.Render("Environment reset."))
 
 	case "debug":
+		r.mu.Lock()
 		r.debug = !r.debug
 		status := "disabled"
 		if r.debug {
 			status = "enabled"
 		}
-		e.writeLogLine(resultStyle.Render(fmt.Sprintf("Debug mode %s.", status)))
+		r.mu.Unlock()
+		r.output.WriteLine(resultStyle.Render(fmt.Sprintf("Debug mode %s.", status)))
 
 	case "env":
-		r.envCommandPitui(e, args)
+		r.envCommandPitui(args)
 
 	case "version":
-		e.writeLogLine(resultStyle.Render("Dang REPL v0.1.0"))
-		if len(r.importConfigs) > 0 {
+		r.output.WriteLine(resultStyle.Render("Dang REPL v0.1.0"))
+		r.mu.Lock()
+		configs := r.importConfigs
+		r.mu.Unlock()
+		if len(configs) > 0 {
 			var names []string
-			for _, ic := range r.importConfigs {
+			for _, ic := range configs {
 				names = append(names, ic.Name)
 			}
-			e.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
+			r.output.WriteLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
 		} else {
-			e.writeLogLine(dimStyle.Render("No imports configured (create a dang.toml)"))
+			r.output.WriteLine(dimStyle.Render("No imports configured (create a dang.toml)"))
 		}
 
 	case "type":
-		r.typeCommandPitui(e, args)
+		r.typeCommandPitui(args)
 
 	case "find", "search":
-		r.findCommandPitui(e, args)
+		r.findCommandPitui(args)
 
 	case "history":
-		e.writeLogLine("Recent history:")
+		r.output.WriteLine("Recent history:")
 		start := 0
 		if len(r.history) > 20 {
 			start = len(r.history) - 20
 		}
 		for i := start; i < len(r.history); i++ {
-			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %d: %s", i+1, r.history[i])))
+			r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %d: %s", i+1, r.history[i])))
 		}
 
 	case "doc":
-		r.mu.Unlock()
-		r.output.markDirty()
 		r.showDocBrowser()
 		return
 
 	default:
-		e.writeLogLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
+		r.output.WriteLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
 	}
-	r.mu.Unlock()
-	r.output.markDirty()
 }
 
-func (r *replComponent) envCommandPitui(e *replEntry, args []string) {
+func (r *replComponent) envCommandPitui(args []string) {
 	filter := ""
 	showAll := false
 	if len(args) > 0 {
@@ -956,93 +950,105 @@ func (r *replComponent) envCommandPitui(e *replEntry, args []string) {
 			filter = args[0]
 		}
 	}
-	e.writeLogLine("Current environment bindings:")
-	e.writeLogLine("")
+	r.output.WriteLine("Current environment bindings:")
+	r.output.WriteLine("")
+	r.mu.Lock()
+	bindings := r.typeEnv.Bindings(dang.PublicVisibility)
+	r.mu.Unlock()
 	count := 0
-	for name, scheme := range r.typeEnv.Bindings(dang.PublicVisibility) {
+	for name, scheme := range bindings {
 		if filter != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
 			continue
 		}
 		if !showAll && count >= 20 {
-			e.writeLogLine(dimStyle.Render("  ... use ':env all' to see all"))
+			r.output.WriteLine(dimStyle.Render("  ... use ':env all' to see all"))
 			break
 		}
 		t, _ := scheme.Type()
 		if t != nil {
-			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
+			r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
 		} else {
-			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
+			r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 		}
 		count++
 	}
-	e.writeLogLine("")
-	e.writeLogLine(dimStyle.Render("Use ':doc' for interactive API browsing"))
+	r.output.WriteLine("")
+	r.output.WriteLine(dimStyle.Render("Use ':doc' for interactive API browsing"))
 }
 
-func (r *replComponent) typeCommandPitui(e *replEntry, args []string) {
+func (r *replComponent) typeCommandPitui(args []string) {
 	if len(args) == 0 {
-		e.writeLogLine(dimStyle.Render("Usage: :type <expression>"))
+		r.output.WriteLine(dimStyle.Render("Usage: :type <expression>"))
 		return
 	}
 	expr := strings.Join(args, " ")
 	result, err := dang.Parse("type-check", []byte(expr))
 	if err != nil {
-		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
+		r.output.WriteLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		return
 	}
 	node := result.(*dang.Block)
+	r.mu.Lock()
 	inferredType, err := dang.Infer(r.ctx, r.typeEnv, node, false)
+	r.mu.Unlock()
 	if err != nil {
-		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
+		r.output.WriteLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		return
 	}
-	e.writeLogLine(fmt.Sprintf("Expression: %s", expr))
-	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", inferredType)))
+	r.output.WriteLine(fmt.Sprintf("Expression: %s", expr))
+	r.output.WriteLine(resultStyle.Render(fmt.Sprintf("Type: %s", inferredType)))
 	trimmed := strings.TrimSpace(expr)
 	if !strings.Contains(trimmed, " ") {
-		if scheme, found := r.typeEnv.SchemeOf(trimmed); found {
+		r.mu.Lock()
+		scheme, found := r.typeEnv.SchemeOf(trimmed)
+		r.mu.Unlock()
+		if found {
 			if t, _ := scheme.Type(); t != nil {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", scheme)))
+				r.output.WriteLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", scheme)))
 			}
 		}
 	}
 }
 
-func (r *replComponent) findCommandPitui(e *replEntry, args []string) {
+func (r *replComponent) findCommandPitui(args []string) {
 	if len(args) == 0 {
-		e.writeLogLine(dimStyle.Render("Usage: :find <pattern>"))
+		r.output.WriteLine(dimStyle.Render("Usage: :find <pattern>"))
 		return
 	}
 	pattern := strings.ToLower(args[0])
-	e.writeLogLine(fmt.Sprintf("Searching for '%s'...", pattern))
+	r.output.WriteLine(fmt.Sprintf("Searching for '%s'...", pattern))
+	r.mu.Lock()
+	bindings := r.typeEnv.Bindings(dang.PublicVisibility)
+	namedTypes := r.typeEnv.NamedTypes()
+	r.mu.Unlock()
 	found := false
-	for name, scheme := range r.typeEnv.Bindings(dang.PublicVisibility) {
+	for name, scheme := range bindings {
 		if strings.Contains(strings.ToLower(name), pattern) {
 			t, _ := scheme.Type()
 			if t != nil {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
+				r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %s : %s", name, t)))
 			} else {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
+				r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 			}
 			found = true
 		}
 	}
-	for name, env := range r.typeEnv.NamedTypes() {
+	for name, env := range namedTypes {
 		if strings.Contains(strings.ToLower(name), pattern) {
 			doc := env.GetModuleDocString()
 			if doc != "" {
 				if len(doc) > 60 {
 					doc = doc[:57] + "..."
 				}
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s - %s", name, doc)))
+				r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %s - %s", name, doc)))
 			} else {
-				e.writeLogLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
+				r.output.WriteLine(dimStyle.Render(fmt.Sprintf("  %s", name)))
 			}
 			found = true
 		}
 	}
 	if !found {
-		e.writeLogLine(dimStyle.Render(fmt.Sprintf("No matches found for '%s'", pattern)))
+		r.output.WriteLine(dimStyle.Render(fmt.Sprintf("No matches found for '%s'", pattern)))
 	}
 }
 
@@ -1145,7 +1151,7 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, debug 
 	tui.SetShowHardwareCursor(true)
 
 	repl := newReplComponent(ctx, tui, importConfigs, debug)
-	daggerLog.SetRepl(repl)
+	daggerLog.SetTarget(repl.output, tui)
 	repl.install()
 
 	if err := tui.Start(); err != nil {

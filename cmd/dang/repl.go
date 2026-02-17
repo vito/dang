@@ -10,33 +10,6 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-// replEntry groups an input line with its associated output. There are
-// three regions rendered in order:
-//
-//	input  — the echoed prompt line
-//	logs   — streaming raw output (Dagger progress dots, print(), etc.)
-//	result — the final "=> value" line(s), always rendered last
-//
-// Late-arriving log chunks update the logs section while the result
-// stays anchored at the bottom.
-type replEntry struct {
-	input  string          // echoed prompt line ("" for system/welcome messages)
-	logs   *strings.Builder // raw streaming output (no per-chunk styling)
-	result *strings.Builder // final result lines
-}
-
-func newReplEntry(input string) *replEntry {
-	return &replEntry{
-		input:  input,
-		logs:   &strings.Builder{},
-		result: &strings.Builder{},
-	}
-}
-
-func (e *replEntry) writeLog(s string)     { e.logs.WriteString(s) }
-func (e *replEntry) writeLogLine(s string)  { e.logs.WriteString(s); e.logs.WriteByte('\n') }
-func (e *replEntry) writeResult(s string)   { e.result.WriteString(s); e.result.WriteByte('\n') }
-
 // Styles (shared between REPL and doc browser)
 var (
 	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
