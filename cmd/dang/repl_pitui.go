@@ -293,6 +293,10 @@ type replComponent struct {
 	// Doc browser
 	docBrowser *docBrowserOverlay
 	docHandle  *pitui.OverlayHandle
+
+	// Render debug
+	debugRender     bool
+	debugRenderFile *os.File
 }
 
 func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.ImportConfig, debug bool) *replComponent {
@@ -352,6 +356,16 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 
 	r.completions = r.buildCompletionsPitui()
 	r.loadHistoryPitui()
+
+	// Auto-enable render debug via environment variable.
+	if os.Getenv("DANG_DEBUG_RENDER") != "" {
+		logPath := "/tmp/dang_render_debug.log"
+		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+			r.debugRender = true
+			r.debugRenderFile = f
+			tui.SetDebugWriter(f)
+		}
+	}
 
 	return r
 }
@@ -1011,6 +1025,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 		e.writeLogLine(dimStyle.Render("  :reset     - Reset the environment"))
 		e.writeLogLine(dimStyle.Render("  :clear     - Clear the screen"))
 		e.writeLogLine(dimStyle.Render("  :debug     - Toggle debug mode"))
+		e.writeLogLine(dimStyle.Render("  :debug-render - Toggle render performance logging"))
 		e.writeLogLine(dimStyle.Render("  :version   - Show version info"))
 		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
 		e.writeLogLine("")
@@ -1037,6 +1052,29 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 			status = "enabled"
 		}
 		e.writeLogLine(resultStyle.Render(fmt.Sprintf("Debug mode %s.", status)))
+
+	case "debug-render":
+		r.debugRender = !r.debugRender
+		if r.debugRender {
+			logPath := "/tmp/dang_render_debug.log"
+			f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			if err != nil {
+				e.writeLogLine(errorStyle.Render(fmt.Sprintf("failed to open debug log: %v", err)))
+				r.debugRender = false
+			} else {
+				r.debugRenderFile = f
+				r.tui.SetDebugWriter(f)
+				e.writeLogLine(resultStyle.Render(fmt.Sprintf("Render debug enabled. Logging to %s", logPath)))
+				e.writeLogLine(dimStyle.Render("  Use 'tail -f " + logPath + "' in another terminal to watch."))
+			}
+		} else {
+			r.tui.SetDebugWriter(nil)
+			if r.debugRenderFile != nil {
+				r.debugRenderFile.Close()
+				r.debugRenderFile = nil
+			}
+			e.writeLogLine(resultStyle.Render("Render debug disabled."))
+		}
 
 	case "env":
 		r.envCommandPitui(e, args)
@@ -1349,6 +1387,9 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, module
 	}
 
 	signal.Stop(sigCh)
+	if repl.debugRenderFile != nil {
+		repl.debugRenderFile.Close()
+	}
 	tui.Stop()
 	fmt.Println("Goodbye!")
 	return nil
