@@ -69,6 +69,5 @@ func (s *Spinner) Render(ctx RenderContext) RenderResult {
 	}
 	return RenderResult{
 		Lines: []string{line},
-		Dirty: true, // always dirty (animating)
 	}
 }

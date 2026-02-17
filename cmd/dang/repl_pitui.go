@@ -37,7 +37,6 @@ func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 		if ev != nil {
 			ev.mu.Lock()
 			ev.entry.writeLog(string(p))
-			ev.dirty = true
 			ev.mu.Unlock()
 			r.tui.RequestRender(false)
 		}
@@ -54,36 +53,28 @@ func (w *pituiSyncWriter) SetRepl(r *replComponent) {
 // ── entry view component ────────────────────────────────────────────────────
 
 // entryView wraps a single replEntry as a pitui.Component. It caches its
-// rendered lines and reports Dirty: false when finalized (result written,
-// eval done). Finalized entries never re-render, making the cost of 200+
-// past entries O(1) per render cycle.
+// rendered lines internally. Once finalized (result written, eval done),
+// Render returns the cached slice immediately without rebuilding, making
+// the cost of 200+ past entries trivial. The framework's line-level
+// string diff handles change detection — no dirty flags needed.
 type entryView struct {
 	mu sync.Mutex
 
 	entry     *replEntry
-	dirty     bool
 	finalized bool
 	cached    []string
 }
 
 func newEntryView(entry *replEntry) *entryView {
-	return &entryView{entry: entry, dirty: true}
+	return &entryView{entry: entry}
 }
 
 // finalize marks this entry as immutable. After this call, Render always
-// returns cached lines with Dirty: false.
+// returns the cached slice without rebuilding.
 func (ev *entryView) finalize() {
 	ev.mu.Lock()
 	ev.finalized = true
-	ev.dirty = true // force one last render to pick up final content
-	ev.mu.Unlock()
-}
-
-// markDirty signals that the entry's content has changed (e.g. new log
-// output arrived).
-func (ev *entryView) markDirty() {
-	ev.mu.Lock()
-	ev.dirty = true
+	ev.cached = nil // force rebuild on next render to pick up final content
 	ev.mu.Unlock()
 }
 
@@ -91,8 +82,8 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	ev.mu.Lock()
 	defer ev.mu.Unlock()
 
-	if !ev.dirty && ev.cached != nil {
-		return pitui.RenderResult{Lines: ev.cached, Dirty: false}
+	if ev.cached != nil && ev.finalized {
+		return pitui.RenderResult{Lines: ev.cached}
 	}
 
 	// Snapshot entry data.
@@ -128,8 +119,7 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	}
 
 	ev.cached = lines
-	ev.dirty = false
-	return pitui.RenderResult{Lines: lines, Dirty: true}
+	return pitui.RenderResult{Lines: lines}
 }
 
 // ── spinner line component ──────────────────────────────────────────────────
@@ -152,10 +142,10 @@ type completionOverlay struct {
 
 func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if len(c.items) == 0 {
-		return pitui.RenderResult{Dirty: true}
+		return pitui.RenderResult{}
 	}
 	lines := strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width), "\n")
-	return pitui.RenderResult{Lines: lines, Dirty: true}
+	return pitui.RenderResult{Lines: lines}
 }
 
 // renderMenuBox renders the completion dropdown as a bordered box string.
@@ -216,7 +206,7 @@ type detailBubble struct {
 
 func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if d.item.name == "" {
-		return pitui.RenderResult{Dirty: true}
+		return pitui.RenderResult{}
 	}
 
 	// lipgloss Width(n) sets the TOTAL width including borders, so the
@@ -250,7 +240,6 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	box := detailBorderStyle.Width(ctx.Width).Render(inner)
 	return pitui.RenderResult{
 		Lines: strings.Split(box, "\n"),
-		Dirty: true,
 	}
 }
 
@@ -533,7 +522,6 @@ func (r *replComponent) startEvalPitui(expr string) {
 	if err != nil {
 		ev.mu.Lock()
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
-		ev.dirty = true
 		ev.mu.Unlock()
 		ev.finalize()
 		r.mu.Unlock()
@@ -547,7 +535,6 @@ func (r *replComponent) startEvalPitui(expr string) {
 		for _, node := range forms {
 			ev.entry.writeLogLine(dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(node))))
 		}
-		ev.dirty = true
 		ev.mu.Unlock()
 	}
 
@@ -556,7 +543,6 @@ func (r *replComponent) startEvalPitui(expr string) {
 	if err != nil {
 		ev.mu.Lock()
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
-		ev.dirty = true
 		ev.mu.Unlock()
 		ev.finalize()
 		r.mu.Unlock()
@@ -641,7 +627,6 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 				ev.entry.writeResult(line)
 			}
 		}
-		ev.dirty = true
 		ev.mu.Unlock()
 		ev.finalize()
 	}
@@ -1042,7 +1027,6 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 	parts := strings.Fields(cmdLine)
 	if len(parts) == 0 {
 		e.writeLogLine(errorStyle.Render("empty command"))
-		ev.dirty = true
 		ev.mu.Unlock()
 		ev.finalize()
 		r.mu.Unlock()
@@ -1151,7 +1135,6 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 		}
 
 	case "doc":
-		ev.dirty = true
 		ev.mu.Unlock()
 		ev.finalize()
 		r.mu.Unlock()
@@ -1161,7 +1144,6 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 	default:
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
 	}
-	ev.dirty = true
 	ev.mu.Unlock()
 	ev.finalize()
 	r.mu.Unlock()
