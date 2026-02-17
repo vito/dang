@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pitui render debug</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #d29922;
+    --red: #f85149;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .subtitle { color: var(--dim); font-size: 13px; margin-bottom: 16px; }
+  .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .status.connected { background: var(--green); }
+  .status.disconnected { background: var(--red); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .card h2 { font-size: 13px; font-weight: 500; color: var(--dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .card canvas { width: 100% !important; height: 180px !important; }
+
+  .stats-bar {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    min-width: 120px;
+  }
+  .stat .label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .unit { font-size: 12px; color: var(--dim); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .controls label { font-size: 13px; color: var(--dim); }
+  .controls select, .controls input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+  .controls button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1><span class="status disconnected" id="statusDot"></span>pitui render debug</h1>
+<p class="subtitle" id="subtitle">Connecting...</p>
+
+<div class="stats-bar">
+  <div class="stat"><div class="label">Total Frames</div><div class="value" id="totalFrames">0</div></div>
+  <div class="stat"><div class="label">Avg Total</div><div class="value" id="avgTotal">-</div><span class="unit">µs</span></div>
+  <div class="stat"><div class="label">P99 Total</div><div class="value" id="p99Total">-</div><span class="unit">µs</span></div>
+  <div class="stat"><div class="label">Full Redraws</div><div class="value" id="fullRedraws">0</div></div>
+  <div class="stat"><div class="label">Cache Hit Rate</div><div class="value" id="cacheRate">-</div><span class="unit">%</span></div>
+  <div class="stat"><div class="label">Avg Lines</div><div class="value" id="avgLines">-</div></div>
+</div>
+
+<div class="controls">
+  <label>Window:</label>
+  <select id="windowSize">
+    <option value="200">200 frames</option>
+    <option value="500" selected>500 frames</option>
+    <option value="1000">1000 frames</option>
+    <option value="5000">5000 frames</option>
+  </select>
+  <label><input type="checkbox" id="showFullRedraws" checked> Mark full redraws</label>
+  <button id="clearBtn">Clear</button>
+  <label><input type="checkbox" id="pauseBtn"> Pause</label>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>Frame Duration (µs)</h2>
+    <canvas id="timingChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Duration Breakdown (µs)</h2>
+    <canvas id="breakdownChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Lines: Total / Repainted / Cached</h2>
+    <canvas id="linesChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Cache Hit Rate (%)</h2>
+    <canvas id="cacheChart"></canvas>
+  </div>
+</div>
+
+<script>
+// ── Data store ──────────────────────────────────────────────────────────────
+const allData = [];
+let paused = false;
+
+// ── Chart.js defaults ──────────────────────────────────────────────────────
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#30363d';
+Chart.defaults.font.size = 11;
+Chart.defaults.animation = false;
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 3;
+Chart.defaults.elements.line.borderWidth = 1.5;
+
+const commonScales = {
+  x: {
+    display: false,
+  },
+  y: {
+    beginAtZero: true,
+    grid: { color: '#21262d' },
+  }
+};
+
+function makeChart(id, datasets, opts = {}) {
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels: [], datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: datasets.length > 1, position: 'top', labels: { boxWidth: 10, padding: 8 } },
+        tooltip: { enabled: true },
+      },
+      scales: { ...commonScales, ...opts.scales },
+    },
+  });
+}
+
+// ── Charts ─────────────────────────────────────────────────────────────────
+const timingChart = makeChart('timingChart', [
+  { label: 'Total', borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)', fill: true, data: [] },
+]);
+
+const breakdownChart = makeChart('breakdownChart', [
+  { label: 'Render', borderColor: '#3fb950', data: [] },
+  { label: 'Diff', borderColor: '#d29922', data: [] },
+  { label: 'Write', borderColor: '#f85149', data: [] },
+]);
+
+const linesChart = makeChart('linesChart', [
+  { label: 'Total', borderColor: '#58a6ff', data: [] },
+  { label: 'Repainted', borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', fill: true, data: [] },
+  { label: 'Cached', borderColor: '#3fb950', data: [] },
+]);
+
+const cacheChart = makeChart('cacheChart', [
+  { label: 'Hit Rate', borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.1)', fill: true, data: [] },
+], {
+  scales: { y: { beginAtZero: true, max: 100, grid: { color: '#21262d' } } }
+});
+
+const charts = [timingChart, breakdownChart, linesChart, cacheChart];
+
+// ── Update logic ───────────────────────────────────────────────────────────
+function getWindow() {
+  return parseInt(document.getElementById('windowSize').value);
+}
+
+function updateStats() {
+  const n = allData.length;
+  document.getElementById('totalFrames').textContent = n;
+  if (n === 0) return;
+
+  const totals = allData.map(d => d.total_us);
+  const avg = (totals.reduce((a, b) => a + b, 0) / n) | 0;
+  document.getElementById('avgTotal').textContent = avg;
+
+  const sorted = [...totals].sort((a, b) => a - b);
+  const p99 = sorted[Math.floor(n * 0.99)] || sorted[n - 1];
+  document.getElementById('p99Total').textContent = p99;
+
+  const fullCount = allData.filter(d => d.full_redraw).length;
+  document.getElementById('fullRedraws').textContent = fullCount;
+
+  let totalLines = 0, totalCached = 0;
+  for (const d of allData) {
+    totalLines += d.total_lines;
+    totalCached += d.cache_hits;
+  }
+  const rate = totalLines > 0 ? ((totalCached / totalLines) * 100).toFixed(1) : '-';
+  document.getElementById('cacheRate').textContent = rate;
+
+  const avgL = (allData.reduce((a, d) => a + d.total_lines, 0) / n).toFixed(0);
+  document.getElementById('avgLines').textContent = avgL;
+}
+
+function updateCharts() {
+  const win = getWindow();
+  const slice = allData.slice(-win);
+  const labels = slice.map((_, i) => i);
+  const showFull = document.getElementById('showFullRedraws').checked;
+
+  // Timing chart
+  timingChart.data.labels = labels;
+  timingChart.data.datasets[0].data = slice.map(d => d.total_us);
+  if (showFull) {
+    timingChart.data.datasets[0].pointRadius = slice.map(d => d.full_redraw ? 3 : 0);
+    timingChart.data.datasets[0].pointBackgroundColor = slice.map(d => d.full_redraw ? '#f85149' : 'transparent');
+  } else {
+    timingChart.data.datasets[0].pointRadius = 0;
+  }
+
+  // Breakdown chart
+  breakdownChart.data.labels = labels;
+  breakdownChart.data.datasets[0].data = slice.map(d => d.render_us);
+  breakdownChart.data.datasets[1].data = slice.map(d => d.diff_us);
+  breakdownChart.data.datasets[2].data = slice.map(d => d.write_us);
+
+  // Lines chart
+  linesChart.data.labels = labels;
+  linesChart.data.datasets[0].data = slice.map(d => d.total_lines);
+  linesChart.data.datasets[1].data = slice.map(d => d.lines_repainted);
+  linesChart.data.datasets[2].data = slice.map(d => d.cache_hits);
+
+  // Cache chart
+  cacheChart.data.labels = labels;
+  cacheChart.data.datasets[0].data = slice.map(d => {
+    const total = d.total_lines;
+    return total > 0 ? ((d.cache_hits / total) * 100).toFixed(1) : 100;
+  });
+
+  for (const c of charts) c.update();
+}
+
+// Batch updates to avoid hammering the DOM.
+let updatePending = false;
+function scheduleUpdate() {
+  if (updatePending) return;
+  updatePending = true;
+  requestAnimationFrame(() => {
+    updatePending = false;
+    if (!paused) {
+      updateStats();
+      updateCharts();
+    }
+  });
+}
+
+// ── SSE connection ─────────────────────────────────────────────────────────
+function connect() {
+  const dot = document.getElementById('statusDot');
+  const sub = document.getElementById('subtitle');
+
+  const es = new EventSource('/events');
+
+  es.onopen = () => {
+    dot.className = 'status connected';
+    sub.textContent = 'Connected — streaming render stats';
+  };
+
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      allData.push(d);
+      scheduleUpdate();
+    } catch (err) {
+      // skip malformed
+    }
+  };
+
+  es.onerror = () => {
+    dot.className = 'status disconnected';
+    sub.textContent = 'Disconnected — retrying...';
+    es.close();
+    setTimeout(connect, 2000);
+  };
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────
+document.getElementById('windowSize').addEventListener('change', () => {
+  updateCharts();
+});
+
+document.getElementById('showFullRedraws').addEventListener('change', () => {
+  updateCharts();
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  allData.length = 0;
+  updateStats();
+  updateCharts();
+});
+
+document.getElementById('pauseBtn').addEventListener('change', (e) => {
+  paused = e.target.checked;
+  if (!paused) {
+    updateStats();
+    updateCharts();
+  }
+});
+
+// ── Go ─────────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

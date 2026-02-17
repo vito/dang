@@ -95,8 +95,9 @@ It provides type-safe, composable abstractions for container operations.`,
 	rootCmd.Flags().StringVar(&cfg.LSPLogFile, "lsp-log-file", "", "Path to LSP log file (stderr if not specified)")
 	rootCmd.Flags().StringVar(&cfg.CPUProfile, "cpuprofile", "", "Write CPU profile to file")
 
-	// Add fmt subcommand
+	// Add subcommands
 	rootCmd.AddCommand(fmtCmd())
+	rootCmd.AddCommand(renderDebugCmd())
 
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
