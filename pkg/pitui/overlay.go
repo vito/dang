@@ -178,7 +178,13 @@ func (t *TUI) restoreFocusFromOverlayLocked(entry *overlayEntry) {
 
 // resolveOverlayLayout determines the width, row, col, and maxHeight for an
 // overlay given its options and the current terminal dimensions.
-func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, termH int) (width, row, col int, maxH int, maxHSet bool) {
+//
+// anchorH is used for anchor calculations (e.g. AnchorBottomLeft uses it to
+// determine where "bottom" is). clampH is the maximum height for row clamping
+// (prevents the overlay from going off-screen). For viewport-relative overlays
+// both are termH. For content-relative overlays, anchorH is contentH while
+// clampH is termH so the overlay can extend below the content.
+func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, anchorH, clampH int) (width, row, col int, maxH int, maxHSet bool) {
 	if opts == nil {
 		opts = &OverlayOptions{}
 	}
@@ -189,7 +195,8 @@ func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, t
 	mLeft := max(0, opts.Margin.Left)
 
 	availW := max(1, termW-mLeft-mRight)
-	availH := max(1, termH-mTop-mBottom)
+	anchorAvailH := max(1, anchorH-mTop-mBottom)
+	clampAvailH := max(1, clampH-mTop-mBottom)
 
 	// Width.
 	if w, ok := opts.Width.resolve(termW); ok {
@@ -203,8 +210,8 @@ func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, t
 	width = clamp(width, 1, availW)
 
 	// MaxHeight.
-	if mh, ok := opts.MaxHeight.resolve(termH); ok {
-		maxH = clamp(mh, 1, availH)
+	if mh, ok := opts.MaxHeight.resolve(clampH); ok {
+		maxH = clamp(mh, 1, clampAvailH)
 		maxHSet = true
 	}
 
@@ -216,13 +223,13 @@ func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, t
 	// Row.
 	if opts.Row.isSet {
 		if opts.Row.isPct {
-			maxRow := max(0, availH-effectiveH)
+			maxRow := max(0, anchorAvailH-effectiveH)
 			row = mTop + int(float64(maxRow)*opts.Row.pct/100)
 		} else {
 			row = opts.Row.abs
 		}
 	} else {
-		row = anchorRow(opts.Anchor, effectiveH, availH, mTop)
+		row = anchorRow(opts.Anchor, effectiveH, anchorAvailH, mTop)
 	}
 
 	// Col.
@@ -240,8 +247,10 @@ func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, t
 	row += opts.OffsetY
 	col += opts.OffsetX
 
-	// Clamp to terminal bounds.
-	row = clamp(row, mTop, termH-mBottom-effectiveH)
+	// Clamp to bounds. Anchoring uses content height but clamping uses
+	// the (potentially larger) clamp height so overlays can extend past
+	// the content.
+	row = clamp(row, mTop, clampH-mBottom-effectiveH)
 	col = clamp(col, mLeft, termW-mRight-width)
 
 	return
