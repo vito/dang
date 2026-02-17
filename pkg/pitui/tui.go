@@ -233,6 +233,8 @@ func (t *TUI) Stop() {
 		t.terminal.WriteString("\r\n")
 	}
 
+	// Ensure cursor is at column 0 for clean shell handoff.
+	t.terminal.WriteString("\r")
 	t.terminal.ShowCursor()
 	t.terminal.Stop()
 	close(t.renderCh)
