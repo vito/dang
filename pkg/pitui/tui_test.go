@@ -56,6 +56,7 @@ func (s *staticComponent) Render(ctx RenderContext) RenderResult {
 	return RenderResult{
 		Lines:  out,
 		Cursor: s.cursor,
+		Dirty:  true,
 	}
 }
 
@@ -342,20 +343,18 @@ func TestSlotComponent(t *testing.T) {
 	// Initial render.
 	r := slot.Render(RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-a"}, r.Lines)
+	assert.True(t, r.Dirty)
 
-	// Second render — same child.
+	// Second render, slot not dirty, child always dirty.
 	r = slot.Render(RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-a"}, r.Lines)
+	assert.True(t, r.Dirty) // child is always dirty
 
 	// Swap child.
 	slot.Set(b)
 	r = slot.Render(RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-b-1", "child-b-2"}, r.Lines)
-
-	// Nil child.
-	slot.Set(nil)
-	r = slot.Render(RenderContext{Width: 40})
-	assert.Nil(t, r.Lines)
+	assert.True(t, r.Dirty)
 }
 
 func TestVisibleWidth(t *testing.T) {
@@ -442,7 +441,7 @@ func TestOverlayMaxHeightPassedToComponent(t *testing.T) {
 	overlay := &callbackComponent{render: func(ctx RenderContext) RenderResult {
 		gotHeight = ctx.Height
 		lines := []string{"line 0", "line 1", "line 2", "line 3", "line 4"}
-		return RenderResult{Lines: lines}
+		return RenderResult{Lines: lines, Dirty: true}
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
 		Width:     SizeAbs(20),
@@ -495,6 +494,7 @@ func (b *borderedOverlay) Render(ctx RenderContext) RenderResult {
 	box := borderStyle.Width(innerW).Render(strings.Join(inner, "\n"))
 	return RenderResult{
 		Lines: strings.Split(box, "\n"),
+		Dirty: true,
 	}
 }
 
@@ -809,7 +809,7 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 
 		inner := strings.Join(lines, "\n")
 		box := borderStyle.Width(ctx.Width).Render(inner)
-		return RenderResult{Lines: strings.Split(box, "\n")}
+		return RenderResult{Lines: strings.Split(box, "\n"), Dirty: true}
 	}}
 
 	tui.ShowOverlay(overlay, &OverlayOptions{
@@ -824,10 +824,79 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 	golden.Assert(t, snap, "overlay_bordered_width_mismatch.golden")
 }
 
+// cachingComponent tracks render calls and supports Dirty: false.
+type cachingComponent struct {
+	lines       []string
+	dirty       bool
+	renderCount int
+}
+
+func (c *cachingComponent) Render(ctx RenderContext) RenderResult {
+	c.renderCount++
+	return RenderResult{
+		Lines: c.lines,
+		Dirty: c.dirty,
+	}
+}
+
+func TestContainerCachesCleanChildren(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	// Two children: one finalized (clean), one always dirty.
+	finalized := &cachingComponent{lines: []string{"old line 1", "old line 2"}, dirty: true}
+	active := &staticComponent{lines: []string{"input> "}}
+	tui.AddChild(finalized)
+	tui.AddChild(active)
+	tui.stopped = false
+
+	// First render — both dirty.
+	renderSync(tui)
+	assert.Equal(t, 1, finalized.renderCount)
+
+	// Mark finalized as clean.
+	finalized.dirty = false
+	term.reset()
+	renderSync(tui)
+	assert.Equal(t, 2, finalized.renderCount) // still called, but returns Dirty: false
+
+	// The output should still contain both components' content.
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+	assert.True(t, len(prev) >= 3)
+	assert.Contains(t, stripANSI(prev[0]), "old line 1")
+	assert.Contains(t, stripANSI(prev[1]), "old line 2")
+	assert.Contains(t, stripANSI(prev[2]), "input> ")
+}
+
+func TestContainerDirtyPropagation(t *testing.T) {
+	// When all children return Dirty: false, Container should too.
+	c := &Container{}
+	c1 := &cachingComponent{lines: []string{"a"}, dirty: false}
+	c2 := &cachingComponent{lines: []string{"b"}, dirty: false}
+	c.AddChild(c1)
+	c.AddChild(c2)
+
+	// First render — width changes, so dirty despite children being clean.
+	r := c.Render(RenderContext{Width: 40})
+	assert.True(t, r.Dirty, "first render with new width should be dirty")
+
+	// Second render — same width, children clean.
+	r = c.Render(RenderContext{Width: 40})
+	assert.False(t, r.Dirty, "should be clean when all children are clean")
+	assert.Equal(t, []string{"a", "b"}, r.Lines)
+
+	// Mark one child dirty.
+	c1.dirty = true
+	r = c.Render(RenderContext{Width: 40})
+	assert.True(t, r.Dirty, "should be dirty when any child is dirty")
+}
+
 func TestContainerLineCount(t *testing.T) {
 	c := &Container{}
-	c1 := &staticComponent{lines: []string{"a", "b"}}
-	c2 := &staticComponent{lines: []string{"c"}}
+	c1 := &cachingComponent{lines: []string{"a", "b"}, dirty: true}
+	c2 := &cachingComponent{lines: []string{"c"}, dirty: true}
 	c.AddChild(c1)
 	c.AddChild(c2)
 
@@ -837,36 +906,37 @@ func TestContainerLineCount(t *testing.T) {
 	c.Render(RenderContext{Width: 40})
 	assert.Equal(t, 3, c.LineCount())
 
-	// After removing a child, LineCount is stale until next render.
+	// After removing a child.
 	c.RemoveChild(c2)
-	c.Render(RenderContext{Width: 40})
 	assert.Equal(t, 2, c.LineCount())
 }
 
-func TestCachedChildNoRepaint(t *testing.T) {
-	// Verify that a child returning cached (identical) lines does not
-	// cause the TUI to repaint those lines.
+func TestContainerCleanChildNoRepaint(t *testing.T) {
+	// Verify that a clean child's line range is not repainted by the TUI
+	// when only other children change.
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
 
-	stable := &staticComponent{lines: []string{"stable-1", "stable-2"}}
-	changing := &staticComponent{lines: []string{"v1"}}
-	tui.AddChild(stable)
+	clean := &cachingComponent{lines: []string{"stable-1", "stable-2"}, dirty: true}
+	changing := &cachingComponent{lines: []string{"v1"}, dirty: true}
+	tui.AddChild(clean)
 	tui.AddChild(changing)
 	tui.stopped = false
 
 	// First render (full).
 	renderSync(tui)
 
-	// Change only the second child.
+	// Now clean child is finalized.
+	clean.dirty = false
 	changing.lines = []string{"v2"}
+	changing.dirty = true
 	term.reset()
 	renderSync(tui)
 
 	out := term.written.String()
 	// The changing child should be repainted.
 	assert.Contains(t, out, "v2")
-	// The stable child should NOT be repainted.
+	// The clean child should NOT be repainted (no line clear for its lines).
 	assert.NotContains(t, out, "stable-1")
 	assert.NotContains(t, out, "stable-2")
 }

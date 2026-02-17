@@ -25,6 +25,7 @@ type ComponentStat struct {
 	Name     string `json:"name"`
 	RenderUs int64  `json:"render_us"`
 	Lines    int    `json:"lines"`
+	Dirty    bool   `json:"dirty"`
 }
 
 // componentName returns a short human-readable name for a component.
@@ -54,6 +55,11 @@ type RenderResult struct {
 	// Cursor, if non-nil, is where the hardware cursor should be placed,
 	// relative to this component's output (Row 0 = first line of Lines).
 	Cursor *CursorPos
+
+	// Dirty reports whether this result differs from the previous render.
+	// When false, the framework may skip diffing this component's line
+	// range. Components that don't cache should always return true.
+	Dirty bool
 }
 
 // Component is the interface all UI components must implement.
@@ -79,14 +85,19 @@ type Focusable interface {
 }
 
 // Container is a Component that holds child components and renders them
-// sequentially (vertical stack). The framework handles all change detection
-// via line-level string comparison — components never need to track or
-// report dirtiness.
+// sequentially (vertical stack).
+//
+// Container caches each child's rendered lines. When a child returns
+// Dirty: false, the Container reuses its cached copy, avoiding any
+// string work for that child. This makes finalized (immutable) children
+// essentially free on subsequent renders.
 type Container struct {
 	Children []Component
 
-	// lineCount caches the total line count from the most recent render.
-	lineCount int
+	// prevChildLines caches each child's rendered lines from the last
+	// render. Indexed by child pointer identity via prevChildMap.
+	prevChildMap map[Component][]string
+	prevWidth    int
 }
 
 func (c *Container) AddChild(comp Component) {
@@ -97,6 +108,7 @@ func (c *Container) RemoveChild(comp Component) {
 	for i, ch := range c.Children {
 		if ch == comp {
 			c.Children = append(c.Children[:i], c.Children[i+1:]...)
+			delete(c.prevChildMap, comp)
 			return
 		}
 	}
@@ -104,19 +116,30 @@ func (c *Container) RemoveChild(comp Component) {
 
 func (c *Container) Clear() {
 	c.Children = nil
-	c.lineCount = 0
+	c.prevChildMap = nil
 }
 
-// LineCount returns the total number of lines produced by the most recent
-// render. This is useful for positioning overlays relative to content
-// height without triggering a re-render.
+// LineCount returns the total number of cached lines across all children
+// from the most recent render. This is useful for positioning overlays
+// relative to content height without triggering a re-render.
 func (c *Container) LineCount() int {
-	return c.lineCount
+	n := 0
+	for _, ch := range c.Children {
+		if cached, ok := c.prevChildMap[ch]; ok {
+			n += len(cached)
+		}
+	}
+	return n
 }
 
 func (c *Container) Render(ctx RenderContext) RenderResult {
 	var lines []string
 	var cursor *CursorPos
+	dirty := false
+	widthChanged := c.prevWidth != ctx.Width
+
+	newMap := make(map[Component][]string, len(c.Children))
+
 	for _, ch := range c.Children {
 		var r RenderResult
 		if ctx.componentStats != nil {
@@ -127,6 +150,7 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 				Name:     componentName(ch),
 				RenderUs: elapsed.Microseconds(),
 				Lines:    len(r.Lines),
+				Dirty:    r.Dirty,
 			})
 		} else {
 			r = ch.Render(ctx)
@@ -137,12 +161,34 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 				Col: r.Cursor.Col,
 			}
 		}
-		lines = append(lines, r.Lines...)
+
+		childDirty := r.Dirty || widthChanged
+		if childDirty {
+			dirty = true
+			newMap[ch] = r.Lines
+			lines = append(lines, r.Lines...)
+		} else {
+			// Child is clean. Reuse cached lines if available (same
+			// slice, no allocation). Fall back to the child's returned
+			// lines if this is the first render or the child is new.
+			cached, ok := c.prevChildMap[ch]
+			if ok {
+				newMap[ch] = cached
+				lines = append(lines, cached...)
+			} else {
+				newMap[ch] = r.Lines
+				lines = append(lines, r.Lines...)
+			}
+		}
 	}
-	c.lineCount = len(lines)
+
+	c.prevChildMap = newMap
+	c.prevWidth = ctx.Width
+
 	return RenderResult{
 		Lines:  lines,
 		Cursor: cursor,
+		Dirty:  dirty,
 	}
 }
 
@@ -151,16 +197,18 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 // without modifying the parent container's child list.
 type Slot struct {
 	child Component
+	dirty bool
 }
 
 // NewSlot creates a Slot with the given initial child.
 func NewSlot(child Component) *Slot {
-	return &Slot{child: child}
+	return &Slot{child: child, dirty: true}
 }
 
 // Set replaces the current child.
 func (s *Slot) Set(c Component) {
 	s.child = c
+	s.dirty = true
 }
 
 // Get returns the current child.
@@ -170,7 +218,9 @@ func (s *Slot) Get() Component {
 
 func (s *Slot) Render(ctx RenderContext) RenderResult {
 	if s.child == nil {
-		return RenderResult{}
+		r := RenderResult{Dirty: s.dirty}
+		s.dirty = false
+		return r
 	}
 	var r RenderResult
 	if ctx.componentStats != nil {
@@ -181,9 +231,14 @@ func (s *Slot) Render(ctx RenderContext) RenderResult {
 			Name:     componentName(s.child),
 			RenderUs: elapsed.Microseconds(),
 			Lines:    len(r.Lines),
+			Dirty:    r.Dirty,
 		})
 	} else {
 		r = s.child.Render(ctx)
 	}
+	r.Dirty = r.Dirty || s.dirty
+	s.dirty = false
 	return r
 }
+
+

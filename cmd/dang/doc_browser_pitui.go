@@ -140,7 +140,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	width := ctx.Width
 	height := ctx.Height
 	if width < 20 {
-		return pitui.RenderResult{Lines: []string{"(too narrow)"}}
+		return pitui.RenderResult{Lines: []string{"(too narrow)"}, Dirty: true}
 	}
 
 	// Use the provided height, falling back to terminal rows if unconstrained.
@@ -316,7 +316,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		}
 	}
 
-	return pitui.RenderResult{Lines: result}
+	return pitui.RenderResult{Lines: result, Dirty: true}
 }
 
 func (d *docBrowserOverlay) renderDetailPitui(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
