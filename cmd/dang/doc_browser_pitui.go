@@ -160,7 +160,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	sep := sepStyle.Render(" | ")
+	sep := sepStyle.Render(" │ ")
 
 	visStart, visEnd := d.visibleRange()
 	numVis := visEnd - visStart
@@ -195,7 +195,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		} else {
 			lines = append(lines, titleStyle.Render(truncate(t, w)))
 		}
-		lines = append(lines, sepStyle.Render(strings.Repeat("-", w)))
+		lines = append(lines, sepStyle.Render(strings.Repeat("─", w)))
 
 		vis := col.visible()
 		filterLineH := 0
@@ -242,7 +242,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 
 				prefix := "  "
 				if i == col.index {
-					prefix = "> "
+					prefix = "▸ "
 				}
 				leftPart := prefix + label
 				leftW := lipgloss.Width(leftPart)
@@ -301,7 +301,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	for i := 0; i <= d.activeCol; i++ {
 		crumbs = append(crumbs, d.columns[i].title)
 	}
-	breadcrumb := dimSt.Render(strings.Join(crumbs, " > "))
+	breadcrumb := dimSt.Render(strings.Join(crumbs, " › "))
 	help := dimSt.Render("Up/Down/hjkl navigate | / filter | Tab cycle | q/Esc exit")
 
 	var result []string
