@@ -100,7 +100,6 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 	return RenderResult{
 		Lines:  []string{line},
 		Cursor: cursor,
-		Dirty:  true, // always dirty — no caching for a 1-line component
 	}
 }
 
