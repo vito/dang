@@ -271,7 +271,6 @@ type Slot struct {
 func NewSlot(child Component) *Slot {
 	s := &Slot{}
 	s.setChild(child)
-	s.needsRender.Store(true) // first render
 	return s
 }
 
