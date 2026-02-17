@@ -813,8 +813,8 @@ func (r *replComponent) updateCompletionMenuPitui() {
 			matches, matchCompletions = sortByCaseWithCompletions(matches, matchCompletions, prefix, partial)
 			labels, _ = sortByCaseWithCompletions(labels, nil, "", partial)
 		}
-		r.setMenuPitui(matches, matchCompletions)
 		r.menuLabels = labels
+		r.setMenuPitui(matches, matchCompletions)
 		if len(matches) > 0 {
 			r.textInput.Suggestion = matches[0]
 		} else {
@@ -845,6 +845,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 		}
 	}
 	matches := append(exactCase, otherCase...)
+	r.menuLabels = nil
 	r.setMenuPitui(matches, nil)
 	if len(matches) > 0 {
 		r.textInput.Suggestion = matches[0]
@@ -867,7 +868,7 @@ func (r *replComponent) setMenuPitui(matches []string, completions []dang.Comple
 		return
 	}
 	r.menuItems = matches
-	r.menuLabels = nil // cleared; caller sets if needed
+	// menuLabels is set by the caller before calling setMenuPitui
 	r.menuCompletions = completions
 	r.menuVisible = true
 	if r.menuIndex >= len(matches) {
