@@ -697,6 +697,29 @@ func (r *replComponent) syncDetailBubble() {
 	r.detailBubble.item = item
 }
 
+// showDetailForCompletion shows the detail bubble for a single completion
+// item, without requiring the dropdown menu to be visible.
+func (r *replComponent) showDetailForCompletion(c dang.Completion) {
+	item, found := docItemFromEnv(r.typeEnv, c.Label)
+	if !found {
+		item, found = r.resolveCompletionDocItem(c)
+	}
+	if !found {
+		if c.Detail == "" && c.Documentation == "" {
+			r.hideDetailBubble()
+			return
+		}
+		item = docItem{
+			name:    c.Label,
+			typeStr: c.Detail,
+			doc:     c.Documentation,
+		}
+	}
+
+	r.showDetailBubble()
+	r.detailBubble.item = item
+}
+
 // resolveCompletionDocItem tries to resolve a member completion's docItem
 // by inferring the receiver type from the current input.
 func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bool) {
@@ -809,8 +832,16 @@ func (r *replComponent) updateCompletionMenuPitui() {
 }
 
 func (r *replComponent) setMenuPitui(matches []string, completions []dang.Completion) {
-	if len(matches) <= 1 {
+	if len(matches) == 0 {
 		r.hideCompletionMenu()
+		return
+	}
+	if len(matches) == 1 {
+		// Single match: no dropdown, but show the detail bubble.
+		r.hideCompletionMenu()
+		if len(completions) == 1 {
+			r.showDetailForCompletion(completions[0])
+		}
 		return
 	}
 	r.menuItems = matches
