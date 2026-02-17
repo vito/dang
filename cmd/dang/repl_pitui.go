@@ -22,40 +22,53 @@ import (
 
 // ── sync writer (streams dagger output into TUI) ────────────────────────────
 
-// pituiSyncWriter buffers Dagger log output and flushes it to the outputLog
-// on demand. This preserves ordering: logs appear before results because
-// finishEval calls Flush() before writing the result line.
+// pituiSyncWriter streams Dagger log output directly to the outputLog for
+// immediate display. It can be "drained" by finishEval to stop accepting
+// new writes, ensuring no log output appears after the result line.
 type pituiSyncWriter struct {
-	mu  sync.Mutex
-	buf strings.Builder
-	tui *pitui.TUI
+	mu      sync.Mutex
+	output  *outputLog
+	tui     *pitui.TUI
+	stopped bool
 }
 
 func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	w.buf.Write(p)
+	if w.stopped {
+		w.mu.Unlock()
+		return len(p), nil
+	}
+	o := w.output
 	t := w.tui
 	w.mu.Unlock()
+	if o != nil {
+		o.WriteString(string(p))
+	}
 	if t != nil {
 		t.RequestRender(false)
 	}
 	return len(p), nil
 }
 
-// Flush writes any buffered content to the output log and clears the buffer.
-func (w *pituiSyncWriter) Flush(output *outputLog) {
+// Drain stops accepting new writes. Call before writing result lines to
+// guarantee log output doesn't appear after the result.
+func (w *pituiSyncWriter) Drain() {
 	w.mu.Lock()
-	s := w.buf.String()
-	w.buf.Reset()
+	w.stopped = true
 	w.mu.Unlock()
-	if s != "" {
-		output.WriteString(s)
-	}
 }
 
-func (w *pituiSyncWriter) SetTUI(tui *pitui.TUI) {
+// Resume re-enables writes for the next eval cycle.
+func (w *pituiSyncWriter) Resume() {
+	w.mu.Lock()
+	w.stopped = false
+	w.mu.Unlock()
+}
+
+func (w *pituiSyncWriter) SetTarget(output *outputLog, tui *pitui.TUI) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.output = output
 	w.tui = tui
 }
 
@@ -599,10 +612,10 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	r.spinner.Stop()
 	removeListener()
 
-	// Flush buffered Dagger log output before writing results so that
-	// log lines appear above the "=> value" line.
+	// Stop accepting new Dagger log writes so no output appears after
+	// the result line.
 	if r.daggerLog != nil {
-		r.daggerLog.Flush(r.output)
+		r.daggerLog.Drain()
 	}
 
 	if cancelled {
@@ -623,6 +636,11 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	r.evaluating = false
 	r.cancelEval = nil
 	r.mu.Unlock()
+
+	// Re-enable Dagger log writes for the next eval.
+	if r.daggerLog != nil {
+		r.daggerLog.Resume()
+	}
 
 	// Swap spinner back to text input via the slot.
 	r.inputSlot.Set(r.textInput)
@@ -1188,7 +1206,7 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, debug 
 	tui.SetShowHardwareCursor(true)
 
 	repl := newReplComponent(ctx, tui, importConfigs, debug, daggerLog)
-	daggerLog.SetTUI(tui)
+	daggerLog.SetTarget(repl.output, tui)
 	repl.install()
 
 	if err := tui.Start(); err != nil {
