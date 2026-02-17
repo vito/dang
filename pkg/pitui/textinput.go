@@ -110,9 +110,10 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 // HandleInput processes raw terminal input.
 func (t *TextInput) HandleInput(data []byte) {
 	s := string(data)
-	t.Suggestion = "" // Clear suggestion on every keystroke
 
 	oldValue := string(t.value)
+	savedSuggestion := t.Suggestion
+	t.Suggestion = "" // Clear suggestion on every keystroke
 	defer func() {
 		if t.OnChange != nil && string(t.value) != oldValue {
 			t.OnChange()
@@ -132,13 +133,22 @@ func (t *TextInput) HandleInput(data []byte) {
 
 	// Tab: accept suggestion or delegate
 	case s == KeyTab:
-		if t.Suggestion != "" {
-			t.SetValue(t.Suggestion)
-			t.Suggestion = ""
+		if savedSuggestion != "" {
+			t.SetValue(savedSuggestion)
 			return
 		}
 		if t.OnKey != nil {
 			t.OnKey(data)
+		}
+
+	// Right arrow: accept suggestion at end of input (fish-style), else move cursor
+	case s == KeyRight || s == KeyCtrlF:
+		if savedSuggestion != "" && t.cursor == len(t.value) {
+			t.SetValue(savedSuggestion)
+			return
+		}
+		if t.cursor < len(t.value) {
+			t.cursor++
 		}
 
 	// Backspace
@@ -158,10 +168,6 @@ func (t *TextInput) HandleInput(data []byte) {
 	case s == KeyLeft || s == KeyCtrlB:
 		if t.cursor > 0 {
 			t.cursor--
-		}
-	case s == KeyRight || s == KeyCtrlF:
-		if t.cursor < len(t.value) {
-			t.cursor++
 		}
 	case s == KeyHome || s == KeyHome2 || s == KeyCtrlA:
 		t.cursor = 0
