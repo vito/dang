@@ -94,24 +94,21 @@ func (h *OverlayHandle) SetOptions(opts *OverlayOptions) {
 
 // SetHidden temporarily hides or shows the overlay.
 func (h *OverlayHandle) SetHidden(hidden bool) {
+	h.tui.mu.Lock()
 	if h.entry.hidden == hidden {
+		h.tui.mu.Unlock()
 		return
 	}
 	h.entry.hidden = hidden
 	if hidden {
-		if h.tui.focusedComponent == h.entry.component {
-			top := h.tui.topmostVisibleOverlay()
-			if top != nil {
-				h.tui.SetFocus(top.component)
-			} else {
-				h.tui.SetFocus(h.entry.preFocus)
-			}
-		}
+		h.tui.restoreFocusFromOverlayLocked(h.entry)
 	} else {
-		if h.tui.isOverlayVisible(h.entry) {
-			h.tui.SetFocus(h.entry.component)
+		noFocus := h.entry.options != nil && h.entry.options.NoFocus
+		if !noFocus && h.tui.isOverlayVisible(h.entry) {
+			h.tui.setFocusLocked(h.entry.component)
 		}
 	}
+	h.tui.mu.Unlock()
 	h.tui.RequestRender(false)
 }
 
@@ -141,23 +138,41 @@ func (t *TUI) topmostVisibleOverlay() *overlayEntry {
 }
 
 func (t *TUI) removeOverlay(entry *overlayEntry) {
+	t.mu.Lock()
+	found := false
 	for i, e := range t.overlayStack {
 		if e == entry {
 			t.overlayStack = append(t.overlayStack[:i], t.overlayStack[i+1:]...)
-			if t.focusedComponent == entry.component {
-				top := t.topmostVisibleOverlay()
-				if top != nil {
-					t.SetFocus(top.component)
-				} else {
-					t.SetFocus(entry.preFocus)
-				}
-			}
-			if len(t.overlayStack) == 0 {
-				t.terminal.HideCursor()
-			}
-			t.RequestRender(false)
-			return
+			found = true
+			break
 		}
+	}
+	if !found {
+		t.mu.Unlock()
+		return
+	}
+	t.restoreFocusFromOverlayLocked(entry)
+	noOverlays := len(t.overlayStack) == 0
+	t.mu.Unlock()
+	if noOverlays {
+		t.terminal.HideCursor()
+	}
+	t.RequestRender(false)
+}
+
+// restoreFocusFromOverlayLocked updates focus when an overlay loses
+// visibility (hidden or removed). If the overlay had focus, focus moves to
+// the next visible overlay or falls back to the overlay's preFocus.
+// Caller must hold t.mu.
+func (t *TUI) restoreFocusFromOverlayLocked(entry *overlayEntry) {
+	if t.focusedComponent != entry.component {
+		return
+	}
+	top := t.topmostVisibleOverlay()
+	if top != nil {
+		t.setFocusLocked(top.component)
+	} else {
+		t.setFocusLocked(entry.preFocus)
 	}
 }
 

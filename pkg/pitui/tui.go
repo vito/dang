@@ -175,12 +175,7 @@ func (t *TUI) HideOverlay() {
 	}
 	entry := t.overlayStack[len(t.overlayStack)-1]
 	t.overlayStack = t.overlayStack[:len(t.overlayStack)-1]
-	top := t.topmostVisibleOverlay()
-	if top != nil {
-		t.setFocusLocked(top.component)
-	} else {
-		t.setFocusLocked(entry.preFocus)
-	}
+	t.restoreFocusFromOverlayLocked(entry)
 	noOverlays := len(t.overlayStack) == 0
 	t.mu.Unlock()
 	if noOverlays {
