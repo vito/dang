@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -46,12 +47,18 @@ type Terminal interface {
 }
 
 // ProcessTerminal is a Terminal backed by os.Stdin / os.Stdout.
+// Terminal dimensions are cached and refreshed on SIGWINCH to avoid
+// repeated ioctl syscalls during rendering.
 type ProcessTerminal struct {
 	origTermios *unix.Termios
 	onInput     func([]byte)
 	onResize    func()
 	sigCh       chan os.Signal
 	stopCh      chan struct{}
+
+	sizeMu sync.RWMutex
+	cols   int
+	rows   int
 }
 
 func NewProcessTerminal() *ProcessTerminal {
@@ -82,6 +89,9 @@ func (t *ProcessTerminal) Start(onInput func([]byte), onResize func()) error {
 		return fmt.Errorf("set raw: %w", err)
 	}
 
+	// Cache initial terminal size.
+	t.refreshSize()
+
 	// Enable bracketed paste.
 	t.WriteString("\x1b[?2004h")
 
@@ -109,6 +119,7 @@ func (t *ProcessTerminal) Start(onInput func([]byte), onResize func()) error {
 		for {
 			select {
 			case <-t.sigCh:
+				t.refreshSize()
 				if t.onResize != nil {
 					t.onResize()
 				}
@@ -146,19 +157,40 @@ func (t *ProcessTerminal) WriteString(s string) {
 }
 
 func (t *ProcessTerminal) Columns() int {
-	ws, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
-	if err != nil || ws.Col == 0 {
+	t.sizeMu.RLock()
+	c := t.cols
+	t.sizeMu.RUnlock()
+	if c == 0 {
 		return 80
 	}
-	return int(ws.Col)
+	return c
 }
 
 func (t *ProcessTerminal) Rows() int {
-	ws, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
-	if err != nil || ws.Row == 0 {
+	t.sizeMu.RLock()
+	r := t.rows
+	t.sizeMu.RUnlock()
+	if r == 0 {
 		return 24
 	}
-	return int(ws.Row)
+	return r
+}
+
+// refreshSize queries the kernel for current terminal dimensions and caches
+// them. Called once at Start and on every SIGWINCH.
+func (t *ProcessTerminal) refreshSize() {
+	ws, err := unix.IoctlGetWinsize(int(os.Stdout.Fd()), unix.TIOCGWINSZ)
+	if err != nil {
+		return
+	}
+	t.sizeMu.Lock()
+	if ws.Col > 0 {
+		t.cols = int(ws.Col)
+	}
+	if ws.Row > 0 {
+		t.rows = int(ws.Row)
+	}
+	t.sizeMu.Unlock()
 }
 
 func (t *ProcessTerminal) HideCursor() {
