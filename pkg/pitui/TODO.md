@@ -2,7 +2,7 @@
 
 ## Performance
 
-- [ ] **Cache terminal dimensions on SIGWINCH**
+- [x] **Cache terminal dimensions on SIGWINCH**
   `ProcessTerminal.Columns()` and `Rows()` each do an `IoctlGetWinsize`
   syscall. A single `doRender` with the doc browser open does ~8+ ioctls
   (renderer calls both at top, `compositeOverlays` calls
@@ -10,7 +10,7 @@
   `Terminal().Rows()` directly). Cache the values in `ProcessTerminal` and
   update on SIGWINCH + `Start()`. The `onResize` callback is already wired.
 
-- [ ] **Make overlay position mutable (stop recreating completion menu)**
+- [x] **Make overlay position mutable (stop recreating completion menu)**
   `showCompletionMenu` calls `menuHandle.Hide()` + `tui.ShowOverlay()`
   every keystroke just to update `OffsetX`. This allocates a new
   `completionOverlay`, `overlayEntry`, and does focus management
@@ -28,7 +28,7 @@
   loop is very fast in practice; the main win (skipping outputLog
   re-processing) is already captured at the component level.
 
-- [ ] **Fix spinner goroutine leak**
+- [x] **Fix spinner goroutine leak**
   `Spinner.Stop()` sets `stopped = true` and calls `ticker.Stop()`, but
   the goroutine does `for range ticker.C` — after `Stop()` the channel
   isn't closed so the goroutine lingers until the next buffered tick. One
@@ -36,14 +36,14 @@
 
 ## Abstractions
 
-- [ ] **Consolidate overlay visibility (`hidden` vs `Visible` callback)**
+- [x] **Consolidate overlay visibility (`hidden` vs `Visible` callback)**
   Two mechanisms: `hidden bool` (set imperatively via `SetHidden`) and
   `Visible func(...)` (polled every render). `isOverlayVisible` checks
   both, but `SetHidden` does focus management while `Visible` returning
   false doesn't. Using both on the same overlay produces confusing focus
   state. Pick one model or make them compose cleanly.
 
-- [ ] **Unify focus/input ownership**
+- [x] **Unify focus/input ownership**
   Focus is managed in `ShowOverlay`, `HideOverlay`, `removeOverlay`, and
   `SetHidden`, each with its own "who gets focus now?" logic (some check
   `topmostVisibleOverlay`, some restore `preFocus`). The REPL adds
@@ -51,7 +51,7 @@
   `onKey` while focus is nil). There should be a single model for "who
   owns input right now" instead of three overlapping ones.
 
-- [ ] **Remove doc browser's direct `tui.Terminal().Rows()` dependency**
+- [x] **Remove doc browser's direct `tui.Terminal().Rows()` dependency**
   `docBrowserOverlay` stores `*pitui.TUI` and calls `Terminal().Rows()`
   in `listHeight()` and as a fallback in `Render()`. This breaks the
   contract that `RenderContext` is sufficient and makes the doc browser
@@ -59,7 +59,7 @@
   passing `Height` in `RenderContext` (it already does, but the doc
   browser doesn't trust it because base container passes 0).
 
-- [ ] **Decouple `outputLog` from `replComponent` internals**
+- [x] **Decouple `outputLog` from `replComponent` internals**
   `outputLog.Render` locks `repl.mu` to snapshot entries. The component
   doesn't own its data — it's a view into shared mutable state. This
   means you can't test it in isolation, and the render path holds a
@@ -67,7 +67,7 @@
   Give `outputLog` its own append-only data or have the REPL push
   snapshots to it.
 
-- [ ] **Collapse `resolveOverlayLayout` triple-call**
+- [x] **Collapse `resolveOverlayLayout` triple-call**
   `compositeOverlays` calls `resolveOverlayLayout` 3 times per overlay
   per render: once for width (before component render), once for
   maxHeight (after), once for row/col (after clipping). This is because
