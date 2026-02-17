@@ -13,6 +13,7 @@ type Completion struct {
 	Detail        string // Type signature or short description
 	Documentation string // Longer doc string
 	IsFunction    bool   // Whether this is a function/method
+	IsArg         bool   // Whether this is a function argument
 }
 
 // CompleteInput returns completions for the given REPL input text and cursor
@@ -25,6 +26,11 @@ func CompleteInput(ctx context.Context, typeEnv Env, input string, cursorPos int
 		cursorPos = len(input)
 	}
 	text := input[:cursorPos]
+
+	// Check if we're inside a function call (argument position)
+	if funcExpr, partial, alreadyProvided, ok := splitArgExpr(text); ok {
+		return completeArgs(ctx, typeEnv, funcExpr, partial, alreadyProvided)
+	}
 
 	// Check if we're in a dotted expression (member access)
 	dotIdx, receiver, partial := splitDotExpr(text)
@@ -130,6 +136,214 @@ func completeMember(ctx context.Context, typeEnv Env, receiverText, partial stri
 	}
 
 	return MembersOf(receiverType, partial)
+}
+
+// splitArgExpr detects when the cursor is inside a function call's argument
+// list. Given text like "container.from(addr" it returns:
+//   - funcExpr: "container.from" (the function expression)
+//   - partial: "addr" (the partial argument name being typed)
+//   - alreadyProvided: names of arguments already present in the call
+//   - ok: true if we're in an argument position
+//
+// It handles nested calls by finding the innermost unmatched '('.
+func splitArgExpr(text string) (funcExpr, partial string, alreadyProvided []string, ok bool) {
+	// Find the innermost unmatched '(' by scanning from the end
+	parenDepth := 0
+	bracketDepth := 0
+	openIdx := -1
+	for i := len(text) - 1; i >= 0; i-- {
+		switch text[i] {
+		case ')':
+			parenDepth++
+		case '(':
+			if parenDepth > 0 {
+				parenDepth--
+			} else {
+				openIdx = i
+			}
+		case ']':
+			bracketDepth++
+		case '[':
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		}
+		if openIdx >= 0 {
+			break
+		}
+	}
+	if openIdx < 0 {
+		return "", "", nil, false
+	}
+
+	beforeParen := text[:openIdx]
+	if beforeParen == "" {
+		return "", "", nil, false
+	}
+
+	// The function expression must end with an identifier (the function name).
+	lastChar := beforeParen[len(beforeParen)-1]
+	if !isIdentByte(lastChar) {
+		return "", "", nil, false
+	}
+
+	// Walk backwards from the open paren to extract the function expression.
+	// Handle dotted chains like "container.from" and chained calls like
+	// "a.b(1).from" by consuming identifiers, dots, and balanced groups.
+	j := len(beforeParen) - 1
+	for j >= 0 {
+		c := beforeParen[j]
+		if isIdentByte(c) || c == '.' {
+			j--
+		} else if c == ')' || c == ']' {
+			open := matchingOpen(c)
+			depth := 1
+			j--
+			for j >= 0 && depth > 0 {
+				switch beforeParen[j] {
+				case c:
+					depth++
+				case open:
+					depth--
+				}
+				j--
+			}
+		} else {
+			break
+		}
+	}
+	funcExpr = beforeParen[j+1:]
+	if funcExpr == "" {
+		return "", "", nil, false
+	}
+
+	argsText := text[openIdx+1:]
+
+	// Extract partial: the identifier being typed at the end (if any).
+	partial = lastIdent(argsText)
+
+	// Extract already-provided named argument keys from the args text.
+	// Look for patterns like "name:" that indicate named arguments.
+	alreadyProvided = extractProvidedArgNames(argsText)
+
+	return funcExpr, partial, alreadyProvided, true
+}
+
+// extractProvidedArgNames scans argument text for named argument patterns
+// ("name:") and returns the names found.
+func extractProvidedArgNames(argsText string) []string {
+	var names []string
+	i := 0
+	for i < len(argsText) {
+		// Skip whitespace
+		for i < len(argsText) && (argsText[i] == ' ' || argsText[i] == '\t' || argsText[i] == '\n') {
+			i++
+		}
+		// Try to read an identifier
+		start := i
+		for i < len(argsText) && isIdentByte(argsText[i]) {
+			i++
+		}
+		if i > start && i < len(argsText) && argsText[i] == ':' {
+			names = append(names, argsText[start:i])
+			i++ // skip ':'
+		}
+		// Skip to next comma or end, handling nested parens/brackets
+		depth := 0
+		for i < len(argsText) {
+			switch argsText[i] {
+			case '(', '[':
+				depth++
+			case ')', ']':
+				depth--
+			case ',':
+				if depth == 0 {
+					i++
+					goto next
+				}
+			}
+			i++
+		}
+	next:
+	}
+	return names
+}
+
+// completeArgs returns completions for function arguments given the function
+// expression text, the partial argument name being typed, and the set of
+// argument names already provided in the call.
+func completeArgs(ctx context.Context, typeEnv Env, funcExpr, partial string, alreadyProvided []string) []Completion {
+	t := InferReceiverType(ctx, typeEnv, funcExpr)
+	if t == nil {
+		return nil
+	}
+	return ArgsOf(t, partial, alreadyProvided)
+}
+
+// ArgsOf returns completions for the arguments of a function type, filtered
+// by the partial prefix and excluding already-provided argument names. This
+// is the shared logic used by both the LSP and REPL for argument completion.
+// The type is unwrapped from NonNull and must be a *hm.FunctionType with a
+// RecordType argument.
+func ArgsOf(t hm.Type, partial string, alreadyProvided []string) []Completion {
+	// Unwrap NonNull
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+
+	ft, ok := t.(*hm.FunctionType)
+	if !ok {
+		return nil
+	}
+
+	argType := ft.Arg()
+	if argType == nil {
+		return nil
+	}
+
+	// Unwrap NonNull on arg type
+	if nn, ok := argType.(hm.NonNullType); ok {
+		argType = nn.Type
+	}
+
+	record, ok := argType.(*RecordType)
+	if !ok {
+		return nil
+	}
+
+	provided := make(map[string]bool, len(alreadyProvided))
+	for _, name := range alreadyProvided {
+		provided[name] = true
+	}
+
+	partialLower := strings.ToLower(partial)
+	var completions []Completion
+
+	for _, field := range record.Fields {
+		if provided[field.Key] {
+			continue
+		}
+		if partial != "" && !strings.HasPrefix(strings.ToLower(field.Key), partialLower) {
+			continue
+		}
+
+		fieldType, _ := field.Value.Type()
+		typeStr := fieldType.String()
+
+		var doc string
+		if record.DocStrings != nil {
+			doc = record.DocStrings[field.Key]
+		}
+
+		completions = append(completions, Completion{
+			Label:         field.Key,
+			Detail:        typeStr,
+			Documentation: doc,
+			IsArg:         true,
+		})
+	}
+
+	return completions
 }
 
 // InferReceiverType parses and type-checks a receiver expression, returning

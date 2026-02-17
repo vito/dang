@@ -257,7 +257,8 @@ type replComponent struct {
 	// Completion
 	completions      []string
 	menuVisible      bool
-	menuItems        []string
+	menuItems        []string          // replacement values (full input text)
+	menuLabels       []string          // display labels for the menu
 	menuCompletions  []dang.Completion // parallel to menuItems; Detail/Documentation
 	menuIndex        int
 	menuMaxVisible   int
@@ -599,6 +600,7 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 func (r *replComponent) hideCompletionMenu() {
 	r.menuVisible = false
 	r.menuItems = nil
+	r.menuLabels = nil
 	r.menuCompletions = nil
 	if r.menuHandle != nil {
 		r.menuHandle.Hide()
@@ -608,8 +610,16 @@ func (r *replComponent) hideCompletionMenu() {
 	r.hideDetailBubble()
 }
 
+func (r *replComponent) menuDisplayItems() []string {
+	if len(r.menuLabels) > 0 {
+		return r.menuLabels
+	}
+	return r.menuItems
+}
+
 func (r *replComponent) showCompletionMenu() {
 	xOff := r.completionXOffsetPitui()
+	displayItems := r.menuDisplayItems()
 	opts := &pitui.OverlayOptions{
 		Width:           pitui.SizeAbs(40),
 		MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
@@ -621,12 +631,12 @@ func (r *replComponent) showCompletionMenu() {
 	}
 	if r.menuHandle != nil {
 		// Reuse existing overlay — just update position and data.
-		r.menuOverlay.items = r.menuItems
+		r.menuOverlay.items = displayItems
 		r.menuOverlay.index = r.menuIndex
 		r.menuHandle.SetOptions(opts)
 	} else {
 		r.menuOverlay = &completionOverlay{
-			items:      r.menuItems,
+			items:      displayItems,
 			index:      r.menuIndex,
 			maxVisible: r.menuMaxVisible,
 		}
@@ -637,7 +647,7 @@ func (r *replComponent) showCompletionMenu() {
 
 func (r *replComponent) syncMenu() {
 	if r.menuOverlay != nil {
-		r.menuOverlay.items = r.menuItems
+		r.menuOverlay.items = r.menuDisplayItems()
 		r.menuOverlay.index = r.menuIndex
 	}
 	r.syncDetailBubble()
@@ -777,8 +787,10 @@ func (r *replComponent) updateCompletionMenuPitui() {
 	completions := dang.CompleteInput(r.ctx, r.typeEnv, val, cursorPos)
 
 	if len(completions) > 0 {
+		isArgCompletion := len(completions) > 0 && completions[0].IsArg
 		prefix, partial := splitForSuggestion(val)
 		var matches []string
+		var labels []string
 		var matchCompletions []dang.Completion
 		partialLower := strings.ToLower(partial)
 		for _, c := range completions {
@@ -787,12 +799,22 @@ func (r *replComponent) updateCompletionMenuPitui() {
 				continue
 			}
 			if strings.HasPrefix(cLower, partialLower) {
-				matches = append(matches, prefix+c.Label)
+				if c.IsArg {
+					matches = append(matches, prefix+c.Label+": ")
+					labels = append(labels, c.Label+": "+c.Detail)
+				} else {
+					matches = append(matches, prefix+c.Label)
+				}
 				matchCompletions = append(matchCompletions, c)
 			}
 		}
-		matches, matchCompletions = sortByCaseWithCompletions(matches, matchCompletions, prefix, partial)
+		if !isArgCompletion {
+			matches, matchCompletions = sortByCaseWithCompletions(matches, matchCompletions, prefix, partial)
+		}
 		r.setMenuPitui(matches, matchCompletions)
+		if isArgCompletion {
+			r.menuLabels = labels
+		}
 		if len(matches) > 0 {
 			r.textInput.Suggestion = matches[0]
 		} else {
@@ -845,6 +867,7 @@ func (r *replComponent) setMenuPitui(matches []string, completions []dang.Comple
 		return
 	}
 	r.menuItems = matches
+	r.menuLabels = nil // cleared; caller sets if needed
 	r.menuCompletions = completions
 	r.menuVisible = true
 	if r.menuIndex >= len(matches) {

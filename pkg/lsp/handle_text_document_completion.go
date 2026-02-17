@@ -23,15 +23,32 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	// Check if we're completing a member access (e.g., "container.fr<TAB>")
-	// We do this by finding the node at the cursor and checking if it's a Select
 	if f.AST != nil {
+		// Check if we're inside a function call's argument list
+		fc := FindFunCallAt(f.AST, params.Position.Line, params.Position.Character)
+		if fc != nil {
+			funType := fc.Fun.GetInferredType()
+			if funType != nil {
+				// Collect already-provided argument names
+				var provided []string
+				for _, arg := range fc.Args {
+					if !arg.Positional {
+						provided = append(provided, arg.Key)
+					}
+				}
+				completions := dang.ArgsOf(funType, "", provided)
+				items := completionsToItems(completions)
+				if len(items) > 0 {
+					return items, nil
+				}
+			}
+		}
+
+		// Check if we're completing a member access (e.g., "container.fr<TAB>")
 		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
 		if receiver != nil {
-			// Get the inferred type of the receiver
 			receiverType := receiver.GetInferredType()
 			if receiverType != nil {
-				// Use shared completion logic for member access
 				completions := dang.MembersOf(receiverType, "")
 				items := completionsToItems(completions)
 				if len(items) > 0 {
@@ -39,10 +56,8 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 				}
 			}
 		}
-	}
 
-	// Add lexical bindings from enclosing scopes
-	if f.AST != nil {
+		// Add lexical bindings from enclosing scopes
 		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
 	}
 
@@ -109,6 +124,9 @@ func completionsToItems(completions []dang.Completion) []CompletionItem {
 		kind := VariableCompletion
 		if c.IsFunction {
 			kind = MethodCompletion
+		}
+		if c.IsArg {
+			kind = FieldCompletion
 		}
 		items[i] = CompletionItem{
 			Label:         c.Label,
