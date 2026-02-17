@@ -22,30 +22,40 @@ import (
 
 // ── sync writer (streams dagger output into TUI) ────────────────────────────
 
+// pituiSyncWriter buffers Dagger log output and flushes it to the outputLog
+// on demand. This preserves ordering: logs appear before results because
+// finishEval calls Flush() before writing the result line.
 type pituiSyncWriter struct {
-	mu     sync.Mutex
-	output *outputLog
-	tui    *pitui.TUI
+	mu  sync.Mutex
+	buf strings.Builder
+	tui *pitui.TUI
 }
 
 func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	o := w.output
+	w.buf.Write(p)
 	t := w.tui
 	w.mu.Unlock()
-	if o != nil {
-		o.WriteString(string(p))
-		if t != nil {
-			t.RequestRender(false)
-		}
+	if t != nil {
+		t.RequestRender(false)
 	}
 	return len(p), nil
 }
 
-func (w *pituiSyncWriter) SetTarget(output *outputLog, tui *pitui.TUI) {
+// Flush writes any buffered content to the output log and clears the buffer.
+func (w *pituiSyncWriter) Flush(output *outputLog) {
+	w.mu.Lock()
+	s := w.buf.String()
+	w.buf.Reset()
+	w.mu.Unlock()
+	if s != "" {
+		output.WriteString(s)
+	}
+}
+
+func (w *pituiSyncWriter) SetTUI(tui *pitui.TUI) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.output = output
 	w.tui = tui
 }
 
@@ -55,21 +65,37 @@ func (w *pituiSyncWriter) SetTarget(output *outputLog, tui *pitui.TUI) {
 // via WriteString and WriteLine; the component owns its data and needs no
 // external locking during render.
 type outputLog struct {
-	mu    sync.Mutex
-	lines []string // raw lines (may contain ANSI)
-	dirty bool
+	mu      sync.Mutex
+	lines   []string // raw lines (may contain ANSI)
+	partial bool     // true if last line is incomplete (no trailing \n)
+	dirty   bool
 
 	cachedRendered []string
 	cachedWidth    int
 }
 
 // WriteString appends raw text (may contain newlines) to the log.
+// Partial lines (text not terminated by \n) are buffered and continued
+// by the next WriteString call.
 func (o *outputLog) WriteString(s string) {
 	if s == "" {
 		return
 	}
 	o.mu.Lock()
 	parts := strings.Split(s, "\n")
+	// Continue any pending partial line.
+	if len(o.lines) > 0 && o.partial {
+		o.lines[len(o.lines)-1] += parts[0]
+		parts = parts[1:]
+	}
+	if len(parts) == 0 {
+		o.dirty = true
+		o.mu.Unlock()
+		return
+	}
+	// Last element is a partial line if the string didn't end with \n.
+	o.partial = parts[len(parts)-1] != "" || !strings.HasSuffix(s, "\n")
+	// Drop trailing empty string from the split (represents the \n terminator).
 	if len(parts) > 0 && parts[len(parts)-1] == "" {
 		parts = parts[:len(parts)-1]
 	}
@@ -78,9 +104,11 @@ func (o *outputLog) WriteString(s string) {
 	o.mu.Unlock()
 }
 
-// WriteLine appends a single line to the log.
+// WriteLine appends a complete line to the log. Any pending partial line
+// is finalized first.
 func (o *outputLog) WriteLine(line string) {
 	o.mu.Lock()
+	o.partial = false
 	o.lines = append(o.lines, line)
 	o.dirty = true
 	o.mu.Unlock()
@@ -90,6 +118,7 @@ func (o *outputLog) WriteLine(line string) {
 func (o *outputLog) Clear() {
 	o.mu.Lock()
 	o.lines = nil
+	o.partial = false
 	o.dirty = true
 	o.cachedRendered = nil
 	o.mu.Unlock()
@@ -264,6 +293,7 @@ type replComponent struct {
 	tui         *pitui.TUI
 	textInput   *pitui.TextInput
 	output      *outputLog
+	daggerLog   *pituiSyncWriter
 	spinner     *pitui.Spinner
 	spinnerLine *evalSpinnerLine
 	inputSlot   *pitui.Slot // swaps between textInput and spinnerLine
@@ -296,7 +326,7 @@ type replComponent struct {
 	docHandle  *pitui.OverlayHandle
 }
 
-func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.ImportConfig, debug bool) *replComponent {
+func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.ImportConfig, debug bool, daggerLog *pituiSyncWriter) *replComponent {
 	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
 
 	ti := pitui.NewTextInput(promptStyle.Render("dang> "))
@@ -309,6 +339,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		ctx:            ctx,
 		tui:            tui,
 		textInput:      ti,
+		daggerLog:      daggerLog,
 		menuMaxVisible: 8,
 		historyIndex:   -1,
 		historyFile:    "/tmp/dang_history",
@@ -567,6 +598,12 @@ func (r *replComponent) startEvalPitui(expr string) {
 func (r *replComponent) finishEval(logs, results []string, cancelled bool, removeListener func()) {
 	r.spinner.Stop()
 	removeListener()
+
+	// Flush buffered Dagger log output before writing results so that
+	// log lines appear above the "=> value" line.
+	if r.daggerLog != nil {
+		r.daggerLog.Flush(r.output)
+	}
 
 	if cancelled {
 		r.output.WriteLine(errorStyle.Render("cancelled"))
@@ -1150,8 +1187,8 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, debug 
 	tui := pitui.New(term)
 	tui.SetShowHardwareCursor(true)
 
-	repl := newReplComponent(ctx, tui, importConfigs, debug)
-	daggerLog.SetTarget(repl.output, tui)
+	repl := newReplComponent(ctx, tui, importConfigs, debug, daggerLog)
+	daggerLog.SetTUI(tui)
 	repl.install()
 
 	if err := tui.Start(); err != nil {
