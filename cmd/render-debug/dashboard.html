@@ -89,6 +89,34 @@
     cursor: pointer;
   }
   .controls button:hover { border-color: var(--accent); }
+
+  .comp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .comp-table th {
+    text-align: left;
+    color: var(--dim);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .comp-table td {
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .comp-table tr:hover { background: rgba(88,166,255,0.05); }
+  .comp-name { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+  .dirty-always { color: var(--red); font-weight: 600; }
+  .dirty-never { color: var(--green); }
+  .dirty-mixed { color: var(--orange); }
+  .bar-bg { background: var(--border); border-radius: 3px; height: 6px; width: 80px; display: inline-block; vertical-align: middle; }
+  .bar-fill { height: 100%; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -145,6 +173,27 @@
     <h2>Changed Line Range (first → last)</h2>
     <canvas id="rangeChart"></canvas>
   </div>
+</div>
+
+<div class="card" style="margin-bottom: 12px;">
+  <h2>Per-Component Stats (aggregated over window)</h2>
+  <table class="comp-table">
+    <thead>
+      <tr>
+        <th>Component</th>
+        <th>Renders</th>
+        <th>Dirty Rate</th>
+        <th></th>
+        <th>Avg Time (µs)</th>
+        <th>Max Time (µs)</th>
+        <th>Avg Lines</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="compTableBody">
+      <tr><td colspan="8" style="color:var(--dim)">Waiting for data with component stats...</td></tr>
+    </tbody>
+  </table>
 </div>
 
 <script>
@@ -257,6 +306,78 @@ function updateStats() {
   // Wasted renders: component tree not dirty AND no lines changed.
   const wasted = allData.filter(d => !d.component_dirty && d.first_changed === -1).length;
   document.getElementById('wastedRenders').textContent = wasted;
+
+  updateComponentTable();
+}
+
+function shortName(name) {
+  // "github.com/vito/dang/cmd/render-stress.stressLog" → "stressLog"
+  const parts = name.split('.');
+  return parts[parts.length - 1] || name;
+}
+
+function updateComponentTable() {
+  const win = getWindow();
+  const slice = allData.slice(-win);
+
+  // Aggregate per component name.
+  const agg = {};
+  for (const frame of slice) {
+    if (!frame.components) continue;
+    for (const c of frame.components) {
+      if (!agg[c.name]) {
+        agg[c.name] = { renders: 0, dirty: 0, totalUs: 0, maxUs: 0, totalLines: 0 };
+      }
+      const a = agg[c.name];
+      a.renders++;
+      if (c.dirty) a.dirty++;
+      a.totalUs += c.render_us;
+      if (c.render_us > a.maxUs) a.maxUs = c.render_us;
+      a.totalLines += c.lines;
+    }
+  }
+
+  const tbody = document.getElementById('compTableBody');
+  const names = Object.keys(agg).sort((a, b) => agg[b].totalUs - agg[a].totalUs);
+
+  if (names.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--dim)">No component data yet</td></tr>';
+    return;
+  }
+
+  let html = '';
+  for (const name of names) {
+    const a = agg[name];
+    const dirtyRate = a.renders > 0 ? (a.dirty / a.renders * 100) : 0;
+    const avgUs = a.renders > 0 ? (a.totalUs / a.renders) | 0 : 0;
+    const avgLines = a.renders > 0 ? (a.totalLines / a.renders).toFixed(1) : '0';
+
+    let dirtyClass, statusText;
+    if (dirtyRate === 100) {
+      dirtyClass = 'dirty-always';
+      statusText = '⚠ always dirty';
+    } else if (dirtyRate === 0) {
+      dirtyClass = 'dirty-never';
+      statusText = '✓ caching';
+    } else {
+      dirtyClass = 'dirty-mixed';
+      statusText = dirtyRate.toFixed(0) + '% dirty';
+    }
+
+    const barColor = dirtyRate === 100 ? 'var(--red)' : dirtyRate === 0 ? 'var(--green)' : 'var(--orange)';
+
+    html += '<tr>'
+      + '<td class="comp-name" title="' + name + '">' + shortName(name) + '</td>'
+      + '<td>' + a.renders + '</td>'
+      + '<td class="' + dirtyClass + '">' + dirtyRate.toFixed(0) + '%</td>'
+      + '<td><span class="bar-bg"><span class="bar-fill" style="width:' + dirtyRate + '%;background:' + barColor + '"></span></span></td>'
+      + '<td>' + avgUs + '</td>'
+      + '<td>' + a.maxUs + '</td>'
+      + '<td>' + avgLines + '</td>'
+      + '<td class="' + dirtyClass + '">' + statusText + '</td>'
+      + '</tr>';
+  }
+  tbody.innerHTML = html;
 }
 
 function updateCharts() {
