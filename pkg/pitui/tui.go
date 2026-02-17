@@ -430,7 +430,7 @@ func (t *TUI) doRender() {
 	if debugW != nil {
 		ctx.componentStats = &compStats
 	}
-	baseResult := t.Render(ctx)
+	baseResult := renderComponent(&t.Container, ctx)
 	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
 	stats.RenderTime = time.Since(renderStart)
