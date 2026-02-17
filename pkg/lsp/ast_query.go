@@ -123,6 +123,26 @@ func FindReceiverAt(body dang.Node, line, col int) dang.Node {
 	return nil
 }
 
+// FindFunCallAt finds the innermost FunCall node whose argument list contains
+// the cursor. Returns the FunCall and the names of arguments already provided.
+func FindFunCallAt(root dang.Node, line, col int) *dang.FunCall {
+	var found *dang.FunCall
+	root.Walk(func(node dang.Node) bool {
+		loc := node.GetSourceLocation()
+		if loc == nil {
+			return true
+		}
+		if !containsPosition(loc, line, col) {
+			return false
+		}
+		if fc, ok := node.(*dang.FunCall); ok {
+			found = fc
+		}
+		return true
+	})
+	return found
+}
+
 // findEnclosingEnvironments walks the AST and collects all environments that enclose the given position.
 // Returns environments from outermost to innermost.
 func findEnclosingEnvironments(root dang.Node, pos Position) []dang.Env {

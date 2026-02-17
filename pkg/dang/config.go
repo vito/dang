@@ -112,6 +112,31 @@ func (p *GraphQLClientProvider) GetDaggerModuleSchema(ctx context.Context, dag *
 	return client, response.Schema, nil
 }
 
+// ServeDaggerModule loads a Dagger module, serves it in the current session
+// (making its API available for queries), and introspects the live schema.
+// This is used by the REPL where we need to actually execute queries against the module.
+// For schema-only use (e.g. LSP), use GetDaggerModuleSchema instead.
+func (p *GraphQLClientProvider) ServeDaggerModule(ctx context.Context, dag *dagger.Client, moduleDir string) (graphql.Client, *introspection.Schema, error) {
+	if dag == nil {
+		return nil, nil, fmt.Errorf("dagger client is nil")
+	}
+
+	// Load the module from the directory and serve it
+	mod := dag.ModuleSource(moduleDir).AsModule()
+	if err := mod.Serve(ctx, dagger.ModuleServeOpts{IncludeDependencies: true}); err != nil {
+		return nil, nil, fmt.Errorf("failed to serve module: %w", err)
+	}
+
+	// Now that the module is served, introspect the live session schema
+	client := dag.GraphQLClient()
+	schema, err := introspectSchema(ctx, client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to introspect served module schema: %w", err)
+	}
+
+	return client, schema, nil
+}
+
 // getCustomClientAndSchema provides a client and schema for a custom GraphQL endpoint
 func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (graphql.Client, *introspection.Schema, error) {
 	// Create HTTP client with custom headers

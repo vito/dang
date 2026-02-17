@@ -33,6 +33,7 @@ type Env interface {
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
 	CheckDirectiveConflict(directiveName string) []string
+	NamedTypes() iter.Seq2[string, Env]
 }
 
 // ModuleKind represents the kind of module
@@ -44,6 +45,7 @@ const (
 	ScalarKind
 	InterfaceKind
 	UnionKind
+	InputKind
 )
 
 func (k ModuleKind) String() string {
@@ -58,6 +60,8 @@ func (k ModuleKind) String() string {
 		return "interface"
 	case UnionKind:
 		return "union"
+	case InputKind:
+		return "input"
 	default:
 		return "unknown"
 	}
@@ -76,8 +80,7 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, err
 	case introspection.TypeKindEnum:
 		return EnumKind, nil
 	case introspection.TypeKindInputObject:
-		// TODO: adjust once we support these
-		return ObjectKind, nil
+		return InputKind, nil
 	default:
 		return -1, fmt.Errorf("unsupported GraphQL type kind: %s", typeKind)
 	}
@@ -419,6 +422,12 @@ func NewEnv(schema *introspection.Schema) Env {
 					}
 				}
 				args.Add(arg.Name, hm.NewScheme(nil, argType))
+				if arg.Description != "" {
+					if args.DocStrings == nil {
+						args.DocStrings = make(map[string]string)
+					}
+					args.DocStrings[arg.Name] = arg.Description
+				}
 			}
 			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
 			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
@@ -596,6 +605,16 @@ func (e *Module) GetDynamicScopeType() hm.Type {
 
 func (e *Module) SetDynamicScopeType(t hm.Type) {
 	e.dynamicScopeType = t
+}
+
+func (e *Module) NamedTypes() iter.Seq2[string, Env] {
+	return func(yield func(string, Env) bool) {
+		for name, env := range e.classes {
+			if !yield(name, env) {
+				break
+			}
+		}
+	}
 }
 
 func (e *Module) AddClass(name string, c Env) {

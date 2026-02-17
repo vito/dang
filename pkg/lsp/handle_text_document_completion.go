@@ -2,11 +2,25 @@ package lsp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
+
+// getLineUpToCursor returns the text of the given line up to the cursor column.
+func getLineUpToCursor(text string, line, col int) string {
+	lines := strings.Split(text, "\n")
+	if line < 0 || line >= len(lines) {
+		return ""
+	}
+	l := lines[line]
+	if col > len(l) {
+		col = len(l)
+	}
+	return strings.TrimLeft(l[:col], " \t")
+}
 
 func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {
 	if !req.HasParams() {
@@ -23,25 +37,33 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	// Check if we're completing a member access (e.g., "container.fr<TAB>")
-	// We do this by finding the node at the cursor and checking if it's a Select
+	// Try text-based argument completion first, since incomplete function
+	// calls (no closing paren yet) won't parse into a FunCall AST node.
+	if f.TypeEnv != nil {
+		lineText := getLineUpToCursor(f.Text, params.Position.Line, params.Position.Character)
+		if lineText != "" {
+			argCompletions := dang.CompleteInput(ctx, f.TypeEnv, lineText, len(lineText))
+			if len(argCompletions) > 0 && argCompletions[0].IsArg {
+				return completionsToItems(argCompletions), nil
+			}
+		}
+	}
+
 	if f.AST != nil {
+		// Check if we're completing a member access (e.g., "container.fr<TAB>")
 		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
 		if receiver != nil {
-			// Get the inferred type of the receiver
 			receiverType := receiver.GetInferredType()
 			if receiverType != nil {
-				// Offer completions for this type's members
-				items := h.getMemberCompletions(receiverType)
+				completions := dang.MembersOf(receiverType, "")
+				items := completionsToItems(completions)
 				if len(items) > 0 {
 					return items, nil
 				}
 			}
 		}
-	}
 
-	// Add lexical bindings from enclosing scopes
-	if f.AST != nil {
+		// Add lexical bindings from enclosing scopes
 		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
 	}
 
@@ -101,44 +123,23 @@ func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node,
 	return items
 }
 
-// getMemberCompletions returns completion items for a type's members
-func (h *langHandler) getMemberCompletions(t hm.Type) []CompletionItem {
-	var items []CompletionItem
-
-	// Unwrap NonNullType if needed
-	if nn, ok := t.(hm.NonNullType); ok {
-		t = nn.Type
-	}
-
-	// Check if the type is a Module
-	module, ok := t.(dang.Env)
-	if !ok {
-		return items
-	}
-
-	// Iterate over all public members of the type
-	for name, scheme := range module.Bindings(dang.PublicVisibility) {
-		memberType, _ := scheme.Type()
-
-		// Determine completion kind based on member type
+// completionsToItems converts shared dang.Completion values to LSP CompletionItems.
+func completionsToItems(completions []dang.Completion) []CompletionItem {
+	items := make([]CompletionItem, len(completions))
+	for i, c := range completions {
 		kind := VariableCompletion
-		if _, isFn := memberType.(*hm.FunctionType); isFn {
+		if c.IsFunction {
 			kind = MethodCompletion
 		}
-
-		// Get documentation for this member
-		var documentation string
-		if doc, found := module.GetDocString(name); found {
-			documentation = doc
+		if c.IsArg {
+			kind = FieldCompletion
 		}
-
-		items = append(items, CompletionItem{
-			Label:         name,
+		items[i] = CompletionItem{
+			Label:         c.Label,
 			Kind:          kind,
-			Detail:        memberType.String(),
-			Documentation: documentation,
-		})
+			Detail:        c.Detail,
+			Documentation: c.Documentation,
+		}
 	}
-
 	return items
 }

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cd $(dirname $0)/..
+
+git ls-files | grep go.mod | while read mod _; do
+  go -C "$(dirname $mod)" mod tidy
+done
