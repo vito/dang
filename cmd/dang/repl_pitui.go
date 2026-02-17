@@ -645,18 +645,27 @@ func (r *replComponent) menuBoxWidth() int {
 	return maxW + 4 // 2 for padding (" item ") + 2 for border
 }
 
+func (r *replComponent) menuBoxHeight() int {
+	n := len(r.menuDisplayItems())
+	h := min(n, r.menuMaxVisible) + 2 // visible items + top/bottom border
+	if n > r.menuMaxVisible {
+		h++ // info line ("1/42")
+	}
+	return h
+}
+
 func (r *replComponent) showCompletionMenu() {
 	xOff := r.completionXOffsetPitui()
 	displayItems := r.menuDisplayItems()
-	menuH := min(len(displayItems), r.menuMaxVisible) + 2 // items + border
-	linesAbove := len(r.output.cachedLines)               // content lines above the input
+	menuH := r.menuBoxHeight()
+	linesAbove := len(r.output.cachedLines) // content lines above the input
 
 	var opts *pitui.OverlayOptions
 	if linesAbove >= menuH {
 		// Enough room above: show the menu above the input line.
 		opts = &pitui.OverlayOptions{
 			Width:           pitui.SizeAbs(r.menuBoxWidth()),
-			MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2),
+			MaxHeight:       pitui.SizeAbs(menuH),
 			Anchor:          pitui.AnchorBottomLeft,
 			ContentRelative: true,
 			OffsetX:         xOff,
@@ -669,7 +678,7 @@ func (r *replComponent) showCompletionMenu() {
 		// match content rows and we can position without ContentRelative.
 		opts = &pitui.OverlayOptions{
 			Width:     pitui.SizeAbs(r.menuBoxWidth()),
-			MaxHeight: pitui.SizeAbs(r.menuMaxVisible + 2),
+			MaxHeight: pitui.SizeAbs(menuH),
 			Anchor:    pitui.AnchorTopLeft,
 			Row:       pitui.SizeAbs(linesAbove + 1), // right below the input
 			OffsetX:   xOff,
