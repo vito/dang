@@ -164,9 +164,6 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 	if maxW > 60 {
 		maxW = 60
 	}
-	if maxW < 20 {
-		maxW = 20
-	}
 	if maxW+4 > width {
 		maxW = width - 4
 	}
@@ -617,11 +614,25 @@ func (r *replComponent) menuDisplayItems() []string {
 	return r.menuItems
 }
 
+func (r *replComponent) menuBoxWidth() int {
+	items := r.menuDisplayItems()
+	maxW := 0
+	for _, item := range items {
+		if w := lipgloss.Width(item); w > maxW {
+			maxW = w
+		}
+	}
+	if maxW > 60 {
+		maxW = 60
+	}
+	return maxW + 4 // 2 for padding (" item ") + 2 for border
+}
+
 func (r *replComponent) showCompletionMenu() {
 	xOff := r.completionXOffsetPitui()
 	displayItems := r.menuDisplayItems()
 	opts := &pitui.OverlayOptions{
-		Width:           pitui.SizeAbs(40),
+		Width:           pitui.SizeAbs(r.menuBoxWidth()),
 		MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
 		Anchor:          pitui.AnchorBottomLeft,
 		ContentRelative: true,
