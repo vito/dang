@@ -804,17 +804,17 @@ func (r *replComponent) updateCompletionMenuPitui() {
 					labels = append(labels, c.Label+": "+c.Detail)
 				} else {
 					matches = append(matches, prefix+c.Label)
+					labels = append(labels, c.Label)
 				}
 				matchCompletions = append(matchCompletions, c)
 			}
 		}
 		if !isArgCompletion {
 			matches, matchCompletions = sortByCaseWithCompletions(matches, matchCompletions, prefix, partial)
+			labels, _ = sortByCaseWithCompletions(labels, nil, "", partial)
 		}
 		r.setMenuPitui(matches, matchCompletions)
-		if isArgCompletion {
-			r.menuLabels = labels
-		}
+		r.menuLabels = labels
 		if len(matches) > 0 {
 			r.textInput.Suggestion = matches[0]
 		} else {
