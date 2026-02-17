@@ -1,5 +1,11 @@
 package pitui
 
+import (
+	"fmt"
+	"reflect"
+	"time"
+)
+
 // RenderContext carries everything a component needs to render.
 type RenderContext struct {
 	// Width is the available width in terminal columns.
@@ -7,6 +13,33 @@ type RenderContext struct {
 	// Height is the allocated height in lines. 0 means unconstrained
 	// (the component may return as many lines as it wants).
 	Height int
+
+	// componentStats, when non-nil, collects per-component render
+	// metrics. Set by the TUI when debug logging is enabled.
+	componentStats *[]ComponentStat
+}
+
+// ComponentStat captures render metrics for a single component within
+// a frame.
+type ComponentStat struct {
+	Name     string `json:"name"`
+	RenderUs int64  `json:"render_us"`
+	Lines    int    `json:"lines"`
+	Dirty    bool   `json:"dirty"`
+}
+
+// componentName returns a short human-readable name for a component.
+// Uses the Named interface if available, otherwise the type name from
+// reflect (package path stripped for brevity in the dashboard).
+func componentName(c Component) string {
+	if n, ok := c.(interface{ Name() string }); ok {
+		return n.Name()
+	}
+	t := reflect.TypeOf(c)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return fmt.Sprintf("%s.%s", t.PkgPath(), t.Name())
 }
 
 // CursorPos represents a cursor position within a component's rendered output.
@@ -108,7 +141,20 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 	newMap := make(map[Component][]string, len(c.Children))
 
 	for _, ch := range c.Children {
-		r := ch.Render(ctx)
+		var r RenderResult
+		if ctx.componentStats != nil {
+			start := time.Now()
+			r = ch.Render(ctx)
+			elapsed := time.Since(start)
+			*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
+				Name:     componentName(ch),
+				RenderUs: elapsed.Microseconds(),
+				Lines:    len(r.Lines),
+				Dirty:    r.Dirty,
+			})
+		} else {
+			r = ch.Render(ctx)
+		}
 		if r.Cursor != nil {
 			cursor = &CursorPos{
 				Row: len(lines) + r.Cursor.Row,
@@ -176,7 +222,20 @@ func (s *Slot) Render(ctx RenderContext) RenderResult {
 		s.dirty = false
 		return r
 	}
-	r := s.child.Render(ctx)
+	var r RenderResult
+	if ctx.componentStats != nil {
+		start := time.Now()
+		r = s.child.Render(ctx)
+		elapsed := time.Since(start)
+		*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
+			Name:     componentName(s.child),
+			RenderUs: elapsed.Microseconds(),
+			Lines:    len(r.Lines),
+			Dirty:    r.Dirty,
+		})
+	} else {
+		r = s.child.Render(ctx)
+	}
 	r.Dirty = r.Dirty || s.dirty
 	s.dirty = false
 	return r

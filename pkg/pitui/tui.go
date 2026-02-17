@@ -103,7 +103,8 @@ type renderStatsJSON struct {
 	ComponentDirty  bool  `json:"component_dirty"`
 	FirstChanged    int   `json:"first_changed"`
 	LastChanged     int   `json:"last_changed"`
-	ScrollLines     int   `json:"scroll_lines"`
+	ScrollLines     int              `json:"scroll_lines"`
+	Components      []ComponentStat  `json:"components,omitempty"`
 }
 
 // TUI is the main renderer. It extends Container with differential rendering
@@ -418,7 +419,12 @@ func (t *TUI) doRender() {
 
 	// Render all components.
 	renderStart := time.Now()
-	baseResult := t.Render(RenderContext{Width: width})
+	ctx := RenderContext{Width: width}
+	var compStats []ComponentStat
+	if debugW != nil {
+		ctx.componentStats = &compStats
+	}
+	baseResult := t.Render(ctx)
 	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
 	stats.RenderTime = time.Since(renderStart)
@@ -472,6 +478,7 @@ func (t *TUI) doRender() {
 			FirstChanged:    stats.FirstChangedLine,
 			LastChanged:     stats.LastChangedLine,
 			ScrollLines:     stats.ScrollLines,
+			Components:      compStats,
 		}
 		data, _ := json.Marshal(rec)
 		data = append(data, '\n')
