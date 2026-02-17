@@ -315,7 +315,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 
 	// Text input callbacks.
 	ti.SuggestionStyle = func(s string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(s)
+		return dimStyle.Render(s)
 	}
 	ti.OnSubmit = r.onSubmit
 	ti.OnKey = r.onKey
