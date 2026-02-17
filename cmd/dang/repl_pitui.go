@@ -318,6 +318,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	ti.OnSubmit = r.onSubmit
 	ti.OnKey = r.onKey
+	ti.OnChange = r.updateCompletionMenuPitui
 
 	// Welcome message.
 	welcome := newReplEntry("")
@@ -470,9 +471,6 @@ func (r *replComponent) onKey(data []byte) bool {
 		r.output.markDirty()
 		return true
 	}
-
-	// After any key that modifies input, update completions.
-	defer r.updateCompletionMenuPitui()
 
 	return false
 }

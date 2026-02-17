@@ -34,6 +34,10 @@ type TextInput struct {
 	// SuggestionStyle wraps the suggestion text (e.g. dim style).
 	// If nil, the suggestion is rendered as-is.
 	SuggestionStyle func(string) string
+
+	// OnChange is called after the input value has been modified (character
+	// inserted, deleted, etc.). It is NOT called for cursor-only movements.
+	OnChange func()
 }
 
 // NewTextInput creates a TextInput with the given prompt.
@@ -107,6 +111,13 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 func (t *TextInput) HandleInput(data []byte) {
 	s := string(data)
 	t.Suggestion = "" // Clear suggestion on every keystroke
+
+	oldValue := string(t.value)
+	defer func() {
+		if t.OnChange != nil && string(t.value) != oldValue {
+			t.OnChange()
+		}
+	}()
 
 	switch {
 	// Enter
