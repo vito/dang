@@ -30,8 +30,12 @@ type inputListenerEntry struct {
 // RenderStats captures performance metrics for a single render cycle.
 type RenderStats struct {
 	// RenderTime is how long it took to generate the rendered content
-	// (calling Component.Render on the tree).
+	// (calling Component.Render on the tree, excluding overlay compositing).
 	RenderTime time.Duration
+
+	// CompositeTime is how long overlay compositing took (column-level
+	// string surgery). Zero when there are no overlays.
+	CompositeTime time.Duration
 
 	// DiffTime is how long the differential update computation took.
 	DiffTime time.Duration
@@ -59,20 +63,47 @@ type RenderStats struct {
 
 	// OverlayCount is the number of active overlays composited.
 	OverlayCount int
+
+	// BytesWritten is the number of bytes sent to the terminal (escape
+	// sequences + content). Large values indicate potential slowness over
+	// SSH or on slow terminals.
+	BytesWritten int
+
+	// ComponentDirty reports whether the component tree signaled that its
+	// content changed (via the Dirty flag). When false but lines still
+	// differ, something bypassed the dirty tracking.
+	ComponentDirty bool
+
+	// FirstChangedLine is the first line index that differed from the
+	// previous frame, or -1 if nothing changed.
+	FirstChangedLine int
+
+	// LastChangedLine is the last line index that differed from the
+	// previous frame, or -1 if nothing changed.
+	LastChangedLine int
+
+	// ScrollLines is how many lines the viewport scrolled this frame.
+	ScrollLines int
 }
 
 // renderStatsJSON is the JSONL record written by the debug writer.
 type renderStatsJSON struct {
-	Ts             int64 `json:"ts"`
-	TotalUs        int64 `json:"total_us"`
-	RenderUs       int64 `json:"render_us"`
-	DiffUs         int64 `json:"diff_us"`
-	WriteUs        int64 `json:"write_us"`
-	TotalLines     int   `json:"total_lines"`
-	LinesRepainted int   `json:"lines_repainted"`
-	CacheHits      int   `json:"cache_hits"`
-	FullRedraw     bool  `json:"full_redraw"`
-	OverlayCount   int   `json:"overlay_count"`
+	Ts              int64 `json:"ts"`
+	TotalUs         int64 `json:"total_us"`
+	RenderUs        int64 `json:"render_us"`
+	CompositeUs     int64 `json:"composite_us"`
+	DiffUs          int64 `json:"diff_us"`
+	WriteUs         int64 `json:"write_us"`
+	TotalLines      int   `json:"total_lines"`
+	LinesRepainted  int   `json:"lines_repainted"`
+	CacheHits       int   `json:"cache_hits"`
+	FullRedraw      bool  `json:"full_redraw"`
+	OverlayCount    int   `json:"overlay_count"`
+	BytesWritten    int   `json:"bytes_written"`
+	ComponentDirty  bool  `json:"component_dirty"`
+	FirstChanged    int   `json:"first_changed"`
+	LastChanged     int   `json:"last_changed"`
+	ScrollLines     int   `json:"scroll_lines"`
 }
 
 // TUI is the main renderer. It extends Container with differential rendering
@@ -401,17 +432,20 @@ func (t *TUI) doRender() {
 	baseResult := t.Render(RenderContext{Width: width})
 	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
+	stats.RenderTime = time.Since(renderStart)
+	stats.ComponentDirty = baseResult.Dirty
 
 	// Composite overlays.
 	if len(overlays) > 0 {
+		compositeStart := time.Now()
 		newLines, cursorPos = t.compositeOverlays(newLines, cursorPos, overlays, width, height, maxLinesRendered)
+		stats.CompositeTime = time.Since(compositeStart)
 	}
 
 	// Append reset to each line.
 	for i := range newLines {
 		newLines[i] += segmentReset
 	}
-	stats.RenderTime = time.Since(renderStart)
 	stats.TotalLines = len(newLines)
 
 	viewportTop := max(0, maxLinesRendered-height)
@@ -433,16 +467,22 @@ func (t *TUI) doRender() {
 		}
 		stats.TotalTime = time.Since(totalStart)
 		rec := renderStatsJSON{
-			Ts:             time.Now().UnixMilli(),
-			TotalUs:        stats.TotalTime.Microseconds(),
-			RenderUs:       stats.RenderTime.Microseconds(),
-			DiffUs:         stats.DiffTime.Microseconds(),
-			WriteUs:        stats.WriteTime.Microseconds(),
-			TotalLines:     stats.TotalLines,
-			LinesRepainted: stats.LinesRepainted,
-			CacheHits:      stats.CacheHits,
-			FullRedraw:     stats.FullRedraw,
-			OverlayCount:   stats.OverlayCount,
+			Ts:              time.Now().UnixMilli(),
+			TotalUs:         stats.TotalTime.Microseconds(),
+			RenderUs:        stats.RenderTime.Microseconds(),
+			CompositeUs:     stats.CompositeTime.Microseconds(),
+			DiffUs:          stats.DiffTime.Microseconds(),
+			WriteUs:         stats.WriteTime.Microseconds(),
+			TotalLines:      stats.TotalLines,
+			LinesRepainted:  stats.LinesRepainted,
+			CacheHits:       stats.CacheHits,
+			FullRedraw:      stats.FullRedraw,
+			OverlayCount:    stats.OverlayCount,
+			BytesWritten:    stats.BytesWritten,
+			ComponentDirty:  stats.ComponentDirty,
+			FirstChanged:    stats.FirstChangedLine,
+			LastChanged:     stats.LastChangedLine,
+			ScrollLines:     stats.ScrollLines,
 		}
 		data, _ := json.Marshal(rec)
 		data = append(data, '\n')
@@ -458,6 +498,8 @@ func (t *TUI) doRender() {
 		stats.FullRedraw = true
 		stats.LinesRepainted = len(newLines)
 		stats.CacheHits = 0
+		stats.FirstChangedLine = 0
+		stats.LastChangedLine = max(0, len(newLines)-1)
 
 		diffStart := time.Now()
 		var buf strings.Builder
@@ -473,6 +515,7 @@ func (t *TUI) doRender() {
 		}
 		buf.WriteString("\x1b[?2026l") // end synchronized output
 		stats.DiffTime = time.Since(diffStart)
+		stats.BytesWritten = buf.Len()
 
 		writeStart := time.Now()
 		t.terminal.WriteString(buf.String())
@@ -559,6 +602,8 @@ func (t *TUI) doRender() {
 		stats.DiffTime = time.Since(diffStart)
 		stats.CacheHits = len(newLines)
 		stats.LinesRepainted = 0
+		stats.FirstChangedLine = -1
+		stats.LastChangedLine = -1
 		t.positionHardwareCursor(cursorPos, len(newLines))
 		t.mu.Lock()
 		t.previousViewportTop = max(0, t.maxLinesRendered-height)
@@ -571,6 +616,8 @@ func (t *TUI) doRender() {
 	if firstChanged >= len(newLines) {
 		stats.CacheHits = len(newLines)
 		stats.LinesRepainted = 0
+		stats.FirstChangedLine = firstChanged
+		stats.LastChangedLine = lastChanged
 		if len(prevLines) > len(newLines) {
 			var buf strings.Builder
 			buf.WriteString("\x1b[?2026h")
@@ -601,6 +648,7 @@ func (t *TUI) doRender() {
 			}
 			buf.WriteString("\x1b[?2026l")
 			stats.DiffTime = time.Since(diffStart)
+			stats.BytesWritten = buf.Len()
 
 			writeStart := time.Now()
 			t.terminal.WriteString(buf.String())
@@ -647,6 +695,7 @@ func (t *TUI) doRender() {
 			fmt.Fprintf(&buf, "\x1b[%dB", moveToBottom)
 		}
 		scroll := moveTargetRow - prevViewportBottom
+		stats.ScrollLines = scroll
 		for i := 0; i < scroll; i++ {
 			buf.WriteString("\r\n")
 		}
@@ -699,6 +748,9 @@ func (t *TUI) doRender() {
 	// Compute repainted/cached stats.
 	stats.LinesRepainted = renderEnd - firstChanged + 1
 	stats.CacheHits = len(newLines) - stats.LinesRepainted
+	stats.FirstChangedLine = firstChanged
+	stats.LastChangedLine = lastChanged
+	stats.BytesWritten = buf.Len()
 
 	writeStart := time.Now()
 	t.terminal.WriteString(buf.String())
