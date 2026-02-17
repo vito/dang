@@ -30,5 +30,9 @@ pub barQualified: Dagger.Container! {
   ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
+# argument completion
+container.from() # test: ^f(a<C-x><C-o> => container.from(address┃)
+container.withExec() # test: ^f(a<C-x><C-o> => container.withExec(args┃)
+
 let url = "https://github.com/vito/dang"
 Dagger.git(url) # test: ^Ea.he<C-x><C-o>{delay:200ms}.tr<C-x><C-o> => git(url).head.tree┃
