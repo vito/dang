@@ -631,13 +631,19 @@ func (r *replComponent) menuBoxWidth() int {
 func (r *replComponent) showCompletionMenu() {
 	xOff := r.completionXOffsetPitui()
 	displayItems := r.menuDisplayItems()
+	menuH := min(len(displayItems), r.menuMaxVisible) + 2 // items + border
+	linesAbove := len(r.output.cachedLines) // content lines above the input
+	offsetY := -1                           // default: above the input line
+	if linesAbove < menuH {
+		offsetY = 1 // not enough room above; show below
+	}
 	opts := &pitui.OverlayOptions{
 		Width:           pitui.SizeAbs(r.menuBoxWidth()),
-		MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
+		MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2),
 		Anchor:          pitui.AnchorBottomLeft,
 		ContentRelative: true,
 		OffsetX:         xOff,
-		OffsetY:         -1, // above the input line
+		OffsetY:         offsetY,
 		NoFocus:         true,
 	}
 	if r.menuHandle != nil {
