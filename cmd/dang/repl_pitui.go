@@ -699,16 +699,45 @@ func (r *replComponent) syncMenu() {
 	r.tui.RequestRender(false)
 }
 
+func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
+	xOff := r.completionXOffsetPitui()
+	menuW := r.menuBoxWidth()
+	detailX := xOff + menuW + 1 // 1 col gap between menu and detail
+
+	linesAbove := len(r.output.cachedLines)
+	menuH := min(len(r.menuDisplayItems()), r.menuMaxVisible) + 2
+
+	// Match the menu's vertical positioning strategy.
+	if linesAbove >= menuH {
+		// Menu is above input — detail anchors to same region.
+		return &pitui.OverlayOptions{
+			Width:           pitui.SizePct(35),
+			MaxHeight:       pitui.SizePct(80),
+			Anchor:          pitui.AnchorBottomLeft,
+			ContentRelative: true,
+			OffsetX:         detailX,
+			OffsetY:         -1,
+			NoFocus:         true,
+		}
+	}
+	// Menu is below input.
+	return &pitui.OverlayOptions{
+		Width:     pitui.SizePct(35),
+		MaxHeight: pitui.SizePct(80),
+		Anchor:    pitui.AnchorTopLeft,
+		Row:       pitui.SizeAbs(linesAbove + 1),
+		OffsetX:   detailX,
+		NoFocus:   true,
+	}
+}
+
 func (r *replComponent) showDetailBubble() {
+	opts := r.detailBubbleOptions()
 	if r.detailBubble == nil {
 		r.detailBubble = &detailBubble{}
-		r.detailHandle = r.tui.ShowOverlay(r.detailBubble, &pitui.OverlayOptions{
-			Width:     pitui.SizePct(35),
-			MaxHeight: pitui.SizePct(80),
-			Anchor:    pitui.AnchorTopRight,
-			Margin:    pitui.OverlayMargin{Top: 1, Right: 1},
-			NoFocus:   true,
-		})
+		r.detailHandle = r.tui.ShowOverlay(r.detailBubble, opts)
+	} else {
+		r.detailHandle.SetOptions(opts)
 	}
 }
 
