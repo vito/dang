@@ -71,10 +71,6 @@ type OverlayOptions struct {
 	// NoFocus, when true, prevents the overlay from stealing focus when
 	// shown. Useful for non-modal popups like completion menus.
 	NoFocus bool
-
-	// Visible is called each render cycle. If non-nil, the overlay is only
-	// rendered when it returns true.
-	Visible func(termWidth, termHeight int) bool
 }
 
 // OverlayHandle controls a displayed overlay.
@@ -86,6 +82,14 @@ type OverlayHandle struct {
 // Hide permanently removes the overlay.
 func (h *OverlayHandle) Hide() {
 	h.tui.removeOverlay(h.entry)
+}
+
+// SetOptions replaces the overlay's positioning/sizing options without
+// destroying and recreating the overlay. This avoids allocation churn and
+// focus management round-trips for things like repositioning a completion
+// menu on each keystroke.
+func (h *OverlayHandle) SetOptions(opts *OverlayOptions) {
+	h.entry.options = opts
 }
 
 // SetHidden temporarily hides or shows the overlay.
@@ -124,13 +128,7 @@ type overlayEntry struct {
 }
 
 func (t *TUI) isOverlayVisible(e *overlayEntry) bool {
-	if e.hidden {
-		return false
-	}
-	if e.options != nil && e.options.Visible != nil {
-		return e.options.Visible(t.terminal.Columns(), t.terminal.Rows())
-	}
-	return true
+	return !e.hidden
 }
 
 func (t *TUI) topmostVisibleOverlay() *overlayEntry {

@@ -611,18 +611,8 @@ func (r *replComponent) hideCompletionMenu() {
 }
 
 func (r *replComponent) showCompletionMenu() {
-	// Always recreate the overlay so OffsetX tracks the cursor position.
-	if r.menuHandle != nil {
-		r.menuHandle.Hide()
-		r.menuHandle = nil
-	}
-	r.menuOverlay = &completionOverlay{
-		items:      r.menuItems,
-		index:      r.menuIndex,
-		maxVisible: r.menuMaxVisible,
-	}
 	xOff := r.completionXOffsetPitui()
-	r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, &pitui.OverlayOptions{
+	opts := &pitui.OverlayOptions{
 		Width:           pitui.SizeAbs(40),
 		MaxHeight:       pitui.SizeAbs(r.menuMaxVisible + 2), // items + border
 		Anchor:          pitui.AnchorBottomLeft,
@@ -630,7 +620,20 @@ func (r *replComponent) showCompletionMenu() {
 		OffsetX:         xOff,
 		OffsetY:         -1, // above the input line
 		NoFocus:         true,
-	})
+	}
+	if r.menuHandle != nil {
+		// Reuse existing overlay — just update position and data.
+		r.menuOverlay.items = r.menuItems
+		r.menuOverlay.index = r.menuIndex
+		r.menuHandle.SetOptions(opts)
+	} else {
+		r.menuOverlay = &completionOverlay{
+			items:      r.menuItems,
+			index:      r.menuIndex,
+			maxVisible: r.menuMaxVisible,
+		}
+		r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, opts)
+	}
 	r.syncDetailBubble()
 }
 
