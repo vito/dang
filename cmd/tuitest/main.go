@@ -11,6 +11,7 @@ import (
 // Counter is a simple interactive component that displays a count and
 // increments it when any key is pressed.
 type Counter struct {
+	pitui.Compo
 	Count   int
 	focused bool
 }
@@ -27,18 +28,19 @@ func (c *Counter) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{
 		Lines:  []string{line},
 		Cursor: cursor,
-		Dirty:  true,
 	}
 }
 
 func (c *Counter) HandleInput(data []byte) {
 	c.Count++
+	c.Update()
 }
 
 func (c *Counter) SetFocused(focused bool) { c.focused = focused }
 
 // Banner is a static component that renders a multi-line banner.
 type Banner struct {
+	pitui.Compo
 	Text string
 }
 
@@ -50,7 +52,7 @@ func (b *Banner) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		}
 		lines = append(lines, line)
 	}
-	return pitui.RenderResult{Lines: lines, Dirty: true}
+	return pitui.RenderResult{Lines: lines}
 }
 
 func main() {

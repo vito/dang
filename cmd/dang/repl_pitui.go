@@ -112,7 +112,15 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 // ── spinner line component ──────────────────────────────────────────────────
 
 type evalSpinnerLine struct {
+	pitui.Compo
 	spinner *pitui.Spinner
+}
+
+func newEvalSpinnerLine(spinner *pitui.Spinner) *evalSpinnerLine {
+	e := &evalSpinnerLine{spinner: spinner}
+	// Wire the spinner's Compo to propagate through this wrapper.
+	spinner.GetCompo().SetParent(e.GetCompo())
+	return e
 }
 
 func (e *evalSpinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
@@ -122,6 +130,7 @@ func (e *evalSpinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
 // ── completion menu overlay ─────────────────────────────────────────────────
 
 type completionOverlay struct {
+	pitui.Compo
 	items      []string
 	index      int
 	maxVisible int
@@ -129,10 +138,10 @@ type completionOverlay struct {
 
 func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if len(c.items) == 0 {
-		return pitui.RenderResult{Dirty: true}
+		return pitui.RenderResult{}
 	}
 	lines := strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width), "\n")
-	return pitui.RenderResult{Lines: lines, Dirty: true}
+	return pitui.RenderResult{Lines: lines}
 }
 
 // renderMenuBox renders the completion dropdown as a bordered box string.
@@ -188,12 +197,13 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 // ── detail bubble (viewport-relative overlay) ───────────────────────────────
 
 type detailBubble struct {
+	pitui.Compo
 	item docItem
 }
 
 func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if d.item.name == "" {
-		return pitui.RenderResult{Dirty: true}
+		return pitui.RenderResult{}
 	}
 
 	// lipgloss Width(n) sets the TOTAL width including borders, so the
@@ -227,7 +237,6 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	box := detailBorderStyle.Width(ctx.Width).Render(inner)
 	return pitui.RenderResult{
 		Lines: strings.Split(box, "\n"),
-		Dirty: true,
 	}
 }
 
@@ -311,7 +320,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
-	r.spinnerLine = &evalSpinnerLine{spinner: sp}
+	r.spinnerLine = newEvalSpinnerLine(sp)
 
 	// Input slot starts with text input.
 	r.inputSlot = pitui.NewSlot(ti)
@@ -709,6 +718,7 @@ func (r *replComponent) showCompletionMenu() {
 		// Reuse existing overlay — just update position and data.
 		r.menuOverlay.items = displayItems
 		r.menuOverlay.index = r.menuIndex
+		r.menuOverlay.Update()
 		r.menuHandle.SetOptions(opts)
 	} else {
 		r.menuOverlay = &completionOverlay{
@@ -725,6 +735,7 @@ func (r *replComponent) syncMenu() {
 	if r.menuOverlay != nil {
 		r.menuOverlay.items = r.menuDisplayItems()
 		r.menuOverlay.index = r.menuIndex
+		r.menuOverlay.Update()
 	}
 	r.syncDetailBubble()
 	r.tui.RequestRender(false)
@@ -810,6 +821,7 @@ func (r *replComponent) syncDetailBubble() {
 
 	r.showDetailBubble()
 	r.detailBubble.item = item
+	r.detailBubble.Update()
 }
 
 // showDetailForCompletion shows the detail bubble for a single completion
@@ -833,6 +845,7 @@ func (r *replComponent) showDetailForCompletion(c dang.Completion) {
 
 	r.showDetailBubble()
 	r.detailBubble.item = item
+	r.detailBubble.Update()
 }
 
 // resolveCompletionDocItem tries to resolve a member completion's docItem
@@ -1348,7 +1361,7 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, module
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}
 		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
-		loadLine := &evalSpinnerLine{spinner: loadSp}
+		loadLine := newEvalSpinnerLine(loadSp)
 		tui.AddChild(loadLine)
 		loadSp.Start()
 

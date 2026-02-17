@@ -110,59 +110,34 @@ func (c *Compo) Update() {
 // struct that embeds Compo, allowing the framework to detect and use it.
 func (c *Compo) GetCompo() *Compo { return c }
 
-// compoOf returns the embedded Compo if the component has one, or nil.
-func compoOf(c Component) *Compo {
-	type getter interface {
-		GetCompo() *Compo
-	}
-	if g, ok := c.(getter); ok {
-		return g.GetCompo()
-	}
-	return nil
-}
+// SetParent sets the parent Compo for upward dirty propagation.
+// This is normally managed by Container.AddChild and Slot.Set, but
+// can be called manually for components that render children directly
+// without using Container/Slot (e.g. a wrapper that delegates to an
+// inner component).
+func (c *Compo) SetParent(parent *Compo) { c.parent = parent }
 
 // renderComponent renders a child component, using its Compo cache when
 // the component is clean and the width hasn't changed. This is the core
 // function that makes finalized components O(1).
 func renderComponent(ch Component, ctx RenderContext) RenderResult {
-	cp := compoOf(ch)
+	cp := ch.GetCompo()
 
-	if cp != nil {
-		if cp.cache != nil && !cp.needsRender.Load() && cp.cache.width == ctx.Width {
-			// Cache hit — skip Render entirely.
-			if ctx.componentStats != nil {
-				*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
-					Name:   componentName(ch),
-					Lines:  len(cp.cache.result.Lines),
-					Cached: true,
-				})
-			}
-			r := cp.cache.result
-			r.Dirty = false
-			return r
-		}
-
-		// Cache miss — render and store.
-		var r RenderResult
+	if cp.cache != nil && !cp.needsRender.Load() && cp.cache.width == ctx.Width {
+		// Cache hit — skip Render entirely.
 		if ctx.componentStats != nil {
-			start := time.Now()
-			r = ch.Render(ctx)
-			elapsed := time.Since(start)
 			*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
-				Name:     componentName(ch),
-				RenderUs: elapsed.Microseconds(),
-				Lines:    len(r.Lines),
+				Name:   componentName(ch),
+				Lines:  len(cp.cache.result.Lines),
+				Cached: true,
 			})
-		} else {
-			r = ch.Render(ctx)
 		}
-		r.Dirty = true // we rendered fresh content
-		cp.cache = &renderCache{result: r, width: ctx.Width}
-		cp.needsRender.Store(false)
+		r := cp.cache.result
+		r.Dirty = false
 		return r
 	}
 
-	// No Compo — always render, always dirty.
+	// Cache miss — render and store.
 	var r RenderResult
 	if ctx.componentStats != nil {
 		start := time.Now()
@@ -176,14 +151,20 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	} else {
 		r = ch.Render(ctx)
 	}
-	if !r.Dirty {
-		r.Dirty = true
-	}
+	r.Dirty = true // we rendered fresh content
+	cp.cache = &renderCache{result: r, width: ctx.Width}
+	cp.needsRender.Store(false)
 	return r
 }
 
 // Component is the interface all UI components must implement.
+// All components must embed Compo to get automatic render caching
+// and dirty propagation.
 type Component interface {
+	// GetCompo returns the embedded Compo. This is provided automatically
+	// by embedding pitui.Compo in your struct.
+	GetCompo() *Compo
+
 	// Render produces the visual output within the given constraints.
 	Render(ctx RenderContext) RenderResult
 }
@@ -220,9 +201,7 @@ type Container struct {
 
 func (c *Container) AddChild(comp Component) {
 	c.Children = append(c.Children, comp)
-	if cp := compoOf(comp); cp != nil {
-		cp.parent = &c.Compo
-	}
+	comp.GetCompo().parent = &c.Compo
 	c.Update()
 }
 
@@ -230,9 +209,7 @@ func (c *Container) RemoveChild(comp Component) {
 	for i, ch := range c.Children {
 		if ch == comp {
 			c.Children = append(c.Children[:i], c.Children[i+1:]...)
-			if cp := compoOf(comp); cp != nil {
-				cp.parent = nil
-			}
+			comp.GetCompo().parent = nil
 			c.Update()
 			return
 		}
@@ -241,9 +218,7 @@ func (c *Container) RemoveChild(comp Component) {
 
 func (c *Container) Clear() {
 	for _, ch := range c.Children {
-		if cp := compoOf(ch); cp != nil {
-			cp.parent = nil
-		}
+		ch.GetCompo().parent = nil
 	}
 	c.Children = nil
 	c.lineCount = 0
@@ -309,15 +284,11 @@ func (s *Slot) Set(c Component) {
 
 func (s *Slot) setChild(c Component) {
 	if s.child != nil {
-		if cp := compoOf(s.child); cp != nil {
-			cp.parent = nil
-		}
+		s.child.GetCompo().parent = nil
 	}
 	s.child = c
 	if c != nil {
-		if cp := compoOf(c); cp != nil {
-			cp.parent = &s.Compo
-		}
+		c.GetCompo().parent = &s.Compo
 	}
 }
 
