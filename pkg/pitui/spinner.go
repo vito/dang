@@ -6,6 +6,8 @@ import (
 
 // Spinner is a component that shows an animated spinner.
 type Spinner struct {
+	Compo
+
 	// Style wraps each frame (e.g. to apply color). May be nil.
 	Style func(string) string
 	// Label is displayed after the spinner frame.
@@ -37,7 +39,7 @@ func (s *Spinner) Start() {
 		for {
 			select {
 			case <-s.ticker.C:
-				s.tui.RequestRender(false)
+				s.Update()
 			case <-s.done:
 				return
 			}
@@ -69,6 +71,5 @@ func (s *Spinner) Render(ctx RenderContext) RenderResult {
 	}
 	return RenderResult{
 		Lines: []string{line},
-		Dirty: true, // always dirty (animating)
 	}
 }

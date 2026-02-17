@@ -824,43 +824,42 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 	golden.Assert(t, snap, "overlay_bordered_width_mismatch.golden")
 }
 
-// cachingComponent tracks render calls and supports Dirty: false.
-type cachingComponent struct {
+// compoComponent embeds Compo for automatic caching. Call Update() to
+// mark dirty. Tracks render call count.
+type compoComponent struct {
+	Compo
 	lines       []string
-	dirty       bool
 	renderCount int
 }
 
-func (c *cachingComponent) Render(ctx RenderContext) RenderResult {
+func (c *compoComponent) Render(ctx RenderContext) RenderResult {
 	c.renderCount++
-	return RenderResult{
-		Lines: c.lines,
-		Dirty: c.dirty,
-	}
+	return RenderResult{Lines: c.lines}
 }
 
-func TestContainerCachesCleanChildren(t *testing.T) {
+func TestCompoSkipsRenderWhenClean(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
 
-	// Two children: one finalized (clean), one always dirty.
-	finalized := &cachingComponent{lines: []string{"old line 1", "old line 2"}, dirty: true}
+	// Two children with Compo: one finalized, one changing.
+	finalized := &compoComponent{lines: []string{"old line 1", "old line 2"}}
+	finalized.Update() // dirty for first render
 	active := &staticComponent{lines: []string{"input> "}}
 	tui.AddChild(finalized)
 	tui.AddChild(active)
 	tui.stopped = false
 
-	// First render — both dirty.
+	// First render — finalized is dirty, renders.
 	renderSync(tui)
 	assert.Equal(t, 1, finalized.renderCount)
 
-	// Mark finalized as clean.
-	finalized.dirty = false
+	// Second render — finalized is clean (nobody called Update).
+	// Render should be SKIPPED entirely (renderCount stays 1).
 	term.reset()
 	renderSync(tui)
-	assert.Equal(t, 2, finalized.renderCount) // still called, but returns Dirty: false
+	assert.Equal(t, 1, finalized.renderCount, "clean Compo should skip Render")
 
-	// The output should still contain both components' content.
+	// The output should still contain finalized's content (from cache).
 	tui.mu.Lock()
 	prev := tui.previousLines
 	tui.mu.Unlock()
@@ -871,32 +870,36 @@ func TestContainerCachesCleanChildren(t *testing.T) {
 }
 
 func TestContainerDirtyPropagation(t *testing.T) {
-	// When all children return Dirty: false, Container should too.
 	c := &Container{}
-	c1 := &cachingComponent{lines: []string{"a"}, dirty: false}
-	c2 := &cachingComponent{lines: []string{"b"}, dirty: false}
+	c1 := &compoComponent{lines: []string{"a"}}
+	c1.Update()
+	c2 := &compoComponent{lines: []string{"b"}}
+	c2.Update()
 	c.AddChild(c1)
 	c.AddChild(c2)
 
-	// First render — width changes, so dirty despite children being clean.
+	// First render — children are dirty.
 	r := c.Render(RenderContext{Width: 40})
-	assert.True(t, r.Dirty, "first render with new width should be dirty")
+	assert.True(t, r.Dirty, "first render should be dirty")
+	assert.Equal(t, []string{"a", "b"}, r.Lines)
 
-	// Second render — same width, children clean.
+	// Second render — children clean (no Update called).
 	r = c.Render(RenderContext{Width: 40})
 	assert.False(t, r.Dirty, "should be clean when all children are clean")
 	assert.Equal(t, []string{"a", "b"}, r.Lines)
 
 	// Mark one child dirty.
-	c1.dirty = true
+	c1.Update()
 	r = c.Render(RenderContext{Width: 40})
 	assert.True(t, r.Dirty, "should be dirty when any child is dirty")
 }
 
 func TestContainerLineCount(t *testing.T) {
 	c := &Container{}
-	c1 := &cachingComponent{lines: []string{"a", "b"}, dirty: true}
-	c2 := &cachingComponent{lines: []string{"c"}, dirty: true}
+	c1 := &compoComponent{lines: []string{"a", "b"}}
+	c1.Update()
+	c2 := &compoComponent{lines: []string{"c"}}
+	c2.Update()
 	c.AddChild(c1)
 	c.AddChild(c2)
 
@@ -906,19 +909,22 @@ func TestContainerLineCount(t *testing.T) {
 	c.Render(RenderContext{Width: 40})
 	assert.Equal(t, 3, c.LineCount())
 
-	// After removing a child.
+	// After removing a child and re-rendering.
 	c.RemoveChild(c2)
+	c.Render(RenderContext{Width: 40})
 	assert.Equal(t, 2, c.LineCount())
 }
 
-func TestContainerCleanChildNoRepaint(t *testing.T) {
-	// Verify that a clean child's line range is not repainted by the TUI
+func TestCompoCachedChildNoRepaint(t *testing.T) {
+	// Verify that a cached Compo child's line range is not repainted
 	// when only other children change.
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
 
-	clean := &cachingComponent{lines: []string{"stable-1", "stable-2"}, dirty: true}
-	changing := &cachingComponent{lines: []string{"v1"}, dirty: true}
+	clean := &compoComponent{lines: []string{"stable-1", "stable-2"}}
+	clean.Update()
+	changing := &compoComponent{lines: []string{"v1"}}
+	changing.Update()
 	tui.AddChild(clean)
 	tui.AddChild(changing)
 	tui.stopped = false
@@ -926,19 +932,47 @@ func TestContainerCleanChildNoRepaint(t *testing.T) {
 	// First render (full).
 	renderSync(tui)
 
-	// Now clean child is finalized.
-	clean.dirty = false
+	// Now only changing child is updated.
 	changing.lines = []string{"v2"}
-	changing.dirty = true
+	changing.Update()
 	term.reset()
 	renderSync(tui)
 
 	out := term.written.String()
 	// The changing child should be repainted.
 	assert.Contains(t, out, "v2")
-	// The clean child should NOT be repainted (no line clear for its lines).
+	// The clean child should NOT be repainted.
 	assert.NotContains(t, out, "stable-1")
 	assert.NotContains(t, out, "stable-2")
+}
+
+func TestUpdatePropagatesAndRequestsRender(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	child := &compoComponent{lines: []string{"hello"}}
+	child.Update()
+	tui.AddChild(child)
+	renderSync(tui)
+
+	// Drain the render channel.
+	select {
+	case <-tui.renderCh:
+	default:
+	}
+
+	// Update the child — should propagate and request render.
+	child.lines = []string{"world"}
+	child.Update()
+
+	// The render channel should have a pending request.
+	select {
+	case <-tui.renderCh:
+		// good
+	default:
+		t.Fatal("Update() should have triggered RequestRender via propagation")
+	}
 }
 
 func TestForceRender(t *testing.T) {

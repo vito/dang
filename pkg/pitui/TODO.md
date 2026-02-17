@@ -4,34 +4,32 @@
 
 Each `replEntry` is now wrapped in an `entryView` component, appended as
 a child of an `entryContainer` (`pitui.Container`). Finalized entries
-return `Dirty: false` and are skipped by Container's caching.
+are never `Update()`d again, so the framework skips their Render()
+entirely and returns cached output.
 
-## ✅ Clean up Dirty / Invalidate — DONE
+## ✅ Compo-based render caching — DONE
 
-- `Invalidate()` removed from the `Component` interface. Components that
-  need internal cache busting use their own methods (e.g. `markDirty()`).
-- `RenderResult.Dirty` is now used by `Container.Render` to skip work
-  for clean children (reuses cached lines from `prevChildMap`).
-- `Container` propagates `Dirty: false` when all children are clean and
-  width hasn't changed, allowing `doRender`'s diff to find no changes.
+Components embed `pitui.Compo` to get automatic render caching. Call
+`Update()` when state changes — the framework re-renders on the next
+frame. Between `Update()` calls, `Render()` is skipped entirely and
+the cached result is reused.
+
+`Update()` propagates upward through parent Containers/Slots, and
+the root Compo automatically calls `TUI.RequestRender`. So a single
+`component.Update()` call is all that's needed to schedule a repaint.
+
+Components without Compo (legacy or simple) always render — the
+framework treats them as always-dirty.
 
 ## Per-component debug stats
 
-After the above refactors are done, add per-component render metrics
-to the JSONL debug output so the dashboard can show which components
-are dirty, how long each takes, and flag components that never cache.
+Add per-component render metrics to the JSONL debug output so the
+dashboard can show which components are cached vs rendered and how
+long each takes.
 
-1. **Add `componentStats` collector to `RenderContext`.** When the
-   debug writer is set, `doRender` passes a collector. `Container.
-   Render` records each child's name (via `reflect.TypeOf` or a
-   `Name() string` interface), render duration, line count, and dirty
-   flag.
+1. **`componentStats` in `RenderContext`.** Already wired: Container
+   and Slot collect timing data. `renderComponent` now also records
+   cache hits with a `Cached: true` flag.
 
-2. **Add `components` array to the JSONL output.** Each entry:
-   `{"name": "entryView", "render_us": 5, "lines": 3, "dirty": false}`
-
-3. **Add a per-component table to the dashboard.** Columns: name,
-   render count, dirty rate (%), avg/max render time, avg lines,
-   status flag ("always dirty" / "caching" / "N% dirty"). Sort by
-   total time descending. This is the tool that catches components
-   that wastefully return `Dirty: true` or take too long to render.
+2. **Dashboard.** Add a per-component table: name, render count,
+   cache hit rate, avg/max render time, avg lines.

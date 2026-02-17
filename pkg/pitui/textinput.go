@@ -8,6 +8,8 @@ import (
 // TextInput is a single-line text editor component with cursor, history,
 // and kill-line support.
 type TextInput struct {
+	Compo
+
 	// Prompt is rendered before the input text. May contain ANSI codes.
 	Prompt string
 
@@ -100,7 +102,6 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 	return RenderResult{
 		Lines:  []string{line},
 		Cursor: cursor,
-		Dirty:  true, // always dirty — no caching for a 1-line component
 	}
 }
 
@@ -112,6 +113,7 @@ func (t *TextInput) HandleInput(data []byte) {
 	savedSuggestion := t.Suggestion
 	t.Suggestion = "" // Clear suggestion on every keystroke
 	defer func() {
+		t.Update() // any input may change cursor or content
 		if t.OnChange != nil && string(t.value) != oldValue {
 			t.OnChange()
 		}
