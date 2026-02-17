@@ -221,6 +221,32 @@ func splitArgExpr(text string) (funcExpr, partial string, alreadyProvided []stri
 	// Extract partial: the identifier being typed at the end (if any).
 	partial = lastIdent(argsText)
 
+	// Only suggest arg completions if we're at top level inside the parens,
+	// i.e. right after '(' or after a ',' that isn't nested inside '[...]'.
+	// This avoids suggesting function args when typing array elements.
+	prefix := argsText[:len(argsText)-len(partial)]
+	bracketDepth = 0
+	for _, c := range prefix {
+		switch c {
+		case '[':
+			bracketDepth++
+		case ']':
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		}
+	}
+	if bracketDepth > 0 {
+		return "", "", nil, false
+	}
+
+	// Don't suggest arg names when we're in value position after "name:".
+	// Trim trailing whitespace from prefix and check if the last char is ':'.
+	trimmed := strings.TrimRight(prefix, " \t\n")
+	if len(trimmed) > 0 && trimmed[len(trimmed)-1] == ':' {
+		return "", "", nil, false
+	}
+
 	// Extract already-provided named argument keys from the args text.
 	// Look for patterns like "name:" that indicate named arguments.
 	alreadyProvided = extractProvidedArgNames(argsText)

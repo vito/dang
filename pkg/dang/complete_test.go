@@ -76,6 +76,19 @@ func TestSplitArgExpr(t *testing.T) {
 		{"(", "", "", nil, false},
 		// Closing paren balanced
 		{"foo(1)", "", "", nil, false},
+		// Inside brackets - should not suggest args
+		{`foo([`, "", "", nil, false},
+		{`foo(["go", `, "", "", nil, false},
+		{`foo([x`, "", "", nil, false},
+		// After brackets - should suggest args
+		{`foo(["go"], `, "foo", "", []string(nil), true},
+		{`foo(["go"], plat`, "foo", "plat", []string(nil), true},
+		// In value position after "name:" - should not suggest args
+		{`foo(args: `, "", "", nil, false},
+		{`foo(args: bar`, "", "", nil, false},
+		{`foo(name: x, args:`, "", "", nil, false},
+		// But after comma following a value - should suggest args
+		{`foo(args: x, `, "foo", "", []string{"args"}, true},
 	}
 
 	for _, tt := range tests {
