@@ -98,6 +98,7 @@ It provides type-safe, composable abstractions for container operations.`,
 	// Add subcommands
 	rootCmd.AddCommand(fmtCmd())
 	rootCmd.AddCommand(renderDebugCmd())
+	rootCmd.AddCommand(renderStressCmd())
 
 	// Use fang for styled execution with enhanced features
 	ctx := context.Background()
