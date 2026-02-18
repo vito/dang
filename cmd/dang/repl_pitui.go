@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -300,7 +301,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		entryContainer: &pitui.Container{},
 		menuMaxVisible: 8,
 		historyIndex:   -1,
-		historyFile:    "/tmp/dang_history",
+		historyFile:    historyFilePath(),
 		quit:           make(chan struct{}),
 	}
 
@@ -1255,6 +1256,53 @@ func (r *replComponent) refreshCompletions() {
 
 // ── history ─────────────────────────────────────────────────────────────────
 
+const maxHistoryEntries = 1000
+
+// historyFilePath returns the path to the history file, respecting
+// XDG_DATA_HOME (default ~/.local/share/dang/history).
+func historyFilePath() string {
+	dir := os.Getenv("XDG_DATA_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "/tmp/dang_history" // last resort fallback
+		}
+		dir = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(dir, "dang", "history")
+}
+
+// historyEncode escapes an entry for single-line storage.
+// Newlines become literal \n, backslashes become \\.
+func historyEncode(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	return s
+}
+
+// historyDecode reverses historyEncode.
+func historyDecode(s string) string {
+	var buf strings.Builder
+	buf.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				buf.WriteByte('\n')
+				i++
+			case '\\':
+				buf.WriteByte('\\')
+				i++
+			default:
+				buf.WriteByte(s[i])
+			}
+		} else {
+			buf.WriteByte(s[i])
+		}
+	}
+	return buf.String()
+}
+
 func (r *replComponent) addHistory(line string) {
 	if len(r.history) > 0 && r.history[len(r.history)-1] == line {
 		r.historyIndex = -1
@@ -1262,7 +1310,7 @@ func (r *replComponent) addHistory(line string) {
 	}
 	r.history = append(r.history, line)
 	r.historyIndex = -1
-	r.saveHistory()
+	r.appendHistory(line)
 }
 
 func (r *replComponent) navigateHistory(direction int) {
@@ -1297,22 +1345,39 @@ func (r *replComponent) loadHistory() {
 	if err != nil {
 		return
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	for _, line := range lines {
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
-			r.history = append(r.history, line)
+			r.history = append(r.history, historyDecode(line))
 		}
+	}
+	// Truncate on load if file grew too large (amortized).
+	if len(r.history) > maxHistoryEntries {
+		r.history = r.history[len(r.history)-maxHistoryEntries:]
+		r.rewriteHistory()
 	}
 }
 
-func (r *replComponent) saveHistory() {
-	entries := r.history
-	if len(entries) > 1000 {
-		entries = entries[len(entries)-1000:]
+// appendHistory appends a single entry to the history file.
+func (r *replComponent) appendHistory(line string) {
+	_ = os.MkdirAll(filepath.Dir(r.historyFile), 0755)
+	f, err := os.OpenFile(r.historyFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
 	}
-	data := strings.Join(entries, "\n") + "\n"
-	_ = os.WriteFile(r.historyFile, []byte(data), 0644)
+	defer f.Close()
+	fmt.Fprintln(f, historyEncode(line))
+}
+
+// rewriteHistory rewrites the entire history file (used for truncation).
+func (r *replComponent) rewriteHistory() {
+	_ = os.MkdirAll(filepath.Dir(r.historyFile), 0755)
+	var buf strings.Builder
+	for _, entry := range r.history {
+		buf.WriteString(historyEncode(entry))
+		buf.WriteByte('\n')
+	}
+	_ = os.WriteFile(r.historyFile, []byte(buf.String()), 0644)
 }
 
 // ── doc browser ─────────────────────────────────────────────────────────────
