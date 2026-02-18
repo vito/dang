@@ -31,8 +31,9 @@ type TextInput struct {
 	OnSubmit func(value string) bool
 
 	// OnKey is called for keys not handled by the editor. Return true if
-	// the key was consumed.
-	OnKey func(data []byte) bool
+	// the key was consumed. The uv.Key contains the decoded key with
+	// modifiers; use key.Code and key.Mod for matching.
+	OnKey func(key uv.Key) bool
 
 	// Suggestion is a ghost completion hint shown after the cursor. It is
 	// cleared on every keystroke and must be re-set by the caller (e.g. in
@@ -158,7 +159,7 @@ func (t *TextInput) HandleInput(data []byte) {
 
 		switch e := ev.(type) {
 		case uv.KeyPressEvent:
-			t.handleKeyPress(e, data)
+			t.handleKeyPress(e)
 		case uv.PasteEvent:
 			t.handlePaste(e.Content)
 		}
@@ -180,7 +181,7 @@ func (t *TextInput) handlePaste(content string) {
 	}
 }
 
-func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
+func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 	key := uv.Key(e)
 
 	oldValue := string(t.value)
@@ -222,7 +223,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(rawData)
+			t.OnKey(key)
 		}
 		return
 	}
@@ -230,7 +231,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
 	// Backtab (Shift+Tab): delegate to OnKey.
 	if key.Code == uv.KeyTab && key.Mod.Contains(uv.ModShift) {
 		if t.OnKey != nil {
-			t.OnKey(rawData)
+			t.OnKey(key)
 		}
 		return
 	}
@@ -289,7 +290,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(KeyToBytes(key))
+			t.OnKey(key)
 		}
 		return
 	}
@@ -299,7 +300,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(KeyToBytes(key))
+			t.OnKey(key)
 		}
 		return
 	}
@@ -362,7 +363,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
 	// Delegate to OnKey for unhandled non-printable keys.
 	if key.Text == "" {
 		if t.OnKey != nil {
-			t.OnKey(KeyToBytes(key))
+			t.OnKey(key)
 		}
 		return
 	}
@@ -494,68 +495,3 @@ func runeClass(r rune) int {
 	return 1
 }
 
-// KeyToBytes converts a uv.Key back to raw bytes for the OnKey callback.
-// This is a best-effort mapping for the legacy key constants.
-func KeyToBytes(key uv.Key) []byte {
-	// Map common keys back to the legacy byte sequences.
-	switch {
-	case key.Code == uv.KeyEnter:
-		return []byte(KeyEnter)
-	case key.Code == uv.KeyTab:
-		if key.Mod.Contains(uv.ModShift) {
-			return []byte("\x1b[Z")
-		}
-		return []byte(KeyTab)
-	case key.Code == uv.KeyBackspace:
-		return []byte(KeyBackspace)
-	case key.Code == uv.KeyDelete:
-		return []byte(KeyDelete)
-	case key.Code == uv.KeyEscape:
-		return []byte(KeyEscape)
-	case key.Code == uv.KeyUp:
-		if key.Mod.Contains(uv.ModCtrl) {
-			return []byte(KeyCtrlUp)
-		}
-		return []byte(KeyUp)
-	case key.Code == uv.KeyDown:
-		if key.Mod.Contains(uv.ModCtrl) {
-			return []byte(KeyCtrlDown)
-		}
-		return []byte(KeyDown)
-	case key.Code == uv.KeyRight:
-		if key.Mod.Contains(uv.ModAlt) {
-			return []byte(KeyAltRight)
-		}
-		if key.Mod.Contains(uv.ModCtrl) {
-			return []byte(KeyCtrlRight)
-		}
-		return []byte(KeyRight)
-	case key.Code == uv.KeyLeft:
-		if key.Mod.Contains(uv.ModAlt) {
-			return []byte(KeyAltLeft)
-		}
-		if key.Mod.Contains(uv.ModCtrl) {
-			return []byte(KeyCtrlLeft)
-		}
-		return []byte(KeyLeft)
-	case key.Code == uv.KeyHome:
-		return []byte(KeyHome)
-	case key.Code == uv.KeyEnd:
-		return []byte(KeyEnd)
-	case key.Code == 'c' && key.Mod == uv.ModCtrl:
-		return []byte(KeyCtrlC)
-	case key.Code == 'd' && key.Mod == uv.ModCtrl:
-		return []byte(KeyCtrlD)
-	case key.Code == 'l' && key.Mod == uv.ModCtrl:
-		return []byte(KeyCtrlL)
-	case key.Code == 'n' && key.Mod == uv.ModCtrl:
-		return []byte(KeyCtrlN)
-	case key.Code == 'p' && key.Mod == uv.ModCtrl:
-		return []byte(KeyCtrlP)
-	default:
-		if key.Text != "" {
-			return []byte(key.Text)
-		}
-		return nil
-	}
-}

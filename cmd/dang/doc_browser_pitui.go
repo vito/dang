@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/pitui"
@@ -19,6 +20,7 @@ type docBrowserOverlay struct {
 	filtering bool
 	onExit    func()
 	tui       *pitui.TUI
+	decoder   uv.EventDecoder
 }
 
 func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
@@ -33,24 +35,40 @@ func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
 
 func (d *docBrowserOverlay) HandleInput(data []byte) {
 	defer d.Update()
-	s := string(data)
 
-	if d.filtering {
-		d.handleFilterInput(s)
-		return
+	buf := data
+	for len(buf) > 0 {
+		n, ev := d.decoder.Decode(buf)
+		if n == 0 {
+			break
+		}
+		buf = buf[n:]
+		kp, ok := ev.(uv.KeyPressEvent)
+		if !ok {
+			continue
+		}
+		key := uv.Key(kp)
+
+		if d.filtering {
+			d.handleFilterKey(key)
+		} else {
+			d.handleKey(key)
+		}
 	}
+}
 
-	switch s {
-	case "q", pitui.KeyEscape:
+func (d *docBrowserOverlay) handleKey(key uv.Key) {
+	switch {
+	case key.Text == "q" || key.Code == uv.KeyEscape:
 		if d.onExit != nil {
 			d.onExit()
 		}
-	case "/":
+	case key.Text == "/":
 		col := &d.columns[d.activeCol]
 		if len(col.items) > 0 {
 			d.filtering = true
 		}
-	case pitui.KeyLeft, "h":
+	case key.Code == uv.KeyLeft || key.Text == "h":
 		if d.activeCol > 0 {
 			d.columns[d.activeCol].filter = ""
 			d.columns[d.activeCol].applyFilter()
@@ -58,7 +76,7 @@ func (d *docBrowserOverlay) HandleInput(data []byte) {
 			d.activeCol--
 			d.expandSelection()
 		}
-	case pitui.KeyRight, "l", pitui.KeyEnter:
+	case key.Code == uv.KeyRight || key.Text == "l" || key.Code == uv.KeyEnter:
 		for i := d.activeCol + 1; i < len(d.columns); i++ {
 			if len(d.columns[i].items) > 0 {
 				d.activeCol = i
@@ -66,14 +84,14 @@ func (d *docBrowserOverlay) HandleInput(data []byte) {
 				break
 			}
 		}
-	case pitui.KeyUp, "k":
+	case key.Code == uv.KeyUp || key.Text == "k":
 		col := &d.columns[d.activeCol]
 		if col.index > 0 {
 			col.index--
 			d.clampScroll(col)
 			d.expandSelection()
 		}
-	case pitui.KeyDown, "j":
+	case key.Code == uv.KeyDown || key.Text == "j":
 		col := &d.columns[d.activeCol]
 		vis := col.visible()
 		if col.index < len(vis)-1 {
@@ -81,7 +99,7 @@ func (d *docBrowserOverlay) HandleInput(data []byte) {
 			d.clampScroll(col)
 			d.expandSelection()
 		}
-	case pitui.KeyTab:
+	case key.Code == uv.KeyTab:
 		start := d.activeCol
 		for {
 			d.activeCol = (d.activeCol + 1) % len(d.columns)
@@ -92,17 +110,17 @@ func (d *docBrowserOverlay) HandleInput(data []byte) {
 	}
 }
 
-func (d *docBrowserOverlay) handleFilterInput(s string) {
-	switch s {
-	case pitui.KeyEscape:
+func (d *docBrowserOverlay) handleFilterKey(key uv.Key) {
+	switch {
+	case key.Code == uv.KeyEscape:
 		col := &d.columns[d.activeCol]
 		col.filter = ""
 		col.applyFilter()
 		d.filtering = false
 		d.expandSelection()
-	case pitui.KeyEnter:
+	case key.Code == uv.KeyEnter:
 		d.filtering = false
-	case pitui.KeyBackspace:
+	case key.Code == uv.KeyBackspace:
 		col := &d.columns[d.activeCol]
 		if len(col.filter) > 0 {
 			col.filter = col.filter[:len(col.filter)-1]
@@ -111,14 +129,14 @@ func (d *docBrowserOverlay) handleFilterInput(s string) {
 		} else {
 			d.filtering = false
 		}
-	case pitui.KeyUp:
+	case key.Code == uv.KeyUp:
 		col := &d.columns[d.activeCol]
 		if col.index > 0 {
 			col.index--
 			d.clampScroll(col)
 			d.expandSelection()
 		}
-	case pitui.KeyDown:
+	case key.Code == uv.KeyDown:
 		col := &d.columns[d.activeCol]
 		vis := col.visible()
 		if col.index < len(vis)-1 {
@@ -127,9 +145,9 @@ func (d *docBrowserOverlay) handleFilterInput(s string) {
 			d.expandSelection()
 		}
 	default:
-		if len(s) == 1 && s[0] >= 32 && s[0] < 127 {
+		if key.Text != "" {
 			col := &d.columns[d.activeCol]
-			col.filter += s
+			col.filter += key.Text
 			col.applyFilter()
 			d.expandSelection()
 		}

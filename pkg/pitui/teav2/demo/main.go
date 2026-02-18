@@ -148,10 +148,10 @@ func run() error {
 
 	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
 		switch {
-		case pitui.Matches(data, pitui.KeyTab):
+		case string(data) == "\t":
 			setFocus((focusIdx + 1) % len(panels))
 			return &pitui.InputListenerResult{Consume: true}
-		case pitui.Matches(data, pitui.KeyCtrlC):
+		case string(data) == "\x03": // Ctrl+C
 			closeQuit()
 			return &pitui.InputListenerResult{Consume: true}
 		case string(data) == "q":

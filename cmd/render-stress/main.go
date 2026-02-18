@@ -97,7 +97,7 @@ func run(initialLines int) error {
 	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
 		s := string(data)
 		switch s {
-		case "q", pitui.KeyCtrlC:
+		case "q", "\x03": // Ctrl+C
 			doQuit()
 			return &pitui.InputListenerResult{Consume: true}
 

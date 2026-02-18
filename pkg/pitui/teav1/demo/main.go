@@ -119,7 +119,7 @@ func run() error {
 
 	// Also intercept Ctrl+C at the pitui level.
 	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		if string(data) == pitui.KeyCtrlC {
+		if string(data) == "\x03" { // Ctrl+C
 			select {
 			case <-quit:
 			default:

@@ -407,12 +407,10 @@ func (r *replComponent) onSubmit(line string) bool {
 }
 
 // onKey handles keys not consumed by the text input editor.
-func (r *replComponent) onKey(data []byte) bool {
-	s := string(data)
-
+func (r *replComponent) onKey(key uv.Key) bool {
 	// While evaluating: Ctrl+C cancels.
 	if r.evaluating {
-		if s == pitui.KeyCtrlC {
+		if key.Code == 'c' && key.Mod == uv.ModCtrl {
 			if r.cancelEval != nil {
 				r.cancelEval()
 			}
@@ -423,8 +421,8 @@ func (r *replComponent) onKey(data []byte) bool {
 
 	// Completion menu navigation.
 	if r.menuVisible {
-		switch s {
-		case pitui.KeyTab:
+		switch {
+		case key.Code == uv.KeyTab && key.Mod == 0:
 			if r.menuIndex < len(r.menuItems) {
 				r.textInput.SetValue(r.menuItems[r.menuIndex])
 				r.textInput.CursorEnd()
@@ -432,24 +430,26 @@ func (r *replComponent) onKey(data []byte) bool {
 			r.hideCompletionMenu()
 			r.updateCompletionMenu()
 			return true
-		case pitui.KeyDown, pitui.KeyCtrlN:
+		case key.Code == uv.KeyDown && key.Mod == 0,
+			key.Code == 'n' && key.Mod == uv.ModCtrl:
 			r.menuIndex++
 			if r.menuIndex >= len(r.menuItems) {
 				r.menuIndex = 0
 			}
 			r.syncMenu()
 			return true
-		case pitui.KeyUp, pitui.KeyCtrlP:
+		case key.Code == uv.KeyUp && key.Mod == 0,
+			key.Code == 'p' && key.Mod == uv.ModCtrl:
 			r.menuIndex--
 			if r.menuIndex < 0 {
 				r.menuIndex = len(r.menuItems) - 1
 			}
 			r.syncMenu()
 			return true
-		case pitui.KeyEscape:
+		case key.Code == uv.KeyEscape:
 			r.hideCompletionMenu()
 			return true
-		case pitui.KeyEnter:
+		case key.Code == uv.KeyEnter && key.Mod == 0:
 			if r.menuIndex < len(r.menuItems) {
 				r.textInput.SetValue(r.menuItems[r.menuIndex])
 				r.textInput.CursorEnd()
@@ -460,8 +460,8 @@ func (r *replComponent) onKey(data []byte) bool {
 		}
 	}
 
-	switch s {
-	case pitui.KeyCtrlC:
+	switch {
+	case key.Code == 'c' && key.Mod == uv.ModCtrl:
 		if r.textInput.Value() != "" {
 			r.textInput.SetValue("")
 			r.hideCompletionMenu()
@@ -470,25 +470,25 @@ func (r *replComponent) onKey(data []byte) bool {
 		close(r.quit)
 		return true
 
-	case pitui.KeyCtrlD:
+	case key.Code == 'd' && key.Mod == uv.ModCtrl:
 		if r.textInput.Value() == "" {
 			close(r.quit)
 			return true
 		}
 		return false
 
-	case pitui.KeyUp:
+	case key.Code == uv.KeyUp && key.Mod == 0:
 		if !r.menuVisible {
 			r.navigateHistory(-1)
 			return true
 		}
-	case pitui.KeyDown:
+	case key.Code == uv.KeyDown && key.Mod == 0:
 		if !r.menuVisible {
 			r.navigateHistory(1)
 			return true
 		}
 
-	case pitui.KeyCtrlL:
+	case key.Code == 'l' && key.Mod == uv.ModCtrl:
 		r.mu.Lock()
 		r.entryContainer.Clear()
 		r.mu.Unlock()
@@ -547,8 +547,7 @@ func (r *replComponent) startEval(expr string) {
 	r.inputSlot.Set(r.spinner)
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
-	// Route input to onKey during eval, decoding via ultraviolet to handle
-	// kitty keyboard protocol sequences.
+	// Route input to onKey during eval so Ctrl+C can cancel.
 	var evalDecoder uv.EventDecoder
 	removeListener := r.tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
 		buf := data
@@ -558,16 +557,10 @@ func (r *replComponent) startEval(expr string) {
 				break
 			}
 			buf = buf[n:]
-			if ev == nil {
-				continue
-			}
 			if kp, ok := ev.(uv.KeyPressEvent); ok {
-				legacyBytes := pitui.KeyToBytes(uv.Key(kp))
-				if legacyBytes != nil {
-					if r.onKey(legacyBytes) {
-						r.tui.RequestRender(false)
-						return &pitui.InputListenerResult{Consume: true}
-					}
+				if r.onKey(uv.Key(kp)) {
+					r.tui.RequestRender(false)
+					return &pitui.InputListenerResult{Consume: true}
 				}
 			}
 		}
