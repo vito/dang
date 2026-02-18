@@ -28,30 +28,82 @@ import (
 // entryView. The target is set at eval start and cleared at eval end,
 // so streaming output always lands on the correct entry regardless of
 // any concurrent container mutations.
+//
+// Writes are buffered and flushed via a coalescing goroutine so that
+// high-frequency Dagger progress output doesn't call Update() on every
+// write. The flush goroutine drains the pending buffer at most once per
+// render frame.
 type pituiSyncWriter struct {
-	mu     sync.Mutex
-	target *entryView
+	mu      sync.Mutex
+	target  *entryView
+	pending strings.Builder
+	dirty   chan struct{} // capacity-1 channel; non-blocking send coalesces
+	done    chan struct{} // closed to stop the flush goroutine
+}
+
+func newPituiSyncWriter() *pituiSyncWriter {
+	w := &pituiSyncWriter{
+		dirty: make(chan struct{}, 1),
+		done:  make(chan struct{}),
+	}
+	go w.flushLoop()
+	return w
 }
 
 func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	ev := w.target
+	if w.target != nil {
+		w.pending.Write(p)
+	}
 	w.mu.Unlock()
-	if ev != nil {
-		ev.mu.Lock()
-		ev.entry.writeLog(string(p))
-		ev.mu.Unlock()
-		ev.Update()
+	// Coalescing signal — non-blocking so rapid writes merge.
+	select {
+	case w.dirty <- struct{}{}:
+	default:
 	}
 	return len(p), nil
 }
 
+func (w *pituiSyncWriter) flushLoop() {
+	for {
+		select {
+		case <-w.dirty:
+			w.flush()
+		case <-w.done:
+			w.flush() // drain any remaining data
+			return
+		}
+	}
+}
+
+func (w *pituiSyncWriter) flush() {
+	w.mu.Lock()
+	ev := w.target
+	data := w.pending.String()
+	w.pending.Reset()
+	w.mu.Unlock()
+	if ev != nil && data != "" {
+		ev.mu.Lock()
+		ev.entry.writeLog(data)
+		ev.mu.Unlock()
+		ev.Update()
+	}
+}
+
 // SetTarget directs future writes to the given entryView. Pass nil to
-// suppress output (e.g. between evals).
+// suppress output (e.g. between evals). Flushes any pending data to the
+// previous target before switching.
 func (w *pituiSyncWriter) SetTarget(ev *entryView) {
+	w.flush()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.target = ev
+}
+
+// Stop shuts down the flush goroutine. Must be called when the writer
+// is no longer needed.
+func (w *pituiSyncWriter) Stop() {
+	close(w.done)
 }
 
 // ── entry view component ────────────────────────────────────────────────────
@@ -255,7 +307,8 @@ type replComponent struct {
 	spinner        *pitui.Spinner
 	inputSlot      *pitui.Slot // swaps between textInput and spinner
 
-	quit chan struct{}
+	quit     chan struct{}
+	quitOnce sync.Once
 
 	// Completion
 	completions     []string
@@ -308,7 +361,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 
 	// Spinner
-	sp := pitui.NewSpinner(tui)
+	sp := pitui.NewSpinner()
 	sp.Style = func(s string) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 	}
@@ -472,12 +525,12 @@ func (r *replComponent) onKey(key uv.Key) bool {
 			r.hideCompletionMenu()
 			return true
 		}
-		close(r.quit)
+		r.quitOnce.Do(func() { close(r.quit) })
 		return true
 
 	case key.Code == 'd' && key.Mod == uv.ModCtrl:
 		if r.textInput.Value() == "" {
-			close(r.quit)
+			r.quitOnce.Do(func() { close(r.quit) })
 			return true
 		}
 		return false
@@ -681,10 +734,11 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	// If there's a Dagger module, load it with a spinner visible.
-	daggerLog := &pituiSyncWriter{}
+	daggerLog := newPituiSyncWriter()
+	defer daggerLog.Stop()
 	var daggerConn *dagger.Client
 	if moduleDir != "" {
-		loadSp := pitui.NewSpinner(tui)
+		loadSp := pitui.NewSpinner()
 		loadSp.Style = func(s string) string {
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}

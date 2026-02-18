@@ -54,7 +54,7 @@ func (r *replComponent) handleCommand(cmdLine string) {
 	case "exit", "quit":
 		ev.mu.Unlock()
 		r.mu.Unlock()
-		close(r.quit)
+		r.quitOnce.Do(func() { close(r.quit) })
 		return
 
 	case "clear":

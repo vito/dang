@@ -71,7 +71,7 @@ func run(initialLines int) error {
 	quit := make(chan struct{})
 
 	// Spinner setup.
-	spinner = pitui.NewSpinner(tui)
+	spinner = pitui.NewSpinner()
 	spinner.Label = "evaluating..."
 	spinner.Style = func(s string) string { return "\x1b[35m" + s + "\x1b[0m" }
 	spinnerSlot = pitui.NewSlot(nil)
