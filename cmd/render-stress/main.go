@@ -192,7 +192,7 @@ func run(initialLines int) error {
 				spinnerRunning = false
 				statusBar.set("\x1b[7m spinner stopped \x1b[0m")
 			} else {
-				spinnerSlot.Set(newSpinnerLine(spinner))
+				spinnerSlot.Set(spinner)
 				spinner.Start()
 				spinnerRunning = true
 				statusBar.set("\x1b[7m spinner running (continuous repaints) \x1b[0m")
@@ -421,15 +421,4 @@ func (s *staticLines) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: s.lines}
 }
 
-type spinnerLine struct {
-	pitui.Compo
-	spinner *pitui.Spinner
-}
 
-func newSpinnerLine(spinner *pitui.Spinner) *spinnerLine {
-	return &spinnerLine{spinner: spinner}
-}
-
-func (s *spinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return s.RenderChild(s.spinner, ctx)
-}
