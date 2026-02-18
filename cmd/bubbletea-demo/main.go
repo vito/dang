@@ -18,6 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/vito/dang/pkg/pitui"
+	"github.com/vito/dang/pkg/pitui/teav2"
 )
 
 // item implements list.Item and list.DefaultItem.
@@ -68,7 +69,7 @@ func run() error {
 	m.SetShowHelp(true)
 
 	// Wrap the list bubble as a pitui Component.
-	comp := pitui.NewBubbleTea(m)
+	comp := teav2.New(m)
 
 	// Header above the list.
 	header := &staticText{line: dimStyle.Render("  bubbletea list bubble embedded in pitui  ")}
