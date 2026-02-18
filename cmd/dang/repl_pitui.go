@@ -340,16 +340,6 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	r.completions = r.buildCompletions()
 	r.loadHistory()
 
-	// Auto-enable render debug via environment variable.
-	if os.Getenv("DANG_DEBUG_RENDER") != "" {
-		logPath := "/tmp/dang_render_debug.log"
-		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
-			r.debugRender = true
-			r.debugRenderFile = f
-			tui.SetDebugWriter(f)
-		}
-	}
-
 	return r
 }
 
@@ -1366,6 +1356,16 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	tui := pitui.New(term)
 	tui.SetShowHardwareCursor(true)
 
+	// Install debug writer early so the loading spinner is captured.
+	var debugRenderFile *os.File
+	if os.Getenv("DANG_DEBUG_RENDER") != "" {
+		logPath := "/tmp/dang_render_debug.log"
+		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
+			debugRenderFile = f
+			tui.SetDebugWriter(f)
+		}
+	}
+
 	if err := tui.Start(); err != nil {
 		return fmt.Errorf("TUI start: %w", err)
 	}
@@ -1416,6 +1416,10 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	repl := newReplComponent(ctx, tui, importConfigs, debug)
+	if debugRenderFile != nil {
+		repl.debugRender = true
+		repl.debugRenderFile = debugRenderFile
+	}
 	daggerLog.SetRepl(repl)
 	repl.install()
 
@@ -1434,8 +1438,8 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	signal.Stop(sigCh)
-	if repl.debugRenderFile != nil {
-		repl.debugRenderFile.Close()
+	if debugRenderFile != nil {
+		debugRenderFile.Close()
 	}
 	tui.Stop()
 	fmt.Println("Goodbye!")
