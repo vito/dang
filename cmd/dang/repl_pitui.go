@@ -1383,7 +1383,7 @@ func (r *replComponent) rewriteHistory() {
 // ── doc browser ─────────────────────────────────────────────────────────────
 
 func (r *replComponent) showDocBrowser() {
-	db := newDocBrowserOverlay(r.typeEnv, r.tui)
+	db := newDocBrowserOverlay(r.typeEnv)
 	db.onExit = func() {
 		if r.docHandle != nil {
 			r.docHandle.Hide()

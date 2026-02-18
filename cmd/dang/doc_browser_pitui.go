@@ -15,18 +15,17 @@ import (
 // overlay component.
 type docBrowserOverlay struct {
 	pitui.Compo
-	columns   []docColumn
-	activeCol int
-	filtering bool
-	onExit    func()
-	tui       *pitui.TUI
+	columns    []docColumn
+	activeCol  int
+	filtering  bool
+	onExit     func()
+	lastHeight int // cached from most recent Render; used by key handlers
 }
 
-func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
+func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 	root := buildColumn("(root)", "Top-level scope", typeEnv)
 	db := &docBrowserOverlay{
 		columns: []docColumn{root},
-		tui:     tui,
 	}
 	db.expandSelection()
 	return db
@@ -146,9 +145,9 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		return pitui.RenderResult{Lines: []string{"(too narrow)"}}
 	}
 
-	// Use the provided height, falling back to terminal rows if unconstrained.
-	if height <= 0 {
-		height = d.tui.Terminal().Rows()
+	// Cache height for key handlers (clampScroll, page up/down).
+	if height > 0 {
+		d.lastHeight = height
 	}
 	listH := height - 4
 	if listH < 5 {
@@ -418,7 +417,7 @@ func (d *docBrowserOverlay) clampScroll(col *docColumn) {
 }
 
 func (d *docBrowserOverlay) listHeight() int {
-	h := d.tui.Terminal().Rows() - 4
+	h := d.lastHeight - 4
 	if h < 5 {
 		h = 5
 	}
