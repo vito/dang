@@ -117,14 +117,11 @@ type evalSpinnerLine struct {
 }
 
 func newEvalSpinnerLine(spinner *pitui.Spinner) *evalSpinnerLine {
-	e := &evalSpinnerLine{spinner: spinner}
-	// Wire the spinner's Compo to propagate through this wrapper.
-	spinner.GetCompo().SetParent(e.GetCompo())
-	return e
+	return &evalSpinnerLine{spinner: spinner}
 }
 
 func (e *evalSpinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return e.spinner.Render(ctx)
+	return e.RenderChild(e.spinner, ctx)
 }
 
 // ── completion menu overlay ─────────────────────────────────────────────────
