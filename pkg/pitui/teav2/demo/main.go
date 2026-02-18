@@ -33,6 +33,15 @@ func run() error {
 	term := pitui.NewProcessTerminal()
 	tui := pitui.New(term)
 
+	// Enable render debug logging.
+	logPath := "/tmp/dang_render_debug.log"
+	debugFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("open debug log: %w", err)
+	}
+	defer debugFile.Close()
+	tui.SetDebugWriter(debugFile)
+
 	// ── List ───────────────────────────────────────────────────
 	items := []list.Item{
 		langItem{"Go", "Fast, simple, concurrent"},
@@ -154,6 +163,9 @@ func run() error {
 	if err := tui.Start(); err != nil {
 		return err
 	}
+
+	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
+	fmt.Fprintf(os.Stderr, "Run 'go run ./cmd/render-debug' in another terminal for live charts.\n")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
