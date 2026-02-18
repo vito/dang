@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gotest.tools/v3/golden"
@@ -1155,4 +1156,21 @@ func TestCachedLinesNotMutatedBySegmentReset(t *testing.T) {
 	term.reset()
 	renderSync(tui)
 	assert.Equal(t, 1, tui.FullRedraws(), "still no full redraw on third frame")
+}
+
+func TestHasKittyKeyboard(t *testing.T) {
+	term := newMockTerminal(80, 24)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// Before any response, HasKittyKeyboard is false.
+	assert.False(t, tui.HasKittyKeyboard())
+
+	// Simulate a KeyboardEnhancementsEvent with disambiguate flag.
+	tui.dispatchEvent(uv.KeyboardEnhancementsEvent{Flags: 1}) // KittyDisambiguateEscapeCodes = 1
+	assert.True(t, tui.HasKittyKeyboard())
+
+	// Zero flags means no support.
+	tui.dispatchEvent(uv.KeyboardEnhancementsEvent{Flags: 0})
+	assert.False(t, tui.HasKittyKeyboard())
 }

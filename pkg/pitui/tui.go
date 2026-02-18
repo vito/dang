@@ -124,6 +124,8 @@ type TUI struct {
 
 	overlayStack []*overlayEntry
 
+	kittyKeyboard bool // terminal confirmed Kitty keyboard protocol support
+
 	renderCh   chan struct{} // serialized render requests
 	renderDone chan struct{} // closed when renderLoop exits
 	debugWriter io.Writer    // if non-nil, render stats are logged here
@@ -166,6 +168,16 @@ func (t *TUI) renderLoop() {
 
 // Terminal returns the underlying terminal.
 func (t *TUI) Terminal() Terminal { return t.terminal }
+
+// HasKittyKeyboard reports whether the terminal confirmed support for the
+// Kitty keyboard protocol (disambiguate escape codes). This is determined
+// by the response to the RequestKittyKeyboard query sent during Start().
+// Returns false until the response is received.
+func (t *TUI) HasKittyKeyboard() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.kittyKeyboard
+}
 
 // SetDebugWriter enables render performance logging. Each render cycle
 // writes a single stats line to w. Pass nil to disable.
@@ -391,6 +403,11 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 	t.mu.Unlock()
 
 	switch e := ev.(type) {
+	case uv.KeyboardEnhancementsEvent:
+		t.mu.Lock()
+		t.kittyKeyboard = e.SupportsKeyDisambiguation()
+		t.mu.Unlock()
+		return
 	case uv.KeyPressEvent:
 		if ic, ok := comp.(Interactive); ok {
 			ic.HandleKeyPress(e)

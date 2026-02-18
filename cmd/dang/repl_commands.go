@@ -45,7 +45,11 @@ func (r *replComponent) handleCommand(cmdLine string) {
 		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
 		e.writeLogLine("")
 		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
-		e.writeLogLine(dimStyle.Render("Tab for completion, Up/Down for history, Alt+Enter for multiline, Ctrl+L to clear."))
+		multilineHint := "Alt+Enter"
+		if r.tui.HasKittyKeyboard() {
+			multilineHint = "Shift+Enter"
+		}
+		e.writeLogLine(dimStyle.Render(fmt.Sprintf("Tab for completion, Up/Down for history, %s for multiline, Ctrl+L to clear.", multilineHint)))
 
 	case "exit", "quit":
 		ev.mu.Unlock()
