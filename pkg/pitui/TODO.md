@@ -164,8 +164,9 @@ polish.
 - [x] **Decompose `doRender()`** — extracted snapshotForRender, renderFrame,
       applyFrame, writeFullRedraw, writeTailShrink, writeDiffUpdate, diffLines.
       Named escape constants and cursor helpers. doRender is now 17 lines (#1)
-- [ ] **Fix `pituiSyncWriter` entry targeting** — capture `*entryView` at eval
-      start so streaming output can't land on the wrong entry (#10)
+- [x] **Fix `pituiSyncWriter` entry targeting** — pituiSyncWriter now stores
+      target `*entryView` directly; set at eval start, cleared in finishEval.
+      finishEval receives captured entry instead of re-resolving (#10)
 - [ ] **Fix history persistence** — use XDG_DATA_HOME, encode multi-line entries
       (e.g. base64 or `\n` escaping), append instead of rewrite (#12)
 - [ ] **Audit `r.mu` / `ev.mu` lock ordering** — document or enforce the
