@@ -1,11 +1,11 @@
-// Command bubbletea-demo shows a bubbletea list bubble embedded inside
-// a pitui TUI. The list is a standard bubbles/list component — pitui
-// handles the terminal, input parsing, and differential rendering while
-// the bubble handles its own state and view.
+// Command demo shows a bubbletea v1 list bubble embedded inside a pitui
+// TUI. The list is a standard bubbles/list component — pitui handles the
+// terminal, input parsing, and differential rendering while the bubble
+// handles its own state and view.
 //
 // Usage:
 //
-//	go run ./cmd/bubbletea-demo
+//	go run ./pkg/pitui/teav1/demo
 package main
 
 import (
@@ -14,11 +14,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"charm.land/bubbles/v2/list"
-	"charm.land/lipgloss/v2"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/vito/dang/pkg/pitui"
-	"github.com/vito/dang/pkg/pitui/teav2"
+	"github.com/vito/dang/pkg/pitui/teav1"
 )
 
 // item implements list.Item and list.DefaultItem.
@@ -29,6 +30,17 @@ type item struct {
 func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
+
+// listModel wraps list.Model to satisfy tea.Model.
+// Bubbles v1 list doesn't implement the interface directly because
+// Update returns (list.Model, tea.Cmd) instead of (tea.Model, tea.Cmd).
+type listModel struct {
+	list list.Model
+}
+
+func (m listModel) Init() tea.Cmd                           { return nil }
+func (m listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) { var cmd tea.Cmd; m.list, cmd = m.list.Update(msg); return m, cmd }
+func (m listModel) View() string                            { return m.list.View() }
 
 func main() {
 	if err := run(); err != nil {
@@ -69,10 +81,10 @@ func run() error {
 	m.SetShowHelp(true)
 
 	// Wrap the list bubble as a pitui Component.
-	comp := teav2.New(m)
+	comp := teav1.New(listModel{list: m})
 
 	// Header above the list.
-	header := &staticText{line: dimStyle.Render("  bubbletea list bubble embedded in pitui  ")}
+	header := &staticText{line: dimStyle.Render("  bubbletea v1 list bubble embedded in pitui  ")}
 	header.Update()
 
 	tui.AddChild(header)
@@ -118,9 +130,10 @@ func run() error {
 	tui.Stop()
 
 	// Show what was selected.
-	selected := comp.Model().SelectedItem()
-	if sel, ok := selected.(item); ok {
-		fmt.Printf("Selected: %s — %s\n", sel.title, sel.desc)
+	if lm, ok := comp.Model().(listModel); ok {
+		if sel, ok := lm.list.SelectedItem().(item); ok {
+			fmt.Printf("Selected: %s — %s\n", sel.title, sel.desc)
+		}
 	}
 	return nil
 }
