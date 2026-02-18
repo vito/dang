@@ -43,10 +43,11 @@ decomposed.
 - `doRender` takes the lock, snapshots fields, releases, then later re-takes to
   store results — this is fine for correctness but means the "state" is spread
   across local variables and struct fields in a confusing way.
-- `overlayEntry.options` and `overlayEntry.hidden` are mutated from
-  `SetOptions`/`SetHidden` without the TUI's lock (they go through
-  `OverlayHandle`), but read inside `doRender` under the lock. `SetOptions` in
-  particular does a bare assignment with no synchronization at all.
+- ~~`overlayEntry.options` and `overlayEntry.hidden` were mutated without the
+  TUI's lock~~ — **FIXED**: `SetOptions` and `SetHidden` now hold `tui.mu`, and
+  `doRender` snapshots overlay entries by value.
+- ~~Focus management was entangled with overlay visibility~~ — **FIXED**:
+  overlays are now pure rendering constructs; callers manage focus explicitly.
 
 ### 3. Key constants are legacy dead weight
 
