@@ -87,7 +87,8 @@ func run() error {
 	tm := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
-		table.WithHeight(8),
+		table.WithWidth(60),
+		table.WithHeight(10),
 		table.WithFocused(true),
 	)
 	tableComp := teav2.New(tm)
