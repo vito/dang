@@ -110,12 +110,12 @@ func run() error {
 		}
 	})
 
+	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
+	fmt.Fprintf(os.Stderr, "Run 'go run ./cmd/render-debug' in another terminal for live charts.\n")
+
 	if err := tui.Start(); err != nil {
 		return err
 	}
-
-	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
-	fmt.Fprintf(os.Stderr, "Run 'go run ./cmd/render-debug' in another terminal for live charts.\n")
 
 	// Also intercept Ctrl+C at the pitui level.
 	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
