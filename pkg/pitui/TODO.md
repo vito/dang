@@ -17,9 +17,9 @@ Items remaining after the `tui-redux` cleanup. Ordered roughly by value.
 - [ ] **Fallback to line-mode REPL** — detect non-TTY and degrade gracefully
       instead of failing on `tui.Start()`. (#13)
 
-- [ ] **Terminal capability negotiation** — query and store terminal features
-      so Kitty keyboard protocol is only enabled when supported, instead of
-      sending the enable sequence unconditionally and ignoring the response. (#7)
+- [x] **Terminal capability negotiation** — TUI handles
+      KeyboardEnhancementsEvent to track Kitty keyboard support.
+      HasKittyKeyboard() exposed for consumers. (#7)
 
 ## Performance
 
