@@ -68,6 +68,18 @@ func (t *TextInput) SetValue(s string) {
 // CursorEnd moves the cursor to the end of the input.
 func (t *TextInput) CursorEnd() { t.cursor = len(t.value) }
 
+// CursorScreenCol returns the screen column of the cursor, including
+// the prompt width. This is useful for callers that need to position
+// overlays (e.g. completion menus) relative to the cursor.
+func (t *TextInput) CursorScreenCol() int {
+	row, col := t.cursorRowCol()
+	promptW := VisibleWidth(t.Prompt)
+	if row > 0 && t.ContinuationPrompt != "" {
+		promptW = VisibleWidth(t.ContinuationPrompt)
+	}
+	return promptW + col
+}
+
 // cursorRowCol computes the (row, col) of the cursor within the value,
 // treating '\n' as line separators.
 func (t *TextInput) cursorRowCol() (row, col int) {

@@ -871,7 +871,8 @@ func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bo
 
 func (r *replComponent) completionXOffset() int {
 	val := r.textInput.Value()
-	promptWidth := lipgloss.Width(promptStyle.Render("dang> "))
+	// Walk backwards from the cursor to find the start of the completion
+	// token (identifier, possibly preceded by dot+identifier for methods).
 	i := len(val) - 1
 	for i >= 0 && isIdentByte(val[i]) {
 		i--
@@ -882,8 +883,9 @@ func (r *replComponent) completionXOffset() int {
 			i--
 		}
 	}
-	tokenStart := i + 1
-	return promptWidth + tokenStart
+	// How many characters from the token start to the cursor end.
+	tokenLen := len(val) - (i + 1)
+	return r.textInput.CursorScreenCol() - tokenLen
 }
 
 func (r *replComponent) updateCompletionMenu() {
