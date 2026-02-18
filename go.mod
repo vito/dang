@@ -5,15 +5,12 @@ go 1.24.2
 toolchain go1.24.4
 
 require (
-	charm.land/bubbles/v2 v2.0.0-rc.1
-	charm.land/bubbletea/v2 v2.0.0-rc.2
 	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20260213141939-54ce8ebb1690
 	dagger.io/dagger v0.19.11
 	github.com/99designs/gqlgen v0.17.81
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.4.4
-	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/creachadair/jrpc2 v1.3.3
 	github.com/dagger/testctx v0.0.5
@@ -33,9 +30,9 @@ require (
 require (
 	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318 // indirect
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250603201427-c31516f43444 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
@@ -69,7 +66,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/sahilm/fuzzy v0.1.1 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/urfave/cli/v2 v2.27.7 // indirect

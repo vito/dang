@@ -1,22 +1,25 @@
-package pitui
+// Package teav2 adapts bubbletea v2 models for use as pitui components.
+package teav2
 
 import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+
+	"github.com/vito/dang/pkg/pitui"
 )
 
-// BubbleTeaModel is the interface for bubbletea models that can be
-// wrapped as pitui components. It matches the common pattern used by
-// bubbles (list, table, viewport, etc.) where Update returns the
-// concrete type and View returns a string.
-type BubbleTeaModel[T any] interface {
+// Model is the interface for bubbletea v2 models that can be wrapped
+// as pitui components. It matches the common pattern used by bubbles
+// (list, table, viewport, etc.) where Update returns the concrete
+// type and View returns a string.
+type Model[T any] interface {
 	Update(tea.Msg) (T, tea.Cmd)
 	View() string
 }
 
-// BubbleTea wraps a bubbletea model as a pitui Component. It bridges
+// Wrap wraps a bubbletea v2 model as a pitui Component. It bridges
 // the two frameworks:
 //
 //   - Render calls the model's View() and splits into lines
@@ -31,20 +34,20 @@ type BubbleTeaModel[T any] interface {
 //	items := []list.Item{...}
 //	delegate := list.NewDefaultDelegate()
 //	m := list.New(items, delegate, 80, 20)
-//	comp := pitui.NewBubbleTea(m)
+//	comp := teav2.Wrap(m)
 //	tui.AddChild(comp)
-type BubbleTea[T BubbleTeaModel[T]] struct {
-	Compo
+type Wrap[T Model[T]] struct {
+	pitui.Compo
 	model   T
 	decoder uv.EventDecoder
-	width   int // last width seen, for WindowSizeMsg
-	height  int // last height seen
+	width   int
+	height  int
 	onQuit  func()
 }
 
-// NewBubbleTea wraps a bubbletea model as a pitui Component.
-func NewBubbleTea[T BubbleTeaModel[T]](model T) *BubbleTea[T] {
-	b := &BubbleTea[T]{model: model}
+// New wraps a bubbletea v2 model as a pitui Component.
+func New[T Model[T]](model T) *Wrap[T] {
+	b := &Wrap[T]{model: model}
 	b.Update()
 	return b
 }
@@ -52,23 +55,22 @@ func NewBubbleTea[T BubbleTeaModel[T]](model T) *BubbleTea[T] {
 // OnQuit sets a callback invoked when the bubbletea model returns a
 // tea.QuitMsg. This lets the host application handle quit requests
 // (e.g. close an overlay).
-func (b *BubbleTea[T]) OnQuit(fn func()) {
+func (b *Wrap[T]) OnQuit(fn func()) {
 	b.onQuit = fn
 }
 
 // Model returns the underlying bubbletea model.
-func (b *BubbleTea[T]) Model() T {
+func (b *Wrap[T]) Model() T {
 	return b.model
 }
 
 // SendMsg sends a message to the bubbletea model's Update function,
-// as if it came from a command. Useful for programmatic control
-// (e.g. sending an initial tea.WindowSizeMsg or custom messages).
-func (b *BubbleTea[T]) SendMsg(msg tea.Msg) {
+// as if it came from a command. Useful for programmatic control.
+func (b *Wrap[T]) SendMsg(msg tea.Msg) {
 	b.updateModel(msg)
 }
 
-func (b *BubbleTea[T]) updateModel(msg tea.Msg) {
+func (b *Wrap[T]) updateModel(msg tea.Msg) {
 	var cmd tea.Cmd
 	b.model, cmd = b.model.Update(msg)
 	b.Update()
@@ -77,7 +79,7 @@ func (b *BubbleTea[T]) updateModel(msg tea.Msg) {
 	}
 }
 
-func (b *BubbleTea[T]) execCmd(cmd tea.Cmd) {
+func (b *Wrap[T]) execCmd(cmd tea.Cmd) {
 	go func() {
 		msg := cmd()
 		if msg == nil {
@@ -93,9 +95,8 @@ func (b *BubbleTea[T]) execCmd(cmd tea.Cmd) {
 	}()
 }
 
-// Render implements Component.
-func (b *BubbleTea[T]) Render(ctx RenderContext) RenderResult {
-	// Send WindowSizeMsg if dimensions changed.
+// Render implements pitui.Component.
+func (b *Wrap[T]) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if ctx.Width != b.width || ctx.Height != b.height {
 		b.width = ctx.Width
 		b.height = ctx.Height
@@ -111,15 +112,14 @@ func (b *BubbleTea[T]) Render(ctx RenderContext) RenderResult {
 
 	view := b.model.View()
 	lines := strings.Split(view, "\n")
-	// Trim trailing empty line from final newline.
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	return RenderResult{Lines: lines}
+	return pitui.RenderResult{Lines: lines}
 }
 
-// HandleInput implements Interactive.
-func (b *BubbleTea[T]) HandleInput(data []byte) {
+// HandleInput implements pitui.Interactive.
+func (b *Wrap[T]) HandleInput(data []byte) {
 	buf := data
 	for len(buf) > 0 {
 		n, ev := b.decoder.Decode(buf)
@@ -131,7 +131,6 @@ func (b *BubbleTea[T]) HandleInput(data []byte) {
 			continue
 		}
 
-		// Convert ultraviolet events to bubbletea messages.
 		var msg tea.Msg
 		switch e := ev.(type) {
 		case uv.KeyPressEvent:
