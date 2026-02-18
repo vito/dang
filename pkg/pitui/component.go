@@ -97,9 +97,9 @@ func (c *Compo) Update() {
 	}
 }
 
-// GetCompo returns the embedded Compo. Provided automatically by
-// embedding Compo; you should never need to call this directly.
-func (c *Compo) GetCompo() *Compo { return c }
+// compo returns the embedded Compo. The unexported method ensures that
+// only types embedding Compo can satisfy the Component interface.
+func (c *Compo) compo() *Compo { return c }
 
 // setParent sets the parent Compo for upward dirty propagation.
 // Managed automatically by Container.AddChild, Slot.Set, and
@@ -117,7 +117,7 @@ func (c *Compo) setParent(parent *Compo) { c.parent = parent }
 //	    return w.RenderChild(w.inner, ctx)
 //	}
 func (c *Compo) RenderChild(child Component, ctx RenderContext) RenderResult {
-	child.GetCompo().parent = c
+	child.compo().parent = c
 	return renderComponent(child, ctx)
 }
 
@@ -125,7 +125,7 @@ func (c *Compo) RenderChild(child Component, ctx RenderContext) RenderResult {
 // the component is clean and the width hasn't changed. This is the core
 // function that makes finalized components O(1).
 func renderComponent(ch Component, ctx RenderContext) RenderResult {
-	cp := ch.GetCompo()
+	cp := ch.compo()
 
 	if cp.cache != nil && !cp.needsRender.Load() && cp.cache.width == ctx.Width {
 		// Cache hit — skip Render entirely.
@@ -162,9 +162,9 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 // All components must embed Compo to get automatic render caching
 // and dirty propagation.
 type Component interface {
-	// GetCompo returns the embedded Compo. Implemented automatically by
-	// embedding pitui.Compo; do not call directly.
-	GetCompo() *Compo
+	// compo returns the embedded Compo. Unexported to keep it out of
+	// the public API; satisfied automatically by embedding Compo.
+	compo() *Compo
 
 	// Render produces the visual output within the given constraints.
 	Render(ctx RenderContext) RenderResult
@@ -202,7 +202,7 @@ type Container struct {
 
 func (c *Container) AddChild(comp Component) {
 	c.Children = append(c.Children, comp)
-	comp.GetCompo().setParent(&c.Compo)
+	comp.compo().setParent(&c.Compo)
 	c.Update()
 }
 
@@ -210,7 +210,7 @@ func (c *Container) RemoveChild(comp Component) {
 	for i, ch := range c.Children {
 		if ch == comp {
 			c.Children = append(c.Children[:i], c.Children[i+1:]...)
-			comp.GetCompo().setParent(nil)
+			comp.compo().setParent(nil)
 			c.Update()
 			return
 		}
@@ -219,7 +219,7 @@ func (c *Container) RemoveChild(comp Component) {
 
 func (c *Container) Clear() {
 	for _, ch := range c.Children {
-		ch.GetCompo().setParent(nil)
+		ch.compo().setParent(nil)
 	}
 	c.Children = nil
 	c.lineCount.Store(0)
@@ -278,11 +278,11 @@ func (s *Slot) Set(c Component) {
 
 func (s *Slot) setChild(c Component) {
 	if s.child != nil {
-		s.child.GetCompo().setParent(nil)
+		s.child.compo().setParent(nil)
 	}
 	s.child = c
 	if c != nil {
-		c.GetCompo().setParent(&s.Compo)
+		c.compo().setParent(&s.Compo)
 	}
 }
 
