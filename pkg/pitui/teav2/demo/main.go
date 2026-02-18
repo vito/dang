@@ -1,7 +1,5 @@
-// Command demo shows a bubbletea v2 list bubble embedded inside a pitui
-// TUI. The list is a standard bubbles/list component — pitui handles the
-// terminal, input parsing, and differential rendering while the bubble
-// handles its own state and view.
+// Command demo shows multiple bubbletea v2 bubbles embedded inside a
+// pitui TUI, each wrapped in a border. Tab switches focus between them.
 //
 // Usage:
 //
@@ -12,23 +10,17 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
 
 	"github.com/vito/dang/pkg/pitui"
 	"github.com/vito/dang/pkg/pitui/teav2"
 )
-
-// item implements list.Item and list.DefaultItem.
-type item struct {
-	title, desc string
-}
-
-func (i item) Title() string       { return i.title }
-func (i item) Description() string { return i.desc }
-func (i item) FilterValue() string { return i.title }
 
 func main() {
 	if err := run(); err != nil {
@@ -41,21 +33,17 @@ func run() error {
 	term := pitui.NewProcessTerminal()
 	tui := pitui.New(term)
 
-	// Build a list of programming languages.
+	// ── List ───────────────────────────────────────────────────
 	items := []list.Item{
-		item{"Go", "Fast, simple, concurrent"},
-		item{"Rust", "Safe, fast, fearless concurrency"},
-		item{"Python", "Readable, versatile, batteries included"},
-		item{"TypeScript", "JavaScript with types"},
-		item{"Haskell", "Pure, lazy, strongly typed"},
-		item{"OCaml", "Fast, expressive, functional"},
-		item{"Elixir", "Functional, concurrent, fault-tolerant"},
-		item{"Zig", "Low-level control, no hidden allocations"},
-		item{"Nim", "Efficient, expressive, elegant"},
-		item{"Gleam", "Type-safe, functional, friendly"},
-		item{"Dang", "Pipelines, types, Dagger-native"},
+		langItem{"Go", "Fast, simple, concurrent"},
+		langItem{"Rust", "Safe, fast, fearless concurrency"},
+		langItem{"Python", "Readable, versatile, batteries included"},
+		langItem{"TypeScript", "JavaScript with types"},
+		langItem{"Haskell", "Pure, lazy, strongly typed"},
+		langItem{"Elixir", "Functional, concurrent, fault-tolerant"},
+		langItem{"Zig", "Low-level control, no hidden allocations"},
+		langItem{"Dang", "Pipelines, types, Dagger-native"},
 	}
-
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
 		Foreground(lipgloss.Color("63")).
@@ -64,74 +52,224 @@ func run() error {
 		Foreground(lipgloss.Color("241")).
 		BorderLeftForeground(lipgloss.Color("63"))
 
-	m := list.New(items, delegate, 60, 20)
-	m.Title = "Languages"
-	m.SetShowHelp(true)
+	lm := list.New(items, delegate, 60, 12)
+	lm.Title = "Languages"
+	lm.SetShowHelp(false)
+	lm.SetShowStatusBar(false)
+	listComp := teav2.New(lm)
+	listBox := newBorderBox("List", listComp, 14)
 
-	// Wrap the list bubble as a pitui Component.
-	comp := teav2.New(m)
+	// ── Table ──────────────────────────────────────────────────
+	cols := []table.Column{
+		{Title: "Name", Width: 14},
+		{Title: "Typing", Width: 12},
+		{Title: "Paradigm", Width: 20},
+	}
+	rows := []table.Row{
+		{"Go", "Static", "Imperative, Concurrent"},
+		{"Rust", "Static", "Multi-paradigm"},
+		{"Python", "Dynamic", "Multi-paradigm"},
+		{"TypeScript", "Static", "Multi-paradigm"},
+		{"Haskell", "Static", "Purely Functional"},
+		{"Elixir", "Dynamic", "Functional, Concurrent"},
+		{"Zig", "Static", "Imperative"},
+		{"Dang", "Static", "Functional, Pipelines"},
+	}
+	tm := table.New(
+		table.WithColumns(cols),
+		table.WithRows(rows),
+		table.WithHeight(8),
+		table.WithFocused(true),
+	)
+	tableComp := teav2.New(tm)
+	tableBox := newBorderBox("Table", tableComp, 10)
 
-	// Header above the list.
-	header := &staticText{line: dimStyle.Render("  bubbletea list bubble embedded in pitui  ")}
-	header.Update()
+	// ── Viewport ───────────────────────────────────────────────
+	content := strings.Join([]string{
+		"Welcome to the pitui + bubbletea v2 demo!",
+		"",
+		"This demo shows three bubbletea bubbles — a list, a table,",
+		"and a viewport — each embedded as a pitui component inside",
+		"a bordered panel.",
+		"",
+		"Press Tab to cycle focus between panels. The focused panel",
+		"gets a highlighted border. Keyboard input (arrows, filtering,",
+		"scrolling) is routed to whichever panel has focus.",
+		"",
+		"Press q or Ctrl+C to quit.",
+		"",
+		"The border, focus management, and layout are all plain pitui",
+		"components — no bubbletea Program is running. Each bubble is",
+		"just a Model whose View() is called during pitui's render",
+		"loop, and whose Update() is fed parsed key events from raw",
+		"terminal input.",
+	}, "\n")
+	vm := viewport.New(viewport.WithWidth(60), viewport.WithHeight(8))
+	vm.SetContent(content)
+	vpComp := teav2.New(vm)
+	vpBox := newBorderBox("Viewport", vpComp, 10)
 
-	tui.AddChild(header)
-	tui.AddChild(comp)
-	tui.SetFocus(comp)
+	// ── Layout ─────────────────────────────────────────────────
+	panels := []*borderBox{listBox, tableBox, vpBox}
+	focusIdx := 0
 
-	// Handle quit from the bubble (when the user presses 'q').
+	tui.AddChild(listBox)
+	tui.AddChild(tableBox)
+	tui.AddChild(vpBox)
+
+	setFocus := func(idx int) {
+		focusIdx = idx
+		for i, p := range panels {
+			p.setFocused(i == idx)
+		}
+		tui.SetFocus(panels[idx])
+	}
+	setFocus(0)
+
+	// ── Input ──────────────────────────────────────────────────
 	quit := make(chan struct{})
-	comp.OnQuit(func() {
+	closeQuit := func() {
 		select {
 		case <-quit:
 		default:
 			close(quit)
 		}
+	}
+
+	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
+		switch {
+		case pitui.Matches(data, pitui.KeyTab):
+			setFocus((focusIdx + 1) % len(panels))
+			return &pitui.InputListenerResult{Consume: true}
+		case pitui.Matches(data, pitui.KeyCtrlC):
+			closeQuit()
+			return &pitui.InputListenerResult{Consume: true}
+		case string(data) == "q":
+			closeQuit()
+			return &pitui.InputListenerResult{Consume: true}
+		}
+		return nil
 	})
 
 	if err := tui.Start(); err != nil {
 		return err
 	}
 
-	// Also intercept Ctrl+C at the pitui level.
-	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		if string(data) == pitui.KeyCtrlC {
-			select {
-			case <-quit:
-			default:
-				close(quit)
-			}
-			return &pitui.InputListenerResult{Consume: true}
-		}
-		return nil
-	})
-
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case <-quit:
 	case <-sigCh:
 	}
-
 	signal.Stop(sigCh)
 	tui.Stop()
-
-	// Show what was selected.
-	selected := comp.Model().SelectedItem()
-	if sel, ok := selected.(item); ok {
-		fmt.Printf("Selected: %s — %s\n", sel.title, sel.desc)
-	}
 	return nil
 }
 
-var dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+// ── langItem ───────────────────────────────────────────────────────────────
 
-type staticText struct {
+type langItem struct{ title, desc string }
+
+func (i langItem) Title() string       { return i.title }
+func (i langItem) Description() string { return i.desc }
+func (i langItem) FilterValue() string { return i.title }
+
+// ── borderBox ──────────────────────────────────────────────────────────────
+
+// borderBox is a pitui component that renders a child inside a bordered
+// panel. The border style changes depending on focus.
+type borderBox struct {
 	pitui.Compo
-	line string
+	title   string
+	child   pitui.Component
+	height  int // inner height (lines of child content visible)
+	focused bool
 }
 
-func (s *staticText) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return pitui.RenderResult{Lines: []string{s.line}}
+func newBorderBox(title string, child pitui.Component, height int) *borderBox {
+	b := &borderBox{title: title, child: child, height: height}
+	b.Update()
+	return b
+}
+
+func (b *borderBox) setFocused(focused bool) {
+	if b.focused == focused {
+		return
+	}
+	b.focused = focused
+	b.Update()
+}
+
+var (
+	focusedBorder  = lipgloss.Color("63")
+	blurredBorder  = lipgloss.Color("241")
+	focusedTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	blurredTitle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+)
+
+func (b *borderBox) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	innerWidth := ctx.Width - 4 // │ + space + content + space + │
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+
+	childCtx := pitui.RenderContext{
+		Width:  innerWidth,
+		Height: b.height,
+	}
+	childResult := b.RenderChild(b.child, childCtx)
+
+	// Pad or truncate child lines to the fixed inner height.
+	content := childResult.Lines
+	for len(content) < b.height {
+		content = append(content, "")
+	}
+	if len(content) > b.height {
+		content = content[:b.height]
+	}
+
+	// Pick border style.
+	borderColor := blurredBorder
+	titleStyle := blurredTitle
+	if b.focused {
+		borderColor = focusedBorder
+		titleStyle = focusedTitle
+	}
+	bc := lipgloss.NewStyle().Foreground(borderColor)
+
+	// Build the box.
+	lines := make([]string, 0, b.height+2)
+
+	// Top border: ╭─ Title ────────╮
+	titleStr := titleStyle.Render(" " + b.title + " ")
+	topFill := ctx.Width - 4 - lipgloss.Width(titleStr)
+	if topFill < 0 {
+		topFill = 0
+	}
+	top := bc.Render("╭─") + titleStr + bc.Render(strings.Repeat("─", topFill)+"─╮")
+	lines = append(lines, top)
+
+	// Content lines: │ content │
+	for _, line := range content {
+		lineWidth := lipgloss.Width(line)
+		pad := innerWidth - lineWidth
+		if pad < 0 {
+			pad = 0
+		}
+		lines = append(lines,
+			bc.Render("│ ")+line+strings.Repeat(" ", pad)+bc.Render(" │"),
+		)
+	}
+
+	// Bottom border: ╰────────────────╯
+	bottom := bc.Render("╰" + strings.Repeat("─", ctx.Width-2) + "╯")
+	lines = append(lines, bottom)
+
+	return pitui.RenderResult{Lines: lines}
+}
+
+func (b *borderBox) HandleInput(data []byte) {
+	if ic, ok := b.child.(pitui.Interactive); ok {
+		ic.HandleInput(data)
+	}
 }
