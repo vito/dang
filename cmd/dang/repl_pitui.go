@@ -84,7 +84,11 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 
 	var lines []string
 	if input != "" {
-		lines = append(lines, input)
+		inputLines := strings.Split(input, "\n")
+		if len(inputLines) > 0 && inputLines[len(inputLines)-1] == "" {
+			inputLines = inputLines[:len(inputLines)-1]
+		}
+		lines = append(lines, inputLines...)
 	}
 	if logs != "" {
 		logLines := strings.Split(logs, "\n")
