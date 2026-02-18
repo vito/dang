@@ -344,20 +344,17 @@ func TestSlotComponent(t *testing.T) {
 	slot := NewSlot(a)
 
 	// Initial render — child has no cache yet, so it renders.
-	r := slot.Render(RenderContext{Width: 40})
+	r := renderComponent(slot, RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-a"}, r.Lines)
-	assert.True(t, r.Dirty)
 
 	// Second render — child is clean (nobody called Update), cached.
-	r = slot.Render(RenderContext{Width: 40})
+	r = renderComponent(slot, RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-a"}, r.Lines)
-	assert.False(t, r.Dirty) // cached, no changes
 
 	// Swap child — Slot.Set marks dirty.
 	slot.Set(b)
-	r = slot.Render(RenderContext{Width: 40})
+	r = renderComponent(slot, RenderContext{Width: 40})
 	assert.Equal(t, []string{"child-b-1", "child-b-2"}, r.Lines)
-	assert.True(t, r.Dirty)
 }
 
 func TestVisibleWidth(t *testing.T) {
@@ -883,20 +880,25 @@ func TestContainerDirtyPropagation(t *testing.T) {
 	c.AddChild(c1)
 	c.AddChild(c2)
 
-	// First render — children are dirty.
-	r := c.Render(RenderContext{Width: 40})
-	assert.True(t, r.Dirty, "first render should be dirty")
+	// First render — children are dirty, both render.
+	ctx := RenderContext{Width: 40}
+	r := renderComponent(c, ctx)
 	assert.Equal(t, []string{"a", "b"}, r.Lines)
+	assert.Equal(t, 1, c1.renderCount)
+	assert.Equal(t, 1, c2.renderCount)
 
-	// Second render — children clean (no Update called).
-	r = c.Render(RenderContext{Width: 40})
-	assert.False(t, r.Dirty, "should be clean when all children are clean")
+	// Second render — children clean, Container cached at root level.
+	r = renderComponent(c, ctx)
 	assert.Equal(t, []string{"a", "b"}, r.Lines)
+	assert.Equal(t, 1, c1.renderCount, "clean child should not re-render")
+	assert.Equal(t, 1, c2.renderCount, "clean child should not re-render")
 
-	// Mark one child dirty.
+	// Mark one child dirty — Container re-renders.
 	c1.Update()
-	r = c.Render(RenderContext{Width: 40})
-	assert.True(t, r.Dirty, "should be dirty when any child is dirty")
+	r = renderComponent(c, ctx)
+	assert.Equal(t, []string{"a", "b"}, r.Lines)
+	assert.Equal(t, 2, c1.renderCount, "dirty child should re-render")
+	assert.Equal(t, 1, c2.renderCount, "clean child should still be cached")
 }
 
 func TestContainerLineCount(t *testing.T) {

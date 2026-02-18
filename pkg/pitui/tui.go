@@ -69,11 +69,6 @@ type RenderStats struct {
 	// SSH or on slow terminals.
 	BytesWritten int
 
-	// ComponentDirty reports whether the component tree signaled that its
-	// content changed (via the Dirty flag). When false but lines still
-	// differ, something bypassed the dirty tracking.
-	ComponentDirty bool
-
 	// FirstChangedLine is the first line index that differed from the
 	// previous frame, or -1 if nothing changed.
 	FirstChangedLine int
@@ -100,7 +95,6 @@ type renderStatsJSON struct {
 	FullRedraw      bool  `json:"full_redraw"`
 	OverlayCount    int   `json:"overlay_count"`
 	BytesWritten    int   `json:"bytes_written"`
-	ComponentDirty  bool  `json:"component_dirty"`
 	FirstChanged    int   `json:"first_changed"`
 	LastChanged     int   `json:"last_changed"`
 	ScrollLines     int              `json:"scroll_lines"`
@@ -434,8 +428,6 @@ func (t *TUI) doRender() {
 	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
 	stats.RenderTime = time.Since(renderStart)
-	stats.ComponentDirty = baseResult.Dirty
-
 	// Composite overlays.
 	if len(overlays) > 0 {
 		compositeStart := time.Now()
@@ -480,7 +472,6 @@ func (t *TUI) doRender() {
 			FullRedraw:      stats.FullRedraw,
 			OverlayCount:    stats.OverlayCount,
 			BytesWritten:    stats.BytesWritten,
-			ComponentDirty:  stats.ComponentDirty,
 			FirstChanged:    stats.FirstChangedLine,
 			LastChanged:     stats.LastChangedLine,
 			ScrollLines:     stats.ScrollLines,
