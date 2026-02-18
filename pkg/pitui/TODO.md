@@ -6,13 +6,11 @@ Items remaining after the `tui-redux` cleanup. Ordered roughly by value.
 
 ## Structural
 
-- [ ] **Break up `replComponent`** — extract completion menu controller, history
-      manager, and command dispatcher into separate types. The god object has
-      ~1450 lines and 30+ fields behind a single `sync.Mutex`. (#8)
+- [x] **Break up `replComponent`** — extracted repl_history.go (replHistory
+      type), repl_commands.go, repl_completion.go. Main file: 1500→760 lines. (#8)
 
-- [ ] **Audit `r.mu` / `ev.mu` lock ordering** — document or enforce the
-      two-level lock hierarchy (`r.mu` → `ev.mu`) to prevent deadlocks.
-      Best addressed alongside the `replComponent` breakup. (#8, #10)
+- [x] **Audit `r.mu` / `ev.mu` lock ordering** — verified consistent ordering
+      (r.mu always before ev.mu), documented on the struct. (#8, #10)
 
 ## Robustness
 
