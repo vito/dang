@@ -167,23 +167,23 @@ polish.
 - [x] **Fix `pituiSyncWriter` entry targeting** — pituiSyncWriter now stores
       target `*entryView` directly; set at eval start, cleared in finishEval.
       finishEval receives captured entry instead of re-resolving (#10)
-- [ ] **Fix history persistence** — use XDG_DATA_HOME, encode multi-line entries
-      (e.g. base64 or `\n` escaping), append instead of rewrite (#12)
+- [x] **Fix history persistence** — uses XDG_DATA_HOME/dang/history, escapes
+      newlines for multi-line entries, append-only writes, truncates on load (#12)
 - [ ] **Audit `r.mu` / `ev.mu` lock ordering** — document or enforce the
       hierarchy to prevent deadlocks (#8, #10)
-- [ ] **Decouple completion positioning from prompt rendering** — have
-      `TextInput` expose cursor screen-column so callers don't re-measure the
-      prompt (#9)
-- [ ] **Skip cursor-only `Update()` in TextInput** — only mark dirty when
-      content changes; cursor reposition can use a lighter signal (#4)
+- [x] **Decouple completion positioning from prompt rendering** — added
+      TextInput.CursorScreenCol(); REPL uses it instead of re-measuring
+      prompt via lipgloss (#9)
+- [ ] **Skip cursor-only `Update()` in TextInput** — requires separating cursor
+      from RenderResult cache; not a quick win. Deferred. (#4)
 - [ ] **Add viewport-aware Container** — skip `renderComponent` for children
       entirely above the viewport, making long sessions O(visible) (#5)
 - [ ] **Single-pass overlay layout** — pass max height to first render so
       components aren't rendered twice (#6)
 - [ ] **Fallback to line-mode REPL** — detect non-TTY and degrade gracefully
       (#13)
-- [ ] **Remove `d.tui.Terminal().Rows()` from doc browser** — use `ctx.Height`
-      exclusively (#13)
+- [x] **Remove `d.tui.Terminal().Rows()` from doc browser** — caches height
+      from Render context; removed tui field entirely (#13)
 - [ ] **Terminal capability negotiation** — query and store terminal features,
       gracefully degrade Kitty keyboard protocol (#7)
 - [ ] **Per-component debug stats in dashboard** — wire the existing
