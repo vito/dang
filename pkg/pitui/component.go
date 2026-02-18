@@ -72,10 +72,18 @@ type RenderResult struct {
 // Update() propagates upward through the component tree, so parent
 // Containers automatically know a child changed. If the tree is rooted
 // in a TUI, Update() also schedules a render automatically.
+//
+// Dirty tracking uses a monotonic generation counter rather than a
+// boolean flag. Update() increments the counter; renderComponent
+// snapshots it before calling Render and records the snapshot
+// afterwards. Any concurrent Update() during Render increments the
+// counter past the snapshot, guaranteeing a re-render on the next
+// frame — no store-ordering subtleties required.
 type Compo struct {
-	needsRender   atomic.Bool
-	cache         *renderCache // only accessed from the render goroutine
-	parent        *Compo
+	generation  atomic.Int64
+	renderedGen int64        // generation when last rendered; render-goroutine only
+	cache       *renderCache // only accessed from the render goroutine
+	parent      *Compo
 	requestRender func() // set on the root by TUI
 }
 
@@ -89,7 +97,7 @@ type renderCache struct {
 // If the component tree is rooted in a TUI, a render is scheduled
 // automatically.
 func (c *Compo) Update() {
-	c.needsRender.Store(true)
+	c.generation.Add(1)
 	if c.parent != nil {
 		c.parent.Update()
 	} else if c.requestRender != nil {
@@ -124,10 +132,16 @@ func (c *Compo) RenderChild(child Component, ctx RenderContext) RenderResult {
 // renderComponent renders a child component, using its Compo cache when
 // the component is clean and the width hasn't changed. This is the core
 // function that makes finalized components O(1).
+//
+// Dirty tracking is race-free: the generation counter is snapshotted
+// before Render and recorded after. Any concurrent Update() increments
+// the counter past the snapshot, so the next renderComponent call sees
+// a mismatch and re-renders. No boolean store-ordering issues.
 func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	cp := ch.compo()
 
-	if cp.cache != nil && !cp.needsRender.Load() && cp.cache.width == ctx.Width {
+	gen := cp.generation.Load()
+	if cp.cache != nil && gen == cp.renderedGen && cp.cache.width == ctx.Width {
 		// Cache hit — skip Render entirely.
 		if ctx.componentStats != nil {
 			*ctx.componentStats = append(*ctx.componentStats, ComponentStat{
@@ -139,14 +153,9 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 		return cp.cache.result
 	}
 
-	// Cache miss — render and store.
-	//
-	// Clear the dirty flag BEFORE calling Render so that any concurrent
-	// Update() (e.g. from a streaming eval goroutine) that fires during
-	// Render re-sets it to true rather than being silently overwritten
-	// by a Store(false) afterwards.
-	cp.needsRender.Store(false)
-
+	// Cache miss — render and store. Record the generation we checked,
+	// not the current one, so any Update() during Render() is visible
+	// as a generation mismatch on the next frame.
 	var r RenderResult
 	if ctx.componentStats != nil {
 		start := time.Now()
@@ -161,6 +170,7 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 		r = ch.Render(ctx)
 	}
 	cp.cache = &renderCache{result: r, width: ctx.Width}
+	cp.renderedGen = gen
 	return r
 }
 

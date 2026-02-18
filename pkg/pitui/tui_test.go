@@ -1042,8 +1042,11 @@ func TestConcurrentUpdateNotLost(t *testing.T) {
 	// Regression test: if Update() is called on a component while its
 	// Render() is in progress (e.g. from a streaming goroutine),
 	// the dirty flag must not be lost. Previously, renderComponent
-	// called needsRender.Store(false) AFTER Render(), which could
-	// overwrite a concurrent Update()'s Store(true).
+	// used a boolean flag and called Store(false) AFTER Render(),
+	// which could overwrite a concurrent Update()'s Store(true).
+	// The generation counter approach eliminates this: renderComponent
+	// records the generation it checked, and any concurrent Update()
+	// increments past it.
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
 	tui.stopped = false
@@ -1056,12 +1059,14 @@ func TestConcurrentUpdateNotLost(t *testing.T) {
 	tui.AddChild(sneaky)
 
 	// First render: Render() returns "before", then sets value="after"
-	// and calls Update(). With the fix, needsRender stays true.
+	// and calls Update(). The generation counter advances past what
+	// renderComponent recorded, so the component stays dirty.
 	renderSync(tui)
 
 	// The component should still be dirty after the first render
 	// because Update() was called during Render().
-	assert.True(t, sneaky.compo().needsRender.Load(),
+	cp := sneaky.compo()
+	assert.NotEqual(t, cp.generation.Load(), cp.renderedGen,
 		"Update() during Render() must not be lost")
 
 	// Second render should pick up the new value.
