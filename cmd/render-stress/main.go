@@ -427,11 +427,9 @@ type spinnerLine struct {
 }
 
 func newSpinnerLine(spinner *pitui.Spinner) *spinnerLine {
-	s := &spinnerLine{spinner: spinner}
-	spinner.GetCompo().SetParent(s.GetCompo())
-	return s
+	return &spinnerLine{spinner: spinner}
 }
 
 func (s *spinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return s.spinner.Render(ctx)
+	return s.RenderChild(s.spinner, ctx)
 }

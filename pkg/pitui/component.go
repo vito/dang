@@ -74,7 +74,7 @@ type RenderResult struct {
 // in a TUI, Update() also schedules a render automatically.
 type Compo struct {
 	needsRender   atomic.Bool
-	cache         *renderCache
+	cache         *renderCache // only accessed from the render goroutine
 	parent        *Compo
 	requestRender func() // set on the root by TUI
 }
@@ -102,11 +102,24 @@ func (c *Compo) Update() {
 func (c *Compo) GetCompo() *Compo { return c }
 
 // SetParent sets the parent Compo for upward dirty propagation.
-// This is normally managed by Container.AddChild and Slot.Set, but
-// can be called manually for components that render children directly
-// without using Container/Slot (e.g. a wrapper that delegates to an
-// inner component).
+// This is normally managed by Container.AddChild, Slot.Set, and
+// RenderChild, but can be called manually if needed.
 func (c *Compo) SetParent(parent *Compo) { c.parent = parent }
+
+// RenderChild renders a child component through this Compo, using the
+// framework's render cache. It also wires the child's parent pointer so
+// that Update() on the child propagates upward through this component.
+//
+// Use this instead of calling child.Render(ctx) directly when your
+// component wraps another component without using Container or Slot:
+//
+//	func (w *MyWrapper) Render(ctx pitui.RenderContext) pitui.RenderResult {
+//	    return w.RenderChild(w.inner, ctx)
+//	}
+func (c *Compo) RenderChild(child Component, ctx RenderContext) RenderResult {
+	child.GetCompo().parent = c
+	return renderComponent(child, ctx)
+}
 
 // renderComponent renders a child component, using its Compo cache when
 // the component is clean and the width hasn't changed. This is the core
@@ -184,7 +197,7 @@ type Focusable interface {
 type Container struct {
 	Compo
 	Children  []Component
-	lineCount int
+	lineCount atomic.Int32
 }
 
 func (c *Container) AddChild(comp Component) {
@@ -209,15 +222,15 @@ func (c *Container) Clear() {
 		ch.GetCompo().SetParent(nil)
 	}
 	c.Children = nil
-	c.lineCount = 0
+	c.lineCount.Store(0)
 	c.Update()
 }
 
 // LineCount returns the total number of lines produced by the most recent
-// render. This is useful for positioning overlays relative to content
-// height without triggering a re-render.
+// render. Safe to call from any goroutine (e.g. input handlers positioning
+// overlays relative to content height).
 func (c *Container) LineCount() int {
-	return c.lineCount
+	return int(c.lineCount.Load())
 }
 
 func (c *Container) Render(ctx RenderContext) RenderResult {
@@ -233,7 +246,7 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 		}
 		lines = append(lines, r.Lines...)
 	}
-	c.lineCount = len(lines)
+	c.lineCount.Store(int32(len(lines)))
 	return RenderResult{
 		Lines:  lines,
 		Cursor: cursor,
