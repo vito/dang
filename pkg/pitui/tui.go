@@ -429,9 +429,13 @@ func (t *TUI) doRender() {
 		ctx.componentStats = &compStats
 	}
 	baseResult := renderComponent(&t.Container, ctx)
-	newLines := baseResult.Lines
 	cursorPos := baseResult.Cursor
 	stats.RenderTime = time.Since(renderStart)
+
+	// Copy lines so we don't mutate cached RenderResult slices.
+	newLines := make([]string, len(baseResult.Lines))
+	copy(newLines, baseResult.Lines)
+
 	// Composite overlays.
 	if len(overlays) > 0 {
 		compositeStart := time.Now()
@@ -675,20 +679,8 @@ func (t *TUI) doRender() {
 
 	// First change above previous viewport -> full redraw.
 	if firstChanged < prevViewportTop {
-		reason := fmt.Sprintf("above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
+		stats.FullRedrawReason = fmt.Sprintf("above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
 			firstChanged, prevViewportTop, len(prevLines), len(newLines), height)
-		if firstChanged < len(prevLines) && firstChanged < len(newLines) {
-			oldLine := prevLines[firstChanged]
-			newLine := newLines[firstChanged]
-			if len(oldLine) > 80 {
-				oldLine = oldLine[:80]
-			}
-			if len(newLine) > 80 {
-				newLine = newLine[:80]
-			}
-			reason += fmt.Sprintf("|old=%q|new=%q", oldLine, newLine)
-		}
-		stats.FullRedrawReason = reason
 		fullRender(true)
 		return
 	}

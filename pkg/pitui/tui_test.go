@@ -1005,3 +1005,44 @@ func TestForceRender(t *testing.T) {
 	renderSync(tui)
 	assert.Equal(t, 2, tui.FullRedraws())
 }
+
+func TestCachedLinesNotMutatedBySegmentReset(t *testing.T) {
+	// Regression test: doRender appends segmentReset to each line.
+	// If it mutates the cached RenderResult's Lines slice, subsequent
+	// frames see double-reset strings that never match, causing
+	// spurious full redraws.
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	cached := &compoComponent{lines: []string{"stable"}}
+	cached.Update()
+	changing := &compoComponent{lines: []string{"v1"}}
+	changing.Update()
+	tui.AddChild(cached)
+	tui.AddChild(changing)
+	tui.stopped = false
+
+	// First render.
+	renderSync(tui)
+	assert.Equal(t, 1, tui.FullRedraws())
+
+	// Change only the second component. The first is cached.
+	changing.lines = []string{"v2"}
+	changing.Update()
+	term.reset()
+	renderSync(tui)
+
+	// Should NOT be a full redraw — cached component's line 0
+	// should be identical across frames.
+	assert.Equal(t, 1, tui.FullRedraws(), "cached line should not accumulate segmentReset")
+	out := term.written.String()
+	assert.Contains(t, out, "v2")
+	assert.NotContains(t, out, "stable") // cached line not repainted
+
+	// Third render — same pattern, still no full redraw.
+	changing.lines = []string{"v3"}
+	changing.Update()
+	term.reset()
+	renderSync(tui)
+	assert.Equal(t, 1, tui.FullRedraws(), "still no full redraw on third frame")
+}
