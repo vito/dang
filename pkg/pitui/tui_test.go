@@ -1096,6 +1096,40 @@ func (u *updateDuringRenderComponent) Render(ctx RenderContext) RenderResult {
 	return RenderResult{Lines: []string{snapshot}}
 }
 
+func TestSubwordLeft(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		cursor int
+		want   int
+	}{
+		{"ident", "container", 9, 0},
+		{"dot chain", "container.withExec", 18, 10},
+		{"after dot", "container.", 10, 9},
+		{"after paren", "container.withExec(", 19, 18},
+		{"after brackets", `["echo"]`, 8, 6},
+		{"after closing bracket", `["echo"]`, 7, 6},
+		{"after space", "foo bar", 7, 4},
+		{"multiple spaces", "foo   bar", 9, 6},
+		{"symbols run", "foo..", 5, 3},
+		{"empty", "", 0, 0},
+		{"at start", "hello", 0, 0},
+		{"mixed", "a.b(c)", 6, 5},
+		{"mixed mid", "a.b(c)", 5, 4},
+		{"mixed paren", "a.b(c)", 4, 3},
+		{"mixed dot", "a.b(c)", 2, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ti := NewTextInput("> ")
+			ti.value = []rune(tt.input)
+			ti.cursor = tt.cursor
+			got := ti.subwordLeft()
+			assert.Equal(t, tt.want, got, "subwordLeft(%q, cursor=%d)", tt.input, tt.cursor)
+		})
+	}
+}
+
 func TestCachedLinesNotMutatedBySegmentReset(t *testing.T) {
 	// Regression test: doRender appends segmentReset to each line.
 	// If it mutates the cached RenderResult's Lines slice, subsequent

@@ -333,9 +333,11 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
 		return
 	}
 
-	// Kill word backward (Ctrl+W).
+	// Kill subword backward (Ctrl+W). Stops at symbol boundaries
+	// (e.g. ".", "(", ")") so that "container.withExec(" is deleted
+	// as three separate kills: "(" → "withExec" → "." → "container".
 	if key.Code == 'w' && key.Mod == uv.ModCtrl {
-		start := t.wordLeft()
+		start := t.subwordLeft()
 		t.value = append(t.value[:start], t.value[t.cursor:]...)
 		t.cursor = start
 		return
@@ -445,6 +447,28 @@ func (t *TextInput) wordLeft() int {
 	return i
 }
 
+// subwordLeft moves backward to the previous subword boundary, where
+// boundaries are transitions between character classes: identifiers
+// (letters/digits/_), whitespace, and symbols (everything else).
+// This makes Ctrl+W stop at ".", "(", ")" etc. instead of only at
+// whitespace.
+func (t *TextInput) subwordLeft() int {
+	i := t.cursor
+	// Skip whitespace.
+	for i > 0 && isSpace(t.value[i-1]) {
+		i--
+	}
+	if i == 0 {
+		return 0
+	}
+	// Delete a run of the same character class.
+	class := runeClass(t.value[i-1])
+	for i > 0 && runeClass(t.value[i-1]) == class {
+		i--
+	}
+	return i
+}
+
 func (t *TextInput) wordRight() int {
 	i := t.cursor
 	for i < len(t.value) && !isSpace(t.value[i]) {
@@ -458,6 +482,16 @@ func (t *TextInput) wordRight() int {
 
 func isSpace(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\n'
+}
+
+// runeClass classifies a rune for subword boundary detection.
+// 0 = identifier (letter/digit/_), 1 = symbol/punctuation.
+// Whitespace is handled separately before calling this.
+func runeClass(r rune) int {
+	if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+		return 0
+	}
+	return 1
 }
 
 // KeyToBytes converts a uv.Key back to raw bytes for the OnKey callback.
