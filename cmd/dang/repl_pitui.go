@@ -606,12 +606,6 @@ func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancel
 	r.spinner.Stop()
 	removeListener()
 
-	// Clear the Dagger log target before writing results, so no more
-	// streaming output can land on this entry after we finalize it.
-	if r.daggerLog != nil {
-		r.daggerLog.SetTarget(nil)
-	}
-
 	r.mu.Lock()
 	r.evaluating = false
 	r.cancelEval = nil
