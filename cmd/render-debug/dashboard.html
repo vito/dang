@@ -112,9 +112,9 @@
   }
   .comp-table tr:hover { background: rgba(88,166,255,0.05); }
   .comp-name { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
-  .dirty-always { color: var(--red); font-weight: 600; }
-  .dirty-never { color: var(--green); }
-  .dirty-mixed { color: var(--orange); }
+  .rate-high { color: var(--red); font-weight: 600; }
+  .rate-low { color: var(--green); }
+  .rate-mid { color: var(--orange); }
   .bar-bg { background: var(--border); border-radius: 3px; height: 6px; width: 80px; display: inline-block; vertical-align: middle; }
   .bar-fill { height: 100%; border-radius: 3px; }
 </style>
@@ -129,10 +129,11 @@
   <div class="stat"><div class="label">Avg Total</div><div class="value" id="avgTotal">-</div><span class="unit">µs</span></div>
   <div class="stat"><div class="label">P99 Total</div><div class="value" id="p99Total">-</div><span class="unit">µs</span></div>
   <div class="stat"><div class="label">Full Redraws</div><div class="value" id="fullRedraws">0</div></div>
-  <div class="stat"><div class="label">Cache Hit Rate</div><div class="value" id="cacheRate">-</div><span class="unit">%</span></div>
+  <div class="stat"><div class="label">Line Cache Rate</div><div class="value" id="cacheRate">-</div><span class="unit">%</span></div>
+  <div class="stat"><div class="label">Compo Cache Rate</div><div class="value" id="compoCacheRate">-</div><span class="unit">%</span></div>
   <div class="stat"><div class="label">Avg Lines</div><div class="value" id="avgLines">-</div></div>
   <div class="stat"><div class="label">Avg Bytes/Frame</div><div class="value" id="avgBytes">-</div><span class="unit">B</span></div>
-  <div class="stat"><div class="label">Wasted Renders</div><div class="value" id="wastedRenders">0</div></div>
+  <div class="stat"><div class="label">No-op Frames</div><div class="value" id="noopFrames">0</div></div>
 </div>
 
 <div class="controls">
@@ -158,11 +159,11 @@
     <canvas id="breakdownChart"></canvas>
   </div>
   <div class="card">
-    <h2>Lines: Total / Repainted / Cached</h2>
+    <h2>Lines: Total / Repainted / Line-cached</h2>
     <canvas id="linesChart"></canvas>
   </div>
   <div class="card">
-    <h2>Cache Hit Rate (%)</h2>
+    <h2>Component Cache Rate (%)</h2>
     <canvas id="cacheChart"></canvas>
   </div>
   <div class="card">
@@ -181,8 +182,10 @@
     <thead>
       <tr>
         <th>Component</th>
-        <th>Renders</th>
-        <th>Dirty Rate</th>
+        <th>Appearances</th>
+        <th>Rendered</th>
+        <th>Cached</th>
+        <th>Render Rate</th>
         <th></th>
         <th>Avg Time (µs)</th>
         <th>Max Time (µs)</th>
@@ -191,7 +194,7 @@
       </tr>
     </thead>
     <tbody id="compTableBody">
-      <tr><td colspan="8" style="color:var(--dim)">Waiting for data with component stats...</td></tr>
+      <tr><td colspan="10" style="color:var(--dim)">Waiting for data with component stats...</td></tr>
     </tbody>
   </table>
 </div>
@@ -247,11 +250,11 @@ const breakdownChart = makeChart('breakdownChart', [
 const linesChart = makeChart('linesChart', [
   { label: 'Total', borderColor: '#58a6ff', data: [] },
   { label: 'Repainted', borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', fill: true, data: [] },
-  { label: 'Cached', borderColor: '#3fb950', data: [] },
+  { label: 'Line-cached', borderColor: '#3fb950', data: [] },
 ]);
 
 const cacheChart = makeChart('cacheChart', [
-  { label: 'Hit Rate', borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.1)', fill: true, data: [] },
+  { label: 'Compo Cache %', borderColor: '#3fb950', backgroundColor: 'rgba(63,185,80,0.1)', fill: true, data: [] },
 ], {
   scales: { y: { beginAtZero: true, max: 100, grid: { color: '#21262d' } } }
 });
@@ -267,6 +270,18 @@ const rangeChart = makeChart('rangeChart', [
 ]);
 
 const charts = [timingChart, breakdownChart, linesChart, cacheChart, bytesChart, rangeChart];
+
+// ── Component stats helpers ────────────────────────────────────────────────
+// Count cached vs rendered components in a single frame's component list.
+function frameCacheStats(frame) {
+  if (!frame.components || frame.components.length === 0) return { total: 0, cached: 0 };
+  let total = 0, cached = 0;
+  for (const c of frame.components) {
+    total++;
+    if (c.cached) cached++;
+  }
+  return { total, cached };
+}
 
 // ── Update logic ───────────────────────────────────────────────────────────
 function getWindow() {
@@ -289,13 +304,24 @@ function updateStats() {
   const fullCount = allData.filter(d => d.full_redraw).length;
   document.getElementById('fullRedraws').textContent = fullCount;
 
-  let totalLines = 0, totalCached = 0;
+  // Line-level cache rate (unchanged lines in diff).
+  let totalLines = 0, totalLineCached = 0;
   for (const d of allData) {
     totalLines += d.total_lines;
-    totalCached += d.cache_hits;
+    totalLineCached += d.cache_hits;
   }
-  const rate = totalLines > 0 ? ((totalCached / totalLines) * 100).toFixed(1) : '-';
-  document.getElementById('cacheRate').textContent = rate;
+  const lineRate = totalLines > 0 ? ((totalLineCached / totalLines) * 100).toFixed(1) : '-';
+  document.getElementById('cacheRate').textContent = lineRate;
+
+  // Component-level cache rate (Compo cache hits).
+  let totalComps = 0, totalCompCached = 0;
+  for (const d of allData) {
+    const s = frameCacheStats(d);
+    totalComps += s.total;
+    totalCompCached += s.cached;
+  }
+  const compoRate = totalComps > 0 ? ((totalCompCached / totalComps) * 100).toFixed(1) : '-';
+  document.getElementById('compoCacheRate').textContent = compoRate;
 
   const avgL = (allData.reduce((a, d) => a + d.total_lines, 0) / n).toFixed(0);
   document.getElementById('avgLines').textContent = avgL;
@@ -303,9 +329,9 @@ function updateStats() {
   const avgB = (allData.reduce((a, d) => a + d.bytes_written, 0) / n).toFixed(0);
   document.getElementById('avgBytes').textContent = avgB;
 
-  // Wasted renders: component tree not dirty AND no lines changed.
-  const wasted = allData.filter(d => !d.component_dirty && d.first_changed === -1).length;
-  document.getElementById('wastedRenders').textContent = wasted;
+  // No-op frames: no lines changed AND no bytes written.
+  const noop = allData.filter(d => d.first_changed === -1).length;
+  document.getElementById('noopFrames').textContent = noop;
 
   updateComponentTable();
 }
@@ -326,13 +352,17 @@ function updateComponentTable() {
     if (!frame.components) continue;
     for (const c of frame.components) {
       if (!agg[c.name]) {
-        agg[c.name] = { renders: 0, dirty: 0, totalUs: 0, maxUs: 0, totalLines: 0 };
+        agg[c.name] = { appearances: 0, rendered: 0, cached: 0, totalUs: 0, maxUs: 0, totalLines: 0 };
       }
       const a = agg[c.name];
-      a.renders++;
-      if (c.dirty) a.dirty++;
-      a.totalUs += c.render_us;
-      if (c.render_us > a.maxUs) a.maxUs = c.render_us;
+      a.appearances++;
+      if (c.cached) {
+        a.cached++;
+      } else {
+        a.rendered++;
+        a.totalUs += c.render_us;
+        if (c.render_us > a.maxUs) a.maxUs = c.render_us;
+      }
       a.totalLines += c.lines;
     }
   }
@@ -341,40 +371,45 @@ function updateComponentTable() {
   const names = Object.keys(agg).sort((a, b) => agg[b].totalUs - agg[a].totalUs);
 
   if (names.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--dim)">No component data yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--dim)">No component data yet</td></tr>';
     return;
   }
 
   let html = '';
   for (const name of names) {
     const a = agg[name];
-    const dirtyRate = a.renders > 0 ? (a.dirty / a.renders * 100) : 0;
-    const avgUs = a.renders > 0 ? (a.totalUs / a.renders) | 0 : 0;
-    const avgLines = a.renders > 0 ? (a.totalLines / a.renders).toFixed(1) : '0';
+    const renderRate = a.appearances > 0 ? (a.rendered / a.appearances * 100) : 0;
+    const avgUs = a.rendered > 0 ? (a.totalUs / a.rendered) | 0 : 0;
+    const avgLines = a.appearances > 0 ? (a.totalLines / a.appearances).toFixed(1) : '0';
 
-    let dirtyClass, statusText;
-    if (dirtyRate === 100) {
-      dirtyClass = 'dirty-always';
-      statusText = '⚠ always dirty';
-    } else if (dirtyRate === 0) {
-      dirtyClass = 'dirty-never';
-      statusText = '✓ caching';
+    let rateClass, statusText;
+    if (renderRate >= 90) {
+      rateClass = 'rate-high';
+      statusText = '⟳ always renders';
+    } else if (renderRate === 0) {
+      rateClass = 'rate-low';
+      statusText = '✓ fully cached';
+    } else if (renderRate <= 10) {
+      rateClass = 'rate-low';
+      statusText = '✓ mostly cached';
     } else {
-      dirtyClass = 'dirty-mixed';
-      statusText = dirtyRate.toFixed(0) + '% dirty';
+      rateClass = 'rate-mid';
+      statusText = '△ partial cache';
     }
 
-    const barColor = dirtyRate === 100 ? 'var(--red)' : dirtyRate === 0 ? 'var(--green)' : 'var(--orange)';
+    const barColor = renderRate >= 90 ? 'var(--red)' : renderRate === 0 ? 'var(--green)' : 'var(--orange)';
 
     html += '<tr>'
       + '<td class="comp-name" title="' + name + '">' + shortName(name) + '</td>'
-      + '<td>' + a.renders + '</td>'
-      + '<td class="' + dirtyClass + '">' + dirtyRate.toFixed(0) + '%</td>'
-      + '<td><span class="bar-bg"><span class="bar-fill" style="width:' + dirtyRate + '%;background:' + barColor + '"></span></span></td>'
+      + '<td>' + a.appearances + '</td>'
+      + '<td>' + a.rendered + '</td>'
+      + '<td>' + a.cached + '</td>'
+      + '<td class="' + rateClass + '">' + renderRate.toFixed(0) + '%</td>'
+      + '<td><span class="bar-bg"><span class="bar-fill" style="width:' + renderRate + '%;background:' + barColor + '"></span></span></td>'
       + '<td>' + avgUs + '</td>'
       + '<td>' + a.maxUs + '</td>'
       + '<td>' + avgLines + '</td>'
-      + '<td class="' + dirtyClass + '">' + statusText + '</td>'
+      + '<td class="' + rateClass + '">' + statusText + '</td>'
       + '</tr>';
   }
   tbody.innerHTML = html;
@@ -409,11 +444,11 @@ function updateCharts() {
   linesChart.data.datasets[1].data = slice.map(d => d.lines_repainted);
   linesChart.data.datasets[2].data = slice.map(d => d.cache_hits);
 
-  // Cache chart
+  // Component cache chart
   cacheChart.data.labels = labels;
   cacheChart.data.datasets[0].data = slice.map(d => {
-    const total = d.total_lines;
-    return total > 0 ? ((d.cache_hits / total) * 100).toFixed(1) : 100;
+    const s = frameCacheStats(d);
+    return s.total > 0 ? ((s.cached / s.total) * 100).toFixed(1) : 100;
   });
 
   // Bytes chart
