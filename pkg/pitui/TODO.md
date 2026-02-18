@@ -161,8 +161,9 @@ polish.
       straight to `onKey`, no more re-encoding through `KeyToBytes` (#11)
 - [ ] **Break up `replComponent`** — extract completion menu controller, history
       manager, and command dispatcher into separate types (#8)
-- [ ] **Decompose `doRender()`** — extract diff computation, escape-sequence
-      building, and cursor positioning into named methods (#1)
+- [x] **Decompose `doRender()`** — extracted snapshotForRender, renderFrame,
+      applyFrame, writeFullRedraw, writeTailShrink, writeDiffUpdate, diffLines.
+      Named escape constants and cursor helpers. doRender is now 17 lines (#1)
 - [ ] **Fix `pituiSyncWriter` entry targeting** — capture `*entryView` at eval
       start so streaming output can't land on the wrong entry (#10)
 - [ ] **Fix history persistence** — use XDG_DATA_HOME, encode multi-line entries
