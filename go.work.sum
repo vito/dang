@@ -1,4 +1,6 @@
 cel.dev/expr v0.24.0/go.mod h1:hLPLo1W4QUmuYdA72RBX06QTs6MXw941piREPl3Yfiw=
+charm.land/bubbles/v2 v2.0.0-rc.1.0.20260217140847-24081b3590e7 h1:rVvQccP2fbqvKYCzNccA34rS2XkrHNIIJIFo+uspEc8=
+charm.land/bubbles/v2 v2.0.0-rc.1.0.20260217140847-24081b3590e7/go.mod h1:8xqkh+2TR8ckOY5/gtkltcF5WaY5V9iXPtegYIpisoA=
 cloud.google.com/go/compute/metadata v0.7.0/go.mod h1:j5MvL9PprKL39t166CoB1uVHfQMs4tFQZZcKwksXUjo=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.29.0/go.mod h1:Cz6ft6Dkn3Et6l2v2a9/RpN7epQ1GtDlO6lj8bEcOvw=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
