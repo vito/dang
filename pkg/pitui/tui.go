@@ -61,6 +61,9 @@ type RenderStats struct {
 	// FullRedraw is true when the entire screen was repainted (no diff).
 	FullRedraw bool
 
+	// FullRedrawReason describes why a full redraw was triggered.
+	FullRedrawReason string
+
 	// OverlayCount is the number of active overlays composited.
 	OverlayCount int
 
@@ -92,7 +95,8 @@ type renderStatsJSON struct {
 	TotalLines      int   `json:"total_lines"`
 	LinesRepainted  int   `json:"lines_repainted"`
 	CacheHits       int   `json:"cache_hits"`
-	FullRedraw      bool  `json:"full_redraw"`
+	FullRedraw      bool   `json:"full_redraw"`
+	FullRedrawWhy   string `json:"full_redraw_why,omitempty"`
 	OverlayCount    int   `json:"overlay_count"`
 	BytesWritten    int   `json:"bytes_written"`
 	FirstChanged    int   `json:"first_changed"`
@@ -470,6 +474,7 @@ func (t *TUI) doRender() {
 			LinesRepainted:  stats.LinesRepainted,
 			CacheHits:       stats.CacheHits,
 			FullRedraw:      stats.FullRedraw,
+			FullRedrawWhy:   stats.FullRedrawReason,
 			OverlayCount:    stats.OverlayCount,
 			BytesWritten:    stats.BytesWritten,
 			FirstChanged:    stats.FirstChangedLine,
@@ -542,18 +547,21 @@ func (t *TUI) doRender() {
 
 	// First render.
 	if len(prevLines) == 0 && !widthChanged {
+		stats.FullRedrawReason = "first_render"
 		fullRender(false)
 		return
 	}
 
 	// Width changed.
 	if widthChanged {
+		stats.FullRedrawReason = "width_changed"
 		fullRender(true)
 		return
 	}
 
 	// Content shrunk below working area (no overlays).
 	if clearOnShrink && len(newLines) < maxLinesRendered && len(overlays) == 0 {
+		stats.FullRedrawReason = "clear_on_shrink"
 		fullRender(true)
 		return
 	}
@@ -624,6 +632,7 @@ func (t *TUI) doRender() {
 			buf.WriteString("\r")
 			extra := len(prevLines) - len(newLines)
 			if extra > height {
+				stats.FullRedrawReason = fmt.Sprintf("tail_shrink_too_large:extra=%d,height=%d", extra, height)
 				fullRender(true)
 				return
 			}
@@ -667,6 +676,8 @@ func (t *TUI) doRender() {
 	// First change above previous viewport -> full redraw.
 	prevContentViewportTop := max(0, len(prevLines)-height)
 	if firstChanged < prevContentViewportTop {
+		stats.FullRedrawReason = fmt.Sprintf("above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
+			firstChanged, prevContentViewportTop, len(prevLines), len(newLines), height)
 		fullRender(true)
 		return
 	}
