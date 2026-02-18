@@ -86,23 +86,23 @@ type RenderStats struct {
 
 // renderStatsJSON is the JSONL record written by the debug writer.
 type renderStatsJSON struct {
-	Ts              int64 `json:"ts"`
-	TotalUs         int64 `json:"total_us"`
-	RenderUs        int64 `json:"render_us"`
-	CompositeUs     int64 `json:"composite_us"`
-	DiffUs          int64 `json:"diff_us"`
-	WriteUs         int64 `json:"write_us"`
-	TotalLines      int   `json:"total_lines"`
-	LinesRepainted  int   `json:"lines_repainted"`
-	CacheHits       int   `json:"cache_hits"`
-	FullRedraw      bool   `json:"full_redraw"`
-	FullRedrawWhy   string `json:"full_redraw_why,omitempty"`
-	OverlayCount    int   `json:"overlay_count"`
-	BytesWritten    int   `json:"bytes_written"`
-	FirstChanged    int   `json:"first_changed"`
-	LastChanged     int   `json:"last_changed"`
-	ScrollLines     int              `json:"scroll_lines"`
-	Components      []ComponentStat  `json:"components,omitempty"`
+	Ts             int64           `json:"ts"`
+	TotalUs        int64           `json:"total_us"`
+	RenderUs       int64           `json:"render_us"`
+	CompositeUs    int64           `json:"composite_us"`
+	DiffUs         int64           `json:"diff_us"`
+	WriteUs        int64           `json:"write_us"`
+	TotalLines     int             `json:"total_lines"`
+	LinesRepainted int             `json:"lines_repainted"`
+	CacheHits      int             `json:"cache_hits"`
+	FullRedraw     bool            `json:"full_redraw"`
+	FullRedrawWhy  string          `json:"full_redraw_why,omitempty"`
+	OverlayCount   int             `json:"overlay_count"`
+	BytesWritten   int             `json:"bytes_written"`
+	FirstChanged   int             `json:"first_changed"`
+	LastChanged    int             `json:"last_changed"`
+	ScrollLines    int             `json:"scroll_lines"`
+	Components     []ComponentStat `json:"components,omitempty"`
 }
 
 // TUI is the main renderer. It extends Container with differential rendering
@@ -131,7 +131,7 @@ type TUI struct {
 	overlayStack []*overlayEntry
 
 	renderCh    chan struct{} // serialized render requests
-	debugWriter io.Writer    // if non-nil, render stats are logged here
+	debugWriter io.Writer     // if non-nil, render stats are logged here
 }
 
 // New creates a TUI backed by the given terminal.
@@ -468,23 +468,23 @@ func (t *TUI) doRender() {
 		}
 		stats.TotalTime = time.Since(totalStart)
 		rec := renderStatsJSON{
-			Ts:              time.Now().UnixMilli(),
-			TotalUs:         stats.TotalTime.Microseconds(),
-			RenderUs:        stats.RenderTime.Microseconds(),
-			CompositeUs:     stats.CompositeTime.Microseconds(),
-			DiffUs:          stats.DiffTime.Microseconds(),
-			WriteUs:         stats.WriteTime.Microseconds(),
-			TotalLines:      stats.TotalLines,
-			LinesRepainted:  stats.LinesRepainted,
-			CacheHits:       stats.CacheHits,
-			FullRedraw:      stats.FullRedraw,
-			FullRedrawWhy:   stats.FullRedrawReason,
-			OverlayCount:    stats.OverlayCount,
-			BytesWritten:    stats.BytesWritten,
-			FirstChanged:    stats.FirstChangedLine,
-			LastChanged:     stats.LastChangedLine,
-			ScrollLines:     stats.ScrollLines,
-			Components:      compStats,
+			Ts:             time.Now().UnixMilli(),
+			TotalUs:        stats.TotalTime.Microseconds(),
+			RenderUs:       stats.RenderTime.Microseconds(),
+			CompositeUs:    stats.CompositeTime.Microseconds(),
+			DiffUs:         stats.DiffTime.Microseconds(),
+			WriteUs:        stats.WriteTime.Microseconds(),
+			TotalLines:     stats.TotalLines,
+			LinesRepainted: stats.LinesRepainted,
+			CacheHits:      stats.CacheHits,
+			FullRedraw:     stats.FullRedraw,
+			FullRedrawWhy:  stats.FullRedrawReason,
+			OverlayCount:   stats.OverlayCount,
+			BytesWritten:   stats.BytesWritten,
+			FirstChanged:   stats.FirstChangedLine,
+			LastChanged:    stats.LastChangedLine,
+			ScrollLines:    stats.ScrollLines,
+			Components:     compStats,
 		}
 		data, _ := json.Marshal(rec)
 		data = append(data, '\n')

@@ -31,8 +31,6 @@ func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
 	return db
 }
 
-
-
 func (d *docBrowserOverlay) HandleInput(data []byte) {
 	defer d.Update()
 	s := string(data)

@@ -11,8 +11,8 @@ import (
 	"syscall"
 
 	"charm.land/lipgloss/v2"
-	uv "github.com/charmbracelet/ultraviolet"
 	"dagger.io/dagger"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/kr/pretty"
 
@@ -246,7 +246,7 @@ type replComponent struct {
 	textInput      *pitui.TextInput
 	entryContainer *pitui.Container
 	spinner        *pitui.Spinner
-	inputSlot *pitui.Slot // swaps between textInput and spinner
+	inputSlot      *pitui.Slot // swaps between textInput and spinner
 
 	quit chan struct{}
 
@@ -309,7 +309,6 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
-
 
 	// Input slot starts with text input.
 	r.inputSlot = pitui.NewSlot(ti)

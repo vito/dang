@@ -420,5 +420,3 @@ type staticLines struct {
 func (s *staticLines) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: s.lines}
 }
-
-
