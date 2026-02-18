@@ -249,41 +249,31 @@ func (t *TUI) AddInputListener(l InputListener) func() {
 	}
 }
 
-// ShowOverlay displays a component as a modal overlay on top of the base
-// content. If NoFocus is set in opts, focus is not changed.
+// ShowOverlay displays a component as an overlay on top of the base content.
+// Focus is not changed; use [TUI.SetFocus] to direct input to the overlay's
+// component when needed.
 func (t *TUI) ShowOverlay(comp Component, opts *OverlayOptions) *OverlayHandle {
 	t.mu.Lock()
 	entry := &overlayEntry{
 		component: comp,
 		options:   opts,
-		preFocus:  t.focusedComponent,
 	}
 	t.overlayStack = append(t.overlayStack, entry)
-	noFocus := opts != nil && opts.NoFocus
-	if !noFocus && t.isOverlayVisible(entry) {
-		t.setFocusLocked(comp)
-	}
 	t.mu.Unlock()
-	t.terminal.HideCursor()
 	t.RequestRender(false)
 	return &OverlayHandle{tui: t, entry: entry}
 }
 
-// HideOverlay removes the topmost overlay and restores previous focus.
+// HideOverlay removes the topmost overlay. Focus is not changed; the
+// caller should restore focus explicitly via [TUI.SetFocus].
 func (t *TUI) HideOverlay() {
 	t.mu.Lock()
 	if len(t.overlayStack) == 0 {
 		t.mu.Unlock()
 		return
 	}
-	entry := t.overlayStack[len(t.overlayStack)-1]
 	t.overlayStack = t.overlayStack[:len(t.overlayStack)-1]
-	t.restoreFocusFromOverlayLocked(entry)
-	noOverlays := len(t.overlayStack) == 0
 	t.mu.Unlock()
-	if noOverlays {
-		t.terminal.HideCursor()
-	}
 	t.RequestRender(false)
 }
 
@@ -292,7 +282,7 @@ func (t *TUI) HasOverlay() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, o := range t.overlayStack {
-		if t.isOverlayVisible(o) {
+		if !o.hidden {
 			return true
 		}
 	}
@@ -826,7 +816,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 
 	for i := range overlays {
 		e := &overlays[i]
-		if !t.isOverlayVisible(e) {
+		if e.hidden {
 			continue
 		}
 		cr := e.options != nil && e.options.ContentRelative

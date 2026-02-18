@@ -47,6 +47,10 @@ func (v SizeValue) resolve(ref int) (int, bool) {
 }
 
 // OverlayOptions configures overlay positioning and sizing.
+//
+// Overlays are pure rendering constructs — they composite a component on top
+// of the base content. Focus management is the caller's responsibility; use
+// [TUI.SetFocus] to direct input to the overlay's component when needed.
 type OverlayOptions struct {
 	Width     SizeValue
 	MinWidth  int
@@ -67,10 +71,6 @@ type OverlayOptions struct {
 	// (not the bottom of the screen), which is useful for menus that should
 	// float just above the last content line.
 	ContentRelative bool
-
-	// NoFocus, when true, prevents the overlay from stealing focus when
-	// shown. Useful for non-modal popups like completion menus.
-	NoFocus bool
 }
 
 // OverlayHandle controls a displayed overlay.
@@ -85,9 +85,8 @@ func (h *OverlayHandle) Hide() {
 }
 
 // SetOptions replaces the overlay's positioning/sizing options without
-// destroying and recreating the overlay. This avoids allocation churn and
-// focus management round-trips for things like repositioning a completion
-// menu on each keystroke.
+// destroying and recreating the overlay. This avoids allocation churn for
+// things like repositioning a completion menu on each keystroke.
 func (h *OverlayHandle) SetOptions(opts *OverlayOptions) {
 	h.tui.mu.Lock()
 	h.entry.options = opts
@@ -95,7 +94,8 @@ func (h *OverlayHandle) SetOptions(opts *OverlayOptions) {
 	h.tui.RequestRender(false)
 }
 
-// SetHidden temporarily hides or shows the overlay.
+// SetHidden temporarily hides or shows the overlay. Focus is not changed;
+// the caller should manage focus explicitly via [TUI.SetFocus].
 func (h *OverlayHandle) SetHidden(hidden bool) {
 	h.tui.mu.Lock()
 	if h.entry.hidden == hidden {
@@ -103,41 +103,21 @@ func (h *OverlayHandle) SetHidden(hidden bool) {
 		return
 	}
 	h.entry.hidden = hidden
-	if hidden {
-		h.tui.restoreFocusFromOverlayLocked(h.entry)
-	} else {
-		noFocus := h.entry.options != nil && h.entry.options.NoFocus
-		if !noFocus && h.tui.isOverlayVisible(h.entry) {
-			h.tui.setFocusLocked(h.entry.component)
-		}
-	}
 	h.tui.mu.Unlock()
 	h.tui.RequestRender(false)
 }
 
 // IsHidden reports whether the overlay is temporarily hidden.
 func (h *OverlayHandle) IsHidden() bool {
+	h.tui.mu.Lock()
+	defer h.tui.mu.Unlock()
 	return h.entry.hidden
 }
 
 type overlayEntry struct {
 	component Component
 	options   *OverlayOptions
-	preFocus  Component
 	hidden    bool
-}
-
-func (t *TUI) isOverlayVisible(e *overlayEntry) bool {
-	return !e.hidden
-}
-
-func (t *TUI) topmostVisibleOverlay() *overlayEntry {
-	for i := len(t.overlayStack) - 1; i >= 0; i-- {
-		if t.isOverlayVisible(t.overlayStack[i]) {
-			return t.overlayStack[i]
-		}
-	}
-	return nil
 }
 
 func (t *TUI) removeOverlay(entry *overlayEntry) {
@@ -150,33 +130,11 @@ func (t *TUI) removeOverlay(entry *overlayEntry) {
 			break
 		}
 	}
-	if !found {
-		t.mu.Unlock()
-		return
-	}
-	t.restoreFocusFromOverlayLocked(entry)
-	noOverlays := len(t.overlayStack) == 0
 	t.mu.Unlock()
-	if noOverlays {
-		t.terminal.HideCursor()
+	if !found {
+		return
 	}
 	t.RequestRender(false)
-}
-
-// restoreFocusFromOverlayLocked updates focus when an overlay loses
-// visibility (hidden or removed). If the overlay had focus, focus moves to
-// the next visible overlay or falls back to the overlay's preFocus.
-// Caller must hold t.mu.
-func (t *TUI) restoreFocusFromOverlayLocked(entry *overlayEntry) {
-	if t.focusedComponent != entry.component {
-		return
-	}
-	top := t.topmostVisibleOverlay()
-	if top != nil {
-		t.setFocusLocked(top.component)
-	} else {
-		t.setFocusLocked(entry.preFocus)
-	}
 }
 
 // resolveOverlayLayout determines the width, row, col, and maxHeight for an

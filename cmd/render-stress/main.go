@@ -178,7 +178,6 @@ func run(initialLines int) error {
 					Anchor:  pitui.AnchorBottomLeft,
 					OffsetX: 2,
 					OffsetY: -1,
-					NoFocus: true,
 				})
 				statusBar.set("\x1b[7m overlay shown (press o to hide) \x1b[0m")
 			}

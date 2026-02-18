@@ -297,8 +297,6 @@ func TestContentRelativeOverlay(t *testing.T) {
 		ContentRelative: true,
 		OffsetY:         -1, // above the last content line
 	})
-	// Don't let it steal focus for this test.
-	tui.SetFocus(nil)
 
 	renderSync(tui)
 
@@ -312,7 +310,7 @@ func TestContentRelativeOverlay(t *testing.T) {
 	assert.Contains(t, prev[2], "line-2", "last content line untouched")
 }
 
-func TestNoFocusOverlay(t *testing.T) {
+func TestOverlayDoesNotStealFocus(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
 	tui.stopped = false
@@ -322,15 +320,13 @@ func TestNoFocusOverlay(t *testing.T) {
 	tui.AddChild(main)
 	tui.SetFocus(main)
 
-	// Show overlay with NoFocus.
+	// Show overlay — focus should remain on main.
 	overlay := &staticComponent{lines: []string{"popup"}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:   SizeAbs(10),
-		Anchor:  AnchorCenter,
-		NoFocus: true,
+		Width:  SizeAbs(10),
+		Anchor: AnchorCenter,
 	})
 
-	// Focus should remain on main.
 	tui.mu.Lock()
 	focused := tui.focusedComponent
 	tui.mu.Unlock()
@@ -448,7 +444,6 @@ func TestOverlayMaxHeightPassedToComponent(t *testing.T) {
 		MaxHeight: SizeAbs(8),
 		Anchor:    AnchorTopRight,
 		Margin:    OverlayMargin{Top: 1, Right: 1},
-		NoFocus:   true,
 	})
 
 	renderSync(tui)
@@ -554,7 +549,6 @@ func TestOverlayBorderedBoxWithMaxHeight(t *testing.T) {
 		MaxHeight: SizeAbs(12),
 		Anchor:    AnchorTopRight,
 		Margin:    OverlayMargin{Top: 1, Right: 1},
-		NoFocus:   true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -582,7 +576,6 @@ func TestOverlayBorderedBoxFitsNaturally(t *testing.T) {
 		MaxHeight: SizeAbs(12),
 		Anchor:    AnchorTopRight,
 		Margin:    OverlayMargin{Top: 1, Right: 1},
-		NoFocus:   true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -613,7 +606,6 @@ func TestOverlayLastLineNotDropped(t *testing.T) {
 		Width:   SizeAbs(20),
 		Anchor:  AnchorTopRight,
 		Margin:  OverlayMargin{Top: 1, Right: 1},
-		NoFocus: true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -644,7 +636,6 @@ func TestOverlayLastLineWithScrolling(t *testing.T) {
 		Width:   SizeAbs(20),
 		Anchor:  AnchorTopRight,
 		Margin:  OverlayMargin{Top: 1, Right: 1},
-		NoFocus: true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -668,7 +659,6 @@ func TestOverlayTwoOverlaysLastLine(t *testing.T) {
 		Anchor:          AnchorBottomLeft,
 		ContentRelative: true,
 		OffsetY:         -1,
-		NoFocus:         true,
 	})
 
 	// Detail bubble overlay (viewport-relative, top-right).
@@ -682,7 +672,6 @@ func TestOverlayTwoOverlaysLastLine(t *testing.T) {
 		Width:   SizeAbs(20),
 		Anchor:  AnchorTopRight,
 		Margin:  OverlayMargin{Top: 1, Right: 1},
-		NoFocus: true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -720,7 +709,6 @@ func TestOverlayAtBottomOfViewport(t *testing.T) {
 		Width:   SizeAbs(18),
 		Anchor:  AnchorTopRight,
 		Margin:  OverlayMargin{Top: 0, Right: 1},
-		NoFocus: true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -756,7 +744,6 @@ func TestOverlayTallerThanViewport(t *testing.T) {
 	tui.ShowOverlay(overlay, &OverlayOptions{
 		Width:   SizeAbs(18),
 		Anchor:  AnchorTopLeft,
-		NoFocus: true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -818,7 +805,6 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 		MaxHeight: SizeAbs(14),
 		Anchor:    AnchorTopRight,
 		Margin:    OverlayMargin{Top: 1, Right: 1},
-		NoFocus:   true,
 	})
 
 	snap := snapshotRenderedLines(tui, term)

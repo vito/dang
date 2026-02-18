@@ -707,7 +707,6 @@ func (r *replComponent) showCompletionMenu() {
 			ContentRelative: true,
 			OffsetX:         xOff,
 			OffsetY:         -1, // above the input line
-			NoFocus:         true,
 		}
 	} else {
 		// Not enough room above: show below the input line.
@@ -719,7 +718,6 @@ func (r *replComponent) showCompletionMenu() {
 			Anchor:    pitui.AnchorTopLeft,
 			Row:       pitui.SizeAbs(linesAbove + 1), // right below the input
 			OffsetX:   xOff,
-			NoFocus:   true,
 		}
 	}
 	if r.menuHandle != nil {
@@ -767,7 +765,6 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 			ContentRelative: true,
 			OffsetX:         detailX,
 			OffsetY:         -1,
-			NoFocus:         true,
 		}
 	}
 	// Menu is below input.
@@ -777,7 +774,6 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 		Anchor:    pitui.AnchorTopLeft,
 		Row:       pitui.SizeAbs(linesAbove + 1),
 		OffsetX:   detailX,
-		NoFocus:   true,
 	}
 }
 
@@ -1339,6 +1335,7 @@ func (r *replComponent) showDocBrowser() {
 			r.docHandle.Hide()
 			r.docHandle = nil
 			r.docBrowser = nil
+			r.tui.SetFocus(r.textInput)
 		}
 	}
 	r.docBrowser = db
@@ -1347,6 +1344,7 @@ func (r *replComponent) showDocBrowser() {
 		MaxHeight: pitui.SizePct(100),
 		Anchor:    pitui.AnchorTopLeft,
 	})
+	r.tui.SetFocus(db)
 }
 
 // ── entry point ─────────────────────────────────────────────────────────────
