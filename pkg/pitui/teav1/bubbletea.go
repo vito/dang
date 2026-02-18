@@ -3,9 +3,9 @@ package teav1
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/pitui"
 )
@@ -27,10 +27,11 @@ import (
 //	tui.AddChild(comp)
 type Wrap struct {
 	pitui.Compo
-	model  tea.Model
-	width  int
-	height int
-	onQuit func()
+	model   tea.Model
+	decoder uv.EventDecoder
+	width   int
+	height  int
+	onQuit  func()
 }
 
 // New wraps a bubbletea v1 model as a pitui Component.
@@ -113,145 +114,145 @@ func (b *Wrap) Render(ctx pitui.RenderContext) pitui.RenderResult {
 func (b *Wrap) HandleInput(data []byte) {
 	buf := data
 	for len(buf) > 0 {
-		n, msg := parseKeyMsg(buf)
+		n, ev := b.decoder.Decode(buf)
 		if n == 0 {
 			break
 		}
 		buf = buf[n:]
-		if msg == nil {
+		if ev == nil {
 			continue
 		}
+
+		var msg tea.Msg
+		switch e := ev.(type) {
+		case uv.KeyPressEvent:
+			msg = uvKeyToV1(uv.Key(e))
+		default:
+			continue
+		}
+
 		b.updateModel(msg)
 	}
 }
 
-// parseKeyMsg parses raw terminal bytes into a bubbletea v1 KeyMsg.
-func parseKeyMsg(buf []byte) (int, tea.Msg) {
-	if len(buf) == 0 {
-		return 0, nil
-	}
+// uvKeyToV1 converts an ultraviolet Key to a bubbletea v1 KeyMsg.
+func uvKeyToV1(k uv.Key) tea.KeyMsg {
+	alt := k.Mod.Contains(uv.ModAlt)
+	ctrl := k.Mod.Contains(uv.ModCtrl)
+	shift := k.Mod.Contains(uv.ModShift)
 
-	// Try escape sequences (longest match first).
-	if buf[0] == '\x1b' && len(buf) > 1 {
-		best := 0
-		var bestKey tea.Key
-		for seq, key := range sequences {
-			if len(seq) > len(buf) {
-				continue
-			}
-			if string(buf[:len(seq)]) == seq && len(seq) > best {
-				best = len(seq)
-				bestKey = key
-			}
-		}
-		if best > 0 {
-			return best, tea.KeyMsg(bestKey)
-		}
-
-		// Alt+key: ESC followed by a printable character.
-		if len(buf) >= 2 && buf[1] >= 0x20 && buf[1] < 0x7f {
-			return 2, tea.KeyMsg{
-				Type:  tea.KeyRunes,
-				Runes: []rune{rune(buf[1])},
-				Alt:   true,
-			}
-		}
-
-		// Lone escape.
-		return 1, tea.KeyMsg{Type: tea.KeyEscape}
-	}
-
-	// Control characters.
-	if buf[0] < 0x20 {
-		switch buf[0] {
-		case '\r', '\n':
-			return 1, tea.KeyMsg{Type: tea.KeyEnter}
-		case '\t':
-			return 1, tea.KeyMsg{Type: tea.KeyTab}
-		default:
-			return 1, tea.KeyMsg{Type: tea.KeyType(buf[0])}
+	// Printable text (no ctrl modifier).
+	if k.Text != "" && !ctrl {
+		return tea.KeyMsg{
+			Type:  tea.KeyRunes,
+			Runes: []rune(k.Text),
+			Alt:   alt,
 		}
 	}
 
-	// DEL (backspace on most terminals).
-	if buf[0] == 0x7f {
-		return 1, tea.KeyMsg{Type: tea.KeyBackspace}
+	// Map special keys.
+	keyType, ok := uvToV1Key[k.Code]
+	if ok {
+		// Apply modifier variants for arrow keys and nav keys.
+		if shifted, ok := shiftedKey(keyType, ctrl, shift); ok {
+			return tea.KeyMsg{Type: shifted, Alt: alt}
+		}
+		return tea.KeyMsg{Type: keyType, Alt: alt}
 	}
 
-	// Space.
-	if buf[0] == ' ' {
-		return 1, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}
+	// Ctrl+letter: bubbletea v1 maps ctrl+a to KeyCtrlA (0x01), etc.
+	if ctrl && k.Code >= 'a' && k.Code <= 'z' {
+		return tea.KeyMsg{Type: tea.KeyType(k.Code - 'a' + 1), Alt: alt}
 	}
 
-	// Printable ASCII / UTF-8.
-	r, size := utf8.DecodeRune(buf)
-	if r == utf8.RuneError && size <= 1 {
-		return 1, nil
+	// Printable rune fallback.
+	if k.Code >= 0x20 {
+		return tea.KeyMsg{
+			Type:  tea.KeyRunes,
+			Runes: []rune{k.Code},
+			Alt:   alt,
+		}
 	}
-	return size, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+
+	return tea.KeyMsg{Type: tea.KeyRunes}
 }
 
-// sequences maps escape sequences to bubbletea v1 Key values.
-var sequences = map[string]tea.Key{
-	// Arrow keys
-	"\x1b[A": {Type: tea.KeyUp},
-	"\x1b[B": {Type: tea.KeyDown},
-	"\x1b[C": {Type: tea.KeyRight},
-	"\x1b[D": {Type: tea.KeyLeft},
+var uvToV1Key = map[rune]tea.KeyType{
+	uv.KeyUp:        tea.KeyUp,
+	uv.KeyDown:      tea.KeyDown,
+	uv.KeyLeft:      tea.KeyLeft,
+	uv.KeyRight:     tea.KeyRight,
+	uv.KeyHome:      tea.KeyHome,
+	uv.KeyEnd:       tea.KeyEnd,
+	uv.KeyPgUp:      tea.KeyPgUp,
+	uv.KeyPgDown:    tea.KeyPgDown,
+	uv.KeyDelete:    tea.KeyDelete,
+	uv.KeyInsert:    tea.KeyInsert,
+	uv.KeyTab:       tea.KeyTab,
+	uv.KeyBackspace: tea.KeyBackspace,
+	uv.KeyEnter:     tea.KeyEnter,
+	uv.KeyEscape:    tea.KeyEscape,
+	uv.KeySpace:     tea.KeySpace,
+	uv.KeyF1:        tea.KeyF1,
+	uv.KeyF2:        tea.KeyF2,
+	uv.KeyF3:        tea.KeyF3,
+	uv.KeyF4:        tea.KeyF4,
+	uv.KeyF5:        tea.KeyF5,
+	uv.KeyF6:        tea.KeyF6,
+	uv.KeyF7:        tea.KeyF7,
+	uv.KeyF8:        tea.KeyF8,
+	uv.KeyF9:        tea.KeyF9,
+	uv.KeyF10:       tea.KeyF10,
+	uv.KeyF11:       tea.KeyF11,
+	uv.KeyF12:       tea.KeyF12,
+}
 
-	"\x1b[1;2A": {Type: tea.KeyShiftUp},
-	"\x1b[1;2B": {Type: tea.KeyShiftDown},
-	"\x1b[1;2C": {Type: tea.KeyShiftRight},
-	"\x1b[1;2D": {Type: tea.KeyShiftLeft},
+// shiftedKey returns the ctrl/shift variant of a base key type, if one exists
+// in bubbletea v1's key model.
+func shiftedKey(base tea.KeyType, ctrl, shift bool) (tea.KeyType, bool) {
+	switch {
+	case ctrl && shift:
+		if k, ok := ctrlShiftKeys[base]; ok {
+			return k, true
+		}
+	case ctrl:
+		if k, ok := ctrlKeys[base]; ok {
+			return k, true
+		}
+	case shift:
+		if k, ok := shiftKeys[base]; ok {
+			return k, true
+		}
+	}
+	return 0, false
+}
 
-	"\x1b[1;3A": {Type: tea.KeyUp, Alt: true},
-	"\x1b[1;3B": {Type: tea.KeyDown, Alt: true},
-	"\x1b[1;3C": {Type: tea.KeyRight, Alt: true},
-	"\x1b[1;3D": {Type: tea.KeyLeft, Alt: true},
+var ctrlKeys = map[tea.KeyType]tea.KeyType{
+	tea.KeyUp:     tea.KeyCtrlUp,
+	tea.KeyDown:   tea.KeyCtrlDown,
+	tea.KeyLeft:   tea.KeyCtrlLeft,
+	tea.KeyRight:  tea.KeyCtrlRight,
+	tea.KeyHome:   tea.KeyCtrlHome,
+	tea.KeyEnd:    tea.KeyCtrlEnd,
+	tea.KeyPgUp:   tea.KeyCtrlPgUp,
+	tea.KeyPgDown: tea.KeyCtrlPgDown,
+}
 
-	"\x1b[1;5A": {Type: tea.KeyCtrlUp},
-	"\x1b[1;5B": {Type: tea.KeyCtrlDown},
-	"\x1b[1;5C": {Type: tea.KeyCtrlRight},
-	"\x1b[1;5D": {Type: tea.KeyCtrlLeft},
+var shiftKeys = map[tea.KeyType]tea.KeyType{
+	tea.KeyUp:    tea.KeyShiftUp,
+	tea.KeyDown:  tea.KeyShiftDown,
+	tea.KeyLeft:  tea.KeyShiftLeft,
+	tea.KeyRight: tea.KeyShiftRight,
+	tea.KeyHome:  tea.KeyShiftHome,
+	tea.KeyEnd:   tea.KeyShiftEnd,
+	tea.KeyTab:   tea.KeyShiftTab,
+}
 
-	// Powershell / DECCKM
-	"\x1bOA": {Type: tea.KeyUp},
-	"\x1bOB": {Type: tea.KeyDown},
-	"\x1bOC": {Type: tea.KeyRight},
-	"\x1bOD": {Type: tea.KeyLeft},
-
-	// Misc
-	"\x1b[Z":  {Type: tea.KeyShiftTab},
-	"\x1b[2~": {Type: tea.KeyInsert},
-	"\x1b[3~": {Type: tea.KeyDelete},
-	"\x1b[5~": {Type: tea.KeyPgUp},
-	"\x1b[6~": {Type: tea.KeyPgDown},
-
-	"\x1b[1~": {Type: tea.KeyHome},
-	"\x1b[H":  {Type: tea.KeyHome},
-	"\x1b[4~": {Type: tea.KeyEnd},
-	"\x1b[F":  {Type: tea.KeyEnd},
-	"\x1b[7~": {Type: tea.KeyHome}, // urxvt
-	"\x1b[8~": {Type: tea.KeyEnd},  // urxvt
-
-	// Function keys
-	"\x1bOP":   {Type: tea.KeyF1},
-	"\x1bOQ":   {Type: tea.KeyF2},
-	"\x1bOR":   {Type: tea.KeyF3},
-	"\x1bOS":   {Type: tea.KeyF4},
-	"\x1b[15~": {Type: tea.KeyF5},
-	"\x1b[17~": {Type: tea.KeyF6},
-	"\x1b[18~": {Type: tea.KeyF7},
-	"\x1b[19~": {Type: tea.KeyF8},
-	"\x1b[20~": {Type: tea.KeyF9},
-	"\x1b[21~": {Type: tea.KeyF10},
-	"\x1b[23~": {Type: tea.KeyF11},
-	"\x1b[24~": {Type: tea.KeyF12},
-
-	// Linux console
-	"\x1b[[A": {Type: tea.KeyF1},
-	"\x1b[[B": {Type: tea.KeyF2},
-	"\x1b[[C": {Type: tea.KeyF3},
-	"\x1b[[D": {Type: tea.KeyF4},
-	"\x1b[[E": {Type: tea.KeyF5},
+var ctrlShiftKeys = map[tea.KeyType]tea.KeyType{
+	tea.KeyUp:    tea.KeyCtrlShiftUp,
+	tea.KeyDown:  tea.KeyCtrlShiftDown,
+	tea.KeyLeft:  tea.KeyCtrlShiftLeft,
+	tea.KeyRight: tea.KeyCtrlShiftRight,
+	tea.KeyHome:  tea.KeyCtrlShiftHome,
+	tea.KeyEnd:   tea.KeyCtrlShiftEnd,
 }
