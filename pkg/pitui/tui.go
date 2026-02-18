@@ -322,12 +322,7 @@ func (t *TUI) Stop() {
 	// Move cursor past content so the shell prompt appears below.
 	if len(prev) > 0 {
 		target := len(prev)
-		diff := target - hcr
-		if diff > 0 {
-			t.terminal.WriteString(fmt.Sprintf("\x1b[%dB", diff))
-		} else if diff < 0 {
-			t.terminal.WriteString(fmt.Sprintf("\x1b[%dA", -diff))
-		}
+		t.terminal.WriteString(cursorVertical(target - hcr))
 		t.terminal.WriteString("\r\n")
 	}
 
@@ -409,39 +404,190 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 	}
 }
 
+// ---------- escape sequences ------------------------------------------------
+//
+// Named constants for ANSI/DEC escape sequences used during rendering.
+// Using constants makes the intent clear and avoids scattered string literals.
+
+const (
+	// Synchronized output (DEC private mode 2026). Tells the terminal to
+	// buffer writes and flush atomically, preventing flicker.
+	escSyncBegin = "\x1b[?2026h"
+	escSyncEnd   = "\x1b[?2026l"
+
+	// Screen / scrollback clearing.
+	escClearScrollback = "\x1b[3J" // erase scrollback buffer
+	escClearScreen     = "\x1b[2J" // erase visible screen
+	escCursorHome      = "\x1b[H"  // move cursor to (1,1)
+
+	// Line-level operations.
+	escClearLine = "\x1b[2K" // erase entire current line
+)
+
+// cursorUp returns an escape sequence moving the cursor up n rows.
+// Returns "" if n <= 0.
+func cursorUp(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("\x1b[%dA", n)
+}
+
+// cursorDown returns an escape sequence moving the cursor down n rows.
+// Returns "" if n <= 0.
+func cursorDown(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("\x1b[%dB", n)
+}
+
+// cursorColumn returns an escape sequence moving the cursor to column col
+// (1-indexed, as the terminal expects).
+func cursorColumn(col int) string {
+	return fmt.Sprintf("\x1b[%dG", col)
+}
+
+// cursorVertical writes cursor-up or cursor-down for a signed delta.
+func cursorVertical(delta int) string {
+	if delta > 0 {
+		return cursorDown(delta)
+	}
+	return cursorUp(-delta)
+}
+
 // ---------- differential rendering ------------------------------------------
+
+// renderSnapshot holds a read-only copy of TUI state captured under the lock
+// at the start of a render frame.
+type renderSnapshot struct {
+	width           int
+	height          int
+	prevLines       []string
+	prevWidth       int
+	hardwareCursorRow int
+	maxLinesRendered  int
+	prevViewportTop   int
+	clearOnShrink     bool
+	debugWriter       io.Writer
+	overlays          []overlayEntry
+}
+
+// widthChanged reports whether the terminal width changed since the last frame.
+func (s *renderSnapshot) widthChanged() bool {
+	return s.prevWidth != 0 && s.prevWidth != s.width
+}
+
+// viewportTop returns the first visible row given the working area height.
+func (s *renderSnapshot) viewportTop() int {
+	return max(0, s.maxLinesRendered-s.height)
+}
+
+// lineDelta returns the cursor movement (in rows) needed to move from the
+// hardware cursor's current screen position to targetRow's screen position,
+// accounting for viewport scrolling.
+func (s *renderSnapshot) lineDelta(targetRow, viewportTop int) int {
+	currentScreen := s.hardwareCursorRow - s.prevViewportTop
+	targetScreen := targetRow - viewportTop
+	return targetScreen - currentScreen
+}
+
+// diffResult holds the output of diffLines.
+type diffResult struct {
+	firstChanged int  // first line that differs, or -1
+	lastChanged  int  // last line that differs, or -1
+	appendStart  bool // true if changes are purely appended lines starting right after prevLines
+}
+
+// diffLines compares old and new line slices and returns the range of changed
+// lines. Pure function — no side effects.
+func diffLines(prev, next []string) diffResult {
+	firstChanged := -1
+	lastChanged := -1
+	n := max(len(next), len(prev))
+	for i := 0; i < n; i++ {
+		var oldLine, newLine string
+		if i < len(prev) {
+			oldLine = prev[i]
+		}
+		if i < len(next) {
+			newLine = next[i]
+		}
+		if oldLine != newLine {
+			if firstChanged == -1 {
+				firstChanged = i
+			}
+			lastChanged = i
+		}
+	}
+
+	appended := len(next) > len(prev)
+	if appended {
+		if firstChanged == -1 {
+			firstChanged = len(prev)
+		}
+		lastChanged = len(next) - 1
+	}
+	appendStart := appended && firstChanged == len(prev) && firstChanged > 0
+
+	return diffResult{
+		firstChanged: firstChanged,
+		lastChanged:  lastChanged,
+		appendStart:  appendStart,
+	}
+}
 
 func (t *TUI) doRender() {
 	totalStart := time.Now()
 
-	t.mu.Lock()
-	if t.stopped {
-		t.mu.Unlock()
-		return
+	snap := t.snapshotForRender()
+	if snap == nil {
+		return // stopped
 	}
-	width := t.terminal.Columns()
-	height := t.terminal.Rows()
-	prevLines := t.previousLines
-	prevWidth := t.previousWidth
-	hardwareCursorRow := t.hardwareCursorRow
-	maxLinesRendered := t.maxLinesRendered
-	prevViewportTop := t.previousViewportTop
-	clearOnShrink := t.clearOnShrink
-	debugW := t.debugWriter
-	overlays := make([]overlayEntry, len(t.overlayStack))
-	for i, e := range t.overlayStack {
-		overlays[i] = *e
-	}
-	t.mu.Unlock()
 
 	var stats RenderStats
-	stats.OverlayCount = len(overlays)
+	stats.OverlayCount = len(snap.overlays)
 
 	// Render all components.
+	newLines, cursorPos, compStats := t.renderFrame(snap, &stats)
+
+	// Choose rendering strategy and write to terminal.
+	t.applyFrame(snap, newLines, cursorPos, compStats, &stats, totalStart)
+}
+
+// snapshotForRender captures a consistent copy of all mutable state needed
+// for rendering. Returns nil if the TUI is stopped.
+func (t *TUI) snapshotForRender() *renderSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.stopped {
+		return nil
+	}
+	snap := &renderSnapshot{
+		width:             t.terminal.Columns(),
+		height:            t.terminal.Rows(),
+		prevLines:         t.previousLines,
+		prevWidth:         t.previousWidth,
+		hardwareCursorRow: t.hardwareCursorRow,
+		maxLinesRendered:  t.maxLinesRendered,
+		prevViewportTop:   t.previousViewportTop,
+		clearOnShrink:     t.clearOnShrink,
+		debugWriter:       t.debugWriter,
+		overlays:          make([]overlayEntry, len(t.overlayStack)),
+	}
+	for i, e := range t.overlayStack {
+		snap.overlays[i] = *e
+	}
+	return snap
+}
+
+// renderFrame renders the component tree and composites overlays, producing
+// the new set of output lines with reset sequences appended.
+func (t *TUI) renderFrame(snap *renderSnapshot, stats *RenderStats) ([]string, *CursorPos, []ComponentStat) {
 	renderStart := time.Now()
-	ctx := RenderContext{Width: width}
+	ctx := RenderContext{Width: snap.width}
 	var compStats []ComponentStat
-	if debugW != nil {
+	if snap.debugWriter != nil {
 		ctx.componentStats = &compStats
 	}
 	baseResult := renderComponent(&t.Container, ctx)
@@ -453,88 +599,196 @@ func (t *TUI) doRender() {
 	copy(newLines, baseResult.Lines)
 
 	// Composite overlays.
-	if len(overlays) > 0 {
+	if len(snap.overlays) > 0 {
 		compositeStart := time.Now()
-		newLines, cursorPos = t.compositeOverlays(newLines, cursorPos, overlays, width, height, maxLinesRendered)
+		newLines, cursorPos = t.compositeOverlays(
+			newLines, cursorPos, snap.overlays,
+			snap.width, snap.height, snap.maxLinesRendered,
+		)
 		stats.CompositeTime = time.Since(compositeStart)
 	}
 
-	// Append reset to each line.
+	// Append reset to each line to prevent style bleed.
 	for i := range newLines {
 		newLines[i] += segmentReset
 	}
 	stats.TotalLines = len(newLines)
 
-	viewportTop := max(0, maxLinesRendered-height)
+	return newLines, cursorPos, compStats
+}
 
-	// Helper: line diff from hardware cursor to a target row, accounting for
-	// viewport scrolling.
-	computeLineDiff := func(targetRow int) int {
-		currentScreen := hardwareCursorRow - prevViewportTop
-		targetScreen := targetRow - viewportTop
-		return targetScreen - currentScreen
+// applyFrame decides the rendering strategy (full redraw vs differential
+// update) and writes the result to the terminal.
+func (t *TUI) applyFrame(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, compStats []ComponentStat, stats *RenderStats, totalStart time.Time) {
+	emitStats := func() {
+		t.emitDebugStats(snap.debugWriter, stats, compStats, totalStart)
 	}
 
-	widthChanged := prevWidth != 0 && prevWidth != width
+	// Full redraw needed?
+	if reason, clear := t.needsFullRedraw(snap, newLines); reason != "" {
+		stats.FullRedrawReason = reason
+		t.writeFullRedraw(snap, newLines, cursorPos, stats, clear)
+		emitStats()
+		return
+	}
 
-	// emitStats writes the debug stats as JSONL if a debug writer is configured.
-	emitStats := func() {
-		if debugW == nil {
+	// Compute diff.
+	diffStart := time.Now()
+	dr := diffLines(snap.prevLines, newLines)
+	viewportTop := snap.viewportTop()
+
+	// No changes — just reposition cursor.
+	if dr.firstChanged == -1 {
+		stats.DiffTime = time.Since(diffStart)
+		stats.CacheHits = len(newLines)
+		stats.FirstChangedLine = -1
+		stats.LastChangedLine = -1
+		t.positionHardwareCursor(cursorPos, len(newLines))
+		t.mu.Lock()
+		t.previousViewportTop = max(0, t.maxLinesRendered-snap.height)
+		t.mu.Unlock()
+		emitStats()
+		return
+	}
+
+	// All changes in deleted tail.
+	if dr.firstChanged >= len(newLines) {
+		t.writeTailShrink(snap, newLines, cursorPos, stats, &dr, diffStart, viewportTop)
+		emitStats()
+		return
+	}
+
+	// First change above previous viewport → full redraw.
+	if dr.firstChanged < snap.prevViewportTop {
+		stats.FullRedrawReason = fmt.Sprintf(
+			"above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
+			dr.firstChanged, snap.prevViewportTop, len(snap.prevLines), len(newLines), snap.height,
+		)
+		t.writeFullRedraw(snap, newLines, cursorPos, stats, true)
+		emitStats()
+		return
+	}
+
+	// Differential update.
+	t.writeDiffUpdate(snap, newLines, cursorPos, stats, &dr, diffStart, viewportTop)
+	emitStats()
+}
+
+// needsFullRedraw returns (reason, clearScreen) if a full redraw is required,
+// or ("", false) if differential rendering can proceed.
+func (t *TUI) needsFullRedraw(snap *renderSnapshot, newLines []string) (string, bool) {
+	if len(snap.prevLines) == 0 && !snap.widthChanged() {
+		return "first_render", false
+	}
+	if snap.widthChanged() {
+		return "width_changed", true
+	}
+	if snap.clearOnShrink && len(newLines) < snap.maxLinesRendered && len(snap.overlays) == 0 {
+		return "clear_on_shrink", true
+	}
+	return "", false
+}
+
+// writeFullRedraw writes all lines to the terminal, optionally clearing the
+// screen first. Updates TUI state and positions the cursor.
+func (t *TUI) writeFullRedraw(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, stats *RenderStats, clear bool) {
+	t.mu.Lock()
+	t.fullRedrawCount++
+	t.mu.Unlock()
+
+	stats.FullRedraw = true
+	stats.LinesRepainted = len(newLines)
+	stats.CacheHits = 0
+	stats.FirstChangedLine = 0
+	stats.LastChangedLine = max(0, len(newLines)-1)
+
+	diffStart := time.Now()
+	var buf strings.Builder
+	buf.WriteString(escSyncBegin)
+	if clear {
+		buf.WriteString(escClearScrollback)
+		buf.WriteString(escClearScreen)
+		buf.WriteString(escCursorHome)
+	}
+	for i, line := range newLines {
+		if i > 0 {
+			buf.WriteString("\r\n")
+		}
+		if !clear {
+			buf.WriteString(escClearLine)
+		}
+		buf.WriteString(line)
+	}
+	buf.WriteString(escSyncEnd)
+	stats.DiffTime = time.Since(diffStart)
+	stats.BytesWritten = buf.Len()
+
+	writeStart := time.Now()
+	t.terminal.WriteString(buf.String())
+	stats.WriteTime = time.Since(writeStart)
+
+	cr := max(0, len(newLines)-1)
+	ml := snap.maxLinesRendered
+	if clear {
+		ml = len(newLines)
+	} else {
+		ml = max(ml, len(newLines))
+	}
+
+	t.mu.Lock()
+	t.cursorRow = cr
+	t.hardwareCursorRow = cr
+	t.maxLinesRendered = ml
+	t.previousViewportTop = max(0, ml-snap.height)
+	t.mu.Unlock()
+
+	t.positionHardwareCursor(cursorPos, len(newLines))
+
+	t.mu.Lock()
+	t.previousLines = newLines
+	t.previousWidth = snap.width
+	t.mu.Unlock()
+}
+
+// writeTailShrink handles the case where content was only removed from the
+// end (no visible lines changed, just fewer of them).
+func (t *TUI) writeTailShrink(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
+	stats.CacheHits = len(newLines)
+	stats.LinesRepainted = 0
+	stats.FirstChangedLine = dr.firstChanged
+	stats.LastChangedLine = dr.lastChanged
+
+	if len(snap.prevLines) > len(newLines) {
+		targetRow := max(0, len(newLines)-1)
+		delta := snap.lineDelta(targetRow, viewportTop)
+		extra := len(snap.prevLines) - len(newLines)
+
+		if extra > snap.height {
+			stats.FullRedrawReason = fmt.Sprintf(
+				"tail_shrink_too_large:extra=%d,height=%d", extra, snap.height,
+			)
+			t.writeFullRedraw(snap, newLines, cursorPos, stats, true)
 			return
 		}
-		stats.TotalTime = time.Since(totalStart)
-		rec := renderStatsJSON{
-			Ts:             time.Now().UnixMilli(),
-			TotalUs:        stats.TotalTime.Microseconds(),
-			RenderUs:       stats.RenderTime.Microseconds(),
-			CompositeUs:    stats.CompositeTime.Microseconds(),
-			DiffUs:         stats.DiffTime.Microseconds(),
-			WriteUs:        stats.WriteTime.Microseconds(),
-			TotalLines:     stats.TotalLines,
-			LinesRepainted: stats.LinesRepainted,
-			CacheHits:      stats.CacheHits,
-			FullRedraw:     stats.FullRedraw,
-			FullRedrawWhy:  stats.FullRedrawReason,
-			OverlayCount:   stats.OverlayCount,
-			BytesWritten:   stats.BytesWritten,
-			FirstChanged:   stats.FirstChangedLine,
-			LastChanged:    stats.LastChangedLine,
-			ScrollLines:    stats.ScrollLines,
-			Components:     compStats,
-		}
-		data, _ := json.Marshal(rec)
-		data = append(data, '\n')
-		debugW.Write(data) //nolint:errcheck
-	}
 
-	// --- full render helper ---
-	fullRender := func(clear bool) {
-		t.mu.Lock()
-		t.fullRedrawCount++
-		t.mu.Unlock()
-
-		stats.FullRedraw = true
-		stats.LinesRepainted = len(newLines)
-		stats.CacheHits = 0
-		stats.FirstChangedLine = 0
-		stats.LastChangedLine = max(0, len(newLines)-1)
-
-		diffStart := time.Now()
 		var buf strings.Builder
-		buf.WriteString("\x1b[?2026h") // begin synchronized output
-		if clear {
-			buf.WriteString("\x1b[3J\x1b[2J\x1b[H") // clear scrollback, screen, home
+		buf.WriteString(escSyncBegin)
+		buf.WriteString(cursorVertical(delta))
+		buf.WriteString("\r")
+		if extra > 0 {
+			buf.WriteString(cursorDown(1))
 		}
-		for i, line := range newLines {
-			if i > 0 {
-				buf.WriteString("\r\n")
+		for i := 0; i < extra; i++ {
+			buf.WriteString("\r")
+			buf.WriteString(escClearLine)
+			if i < extra-1 {
+				buf.WriteString(cursorDown(1))
 			}
-			if !clear {
-				buf.WriteString("\x1b[2K") // clear line before overwriting
-			}
-			buf.WriteString(line)
 		}
-		buf.WriteString("\x1b[?2026l") // end synchronized output
+		if extra > 0 {
+			buf.WriteString(cursorUp(extra))
+		}
+		buf.WriteString(escSyncEnd)
 		stats.DiffTime = time.Since(diffStart)
 		stats.BytesWritten = buf.Len()
 
@@ -542,184 +796,42 @@ func (t *TUI) doRender() {
 		t.terminal.WriteString(buf.String())
 		stats.WriteTime = time.Since(writeStart)
 
-		cr := max(0, len(newLines)-1)
-		ml := maxLinesRendered
-		if clear {
-			ml = len(newLines)
-		} else {
-			ml = max(ml, len(newLines))
-		}
-		vt := max(0, ml-height)
-
 		t.mu.Lock()
-		t.cursorRow = cr
-		t.hardwareCursorRow = cr
-		t.maxLinesRendered = ml
-		t.previousViewportTop = vt
+		t.cursorRow = targetRow
+		t.hardwareCursorRow = targetRow
 		t.mu.Unlock()
-
-		t.positionHardwareCursor(cursorPos, len(newLines))
-
-		t.mu.Lock()
-		t.previousLines = newLines
-		t.previousWidth = width
-		t.mu.Unlock()
-
-		emitStats()
-	}
-
-	// First render.
-	if len(prevLines) == 0 && !widthChanged {
-		stats.FullRedrawReason = "first_render"
-		fullRender(false)
-		return
-	}
-
-	// Width changed.
-	if widthChanged {
-		stats.FullRedrawReason = "width_changed"
-		fullRender(true)
-		return
-	}
-
-	// Content shrunk below working area (no overlays).
-	if clearOnShrink && len(newLines) < maxLinesRendered && len(overlays) == 0 {
-		stats.FullRedrawReason = "clear_on_shrink"
-		fullRender(true)
-		return
-	}
-
-	// --- diff ---
-	diffStart := time.Now()
-
-	firstChanged := -1
-	lastChanged := -1
-	maxLen := max(len(newLines), len(prevLines))
-	for i := 0; i < maxLen; i++ {
-		oldLine := ""
-		if i < len(prevLines) {
-			oldLine = prevLines[i]
-		}
-		newLine := ""
-		if i < len(newLines) {
-			newLine = newLines[i]
-		}
-		if oldLine != newLine {
-			if firstChanged == -1 {
-				firstChanged = i
-			}
-			lastChanged = i
-		}
-	}
-
-	appendedLines := len(newLines) > len(prevLines)
-	if appendedLines {
-		if firstChanged == -1 {
-			firstChanged = len(prevLines)
-		}
-		lastChanged = len(newLines) - 1
-	}
-	appendStart := appendedLines && firstChanged == len(prevLines) && firstChanged > 0
-
-	// No changes.
-	if firstChanged == -1 {
+	} else {
 		stats.DiffTime = time.Since(diffStart)
-		stats.CacheHits = len(newLines)
-		stats.LinesRepainted = 0
-		stats.FirstChangedLine = -1
-		stats.LastChangedLine = -1
-		t.positionHardwareCursor(cursorPos, len(newLines))
-		t.mu.Lock()
-		t.previousViewportTop = max(0, t.maxLinesRendered-height)
-		t.mu.Unlock()
-		emitStats()
-		return
 	}
 
-	// All changes in deleted tail.
-	if firstChanged >= len(newLines) {
-		stats.CacheHits = len(newLines)
-		stats.LinesRepainted = 0
-		stats.FirstChangedLine = firstChanged
-		stats.LastChangedLine = lastChanged
-		if len(prevLines) > len(newLines) {
-			var buf strings.Builder
-			buf.WriteString("\x1b[?2026h")
-			targetRow := max(0, len(newLines)-1)
-			diff := computeLineDiff(targetRow)
-			if diff > 0 {
-				fmt.Fprintf(&buf, "\x1b[%dB", diff)
-			} else if diff < 0 {
-				fmt.Fprintf(&buf, "\x1b[%dA", -diff)
-			}
-			buf.WriteString("\r")
-			extra := len(prevLines) - len(newLines)
-			if extra > height {
-				stats.FullRedrawReason = fmt.Sprintf("tail_shrink_too_large:extra=%d,height=%d", extra, height)
-				fullRender(true)
-				return
-			}
-			if extra > 0 {
-				buf.WriteString("\x1b[1B")
-			}
-			for i := 0; i < extra; i++ {
-				buf.WriteString("\r\x1b[2K")
-				if i < extra-1 {
-					buf.WriteString("\x1b[1B")
-				}
-			}
-			if extra > 0 {
-				fmt.Fprintf(&buf, "\x1b[%dA", extra)
-			}
-			buf.WriteString("\x1b[?2026l")
-			stats.DiffTime = time.Since(diffStart)
-			stats.BytesWritten = buf.Len()
+	t.positionHardwareCursor(cursorPos, len(newLines))
+	t.mu.Lock()
+	t.previousLines = newLines
+	t.previousWidth = snap.width
+	t.previousViewportTop = max(0, t.maxLinesRendered-snap.height)
+	t.mu.Unlock()
+}
 
-			writeStart := time.Now()
-			t.terminal.WriteString(buf.String())
-			stats.WriteTime = time.Since(writeStart)
-
-			t.mu.Lock()
-			t.cursorRow = targetRow
-			t.hardwareCursorRow = targetRow
-			t.mu.Unlock()
-		} else {
-			stats.DiffTime = time.Since(diffStart)
-		}
-		t.positionHardwareCursor(cursorPos, len(newLines))
-		t.mu.Lock()
-		t.previousLines = newLines
-		t.previousWidth = width
-		t.previousViewportTop = max(0, t.maxLinesRendered-height)
-		t.mu.Unlock()
-		emitStats()
-		return
-	}
-
-	// First change above previous viewport -> full redraw.
-	if firstChanged < prevViewportTop {
-		stats.FullRedrawReason = fmt.Sprintf("above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
-			firstChanged, prevViewportTop, len(prevLines), len(newLines), height)
-		fullRender(true)
-		return
-	}
-
-	// --- differential update ---
+// writeDiffUpdate writes only the changed lines to the terminal, scrolling
+// the viewport as needed.
+func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
 	var buf strings.Builder
-	buf.WriteString("\x1b[?2026h")
+	buf.WriteString(escSyncBegin)
 
-	prevViewportBottom := prevViewportTop + height - 1
-	moveTargetRow := firstChanged
-	if appendStart {
-		moveTargetRow = firstChanged - 1
+	hardwareCursorRow := snap.hardwareCursorRow
+	prevViewportTop := snap.prevViewportTop
+	prevViewportBottom := prevViewportTop + snap.height - 1
+
+	moveTargetRow := dr.firstChanged
+	if dr.appendStart {
+		moveTargetRow = dr.firstChanged - 1
 	}
 
+	// Scroll viewport down if the first change is below the visible area.
 	if moveTargetRow > prevViewportBottom {
-		currentScreen := max(0, min(height-1, hardwareCursorRow-prevViewportTop))
-		moveToBottom := height - 1 - currentScreen
-		if moveToBottom > 0 {
-			fmt.Fprintf(&buf, "\x1b[%dB", moveToBottom)
-		}
+		currentScreen := max(0, min(snap.height-1, hardwareCursorRow-prevViewportTop))
+		moveToBottom := snap.height - 1 - currentScreen
+		buf.WriteString(cursorDown(moveToBottom))
 		scroll := moveTargetRow - prevViewportBottom
 		stats.ScrollLines = scroll
 		for i := 0; i < scroll; i++ {
@@ -730,52 +842,53 @@ func (t *TUI) doRender() {
 		hardwareCursorRow = moveTargetRow
 	}
 
-	diff := computeLineDiff(moveTargetRow)
-	if diff > 0 {
-		fmt.Fprintf(&buf, "\x1b[%dB", diff)
-	} else if diff < 0 {
-		fmt.Fprintf(&buf, "\x1b[%dA", -diff)
-	}
+	delta := snap.lineDelta(moveTargetRow, viewportTop)
+	// Override with updated local values after scrolling.
+	currentScreen := hardwareCursorRow - prevViewportTop
+	targetScreen := moveTargetRow - viewportTop
+	delta = targetScreen - currentScreen
+	buf.WriteString(cursorVertical(delta))
 
-	if appendStart {
+	if dr.appendStart {
 		buf.WriteString("\r\n")
 	} else {
 		buf.WriteString("\r")
 	}
 
-	renderEnd := min(lastChanged, len(newLines)-1)
-	for i := firstChanged; i <= renderEnd; i++ {
-		if i > firstChanged {
+	renderEnd := min(dr.lastChanged, len(newLines)-1)
+	for i := dr.firstChanged; i <= renderEnd; i++ {
+		if i > dr.firstChanged {
 			buf.WriteString("\r\n")
 		}
-		buf.WriteString("\x1b[2K")
+		buf.WriteString(escClearLine)
 		buf.WriteString(newLines[i])
 	}
 
 	finalCursorRow := renderEnd
 
 	// Clear deleted trailing lines.
-	if len(prevLines) > len(newLines) {
+	if len(snap.prevLines) > len(newLines) {
 		if renderEnd < len(newLines)-1 {
 			moveDown := len(newLines) - 1 - renderEnd
-			fmt.Fprintf(&buf, "\x1b[%dB", moveDown)
+			buf.WriteString(cursorDown(moveDown))
 			finalCursorRow = len(newLines) - 1
 		}
-		extra := len(prevLines) - len(newLines)
+		extra := len(snap.prevLines) - len(newLines)
 		for i := 0; i < extra; i++ {
-			buf.WriteString("\r\n\x1b[2K")
+			buf.WriteString("\r\n")
+			buf.WriteString(escClearLine)
 		}
-		fmt.Fprintf(&buf, "\x1b[%dA", extra)
+		buf.WriteString(cursorUp(extra))
 	}
 
-	buf.WriteString("\x1b[?2026l")
+	buf.WriteString(escSyncEnd)
 	stats.DiffTime = time.Since(diffStart)
 
 	// Compute repainted/cached stats.
-	stats.LinesRepainted = renderEnd - firstChanged + 1
+	stats.LinesRepainted = renderEnd - dr.firstChanged + 1
 	stats.CacheHits = len(newLines) - stats.LinesRepainted
-	stats.FirstChangedLine = firstChanged
-	stats.LastChangedLine = lastChanged
+	stats.FirstChangedLine = dr.firstChanged
+	stats.LastChangedLine = dr.lastChanged
 	stats.BytesWritten = buf.Len()
 
 	writeStart := time.Now()
@@ -783,23 +896,52 @@ func (t *TUI) doRender() {
 	stats.WriteTime = time.Since(writeStart)
 
 	cr := max(0, len(newLines)-1)
-	ml := max(maxLinesRendered, len(newLines))
+	ml := max(snap.maxLinesRendered, len(newLines))
 
 	t.mu.Lock()
 	t.cursorRow = cr
 	t.hardwareCursorRow = finalCursorRow
 	t.maxLinesRendered = ml
-	t.previousViewportTop = max(0, ml-height)
+	t.previousViewportTop = max(0, ml-snap.height)
 	t.mu.Unlock()
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
 
 	t.mu.Lock()
 	t.previousLines = newLines
-	t.previousWidth = width
+	t.previousWidth = snap.width
 	t.mu.Unlock()
+}
 
-	emitStats()
+// emitDebugStats writes render stats as a JSONL record if a debug writer
+// is configured.
+func (t *TUI) emitDebugStats(w io.Writer, stats *RenderStats, compStats []ComponentStat, totalStart time.Time) {
+	if w == nil {
+		return
+	}
+	stats.TotalTime = time.Since(totalStart)
+	rec := renderStatsJSON{
+		Ts:             time.Now().UnixMilli(),
+		TotalUs:        stats.TotalTime.Microseconds(),
+		RenderUs:       stats.RenderTime.Microseconds(),
+		CompositeUs:    stats.CompositeTime.Microseconds(),
+		DiffUs:         stats.DiffTime.Microseconds(),
+		WriteUs:        stats.WriteTime.Microseconds(),
+		TotalLines:     stats.TotalLines,
+		LinesRepainted: stats.LinesRepainted,
+		CacheHits:      stats.CacheHits,
+		FullRedraw:     stats.FullRedraw,
+		FullRedrawWhy:  stats.FullRedrawReason,
+		OverlayCount:   stats.OverlayCount,
+		BytesWritten:   stats.BytesWritten,
+		FirstChanged:   stats.FirstChangedLine,
+		LastChanged:    stats.LastChangedLine,
+		ScrollLines:    stats.ScrollLines,
+		Components:     compStats,
+	}
+	data, _ := json.Marshal(rec)
+	data = append(data, '\n')
+	w.Write(data) //nolint:errcheck
 }
 
 // ---------- overlay compositing ---------------------------------------------
@@ -926,17 +1068,9 @@ func (t *TUI) positionHardwareCursor(pos *CursorPos, totalLines int) {
 	show := t.showHardwareCursor
 	t.mu.Unlock()
 
-	rowDelta := targetRow - hcr
-	var buf strings.Builder
-	if rowDelta > 0 {
-		fmt.Fprintf(&buf, "\x1b[%dB", rowDelta)
-	} else if rowDelta < 0 {
-		fmt.Fprintf(&buf, "\x1b[%dA", -rowDelta)
-	}
-	fmt.Fprintf(&buf, "\x1b[%dG", targetCol+1)
-
-	if buf.Len() > 0 {
-		t.terminal.WriteString(buf.String())
+	seq := cursorVertical(targetRow-hcr) + cursorColumn(targetCol+1)
+	if seq != "" {
+		t.terminal.WriteString(seq)
 	}
 
 	t.mu.Lock()
