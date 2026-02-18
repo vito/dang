@@ -17,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/lipgloss"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/pitui"
 	"github.com/vito/dang/pkg/pitui/teav1"
@@ -118,16 +119,21 @@ func run() error {
 	}
 
 	// Also intercept Ctrl+C at the pitui level.
-	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		if string(data) == "\x03" { // Ctrl+C
+	tui.AddInputListener(func(ev uv.Event) bool {
+		kp, ok := ev.(uv.KeyPressEvent)
+		if !ok {
+			return false
+		}
+		key := uv.Key(kp)
+		if key.Code == 'c' && key.Mod == uv.ModCtrl {
 			select {
 			case <-quit:
 			default:
 				close(quit)
 			}
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 		}
-		return nil
+		return false
 	})
 
 	sigCh := make(chan os.Signal, 1)

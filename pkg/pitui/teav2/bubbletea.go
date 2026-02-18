@@ -23,8 +23,7 @@ type Model[T any] interface {
 // the two frameworks:
 //
 //   - Render calls the model's View() and splits into lines
-//   - HandleInput parses raw terminal bytes into tea.KeyPressMsg and
-//     feeds them through Update
+//   - HandleKeyPress forwards decoded key events as tea.KeyPressMsg
 //   - Width changes are delivered as tea.WindowSizeMsg
 //   - Commands returned by Update are executed asynchronously and
 //     their resulting messages are fed back through Update
@@ -38,11 +37,10 @@ type Model[T any] interface {
 //	tui.AddChild(comp)
 type Wrap[T Model[T]] struct {
 	pitui.Compo
-	model   T
-	decoder uv.EventDecoder
-	width   int
-	height  int
-	onQuit  func()
+	model  T
+	width  int
+	height int
+	onQuit func()
 }
 
 // New wraps a bubbletea v2 model as a pitui Component.
@@ -118,29 +116,7 @@ func (b *Wrap[T]) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: lines}
 }
 
-// HandleInput implements pitui.Interactive.
-func (b *Wrap[T]) HandleInput(data []byte) {
-	buf := data
-	for len(buf) > 0 {
-		n, ev := b.decoder.Decode(buf)
-		if n == 0 {
-			break
-		}
-		buf = buf[n:]
-		if ev == nil {
-			continue
-		}
-
-		var msg tea.Msg
-		switch e := ev.(type) {
-		case uv.KeyPressEvent:
-			msg = tea.KeyPressMsg(e)
-		case uv.KeyReleaseEvent:
-			msg = tea.KeyReleaseMsg(e)
-		default:
-			continue
-		}
-
-		b.updateModel(msg)
-	}
+// HandleKeyPress implements pitui.Interactive.
+func (b *Wrap[T]) HandleKeyPress(ev uv.KeyPressEvent) {
+	b.updateModel(tea.KeyPressMsg(ev))
 }

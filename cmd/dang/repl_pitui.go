@@ -548,23 +548,14 @@ func (r *replComponent) startEval(expr string) {
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval so Ctrl+C can cancel.
-	var evalDecoder uv.EventDecoder
-	removeListener := r.tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		buf := data
-		for len(buf) > 0 {
-			n, ev := evalDecoder.Decode(buf)
-			if n == 0 {
-				break
-			}
-			buf = buf[n:]
-			if kp, ok := ev.(uv.KeyPressEvent); ok {
-				if r.onKey(uv.Key(kp)) {
-					r.tui.RequestRender(false)
-					return &pitui.InputListenerResult{Consume: true}
-				}
+	removeListener := r.tui.AddInputListener(func(ev uv.Event) bool {
+		if kp, ok := ev.(uv.KeyPressEvent); ok {
+			if r.onKey(uv.Key(kp)) {
+				r.tui.RequestRender(false)
+				return true
 			}
 		}
-		return nil
+		return false
 	})
 	r.tui.RequestRender(false)
 

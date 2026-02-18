@@ -154,11 +154,11 @@ polish.
 
 - [x] **Fix `OverlayHandle.SetOptions` data race** — add `tui.mu` around the
       assignment; snapshot overlay entries by value in `doRender` (#2)
-- [ ] **Retire legacy key constants** — migrate REPL `onKey` to receive
-      `uv.Key` directly, delete `keys.go` and `KeyToBytes` (#3, #11)
-- [ ] **Simplify eval input routing** — replace `AddInputListener` +
-      `KeyToBytes` round-trip with a focused eval-mode component or a direct
-      `uv.Key` callback (#11)
+- [x] **Retire legacy key constants** — `TextInput.OnKey` now receives `uv.Key`
+      directly. Deleted `keys.go` and `KeyToBytes`. REPL and doc browser match
+      on `key.Code`/`key.Mod` (#3, #11)
+- [x] **Simplify eval input routing** — eval listener now passes `uv.Key`
+      straight to `onKey`, no more re-encoding through `KeyToBytes` (#11)
 - [ ] **Break up `replComponent`** — extract completion menu controller, history
       manager, and command dispatcher into separate types (#8)
 - [ ] **Decompose `doRender()`** — extract diff computation, escape-sequence

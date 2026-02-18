@@ -17,6 +17,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/pitui"
 	"github.com/vito/dang/pkg/pitui/teav2"
@@ -146,19 +147,24 @@ func run() error {
 		}
 	}
 
-	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		switch {
-		case string(data) == "\t":
-			setFocus((focusIdx + 1) % len(panels))
-			return &pitui.InputListenerResult{Consume: true}
-		case string(data) == "\x03": // Ctrl+C
-			closeQuit()
-			return &pitui.InputListenerResult{Consume: true}
-		case string(data) == "q":
-			closeQuit()
-			return &pitui.InputListenerResult{Consume: true}
+	tui.AddInputListener(func(ev uv.Event) bool {
+		kp, ok := ev.(uv.KeyPressEvent)
+		if !ok {
+			return false
 		}
-		return nil
+		key := uv.Key(kp)
+		switch {
+		case key.Code == uv.KeyTab:
+			setFocus((focusIdx + 1) % len(panels))
+			return true
+		case key.Code == 'c' && key.Mod == uv.ModCtrl:
+			closeQuit()
+			return true
+		case key.Text == "q":
+			closeQuit()
+			return true
+		}
+		return false
 	})
 
 	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
@@ -252,8 +258,8 @@ func (b *borderBox) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: strings.Split(rendered, "\n")}
 }
 
-func (b *borderBox) HandleInput(data []byte) {
+func (b *borderBox) HandleKeyPress(ev uv.KeyPressEvent) {
 	if ic, ok := b.child.(pitui.Interactive); ok {
-		ic.HandleInput(data)
+		ic.HandleKeyPress(ev)
 	}
 }

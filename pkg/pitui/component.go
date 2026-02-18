@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"sync/atomic"
 	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 // RenderContext carries everything a component needs to render.
@@ -187,13 +189,20 @@ type Component interface {
 }
 
 // Interactive is an optional interface for components that accept keyboard
-// input when focused.
+// input when focused. The TUI decodes raw terminal bytes and dispatches
+// typed events; components never see raw bytes.
 type Interactive interface {
 	Component
 
-	// HandleInput is called with raw terminal input when the component has
-	// focus.
-	HandleInput(data []byte)
+	// HandleKeyPress is called with a decoded key press event when the
+	// component has focus.
+	HandleKeyPress(ev uv.KeyPressEvent)
+}
+
+// Pasteable is an optional interface for components that accept pasted
+// text (via bracketed paste). If not implemented, paste events are ignored.
+type Pasteable interface {
+	HandlePaste(ev uv.PasteEvent)
 }
 
 // Focusable is an optional interface for components that want to know when

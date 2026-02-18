@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
+
 	"github.com/vito/dang/pkg/pitui"
 )
 
@@ -31,7 +33,7 @@ func (c *Counter) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	}
 }
 
-func (c *Counter) HandleInput(data []byte) {
+func (c *Counter) HandleKeyPress(ev uv.KeyPressEvent) {
 	c.Count++
 	c.Update()
 }

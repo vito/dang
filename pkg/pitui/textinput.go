@@ -47,8 +47,6 @@ type TextInput struct {
 	// OnChange is called after the input value has been modified (character
 	// inserted, deleted, etc.). It is NOT called for cursor-only movements.
 	OnChange func()
-
-	decoder uv.EventDecoder
 }
 
 // NewTextInput creates a TextInput with the given prompt.
@@ -144,26 +142,14 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 	}
 }
 
-// HandleInput processes raw terminal input using ultraviolet for decoding.
-func (t *TextInput) HandleInput(data []byte) {
-	buf := data
-	for len(buf) > 0 {
-		n, ev := t.decoder.Decode(buf)
-		if n == 0 {
-			break
-		}
-		buf = buf[n:]
-		if ev == nil {
-			continue
-		}
+// HandleKeyPress implements [Interactive].
+func (t *TextInput) HandleKeyPress(ev uv.KeyPressEvent) {
+	t.handleKeyPress(ev)
+}
 
-		switch e := ev.(type) {
-		case uv.KeyPressEvent:
-			t.handleKeyPress(e)
-		case uv.PasteEvent:
-			t.handlePaste(e.Content)
-		}
-	}
+// HandlePaste implements [Pasteable].
+func (t *TextInput) HandlePaste(ev uv.PasteEvent) {
+	t.handlePaste(ev.Content)
 }
 
 func (t *TextInput) handlePaste(content string) {

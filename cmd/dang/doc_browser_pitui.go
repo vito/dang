@@ -20,7 +20,6 @@ type docBrowserOverlay struct {
 	filtering bool
 	onExit    func()
 	tui       *pitui.TUI
-	decoder   uv.EventDecoder
 }
 
 func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
@@ -33,27 +32,13 @@ func newDocBrowserOverlay(typeEnv dang.Env, tui *pitui.TUI) *docBrowserOverlay {
 	return db
 }
 
-func (d *docBrowserOverlay) HandleInput(data []byte) {
+func (d *docBrowserOverlay) HandleKeyPress(ev uv.KeyPressEvent) {
 	defer d.Update()
-
-	buf := data
-	for len(buf) > 0 {
-		n, ev := d.decoder.Decode(buf)
-		if n == 0 {
-			break
-		}
-		buf = buf[n:]
-		kp, ok := ev.(uv.KeyPressEvent)
-		if !ok {
-			continue
-		}
-		key := uv.Key(kp)
-
-		if d.filtering {
-			d.handleFilterKey(key)
-		} else {
-			d.handleKey(key)
-		}
+	key := uv.Key(ev)
+	if d.filtering {
+		d.handleFilterKey(key)
+	} else {
+		d.handleKey(key)
 	}
 }
 

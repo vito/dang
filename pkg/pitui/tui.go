@@ -7,20 +7,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
-// InputListenerResult controls how input propagates through listeners.
-type InputListenerResult struct {
-	// Consume stops propagation entirely.
-	Consume bool
-	// Data replaces the input data for downstream listeners. Nil means keep
-	// the original data.
-	Data []byte
-}
-
-// InputListener is called before input reaches the focused component.
-// Return nil to pass through unchanged.
-type InputListener func(data []byte) *InputListenerResult
+// InputListener is called with each decoded event before it reaches the
+// focused component. Return true to consume the event and stop propagation.
+type InputListener func(ev uv.Event) bool
 
 type inputListenerEntry struct {
 	fn  InputListener
@@ -111,6 +104,7 @@ type TUI struct {
 	Container
 
 	terminal Terminal
+	decoder  uv.EventDecoder
 
 	mu sync.Mutex // protects all mutable state below
 
@@ -371,34 +365,47 @@ func (t *TUI) RequestRender(force bool) {
 // ---------- input handling --------------------------------------------------
 
 func (t *TUI) handleInput(data []byte) {
+	buf := data
+	for len(buf) > 0 {
+		n, ev := t.decoder.Decode(buf)
+		if n == 0 {
+			break
+		}
+		buf = buf[n:]
+		if ev == nil {
+			continue
+		}
+		t.dispatchEvent(ev)
+	}
+}
+
+func (t *TUI) dispatchEvent(ev uv.Event) {
 	t.mu.Lock()
 	listeners := make([]inputListenerEntry, len(t.inputListeners))
 	copy(listeners, t.inputListeners)
 	t.mu.Unlock()
 
-	current := data
 	for _, entry := range listeners {
-		r := entry.fn(current)
-		if r != nil {
-			if r.Consume {
-				return
-			}
-			if r.Data != nil {
-				current = r.Data
-			}
+		if entry.fn(ev) {
+			return
 		}
-	}
-	if len(current) == 0 {
-		return
 	}
 
 	t.mu.Lock()
 	comp := t.focusedComponent
 	t.mu.Unlock()
 
-	if ic, ok := comp.(Interactive); ok {
-		ic.HandleInput(current)
-		t.RequestRender(false)
+	switch e := ev.(type) {
+	case uv.KeyPressEvent:
+		if ic, ok := comp.(Interactive); ok {
+			ic.HandleKeyPress(e)
+			t.RequestRender(false)
+		}
+	case uv.PasteEvent:
+		if p, ok := comp.(Pasteable); ok {
+			p.HandlePaste(e)
+			t.RequestRender(false)
+		}
 	}
 }
 

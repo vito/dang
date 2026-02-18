@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 
+	uv "github.com/charmbracelet/ultraviolet"
+
 	"github.com/vito/dang/pkg/pitui"
 )
 
@@ -94,14 +96,19 @@ func run(initialLines int) error {
 	}
 
 	// Input handler.
-	tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		s := string(data)
-		switch s {
-		case "q", "\x03": // Ctrl+C
-			doQuit()
-			return &pitui.InputListenerResult{Consume: true}
+	tui.AddInputListener(func(ev uv.Event) bool {
+		kp, ok := ev.(uv.KeyPressEvent)
+		if !ok {
+			return false
+		}
+		key := uv.Key(kp)
 
-		case "v":
+		switch {
+		case key.Text == "q" || (key.Code == 'c' && key.Mod == uv.ModCtrl):
+			doQuit()
+			return true
+
+		case key.Text == "v":
 			log.mu.Lock()
 			log.verbose = !log.verbose
 			v := log.verbose
@@ -113,9 +120,9 @@ func run(initialLines int) error {
 				statusBar.set("\x1b[7m VERBOSE OFF — compact view \x1b[0m")
 			}
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "c":
+		case key.Text == "c":
 			log.mu.Lock()
 			log.colorize = !log.colorize
 			c := log.colorize
@@ -127,21 +134,21 @@ func run(initialLines int) error {
 				statusBar.set("\x1b[7m COLOR OFF — plain text \x1b[0m")
 			}
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "a":
+		case key.Text == "a":
 			appendLines(log, 10)
 			statusBar.set("\x1b[7m +10 lines appended \x1b[0m")
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "A":
+		case key.Text == "A":
 			appendLines(log, 100)
 			statusBar.set("\x1b[7m +100 lines appended \x1b[0m")
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "d":
+		case key.Text == "d":
 			log.mu.Lock()
 			if len(log.entries) > 10 {
 				log.entries = log.entries[:len(log.entries)-10]
@@ -153,9 +160,9 @@ func run(initialLines int) error {
 			log.Update()
 			statusBar.set(fmt.Sprintf("\x1b[7m deleted 10 lines (now %d) \x1b[0m", n))
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "o":
+		case key.Text == "o":
 			if overlayHandle != nil {
 				overlayHandle.Hide()
 				overlayHandle = nil
@@ -182,9 +189,9 @@ func run(initialLines int) error {
 				statusBar.set("\x1b[7m overlay shown (press o to hide) \x1b[0m")
 			}
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "s":
+		case key.Text == "s":
 			if spinnerRunning {
 				spinner.Stop()
 				spinnerSlot.Set(nil)
@@ -197,16 +204,16 @@ func run(initialLines int) error {
 				statusBar.set("\x1b[7m spinner running (continuous repaints) \x1b[0m")
 			}
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "r":
+		case key.Text == "r":
 			statusBar.set("\x1b[7m forced full redraw \x1b[0m")
 			tui.RequestRender(true)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		case len(key.Text) == 1 && key.Text[0] >= '1' && key.Text[0] <= '9':
 			stopContinuous()
-			target := int(s[0]-'0') * 10
+			target := int(key.Text[0]-'0') * 10
 			continuousDone = make(chan struct{})
 			continuousTicker = time.NewTicker(50 * time.Millisecond)
 			statusBar.set(fmt.Sprintf("\x1b[7m continuous repaint on line %d every 50ms (0 to stop) \x1b[0m", target))
@@ -229,15 +236,15 @@ func run(initialLines int) error {
 					}
 				}
 			}()
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 
-		case "0":
+		case key.Text == "0":
 			stopContinuous()
 			statusBar.set("\x1b[7m continuous repaint stopped \x1b[0m")
 			tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+			return true
 		}
-		return nil
+		return false
 	})
 
 	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
