@@ -24,33 +24,34 @@ import (
 
 // ── sync writer (streams dagger output into TUI) ────────────────────────────
 
+// pituiSyncWriter is an io.Writer that directs output to a specific
+// entryView. The target is set at eval start and cleared at eval end,
+// so streaming output always lands on the correct entry regardless of
+// any concurrent container mutations.
 type pituiSyncWriter struct {
-	mu   sync.Mutex
-	repl *replComponent
+	mu     sync.Mutex
+	target *entryView
 }
 
 func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	r := w.repl
+	ev := w.target
 	w.mu.Unlock()
-	if r != nil {
-		r.mu.Lock()
-		ev := r.activeEntryView()
-		r.mu.Unlock()
-		if ev != nil {
-			ev.mu.Lock()
-			ev.entry.writeLog(string(p))
-			ev.mu.Unlock()
-			ev.Update() // propagates to root → RequestRender
-		}
+	if ev != nil {
+		ev.mu.Lock()
+		ev.entry.writeLog(string(p))
+		ev.mu.Unlock()
+		ev.Update()
 	}
 	return len(p), nil
 }
 
-func (w *pituiSyncWriter) SetRepl(r *replComponent) {
+// SetTarget directs future writes to the given entryView. Pass nil to
+// suppress output (e.g. between evals).
+func (w *pituiSyncWriter) SetTarget(ev *entryView) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.repl = r
+	w.target = ev
 }
 
 // ── entry view component ────────────────────────────────────────────────────
@@ -266,6 +267,7 @@ type replComponent struct {
 	// Eval
 	evaluating bool
 	cancelEval context.CancelFunc
+	daggerLog  *pituiSyncWriter // Dagger log output target (set per-eval)
 
 	// History
 	history      []string
@@ -541,6 +543,10 @@ func (r *replComponent) startEval(expr string) {
 	r.cancelEval = cancel
 	evalEnv := r.evalEnv
 	debug := r.debug
+	// Direct Dagger log output to this entry for the duration of eval.
+	if r.daggerLog != nil {
+		r.daggerLog.SetTarget(ev)
+	}
 	r.mu.Unlock()
 
 	// Swap text input for spinner via the slot.
@@ -571,7 +577,7 @@ func (r *replComponent) startEval(expr string) {
 			val, err := dang.EvalNode(ctx, evalEnv, node)
 
 			if evalCtx.Err() != nil {
-				r.finishEval(nil, nil, true, removeListener)
+				r.finishEval(ev, nil, nil, true, removeListener)
 				return
 			}
 
@@ -582,7 +588,7 @@ func (r *replComponent) startEval(expr string) {
 
 			if err != nil {
 				results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
-				r.finishEval(logs, results, false, removeListener)
+				r.finishEval(ev, logs, results, false, removeListener)
 				return
 			}
 
@@ -592,18 +598,23 @@ func (r *replComponent) startEval(expr string) {
 			}
 		}
 
-		r.finishEval(logs, results, false, removeListener)
+		r.finishEval(ev, logs, results, false, removeListener)
 	}()
 }
 
-func (r *replComponent) finishEval(logs, results []string, cancelled bool, removeListener func()) {
+func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancelled bool, removeListener func()) {
 	r.spinner.Stop()
 	removeListener()
+
+	// Clear the Dagger log target before writing results, so no more
+	// streaming output can land on this entry after we finalize it.
+	if r.daggerLog != nil {
+		r.daggerLog.SetTarget(nil)
+	}
 
 	r.mu.Lock()
 	r.evaluating = false
 	r.cancelEval = nil
-	ev := r.activeEntryView()
 	if ev != nil {
 		ev.mu.Lock()
 		if cancelled {
@@ -1402,7 +1413,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		repl.debugRender = true
 		repl.debugRenderFile = debugRenderFile
 	}
-	daggerLog.SetRepl(repl)
+	repl.daggerLog = daggerLog
 	repl.install()
 
 	if daggerConn != nil {
