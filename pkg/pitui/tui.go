@@ -675,8 +675,20 @@ func (t *TUI) doRender() {
 
 	// First change above previous viewport -> full redraw.
 	if firstChanged < prevViewportTop {
-		stats.FullRedrawReason = fmt.Sprintf("above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
+		reason := fmt.Sprintf("above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
 			firstChanged, prevViewportTop, len(prevLines), len(newLines), height)
+		if firstChanged < len(prevLines) && firstChanged < len(newLines) {
+			oldLine := prevLines[firstChanged]
+			newLine := newLines[firstChanged]
+			if len(oldLine) > 80 {
+				oldLine = oldLine[:80]
+			}
+			if len(newLine) > 80 {
+				newLine = newLine[:80]
+			}
+			reason += fmt.Sprintf("|old=%q|new=%q", oldLine, newLine)
+		}
+		stats.FullRedrawReason = reason
 		fullRender(true)
 		return
 	}
