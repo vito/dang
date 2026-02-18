@@ -122,14 +122,14 @@ to write. If eval finishes and a new entry is added concurrently, the log output
 could go to the wrong entry. The double-mutex pattern (`r.mu` → `ev.mu`) is
 maintained by convention, not by type safety.
 
-### 11. Eval input routing is a workaround
+### ~~11. Eval input routing is a workaround~~ — FIXED
 
-During eval, a `TUI.AddInputListener` intercepts all input, re-decodes it
-through a second `uv.EventDecoder`, converts back to legacy key bytes via
-`KeyToBytes`, and calls `r.onKey`. This is three layers of translation for what
-should be "forward Ctrl+C to the cancel function." The InputListener API is
-general-purpose but the usage here is a hack around the fact that focus goes to
-`nil` during eval.
+~~During eval, a `TUI.AddInputListener` intercepted all input, re-decoded it
+through a second `uv.EventDecoder`, converted back to legacy key bytes via
+`KeyToBytes`, and called `r.onKey`.~~ The TUI now owns a single decoder and
+dispatches typed `uv.Event`s. The eval listener receives `uv.KeyPressEvent`
+directly. `Interactive.HandleKeyPress` replaces `HandleInput([]byte)`.
+`InputListener` receives `uv.Event` and returns `bool`.
 
 ### 12. History is simplistic
 
