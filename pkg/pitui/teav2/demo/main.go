@@ -66,7 +66,7 @@ func run() error {
 	lm.SetShowHelp(false)
 	lm.SetShowStatusBar(false)
 	listComp := teav2.New(lm)
-	listBox := newBorderBox("List", listComp, 14)
+	listBox := newBorderBox(listComp, 14)
 
 	// ── Table ──────────────────────────────────────────────────
 	cols := []table.Column{
@@ -92,7 +92,7 @@ func run() error {
 		table.WithFocused(true),
 	)
 	tableComp := teav2.New(tm)
-	tableBox := newBorderBox("Table", tableComp, 10)
+	tableBox := newBorderBox(tableComp, 10)
 
 	// ── Viewport ───────────────────────────────────────────────
 	content := strings.Join([]string{
@@ -117,7 +117,7 @@ func run() error {
 	vm := viewport.New(viewport.WithWidth(60), viewport.WithHeight(8))
 	vm.SetContent(content)
 	vpComp := teav2.New(vm)
-	vpBox := newBorderBox("Viewport", vpComp, 10)
+	vpBox := newBorderBox(vpComp, 10)
 
 	// ── Layout ─────────────────────────────────────────────────
 	panels := []*borderBox{listBox, tableBox, vpBox}
@@ -193,14 +193,13 @@ func (i langItem) FilterValue() string { return i.title }
 // panel. The border style changes depending on focus.
 type borderBox struct {
 	pitui.Compo
-	title   string
 	child   pitui.Component
 	height  int // inner height (lines of child content visible)
 	focused bool
 }
 
-func newBorderBox(title string, child pitui.Component, height int) *borderBox {
-	b := &borderBox{title: title, child: child, height: height}
+func newBorderBox(child pitui.Component, height int) *borderBox {
+	b := &borderBox{child: child, height: height}
 	b.Update()
 	return b
 }
@@ -214,14 +213,25 @@ func (b *borderBox) setFocused(focused bool) {
 }
 
 var (
-	focusedBorder  = lipgloss.Color("63")
-	blurredBorder  = lipgloss.Color("241")
-	focusedTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
-	blurredTitle   = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	focusedColor = lipgloss.Color("63")
+	blurredColor = lipgloss.Color("241")
 )
 
+func (b *borderBox) style() lipgloss.Style {
+	c := blurredColor
+	if b.focused {
+		c = focusedColor
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(c).
+		Bold(b.focused).
+		Padding(0, 1)
+}
+
 func (b *borderBox) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	innerWidth := ctx.Width - 4 // │ + space + content + space + │
+	s := b.style()
+	innerWidth := ctx.Width - s.GetHorizontalFrameSize()
 	if innerWidth < 1 {
 		innerWidth = 1
 	}
@@ -232,53 +242,14 @@ func (b *borderBox) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	}
 	childResult := b.RenderChild(b.child, childCtx)
 
-	// Pad or truncate child lines to the fixed inner height.
-	content := childResult.Lines
-	for len(content) < b.height {
-		content = append(content, "")
-	}
-	if len(content) > b.height {
-		content = content[:b.height]
-	}
+	// Join child lines and render inside the styled border.
+	content := lipgloss.JoinVertical(lipgloss.Left, childResult.Lines...)
+	rendered := s.
+		Width(innerWidth).
+		Height(b.height).
+		Render(content)
 
-	// Pick border style.
-	borderColor := blurredBorder
-	titleStyle := blurredTitle
-	if b.focused {
-		borderColor = focusedBorder
-		titleStyle = focusedTitle
-	}
-	bc := lipgloss.NewStyle().Foreground(borderColor)
-
-	// Build the box.
-	lines := make([]string, 0, b.height+2)
-
-	// Top border: ╭─ Title ────────╮
-	titleStr := titleStyle.Render(" " + b.title + " ")
-	topFill := ctx.Width - 4 - lipgloss.Width(titleStr)
-	if topFill < 0 {
-		topFill = 0
-	}
-	top := bc.Render("╭─") + titleStr + bc.Render(strings.Repeat("─", topFill)+"─╮")
-	lines = append(lines, top)
-
-	// Content lines: │ content │
-	for _, line := range content {
-		lineWidth := lipgloss.Width(line)
-		pad := innerWidth - lineWidth
-		if pad < 0 {
-			pad = 0
-		}
-		lines = append(lines,
-			bc.Render("│ ")+line+strings.Repeat(" ", pad)+bc.Render(" │"),
-		)
-	}
-
-	// Bottom border: ╰────────────────╯
-	bottom := bc.Render("╰" + strings.Repeat("─", ctx.Width-2) + "╯")
-	lines = append(lines, bottom)
-
-	return pitui.RenderResult{Lines: lines}
+	return pitui.RenderResult{Lines: strings.Split(rendered, "\n")}
 }
 
 func (b *borderBox) HandleInput(data []byte) {
