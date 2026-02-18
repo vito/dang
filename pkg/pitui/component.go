@@ -53,15 +53,6 @@ type RenderResult struct {
 	// Cursor, if non-nil, is where the hardware cursor should be placed,
 	// relative to this component's output (Row 0 = first line of Lines).
 	Cursor *CursorPos
-
-	// Dirty reports whether this result differs from the previous render.
-	// When false, the framework may skip diffing this component's line
-	// range.
-	//
-	// This field is managed by the framework when using Compo — component
-	// authors do not need to set it. Components without Compo should set
-	// it to true.
-	Dirty bool
 }
 
 // ── Compo ──────────────────────────────────────────────────────────────────
@@ -132,9 +123,7 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 				Cached: true,
 			})
 		}
-		r := cp.cache.result
-		r.Dirty = false
-		return r
+		return cp.cache.result
 	}
 
 	// Cache miss — render and store.
@@ -151,7 +140,6 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	} else {
 		r = ch.Render(ctx)
 	}
-	r.Dirty = true // we rendered fresh content
 	cp.cache = &renderCache{result: r, width: ctx.Width}
 	cp.needsRender.Store(false)
 	return r
@@ -235,7 +223,6 @@ func (c *Container) LineCount() int {
 func (c *Container) Render(ctx RenderContext) RenderResult {
 	var lines []string
 	var cursor *CursorPos
-	dirty := false
 	for _, ch := range c.Children {
 		r := renderComponent(ch, ctx)
 		if r.Cursor != nil {
@@ -244,16 +231,12 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 				Col: r.Cursor.Col,
 			}
 		}
-		if r.Dirty {
-			dirty = true
-		}
 		lines = append(lines, r.Lines...)
 	}
 	c.lineCount = len(lines)
 	return RenderResult{
 		Lines:  lines,
 		Cursor: cursor,
-		Dirty:  dirty,
 	}
 }
 
