@@ -2,16 +2,22 @@ package pitui
 
 import (
 	"strings"
-	"unicode/utf8"
+
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
-// TextInput is a single-line text editor component with cursor, history,
-// and kill-line support.
+// TextInput is a text editor component with cursor, history, and
+// kill-line support. It supports multiline editing via Shift+Enter.
 type TextInput struct {
 	Compo
 
-	// Prompt is rendered before the input text. May contain ANSI codes.
+	// Prompt is rendered before the first line. May contain ANSI codes.
 	Prompt string
+
+	// ContinuationPrompt is rendered before continuation lines (lines
+	// after the first in multiline input). Defaults to aligned spacing
+	// if empty.
+	ContinuationPrompt string
 
 	// Value is the current input text.
 	value []rune
@@ -40,6 +46,8 @@ type TextInput struct {
 	// OnChange is called after the input value has been modified (character
 	// inserted, deleted, etc.). It is NOT called for cursor-only movements.
 	OnChange func()
+
+	decoder uv.EventDecoder
 }
 
 // NewTextInput creates a TextInput with the given prompt.
@@ -61,53 +69,119 @@ func (t *TextInput) SetValue(s string) {
 // CursorEnd moves the cursor to the end of the input.
 func (t *TextInput) CursorEnd() { t.cursor = len(t.value) }
 
-// Render returns a single line: prompt + input, with cursor position.
-func (t *TextInput) Render(ctx RenderContext) RenderResult {
-	var buf strings.Builder
-	buf.WriteString(t.Prompt)
-
-	before := string(t.value[:t.cursor])
-	after := string(t.value[t.cursor:])
-	buf.WriteString(before)
-
-	// Calculate cursor column position.
-	cursorCol := VisibleWidth(t.Prompt + before)
-
-	buf.WriteString(after)
-
-	// Append ghost suggestion if present.
-	if t.Suggestion != "" && t.cursor == len(t.value) {
-		hint := t.Suggestion
-		current := string(t.value)
-		hint = strings.TrimPrefix(hint, current)
-		if hint != "" {
-			if t.SuggestionStyle != nil {
-				buf.WriteString(t.SuggestionStyle(hint))
-			} else {
-				buf.WriteString(hint)
-			}
+// cursorRowCol computes the (row, col) of the cursor within the value,
+// treating '\n' as line separators.
+func (t *TextInput) cursorRowCol() (row, col int) {
+	for i := 0; i < t.cursor && i < len(t.value); i++ {
+		if t.value[i] == '\n' {
+			row++
+			col = 0
+		} else {
+			col++
 		}
 	}
+	return
+}
 
-	line := buf.String()
-	if VisibleWidth(line) > ctx.Width {
-		line = Truncate(line, ctx.Width, "")
+// Render returns one or more lines: prompt + input, with cursor position.
+func (t *TextInput) Render(ctx RenderContext) RenderResult {
+	val := string(t.value)
+	inputLines := strings.Split(val, "\n")
+
+	prompt := t.Prompt
+	contPrompt := t.ContinuationPrompt
+	if contPrompt == "" {
+		// Default: align with the main prompt using spaces.
+		w := VisibleWidth(prompt)
+		contPrompt = strings.Repeat(" ", w)
+	}
+
+	var lines []string
+	for i, inputLine := range inputLines {
+		var buf strings.Builder
+		if i == 0 {
+			buf.WriteString(prompt)
+		} else {
+			buf.WriteString(contPrompt)
+		}
+		buf.WriteString(inputLine)
+
+		// Append ghost suggestion on the last line, at the end.
+		if i == len(inputLines)-1 && t.Suggestion != "" && t.cursor == len(t.value) {
+			hint := t.Suggestion
+			current := val
+			hint = strings.TrimPrefix(hint, current)
+			if hint != "" {
+				if t.SuggestionStyle != nil {
+					buf.WriteString(t.SuggestionStyle(hint))
+				} else {
+					buf.WriteString(hint)
+				}
+			}
+		}
+
+		line := buf.String()
+		if VisibleWidth(line) > ctx.Width {
+			line = Truncate(line, ctx.Width, "")
+		}
+		lines = append(lines, line)
 	}
 
 	var cursor *CursorPos
 	if t.focused {
-		cursor = &CursorPos{Row: 0, Col: cursorCol}
+		row, col := t.cursorRowCol()
+		promptW := VisibleWidth(prompt)
+		if row > 0 {
+			promptW = VisibleWidth(contPrompt)
+		}
+		cursor = &CursorPos{Row: row, Col: promptW + col}
 	}
 
 	return RenderResult{
-		Lines:  []string{line},
+		Lines:  lines,
 		Cursor: cursor,
 	}
 }
 
-// HandleInput processes raw terminal input.
+// HandleInput processes raw terminal input using ultraviolet for decoding.
 func (t *TextInput) HandleInput(data []byte) {
-	s := string(data)
+	buf := data
+	for len(buf) > 0 {
+		n, ev := t.decoder.Decode(buf)
+		if n == 0 {
+			break
+		}
+		buf = buf[n:]
+		if ev == nil {
+			continue
+		}
+
+		switch e := ev.(type) {
+		case uv.KeyPressEvent:
+			t.handleKeyPress(e, data)
+		case uv.PasteEvent:
+			t.handlePaste(e.Content)
+		}
+	}
+}
+
+func (t *TextInput) handlePaste(content string) {
+	oldValue := string(t.value)
+	runes := []rune(content)
+	newVal := make([]rune, 0, len(t.value)+len(runes))
+	newVal = append(newVal, t.value[:t.cursor]...)
+	newVal = append(newVal, runes...)
+	newVal = append(newVal, t.value[t.cursor:]...)
+	t.value = newVal
+	t.cursor += len(runes)
+	t.Update()
+	if t.OnChange != nil && string(t.value) != oldValue {
+		t.OnChange()
+	}
+}
+
+func (t *TextInput) handleKeyPress(e uv.KeyPressEvent, rawData []byte) {
+	key := uv.Key(e)
 
 	oldValue := string(t.value)
 	savedSuggestion := t.Suggestion
@@ -119,9 +193,18 @@ func (t *TextInput) HandleInput(data []byte) {
 		}
 	}()
 
-	switch s {
-	// Enter
-	case KeyEnter:
+	// Shift+Enter, Alt+Enter, or Ctrl+J: insert newline for multiline input.
+	// Shift+Enter requires kitty keyboard protocol support in the terminal.
+	// Alt+Enter works in most terminals (\x1b \x0d).
+	// Ctrl+J (\x0a) works universally as it's always distinct from Enter (\x0d).
+	if (key.Code == uv.KeyEnter && (key.Mod.Contains(uv.ModShift) || key.Mod.Contains(uv.ModAlt))) ||
+		(key.Code == 'j' && key.Mod == uv.ModCtrl) {
+		t.insertRune('\n')
+		return
+	}
+
+	// Enter (unmodified): submit.
+	if key.Code == uv.KeyEnter && key.Mod == 0 {
 		if t.OnSubmit != nil {
 			val := strings.TrimSpace(string(t.value))
 			if t.OnSubmit(val) {
@@ -129,115 +212,226 @@ func (t *TextInput) HandleInput(data []byte) {
 				t.cursor = 0
 			}
 		}
+		return
+	}
 
-	// Tab: accept suggestion or delegate
-	case KeyTab:
+	// Tab: accept suggestion or delegate.
+	if key.Code == uv.KeyTab && key.Mod == 0 {
 		if savedSuggestion != "" {
 			t.SetValue(savedSuggestion)
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(data)
+			t.OnKey(rawData)
 		}
+		return
+	}
 
-	// Right arrow: accept suggestion at end of input (fish-style), else move cursor
-	case KeyRight, KeyCtrlF:
-		if savedSuggestion != "" && t.cursor == len(t.value) {
+	// Backtab (Shift+Tab): delegate to OnKey.
+	if key.Code == uv.KeyTab && key.Mod.Contains(uv.ModShift) {
+		if t.OnKey != nil {
+			t.OnKey(rawData)
+		}
+		return
+	}
+
+	// Right arrow / Ctrl+F: accept suggestion at end, else move cursor.
+	if (key.Code == uv.KeyRight || key.Code == 'f' && key.Mod.Contains(uv.ModCtrl)) && !key.Mod.Contains(uv.ModShift) && !key.Mod.Contains(uv.ModAlt) {
+		if key.Code == uv.KeyRight && savedSuggestion != "" && t.cursor == len(t.value) {
 			t.SetValue(savedSuggestion)
 			return
 		}
 		if t.cursor < len(t.value) {
 			t.cursor++
 		}
+		return
+	}
 
-	// Backspace
-	case KeyBackspace, KeyCtrlH:
+	// Backspace.
+	if key.Code == uv.KeyBackspace {
 		if t.cursor > 0 {
 			t.value = append(t.value[:t.cursor-1], t.value[t.cursor:]...)
 			t.cursor--
 		}
+		return
+	}
 
-	// Delete
-	case KeyDelete:
+	// Delete.
+	if key.Code == uv.KeyDelete {
 		if t.cursor < len(t.value) {
 			t.value = append(t.value[:t.cursor], t.value[t.cursor+1:]...)
 		}
+		return
+	}
 
-	// Cursor movement
-	case KeyLeft, KeyCtrlB:
+	// Cursor movement.
+	if key.Code == uv.KeyLeft && key.Mod == 0 || key.Code == 'b' && key.Mod == uv.ModCtrl {
 		if t.cursor > 0 {
 			t.cursor--
 		}
-	case KeyHome, KeyHome2, KeyCtrlA:
-		t.cursor = 0
-	case KeyEnd, KeyEnd2, KeyCtrlE:
-		t.cursor = len(t.value)
+		return
+	}
+	if key.Code == uv.KeyHome || key.Code == 'a' && key.Mod == uv.ModCtrl {
+		// Move to start of current line.
+		t.cursor = t.lineStart()
+		return
+	}
+	if key.Code == uv.KeyEnd || key.Code == 'e' && key.Mod == uv.ModCtrl {
+		// Move to end of current line.
+		t.cursor = t.lineEnd()
+		return
+	}
 
-	// Word movement
-	case KeyAltLeft, KeyCtrlLeft, KeyAltB:
+	// Up/Down: move between lines if multiline, else delegate.
+	if key.Code == uv.KeyUp && key.Mod == 0 {
+		if t.hasMultipleLines() {
+			t.moveCursorVertically(-1)
+			return
+		}
+		if t.OnKey != nil {
+			t.OnKey(KeyToBytes(key))
+		}
+		return
+	}
+	if key.Code == uv.KeyDown && key.Mod == 0 {
+		if t.hasMultipleLines() {
+			t.moveCursorVertically(1)
+			return
+		}
+		if t.OnKey != nil {
+			t.OnKey(KeyToBytes(key))
+		}
+		return
+	}
+
+	// Word movement.
+	if key.MatchString("alt+left") || key.MatchString("ctrl+left") || key.MatchString("alt+b") {
 		t.cursor = t.wordLeft()
-	case KeyAltRight, KeyCtrlRight, KeyAltF:
+		return
+	}
+	if key.MatchString("alt+right") || key.MatchString("ctrl+right") || key.MatchString("alt+f") {
+		if key.Code == uv.KeyRight && savedSuggestion != "" && t.cursor == len(t.value) {
+			t.SetValue(savedSuggestion)
+			return
+		}
 		t.cursor = t.wordRight()
+		return
+	}
 
-	// Kill line
-	case KeyCtrlU:
-		t.value = t.value[t.cursor:]
-		t.cursor = 0
-	case KeyCtrlK:
-		t.value = t.value[:t.cursor]
+	// Kill line.
+	if key.Code == 'u' && key.Mod == uv.ModCtrl {
+		// Kill from start of line to cursor.
+		start := t.lineStart()
+		t.value = append(t.value[:start], t.value[t.cursor:]...)
+		t.cursor = start
+		return
+	}
+	if key.Code == 'k' && key.Mod == uv.ModCtrl {
+		// Kill from cursor to end of line.
+		end := t.lineEnd()
+		t.value = append(t.value[:t.cursor], t.value[end:]...)
+		return
+	}
 
-	// Kill word backward (Ctrl+W)
-	case KeyCtrlW:
+	// Kill word backward (Ctrl+W).
+	if key.Code == 'w' && key.Mod == uv.ModCtrl {
 		start := t.wordLeft()
 		t.value = append(t.value[:start], t.value[t.cursor:]...)
 		t.cursor = start
+		return
+	}
 
-	// Kill word forward (Alt+D)
-	case KeyAltD:
+	// Kill word forward (Alt+D).
+	if key.Code == 'd' && key.Mod == uv.ModAlt {
 		end := t.wordRight()
 		t.value = append(t.value[:t.cursor], t.value[end:]...)
+		return
+	}
 
-	// Transpose (Ctrl+T)
-	case KeyCtrlT:
+	// Transpose (Ctrl+T).
+	if key.Code == 't' && key.Mod == uv.ModCtrl {
 		if t.cursor > 0 && t.cursor < len(t.value) {
 			t.value[t.cursor-1], t.value[t.cursor] = t.value[t.cursor], t.value[t.cursor-1]
 			t.cursor++
 		}
-
-	// Delegate to OnKey for unhandled keys
-	default:
-		if t.OnKey != nil && t.OnKey(data) {
-			return
-		}
-		// If it's a printable character, insert it.
-		t.insertPrintable(data)
-	}
-}
-
-func (t *TextInput) insertPrintable(data []byte) {
-	rest := data
-	var runes []rune
-	for len(rest) > 0 {
-		r, size := utf8.DecodeRune(rest)
-		if r == utf8.RuneError && size <= 1 {
-			return
-		}
-		if r < 0x20 && r != '\t' {
-			return
-		}
-		runes = append(runes, r)
-		rest = rest[size:]
-	}
-	if len(runes) == 0 {
 		return
 	}
 
+	// Delegate to OnKey for unhandled non-printable keys.
+	if key.Text == "" {
+		if t.OnKey != nil {
+			t.OnKey(KeyToBytes(key))
+		}
+		return
+	}
+
+	// Insert printable text.
+	runes := []rune(key.Text)
 	newVal := make([]rune, 0, len(t.value)+len(runes))
 	newVal = append(newVal, t.value[:t.cursor]...)
 	newVal = append(newVal, runes...)
 	newVal = append(newVal, t.value[t.cursor:]...)
 	t.value = newVal
 	t.cursor += len(runes)
+}
+
+func (t *TextInput) insertRune(r rune) {
+	newVal := make([]rune, 0, len(t.value)+1)
+	newVal = append(newVal, t.value[:t.cursor]...)
+	newVal = append(newVal, r)
+	newVal = append(newVal, t.value[t.cursor:]...)
+	t.value = newVal
+	t.cursor++
+}
+
+func (t *TextInput) hasMultipleLines() bool {
+	for _, r := range t.value {
+		if r == '\n' {
+			return true
+		}
+	}
+	return false
+}
+
+// lineStart returns the index of the start of the current line.
+func (t *TextInput) lineStart() int {
+	i := t.cursor - 1
+	for i >= 0 && t.value[i] != '\n' {
+		i--
+	}
+	return i + 1
+}
+
+// lineEnd returns the index of the end of the current line (before '\n' or at len).
+func (t *TextInput) lineEnd() int {
+	i := t.cursor
+	for i < len(t.value) && t.value[i] != '\n' {
+		i++
+	}
+	return i
+}
+
+// moveCursorVertically moves the cursor up (dir=-1) or down (dir=1) by one line.
+func (t *TextInput) moveCursorVertically(dir int) {
+	row, col := t.cursorRowCol()
+	targetRow := row + dir
+
+	// Find the target row start and length.
+	lines := strings.Split(string(t.value), "\n")
+	if targetRow < 0 || targetRow >= len(lines) {
+		return
+	}
+
+	// Compute the rune offset of the target position.
+	offset := 0
+	for i := 0; i < targetRow; i++ {
+		offset += len([]rune(lines[i])) + 1 // +1 for '\n'
+	}
+	lineLen := len([]rune(lines[targetRow]))
+	if col > lineLen {
+		col = lineLen
+	}
+	t.cursor = offset + col
 }
 
 func (t *TextInput) wordLeft() int {
@@ -264,4 +458,70 @@ func (t *TextInput) wordRight() int {
 
 func isSpace(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\n'
+}
+
+// KeyToBytes converts a uv.Key back to raw bytes for the OnKey callback.
+// This is a best-effort mapping for the legacy key constants.
+func KeyToBytes(key uv.Key) []byte {
+	// Map common keys back to the legacy byte sequences.
+	switch {
+	case key.Code == uv.KeyEnter:
+		return []byte(KeyEnter)
+	case key.Code == uv.KeyTab:
+		if key.Mod.Contains(uv.ModShift) {
+			return []byte("\x1b[Z")
+		}
+		return []byte(KeyTab)
+	case key.Code == uv.KeyBackspace:
+		return []byte(KeyBackspace)
+	case key.Code == uv.KeyDelete:
+		return []byte(KeyDelete)
+	case key.Code == uv.KeyEscape:
+		return []byte(KeyEscape)
+	case key.Code == uv.KeyUp:
+		if key.Mod.Contains(uv.ModCtrl) {
+			return []byte(KeyCtrlUp)
+		}
+		return []byte(KeyUp)
+	case key.Code == uv.KeyDown:
+		if key.Mod.Contains(uv.ModCtrl) {
+			return []byte(KeyCtrlDown)
+		}
+		return []byte(KeyDown)
+	case key.Code == uv.KeyRight:
+		if key.Mod.Contains(uv.ModAlt) {
+			return []byte(KeyAltRight)
+		}
+		if key.Mod.Contains(uv.ModCtrl) {
+			return []byte(KeyCtrlRight)
+		}
+		return []byte(KeyRight)
+	case key.Code == uv.KeyLeft:
+		if key.Mod.Contains(uv.ModAlt) {
+			return []byte(KeyAltLeft)
+		}
+		if key.Mod.Contains(uv.ModCtrl) {
+			return []byte(KeyCtrlLeft)
+		}
+		return []byte(KeyLeft)
+	case key.Code == uv.KeyHome:
+		return []byte(KeyHome)
+	case key.Code == uv.KeyEnd:
+		return []byte(KeyEnd)
+	case key.Code == 'c' && key.Mod == uv.ModCtrl:
+		return []byte(KeyCtrlC)
+	case key.Code == 'd' && key.Mod == uv.ModCtrl:
+		return []byte(KeyCtrlD)
+	case key.Code == 'l' && key.Mod == uv.ModCtrl:
+		return []byte(KeyCtrlL)
+	case key.Code == 'n' && key.Mod == uv.ModCtrl:
+		return []byte(KeyCtrlN)
+	case key.Code == 'p' && key.Mod == uv.ModCtrl:
+		return []byte(KeyCtrlP)
+	default:
+		if key.Text != "" {
+			return []byte(key.Text)
+		}
+		return nil
+	}
 }

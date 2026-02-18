@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"dagger.io/dagger"
 
 	"github.com/kr/pretty"
@@ -280,6 +281,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
 
 	ti := pitui.NewTextInput(promptStyle.Render("dang> "))
+	ti.ContinuationPrompt = promptStyle.Render("  ... ")
 
 	r := &replComponent{
 		importConfigs:  importConfigs,
@@ -327,7 +329,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		welcome.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
 	}
 	welcome.writeLogLine("")
-	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Ctrl+C to exit"))
+	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Alt+Enter for multiline, Ctrl+C to exit"))
 	welcome.writeLogLine("")
 	ev := newEntryView(welcome)
 	r.entryContainer.AddChild(ev)
@@ -384,8 +386,19 @@ func (r *replComponent) onSubmit(line string) bool {
 
 	r.addHistory(line)
 
+	// Format the echoed input: first line with prompt, continuation lines with "  ... ".
+	inputLines := strings.Split(line, "\n")
+	var echoedLines []string
+	for i, l := range inputLines {
+		if i == 0 {
+			echoedLines = append(echoedLines, promptStyle.Render("dang> ")+l)
+		} else {
+			echoedLines = append(echoedLines, promptStyle.Render("  ... ")+l)
+		}
+	}
+
 	r.mu.Lock()
-	r.addEntry(promptStyle.Render("dang> ") + line)
+	r.addEntry(strings.Join(echoedLines, "\n"))
 	r.mu.Unlock()
 
 	r.hideCompletionMenu()
@@ -541,11 +554,29 @@ func (r *replComponent) startEval(expr string) {
 	r.inputSlot.Set(r.spinner)
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
-	// Route input to onKey during eval.
+	// Route input to onKey during eval, decoding via ultraviolet to handle
+	// kitty keyboard protocol sequences.
+	var evalDecoder uv.EventDecoder
 	removeListener := r.tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
-		if r.onKey(data) {
-			r.tui.RequestRender(false)
-			return &pitui.InputListenerResult{Consume: true}
+		buf := data
+		for len(buf) > 0 {
+			n, ev := evalDecoder.Decode(buf)
+			if n == 0 {
+				break
+			}
+			buf = buf[n:]
+			if ev == nil {
+				continue
+			}
+			if kp, ok := ev.(uv.KeyPressEvent); ok {
+				legacyBytes := pitui.KeyToBytes(uv.Key(kp))
+				if legacyBytes != nil {
+					if r.onKey(legacyBytes) {
+						r.tui.RequestRender(false)
+						return &pitui.InputListenerResult{Consume: true}
+					}
+				}
+			}
 		}
 		return nil
 	})
@@ -1038,7 +1069,7 @@ func (r *replComponent) handleCommand(cmdLine string) {
 		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
 		e.writeLogLine("")
 		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
-		e.writeLogLine(dimStyle.Render("Tab for completion, Up/Down for history, Ctrl+L to clear."))
+		e.writeLogLine(dimStyle.Render("Tab for completion, Up/Down for history, Alt+Enter for multiline, Ctrl+L to clear."))
 
 	case "exit", "quit":
 		ev.mu.Unlock()

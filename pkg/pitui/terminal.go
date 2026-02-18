@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/sys/unix"
 )
 
@@ -95,6 +96,15 @@ func (t *ProcessTerminal) Start(onInput func([]byte), onResize func()) error {
 	// Enable bracketed paste.
 	t.WriteString("\x1b[?2004h")
 
+	// Enable Kitty keyboard protocol (disambiguate escape codes).
+	// This allows detecting Shift+Enter and other modified keys.
+	// Uses the same approach as BubbleTea v2: set mode with flag 1
+	// (disambiguate) and mode 1 (set given flags, unset others).
+	t.WriteString(ansi.KittyKeyboard(ansi.KittyDisambiguateEscapeCodes, 1))
+	// Query the terminal for its keyboard enhancement support.
+	// The response arrives as input and is decoded by ultraviolet.
+	t.WriteString(ansi.RequestKittyKeyboard)
+
 	// Read stdin in a goroutine.
 	go func() {
 		buf := make([]byte, 4096)
@@ -133,6 +143,9 @@ func (t *ProcessTerminal) Start(onInput func([]byte), onResize func()) error {
 }
 
 func (t *ProcessTerminal) Stop() {
+	// Disable Kitty keyboard protocol.
+	t.WriteString(ansi.KittyKeyboard(0, 1))
+
 	// Disable bracketed paste.
 	t.WriteString("\x1b[?2004l")
 

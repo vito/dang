@@ -50,6 +50,8 @@ const (
 	KeyAltD     = "\x1bd" // Alt+D (delete word forward)
 
 	// Ctrl+arrow
+	KeyCtrlUp    = "\x1b[1;5A"
+	KeyCtrlDown  = "\x1b[1;5B"
 	KeyCtrlLeft  = "\x1b[1;5D"
 	KeyCtrlRight = "\x1b[1;5C"
 )
