@@ -160,12 +160,12 @@ func run() error {
 		return nil
 	})
 
+	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
+	fmt.Fprintf(os.Stderr, "Run 'go run ./cmd/render-debug' in another terminal for live charts.\n")
+
 	if err := tui.Start(); err != nil {
 		return err
 	}
-
-	fmt.Fprintf(os.Stderr, "Render debug → %s\n", logPath)
-	fmt.Fprintf(os.Stderr, "Run 'go run ./cmd/render-debug' in another terminal for live charts.\n")
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
