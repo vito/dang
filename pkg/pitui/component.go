@@ -140,6 +140,13 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	}
 
 	// Cache miss — render and store.
+	//
+	// Clear the dirty flag BEFORE calling Render so that any concurrent
+	// Update() (e.g. from a streaming eval goroutine) that fires during
+	// Render re-sets it to true rather than being silently overwritten
+	// by a Store(false) afterwards.
+	cp.needsRender.Store(false)
+
 	var r RenderResult
 	if ctx.componentStats != nil {
 		start := time.Now()
@@ -154,7 +161,6 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 		r = ch.Render(ctx)
 	}
 	cp.cache = &renderCache{result: r, width: ctx.Width}
-	cp.needsRender.Store(false)
 	return r
 }
 

@@ -513,6 +513,9 @@ func (t *TUI) doRender() {
 			if i > 0 {
 				buf.WriteString("\r\n")
 			}
+			if !clear {
+				buf.WriteString("\x1b[2K") // clear line before overwriting
+			}
 			buf.WriteString(line)
 		}
 		buf.WriteString("\x1b[?2026l") // end synchronized output

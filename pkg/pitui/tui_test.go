@@ -1005,6 +1005,92 @@ func TestForceRender(t *testing.T) {
 	assert.Equal(t, 2, tui.FullRedraws())
 }
 
+func TestFirstRenderClearsExistingContent(t *testing.T) {
+	// Regression test: when a component is removed leaving 0 children,
+	// the next render (treated as "first render") must clear each line
+	// before writing so that leftover terminal content from the previous
+	// render doesn't bleed through.
+	term := newMockTerminal(80, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// First render with a long line.
+	long := &staticComponent{lines: []string{"Loading Dagger module from /home/user/project..."}}
+	long.Update()
+	tui.AddChild(long)
+	renderSync(tui)
+
+	// Remove all children → empty render.
+	tui.RemoveChild(long)
+	renderSync(tui)
+
+	// Add new content that is shorter than the old line.
+	short := &staticComponent{lines: []string{"Welcome v0.1"}}
+	short.Update()
+	tui.AddChild(short)
+	term.reset()
+	renderSync(tui)
+
+	out := term.written.String()
+	// The render must include a line-clear escape before the new content
+	// so the old longer text doesn't bleed through.
+	assert.Contains(t, out, "\x1b[2K", "first render after empty should clear lines")
+	assert.Contains(t, out, "Welcome v0.1")
+}
+
+func TestConcurrentUpdateNotLost(t *testing.T) {
+	// Regression test: if Update() is called on a component while its
+	// Render() is in progress (e.g. from a streaming goroutine),
+	// the dirty flag must not be lost. Previously, renderComponent
+	// called needsRender.Store(false) AFTER Render(), which could
+	// overwrite a concurrent Update()'s Store(true).
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// A component whose Render calls Update() on itself to simulate
+	// a concurrent update during rendering. On first render it returns
+	// the current (stale) value but marks itself dirty with a new value.
+	sneaky := &updateDuringRenderComponent{value: "before"}
+	sneaky.Update()
+	tui.AddChild(sneaky)
+
+	// First render: Render() returns "before", then sets value="after"
+	// and calls Update(). With the fix, needsRender stays true.
+	renderSync(tui)
+
+	// The component should still be dirty after the first render
+	// because Update() was called during Render().
+	assert.True(t, sneaky.compo().needsRender.Load(),
+		"Update() during Render() must not be lost")
+
+	// Second render should pick up the new value.
+	term.reset()
+	renderSync(tui)
+	out := term.written.String()
+	assert.Contains(t, out, "after",
+		"second render should reflect the update made during first render")
+}
+
+// updateDuringRenderComponent calls Update() on itself during Render
+// to simulate a concurrent update from another goroutine. On first
+// render it snapshots the current value, then mutates and calls Update().
+type updateDuringRenderComponent struct {
+	Compo
+	value    string
+	rendered bool
+}
+
+func (u *updateDuringRenderComponent) Render(ctx RenderContext) RenderResult {
+	snapshot := u.value
+	if !u.rendered {
+		u.rendered = true
+		u.value = "after"
+		u.Update() // simulate concurrent update
+	}
+	return RenderResult{Lines: []string{snapshot}}
+}
+
 func TestCachedLinesNotMutatedBySegmentReset(t *testing.T) {
 	// Regression test: doRender appends segmentReset to each line.
 	// If it mutates the cached RenderResult's Lines slice, subsequent
