@@ -109,21 +109,6 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: lines}
 }
 
-// ── spinner line component ──────────────────────────────────────────────────
-
-type evalSpinnerLine struct {
-	pitui.Compo
-	spinner *pitui.Spinner
-}
-
-func newEvalSpinnerLine(spinner *pitui.Spinner) *evalSpinnerLine {
-	return &evalSpinnerLine{spinner: spinner}
-}
-
-func (e *evalSpinnerLine) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	return e.RenderChild(e.spinner, ctx)
-}
-
 // ── completion menu overlay ─────────────────────────────────────────────────
 
 type completionOverlay struct {
@@ -254,8 +239,7 @@ type replComponent struct {
 	textInput      *pitui.TextInput
 	entryContainer *pitui.Container
 	spinner        *pitui.Spinner
-	spinnerLine    *evalSpinnerLine
-	inputSlot      *pitui.Slot // swaps between textInput and spinnerLine
+	inputSlot *pitui.Slot // swaps between textInput and spinner
 
 	quit chan struct{}
 
@@ -317,7 +301,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
-	r.spinnerLine = newEvalSpinnerLine(sp)
+
 
 	// Input slot starts with text input.
 	r.inputSlot = pitui.NewSlot(ti)
@@ -551,7 +535,7 @@ func (r *replComponent) startEvalPitui(expr string) {
 	r.mu.Unlock()
 
 	// Swap text input for spinner via the slot.
-	r.inputSlot.Set(r.spinnerLine)
+	r.inputSlot.Set(r.spinner)
 	r.spinner.Start()
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval.
@@ -1358,8 +1342,7 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, module
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}
 		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
-		loadLine := newEvalSpinnerLine(loadSp)
-		tui.AddChild(loadLine)
+		tui.AddChild(loadSp)
 		loadSp.Start()
 
 		dag, err := dagger.Connect(ctx,
@@ -1388,7 +1371,7 @@ func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, module
 			}
 			loadSp.Stop()
 		}
-		tui.RemoveChild(loadLine)
+		tui.RemoveChild(loadSp)
 	}
 
 	if len(importConfigs) > 0 {
