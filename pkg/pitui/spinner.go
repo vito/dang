@@ -16,17 +16,15 @@ type Spinner struct {
 	frames   []string
 	interval time.Duration
 	start    time.Time
-	tui      *TUI
 	ticker   *time.Ticker
 	done     chan struct{}
 }
 
 // NewSpinner creates a dot-style spinner.
-func NewSpinner(tui *TUI) *Spinner {
+func NewSpinner() *Spinner {
 	return &Spinner{
 		frames:   []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"},
 		interval: 80 * time.Millisecond,
-		tui:      tui,
 	}
 }
 

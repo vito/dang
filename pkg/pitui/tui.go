@@ -270,19 +270,6 @@ func (t *TUI) ShowOverlay(comp Component, opts *OverlayOptions) *OverlayHandle {
 	return &OverlayHandle{tui: t, entry: entry}
 }
 
-// HideOverlay removes the topmost overlay. Focus is not changed; the
-// caller should restore focus explicitly via [TUI.SetFocus].
-func (t *TUI) HideOverlay() {
-	t.mu.Lock()
-	if len(t.overlayStack) == 0 {
-		t.mu.Unlock()
-		return
-	}
-	t.overlayStack = t.overlayStack[:len(t.overlayStack)-1]
-	t.mu.Unlock()
-	t.RequestRender(false)
-}
-
 // HasOverlay reports whether any overlay is currently visible.
 func (t *TUI) HasOverlay() bool {
 	t.mu.Lock()
@@ -344,15 +331,15 @@ func (t *TUI) Stop() {
 	t.terminal.Stop()
 }
 
-// RequestRender schedules a render on the next iteration. If force is true,
-// all cached state is discarded and a full repaint occurs.
-func (t *TUI) RequestRender(force bool) {
+// RequestRender schedules a render on the next iteration. If repaint is
+// true, all cached state is discarded and a full repaint occurs.
+func (t *TUI) RequestRender(repaint bool) {
 	t.mu.Lock()
 	if t.stopped {
 		t.mu.Unlock()
 		return
 	}
-	if force {
+	if repaint {
 		t.previousLines = nil
 		t.previousWidth = -1
 		t.cursorRow = 0
