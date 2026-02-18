@@ -130,13 +130,15 @@ type TUI struct {
 
 	overlayStack []*overlayEntry
 
-	renderCh    chan struct{} // serialized render requests
-	debugWriter io.Writer     // if non-nil, render stats are logged here
+	renderCh   chan struct{} // serialized render requests
+	renderDone chan struct{} // closed when renderLoop exits
+	debugWriter io.Writer    // if non-nil, render stats are logged here
 }
 
 // New creates a TUI backed by the given terminal.
 func New(term Terminal) *TUI {
 	t := newTUI(term)
+	t.renderDone = make(chan struct{})
 	go t.renderLoop()
 	return t
 }
@@ -158,6 +160,11 @@ func newTUI(term Terminal) *TUI {
 
 // renderLoop processes render requests serially on a dedicated goroutine.
 func (t *TUI) renderLoop() {
+	defer func() {
+		if t.renderDone != nil {
+			close(t.renderDone)
+		}
+	}()
 	for range t.renderCh {
 		t.doRender()
 	}
@@ -313,6 +320,17 @@ func (t *TUI) Start() error {
 func (t *TUI) Stop() {
 	t.mu.Lock()
 	t.stopped = true
+	t.mu.Unlock()
+
+	// Close the render channel and wait for the render loop to finish
+	// any in-progress render. This ensures no cursor positioning from
+	// a concurrent doRender can race with our cleanup below.
+	close(t.renderCh)
+	if t.renderDone != nil {
+		<-t.renderDone
+	}
+
+	t.mu.Lock()
 	prev := t.previousLines
 	hcr := t.hardwareCursorRow
 	t.mu.Unlock()
@@ -333,7 +351,6 @@ func (t *TUI) Stop() {
 	t.terminal.WriteString("\r")
 	t.terminal.ShowCursor()
 	t.terminal.Stop()
-	close(t.renderCh)
 }
 
 // RequestRender schedules a render on the next iteration. If force is true,
