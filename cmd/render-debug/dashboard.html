@@ -128,7 +128,7 @@
   <div class="stat"><div class="label">Total Frames</div><div class="value" id="totalFrames">0</div></div>
   <div class="stat"><div class="label">Avg Total</div><div class="value" id="avgTotal">-</div><span class="unit">µs</span></div>
   <div class="stat"><div class="label">P99 Total</div><div class="value" id="p99Total">-</div><span class="unit">µs</span></div>
-  <div class="stat"><div class="label">Full Redraws</div><div class="value" id="fullRedraws">0</div></div>
+  <div class="stat"><div class="label">Full Redraws</div><div class="value" id="fullRedraws">0</div><div class="unit" id="lastRedrawWhy"></div></div>
   <div class="stat"><div class="label">Line Cache Rate</div><div class="value" id="cacheRate">-</div><span class="unit">%</span></div>
   <div class="stat"><div class="label">Compo Cache Rate</div><div class="value" id="compoCacheRate">-</div><span class="unit">%</span></div>
   <div class="stat"><div class="label">Avg Lines</div><div class="value" id="avgLines">-</div></div>
@@ -301,8 +301,12 @@ function updateStats() {
   const p99 = sorted[Math.floor(n * 0.99)] || sorted[n - 1];
   document.getElementById('p99Total').textContent = p99;
 
-  const fullCount = allData.filter(d => d.full_redraw).length;
-  document.getElementById('fullRedraws').textContent = fullCount;
+  const fullRedraws = allData.filter(d => d.full_redraw);
+  document.getElementById('fullRedraws').textContent = fullRedraws.length;
+  if (fullRedraws.length > 0) {
+    const last = fullRedraws[fullRedraws.length - 1];
+    document.getElementById('lastRedrawWhy').textContent = last.full_redraw_why || '';
+  }
 
   // Line-level cache rate (unchanged lines in diff).
   let totalLines = 0, totalLineCached = 0;
