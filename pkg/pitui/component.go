@@ -201,7 +201,7 @@ type Container struct {
 
 func (c *Container) AddChild(comp Component) {
 	c.Children = append(c.Children, comp)
-	comp.GetCompo().parent = &c.Compo
+	comp.GetCompo().SetParent(&c.Compo)
 	c.Update()
 }
 
@@ -209,7 +209,7 @@ func (c *Container) RemoveChild(comp Component) {
 	for i, ch := range c.Children {
 		if ch == comp {
 			c.Children = append(c.Children[:i], c.Children[i+1:]...)
-			comp.GetCompo().parent = nil
+			comp.GetCompo().SetParent(nil)
 			c.Update()
 			return
 		}
@@ -218,7 +218,7 @@ func (c *Container) RemoveChild(comp Component) {
 
 func (c *Container) Clear() {
 	for _, ch := range c.Children {
-		ch.GetCompo().parent = nil
+		ch.GetCompo().SetParent(nil)
 	}
 	c.Children = nil
 	c.lineCount = 0
@@ -282,11 +282,11 @@ func (s *Slot) Set(c Component) {
 
 func (s *Slot) setChild(c Component) {
 	if s.child != nil {
-		s.child.GetCompo().parent = nil
+		s.child.GetCompo().SetParent(nil)
 	}
 	s.child = c
 	if c != nil {
-		c.GetCompo().parent = &s.Compo
+		c.GetCompo().SetParent(&s.Compo)
 	}
 }
 
