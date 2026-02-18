@@ -311,6 +311,133 @@ func TestContentRelativeOverlay(t *testing.T) {
 	assert.Contains(t, prev[2], "line-2", "last content line untouched")
 }
 
+func TestCursorRelativeOverlayPreferAbove(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	// Base content with cursor on line 5 (enough room above for a 3-line menu).
+	bg := &staticComponent{
+		lines:  []string{"line-0", "line-1", "line-2", "line-3", "line-4", "input>"},
+		cursor: &CursorPos{Row: 5, Col: 7},
+	}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	menu := &staticComponent{lines: []string{"MENU-A", "MENU-B", "MENU-C"}}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// Menu should be above cursor (rows 2-4), cursor is at row 5.
+	require.True(t, len(prev) >= 6)
+	assert.Contains(t, prev[2], "MENU-A")
+	assert.Contains(t, prev[3], "MENU-B")
+	assert.Contains(t, prev[4], "MENU-C")
+	assert.Contains(t, prev[5], "input>") // cursor row untouched
+}
+
+func TestCursorRelativeOverlayFlipToBelow(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	// Cursor at row 1 — not enough room above for a 3-line menu.
+	bg := &staticComponent{
+		lines:  []string{"line-0", "input>", "line-2", "line-3"},
+		cursor: &CursorPos{Row: 1, Col: 7},
+	}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	menu := &staticComponent{lines: []string{"MENU-A", "MENU-B", "MENU-C"}}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// Not enough room above (row 1 - 3 = -2), should flip to below cursor (row 2).
+	require.True(t, len(prev) >= 5)
+	assert.Contains(t, prev[1], "input>") // cursor row untouched
+	assert.Contains(t, prev[2], "MENU-A")
+	assert.Contains(t, prev[3], "MENU-B")
+	assert.Contains(t, prev[4], "MENU-C")
+}
+
+func TestCursorRelativeOverlayOffsetX(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	bg := &staticComponent{
+		lines:  []string{"aaaa", "bbbb", "cccc", "input>"},
+		cursor: &CursorPos{Row: 3, Col: 10},
+	}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	menu := &staticComponent{lines: []string{"HI"}}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(5),
+		CursorRelative: true,
+		PreferAbove:    true,
+		OffsetX:        -3, // 3 columns left of cursor
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// Menu at row 2 (above cursor row 3), col = 10 + (-3) = 7.
+	require.True(t, len(prev) >= 4)
+	stripped := stripANSI(prev[2])
+	// "cccc" is 4 chars, then spaces to col 7, then "HI" padded to width 5.
+	assert.True(t, len(stripped) >= 12, "overlay should be at col 7: %q", stripped)
+	assert.Equal(t, "HI", strings.TrimSpace(stripped[7:12]))
+}
+
+func TestCursorRelativeOverlayNoCursor(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+
+	// Base content with NO cursor.
+	bg := &staticComponent{lines: []string{"line-0", "line-1"}}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	menu := &staticComponent{lines: []string{"MENU-A"}}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// No cursor — overlay should be skipped.
+	for _, line := range prev {
+		assert.NotContains(t, line, "MENU-A", "cursor-relative overlay should be hidden when no cursor")
+	}
+}
+
 func TestOverlayDoesNotStealFocus(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
@@ -887,26 +1014,6 @@ func TestContainerDirtyPropagation(t *testing.T) {
 	assert.Equal(t, 1, c2.renderCount, "clean child should still be cached")
 }
 
-func TestContainerLineCount(t *testing.T) {
-	c := &Container{}
-	c1 := &compoComponent{lines: []string{"a", "b"}}
-	c1.Update()
-	c2 := &compoComponent{lines: []string{"c"}}
-	c2.Update()
-	c.AddChild(c1)
-	c.AddChild(c2)
-
-	// Before any render, LineCount is 0.
-	assert.Equal(t, 0, c.LineCount())
-
-	c.Render(RenderContext{Width: 40})
-	assert.Equal(t, 3, c.LineCount())
-
-	// After removing a child and re-rendering.
-	c.RemoveChild(c2)
-	c.Render(RenderContext{Width: 40})
-	assert.Equal(t, 2, c.LineCount())
-}
 
 func TestCompoCachedChildNoRepaint(t *testing.T) {
 	// Verify that a cached Compo child's line range is not repainted

@@ -221,8 +221,7 @@ type Focusable interface {
 // that haven't called Update() are skipped entirely.
 type Container struct {
 	Compo
-	Children  []Component
-	lineCount atomic.Int32
+	Children []Component
 }
 
 func (c *Container) AddChild(comp Component) {
@@ -247,15 +246,7 @@ func (c *Container) Clear() {
 		ch.compo().setParent(nil)
 	}
 	c.Children = nil
-	c.lineCount.Store(0)
 	c.Update()
-}
-
-// LineCount returns the total number of lines produced by the most recent
-// render. Safe to call from any goroutine (e.g. input handlers positioning
-// overlays relative to content height).
-func (c *Container) LineCount() int {
-	return int(c.lineCount.Load())
 }
 
 func (c *Container) Render(ctx RenderContext) RenderResult {
@@ -271,7 +262,6 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 		}
 		lines = append(lines, r.Lines...)
 	}
-	c.lineCount.Store(int32(len(lines)))
 	return RenderResult{
 		Lines:  lines,
 		Cursor: cursor,

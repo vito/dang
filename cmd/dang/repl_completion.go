@@ -55,33 +55,15 @@ func (r *replComponent) menuBoxHeight() int {
 }
 
 func (r *replComponent) showCompletionMenu() {
-	xOff := r.completionXOffset()
 	displayItems := r.menuDisplayItems()
 	menuH := r.menuBoxHeight()
-	linesAbove := r.entryContainer.LineCount() // content lines above the input
 
-	var opts *pitui.OverlayOptions
-	if linesAbove >= menuH {
-		// Enough room above: show the menu above the input line.
-		opts = &pitui.OverlayOptions{
-			Width:           pitui.SizeAbs(r.menuBoxWidth()),
-			MaxHeight:       pitui.SizeAbs(menuH),
-			Anchor:          pitui.AnchorBottomLeft,
-			ContentRelative: true,
-			OffsetX:         xOff,
-			OffsetY:         -1, // above the input line
-		}
-	} else {
-		// Not enough room above: show below the input line.
-		// With little content there's no scrolling, so viewport rows
-		// match content rows and we can position without ContentRelative.
-		opts = &pitui.OverlayOptions{
-			Width:     pitui.SizeAbs(r.menuBoxWidth()),
-			MaxHeight: pitui.SizeAbs(menuH),
-			Anchor:    pitui.AnchorTopLeft,
-			Row:       pitui.SizeAbs(linesAbove + 1), // right below the input
-			OffsetX:   xOff,
-		}
+	opts := &pitui.OverlayOptions{
+		Width:          pitui.SizeAbs(r.menuBoxWidth()),
+		MaxHeight:      pitui.SizeAbs(menuH),
+		CursorRelative: true,
+		PreferAbove:    true,
+		OffsetX:        -r.completionTokenLen(),
 	}
 	if r.menuHandle != nil {
 		// Reuse existing overlay — just update position and data.
@@ -111,32 +93,16 @@ func (r *replComponent) syncMenu() {
 }
 
 func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
-	xOff := r.completionXOffset()
 	menuW := r.menuBoxWidth()
-	detailX := xOff + menuW + 1 // 1 col gap between menu and detail
+	// Detail bubble sits to the right of the menu, 1 col gap.
+	detailX := -r.completionTokenLen() + menuW + 1
 
-	linesAbove := r.entryContainer.LineCount()
-	menuH := min(len(r.menuDisplayItems()), r.menuMaxVisible) + 2
-
-	// Match the menu's vertical positioning strategy.
-	if linesAbove >= menuH {
-		// Menu is above input — detail anchors to same region.
-		return &pitui.OverlayOptions{
-			Width:           pitui.SizePct(35),
-			MaxHeight:       pitui.SizePct(80),
-			Anchor:          pitui.AnchorBottomLeft,
-			ContentRelative: true,
-			OffsetX:         detailX,
-			OffsetY:         -1,
-		}
-	}
-	// Menu is below input.
 	return &pitui.OverlayOptions{
-		Width:     pitui.SizePct(35),
-		MaxHeight: pitui.SizePct(80),
-		Anchor:    pitui.AnchorTopLeft,
-		Row:       pitui.SizeAbs(linesAbove + 1),
-		OffsetX:   detailX,
+		Width:          pitui.SizePct(35),
+		MaxHeight:      pitui.SizePct(80),
+		CursorRelative: true,
+		PreferAbove:    true,
+		OffsetX:        detailX,
 	}
 }
 
@@ -242,10 +208,10 @@ func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bo
 	return docItemFromEnv(env, c.Label)
 }
 
-func (r *replComponent) completionXOffset() int {
+// completionTokenLen returns the length of the completion token ending at
+// the cursor. This includes "receiver.ident" for method completions.
+func (r *replComponent) completionTokenLen() int {
 	val := r.textInput.Value()
-	// Walk backwards from the cursor to find the start of the completion
-	// token (identifier, possibly preceded by dot+identifier for methods).
 	i := len(val) - 1
 	for i >= 0 && isIdentByte(val[i]) {
 		i--
@@ -256,9 +222,7 @@ func (r *replComponent) completionXOffset() int {
 			i--
 		}
 	}
-	// How many characters from the token start to the cursor end.
-	tokenLen := len(val) - (i + 1)
-	return r.textInput.CursorScreenCol() - tokenLen
+	return len(val) - (i + 1)
 }
 
 func (r *replComponent) updateCompletionMenu() {

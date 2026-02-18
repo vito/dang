@@ -71,6 +71,26 @@ type OverlayOptions struct {
 	// (not the bottom of the screen), which is useful for menus that should
 	// float just above the last content line.
 	ContentRelative bool
+
+	// CursorRelative positions the overlay relative to the base content's
+	// cursor position. The cursor position is resolved during compositing
+	// on the render goroutine, so the caller doesn't need to track it.
+	//
+	// When set, Col is placed at cursor column + OffsetX. Row placement
+	// depends on PreferAbove: if true, the overlay's bottom edge is placed
+	// at the row above the cursor; if there isn't enough room above, it
+	// flips to below. If false (or unset), the overlay starts below the
+	// cursor and flips to above when needed.
+	//
+	// Width, MaxHeight, MinWidth, and Margin are resolved normally.
+	// Anchor is ignored for row/col positioning (PreferAbove and OffsetX
+	// determine placement). If the base content has no cursor, the overlay
+	// is hidden for that frame.
+	CursorRelative bool
+
+	// PreferAbove is used with CursorRelative to place the overlay above
+	// the cursor row when there is enough room, flipping to below otherwise.
+	PreferAbove bool
 }
 
 // OverlayHandle controls a displayed overlay.
@@ -205,6 +225,36 @@ func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, t
 	row = clamp(row, mTop, termH-mBottom-effectiveH)
 	col = clamp(col, mLeft, termW-mRight-width)
 
+	return
+}
+
+// resolveCursorPosition computes the (row, col) for a cursor-relative overlay
+// in content coordinate space. The overlay is placed above or below the cursor
+// row depending on PreferAbove and available space. Row is not clamped to
+// content height since the compositing code extends the working area as needed.
+func resolveCursorPosition(opts *OverlayOptions, cursor *CursorPos, overlayH, contentH, termH int) (row, col int) {
+	// Horizontal: cursor column + OffsetX.
+	col = max(0, cursor.Col+opts.OffsetX)
+
+	// Vertical: prefer above or below the cursor row.
+	// "above" means the overlay's bottom edge is at cursor.Row - 1.
+	// "below" means the overlay's top edge is at cursor.Row + 1.
+	aboveRow := cursor.Row - overlayH // top edge when placed above
+	belowRow := cursor.Row + 1        // top edge when placed below
+
+	if opts.PreferAbove {
+		if aboveRow >= 0 {
+			row = aboveRow
+		} else {
+			row = belowRow
+		}
+	} else {
+		if belowRow+overlayH <= max(contentH, termH) {
+			row = belowRow
+		} else {
+			row = aboveRow
+		}
+	}
 	return
 }
 

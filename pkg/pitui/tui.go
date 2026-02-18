@@ -972,26 +972,47 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		if e.hidden {
 			continue
 		}
-		cr := e.options != nil && e.options.ContentRelative
+		opts := e.options
+
+		// First pass: resolve width and maxHeight (height-independent).
+		// CursorRelative doesn't affect width/maxHeight, so we can use
+		// the original options here.
+		cr := opts != nil && (opts.ContentRelative || opts.CursorRelative)
 		refH := termH
 		if cr {
 			refH = contentH
 		}
-		// First pass: resolve width and maxHeight (height-independent).
-		w, _, _, maxH, maxHSet := t.resolveOverlayLayout(e.options, 0, termW, refH)
+		w, _, _, maxH, maxHSet := t.resolveOverlayLayout(opts, 0, termW, refH)
 		renderH := termH
 		if maxHSet {
 			renderH = maxH
 		}
 		oResult := renderComponent(e.component, RenderContext{Width: w, Height: renderH})
 		oLines := oResult.Lines
-		// Second pass: resolve placement with actual height; clamp if needed.
-		var row, col int
-		_, row, col, maxH, maxHSet = t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
+
+		// Clamp to maxHeight if set.
 		if maxHSet && len(oLines) > maxH {
 			oLines = oLines[:maxH]
-			// Row may shift if we clamped height (e.g. bottom-anchored).
-			_, row, col, _, _ = t.resolveOverlayLayout(e.options, len(oLines), termW, refH)
+		}
+
+		var row, col int
+		if opts != nil && opts.CursorRelative {
+			// Cursor-relative: compute row/col directly from the cursor
+			// position. This bypasses resolveOverlayLayout for placement
+			// since the overlay can extend past content bounds (the
+			// compositing code grows the working area as needed).
+			if cursor == nil {
+				continue // no cursor — skip this overlay for this frame
+			}
+			row, col = resolveCursorPosition(opts, cursor, len(oLines), contentH, termH)
+			cr = true
+		} else {
+			// Second pass: resolve placement with actual height.
+			_, row, col, maxH, maxHSet = t.resolveOverlayLayout(opts, len(oLines), termW, refH)
+			if maxHSet && len(oLines) > maxH {
+				oLines = oLines[:maxH]
+				_, row, col, _, _ = t.resolveOverlayLayout(opts, len(oLines), termW, refH)
+			}
 		}
 		items = append(items, rendered{
 			lines:           oLines,
