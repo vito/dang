@@ -9,15 +9,14 @@ entirely and returns cached output.
 
 ## ✅ Compo-based render caching — DONE
 
-All components embed `pitui.Compo` (required by the `Component`
-interface via `GetCompo()`). Call `Update()` when state changes — the
-framework re-renders on the next frame. Between `Update()` calls,
+All components embed `pitui.Compo` (enforced by an unexported method
+on the `Component` interface). Call `Update()` when state changes —
+the framework re-renders on the next frame. Between `Update()` calls,
 `Render()` is skipped entirely and the cached result is reused.
 
 `Update()` propagates upward through parent Containers/Slots, and
 the root Compo automatically calls `TUI.RequestRender`. Components
-that wrap another (e.g. evalSpinnerLine wrapping Spinner) use
-`SetParent` to wire propagation.
+that wrap another use `RenderChild` to wire propagation.
 
 ## Per-component debug stats
 
