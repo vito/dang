@@ -49,6 +49,9 @@ const (
 	KeyAltF     = "\x1bf" // Alt+F (word forward)
 	KeyAltD     = "\x1bd" // Alt+D (delete word forward)
 
+	// Shift+Tab
+	KeyShiftTab = "\x1b[Z"
+
 	// Ctrl+arrow
 	KeyCtrlLeft  = "\x1b[1;5D"
 	KeyCtrlRight = "\x1b[1;5C"

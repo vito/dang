@@ -12,6 +12,8 @@ type Dang {
     ".env",
     ".envrc",
     ".dagger",
+    "go.work",
+    "go.work.sum",
   ])
 
   """

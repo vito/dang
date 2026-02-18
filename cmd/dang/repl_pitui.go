@@ -13,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"dagger.io/dagger"
 
+	"github.com/dagger/dagger/dagql/dagui"
 	"github.com/kr/pretty"
 
 	"github.com/vito/dang/pkg/dang"
@@ -62,9 +63,17 @@ func (w *pituiSyncWriter) SetRepl(r *replComponent) {
 type entryView struct {
 	pitui.Compo
 
-	mu    sync.Mutex // protects entry writes from streaming goroutines
-	entry *replEntry
+	mu      sync.Mutex // protects entry writes from streaming goroutines
+	entry   *replEntry
+	focused bool       // scrollback focus highlight
+	dagDB   *dagui.DB  // Dagger trace snapshot (nil if no Dagger work)
 }
+
+var (
+	entryFocusBorder = lipgloss.NewStyle().
+				Border(lipgloss.Border{Right: "▕"}, false, true, false, false).
+				BorderForeground(lipgloss.Color("63"))
+)
 
 func newEntryView(entry *replEntry) *entryView {
 	ev := &entryView{entry: entry}
@@ -75,6 +84,11 @@ func newEntryView(entry *replEntry) *entryView {
 func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	ev.mu.Lock()
 	defer ev.mu.Unlock()
+
+	contentWidth := ctx.Width
+	if ev.focused {
+		contentWidth -= 2 // border + padding
+	}
 
 	// Snapshot entry data.
 	input := ev.entry.input
@@ -99,12 +113,33 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		}
 		lines = append(lines, resLines...)
 	}
+
+	// When focused, expand the Dagger trace tree inline.
+	if ev.focused && ev.dagDB != nil {
+		opts := dagui.FrontendOpts{
+			Verbosity:       dagui.ShowCompletedVerbosity,
+			ExpandCompleted: true,
+		}
+		treeResult := renderDBTree(ev.dagDB, opts, contentWidth)
+		if len(treeResult.Lines) > 0 {
+			lines = append(lines, treeResult.Lines...)
+		}
+	}
+
 	for i, line := range lines {
 		lines[i] = pitui.ExpandTabs(line, 8)
 	}
 	for i, line := range lines {
-		if pitui.VisibleWidth(line) > ctx.Width {
-			lines[i] = pitui.Truncate(line, ctx.Width, "")
+		if pitui.VisibleWidth(line) > contentWidth {
+			lines[i] = pitui.Truncate(line, contentWidth, "")
+		}
+	}
+
+	// When focused, add a purple right border.
+	if ev.focused && len(lines) > 0 {
+		for i, line := range lines {
+			padded := line + strings.Repeat(" ", max(0, contentWidth-pitui.VisibleWidth(line)))
+			lines[i] = entryFocusBorder.Render(padded)
 		}
 	}
 
@@ -267,9 +302,15 @@ type replComponent struct {
 	historyIndex int
 	historyFile  string
 
+	// Dagger frontend
+	dagFe *daggerFrontend
+
 	// Doc browser
 	docBrowser *docBrowserOverlay
 	docHandle  *pitui.OverlayHandle
+
+	// Scrollback focus (-1 = no entry focused, input has focus)
+	focusedEntryIdx int
 
 	// Render debug
 	debugRender     bool
@@ -291,7 +332,8 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		textInput:      ti,
 		entryContainer: &pitui.Container{},
 		menuMaxVisible: 8,
-		historyIndex:   -1,
+		historyIndex:    -1,
+		focusedEntryIdx: -1,
 		historyFile:    "/tmp/dang_history",
 		quit:           make(chan struct{}),
 	}
@@ -415,6 +457,23 @@ func (r *replComponent) onKey(data []byte) bool {
 		return true // swallow everything else
 	}
 
+	// Scrollback navigation: Shift-Tab moves focus backward through entries,
+	// Tab (with empty input and no menu) moves forward, Escape exits.
+	if s == pitui.KeyShiftTab {
+		r.navigateScrollback(-1)
+		return true
+	}
+	if r.focusedEntryIdx >= 0 {
+		switch s {
+		case pitui.KeyTab:
+			r.navigateScrollback(1)
+			return true
+		case pitui.KeyEscape:
+			r.unfocusScrollback()
+			return true
+		}
+	}
+
 	// Completion menu navigation.
 	if r.menuVisible {
 		switch s {
@@ -483,6 +542,7 @@ func (r *replComponent) onKey(data []byte) bool {
 		}
 
 	case pitui.KeyCtrlL:
+		r.focusedEntryIdx = -1
 		r.mu.Lock()
 		r.entryContainer.Clear()
 		r.mu.Unlock()
@@ -537,9 +597,13 @@ func (r *replComponent) startEval(expr string) {
 	debug := r.debug
 	r.mu.Unlock()
 
-	// Swap text input for spinner via the slot.
+	// Swap text input for spinner via the slot, and show Dagger frontend.
 	r.inputSlot.Set(r.spinner)
 	r.spinner.Start()
+	if r.dagFe != nil {
+		r.dagFe.Reset()
+		r.tui.AddChild(r.dagFe)
+	}
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval.
 	removeListener := r.tui.AddInputListener(func(data []byte) *pitui.InputListenerResult {
@@ -592,6 +656,11 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 	r.spinner.Stop()
 	removeListener()
 
+	// Remove the Dagger frontend from the TUI.
+	if r.dagFe != nil {
+		r.tui.RemoveChild(r.dagFe)
+	}
+
 	r.mu.Lock()
 	r.evaluating = false
 	r.cancelEval = nil
@@ -607,6 +676,10 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 			for _, line := range results {
 				ev.entry.writeResult(line)
 			}
+		}
+		// Snapshot the Dagger DB for scrollback expansion.
+		if r.dagFe != nil && len(r.dagFe.db.Spans.Order) > 0 {
+			ev.dagDB = r.dagFe.db
 		}
 		ev.Update()
 		ev.mu.Unlock()
@@ -1256,6 +1329,106 @@ func (r *replComponent) addHistory(line string) {
 	r.saveHistory()
 }
 
+// ── scrollback focus ────────────────────────────────────────────────────────
+
+// navigateScrollback moves the scrollback focus by delta (-1 = up, +1 = down).
+// When reaching past the last entry, focus returns to the input.
+func (r *replComponent) navigateScrollback(delta int) {
+	r.mu.Lock()
+	n := len(r.entryContainer.Children)
+	r.mu.Unlock()
+	if n == 0 {
+		return
+	}
+
+	// Find entries that have Dagger output (skip welcome/system entries).
+	var dagEntryIdxs []int
+	r.mu.Lock()
+	for i, ch := range r.entryContainer.Children {
+		if ev, ok := ch.(*entryView); ok && ev.dagDB != nil {
+			dagEntryIdxs = append(dagEntryIdxs, i)
+		}
+	}
+	r.mu.Unlock()
+
+	if len(dagEntryIdxs) == 0 {
+		return
+	}
+
+	oldIdx := r.focusedEntryIdx
+
+	if delta < 0 {
+		// Moving backward.
+		if r.focusedEntryIdx < 0 {
+			// Not focused yet: focus the last dagger entry.
+			r.focusedEntryIdx = dagEntryIdxs[len(dagEntryIdxs)-1]
+		} else {
+			// Find the previous dagger entry.
+			for i := len(dagEntryIdxs) - 1; i >= 0; i-- {
+				if dagEntryIdxs[i] < r.focusedEntryIdx {
+					r.focusedEntryIdx = dagEntryIdxs[i]
+					goto done
+				}
+			}
+			// Already at first; stay.
+			return
+		}
+	} else {
+		// Moving forward.
+		if r.focusedEntryIdx < 0 {
+			return
+		}
+		// Find the next dagger entry.
+		for _, idx := range dagEntryIdxs {
+			if idx > r.focusedEntryIdx {
+				r.focusedEntryIdx = idx
+				goto done
+			}
+		}
+		// Past the last: unfocus.
+		r.unfocusScrollback()
+		return
+	}
+done:
+	r.mu.Lock()
+	// Clear old focus.
+	if oldIdx >= 0 && oldIdx < n {
+		if ev, ok := r.entryContainer.Children[oldIdx].(*entryView); ok {
+			ev.mu.Lock()
+			ev.focused = false
+			ev.Update()
+			ev.mu.Unlock()
+		}
+	}
+	// Set new focus.
+	if r.focusedEntryIdx >= 0 && r.focusedEntryIdx < n {
+		if ev, ok := r.entryContainer.Children[r.focusedEntryIdx].(*entryView); ok {
+			ev.mu.Lock()
+			ev.focused = true
+			ev.Update()
+			ev.mu.Unlock()
+		}
+	}
+	r.mu.Unlock()
+	r.tui.RequestRender(false)
+}
+
+// unfocusScrollback removes focus from any scrollback entry.
+func (r *replComponent) unfocusScrollback() {
+	r.mu.Lock()
+	if r.focusedEntryIdx >= 0 && r.focusedEntryIdx < len(r.entryContainer.Children) {
+		if ev, ok := r.entryContainer.Children[r.focusedEntryIdx].(*entryView); ok {
+			ev.mu.Lock()
+			ev.focused = false
+			ev.Update()
+			ev.mu.Unlock()
+		}
+	}
+	r.focusedEntryIdx = -1
+	r.mu.Unlock()
+	r.tui.RequestRender(false)
+}
+
 func (r *replComponent) navigateHistory(direction int) {
 	if len(r.history) == 0 {
 		return
@@ -1336,6 +1509,14 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		return fmt.Errorf("TUI start: %w", err)
 	}
 
+	// Set up the Dagger telemetry frontend (OTLP receiver → pitui component).
+	dagFe, err := newDaggerFrontend(tui)
+	if err != nil {
+		tui.Stop()
+		return fmt.Errorf("dagger frontend: %w", err)
+	}
+	defer dagFe.Close()
+
 	// If there's a Dagger module, load it with a spinner visible.
 	daggerLog := &pituiSyncWriter{}
 	var daggerConn *dagger.Client
@@ -1350,7 +1531,10 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 
 		dag, err := dagger.Connect(ctx,
 			dagger.WithLogOutput(daggerLog),
-			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
+			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "report"),
+			dagger.WithEnvironmentVariable("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", dagFe.Endpoint()+"/v1/traces"),
+			dagger.WithEnvironmentVariable("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT", dagFe.Endpoint()+"/v1/logs"),
+			dagger.WithEnvironmentVariable("OTEL_EXPORTER_OTLP_TRACES_LIVE", "1"),
 		)
 		if err != nil {
 			loadSp.Stop()
@@ -1382,6 +1566,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	repl := newReplComponent(ctx, tui, importConfigs, debug)
+	repl.dagFe = dagFe
 	daggerLog.SetRepl(repl)
 	repl.install()
 
