@@ -91,6 +91,19 @@ type OverlayOptions struct {
 	// PreferAbove is used with CursorRelative to place the overlay above
 	// the cursor row when there is enough room, flipping to below otherwise.
 	PreferAbove bool
+
+	// MatchRow aligns this overlay's vertical position with the referenced
+	// overlay. The row from the referenced overlay's most recent placement
+	// is used, bypassing this overlay's own row calculation. This is useful
+	// for companion overlays (e.g., a detail panel next to a completion
+	// menu) that should stay vertically aligned regardless of their
+	// individual heights.
+	//
+	// The referenced overlay must be shown before this one (earlier in the
+	// overlay stack) so that its position is resolved first. MatchRow can
+	// be combined with CursorRelative (for column positioning) or with
+	// explicit Col values.
+	MatchRow *OverlayHandle
 }
 
 // OverlayHandle controls a displayed overlay.
@@ -138,6 +151,7 @@ type overlayEntry struct {
 	component Component
 	options   *OverlayOptions
 	hidden    bool
+	original  *overlayEntry // points to the TUI's stack entry; used as MatchRow key
 }
 
 func (t *TUI) removeOverlay(entry *overlayEntry) {

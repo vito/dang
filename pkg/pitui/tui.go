@@ -581,6 +581,7 @@ func (t *TUI) snapshotForRender() *renderSnapshot {
 	}
 	for i, e := range t.overlayStack {
 		snap.overlays[i] = *e
+		snap.overlays[i].original = e // preserve identity for MatchRow lookup
 	}
 	return snap
 }
@@ -966,6 +967,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 	}
 	var items []rendered
 	minNeeded := len(result)
+	resolvedRows := make(map[*overlayEntry]int) // tracks resolved row per overlay for MatchRow
 
 	for i := range overlays {
 		e := &overlays[i]
@@ -975,9 +977,10 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		opts := e.options
 
 		// First pass: resolve width and maxHeight (height-independent).
-		// CursorRelative doesn't affect width/maxHeight, so we can use
-		// the original options here.
-		cr := opts != nil && (opts.ContentRelative || opts.CursorRelative)
+		// ContentRelative overlays use contentH as the reference height.
+		// CursorRelative overlays use termH because they can extend past
+		// content bounds (the compositing code grows the working area).
+		cr := opts != nil && opts.ContentRelative
 		refH := termH
 		if cr {
 			refH = contentH
@@ -1005,7 +1008,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 				continue // no cursor — skip this overlay for this frame
 			}
 			row, col = resolveCursorPosition(opts, cursor, len(oLines), contentH, termH)
-			cr = true
+			cr = true // composited in content space
 		} else {
 			// Second pass: resolve placement with actual height.
 			_, row, col, maxH, maxHSet = t.resolveOverlayLayout(opts, len(oLines), termW, refH)
@@ -1014,6 +1017,14 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 				_, row, col, _, _ = t.resolveOverlayLayout(opts, len(oLines), termW, refH)
 			}
 		}
+		// MatchRow: override row with the referenced overlay's resolved row.
+		if opts != nil && opts.MatchRow != nil {
+			if matchedRow, ok := resolvedRows[opts.MatchRow.entry]; ok {
+				row = matchedRow
+			}
+		}
+
+		resolvedRows[e.original] = row
 		items = append(items, rendered{
 			lines:           oLines,
 			row:             row,

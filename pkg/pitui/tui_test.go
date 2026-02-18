@@ -410,6 +410,167 @@ func TestCursorRelativeOverlayOffsetX(t *testing.T) {
 	assert.Equal(t, "HI", strings.TrimSpace(stripped[7:12]))
 }
 
+func TestCursorRelativeOverlayMaxHeightNotClampedToContent(t *testing.T) {
+	// Regression test: cursor-relative overlays should resolve MaxHeight
+	// against the terminal height, not the content height. Previously,
+	// a 6-line content area would clamp MaxHeight to 6 lines even though
+	// the terminal had 24 rows.
+	term := newMockTerminal(40, 24)
+	tui := newTUI(term)
+
+	// Only 3 lines of content, but the overlay needs more room.
+	bg := &staticComponent{
+		lines:  []string{"line-0", "line-1", "input>"},
+		cursor: &CursorPos{Row: 2, Col: 7},
+	}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	// Overlay with 10 lines and MaxHeight of 12 (fits in terminal, doesn't
+	// fit in content height of 3).
+	var lines []string
+	for i := 0; i < 10; i++ {
+		lines = append(lines, fmt.Sprintf("item-%d", i))
+	}
+	menu := &staticComponent{lines: lines}
+	tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(15),
+		MaxHeight:      SizeAbs(12),
+		CursorRelative: true,
+		PreferAbove:    false,
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// All 10 items should be visible (below cursor at row 3).
+	found := 0
+	for _, line := range prev {
+		for i := 0; i < 10; i++ {
+			if strings.Contains(line, fmt.Sprintf("item-%d", i)) {
+				found++
+				break
+			}
+		}
+	}
+	assert.Equal(t, 10, found, "all 10 menu items should be visible, got %d in %d lines", found, len(prev))
+}
+
+func TestCursorRelativeOverlayMatchRow(t *testing.T) {
+	term := newMockTerminal(60, 20)
+	tui := newTUI(term)
+
+	// 8 lines of content, cursor at row 7.
+	var bgLines []string
+	for i := 0; i < 7; i++ {
+		bgLines = append(bgLines, fmt.Sprintf("line-%d", i))
+	}
+	bgLines = append(bgLines, "input>")
+	bg := &staticComponent{
+		lines:  bgLines,
+		cursor: &CursorPos{Row: 7, Col: 7},
+	}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	// Tall menu (5 lines) — fits above cursor (7 - 5 = 2 >= 0).
+	menu := &staticComponent{lines: []string{"M-0", "M-1", "M-2", "M-3", "M-4"}}
+	menuHandle := tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+	})
+
+	// Short detail (2 lines) — would fit above on its own, but should
+	// match the menu's row via MatchRow.
+	detail := &staticComponent{lines: []string{"D-0", "D-1"}}
+	tui.ShowOverlay(detail, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+		OffsetX:        12,
+		MatchRow:       menuHandle,
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	// Menu placed above cursor: rows 2-6 (7 - 5 = 2).
+	// Detail should start at the same row (2) via MatchRow.
+	menuRow := -1
+	detailRow := -1
+	for i, line := range prev {
+		if strings.Contains(line, "M-0") {
+			menuRow = i
+		}
+		if strings.Contains(line, "D-0") {
+			detailRow = i
+		}
+	}
+	require.NotEqual(t, -1, menuRow, "menu should be visible")
+	require.NotEqual(t, -1, detailRow, "detail should be visible")
+	assert.Equal(t, menuRow, detailRow, "MatchRow should align detail to menu's row")
+}
+
+func TestCursorRelativeOverlayMatchRowFlip(t *testing.T) {
+	// When the menu flips to below (not enough room above), the detail
+	// should follow via MatchRow.
+	term := newMockTerminal(60, 20)
+	tui := newTUI(term)
+
+	// Cursor at row 2 — not enough room above for a 5-line menu.
+	bg := &staticComponent{
+		lines:  []string{"line-0", "line-1", "input>"},
+		cursor: &CursorPos{Row: 2, Col: 7},
+	}
+	tui.AddChild(bg)
+	tui.stopped = false
+
+	menu := &staticComponent{lines: []string{"M-0", "M-1", "M-2", "M-3", "M-4"}}
+	menuHandle := tui.ShowOverlay(menu, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+	})
+
+	// Short detail that WOULD fit above, but must follow menu below.
+	detail := &staticComponent{lines: []string{"D-0", "D-1"}}
+	tui.ShowOverlay(detail, &OverlayOptions{
+		Width:          SizeAbs(10),
+		CursorRelative: true,
+		PreferAbove:    true,
+		OffsetX:        12,
+		MatchRow:       menuHandle,
+	})
+
+	renderSync(tui)
+
+	tui.mu.Lock()
+	prev := tui.previousLines
+	tui.mu.Unlock()
+
+	menuRow := -1
+	detailRow := -1
+	for i, line := range prev {
+		if strings.Contains(line, "M-0") {
+			menuRow = i
+		}
+		if strings.Contains(line, "D-0") {
+			detailRow = i
+		}
+	}
+	require.NotEqual(t, -1, menuRow, "menu should be visible")
+	require.NotEqual(t, -1, detailRow, "detail should be visible")
+	assert.Equal(t, menuRow, detailRow, "MatchRow should align detail to menu's row even when flipped below")
+	assert.True(t, menuRow > 2, "menu should be below cursor (row 2), got row %d", menuRow)
+}
+
 func TestCursorRelativeOverlayNoCursor(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)

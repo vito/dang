@@ -103,6 +103,7 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 		CursorRelative: true,
 		PreferAbove:    true,
 		OffsetX:        detailX,
+		MatchRow:       r.menuHandle, // align vertically with the completion menu
 	}
 }
 
