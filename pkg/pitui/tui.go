@@ -431,8 +431,10 @@ func (t *TUI) doRender() {
 	prevViewportTop := t.previousViewportTop
 	clearOnShrink := t.clearOnShrink
 	debugW := t.debugWriter
-	overlays := make([]*overlayEntry, len(t.overlayStack))
-	copy(overlays, t.overlayStack)
+	overlays := make([]overlayEntry, len(t.overlayStack))
+	for i, e := range t.overlayStack {
+		overlays[i] = *e
+	}
 	t.mu.Unlock()
 
 	var stats RenderStats
@@ -805,7 +807,7 @@ func (t *TUI) doRender() {
 
 // ---------- overlay compositing ---------------------------------------------
 
-func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays []*overlayEntry, termW, termH, maxLinesRendered int) ([]string, *CursorPos) {
+func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays []overlayEntry, termW, termH, maxLinesRendered int) ([]string, *CursorPos) {
 	contentH := len(lines)
 	result := make([]string, contentH)
 	copy(result, lines)
@@ -822,7 +824,8 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 	var items []rendered
 	minNeeded := len(result)
 
-	for _, e := range overlays {
+	for i := range overlays {
+		e := &overlays[i]
 		if !t.isOverlayVisible(e) {
 			continue
 		}

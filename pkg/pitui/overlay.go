@@ -89,7 +89,10 @@ func (h *OverlayHandle) Hide() {
 // focus management round-trips for things like repositioning a completion
 // menu on each keystroke.
 func (h *OverlayHandle) SetOptions(opts *OverlayOptions) {
+	h.tui.mu.Lock()
 	h.entry.options = opts
+	h.tui.mu.Unlock()
+	h.tui.RequestRender(false)
 }
 
 // SetHidden temporarily hides or shows the overlay.
