@@ -183,7 +183,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 
 	moduleDir := findDaggerModule(cwd)
 
-	return runREPLPitui(ctx, importConfigs, moduleDir, cfg.Debug)
+	return runREPLTUI(ctx, importConfigs, moduleDir, cfg.Debug)
 }
 
 // findDaggerModule searches for a dagger.json starting from dir, walking up.

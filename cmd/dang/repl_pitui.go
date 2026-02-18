@@ -33,7 +33,9 @@ func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	r := w.repl
 	w.mu.Unlock()
 	if r != nil {
+		r.mu.Lock()
 		ev := r.activeEntryView()
+		r.mu.Unlock()
 		if ev != nil {
 			ev.mu.Lock()
 			ev.entry.writeLog(string(p))
@@ -312,7 +314,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	ti.OnSubmit = r.onSubmit
 	ti.OnKey = r.onKey
-	ti.OnChange = r.updateCompletionMenuPitui
+	ti.OnChange = r.updateCompletionMenu
 
 	// Welcome message.
 	welcome := newReplEntry("")
@@ -330,8 +332,8 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	ev := newEntryView(welcome)
 	r.entryContainer.AddChild(ev)
 
-	r.completions = r.buildCompletionsPitui()
-	r.loadHistoryPitui()
+	r.completions = r.buildCompletions()
+	r.loadHistory()
 
 	// Auto-enable render debug via environment variable.
 	if os.Getenv("DANG_DEBUG_RENDER") != "" {
@@ -347,7 +349,8 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 }
 
 // activeEntryView returns the last (active) entryView in the container.
-// Thread-safe (does not require r.mu).
+// Caller must hold r.mu OR otherwise ensure no concurrent mutation of
+// the container's children (e.g. during startup before the TUI is running).
 func (r *replComponent) activeEntryView() *entryView {
 	children := r.entryContainer.Children
 	if len(children) == 0 {
@@ -379,7 +382,7 @@ func (r *replComponent) onSubmit(line string) bool {
 		return false
 	}
 
-	r.addHistoryPitui(line)
+	r.addHistory(line)
 
 	r.mu.Lock()
 	r.addEntry(promptStyle.Render("dang> ") + line)
@@ -388,12 +391,12 @@ func (r *replComponent) onSubmit(line string) bool {
 	r.hideCompletionMenu()
 
 	if strings.HasPrefix(line, ":") {
-		r.handleCommandPitui(line[1:])
-		r.updateCompletionMenuPitui()
+		r.handleCommand(line[1:])
+		r.updateCompletionMenu()
 		return true
 	}
 
-	r.startEvalPitui(line)
+	r.startEval(line)
 	return true
 }
 
@@ -421,7 +424,7 @@ func (r *replComponent) onKey(data []byte) bool {
 				r.textInput.CursorEnd()
 			}
 			r.hideCompletionMenu()
-			r.updateCompletionMenuPitui()
+			r.updateCompletionMenu()
 			return true
 		case pitui.KeyDown, pitui.KeyCtrlN:
 			r.menuIndex++
@@ -470,12 +473,12 @@ func (r *replComponent) onKey(data []byte) bool {
 
 	case pitui.KeyUp:
 		if !r.menuVisible {
-			r.navigateHistoryPitui(-1)
+			r.navigateHistory(-1)
 			return true
 		}
 	case pitui.KeyDown:
 		if !r.menuVisible {
-			r.navigateHistoryPitui(1)
+			r.navigateHistory(1)
 			return true
 		}
 
@@ -491,7 +494,7 @@ func (r *replComponent) onKey(data []byte) bool {
 
 // ── eval ────────────────────────────────────────────────────────────────────
 
-func (r *replComponent) startEvalPitui(expr string) {
+func (r *replComponent) startEval(expr string) {
 	r.mu.Lock()
 	ev := r.activeEntryView()
 
@@ -609,7 +612,7 @@ func (r *replComponent) finishEval(logs, results []string, cancelled bool, remov
 		ev.mu.Unlock()
 	}
 	if !cancelled {
-		r.refreshCompletionsPitui()
+		r.refreshCompletions()
 	}
 	r.mu.Unlock()
 
@@ -665,7 +668,7 @@ func (r *replComponent) menuBoxHeight() int {
 }
 
 func (r *replComponent) showCompletionMenu() {
-	xOff := r.completionXOffsetPitui()
+	xOff := r.completionXOffset()
 	displayItems := r.menuDisplayItems()
 	menuH := r.menuBoxHeight()
 	linesAbove := r.entryContainer.LineCount() // content lines above the input
@@ -723,7 +726,7 @@ func (r *replComponent) syncMenu() {
 }
 
 func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
-	xOff := r.completionXOffsetPitui()
+	xOff := r.completionXOffset()
 	menuW := r.menuBoxWidth()
 	detailX := xOff + menuW + 1 // 1 col gap between menu and detail
 
@@ -856,7 +859,7 @@ func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bo
 	return docItemFromEnv(env, c.Label)
 }
 
-func (r *replComponent) completionXOffsetPitui() int {
+func (r *replComponent) completionXOffset() int {
 	val := r.textInput.Value()
 	promptWidth := lipgloss.Width(promptStyle.Render("dang> "))
 	i := len(val) - 1
@@ -873,7 +876,7 @@ func (r *replComponent) completionXOffsetPitui() int {
 	return promptWidth + tokenStart
 }
 
-func (r *replComponent) updateCompletionMenuPitui() {
+func (r *replComponent) updateCompletionMenu() {
 	val := r.textInput.Value()
 
 	if val == "" || strings.HasPrefix(val, ":") {
@@ -913,7 +916,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 			labels, _ = sortByCaseWithCompletions(labels, nil, "", partial)
 		}
 		r.menuLabels = labels
-		r.setMenuPitui(matches, matchCompletions)
+		r.setMenu(matches, matchCompletions)
 		if len(matches) > 0 {
 			r.textInput.Suggestion = matches[0]
 		} else {
@@ -945,7 +948,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 	}
 	matches := append(exactCase, otherCase...)
 	r.menuLabels = nil
-	r.setMenuPitui(matches, nil)
+	r.setMenu(matches, nil)
 	if len(matches) > 0 {
 		r.textInput.Suggestion = matches[0]
 	} else {
@@ -953,7 +956,7 @@ func (r *replComponent) updateCompletionMenuPitui() {
 	}
 }
 
-func (r *replComponent) setMenuPitui(matches []string, completions []dang.Completion) {
+func (r *replComponent) setMenu(matches []string, completions []dang.Completion) {
 	if len(matches) == 0 {
 		r.hideCompletionMenu()
 		return
@@ -967,7 +970,7 @@ func (r *replComponent) setMenuPitui(matches []string, completions []dang.Comple
 		return
 	}
 	r.menuItems = matches
-	// menuLabels is set by the caller before calling setMenuPitui
+	// menuLabels is set by the caller before calling setMenu
 	r.menuCompletions = completions
 	r.menuVisible = true
 	if r.menuIndex >= len(matches) {
@@ -1000,7 +1003,7 @@ func sortByCaseWithCompletions(matches []string, completions []dang.Completion, 
 
 // ── commands ────────────────────────────────────────────────────────────────
 
-func (r *replComponent) handleCommandPitui(cmdLine string) {
+func (r *replComponent) handleCommand(cmdLine string) {
 	r.mu.Lock()
 	ev := r.activeEntryView()
 	ev.mu.Lock()
@@ -1051,7 +1054,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 
 	case "reset":
 		r.typeEnv, r.evalEnv = buildEnvFromImports(r.importConfigs)
-		r.refreshCompletionsPitui()
+		r.refreshCompletions()
 		e.writeLogLine(resultStyle.Render("Environment reset."))
 
 	case "debug":
@@ -1086,7 +1089,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 		}
 
 	case "env":
-		r.envCommandPitui(e, args)
+		r.envCommand(e, args)
 
 	case "version":
 		e.writeLogLine(resultStyle.Render("Dang REPL v0.1.0"))
@@ -1101,10 +1104,10 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 		}
 
 	case "type":
-		r.typeCommandPitui(e, args)
+		r.typeCommand(e, args)
 
 	case "find", "search":
-		r.findCommandPitui(e, args)
+		r.findCommand(e, args)
 
 	case "history":
 		e.writeLogLine("Recent history:")
@@ -1131,7 +1134,7 @@ func (r *replComponent) handleCommandPitui(cmdLine string) {
 	r.mu.Unlock()
 }
 
-func (r *replComponent) envCommandPitui(e *replEntry, args []string) {
+func (r *replComponent) envCommand(e *replEntry, args []string) {
 	filter := ""
 	showAll := false
 	if len(args) > 0 {
@@ -1164,7 +1167,7 @@ func (r *replComponent) envCommandPitui(e *replEntry, args []string) {
 	e.writeLogLine(dimStyle.Render("Use ':doc' for interactive API browsing"))
 }
 
-func (r *replComponent) typeCommandPitui(e *replEntry, args []string) {
+func (r *replComponent) typeCommand(e *replEntry, args []string) {
 	if len(args) == 0 {
 		e.writeLogLine(dimStyle.Render("Usage: :type <expression>"))
 		return
@@ -1193,7 +1196,7 @@ func (r *replComponent) typeCommandPitui(e *replEntry, args []string) {
 	}
 }
 
-func (r *replComponent) findCommandPitui(e *replEntry, args []string) {
+func (r *replComponent) findCommand(e *replEntry, args []string) {
 	if len(args) == 0 {
 		e.writeLogLine(dimStyle.Render("Usage: :find <pattern>"))
 		return
@@ -1233,27 +1236,27 @@ func (r *replComponent) findCommandPitui(e *replEntry, args []string) {
 
 // ── completions ─────────────────────────────────────────────────────────────
 
-func (r *replComponent) buildCompletionsPitui() []string {
+func (r *replComponent) buildCompletions() []string {
 	return buildCompletionList(r.typeEnv)
 }
 
-func (r *replComponent) refreshCompletionsPitui() {
-	r.completions = r.buildCompletionsPitui()
+func (r *replComponent) refreshCompletions() {
+	r.completions = r.buildCompletions()
 }
 
 // ── history ─────────────────────────────────────────────────────────────────
 
-func (r *replComponent) addHistoryPitui(line string) {
+func (r *replComponent) addHistory(line string) {
 	if len(r.history) > 0 && r.history[len(r.history)-1] == line {
 		r.historyIndex = -1
 		return
 	}
 	r.history = append(r.history, line)
 	r.historyIndex = -1
-	r.saveHistoryPitui()
+	r.saveHistory()
 }
 
-func (r *replComponent) navigateHistoryPitui(direction int) {
+func (r *replComponent) navigateHistory(direction int) {
 	if len(r.history) == 0 {
 		return
 	}
@@ -1280,7 +1283,7 @@ func (r *replComponent) navigateHistoryPitui(direction int) {
 	}
 }
 
-func (r *replComponent) loadHistoryPitui() {
+func (r *replComponent) loadHistory() {
 	data, err := os.ReadFile(r.historyFile)
 	if err != nil {
 		return
@@ -1294,7 +1297,7 @@ func (r *replComponent) loadHistoryPitui() {
 	}
 }
 
-func (r *replComponent) saveHistoryPitui() {
+func (r *replComponent) saveHistory() {
 	entries := r.history
 	if len(entries) > 1000 {
 		entries = entries[len(entries)-1000:]
@@ -1324,7 +1327,7 @@ func (r *replComponent) showDocBrowser() {
 
 // ── entry point ─────────────────────────────────────────────────────────────
 
-func runREPLPitui(ctx context.Context, importConfigs []dang.ImportConfig, moduleDir string, debug bool) error {
+func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDir string, debug bool) error {
 	term := pitui.NewProcessTerminal()
 	tui := pitui.New(term)
 	tui.SetShowHardwareCursor(true)

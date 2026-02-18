@@ -264,7 +264,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		} else if ci > 0 {
 			prevCol := &d.columns[ci-1]
 			if item, ok := prevCol.selectedItem(); ok {
-				detailContent := d.renderDetailPitui(item, w, docTextStyle, argNameStyle, argTypeStyle, dimSt)
+				detailContent := d.renderDetailContent(item, w, docTextStyle, argNameStyle, argTypeStyle, dimSt)
 				contentH := listH
 				dOffset := col.detailOffset
 				if dOffset > len(detailContent) {
@@ -321,7 +321,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: result}
 }
 
-func (d *docBrowserOverlay) renderDetailPitui(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
+func (d *docBrowserOverlay) renderDetailContent(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
 	return renderDocDetail(item, w, docStyle, argNameStyle, argTypeStyle, dimSt)
 }
 
