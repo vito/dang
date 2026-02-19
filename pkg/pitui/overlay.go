@@ -92,19 +92,23 @@ type OverlayOptions struct {
 	// the cursor row when there is enough room, flipping to below otherwise.
 	PreferAbove bool
 
-	// MatchRow aligns this overlay's vertical position with the referenced
-	// overlay. The row from the referenced overlay's most recent placement
-	// is used, bypassing this overlay's own row calculation. This is useful
-	// for companion overlays (e.g., a detail panel next to a completion
-	// menu) that should stay vertically aligned regardless of their
-	// individual heights.
-	//
-	// The referenced overlay must be shown before this one (earlier in the
-	// overlay stack) so that its position is resolved first. MatchRow can
-	// be combined with CursorRelative (for column positioning) or with
-	// explicit Col values.
-	MatchRow *OverlayHandle
+	// CursorGroup links cursor-relative overlays so they share the same
+	// above/below direction. If any overlay in the group doesn't fit
+	// above the cursor, all overlays in the group are placed below.
+	// This ensures companion overlays (e.g. a completion menu and its
+	// detail panel) stay on the same side of the cursor regardless of
+	// their individual heights.
+	CursorGroup *CursorGroup
 }
+
+// CursorGroup links cursor-relative overlays so they share a single
+// above/below decision. Create one with [NewCursorGroup] and assign it
+// to the CursorGroup field of each linked overlay's [OverlayOptions].
+type CursorGroup struct{}
+
+// NewCursorGroup creates a new cursor group. Pointer identity is used
+// to determine group membership.
+func NewCursorGroup() *CursorGroup { return &CursorGroup{} }
 
 // OverlayHandle controls a displayed overlay.
 type OverlayHandle struct {
@@ -151,7 +155,7 @@ type overlayEntry struct {
 	component Component
 	options   *OverlayOptions
 	hidden    bool
-	original  *overlayEntry // points to the TUI's stack entry; used as MatchRow key
+
 }
 
 func (t *TUI) removeOverlay(entry *overlayEntry) {
@@ -242,32 +246,26 @@ func (t *TUI) resolveOverlayLayout(opts *OverlayOptions, overlayHeight, termW, t
 	return
 }
 
+// cursorFitsAbove reports whether an overlay of the given height fits above
+// the cursor row.
+func cursorFitsAbove(cursor *CursorPos, overlayH int) bool {
+	return cursor.Row-overlayH >= 0
+}
+
 // resolveCursorPosition computes the (row, col) for a cursor-relative overlay
-// in content coordinate space. The overlay is placed above or below the cursor
-// row depending on PreferAbove and available space. Row is not clamped to
-// content height since the compositing code extends the working area as needed.
-func resolveCursorPosition(opts *OverlayOptions, cursor *CursorPos, overlayH, contentH, termH int) (row, col int) {
-	// Horizontal: cursor column + OffsetX.
+// in content coordinate space. Row is not clamped to content height since the
+// compositing code extends the working area as needed.
+//
+// The above parameter determines whether the overlay is placed above or below
+// the cursor. The caller is responsible for the above/below decision (possibly
+// influenced by CursorGroup).
+func resolveCursorPosition(opts *OverlayOptions, cursor *CursorPos, overlayH int, above bool) (row, col int) {
 	col = max(0, cursor.Col+opts.OffsetX)
 
-	// Vertical: prefer above or below the cursor row.
-	// "above" means the overlay's bottom edge is at cursor.Row - 1.
-	// "below" means the overlay's top edge is at cursor.Row + 1.
-	aboveRow := cursor.Row - overlayH // top edge when placed above
-	belowRow := cursor.Row + 1        // top edge when placed below
-
-	if opts.PreferAbove {
-		if aboveRow >= 0 {
-			row = aboveRow
-		} else {
-			row = belowRow
-		}
+	if above {
+		row = cursor.Row - overlayH // bottom edge at cursor.Row - 1
 	} else {
-		if belowRow+overlayH <= max(contentH, termH) {
-			row = belowRow
-		} else {
-			row = aboveRow
-		}
+		row = cursor.Row + 1 // top edge at cursor.Row + 1
 	}
 	return
 }

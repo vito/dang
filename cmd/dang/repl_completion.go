@@ -64,6 +64,7 @@ func (r *replComponent) showCompletionMenu() {
 		CursorRelative: true,
 		PreferAbove:    true,
 		OffsetX:        -r.completionTokenLen(),
+		CursorGroup:    r.completionGroup,
 	}
 	if r.menuHandle != nil {
 		// Reuse existing overlay — just update position and data.
@@ -103,7 +104,7 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 		CursorRelative: true,
 		PreferAbove:    true,
 		OffsetX:        detailX,
-		MatchRow:       r.menuHandle, // align vertically with the completion menu
+		CursorGroup:    r.completionGroup,
 	}
 }
 

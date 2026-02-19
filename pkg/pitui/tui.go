@@ -581,7 +581,6 @@ func (t *TUI) snapshotForRender() *renderSnapshot {
 	}
 	for i, e := range t.overlayStack {
 		snap.overlays[i] = *e
-		snap.overlays[i].original = e // preserve identity for MatchRow lookup
 	}
 	return snap
 }
@@ -965,9 +964,20 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		contentRelative bool
 		cursor          *CursorPos
 	}
-	var items []rendered
-	minNeeded := len(result)
-	resolvedRows := make(map[*overlayEntry]int) // tracks resolved row per overlay for MatchRow
+	// Pre-rendered overlay data, used for cursor-relative two-pass layout.
+	type preRendered struct {
+		entry  *overlayEntry
+		opts   *OverlayOptions
+		w      int
+		lines  []string
+		cursor *CursorPos
+	}
+
+	// Pass 1: render all overlays and determine CursorGroup directions.
+	// Cursor groups need all member heights before deciding above/below.
+	var pre []preRendered
+	groupAbove := make(map[*CursorGroup]bool) // true = all members fit above
+	groupSeen := make(map[*CursorGroup]bool)  // whether we've seen this group
 
 	for i := range overlays {
 		e := &overlays[i]
@@ -976,10 +986,10 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		}
 		opts := e.options
 
-		// First pass: resolve width and maxHeight (height-independent).
-		// ContentRelative overlays use contentH as the reference height.
-		// CursorRelative overlays use termH because they can extend past
-		// content bounds (the compositing code grows the working area).
+		// Resolve width and maxHeight.
+		// ContentRelative overlays use contentH as reference height.
+		// CursorRelative overlays use termH because they can extend
+		// past content bounds.
 		cr := opts != nil && opts.ContentRelative
 		refH := termH
 		if cr {
@@ -992,46 +1002,76 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		}
 		oResult := renderComponent(e.component, RenderContext{Width: w, Height: renderH})
 		oLines := oResult.Lines
-
-		// Clamp to maxHeight if set.
 		if maxHSet && len(oLines) > maxH {
 			oLines = oLines[:maxH]
 		}
 
-		var row, col int
-		if opts != nil && opts.CursorRelative {
-			// Cursor-relative: compute row/col directly from the cursor
-			// position. This bypasses resolveOverlayLayout for placement
-			// since the overlay can extend past content bounds (the
-			// compositing code grows the working area as needed).
-			if cursor == nil {
-				continue // no cursor — skip this overlay for this frame
+		pre = append(pre, preRendered{
+			entry:  e,
+			opts:   opts,
+			w:      w,
+			lines:  oLines,
+			cursor: oResult.Cursor,
+		})
+
+		// Track CursorGroup: if any member doesn't fit above, the whole
+		// group goes below.
+		if opts != nil && opts.CursorRelative && cursor != nil && opts.CursorGroup != nil {
+			g := opts.CursorGroup
+			if !groupSeen[g] {
+				groupSeen[g] = true
+				groupAbove[g] = true // optimistic: all fit above
 			}
-			row, col = resolveCursorPosition(opts, cursor, len(oLines), contentH, termH)
+			if !cursorFitsAbove(cursor, len(oLines)) {
+				groupAbove[g] = false
+			}
+		}
+	}
+
+	// Pass 2: compute positions and build the composite.
+	var items []rendered
+	minNeeded := len(result)
+
+	for _, p := range pre {
+		opts := p.opts
+		oLines := p.lines
+
+		var row, col int
+		cr := opts != nil && opts.ContentRelative
+		if opts != nil && opts.CursorRelative {
+			if cursor == nil {
+				continue // no cursor — skip this overlay
+			}
+			// Determine above/below: use group decision if in a group,
+			// otherwise decide individually.
+			above := opts.PreferAbove && cursorFitsAbove(cursor, len(oLines))
+			if opts.CursorGroup != nil {
+				if ga, ok := groupAbove[opts.CursorGroup]; ok {
+					above = opts.PreferAbove && ga
+				}
+			}
+			row, col = resolveCursorPosition(opts, cursor, len(oLines), above)
 			cr = true // composited in content space
 		} else {
-			// Second pass: resolve placement with actual height.
+			refH := termH
+			if cr {
+				refH = contentH
+			}
+			var maxH int
+			var maxHSet bool
 			_, row, col, maxH, maxHSet = t.resolveOverlayLayout(opts, len(oLines), termW, refH)
 			if maxHSet && len(oLines) > maxH {
 				oLines = oLines[:maxH]
 				_, row, col, _, _ = t.resolveOverlayLayout(opts, len(oLines), termW, refH)
 			}
 		}
-		// MatchRow: override row with the referenced overlay's resolved row.
-		if opts != nil && opts.MatchRow != nil {
-			if matchedRow, ok := resolvedRows[opts.MatchRow.entry]; ok {
-				row = matchedRow
-			}
-		}
-
-		resolvedRows[e.original] = row
 		items = append(items, rendered{
 			lines:           oLines,
 			row:             row,
 			col:             col,
-			w:               w,
+			w:               p.w,
 			contentRelative: cr,
-			cursor:          oResult.Cursor,
+			cursor:          p.cursor,
 		})
 		if row+len(oLines) > minNeeded {
 			minNeeded = row + len(oLines)

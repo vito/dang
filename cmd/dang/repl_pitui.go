@@ -322,6 +322,7 @@ type replComponent struct {
 	menuHandle      *pitui.OverlayHandle
 	detailBubble    *detailBubble
 	detailHandle    *pitui.OverlayHandle
+	completionGroup *pitui.CursorGroup
 
 	// Eval
 	evaluating bool
@@ -355,7 +356,8 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		tui:            tui,
 		textInput:      ti,
 		entryContainer: &pitui.Container{},
-		menuMaxVisible: 8,
+		menuMaxVisible:  8,
+		completionGroup: pitui.NewCursorGroup(),
 		history:        newReplHistory(),
 		quit:           make(chan struct{}),
 	}
