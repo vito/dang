@@ -606,9 +606,6 @@ func (t *TUI) doRender() {
 	totalStart := time.Now()
 
 	snap := t.snapshotForRender()
-	if snap == nil {
-		return // stopped
-	}
 
 	var stats RenderStats
 	stats.OverlayCount = len(snap.overlays)
@@ -623,12 +620,6 @@ func (t *TUI) doRender() {
 // snapshotForRender captures a copy of the state needed for rendering.
 // Runs on the UI goroutine — no lock needed.
 func (t *TUI) snapshotForRender() *renderSnapshot {
-	t.mu.Lock()
-	stopped := t.stopped
-	t.mu.Unlock()
-	if stopped {
-		return nil
-	}
 	snap := &renderSnapshot{
 		width:             t.terminal.Columns(),
 		height:            t.terminal.Rows(),
