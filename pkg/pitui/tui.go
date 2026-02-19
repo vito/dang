@@ -522,41 +522,6 @@ func cursorVertical(delta int) string {
 
 // ---------- differential rendering ------------------------------------------
 
-// renderSnapshot holds a read-only copy of TUI state captured at the start
-// of a render frame. Since everything runs on the UI goroutine, no lock
-// is needed — this is just a convenient struct for passing state around.
-type renderSnapshot struct {
-	width             int
-	height            int
-	prevLines         []string
-	prevWidth         int
-	hardwareCursorRow int
-	maxLinesRendered  int
-	prevViewportTop   int
-	clearOnShrink     bool
-	debugWriter       io.Writer
-	overlays          []overlayEntry
-}
-
-// widthChanged reports whether the terminal width changed since the last frame.
-func (s *renderSnapshot) widthChanged() bool {
-	return s.prevWidth != 0 && s.prevWidth != s.width
-}
-
-// viewportTop returns the first visible row given the working area height.
-func (s *renderSnapshot) viewportTop() int {
-	return max(0, s.maxLinesRendered-s.height)
-}
-
-// lineDelta returns the cursor movement (in rows) needed to move from the
-// hardware cursor's current screen position to targetRow's screen position,
-// accounting for viewport scrolling.
-func (s *renderSnapshot) lineDelta(targetRow, viewportTop int) int {
-	currentScreen := s.hardwareCursorRow - s.prevViewportTop
-	targetScreen := targetRow - viewportTop
-	return targetScreen - currentScreen
-}
-
 // diffResult holds the output of diffLines.
 type diffResult struct {
 	firstChanged int  // first line that differs, or -1
@@ -605,46 +570,29 @@ func diffLines(prev, next []string) diffResult {
 func (t *TUI) doRender() {
 	totalStart := time.Now()
 
-	snap := t.snapshotForRender()
+	// Capture terminal dimensions once per frame. These come from the
+	// terminal (protected by its own lock, updated on SIGWINCH) and
+	// should not change mid-frame.
+	width := t.terminal.Columns()
+	height := t.terminal.Rows()
 
 	var stats RenderStats
-	stats.OverlayCount = len(snap.overlays)
+	stats.OverlayCount = len(t.overlayStack)
 
 	// Render all components.
-	newLines, cursorPos, compStats := t.renderFrame(snap, &stats)
+	newLines, cursorPos, compStats := t.renderFrame(width, height, &stats)
 
 	// Choose rendering strategy and write to terminal.
-	t.applyFrame(snap, newLines, cursorPos, compStats, &stats, totalStart)
-}
-
-// snapshotForRender captures a copy of the state needed for rendering.
-// Runs on the UI goroutine — no lock needed.
-func (t *TUI) snapshotForRender() *renderSnapshot {
-	snap := &renderSnapshot{
-		width:             t.terminal.Columns(),
-		height:            t.terminal.Rows(),
-		prevLines:         t.previousLines,
-		prevWidth:         t.previousWidth,
-		hardwareCursorRow: t.hardwareCursorRow,
-		maxLinesRendered:  t.maxLinesRendered,
-		prevViewportTop:   t.previousViewportTop,
-		clearOnShrink:     t.clearOnShrink,
-		debugWriter:       t.debugWriter,
-		overlays:          make([]overlayEntry, len(t.overlayStack)),
-	}
-	for i, e := range t.overlayStack {
-		snap.overlays[i] = *e
-	}
-	return snap
+	t.applyFrame(width, height, newLines, cursorPos, compStats, &stats, totalStart)
 }
 
 // renderFrame renders the component tree and composites overlays, producing
 // the new set of output lines with reset sequences appended.
-func (t *TUI) renderFrame(snap *renderSnapshot, stats *RenderStats) ([]string, *CursorPos, []ComponentStat) {
+func (t *TUI) renderFrame(width, height int, stats *RenderStats) ([]string, *CursorPos, []ComponentStat) {
 	renderStart := time.Now()
-	ctx := RenderContext{Width: snap.width}
+	ctx := RenderContext{Width: width}
 	var compStats []ComponentStat
-	if snap.debugWriter != nil {
+	if t.debugWriter != nil {
 		ctx.componentStats = &compStats
 	}
 	baseResult := renderComponent(&t.Container, ctx)
@@ -656,11 +604,11 @@ func (t *TUI) renderFrame(snap *renderSnapshot, stats *RenderStats) ([]string, *
 	copy(newLines, baseResult.Lines)
 
 	// Composite overlays.
-	if len(snap.overlays) > 0 {
+	if len(t.overlayStack) > 0 {
 		compositeStart := time.Now()
 		newLines, cursorPos = t.compositeOverlays(
-			newLines, cursorPos, snap.overlays,
-			snap.width, snap.height, snap.maxLinesRendered,
+			newLines, cursorPos, t.overlayStack,
+			width, height, t.maxLinesRendered,
 		)
 		stats.CompositeTime = time.Since(compositeStart)
 	}
@@ -676,23 +624,25 @@ func (t *TUI) renderFrame(snap *renderSnapshot, stats *RenderStats) ([]string, *
 
 // applyFrame decides the rendering strategy (full redraw vs differential
 // update) and writes the result to the terminal.
-func (t *TUI) applyFrame(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, compStats []ComponentStat, stats *RenderStats, totalStart time.Time) {
+func (t *TUI) applyFrame(width, height int, newLines []string, cursorPos *CursorPos, compStats []ComponentStat, stats *RenderStats, totalStart time.Time) {
 	emitStats := func() {
-		t.emitDebugStats(snap.debugWriter, stats, compStats, totalStart)
+		t.emitDebugStats(t.debugWriter, stats, compStats, totalStart)
 	}
 
+	widthChanged := t.previousWidth != 0 && t.previousWidth != width
+
 	// Full redraw needed?
-	if reason, clear := t.needsFullRedraw(snap, newLines); reason != "" {
+	if reason, clear := t.needsFullRedraw(widthChanged, newLines); reason != "" {
 		stats.FullRedrawReason = reason
-		t.writeFullRedraw(snap, newLines, cursorPos, stats, clear)
+		t.writeFullRedraw(width, height, newLines, cursorPos, stats, clear)
 		emitStats()
 		return
 	}
 
 	// Compute diff.
 	diffStart := time.Now()
-	dr := diffLines(snap.prevLines, newLines)
-	viewportTop := snap.viewportTop()
+	dr := diffLines(t.previousLines, newLines)
+	viewportTop := max(0, t.maxLinesRendered-height)
 
 	// No changes — just reposition cursor.
 	if dr.firstChanged == -1 {
@@ -701,44 +651,44 @@ func (t *TUI) applyFrame(snap *renderSnapshot, newLines []string, cursorPos *Cur
 		stats.FirstChangedLine = -1
 		stats.LastChangedLine = -1
 		t.positionHardwareCursor(cursorPos, len(newLines))
-		t.previousViewportTop = max(0, t.maxLinesRendered-snap.height)
+		t.previousViewportTop = max(0, t.maxLinesRendered-height)
 		emitStats()
 		return
 	}
 
 	// All changes in deleted tail.
 	if dr.firstChanged >= len(newLines) {
-		t.writeTailShrink(snap, newLines, cursorPos, stats, &dr, diffStart, viewportTop)
+		t.writeTailShrink(width, height, newLines, cursorPos, stats, &dr, diffStart, viewportTop)
 		emitStats()
 		return
 	}
 
 	// First change above previous viewport → full redraw.
-	if dr.firstChanged < snap.prevViewportTop {
+	if dr.firstChanged < t.previousViewportTop {
 		stats.FullRedrawReason = fmt.Sprintf(
 			"above_viewport:first=%d,vpTop=%d,prevLines=%d,newLines=%d,height=%d",
-			dr.firstChanged, snap.prevViewportTop, len(snap.prevLines), len(newLines), snap.height,
+			dr.firstChanged, t.previousViewportTop, len(t.previousLines), len(newLines), height,
 		)
-		t.writeFullRedraw(snap, newLines, cursorPos, stats, true)
+		t.writeFullRedraw(width, height, newLines, cursorPos, stats, true)
 		emitStats()
 		return
 	}
 
 	// Differential update.
-	t.writeDiffUpdate(snap, newLines, cursorPos, stats, &dr, diffStart, viewportTop)
+	t.writeDiffUpdate(width, height, newLines, cursorPos, stats, &dr, diffStart, viewportTop)
 	emitStats()
 }
 
 // needsFullRedraw returns (reason, clearScreen) if a full redraw is required,
 // or ("", false) if differential rendering can proceed.
-func (t *TUI) needsFullRedraw(snap *renderSnapshot, newLines []string) (string, bool) {
-	if len(snap.prevLines) == 0 && !snap.widthChanged() {
+func (t *TUI) needsFullRedraw(widthChanged bool, newLines []string) (string, bool) {
+	if len(t.previousLines) == 0 && !widthChanged {
 		return "first_render", false
 	}
-	if snap.widthChanged() {
+	if widthChanged {
 		return "width_changed", true
 	}
-	if snap.clearOnShrink && len(newLines) < snap.maxLinesRendered && len(snap.overlays) == 0 {
+	if t.clearOnShrink && len(newLines) < t.maxLinesRendered && len(t.overlayStack) == 0 {
 		return "clear_on_shrink", true
 	}
 	return "", false
@@ -746,7 +696,7 @@ func (t *TUI) needsFullRedraw(snap *renderSnapshot, newLines []string) (string, 
 
 // writeFullRedraw writes all lines to the terminal, optionally clearing the
 // screen first. Updates TUI state and positions the cursor.
-func (t *TUI) writeFullRedraw(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, stats *RenderStats, clear bool) {
+func (t *TUI) writeFullRedraw(width, height int, newLines []string, cursorPos *CursorPos, stats *RenderStats, clear bool) {
 	t.mu.Lock()
 	t.fullRedrawCount++
 	t.mu.Unlock()
@@ -783,7 +733,7 @@ func (t *TUI) writeFullRedraw(snap *renderSnapshot, newLines []string, cursorPos
 	stats.WriteTime = time.Since(writeStart)
 
 	cr := max(0, len(newLines)-1)
-	ml := snap.maxLinesRendered
+	ml := t.maxLinesRendered
 	if clear {
 		ml = len(newLines)
 	} else {
@@ -793,32 +743,34 @@ func (t *TUI) writeFullRedraw(snap *renderSnapshot, newLines []string, cursorPos
 	t.cursorRow = cr
 	t.hardwareCursorRow = cr
 	t.maxLinesRendered = ml
-	t.previousViewportTop = max(0, ml-snap.height)
+	t.previousViewportTop = max(0, ml-height)
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
 
 	t.previousLines = newLines
-	t.previousWidth = snap.width
+	t.previousWidth = width
 }
 
 // writeTailShrink handles the case where content was only removed from the
 // end (no visible lines changed, just fewer of them).
-func (t *TUI) writeTailShrink(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
+func (t *TUI) writeTailShrink(width, height int, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
 	stats.CacheHits = len(newLines)
 	stats.LinesRepainted = 0
 	stats.FirstChangedLine = dr.firstChanged
 	stats.LastChangedLine = dr.lastChanged
 
-	if len(snap.prevLines) > len(newLines) {
+	if len(t.previousLines) > len(newLines) {
 		targetRow := max(0, len(newLines)-1)
-		delta := snap.lineDelta(targetRow, viewportTop)
-		extra := len(snap.prevLines) - len(newLines)
+		currentScreen := t.hardwareCursorRow - t.previousViewportTop
+		targetScreen := targetRow - viewportTop
+		delta := targetScreen - currentScreen
+		extra := len(t.previousLines) - len(newLines)
 
-		if extra > snap.height {
+		if extra > height {
 			stats.FullRedrawReason = fmt.Sprintf(
-				"tail_shrink_too_large:extra=%d,height=%d", extra, snap.height,
+				"tail_shrink_too_large:extra=%d,height=%d", extra, height,
 			)
-			t.writeFullRedraw(snap, newLines, cursorPos, stats, true)
+			t.writeFullRedraw(width, height, newLines, cursorPos, stats, true)
 			return
 		}
 
@@ -855,19 +807,19 @@ func (t *TUI) writeTailShrink(snap *renderSnapshot, newLines []string, cursorPos
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
 	t.previousLines = newLines
-	t.previousWidth = snap.width
-	t.previousViewportTop = max(0, t.maxLinesRendered-snap.height)
+	t.previousWidth = width
+	t.previousViewportTop = max(0, t.maxLinesRendered-height)
 }
 
 // writeDiffUpdate writes only the changed lines to the terminal, scrolling
 // the viewport as needed.
-func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
+func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
 	var buf strings.Builder
 	buf.WriteString(escSyncBegin)
 
-	hardwareCursorRow := snap.hardwareCursorRow
-	prevViewportTop := snap.prevViewportTop
-	prevViewportBottom := prevViewportTop + snap.height - 1
+	hardwareCursorRow := t.hardwareCursorRow
+	prevViewportTop := t.previousViewportTop
+	prevViewportBottom := prevViewportTop + height - 1
 
 	moveTargetRow := dr.firstChanged
 	if dr.appendStart {
@@ -876,8 +828,8 @@ func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos
 
 	// Scroll viewport down if the first change is below the visible area.
 	if moveTargetRow > prevViewportBottom {
-		currentScreen := max(0, min(snap.height-1, hardwareCursorRow-prevViewportTop))
-		moveToBottom := snap.height - 1 - currentScreen
+		currentScreen := max(0, min(height-1, hardwareCursorRow-prevViewportTop))
+		moveToBottom := height - 1 - currentScreen
 		buf.WriteString(cursorDown(moveToBottom))
 		scroll := moveTargetRow - prevViewportBottom
 		stats.ScrollLines = scroll
@@ -889,11 +841,10 @@ func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos
 		hardwareCursorRow = moveTargetRow
 	}
 
-	delta := snap.lineDelta(moveTargetRow, viewportTop)
-	// Override with updated local values after scrolling.
+	// Compute cursor delta using local values (may have been adjusted by scrolling above).
 	currentScreen := hardwareCursorRow - prevViewportTop
 	targetScreen := moveTargetRow - viewportTop
-	delta = targetScreen - currentScreen
+	delta := targetScreen - currentScreen
 	buf.WriteString(cursorVertical(delta))
 
 	if dr.appendStart {
@@ -914,13 +865,13 @@ func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos
 	finalCursorRow := renderEnd
 
 	// Clear deleted trailing lines.
-	if len(snap.prevLines) > len(newLines) {
+	if len(t.previousLines) > len(newLines) {
 		if renderEnd < len(newLines)-1 {
 			moveDown := len(newLines) - 1 - renderEnd
 			buf.WriteString(cursorDown(moveDown))
 			finalCursorRow = len(newLines) - 1
 		}
-		extra := len(snap.prevLines) - len(newLines)
+		extra := len(t.previousLines) - len(newLines)
 		for i := 0; i < extra; i++ {
 			buf.WriteString("\r\n")
 			buf.WriteString(escClearLine)
@@ -943,17 +894,17 @@ func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos
 	stats.WriteTime = time.Since(writeStart)
 
 	cr := max(0, len(newLines)-1)
-	ml := max(snap.maxLinesRendered, len(newLines))
+	ml := max(t.maxLinesRendered, len(newLines))
 
 	t.cursorRow = cr
 	t.hardwareCursorRow = finalCursorRow
 	t.maxLinesRendered = ml
-	t.previousViewportTop = max(0, ml-snap.height)
+	t.previousViewportTop = max(0, ml-height)
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
 
 	t.previousLines = newLines
-	t.previousWidth = snap.width
+	t.previousWidth = width
 }
 
 // emitDebugStats writes render stats as a JSONL record if a debug writer
@@ -989,7 +940,7 @@ func (t *TUI) emitDebugStats(w io.Writer, stats *RenderStats, compStats []Compon
 
 // ---------- overlay compositing ---------------------------------------------
 
-func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays []overlayEntry, termW, termH, maxLinesRendered int) ([]string, *CursorPos) {
+func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays []*overlayEntry, termW, termH, maxLinesRendered int) ([]string, *CursorPos) {
 	contentH := len(lines)
 	result := make([]string, contentH)
 	copy(result, lines)
@@ -1018,8 +969,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 	groupAbove := make(map[*CursorGroup]bool) // true = all members fit above
 	groupSeen := make(map[*CursorGroup]bool)  // whether we've seen this group
 
-	for i := range overlays {
-		e := &overlays[i]
+	for _, e := range overlays {
 		if e.hidden {
 			continue
 		}
