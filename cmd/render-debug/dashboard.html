@@ -134,6 +134,14 @@
   <div class="stat"><div class="label">Avg Lines</div><div class="value" id="avgLines">-</div></div>
   <div class="stat"><div class="label">Avg Bytes/Frame</div><div class="value" id="avgBytes">-</div><span class="unit">B</span></div>
   <div class="stat"><div class="label">No-op Frames</div><div class="value" id="noopFrames">0</div></div>
+  <div class="stat"><div class="label">Heap Alloc</div><div class="value" id="heapAlloc">-</div><span class="unit">MB</span></div>
+  <div class="stat"><div class="label">Heap Objects</div><div class="value" id="heapObjects">-</div></div>
+  <div class="stat"><div class="label">Allocs/Frame</div><div class="value" id="allocsPerFrame">-</div></div>
+  <div class="stat"><div class="label">Bytes/Frame</div><div class="value" id="allocBytesPerFrame">-</div><span class="unit">KB</span></div>
+  <div class="stat"><div class="label">Goroutines</div><div class="value" id="goroutines">-</div></div>
+  <div class="stat"><div class="label">GC Cycles</div><div class="value" id="numGC">-</div></div>
+  <div class="stat"><div class="label">Last GC Pause</div><div class="value" id="gcPause">-</div><span class="unit">µs</span></div>
+  <div class="stat"><div class="label">Sys Memory</div><div class="value" id="sysMemory">-</div><span class="unit">MB</span></div>
 </div>
 
 <div class="controls">
@@ -173,6 +181,22 @@
   <div class="card">
     <h2>Changed Line Range (first → last)</h2>
     <canvas id="rangeChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Heap Allocation (MB)</h2>
+    <canvas id="heapChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Allocations per Frame (objects / KB)</h2>
+    <canvas id="allocChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>Goroutines</h2>
+    <canvas id="goroutineChart"></canvas>
+  </div>
+  <div class="card">
+    <h2>GC Pause (µs) — dots = GC events</h2>
+    <canvas id="gcChart"></canvas>
   </div>
 </div>
 
@@ -269,7 +293,32 @@ const rangeChart = makeChart('rangeChart', [
   { label: 'Total Lines', borderColor: '#58a6ff', borderDash: [4, 4], data: [] },
 ]);
 
-const charts = [timingChart, breakdownChart, linesChart, cacheChart, bytesChart, rangeChart];
+const heapChart = makeChart('heapChart', [
+  { label: 'Heap Alloc', borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)', fill: true, data: [] },
+  { label: 'Heap In-use', borderColor: '#bc8cff', data: [] },
+  { label: 'Heap Idle', borderColor: '#8b949e', borderDash: [4, 4], data: [] },
+  { label: 'Stack In-use', borderColor: '#d29922', data: [] },
+]);
+
+const allocChart = makeChart('allocChart', [
+  { label: 'Mallocs (objects)', borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', fill: true, data: [], yAxisID: 'y' },
+  { label: 'Alloc Δ (KB)', borderColor: '#3fb950', data: [], yAxisID: 'y1' },
+], {
+  scales: {
+    y: { beginAtZero: true, position: 'left', grid: { color: '#21262d' } },
+    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } },
+  }
+});
+
+const goroutineChart = makeChart('goroutineChart', [
+  { label: 'Goroutines', borderColor: '#56d4dd', backgroundColor: 'rgba(86,212,221,0.1)', fill: true, data: [] },
+]);
+
+const gcChart = makeChart('gcChart', [
+  { label: 'GC Pause', borderColor: '#d29922', backgroundColor: 'rgba(210,153,34,0.1)', fill: true, data: [] },
+]);
+
+const charts = [timingChart, breakdownChart, linesChart, cacheChart, bytesChart, rangeChart, heapChart, allocChart, goroutineChart, gcChart];
 
 // ── Component stats helpers ────────────────────────────────────────────────
 // Count cached vs rendered components in a single frame's component list.
@@ -337,7 +386,33 @@ function updateStats() {
   const noop = allData.filter(d => d.first_changed === -1).length;
   document.getElementById('noopFrames').textContent = noop;
 
+  // Runtime metrics (from latest frame).
+  const latest = allData[n - 1];
+  if (latest.heap_alloc !== undefined) {
+    document.getElementById('heapAlloc').textContent = (latest.heap_alloc / (1024 * 1024)).toFixed(1);
+    document.getElementById('heapObjects').textContent = formatNum(latest.heap_objects);
+    document.getElementById('goroutines').textContent = latest.goroutines;
+    document.getElementById('numGC').textContent = latest.num_gc;
+    document.getElementById('gcPause').textContent = ((latest.gc_pause_ns || 0) / 1000).toFixed(0);
+    document.getElementById('sysMemory').textContent = (latest.sys / (1024 * 1024)).toFixed(1);
+  }
+
+  // Per-frame allocation averages.
+  const framesWithAlloc = allData.filter(d => d.mallocs !== undefined);
+  if (framesWithAlloc.length > 0) {
+    const avgMallocs = (framesWithAlloc.reduce((a, d) => a + d.mallocs, 0) / framesWithAlloc.length).toFixed(0);
+    const avgAllocBytes = (framesWithAlloc.reduce((a, d) => a + d.heap_alloc_delta, 0) / framesWithAlloc.length / 1024).toFixed(1);
+    document.getElementById('allocsPerFrame').textContent = avgMallocs;
+    document.getElementById('allocBytesPerFrame').textContent = avgAllocBytes;
+  }
+
   updateComponentTable();
+}
+
+function formatNum(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return '' + n;
 }
 
 function shortName(name) {
@@ -464,6 +539,35 @@ function updateCharts() {
   rangeChart.data.datasets[0].data = slice.map(d => d.first_changed >= 0 ? d.first_changed : null);
   rangeChart.data.datasets[1].data = slice.map(d => d.last_changed >= 0 ? d.last_changed : null);
   rangeChart.data.datasets[2].data = slice.map(d => d.total_lines);
+
+  // Heap chart (MB)
+  heapChart.data.labels = labels;
+  heapChart.data.datasets[0].data = slice.map(d => d.heap_alloc ? (d.heap_alloc / (1024 * 1024)).toFixed(2) : null);
+  heapChart.data.datasets[1].data = slice.map(d => d.heap_inuse ? (d.heap_inuse / (1024 * 1024)).toFixed(2) : null);
+  heapChart.data.datasets[2].data = slice.map(d => d.heap_idle ? (d.heap_idle / (1024 * 1024)).toFixed(2) : null);
+  heapChart.data.datasets[3].data = slice.map(d => d.stack_inuse ? (d.stack_inuse / (1024 * 1024)).toFixed(2) : null);
+
+  // Allocations per frame chart
+  allocChart.data.labels = labels;
+  allocChart.data.datasets[0].data = slice.map(d => d.mallocs || 0);
+  allocChart.data.datasets[1].data = slice.map(d => d.heap_alloc_delta ? (d.heap_alloc_delta / 1024).toFixed(1) : 0);
+
+  // Goroutines chart
+  goroutineChart.data.labels = labels;
+  goroutineChart.data.datasets[0].data = slice.map(d => d.goroutines || 0);
+
+  // GC pause chart (ns → µs)
+  gcChart.data.labels = labels;
+  gcChart.data.datasets[0].data = slice.map(d => d.gc_pause_ns ? (d.gc_pause_ns / 1000).toFixed(1) : 0);
+  // Show dots on frames where a GC actually happened (num_gc changed from previous frame).
+  gcChart.data.datasets[0].pointRadius = slice.map((d, i) => {
+    if (i === 0) return 0;
+    return (d.num_gc !== slice[i - 1].num_gc) ? 4 : 0;
+  });
+  gcChart.data.datasets[0].pointBackgroundColor = slice.map((d, i) => {
+    if (i === 0) return 'transparent';
+    return (d.num_gc !== slice[i - 1].num_gc) ? '#d29922' : 'transparent';
+  });
 
   for (const c of charts) c.update();
 }

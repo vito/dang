@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -76,6 +77,51 @@ type RenderStats struct {
 
 	// ScrollLines is how many lines the viewport scrolled this frame.
 	ScrollLines int
+
+	// ── Runtime / pprof-level metrics ──
+
+	// HeapAlloc is the current heap allocation in bytes (live objects).
+	HeapAlloc uint64
+
+	// HeapObjects is the number of allocated heap objects.
+	HeapObjects uint64
+
+	// TotalAlloc is the cumulative bytes allocated (monotonically increasing).
+	TotalAlloc uint64
+
+	// Sys is the total memory obtained from the OS.
+	Sys uint64
+
+	// Mallocs is the number of heap allocations during this render frame.
+	Mallocs uint64
+
+	// Frees is the number of heap frees during this render frame.
+	Frees uint64
+
+	// HeapAllocDelta is the net bytes allocated during this render frame
+	// (TotalAlloc delta).
+	HeapAllocDelta uint64
+
+	// NumGC is the total number of completed GC cycles.
+	NumGC uint32
+
+	// GCPauseNs is the most recent GC pause duration in nanoseconds.
+	GCPauseNs uint64
+
+	// GCCPUFraction is the fraction of CPU time used by the GC.
+	GCCPUFraction float64
+
+	// Goroutines is the number of goroutines at the time of the render.
+	Goroutines int
+
+	// StackInuse is bytes used by goroutine stacks.
+	StackInuse uint64
+
+	// HeapInuse is bytes in in-use heap spans.
+	HeapInuse uint64
+
+	// HeapIdle is bytes in idle (unused) heap spans.
+	HeapIdle uint64
 }
 
 // renderStatsJSON is the JSONL record written by the debug writer.
@@ -97,6 +143,22 @@ type renderStatsJSON struct {
 	LastChanged    int             `json:"last_changed"`
 	ScrollLines    int             `json:"scroll_lines"`
 	Components     []ComponentStat `json:"components,omitempty"`
+
+	// Runtime / memory metrics
+	HeapAlloc      uint64  `json:"heap_alloc"`
+	HeapObjects    uint64  `json:"heap_objects"`
+	TotalAlloc     uint64  `json:"total_alloc"`
+	Sys            uint64  `json:"sys"`
+	Mallocs        uint64  `json:"mallocs"`
+	Frees          uint64  `json:"frees"`
+	HeapAllocDelta uint64  `json:"heap_alloc_delta"`
+	NumGC          uint32  `json:"num_gc"`
+	GCPauseNs      uint64  `json:"gc_pause_ns"`
+	GCCPUFraction  float64 `json:"gc_cpu_fraction"`
+	Goroutines     int     `json:"goroutines"`
+	StackInuse     uint64  `json:"stack_inuse"`
+	HeapInuse      uint64  `json:"heap_inuse"`
+	HeapIdle       uint64  `json:"heap_idle"`
 }
 
 // TUI is the main renderer. It extends Container with differential rendering
@@ -613,6 +675,12 @@ func diffLines(prev, next []string) diffResult {
 func (t *TUI) doRender() {
 	totalStart := time.Now()
 
+	// Snapshot memory stats at frame start for per-frame delta tracking.
+	var memBefore runtime.MemStats
+	if t.debugWriter != nil {
+		runtime.ReadMemStats(&memBefore)
+	}
+
 	// Capture terminal dimensions once per frame. These come from the
 	// terminal (protected by its own lock, updated on SIGWINCH) and
 	// should not change mid-frame.
@@ -626,7 +694,7 @@ func (t *TUI) doRender() {
 	newLines, cursorPos, compStats := t.renderFrame(width, height, &stats)
 
 	// Choose rendering strategy and write to terminal.
-	t.applyFrame(width, height, newLines, cursorPos, compStats, &stats, totalStart)
+	t.applyFrame(width, height, newLines, cursorPos, compStats, &stats, totalStart, &memBefore)
 }
 
 // renderFrame renders the component tree and composites overlays, producing
@@ -667,9 +735,9 @@ func (t *TUI) renderFrame(width, height int, stats *RenderStats) ([]string, *Cur
 
 // applyFrame decides the rendering strategy (full redraw vs differential
 // update) and writes the result to the terminal.
-func (t *TUI) applyFrame(width, height int, newLines []string, cursorPos *CursorPos, compStats []ComponentStat, stats *RenderStats, totalStart time.Time) {
+func (t *TUI) applyFrame(width, height int, newLines []string, cursorPos *CursorPos, compStats []ComponentStat, stats *RenderStats, totalStart time.Time, memBefore *runtime.MemStats) {
 	emitStats := func() {
-		t.emitDebugStats(t.debugWriter, stats, compStats, totalStart)
+		t.emitDebugStats(t.debugWriter, stats, compStats, totalStart, memBefore)
 	}
 
 	widthChanged := t.previousWidth != 0 && t.previousWidth != width
@@ -952,11 +1020,41 @@ func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *C
 
 // emitDebugStats writes render stats as a JSONL record if a debug writer
 // is configured.
-func (t *TUI) emitDebugStats(w io.Writer, stats *RenderStats, compStats []ComponentStat, totalStart time.Time) {
+func (t *TUI) emitDebugStats(w io.Writer, stats *RenderStats, compStats []ComponentStat, totalStart time.Time, memBefore *runtime.MemStats) {
 	if w == nil {
 		return
 	}
 	stats.TotalTime = time.Since(totalStart)
+
+	// Read memory stats at frame end.
+	var memAfter runtime.MemStats
+	runtime.ReadMemStats(&memAfter)
+
+	// Populate runtime metrics.
+	stats.HeapAlloc = memAfter.HeapAlloc
+	stats.HeapObjects = memAfter.HeapObjects
+	stats.TotalAlloc = memAfter.TotalAlloc
+	stats.Sys = memAfter.Sys
+	stats.HeapInuse = memAfter.HeapInuse
+	stats.HeapIdle = memAfter.HeapIdle
+	stats.StackInuse = memAfter.StackInuse
+	stats.NumGC = memAfter.NumGC
+	stats.GCCPUFraction = memAfter.GCCPUFraction
+	stats.Goroutines = runtime.NumGoroutine()
+
+	// Per-frame deltas: allocations and frees during this render cycle.
+	if memBefore != nil {
+		stats.Mallocs = memAfter.Mallocs - memBefore.Mallocs
+		stats.Frees = memAfter.Frees - memBefore.Frees
+		stats.HeapAllocDelta = memAfter.TotalAlloc - memBefore.TotalAlloc
+	}
+
+	// Most recent GC pause.
+	if memAfter.NumGC > 0 {
+		// PauseNs is a circular buffer of recent GC pauses indexed by NumGC.
+		stats.GCPauseNs = memAfter.PauseNs[(memAfter.NumGC+255)%256]
+	}
+
 	rec := renderStatsJSON{
 		Ts:             time.Now().UnixMilli(),
 		TotalUs:        stats.TotalTime.Microseconds(),
@@ -975,6 +1073,21 @@ func (t *TUI) emitDebugStats(w io.Writer, stats *RenderStats, compStats []Compon
 		LastChanged:    stats.LastChangedLine,
 		ScrollLines:    stats.ScrollLines,
 		Components:     compStats,
+
+		HeapAlloc:      stats.HeapAlloc,
+		HeapObjects:    stats.HeapObjects,
+		TotalAlloc:     stats.TotalAlloc,
+		Sys:            stats.Sys,
+		Mallocs:        stats.Mallocs,
+		Frees:          stats.Frees,
+		HeapAllocDelta: stats.HeapAllocDelta,
+		NumGC:          stats.NumGC,
+		GCPauseNs:      stats.GCPauseNs,
+		GCCPUFraction:  stats.GCCPUFraction,
+		Goroutines:     stats.Goroutines,
+		StackInuse:     stats.StackInuse,
+		HeapInuse:      stats.HeapInuse,
+		HeapIdle:       stats.HeapIdle,
 	}
 	data, _ := json.Marshal(rec)
 	data = append(data, '\n')
