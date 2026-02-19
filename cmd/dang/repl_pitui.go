@@ -305,8 +305,8 @@ type replComponent struct {
 	spinner        *pitui.Spinner
 	inputSlot      *pitui.Slot // swaps between textInput and spinner
 
-	quit     chan struct{}
-	quitOnce sync.Once
+	quit       context.Context
+	requestQuit context.CancelFunc
 
 	// Completion
 	completions     []string
@@ -357,8 +357,8 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		menuMaxVisible:  8,
 		completionGroup: pitui.NewCursorGroup(),
 		history:         newReplHistory(),
-		quit:            make(chan struct{}),
 	}
+	r.quit, r.requestQuit = context.WithCancel(context.Background())
 
 	// Spinner
 	sp := pitui.NewSpinner()
@@ -524,12 +524,12 @@ func (r *replComponent) onKey(key uv.Key) bool {
 			r.hideCompletionMenu()
 			return true
 		}
-		r.quitOnce.Do(func() { close(r.quit) })
+		r.requestQuit()
 		return true
 
 	case key.Code == 'd' && key.Mod == uv.ModCtrl:
 		if r.textInput.Value() == "" {
-			r.quitOnce.Do(func() { close(r.quit) })
+			r.requestQuit()
 			return true
 		}
 		return false
@@ -789,7 +789,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
-	case <-repl.quit:
+	case <-repl.quit.Done():
 	case <-sigCh:
 	case <-ctx.Done():
 	}

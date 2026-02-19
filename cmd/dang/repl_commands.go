@@ -48,7 +48,7 @@ func (r *replComponent) handleCommand(cmdLine string) {
 		e.writeLogLine(dimStyle.Render(fmt.Sprintf("Tab for completion, Up/Down for history, %s for multiline, Ctrl+L to clear.", multilineHint)))
 
 	case "exit", "quit":
-		r.quitOnce.Do(func() { close(r.quit) })
+		r.requestQuit()
 		return
 
 	case "clear":
