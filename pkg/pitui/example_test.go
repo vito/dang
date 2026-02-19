@@ -64,19 +64,22 @@ func Example() {
 		term := pitui.NewProcessTerminal()
 		tui := pitui.New(term)
 
-		// Add a static banner.
-		tui.AddChild(&Banner{Text: "=== My App ==="})
-
-		// Add an interactive counter and give it focus.
-		counter := &Counter{}
-		tui.AddChild(counter)
-		tui.SetFocus(counter)
-
 		// Start the TUI.
 		if err := tui.Start(); err != nil {
 			panic(err)
 		}
 		defer tui.Stop()
+
+		// Dispatch component setup to the UI goroutine.
+		// All component state mutations (AddChild, SetFocus, etc.)
+		// must happen on the UI goroutine — either inside a Dispatch
+		// callback or inside an event handler (HandleKeyPress, etc.).
+		counter := &Counter{}
+		tui.Dispatch(func() {
+			tui.AddChild(&Banner{Text: "=== My App ==="})
+			tui.AddChild(counter)
+			tui.SetFocus(counter)
+		})
 
 		// In a real app, you'd block on a signal or channel.
 		time.Sleep(10 * time.Second)

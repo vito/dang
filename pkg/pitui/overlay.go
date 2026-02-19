@@ -117,6 +117,7 @@ type OverlayHandle struct {
 }
 
 // Hide permanently removes the overlay.
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (h *OverlayHandle) Hide() {
 	h.tui.removeOverlay(h.entry)
 }
@@ -124,30 +125,26 @@ func (h *OverlayHandle) Hide() {
 // SetOptions replaces the overlay's positioning/sizing options without
 // destroying and recreating the overlay. This avoids allocation churn for
 // things like repositioning a completion menu on each keystroke.
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (h *OverlayHandle) SetOptions(opts *OverlayOptions) {
-	h.tui.mu.Lock()
 	h.entry.options = opts
-	h.tui.mu.Unlock()
 	h.tui.RequestRender(false)
 }
 
 // SetHidden temporarily hides or shows the overlay. Focus is not changed;
 // the caller should manage focus explicitly via [TUI.SetFocus].
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (h *OverlayHandle) SetHidden(hidden bool) {
-	h.tui.mu.Lock()
 	if h.entry.hidden == hidden {
-		h.tui.mu.Unlock()
 		return
 	}
 	h.entry.hidden = hidden
-	h.tui.mu.Unlock()
 	h.tui.RequestRender(false)
 }
 
 // IsHidden reports whether the overlay is temporarily hidden.
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (h *OverlayHandle) IsHidden() bool {
-	h.tui.mu.Lock()
-	defer h.tui.mu.Unlock()
 	return h.entry.hidden
 }
 
@@ -158,20 +155,13 @@ type overlayEntry struct {
 }
 
 func (t *TUI) removeOverlay(entry *overlayEntry) {
-	t.mu.Lock()
-	found := false
 	for i, e := range t.overlayStack {
 		if e == entry {
 			t.overlayStack = append(t.overlayStack[:i], t.overlayStack[i+1:]...)
-			found = true
-			break
+			t.RequestRender(false)
+			return
 		}
 	}
-	t.mu.Unlock()
-	if !found {
-		return
-	}
-	t.RequestRender(false)
 }
 
 // resolveOverlayLayout determines the width, row, col, and maxHeight for an
@@ -258,7 +248,6 @@ func cursorFitsAbove(cursor *CursorPos, overlayH int) bool {
 // The above parameter determines whether the overlay is placed above or below
 // the cursor. The caller is responsible for the above/below decision (possibly
 // influenced by CursorGroup).
-//
 func resolveCursorPosition(opts *OverlayOptions, cursor *CursorPos, overlayH int, above bool) (row, col int) {
 	col = max(0, cursor.Col+opts.OffsetX)
 

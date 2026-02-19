@@ -426,9 +426,11 @@ func (r *replComponent) addEntry(input string) *entryView {
 
 // install adds the repl's components to the TUI.
 func (r *replComponent) install() {
-	r.tui.AddChild(r.entryContainer)
-	r.tui.AddChild(r.inputSlot)
-	r.tui.SetFocus(r.textInput)
+	r.tui.Dispatch(func() {
+		r.tui.AddChild(r.entryContainer)
+		r.tui.AddChild(r.inputSlot)
+		r.tui.SetFocus(r.textInput)
+	})
 }
 
 // onSubmit handles Enter in the text input.
@@ -661,36 +663,38 @@ func (r *replComponent) startEval(expr string) {
 }
 
 func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancelled bool, removeListener func()) {
-	r.spinner.Stop()
-	removeListener()
+	// Dispatch to the UI goroutine so we can safely mutate component state.
+	r.tui.Dispatch(func() {
+		r.spinner.Stop()
+		removeListener()
 
-	r.mu.Lock()
-	r.evaluating = false
-	r.cancelEval = nil
-	if ev != nil {
-		ev.mu.Lock()
-		if cancelled {
-			ev.entry.writeLogLine(errorStyle.Render("cancelled"))
-		} else {
-			for _, line := range logs {
-				ev.entry.writeLogLine(line)
+		r.mu.Lock()
+		r.evaluating = false
+		r.cancelEval = nil
+		if ev != nil {
+			ev.mu.Lock()
+			if cancelled {
+				ev.entry.writeLogLine(errorStyle.Render("cancelled"))
+			} else {
+				for _, line := range logs {
+					ev.entry.writeLogLine(line)
+				}
+				for _, line := range results {
+					ev.entry.writeResult(line)
+				}
 			}
-			for _, line := range results {
-				ev.entry.writeResult(line)
-			}
+			ev.Update()
+			ev.mu.Unlock()
 		}
-		ev.Update()
-		ev.mu.Unlock()
-	}
-	if !cancelled {
-		r.refreshCompletions()
-	}
-	r.mu.Unlock()
+		if !cancelled {
+			r.refreshCompletions()
+		}
+		r.mu.Unlock()
 
-	// Swap spinner back to text input via the slot.
-	r.inputSlot.Set(r.textInput)
-	r.tui.SetFocus(r.textInput)
-	r.tui.RequestRender(false)
+		// Swap spinner back to text input via the slot.
+		r.inputSlot.Set(r.textInput)
+		r.tui.SetFocus(r.textInput)
+	})
 }
 
 // ── doc browser ─────────────────────────────────────────────────────────────
@@ -745,25 +749,29 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}
 		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
-		tui.AddChild(loadSp)
-		loadSp.Start()
+		tui.Dispatch(func() {
+			tui.AddChild(loadSp)
+			loadSp.Start()
+		})
 
 		dag, err := dagger.Connect(ctx,
 			dagger.WithLogOutput(daggerLog),
 			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
 		)
 		if err != nil {
-			loadSp.Stop()
-			loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to connect to Dagger: %v", err))
-			tui.RequestRender(false)
+			tui.Dispatch(func() {
+				loadSp.Stop()
+				loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to connect to Dagger: %v", err))
+			})
 		} else {
 			daggerConn = dag
 			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
 			client, schema, err := provider.ServeDaggerModule(ctx, dag, moduleDir)
 			if err != nil {
-				loadSp.Stop()
-				loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to load Dagger module: %v", err))
-				tui.RequestRender(false)
+				tui.Dispatch(func() {
+					loadSp.Stop()
+					loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to load Dagger module: %v", err))
+				})
 			} else {
 				importConfigs = append(importConfigs, dang.ImportConfig{
 					Name:       "Dagger",
@@ -772,9 +780,13 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 					AutoImport: true,
 				})
 			}
-			loadSp.Stop()
+			tui.Dispatch(func() {
+				loadSp.Stop()
+			})
 		}
-		tui.RemoveChild(loadSp)
+		tui.Dispatch(func() {
+			tui.RemoveChild(loadSp)
+		})
 	}
 
 	if len(importConfigs) > 0 {

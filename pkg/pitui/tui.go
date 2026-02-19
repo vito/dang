@@ -100,13 +100,22 @@ type renderStatsJSON struct {
 
 // TUI is the main renderer. It extends Container with differential rendering
 // on the normal scrollback buffer.
+//
+// All component state — including Render(), HandleKeyPress(), and any
+// Dispatch callbacks — runs on a single UI goroutine. Components never
+// need locks for their own fields.
 type TUI struct {
 	Container
 
 	terminal Terminal
 	decoder  uv.EventDecoder
 
-	mu sync.Mutex // protects all mutable state below
+	// mu protects only the fields that are read from arbitrary goroutines
+	// via public query methods (FullRedraws, HasKittyKeyboard, etc.).
+	// All rendering and component state is owned by the UI goroutine.
+	mu sync.Mutex
+
+	// ── UI-goroutine-only state (no lock needed) ──
 
 	previousLines    []string
 	previousWidth    int
@@ -119,34 +128,42 @@ type TUI struct {
 	clearOnShrink       bool
 	maxLinesRendered    int
 	previousViewportTop int
-	fullRedrawCount     int
 	stopped             bool
 
 	overlayStack []*overlayEntry
 
 	kittyKeyboard bool // terminal confirmed Kitty keyboard protocol support
 
-	renderCh       chan struct{} // serialized render requests
-	renderDone     chan struct{} // closed when renderLoop exits
-	deferRenders   int          // when > 0, RequestRender defers instead of signaling
-	renderDeferred bool         // a render was deferred while deferRenders > 0
-	debugWriter    io.Writer    // if non-nil, render stats are logged here
+	debugWriter io.Writer // if non-nil, render stats are logged here
+
+	// ── Cross-goroutine counters (read via mu) ──
+
+	fullRedrawCount int
+
+	// ── Event loop channels ──
+
+	eventCh    chan uv.Event   // decoded input events from terminal
+	dispatchCh chan func()     // closures to run on UI goroutine
+	renderCh   chan struct{}   // coalesced render requests
+	loopDone   chan struct{}   // closed when runLoop exits
 }
 
 // New creates a TUI backed by the given terminal.
 func New(term Terminal) *TUI {
 	t := newTUI(term)
-	t.renderDone = make(chan struct{})
-	go t.renderLoop()
+	t.loopDone = make(chan struct{})
+	go t.runLoop()
 	return t
 }
 
-// newTUI creates a TUI without starting the render loop. Used by tests
+// newTUI creates a TUI without starting the event loop. Used by tests
 // that call doRender synchronously.
 func newTUI(term Terminal) *TUI {
 	t := &TUI{
-		terminal: term,
-		renderCh: make(chan struct{}, 1),
+		terminal:   term,
+		eventCh:    make(chan uv.Event, 64),
+		dispatchCh: make(chan func(), 64),
+		renderCh:   make(chan struct{}, 1),
 	}
 	// Wire upward propagation: when any child calls Update(), the root
 	// Compo's requestRender triggers TUI.RequestRender.
@@ -156,15 +173,55 @@ func newTUI(term Terminal) *TUI {
 	return t
 }
 
-// renderLoop processes render requests serially on a dedicated goroutine.
-func (t *TUI) renderLoop() {
-	defer func() {
-		if t.renderDone != nil {
-			close(t.renderDone)
+// runLoop is the unified event loop. It processes input events, dispatched
+// closures, and render requests — all on a single goroutine. This is the
+// "UI goroutine": all component state (Render, HandleKeyPress, Dispatch
+// callbacks) executes here, so components never need locks.
+func (t *TUI) runLoop() {
+	defer close(t.loopDone)
+	for {
+		// Wait for any signal.
+		select {
+		case ev, ok := <-t.eventCh:
+			if !ok {
+				return
+			}
+			t.dispatchEvent(ev)
+		case fn, ok := <-t.dispatchCh:
+			if !ok {
+				return
+			}
+			fn()
+		case _, ok := <-t.renderCh:
+			if !ok {
+				return
+			}
+			// fall through to drain + render
 		}
-	}()
-	for range t.renderCh {
-		t.doRender()
+
+		// Drain all pending events and dispatches before rendering.
+		// This coalesces rapid input and multiple dispatches into one frame.
+	drain:
+		for {
+			select {
+			case ev, ok := <-t.eventCh:
+				if !ok {
+					return
+				}
+				t.dispatchEvent(ev)
+			case fn, ok := <-t.dispatchCh:
+				if !ok {
+					return
+				}
+				fn()
+			default:
+				break drain
+			}
+		}
+
+		if !t.stopped {
+			t.doRender()
+		}
 	}
 }
 
@@ -175,6 +232,8 @@ func (t *TUI) Terminal() Terminal { return t.terminal }
 // Kitty keyboard protocol (disambiguate escape codes). This is determined
 // by the response to the RequestKittyKeyboard query sent during Start().
 // Returns false until the response is received.
+//
+// Safe to call from any goroutine.
 func (t *TUI) HasKittyKeyboard() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -183,13 +242,17 @@ func (t *TUI) HasKittyKeyboard() bool {
 
 // SetDebugWriter enables render performance logging. Each render cycle
 // writes a single stats line to w. Pass nil to disable.
+//
+// Safe to call from any goroutine; takes effect on next render.
 func (t *TUI) SetDebugWriter(w io.Writer) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.debugWriter = w
+	t.Dispatch(func() {
+		t.debugWriter = w
+	})
 }
 
 // FullRedraws returns the number of full (non-differential) redraws performed.
+//
+// Safe to call from any goroutine.
 func (t *TUI) FullRedraws() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -198,36 +261,29 @@ func (t *TUI) FullRedraws() int {
 
 // SetShowHardwareCursor enables or disables the hardware cursor (for IME).
 func (t *TUI) SetShowHardwareCursor(enabled bool) {
-	t.mu.Lock()
-	if t.showHardwareCursor == enabled {
-		t.mu.Unlock()
-		return
-	}
-	t.showHardwareCursor = enabled
-	t.mu.Unlock()
-	if !enabled {
-		t.terminal.HideCursor()
-	}
-	t.RequestRender(false)
+	t.Dispatch(func() {
+		if t.showHardwareCursor == enabled {
+			return
+		}
+		t.showHardwareCursor = enabled
+		if !enabled {
+			t.terminal.HideCursor()
+		}
+	})
 }
 
 // SetClearOnShrink controls whether empty rows are cleared when content
 // shrinks. When false (the default), stale rows remain until overwritten,
 // which reduces full redraws on slower terminals.
 func (t *TUI) SetClearOnShrink(enabled bool) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.clearOnShrink = enabled
+	t.Dispatch(func() {
+		t.clearOnShrink = enabled
+	})
 }
 
 // SetFocus gives keyboard focus to the given component (or nil).
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (t *TUI) SetFocus(comp Component) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.setFocusLocked(comp)
-}
-
-func (t *TUI) setFocusLocked(comp Component) {
 	if f, ok := t.focusedComponent.(Focusable); ok {
 		f.SetFocused(false)
 	}
@@ -239,43 +295,40 @@ func (t *TUI) setFocusLocked(comp Component) {
 
 // AddInputListener registers a listener that intercepts input before it
 // reaches the focused component. Returns a function that removes it.
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (t *TUI) AddInputListener(l InputListener) func() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	type token struct{}
 	tok := &token{}
 	t.inputListeners = append(t.inputListeners, inputListenerEntry{fn: l, tok: tok})
 	return func() {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		for i, entry := range t.inputListeners {
-			if entry.tok == tok {
-				t.inputListeners = append(t.inputListeners[:i], t.inputListeners[i+1:]...)
-				return
+		t.Dispatch(func() {
+			for i, entry := range t.inputListeners {
+				if entry.tok == tok {
+					t.inputListeners = append(t.inputListeners[:i], t.inputListeners[i+1:]...)
+					return
+				}
 			}
-		}
+		})
 	}
 }
 
 // ShowOverlay displays a component as an overlay on top of the base content.
 // Focus is not changed; use [TUI.SetFocus] to direct input to the overlay's
 // component when needed.
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (t *TUI) ShowOverlay(comp Component, opts *OverlayOptions) *OverlayHandle {
-	t.mu.Lock()
 	entry := &overlayEntry{
 		component: comp,
 		options:   opts,
 	}
 	t.overlayStack = append(t.overlayStack, entry)
-	t.mu.Unlock()
 	t.RequestRender(false)
 	return &OverlayHandle{tui: t, entry: entry}
 }
 
 // HasOverlay reports whether any overlay is currently visible.
+// Must be called on the UI goroutine (from an event handler or Dispatch).
 func (t *TUI) HasOverlay() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	for _, o := range t.overlayStack {
 		if !o.hidden {
 			return true
@@ -284,11 +337,25 @@ func (t *TUI) HasOverlay() bool {
 	return false
 }
 
+// Dispatch schedules a function to run on the UI goroutine. Use this to
+// mutate component state from background goroutines (e.g. after async I/O).
+// The function runs before the next render, serialized with all input
+// handling and other dispatched functions.
+//
+// Safe to call from any goroutine.
+func (t *TUI) Dispatch(fn func()) {
+	select {
+	case t.dispatchCh <- fn:
+	case <-t.loopDone:
+		// TUI already stopped, silently drop.
+	}
+	// Also signal a render so the event loop wakes up.
+	t.RequestRender(false)
+}
+
 // Start begins the TUI event loop.
 func (t *TUI) Start() error {
-	t.mu.Lock()
 	t.stopped = false
-	t.mu.Unlock()
 	err := t.terminal.Start(
 		func(data []byte) { t.handleInput(data) },
 		func() { t.RequestRender(false) },
@@ -303,22 +370,17 @@ func (t *TUI) Start() error {
 
 // Stop ends the TUI event loop and restores the terminal.
 func (t *TUI) Stop() {
-	t.mu.Lock()
 	t.stopped = true
-	t.mu.Unlock()
 
-	// Close the render channel and wait for the render loop to finish
-	// any in-progress render. This ensures no cursor positioning from
-	// a concurrent doRender can race with our cleanup below.
+	// Close channels to terminate the event loop, then wait for it
+	// to finish any in-progress work.
 	close(t.renderCh)
-	if t.renderDone != nil {
-		<-t.renderDone
+	if t.loopDone != nil {
+		<-t.loopDone
 	}
 
-	t.mu.Lock()
 	prev := t.previousLines
 	hcr := t.hardwareCursorRow
-	t.mu.Unlock()
 
 	// Move cursor past content so the shell prompt appears below.
 	if len(prev) > 0 {
@@ -335,30 +397,29 @@ func (t *TUI) Stop() {
 
 // RequestRender schedules a render on the next iteration. If repaint is
 // true, all cached state is discarded and a full repaint occurs.
+//
+// Safe to call from any goroutine.
 func (t *TUI) RequestRender(repaint bool) {
-	t.mu.Lock()
-	if t.stopped {
-		t.mu.Unlock()
-		return
-	}
 	if repaint {
-		t.previousLines = nil
-		t.previousWidth = -1
-		t.cursorRow = 0
-		t.hardwareCursorRow = 0
-		t.maxLinesRendered = 0
-		t.previousViewportTop = 0
+		// Repaint resets are dispatched to the UI goroutine to avoid races.
+		select {
+		case t.dispatchCh <- func() {
+			t.previousLines = nil
+			t.previousWidth = -1
+			t.cursorRow = 0
+			t.hardwareCursorRow = 0
+			t.maxLinesRendered = 0
+			t.previousViewportTop = 0
+		}:
+		default:
+		}
 	}
-	if t.deferRenders > 0 {
-		t.renderDeferred = true
-		t.mu.Unlock()
-		return
-	}
-	t.mu.Unlock()
 
 	// Non-blocking send to coalesce multiple rapid requests.
+	// Use loopDone to avoid sending on a closed channel after Stop().
 	select {
 	case t.renderCh <- struct{}{}:
+	case <-t.loopDone:
 	default:
 	}
 }
@@ -366,14 +427,8 @@ func (t *TUI) RequestRender(repaint bool) {
 // ---------- input handling --------------------------------------------------
 
 func (t *TUI) handleInput(data []byte) {
-	// Defer render signals until the entire input buffer is processed.
-	// This ensures that all state mutations from HandleKeyPress, input
-	// listeners, and overlay repositioning are visible atomically to the
-	// render goroutine, preventing partial-update jitter.
-	t.mu.Lock()
-	t.deferRenders++
-	t.mu.Unlock()
-
+	// Decode events on the input goroutine (decoder is stateless enough)
+	// and post them to the event channel for the UI goroutine to process.
 	buf := data
 	for len(buf) > 0 {
 		n, ev := t.decoder.Decode(buf)
@@ -384,43 +439,28 @@ func (t *TUI) handleInput(data []byte) {
 		if ev == nil {
 			continue
 		}
-		t.dispatchEvent(ev)
-	}
-
-	t.mu.Lock()
-	t.deferRenders--
-	needsRender := t.deferRenders == 0 && t.renderDeferred
-	if needsRender {
-		t.renderDeferred = false
-	}
-	t.mu.Unlock()
-
-	if needsRender {
 		select {
-		case t.renderCh <- struct{}{}:
+		case t.eventCh <- ev:
 		default:
+			// Channel full — drop event rather than block the input reader.
+			// This should be rare with a reasonably sized buffer.
 		}
 	}
 }
 
 func (t *TUI) dispatchEvent(ev uv.Event) {
-	t.mu.Lock()
-	listeners := make([]inputListenerEntry, len(t.inputListeners))
-	copy(listeners, t.inputListeners)
-	t.mu.Unlock()
-
-	for _, entry := range listeners {
+	for _, entry := range t.inputListeners {
 		if entry.fn(ev) {
 			return
 		}
 	}
 
-	t.mu.Lock()
 	comp := t.focusedComponent
-	t.mu.Unlock()
 
 	switch e := ev.(type) {
 	case uv.KeyboardEnhancementsEvent:
+		// Update under lock for HasKittyKeyboard() which may be called
+		// from any goroutine.
 		t.mu.Lock()
 		t.kittyKeyboard = e.SupportsKeyDisambiguation()
 		t.mu.Unlock()
@@ -428,12 +468,10 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 	case uv.KeyPressEvent:
 		if ic, ok := comp.(Interactive); ok {
 			ic.HandleKeyPress(e)
-			t.RequestRender(false)
 		}
 	case uv.PasteEvent:
 		if p, ok := comp.(Pasteable); ok {
 			p.HandlePaste(e)
-			t.RequestRender(false)
 		}
 	}
 }
@@ -492,8 +530,9 @@ func cursorVertical(delta int) string {
 
 // ---------- differential rendering ------------------------------------------
 
-// renderSnapshot holds a read-only copy of TUI state captured under the lock
-// at the start of a render frame.
+// renderSnapshot holds a read-only copy of TUI state captured at the start
+// of a render frame. Since everything runs on the UI goroutine, no lock
+// is needed — this is just a convenient struct for passing state around.
 type renderSnapshot struct {
 	width             int
 	height            int
@@ -589,11 +628,9 @@ func (t *TUI) doRender() {
 	t.applyFrame(snap, newLines, cursorPos, compStats, &stats, totalStart)
 }
 
-// snapshotForRender captures a consistent copy of all mutable state needed
-// for rendering. Returns nil if the TUI is stopped.
+// snapshotForRender captures a copy of the state needed for rendering.
+// Runs on the UI goroutine — no lock needed.
 func (t *TUI) snapshotForRender() *renderSnapshot {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.stopped {
 		return nil
 	}
@@ -678,9 +715,7 @@ func (t *TUI) applyFrame(snap *renderSnapshot, newLines []string, cursorPos *Cur
 		stats.FirstChangedLine = -1
 		stats.LastChangedLine = -1
 		t.positionHardwareCursor(cursorPos, len(newLines))
-		t.mu.Lock()
 		t.previousViewportTop = max(0, t.maxLinesRendered-snap.height)
-		t.mu.Unlock()
 		emitStats()
 		return
 	}
@@ -769,19 +804,15 @@ func (t *TUI) writeFullRedraw(snap *renderSnapshot, newLines []string, cursorPos
 		ml = max(ml, len(newLines))
 	}
 
-	t.mu.Lock()
 	t.cursorRow = cr
 	t.hardwareCursorRow = cr
 	t.maxLinesRendered = ml
 	t.previousViewportTop = max(0, ml-snap.height)
-	t.mu.Unlock()
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
 
-	t.mu.Lock()
 	t.previousLines = newLines
 	t.previousWidth = snap.width
-	t.mu.Unlock()
 }
 
 // writeTailShrink handles the case where content was only removed from the
@@ -830,20 +861,16 @@ func (t *TUI) writeTailShrink(snap *renderSnapshot, newLines []string, cursorPos
 		t.terminal.WriteString(buf.String())
 		stats.WriteTime = time.Since(writeStart)
 
-		t.mu.Lock()
 		t.cursorRow = targetRow
 		t.hardwareCursorRow = targetRow
-		t.mu.Unlock()
 	} else {
 		stats.DiffTime = time.Since(diffStart)
 	}
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
-	t.mu.Lock()
 	t.previousLines = newLines
 	t.previousWidth = snap.width
 	t.previousViewportTop = max(0, t.maxLinesRendered-snap.height)
-	t.mu.Unlock()
 }
 
 // writeDiffUpdate writes only the changed lines to the terminal, scrolling
@@ -932,19 +959,15 @@ func (t *TUI) writeDiffUpdate(snap *renderSnapshot, newLines []string, cursorPos
 	cr := max(0, len(newLines)-1)
 	ml := max(snap.maxLinesRendered, len(newLines))
 
-	t.mu.Lock()
 	t.cursorRow = cr
 	t.hardwareCursorRow = finalCursorRow
 	t.maxLinesRendered = ml
 	t.previousViewportTop = max(0, ml-snap.height)
-	t.mu.Unlock()
 
 	t.positionHardwareCursor(cursorPos, len(newLines))
 
-	t.mu.Lock()
 	t.previousLines = newLines
 	t.previousWidth = snap.width
-	t.mu.Unlock()
 }
 
 // emitDebugStats writes render stats as a JSONL record if a debug writer
@@ -1131,9 +1154,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		// If the overlay's component has focus and provides a cursor,
 		// translate it to the composited coordinate space.
 		if item.cursor != nil {
-			t.mu.Lock()
 			focused := t.focusedComponent
-			t.mu.Unlock()
 			// Check if this overlay has focus by comparing its component
 			// We check via the overlay stack entries.
 			for _, e := range overlays {
@@ -1169,19 +1190,15 @@ func (t *TUI) positionHardwareCursor(pos *CursorPos, totalLines int) {
 	targetRow := clamp(pos.Row, 0, totalLines-1)
 	targetCol := max(0, pos.Col)
 
-	t.mu.Lock()
 	hcr := t.hardwareCursorRow
 	show := t.showHardwareCursor
-	t.mu.Unlock()
 
 	seq := cursorVertical(targetRow-hcr) + cursorColumn(targetCol+1)
 	if seq != "" {
 		t.terminal.WriteString(seq)
 	}
 
-	t.mu.Lock()
 	t.hardwareCursorRow = targetRow
-	t.mu.Unlock()
 
 	if show {
 		t.terminal.ShowCursor()

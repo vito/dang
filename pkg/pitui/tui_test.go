@@ -216,9 +216,7 @@ func TestStructuralCursorPosition(t *testing.T) {
 
 	// Verify cursor was positioned (row 1, col 3).
 	// The hardware cursor should be at row 1.
-	tui.mu.Lock()
 	hcr := tui.hardwareCursorRow
-	tui.mu.Unlock()
 	assert.Equal(t, 1, hcr)
 }
 
@@ -266,9 +264,7 @@ func TestOverlayCompositing(t *testing.T) {
 	renderSync(tui)
 
 	// The overlay should be composited into the rendered output.
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	found := false
 	for _, line := range prev {
@@ -301,9 +297,7 @@ func TestContentRelativeOverlay(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	require.True(t, len(prev) >= 3, "should have at least 3 lines")
 	assert.Contains(t, prev[0], "MENU-A", "first menu line at content row 0")
@@ -332,9 +326,7 @@ func TestCursorRelativeOverlayPreferAbove(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	// Menu should be above cursor (rows 2-4), cursor is at row 5.
 	require.True(t, len(prev) >= 6)
@@ -365,9 +357,7 @@ func TestCursorRelativeOverlayFlipToBelow(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	// Not enough room above (row 1 - 3 = -2), should flip to below cursor (row 2).
 	require.True(t, len(prev) >= 5)
@@ -398,9 +388,7 @@ func TestCursorRelativeOverlayOffsetX(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	// Menu at row 2 (above cursor row 3), col = 10 + (-3) = 7.
 	require.True(t, len(prev) >= 4)
@@ -442,9 +430,7 @@ func TestCursorRelativeOverlayMaxHeightNotClampedToContent(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	// All 10 items should be visible (below cursor at row 3).
 	found := 0
@@ -499,9 +485,7 @@ func TestCursorRelativeOverlayCursorGroupBothFitAbove(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	// Both should be above cursor (row 7).
 	menuRow := -1
@@ -557,9 +541,7 @@ func TestCursorRelativeOverlayCursorGroupFlipAll(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	menuRow := -1
 	detailRow := -1
@@ -595,9 +577,7 @@ func TestCursorRelativeOverlayNoCursor(t *testing.T) {
 
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	// No cursor — overlay should be skipped.
 	for _, line := range prev {
@@ -622,9 +602,7 @@ func TestOverlayDoesNotStealFocus(t *testing.T) {
 		Anchor: AnchorCenter,
 	})
 
-	tui.mu.Lock()
 	focused := tui.focusedComponent
-	tui.mu.Unlock()
 	assert.Equal(t, main, focused)
 }
 
@@ -795,9 +773,7 @@ func (b *borderedOverlay) Render(ctx RenderContext) RenderResult {
 func snapshotRenderedLines(tui *TUI, term *mockTerminal) string {
 	renderSync(tui)
 
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 
 	w := term.Columns()
 	var sb strings.Builder
@@ -1142,9 +1118,7 @@ func TestCompoSkipsRenderWhenClean(t *testing.T) {
 	assert.Equal(t, 1, finalized.renderCount, "clean Compo should skip Render")
 
 	// The output should still contain finalized's content (from cache).
-	tui.mu.Lock()
 	prev := tui.previousLines
-	tui.mu.Unlock()
 	assert.True(t, len(prev) >= 3)
 	assert.Contains(t, stripANSI(prev[0]), "old line 1")
 	assert.Contains(t, stripANSI(prev[1]), "old line 2")
@@ -1251,14 +1225,12 @@ func TestForceRender(t *testing.T) {
 	assert.Equal(t, 1, tui.FullRedraws())
 
 	// Force re-render should do a full redraw even with no changes.
-	tui.mu.Lock()
 	tui.previousLines = nil
 	tui.previousWidth = -1
 	tui.cursorRow = 0
 	tui.hardwareCursorRow = 0
 	tui.maxLinesRendered = 0
 	tui.previousViewportTop = 0
-	tui.mu.Unlock()
 
 	term.reset()
 	renderSync(tui)

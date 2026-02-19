@@ -16,8 +16,9 @@ type Spinner struct {
 	frames   []string
 	interval time.Duration
 	start    time.Time
-	ticker   *time.Ticker
-	done     chan struct{}
+
+	ticker *time.Ticker
+	done   chan struct{}
 }
 
 // NewSpinner creates a dot-style spinner.
@@ -28,27 +29,32 @@ func NewSpinner() *Spinner {
 	}
 }
 
-// Start begins the spinner animation.
+// Start begins the spinner animation. Must be called on the UI goroutine
+// (from an event handler, a Dispatch callback, or before TUI.Start).
 func (s *Spinner) Start() {
 	s.start = time.Now()
 	s.done = make(chan struct{})
 	s.ticker = time.NewTicker(s.interval)
+	done := s.done
+
 	go func() {
 		for {
 			select {
 			case <-s.ticker.C:
 				s.Update()
-			case <-s.done:
+			case <-done:
 				return
 			}
 		}
 	}()
 }
 
-// Stop ends the spinner animation.
+// Stop ends the spinner animation. Must be called on the UI goroutine
+// (from an event handler, a Dispatch callback, or before TUI.Start).
 func (s *Spinner) Stop() {
 	if s.ticker != nil {
 		s.ticker.Stop()
+		s.ticker = nil
 	}
 	if s.done != nil {
 		close(s.done)
