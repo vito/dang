@@ -94,9 +94,11 @@ func (r *replComponent) syncMenu() {
 }
 
 func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
-	menuW := r.menuBoxWidth()
-	// Detail bubble sits to the right of the menu, 1 col gap.
-	detailX := -r.completionTokenLen() + menuW + 1
+	detailX := -r.completionTokenLen()
+	if r.menuHandle != nil {
+		// Menu visible — place detail to its right with a 1 col gap.
+		detailX += r.menuBoxWidth() + 1
+	}
 
 	return &pitui.OverlayOptions{
 		Width:          pitui.SizePct(35),
