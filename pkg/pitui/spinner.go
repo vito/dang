@@ -35,12 +35,15 @@ func (s *Spinner) Start() {
 	s.start = time.Now()
 	s.done = make(chan struct{})
 	s.ticker = time.NewTicker(s.interval)
+
+	// Capture locally so the goroutine never touches Spinner fields.
 	done := s.done
+	ticker := s.ticker
 
 	go func() {
 		for {
 			select {
-			case <-s.ticker.C:
+			case <-ticker.C:
 				s.Update()
 			case <-done:
 				return
@@ -52,13 +55,13 @@ func (s *Spinner) Start() {
 // Stop ends the spinner animation. Must be called on the UI goroutine
 // (from an event handler, a Dispatch callback, or before TUI.Start).
 func (s *Spinner) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-		s.ticker = nil
-	}
 	if s.done != nil {
 		close(s.done)
 		s.done = nil
+	}
+	if s.ticker != nil {
+		s.ticker.Stop()
+		s.ticker = nil
 	}
 }
 
