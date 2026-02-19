@@ -64,7 +64,7 @@ func (r *replComponent) showCompletionMenu() {
 		MaxHeight:      pitui.SizeAbs(menuH),
 		CursorRelative: true,
 		PreferAbove:    true,
-		Col:            pitui.SizeAbs(r.completionTokenStartCol()),
+		OffsetX:        -r.completionTokenLen(),
 		CursorGroup:    r.completionGroup,
 	}
 	if r.menuHandle != nil {
@@ -95,10 +95,10 @@ func (r *replComponent) syncMenu() {
 }
 
 func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
-	detailCol := r.completionTokenStartCol()
+	detailX := -r.completionTokenLen()
 	if r.menuHandle != nil {
 		// Menu visible — place detail to its right with a 1 col gap.
-		detailCol += r.menuBoxWidth() + 1
+		detailX += r.menuBoxWidth() + 1
 	}
 
 	return &pitui.OverlayOptions{
@@ -106,7 +106,7 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 		MaxHeight:      pitui.SizePct(80),
 		CursorRelative: true,
 		PreferAbove:    true,
-		Col:            pitui.SizeAbs(detailCol),
+		OffsetX:        detailX,
 		CursorGroup:    r.completionGroup,
 	}
 }
@@ -230,13 +230,6 @@ func (r *replComponent) completionTokenLen() int {
 	return len(val) - (i + 1)
 }
 
-// completionTokenStartCol returns the absolute screen column where the
-// completion token begins. This is stable as the user types more characters
-// of the same token, avoiding jitter from cursor-relative OffsetX updates
-// racing with cursor position changes on the render goroutine.
-func (r *replComponent) completionTokenStartCol() int {
-	return r.textInput.CursorScreenCol() - r.completionTokenLen()
-}
 
 func (r *replComponent) updateCompletionMenu() {
 	val := r.textInput.Value()

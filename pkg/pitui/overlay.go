@@ -259,16 +259,8 @@ func cursorFitsAbove(cursor *CursorPos, overlayH int) bool {
 // the cursor. The caller is responsible for the above/below decision (possibly
 // influenced by CursorGroup).
 //
-// Horizontal positioning: if Col is explicitly set, it is used directly
-// (ignoring cursor column and OffsetX). This avoids jitter from the cursor
-// position and OffsetX being updated on different goroutines. If Col is not
-// set, the column defaults to cursor.Col + OffsetX.
 func resolveCursorPosition(opts *OverlayOptions, cursor *CursorPos, overlayH int, above bool) (row, col int) {
-	if opts.Col.isSet {
-		col = opts.Col.abs
-	} else {
-		col = max(0, cursor.Col+opts.OffsetX)
-	}
+	col = max(0, cursor.Col+opts.OffsetX)
 
 	if above {
 		row = cursor.Row - overlayH // bottom edge at cursor.Row - 1

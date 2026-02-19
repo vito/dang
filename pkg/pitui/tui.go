@@ -126,9 +126,11 @@ type TUI struct {
 
 	kittyKeyboard bool // terminal confirmed Kitty keyboard protocol support
 
-	renderCh    chan struct{} // serialized render requests
-	renderDone  chan struct{} // closed when renderLoop exits
-	debugWriter io.Writer     // if non-nil, render stats are logged here
+	renderCh       chan struct{} // serialized render requests
+	renderDone     chan struct{} // closed when renderLoop exits
+	deferRenders   int          // when > 0, RequestRender defers instead of signaling
+	renderDeferred bool         // a render was deferred while deferRenders > 0
+	debugWriter    io.Writer    // if non-nil, render stats are logged here
 }
 
 // New creates a TUI backed by the given terminal.
@@ -347,6 +349,11 @@ func (t *TUI) RequestRender(repaint bool) {
 		t.maxLinesRendered = 0
 		t.previousViewportTop = 0
 	}
+	if t.deferRenders > 0 {
+		t.renderDeferred = true
+		t.mu.Unlock()
+		return
+	}
 	t.mu.Unlock()
 
 	// Non-blocking send to coalesce multiple rapid requests.
@@ -359,6 +366,14 @@ func (t *TUI) RequestRender(repaint bool) {
 // ---------- input handling --------------------------------------------------
 
 func (t *TUI) handleInput(data []byte) {
+	// Defer render signals until the entire input buffer is processed.
+	// This ensures that all state mutations from HandleKeyPress, input
+	// listeners, and overlay repositioning are visible atomically to the
+	// render goroutine, preventing partial-update jitter.
+	t.mu.Lock()
+	t.deferRenders++
+	t.mu.Unlock()
+
 	buf := data
 	for len(buf) > 0 {
 		n, ev := t.decoder.Decode(buf)
@@ -370,6 +385,21 @@ func (t *TUI) handleInput(data []byte) {
 			continue
 		}
 		t.dispatchEvent(ev)
+	}
+
+	t.mu.Lock()
+	t.deferRenders--
+	needsRender := t.deferRenders == 0 && t.renderDeferred
+	if needsRender {
+		t.renderDeferred = false
+	}
+	t.mu.Unlock()
+
+	if needsRender {
+		select {
+		case t.renderCh <- struct{}{}:
+		default:
+		}
 	}
 }
 
