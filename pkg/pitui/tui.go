@@ -110,10 +110,16 @@ type TUI struct {
 	terminal Terminal
 	decoder  uv.EventDecoder
 
-	// mu protects only the fields that are read from arbitrary goroutines
-	// via public query methods (FullRedraws, HasKittyKeyboard, etc.).
+	// mu protects fields shared between the main goroutine and the UI
+	// goroutine: stopped, fullRedrawCount, kittyKeyboard.
 	// All rendering and component state is owned by the UI goroutine.
 	mu sync.Mutex
+
+	// ── mu-protected state (shared between goroutines) ──
+
+	stopped         bool
+	fullRedrawCount int
+	kittyKeyboard   bool
 
 	// ── UI-goroutine-only state (no lock needed) ──
 
@@ -128,17 +134,10 @@ type TUI struct {
 	clearOnShrink       bool
 	maxLinesRendered    int
 	previousViewportTop int
-	stopped             bool
 
 	overlayStack []*overlayEntry
 
-	kittyKeyboard bool // terminal confirmed Kitty keyboard protocol support
-
 	debugWriter io.Writer // if non-nil, render stats are logged here
-
-	// ── Cross-goroutine counters (read via mu) ──
-
-	fullRedrawCount int
 
 	// ── Event loop channels ──
 
@@ -210,7 +209,10 @@ func (t *TUI) runLoop() {
 			}
 		}
 
-		if !t.stopped {
+		t.mu.Lock()
+		stopped := t.stopped
+		t.mu.Unlock()
+		if !stopped {
 			t.doRender()
 		}
 	}
@@ -346,13 +348,9 @@ func (t *TUI) Dispatch(fn func()) {
 
 // Start begins the TUI event loop.
 func (t *TUI) Start() error {
-	// Set stopped = false on the UI goroutine to avoid racing with runLoop.
-	done := make(chan struct{})
-	t.Dispatch(func() {
-		t.stopped = false
-		close(done)
-	})
-	<-done
+	t.mu.Lock()
+	t.stopped = false
+	t.mu.Unlock()
 
 	err := t.terminal.Start(
 		func(data []byte) { t.handleInput(data) },
@@ -625,7 +623,10 @@ func (t *TUI) doRender() {
 // snapshotForRender captures a copy of the state needed for rendering.
 // Runs on the UI goroutine — no lock needed.
 func (t *TUI) snapshotForRender() *renderSnapshot {
-	if t.stopped {
+	t.mu.Lock()
+	stopped := t.stopped
+	t.mu.Unlock()
+	if stopped {
 		return nil
 	}
 	snap := &renderSnapshot{
