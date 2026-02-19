@@ -898,9 +898,9 @@ func TestOverlayLastLineNotDropped(t *testing.T) {
 		"BOTTOM-BORDER",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:   SizeAbs(20),
-		Anchor:  AnchorTopRight,
-		Margin:  OverlayMargin{Top: 1, Right: 1},
+		Width:  SizeAbs(20),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 1, Right: 1},
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -928,9 +928,9 @@ func TestOverlayLastLineWithScrolling(t *testing.T) {
 		"BOTTOM-BORDER",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:   SizeAbs(20),
-		Anchor:  AnchorTopRight,
-		Margin:  OverlayMargin{Top: 1, Right: 1},
+		Width:  SizeAbs(20),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 1, Right: 1},
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -964,9 +964,9 @@ func TestOverlayTwoOverlaysLastLine(t *testing.T) {
 		"BOTTOM-BORDER",
 	}}
 	tui.ShowOverlay(detail, &OverlayOptions{
-		Width:   SizeAbs(20),
-		Anchor:  AnchorTopRight,
-		Margin:  OverlayMargin{Top: 1, Right: 1},
+		Width:  SizeAbs(20),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 1, Right: 1},
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -1001,9 +1001,9 @@ func TestOverlayAtBottomOfViewport(t *testing.T) {
 		"╰───────────────╯",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:   SizeAbs(18),
-		Anchor:  AnchorTopRight,
-		Margin:  OverlayMargin{Top: 0, Right: 1},
+		Width:  SizeAbs(18),
+		Anchor: AnchorTopRight,
+		Margin: OverlayMargin{Top: 0, Right: 1},
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -1037,8 +1037,8 @@ func TestOverlayTallerThanViewport(t *testing.T) {
 		"╰───────────────╯",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:   SizeAbs(18),
-		Anchor:  AnchorTopLeft,
+		Width:  SizeAbs(18),
+		Anchor: AnchorTopLeft,
 	})
 
 	snap := snapshotRenderedLines(tui, term)
@@ -1180,7 +1180,6 @@ func TestContainerDirtyPropagation(t *testing.T) {
 	assert.Equal(t, 2, c1.renderCount, "dirty child should re-render")
 	assert.Equal(t, 1, c2.renderCount, "clean child should still be cached")
 }
-
 
 func TestCompoCachedChildNoRepaint(t *testing.T) {
 	// Verify that a cached Compo child's line range is not repainted

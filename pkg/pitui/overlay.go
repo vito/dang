@@ -155,7 +155,6 @@ type overlayEntry struct {
 	component Component
 	options   *OverlayOptions
 	hidden    bool
-
 }
 
 func (t *TUI) removeOverlay(entry *overlayEntry) {

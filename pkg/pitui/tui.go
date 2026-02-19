@@ -126,9 +126,9 @@ type TUI struct {
 
 	kittyKeyboard bool // terminal confirmed Kitty keyboard protocol support
 
-	renderCh   chan struct{} // serialized render requests
-	renderDone chan struct{} // closed when renderLoop exits
-	debugWriter io.Writer    // if non-nil, render stats are logged here
+	renderCh    chan struct{} // serialized render requests
+	renderDone  chan struct{} // closed when renderLoop exits
+	debugWriter io.Writer     // if non-nil, render stats are logged here
 }
 
 // New creates a TUI backed by the given terminal.
@@ -465,10 +465,10 @@ func cursorVertical(delta int) string {
 // renderSnapshot holds a read-only copy of TUI state captured under the lock
 // at the start of a render frame.
 type renderSnapshot struct {
-	width           int
-	height          int
-	prevLines       []string
-	prevWidth       int
+	width             int
+	height            int
+	prevLines         []string
+	prevWidth         int
 	hardwareCursorRow int
 	maxLinesRendered  int
 	prevViewportTop   int

@@ -348,18 +348,18 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
 
 	r := &replComponent{
-		importConfigs:  importConfigs,
-		debug:          debug,
-		typeEnv:        typeEnv,
-		evalEnv:        evalEnv,
-		ctx:            ctx,
-		tui:            tui,
-		textInput:      ti,
-		entryContainer: &pitui.Container{},
+		importConfigs:   importConfigs,
+		debug:           debug,
+		typeEnv:         typeEnv,
+		evalEnv:         evalEnv,
+		ctx:             ctx,
+		tui:             tui,
+		textInput:       ti,
+		entryContainer:  &pitui.Container{},
 		menuMaxVisible:  8,
 		completionGroup: pitui.NewCursorGroup(),
-		history:        newReplHistory(),
-		quit:           make(chan struct{}),
+		history:         newReplHistory(),
+		quit:            make(chan struct{}),
 	}
 
 	// Spinner

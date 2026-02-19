@@ -82,10 +82,10 @@ type RenderResult struct {
 // counter past the snapshot, guaranteeing a re-render on the next
 // frame — no store-ordering subtleties required.
 type Compo struct {
-	generation  atomic.Int64
-	renderedGen int64        // generation when last rendered; render-goroutine only
-	cache       *renderCache // only accessed from the render goroutine
-	parent      *Compo
+	generation    atomic.Int64
+	renderedGen   int64        // generation when last rendered; render-goroutine only
+	cache         *renderCache // only accessed from the render goroutine
+	parent        *Compo
 	requestRender func() // set on the root by TUI
 }
 

@@ -492,4 +492,3 @@ func runeClass(r rune) int {
 	}
 	return 1
 }
-
