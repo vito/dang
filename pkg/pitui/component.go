@@ -87,6 +87,7 @@ type Compo struct {
 	cache         *renderCache // only accessed from the render goroutine
 	parent        *Compo
 	requestRender func() // set on the root by TUI
+	dispatch      func(func()) // propagated down the tree from TUI
 }
 
 type renderCache struct {
@@ -107,14 +108,33 @@ func (c *Compo) Update() {
 	}
 }
 
+// Dispatch schedules a function to run on the UI goroutine. This is
+// available on any component that is attached to a TUI tree — the
+// dispatch function is propagated down through the component tree when
+// children are added, so components never need a direct *TUI reference.
+//
+// Safe to call from any goroutine.
+func (c *Compo) Dispatch(fn func()) {
+	if c.dispatch != nil {
+		c.dispatch(fn)
+	}
+}
+
 // compo returns the embedded Compo. The unexported method ensures that
 // only types embedding Compo can satisfy the Component interface.
 func (c *Compo) compo() *Compo { return c }
 
-// setParent sets the parent Compo for upward dirty propagation.
+// setParent sets the parent Compo for upward dirty propagation and
+// inherits the dispatch function from the parent so that Dispatch()
+// works on any component in the tree.
 // Managed automatically by Container.AddChild, Slot.Set, and
 // RenderChild.
-func (c *Compo) setParent(parent *Compo) { c.parent = parent }
+func (c *Compo) setParent(parent *Compo) {
+	c.parent = parent
+	if parent != nil && parent.dispatch != nil {
+		c.dispatch = parent.dispatch
+	}
+}
 
 // RenderChild renders a child component through this Compo, using the
 // framework's render cache. It also wires the child's parent pointer so

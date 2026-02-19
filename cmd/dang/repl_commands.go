@@ -11,17 +11,13 @@ import (
 // ── commands ────────────────────────────────────────────────────────────────
 
 func (r *replComponent) handleCommand(cmdLine string) {
-	r.mu.Lock()
 	ev := r.activeEntryView()
-	ev.mu.Lock()
 	e := ev.entry
 
 	parts := strings.Fields(cmdLine)
 	if len(parts) == 0 {
 		e.writeLogLine(errorStyle.Render("empty command"))
 		ev.Update()
-		ev.mu.Unlock()
-		r.mu.Unlock()
 		return
 	}
 
@@ -52,15 +48,11 @@ func (r *replComponent) handleCommand(cmdLine string) {
 		e.writeLogLine(dimStyle.Render(fmt.Sprintf("Tab for completion, Up/Down for history, %s for multiline, Ctrl+L to clear.", multilineHint)))
 
 	case "exit", "quit":
-		ev.mu.Unlock()
-		r.mu.Unlock()
 		r.quitOnce.Do(func() { close(r.quit) })
 		return
 
 	case "clear":
-		ev.mu.Unlock()
 		r.entryContainer.Clear()
-		r.mu.Unlock()
 		return
 
 	case "reset":
@@ -133,8 +125,6 @@ func (r *replComponent) handleCommand(cmdLine string) {
 
 	case "doc":
 		ev.Update()
-		ev.mu.Unlock()
-		r.mu.Unlock()
 		r.showDocBrowser()
 		return
 
@@ -142,8 +132,6 @@ func (r *replComponent) handleCommand(cmdLine string) {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("unknown command: %s (type :help for available commands)", cmd)))
 	}
 	ev.Update()
-	ev.mu.Unlock()
-	r.mu.Unlock()
 }
 
 func (r *replComponent) envCommand(e *replEntry, args []string) {

@@ -171,6 +171,11 @@ func newTUI(term Terminal) *TUI {
 	t.Container.requestRender = func() {
 		t.RequestRender(false)
 	}
+	// Wire dispatch so any component in the tree can call Dispatch()
+	// without needing a direct *TUI reference.
+	t.Container.dispatch = func(fn func()) {
+		t.Dispatch(fn)
+	}
 	return t
 }
 

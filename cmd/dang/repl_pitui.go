@@ -83,10 +83,10 @@ func (w *pituiSyncWriter) flush() {
 	w.pending.Reset()
 	w.mu.Unlock()
 	if ev != nil && data != "" {
-		ev.mu.Lock()
-		ev.entry.writeLog(data)
-		ev.mu.Unlock()
-		ev.Update()
+		ev.Dispatch(func() {
+			ev.entry.writeLog(data)
+			ev.Update()
+		})
 	}
 }
 
@@ -113,10 +113,12 @@ func (w *pituiSyncWriter) Stop() {
 // written, eval done), nobody calls Update(), so the framework skips
 // Render() entirely and returns the cached result — making 200+ past
 // entries O(1) per render cycle.
+//
+// All entry mutations happen on the UI goroutine (directly from event
+// handlers, or via Dispatch from background goroutines like the Dagger
+// log flusher), so no mutex is needed.
 type entryView struct {
 	pitui.Compo
-
-	mu    sync.Mutex // protects entry writes from streaming goroutines
 	entry *replEntry
 }
 
@@ -127,9 +129,6 @@ func newEntryView(entry *replEntry) *entryView {
 }
 
 func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	ev.mu.Lock()
-	defer ev.mu.Unlock()
-
 	// Snapshot entry data.
 	input := ev.entry.input
 	logs := ev.entry.logs.String()
@@ -288,11 +287,10 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 // handling, and UI state. Completion logic lives in repl_completion.go,
 // commands in repl_commands.go, and history in repl_history.go.
 //
-// Lock ordering: r.mu must be acquired before ev.mu. Never hold ev.mu
-// while acquiring r.mu.
+// All state is accessed exclusively on the UI goroutine — event handlers
+// run there directly, and background goroutines (eval, Dagger log flusher)
+// use Dispatch to mutate state. No mutex is needed.
 type replComponent struct {
-	mu sync.Mutex
-
 	// Dang state
 	importConfigs []dang.ImportConfig
 	debug         bool
@@ -404,8 +402,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 }
 
 // activeEntryView returns the last (active) entryView in the container.
-// Caller must hold r.mu OR otherwise ensure no concurrent mutation of
-// the container's children (e.g. during startup before the TUI is running).
+// Must be called on the UI goroutine.
 func (r *replComponent) activeEntryView() *entryView {
 	children := r.entryContainer.Children
 	if len(children) == 0 {
@@ -416,7 +413,7 @@ func (r *replComponent) activeEntryView() *entryView {
 }
 
 // addEntry creates a new entryView, appends it to the container, and returns it.
-// Caller must hold r.mu.
+// Must be called on the UI goroutine.
 func (r *replComponent) addEntry(input string) *entryView {
 	entry := newReplEntry(input)
 	ev := newEntryView(entry)
@@ -452,9 +449,7 @@ func (r *replComponent) onSubmit(line string) bool {
 		}
 	}
 
-	r.mu.Lock()
 	r.addEntry(strings.Join(echoedLines, "\n"))
-	r.mu.Unlock()
 
 	r.hideCompletionMenu()
 
@@ -551,9 +546,7 @@ func (r *replComponent) onKey(key uv.Key) bool {
 		}
 
 	case key.Code == 'l' && key.Mod == uv.ModCtrl:
-		r.mu.Lock()
 		r.entryContainer.Clear()
-		r.mu.Unlock()
 		return true
 	}
 
@@ -563,38 +556,29 @@ func (r *replComponent) onKey(key uv.Key) bool {
 // ── eval ────────────────────────────────────────────────────────────────────
 
 func (r *replComponent) startEval(expr string) {
-	r.mu.Lock()
 	ev := r.activeEntryView()
 
 	result, err := dang.Parse("repl", []byte(expr))
 	if err != nil {
-		ev.mu.Lock()
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		ev.Update()
-		ev.mu.Unlock()
-		r.mu.Unlock()
 		return
 	}
 
 	forms := result.(*dang.ModuleBlock).Forms
 
 	if r.debug {
-		ev.mu.Lock()
 		for _, node := range forms {
 			ev.entry.writeLogLine(dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(node))))
 		}
 		ev.Update()
-		ev.mu.Unlock()
 	}
 
 	fresh := hm.NewSimpleFresher()
 	_, err = dang.InferFormsWithPhases(r.ctx, forms, r.typeEnv, fresh)
 	if err != nil {
-		ev.mu.Lock()
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		ev.Update()
-		ev.mu.Unlock()
-		r.mu.Unlock()
 		return
 	}
 
@@ -607,7 +591,6 @@ func (r *replComponent) startEval(expr string) {
 	if r.daggerLog != nil {
 		r.daggerLog.SetTarget(ev)
 	}
-	r.mu.Unlock()
 
 	// Swap text input for spinner via the slot.
 	r.inputSlot.Set(r.spinner)
@@ -668,11 +651,9 @@ func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancel
 		r.spinner.Stop()
 		removeListener()
 
-		r.mu.Lock()
 		r.evaluating = false
 		r.cancelEval = nil
 		if ev != nil {
-			ev.mu.Lock()
 			if cancelled {
 				ev.entry.writeLogLine(errorStyle.Render("cancelled"))
 			} else {
@@ -684,12 +665,10 @@ func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancel
 				}
 			}
 			ev.Update()
-			ev.mu.Unlock()
 		}
 		if !cancelled {
 			r.refreshCompletions()
 		}
-		r.mu.Unlock()
 
 		// Swap spinner back to text input via the slot.
 		r.inputSlot.Set(r.textInput)
