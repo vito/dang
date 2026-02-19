@@ -145,12 +145,14 @@ type TUI struct {
 	eventCh    chan uv.Event   // decoded input events from terminal
 	dispatchCh chan func()     // closures to run on UI goroutine
 	renderCh   chan struct{}   // coalesced render requests
+	stopCh     chan struct{}   // closed by Stop() to signal shutdown
 	loopDone   chan struct{}   // closed when runLoop exits
 }
 
 // New creates a TUI backed by the given terminal.
 func New(term Terminal) *TUI {
 	t := newTUI(term)
+	t.stopCh = make(chan struct{})
 	t.loopDone = make(chan struct{})
 	go t.runLoop()
 	return t
@@ -182,20 +184,13 @@ func (t *TUI) runLoop() {
 	for {
 		// Wait for any signal.
 		select {
-		case ev, ok := <-t.eventCh:
-			if !ok {
-				return
-			}
+		case <-t.stopCh:
+			return
+		case ev := <-t.eventCh:
 			t.dispatchEvent(ev)
-		case fn, ok := <-t.dispatchCh:
-			if !ok {
-				return
-			}
+		case fn := <-t.dispatchCh:
 			fn()
-		case _, ok := <-t.renderCh:
-			if !ok {
-				return
-			}
+		case <-t.renderCh:
 			// fall through to drain + render
 		}
 
@@ -204,15 +199,11 @@ func (t *TUI) runLoop() {
 	drain:
 		for {
 			select {
-			case ev, ok := <-t.eventCh:
-				if !ok {
-					return
-				}
+			case <-t.stopCh:
+				return
+			case ev := <-t.eventCh:
 				t.dispatchEvent(ev)
-			case fn, ok := <-t.dispatchCh:
-				if !ok {
-					return
-				}
+			case fn := <-t.dispatchCh:
 				fn()
 			default:
 				break drain
@@ -346,7 +337,7 @@ func (t *TUI) HasOverlay() bool {
 func (t *TUI) Dispatch(fn func()) {
 	select {
 	case t.dispatchCh <- fn:
-	case <-t.loopDone:
+	case <-t.stopCh:
 		// TUI already stopped, silently drop.
 	}
 	// Also signal a render so the event loop wakes up.
@@ -377,18 +368,9 @@ func (t *TUI) Start() error {
 
 // Stop ends the TUI event loop and restores the terminal.
 func (t *TUI) Stop() {
-	// Set stopped = true on the UI goroutine so the render loop sees it
-	// consistently, then close the render channel to terminate the loop.
-	done := make(chan struct{})
-	t.Dispatch(func() {
-		t.stopped = true
-		close(done)
-	})
-	<-done
-
-	// Close channels to terminate the event loop, then wait for it
-	// to finish any in-progress work.
-	close(t.renderCh)
+	// Signal the event loop to stop and wait for it to finish any
+	// in-progress work.
+	close(t.stopCh)
 	if t.loopDone != nil {
 		<-t.loopDone
 	}
@@ -430,10 +412,8 @@ func (t *TUI) RequestRender(repaint bool) {
 	}
 
 	// Non-blocking send to coalesce multiple rapid requests.
-	// Use loopDone to avoid sending on a closed channel after Stop().
 	select {
 	case t.renderCh <- struct{}{}:
-	case <-t.loopDone:
 	default:
 	}
 }
