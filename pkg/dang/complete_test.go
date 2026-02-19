@@ -52,11 +52,11 @@ func TestSplitDotExpr(t *testing.T) {
 
 func TestSplitArgExpr(t *testing.T) {
 	tests := []struct {
-		text             string
-		wantFuncExpr     string
-		wantPartial      string
-		wantProvided     []string
-		wantOK           bool
+		text         string
+		wantFuncExpr string
+		wantPartial  string
+		wantProvided []string
+		wantOK       bool
 	}{
 		// Simple function call with no args yet
 		{"foo(", "foo", "", nil, true},

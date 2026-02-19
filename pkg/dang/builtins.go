@@ -438,7 +438,6 @@ func Register(def BuiltinDef) {
 	registry = append(registry, def)
 }
 
-
 // ForEachFunction iterates over all registered functions
 func ForEachFunction(fn func(BuiltinDef)) {
 	for _, def := range registry {

@@ -222,10 +222,10 @@ func makeClient(endpoint, authorization string, headers map[string]string) (grap
 // field, that service is started recursively. Resolution must eventually
 // produce an "endpoint" or it is an error.
 type serviceProcess struct {
-	cmd     []string
-	dir     string
-	parent  *ImportSource // static config fields to use as defaults
-	depth   int
+	cmd    []string
+	dir    string
+	parent *ImportSource // static config fields to use as defaults
+	depth  int
 
 	services *ServiceRegistry
 

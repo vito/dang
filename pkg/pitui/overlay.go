@@ -24,10 +24,10 @@ type OverlayMargin struct {
 // SizeValue represents either an absolute column/row count or a percentage
 // of the terminal dimension ("50%").  Use SizeAbs and SizePct helpers.
 type SizeValue struct {
-	abs     int
-	pct     float64
-	isPct   bool
-	isSet   bool
+	abs   int
+	pct   float64
+	isPct bool
+	isSet bool
 }
 
 // SizeAbs returns an absolute SizeValue.

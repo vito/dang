@@ -20,7 +20,7 @@ import (
 // Late-arriving log chunks update the logs section while the result
 // stays anchored at the bottom.
 type replEntry struct {
-	input  string          // echoed prompt line ("" for system/welcome messages)
+	input  string           // echoed prompt line ("" for system/welcome messages)
 	logs   *strings.Builder // raw streaming output (no per-chunk styling)
 	result *strings.Builder // final result lines
 }
@@ -34,8 +34,8 @@ func newReplEntry(input string) *replEntry {
 }
 
 func (e *replEntry) writeLog(s string)     { e.logs.WriteString(s) }
-func (e *replEntry) writeLogLine(s string)  { e.logs.WriteString(s); e.logs.WriteByte('\n') }
-func (e *replEntry) writeResult(s string)   { e.result.WriteString(s); e.result.WriteByte('\n') }
+func (e *replEntry) writeLogLine(s string) { e.logs.WriteString(s); e.logs.WriteByte('\n') }
+func (e *replEntry) writeResult(s string)  { e.result.WriteString(s); e.result.WriteByte('\n') }
 
 // Styles (shared between REPL and doc browser)
 var (
@@ -44,9 +44,9 @@ var (
 	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	menuStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
 	menuSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("63")).Bold(true)
-	menuBorderStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("63"))
+	menuBorderStyle   = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("63"))
 	detailBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("241"))
@@ -183,5 +183,3 @@ func buildEnvFromImports(configs []dang.ImportConfig) (dang.Env, dang.EvalEnv) {
 
 	return typeEnv, evalEnv
 }
-
-

@@ -50,7 +50,7 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 `,
 		},
 		{
-			name: "single-line chain stays single-line",
+			name:  "single-line chain stays single-line",
 			input: `pub x = foo.bar.baz`,
 			expected: `pub x = foo.bar.baz
 `,
@@ -732,7 +732,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 `,
 		},
 		{
-			name: "args on same line stay together",
+			name:  "args on same line stay together",
 			input: `pub x = foo(a, b, c)`,
 			expected: `pub x = foo(a, b, c)
 `,
@@ -752,7 +752,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 `,
 		},
 		{
-			name: "short multi-arg calls stay on one line",
+			name:  "short multi-arg calls stay on one line",
 			input: `pub x = foo(a: 1, b: 2)`,
 			expected: `pub x = foo(a: 1, b: 2)
 `,
@@ -938,7 +938,7 @@ import Foo
 `,
 		},
 		{
-			name: "single import with no following code",
+			name:  "single import with no following code",
 			input: `import Foo`,
 			expected: `import Foo
 `,
@@ -989,13 +989,13 @@ func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
 `,
 		},
 		{
-			name: "single-line suffix directives stay on one line",
+			name:  "single-line suffix directives stay on one line",
 			input: `pub workspace: Directory! @defaultPath(path: "/")`,
 			expected: `pub workspace: Directory! @defaultPath(path: "/")
 `,
 		},
 		{
-			name: "multiple suffix directives on same line stay on one line",
+			name:  "multiple suffix directives on same line stay on one line",
 			input: `pub x: Int! @foo @bar`,
 			expected: `pub x: Int! @foo @bar
 `,

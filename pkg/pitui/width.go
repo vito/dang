@@ -77,11 +77,11 @@ func SliceByColumn(line string, startCol, length int) string {
 	// We need to walk the string tracking visible width, skipping until
 	// startCol, then collecting until we have length columns.
 	var (
-		result       strings.Builder
-		pendingANSI  strings.Builder
-		col          int
-		collecting   bool
-		collectedW   int
+		result      strings.Builder
+		pendingANSI strings.Builder
+		col         int
+		collecting  bool
+		collectedW  int
 	)
 
 	remaining := line

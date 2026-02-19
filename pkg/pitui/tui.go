@@ -38,14 +38,14 @@ type TUI struct {
 	focusedComponent Component
 	inputListeners   []inputListenerEntry
 
-	cursorRow          int
-	hardwareCursorRow  int
-	showHardwareCursor bool
-	clearOnShrink      bool
-	maxLinesRendered   int
+	cursorRow           int
+	hardwareCursorRow   int
+	showHardwareCursor  bool
+	clearOnShrink       bool
+	maxLinesRendered    int
 	previousViewportTop int
-	fullRedrawCount    int
-	stopped            bool
+	fullRedrawCount     int
+	stopped             bool
 
 	overlayStack []*overlayEntry
 

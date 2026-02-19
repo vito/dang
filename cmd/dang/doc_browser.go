@@ -69,7 +69,7 @@ func (c *docColumn) applyFilter() {
 type itemKind int
 
 const (
-	kindField     itemKind = iota
+	kindField itemKind = iota
 	kindType
 	kindInterface
 	kindEnum
@@ -472,5 +472,3 @@ func docItemFromEnv(env dang.Env, name string) (docItem, bool) {
 
 	return docItem{}, false
 }
-
-

@@ -592,7 +592,6 @@ func TestOverlayBorderedBoxFitsNaturally(t *testing.T) {
 	golden.Assert(t, snap, "overlay_bordered_fits.golden")
 }
 
-
 func TestOverlayLastLineNotDropped(t *testing.T) {
 	// Regression test: the last line of an overlay was silently dropped
 	// during compositing, causing bottom borders to disappear.
@@ -614,9 +613,9 @@ func TestOverlayLastLineNotDropped(t *testing.T) {
 		"BOTTOM-BORDER",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:  SizeAbs(20),
-		Anchor: AnchorTopRight,
-		Margin: OverlayMargin{Top: 1, Right: 1},
+		Width:   SizeAbs(20),
+		Anchor:  AnchorTopRight,
+		Margin:  OverlayMargin{Top: 1, Right: 1},
 		NoFocus: true,
 	})
 
@@ -645,9 +644,9 @@ func TestOverlayLastLineWithScrolling(t *testing.T) {
 		"BOTTOM-BORDER",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:  SizeAbs(20),
-		Anchor: AnchorTopRight,
-		Margin: OverlayMargin{Top: 1, Right: 1},
+		Width:   SizeAbs(20),
+		Anchor:  AnchorTopRight,
+		Margin:  OverlayMargin{Top: 1, Right: 1},
 		NoFocus: true,
 	})
 
@@ -683,9 +682,9 @@ func TestOverlayTwoOverlaysLastLine(t *testing.T) {
 		"BOTTOM-BORDER",
 	}}
 	tui.ShowOverlay(detail, &OverlayOptions{
-		Width:  SizeAbs(20),
-		Anchor: AnchorTopRight,
-		Margin: OverlayMargin{Top: 1, Right: 1},
+		Width:   SizeAbs(20),
+		Anchor:  AnchorTopRight,
+		Margin:  OverlayMargin{Top: 1, Right: 1},
 		NoFocus: true,
 	})
 
@@ -721,9 +720,9 @@ func TestOverlayAtBottomOfViewport(t *testing.T) {
 		"╰───────────────╯",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:  SizeAbs(18),
-		Anchor: AnchorTopRight,
-		Margin: OverlayMargin{Top: 0, Right: 1},
+		Width:   SizeAbs(18),
+		Anchor:  AnchorTopRight,
+		Margin:  OverlayMargin{Top: 0, Right: 1},
 		NoFocus: true,
 	})
 
@@ -758,8 +757,8 @@ func TestOverlayTallerThanViewport(t *testing.T) {
 		"╰───────────────╯",
 	}}
 	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:  SizeAbs(18),
-		Anchor: AnchorTopLeft,
+		Width:   SizeAbs(18),
+		Anchor:  AnchorTopLeft,
 		NoFocus: true,
 	})
 

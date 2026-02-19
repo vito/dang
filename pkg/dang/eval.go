@@ -68,8 +68,8 @@ type InputObjectConstructor struct {
 	FnType   *hm.FunctionType
 }
 
-func (c InputObjectConstructor) Type() hm.Type    { return c.FnType }
-func (c InputObjectConstructor) String() string    { return fmt.Sprintf("input:%s", c.TypeName) }
+func (c InputObjectConstructor) Type() hm.Type        { return c.FnType }
+func (c InputObjectConstructor) String() string       { return fmt.Sprintf("input:%s", c.TypeName) }
 func (c InputObjectConstructor) IsAutoCallable() bool { return false }
 
 func (c InputObjectConstructor) ParameterNames() []string {
@@ -439,9 +439,9 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			fnType := hm.NewFnType(args, NonNull(inputTypeEnv))
 
 			constructor := InputObjectConstructor{
-				TypeName:  t.Name,
-				TypeEnv:   inputTypeEnv.(*Module),
-				FnType:    fnType,
+				TypeName: t.Name,
+				TypeEnv:  inputTypeEnv.(*Module),
+				FnType:   fnType,
 			}
 			env.SetWithVisibility(t.Name, constructor, PublicVisibility)
 		}

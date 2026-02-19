@@ -309,5 +309,3 @@ func (h *langHandler) hoverDirectiveApplication(ctx context.Context, f *File, ap
 		},
 	}, nil
 }
-
-

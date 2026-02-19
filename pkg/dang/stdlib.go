@@ -60,7 +60,6 @@ func registerStdlib() {
 			return ToValue(string(jsonBytes))
 		})
 
-
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
 	Method(StringType, "split").
 		Doc("splits a string by separator").
