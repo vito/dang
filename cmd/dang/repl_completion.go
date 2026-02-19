@@ -16,6 +16,7 @@ func (r *replComponent) hideCompletionMenu() {
 	r.menuItems = nil
 	r.menuLabels = nil
 	r.menuCompletions = nil
+	r.menuIndex = 0
 	if r.menuHandle != nil {
 		r.menuHandle.Hide()
 		r.menuHandle = nil
