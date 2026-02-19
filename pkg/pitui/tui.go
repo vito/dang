@@ -355,7 +355,14 @@ func (t *TUI) Dispatch(fn func()) {
 
 // Start begins the TUI event loop.
 func (t *TUI) Start() error {
-	t.stopped = false
+	// Set stopped = false on the UI goroutine to avoid racing with runLoop.
+	done := make(chan struct{})
+	t.Dispatch(func() {
+		t.stopped = false
+		close(done)
+	})
+	<-done
+
 	err := t.terminal.Start(
 		func(data []byte) { t.handleInput(data) },
 		func() { t.RequestRender(false) },
@@ -370,7 +377,14 @@ func (t *TUI) Start() error {
 
 // Stop ends the TUI event loop and restores the terminal.
 func (t *TUI) Stop() {
-	t.stopped = true
+	// Set stopped = true on the UI goroutine so the render loop sees it
+	// consistently, then close the render channel to terminate the loop.
+	done := make(chan struct{})
+	t.Dispatch(func() {
+		t.stopped = true
+		close(done)
+	})
+	<-done
 
 	// Close channels to terminate the event loop, then wait for it
 	// to finish any in-progress work.
