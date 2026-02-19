@@ -1,6 +1,7 @@
 package pitui
 
 import (
+	"context"
 	"time"
 )
 
@@ -18,7 +19,7 @@ type Spinner struct {
 	start    time.Time
 
 	ticker *time.Ticker
-	done   chan struct{}
+	cancel context.CancelFunc
 }
 
 // NewSpinner creates a dot-style spinner.
@@ -33,11 +34,11 @@ func NewSpinner() *Spinner {
 // (from an event handler, a Dispatch callback, or before TUI.Start).
 func (s *Spinner) Start() {
 	s.start = time.Now()
-	s.done = make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
 	s.ticker = time.NewTicker(s.interval)
 
 	// Capture locally so the goroutine never touches Spinner fields.
-	done := s.done
 	ticker := s.ticker
 
 	go func() {
@@ -45,7 +46,7 @@ func (s *Spinner) Start() {
 			select {
 			case <-ticker.C:
 				s.Update()
-			case <-done:
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -55,9 +56,9 @@ func (s *Spinner) Start() {
 // Stop ends the spinner animation. Must be called on the UI goroutine
 // (from an event handler, a Dispatch callback, or before TUI.Start).
 func (s *Spinner) Stop() {
-	if s.done != nil {
-		close(s.done)
-		s.done = nil
+	if s.cancel != nil {
+		s.cancel()
+		s.cancel = nil
 	}
 	if s.ticker != nil {
 		s.ticker.Stop()

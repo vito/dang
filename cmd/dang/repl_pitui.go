@@ -38,13 +38,16 @@ type pituiSyncWriter struct {
 	target  *entryView
 	pending strings.Builder
 	dirty   chan struct{} // capacity-1 channel; non-blocking send coalesces
-	done    chan struct{} // closed to stop the flush goroutine
+	cancel  context.CancelFunc
+	stopCtx context.Context
 }
 
 func newPituiSyncWriter() *pituiSyncWriter {
+	ctx, cancel := context.WithCancel(context.Background())
 	w := &pituiSyncWriter{
-		dirty: make(chan struct{}, 1),
-		done:  make(chan struct{}),
+		dirty:   make(chan struct{}, 1),
+		cancel:  cancel,
+		stopCtx: ctx,
 	}
 	go w.flushLoop()
 	return w
@@ -69,7 +72,7 @@ func (w *pituiSyncWriter) flushLoop() {
 		select {
 		case <-w.dirty:
 			w.flush()
-		case <-w.done:
+		case <-w.stopCtx.Done():
 			w.flush() // drain any remaining data
 			return
 		}
@@ -103,7 +106,7 @@ func (w *pituiSyncWriter) SetTarget(ev *entryView) {
 // Stop shuts down the flush goroutine. Must be called when the writer
 // is no longer needed.
 func (w *pituiSyncWriter) Stop() {
-	close(w.done)
+	w.cancel()
 }
 
 // ── entry view component ────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 package pitui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -141,17 +142,21 @@ type TUI struct {
 
 	// ── Event loop channels ──
 
-	eventCh    chan uv.Event   // decoded input events from terminal
-	dispatchCh chan func()     // closures to run on UI goroutine
-	renderCh   chan struct{}   // coalesced render requests
-	stopCh     chan struct{}   // closed by Stop() to signal shutdown
-	loopDone   chan struct{}   // closed when runLoop exits
+	eventCh    chan uv.Event // decoded input events from terminal
+	dispatchCh chan func()   // closures to run on UI goroutine
+	renderCh   chan struct{} // coalesced render requests
+	loopDone   chan struct{} // closed when runLoop exits
+
+	// ── Lifecycle ──
+
+	stopCtx    context.Context    // cancelled by Stop() to signal shutdown
+	stopCancel context.CancelFunc // cancels stopCtx
 }
 
 // New creates a TUI backed by the given terminal.
 func New(term Terminal) *TUI {
 	t := newTUI(term)
-	t.stopCh = make(chan struct{})
+	t.stopCtx, t.stopCancel = context.WithCancel(context.Background())
 	t.loopDone = make(chan struct{})
 	go t.runLoop()
 	return t
@@ -188,7 +193,7 @@ func (t *TUI) runLoop() {
 	for {
 		// Wait for any signal.
 		select {
-		case <-t.stopCh:
+		case <-t.stopCtx.Done():
 			return
 		case ev := <-t.eventCh:
 			t.dispatchEvent(ev)
@@ -203,7 +208,7 @@ func (t *TUI) runLoop() {
 	drain:
 		for {
 			select {
-			case <-t.stopCh:
+			case <-t.stopCtx.Done():
 				return
 			case ev := <-t.eventCh:
 				t.dispatchEvent(ev)
@@ -344,7 +349,7 @@ func (t *TUI) HasOverlay() bool {
 func (t *TUI) Dispatch(fn func()) {
 	select {
 	case t.dispatchCh <- fn:
-	case <-t.stopCh:
+	case <-t.stopCtx.Done():
 		// TUI already stopped, silently drop.
 	}
 	// Also signal a render so the event loop wakes up.
@@ -373,7 +378,7 @@ func (t *TUI) Start() error {
 func (t *TUI) Stop() {
 	// Signal the event loop to stop and wait for it to finish any
 	// in-progress work.
-	close(t.stopCh)
+	t.stopCancel()
 	if t.loopDone != nil {
 		<-t.loopDone
 	}

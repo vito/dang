@@ -7,6 +7,7 @@
 package pitui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -55,7 +56,8 @@ type ProcessTerminal struct {
 	onInput     func([]byte)
 	onResize    func()
 	sigCh       chan os.Signal
-	stopCh      chan struct{}
+	stopCancel  context.CancelFunc
+	stopCtx     context.Context
 
 	sizeMu sync.RWMutex
 	cols   int
@@ -69,7 +71,7 @@ func NewProcessTerminal() *ProcessTerminal {
 func (t *ProcessTerminal) Start(onInput func([]byte), onResize func()) error {
 	t.onInput = onInput
 	t.onResize = onResize
-	t.stopCh = make(chan struct{})
+	t.stopCtx, t.stopCancel = context.WithCancel(context.Background())
 
 	// Save and set raw mode.
 	fd := int(os.Stdin.Fd())
@@ -133,7 +135,7 @@ func (t *ProcessTerminal) Start(onInput func([]byte), onResize func()) error {
 				if t.onResize != nil {
 					t.onResize()
 				}
-			case <-t.stopCh:
+			case <-t.stopCtx.Done():
 				return
 			}
 		}
@@ -149,8 +151,8 @@ func (t *ProcessTerminal) Stop() {
 	// Disable bracketed paste.
 	t.WriteString("\x1b[?2004l")
 
-	if t.stopCh != nil {
-		close(t.stopCh)
+	if t.stopCancel != nil {
+		t.stopCancel()
 	}
 	if t.sigCh != nil {
 		signal.Stop(t.sigCh)
