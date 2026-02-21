@@ -28,18 +28,15 @@ func (r *replComponent) handleCommand(ctx pitui.EventContext, cmdLine string) {
 	switch cmd {
 	case "help":
 		e.writeLogLine("Available commands:")
-		e.writeLogLine(dimStyle.Render("  :help      - Show this help"))
-		e.writeLogLine(dimStyle.Render("  :exit      - Exit the REPL"))
-		e.writeLogLine(dimStyle.Render("  :doc       - Interactive API browser"))
-		e.writeLogLine(dimStyle.Render("  :env       - Show environment bindings"))
-		e.writeLogLine(dimStyle.Render("  :type      - Show type of an expression"))
-		e.writeLogLine(dimStyle.Render("  :find      - Find functions/types by pattern"))
-		e.writeLogLine(dimStyle.Render("  :reset     - Reset the environment"))
-		e.writeLogLine(dimStyle.Render("  :clear     - Clear the screen"))
-		e.writeLogLine(dimStyle.Render("  :debug     - Toggle debug mode"))
-		e.writeLogLine(dimStyle.Render("  :debug-render - Toggle render performance logging"))
-		e.writeLogLine(dimStyle.Render("  :version   - Show version info"))
-		e.writeLogLine(dimStyle.Render("  :quit      - Exit the REPL"))
+		maxName := 0
+		for _, cmd := range replCommandDefs {
+			if len(cmd.name) > maxName {
+				maxName = len(cmd.name)
+			}
+		}
+		for _, cmd := range replCommandDefs {
+			e.writeLogLine(dimStyle.Render(fmt.Sprintf("  :%-*s - %s", maxName, cmd.name, cmd.desc)))
+		}
 		e.writeLogLine("")
 		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
 		multilineHint := "Alt+Enter"
