@@ -147,7 +147,7 @@ func run() error {
 		}
 	}
 
-	tui.AddInputListener(func(ev uv.Event) bool {
+	tui.AddInputListener(func(_ pitui.EventContext, ev uv.Event) bool {
 		kp, ok := ev.(uv.KeyPressEvent)
 		if !ok {
 			return false

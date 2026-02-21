@@ -34,19 +34,19 @@ import (
 // write. The flush goroutine drains the pending buffer at most once per
 // render frame.
 type pituiSyncWriter struct {
-	mu      sync.Mutex
-	tui     *pitui.TUI
-	target  *entryView
-	pending strings.Builder
-	dirty   chan struct{} // capacity-1 channel; non-blocking send coalesces
-	cancel  context.CancelFunc
-	stopCtx context.Context
+	mu       sync.Mutex
+	dispatch func(func()) // schedules work on the UI goroutine
+	target   *entryView
+	pending  strings.Builder
+	dirty    chan struct{} // capacity-1 channel; non-blocking send coalesces
+	cancel   context.CancelFunc
+	stopCtx  context.Context
 }
 
-func newPituiSyncWriter(tui *pitui.TUI) *pituiSyncWriter {
+func newPituiSyncWriter(dispatch func(func())) *pituiSyncWriter {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &pituiSyncWriter{
-		tui: tui,
+		dispatch: dispatch,
 		dirty:   make(chan struct{}, 1),
 		cancel:  cancel,
 		stopCtx: ctx,
@@ -88,7 +88,7 @@ func (w *pituiSyncWriter) flush() {
 	w.pending.Reset()
 	w.mu.Unlock()
 	if ev != nil && data != "" {
-		w.tui.Dispatch(func() {
+		w.dispatch(func() {
 			ev.entry.writeLog(data)
 			ev.Update()
 		})
@@ -722,7 +722,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 
 	// If there's a Dagger module, load it with a spinner visible.
 	// Spinner starts automatically via OnMount when added to the tree.
-	daggerLog := newPituiSyncWriter(tui)
+	daggerLog := newPituiSyncWriter(tui.Dispatch)
 	defer daggerLog.Stop()
 	var daggerConn *dagger.Client
 	if moduleDir != "" {

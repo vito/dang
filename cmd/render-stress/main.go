@@ -95,7 +95,7 @@ func run(initialLines int) error {
 	}
 
 	// Input handler.
-	tui.AddInputListener(func(_ pitui.EventContext, ev uv.Event) bool {
+	tui.AddInputListener(func(ctx pitui.EventContext, ev uv.Event) bool {
 		kp, ok := ev.(uv.KeyPressEvent)
 		if !ok {
 			return false
@@ -118,7 +118,7 @@ func run(initialLines int) error {
 			} else {
 				statusBar.set("\x1b[7m VERBOSE OFF — compact view \x1b[0m")
 			}
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "c":
@@ -132,19 +132,19 @@ func run(initialLines int) error {
 			} else {
 				statusBar.set("\x1b[7m COLOR OFF — plain text \x1b[0m")
 			}
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "a":
 			appendLines(log, 10)
 			statusBar.set("\x1b[7m +10 lines appended \x1b[0m")
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "A":
 			appendLines(log, 100)
 			statusBar.set("\x1b[7m +100 lines appended \x1b[0m")
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "d":
@@ -158,7 +158,7 @@ func run(initialLines int) error {
 			log.mu.Unlock()
 			log.Update()
 			statusBar.set(fmt.Sprintf("\x1b[7m deleted 10 lines (now %d) \x1b[0m", n))
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "o":
@@ -179,7 +179,7 @@ func run(initialLines int) error {
 					"│  file            │",
 					"╰──────────────────╯",
 				}}
-				overlayHandle = tui.ShowOverlay(overlay, &pitui.OverlayOptions{
+				overlayHandle = ctx.ShowOverlay(overlay, &pitui.OverlayOptions{
 					Width:   pitui.SizeAbs(22),
 					Anchor:  pitui.AnchorBottomLeft,
 					OffsetX: 2,
@@ -187,7 +187,7 @@ func run(initialLines int) error {
 				})
 				statusBar.set("\x1b[7m overlay shown (press o to hide) \x1b[0m")
 			}
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "s":
@@ -198,12 +198,12 @@ func run(initialLines int) error {
 				spinnerSlot.Set(spinner)
 				statusBar.set("\x1b[7m spinner running (continuous repaints) \x1b[0m")
 			}
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 
 		case key.Text == "r":
 			statusBar.set("\x1b[7m forced full redraw \x1b[0m")
-			tui.RequestRender(true)
+			ctx.RequestRender(true)
 			return true
 
 		case len(key.Text) == 1 && key.Text[0] >= '1' && key.Text[0] <= '9':
@@ -212,7 +212,7 @@ func run(initialLines int) error {
 			continuousDone = make(chan struct{})
 			continuousTicker = time.NewTicker(50 * time.Millisecond)
 			statusBar.set(fmt.Sprintf("\x1b[7m continuous repaint on line %d every 50ms (0 to stop) \x1b[0m", target))
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			go func() {
 				tick := continuousTicker
 				done := continuousDone
@@ -236,7 +236,7 @@ func run(initialLines int) error {
 		case key.Text == "0":
 			stopContinuous()
 			statusBar.set("\x1b[7m continuous repaint stopped \x1b[0m")
-			tui.RequestRender(false)
+			ctx.RequestRender(false)
 			return true
 		}
 		return false
