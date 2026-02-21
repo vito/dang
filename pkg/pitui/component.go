@@ -59,8 +59,11 @@ func (ctx EventContext) HasOverlay() bool {
 
 // Dispatch schedules a function to run on the UI goroutine.
 //
-// Safe to call from any goroutine. The caller already has the
-// EventContext in closure scope, so the callback doesn't receive one.
+// Safe to call from any goroutine. This is the primary way for
+// background goroutines (spawned from OnMount, commands, etc.) to
+// mutate component state and call [Compo.Update]. The caller already
+// has the EventContext in closure scope, so the callback doesn't
+// receive one.
 func (ctx EventContext) Dispatch(fn func()) {
 	ctx.tui.Dispatch(fn)
 }
@@ -176,7 +179,9 @@ type renderCache struct {
 // If the component tree is rooted in a TUI, a render is scheduled
 // automatically.
 //
-// Safe to call from any goroutine.
+// Must be called from the UI goroutine (event handlers, lifecycle hooks,
+// or Dispatch callbacks). Background goroutines should use
+// [EventContext.Dispatch] to schedule state changes and Update calls.
 func (c *Compo) Update() {
 	c.generation.Add(1)
 	if c.parent != nil {

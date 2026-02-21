@@ -38,7 +38,9 @@ func (s *Spinner) OnMount(ctx EventContext) {
 		for {
 			select {
 			case <-ticker.C:
-				s.Update()
+				ctx.Dispatch(func() {
+					s.Update()
+				})
 			case <-ctx.Done():
 				return
 			}

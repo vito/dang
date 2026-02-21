@@ -26,21 +26,19 @@ import (
 //	tui.AddChild(comp)
 type Wrap struct {
 	pitui.Compo
-	model  tea.Model
-	width  int
-	height int
-	onQuit func()
+	model    tea.Model
+	width    int
+	height   int
+	onQuit   func()
+	dispatch func(func()) // set on mount; schedules work on the UI goroutine
 }
 
 // New wraps a bubbletea v1 model as a pitui Component.
-// The model's Init() is called immediately and any returned command
-// is executed.
+// The model's Init() is called when the component is mounted (OnMount),
+// ensuring commands are dispatched on the UI goroutine.
 func New(model tea.Model) *Wrap {
 	b := &Wrap{model: model}
 	b.Compo.Update()
-	if cmd := model.Init(); cmd != nil {
-		b.execCmd(cmd)
-	}
 	return b
 }
 
@@ -50,12 +48,22 @@ func (b *Wrap) OnQuit(fn func()) {
 	b.onQuit = fn
 }
 
+// OnMount captures the dispatch function for scheduling command results
+// back on the UI goroutine, and calls the model's Init().
+func (b *Wrap) OnMount(ctx pitui.EventContext) {
+	b.dispatch = ctx.Dispatch
+	if cmd := b.model.Init(); cmd != nil {
+		b.execCmd(cmd)
+	}
+}
+
 // Model returns the underlying bubbletea v1 model.
 func (b *Wrap) Model() tea.Model {
 	return b.model
 }
 
 // SendMsg sends a message to the bubbletea model's Update function.
+// Must be called from the UI goroutine.
 func (b *Wrap) SendMsg(msg tea.Msg) {
 	b.updateModel(msg)
 }
@@ -76,12 +84,20 @@ func (b *Wrap) execCmd(cmd tea.Cmd) {
 			return
 		}
 		if _, ok := msg.(tea.QuitMsg); ok {
-			if b.onQuit != nil {
-				b.onQuit()
+			if b.dispatch != nil {
+				b.dispatch(func() {
+					if b.onQuit != nil {
+						b.onQuit()
+					}
+				})
 			}
 			return
 		}
-		b.updateModel(msg)
+		if b.dispatch != nil {
+			b.dispatch(func() {
+				b.updateModel(msg)
+			})
+		}
 	}()
 }
 
