@@ -763,24 +763,22 @@ func (t *TUI) renderFrame(width, height int, stats *RenderStats) ([]string, *Cur
 	cursorPos := baseResult.Cursor
 	stats.RenderTime = time.Since(renderStart)
 
-	// Copy lines so we don't mutate cached RenderResult slices.
-	newLines := make([]string, len(baseResult.Lines))
-	copy(newLines, baseResult.Lines)
-
-	// Composite overlays.
+	var newLines []string
+	// Composite overlays (needs a mutable copy of the lines slice).
 	if len(t.overlayStack) > 0 {
+		newLines = make([]string, len(baseResult.Lines))
+		copy(newLines, baseResult.Lines)
 		compositeStart := time.Now()
 		newLines, cursorPos = t.compositeOverlays(
 			newLines, cursorPos, t.overlayStack,
 			width, height, t.maxLinesRendered,
 		)
 		stats.CompositeTime = time.Since(compositeStart)
+	} else {
+		// No overlays — safe to use the cached slice directly.
+		newLines = baseResult.Lines
 	}
 
-	// Append reset to each line to prevent style bleed.
-	for i := range newLines {
-		newLines[i] += segmentReset
-	}
 	stats.TotalLines = len(newLines)
 
 	return newLines, cursorPos, compStats
@@ -892,6 +890,7 @@ func (t *TUI) writeFullRedraw(width, height int, newLines []string, cursorPos *C
 			buf.WriteString(escClearLine)
 		}
 		buf.WriteString(line)
+		buf.WriteString(segmentReset)
 	}
 	buf.WriteString(escSyncEnd)
 	stats.DiffTime = time.Since(diffStart)
@@ -1029,6 +1028,7 @@ func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *C
 		}
 		buf.WriteString(escClearLine)
 		buf.WriteString(newLines[i])
+		buf.WriteString(segmentReset)
 	}
 
 	finalCursorRow := renderEnd
