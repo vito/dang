@@ -343,7 +343,7 @@ func (f *fractalView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	maxIter := min(64+frame/10, 256)
 
 	// Reuse line buffer from framework's double-buffer.
-	var lines []string
+	lines := ctx.Recycle
 	if cap(lines) < h {
 		lines = make([]string, h)
 	} else {
