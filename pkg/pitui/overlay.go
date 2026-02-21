@@ -100,17 +100,6 @@ type OverlayOptions struct {
 	// their individual heights.
 	CursorGroup *CursorGroup
 
-	// BubbleTarget specifies the component that receives input events
-	// which bubble out of this overlay's component tree. When the
-	// overlay's focused component (or its ancestors within the overlay)
-	// return false from HandleKeyPress, the event continues bubbling
-	// from BubbleTarget upward through its parent chain.
-	//
-	// This enables patterns like a completion menu overlay whose
-	// BubbleTarget is the TextInput — unhandled keys (printable
-	// characters) naturally reach the input for editing, then continue
-	// bubbling to the input's parent for app-level bindings.
-	BubbleTarget Component
 }
 
 // CursorGroup links cursor-relative overlays so they share a single

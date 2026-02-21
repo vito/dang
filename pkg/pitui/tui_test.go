@@ -1696,66 +1696,6 @@ func TestBubblingNonInteractiveFocused(t *testing.T) {
 	assert.Equal(t, []string{"z"}, parent.keys)
 }
 
-func TestBubblingOverlayBubbleTarget(t *testing.T) {
-	// Test that overlay BubbleTarget works: keys bubble from overlay
-	// component → BubbleTarget → BubbleTarget's parent chain.
-	term := newMockTerminal(40, 10)
-	tui := newTUI(term)
-	tui.stopped = false
-
-	// Tree: TUI → grandparent (interactive container) → target.
-	grandparent := &interactiveContainer{consume: true}
-	target := &interactiveComponent{lines: []string{"target"}, consume: false}
-	target.Update()
-	grandparent.AddChild(target)
-	tui.AddChild(grandparent)
-
-	// Show overlay with BubbleTarget pointing to target.
-	overlay := &interactiveComponent{lines: []string{"overlay"}, consume: false}
-	overlay.Update()
-	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:        SizeAbs(10),
-		Anchor:       AnchorCenter,
-		BubbleTarget: target,
-	})
-	tui.SetFocus(overlay)
-
-	ev := uv.KeyPressEvent{Code: 'q', Text: "q"}
-	tui.dispatchEvent(ev)
-
-	// Overlay returns false → crosses boundary to target → target returns
-	// false → bubbles to grandparent.
-	assert.Equal(t, []string{"q"}, overlay.keys)
-	assert.Equal(t, []string{"q"}, target.keys)
-	assert.Equal(t, []string{"q"}, grandparent.keys)
-}
-
-func TestBubblingOverlayNoBubbleTarget(t *testing.T) {
-	// Without BubbleTarget, bubbling stops at the overlay boundary.
-	term := newMockTerminal(40, 10)
-	tui := newTUI(term)
-	tui.stopped = false
-
-	parent := &interactiveComponent{lines: []string{"parent"}, consume: true}
-	parent.Update()
-	tui.AddChild(parent)
-
-	overlay := &interactiveComponent{lines: []string{"overlay"}, consume: false}
-	overlay.Update()
-	tui.ShowOverlay(overlay, &OverlayOptions{
-		Width:  SizeAbs(10),
-		Anchor: AnchorCenter,
-	})
-	tui.SetFocus(overlay)
-
-	ev := uv.KeyPressEvent{Code: 'q', Text: "q"}
-	tui.dispatchEvent(ev)
-
-	// Overlay returns false but no BubbleTarget — parent should NOT see it.
-	assert.Equal(t, []string{"q"}, overlay.keys)
-	assert.Empty(t, parent.keys)
-}
-
 func TestSpinnerMountDismountLifecycle(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)
