@@ -332,12 +332,6 @@ func (t *TUI) AddInputListener(l InputListener) func() {
 	}
 }
 
-// SetDebugWriterDirect sets the debug writer from the UI goroutine.
-// For use in event handlers or Dispatch callbacks.
-func (t *TUI) SetDebugWriterDirect(w io.Writer) {
-	t.debugWriter = w
-}
-
 // ShowOverlay displays a component as an overlay on top of the base content.
 // Focus is not changed; use [TUI.SetFocus] to direct input to the overlay's
 // component when needed.

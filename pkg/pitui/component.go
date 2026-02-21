@@ -2,6 +2,7 @@ package pitui
 
 import (
 	"context"
+	"io"
 	"reflect"
 	"sync/atomic"
 	"time"
@@ -61,20 +62,13 @@ func (ctx EventContext) HasOverlay() bool {
 //
 // Safe to call from any goroutine.
 func (ctx EventContext) Dispatch(fn func(EventContext)) {
-	tui := ctx.tui
-	if tui == nil {
-		return
-	}
-	select {
-	case tui.dispatchCh <- func() { fn(ctx) }:
-	case <-tui.stopCtx.Done():
-	}
-	tui.RequestRender(false)
+	ctx.tui.Dispatch(func() { fn(ctx) })
 }
 
-// SetDebugWriter enables render performance logging.
-func (ctx EventContext) SetDebugWriter(w interface{ Write([]byte) (int, error) }) {
-	ctx.tui.SetDebugWriter(w)
+// SetDebugWriter enables render performance logging. Must be called on
+// the UI goroutine (from an event handler or Dispatch callback).
+func (ctx EventContext) SetDebugWriter(w io.Writer) {
+	ctx.tui.debugWriter = w
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
