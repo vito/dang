@@ -89,13 +89,13 @@ var kindOrder = [...]string{
 }
 
 var kindColors = [...]string{
-	kindField:     "117",
-	kindType:      "213",
-	kindInterface: "141",
-	kindEnum:      "221",
-	kindScalar:    "114",
-	kindUnion:     "209",
-	kindInput:     "183",
+	kindField:     "12", // bright blue
+	kindType:      "13", // bright magenta
+	kindInterface: "5",  // magenta
+	kindEnum:      "11", // bright yellow
+	kindScalar:    "10", // bright green
+	kindUnion:     "3",  // yellow
+	kindInput:     "14", // bright cyan
 }
 
 func (k itemKind) label() string {

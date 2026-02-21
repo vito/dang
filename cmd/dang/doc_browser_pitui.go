@@ -154,11 +154,11 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		listH = 5
 	}
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
-	activeTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))
+	activeTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
 	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
@@ -203,7 +203,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		filterLineH := 0
 		if len(col.items) > 0 && (isFiltering || col.filter != "") {
 			filterLineH = 1
-			filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+			filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 			filterText := "/" + col.filter
 			if isFiltering {
 				filterText += "_"
