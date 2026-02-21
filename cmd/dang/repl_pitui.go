@@ -304,7 +304,6 @@ type replComponent struct {
 	ctx           context.Context
 
 	// UI state
-	tui            *pitui.TUI
 	textInput      *pitui.TextInput
 	entryContainer *pitui.Container
 	spinner        *pitui.Spinner
@@ -344,7 +343,7 @@ type replComponent struct {
 	debugRenderFile *os.File
 }
 
-func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.ImportConfig, debug bool) *replComponent {
+func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
 	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
 
 	ti := pitui.NewTextInput(promptStyle.Render("dang> "))
@@ -356,7 +355,6 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 		typeEnv:         typeEnv,
 		evalEnv:         evalEnv,
 		ctx:             ctx,
-		tui:             tui,
 		textInput:       ti,
 		entryContainer:  &pitui.Container{},
 		menuMaxVisible:  8,
@@ -427,11 +425,11 @@ func (r *replComponent) addEntry(input string) *entryView {
 }
 
 // install adds the repl's components to the TUI.
-func (r *replComponent) install() {
-	r.tui.Dispatch(func() {
-		r.tui.AddChild(r.entryContainer)
-		r.tui.AddChild(r.inputSlot)
-		r.tui.SetFocus(r.textInput)
+func (r *replComponent) install(tui *pitui.TUI) {
+	tui.Dispatch(func() {
+		tui.AddChild(r.entryContainer)
+		tui.AddChild(r.inputSlot)
+		tui.SetFocus(r.textInput)
 	})
 }
 
@@ -498,7 +496,7 @@ func (r *replComponent) onKey(ctx pitui.EventContext, key uv.Key) bool {
 			if r.menuIndex >= len(r.menuItems) {
 				r.menuIndex = 0
 			}
-			r.syncMenu()
+			r.syncMenu(ctx)
 			return true
 		case key.Code == uv.KeyUp && key.Mod == 0,
 			key.Code == 'p' && key.Mod == uv.ModCtrl:
@@ -506,7 +504,7 @@ func (r *replComponent) onKey(ctx pitui.EventContext, key uv.Key) bool {
 			if r.menuIndex < 0 {
 				r.menuIndex = len(r.menuItems) - 1
 			}
-			r.syncMenu()
+			r.syncMenu(ctx)
 			return true
 		case key.Code == uv.KeyEscape:
 			r.hideCompletionMenu()
@@ -600,18 +598,18 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 	// Swap text input for spinner via the slot.
 	// Spinner starts automatically via OnMount when added to the slot.
 	r.inputSlot.Set(r.spinner)
-	r.tui.SetFocus(nil)
+	ectx.SetFocus(nil)
 	// Route input to onKey during eval so Ctrl+C can cancel.
-	removeListener := r.tui.AddInputListener(func(ctx pitui.EventContext, ev uv.Event) bool {
+	removeListener := ectx.AddInputListener(func(ctx pitui.EventContext, ev uv.Event) bool {
 		if kp, ok := ev.(uv.KeyPressEvent); ok {
 			if r.onKey(ctx, uv.Key(kp)) {
-				r.tui.RequestRender(false)
+				ectx.RequestRender(false)
 				return true
 			}
 		}
 		return false
 	})
-	r.tui.RequestRender(false)
+	ectx.RequestRender(false)
 
 	go func() {
 		var logs []string
@@ -625,7 +623,7 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 			val, err := dang.EvalNode(ctx, evalEnv, node)
 
 			if evalCtx.Err() != nil {
-				r.finishEval(ev, nil, nil, true, removeListener)
+				r.finishEval(ectx, ev, nil, nil, true, removeListener)
 				return
 			}
 
@@ -636,7 +634,7 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 
 			if err != nil {
 				results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
-				r.finishEval(ev, logs, results, false, removeListener)
+				r.finishEval(ectx, ev, logs, results, false, removeListener)
 				return
 			}
 
@@ -646,13 +644,13 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 			}
 		}
 
-		r.finishEval(ev, logs, results, false, removeListener)
+		r.finishEval(ectx, ev, logs, results, false, removeListener)
 	}()
 }
 
-func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancelled bool, removeListener func()) {
+func (r *replComponent) finishEval(ctx pitui.EventContext, ev *entryView, logs, results []string, cancelled bool, removeListener func()) {
 	// Dispatch to the UI goroutine so we can safely mutate component state.
-	r.tui.Dispatch(func() {
+	ctx.Dispatch(func() {
 		removeListener()
 
 		r.evaluating = false
@@ -676,29 +674,29 @@ func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancel
 
 		// Swap spinner back to text input via the slot.
 		r.inputSlot.Set(r.textInput)
-		r.tui.SetFocus(r.textInput)
+		ctx.SetFocus(r.textInput)
 	})
 }
 
 // ── doc browser ─────────────────────────────────────────────────────────────
 
-func (r *replComponent) showDocBrowser() {
+func (r *replComponent) showDocBrowser(ctx pitui.EventContext) {
 	db := newDocBrowserOverlay(r.typeEnv)
 	db.onExit = func() {
 		if r.docHandle != nil {
 			r.docHandle.Hide()
 			r.docHandle = nil
 			r.docBrowser = nil
-			r.tui.SetFocus(r.textInput)
+			ctx.SetFocus(r.textInput)
 		}
 	}
 	r.docBrowser = db
-	r.docHandle = r.tui.ShowOverlay(db, &pitui.OverlayOptions{
+	r.docHandle = ctx.ShowOverlay(db, &pitui.OverlayOptions{
 		Width:     pitui.SizePct(100),
 		MaxHeight: pitui.SizePct(100),
 		Anchor:    pitui.AnchorTopLeft,
 	})
-	r.tui.SetFocus(db)
+	ctx.SetFocus(db)
 }
 
 // ── entry point ─────────────────────────────────────────────────────────────
@@ -771,13 +769,13 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
-	repl := newReplComponent(ctx, tui, importConfigs, debug)
+	repl := newReplComponent(ctx, importConfigs, debug)
 	if debugRenderFile != nil {
 		repl.debugRender = true
 		repl.debugRenderFile = debugRenderFile
 	}
 	repl.daggerLog = daggerLog
-	repl.install()
+	repl.install(tui)
 
 	if daggerConn != nil {
 		defer daggerConn.Close() //nolint:errcheck

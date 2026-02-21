@@ -55,7 +55,7 @@ func (r *replComponent) menuBoxHeight() int {
 	return h
 }
 
-func (r *replComponent) showCompletionMenu() {
+func (r *replComponent) showCompletionMenu(ctx pitui.EventContext) {
 	displayItems := r.menuDisplayItems()
 	menuH := r.menuBoxHeight()
 
@@ -79,19 +79,19 @@ func (r *replComponent) showCompletionMenu() {
 			index:      r.menuIndex,
 			maxVisible: r.menuMaxVisible,
 		}
-		r.menuHandle = r.tui.ShowOverlay(r.menuOverlay, opts)
+		r.menuHandle = ctx.ShowOverlay(r.menuOverlay, opts)
 	}
-	r.syncDetailBubble()
+	r.syncDetailBubble(ctx)
 }
 
-func (r *replComponent) syncMenu() {
+func (r *replComponent) syncMenu(ctx pitui.EventContext) {
 	if r.menuOverlay != nil {
 		r.menuOverlay.items = r.menuDisplayItems()
 		r.menuOverlay.index = r.menuIndex
 		r.menuOverlay.Update()
 	}
-	r.syncDetailBubble()
-	r.tui.RequestRender(false)
+	r.syncDetailBubble(ctx)
+	ctx.RequestRender(false)
 }
 
 func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
@@ -111,11 +111,11 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 	}
 }
 
-func (r *replComponent) showDetailBubble() {
+func (r *replComponent) showDetailBubble(ctx pitui.EventContext) {
 	opts := r.detailBubbleOptions()
 	if r.detailBubble == nil {
 		r.detailBubble = &detailBubble{}
-		r.detailHandle = r.tui.ShowOverlay(r.detailBubble, opts)
+		r.detailHandle = ctx.ShowOverlay(r.detailBubble, opts)
 	} else {
 		r.detailHandle.SetOptions(opts)
 	}
@@ -129,7 +129,7 @@ func (r *replComponent) hideDetailBubble() {
 	}
 }
 
-func (r *replComponent) syncDetailBubble() {
+func (r *replComponent) syncDetailBubble(ctx pitui.EventContext) {
 	if !r.menuVisible || len(r.menuCompletions) == 0 {
 		r.hideDetailBubble()
 		return
@@ -157,14 +157,14 @@ func (r *replComponent) syncDetailBubble() {
 		}
 	}
 
-	r.showDetailBubble()
+	r.showDetailBubble(ctx)
 	r.detailBubble.item = item
 	r.detailBubble.Update()
 }
 
 // showDetailForCompletion shows the detail bubble for a single completion
 // item, without requiring the dropdown menu to be visible.
-func (r *replComponent) showDetailForCompletion(c dang.Completion) {
+func (r *replComponent) showDetailForCompletion(ctx pitui.EventContext, c dang.Completion) {
 	item, found := docItemFromEnv(r.typeEnv, c.Label)
 	if !found {
 		item, found = r.resolveCompletionDocItem(c)
@@ -181,7 +181,7 @@ func (r *replComponent) showDetailForCompletion(c dang.Completion) {
 		}
 	}
 
-	r.showDetailBubble()
+	r.showDetailBubble(ctx)
 	r.detailBubble.item = item
 	r.detailBubble.Update()
 }
@@ -231,7 +231,7 @@ func (r *replComponent) completionTokenLen() int {
 }
 
 
-func (r *replComponent) updateCompletionMenu(_ pitui.EventContext) {
+func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 	val := r.textInput.Value()
 
 	if val == "" || strings.HasPrefix(val, ":") {
@@ -271,7 +271,7 @@ func (r *replComponent) updateCompletionMenu(_ pitui.EventContext) {
 			labels, _ = sortByCaseWithCompletions(labels, nil, "", partial)
 		}
 		r.menuLabels = labels
-		r.setMenu(matches, matchCompletions)
+		r.setMenu(ctx, matches, matchCompletions)
 		if len(matches) > 0 {
 			r.textInput.Suggestion = matches[0]
 		} else {
@@ -303,7 +303,7 @@ func (r *replComponent) updateCompletionMenu(_ pitui.EventContext) {
 	}
 	matches := append(exactCase, otherCase...)
 	r.menuLabels = nil
-	r.setMenu(matches, nil)
+	r.setMenu(ctx, matches, nil)
 	if len(matches) > 0 {
 		r.textInput.Suggestion = matches[0]
 	} else {
@@ -311,7 +311,7 @@ func (r *replComponent) updateCompletionMenu(_ pitui.EventContext) {
 	}
 }
 
-func (r *replComponent) setMenu(matches []string, completions []dang.Completion) {
+func (r *replComponent) setMenu(ctx pitui.EventContext, matches []string, completions []dang.Completion) {
 	if len(matches) == 0 {
 		r.hideCompletionMenu()
 		return
@@ -320,7 +320,7 @@ func (r *replComponent) setMenu(matches []string, completions []dang.Completion)
 		// Single match: no dropdown, but show the detail bubble.
 		r.hideCompletionMenu()
 		if len(completions) == 1 {
-			r.showDetailForCompletion(completions[0])
+			r.showDetailForCompletion(ctx, completions[0])
 		}
 		return
 	}
@@ -331,7 +331,7 @@ func (r *replComponent) setMenu(matches []string, completions []dang.Completion)
 	if r.menuIndex >= len(matches) {
 		r.menuIndex = 0
 	}
-	r.showCompletionMenu()
+	r.showCompletionMenu(ctx)
 }
 
 // sortByCaseWithCompletions sorts matches (and their parallel completions)

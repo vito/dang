@@ -126,7 +126,7 @@ func (r *replComponent) handleCommand(ctx pitui.EventContext, cmdLine string) {
 
 	case "doc":
 		ev.Update()
-		r.showDocBrowser()
+		r.showDocBrowser(ctx)
 		return
 
 	default:
