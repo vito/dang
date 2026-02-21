@@ -28,12 +28,12 @@ type TextInput struct {
 
 	// OnSubmit is called when Enter is pressed. The string is the trimmed
 	// input value. Return true to clear the input after submission.
-	OnSubmit func(value string) bool
+	OnSubmit func(ctx EventContext, value string) bool
 
 	// OnKey is called for keys not handled by the editor. Return true if
 	// the key was consumed. The uv.Key contains the decoded key with
 	// modifiers; use key.Code and key.Mod for matching.
-	OnKey func(key uv.Key) bool
+	OnKey func(ctx EventContext, key uv.Key) bool
 
 	// Suggestion is a ghost completion hint shown after the cursor. It is
 	// cleared on every keystroke and must be re-set by the caller (e.g. in
@@ -46,7 +46,7 @@ type TextInput struct {
 
 	// OnChange is called after the input value has been modified (character
 	// inserted, deleted, etc.). It is NOT called for cursor-only movements.
-	OnChange func()
+	OnChange func(ctx EventContext)
 }
 
 // NewTextInput creates a TextInput with the given prompt.
@@ -54,7 +54,7 @@ func NewTextInput(prompt string) *TextInput {
 	return &TextInput{Prompt: prompt}
 }
 
-func (t *TextInput) SetFocused(focused bool) { t.focused = focused }
+func (t *TextInput) SetFocused(_ EventContext, focused bool) { t.focused = focused }
 
 // Value returns the current input string.
 func (t *TextInput) Value() string { return string(t.value) }
@@ -155,16 +155,16 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 }
 
 // HandleKeyPress implements [Interactive].
-func (t *TextInput) HandleKeyPress(ev uv.KeyPressEvent) {
-	t.handleKeyPress(ev)
+func (t *TextInput) HandleKeyPress(ctx EventContext, ev uv.KeyPressEvent) {
+	t.handleKeyPress(ctx, ev)
 }
 
 // HandlePaste implements [Pasteable].
-func (t *TextInput) HandlePaste(ev uv.PasteEvent) {
-	t.handlePaste(ev.Content)
+func (t *TextInput) HandlePaste(ctx EventContext, ev uv.PasteEvent) {
+	t.handlePaste(ctx, ev.Content)
 }
 
-func (t *TextInput) handlePaste(content string) {
+func (t *TextInput) handlePaste(ctx EventContext, content string) {
 	oldValue := string(t.value)
 	runes := []rune(content)
 	newVal := make([]rune, 0, len(t.value)+len(runes))
@@ -175,11 +175,11 @@ func (t *TextInput) handlePaste(content string) {
 	t.cursor += len(runes)
 	t.Update()
 	if t.OnChange != nil && string(t.value) != oldValue {
-		t.OnChange()
+		t.OnChange(ctx)
 	}
 }
 
-func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
+func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 	key := uv.Key(e)
 
 	oldValue := string(t.value)
@@ -188,7 +188,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 	defer func() {
 		t.Update() // any input may change cursor or content
 		if t.OnChange != nil && string(t.value) != oldValue {
-			t.OnChange()
+			t.OnChange(ctx)
 		}
 	}()
 
@@ -206,7 +206,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 	if key.Code == uv.KeyEnter && key.Mod == 0 {
 		if t.OnSubmit != nil {
 			val := strings.TrimSpace(string(t.value))
-			if t.OnSubmit(val) {
+			if t.OnSubmit(ctx, val) {
 				t.value = nil
 				t.cursor = 0
 			}
@@ -221,7 +221,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(key)
+			t.OnKey(ctx, key)
 		}
 		return
 	}
@@ -229,7 +229,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 	// Backtab (Shift+Tab): delegate to OnKey.
 	if key.Code == uv.KeyTab && key.Mod.Contains(uv.ModShift) {
 		if t.OnKey != nil {
-			t.OnKey(key)
+			t.OnKey(ctx, key)
 		}
 		return
 	}
@@ -288,7 +288,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(key)
+			t.OnKey(ctx, key)
 		}
 		return
 	}
@@ -298,7 +298,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 			return
 		}
 		if t.OnKey != nil {
-			t.OnKey(key)
+			t.OnKey(ctx, key)
 		}
 		return
 	}
@@ -361,7 +361,7 @@ func (t *TextInput) handleKeyPress(e uv.KeyPressEvent) {
 	// Delegate to OnKey for unhandled non-printable keys.
 	if key.Text == "" {
 		if t.OnKey != nil {
-			t.OnKey(key)
+			t.OnKey(ctx, key)
 		}
 		return
 	}

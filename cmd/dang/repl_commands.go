@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/pitui"
 )
 
 // ── commands ────────────────────────────────────────────────────────────────
 
-func (r *replComponent) handleCommand(cmdLine string) {
+func (r *replComponent) handleCommand(ctx pitui.EventContext, cmdLine string) {
 	ev := r.activeEntryView()
 	e := ev.entry
 
@@ -42,7 +43,7 @@ func (r *replComponent) handleCommand(cmdLine string) {
 		e.writeLogLine("")
 		e.writeLogLine(dimStyle.Render("Type Dang expressions to evaluate them."))
 		multilineHint := "Alt+Enter"
-		if r.tui.HasKittyKeyboard() {
+		if ctx.HasKittyKeyboard() {
 			multilineHint = "Shift+Enter"
 		}
 		e.writeLogLine(dimStyle.Render(fmt.Sprintf("Tab for completion, Up/Down for history, %s for multiline, Ctrl+L to clear.", multilineHint)))
@@ -78,12 +79,12 @@ func (r *replComponent) handleCommand(cmdLine string) {
 				r.debugRender = false
 			} else {
 				r.debugRenderFile = f
-				r.tui.SetDebugWriter(f)
+				ctx.SetDebugWriter(f)
 				e.writeLogLine(resultStyle.Render(fmt.Sprintf("Render debug enabled. Logging to %s", logPath)))
 				e.writeLogLine(dimStyle.Render("  Use 'tail -f " + logPath + "' in another terminal to watch."))
 			}
 		} else {
-			r.tui.SetDebugWriter(nil)
+			ctx.SetDebugWriter(nil)
 			if r.debugRenderFile != nil {
 				r.debugRenderFile.Close()
 				r.debugRenderFile = nil

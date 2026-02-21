@@ -35,6 +35,7 @@ import (
 // render frame.
 type pituiSyncWriter struct {
 	mu      sync.Mutex
+	tui     *pitui.TUI
 	target  *entryView
 	pending strings.Builder
 	dirty   chan struct{} // capacity-1 channel; non-blocking send coalesces
@@ -42,9 +43,10 @@ type pituiSyncWriter struct {
 	stopCtx context.Context
 }
 
-func newPituiSyncWriter() *pituiSyncWriter {
+func newPituiSyncWriter(tui *pitui.TUI) *pituiSyncWriter {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &pituiSyncWriter{
+		tui: tui,
 		dirty:   make(chan struct{}, 1),
 		cancel:  cancel,
 		stopCtx: ctx,
@@ -86,7 +88,7 @@ func (w *pituiSyncWriter) flush() {
 	w.pending.Reset()
 	w.mu.Unlock()
 	if ev != nil && data != "" {
-		ev.Dispatch(func() {
+		w.tui.Dispatch(func() {
 			ev.entry.writeLog(data)
 			ev.Update()
 		})
@@ -380,7 +382,7 @@ func newReplComponent(ctx context.Context, tui *pitui.TUI, importConfigs []dang.
 	}
 	ti.OnSubmit = r.onSubmit
 	ti.OnKey = r.onKey
-	ti.OnChange = r.updateCompletionMenu
+	ti.OnChange = func(ctx pitui.EventContext) { r.updateCompletionMenu(ctx) }
 
 	// Welcome message.
 	welcome := newReplEntry("")
@@ -434,7 +436,7 @@ func (r *replComponent) install() {
 }
 
 // onSubmit handles Enter in the text input.
-func (r *replComponent) onSubmit(line string) bool {
+func (r *replComponent) onSubmit(ctx pitui.EventContext, line string) bool {
 	if line == "" {
 		return false
 	}
@@ -457,17 +459,17 @@ func (r *replComponent) onSubmit(line string) bool {
 	r.hideCompletionMenu()
 
 	if strings.HasPrefix(line, ":") {
-		r.handleCommand(line[1:])
-		r.updateCompletionMenu()
+		r.handleCommand(ctx, line[1:])
+		r.updateCompletionMenu(ctx)
 		return true
 	}
 
-	r.startEval(line)
+	r.startEval(ctx, line)
 	return true
 }
 
 // onKey handles keys not consumed by the text input editor.
-func (r *replComponent) onKey(key uv.Key) bool {
+func (r *replComponent) onKey(ctx pitui.EventContext, key uv.Key) bool {
 	// While evaluating: Ctrl+C cancels.
 	if r.evaluating {
 		if key.Code == 'c' && key.Mod == uv.ModCtrl {
@@ -488,7 +490,7 @@ func (r *replComponent) onKey(key uv.Key) bool {
 				r.textInput.CursorEnd()
 			}
 			r.hideCompletionMenu()
-			r.updateCompletionMenu()
+			r.updateCompletionMenu(ctx)
 			return true
 		case key.Code == uv.KeyDown && key.Mod == 0,
 			key.Code == 'n' && key.Mod == uv.ModCtrl:
@@ -558,7 +560,7 @@ func (r *replComponent) onKey(key uv.Key) bool {
 
 // ── eval ────────────────────────────────────────────────────────────────────
 
-func (r *replComponent) startEval(expr string) {
+func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 	ev := r.activeEntryView()
 
 	result, err := dang.Parse("repl", []byte(expr))
@@ -596,13 +598,13 @@ func (r *replComponent) startEval(expr string) {
 	}
 
 	// Swap text input for spinner via the slot.
+	// Spinner starts automatically via OnMount when added to the slot.
 	r.inputSlot.Set(r.spinner)
-	r.spinner.Start()
 	r.tui.SetFocus(nil)
 	// Route input to onKey during eval so Ctrl+C can cancel.
-	removeListener := r.tui.AddInputListener(func(ev uv.Event) bool {
+	removeListener := r.tui.AddInputListener(func(ctx pitui.EventContext, ev uv.Event) bool {
 		if kp, ok := ev.(uv.KeyPressEvent); ok {
-			if r.onKey(uv.Key(kp)) {
+			if r.onKey(ctx, uv.Key(kp)) {
 				r.tui.RequestRender(false)
 				return true
 			}
@@ -651,7 +653,6 @@ func (r *replComponent) startEval(expr string) {
 func (r *replComponent) finishEval(ev *entryView, logs, results []string, cancelled bool, removeListener func()) {
 	// Dispatch to the UI goroutine so we can safely mutate component state.
 	r.tui.Dispatch(func() {
-		r.spinner.Stop()
 		removeListener()
 
 		r.evaluating = false
@@ -722,7 +723,8 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	// If there's a Dagger module, load it with a spinner visible.
-	daggerLog := newPituiSyncWriter()
+	// Spinner starts automatically via OnMount when added to the tree.
+	daggerLog := newPituiSyncWriter(tui)
 	defer daggerLog.Stop()
 	var daggerConn *dagger.Client
 	if moduleDir != "" {
@@ -733,7 +735,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
 		tui.Dispatch(func() {
 			tui.AddChild(loadSp)
-			loadSp.Start()
 		})
 
 		dag, err := dagger.Connect(ctx,
@@ -742,18 +743,16 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		)
 		if err != nil {
 			tui.Dispatch(func() {
-				loadSp.Stop()
-				loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to connect to Dagger: %v", err))
+				tui.RemoveChild(loadSp)
 			})
+			// Show error inline — spinner is already removed.
+			fmt.Fprintf(os.Stderr, "Failed to connect to Dagger: %v\n", err)
 		} else {
 			daggerConn = dag
 			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
 			client, schema, err := provider.ServeDaggerModule(ctx, dag, moduleDir)
 			if err != nil {
-				tui.Dispatch(func() {
-					loadSp.Stop()
-					loadSp.Label = errorStyle.Render(fmt.Sprintf("Failed to load Dagger module: %v", err))
-				})
+				fmt.Fprintf(os.Stderr, "Failed to load Dagger module: %v\n", err)
 			} else {
 				importConfigs = append(importConfigs, dang.ImportConfig{
 					Name:       "Dagger",
@@ -762,9 +761,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 					AutoImport: true,
 				})
 			}
-			tui.Dispatch(func() {
-				loadSp.Stop()
-			})
 		}
 		tui.Dispatch(func() {
 			tui.RemoveChild(loadSp)

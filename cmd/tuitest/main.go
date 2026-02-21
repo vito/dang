@@ -33,12 +33,12 @@ func (c *Counter) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	}
 }
 
-func (c *Counter) HandleKeyPress(ev uv.KeyPressEvent) {
+func (c *Counter) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) {
 	c.Count++
 	c.Update()
 }
 
-func (c *Counter) SetFocused(focused bool) { c.focused = focused }
+func (c *Counter) SetFocused(_ pitui.EventContext, focused bool) { c.focused = focused }
 
 // Banner is a static component that renders a multi-line banner.
 type Banner struct {

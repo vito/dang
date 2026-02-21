@@ -231,7 +231,7 @@ func (r *replComponent) completionTokenLen() int {
 }
 
 
-func (r *replComponent) updateCompletionMenu() {
+func (r *replComponent) updateCompletionMenu(_ pitui.EventContext) {
 	val := r.textInput.Value()
 
 	if val == "" || strings.HasPrefix(val, ":") {

@@ -1,11 +1,12 @@
 package pitui
 
 import (
-	"context"
 	"time"
 )
 
-// Spinner is a component that shows an animated spinner.
+// Spinner is a component that shows an animated spinner. It starts
+// spinning automatically when mounted (added to a TUI-rooted tree)
+// and stops when dismounted.
 type Spinner struct {
 	Compo
 
@@ -17,9 +18,6 @@ type Spinner struct {
 	frames   []string
 	interval time.Duration
 	start    time.Time
-
-	ticker *time.Ticker
-	cancel context.CancelFunc
 }
 
 // NewSpinner creates a dot-style spinner.
@@ -30,18 +28,13 @@ func NewSpinner() *Spinner {
 	}
 }
 
-// Start begins the spinner animation. Must be called on the UI goroutine
-// (from an event handler, a Dispatch callback, or before TUI.Start).
-func (s *Spinner) Start() {
+// OnMount starts the spinner animation. The goroutine is bounded by
+// ctx.Done(), which fires when the component is dismounted.
+func (s *Spinner) OnMount(ctx EventContext) {
 	s.start = time.Now()
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
-	s.ticker = time.NewTicker(s.interval)
-
-	// Capture locally so the goroutine never touches Spinner fields.
-	ticker := s.ticker
-
+	ticker := time.NewTicker(s.interval)
 	go func() {
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -51,19 +44,6 @@ func (s *Spinner) Start() {
 			}
 		}
 	}()
-}
-
-// Stop ends the spinner animation. Must be called on the UI goroutine
-// (from an event handler, a Dispatch callback, or before TUI.Start).
-func (s *Spinner) Stop() {
-	if s.cancel != nil {
-		s.cancel()
-		s.cancel = nil
-	}
-	if s.ticker != nil {
-		s.ticker.Stop()
-		s.ticker = nil
-	}
 }
 
 func (s *Spinner) Render(ctx RenderContext) RenderResult {

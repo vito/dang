@@ -1,12 +1,83 @@
 package pitui
 
 import (
+	"context"
 	"reflect"
 	"sync/atomic"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
 )
+
+// ── EventContext ───────────────────────────────────────────────────────────
+
+// EventContext provides access to framework operations. It is passed
+// to event handlers, lifecycle hooks, and dispatch callbacks — the places
+// where components perform side effects. It is NOT available during Render,
+// which should be a pure function of component state.
+//
+// EventContext embeds [context.Context]. The Done() channel is closed when
+// the source component is dismounted, so background goroutines spawned from
+// OnMount can use it as a cancellation signal.
+type EventContext struct {
+	context.Context
+	tui    *TUI
+	source Component
+}
+
+// SetFocus gives keyboard focus to the given component (or nil to blur).
+func (ctx EventContext) SetFocus(comp Component) {
+	ctx.tui.SetFocus(comp)
+}
+
+// ShowOverlay displays a component as an overlay and returns a handle.
+func (ctx EventContext) ShowOverlay(comp Component, opts *OverlayOptions) *OverlayHandle {
+	return ctx.tui.ShowOverlay(comp, opts)
+}
+
+// AddInputListener registers a listener that intercepts input before it
+// reaches the focused component. Returns a removal function.
+func (ctx EventContext) AddInputListener(l InputListener) func() {
+	return ctx.tui.AddInputListener(l)
+}
+
+// RequestRender schedules a render. If repaint is true, forces full redraw.
+func (ctx EventContext) RequestRender(repaint bool) {
+	ctx.tui.RequestRender(repaint)
+}
+
+// HasKittyKeyboard reports terminal keyboard protocol support.
+func (ctx EventContext) HasKittyKeyboard() bool {
+	return ctx.tui.HasKittyKeyboard()
+}
+
+// HasOverlay reports whether any overlay is currently visible.
+func (ctx EventContext) HasOverlay() bool {
+	return ctx.tui.HasOverlay()
+}
+
+// Dispatch schedules a function to run on the UI goroutine. The captured
+// EventContext (including its Done channel) is passed to the callback.
+//
+// Safe to call from any goroutine.
+func (ctx EventContext) Dispatch(fn func(EventContext)) {
+	tui := ctx.tui
+	if tui == nil {
+		return
+	}
+	select {
+	case tui.dispatchCh <- func() { fn(ctx) }:
+	case <-tui.stopCtx.Done():
+	}
+	tui.RequestRender(false)
+}
+
+// SetDebugWriter enables render performance logging.
+func (ctx EventContext) SetDebugWriter(w interface{ Write([]byte) (int, error) }) {
+	ctx.tui.SetDebugWriter(w)
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
 
 // RenderContext carries everything a component needs to render.
 type RenderContext struct {
@@ -87,7 +158,13 @@ type Compo struct {
 	cache         *renderCache // only accessed from the render goroutine
 	parent        *Compo
 	requestRender func() // set on the root by TUI
-	dispatch      func(func()) // propagated down the tree from TUI
+
+	// Lifecycle — managed by the framework during mount/dismount.
+	// Components never access these directly; they receive EventContext
+	// through handlers and lifecycle hooks.
+	tui         *TUI
+	mountCtx    context.Context
+	mountCancel context.CancelFunc
 }
 
 type renderCache struct {
@@ -99,6 +176,8 @@ type renderCache struct {
 // Propagates upward so parent containers are also marked dirty.
 // If the component tree is rooted in a TUI, a render is scheduled
 // automatically.
+//
+// Safe to call from any goroutine.
 func (c *Compo) Update() {
 	c.generation.Add(1)
 	if c.parent != nil {
@@ -108,37 +187,35 @@ func (c *Compo) Update() {
 	}
 }
 
-// Dispatch schedules a function to run on the UI goroutine. This is
-// available on any component that is attached to a TUI tree — the
-// dispatch function is propagated down through the component tree when
-// children are added, so components never need a direct *TUI reference.
-//
-// Safe to call from any goroutine.
-func (c *Compo) Dispatch(fn func()) {
-	if c.dispatch != nil {
-		c.dispatch(fn)
-	}
-}
-
 // compo returns the embedded Compo. The unexported method ensures that
 // only types embedding Compo can satisfy the Component interface.
 func (c *Compo) compo() *Compo { return c }
 
-// setParent sets the parent Compo for upward dirty propagation and
-// inherits the dispatch function from the parent so that Dispatch()
-// works on any component in the tree.
-// Managed automatically by Container.AddChild, Slot.Set, and
-// RenderChild.
-func (c *Compo) setParent(parent *Compo) {
-	c.parent = parent
-	if parent != nil && parent.dispatch != nil {
-		c.dispatch = parent.dispatch
+// setComponentParent wires a component into (or out of) the component tree.
+// It handles upward dirty propagation and triggers mount/dismount lifecycle
+// hooks when the component enters or leaves a TUI-rooted tree.
+//
+// Managed automatically by Container.AddChild, Slot.Set, and RenderChild.
+func setComponentParent(comp Component, parent *Compo) {
+	cp := comp.compo()
+	wasMounted := cp.tui != nil
+
+	cp.parent = parent
+
+	shouldBeMounted := parent != nil && parent.tui != nil
+	if wasMounted && !shouldBeMounted {
+		dismountTree(comp)
+	} else if !wasMounted && shouldBeMounted {
+		mountTree(comp, parent.tui)
 	}
 }
 
 // RenderChild renders a child component through this Compo, using the
 // framework's render cache. It also wires the child's parent pointer so
 // that Update() on the child propagates upward through this component.
+//
+// Note: RenderChild does NOT trigger mount/dismount lifecycle hooks.
+// For lifecycle support, use Container or Slot instead.
 //
 // Use this instead of calling child.Render(ctx) directly when your
 // component wraps another component without using Container or Slot:
@@ -196,6 +273,8 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	return r
 }
 
+// ── Component interfaces ───────────────────────────────────────────────────
+
 // Component is the interface all UI components must implement.
 // All components must embed Compo to get automatic render caching
 // and dirty propagation.
@@ -215,20 +294,98 @@ type Interactive interface {
 	Component
 
 	// HandleKeyPress is called with a decoded key press event when the
-	// component has focus.
-	HandleKeyPress(ev uv.KeyPressEvent)
+	// component has focus. The EventContext provides access to framework
+	// operations (SetFocus, ShowOverlay, Dispatch, etc.).
+	HandleKeyPress(ctx EventContext, ev uv.KeyPressEvent)
 }
 
 // Pasteable is an optional interface for components that accept pasted
 // text (via bracketed paste). If not implemented, paste events are ignored.
 type Pasteable interface {
-	HandlePaste(ev uv.PasteEvent)
+	HandlePaste(ctx EventContext, ev uv.PasteEvent)
 }
 
 // Focusable is an optional interface for components that want to know when
 // they gain or lose focus (e.g. to show/hide a cursor).
 type Focusable interface {
-	SetFocused(focused bool)
+	SetFocused(ctx EventContext, focused bool)
+}
+
+// Mounter is an optional interface for components that need to perform
+// setup when they enter a TUI-rooted tree. The EventContext embeds
+// context.Context whose Done() channel is closed when the component is
+// dismounted — use it to bound background goroutine lifetimes.
+//
+// OnMount is called:
+//   - When a component is added to a Container/Slot that is already
+//     mounted (i.e., connected to a TUI).
+//   - When an ancestor is mounted, propagating down to all descendants.
+type Mounter interface {
+	OnMount(ctx EventContext)
+}
+
+// Dismounter is an optional interface for components that need to perform
+// cleanup when they leave a TUI-rooted tree. The mount context's Done()
+// channel is already closed when OnDismount is called.
+//
+// Dismount fires children-first (leaves before parents).
+type Dismounter interface {
+	OnDismount()
+}
+
+// ── Lifecycle propagation ──────────────────────────────────────────────────
+
+// componentParent is implemented by components that hold children
+// (Container, Slot) so that mount/dismount can propagate recursively.
+type componentParent interface {
+	componentChildren() []Component
+}
+
+// mountTree mounts a component and all its descendants, firing OnMount
+// hooks parent-first.
+func mountTree(comp Component, tui *TUI) {
+	cp := comp.compo()
+	ctx, cancel := context.WithCancel(context.Background())
+	cp.tui = tui
+	cp.mountCtx = ctx
+	cp.mountCancel = cancel
+
+	if m, ok := comp.(Mounter); ok {
+		ectx := EventContext{
+			Context: ctx,
+			tui:     tui,
+			source:  comp,
+		}
+		m.OnMount(ectx)
+	}
+
+	if p, ok := comp.(componentParent); ok {
+		for _, child := range p.componentChildren() {
+			mountTree(child, tui)
+		}
+	}
+}
+
+// dismountTree dismounts a component and all its descendants, firing
+// OnDismount hooks children-first (leaves before parents) and cancelling
+// mount contexts.
+func dismountTree(comp Component) {
+	if p, ok := comp.(componentParent); ok {
+		for _, child := range p.componentChildren() {
+			dismountTree(child)
+		}
+	}
+
+	cp := comp.compo()
+	if cp.mountCancel != nil {
+		cp.mountCancel()
+	}
+	if d, ok := comp.(Dismounter); ok {
+		d.OnDismount()
+	}
+	cp.tui = nil
+	cp.mountCtx = nil
+	cp.mountCancel = nil
 }
 
 // ── Container ──────────────────────────────────────────────────────────────
@@ -244,9 +401,11 @@ type Container struct {
 	Children []Component
 }
 
+func (c *Container) componentChildren() []Component { return c.Children }
+
 func (c *Container) AddChild(comp Component) {
 	c.Children = append(c.Children, comp)
-	comp.compo().setParent(&c.Compo)
+	setComponentParent(comp, &c.Compo)
 	c.Update()
 }
 
@@ -254,7 +413,7 @@ func (c *Container) RemoveChild(comp Component) {
 	for i, ch := range c.Children {
 		if ch == comp {
 			c.Children = append(c.Children[:i], c.Children[i+1:]...)
-			comp.compo().setParent(nil)
+			setComponentParent(comp, nil)
 			c.Update()
 			return
 		}
@@ -263,7 +422,7 @@ func (c *Container) RemoveChild(comp Component) {
 
 func (c *Container) Clear() {
 	for _, ch := range c.Children {
-		ch.compo().setParent(nil)
+		setComponentParent(ch, nil)
 	}
 	c.Children = nil
 	c.Update()
@@ -298,6 +457,13 @@ type Slot struct {
 	child Component
 }
 
+func (s *Slot) componentChildren() []Component {
+	if s.child != nil {
+		return []Component{s.child}
+	}
+	return nil
+}
+
 // NewSlot creates a Slot with the given initial child.
 func NewSlot(child Component) *Slot {
 	s := &Slot{}
@@ -313,11 +479,11 @@ func (s *Slot) Set(c Component) {
 
 func (s *Slot) setChild(c Component) {
 	if s.child != nil {
-		s.child.compo().setParent(nil)
+		setComponentParent(s.child, nil)
 	}
 	s.child = c
 	if c != nil {
-		c.compo().setParent(&s.Compo)
+		setComponentParent(c, &s.Compo)
 	}
 }
 

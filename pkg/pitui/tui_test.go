@@ -1419,3 +1419,198 @@ func TestHasKittyKeyboard(t *testing.T) {
 	tui.dispatchEvent(uv.KeyboardEnhancementsEvent{Flags: 0})
 	assert.False(t, tui.HasKittyKeyboard())
 }
+
+// ── Lifecycle tests ────────────────────────────────────────────────────────
+
+// lifecycleComponent tracks mount/dismount calls.
+type lifecycleComponent struct {
+	Compo
+	mounted    bool
+	mountCount int
+	dismountCount int
+	mountCtxDone  bool // true if ctx.Done() was closed at dismount time
+	lines      []string
+}
+
+func (c *lifecycleComponent) OnMount(ctx EventContext) {
+	c.mounted = true
+	c.mountCount++
+}
+
+func (c *lifecycleComponent) OnDismount() {
+	c.mounted = false
+	c.dismountCount++
+}
+
+func (c *lifecycleComponent) Render(ctx RenderContext) RenderResult {
+	return RenderResult{Lines: c.lines}
+}
+
+func TestMountOnAddChild(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	comp := &lifecycleComponent{lines: []string{"hello"}}
+	comp.Update()
+	assert.False(t, comp.mounted)
+	assert.Equal(t, 0, comp.mountCount)
+
+	tui.AddChild(comp)
+	assert.True(t, comp.mounted)
+	assert.Equal(t, 1, comp.mountCount)
+}
+
+func TestDismountOnRemoveChild(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	comp := &lifecycleComponent{lines: []string{"hello"}}
+	comp.Update()
+	tui.AddChild(comp)
+	assert.True(t, comp.mounted)
+
+	tui.RemoveChild(comp)
+	assert.False(t, comp.mounted)
+	assert.Equal(t, 1, comp.dismountCount)
+}
+
+func TestMountPropagatesDownTree(t *testing.T) {
+	// Build a subtree, then attach it to the TUI.
+	// Children should be mounted when the parent is mounted.
+	child := &lifecycleComponent{lines: []string{"child"}}
+	child.Update()
+	container := &Container{}
+	container.AddChild(child) // container is NOT mounted yet
+	assert.False(t, child.mounted, "child should not be mounted before parent is mounted")
+
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+	tui.AddChild(container) // now container (and child) get mounted
+	assert.True(t, child.mounted, "child should be mounted when parent is mounted")
+	assert.Equal(t, 1, child.mountCount)
+}
+
+func TestDismountPropagatesDownTree(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	child := &lifecycleComponent{lines: []string{"child"}}
+	child.Update()
+	container := &Container{}
+	tui.AddChild(container)
+	container.AddChild(child)
+	assert.True(t, child.mounted)
+
+	tui.RemoveChild(container)
+	assert.False(t, child.mounted, "child should be dismounted when parent is removed")
+}
+
+func TestSlotMountDismount(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	a := &lifecycleComponent{lines: []string{"a"}}
+	a.Update()
+	b := &lifecycleComponent{lines: []string{"b"}}
+	b.Update()
+	slot := NewSlot(a)
+	tui.AddChild(slot)
+
+	assert.True(t, a.mounted, "initial child should be mounted")
+	assert.False(t, b.mounted)
+
+	slot.Set(b)
+	assert.False(t, a.mounted, "old child should be dismounted after swap")
+	assert.True(t, b.mounted, "new child should be mounted after swap")
+	assert.Equal(t, 1, a.dismountCount)
+	assert.Equal(t, 1, b.mountCount)
+}
+
+func TestMountContextCancelledOnDismount(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	comp := &lifecycleComponent{lines: []string{"hello"}}
+	comp.Update()
+
+	var mountCtx EventContext
+	// Use a custom component to capture the context.
+	type ctxCapture struct {
+		Compo
+		ctx EventContext
+	}
+	cap := &ctxCapture{}
+	cap.Update()
+
+	// Implement Mounter inline isn't possible, so test via lifecycleComponent's compo.
+	tui.AddChild(comp)
+	// Grab the mount context from the internal state.
+	assert.NotNil(t, comp.compo().mountCtx)
+	mountCtx = EventContext{Context: comp.compo().mountCtx}
+
+	select {
+	case <-mountCtx.Done():
+		t.Fatal("context should not be done while mounted")
+	default:
+	}
+
+	tui.RemoveChild(comp)
+
+	select {
+	case <-mountCtx.Done():
+		// good — context was cancelled
+	default:
+		t.Fatal("context should be done after dismount")
+	}
+}
+
+func TestContainerClearDismountsAll(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	a := &lifecycleComponent{lines: []string{"a"}}
+	a.Update()
+	b := &lifecycleComponent{lines: []string{"b"}}
+	b.Update()
+	tui.AddChild(a)
+	tui.AddChild(b)
+
+	tui.Clear()
+	assert.False(t, a.mounted)
+	assert.False(t, b.mounted)
+}
+
+func TestSpinnerMountDismountLifecycle(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	sp := NewSpinner()
+	slot := NewSlot(nil)
+	tui.AddChild(slot)
+
+	// Spinner not in tree yet.
+	assert.Nil(t, sp.compo().mountCtx)
+
+	// Add spinner to slot — should mount and start goroutine.
+	slot.Set(sp)
+	assert.NotNil(t, sp.compo().mountCtx)
+
+	// Remove spinner — should dismount and cancel context.
+	ctx := sp.compo().mountCtx
+	slot.Set(nil)
+	assert.Nil(t, sp.compo().mountCtx)
+	select {
+	case <-ctx.Done():
+		// good
+	default:
+		t.Fatal("spinner's mount context should be cancelled after removal")
+	}
+}

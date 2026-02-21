@@ -63,7 +63,6 @@ func run(initialLines int) error {
 		overlayHandle    *pitui.OverlayHandle
 		spinner          *pitui.Spinner
 		spinnerSlot      *pitui.Slot
-		spinnerRunning   bool
 		continuousTicker *time.Ticker
 		continuousDone   chan struct{}
 	)
@@ -96,7 +95,7 @@ func run(initialLines int) error {
 	}
 
 	// Input handler.
-	tui.AddInputListener(func(ev uv.Event) bool {
+	tui.AddInputListener(func(_ pitui.EventContext, ev uv.Event) bool {
 		kp, ok := ev.(uv.KeyPressEvent)
 		if !ok {
 			return false
@@ -192,15 +191,11 @@ func run(initialLines int) error {
 			return true
 
 		case key.Text == "s":
-			if spinnerRunning {
-				spinner.Stop()
+			if spinnerSlot.Get() != nil {
 				spinnerSlot.Set(nil)
-				spinnerRunning = false
 				statusBar.set("\x1b[7m spinner stopped \x1b[0m")
 			} else {
 				spinnerSlot.Set(spinner)
-				spinner.Start()
-				spinnerRunning = true
 				statusBar.set("\x1b[7m spinner running (continuous repaints) \x1b[0m")
 			}
 			tui.RequestRender(false)
@@ -259,9 +254,6 @@ func run(initialLines int) error {
 	}
 
 	stopContinuous()
-	if spinnerRunning {
-		spinner.Stop()
-	}
 	signal.Stop(sigCh)
 	tui.Stop()
 	fmt.Println("Done.")

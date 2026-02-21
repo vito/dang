@@ -14,7 +14,7 @@ import (
 
 // InputListener is called with each decoded event before it reaches the
 // focused component. Return true to consume the event and stop propagation.
-type InputListener func(ev uv.Event) bool
+type InputListener func(ctx EventContext, ev uv.Event) bool
 
 type inputListenerEntry struct {
 	fn  InputListener
@@ -176,11 +176,11 @@ func newTUI(term Terminal) *TUI {
 	t.Container.requestRender = func() {
 		t.RequestRender(false)
 	}
-	// Wire dispatch so any component in the tree can call Dispatch()
-	// without needing a direct *TUI reference.
-	t.Container.dispatch = func(fn func()) {
-		t.Dispatch(fn)
-	}
+	// Mount the TUI's own Container so children added via AddChild
+	// are automatically mounted (receiving lifecycle hooks).
+	t.Container.Compo.tui = t
+	t.Container.Compo.mountCtx = context.Background()
+	// mountCancel is nil for the root — it's never dismounted.
 	return t
 }
 
@@ -288,11 +288,28 @@ func (t *TUI) SetClearOnShrink(enabled bool) {
 // Must be called on the UI goroutine (from an event handler or Dispatch).
 func (t *TUI) SetFocus(comp Component) {
 	if f, ok := t.focusedComponent.(Focusable); ok {
-		f.SetFocused(false)
+		f.SetFocused(t.eventContextFor(t.focusedComponent), false)
 	}
 	t.focusedComponent = comp
 	if f, ok := comp.(Focusable); ok {
-		f.SetFocused(true)
+		f.SetFocused(t.eventContextFor(comp), true)
+	}
+}
+
+// eventContextFor constructs an EventContext for the given component,
+// using its mount context if available.
+func (t *TUI) eventContextFor(comp Component) EventContext {
+	var ctx context.Context = context.Background()
+	if comp != nil {
+		cp := comp.compo()
+		if cp.mountCtx != nil {
+			ctx = cp.mountCtx
+		}
+	}
+	return EventContext{
+		Context: ctx,
+		tui:     t,
+		source:  comp,
 	}
 }
 
@@ -313,6 +330,12 @@ func (t *TUI) AddInputListener(l InputListener) func() {
 			}
 		})
 	}
+}
+
+// SetDebugWriterDirect sets the debug writer from the UI goroutine.
+// For use in event handlers or Dispatch callbacks.
+func (t *TUI) SetDebugWriterDirect(w io.Writer) {
+	t.debugWriter = w
 }
 
 // ShowOverlay displays a component as an overlay on top of the base content.
@@ -451,13 +474,15 @@ func (t *TUI) handleInput(data []byte) {
 }
 
 func (t *TUI) dispatchEvent(ev uv.Event) {
+	// Construct EventContext for the focused component.
+	comp := t.focusedComponent
+	ctx := t.eventContextFor(comp)
+
 	for _, entry := range t.inputListeners {
-		if entry.fn(ev) {
+		if entry.fn(ctx, ev) {
 			return
 		}
 	}
-
-	comp := t.focusedComponent
 
 	switch e := ev.(type) {
 	case uv.KeyboardEnhancementsEvent:
@@ -469,11 +494,11 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 		return
 	case uv.KeyPressEvent:
 		if ic, ok := comp.(Interactive); ok {
-			ic.HandleKeyPress(e)
+			ic.HandleKeyPress(ctx, e)
 		}
 	case uv.PasteEvent:
 		if p, ok := comp.(Pasteable); ok {
-			p.HandlePaste(e)
+			p.HandlePaste(ctx, e)
 		}
 	}
 }
