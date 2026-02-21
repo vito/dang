@@ -816,6 +816,11 @@ func (t *TUI) applyFrame(width, height int, newLines []string, cursorPos *Cursor
 		stats.LastChangedLine = -1
 		t.positionHardwareCursor(cursorPos, len(newLines))
 		t.previousViewportTop = max(0, t.maxLinesRendered-height)
+		// Always update previousLines so that Container's double-buffered
+		// line slices stay in sync. Without this, a no-change frame leaves
+		// previousLines pointing at a stale buffer that Container will
+		// overwrite on a subsequent frame, corrupting the diff baseline.
+		t.previousLines = newLines
 		emitStats()
 		return
 	}

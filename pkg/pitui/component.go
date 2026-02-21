@@ -88,6 +88,15 @@ type RenderContext struct {
 	// that render inline but want to fill the viewport can use this.
 	ScreenHeight int
 
+	// Recycle is a pre-allocated []string from the previous render,
+	// resliced to zero length. Components may append into it to avoid
+	// allocating a new lines slice each frame. It is nil on the first
+	// render. Components that ignore it get no behavior change.
+	//
+	// The slice is safe to reuse because parent containers copy child
+	// lines into their own buffer via append.
+	Recycle []string
+
 	// componentStats, when non-nil, collects per-component render
 	// metrics. Set by the TUI when debug logging is enabled.
 	componentStats *[]ComponentStat
@@ -158,8 +167,16 @@ type Compo struct {
 	renderedGen   int64        // generation when last rendered; render-goroutine only
 	cache         *renderCache // only accessed from the render goroutine
 	parent        *Compo
-	self          Component    // the Component that embeds this Compo; set by setComponentParent
-	requestRender func()       // set on the root by TUI
+	self          Component // the Component that embeds this Compo; set by setComponentParent
+	requestRender func()    // set on the root by TUI
+
+	// Double-buffered line slices for zero-allocation rendering.
+	// renderComponent alternates between lineBufs[0] and lineBufs[1]
+	// so the previous render's slice (which may be referenced by
+	// TUI.previousLines or a parent's buffer) is never overwritten.
+	// The alternate buffer is offered to Render via ctx.Recycle.
+	lineBufs [2][]string
+	bufIdx   int
 
 	// Lifecycle — managed by the framework during mount/dismount.
 	// Components never access these directly; they receive EventContext
@@ -261,6 +278,14 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	// Cache miss — render and store. Record the generation we checked,
 	// not the current one, so any Update() during Render() is visible
 	// as a generation mismatch on the next frame.
+	//
+	// Flip to the alternate line buffer and offer it via ctx.Recycle.
+	// The previous render's buffer (lineBufs[bufIdx]) may still be
+	// referenced by TUI.previousLines or a parent container, so we
+	// use the OTHER buffer. Components that append into ctx.Recycle
+	// avoid allocating a fresh slice each frame.
+	cp.bufIdx ^= 1
+	ctx.Recycle = cp.lineBufs[cp.bufIdx][:0]
 	var r RenderResult
 	if ctx.componentStats != nil {
 		start := time.Now()
@@ -274,6 +299,8 @@ func renderComponent(ch Component, ctx RenderContext) RenderResult {
 	} else {
 		r = ch.Render(ctx)
 	}
+	// Save back in case append grew the slice.
+	cp.lineBufs[cp.bufIdx] = r.Lines
 	cp.cache = &renderCache{result: r, width: ctx.Width}
 	cp.renderedGen = gen
 	return r
@@ -442,7 +469,7 @@ func (c *Container) Clear() {
 }
 
 func (c *Container) Render(ctx RenderContext) RenderResult {
-	var lines []string
+	lines := ctx.Recycle
 	var cursor *CursorPos
 	for _, ch := range c.Children {
 		r := renderComponent(ch, ctx)
