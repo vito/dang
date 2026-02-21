@@ -214,9 +214,14 @@ func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bo
 }
 
 // completionTokenLen returns the length of the completion token ending at
-// the cursor. This includes "receiver.ident" for method completions.
+// the cursor. This includes "receiver.ident" for method completions and
+// ":command" for REPL command completions.
 func (r *replComponent) completionTokenLen() int {
 	val := r.textInput.Value()
+	// Command completions: the entire ":command" is the token.
+	if strings.HasPrefix(val, ":") {
+		return len(val)
+	}
 	i := len(val) - 1
 	for i >= 0 && isIdentByte(val[i]) {
 		i--
@@ -231,12 +236,66 @@ func (r *replComponent) completionTokenLen() int {
 }
 
 
+func (r *replComponent) updateCommandCompletionMenu(ctx pitui.EventContext, val string) {
+	partial := strings.TrimPrefix(val, ":")
+	partialLower := strings.ToLower(partial)
+
+	var matches []string
+	var labels []string
+	var completions []dang.Completion
+	for _, cmd := range replCommandDefs {
+		if strings.HasPrefix(cmd.name, partialLower) && cmd.name != partialLower {
+			matches = append(matches, ":"+cmd.name)
+			labels = append(labels, ":"+cmd.name)
+			completions = append(completions, dang.Completion{
+				Label:         ":" + cmd.name,
+				Detail:        "command",
+				Documentation: cmd.desc,
+			})
+		}
+	}
+
+	r.menuLabels = labels
+	r.menuCompletions = completions
+	if len(matches) > 0 {
+		r.textInput.Suggestion = matches[0]
+	} else {
+		r.textInput.Suggestion = ""
+	}
+	r.setMenu(ctx, matches, completions)
+}
+
+// replCommandDefs defines the available REPL commands and their descriptions.
+var replCommandDefs = []struct {
+	name string
+	desc string
+}{
+	{"help", "Show available commands"},
+	{"exit", "Exit the REPL"},
+	{"doc", "Interactive API browser"},
+	{"env", "Show environment bindings"},
+	{"type", "Show type of an expression"},
+	{"find", "Find functions/types by pattern"},
+	{"reset", "Reset the environment"},
+	{"clear", "Clear the screen"},
+	{"debug", "Toggle debug mode"},
+	{"debug-render", "Toggle render performance logging"},
+	{"version", "Show version info"},
+	{"quit", "Exit the REPL"},
+	{"history", "Show recent history"},
+}
+
 func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 	val := r.textInput.Value()
 
-	if val == "" || strings.HasPrefix(val, ":") {
+	if val == "" {
 		r.hideCompletionMenu()
 		r.textInput.Suggestion = ""
+		return
+	}
+
+	if strings.HasPrefix(val, ":") {
+		r.updateCommandCompletionMenu(ctx, val)
 		return
 	}
 
