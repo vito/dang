@@ -117,6 +117,7 @@ func (b *Wrap[T]) Render(ctx pitui.RenderContext) pitui.RenderResult {
 }
 
 // HandleKeyPress implements pitui.Interactive.
-func (b *Wrap[T]) HandleKeyPress(ev uv.KeyPressEvent) {
+func (b *Wrap[T]) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
 	b.updateModel(tea.KeyPressMsg(ev))
+	return true // bubbletea models consume all key events
 }

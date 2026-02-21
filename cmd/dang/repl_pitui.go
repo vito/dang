@@ -133,6 +133,64 @@ type completionOverlay struct {
 	items      []string
 	index      int
 	maxVisible int
+
+	// onAccept is called when the user selects an item (Tab or Enter).
+	// For Tab the event is consumed; for Enter it bubbles to TextInput
+	// which fires OnSubmit.
+	onAccept func(index int)
+	// onDismiss is called when the user presses Escape.
+	onDismiss func()
+	// onNavigate is called after the index changes (Up/Down).
+	onNavigate func()
+}
+
+func (c *completionOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
+	if len(c.items) == 0 {
+		return false
+	}
+	key := uv.Key(ev)
+	switch {
+	case key.Code == uv.KeyDown && key.Mod == 0,
+		key.Code == 'n' && key.Mod == uv.ModCtrl:
+		c.index++
+		if c.index >= len(c.items) {
+			c.index = 0
+		}
+		c.Update()
+		if c.onNavigate != nil {
+			c.onNavigate()
+		}
+		return true
+	case key.Code == uv.KeyUp && key.Mod == 0,
+		key.Code == 'p' && key.Mod == uv.ModCtrl:
+		c.index--
+		if c.index < 0 {
+			c.index = len(c.items) - 1
+		}
+		c.Update()
+		if c.onNavigate != nil {
+			c.onNavigate()
+		}
+		return true
+	case key.Code == uv.KeyTab && key.Mod == 0:
+		if c.onAccept != nil {
+			c.onAccept(c.index)
+		}
+		return true // consume Tab
+	case key.Code == uv.KeyEnter && key.Mod == 0:
+		if c.onAccept != nil {
+			c.onAccept(c.index)
+		}
+		return false // let Enter bubble to TextInput → OnSubmit
+	case key.Code == uv.KeyEscape:
+		if c.onDismiss != nil {
+			c.onDismiss()
+		}
+		return true
+	}
+	// All other keys (printable, Ctrl+C, etc.) bubble to TextInput
+	// via BubbleTarget.
+	return false
 }
 
 func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
@@ -333,7 +391,6 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 		return dimStyle.Render(s)
 	}
 	ti.OnSubmit = r.onSubmit
-	ti.OnKey = r.onKey
 	ti.OnChange = func(ctx pitui.EventContext) { r.updateCompletionMenu(ctx) }
 
 	// Welcome message.
@@ -420,58 +477,22 @@ func (r *replComponent) onSubmit(ctx pitui.EventContext, line string) bool {
 	return true
 }
 
-// onKey handles keys not consumed by the text input editor.
-func (r *replComponent) onKey(ctx pitui.EventContext, key uv.Key) bool {
-	// While evaluating: Ctrl+C cancels.
+// HandleKeyPress handles keys that bubble up from focused children.
+// When the TextInput is focused, this receives keys TextInput doesn't
+// handle (Up/Down for history, Ctrl+C, Ctrl+D, Ctrl+L, etc.).
+// When the spinner is focused during eval, this receives all keys
+// (the spinner doesn't implement Interactive, so everything bubbles).
+func (r *replComponent) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
+	key := uv.Key(ev)
+
+	// While evaluating: Ctrl+C cancels, swallow everything else.
 	if r.evaluating {
 		if key.Code == 'c' && key.Mod == uv.ModCtrl {
 			if r.cancelEval != nil {
 				r.cancelEval()
 			}
-			return true
 		}
-		return true // swallow everything else
-	}
-
-	// Completion menu navigation.
-	if r.menuVisible {
-		switch {
-		case key.Code == uv.KeyTab && key.Mod == 0:
-			if r.menuIndex < len(r.menuItems) {
-				r.textInput.SetValue(r.menuItems[r.menuIndex])
-				r.textInput.CursorEnd()
-			}
-			r.hideCompletionMenu()
-			r.updateCompletionMenu(ctx)
-			return true
-		case key.Code == uv.KeyDown && key.Mod == 0,
-			key.Code == 'n' && key.Mod == uv.ModCtrl:
-			r.menuIndex++
-			if r.menuIndex >= len(r.menuItems) {
-				r.menuIndex = 0
-			}
-			r.syncMenu(ctx)
-			return true
-		case key.Code == uv.KeyUp && key.Mod == 0,
-			key.Code == 'p' && key.Mod == uv.ModCtrl:
-			r.menuIndex--
-			if r.menuIndex < 0 {
-				r.menuIndex = len(r.menuItems) - 1
-			}
-			r.syncMenu(ctx)
-			return true
-		case key.Code == uv.KeyEscape:
-			r.hideCompletionMenu()
-			return true
-		case key.Code == uv.KeyEnter && key.Mod == 0:
-			if r.menuIndex < len(r.menuItems) {
-				r.textInput.SetValue(r.menuItems[r.menuIndex])
-				r.textInput.CursorEnd()
-			}
-			r.hideCompletionMenu()
-			// Fall through — onSubmit will be called by the text input.
-			return false
-		}
+		return true
 	}
 
 	switch {
@@ -479,6 +500,7 @@ func (r *replComponent) onKey(ctx pitui.EventContext, key uv.Key) bool {
 		if r.textInput.Value() != "" {
 			r.textInput.SetValue("")
 			r.hideCompletionMenu()
+			ctx.SetFocus(r.textInput)
 			return true
 		}
 		r.requestQuit()
@@ -492,15 +514,12 @@ func (r *replComponent) onKey(ctx pitui.EventContext, key uv.Key) bool {
 		return false
 
 	case key.Code == uv.KeyUp && key.Mod == 0:
-		if !r.menuVisible {
-			r.history.Navigate(-1, r.textInput)
-			return true
-		}
+		r.history.Navigate(-1, r.textInput)
+		return true
+
 	case key.Code == uv.KeyDown && key.Mod == 0:
-		if !r.menuVisible {
-			r.history.Navigate(1, r.textInput)
-			return true
-		}
+		r.history.Navigate(1, r.textInput)
+		return true
 
 	case key.Code == 'l' && key.Mod == uv.ModCtrl:
 		r.entryContainer.Clear()
@@ -551,18 +570,10 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 
 	// Swap text input for spinner via the slot.
 	// Spinner starts automatically via OnMount when added to the slot.
+	// Focus the spinner so key events bubble up to replComponent's
+	// HandleKeyPress (which handles Ctrl+C and swallows everything else).
 	r.inputSlot.Set(r.spinner)
-	ectx.SetFocus(nil)
-	// Route input to onKey during eval so Ctrl+C can cancel.
-	removeListener := ectx.AddInputListener(func(ctx pitui.EventContext, ev uv.Event) bool {
-		if kp, ok := ev.(uv.KeyPressEvent); ok {
-			if r.onKey(ctx, uv.Key(kp)) {
-				ectx.RequestRender(false)
-				return true
-			}
-		}
-		return false
-	})
+	ectx.SetFocus(r.spinner)
 	ectx.RequestRender(false)
 
 	go func() {
@@ -577,7 +588,7 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 			val, err := dang.EvalNode(ctx, evalEnv, node)
 
 			if evalCtx.Err() != nil {
-				r.finishEval(ectx, ev, nil, nil, true, removeListener)
+				r.finishEval(ectx, ev, nil, nil, true)
 				return
 			}
 
@@ -588,7 +599,7 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 
 			if err != nil {
 				results = append(results, errorStyle.Render(fmt.Sprintf("evaluation error: %v", err)))
-				r.finishEval(ectx, ev, logs, results, false, removeListener)
+				r.finishEval(ectx, ev, logs, results, false)
 				return
 			}
 
@@ -598,15 +609,13 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 			}
 		}
 
-		r.finishEval(ectx, ev, logs, results, false, removeListener)
+		r.finishEval(ectx, ev, logs, results, false)
 	}()
 }
 
-func (r *replComponent) finishEval(ctx pitui.EventContext, ev *entryView, logs, results []string, cancelled bool, removeListener func()) {
+func (r *replComponent) finishEval(ctx pitui.EventContext, ev *entryView, logs, results []string, cancelled bool) {
 	// Dispatch to the UI goroutine so we can safely mutate component state.
 	ctx.Dispatch(func() {
-		removeListener()
-
 		r.evaluating = false
 		r.cancelEval = nil
 		if ev != nil {

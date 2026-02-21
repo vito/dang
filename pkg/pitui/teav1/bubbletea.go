@@ -109,8 +109,9 @@ func (b *Wrap) Render(ctx pitui.RenderContext) pitui.RenderResult {
 }
 
 // HandleKeyPress implements pitui.Interactive.
-func (b *Wrap) HandleKeyPress(ev uv.KeyPressEvent) {
+func (b *Wrap) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
 	b.updateModel(uvKeyToV1(uv.Key(ev)))
+	return true // bubbletea models consume all key events
 }
 
 // uvKeyToV1 converts an ultraviolet Key to a bubbletea v1 KeyMsg.

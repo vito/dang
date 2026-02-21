@@ -258,8 +258,9 @@ func (b *borderBox) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{Lines: strings.Split(rendered, "\n")}
 }
 
-func (b *borderBox) HandleKeyPress(ev uv.KeyPressEvent) {
+func (b *borderBox) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
 	if ic, ok := b.child.(pitui.Interactive); ok {
-		ic.HandleKeyPress(ev)
+		return ic.HandleKeyPress(ctx, ev)
 	}
+	return false
 }

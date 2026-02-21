@@ -155,7 +155,8 @@ type Compo struct {
 	renderedGen   int64        // generation when last rendered; render-goroutine only
 	cache         *renderCache // only accessed from the render goroutine
 	parent        *Compo
-	requestRender func() // set on the root by TUI
+	self          Component    // the Component that embeds this Compo; set by setComponentParent
+	requestRender func()       // set on the root by TUI
 
 	// Lifecycle — managed by the framework during mount/dismount.
 	// Components never access these directly; they receive EventContext
@@ -190,8 +191,9 @@ func (c *Compo) Update() {
 func (c *Compo) compo() *Compo { return c }
 
 // setComponentParent wires a component into (or out of) the component tree.
-// It handles upward dirty propagation and triggers mount/dismount lifecycle
-// hooks when the component enters or leaves a TUI-rooted tree.
+// It handles upward dirty propagation, sets the self reference for input
+// bubbling, and triggers mount/dismount lifecycle hooks when the component
+// enters or leaves a TUI-rooted tree.
 //
 // Managed automatically by Container.AddChild, Slot.Set, and RenderChild.
 func setComponentParent(comp Component, parent *Compo) {
@@ -199,6 +201,7 @@ func setComponentParent(comp Component, parent *Compo) {
 	wasMounted := cp.tui != nil
 
 	cp.parent = parent
+	cp.self = comp
 
 	shouldBeMounted := parent != nil && parent.tui != nil
 	if wasMounted && !shouldBeMounted {
@@ -288,19 +291,26 @@ type Component interface {
 // Interactive is an optional interface for components that accept keyboard
 // input when focused. The TUI decodes raw terminal bytes and dispatches
 // typed events; components never see raw bytes.
+//
+// Key events are delivered to the focused component first. If
+// HandleKeyPress returns false, the event bubbles up through parent
+// components in the tree (any parent implementing Interactive gets a
+// chance to handle it). If the focused component does not implement
+// Interactive at all, the event bubbles immediately.
 type Interactive interface {
 	Component
 
-	// HandleKeyPress is called with a decoded key press event when the
-	// component has focus. The EventContext provides access to framework
-	// operations (SetFocus, ShowOverlay, Dispatch, etc.).
-	HandleKeyPress(ctx EventContext, ev uv.KeyPressEvent)
+	// HandleKeyPress is called with a decoded key press event.
+	// Return true if the event was consumed; return false to let it
+	// bubble to the parent component.
+	HandleKeyPress(ctx EventContext, ev uv.KeyPressEvent) bool
 }
 
 // Pasteable is an optional interface for components that accept pasted
-// text (via bracketed paste). If not implemented, paste events are ignored.
+// text (via bracketed paste). Paste events bubble like key events: if
+// HandlePaste returns false, the event propagates to the parent.
 type Pasteable interface {
-	HandlePaste(ctx EventContext, ev uv.PasteEvent)
+	HandlePaste(ctx EventContext, ev uv.PasteEvent) bool
 }
 
 // Focusable is an optional interface for components that want to know when

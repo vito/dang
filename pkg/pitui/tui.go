@@ -243,6 +243,7 @@ func newTUI(term Terminal) *TUI {
 	// Mount the TUI's own Container so children added via AddChild
 	// are automatically mounted (receiving lifecycle hooks).
 	t.Container.Compo.tui = t
+	t.Container.Compo.self = &t.Container
 	t.Container.Compo.mountCtx = context.Background()
 	// mountCancel is nil for the root — it's never dismounted.
 	return t
@@ -563,14 +564,129 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 		t.mu.Unlock()
 		return
 	case uv.KeyPressEvent:
-		if ic, ok := comp.(Interactive); ok {
-			ic.HandleKeyPress(ctx, e)
-		}
+		t.bubbleKeyPress(comp, ctx, e)
 	case uv.PasteEvent:
-		if p, ok := comp.(Pasteable); ok {
-			p.HandlePaste(ctx, e)
+		t.bubblePaste(comp, ctx, e)
+	}
+}
+
+// bubbleKeyPress delivers a key event to the focused component and, if
+// not consumed, walks up the parent chain giving each Interactive
+// ancestor a chance to handle it. If the focused component is inside an
+// overlay with a BubbleTarget, bubbling crosses the overlay boundary
+// and continues from the target component.
+func (t *TUI) bubbleKeyPress(comp Component, ctx EventContext, ev uv.KeyPressEvent) {
+	if comp == nil {
+		return
+	}
+
+	// Focused component gets first shot.
+	if ic, ok := comp.(Interactive); ok {
+		if ic.HandleKeyPress(ctx, ev) {
+			return
 		}
 	}
+
+	// Bubble up through parents.
+	if t.bubbleKeyPressFrom(comp.compo().parent, ctx, ev) {
+		return
+	}
+
+	// Cross overlay boundary if applicable.
+	if target := t.overlayBubbleTarget(comp); target != nil {
+		tctx := t.eventContextFor(target)
+		if ic, ok := target.(Interactive); ok {
+			if ic.HandleKeyPress(tctx, ev) {
+				return
+			}
+		}
+		t.bubbleKeyPressFrom(target.compo().parent, tctx, ev)
+	}
+}
+
+// bubbleKeyPressFrom walks up from the given Compo, offering the event
+// to each Interactive ancestor. Returns true if consumed.
+func (t *TUI) bubbleKeyPressFrom(cp *Compo, ctx EventContext, ev uv.KeyPressEvent) bool {
+	for cp != nil {
+		if cp.self != nil {
+			if ic, ok := cp.self.(Interactive); ok {
+				if ic.HandleKeyPress(ctx, ev) {
+					return true
+				}
+			}
+		}
+		cp = cp.parent
+	}
+	return false
+}
+
+// bubblePaste delivers a paste event with the same bubbling logic as
+// key presses.
+func (t *TUI) bubblePaste(comp Component, ctx EventContext, ev uv.PasteEvent) {
+	if comp == nil {
+		return
+	}
+
+	if p, ok := comp.(Pasteable); ok {
+		if p.HandlePaste(ctx, ev) {
+			return
+		}
+	}
+
+	// Bubble up through parents.
+	cp := comp.compo().parent
+	for cp != nil {
+		if cp.self != nil {
+			if p, ok := cp.self.(Pasteable); ok {
+				if p.HandlePaste(ctx, ev) {
+					return
+				}
+			}
+		}
+		cp = cp.parent
+	}
+
+	// Cross overlay boundary.
+	if target := t.overlayBubbleTarget(comp); target != nil {
+		if p, ok := target.(Pasteable); ok {
+			if p.HandlePaste(ctx, ev) {
+				return
+			}
+		}
+	}
+}
+
+// overlayBubbleTarget returns the BubbleTarget for the overlay containing
+// the given component (or an ancestor of it), or nil if the component is
+// not in an overlay or the overlay has no BubbleTarget.
+func (t *TUI) overlayBubbleTarget(comp Component) Component {
+	for _, entry := range t.overlayStack {
+		if entry.hidden {
+			continue
+		}
+		if containsComponent(entry.component, comp) {
+			if entry.options != nil {
+				return entry.options.BubbleTarget
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// containsComponent reports whether root is (or contains) target.
+func containsComponent(root, target Component) bool {
+	if root == target {
+		return true
+	}
+	if p, ok := root.(componentParent); ok {
+		for _, child := range p.componentChildren() {
+			if containsComponent(child, target) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ---------- escape sequences ------------------------------------------------

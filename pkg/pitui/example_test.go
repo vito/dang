@@ -33,9 +33,10 @@ func (c *Counter) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	}
 }
 
-func (c *Counter) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) {
+func (c *Counter) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
 	c.Count++
 	c.Update()
+	return true
 }
 
 func (c *Counter) SetFocused(_ pitui.EventContext, focused bool) { c.focused = focused }

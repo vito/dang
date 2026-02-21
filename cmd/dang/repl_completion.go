@@ -66,6 +66,7 @@ func (r *replComponent) showCompletionMenu(ctx pitui.EventContext) {
 		PreferAbove:    true,
 		OffsetX:        -r.completionTokenLen(),
 		CursorGroup:    r.completionGroup,
+		BubbleTarget:   r.textInput,
 	}
 	if r.menuHandle != nil {
 		// Reuse existing overlay — just update position and data.
@@ -78,8 +79,26 @@ func (r *replComponent) showCompletionMenu(ctx pitui.EventContext) {
 			items:      displayItems,
 			index:      r.menuIndex,
 			maxVisible: r.menuMaxVisible,
+			onAccept: func(index int) {
+				if index < len(r.menuItems) {
+					r.textInput.SetValue(r.menuItems[index])
+					r.textInput.CursorEnd()
+				}
+				r.hideCompletionMenu()
+				ctx.SetFocus(r.textInput)
+				r.updateCompletionMenu(ctx)
+			},
+			onDismiss: func() {
+				r.hideCompletionMenu()
+				ctx.SetFocus(r.textInput)
+			},
+			onNavigate: func() {
+				r.menuIndex = r.menuOverlay.index
+				r.syncDetailBubble(ctx)
+			},
 		}
 		r.menuHandle = ctx.ShowOverlay(r.menuOverlay, opts)
+		ctx.SetFocus(r.menuOverlay)
 	}
 	r.syncDetailBubble(ctx)
 }

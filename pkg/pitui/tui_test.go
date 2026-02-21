@@ -1587,6 +1587,175 @@ func TestContainerClearDismountsAll(t *testing.T) {
 	assert.False(t, b.mounted)
 }
 
+// ── Input bubbling tests ────────────────────────────────────────────────────
+
+// interactiveComponent records key events and optionally consumes them.
+type interactiveComponent struct {
+	Compo
+	lines   []string
+	keys    []string // recorded key descriptions
+	consume bool     // if true, HandleKeyPress returns true
+}
+
+func (c *interactiveComponent) Render(ctx RenderContext) RenderResult {
+	return RenderResult{Lines: c.lines}
+}
+
+func (c *interactiveComponent) HandleKeyPress(_ EventContext, ev uv.KeyPressEvent) bool {
+	key := uv.Key(ev)
+	desc := string(key.Code)
+	if key.Text != "" {
+		desc = key.Text
+	}
+	c.keys = append(c.keys, desc)
+	return c.consume
+}
+
+// interactiveContainer is a Container that also implements Interactive,
+// so it can participate in bubbling.
+type interactiveContainer struct {
+	Container
+	keys    []string
+	consume bool
+}
+
+func (c *interactiveContainer) HandleKeyPress(_ EventContext, ev uv.KeyPressEvent) bool {
+	key := uv.Key(ev)
+	desc := string(key.Code)
+	if key.Text != "" {
+		desc = key.Text
+	}
+	c.keys = append(c.keys, desc)
+	return c.consume
+}
+
+func TestBubblingToParent(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// Build tree: TUI → parent (interactive container) → child.
+	parent := &interactiveContainer{consume: false}
+	child := &interactiveComponent{lines: []string{"child"}, consume: false}
+	child.Update()
+
+	parent.AddChild(child)
+	tui.AddChild(parent)
+
+	tui.SetFocus(child)
+
+	ev := uv.KeyPressEvent{Code: 'x', Text: "x"}
+	tui.dispatchEvent(ev)
+
+	// Child returns false, event bubbles to parent.
+	assert.Equal(t, []string{"x"}, child.keys)
+	assert.Equal(t, []string{"x"}, parent.keys)
+}
+
+func TestBubblingConsumed(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	parent := &interactiveContainer{consume: false}
+	child := &interactiveComponent{lines: []string{"child"}, consume: true} // consumes
+	child.Update()
+
+	parent.AddChild(child)
+	tui.AddChild(parent)
+	tui.SetFocus(child)
+
+	ev := uv.KeyPressEvent{Code: 'x', Text: "x"}
+	tui.dispatchEvent(ev)
+
+	// Child consumed it — parent should NOT see it.
+	assert.Equal(t, []string{"x"}, child.keys)
+	assert.Empty(t, parent.keys)
+}
+
+func TestBubblingNonInteractiveFocused(t *testing.T) {
+	// When the focused component doesn't implement Interactive,
+	// the event should still bubble to Interactive ancestors.
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	parent := &interactiveContainer{consume: true}
+	// staticComponent doesn't implement Interactive.
+	child := &staticComponent{lines: []string{"child"}}
+	child.Update()
+
+	parent.AddChild(child)
+	tui.AddChild(parent)
+	tui.SetFocus(child) // non-Interactive component gets focus
+
+	ev := uv.KeyPressEvent{Code: 'z', Text: "z"}
+	tui.dispatchEvent(ev)
+
+	// Should bubble to parent.
+	assert.Equal(t, []string{"z"}, parent.keys)
+}
+
+func TestBubblingOverlayBubbleTarget(t *testing.T) {
+	// Test that overlay BubbleTarget works: keys bubble from overlay
+	// component → BubbleTarget → BubbleTarget's parent chain.
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// Tree: TUI → grandparent (interactive container) → target.
+	grandparent := &interactiveContainer{consume: true}
+	target := &interactiveComponent{lines: []string{"target"}, consume: false}
+	target.Update()
+	grandparent.AddChild(target)
+	tui.AddChild(grandparent)
+
+	// Show overlay with BubbleTarget pointing to target.
+	overlay := &interactiveComponent{lines: []string{"overlay"}, consume: false}
+	overlay.Update()
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:        SizeAbs(10),
+		Anchor:       AnchorCenter,
+		BubbleTarget: target,
+	})
+	tui.SetFocus(overlay)
+
+	ev := uv.KeyPressEvent{Code: 'q', Text: "q"}
+	tui.dispatchEvent(ev)
+
+	// Overlay returns false → crosses boundary to target → target returns
+	// false → bubbles to grandparent.
+	assert.Equal(t, []string{"q"}, overlay.keys)
+	assert.Equal(t, []string{"q"}, target.keys)
+	assert.Equal(t, []string{"q"}, grandparent.keys)
+}
+
+func TestBubblingOverlayNoBubbleTarget(t *testing.T) {
+	// Without BubbleTarget, bubbling stops at the overlay boundary.
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	parent := &interactiveComponent{lines: []string{"parent"}, consume: true}
+	parent.Update()
+	tui.AddChild(parent)
+
+	overlay := &interactiveComponent{lines: []string{"overlay"}, consume: false}
+	overlay.Update()
+	tui.ShowOverlay(overlay, &OverlayOptions{
+		Width:  SizeAbs(10),
+		Anchor: AnchorCenter,
+	})
+	tui.SetFocus(overlay)
+
+	ev := uv.KeyPressEvent{Code: 'q', Text: "q"}
+	tui.dispatchEvent(ev)
+
+	// Overlay returns false but no BubbleTarget — parent should NOT see it.
+	assert.Equal(t, []string{"q"}, overlay.keys)
+	assert.Empty(t, parent.keys)
+}
+
 func TestSpinnerMountDismountLifecycle(t *testing.T) {
 	term := newMockTerminal(40, 10)
 	tui := newTUI(term)

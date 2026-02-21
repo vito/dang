@@ -31,7 +31,7 @@ func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 	return db
 }
 
-func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) {
+func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
 	defer d.Update()
 	key := uv.Key(ev)
 	if d.filtering {
@@ -39,6 +39,7 @@ func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressE
 	} else {
 		d.handleKey(key)
 	}
+	return true // doc browser consumes all keys when focused
 }
 
 func (d *docBrowserOverlay) handleKey(key uv.Key) {

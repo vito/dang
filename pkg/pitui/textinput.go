@@ -30,14 +30,9 @@ type TextInput struct {
 	// input value. Return true to clear the input after submission.
 	OnSubmit func(ctx EventContext, value string) bool
 
-	// OnKey is called for keys not handled by the editor. Return true if
-	// the key was consumed. The uv.Key contains the decoded key with
-	// modifiers; use key.Code and key.Mod for matching.
-	OnKey func(ctx EventContext, key uv.Key) bool
-
 	// Suggestion is a ghost completion hint shown after the cursor. It is
 	// cleared on every keystroke and must be re-set by the caller (e.g. in
-	// OnKey or OnSubmit).
+	// OnSubmit or OnChange). Cleared automatically on each keystroke.
 	Suggestion string
 
 	// SuggestionStyle wraps the suggestion text (e.g. dim style).
@@ -155,13 +150,14 @@ func (t *TextInput) Render(ctx RenderContext) RenderResult {
 }
 
 // HandleKeyPress implements [Interactive].
-func (t *TextInput) HandleKeyPress(ctx EventContext, ev uv.KeyPressEvent) {
-	t.handleKeyPress(ctx, ev)
+func (t *TextInput) HandleKeyPress(ctx EventContext, ev uv.KeyPressEvent) bool {
+	return t.handleKeyPress(ctx, ev)
 }
 
 // HandlePaste implements [Pasteable].
-func (t *TextInput) HandlePaste(ctx EventContext, ev uv.PasteEvent) {
+func (t *TextInput) HandlePaste(ctx EventContext, ev uv.PasteEvent) bool {
 	t.handlePaste(ctx, ev.Content)
+	return true
 }
 
 func (t *TextInput) handlePaste(ctx EventContext, content string) {
@@ -179,12 +175,16 @@ func (t *TextInput) handlePaste(ctx EventContext, content string) {
 	}
 }
 
-func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
+func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) bool {
 	key := uv.Key(e)
 
 	oldValue := string(t.value)
 	savedSuggestion := t.Suggestion
 	t.Suggestion = "" // Clear suggestion on every keystroke
+
+	// handled tracks whether the key was consumed by this component.
+	// The deferred Update/OnChange runs regardless (suggestion was cleared).
+	handled := true
 	defer func() {
 		t.Update() // any input may change cursor or content
 		if t.OnChange != nil && string(t.value) != oldValue {
@@ -199,7 +199,7 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 	if (key.Code == uv.KeyEnter && (key.Mod.Contains(uv.ModShift) || key.Mod.Contains(uv.ModAlt))) ||
 		(key.Code == 'j' && key.Mod == uv.ModCtrl) {
 		t.insertRune('\n')
-		return
+		return true
 	}
 
 	// Enter (unmodified): submit.
@@ -211,39 +211,35 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 				t.cursor = 0
 			}
 		}
-		return
+		return true
 	}
 
-	// Tab: accept suggestion or delegate.
+	// Tab: accept suggestion if available, otherwise bubble.
 	if key.Code == uv.KeyTab && key.Mod == 0 {
 		if savedSuggestion != "" {
 			t.SetValue(savedSuggestion)
-			return
+			return true
 		}
-		if t.OnKey != nil {
-			t.OnKey(ctx, key)
-		}
-		return
+		handled = false
+		return handled
 	}
 
-	// Backtab (Shift+Tab): delegate to OnKey.
+	// Backtab (Shift+Tab): bubble.
 	if key.Code == uv.KeyTab && key.Mod.Contains(uv.ModShift) {
-		if t.OnKey != nil {
-			t.OnKey(ctx, key)
-		}
-		return
+		handled = false
+		return handled
 	}
 
 	// Right arrow / Ctrl+F: accept suggestion at end, else move cursor.
 	if (key.Code == uv.KeyRight || key.Code == 'f' && key.Mod.Contains(uv.ModCtrl)) && !key.Mod.Contains(uv.ModShift) && !key.Mod.Contains(uv.ModAlt) {
 		if key.Code == uv.KeyRight && savedSuggestion != "" && t.cursor == len(t.value) {
 			t.SetValue(savedSuggestion)
-			return
+			return true
 		}
 		if t.cursor < len(t.value) {
 			t.cursor++
 		}
-		return
+		return true
 	}
 
 	// Backspace.
@@ -252,7 +248,7 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 			t.value = append(t.value[:t.cursor-1], t.value[t.cursor:]...)
 			t.cursor--
 		}
-		return
+		return true
 	}
 
 	// Delete.
@@ -260,7 +256,7 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 		if t.cursor < len(t.value) {
 			t.value = append(t.value[:t.cursor], t.value[t.cursor+1:]...)
 		}
-		return
+		return true
 	}
 
 	// Cursor movement.
@@ -268,85 +264,75 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 		if t.cursor > 0 {
 			t.cursor--
 		}
-		return
+		return true
 	}
 	if key.Code == uv.KeyHome || key.Code == 'a' && key.Mod == uv.ModCtrl {
-		// Move to start of current line.
 		t.cursor = t.lineStart()
-		return
+		return true
 	}
 	if key.Code == uv.KeyEnd || key.Code == 'e' && key.Mod == uv.ModCtrl {
-		// Move to end of current line.
 		t.cursor = t.lineEnd()
-		return
+		return true
 	}
 
-	// Up/Down: move between lines if multiline, else delegate.
+	// Up/Down: move between lines if multiline, else bubble.
 	if key.Code == uv.KeyUp && key.Mod == 0 {
 		if t.hasMultipleLines() {
 			t.moveCursorVertically(-1)
-			return
+			return true
 		}
-		if t.OnKey != nil {
-			t.OnKey(ctx, key)
-		}
-		return
+		handled = false
+		return handled
 	}
 	if key.Code == uv.KeyDown && key.Mod == 0 {
 		if t.hasMultipleLines() {
 			t.moveCursorVertically(1)
-			return
+			return true
 		}
-		if t.OnKey != nil {
-			t.OnKey(ctx, key)
-		}
-		return
+		handled = false
+		return handled
 	}
 
 	// Word movement.
 	if key.MatchString("alt+left") || key.MatchString("ctrl+left") || key.MatchString("alt+b") {
 		t.cursor = t.wordLeft()
-		return
+		return true
 	}
 	if key.MatchString("alt+right") || key.MatchString("ctrl+right") || key.MatchString("alt+f") {
 		if key.Code == uv.KeyRight && savedSuggestion != "" && t.cursor == len(t.value) {
 			t.SetValue(savedSuggestion)
-			return
+			return true
 		}
 		t.cursor = t.wordRight()
-		return
+		return true
 	}
 
 	// Kill line.
 	if key.Code == 'u' && key.Mod == uv.ModCtrl {
-		// Kill from start of line to cursor.
 		start := t.lineStart()
 		t.value = append(t.value[:start], t.value[t.cursor:]...)
 		t.cursor = start
-		return
+		return true
 	}
 	if key.Code == 'k' && key.Mod == uv.ModCtrl {
-		// Kill from cursor to end of line.
 		end := t.lineEnd()
 		t.value = append(t.value[:t.cursor], t.value[end:]...)
-		return
+		return true
 	}
 
-	// Kill subword backward (Ctrl+W). Stops at symbol boundaries
-	// (e.g. ".", "(", ")") so that "container.withExec(" is deleted
-	// as three separate kills: "(" → "withExec" → "." → "container".
+	// Kill subword backward (Ctrl+W).
 	if key.Code == 'w' && key.Mod == uv.ModCtrl {
 		start := t.subwordLeft()
 		t.value = append(t.value[:start], t.value[t.cursor:]...)
 		t.cursor = start
-		return
+		return true
 	}
 
 	// Kill word forward (Alt+D).
 	if key.Code == 'd' && key.Mod == uv.ModAlt {
 		end := t.wordRight()
 		t.value = append(t.value[:t.cursor], t.value[end:]...)
-		return
+		return true
 	}
 
 	// Transpose (Ctrl+T).
@@ -355,15 +341,13 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 			t.value[t.cursor-1], t.value[t.cursor] = t.value[t.cursor], t.value[t.cursor-1]
 			t.cursor++
 		}
-		return
+		return true
 	}
 
-	// Delegate to OnKey for unhandled non-printable keys.
+	// Unhandled non-printable keys: bubble.
 	if key.Text == "" {
-		if t.OnKey != nil {
-			t.OnKey(ctx, key)
-		}
-		return
+		handled = false
+		return handled
 	}
 
 	// Insert printable text.
@@ -374,6 +358,7 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) {
 	newVal = append(newVal, t.value[t.cursor:]...)
 	t.value = newVal
 	t.cursor += len(runes)
+	return true
 }
 
 func (t *TextInput) insertRune(r rune) {
