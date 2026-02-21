@@ -29,86 +29,39 @@ import (
 // so streaming output always lands on the correct entry regardless of
 // any concurrent container mutations.
 //
-// Writes are buffered and flushed via a coalescing goroutine so that
-// high-frequency Dagger progress output doesn't call Update() on every
-// write. The flush goroutine drains the pending buffer at most once per
-// render frame.
+// Each Write dispatches a closure to the UI goroutine. The event loop
+// drains all pending dispatches before rendering, so rapid writes
+// naturally coalesce into a single frame — no explicit buffering needed.
 type pituiSyncWriter struct {
 	mu       sync.Mutex
 	dispatch func(func()) // schedules work on the UI goroutine
 	target   *entryView
-	pending  strings.Builder
-	dirty    chan struct{} // capacity-1 channel; non-blocking send coalesces
-	cancel   context.CancelFunc
-	stopCtx  context.Context
 }
 
 func newPituiSyncWriter(dispatch func(func())) *pituiSyncWriter {
-	ctx, cancel := context.WithCancel(context.Background())
-	w := &pituiSyncWriter{
-		dispatch: dispatch,
-		dirty:   make(chan struct{}, 1),
-		cancel:  cancel,
-		stopCtx: ctx,
-	}
-	go w.flushLoop()
-	return w
+	return &pituiSyncWriter{dispatch: dispatch}
 }
 
 func (w *pituiSyncWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
-	if w.target != nil {
-		w.pending.Write(p)
-	}
-	w.mu.Unlock()
-	// Coalescing signal — non-blocking so rapid writes merge.
-	select {
-	case w.dirty <- struct{}{}:
-	default:
-	}
-	return len(p), nil
-}
-
-func (w *pituiSyncWriter) flushLoop() {
-	for {
-		select {
-		case <-w.dirty:
-			w.flush()
-		case <-w.stopCtx.Done():
-			w.flush() // drain any remaining data
-			return
-		}
-	}
-}
-
-func (w *pituiSyncWriter) flush() {
-	w.mu.Lock()
 	ev := w.target
-	data := w.pending.String()
-	w.pending.Reset()
 	w.mu.Unlock()
-	if ev != nil && data != "" {
+	if ev != nil {
+		data := string(p)
 		w.dispatch(func() {
 			ev.entry.writeLog(data)
 			ev.Update()
 		})
 	}
+	return len(p), nil
 }
 
 // SetTarget directs future writes to the given entryView. Pass nil to
-// suppress output (e.g. between evals). Flushes any pending data to the
-// previous target before switching.
+// suppress output (e.g. between evals).
 func (w *pituiSyncWriter) SetTarget(ev *entryView) {
-	w.flush()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.target = ev
-}
-
-// Stop shuts down the flush goroutine. Must be called when the writer
-// is no longer needed.
-func (w *pituiSyncWriter) Stop() {
-	w.cancel()
 }
 
 // ── entry view component ────────────────────────────────────────────────────
@@ -725,7 +678,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	// If there's a Dagger module, load it with a spinner visible.
 	// Spinner starts automatically via OnMount when added to the tree.
 	daggerLog := newPituiSyncWriter(tui.Dispatch)
-	defer daggerLog.Stop()
 	var daggerConn *dagger.Client
 	if moduleDir != "" {
 		loadSp := pitui.NewSpinner()
