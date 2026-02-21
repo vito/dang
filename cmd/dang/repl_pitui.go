@@ -133,64 +133,6 @@ type completionOverlay struct {
 	items      []string
 	index      int
 	maxVisible int
-
-	// onAccept is called when the user selects an item (Tab or Enter).
-	// For Tab the event is consumed; for Enter it bubbles to TextInput
-	// which fires OnSubmit.
-	onAccept func(index int)
-	// onDismiss is called when the user presses Escape.
-	onDismiss func()
-	// onNavigate is called after the index changes (Up/Down).
-	onNavigate func()
-}
-
-func (c *completionOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
-	if len(c.items) == 0 {
-		return false
-	}
-	key := uv.Key(ev)
-	switch {
-	case key.Code == uv.KeyDown && key.Mod == 0,
-		key.Code == 'n' && key.Mod == uv.ModCtrl:
-		c.index++
-		if c.index >= len(c.items) {
-			c.index = 0
-		}
-		c.Update()
-		if c.onNavigate != nil {
-			c.onNavigate()
-		}
-		return true
-	case key.Code == uv.KeyUp && key.Mod == 0,
-		key.Code == 'p' && key.Mod == uv.ModCtrl:
-		c.index--
-		if c.index < 0 {
-			c.index = len(c.items) - 1
-		}
-		c.Update()
-		if c.onNavigate != nil {
-			c.onNavigate()
-		}
-		return true
-	case key.Code == uv.KeyTab && key.Mod == 0:
-		if c.onAccept != nil {
-			c.onAccept(c.index)
-		}
-		return true // consume Tab
-	case key.Code == uv.KeyEnter && key.Mod == 0:
-		if c.onAccept != nil {
-			c.onAccept(c.index)
-		}
-		return false // let Enter bubble to TextInput → OnSubmit
-	case key.Code == uv.KeyEscape:
-		if c.onDismiss != nil {
-			c.onDismiss()
-		}
-		return true
-	}
-	// All other keys (printable, Ctrl+C, etc.) bubble to TextInput
-	// via BubbleTarget.
-	return false
 }
 
 func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
@@ -495,12 +437,37 @@ func (r *replComponent) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEve
 		return true
 	}
 
+	// Completion menu navigation — checked before general bindings so
+	// Up/Down/Escape/Ctrl+N/Ctrl+P go to the menu instead of history.
+	if r.menuVisible {
+		switch {
+		case key.Code == uv.KeyDown && key.Mod == 0,
+			key.Code == 'n' && key.Mod == uv.ModCtrl:
+			r.menuIndex++
+			if r.menuIndex >= len(r.menuItems) {
+				r.menuIndex = 0
+			}
+			r.syncMenu(ctx)
+			return true
+		case key.Code == uv.KeyUp && key.Mod == 0,
+			key.Code == 'p' && key.Mod == uv.ModCtrl:
+			r.menuIndex--
+			if r.menuIndex < 0 {
+				r.menuIndex = len(r.menuItems) - 1
+			}
+			r.syncMenu(ctx)
+			return true
+		case key.Code == uv.KeyEscape:
+			r.hideCompletionMenu()
+			return true
+		}
+	}
+
 	switch {
 	case key.Code == 'c' && key.Mod == uv.ModCtrl:
 		if r.textInput.Value() != "" {
 			r.textInput.SetValue("")
 			r.hideCompletionMenu()
-			ctx.SetFocus(r.textInput)
 			return true
 		}
 		r.requestQuit()
