@@ -30,15 +30,16 @@ func main() {
 	duration := flag.Duration("duration", 0, "exit after this duration (e.g. 10s, 1m)")
 	cpuProfile := flag.String("cpuprofile", "", "write CPU profile to file")
 	heapProfile := flag.String("heapprofile", "", "write heap profile to file on exit")
+	bench := flag.Bool("bench", false, "render as fast as possible and report FPS")
 	flag.Parse()
 
-	if err := run(*duration, *cpuProfile, *heapProfile); err != nil {
+	if err := run(*duration, *cpuProfile, *heapProfile, *bench); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(duration time.Duration, cpuProfile, heapProfile string) error {
+func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) error {
 	if cpuProfile != "" {
 		f, err := os.Create(cpuProfile)
 		if err != nil {
@@ -62,6 +63,7 @@ func run(duration time.Duration, cpuProfile, heapProfile string) error {
 	tui.SetDebugWriter(debugFile)
 
 	fractal := newFractalView()
+	fractal.bench = bench
 	chrome := &chromeBar{fractal: fractal}
 	fractal.chrome = chrome
 	log := newFrameLog()
@@ -102,6 +104,13 @@ func run(duration time.Duration, cpuProfile, heapProfile string) error {
 
 	signal.Stop(sigCh)
 	tui.Stop()
+
+	if bench {
+		elapsed := time.Since(fractal.benchStart)
+		frames := fractal.renderCount
+		fps := float64(frames) / elapsed.Seconds()
+		fmt.Fprintf(os.Stderr, "\nBenchmark: %d frames in %s (%.1f fps)\n", frames, elapsed.Truncate(time.Millisecond), fps)
+	}
 
 	if heapProfile != "" {
 		f, err := os.Create(heapProfile)
@@ -151,6 +160,9 @@ type fractalView struct {
 	quit          chan struct{}
 	chrome        *chromeBar
 	log           *frameLog
+	bench         bool
+	benchStart    time.Time
+	renderCount   int
 	notifications []*activeNotification
 }
 
@@ -270,30 +282,50 @@ func (f *fractalView) scale() float64 {
 }
 
 func (f *fractalView) OnMount(ctx pitui.EventContext) {
-	ticker := time.NewTicker(6 * time.Millisecond) // ~165 fps
-	go func() {
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				ctx.Dispatch(func() {
-					if !f.paused {
-						f.frame++
-					}
-					f.Update()
-					f.chrome.Update()
-					if f.log != nil {
-						f.log.appendFrame(f.frame, f.targetRe, f.targetIm, f.scale())
-					}
-				})
-			case <-ctx.Done():
-				return
-			}
+	f.benchStart = time.Now()
+
+	advance := func() {
+		if !f.paused {
+			f.frame++
 		}
-	}()
+		f.Update()
+		f.chrome.Update()
+		if f.log != nil {
+			f.log.appendFrame(f.frame, f.targetRe, f.targetIm, f.scale())
+		}
+	}
+
+	if f.bench {
+		// Tight loop: dispatch frame advances as fast as the render
+		// loop can consume them.
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					ctx.Dispatch(advance)
+				}
+			}
+		}()
+	} else {
+		ticker := time.NewTicker(6 * time.Millisecond) // ~165 fps
+		go func() {
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					ctx.Dispatch(advance)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
 }
 
 func (f *fractalView) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	f.renderCount++
 	frame := f.frame
 
 	w := ctx.Width
