@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -58,6 +59,14 @@ func registerStdlib() {
 				return nil, fmt.Errorf("toString: %w", err)
 			}
 			return ToValue(string(jsonBytes))
+		})
+
+	// randText function: randText() -> String!
+	Builtin("randText").
+		Doc("returns a cryptographically random text token from crypto/rand.Text").
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			return ToValue(rand.Text())
 		})
 
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!

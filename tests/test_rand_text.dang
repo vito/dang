@@ -1,0 +1,22 @@
+# Test randText helper
+
+let token1 = randText()
+let token2 = randText()
+
+# crypto/rand.Text() returns at least 128 bits of randomness.
+# With base32 encoding, that requires at least 26 characters.
+assert { token1.split(separator: "").length >= 26 }
+assert { token2.split(separator: "").length >= 26 }
+
+# RFC 4648 base32 alphabet (allow "=" in case padding appears).
+let allowedChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567="
+
+for (ch in token1.split(separator: "")) {
+  assert { allowedChars.contains(ch) }
+}
+
+for (ch in token2.split(separator: "")) {
+  assert { allowedChars.contains(ch) }
+}
+
+print("randText() tests passed!")
