@@ -256,6 +256,7 @@ func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 	if val == "" || strings.HasPrefix(val, ":") {
 		r.hideCompletionMenu()
 		r.textInput.Suggestion = ""
+		r.reconcileFocus(ctx)
 		return
 	}
 
@@ -296,6 +297,7 @@ func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 		} else {
 			r.textInput.Suggestion = ""
 		}
+		r.reconcileFocus(ctx)
 		return
 	}
 
@@ -304,6 +306,7 @@ func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 	if word == "" {
 		r.hideCompletionMenu()
 		r.textInput.Suggestion = ""
+		r.reconcileFocus(ctx)
 		return
 	}
 
@@ -327,6 +330,22 @@ func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 		r.textInput.Suggestion = matches[0]
 	} else {
 		r.textInput.Suggestion = ""
+	}
+	r.reconcileFocus(ctx)
+}
+
+// reconcileFocus ensures the focused component matches the current state.
+// If the completion menu is visible its overlay gets focus; otherwise focus
+// returns to the text input. Called at the end of updateCompletionMenu so
+// that hiding/showing the menu never leaves focus on a dead component.
+func (r *replComponent) reconcileFocus(ctx pitui.EventContext) {
+	if r.evaluating {
+		return
+	}
+	if r.menuVisible && r.menuOverlay != nil {
+		ctx.SetFocus(r.menuOverlay)
+	} else {
+		ctx.SetFocus(r.textInput)
 	}
 }
 
