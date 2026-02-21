@@ -284,38 +284,24 @@ func (f *fractalView) scale() float64 {
 func (f *fractalView) OnMount(ctx pitui.EventContext) {
 	f.benchStart = time.Now()
 
-	advance := func() {
-		if !f.paused {
-			f.frame++
-		}
-		f.Update()
-		f.chrome.Update()
-		if f.log != nil {
-			f.log.appendFrame(f.frame, f.targetRe, f.targetIm, f.scale())
-		}
-	}
-
-	if f.bench {
-		// Tight loop: dispatch frame advances as fast as the render
-		// loop can consume them.
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					ctx.Dispatch(advance)
-				}
-			}
-		}()
-	} else {
+	// In bench mode, Render() self-advances — no goroutine needed.
+	if !f.bench {
 		ticker := time.NewTicker(6 * time.Millisecond) // ~165 fps
 		go func() {
 			defer ticker.Stop()
 			for {
 				select {
 				case <-ticker.C:
-					ctx.Dispatch(advance)
+					ctx.Dispatch(func() {
+						if !f.paused {
+							f.frame++
+						}
+						f.Update()
+						f.chrome.Update()
+						if f.log != nil {
+							f.log.appendFrame(f.frame, f.targetRe, f.targetIm, f.scale())
+						}
+					})
 				case <-ctx.Done():
 					return
 				}
@@ -326,6 +312,19 @@ func (f *fractalView) OnMount(ctx pitui.EventContext) {
 
 func (f *fractalView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	f.renderCount++
+
+	// In bench mode each render advances the frame and immediately
+	// marks dirty again, so the render loop runs flat-out with no
+	// goroutine or ticker involved.
+	if f.bench && !f.paused {
+		f.frame++
+		f.chrome.Update()
+		if f.log != nil {
+			f.log.appendFrame(f.frame, f.targetRe, f.targetIm, f.scale())
+		}
+		f.Update() // schedule next render
+	}
+
 	frame := f.frame
 
 	w := ctx.Width
