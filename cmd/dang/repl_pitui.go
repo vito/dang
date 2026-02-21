@@ -289,6 +289,9 @@ type replComponent struct {
 	// History
 	history *replHistory
 
+	// Commands
+	commands []replCommandDef
+
 	// Doc browser
 	docBrowser *docBrowserOverlay
 
@@ -316,6 +319,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 		history:         newReplHistory(),
 	}
 	r.quit, r.requestQuit = context.WithCancel(context.Background())
+	r.commands = r.buildCommandDefs()
 
 	// Spinner
 	sp := pitui.NewSpinner()

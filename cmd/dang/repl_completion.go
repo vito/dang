@@ -243,7 +243,7 @@ func (r *replComponent) updateCommandCompletionMenu(ctx pitui.EventContext, val 
 	var matches []string
 	var labels []string
 	var completions []dang.Completion
-	for _, cmd := range replCommandDefs {
+	for _, cmd := range r.commands {
 		if strings.HasPrefix(cmd.name, partialLower) && cmd.name != partialLower {
 			matches = append(matches, ":"+cmd.name)
 			labels = append(labels, ":"+cmd.name)
@@ -263,26 +263,6 @@ func (r *replComponent) updateCommandCompletionMenu(ctx pitui.EventContext, val 
 		r.textInput.Suggestion = ""
 	}
 	r.setMenu(ctx, matches, completions)
-}
-
-// replCommandDefs defines the available REPL commands and their descriptions.
-var replCommandDefs = []struct {
-	name string
-	desc string
-}{
-	{"help", "Show available commands"},
-	{"exit", "Exit the REPL"},
-	{"doc", "Interactive API browser"},
-	{"env", "Show environment bindings"},
-	{"type", "Show type of an expression"},
-	{"find", "Find functions/types by pattern"},
-	{"reset", "Reset the environment"},
-	{"clear", "Clear the screen"},
-	{"debug", "Toggle debug mode"},
-	{"debug-render", "Toggle render performance logging"},
-	{"version", "Show version info"},
-	{"quit", "Exit the REPL"},
-	{"history", "Show recent history"},
 }
 
 func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
@@ -416,7 +396,7 @@ func sortByCaseWithCompletions(matches []string, completions []dang.Completion, 
 }
 
 func (r *replComponent) buildCompletions() []string {
-	return buildCompletionList(r.typeEnv)
+	return r.buildCompletionList(r.typeEnv)
 }
 
 func (r *replComponent) refreshCompletions() {
