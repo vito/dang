@@ -143,7 +143,9 @@ type TUI struct {
 	// ── Event loop channels ──
 
 	eventCh    chan uv.Event // decoded input events from terminal
-	dispatchCh chan func()   // closures to run on UI goroutine
+	dispatchMu sync.Mutex   // protects dispatchQ
+	dispatchQ  []func()     // closures to run on UI goroutine
+	dispatchCh chan struct{} // capacity-1 signal: "dispatchQ is non-empty"
 	renderCh   chan struct{} // coalesced render requests
 	loopDone   chan struct{} // closed when runLoop exits
 
@@ -168,7 +170,7 @@ func newTUI(term Terminal) *TUI {
 	t := &TUI{
 		terminal:   term,
 		eventCh:    make(chan uv.Event, 64),
-		dispatchCh: make(chan func(), 64),
+		dispatchCh: make(chan struct{}, 1),
 		renderCh:   make(chan struct{}, 1),
 	}
 	// Wire upward propagation: when any child calls Update(), the root
@@ -197,8 +199,8 @@ func (t *TUI) runLoop() {
 			return
 		case ev := <-t.eventCh:
 			t.dispatchEvent(ev)
-		case fn := <-t.dispatchCh:
-			fn()
+		case <-t.dispatchCh:
+			t.drainDispatchQ()
 		case <-t.renderCh:
 			// fall through to drain + render
 		}
@@ -212,8 +214,8 @@ func (t *TUI) runLoop() {
 				return
 			case ev := <-t.eventCh:
 				t.dispatchEvent(ev)
-			case fn := <-t.dispatchCh:
-				fn()
+			case <-t.dispatchCh:
+				t.drainDispatchQ()
 			default:
 				break drain
 			}
@@ -225,6 +227,18 @@ func (t *TUI) runLoop() {
 		if !stopped {
 			t.doRender()
 		}
+	}
+}
+
+// drainDispatchQ runs all queued dispatch functions in order.
+// Called only on the UI goroutine.
+func (t *TUI) drainDispatchQ() {
+	t.dispatchMu.Lock()
+	q := t.dispatchQ
+	t.dispatchQ = nil
+	t.dispatchMu.Unlock()
+	for _, fn := range q {
+		fn()
 	}
 }
 
@@ -364,10 +378,13 @@ func (t *TUI) HasOverlay() bool {
 //
 // Safe to call from any goroutine.
 func (t *TUI) Dispatch(fn func()) {
+	t.dispatchMu.Lock()
+	t.dispatchQ = append(t.dispatchQ, fn)
+	t.dispatchMu.Unlock()
+	// Signal the event loop that work is available.
 	select {
-	case t.dispatchCh <- fn:
-	case <-t.stopCtx.Done():
-		// TUI already stopped, silently drop.
+	case t.dispatchCh <- struct{}{}:
+	default: // already signaled
 	}
 	// Also signal a render so the event loop wakes up.
 	t.RequestRender(false)
@@ -423,17 +440,14 @@ func (t *TUI) Stop() {
 func (t *TUI) RequestRender(repaint bool) {
 	if repaint {
 		// Repaint resets are dispatched to the UI goroutine to avoid races.
-		select {
-		case t.dispatchCh <- func() {
+		t.Dispatch(func() {
 			t.previousLines = nil
 			t.previousWidth = -1
 			t.cursorRow = 0
 			t.hardwareCursorRow = 0
 			t.maxLinesRendered = 0
 			t.previousViewportTop = 0
-		}:
-		default:
-		}
+		})
 	}
 
 	// Non-blocking send to coalesce multiple rapid requests.
