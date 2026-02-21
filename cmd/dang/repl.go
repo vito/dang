@@ -39,20 +39,20 @@ func (e *replEntry) writeResult(s string)  { e.result.WriteString(s); e.result.W
 
 // Styles (shared between REPL and doc browser)
 var (
-	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
-	resultStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
+	resultStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	menuStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
-	menuSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("5")).Bold(true)
+	menuSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("63")).Bold(true)
 	menuBorderStyle   = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("5"))
+				BorderForeground(lipgloss.Color("63"))
 	detailBorderStyle = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(lipgloss.Color("241"))
 	detailTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("255")).Bold(true)
-	welcomeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
+	welcomeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 

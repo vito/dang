@@ -210,7 +210,7 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	contentW := max(8, ctx.Width-2)
 
 	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
@@ -321,7 +321,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	// Spinner
 	sp := pitui.NewSpinner()
 	sp.Style = func(s string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(s)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
@@ -682,7 +682,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	if moduleDir != "" {
 		loadSp := pitui.NewSpinner()
 		loadSp.Style = func(s string) string {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(s)
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}
 		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
 		tui.Dispatch(func() {
