@@ -200,8 +200,16 @@ func tailFile(path string, hub *sseHub) {
 			}
 			pos, _ := f.Seek(0, io.SeekCurrent)
 			if info.Size() < pos {
+				// File was truncated — a new program session started.
+				// Notify the dashboard and read from the beginning.
+				send([]byte(`{"type":"session_start"}`))
 				f.Close()
-				break
+				f, err = os.Open(path)
+				if err != nil {
+					break
+				}
+				scanner = bufio.NewScanner(f)
+				continue
 			}
 			scanner = bufio.NewScanner(f)
 		}
