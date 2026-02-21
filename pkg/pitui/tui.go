@@ -701,7 +701,7 @@ func (t *TUI) doRender() {
 // the new set of output lines with reset sequences appended.
 func (t *TUI) renderFrame(width, height int, stats *RenderStats) ([]string, *CursorPos, []ComponentStat) {
 	renderStart := time.Now()
-	ctx := RenderContext{Width: width}
+	ctx := RenderContext{Width: width, ScreenHeight: height}
 	var compStats []ComponentStat
 	if t.debugWriter != nil {
 		ctx.componentStats = &compStats
@@ -1145,7 +1145,7 @@ func (t *TUI) compositeOverlays(lines []string, baseCursor *CursorPos, overlays 
 		if maxHSet {
 			renderH = maxH
 		}
-		oResult := renderComponent(e.component, RenderContext{Width: w, Height: renderH})
+		oResult := renderComponent(e.component, RenderContext{Width: w, Height: renderH, ScreenHeight: termH})
 		oLines := oResult.Lines
 		if maxHSet && len(oLines) > maxH {
 			oLines = oLines[:maxH]

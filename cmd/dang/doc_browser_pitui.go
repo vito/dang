@@ -141,6 +141,9 @@ func (d *docBrowserOverlay) handleFilterKey(key uv.Key) {
 func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	width := ctx.Width
 	height := ctx.Height
+	if height == 0 && ctx.ScreenHeight > 0 {
+		height = ctx.ScreenHeight
+	}
 	if width < 20 {
 		return pitui.RenderResult{Lines: []string{"(too narrow)"}}
 	}

@@ -291,7 +291,6 @@ type replComponent struct {
 
 	// Doc browser
 	docBrowser *docBrowserOverlay
-	docHandle  *pitui.OverlayHandle
 
 	// Render debug
 	debugRender     bool
@@ -638,19 +637,16 @@ func (r *replComponent) finishEval(ctx pitui.EventContext, ev *entryView, logs, 
 func (r *replComponent) showDocBrowser(ctx pitui.EventContext) {
 	db := newDocBrowserOverlay(r.typeEnv)
 	db.onExit = func() {
-		if r.docHandle != nil {
-			r.docHandle.Hide()
-			r.docHandle = nil
+		if r.docBrowser != nil {
+			r.entryContainer.RemoveChild(r.docBrowser)
 			r.docBrowser = nil
+			r.inputSlot.Set(r.textInput)
 			ctx.SetFocus(r.textInput)
 		}
 	}
 	r.docBrowser = db
-	r.docHandle = ctx.ShowOverlay(db, &pitui.OverlayOptions{
-		Width:     pitui.SizePct(100),
-		MaxHeight: pitui.SizePct(100),
-		Anchor:    pitui.AnchorTopLeft,
-	})
+	r.entryContainer.AddChild(db)
+	r.inputSlot.Set(nil)
 	ctx.SetFocus(db)
 }
 

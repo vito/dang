@@ -80,6 +80,10 @@ type RenderContext struct {
 	// Height is the allocated height in lines. 0 means unconstrained
 	// (the component may return as many lines as it wants).
 	Height int
+	// ScreenHeight is the actual terminal height in rows. It is always
+	// set regardless of whether Height constrains the component. Components
+	// that render inline but want to fill the viewport can use this.
+	ScreenHeight int
 
 	// componentStats, when non-nil, collects per-component render
 	// metrics. Set by the TUI when debug logging is enabled.
