@@ -57,12 +57,12 @@ func (ctx EventContext) HasOverlay() bool {
 	return ctx.tui.HasOverlay()
 }
 
-// Dispatch schedules a function to run on the UI goroutine. The captured
-// EventContext (including its Done channel) is passed to the callback.
+// Dispatch schedules a function to run on the UI goroutine.
 //
-// Safe to call from any goroutine.
-func (ctx EventContext) Dispatch(fn func(EventContext)) {
-	ctx.tui.Dispatch(func() { fn(ctx) })
+// Safe to call from any goroutine. The caller already has the
+// EventContext in closure scope, so the callback doesn't receive one.
+func (ctx EventContext) Dispatch(fn func()) {
+	ctx.tui.Dispatch(fn)
 }
 
 // SetDebugWriter enables render performance logging. Must be called on
