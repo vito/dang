@@ -5,3 +5,5 @@ Session.vim
 /.envrc
 CLAUDE.local.md
 *.log
+/render-stress
+/keygen-demo
