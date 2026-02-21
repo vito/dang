@@ -296,6 +296,8 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 // run there directly, and background goroutines (eval, Dagger log flusher)
 // use Dispatch to mutate state. No mutex is needed.
 type replComponent struct {
+	pitui.Container
+
 	// Dang state
 	importConfigs []dang.ImportConfig
 	debug         bool
@@ -398,10 +400,19 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	ev := newEntryView(welcome)
 	r.entryContainer.AddChild(ev)
 
+	// Wire children into this container.
+	r.AddChild(r.entryContainer)
+	r.AddChild(r.inputSlot)
+
 	r.completions = r.buildCompletions()
 	r.history.Load()
 
 	return r
+}
+
+// OnMount focuses the text input when the REPL is added to the TUI.
+func (r *replComponent) OnMount(ctx pitui.EventContext) {
+	ctx.SetFocus(r.textInput)
 }
 
 // activeEntryView returns the last (active) entryView in the container.
@@ -422,15 +433,6 @@ func (r *replComponent) addEntry(input string) *entryView {
 	ev := newEntryView(entry)
 	r.entryContainer.AddChild(ev)
 	return ev
-}
-
-// install adds the repl's components to the TUI.
-func (r *replComponent) install(tui *pitui.TUI) {
-	tui.Dispatch(func() {
-		tui.AddChild(r.entryContainer)
-		tui.AddChild(r.inputSlot)
-		tui.SetFocus(r.textInput)
-	})
 }
 
 // onSubmit handles Enter in the text input.
@@ -775,7 +777,9 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		repl.debugRenderFile = debugRenderFile
 	}
 	repl.daggerLog = daggerLog
-	repl.install(tui)
+	tui.Dispatch(func() {
+		tui.AddChild(repl)
+	})
 
 	if daggerConn != nil {
 		defer daggerConn.Close() //nolint:errcheck
