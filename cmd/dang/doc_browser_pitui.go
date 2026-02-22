@@ -20,12 +20,42 @@ type docBrowserOverlay struct {
 	filtering  bool
 	onExit     func()
 	lastHeight int // cached from most recent Render; used by key handlers
+
+	// Mouse state — populated during Render for hit-testing in HandleMouse.
+	layout docBrowserLayout // layout from most recent Render
+	hoverCol  int           // column index under mouse, or -1
+	hoverItem int           // item index (within visible()) under mouse, or -1
+}
+
+// docBrowserLayout captures the spatial layout from the most recent render
+// so HandleMouse can map terminal coordinates to items.
+type docBrowserLayout struct {
+	visStart int // first visible column index
+	visEnd   int // one past last visible column index
+	colW     int // width of each column (except possibly the last)
+	lastColW int // width of the last visible column
+	sepW     int // width of each separator (" │ " = 3)
+	listH    int // height of the item list area
+
+	// Per visible column: the Y offset within the doc browser's output
+	// where items start (after title, separator, and optional filter).
+	colItemStartY []int
+	// Per visible column: the X offset where the column starts.
+	colStartX []int
+	// Per visible column: number of visible items rendered.
+	colItemCount []int
+	// Per visible column: scroll offset.
+	colOffset []int
+	// Per visible column: the column index in d.columns.
+	colIndex []int
 }
 
 func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 	root := buildColumn("(root)", "Top-level scope", typeEnv)
 	db := &docBrowserOverlay{
-		columns: []docColumn{root},
+		columns:   []docColumn{root},
+		hoverCol:  -1,
+		hoverItem: -1,
 	}
 	db.expandSelection()
 	return db
@@ -33,6 +63,9 @@ func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 
 func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
 	defer d.Update()
+	// Clear hover state on keyboard navigation.
+	d.hoverCol = -1
+	d.hoverItem = -1
 	key := uv.Key(ev)
 	if d.filtering {
 		d.handleFilterKey(key)
@@ -40,6 +73,115 @@ func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressE
 		d.handleKey(key)
 	}
 	return true // doc browser consumes all keys when focused
+}
+
+// HandleMouse implements pitui.MouseEnabled, enabling terminal mouse capture
+// while the doc browser is mounted. Supports hover highlighting and click
+// navigation on all column items.
+func (d *docBrowserOverlay) HandleMouse(_ pitui.EventContext, ev uv.MouseEvent) bool {
+	m := ev.Mouse()
+
+	col, item := d.hitTest(m.X, m.Y)
+
+	switch ev.(type) {
+	case uv.MouseMotionEvent:
+		if col != d.hoverCol || item != d.hoverItem {
+			d.hoverCol = col
+			d.hoverItem = item
+			d.Update()
+		}
+	case uv.MouseClickEvent:
+		if col >= 0 && item >= 0 {
+			ci := col
+			colIdx := d.layout.colIndex[ci]
+			c := &d.columns[colIdx]
+			vis := c.visible()
+			absItem := d.layout.colOffset[ci] + item
+			if absItem < len(vis) {
+				// Switch active column and select the clicked item.
+				d.activeCol = colIdx
+				c.index = absItem
+				d.clampScroll(c)
+				d.expandSelection()
+				d.Update()
+			}
+		}
+	case uv.MouseWheelEvent:
+		if col >= 0 {
+			colIdx := d.layout.colIndex[col]
+			c := &d.columns[colIdx]
+			vis := c.visible()
+			if len(c.items) > 0 {
+				switch m.Button {
+				case uv.MouseWheelUp:
+					if c.index > 0 {
+						c.index--
+						d.activeCol = colIdx
+						d.clampScroll(c)
+						d.expandSelection()
+						d.Update()
+					}
+				case uv.MouseWheelDown:
+					if c.index < len(vis)-1 {
+						c.index++
+						d.activeCol = colIdx
+						d.clampScroll(c)
+						d.expandSelection()
+						d.Update()
+					}
+				}
+			} else {
+				// Detail pane — scroll detail content.
+				switch m.Button {
+				case uv.MouseWheelUp:
+					if c.detailOffset > 0 {
+						c.detailOffset--
+						d.Update()
+					}
+				case uv.MouseWheelDown:
+					c.detailOffset++
+					d.Update()
+				}
+			}
+		}
+	}
+
+	return true // consume all mouse events when focused
+}
+
+// hitTest maps terminal (x, y) coordinates to (visible column index, item
+// index within that column's rendered items). Returns (-1, -1) if the
+// coordinates don't land on an item.
+func (d *docBrowserOverlay) hitTest(x, y int) (col int, item int) {
+	lay := &d.layout
+	if len(lay.colStartX) == 0 {
+		return -1, -1
+	}
+
+	// Find which column the X coordinate falls in.
+	col = -1
+	for ci := range lay.colStartX {
+		w := lay.colW
+		if ci == len(lay.colStartX)-1 {
+			w = lay.lastColW
+		}
+		if x >= lay.colStartX[ci] && x < lay.colStartX[ci]+w {
+			col = ci
+			break
+		}
+	}
+	if col < 0 {
+		return -1, -1
+	}
+
+	// Check Y is within the item area.
+	itemStartY := lay.colItemStartY[col]
+	itemIdx := y - itemStartY
+	if itemIdx < 0 || itemIdx >= lay.colItemCount[col] {
+		return col, -1
+	}
+
+	return col, itemIdx
 }
 
 func (d *docBrowserOverlay) handleKey(key uv.Key) {
@@ -171,15 +313,32 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	colW := max((width-sepW)/numVis, 15)
 	lastColW := max(width-sepW-colW*(numVis-1), colW)
 
+	hoverStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
+
+	// Build layout info for mouse hit-testing.
+	lay := docBrowserLayout{
+		visStart: visStart,
+		visEnd:   visEnd,
+		colW:     colW,
+		lastColW: lastColW,
+		sepW:     3,
+		listH:    listH,
+	}
+
 	var colRendered [][]string
+	xOffset := 0
 	for ci := visStart; ci < visEnd; ci++ {
 		col := d.columns[ci]
+		visIdx := ci - visStart // index into colRendered
 		w := colW
 		if ci == visEnd-1 {
 			w = lastColW
 		}
 		isActive := ci == d.activeCol
 		isFiltering := d.filtering && isActive
+
+		lay.colStartX = append(lay.colStartX, xOffset)
+		lay.colIndex = append(lay.colIndex, ci)
 
 		var lines []string
 
@@ -208,7 +367,13 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 			lines = append(lines, filterDisp+strings.Repeat(" ", gap)+countText)
 		}
 
+		// Items start at: breadcrumb (1) + title (1) + sep (1) + filter (0 or 1) = 3 + filterLineH
+		// in the final output. Within colRendered, it's 2 + filterLineH.
+		lay.colItemStartY = append(lay.colItemStartY, 1+2+filterLineH) // +1 for breadcrumb row
+		lay.colOffset = append(lay.colOffset, col.offset)
+
 		itemListH := listH - filterLineH
+		itemCount := 0
 		if len(col.items) > 0 {
 			end := min(col.offset+itemListH, len(vis))
 			for i := col.offset; i < end; i++ {
@@ -233,13 +398,20 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 				leftW := lipgloss.Width(leftPart)
 				gap := max(w-leftW-tagW, 1)
 
+				// Determine if this item is hovered.
+				isHovered := d.hoverCol == visIdx && d.hoverItem == (i-col.offset)
+
 				if i == col.index && isActive {
 					leftStyled := selectedStyle.Render(prefix+label) + strings.Repeat(" ", gap) + tagStyled
+					lines = append(lines, leftStyled)
+				} else if isHovered {
+					leftStyled := hoverStyle.Render(prefix+label+strings.Repeat(" ", gap)+tag)
 					lines = append(lines, leftStyled)
 				} else {
 					raw := leftPart + strings.Repeat(" ", gap) + tagStyled
 					lines = append(lines, raw)
 				}
+				itemCount++
 			}
 		} else if ci > 0 {
 			prevCol := &d.columns[ci-1]
@@ -251,13 +423,20 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 				lines = append(lines, detailContent[dOffset:end]...)
 			}
 		}
+		lay.colItemCount = append(lay.colItemCount, itemCount)
 
 		for len(lines) < listH+2 {
 			lines = append(lines, "")
 		}
 
 		colRendered = append(colRendered, lines)
+		xOffset += w
+		if visIdx < numVis-1 {
+			xOffset += 3 // separator width
+		}
 	}
+
+	d.layout = lay
 
 	totalLines := listH + 2
 	var rows []string
@@ -278,7 +457,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		crumbs = append(crumbs, d.columns[i].title)
 	}
 	breadcrumb := dimSt.Render(strings.Join(crumbs, " › "))
-	help := dimSt.Render("Up/Down/hjkl navigate | / filter | Tab cycle | q/Esc exit")
+	help := dimSt.Render("Up/Down/hjkl navigate | Click/scroll | / filter | Tab cycle | q/Esc exit")
 
 	var result []string
 	result = append(result, breadcrumb)
