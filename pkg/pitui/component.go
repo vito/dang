@@ -57,6 +57,18 @@ func (ctx EventContext) HasOverlay() bool {
 	return ctx.tui.HasOverlay()
 }
 
+// EnableMouse increments the mouse reference count, enabling terminal mouse
+// reporting if it wasn't already enabled. Call DisableMouse to decrement.
+func (ctx EventContext) EnableMouse() {
+	ctx.tui.EnableMouse()
+}
+
+// DisableMouse decrements the mouse reference count, disabling terminal
+// mouse reporting when no components need it.
+func (ctx EventContext) DisableMouse() {
+	ctx.tui.DisableMouse()
+}
+
 // Dispatch schedules a function to run on the UI goroutine.
 //
 // Safe to call from any goroutine. This is the primary way for
@@ -345,6 +357,29 @@ type Pasteable interface {
 	HandlePaste(ctx EventContext, ev uv.PasteEvent) bool
 }
 
+// MouseEnabled is an optional interface for components that need mouse
+// event capture. When a component implementing MouseEnabled is mounted
+// into a TUI-rooted tree, the TUI enables terminal mouse reporting
+// (SGR extended mode with all-motion tracking). When the last such
+// component is dismounted, mouse reporting is disabled and normal
+// terminal scrollback behavior is restored.
+//
+// Mouse events are dispatched to the focused component first. If
+// HandleMouse returns false, the event bubbles up through parent
+// components in the tree (like key events).
+//
+// The mouse coordinates in the event are terminal-relative (0,0 at top-left
+// of the viewport). Components that need content-relative coordinates
+// must translate them using their known position in the rendered output.
+type MouseEnabled interface {
+	Component
+
+	// HandleMouse is called with a decoded mouse event (click, release,
+	// motion, or wheel). Return true if the event was consumed; return
+	// false to let it bubble to the parent component.
+	HandleMouse(ctx EventContext, ev uv.MouseEvent) bool
+}
+
 // Focusable is an optional interface for components that want to know when
 // they gain or lose focus (e.g. to show/hide a cursor).
 type Focusable interface {
@@ -382,13 +417,20 @@ type componentParent interface {
 }
 
 // mountTree mounts a component and all its descendants, firing OnMount
-// hooks parent-first.
+// hooks parent-first. If a component implements MouseEnabled, the TUI's
+// mouse reference count is incremented (enabling terminal mouse reporting
+// when the first such component is mounted).
 func mountTree(comp Component, tui *TUI) {
 	cp := comp.compo()
 	ctx, cancel := context.WithCancel(context.Background())
 	cp.tui = tui
 	cp.mountCtx = ctx
 	cp.mountCancel = cancel
+
+	// Track mouse-enabled components.
+	if _, ok := comp.(MouseEnabled); ok {
+		tui.EnableMouse()
+	}
 
 	if m, ok := comp.(Mounter); ok {
 		ectx := EventContext{
@@ -408,7 +450,9 @@ func mountTree(comp Component, tui *TUI) {
 
 // dismountTree dismounts a component and all its descendants, firing
 // OnDismount hooks children-first (leaves before parents) and cancelling
-// mount contexts.
+// mount contexts. If a component implements MouseEnabled, the TUI's
+// mouse reference count is decremented (disabling terminal mouse
+// reporting when the last such component is dismounted).
 func dismountTree(comp Component) {
 	if p, ok := comp.(componentParent); ok {
 		for _, child := range p.componentChildren() {
@@ -423,6 +467,12 @@ func dismountTree(comp Component) {
 	if d, ok := comp.(Dismounter); ok {
 		d.OnDismount()
 	}
+
+	// Decrement mouse ref count before clearing tui pointer.
+	if _, ok := comp.(MouseEnabled); ok && cp.tui != nil {
+		cp.tui.DisableMouse()
+	}
+
 	cp.tui = nil
 	cp.mountCtx = nil
 	cp.mountCancel = nil

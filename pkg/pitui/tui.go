@@ -200,6 +200,8 @@ type TUI struct {
 
 	overlayStack []*overlayEntry
 
+	mouseRefCount int // number of mounted MouseEnabled components
+
 	debugWriter io.Writer    // if non-nil, render stats are logged here
 	writeBuf    bytes.Buffer // reused across frames for terminal output
 
@@ -353,6 +355,30 @@ func (t *TUI) SetShowHardwareCursor(enabled bool) {
 	})
 }
 
+// EnableMouse increments the mouse reference count and, if transitioning
+// from 0 to 1, enables terminal mouse reporting. Must be called on the
+// UI goroutine. Components normally don't call this directly — the
+// framework calls it automatically when a MouseEnabled component is mounted.
+func (t *TUI) EnableMouse() {
+	t.mouseRefCount++
+	if t.mouseRefCount == 1 {
+		t.terminal.WriteString(escMouseAllMotionEnable)
+		t.terminal.WriteString(escMouseSGREnable)
+	}
+}
+
+// DisableMouse decrements the mouse reference count and, if transitioning
+// to 0, disables terminal mouse reporting. Must be called on the UI
+// goroutine.
+func (t *TUI) DisableMouse() {
+	t.mouseRefCount--
+	if t.mouseRefCount <= 0 {
+		t.mouseRefCount = 0
+		t.terminal.WriteString(escMouseSGRDisable)
+		t.terminal.WriteString(escMouseAllMotionDisable)
+	}
+}
+
 // SetClearOnShrink controls whether empty rows are cleared when content
 // shrinks. When false (the default), stale rows remain until overwritten,
 // which reduces full redraws on slower terminals.
@@ -484,6 +510,13 @@ func (t *TUI) Stop() {
 	prev := t.previousLines
 	hcr := t.hardwareCursorRow
 
+	// Disable mouse tracking before restoring terminal.
+	if t.mouseRefCount > 0 {
+		t.terminal.WriteString(escMouseSGRDisable)
+		t.terminal.WriteString(escMouseAllMotionDisable)
+		t.mouseRefCount = 0
+	}
+
 	// Move cursor past content so the shell prompt appears below.
 	if len(prev) > 0 {
 		target := len(prev)
@@ -568,6 +601,8 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 		t.bubbleKeyPress(comp, ctx, e)
 	case uv.PasteEvent:
 		t.bubblePaste(comp, ctx, e)
+	case uv.MouseEvent:
+		t.bubbleMouse(comp, ctx, e)
 	}
 }
 
@@ -592,6 +627,35 @@ func (t *TUI) bubbleKeyPress(comp Component, ctx EventContext, ev uv.KeyPressEve
 		if cp.self != nil {
 			if ic, ok := cp.self.(Interactive); ok {
 				if ic.HandleKeyPress(ctx, ev) {
+					return
+				}
+			}
+		}
+		cp = cp.parent
+	}
+}
+
+// bubbleMouse delivers a mouse event to the focused component and, if
+// not consumed, walks up the parent chain giving each MouseEnabled
+// ancestor a chance to handle it.
+func (t *TUI) bubbleMouse(comp Component, ctx EventContext, ev uv.MouseEvent) {
+	if comp == nil {
+		return
+	}
+
+	// Focused component gets first shot.
+	if mc, ok := comp.(MouseEnabled); ok {
+		if mc.HandleMouse(ctx, ev) {
+			return
+		}
+	}
+
+	// Bubble up through parents.
+	cp := comp.compo().parent
+	for cp != nil {
+		if cp.self != nil {
+			if mc, ok := cp.self.(MouseEnabled); ok {
+				if mc.HandleMouse(ctx, ev) {
 					return
 				}
 			}
@@ -645,6 +709,13 @@ const (
 
 	// Line-level operations.
 	escClearLine = "\x1b[2K" // erase entire current line
+
+	// Mouse tracking (SGR extended mode with all-motion tracking).
+	// These enable/disable mouse event reporting from the terminal.
+	escMouseAllMotionEnable  = "\x1b[?1003h" // any-event (motion + buttons)
+	escMouseAllMotionDisable = "\x1b[?1003l"
+	escMouseSGREnable        = "\x1b[?1006h" // SGR extended encoding
+	escMouseSGRDisable       = "\x1b[?1006l"
 )
 
 // cursorUp returns an escape sequence moving the cursor up n rows.
