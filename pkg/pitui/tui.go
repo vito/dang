@@ -1,12 +1,12 @@
 package pitui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -200,13 +200,14 @@ type TUI struct {
 
 	overlayStack []*overlayEntry
 
-	debugWriter io.Writer // if non-nil, render stats are logged here
+	debugWriter io.Writer    // if non-nil, render stats are logged here
+	writeBuf    bytes.Buffer // reused across frames for terminal output
 
 	// ── Event loop channels ──
 
 	eventCh    chan uv.Event // decoded input events from terminal
-	dispatchMu sync.Mutex   // protects dispatchQ
-	dispatchQ  []func()     // closures to run on UI goroutine
+	dispatchMu sync.Mutex    // protects dispatchQ
+	dispatchQ  []func()      // closures to run on UI goroutine
 	dispatchCh chan struct{} // capacity-1 signal: "dispatchQ is non-empty"
 	renderCh   chan struct{} // coalesced render requests
 	loopDone   chan struct{} // closed when runLoop exits
@@ -875,7 +876,8 @@ func (t *TUI) writeFullRedraw(width, height int, newLines []string, cursorPos *C
 	stats.LastChangedLine = max(0, len(newLines)-1)
 
 	diffStart := time.Now()
-	var buf strings.Builder
+	buf := &t.writeBuf
+	buf.Reset()
 	buf.WriteString(escSyncBegin)
 	if clear {
 		buf.WriteString(escClearScrollback)
@@ -897,7 +899,7 @@ func (t *TUI) writeFullRedraw(width, height int, newLines []string, cursorPos *C
 	stats.BytesWritten = buf.Len()
 
 	writeStart := time.Now()
-	t.terminal.WriteString(buf.String())
+	t.terminal.Write(buf.Bytes())
 	stats.WriteTime = time.Since(writeStart)
 
 	cr := max(0, len(newLines)-1)
@@ -942,7 +944,8 @@ func (t *TUI) writeTailShrink(width, height int, newLines []string, cursorPos *C
 			return
 		}
 
-		var buf strings.Builder
+		buf := &t.writeBuf
+		buf.Reset()
 		buf.WriteString(escSyncBegin)
 		buf.WriteString(cursorVertical(delta))
 		buf.WriteString("\r")
@@ -964,7 +967,7 @@ func (t *TUI) writeTailShrink(width, height int, newLines []string, cursorPos *C
 		stats.BytesWritten = buf.Len()
 
 		writeStart := time.Now()
-		t.terminal.WriteString(buf.String())
+		t.terminal.Write(buf.Bytes())
 		stats.WriteTime = time.Since(writeStart)
 
 		t.cursorRow = targetRow
@@ -982,7 +985,8 @@ func (t *TUI) writeTailShrink(width, height int, newLines []string, cursorPos *C
 // writeDiffUpdate writes only the changed lines to the terminal, scrolling
 // the viewport as needed.
 func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *CursorPos, stats *RenderStats, dr *diffResult, diffStart time.Time, viewportTop int) {
-	var buf strings.Builder
+	buf := &t.writeBuf
+	buf.Reset()
 	buf.WriteString(escSyncBegin)
 
 	hardwareCursorRow := t.hardwareCursorRow
@@ -1059,7 +1063,7 @@ func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *C
 	stats.BytesWritten = buf.Len()
 
 	writeStart := time.Now()
-	t.terminal.WriteString(buf.String())
+	t.terminal.Write(buf.Bytes())
 	stats.WriteTime = time.Since(writeStart)
 
 	cr := max(0, len(newLines)-1)
