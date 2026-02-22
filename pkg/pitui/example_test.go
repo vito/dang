@@ -49,7 +49,7 @@ type Banner struct {
 
 func (b *Banner) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	var lines []string
-	for _, line := range strings.Split(b.Text, "\n") {
+	for line := range strings.SplitSeq(b.Text, "\n") {
 		if pitui.VisibleWidth(line) > ctx.Width {
 			line = pitui.Truncate(line, ctx.Width, "")
 		}

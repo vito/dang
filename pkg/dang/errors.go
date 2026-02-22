@@ -162,21 +162,6 @@ func (e *SourceError) FormatWithHighlighting() string {
 	return result.String()
 }
 
-// Helper functions
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func padLeft(s string, width int) string {
 	if len(s) >= width {
 		return s

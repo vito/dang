@@ -694,7 +694,7 @@ func diffLines(prev, next []string) diffResult {
 	firstChanged := -1
 	lastChanged := -1
 	n := max(len(next), len(prev))
-	for i := 0; i < n; i++ {
+	for i := range n {
 		var oldLine, newLine string
 		if i < len(prev) {
 			oldLine = prev[i]
@@ -952,7 +952,7 @@ func (t *TUI) writeTailShrink(width, height int, newLines []string, cursorPos *C
 		if extra > 0 {
 			buf.WriteString(cursorDown(1))
 		}
-		for i := 0; i < extra; i++ {
+		for i := range extra {
 			buf.WriteString("\r")
 			buf.WriteString(escClearLine)
 			if i < extra-1 {
@@ -1005,7 +1005,7 @@ func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *C
 		buf.WriteString(cursorDown(moveToBottom))
 		scroll := moveTargetRow - prevViewportBottom
 		stats.ScrollLines = scroll
-		for i := 0; i < scroll; i++ {
+		for range scroll {
 			buf.WriteString("\r\n")
 		}
 		prevViewportTop += scroll
@@ -1045,7 +1045,7 @@ func (t *TUI) writeDiffUpdate(width, height int, newLines []string, cursorPos *C
 			finalCursorRow = len(newLines) - 1
 		}
 		extra := len(t.previousLines) - len(newLines)
-		for i := 0; i < extra; i++ {
+		for range extra {
 			buf.WriteString("\r\n")
 			buf.WriteString(escClearLine)
 		}

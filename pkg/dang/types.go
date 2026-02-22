@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -224,9 +225,7 @@ func (t *RecordType) Clone() hm.Env {
 	// Clone doc strings map
 	if t.DocStrings != nil {
 		retVal.DocStrings = make(map[string]string, len(t.DocStrings))
-		for k, v := range t.DocStrings {
-			retVal.DocStrings[k] = v
-		}
+		maps.Copy(retVal.DocStrings, t.DocStrings)
 	}
 	return retVal
 }

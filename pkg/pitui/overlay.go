@@ -99,7 +99,6 @@ type OverlayOptions struct {
 	// detail panel) stay on the same side of the cursor regardless of
 	// their individual heights.
 	CursorGroup *CursorGroup
-
 }
 
 // CursorGroup links cursor-relative overlays so they share a single

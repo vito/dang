@@ -2029,8 +2029,8 @@ func (f *Formatter) formatString(s *String) {
 		}
 		f.write(`"""`)
 		f.newline()
-		lines := strings.Split(s.Value, "\n")
-		for _, line := range lines {
+		lines := strings.SplitSeq(s.Value, "\n")
+		for line := range lines {
 			if line != "" {
 				f.writeIndent()
 				f.write(line)
@@ -2771,8 +2771,8 @@ func isLeftAssociative(op string) bool {
 func (f *Formatter) formatDocString(doc string) {
 	f.write(`"""`)
 	f.newline()
-	lines := strings.Split(strings.TrimSpace(doc), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(doc), "\n")
+	for line := range lines {
 		if line != "" {
 			f.writeIndent()
 			f.write(line)

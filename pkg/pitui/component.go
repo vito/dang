@@ -117,7 +117,7 @@ func componentName(c Component) string {
 		return n.Name()
 	}
 	t := reflect.TypeOf(c)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.PkgPath() + "." + t.Name()

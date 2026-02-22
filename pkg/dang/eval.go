@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -577,9 +578,7 @@ func addBuiltinFunctions(env EvalEnv) {
 // applyDefaults fills in default values for missing arguments
 func applyDefaults(args map[string]Value, def BuiltinDef) map[string]Value {
 	result := make(map[string]Value)
-	for k, v := range args {
-		result[k] = v
-	}
+	maps.Copy(result, args)
 	for _, param := range def.ParamTypes {
 		if _, ok := result[param.Name]; !ok && param.DefaultValue != nil {
 			result[param.Name] = param.DefaultValue
@@ -665,7 +664,7 @@ func getTypeName(typeRef *introspection.TypeRef) string {
 }
 
 // Helper function to convert Dang values to Go values for GraphQL
-func dangValueToGo(val Value) (interface{}, error) {
+func dangValueToGo(val Value) (any, error) {
 	switch v := val.(type) {
 	case StringValue:
 		return v.Val, nil
@@ -682,7 +681,7 @@ func dangValueToGo(val Value) (interface{}, error) {
 		return nil, nil
 	case ListValue:
 		// Convert list elements to Go slice
-		result := make([]interface{}, len(v.Elements))
+		result := make([]any, len(v.Elements))
 		for i, elem := range v.Elements {
 			goVal, err := dangValueToGo(elem)
 			if err != nil {
@@ -693,7 +692,7 @@ func dangValueToGo(val Value) (interface{}, error) {
 		return result, nil
 	case *ModuleValue:
 		// Convert module value to map (used for input objects)
-		result := make(map[string]interface{})
+		result := make(map[string]any)
 		for name, fieldVal := range v.Values {
 			goVal, err := dangValueToGo(fieldVal)
 			if err != nil {
@@ -890,14 +889,15 @@ func (l ListValue) Type() hm.Type {
 }
 
 func (l ListValue) String() string {
-	result := "["
+	var result strings.Builder
+	result.WriteString("[")
 	for i, elem := range l.Elements {
 		if i > 0 {
-			result += ", "
+			result.WriteString(", ")
 		}
-		result += elem.String()
+		result.WriteString(elem.String())
 	}
-	return result + "]"
+	return result.String() + "]"
 }
 
 func (l ListValue) MarshalJSON() ([]byte, error) {

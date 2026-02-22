@@ -38,8 +38,8 @@ type enum interface {
 }
 
 var (
-	gqlMarshaller = reflect.TypeOf((*GraphQLMarshaller)(nil)).Elem()
-	enumT         = reflect.TypeOf((*enum)(nil)).Elem()
+	gqlMarshaller = reflect.TypeFor[GraphQLMarshaller]()
+	enumT         = reflect.TypeFor[enum]()
 )
 
 func MarshalGQL(ctx context.Context, v any) (string, error) {
@@ -86,7 +86,7 @@ func marshalValue(ctx context.Context, v reflect.Value) (string, error) {
 		n := v.Len()
 		elems := make([]string, n)
 		eg, gctx := errgroup.WithContext(ctx)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			i := i
 			eg.Go(func() error {
 				m, err := marshalValue(gctx, v.Index(i))
@@ -105,7 +105,7 @@ func marshalValue(ctx context.Context, v reflect.Value) (string, error) {
 		n := v.NumField()
 		elems := make([]string, n)
 		eg, gctx := errgroup.WithContext(ctx)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			i := i
 			eg.Go(func() error {
 				f := t.Field(i)

@@ -1,6 +1,7 @@
 package pitui
 
 import (
+	"slices"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -371,12 +372,7 @@ func (t *TextInput) insertRune(r rune) {
 }
 
 func (t *TextInput) hasMultipleLines() bool {
-	for _, r := range t.value {
-		if r == '\n' {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(t.value, '\n')
 }
 
 // lineStart returns the index of the start of the current line.
@@ -410,7 +406,7 @@ func (t *TextInput) moveCursorVertically(dir int) {
 
 	// Compute the rune offset of the target position.
 	offset := 0
-	for i := 0; i < targetRow; i++ {
+	for i := range targetRow {
 		offset += len([]rune(lines[i])) + 1 // +1 for '\n'
 	}
 	lineLen := len([]rune(lines[targetRow]))

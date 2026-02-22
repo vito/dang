@@ -132,7 +132,7 @@ func (q *QueryBuilder) Arg(name string, value any) *QueryBuilder {
 	return &sel
 }
 
-func (q *QueryBuilder) Bind(v interface{}) *QueryBuilder {
+func (q *QueryBuilder) Bind(v any) *QueryBuilder {
 	sel := *q
 	sel.bind = v
 	return &sel
@@ -148,7 +148,6 @@ func (q *QueryBuilder) marshalArguments(ctx context.Context) error {
 	eg, gctx := errgroup.WithContext(ctx)
 	for _, sel := range q.path() {
 		for _, arg := range sel.args {
-			arg := arg
 			eg.Go(func() error {
 				return arg.marshal(gctx)
 			})

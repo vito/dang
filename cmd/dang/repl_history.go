@@ -91,7 +91,7 @@ func (h *replHistory) Load() {
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			h.entries = append(h.entries, historyDecode(line))

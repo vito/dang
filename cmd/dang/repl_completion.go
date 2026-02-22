@@ -235,7 +235,6 @@ func (r *replComponent) completionTokenLen() int {
 	return len(val) - (i + 1)
 }
 
-
 func (r *replComponent) updateCommandCompletionMenu(ctx pitui.EventContext, val string) {
 	partial := strings.TrimPrefix(val, ":")
 	partialLower := strings.ToLower(partial)

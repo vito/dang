@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 
@@ -855,12 +856,7 @@ func (m *Module) GetImplementers() []Env {
 
 // ImplementsInterface checks if this type implements the given interface
 func (m *Module) ImplementsInterface(iface Env) bool {
-	for _, impl := range m.interfaces {
-		if impl == iface {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.interfaces, iface)
 }
 
 // AddMember adds a member type to this union (for union modules)
@@ -879,12 +875,7 @@ func (m *Module) GetMembers() []Env {
 
 // HasMember checks if this union contains the given type as a member
 func (m *Module) HasMember(t Env) bool {
-	for _, member := range m.members {
-		if member == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.members, t)
 }
 
 // GetUnions returns the unions this type is a member of
@@ -896,11 +887,9 @@ func (m *Module) GetUnions() []Env {
 // Returns true if this creates a conflict (symbol already provided by a different import)
 func (m *Module) TrackUnqualifiedTypeImport(symbolName, importName string) bool {
 	existing := m.unqualifiedTypeImports[symbolName]
-	for _, imp := range existing {
-		if imp == importName {
-			// Already tracked from this import
-			return len(existing) > 1
-		}
+	if slices.Contains(existing, importName) {
+		// Already tracked from this import
+		return len(existing) > 1
 	}
 	m.unqualifiedTypeImports[symbolName] = append(existing, importName)
 	return len(m.unqualifiedTypeImports[symbolName]) > 1
@@ -910,11 +899,9 @@ func (m *Module) TrackUnqualifiedTypeImport(symbolName, importName string) bool 
 // Returns true if this creates a conflict (symbol already provided by a different import)
 func (m *Module) TrackUnqualifiedValueImport(symbolName, importName string) bool {
 	existing := m.unqualifiedValueImports[symbolName]
-	for _, imp := range existing {
-		if imp == importName {
-			// Already tracked from this import
-			return len(existing) > 1
-		}
+	if slices.Contains(existing, importName) {
+		// Already tracked from this import
+		return len(existing) > 1
 	}
 	m.unqualifiedValueImports[symbolName] = append(existing, importName)
 	return len(m.unqualifiedValueImports[symbolName]) > 1
@@ -954,11 +941,9 @@ func (m *Module) CheckValueConflict(symbolName string) []string {
 // Returns true if this creates a conflict (directive already provided by a different import)
 func (m *Module) TrackUnqualifiedDirectiveImport(directiveName, importName string) bool {
 	existing := m.unqualifiedDirectiveImports[directiveName]
-	for _, imp := range existing {
-		if imp == importName {
-			// Already tracked from this import
-			return len(existing) > 1
-		}
+	if slices.Contains(existing, importName) {
+		// Already tracked from this import
+		return len(existing) > 1
 	}
 	m.unqualifiedDirectiveImports[directiveName] = append(existing, importName)
 	return len(m.unqualifiedDirectiveImports[directiveName]) > 1

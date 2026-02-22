@@ -375,7 +375,7 @@ func randomStack() string {
 func appendLines(log *stressLog, n int) {
 	levels := []string{"INFO", "DEBUG", "WARN"}
 	log.mu.Lock()
-	for i := 0; i < n; i++ {
+	for range n {
 		log.entries = append(log.entries, stressEntry{
 			ts:      time.Now(),
 			level:   levels[rand.Intn(len(levels))],

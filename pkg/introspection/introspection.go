@@ -20,7 +20,7 @@ type Response struct {
 type Schema struct {
 	QueryType struct {
 		Name string `json:"name,omitempty"`
-	} `json:"queryType,omitempty"`
+	} `json:"queryType"`
 	MutationType *struct {
 		Name string `json:"name,omitempty"`
 	} `json:"mutationType,omitempty"`

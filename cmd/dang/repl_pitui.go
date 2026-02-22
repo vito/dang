@@ -264,7 +264,7 @@ type replComponent struct {
 	spinner        *pitui.Spinner
 	inputSlot      *pitui.Slot // swaps between textInput and spinner
 
-	quit       context.Context
+	quit        context.Context
 	requestQuit context.CancelFunc
 
 	// Completion

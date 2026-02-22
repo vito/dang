@@ -153,10 +153,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	if height > 0 {
 		d.lastHeight = height
 	}
-	listH := height - 4
-	if listH < 5 {
-		listH = 5
-	}
+	listH := max(height-4, 5)
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
 	activeTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
@@ -169,19 +166,10 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	sep := sepStyle.Render(" │ ")
 
 	visStart, visEnd := d.visibleRange()
-	numVis := visEnd - visStart
-	if numVis < 1 {
-		numVis = 1
-	}
+	numVis := max(visEnd-visStart, 1)
 	sepW := 3 * (numVis - 1)
-	colW := (width - sepW) / numVis
-	if colW < 15 {
-		colW = 15
-	}
-	lastColW := width - sepW - colW*(numVis-1)
-	if lastColW < colW {
-		lastColW = colW
-	}
+	colW := max((width-sepW)/numVis, 15)
+	lastColW := max(width-sepW-colW*(numVis-1), colW)
 
 	var colRendered [][]string
 	for ci := visStart; ci < visEnd; ci++ {
@@ -216,19 +204,13 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 			countW := lipgloss.Width(countText)
 			filterDisp := filterStyle.Render(truncate(filterText, w-countW))
 			dispW := lipgloss.Width(filterDisp)
-			gap := w - dispW - countW
-			if gap < 0 {
-				gap = 0
-			}
+			gap := max(w-dispW-countW, 0)
 			lines = append(lines, filterDisp+strings.Repeat(" ", gap)+countText)
 		}
 
 		itemListH := listH - filterLineH
 		if len(col.items) > 0 {
-			end := col.offset + itemListH
-			if end > len(vis) {
-				end = len(vis)
-			}
+			end := min(col.offset+itemListH, len(vis))
 			for i := col.offset; i < end; i++ {
 				item := vis[i]
 				label := item.name
@@ -240,10 +222,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 				tagStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(item.kind.color())).Render(tag)
 				tagW := lipgloss.Width(tagStyled)
 
-				maxLabel := w - 3 - tagW
-				if maxLabel < 4 {
-					maxLabel = 4
-				}
+				maxLabel := max(w-3-tagW, 4)
 				label = truncate(label, maxLabel)
 
 				prefix := "  "
@@ -252,10 +231,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 				}
 				leftPart := prefix + label
 				leftW := lipgloss.Width(leftPart)
-				gap := w - leftW - tagW
-				if gap < 1 {
-					gap = 1
-				}
+				gap := max(w-leftW-tagW, 1)
 
 				if i == col.index && isActive {
 					leftStyled := selectedStyle.Render(prefix+label) + strings.Repeat(" ", gap) + tagStyled
@@ -270,14 +246,8 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 			if item, ok := prevCol.selectedItem(); ok {
 				detailContent := d.renderDetailContent(item, w, docTextStyle, argNameStyle, argTypeStyle, dimSt)
 				contentH := listH
-				dOffset := col.detailOffset
-				if dOffset > len(detailContent) {
-					dOffset = len(detailContent)
-				}
-				end := dOffset + contentH
-				if end > len(detailContent) {
-					end = len(detailContent)
-				}
+				dOffset := min(col.detailOffset, len(detailContent))
+				end := min(dOffset+contentH, len(detailContent))
 				lines = append(lines, detailContent[dOffset:end]...)
 			}
 		}
@@ -341,7 +311,7 @@ func renderDocDetail(item docItem, w int, docStyle, argNameStyle, argTypeStyle, 
 
 	if item.doc != "" {
 		wrapped := wordWrap(item.doc, w)
-		for _, line := range strings.Split(wrapped, "\n") {
+		for line := range strings.SplitSeq(wrapped, "\n") {
 			lines = append(lines, docStyle.Render(line))
 		}
 		lines = append(lines, "")
@@ -356,7 +326,7 @@ func renderDocDetail(item docItem, w int, docStyle, argNameStyle, argTypeStyle, 
 			))
 			if arg.doc != "" {
 				wrapped := wordWrap(arg.doc, w-4)
-				for _, line := range strings.Split(wrapped, "\n") {
+				for line := range strings.SplitSeq(wrapped, "\n") {
 					lines = append(lines, "    "+dimSt.Render(line))
 				}
 			}
@@ -377,7 +347,7 @@ func renderDocDetail(item docItem, w int, docStyle, argNameStyle, argTypeStyle, 
 			))
 			if arg.doc != "" {
 				wrapped := wordWrap(arg.doc, w-4)
-				for _, line := range strings.Split(wrapped, "\n") {
+				for line := range strings.SplitSeq(wrapped, "\n") {
 					lines = append(lines, "    "+dimSt.Render(line))
 				}
 			}
@@ -421,10 +391,7 @@ func (d *docBrowserOverlay) clampScroll(col *docColumn) {
 }
 
 func (d *docBrowserOverlay) listHeight() int {
-	h := d.lastHeight - 4
-	if h < 5 {
-		h = 5
-	}
+	h := max(d.lastHeight-4, 5)
 	return h
 }
 
@@ -434,17 +401,11 @@ func (d *docBrowserOverlay) visibleRange() (int, int) {
 	if total <= maxCols {
 		return 0, total
 	}
-	start := d.activeCol - 1
-	if start < 0 {
-		start = 0
-	}
+	start := max(d.activeCol-1, 0)
 	end := start + maxCols
 	if end > total {
 		end = total
-		start = end - maxCols
-		if start < 0 {
-			start = 0
-		}
+		start = max(end-maxCols, 0)
 	}
 	return start, end
 }
