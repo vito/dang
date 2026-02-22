@@ -659,7 +659,7 @@ func (a *Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Nod
 	if a.Message != nil {
 		msgVal, err := EvalNode(ctx, env, a.Message)
 		if err == nil {
-			message.WriteString(fmt.Sprintf("Assertion failed: %s\n", msgVal.String()))
+			fmt.Fprintf(&message, "Assertion failed: %s\n", msgVal.String())
 		} else {
 			message.WriteString("Assertion failed\n")
 		}
@@ -668,7 +668,7 @@ func (a *Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Nod
 	}
 
 	// Show the failed expression
-	message.WriteString(fmt.Sprintf("  Expression: %s\n", a.nodeToString(expr)))
+	fmt.Fprintf(&message, "  Expression: %s\n", a.nodeToString(expr))
 
 	// Extract and evaluate immediate children
 	children := a.getImmediateChildren(expr)
@@ -676,7 +676,7 @@ func (a *Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Nod
 		message.WriteString("  Values:\n")
 		for _, child := range children {
 			if val, err := EvalNode(ctx, env, child.Node); err == nil {
-				message.WriteString(fmt.Sprintf("    %s: %s\n", child.Name, val.String()))
+				fmt.Fprintf(&message, "    %s: %s\n", child.Name, val.String())
 			}
 		}
 	}

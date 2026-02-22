@@ -112,7 +112,7 @@ func (h *replHistory) appendToFile(line string) {
 		return
 	}
 	defer f.Close()
-	fmt.Fprintln(f, historyEncode(line))
+	_, _ = fmt.Fprintln(f, historyEncode(line))
 }
 
 // rewriteFile rewrites the entire history file (used for truncation).

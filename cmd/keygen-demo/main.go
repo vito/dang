@@ -45,7 +45,7 @@ func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) err
 		if err != nil {
 			return fmt.Errorf("create CPU profile: %w", err)
 		}
-		defer f.Close()
+		defer f.Close() //nolint:errcheck // best-effort close of profiling file
 		if err := pprof.StartCPUProfile(f); err != nil {
 			return fmt.Errorf("start CPU profile: %w", err)
 		}
@@ -59,7 +59,7 @@ func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) err
 	if err != nil {
 		return fmt.Errorf("open debug log: %w", err)
 	}
-	defer debugFile.Close()
+	defer debugFile.Close() //nolint:errcheck // best-effort close of debug log
 	tui.SetDebugWriter(debugFile)
 
 	fractal := newFractalView()
@@ -117,7 +117,7 @@ func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) err
 		if err != nil {
 			return fmt.Errorf("create heap profile: %w", err)
 		}
-		defer f.Close()
+		defer f.Close() //nolint:errcheck // best-effort close of profiling file
 		if err := pprof.WriteHeapProfile(f); err != nil {
 			return fmt.Errorf("write heap profile: %w", err)
 		}

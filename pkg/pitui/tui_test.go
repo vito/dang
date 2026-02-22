@@ -1428,7 +1428,6 @@ type lifecycleComponent struct {
 	mounted       bool
 	mountCount    int
 	dismountCount int
-	mountCtxDone  bool // true if ctx.Done() was closed at dismount time
 	lines         []string
 }
 
@@ -1540,15 +1539,7 @@ func TestMountContextCancelledOnDismount(t *testing.T) {
 	comp.Update()
 
 	var mountCtx EventContext
-	// Use a custom component to capture the context.
-	type ctxCapture struct {
-		Compo
-		ctx EventContext
-	}
-	cap := &ctxCapture{}
-	cap.Update()
-
-	// Implement Mounter inline isn't possible, so test via lifecycleComponent's compo.
+	// Test via lifecycleComponent's compo.
 	tui.AddChild(comp)
 	// Grab the mount context from the internal state.
 	assert.NotNil(t, comp.compo().mountCtx)

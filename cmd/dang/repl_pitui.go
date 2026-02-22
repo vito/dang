@@ -725,7 +725,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 
 	signal.Stop(sigCh)
 	if debugRenderFile != nil {
-		debugRenderFile.Close()
+		_ = debugRenderFile.Close()
 	}
 	tui.Stop()
 	fmt.Println("Goodbye!")

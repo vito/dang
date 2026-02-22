@@ -96,16 +96,16 @@ func (d *docBrowserOverlay) handleKey(key uv.Key) {
 }
 
 func (d *docBrowserOverlay) handleFilterKey(key uv.Key) {
-	switch {
-	case key.Code == uv.KeyEscape:
+	switch key.Code {
+	case uv.KeyEscape:
 		col := &d.columns[d.activeCol]
 		col.filter = ""
 		col.applyFilter()
 		d.filtering = false
 		d.expandSelection()
-	case key.Code == uv.KeyEnter:
+	case uv.KeyEnter:
 		d.filtering = false
-	case key.Code == uv.KeyBackspace:
+	case uv.KeyBackspace:
 		col := &d.columns[d.activeCol]
 		if len(col.filter) > 0 {
 			col.filter = col.filter[:len(col.filter)-1]
@@ -114,14 +114,14 @@ func (d *docBrowserOverlay) handleFilterKey(key uv.Key) {
 		} else {
 			d.filtering = false
 		}
-	case key.Code == uv.KeyUp:
+	case uv.KeyUp:
 		col := &d.columns[d.activeCol]
 		if col.index > 0 {
 			col.index--
 			d.clampScroll(col)
 			d.expandSelection()
 		}
-	case key.Code == uv.KeyDown:
+	case uv.KeyDown:
 		col := &d.columns[d.activeCol]
 		vis := col.visible()
 		if col.index < len(vis)-1 {

@@ -238,13 +238,13 @@ func newTUI(term Terminal) *TUI {
 	}
 	// Wire upward propagation: when any child calls Update(), the root
 	// Compo's requestRender triggers TUI.RequestRender.
-	t.Container.requestRender = func() {
+	t.requestRender = func() {
 		t.RequestRender(false)
 	}
 	// Mount the TUI's own Container so children added via AddChild
 	// are automatically mounted (receiving lifecycle hooks).
-	t.Container.Compo.tui = t
-	t.Container.Compo.self = &t.Container
+	t.Compo.tui = t
+	t.Compo.self = &t.Container
 	t.Container.Compo.mountCtx = context.Background()
 	// mountCancel is nil for the root — it's never dismounted.
 	return t
@@ -377,7 +377,7 @@ func (t *TUI) SetFocus(comp Component) {
 // eventContextFor constructs an EventContext for the given component,
 // using its mount context if available.
 func (t *TUI) eventContextFor(comp Component) EventContext {
-	var ctx context.Context = context.Background()
+	ctx := context.Background()
 	if comp != nil {
 		cp := comp.compo()
 		if cp.mountCtx != nil {

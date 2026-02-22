@@ -148,7 +148,7 @@ func (h *sseHub) serveSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	for _, line := range h.getHistory() {
-		fmt.Fprintf(w, "data: %s\n\n", line)
+		_, _ = fmt.Fprintf(w, "data: %s\n\n", line)
 	}
 	flusher.Flush()
 
@@ -162,7 +162,7 @@ func (h *sseHub) serveSSE(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case msg := <-ch:
-			fmt.Fprintf(w, "data: %s\n\n", msg)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", msg)
 			flusher.Flush()
 		}
 	}
@@ -203,7 +203,7 @@ func tailFile(path string, hub *sseHub) {
 				// File was truncated — a new program session started.
 				// Notify the dashboard and read from the beginning.
 				send([]byte(`{"type":"session_start"}`))
-				f.Close()
+				_ = f.Close()
 				f, err = os.Open(path)
 				if err != nil {
 					break

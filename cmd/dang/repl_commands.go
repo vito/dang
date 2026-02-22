@@ -135,7 +135,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 				} else {
 					ctx.SetDebugWriter(nil)
 					if r.debugRenderFile != nil {
-						r.debugRenderFile.Close()
+						_ = r.debugRenderFile.Close()
 						r.debugRenderFile = nil
 					}
 					e.writeLogLine(resultStyle.Render("Render debug disabled."))

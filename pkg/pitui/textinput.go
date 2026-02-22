@@ -185,7 +185,7 @@ func (t *TextInput) handleKeyPress(ctx EventContext, e uv.KeyPressEvent) bool {
 
 	// handled tracks whether the key was consumed by this component.
 	// The deferred Update/OnChange runs regardless (suggestion was cleared).
-	handled := true
+	var handled bool
 	defer func() {
 		t.Update() // any input may change cursor or content
 		if t.OnChange != nil && string(t.value) != oldValue {

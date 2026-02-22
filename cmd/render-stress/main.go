@@ -44,7 +44,7 @@ func run(initialLines int) error {
 	if err != nil {
 		return fmt.Errorf("open debug log: %w", err)
 	}
-	defer debugFile.Close()
+	defer debugFile.Close() //nolint:errcheck // best-effort close of debug log
 	tui.SetDebugWriter(debugFile)
 
 	log := newStressLog(initialLines)
