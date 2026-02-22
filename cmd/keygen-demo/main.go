@@ -9,6 +9,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"math"
@@ -163,6 +164,7 @@ type fractalView struct {
 	bench         bool
 	benchStart    time.Time
 	renderCount   int
+	lineBuf       bytes.Buffer
 	notifications []*activeNotification
 }
 
@@ -353,7 +355,7 @@ func (f *fractalView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	np := len(palette)
 	nr := len(ramp)
 
-	var buf strings.Builder
+	buf := &f.lineBuf
 	for y := range h {
 		buf.Reset()
 		im := f.targetIm + (float64(y)/float64(h)-0.5)*scale
