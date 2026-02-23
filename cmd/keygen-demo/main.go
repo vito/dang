@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -125,6 +126,16 @@ func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) err
 
 	return nil
 }
+
+// ── Coordinate field identifiers ───────────────────────────────────────────
+
+type coordField int
+
+const (
+	fieldNone coordField = iota
+	fieldRe
+	fieldIm
+)
 
 // ── Fractal view ───────────────────────────────────────────────────────────
 
@@ -397,10 +408,78 @@ type chromeBar struct {
 	pitui.Compo
 	start   time.Time
 	fractal *fractalView
+
+	// Mouse / inline-edit state
+	hoverField coordField
+	editField  coordField
+	editBuf    []rune
+	editCursor int
+
+	// Layout cache from last Render (X ranges for hit testing on row 0)
+	reStartX int
+	reEndX   int
+	imStartX int
+	imEndX   int
 }
 
 func (c *chromeBar) OnMount(ctx pitui.EventContext) {
 	c.start = time.Now()
+}
+
+// HandleMouse implements pitui.MouseEnabled. The framework dispatches mouse
+// events here only when the cursor is over the chrome bar, with
+// component-relative coordinates available via ctx.MouseRow()/MouseCol().
+func (c *chromeBar) HandleMouse(ctx pitui.EventContext, ev uv.MouseEvent) bool {
+	row := ctx.MouseRow()
+	col := ctx.MouseCol()
+	field := c.hitTest(col, row)
+
+	switch ev.(type) {
+	case uv.MouseMotionEvent:
+		if field != c.hoverField {
+			c.hoverField = field
+			c.Update()
+		}
+		return false // don't consume motion — let others see it
+	case uv.MouseClickEvent:
+		m := ev.Mouse()
+		if m.Button != uv.MouseLeft {
+			return false
+		}
+		if field != fieldNone {
+			if c.editField != fieldNone && c.editField != field {
+				c.commitEdit(ctx)
+			}
+			if c.editField != field {
+				c.startEdit(ctx, field)
+			}
+			return true
+		}
+		// Click outside coordinate values — commit any active edit.
+		if c.editField != fieldNone {
+			c.commitEdit(ctx)
+			return true
+		}
+	}
+	return false
+}
+
+// SetHovered implements pitui.Hoverable — clears hover highlighting when
+// the mouse leaves the chrome bar region.
+func (c *chromeBar) SetHovered(_ pitui.EventContext, hovered bool) {
+	if !hovered && c.hoverField != fieldNone {
+		c.hoverField = fieldNone
+		c.Update()
+	}
+}
+
+// HandleKeyPress implements pitui.Interactive — handles keyboard input
+// when the chrome bar has focus (during inline coordinate editing).
+func (c *chromeBar) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
+	if c.editField != fieldNone {
+		return c.handleEditKey(ctx, ev)
+	}
+	return false
 }
 
 var (
@@ -418,6 +497,11 @@ var (
 	botBarStyle = lipgloss.NewStyle().Background(botBarBg).Foreground(lipgloss.Color("245"))
 	botKeyStyle = lipgloss.NewStyle().Background(botBarBg).Foreground(lipgloss.Color("81")).Bold(true)
 	botSepStyle = lipgloss.NewStyle().Background(botBarBg).Foreground(lipgloss.Color("240"))
+
+	// Coordinate hover / inline-edit styles
+	coordHoverStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("123")).Background(lipgloss.Color("238")).Underline(true)
+	coordEditStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("24"))
+	coordEditCursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("232")).Background(lipgloss.Color("81"))
 )
 
 func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
@@ -425,10 +509,48 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	elapsed := time.Since(c.start).Truncate(time.Second)
 	w := ctx.Width
 
-	// Top bar: title block │ coord │ zoom │ iter │ state │ ··· │ timer
+	// ── Top bar ──────────────────────────────────────────────────────────
+
 	title := topTitleStyle.Render(" ◆ MANDELBROT ")
-	coord := topLabelStyle.Render(" re ") + topValueStyle.Render(fmt.Sprintf("%.12f", f.targetRe)) +
-		topLabelStyle.Render("  im ") + topValueStyle.Render(fmt.Sprintf("%+.12f", f.targetIm))
+	titleW := lipgloss.Width(title)
+
+	// Re coordinate — track X range for mouse hit testing.
+	reLabel := topLabelStyle.Render(" re ")
+	reLabelW := lipgloss.Width(reLabel)
+	reValueStr := fmt.Sprintf("%.12f", f.targetRe)
+	reValueW := len(reValueStr)
+	c.reStartX = titleW + reLabelW
+
+	var reRendered string
+	switch {
+	case c.editField == fieldRe:
+		reRendered = c.renderEditField(reValueW)
+	case c.hoverField == fieldRe:
+		reRendered = coordHoverStyle.Render(reValueStr)
+	default:
+		reRendered = topValueStyle.Render(reValueStr)
+	}
+	c.reEndX = c.reStartX + lipgloss.Width(reRendered)
+
+	// Im coordinate — same treatment.
+	imLabel := topLabelStyle.Render("  im ")
+	imLabelW := lipgloss.Width(imLabel)
+	imValueStr := fmt.Sprintf("%+.12f", f.targetIm)
+	imValueW := len(imValueStr)
+	c.imStartX = c.reEndX + imLabelW
+
+	var imRendered string
+	switch {
+	case c.editField == fieldIm:
+		imRendered = c.renderEditField(imValueW)
+	case c.hoverField == fieldIm:
+		imRendered = coordHoverStyle.Render(imValueStr)
+	default:
+		imRendered = topValueStyle.Render(imValueStr)
+	}
+	c.imEndX = c.imStartX + lipgloss.Width(imRendered)
+
+	coord := reLabel + reRendered + imLabel + imRendered
 	zoom := topLabelStyle.Render("  zoom ") + topValueStyle.Render(fmt.Sprintf("%.2e", 3.0/f.scale()))
 	iter := topLabelStyle.Render("  iter ") + topValueStyle.Render(fmt.Sprintf("%d", min(64+f.frame/10, 256)))
 	state := ""
@@ -441,14 +563,25 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	topPad := max(w-lipgloss.Width(topContent)-lipgloss.Width(timer), 0)
 	top := topContent + topBarStyle.Render(strings.Repeat(" ", topPad)) + timer
 
-	// Bottom bar: styled key bindings
+	// ── Bottom bar ───────────────────────────────────────────────────────
+
 	sep := botSepStyle.Render(" │ ")
-	bindings := []string{
-		botKeyStyle.Render("↑↓←→") + botBarStyle.Render(" pan"),
-		botKeyStyle.Render("+/-") + botBarStyle.Render(" zoom"),
-		botKeyStyle.Render("space") + botBarStyle.Render(" pause"),
-		botKeyStyle.Render("r") + botBarStyle.Render(" reset"),
-		botKeyStyle.Render("q") + botBarStyle.Render(" quit"),
+	var bindings []string
+	if c.editField != fieldNone {
+		bindings = []string{
+			botKeyStyle.Render("Enter") + botBarStyle.Render(" apply"),
+			botKeyStyle.Render("Esc") + botBarStyle.Render(" cancel"),
+			botKeyStyle.Render("Tab") + botBarStyle.Render(" switch"),
+		}
+	} else {
+		bindings = []string{
+			botKeyStyle.Render("↑↓←→") + botBarStyle.Render(" pan"),
+			botKeyStyle.Render("+/-") + botBarStyle.Render(" zoom"),
+			botKeyStyle.Render("space") + botBarStyle.Render(" pause"),
+			botKeyStyle.Render("click re/im") + botBarStyle.Render(" edit"),
+			botKeyStyle.Render("r") + botBarStyle.Render(" reset"),
+			botKeyStyle.Render("q") + botBarStyle.Render(" quit"),
+		}
 	}
 	controls := " " + strings.Join(bindings, sep) + " "
 	botPad := max(w-lipgloss.Width(controls), 0)
@@ -457,6 +590,160 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	bot := botBarStyle.Render(strings.Repeat(" ", left)) + controls + botBarStyle.Render(strings.Repeat(" ", right))
 
 	return pitui.RenderResult{Lines: []string{top, bot}}
+}
+
+// ── Chrome bar: mouse & inline-edit ────────────────────────────────────────
+
+// hitTest maps a component-relative (col, row) to a coordinate field.
+// Row 0 is the top bar (where coordinates live); row 1 is the bottom bar.
+func (c *chromeBar) hitTest(col, row int) coordField {
+	if row != 0 {
+		return fieldNone
+	}
+	if col >= c.reStartX && col < c.reEndX {
+		return fieldRe
+	}
+	if col >= c.imStartX && col < c.imEndX {
+		return fieldIm
+	}
+	return fieldNone
+}
+
+func (c *chromeBar) startEdit(ctx pitui.EventContext, field coordField) {
+	f := c.fractal
+	switch field {
+	case fieldRe:
+		c.editBuf = []rune(fmt.Sprintf("%.12f", f.targetRe))
+	case fieldIm:
+		c.editBuf = []rune(fmt.Sprintf("%+.12f", f.targetIm))
+	}
+	c.editField = field
+	c.editCursor = len(c.editBuf)
+	c.hoverField = fieldNone
+	ctx.SetFocus(c) // take keyboard focus for editing
+	c.Update()
+}
+
+func (c *chromeBar) commitEdit(ctx pitui.EventContext) {
+	if c.editField == fieldNone {
+		return
+	}
+	val, err := strconv.ParseFloat(strings.TrimSpace(string(c.editBuf)), 64)
+	if err == nil {
+		switch c.editField {
+		case fieldRe:
+			c.fractal.targetRe = val
+		case fieldIm:
+			c.fractal.targetIm = val
+		}
+		c.fractal.Update()
+	}
+	c.editField = fieldNone
+	c.editBuf = nil
+	ctx.SetFocus(c.fractal) // restore focus to fractal
+	c.Update()
+}
+
+func (c *chromeBar) cancelEdit(ctx pitui.EventContext) {
+	c.editField = fieldNone
+	c.editBuf = nil
+	ctx.SetFocus(c.fractal)
+	c.Update()
+}
+
+func (c *chromeBar) handleEditKey(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
+	key := uv.Key(ev)
+	switch {
+	case key.Code == uv.KeyEnter:
+		c.commitEdit(ctx)
+	case key.Code == uv.KeyEscape:
+		c.cancelEdit(ctx)
+	case key.Code == uv.KeyBackspace:
+		if c.editCursor > 0 {
+			c.editBuf = append(c.editBuf[:c.editCursor-1], c.editBuf[c.editCursor:]...)
+			c.editCursor--
+			c.Update()
+		}
+	case key.Code == uv.KeyDelete:
+		if c.editCursor < len(c.editBuf) {
+			c.editBuf = append(c.editBuf[:c.editCursor], c.editBuf[c.editCursor+1:]...)
+			c.Update()
+		}
+	case key.Code == uv.KeyLeft && key.Mod == 0:
+		if c.editCursor > 0 {
+			c.editCursor--
+			c.Update()
+		}
+	case key.Code == uv.KeyRight && key.Mod == 0:
+		if c.editCursor < len(c.editBuf) {
+			c.editCursor++
+			c.Update()
+		}
+	case key.Code == 'a' && key.Mod == uv.ModCtrl, key.Code == uv.KeyHome:
+		c.editCursor = 0
+		c.Update()
+	case key.Code == 'e' && key.Mod == uv.ModCtrl, key.Code == uv.KeyEnd:
+		c.editCursor = len(c.editBuf)
+		c.Update()
+	case key.Code == 'u' && key.Mod == uv.ModCtrl:
+		c.editBuf = c.editBuf[c.editCursor:]
+		c.editCursor = 0
+		c.Update()
+	case key.Code == 'k' && key.Mod == uv.ModCtrl:
+		c.editBuf = c.editBuf[:c.editCursor]
+		c.Update()
+	case key.Code == uv.KeyTab:
+		// Tab switches between re ↔ im.
+		next := fieldRe
+		if c.editField == fieldRe {
+			next = fieldIm
+		}
+		c.commitEdit(ctx)
+		c.startEdit(ctx, next)
+	default:
+		if key.Text != "" {
+			for _, r := range key.Text {
+				if isCoordRune(r) {
+					newBuf := make([]rune, 0, len(c.editBuf)+1)
+					newBuf = append(newBuf, c.editBuf[:c.editCursor]...)
+					newBuf = append(newBuf, r)
+					newBuf = append(newBuf, c.editBuf[c.editCursor:]...)
+					c.editBuf = newBuf
+					c.editCursor++
+				}
+			}
+			c.Update()
+		}
+	}
+	return true // consume all keys while editing
+}
+
+// isCoordRune returns true for characters valid in a floating-point literal.
+func isCoordRune(r rune) bool {
+	return (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '+' || r == 'e' || r == 'E'
+}
+
+// renderEditField renders the inline edit buffer as a styled string with a
+// block cursor. The field is padded to at least minWidth visible characters
+// so the chrome bar doesn't jitter.
+func (c *chromeBar) renderEditField(minWidth int) string {
+	runes := c.editBuf
+	width := max(len(runes)+1, minWidth) // +1 ensures room for end-of-line cursor
+
+	display := make([]rune, width)
+	copy(display, runes)
+	for i := len(runes); i < width; i++ {
+		display[i] = ' '
+	}
+
+	cur := min(c.editCursor, len(display)-1)
+	before := string(display[:cur])
+	cursorCh := string(display[cur : cur+1])
+	after := string(display[cur+1:])
+
+	return coordEditStyle.Render(before) +
+		coordEditCursorStyle.Render(cursorCh) +
+		coordEditStyle.Render(after)
 }
 
 // ── Frame log ──────────────────────────────────────────────────────────────
