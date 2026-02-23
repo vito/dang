@@ -6,25 +6,25 @@ assert { n >= 0 }
 assert { n < 10 }
 
 # Random.float generates floats in [0, 1)
-let f = Random.float()
+let f = Random.float
 assert { f >= 0.0 }
 assert { f < 1.0 }
 
 # Random.string generates a secure random token
-let s = Random.string()
+let s = Random.string
 assert { s != "" }
 
 # UUID.v4 generates valid-looking UUIDs (36 chars with hyphens)
-let id = UUID.v4()
+let id = UUID.v4
 assert { id.contains("-") }
 assert { id.split("-").length == 5 }
 
 # UUID.v7 generates valid-looking UUIDs
-let id7 = UUID.v7()
+let id7 = UUID.v7
 assert { id7.contains("-") }
 assert { id7.split("-").length == 5 }
 
 # Each call generates a different value
-let a = UUID.v4()
-let b = UUID.v4()
+let a = UUID.v4
+let b = UUID.v4
 assert { a != b }

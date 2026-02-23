@@ -189,6 +189,7 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 		require.NoError(t, err)
 		line := string(lineb)
 
+		line = strings.ReplaceAll(line, "nofmt ", "")
 		line, test, ok := strings.Cut(line, " # test: ")
 		if !ok {
 			continue
