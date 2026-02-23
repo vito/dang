@@ -1714,3 +1714,162 @@ func TestSpinnerMountDismountLifecycle(t *testing.T) {
 		t.Fatal("spinner's mount context should be cancelled after removal")
 	}
 }
+
+// ── Zone marker tests ──────────────────────────────────────────────────────
+
+// mouseComponent is a MouseEnabled component for testing zone dispatch.
+type mouseComponent struct {
+	Compo
+	lines      []string
+	lastEvent  *MouseEvent
+	lastCtx    *EventContext
+	consumeMouse bool
+}
+
+func (m *mouseComponent) Render(ctx RenderContext) RenderResult {
+	return RenderResult{Lines: m.lines}
+}
+
+func (m *mouseComponent) HandleMouse(ctx EventContext, ev MouseEvent) bool {
+	m.lastEvent = &ev
+	m.lastCtx = &ctx
+	return m.consumeMouse
+}
+
+func TestParseZoneMarker(t *testing.T) {
+	tests := []struct {
+		input    string
+		wantID   int64
+		wantLen  int
+	}{
+		{"\x1b[1001z", 1001, 7},
+		{"\x1b[42z", 42, 5},
+		{"\x1b[999999z", 999999, 9},
+		{"\x1b[z", 0, 0},          // no digits
+		{"\x1b[12m", 0, 0},        // wrong terminator
+		{"hello", 0, 0},           // not an escape
+		{"\x1b[1001zhello", 1001, 7}, // marker followed by text
+	}
+	for _, tt := range tests {
+		id, n := parseZoneMarker(tt.input)
+		assert.Equal(t, tt.wantID, id, "input: %q", tt.input)
+		assert.Equal(t, tt.wantLen, n, "input: %q", tt.input)
+	}
+}
+
+func TestScanMouseZones_FullLineComponent(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	mc := &mouseComponent{lines: []string{"hello", "world"}, consumeMouse: true}
+	tui.AddChild(mc)
+
+	renderSync(tui)
+
+	// The Container auto-marks MouseEnabled children, so zones should exist.
+	require.NotEmpty(t, tui.mouseZones, "expected at least one mouse zone")
+
+	// Find the zone for mc.
+	var found *mouseZone
+	for i := range tui.mouseZones {
+		if tui.mouseZones[i].comp == mc {
+			found = &tui.mouseZones[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "expected a zone for the mouseComponent")
+	assert.Equal(t, 0, found.startRow)
+	assert.Equal(t, 0, found.startCol)
+	assert.Equal(t, 1, found.endRow)
+	// endCol should be the width of "world" (5)
+	assert.Equal(t, 5, found.endCol)
+}
+
+func TestScanMouseZones_InlineMark(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	// An attached (inline) component.
+	inline := &mouseComponent{lines: nil, consumeMouse: true}
+
+	// A parent that uses Mark to embed the inline component.
+	parent := &markingParent{inline: inline}
+	tui.AddChild(parent)
+
+	// Attach the inline component so it has a TUI reference.
+	tui.Dispatch(func() {})
+	// Manual attach since we're not running the event loop.
+	inline.Compo.self = inline
+	inline.Compo.tui = tui
+	if tui.attachedComps == nil {
+		tui.attachedComps = make(map[Component]struct{})
+	}
+	tui.attachedComps[inline] = struct{}{}
+
+	renderSync(tui)
+
+	// Find the inline zone.
+	var found *mouseZone
+	for i := range tui.mouseZones {
+		if tui.mouseZones[i].comp == inline {
+			found = &tui.mouseZones[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "expected a zone for the inline component")
+	// "prefix" is 6 chars, then the marked "VALUE" is 5 chars.
+	assert.Equal(t, 0, found.startRow)
+	assert.Equal(t, 6, found.startCol)
+	assert.Equal(t, 0, found.endRow)
+	assert.Equal(t, 11, found.endCol)
+}
+
+// markingParent renders a line with an inline Mark'd component.
+type markingParent struct {
+	Compo
+	inline Component
+}
+
+func (p *markingParent) Render(ctx RenderContext) RenderResult {
+	line := "prefix" + Mark(p.inline, "VALUE") + "suffix"
+	return RenderResult{Lines: []string{line}}
+}
+
+func TestScanMouseZones_StripsMarkers(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	mc := &mouseComponent{lines: []string{"hello"}, consumeMouse: true}
+	tui.AddChild(mc)
+
+	renderSync(tui)
+
+	// The terminal output should not contain any zone markers.
+	out := term.written.String()
+	assert.NotContains(t, out, "z") // no ESC[...z marker in output
+	assert.Contains(t, out, "hello")
+}
+
+func TestZoneContains(t *testing.T) {
+	// Single-line zone at row 2, cols 5-10.
+	z := &mouseZone{startRow: 2, startCol: 5, endRow: 2, endCol: 10}
+
+	assert.True(t, zoneContains(z, 2, 5))  // start corner
+	assert.True(t, zoneContains(z, 2, 9))  // last col
+	assert.False(t, zoneContains(z, 2, 4)) // before start
+	assert.False(t, zoneContains(z, 2, 10)) // at endCol (exclusive)
+	assert.False(t, zoneContains(z, 1, 7)) // wrong row
+	assert.False(t, zoneContains(z, 3, 7)) // wrong row
+
+	// Multi-line zone: rows 1-3, starts at col 3, ends at col 8.
+	z2 := &mouseZone{startRow: 1, startCol: 3, endRow: 3, endCol: 8}
+	assert.False(t, zoneContains(z2, 1, 2)) // before startCol on first row
+	assert.True(t, zoneContains(z2, 1, 3))  // start corner
+	assert.True(t, zoneContains(z2, 2, 0))  // middle row, any col
+	assert.True(t, zoneContains(z2, 3, 0))  // last row, before endCol
+	assert.True(t, zoneContains(z2, 3, 7))  // last row, just before endCol
+	assert.False(t, zoneContains(z2, 3, 8)) // at endCol (exclusive)
+}
