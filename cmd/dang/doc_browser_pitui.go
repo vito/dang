@@ -78,10 +78,10 @@ func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressE
 // HandleMouse implements pitui.MouseEnabled, enabling terminal mouse capture
 // while the doc browser is mounted. Supports hover highlighting and click
 // navigation on all column items.
-func (d *docBrowserOverlay) HandleMouse(_ pitui.EventContext, ev uv.MouseEvent) bool {
+func (d *docBrowserOverlay) HandleMouse(ctx pitui.EventContext, ev uv.MouseEvent) bool {
 	m := ev.Mouse()
 
-	col, item := d.hitTest(m.X, m.Y)
+	col, item := d.hitTest(ctx.MouseCol(), ctx.MouseRow())
 
 	switch ev.(type) {
 	case uv.MouseMotionEvent:
