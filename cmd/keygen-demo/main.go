@@ -129,71 +129,117 @@ func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) err
 
 // ── Inline input widget ────────────────────────────────────────────────────
 
-// inlineInput is a reusable inline numeric editor. It handles its own mouse
-// interaction (hover highlighting, click-to-edit, click-outside-to-commit)
-// and keyboard editing (cursor movement, insert/delete, commit/cancel).
+// inlineInput is a reusable inline numeric editor that implements
+// pitui.MouseEnabled, pitui.Hoverable, pitui.Focusable, and
+// pitui.Interactive. It is Attached (not tree-mounted) to the TUI and
+// receives mouse events via InlineRegion declarations in the parent's
+// RenderResult.
 //
-// It is not a pitui Component — it renders as an inline styled string that
-// the parent component incorporates into its output line. The parent must
-// forward mouse and key events.
+// The parent uses [LineBuilder.Comp] to embed the input's rendered string
+// into a line — no manual position tracking or event forwarding needed.
 type inlineInput struct {
+	pitui.Compo
+
 	value  *float64     // pointer to the backing value
 	format string       // printf format for display (e.g. "%.12f")
-	chrome *chromeBar   // parent — for Update() and focus management
+	chrome *chromeBar   // parent — for Update()
 	peer   *inlineInput // other input — for Tab switching
 
 	hovered bool
 	editing bool
 	buf     []rune
 	cursor  int
-
-	// Layout: X range set during Render, used for hit testing.
-	startX int
-	endX   int
 }
 
-// HandleMouse handles hover, click-to-edit, and click-outside-to-commit.
-// The caller passes the full event; the input does its own hit testing.
-func (inp *inlineInput) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
-	hit := ev.Col >= inp.startX && ev.Col < inp.endX
+// Render satisfies Component but returns nothing — the input renders
+// inline via RenderInline, embedded in the parent's line.
+func (inp *inlineInput) Render(_ pitui.RenderContext) pitui.RenderResult {
+	return pitui.RenderResult{}
+}
 
+// RenderInline returns the styled string for embedding in a LineBuilder.
+func (inp *inlineInput) RenderInline() string {
+	if inp.editing {
+		return inp.renderEdit()
+	}
+	s := fmt.Sprintf(inp.format, *inp.value)
+	if inp.hovered {
+		return coordHoverStyle.Render(s)
+	}
+	return topValueStyle.Render(s)
+}
+
+func (inp *inlineInput) renderEdit() string {
+	runes := inp.buf
+	// Use the display width of the formatted value as minimum width
+	// so the chrome bar doesn't jitter when the edit buffer is shorter.
+	minWidth := len(fmt.Sprintf(inp.format, *inp.value))
+	width := max(len(runes)+1, minWidth) // +1 for end-of-line cursor
+
+	display := make([]rune, width)
+	copy(display, runes)
+	for i := len(runes); i < width; i++ {
+		display[i] = ' '
+	}
+
+	cur := min(inp.cursor, len(display)-1)
+	before := string(display[:cur])
+	cursorCh := string(display[cur : cur+1])
+	after := string(display[cur+1:])
+
+	return coordEditStyle.Render(before) +
+		coordEditCursorStyle.Render(cursorCh) +
+		coordEditStyle.Render(after)
+}
+
+// HandleMouse implements pitui.MouseEnabled — handles clicks to start editing.
+// The framework only calls this when the mouse is within the input's
+// InlineRegion, so no hit testing is needed.
+func (inp *inlineInput) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
 	switch ev.MouseEvent.(type) {
-	case uv.MouseMotionEvent:
-		if hit != inp.hovered {
-			inp.hovered = hit
-			inp.chrome.Update()
-		}
-		return false
 	case uv.MouseClickEvent:
 		if ev.Mouse().Button != uv.MouseLeft {
 			return false
 		}
-		if hit {
-			if !inp.editing {
-				inp.startEdit(ctx)
-			}
-			return true
+		if !inp.editing {
+			inp.startEdit(ctx)
 		}
-		// Click elsewhere — commit if we were editing.
-		if inp.editing {
-			inp.commit(ctx)
-		}
-		return false
+		return true
 	}
 	return false
 }
 
-// HandleKey handles all keyboard input during editing.
-func (inp *inlineInput) HandleKey(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
+// SetHovered implements pitui.Hoverable — updates hover highlight.
+func (inp *inlineInput) SetHovered(_ pitui.EventContext, hovered bool) {
+	if hovered != inp.hovered {
+		inp.hovered = hovered
+		inp.chrome.Update()
+	}
+}
+
+// SetFocused implements pitui.Focusable — commits the edit when focus
+// moves away (e.g. user clicks on another component).
+func (inp *inlineInput) SetFocused(_ pitui.EventContext, focused bool) {
+	if !focused && inp.editing {
+		inp.applyEdit()
+	}
+}
+
+// HandleKeyPress implements pitui.Interactive — handles editing keys.
+func (inp *inlineInput) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
 	if !inp.editing {
 		return false
 	}
 	key := uv.Key(ev)
 	switch {
 	case key.Code == uv.KeyEnter:
-		inp.commit(ctx)
+		inp.applyEdit()
+		ctx.SetFocus(inp.chrome.fractal)
 	case key.Code == uv.KeyEscape:
-		inp.cancel(ctx)
+		inp.editing = false
+		inp.buf = nil
+		inp.chrome.Update()
+		ctx.SetFocus(inp.chrome.fractal)
 	case key.Code == uv.KeyBackspace:
 		if inp.cursor > 0 {
 			inp.buf = append(inp.buf[:inp.cursor-1], inp.buf[inp.cursor:]...)
@@ -229,7 +275,7 @@ func (inp *inlineInput) HandleKey(ctx pitui.EventContext, ev uv.KeyPressEvent) b
 		inp.buf = inp.buf[:inp.cursor]
 		inp.chrome.Update()
 	case key.Code == uv.KeyTab:
-		inp.commit(ctx)
+		inp.applyEdit()
 		inp.peer.startEdit(ctx)
 	default:
 		if key.Text != "" {
@@ -254,11 +300,13 @@ func (inp *inlineInput) startEdit(ctx pitui.EventContext) {
 	inp.editing = true
 	inp.cursor = len(inp.buf)
 	inp.hovered = false
-	ctx.SetFocus(inp.chrome) // chrome bar receives key events
+	ctx.SetFocus(inp) // input receives key events directly
 	inp.chrome.Update()
 }
 
-func (inp *inlineInput) commit(ctx pitui.EventContext) {
+// applyEdit validates and applies the edit buffer to the backing value.
+// Does not change focus — the caller decides what to focus next.
+func (inp *inlineInput) applyEdit() {
 	if !inp.editing {
 		return
 	}
@@ -269,55 +317,7 @@ func (inp *inlineInput) commit(ctx pitui.EventContext) {
 	}
 	inp.editing = false
 	inp.buf = nil
-	ctx.SetFocus(inp.chrome.fractal) // restore focus to fractal
 	inp.chrome.Update()
-}
-
-func (inp *inlineInput) cancel(ctx pitui.EventContext) {
-	inp.editing = false
-	inp.buf = nil
-	ctx.SetFocus(inp.chrome.fractal)
-	inp.chrome.Update()
-}
-
-// Render returns the styled inline string and updates startX/endX for hit
-// testing. The caller provides the X offset where the value starts and the
-// minimum display width (to avoid jitter when the edit buffer is shorter).
-func (inp *inlineInput) Render(startX, minWidth int) string {
-	inp.startX = startX
-	var rendered string
-	if inp.editing {
-		rendered = inp.renderEdit(minWidth)
-	} else {
-		s := fmt.Sprintf(inp.format, *inp.value)
-		if inp.hovered {
-			rendered = coordHoverStyle.Render(s)
-		} else {
-			rendered = topValueStyle.Render(s)
-		}
-	}
-	inp.endX = startX + lipgloss.Width(rendered)
-	return rendered
-}
-
-func (inp *inlineInput) renderEdit(minWidth int) string {
-	runes := inp.buf
-	width := max(len(runes)+1, minWidth) // +1 ensures room for end-of-line cursor
-
-	display := make([]rune, width)
-	copy(display, runes)
-	for i := len(runes); i < width; i++ {
-		display[i] = ' '
-	}
-
-	cur := min(inp.cursor, len(display)-1)
-	before := string(display[:cur])
-	cursorCh := string(display[cur : cur+1])
-	after := string(display[cur+1:])
-
-	return coordEditStyle.Render(before) +
-		coordEditCursorStyle.Render(cursorCh) +
-		coordEditStyle.Render(after)
 }
 
 // isCoordRune returns true for characters valid in a floating-point literal.
@@ -421,6 +421,17 @@ func (f *fractalView) removeNotification(n *activeNotification) {
 		})
 		y += n.height
 	}
+}
+
+// HandleMouse implements pitui.MouseEnabled — clicking on the fractal
+// reclaims keyboard focus, which commits any active coordinate edit
+// via the inlineInput's Focusable.SetFocused(false).
+func (f *fractalView) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
+	if _, ok := ev.MouseEvent.(uv.MouseClickEvent); ok {
+		ctx.SetFocus(f)
+		return true
+	}
+	return false
 }
 
 func (f *fractalView) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
@@ -611,43 +622,12 @@ func newChromeBar(fractal *fractalView) *chromeBar {
 
 func (c *chromeBar) OnMount(ctx pitui.EventContext) {
 	c.start = time.Now()
+	ctx.Attach(c.reInput)
+	ctx.Attach(c.imInput)
 }
 
-// HandleMouse implements pitui.MouseEnabled — delegates entirely to inputs.
-func (c *chromeBar) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
-	if ev.Row != 0 {
-		return false
-	}
-	a := c.reInput.HandleMouse(ctx, ev)
-	b := c.imInput.HandleMouse(ctx, ev)
-	return a || b
-}
-
-// SetHovered implements pitui.Hoverable — clears hover on both inputs
-// when the mouse leaves the chrome bar region.
-func (c *chromeBar) SetHovered(_ pitui.EventContext, hovered bool) {
-	if !hovered {
-		changed := false
-		if c.reInput.hovered {
-			c.reInput.hovered = false
-			changed = true
-		}
-		if c.imInput.hovered {
-			c.imInput.hovered = false
-			changed = true
-		}
-		if changed {
-			c.Update()
-		}
-	}
-}
-
-// HandleKeyPress implements pitui.Interactive — delegates to the active input.
-func (c *chromeBar) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
-	if c.reInput.HandleKey(ctx, ev) {
-		return true
-	}
-	return c.imInput.HandleKey(ctx, ev)
+func (c *chromeBar) OnDismount() {
+	// Detach is handled implicitly — the TUI clears references on stop.
 }
 
 var (
@@ -681,33 +661,22 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	elapsed := time.Since(c.start).Truncate(time.Second)
 	w := ctx.Width
 
-	// ── Top bar ──────────────────────────────────────────────────────────
+	// ── Top bar (with inline input regions) ──────────────────────────────
 
-	title := topTitleStyle.Render(" ◆ MANDELBROT ")
-	titleW := lipgloss.Width(title)
-
-	reLabel := topLabelStyle.Render(" re ")
-	reLabelW := lipgloss.Width(reLabel)
-	reValueW := len(fmt.Sprintf("%.12f", f.targetRe))
-	reRendered := c.reInput.Render(titleW+reLabelW, reValueW)
-
-	imLabel := topLabelStyle.Render("  im ")
-	imLabelW := lipgloss.Width(imLabel)
-	imValueW := len(fmt.Sprintf("%+.12f", f.targetIm))
-	imRendered := c.imInput.Render(c.reInput.endX+imLabelW, imValueW)
-
-	coord := reLabel + reRendered + imLabel + imRendered
-	zoom := topLabelStyle.Render("  zoom ") + topValueStyle.Render(fmt.Sprintf("%.2e", 3.0/f.scale()))
-	iter := topLabelStyle.Render("  iter ") + topValueStyle.Render(fmt.Sprintf("%d", min(64+f.frame/10, 256)))
-	state := ""
+	var top pitui.LineBuilder
+	top.Text(topTitleStyle.Render(" ◆ MANDELBROT "))
+	top.Text(topLabelStyle.Render(" re "))
+	top.Comp(c.reInput, c.reInput.RenderInline())
+	top.Text(topLabelStyle.Render("  im "))
+	top.Comp(c.imInput, c.imInput.RenderInline())
+	top.Text(topLabelStyle.Render("  zoom ") + topValueStyle.Render(fmt.Sprintf("%.2e", 3.0/f.scale())))
+	top.Text(topLabelStyle.Render("  iter ") + topValueStyle.Render(fmt.Sprintf("%d", min(64+f.frame/10, 256))))
 	if f.paused {
-		state = topDimStyle.Render("  ") + topTitleStyle.Render(" ⏸ ")
+		top.Text(topDimStyle.Render("  ") + topTitleStyle.Render(" ⏸ "))
 	}
 	timer := topTimerStyle.Render(fmt.Sprintf(" %s ", elapsed))
-
-	topContent := title + coord + zoom + iter + state
-	topPad := max(w-lipgloss.Width(topContent)-lipgloss.Width(timer), 0)
-	top := topContent + topBarStyle.Render(strings.Repeat(" ", topPad)) + timer
+	topPad := max(w-top.Width()-lipgloss.Width(timer), 0)
+	top.Text(topBarStyle.Render(strings.Repeat(" ", topPad)) + timer)
 
 	// ── Bottom bar ───────────────────────────────────────────────────────
 
@@ -735,7 +704,10 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	right := botPad - left
 	bot := botBarStyle.Render(strings.Repeat(" ", left)) + controls + botBarStyle.Render(strings.Repeat(" ", right))
 
-	return pitui.RenderResult{Lines: []string{top, bot}}
+	return pitui.RenderResult{
+		Lines:   []string{top.String(), bot},
+		Regions: top.Regions(0),
+	}
 }
 
 // ── Frame log ──────────────────────────────────────────────────────────────
