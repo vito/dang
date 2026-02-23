@@ -661,22 +661,23 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	elapsed := time.Since(c.start).Truncate(time.Second)
 	w := ctx.Width
 
-	// ── Top bar (with inline input regions) ──────────────────────────────
+	// ── Top bar (with inline input zones) ────────────────────────────────
 
-	var top pitui.LineBuilder
-	top.Text(topTitleStyle.Render(" ◆ MANDELBROT "))
-	top.Text(topLabelStyle.Render(" re "))
-	top.Comp(c.reInput, c.reInput.RenderInline())
-	top.Text(topLabelStyle.Render("  im "))
-	top.Comp(c.imInput, c.imInput.RenderInline())
-	top.Text(topLabelStyle.Render("  zoom ") + topValueStyle.Render(fmt.Sprintf("%.2e", 3.0/f.scale())))
-	top.Text(topLabelStyle.Render("  iter ") + topValueStyle.Render(fmt.Sprintf("%d", min(64+f.frame/10, 256))))
+	title := topTitleStyle.Render(" ◆ MANDELBROT ")
+	reLabel := topLabelStyle.Render(" re ")
+	reValue := pitui.Mark(c.reInput, c.reInput.RenderInline())
+	imLabel := topLabelStyle.Render("  im ")
+	imValue := pitui.Mark(c.imInput, c.imInput.RenderInline())
+	zoom := topLabelStyle.Render("  zoom ") + topValueStyle.Render(fmt.Sprintf("%.2e", 3.0/f.scale()))
+	iter := topLabelStyle.Render("  iter ") + topValueStyle.Render(fmt.Sprintf("%d", min(64+f.frame/10, 256)))
+	state := ""
 	if f.paused {
-		top.Text(topDimStyle.Render("  ") + topTitleStyle.Render(" ⏸ "))
+		state = topDimStyle.Render("  ") + topTitleStyle.Render(" ⏸ ")
 	}
 	timer := topTimerStyle.Render(fmt.Sprintf(" %s ", elapsed))
-	topPad := max(w-top.Width()-lipgloss.Width(timer), 0)
-	top.Text(topBarStyle.Render(strings.Repeat(" ", topPad)) + timer)
+	topContent := title + reLabel + reValue + imLabel + imValue + zoom + iter + state
+	topPad := max(w-lipgloss.Width(topContent)-lipgloss.Width(timer), 0)
+	top := topContent + topBarStyle.Render(strings.Repeat(" ", topPad)) + timer
 
 	// ── Bottom bar ───────────────────────────────────────────────────────
 
@@ -705,8 +706,7 @@ func (c *chromeBar) Render(ctx pitui.RenderContext) pitui.RenderResult {
 	bot := botBarStyle.Render(strings.Repeat(" ", left)) + controls + botBarStyle.Render(strings.Repeat(" ", right))
 
 	return pitui.RenderResult{
-		Lines:   []string{top.String(), bot},
-		Regions: top.Regions(0),
+		Lines: []string{top, bot},
 	}
 }
 
