@@ -205,7 +205,8 @@ type TUI struct {
 	// Positional mouse dispatch: regions rebuilt after each render.
 	mouseRegions    []mouseRegion
 	mouseRegionMap  map[Component]int // comp → startRow for O(1) lookup
-	lastMouseTarget Component         // for hover enter/leave tracking
+	inlineRegions   []inlineMouseRegion
+	lastMouseTarget Component // for hover enter/leave tracking
 
 	debugWriter io.Writer    // if non-nil, render stats are logged here
 	writeBuf    bytes.Buffer // reused across frames for terminal output
@@ -717,11 +718,22 @@ type mouseRegion struct {
 	endRow   int
 }
 
+// inlineMouseRegion maps an inline component (declared via InlineRegion
+// in a parent's RenderResult) to an absolute row and column range.
+type inlineMouseRegion struct {
+	comp     Component
+	absRow   int
+	startCol int
+	endCol   int
+}
+
 // rebuildMouseRegions walks the rendered component tree and records
-// the absolute row range for every MouseEnabled component. Called
-// once per frame after renderFrame.
+// the absolute row range for every MouseEnabled component, plus any
+// inline regions declared in RenderResults. Called once per frame
+// after renderFrame.
 func (t *TUI) rebuildMouseRegions() {
 	t.mouseRegions = t.mouseRegions[:0]
+	t.inlineRegions = t.inlineRegions[:0]
 	if t.mouseRegionMap == nil {
 		t.mouseRegionMap = make(map[Component]int)
 	} else {
@@ -745,6 +757,15 @@ func (t *TUI) buildMouseRegionsRecursive(comp Component, offset int) {
 			endRow:   offset + len(cp.cache.result.Lines),
 		})
 	}
+	// Collect inline regions declared in the render result.
+	for _, ir := range cp.cache.result.Regions {
+		t.inlineRegions = append(t.inlineRegions, inlineMouseRegion{
+			comp:     ir.Component,
+			absRow:   offset + ir.Line,
+			startCol: ir.Start,
+			endCol:   ir.End,
+		})
+	}
 	if p, ok := comp.(componentParent); ok {
 		childOffset := offset
 		for _, child := range p.componentChildren() {
@@ -764,13 +785,25 @@ func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 	m := ev.Mouse()
 	contentY := t.previousViewportTop + m.Y
 
-	// Find deepest MouseEnabled component containing this row.
+	// 1. Check inline regions first (most specific: column-bounded).
 	var target Component
-	var targetStart int
-	for _, r := range t.mouseRegions {
-		if contentY >= r.startRow && contentY < r.endRow {
+	var relRow, relCol int
+	for _, r := range t.inlineRegions {
+		if contentY == r.absRow && m.X >= r.startCol && m.X < r.endCol {
 			target = r.comp
-			targetStart = r.startRow
+			relRow = 0
+			relCol = m.X - r.startCol
+		}
+	}
+
+	// 2. Fall back to row-based regions (full-width).
+	if target == nil {
+		for _, r := range t.mouseRegions {
+			if contentY >= r.startRow && contentY < r.endRow {
+				target = r.comp
+				relRow = contentY - r.startRow
+				relCol = m.X
+			}
 		}
 	}
 
@@ -787,7 +820,7 @@ func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 		return
 	}
 
-	me := MouseEvent{MouseEvent: ev, Row: contentY - targetStart, Col: m.X}
+	me := MouseEvent{MouseEvent: ev, Row: relRow, Col: relCol}
 	ctx := t.eventContextFor(target)
 
 	if mc, ok := target.(MouseEnabled); ok {

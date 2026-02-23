@@ -4,9 +4,11 @@ import (
 	"context"
 	"io"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
 
+	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -86,6 +88,59 @@ func (ctx EventContext) SetDebugWriter(w io.Writer) {
 	ctx.tui.debugWriter = w
 }
 
+// Attach connects a component to the TUI for event dispatch and
+// [Compo.Update] without adding it to the render tree. This is used for
+// inline components whose mouse regions are declared via [InlineRegion]
+// in a parent's [RenderResult].
+//
+// The attached component can receive focus (via [SetFocus]), fire
+// [Compo.Update], and participate in hover tracking — just like a
+// tree-mounted component. The parent pointer is set to the source
+// component's Compo so that event bubbling works.
+//
+// Call [Detach] when the component is no longer needed (typically in
+// the parent's OnDismount).
+func (ctx EventContext) Attach(comp Component) {
+	cp := comp.compo()
+	cp.self = comp
+	cp.tui = ctx.tui
+	cp.parent = ctx.source.compo()
+
+	// Create a mount context tied to the parent's lifetime.
+	if ctx.source.compo().mountCtx != nil {
+		cp.mountCtx, cp.mountCancel = context.WithCancel(ctx.source.compo().mountCtx)
+	}
+
+	if _, ok := comp.(MouseEnabled); ok {
+		ctx.tui.EnableMouse()
+	}
+	if m, ok := comp.(Mounter); ok {
+		m.OnMount(EventContext{
+			Context: cp.mountCtx,
+			tui:     ctx.tui,
+			source:  comp,
+		})
+	}
+}
+
+// Detach disconnects a previously [Attach]ed component from the TUI.
+func (ctx EventContext) Detach(comp Component) {
+	cp := comp.compo()
+	if cp.mountCancel != nil {
+		cp.mountCancel()
+	}
+	if d, ok := comp.(Dismounter); ok {
+		d.OnDismount()
+	}
+	if _, ok := comp.(MouseEnabled); ok && cp.tui != nil {
+		cp.tui.DisableMouse()
+	}
+	cp.tui = nil
+	cp.parent = nil
+	cp.mountCtx = nil
+	cp.mountCancel = nil
+}
+
 // ── Render ─────────────────────────────────────────────────────────────────
 
 // RenderContext carries everything a component needs to render.
@@ -148,6 +203,94 @@ type RenderResult struct {
 	// Cursor, if non-nil, is where the hardware cursor should be placed,
 	// relative to this component's output (Row 0 = first line of Lines).
 	Cursor *CursorPos
+
+	// Regions declares column-bounded mouse regions within rendered
+	// lines, mapping sub-line ranges to child [MouseEnabled] components.
+	// This enables inline components (e.g. clickable values within a
+	// status bar) to receive mouse events directly from the framework.
+	//
+	// Components referenced here must be [Attach]ed to the TUI.
+	// Use [LineBuilder] to build lines with automatically-tracked regions.
+	Regions []InlineRegion
+}
+
+// InlineRegion maps a column range within a rendered line to a child
+// component. The framework dispatches mouse events with coordinates
+// relative to the region (Col 0 = region start column).
+type InlineRegion struct {
+	Component Component // must implement MouseEnabled; typically Attached
+	Line      int       // index into RenderResult.Lines
+	Start     int       // start column (visible width, 0-indexed)
+	End       int       // end column (exclusive)
+}
+
+// ── LineBuilder ────────────────────────────────────────────────────────────
+
+// LineBuilder constructs a styled terminal line while automatically
+// tracking the visible column position. Use [LineBuilder.Comp] to embed
+// inline components — their column ranges are captured as [InlineRegion]s
+// that the framework uses for positional mouse dispatch.
+//
+//	var lb pitui.LineBuilder
+//	lb.Text(labelStyle.Render(" re "))
+//	lb.Comp(c.reInput, c.reInput.RenderInline())
+//	lb.Text(labelStyle.Render("  im "))
+//	lb.Comp(c.imInput, c.imInput.RenderInline())
+//	return pitui.RenderResult{
+//	    Lines:   []string{lb.String(), bottomBar},
+//	    Regions: lb.Regions(0), // row 0
+//	}
+type LineBuilder struct {
+	buf     strings.Builder
+	col     int
+	entries []inlineEntry
+}
+
+type inlineEntry struct {
+	comp     Component
+	startCol int
+	endCol   int
+}
+
+// Text appends a styled string, advancing the column counter by its
+// visible width.
+func (lb *LineBuilder) Text(s string) {
+	lb.buf.WriteString(s)
+	lb.col += lipgloss.Width(s)
+}
+
+// Comp appends a styled string belonging to a component, recording
+// the column range for mouse dispatch. The component should implement
+// [MouseEnabled] and be [Attach]ed to the TUI.
+func (lb *LineBuilder) Comp(comp Component, s string) {
+	start := lb.col
+	lb.buf.WriteString(s)
+	lb.col += lipgloss.Width(s)
+	lb.entries = append(lb.entries, inlineEntry{comp, start, lb.col})
+}
+
+// String returns the assembled line.
+func (lb *LineBuilder) String() string { return lb.buf.String() }
+
+// Width returns the current visible column position.
+func (lb *LineBuilder) Width() int { return lb.col }
+
+// Regions returns [InlineRegion]s for the given row index (the line's
+// position within [RenderResult.Lines]).
+func (lb *LineBuilder) Regions(row int) []InlineRegion {
+	if len(lb.entries) == 0 {
+		return nil
+	}
+	regions := make([]InlineRegion, len(lb.entries))
+	for i, e := range lb.entries {
+		regions[i] = InlineRegion{
+			Component: e.comp,
+			Line:      row,
+			Start:     e.startCol,
+			End:       e.endCol,
+		}
+	}
+	return regions
 }
 
 // ── Compo ──────────────────────────────────────────────────────────────────
