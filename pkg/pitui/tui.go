@@ -202,11 +202,10 @@ type TUI struct {
 
 	mouseRefCount int // number of mounted MouseEnabled components
 
-	// Positional mouse dispatch: regions rebuilt after each render.
-	mouseRegions    []mouseRegion
-	mouseRegionMap  map[Component]int // comp → startRow for O(1) lookup
-	inlineRegions   []inlineMouseRegion
-	lastMouseTarget Component // for hover enter/leave tracking
+	// Positional mouse dispatch: zones rebuilt after each render by scanning markers.
+	mouseZones      []mouseZone
+	attachedComps   map[Component]struct{} // components connected via Attach
+	lastMouseTarget Component              // for hover enter/leave tracking
 
 	debugWriter io.Writer    // if non-nil, render stats are logged here
 	writeBuf    bytes.Buffer // reused across frames for terminal output
@@ -710,107 +709,138 @@ func (t *TUI) bubblePaste(comp Component, ctx EventContext, ev uv.PasteEvent) {
 
 // ---------- positional mouse dispatch ----------------------------------------
 
-// mouseRegion maps a MouseEnabled component to its absolute row range
-// in the rendered output. Built after each render by walking the tree.
-type mouseRegion struct {
+// mouseZone is a rectangular region in the rendered output belonging to
+// a MouseEnabled component. Built by scanning zone markers after each
+// render. Zones can be full-width (tree components auto-marked by
+// Container/Slot) or column-bounded (inline content wrapped with [Mark]).
+type mouseZone struct {
 	comp     Component
 	startRow int
-	endRow   int
-}
-
-// inlineMouseRegion maps an inline component (declared via InlineRegion
-// in a parent's RenderResult) to an absolute row and column range.
-type inlineMouseRegion struct {
-	comp     Component
-	absRow   int
 	startCol int
-	endCol   int
+	endRow   int // inclusive
+	endCol   int // exclusive
 }
 
-// rebuildMouseRegions walks the rendered component tree and records
-// the absolute row range for every MouseEnabled component, plus any
-// inline regions declared in RenderResults. Called once per frame
-// after renderFrame.
-func (t *TUI) rebuildMouseRegions() {
-	t.mouseRegions = t.mouseRegions[:0]
-	t.inlineRegions = t.inlineRegions[:0]
-	if t.mouseRegionMap == nil {
-		t.mouseRegionMap = make(map[Component]int)
-	} else {
-		clear(t.mouseRegionMap)
+// scanMouseZones scans rendered lines for zone markers, building the
+// mouse hit map. Returns a new slice with markers stripped (for diffing
+// and terminal output). The original lines (with markers) are not
+// modified.
+func (t *TUI) scanMouseZones(lines []string) []string {
+	t.mouseZones = t.mouseZones[:0]
+
+	// Build reverse lookup: marker ID → Component.
+	// Only rebuild when the set of MouseEnabled components changes,
+	// but for simplicity we rebuild every frame (it's cheap).
+	markerMap := t.markerMap()
+
+	stripped := make([]string, len(lines))
+	// tracked holds open (start) markers waiting for their end marker.
+	tracked := make(map[int64]*mouseZone)
+
+	for row, line := range lines {
+		var clean []byte
+		col := 0 // visible column counter
+		i := 0
+		for i < len(line) {
+			// Fast path: not an escape sequence.
+			if line[i] != '\x1b' {
+				// Count visible width of this rune.
+				r, size := decodeRune(line[i:])
+				if r != '\x1b' {
+					w := runeWidth(r)
+					col += w
+					clean = append(clean, line[i:i+size]...)
+					i += size
+					continue
+				}
+			}
+
+			// Check for zone marker: ESC [ <digits> z
+			if id, end := parseZoneMarker(line[i:]); id != 0 {
+				comp := markerMap[id]
+				if comp != nil {
+					if z, ok := tracked[id]; ok {
+						// End marker — close the zone.
+						z.endRow = row
+						z.endCol = col
+						t.mouseZones = append(t.mouseZones, *z)
+						delete(tracked, id)
+					} else {
+						// Start marker — open a new zone.
+						tracked[id] = &mouseZone{
+							comp:     comp,
+							startRow: row,
+							startCol: col,
+						}
+					}
+				}
+				i += end
+				continue
+			}
+
+			// Other ANSI escape sequence — copy verbatim, zero width.
+			end := skipANSI(line[i:])
+			clean = append(clean, line[i:i+end]...)
+			i += end
+		}
+		stripped[row] = string(clean)
 	}
-	t.buildMouseRegionsRecursive(&t.Container, 0)
-	for _, r := range t.mouseRegions {
-		t.mouseRegionMap[r.comp] = r.startRow
-	}
+
+	return stripped
 }
 
-func (t *TUI) buildMouseRegionsRecursive(comp Component, offset int) {
+// markerMap builds a reverse lookup from marker ID to Component by
+// walking the component tree and including Attached components.
+func (t *TUI) markerMap() map[int64]Component {
+	m := make(map[int64]Component)
+	t.collectMarkers(&t.Container, m)
+	for comp := range t.attachedComps {
+		if id := comp.compo().markerID.Load(); id != 0 {
+			m[id] = comp
+		}
+	}
+	return m
+}
+
+func (t *TUI) collectMarkers(comp Component, m map[int64]Component) {
 	cp := comp.compo()
-	if cp.cache == nil {
-		return
-	}
-	if _, ok := comp.(MouseEnabled); ok {
-		t.mouseRegions = append(t.mouseRegions, mouseRegion{
-			comp:     comp,
-			startRow: offset,
-			endRow:   offset + len(cp.cache.result.Lines),
-		})
-	}
-	// Collect inline regions declared in the render result.
-	for _, ir := range cp.cache.result.Regions {
-		t.inlineRegions = append(t.inlineRegions, inlineMouseRegion{
-			comp:     ir.Component,
-			absRow:   offset + ir.Line,
-			startCol: ir.Start,
-			endCol:   ir.End,
-		})
+	if id := cp.markerID.Load(); id != 0 {
+		m[id] = comp
 	}
 	if p, ok := comp.(componentParent); ok {
-		childOffset := offset
 		for _, child := range p.componentChildren() {
-			t.buildMouseRegionsRecursive(child, childOffset)
-			childCP := child.compo()
-			if childCP.cache != nil {
-				childOffset += len(childCP.cache.result.Lines)
-			}
+			t.collectMarkers(child, m)
 		}
 	}
 }
 
-// dispatchMousePositional finds the deepest MouseEnabled component under
-// the mouse cursor and dispatches the event with component-relative
-// coordinates. Falls back to focus-based dispatch when nothing matches.
+// dispatchMousePositional finds the deepest (last-scanned) MouseEnabled
+// zone containing the mouse position and dispatches the event with
+// zone-relative coordinates.
 func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 	m := ev.Mouse()
 	contentY := t.previousViewportTop + m.Y
 
-	// 1. Check inline regions first (most specific: column-bounded).
-	var target Component
-	var relRow, relCol int
-	for _, r := range t.inlineRegions {
-		if contentY == r.absRow && m.X >= r.startCol && m.X < r.endCol {
-			target = r.comp
-			relRow = 0
-			relCol = m.X - r.startCol
+	// Find the deepest (innermost) zone containing the cursor.
+	// Zones are appended in scan order; inner zones come after outer
+	// ones, so the last match is the deepest.
+	var best *mouseZone
+	for i := range t.mouseZones {
+		z := &t.mouseZones[i]
+		if !zoneContains(z, contentY, m.X) {
+			continue
 		}
-	}
-
-	// 2. Fall back to row-based regions (full-width).
-	if target == nil {
-		for _, r := range t.mouseRegions {
-			if contentY >= r.startRow && contentY < r.endRow {
-				target = r.comp
-				relRow = contentY - r.startRow
-				relCol = m.X
-			}
-		}
+		best = z
 	}
 
 	// Hover enter/leave tracking.
+	var target Component
+	if best != nil {
+		target = best.comp
+	}
 	t.updateMouseHover(target)
 
-	if target == nil {
+	if best == nil {
 		// Nothing under cursor — focus-based fallback (e.g. overlays).
 		comp := t.focusedComponent
 		if comp != nil {
@@ -820,22 +850,32 @@ func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 		return
 	}
 
-	me := MouseEvent{MouseEvent: ev, Row: relRow, Col: relCol}
-	ctx := t.eventContextFor(target)
+	me := MouseEvent{
+		MouseEvent: ev,
+		Row:        contentY - best.startRow,
+		Col:        m.X - best.startCol,
+	}
+	ctx := t.eventContextFor(best.comp)
 
-	if mc, ok := target.(MouseEnabled); ok {
+	if mc, ok := best.comp.(MouseEnabled); ok {
 		if mc.HandleMouse(ctx, me) {
 			return
 		}
 	}
 
-	// Bubble to MouseEnabled ancestors with their own relative coords.
-	cp := target.compo().parent
+	// Bubble to parent zones (outer zones containing this point).
+	cp := best.comp.compo().parent
 	for cp != nil {
 		if cp.self != nil {
 			if mc, ok := cp.self.(MouseEnabled); ok {
-				parentStart := t.mouseRegionMap[cp.self]
-				pme := MouseEvent{MouseEvent: ev, Row: contentY - parentStart, Col: m.X}
+				// Find this parent's zone for relative coords.
+				pz := t.findZone(cp.self, contentY, m.X)
+				var pme MouseEvent
+				if pz != nil {
+					pme = MouseEvent{MouseEvent: ev, Row: contentY - pz.startRow, Col: m.X - pz.startCol}
+				} else {
+					pme = MouseEvent{MouseEvent: ev, Row: contentY, Col: m.X}
+				}
 				if mc.HandleMouse(t.eventContextFor(cp.self), pme) {
 					return
 				}
@@ -843,6 +883,31 @@ func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 		}
 		cp = cp.parent
 	}
+}
+
+// findZone finds the zone for a specific component containing the given point.
+func (t *TUI) findZone(comp Component, row, col int) *mouseZone {
+	for i := range t.mouseZones {
+		z := &t.mouseZones[i]
+		if z.comp == comp && zoneContains(z, row, col) {
+			return z
+		}
+	}
+	return nil
+}
+
+// zoneContains reports whether (row, col) is inside a zone rect.
+func zoneContains(z *mouseZone, row, col int) bool {
+	if row < z.startRow || row > z.endRow {
+		return false
+	}
+	if row == z.startRow && col < z.startCol {
+		return false
+	}
+	if row == z.endRow && col >= z.endCol {
+		return false
+	}
+	return true
 }
 
 // updateMouseHover fires Hoverable.SetHovered transitions when the
@@ -876,6 +941,109 @@ func (t *TUI) hasMouseEnabledOverlay() bool {
 		}
 	}
 	return false
+}
+
+// ---------- zone marker parsing ----------------------------------------------
+
+// parseZoneMarker checks if s starts with a zone marker (ESC[<digits>z).
+// Returns the marker ID and the byte length consumed, or (0, 0) if not a marker.
+func parseZoneMarker(s string) (id int64, consumed int) {
+	// Minimum: ESC [ <digit> z = 4 bytes
+	if len(s) < 4 || s[0] != '\x1b' || s[1] != '[' {
+		return 0, 0
+	}
+	i := 2
+	if i >= len(s) || s[i] < '0' || s[i] > '9' {
+		return 0, 0
+	}
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		id = id*10 + int64(s[i]-'0')
+		i++
+	}
+	if i >= len(s) || s[i] != 'z' {
+		return 0, 0
+	}
+	return id, i + 1
+}
+
+// skipANSI returns the byte length of the ANSI escape sequence at the
+// start of s. If s doesn't start with ESC, returns 1 (consume the byte).
+func skipANSI(s string) int {
+	if len(s) == 0 || s[0] != '\x1b' {
+		return 1
+	}
+	if len(s) < 2 {
+		return 1
+	}
+	// CSI sequence: ESC [ ... <final byte>
+	if s[1] == '[' {
+		i := 2
+		for i < len(s) {
+			c := s[i]
+			i++
+			if c >= 0x40 && c <= 0x7E { // final byte
+				return i
+			}
+		}
+		return len(s)
+	}
+	// OSC sequence: ESC ] ... ST
+	if s[1] == ']' {
+		i := 2
+		for i < len(s) {
+			if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\' {
+				return i + 2
+			}
+			if s[i] == '\x07' { // BEL terminator
+				return i + 1
+			}
+			i++
+		}
+		return len(s)
+	}
+	// Two-byte escape (e.g. ESC M)
+	return 2
+}
+
+// decodeRune decodes the first UTF-8 rune from s. Returns the rune and
+// byte width. This is a minimal inline version to avoid importing unicode/utf8.
+func decodeRune(s string) (rune, int) {
+	if len(s) == 0 {
+		return 0, 0
+	}
+	b := s[0]
+	if b < 0x80 {
+		return rune(b), 1
+	}
+	// Let Go's built-in range handle it.
+	for _, r := range s {
+		return r, len(string(r))
+	}
+	return 0xFFFD, 1
+}
+
+// runeWidth returns the display width of a rune (0 for control chars,
+// 2 for wide/fullwidth, 1 otherwise). Simplified — doesn't handle all
+// Unicode edge cases but covers common terminal usage.
+func runeWidth(r rune) int {
+	if r < 32 || r == 0x7F {
+		return 0
+	}
+	// CJK Unified Ideographs, Fullwidth Forms, etc.
+	if (r >= 0x1100 && r <= 0x115F) || // Hangul Jamo
+		(r >= 0x2E80 && r <= 0x303E) || // CJK Radicals
+		(r >= 0x3040 && r <= 0x33BF) || // Japanese
+		(r >= 0x3400 && r <= 0x4DBF) || // CJK Extension A
+		(r >= 0x4E00 && r <= 0xA4CF) || // CJK Unified
+		(r >= 0xAC00 && r <= 0xD7AF) || // Hangul Syllables
+		(r >= 0xF900 && r <= 0xFAFF) || // CJK Compat
+		(r >= 0xFE30 && r <= 0xFE6F) || // CJK Compat Forms
+		(r >= 0xFF01 && r <= 0xFF60) || // Fullwidth Forms
+		(r >= 0xFFE0 && r <= 0xFFE6) || // Fullwidth Signs
+		(r >= 0x20000 && r <= 0x2FA1F) { // CJK Extensions
+		return 2
+	}
+	return 1
 }
 
 // ---------- escape sequences ------------------------------------------------
@@ -1002,14 +1170,15 @@ func (t *TUI) doRender() {
 	var stats RenderStats
 	stats.OverlayCount = len(t.overlayStack)
 
-	// Render all components.
+	// Render all components (output contains zone markers).
 	newLines, cursorPos, compStats := t.renderFrame(width, height, &stats)
 
-	// Rebuild mouse hit map from cached component positions.
-	t.rebuildMouseRegions()
+	// Scan zone markers to build the mouse hit map, then strip markers
+	// so the diff engine and terminal see clean output.
+	displayLines := t.scanMouseZones(newLines)
 
 	// Choose rendering strategy and write to terminal.
-	t.applyFrame(width, height, newLines, cursorPos, compStats, &stats, totalStart, &memBefore)
+	t.applyFrame(width, height, displayLines, cursorPos, compStats, &stats, totalStart, &memBefore)
 }
 
 // renderFrame renders the component tree and composites overlays, producing

@@ -4,11 +4,10 @@ import (
 	"context"
 	"io"
 	"reflect"
-	"strings"
+	"strconv"
 	"sync/atomic"
 	"time"
 
-	lipgloss "charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -111,6 +110,12 @@ func (ctx EventContext) Attach(comp Component) {
 		cp.mountCtx, cp.mountCancel = context.WithCancel(ctx.source.compo().mountCtx)
 	}
 
+	// Track for marker map lookups.
+	if ctx.tui.attachedComps == nil {
+		ctx.tui.attachedComps = make(map[Component]struct{})
+	}
+	ctx.tui.attachedComps[comp] = struct{}{}
+
 	if _, ok := comp.(MouseEnabled); ok {
 		ctx.tui.EnableMouse()
 	}
@@ -135,6 +140,7 @@ func (ctx EventContext) Detach(comp Component) {
 	if _, ok := comp.(MouseEnabled); ok && cp.tui != nil {
 		cp.tui.DisableMouse()
 	}
+	delete(ctx.tui.attachedComps, comp)
 	cp.tui = nil
 	cp.parent = nil
 	cp.mountCtx = nil
@@ -204,96 +210,64 @@ type RenderResult struct {
 	// relative to this component's output (Row 0 = first line of Lines).
 	Cursor *CursorPos
 
-	// Regions declares column-bounded mouse regions within rendered
-	// lines, mapping sub-line ranges to child [MouseEnabled] components.
-	// This enables inline components (e.g. clickable values within a
-	// status bar) to receive mouse events directly from the framework.
-	//
-	// Components referenced here must be [Attach]ed to the TUI.
-	// Use [LineBuilder] to build lines with automatically-tracked regions.
-	Regions []InlineRegion
-}
-
-// InlineRegion maps a column range within a rendered line to a child
-// component. The framework dispatches mouse events with coordinates
-// relative to the region (Col 0 = region start column).
-type InlineRegion struct {
-	Component Component // must implement MouseEnabled; typically Attached
-	Line      int       // index into RenderResult.Lines
-	Start     int       // start column (visible width, 0-indexed)
-	End       int       // end column (exclusive)
-}
-
-// ── LineBuilder ────────────────────────────────────────────────────────────
-
-// LineBuilder constructs a styled terminal line while automatically
-// tracking the visible column position. Use [LineBuilder.Comp] to embed
-// inline components — their column ranges are captured as [InlineRegion]s
-// that the framework uses for positional mouse dispatch.
-//
-//	var lb pitui.LineBuilder
-//	lb.Text(labelStyle.Render(" re "))
-//	lb.Comp(c.reInput, c.reInput.RenderInline())
-//	lb.Text(labelStyle.Render("  im "))
-//	lb.Comp(c.imInput, c.imInput.RenderInline())
-//	return pitui.RenderResult{
-//	    Lines:   []string{lb.String(), bottomBar},
-//	    Regions: lb.Regions(0), // row 0
-//	}
-type LineBuilder struct {
-	buf     strings.Builder
-	col     int
-	entries []inlineEntry
-}
-
-type inlineEntry struct {
-	comp     Component
-	startCol int
-	endCol   int
-}
-
-// Text appends a styled string, advancing the column counter by its
-// visible width.
-func (lb *LineBuilder) Text(s string) {
-	lb.buf.WriteString(s)
-	lb.col += lipgloss.Width(s)
-}
-
-// Comp appends a styled string belonging to a component, recording
-// the column range for mouse dispatch. The component should implement
-// [MouseEnabled] and be [Attach]ed to the TUI.
-func (lb *LineBuilder) Comp(comp Component, s string) {
-	start := lb.col
-	lb.buf.WriteString(s)
-	lb.col += lipgloss.Width(s)
-	lb.entries = append(lb.entries, inlineEntry{comp, start, lb.col})
-}
-
-// String returns the assembled line.
-func (lb *LineBuilder) String() string { return lb.buf.String() }
-
-// Width returns the current visible column position.
-func (lb *LineBuilder) Width() int { return lb.col }
-
-// Regions returns [InlineRegion]s for the given row index (the line's
-// position within [RenderResult.Lines]).
-func (lb *LineBuilder) Regions(row int) []InlineRegion {
-	if len(lb.entries) == 0 {
-		return nil
-	}
-	regions := make([]InlineRegion, len(lb.entries))
-	for i, e := range lb.entries {
-		regions[i] = InlineRegion{
-			Component: e.comp,
-			Line:      row,
-			Start:     e.startCol,
-			End:       e.endCol,
-		}
-	}
-	return regions
 }
 
 // ── Compo ──────────────────────────────────────────────────────────────────
+
+// ── Mouse zone markers ─────────────────────────────────────────────────────
+
+// markerCounter allocates unique marker IDs. IDs start at 1000 to avoid
+// collision with typical ANSI sequences.
+var markerCounter atomic.Int64
+
+func init() { markerCounter.Store(1000) }
+
+// markerOf returns the CSI marker string for a component, allocating an
+// ID on first use. The marker is a private CSI sequence (ESC[<id>z) that
+// terminals ignore and lipgloss.Width treats as zero-width.
+func markerOf(comp Component) string {
+	cp := comp.compo()
+	id := cp.markerID.Load()
+	if id == 0 {
+		id = markerCounter.Add(1)
+		cp.markerID.Store(id)
+	}
+	return "\x1b[" + strconv.FormatInt(id, 10) + "z"
+}
+
+// Mark wraps content with invisible zone markers for a component. The
+// framework scans rendered output for these markers to build a mouse
+// hit map, enabling positional dispatch to the marked component.
+//
+// Use Mark to make inline content (e.g. a clickable value within a
+// status bar) receive mouse events directly. For full-line components
+// in the render tree, marking is automatic — you don't need to call
+// Mark yourself.
+//
+//	// In parent's Render:
+//	re := pitui.Mark(c.reInput, c.reInput.RenderInline())
+//	im := pitui.Mark(c.imInput, c.imInput.RenderInline())
+//	top := title + " re " + re + "  im " + im
+func Mark(comp Component, content string) string {
+	m := markerOf(comp)
+	return m + content + m
+}
+
+// markLines wraps a component's rendered lines with zone markers.
+// The start marker is prepended to the first line; the end marker
+// is appended to the last line. Returns a new slice (the cache is
+// not modified).
+func markLines(comp Component, lines []string) []string {
+	if len(lines) == 0 {
+		return lines
+	}
+	m := markerOf(comp)
+	marked := make([]string, len(lines))
+	copy(marked, lines)
+	marked[0] = m + marked[0]
+	marked[len(marked)-1] = marked[len(marked)-1] + m
+	return marked
+}
 
 // Compo provides automatic render caching and dirty propagation for
 // components. Embed it in your component struct:
@@ -324,6 +298,7 @@ type Compo struct {
 	parent        *Compo
 	self          Component // the Component that embeds this Compo; set by setComponentParent
 	requestRender func()    // set on the root by TUI
+	markerID      atomic.Int64 // unique zone marker ID, lazy-allocated
 
 	// Double-buffered line slices for zero-allocation rendering.
 	// renderComponent alternates between lineBufs[0] and lineBufs[1]
@@ -403,7 +378,11 @@ func setComponentParent(comp Component, parent *Compo) {
 //	}
 func (c *Compo) RenderChild(child Component, ctx RenderContext) RenderResult {
 	child.compo().parent = c
-	return renderComponent(child, ctx)
+	r := renderComponent(child, ctx)
+	if _, ok := child.(MouseEnabled); ok {
+		r.Lines = markLines(child, r.Lines)
+	}
+	return r
 }
 
 // renderComponent renders a child component, using its Compo cache when
@@ -706,7 +685,11 @@ func (c *Container) Render(ctx RenderContext) RenderResult {
 				Col: r.Cursor.Col,
 			}
 		}
-		lines = append(lines, r.Lines...)
+		childLines := r.Lines
+		if _, ok := ch.(MouseEnabled); ok {
+			childLines = markLines(ch, childLines)
+		}
+		lines = append(lines, childLines...)
 	}
 	return RenderResult{
 		Lines:  lines,
@@ -763,5 +746,9 @@ func (s *Slot) Render(ctx RenderContext) RenderResult {
 	if s.child == nil {
 		return RenderResult{}
 	}
-	return renderComponent(s.child, ctx)
+	r := renderComponent(s.child, ctx)
+	if _, ok := s.child.(MouseEnabled); ok {
+		r.Lines = markLines(s.child, r.Lines)
+	}
+	return r
 }
