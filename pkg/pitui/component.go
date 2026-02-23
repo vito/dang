@@ -24,7 +24,22 @@ type EventContext struct {
 	context.Context
 	tui    *TUI
 	source Component
+
+	// mouseRow and mouseCol hold component-relative mouse coordinates
+	// when the event was dispatched positionally (i.e. the mouse is over
+	// the component). For focus-based dispatch they are terminal-relative.
+	mouseRow int
+	mouseCol int
 }
+
+// MouseRow returns the row (Y) coordinate from a mouse event. When the
+// framework dispatches the event positionally, this is relative to the
+// component's first rendered line (0-indexed). For focus-based fallback
+// dispatch (e.g. overlay components), it is the terminal-relative Y.
+func (ctx EventContext) MouseRow() int { return ctx.mouseRow }
+
+// MouseCol returns the column (X) coordinate from a mouse event.
+func (ctx EventContext) MouseCol() int { return ctx.mouseCol }
 
 // SetFocus gives keyboard focus to the given component (or nil to blur).
 func (ctx EventContext) SetFocus(comp Component) {
@@ -364,20 +379,36 @@ type Pasteable interface {
 // component is dismounted, mouse reporting is disabled and normal
 // terminal scrollback behavior is restored.
 //
-// Mouse events are dispatched to the focused component first. If
-// HandleMouse returns false, the event bubbles up through parent
-// components in the tree (like key events).
+// Mouse events are dispatched positionally: the framework finds the
+// deepest MouseEnabled component whose rendered region contains the
+// mouse cursor and delivers the event there. If HandleMouse returns
+// false, the event bubbles up through parent components in the tree
+// (like key events). When MouseEnabled overlays are active, dispatch
+// falls back to focus-based delivery.
 //
-// The mouse coordinates in the event are terminal-relative (0,0 at top-left
-// of the viewport). Components that need content-relative coordinates
-// must translate them using their known position in the rendered output.
+// Component-relative coordinates are available via [EventContext.MouseRow]
+// and [EventContext.MouseCol]. MouseRow is relative to the component's
+// first rendered line (0-indexed). The original terminal-relative
+// coordinates remain accessible through ev.Mouse().
 type MouseEnabled interface {
 	Component
 
 	// HandleMouse is called with a decoded mouse event (click, release,
-	// motion, or wheel). Return true if the event was consumed; return
-	// false to let it bubble to the parent component.
+	// motion, or wheel). Use ctx.MouseRow() and ctx.MouseCol() for
+	// component-relative hit testing. Return true if the event was
+	// consumed; return false to let it bubble to the parent component.
 	HandleMouse(ctx EventContext, ev uv.MouseEvent) bool
+}
+
+// Hoverable is an optional interface for MouseEnabled components that want
+// to know when the mouse enters or leaves their rendered region. This is
+// useful for clearing hover highlights when the cursor moves away.
+//
+// SetHovered(true) is called when the mouse first enters the component's
+// region. SetHovered(false) is called when the mouse leaves (moves to a
+// different component or to a non-interactive area).
+type Hoverable interface {
+	SetHovered(ctx EventContext, hovered bool)
 }
 
 // Focusable is an optional interface for components that want to know when

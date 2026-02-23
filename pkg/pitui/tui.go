@@ -202,6 +202,11 @@ type TUI struct {
 
 	mouseRefCount int // number of mounted MouseEnabled components
 
+	// Positional mouse dispatch: regions rebuilt after each render.
+	mouseRegions   []mouseRegion
+	mouseRegionMap map[Component]int // comp → startRow for O(1) lookup
+	lastMouseTarget Component        // for hover enter/leave tracking
+
 	debugWriter io.Writer    // if non-nil, render stats are logged here
 	writeBuf    bytes.Buffer // reused across frames for terminal output
 
@@ -602,7 +607,18 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 	case uv.PasteEvent:
 		t.bubblePaste(comp, ctx, e)
 	case uv.MouseEvent:
-		t.bubbleMouse(comp, ctx, e)
+		// Positional dispatch: deliver mouse events to the component
+		// under the cursor rather than the focused component. Falls
+		// back to focus-based dispatch when MouseEnabled overlays are
+		// active (their positions aren't in the content-tree hit map).
+		if t.hasMouseEnabledOverlay() {
+			m := e.Mouse()
+			ctx.mouseRow = m.Y
+			ctx.mouseCol = m.X
+			t.bubbleMouse(comp, ctx, e)
+		} else {
+			t.dispatchMousePositional(e)
+		}
 	}
 }
 
@@ -689,6 +705,149 @@ func (t *TUI) bubblePaste(comp Component, ctx EventContext, ev uv.PasteEvent) {
 		}
 		cp = cp.parent
 	}
+}
+
+// ---------- positional mouse dispatch ----------------------------------------
+
+// mouseRegion maps a MouseEnabled component to its absolute row range
+// in the rendered output. Built after each render by walking the tree.
+type mouseRegion struct {
+	comp     Component
+	startRow int
+	endRow   int
+}
+
+// rebuildMouseRegions walks the rendered component tree and records
+// the absolute row range for every MouseEnabled component. Called
+// once per frame after renderFrame.
+func (t *TUI) rebuildMouseRegions() {
+	t.mouseRegions = t.mouseRegions[:0]
+	if t.mouseRegionMap == nil {
+		t.mouseRegionMap = make(map[Component]int)
+	} else {
+		clear(t.mouseRegionMap)
+	}
+	t.buildMouseRegionsRecursive(&t.Container, 0)
+	for _, r := range t.mouseRegions {
+		t.mouseRegionMap[r.comp] = r.startRow
+	}
+}
+
+func (t *TUI) buildMouseRegionsRecursive(comp Component, offset int) {
+	cp := comp.compo()
+	if cp.cache == nil {
+		return
+	}
+	if _, ok := comp.(MouseEnabled); ok {
+		t.mouseRegions = append(t.mouseRegions, mouseRegion{
+			comp:     comp,
+			startRow: offset,
+			endRow:   offset + len(cp.cache.result.Lines),
+		})
+	}
+	if p, ok := comp.(componentParent); ok {
+		childOffset := offset
+		for _, child := range p.componentChildren() {
+			t.buildMouseRegionsRecursive(child, childOffset)
+			childCP := child.compo()
+			if childCP.cache != nil {
+				childOffset += len(childCP.cache.result.Lines)
+			}
+		}
+	}
+}
+
+// dispatchMousePositional finds the deepest MouseEnabled component under
+// the mouse cursor and dispatches the event with component-relative
+// coordinates. Falls back to focus-based dispatch when nothing matches.
+func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
+	m := ev.Mouse()
+	contentY := t.previousViewportTop + m.Y
+
+	// Find deepest MouseEnabled component containing this row.
+	var target Component
+	var targetStart int
+	for _, r := range t.mouseRegions {
+		if contentY >= r.startRow && contentY < r.endRow {
+			target = r.comp
+			targetStart = r.startRow
+		}
+	}
+
+	// Hover enter/leave tracking.
+	t.updateMouseHover(target)
+
+	if target == nil {
+		// Nothing under cursor — focus-based fallback (e.g. overlays).
+		comp := t.focusedComponent
+		if comp != nil {
+			ctx := t.eventContextFor(comp)
+			ctx.mouseRow = m.Y
+			ctx.mouseCol = m.X
+			t.bubbleMouse(comp, ctx, ev)
+		}
+		return
+	}
+
+	ctx := t.eventContextFor(target)
+	ctx.mouseRow = contentY - targetStart
+	ctx.mouseCol = m.X
+
+	if mc, ok := target.(MouseEnabled); ok {
+		if mc.HandleMouse(ctx, ev) {
+			return
+		}
+	}
+
+	// Bubble to MouseEnabled ancestors with their own relative coords.
+	cp := target.compo().parent
+	for cp != nil {
+		if cp.self != nil {
+			if mc, ok := cp.self.(MouseEnabled); ok {
+				parentStart := t.mouseRegionMap[cp.self]
+				pctx := t.eventContextFor(cp.self)
+				pctx.mouseRow = contentY - parentStart
+				pctx.mouseCol = m.X
+				if mc.HandleMouse(pctx, ev) {
+					return
+				}
+			}
+		}
+		cp = cp.parent
+	}
+}
+
+// updateMouseHover fires Hoverable.SetHovered transitions when the
+// mouse moves to a different component (or away from all components).
+func (t *TUI) updateMouseHover(target Component) {
+	if target == t.lastMouseTarget {
+		return
+	}
+	if t.lastMouseTarget != nil {
+		if h, ok := t.lastMouseTarget.(Hoverable); ok {
+			h.SetHovered(t.eventContextFor(t.lastMouseTarget), false)
+		}
+	}
+	t.lastMouseTarget = target
+	if target != nil {
+		if h, ok := target.(Hoverable); ok {
+			h.SetHovered(t.eventContextFor(target), true)
+		}
+	}
+}
+
+// hasMouseEnabledOverlay reports whether any visible overlay implements
+// MouseEnabled. Used to decide between positional and focus-based dispatch.
+func (t *TUI) hasMouseEnabledOverlay() bool {
+	for _, o := range t.overlayStack {
+		if o.hidden {
+			continue
+		}
+		if _, ok := o.component.(MouseEnabled); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------- escape sequences ------------------------------------------------
@@ -817,6 +976,9 @@ func (t *TUI) doRender() {
 
 	// Render all components.
 	newLines, cursorPos, compStats := t.renderFrame(width, height, &stats)
+
+	// Rebuild mouse hit map from cached component positions.
+	t.rebuildMouseRegions()
 
 	// Choose rendering strategy and write to terminal.
 	t.applyFrame(width, height, newLines, cursorPos, compStats, &stats, totalStart, &memBefore)
