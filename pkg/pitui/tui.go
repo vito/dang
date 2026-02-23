@@ -896,15 +896,14 @@ func (t *TUI) findZone(comp Component, row, col int) *mouseZone {
 	return nil
 }
 
-// zoneContains reports whether (row, col) is inside a zone rect.
+// zoneContains reports whether (row, col) is inside a zone's bounding
+// rectangle. Column bounds are checked on every row, not just the first
+// and last — zones are rectangular regions, not flowing text ranges.
 func zoneContains(z *mouseZone, row, col int) bool {
 	if row < z.startRow || row > z.endRow {
 		return false
 	}
-	if row == z.startRow && col < z.startCol {
-		return false
-	}
-	if row == z.endRow && col >= z.endCol {
+	if col < z.startCol || col >= z.endCol {
 		return false
 	}
 	return true

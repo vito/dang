@@ -1864,12 +1864,15 @@ func TestZoneContains(t *testing.T) {
 	assert.False(t, zoneContains(z, 1, 7)) // wrong row
 	assert.False(t, zoneContains(z, 3, 7)) // wrong row
 
-	// Multi-line zone: rows 1-3, starts at col 3, ends at col 8.
+	// Multi-line zone: rows 1-3, cols 3-7 (rectangular).
 	z2 := &mouseZone{startRow: 1, startCol: 3, endRow: 3, endCol: 8}
-	assert.False(t, zoneContains(z2, 1, 2)) // before startCol on first row
-	assert.True(t, zoneContains(z2, 1, 3))  // start corner
-	assert.True(t, zoneContains(z2, 2, 0))  // middle row, any col
-	assert.True(t, zoneContains(z2, 3, 0))  // last row, before endCol
-	assert.True(t, zoneContains(z2, 3, 7))  // last row, just before endCol
-	assert.False(t, zoneContains(z2, 3, 8)) // at endCol (exclusive)
+	assert.False(t, zoneContains(z2, 1, 2))  // before startCol
+	assert.True(t, zoneContains(z2, 1, 3))   // start corner
+	assert.False(t, zoneContains(z2, 2, 0))  // middle row, before startCol
+	assert.True(t, zoneContains(z2, 2, 5))   // middle row, inside rect
+	assert.False(t, zoneContains(z2, 3, 0))  // last row, before startCol
+	assert.True(t, zoneContains(z2, 3, 7))   // last row, just before endCol
+	assert.False(t, zoneContains(z2, 3, 8))  // at endCol (exclusive)
+	assert.False(t, zoneContains(z2, 0, 5))  // above zone
+	assert.False(t, zoneContains(z2, 4, 5))  // below zone
 }
