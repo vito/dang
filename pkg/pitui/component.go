@@ -24,22 +24,7 @@ type EventContext struct {
 	context.Context
 	tui    *TUI
 	source Component
-
-	// mouseRow and mouseCol hold component-relative mouse coordinates
-	// when the event was dispatched positionally (i.e. the mouse is over
-	// the component). For focus-based dispatch they are terminal-relative.
-	mouseRow int
-	mouseCol int
 }
-
-// MouseRow returns the row (Y) coordinate from a mouse event. When the
-// framework dispatches the event positionally, this is relative to the
-// component's first rendered line (0-indexed). For focus-based fallback
-// dispatch (e.g. overlay components), it is the terminal-relative Y.
-func (ctx EventContext) MouseRow() int { return ctx.mouseRow }
-
-// MouseCol returns the column (X) coordinate from a mouse event.
-func (ctx EventContext) MouseCol() int { return ctx.mouseCol }
 
 // SetFocus gives keyboard focus to the given component (or nil to blur).
 func (ctx EventContext) SetFocus(comp Component) {
@@ -372,6 +357,28 @@ type Pasteable interface {
 	HandlePaste(ctx EventContext, ev uv.PasteEvent) bool
 }
 
+// MouseEvent wraps an ultraviolet mouse event with component-relative
+// coordinates for hit-testing within the component's rendered output.
+//
+// Use Row and Col for position checks. Use the embedded [uv.MouseEvent]
+// for button/modifier info and to distinguish event subtypes:
+//
+//	switch ev.MouseEvent.(type) {
+//	case uv.MouseClickEvent:
+//	case uv.MouseMotionEvent:
+//	case uv.MouseWheelEvent:
+//	}
+type MouseEvent struct {
+	uv.MouseEvent
+
+	// Row is the mouse Y position relative to this component's first
+	// rendered line (0-indexed).
+	Row int
+
+	// Col is the mouse X position (terminal column, 0-indexed).
+	Col int
+}
+
 // MouseEnabled is an optional interface for components that need mouse
 // event capture. When a component implementing MouseEnabled is mounted
 // into a TUI-rooted tree, the TUI enables terminal mouse reporting
@@ -385,19 +392,15 @@ type Pasteable interface {
 // false, the event bubbles up through parent components in the tree
 // (like key events). When MouseEnabled overlays are active, dispatch
 // falls back to focus-based delivery.
-//
-// Component-relative coordinates are available via [EventContext.MouseRow]
-// and [EventContext.MouseCol]. MouseRow is relative to the component's
-// first rendered line (0-indexed). The original terminal-relative
-// coordinates remain accessible through ev.Mouse().
 type MouseEnabled interface {
 	Component
 
-	// HandleMouse is called with a decoded mouse event (click, release,
-	// motion, or wheel). Use ctx.MouseRow() and ctx.MouseCol() for
-	// component-relative hit testing. Return true if the event was
-	// consumed; return false to let it bubble to the parent component.
-	HandleMouse(ctx EventContext, ev uv.MouseEvent) bool
+	// HandleMouse is called with a decoded mouse event. Use ev.Row and
+	// ev.Col for component-relative hit testing. Switch on
+	// ev.MouseEvent.(type) to distinguish clicks, motion, and wheel
+	// events. Return true if the event was consumed; return false to
+	// let it bubble to the parent component.
+	HandleMouse(ctx EventContext, ev MouseEvent) bool
 }
 
 // Hoverable is an optional interface for MouseEnabled components that want

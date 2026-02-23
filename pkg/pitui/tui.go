@@ -203,9 +203,9 @@ type TUI struct {
 	mouseRefCount int // number of mounted MouseEnabled components
 
 	// Positional mouse dispatch: regions rebuilt after each render.
-	mouseRegions   []mouseRegion
-	mouseRegionMap map[Component]int // comp → startRow for O(1) lookup
-	lastMouseTarget Component        // for hover enter/leave tracking
+	mouseRegions    []mouseRegion
+	mouseRegionMap  map[Component]int // comp → startRow for O(1) lookup
+	lastMouseTarget Component         // for hover enter/leave tracking
 
 	debugWriter io.Writer    // if non-nil, render stats are logged here
 	writeBuf    bytes.Buffer // reused across frames for terminal output
@@ -613,9 +613,8 @@ func (t *TUI) dispatchEvent(ev uv.Event) {
 		// active (their positions aren't in the content-tree hit map).
 		if t.hasMouseEnabledOverlay() {
 			m := e.Mouse()
-			ctx.mouseRow = m.Y
-			ctx.mouseCol = m.X
-			t.bubbleMouse(comp, ctx, e)
+			me := MouseEvent{MouseEvent: e, Row: m.Y, Col: m.X}
+			t.bubbleMouse(comp, ctx, me)
 		} else {
 			t.dispatchMousePositional(e)
 		}
@@ -653,8 +652,9 @@ func (t *TUI) bubbleKeyPress(comp Component, ctx EventContext, ev uv.KeyPressEve
 
 // bubbleMouse delivers a mouse event to the focused component and, if
 // not consumed, walks up the parent chain giving each MouseEnabled
-// ancestor a chance to handle it.
-func (t *TUI) bubbleMouse(comp Component, ctx EventContext, ev uv.MouseEvent) {
+// ancestor a chance to handle it. Used as the fallback when
+// MouseEnabled overlays are active.
+func (t *TUI) bubbleMouse(comp Component, ctx EventContext, ev MouseEvent) {
 	if comp == nil {
 		return
 	}
@@ -781,20 +781,17 @@ func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 		// Nothing under cursor — focus-based fallback (e.g. overlays).
 		comp := t.focusedComponent
 		if comp != nil {
-			ctx := t.eventContextFor(comp)
-			ctx.mouseRow = m.Y
-			ctx.mouseCol = m.X
-			t.bubbleMouse(comp, ctx, ev)
+			me := MouseEvent{MouseEvent: ev, Row: m.Y, Col: m.X}
+			t.bubbleMouse(comp, t.eventContextFor(comp), me)
 		}
 		return
 	}
 
+	me := MouseEvent{MouseEvent: ev, Row: contentY - targetStart, Col: m.X}
 	ctx := t.eventContextFor(target)
-	ctx.mouseRow = contentY - targetStart
-	ctx.mouseCol = m.X
 
 	if mc, ok := target.(MouseEnabled); ok {
-		if mc.HandleMouse(ctx, ev) {
+		if mc.HandleMouse(ctx, me) {
 			return
 		}
 	}
@@ -805,10 +802,8 @@ func (t *TUI) dispatchMousePositional(ev uv.MouseEvent) {
 		if cp.self != nil {
 			if mc, ok := cp.self.(MouseEnabled); ok {
 				parentStart := t.mouseRegionMap[cp.self]
-				pctx := t.eventContextFor(cp.self)
-				pctx.mouseRow = contentY - parentStart
-				pctx.mouseCol = m.X
-				if mc.HandleMouse(pctx, ev) {
+				pme := MouseEvent{MouseEvent: ev, Row: contentY - parentStart, Col: m.X}
+				if mc.HandleMouse(t.eventContextFor(cp.self), pme) {
 					return
 				}
 			}
