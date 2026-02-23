@@ -192,6 +192,12 @@ func init() {
 	Prelude.AddClass("Boolean", BooleanType)
 	Prelude.AddClass("List", ListTypeModule)
 
+	// Install built-in modules (as both classes and values)
+	Prelude.AddClass("Random", RandomModule)
+	Prelude.AddClass("UUID", UUIDModule)
+	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
+	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
+
 	// Install Error interface with message field
 	Prelude.AddClass("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
@@ -706,6 +712,16 @@ func registerBuiltinTypes() {
 			fnType := createFunctionTypeFromDef(def)
 			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
 			receiverType.Add(def.Name, hm.NewScheme(nil, fnType))
+		})
+	}
+
+	// Register all static method types on their host modules
+	for _, hostModule := range StaticModules() {
+		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
+			fnType := createFunctionTypeFromDef(def)
+			slog.Debug("adding static method", "module", hostModule.Named, "method", def.Name)
+			hostModule.Add(def.Name, hm.NewScheme(nil, fnType))
+			hostModule.SetVisibility(def.Name, PublicVisibility)
 		})
 	}
 }

@@ -1,0 +1,38 @@
+# Test Random and UUID modules
+
+# Random.int generates integers in range
+let n = Random.int(min: 0, max: 10)
+assert { n >= 0 }
+assert { n < 10 }
+
+# Random.float generates floats in [0, 1)
+let f = Random.float
+assert { f >= 0.0 }
+assert { f < 1.0 }
+
+# Random.string with default charset
+let s = Random.string(length: 16)
+assert { s != "" }
+
+# Random.string with hex charset
+let h = Random.string(length: 8, charset: "hex")
+assert { h != "" }
+
+# Random.string with zero length
+let empty = Random.string(length: 0)
+assert { empty == "" }
+
+# UUID.v4 generates valid-looking UUIDs (36 chars with hyphens)
+let id = UUID.v4
+assert { id.contains("-") }
+assert { id.split("-").length == 5 }
+
+# UUID.v7 generates valid-looking UUIDs
+let id7 = UUID.v7
+assert { id7.contains("-") }
+assert { id7.split("-").length == 5 }
+
+# Each call generates a different value
+let a = UUID.v4
+let b = UUID.v4
+assert { a != b }

@@ -573,6 +573,24 @@ func addBuiltinFunctions(env EvalEnv) {
 			env.Set(methodKey, builtinFn)
 		})
 	}
+
+	// Register static methods on their host modules
+	for _, hostModule := range StaticModules() {
+		modValue := NewModuleValue(hostModule)
+		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
+			fnType := createFunctionTypeFromDef(def)
+			builtinFn := BuiltinFunction{
+				Name:   def.Name,
+				FnType: fnType,
+				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+					argsWithDefaults := applyDefaults(args, def)
+					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
+				},
+			}
+			modValue.SetWithVisibility(def.Name, builtinFn, PublicVisibility)
+		})
+		env.Set(hostModule.Named, modValue)
+	}
 }
 
 // applyDefaults fills in default values for missing arguments
