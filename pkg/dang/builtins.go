@@ -56,6 +56,18 @@ func (a Args) GetBool(name string) bool {
 	return false
 }
 
+// GetEnum retrieves an enum argument's string value
+func (a Args) GetEnum(name string) string {
+	val, ok := a.Values[name]
+	if !ok {
+		return ""
+	}
+	if enumVal, ok := val.(EnumValue); ok {
+		return enumVal.Val
+	}
+	return ""
+}
+
 // GetList retrieves a list argument
 func (a Args) GetList(name string) []Value {
 	val, ok := a.Values[name]

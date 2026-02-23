@@ -6,16 +6,30 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
-	"strings"
 
 	"github.com/google/uuid"
+	"github.com/vito/dang/pkg/hm"
 )
 
 // RandomModule is the "Random" namespace for random value generation
 var RandomModule = NewModule("Random", ObjectKind)
 
+// CharsetEnum is the Random.Charset enum type
+var CharsetEnum = NewModule("Charset", EnumKind)
+
 // UUIDModule is the "UUID" namespace for UUID generation
 var UUIDModule = NewModule("UUID", ObjectKind)
+
+// charsetValues maps enum value names to their character sets
+var charsetChars = map[string]string{
+	"ALPHANUMERIC": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+	"ALPHA":        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"NUMERIC":      "0123456789",
+	"HEX":          "0123456789abcdef",
+}
+
+// Ordered list for the values() method and default
+var charsetNames = []string{"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX"}
 
 // registerRandomAndUUID is called from registerStdlib to ensure correct init ordering
 func registerRandomAndUUID() {
@@ -25,6 +39,21 @@ func registerRandomAndUUID() {
 
 func registerRandom() {
 	RandomModule.SetModuleDocString("functions for generating random values")
+
+	// Set up Charset enum inside Random
+	RandomModule.AddClass("Charset", CharsetEnum)
+	RandomModule.Add("Charset", hm.NewScheme(nil, NonNull(CharsetEnum)))
+	RandomModule.SetVisibility("Charset", PublicVisibility)
+
+	for _, name := range charsetNames {
+		CharsetEnum.Add(name, hm.NewScheme(nil, NonNull(CharsetEnum)))
+		CharsetEnum.SetVisibility(name, PublicVisibility)
+	}
+
+	// Add values() method to the enum
+	valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(CharsetEnum)}))
+	CharsetEnum.Add("values", valuesType)
+	CharsetEnum.SetVisibility("values", PublicVisibility)
 
 	// Random.int(min: Int!, max: Int!) -> Int!
 	StaticMethod(RandomModule, "int").
@@ -48,17 +77,17 @@ func registerRandom() {
 			return ToValue(rand.Float64())
 		})
 
-	// Random.string(length: Int!, charset: String! = "alphanumeric") -> String!
+	// Random.string(length: Int!, charset: Charset! = ALPHANUMERIC) -> String!
 	StaticMethod(RandomModule, "string").
-		Doc(`generates a random string of the given length. The charset parameter can be "alphanumeric", "hex", "alpha", "numeric", or a custom set of characters`).
+		Doc("generates a random string of the given length using the specified character set").
 		Params(
 			"length", NonNull(IntType),
-			"charset", NonNull(StringType), StringValue{Val: "alphanumeric"},
+			"charset", NonNull(CharsetEnum), EnumValue{Val: "ALPHANUMERIC", EnumType: CharsetEnum},
 		).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			length := args.GetInt("length")
-			charset := args.GetString("charset")
+			charset := args.GetEnum("charset")
 
 			if length < 0 {
 				return nil, fmt.Errorf("Random.string: length must be non-negative, got %d", length)
@@ -67,9 +96,9 @@ func registerRandom() {
 				return ToValue("")
 			}
 
-			chars := resolveCharset(charset)
-			if len(chars) == 0 {
-				return nil, fmt.Errorf("Random.string: charset is empty")
+			chars, ok := charsetChars[charset]
+			if !ok {
+				return nil, fmt.Errorf("Random.string: unknown charset %q", charset)
 			}
 
 			result := make([]byte, length)
@@ -106,19 +135,4 @@ func registerUUID() {
 			}
 			return ToValue(id.String())
 		})
-}
-
-var charsets = map[string]string{
-	"alphanumeric": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-	"alpha":        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-	"numeric":      "0123456789",
-	"hex":          "0123456789abcdef",
-}
-
-func resolveCharset(name string) string {
-	if chars, ok := charsets[strings.ToLower(name)]; ok {
-		return chars
-	}
-	// Treat the string itself as the character set
-	return name
 }

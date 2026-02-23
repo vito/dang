@@ -6,33 +6,41 @@ assert { n >= 0 }
 assert { n < 10 }
 
 # Random.float generates floats in [0, 1)
-let f = Random.float
+let f = Random.float()
 assert { f >= 0.0 }
 assert { f < 1.0 }
 
-# Random.string with default charset
+# Random.string with default charset (ALPHANUMERIC)
 let s = Random.string(length: 16)
 assert { s != "" }
 
-# Random.string with hex charset
-let h = Random.string(length: 8, charset: "hex")
+# Random.string with explicit charset
+let h = Random.string(length: 8, charset: Random.Charset.HEX)
 assert { h != "" }
+
+# Random.string with ALPHA charset
+let a = Random.string(length: 10, charset: Random.Charset.ALPHA)
+assert { a != "" }
+
+# Random.string with NUMERIC charset
+let num = Random.string(length: 6, charset: Random.Charset.NUMERIC)
+assert { num != "" }
 
 # Random.string with zero length
 let empty = Random.string(length: 0)
 assert { empty == "" }
 
 # UUID.v4 generates valid-looking UUIDs (36 chars with hyphens)
-let id = UUID.v4
+let id = UUID.v4()
 assert { id.contains("-") }
 assert { id.split("-").length == 5 }
 
 # UUID.v7 generates valid-looking UUIDs
-let id7 = UUID.v7
+let id7 = UUID.v7()
 assert { id7.contains("-") }
 assert { id7.split("-").length == 5 }
 
 # Each call generates a different value
-let a = UUID.v4
-let b = UUID.v4
-assert { a != b }
+let x = UUID.v4()
+let y = UUID.v4()
+assert { x != y }

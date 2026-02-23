@@ -589,6 +589,30 @@ func addBuiltinFunctions(env EvalEnv) {
 			}
 			modValue.SetWithVisibility(def.Name, builtinFn, PublicVisibility)
 		})
+
+		// Populate nested enum types with their values
+		for name, subEnv := range hostModule.NamedTypes() {
+			subMod, ok := subEnv.(*Module)
+			if !ok || subMod.Kind != EnumKind {
+				continue
+			}
+			enumModValue := NewModuleValue(subMod)
+			var enumValues []Value
+			for varName, _ := range subMod.Bindings(PublicVisibility) {
+				if varName == "values" {
+					continue
+				}
+				ev := EnumValue{Val: varName, EnumType: subMod}
+				enumModValue.SetWithVisibility(varName, ev, PublicVisibility)
+				enumValues = append(enumValues, ev)
+			}
+			enumModValue.SetWithVisibility("values", ListValue{
+				Elements: enumValues,
+				ElemType: NonNull(subMod),
+			}, PublicVisibility)
+			modValue.SetWithVisibility(name, enumModValue, PublicVisibility)
+		}
+
 		env.Set(hostModule.Named, modValue)
 	}
 }
