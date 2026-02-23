@@ -572,6 +572,36 @@ func StaticModules() []*Module {
 	return modules
 }
 
+// DefineEnum creates an enum type with the given values and registers it
+// as a nested type on a parent module. It handles both type-level and
+// eval-level registration so that the enum values are available during
+// both type checking and evaluation.
+//
+// Usage:
+//
+//	var CharsetEnum = DefineEnum(RandomModule, "Charset",
+//		"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX",
+//	)
+func DefineEnum(parent *Module, name string, values ...string) *Module {
+	enum := NewModule(name, EnumKind)
+
+	// Type-level: register each value and a values() accessor
+	for _, v := range values {
+		enum.Add(v, hm.NewScheme(nil, NonNull(enum)))
+		enum.SetVisibility(v, PublicVisibility)
+	}
+	valuesScheme := hm.NewScheme(nil, NonNull(ListType{NonNull(enum)}))
+	enum.Add("values", valuesScheme)
+	enum.SetVisibility("values", PublicVisibility)
+
+	// Register on parent as both a class and a value
+	parent.AddClass(name, enum)
+	parent.Add(name, hm.NewScheme(nil, NonNull(enum)))
+	parent.SetVisibility(name, PublicVisibility)
+
+	return enum
+}
+
 // TypeVar creates a type variable
 func TypeVar(r rune) hm.Type {
 	return hm.TypeVariable(r)

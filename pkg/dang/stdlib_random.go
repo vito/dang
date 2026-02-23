@@ -8,28 +8,26 @@ import (
 	"math/rand/v2"
 
 	"github.com/google/uuid"
-	"github.com/vito/dang/pkg/hm"
 )
 
 // RandomModule is the "Random" namespace for random value generation
 var RandomModule = NewModule("Random", ObjectKind)
 
 // CharsetEnum is the Random.Charset enum type
-var CharsetEnum = NewModule("Charset", EnumKind)
+var CharsetEnum = DefineEnum(RandomModule, "Charset",
+	"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX",
+)
 
 // UUIDModule is the "UUID" namespace for UUID generation
 var UUIDModule = NewModule("UUID", ObjectKind)
 
-// charsetValues maps enum value names to their character sets
+// charsetChars maps enum value names to their character sets
 var charsetChars = map[string]string{
 	"ALPHANUMERIC": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 	"ALPHA":        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
 	"NUMERIC":      "0123456789",
 	"HEX":          "0123456789abcdef",
 }
-
-// Ordered list for the values() method and default
-var charsetNames = []string{"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX"}
 
 // registerRandomAndUUID is called from registerStdlib to ensure correct init ordering
 func registerRandomAndUUID() {
@@ -39,21 +37,6 @@ func registerRandomAndUUID() {
 
 func registerRandom() {
 	RandomModule.SetModuleDocString("functions for generating random values")
-
-	// Set up Charset enum inside Random
-	RandomModule.AddClass("Charset", CharsetEnum)
-	RandomModule.Add("Charset", hm.NewScheme(nil, NonNull(CharsetEnum)))
-	RandomModule.SetVisibility("Charset", PublicVisibility)
-
-	for _, name := range charsetNames {
-		CharsetEnum.Add(name, hm.NewScheme(nil, NonNull(CharsetEnum)))
-		CharsetEnum.SetVisibility(name, PublicVisibility)
-	}
-
-	// Add values() method to the enum
-	valuesType := hm.NewScheme(nil, NonNull(ListType{NonNull(CharsetEnum)}))
-	CharsetEnum.Add("values", valuesType)
-	CharsetEnum.SetVisibility("values", PublicVisibility)
 
 	// Random.int(min: Int!, max: Int!) -> Int!
 	StaticMethod(RandomModule, "int").
