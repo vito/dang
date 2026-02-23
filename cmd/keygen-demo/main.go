@@ -429,12 +429,10 @@ func (c *chromeBar) OnMount(ctx pitui.EventContext) {
 // HandleMouse implements pitui.MouseEnabled. The framework dispatches mouse
 // events here only when the cursor is over the chrome bar, with
 // component-relative coordinates available via ctx.MouseRow()/MouseCol().
-func (c *chromeBar) HandleMouse(ctx pitui.EventContext, ev uv.MouseEvent) bool {
-	row := ctx.MouseRow()
-	col := ctx.MouseCol()
-	field := c.hitTest(col, row)
+func (c *chromeBar) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
+	field := c.hitTest(ev.Col, ev.Row)
 
-	switch ev.(type) {
+	switch ev.MouseEvent.(type) {
 	case uv.MouseMotionEvent:
 		if field != c.hoverField {
 			c.hoverField = field
@@ -442,8 +440,7 @@ func (c *chromeBar) HandleMouse(ctx pitui.EventContext, ev uv.MouseEvent) bool {
 		}
 		return false // don't consume motion — let others see it
 	case uv.MouseClickEvent:
-		m := ev.Mouse()
-		if m.Button != uv.MouseLeft {
+		if ev.Mouse().Button != uv.MouseLeft {
 			return false
 		}
 		if field != fieldNone {
