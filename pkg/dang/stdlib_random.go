@@ -2,10 +2,9 @@ package dang
 
 import (
 	"context"
-	crand "crypto/rand"
+	"crypto/rand"
 	"fmt"
-	"math/big"
-	"math/rand/v2"
+	mrand "math/rand/v2"
 
 	"github.com/google/uuid"
 )
@@ -13,21 +12,8 @@ import (
 // RandomModule is the "Random" namespace for random value generation
 var RandomModule = NewModule("Random", ObjectKind)
 
-// CharsetEnum is the Random.Charset enum type
-var CharsetEnum = DefineEnum(RandomModule, "Charset",
-	"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX",
-)
-
 // UUIDModule is the "UUID" namespace for UUID generation
 var UUIDModule = NewModule("UUID", ObjectKind)
-
-// charsetChars maps enum value names to their character sets
-var charsetChars = map[string]string{
-	"ALPHANUMERIC": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-	"ALPHA":        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-	"NUMERIC":      "0123456789",
-	"HEX":          "0123456789abcdef",
-}
 
 // registerRandomAndUUID is called from registerStdlib to ensure correct init ordering
 func registerRandomAndUUID() {
@@ -49,7 +35,7 @@ func registerRandom() {
 			if min >= max {
 				return nil, fmt.Errorf("Random.int: min (%d) must be less than max (%d)", min, max)
 			}
-			return ToValue(min + rand.IntN(max-min))
+			return ToValue(min + mrand.IntN(max-min))
 		})
 
 	// Random.float() -> Float!
@@ -57,42 +43,15 @@ func registerRandom() {
 		Doc("generates a random float between 0.0 (inclusive) and 1.0 (exclusive)").
 		Returns(NonNull(FloatType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			return ToValue(rand.Float64())
+			return ToValue(mrand.Float64())
 		})
 
-	// Random.string(length: Int!, charset: Charset! = ALPHANUMERIC) -> String!
+	// Random.string() -> String!
 	StaticMethod(RandomModule, "string").
-		Doc("generates a random string of the given length using the specified character set").
-		Params(
-			"length", NonNull(IntType),
-			"charset", NonNull(CharsetEnum), EnumValue{Val: "ALPHANUMERIC", EnumType: CharsetEnum},
-		).
+		Doc("generates a cryptographically random base32 string with at least 128 bits of entropy").
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			length := args.GetInt("length")
-			charset := args.GetEnum("charset")
-
-			if length < 0 {
-				return nil, fmt.Errorf("Random.string: length must be non-negative, got %d", length)
-			}
-			if length == 0 {
-				return ToValue("")
-			}
-
-			chars, ok := charsetChars[charset]
-			if !ok {
-				return nil, fmt.Errorf("Random.string: unknown charset %q", charset)
-			}
-
-			result := make([]byte, length)
-			for i := range result {
-				idx, err := crand.Int(crand.Reader, big.NewInt(int64(len(chars))))
-				if err != nil {
-					return nil, fmt.Errorf("Random.string: %w", err)
-				}
-				result[i] = chars[idx.Int64()]
-			}
-			return ToValue(string(result))
+			return ToValue(rand.Text())
 		})
 }
 
