@@ -29,7 +29,7 @@ func ExpandTabs(s string, tabWidth int) string {
 	for len(remaining) > 0 {
 		if remaining[0] == '\t' {
 			spaces := tabWidth - (col % tabWidth)
-			for i := 0; i < spaces; i++ {
+			for range spaces {
 				buf.WriteByte(' ')
 			}
 			col += spaces

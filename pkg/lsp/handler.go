@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sync"
 	"unicode"
 
@@ -707,13 +708,7 @@ func isIdentifierChar(r rune) bool {
 
 func (h *langHandler) addFolder(folder string) {
 	folder = filepath.Clean(folder)
-	found := false
-	for _, cur := range h.folders {
-		if cur == folder {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(h.folders, folder)
 	if !found {
 		h.folders = append(h.folders, folder)
 	}

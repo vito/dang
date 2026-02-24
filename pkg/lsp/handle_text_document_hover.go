@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
@@ -189,16 +190,17 @@ func typeDetailSuffix(t hm.Type) string {
 		if len(members) == 0 {
 			return ""
 		}
-		result := "\n\n// Members:\n"
+		var result strings.Builder
+		result.WriteString("\n\n// Members:\n")
 		for i, member := range members {
 			if i > 0 {
-				result += "\n"
+				result.WriteString("\n")
 			}
 			if m, ok := member.(*dang.Module); ok {
-				result += "//   " + m.Name()
+				result.WriteString("//   " + m.Name())
 			}
 		}
-		return result
+		return result.String()
 
 	case dang.EnumKind:
 		bindings := mod.Bindings(dang.PublicVisibility)
@@ -215,14 +217,15 @@ func typeDetailSuffix(t hm.Type) string {
 		}
 		// Sort for deterministic output
 		sortStrings(names)
-		result := "\n\n// Values:\n"
+		var result strings.Builder
+		result.WriteString("\n\n// Values:\n")
 		for i, name := range names {
 			if i > 0 {
-				result += "\n"
+				result.WriteString("\n")
 			}
-			result += "//   " + name
+			result.WriteString("//   " + name)
 		}
-		return result
+		return result.String()
 	}
 
 	return ""

@@ -2,6 +2,7 @@ package pitui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -188,12 +189,7 @@ func (t *TUI) HideOverlay() {
 func (t *TUI) HasOverlay() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	for _, o := range t.overlayStack {
-		if t.isOverlayVisible(o) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(t.overlayStack, t.isOverlayVisible)
 }
 
 // Start begins the TUI event loop.
@@ -423,7 +419,7 @@ func (t *TUI) doRender() {
 	firstChanged := -1
 	lastChanged := -1
 	maxLen := max(len(newLines), len(prevLines))
-	for i := 0; i < maxLen; i++ {
+	for i := range maxLen {
 		oldLine := ""
 		if i < len(prevLines) {
 			oldLine = prevLines[i]
@@ -479,7 +475,7 @@ func (t *TUI) doRender() {
 			if extra > 0 {
 				buf.WriteString("\x1b[1B")
 			}
-			for i := 0; i < extra; i++ {
+			for i := range extra {
 				buf.WriteString("\r\x1b[2K")
 				if i < extra-1 {
 					buf.WriteString("\x1b[1B")
@@ -529,7 +525,7 @@ func (t *TUI) doRender() {
 			fmt.Fprintf(&buf, "\x1b[%dB", moveToBottom)
 		}
 		scroll := moveTargetRow - prevViewportBottom
-		for i := 0; i < scroll; i++ {
+		for range scroll {
 			buf.WriteString("\r\n")
 		}
 		prevViewportTop += scroll
@@ -569,7 +565,7 @@ func (t *TUI) doRender() {
 			finalCursorRow = len(newLines) - 1
 		}
 		extra := len(prevLines) - len(newLines)
-		for i := 0; i < extra; i++ {
+		for range extra {
 			buf.WriteString("\r\n\x1b[2K")
 		}
 		fmt.Fprintf(&buf, "\x1b[%dA", extra)

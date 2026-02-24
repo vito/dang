@@ -125,11 +125,11 @@ func (e *SourceError) FormatWithHighlighting() string {
 	var result strings.Builder
 
 	// Error header
-	result.WriteString(fmt.Sprintf("%s%sError:%s %s\n", bold, red, reset, e.Inner))
-	result.WriteString(fmt.Sprintf("  %s%s--> %s:%d:%d%s\n", dim, blue, e.Location.Filename, e.Location.Line, e.Location.Column, reset))
+	fmt.Fprintf(&result, "%s%sError:%s %s\n", bold, red, reset, e.Inner)
+	fmt.Fprintf(&result, "  %s%s--> %s:%d:%d%s\n", dim, blue, e.Location.Filename, e.Location.Line, e.Location.Column, reset)
 
 	// Top separator pipe (aligned with line numbers)
-	result.WriteString(fmt.Sprintf(" %s%s |%s\n", dim, padLeft("", 3), reset))
+	fmt.Fprintf(&result, " %s%s |%s\n", dim, padLeft("", 3), reset)
 
 	// Show context lines
 	startLine := max(1, e.Location.Line-2)
@@ -140,41 +140,26 @@ func (e *SourceError) FormatWithHighlighting() string {
 		paddedLineStr := padLeft(lineStr, 3)
 		if i == e.Location.Line {
 			// Highlight the error line
-			result.WriteString(fmt.Sprintf(" %s%s%s%s | %s%s\n",
-				dim, blue, bold, paddedLineStr, reset, lines[i-1]))
+			fmt.Fprintf(&result, " %s%s%s%s | %s%s\n",
+				dim, blue, bold, paddedLineStr, reset, lines[i-1])
 
 			// Add underline for the specific error location
 			// Calculate padding: 1 space + 3 for line number + " | " (3 chars) + column position - 1
 			padding := strings.Repeat(" ", 1+3+3+e.Location.Column-1)
 			underline := strings.Repeat("^", max(1, e.Location.Length))
-			result.WriteString(fmt.Sprintf("%s%s%s%s%s\n",
-				dim, padding, red, underline, reset))
+			fmt.Fprintf(&result, "%s%s%s%s%s\n",
+				dim, padding, red, underline, reset)
 		} else {
 			// Context lines
-			result.WriteString(fmt.Sprintf(" %s%s | %s%s\n",
-				dim, paddedLineStr, lines[i-1], reset))
+			fmt.Fprintf(&result, " %s%s | %s%s\n",
+				dim, paddedLineStr, lines[i-1], reset)
 		}
 	}
 
 	// Bottom separator pipe (aligned with line numbers)
-	result.WriteString(fmt.Sprintf(" %s%s |%s\n", dim, padLeft("", 3), reset))
+	fmt.Fprintf(&result, " %s%s |%s\n", dim, padLeft("", 3), reset)
 
 	return result.String()
-}
-
-// Helper functions
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func padLeft(s string, width int) string {

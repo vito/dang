@@ -1,5 +1,9 @@
 package hm
 
+import "slices"
+
+import "strings"
+
 import "fmt"
 
 // Scheme represents a type scheme for polymorphic types
@@ -29,13 +33,7 @@ func (s *Scheme) Apply(subs Subs) Substitutable {
 	// Remove substitutions for bound variables
 	filteredSubs := make(Subs)
 	for tv, t := range subs {
-		bound := false
-		for _, boundTV := range s.tvs {
-			if tv == boundTV {
-				bound = true
-				break
-			}
-		}
+		bound := slices.Contains(s.tvs, tv)
 		if !bound {
 			filteredSubs[tv] = t
 		}
@@ -95,9 +93,10 @@ func joinStrings(strs []string, sep string) string {
 		return strs[0]
 	}
 
-	result := strs[0]
+	var result strings.Builder
+	result.WriteString(strs[0])
 	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
+		result.WriteString(sep + strs[i])
 	}
-	return result
+	return result.String()
 }

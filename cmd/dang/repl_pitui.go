@@ -1236,8 +1236,8 @@ func (r *replComponent) loadHistoryPitui() {
 	if err != nil {
 		return
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(strings.TrimSpace(string(data)), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			r.history = append(r.history, line)

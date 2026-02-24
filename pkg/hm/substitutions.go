@@ -1,5 +1,7 @@
 package hm
 
+import "maps"
+
 // Subs represents a substitution mapping from type variables to types
 type Subs map[TypeVariable]Type
 
@@ -35,9 +37,7 @@ func (s Subs) Compose(other Subs) Subs {
 // Clone creates a copy of the substitution
 func (s Subs) Clone() Subs {
 	result := make(Subs)
-	for tv, t := range s {
-		result[tv] = t
-	}
+	maps.Copy(result, s)
 	return result
 }
 

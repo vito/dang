@@ -537,7 +537,7 @@ func TestOverlayBorderedBoxWithMaxHeight(t *testing.T) {
 
 	// Background content.
 	var bgLines []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		bgLines = append(bgLines, fmt.Sprintf("content line %d", i))
 	}
 	tui.AddChild(&staticComponent{lines: bgLines})
@@ -545,7 +545,7 @@ func TestOverlayBorderedBoxWithMaxHeight(t *testing.T) {
 
 	// Bordered overlay with more content than MaxHeight allows.
 	var detailLines []string
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		detailLines = append(detailLines, fmt.Sprintf("detail %d", i))
 	}
 	overlay := &borderedOverlay{
@@ -569,7 +569,7 @@ func TestOverlayBorderedBoxFitsNaturally(t *testing.T) {
 	tui := newTUI(term)
 
 	var bgLines []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		bgLines = append(bgLines, fmt.Sprintf("content line %d", i))
 	}
 	tui.AddChild(&staticComponent{lines: bgLines})
@@ -630,7 +630,7 @@ func TestOverlayLastLineWithScrolling(t *testing.T) {
 	tui := newTUI(term)
 
 	var bgLines []string
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		bgLines = append(bgLines, fmt.Sprintf("bg line %d", i))
 	}
 	tui.AddChild(&staticComponent{lines: bgLines})
@@ -701,7 +701,7 @@ func TestOverlayAtBottomOfViewport(t *testing.T) {
 
 	// Content that exceeds terminal height.
 	var bgLines []string
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		bgLines = append(bgLines, fmt.Sprintf("bg line %d", i))
 	}
 	tui.AddChild(&staticComponent{lines: bgLines})
@@ -776,7 +776,7 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 	tui := newTUI(term)
 
 	var bgLines []string
-	for i := 0; i < 15; i++ {
+	for i := range 15 {
 		bgLines = append(bgLines, fmt.Sprintf("content line %d", i))
 	}
 	tui.AddChild(&staticComponent{lines: bgLines})
@@ -793,7 +793,7 @@ func TestOverlayBorderedBoxWidthMismatch(t *testing.T) {
 
 		var lines []string
 		lines = append(lines, "Title")
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			// Use wordWrap-style content that fits contentW.
 			line := fmt.Sprintf("detail line %d with extra text padding here", i)
 			if len(line) > contentW {

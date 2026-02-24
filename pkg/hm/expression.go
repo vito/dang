@@ -62,5 +62,5 @@ type LetRec interface {
 
 // Cloner is any type that can clone itself
 type Cloner interface {
-	Clone() interface{}
+	Clone() any
 }

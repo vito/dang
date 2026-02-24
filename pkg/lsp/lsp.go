@@ -7,8 +7,8 @@ type DocumentURI string
 type InitializeParams struct {
 	ProcessID             int                `json:"processId,omitempty"`
 	RootURI               DocumentURI        `json:"rootUri,omitempty"`
-	InitializationOptions InitializeOptions  `json:"initializationOptions,omitempty"`
-	Capabilities          ClientCapabilities `json:"capabilities,omitempty"`
+	InitializationOptions InitializeOptions  `json:"initializationOptions"`
+	Capabilities          ClientCapabilities `json:"capabilities"`
 	Trace                 string             `json:"trace,omitempty"`
 }
 
@@ -26,7 +26,7 @@ type ClientCapabilities struct{}
 
 // InitializeResult is
 type InitializeResult struct {
-	Capabilities ServerCapabilities `json:"capabilities,omitempty"`
+	Capabilities ServerCapabilities `json:"capabilities"`
 }
 
 // MessageType is
