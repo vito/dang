@@ -1,10 +1,10 @@
-// Command grid-demo renders an interactive grid of colored rectangles
-// that respond to mouse hover and click-to-focus, demonstrating pitui's
-// marker-based zone system with side-by-side layout.
+// grid renders an interactive grid of colored rectangles that respond to
+// mouse hover and click-to-focus, demonstrating pitui's marker-based zone
+// system with side-by-side layout.
 //
 // Usage:
 //
-//	go run ./cmd/grid-demo
+//	go run ./pkg/pitui/demos grid
 package main
 
 import (
@@ -23,16 +23,15 @@ import (
 
 const maxCells = 400
 
-func main() {
-	if err := run(); err != nil {
+func gridMain() {
+	if err := runGrid(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	term := pitui.NewProcessTerminal()
-	tui := pitui.New(term)
+func runGrid() error {
+	tui := pitui.New(sharedTerm)
 
 	g := newGrid()
 	tui.Dispatch(func() {

@@ -1,11 +1,11 @@
-// Command keygen-demo is a keygen-style ASCII art stress test for pitui.
+// keygen is a keygen-style ASCII art stress test for pitui.
 // It renders an animated Mandelbrot zoom with a retro status chrome,
 // pushing a full-screen repaint every frame to exercise the render pipeline.
 //
 // Usage:
 //
-//	go run ./cmd/keygen-demo
-//	go run ./cmd/keygen-demo -fps 30
+//	go run ./pkg/pitui/demos keygen
+//	go run ./pkg/pitui/demos keygen -bench
 package main
 
 import (
@@ -27,20 +27,20 @@ import (
 	"github.com/vito/dang/pkg/pitui"
 )
 
-func main() {
+func keygenMain() {
 	duration := flag.Duration("duration", 0, "exit after this duration (e.g. 10s, 1m)")
 	cpuProfile := flag.String("cpuprofile", "", "write CPU profile to file")
 	heapProfile := flag.String("heapprofile", "", "write heap profile to file on exit")
 	bench := flag.Bool("bench", false, "render as fast as possible and report FPS")
 	flag.Parse()
 
-	if err := run(*duration, *cpuProfile, *heapProfile, *bench); err != nil {
+	if err := runKeygen(*duration, *cpuProfile, *heapProfile, *bench); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) error {
+func runKeygen(duration time.Duration, cpuProfile, heapProfile string, bench bool) error {
 	if cpuProfile != "" {
 		f, err := os.Create(cpuProfile)
 		if err != nil {
@@ -52,8 +52,7 @@ func run(duration time.Duration, cpuProfile, heapProfile string, bench bool) err
 		}
 		defer pprof.StopCPUProfile()
 	}
-	term := pitui.NewProcessTerminal()
-	tui := pitui.New(term)
+	tui := pitui.New(sharedTerm)
 
 	logPath := "/tmp/pitui-keygen-debug.log"
 	debugFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)

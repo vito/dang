@@ -1,11 +1,11 @@
-// Command render-stress is an interactive stress test for pitui rendering.
-// It creates a TUI with a large scrollable log and hotkeys to exercise
-// every rendering code path. Render debug is automatically enabled.
+// logs is an interactive stress test for pitui rendering. It creates a
+// TUI with a large scrollable log and hotkeys to exercise every rendering
+// code path. Render debug is automatically enabled.
 //
 // Usage:
 //
-//	go run ./cmd/render-stress
-//	go run ./cmd/render-stress -lines 500
+//	go run ./pkg/pitui/demos logs
+//	go run ./pkg/pitui/demos logs -lines 500
 package main
 
 import (
@@ -24,19 +24,18 @@ import (
 	"github.com/vito/dang/pkg/pitui"
 )
 
-func main() {
+func logsMain() {
 	lines := flag.Int("lines", 200, "initial number of log lines")
 	flag.Parse()
 
-	if err := run(*lines); err != nil {
+	if err := runLogs(*lines); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(initialLines int) error {
-	term := pitui.NewProcessTerminal()
-	tui := pitui.New(term)
+func runLogs(initialLines int) error {
+	tui := pitui.New(sharedTerm)
 
 	// Auto-enable render debug.
 	logPath := "/tmp/dang_render_debug.log"
