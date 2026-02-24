@@ -2,90 +2,88 @@ package pitui_test
 
 import (
 	"fmt"
-	"strings"
-	"time"
 
+	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/pitui"
 )
 
-// Counter is a simple interactive component that displays a count and
-// increments it when any key is pressed.
+var (
+	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	countStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
+	hintStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	keyStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+)
+
+// Label is a static single-line component.
+type Label struct {
+	pitui.Compo
+	Text string
+}
+
+func (l *Label) Render(ctx pitui.RenderContext) pitui.RenderResult {
+	line := l.Text
+	if pitui.VisibleWidth(line) > ctx.Width {
+		line = pitui.Truncate(line, ctx.Width, "…")
+	}
+	return pitui.RenderResult{Lines: []string{line}}
+}
+
+// Counter increments on each key press, and 'q' quits.
 type Counter struct {
 	pitui.Compo
 	Count   int
+	quit    func()
 	focused bool
 }
 
 func (c *Counter) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	line := fmt.Sprintf("Count: %d (press any key)", c.Count)
+	line := countStyle.Render(fmt.Sprintf("%d", c.Count))
 	if pitui.VisibleWidth(line) > ctx.Width {
-		line = pitui.Truncate(line, ctx.Width, "...")
+		line = pitui.Truncate(line, ctx.Width, "…")
 	}
-	var cursor *pitui.CursorPos
-	if c.focused {
-		cursor = &pitui.CursorPos{Row: 0, Col: pitui.VisibleWidth(line)}
-	}
-	return pitui.RenderResult{
-		Lines:  []string{line},
-		Cursor: cursor,
-	}
+	return pitui.RenderResult{Lines: []string{line}}
 }
 
+var _ pitui.Interactive = (*Counter)(nil)
+
 func (c *Counter) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
+	if ev.Text == "q" {
+		c.quit()
+		return true
+	}
 	c.Count++
 	c.Update()
 	return true
 }
 
+var _ pitui.Focusable = (*Counter)(nil)
+
 func (c *Counter) SetFocused(_ pitui.EventContext, focused bool) { c.focused = focused }
 
-// Banner is a static component that renders a multi-line banner.
-type Banner struct {
-	pitui.Compo
-	Text string
-}
-
-func (b *Banner) Render(ctx pitui.RenderContext) pitui.RenderResult {
-	var lines []string
-	for line := range strings.SplitSeq(b.Text, "\n") {
-		if pitui.VisibleWidth(line) > ctx.Width {
-			line = pitui.Truncate(line, ctx.Width, "")
-		}
-		lines = append(lines, line)
-	}
-	return pitui.RenderResult{Lines: lines}
-}
-
 func Example() {
-	// This example shows the basic wiring. In a real app you'd use
-	// NewProcessTerminal() and handle Ctrl-C properly.
-	_ = func() {
-		term := pitui.NewProcessTerminal()
-		tui := pitui.New(term)
+	term := pitui.NewProcessTerminal()
+	tui := pitui.New(term)
 
-		// Start the TUI.
-		if err := tui.Start(); err != nil {
-			panic(err)
-		}
-		defer tui.Stop()
-
-		// Dispatch component setup to the UI goroutine.
-		// All component state mutations (AddChild, SetFocus, etc.)
-		// must happen on the UI goroutine — either inside a Dispatch
-		// callback or inside an event handler (HandleKeyPress, etc.).
-		counter := &Counter{}
-		tui.Dispatch(func() {
-			tui.AddChild(&Banner{Text: "=== My App ==="})
-			tui.AddChild(counter)
-			tui.SetFocus(counter)
-		})
-
-		// In a real app, you'd block on a signal or channel.
-		time.Sleep(10 * time.Second)
+	if err := tui.Start(); err != nil {
+		panic(err)
 	}
+	defer tui.Stop()
 
-	fmt.Println("ok")
-	// Output: ok
+	done := make(chan struct{})
+	counter := &Counter{quit: func() { close(done) }}
+
+	// All component mutations must happen on the UI goroutine.
+	tui.Dispatch(func() {
+		tui.AddChild(&Label{Text: titleStyle.Render("● Counter")})
+		tui.AddChild(counter)
+		tui.AddChild(&Label{
+			Text: keyStyle.Render("any key") + hintStyle.Render(" increment  ") +
+				keyStyle.Render("q") + hintStyle.Render(" quit"),
+		})
+		tui.SetFocus(counter)
+	})
+
+	<-done
 }
