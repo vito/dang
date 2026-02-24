@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	uv "github.com/charmbracelet/ultraviolet"
 )
 
@@ -204,6 +205,9 @@ type TUI struct {
 
 	// Positional mouse dispatch: zones rebuilt after each render by scanning markers.
 	mouseZones      []mouseZone
+	markerIDs       map[int64]Component    // reused marker ID → component lookup
+	trackedZones    map[int64]*mouseZone   // reused open-marker tracker
+	ansiParser      *ansi.Parser           // reused ANSI parser for zone scanning
 	attachedComps   map[Component]struct{} // components connected via Attach
 	lastMouseTarget Component              // for hover enter/leave tracking
 
@@ -725,63 +729,72 @@ type mouseZone struct {
 // mouse hit map. Returns a new slice with markers stripped (for diffing
 // and terminal output). The original lines (with markers) are not
 // modified.
+//
+// Uses [ansi.DecodeSequence] for correct ANSI parsing and Unicode
+// grapheme/width handling — no hand-rolled rune or escape parsing.
 func (t *TUI) scanMouseZones(lines []string) []string {
 	t.mouseZones = t.mouseZones[:0]
 
-	// Build reverse lookup: marker ID → Component.
-	// Only rebuild when the set of MouseEnabled components changes,
-	// but for simplicity we rebuild every frame (it's cheap).
-	markerMap := t.markerMap()
+	// Reuse marker ID → Component lookup.
+	t.rebuildMarkerMap()
+	markerMap := t.markerIDs
+
+	// Reuse open-marker tracker.
+	if t.trackedZones == nil {
+		t.trackedZones = make(map[int64]*mouseZone)
+	} else {
+		clear(t.trackedZones)
+	}
+	tracked := t.trackedZones
+
+	// Reuse ANSI parser.
+	if t.ansiParser == nil {
+		t.ansiParser = ansi.NewParser()
+	}
+	p := t.ansiParser
 
 	stripped := make([]string, len(lines))
-	// tracked holds open (start) markers waiting for their end marker.
-	tracked := make(map[int64]*mouseZone)
 
 	for row, line := range lines {
-		var clean []byte
+		clean := make([]byte, 0, len(line))
 		col := 0 // visible column counter
-		i := 0
-		for i < len(line) {
-			// Fast path: not an escape sequence.
-			if line[i] != '\x1b' {
-				// Count visible width of this rune.
-				r, size := decodeRune(line[i:])
-				if r != '\x1b' {
-					w := runeWidth(r)
-					col += w
-					clean = append(clean, line[i:i+size]...)
-					i += size
-					continue
-				}
-			}
+		var state byte
+		input := line
+		for len(input) > 0 {
+			seq, width, n, newState := ansi.DecodeSequence(input, state, p)
+			state = newState
 
-			// Check for zone marker: ESC [ <digits> z
-			if id, end := parseZoneMarker(line[i:]); id != 0 {
-				comp := markerMap[id]
-				if comp != nil {
-					if z, ok := tracked[id]; ok {
-						// End marker — close the zone.
-						z.endRow = row
-						z.endCol = col
-						t.mouseZones = append(t.mouseZones, *z)
-						delete(tracked, id)
-					} else {
-						// Start marker — open a new zone.
-						tracked[id] = &mouseZone{
-							comp:     comp,
-							startRow: row,
-							startCol: col,
+			if width == 0 && ansi.Cmd(p.Command()).Final() == 'z' {
+				// Zone marker: ESC[<id>z
+				params := p.Params()
+				if len(params) > 0 {
+					id := int64(params[0].Param(0))
+					if comp := markerMap[id]; comp != nil {
+						if z, ok := tracked[id]; ok {
+							z.endRow = row
+							z.endCol = col
+							t.mouseZones = append(t.mouseZones, *z)
+							delete(tracked, id)
+						} else {
+							tracked[id] = &mouseZone{
+								comp:     comp,
+								startRow: row,
+								startCol: col,
+							}
 						}
 					}
 				}
-				i += end
-				continue
+				// Strip marker — don't append to clean.
+			} else if width > 0 {
+				// Visible content: advance column, keep in output.
+				col += width
+				clean = append(clean, seq...)
+			} else {
+				// Non-marker escape sequence: keep verbatim.
+				clean = append(clean, seq...)
 			}
 
-			// Other ANSI escape sequence — copy verbatim, zero width.
-			end := skipANSI(line[i:])
-			clean = append(clean, line[i:i+end]...)
-			i += end
+			input = input[n:]
 		}
 		stripped[row] = string(clean)
 	}
@@ -789,17 +802,20 @@ func (t *TUI) scanMouseZones(lines []string) []string {
 	return stripped
 }
 
-// markerMap builds a reverse lookup from marker ID to Component by
-// walking the component tree and including Attached components.
-func (t *TUI) markerMap() map[int64]Component {
-	m := make(map[int64]Component)
-	t.collectMarkers(&t.Container, m)
+// rebuildMarkerMap populates t.markerIDs with the current marker ID →
+// Component mapping. Reuses the map across frames.
+func (t *TUI) rebuildMarkerMap() {
+	if t.markerIDs == nil {
+		t.markerIDs = make(map[int64]Component)
+	} else {
+		clear(t.markerIDs)
+	}
+	t.collectMarkers(&t.Container, t.markerIDs)
 	for comp := range t.attachedComps {
 		if id := comp.compo().markerID.Load(); id != 0 {
-			m[id] = comp
+			t.markerIDs[id] = comp
 		}
 	}
-	return m
 }
 
 func (t *TUI) collectMarkers(comp Component, m map[int64]Component) {
@@ -940,109 +956,6 @@ func (t *TUI) hasMouseEnabledOverlay() bool {
 		}
 	}
 	return false
-}
-
-// ---------- zone marker parsing ----------------------------------------------
-
-// parseZoneMarker checks if s starts with a zone marker (ESC[<digits>z).
-// Returns the marker ID and the byte length consumed, or (0, 0) if not a marker.
-func parseZoneMarker(s string) (id int64, consumed int) {
-	// Minimum: ESC [ <digit> z = 4 bytes
-	if len(s) < 4 || s[0] != '\x1b' || s[1] != '[' {
-		return 0, 0
-	}
-	i := 2
-	if i >= len(s) || s[i] < '0' || s[i] > '9' {
-		return 0, 0
-	}
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		id = id*10 + int64(s[i]-'0')
-		i++
-	}
-	if i >= len(s) || s[i] != 'z' {
-		return 0, 0
-	}
-	return id, i + 1
-}
-
-// skipANSI returns the byte length of the ANSI escape sequence at the
-// start of s. If s doesn't start with ESC, returns 1 (consume the byte).
-func skipANSI(s string) int {
-	if len(s) == 0 || s[0] != '\x1b' {
-		return 1
-	}
-	if len(s) < 2 {
-		return 1
-	}
-	// CSI sequence: ESC [ ... <final byte>
-	if s[1] == '[' {
-		i := 2
-		for i < len(s) {
-			c := s[i]
-			i++
-			if c >= 0x40 && c <= 0x7E { // final byte
-				return i
-			}
-		}
-		return len(s)
-	}
-	// OSC sequence: ESC ] ... ST
-	if s[1] == ']' {
-		i := 2
-		for i < len(s) {
-			if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\' {
-				return i + 2
-			}
-			if s[i] == '\x07' { // BEL terminator
-				return i + 1
-			}
-			i++
-		}
-		return len(s)
-	}
-	// Two-byte escape (e.g. ESC M)
-	return 2
-}
-
-// decodeRune decodes the first UTF-8 rune from s. Returns the rune and
-// byte width. This is a minimal inline version to avoid importing unicode/utf8.
-func decodeRune(s string) (rune, int) {
-	if len(s) == 0 {
-		return 0, 0
-	}
-	b := s[0]
-	if b < 0x80 {
-		return rune(b), 1
-	}
-	// Let Go's built-in range handle it.
-	for _, r := range s {
-		return r, len(string(r))
-	}
-	return 0xFFFD, 1
-}
-
-// runeWidth returns the display width of a rune (0 for control chars,
-// 2 for wide/fullwidth, 1 otherwise). Simplified — doesn't handle all
-// Unicode edge cases but covers common terminal usage.
-func runeWidth(r rune) int {
-	if r < 32 || r == 0x7F {
-		return 0
-	}
-	// CJK Unified Ideographs, Fullwidth Forms, etc.
-	if (r >= 0x1100 && r <= 0x115F) || // Hangul Jamo
-		(r >= 0x2E80 && r <= 0x303E) || // CJK Radicals
-		(r >= 0x3040 && r <= 0x33BF) || // Japanese
-		(r >= 0x3400 && r <= 0x4DBF) || // CJK Extension A
-		(r >= 0x4E00 && r <= 0xA4CF) || // CJK Unified
-		(r >= 0xAC00 && r <= 0xD7AF) || // Hangul Syllables
-		(r >= 0xF900 && r <= 0xFAFF) || // CJK Compat
-		(r >= 0xFE30 && r <= 0xFE6F) || // CJK Compat Forms
-		(r >= 0xFF01 && r <= 0xFF60) || // Fullwidth Forms
-		(r >= 0xFFE0 && r <= 0xFFE6) || // Fullwidth Signs
-		(r >= 0x20000 && r <= 0x2FA1F) { // CJK Extensions
-		return 2
-	}
-	return 1
 }
 
 // ---------- escape sequences ------------------------------------------------

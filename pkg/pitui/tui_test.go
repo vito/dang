@@ -1736,25 +1736,35 @@ func (m *mouseComponent) HandleMouse(ctx EventContext, ev MouseEvent) bool {
 	return m.consumeMouse
 }
 
-func TestParseZoneMarker(t *testing.T) {
-	tests := []struct {
-		input    string
-		wantID   int64
-		wantLen  int
-	}{
-		{"\x1b[1001z", 1001, 7},
-		{"\x1b[42z", 42, 5},
-		{"\x1b[999999z", 999999, 9},
-		{"\x1b[z", 0, 0},          // no digits
-		{"\x1b[12m", 0, 0},        // wrong terminator
-		{"hello", 0, 0},           // not an escape
-		{"\x1b[1001zhello", 1001, 7}, // marker followed by text
+func TestScanMouseZones_MarkersStrippedAndZonesDetected(t *testing.T) {
+	term := newMockTerminal(40, 10)
+	tui := newTUI(term)
+	tui.stopped = false
+
+	mc := &mouseComponent{lines: []string{"hello"}, consumeMouse: true}
+	// Get a marker ID allocated.
+	marker := markerOf(mc)
+
+	// Manually register the component so the scanner can look it up.
+	if tui.attachedComps == nil {
+		tui.attachedComps = make(map[Component]struct{})
 	}
-	for _, tt := range tests {
-		id, n := parseZoneMarker(tt.input)
-		assert.Equal(t, tt.wantID, id, "input: %q", tt.input)
-		assert.Equal(t, tt.wantLen, n, "input: %q", tt.input)
-	}
+	tui.attachedComps[mc] = struct{}{}
+
+	// Build a line with markers + other ANSI (color) sequences.
+	line := marker + "\x1b[31m" + "hello" + "\x1b[0m" + marker
+	stripped := tui.scanMouseZones([]string{line})
+
+	// Markers should be stripped; color sequences preserved.
+	assert.Equal(t, "\x1b[31mhello\x1b[0m", stripped[0])
+
+	// Zone should be detected.
+	require.Len(t, tui.mouseZones, 1)
+	assert.Equal(t, mc, tui.mouseZones[0].comp)
+	assert.Equal(t, 0, tui.mouseZones[0].startRow)
+	assert.Equal(t, 0, tui.mouseZones[0].startCol)
+	assert.Equal(t, 0, tui.mouseZones[0].endRow)
+	assert.Equal(t, 5, tui.mouseZones[0].endCol)
 }
 
 func TestScanMouseZones_FullLineComponent(t *testing.T) {
