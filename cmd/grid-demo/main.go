@@ -271,68 +271,29 @@ func (c *cell) Render(_ pitui.RenderContext) pitui.RenderResult {
 	return pitui.RenderResult{}
 }
 
+var curStyle = lipgloss.NewStyle().Background(lipgloss.Color("255")).Foreground(lipgloss.Color("0"))
+
 func (c *cell) renderBox(w, h, row, col int) string {
 	bg, fg := c.colors(row, col)
 	label := fmt.Sprintf("%d,%d", row, col)
-	labelRow := h / 2
-	labelCol := (w - len(label)) / 2 // ASCII label, len == width
+	styledLabel := lipgloss.NewStyle().Foreground(fg).Bold(c.focused).Render(label)
 
-	bgStyle := lipgloss.NewStyle().Background(bg)
-	fgStyle := lipgloss.NewStyle().Foreground(fg).Background(bg).Bold(c.focused)
-	curStyle := lipgloss.NewStyle().Background(lipgloss.Color("255")).Foreground(lipgloss.Color("0"))
+	// Render the base box — centered label on a colored background.
+	box := lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, styledLabel,
+		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(bg)),
+	)
 
-	showCursor := c.hovered && c.cursorR >= 0 && c.cursorR < h && c.cursorC >= 0 && c.cursorC < w
-
-	lines := make([]string, h)
-	for r := range h {
-		isLabelRow := r == labelRow
-		curCol := -1
-		if showCursor && r == c.cursorR {
-			curCol = c.cursorC
+	// Composite the cursor square if hovering.
+	if c.hovered && c.cursorR >= 0 && c.cursorC >= 0 && c.cursorC < w {
+		lines := strings.Split(box, "\n")
+		if c.cursorR < len(lines) {
+			cursor := curStyle.Render(" ")
+			lines[c.cursorR] = pitui.CompositeLineAt(lines[c.cursorR], cursor, c.cursorC, 1, w)
 		}
-
-		// Fast path: no cursor on this line.
-		if curCol < 0 {
-			if isLabelRow {
-				left := strings.Repeat(" ", labelCol)
-				right := strings.Repeat(" ", max(w-labelCol-len(label), 0))
-				lines[r] = bgStyle.Render(left) + fgStyle.Render(label) + bgStyle.Render(right)
-			} else {
-				lines[r] = bgStyle.Render(strings.Repeat(" ", w))
-			}
-			continue
-		}
-
-		// Cursor on this line — render three segments: before, cursor, after.
-		// Each segment is either bg spaces or label text.
-		renderSpan := func(start, end int) string {
-			if start >= end {
-				return ""
-			}
-			if !isLabelRow || end <= labelCol || start >= labelCol+len(label) {
-				return bgStyle.Render(strings.Repeat(" ", end-start))
-			}
-			// Span overlaps label.
-			var s strings.Builder
-			if start < labelCol {
-				s.WriteString(bgStyle.Render(strings.Repeat(" ", labelCol-start)))
-			}
-			ls := max(start-labelCol, 0)
-			le := min(end-labelCol, len(label))
-			s.WriteString(fgStyle.Render(label[ls:le]))
-			if end > labelCol+len(label) {
-				s.WriteString(bgStyle.Render(strings.Repeat(" ", end-labelCol-len(label))))
-			}
-			return s.String()
-		}
-
-		ch := " "
-		if isLabelRow && curCol >= labelCol && curCol < labelCol+len(label) {
-			ch = string(label[curCol-labelCol])
-		}
-		lines[r] = renderSpan(0, curCol) + curStyle.Render(ch) + renderSpan(curCol+1, w)
+		box = strings.Join(lines, "\n")
 	}
-	return strings.Join(lines, "\n")
+
+	return box
 }
 
 func (c *cell) colors(row, col int) (color.Color, color.Color) {
