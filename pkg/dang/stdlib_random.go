@@ -33,7 +33,7 @@ func registerRandom() {
 			min := args.GetInt("min")
 			max := args.GetInt("max")
 			if min >= max {
-				return nil, fmt.Errorf("Random.int: min (%d) must be less than max (%d)", min, max)
+				return nil, fmt.Errorf("random.int: min (%d) must be less than max (%d)", min, max)
 			}
 			return ToValue(min + mrand.IntN(max-min))
 		})
