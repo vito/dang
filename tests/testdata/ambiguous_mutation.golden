@@ -1,4 +1,4 @@
-[1m[31mError:[0m ambiguous reference to "Mutation": provided by imports [Test Other]
+[1m[31mError:[0m ambiguous reference to "Mutation": provided by imports [Other Test]
   [2m[34m--> errors/ambiguous_mutation.dang:7:15[0m
  [2m    |[0m
  [2m  5 | [0m

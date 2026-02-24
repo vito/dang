@@ -13,6 +13,8 @@ import (
 // registerStdlib registers all standard library builtins
 // This is called from init() in env.go after type definitions are set up
 func registerStdlib() {
+	registerRandomAndUUID()
+
 	// print function: print(value: a) -> Null
 	Builtin("print").
 		Doc("prints a value to stdout").
