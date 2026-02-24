@@ -7,3 +7,4 @@ CLAUDE.local.md
 *.log
 /render-stress
 /keygen-demo
+/grid-demo
