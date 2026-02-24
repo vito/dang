@@ -9,8 +9,8 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"image/color"
+	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -142,10 +142,7 @@ func (g *grid) navigate(ctx pitui.EventContext, code rune) bool {
 	}
 	total := min(g.cols*g.rows, maxCells)
 
-	sel := g.selected
-	if sel < 0 {
-		sel = 0
-	}
+	sel := max(g.selected, 0)
 	row := sel / g.cols
 	col := sel % g.cols
 
@@ -258,12 +255,12 @@ func (g *grid) renderStatus(w int) string {
 
 type cell struct {
 	pitui.Compo
-	grid     *grid
-	index    int
-	hovered  bool
-	focused  bool
-	cursorR  int // cursor row within cell (zone-relative)
-	cursorC  int // cursor col within cell (zone-relative)
+	grid    *grid
+	index   int
+	hovered bool
+	focused bool
+	cursorR int // cursor row within cell (zone-relative)
+	cursorC int // cursor col within cell (zone-relative)
 }
 
 // Render returns empty — cells render inline via renderBox + Mark.
