@@ -56,6 +56,18 @@ func (a Args) GetBool(name string) bool {
 	return false
 }
 
+// GetEnum retrieves an enum argument's string value
+func (a Args) GetEnum(name string) string {
+	val, ok := a.Values[name]
+	if !ok {
+		return ""
+	}
+	if enumVal, ok := val.(EnumValue); ok {
+		return enumVal.Val
+	}
+	return ""
+}
+
 // GetList retrieves a list argument
 func (a Args) GetList(name string) []Value {
 	val, ok := a.Values[name]
@@ -372,6 +384,86 @@ func (b *MethodBuilder) Impl(fn func(context.Context, Value, Args) (Value, error
 	Register(b.def)
 }
 
+// StaticMethodBuilder provides a fluent API for defining static methods on modules
+type StaticMethodBuilder struct {
+	def BuiltinDef
+}
+
+// StaticMethod creates a new static method builder for a module
+func StaticMethod(hostModule *Module, name string) *StaticMethodBuilder {
+	return &StaticMethodBuilder{
+		def: BuiltinDef{
+			Name:       name,
+			IsStatic:   true,
+			HostModule: hostModule,
+			ParamTypes: []ParamDef{},
+		},
+	}
+}
+
+// Doc sets the documentation string
+func (b *StaticMethodBuilder) Doc(doc string) *StaticMethodBuilder {
+	b.def.Doc = doc
+	return b
+}
+
+// Params adds parameters to the function
+func (b *StaticMethodBuilder) Params(pairs ...any) *StaticMethodBuilder {
+	for i := 0; i < len(pairs); {
+		if i+1 >= len(pairs) {
+			panic(fmt.Sprintf("Params: missing type for parameter at position %d", i))
+		}
+
+		name, ok := pairs[i].(string)
+		if !ok {
+			panic(fmt.Sprintf("Params: expected string at position %d, got %T", i, pairs[i]))
+		}
+
+		typ, ok := pairs[i+1].(hm.Type)
+		if !ok {
+			panic(fmt.Sprintf("Params: expected hm.Type at position %d, got %T", i+1, pairs[i+1]))
+		}
+
+		param := ParamDef{
+			Name: name,
+			Type: typ,
+		}
+
+		// Check if there's a default value
+		if i+2 < len(pairs) {
+			if _, isString := pairs[i+2].(string); !isString {
+				if val, isValue := pairs[i+2].(Value); isValue {
+					param.DefaultValue = val
+					i += 3
+				} else {
+					panic(fmt.Sprintf("Params: expected Value at position %d, got %T", i+2, pairs[i+2]))
+				}
+			} else {
+				i += 2
+			}
+		} else {
+			i += 2
+		}
+
+		b.def.ParamTypes = append(b.def.ParamTypes, param)
+	}
+	return b
+}
+
+// Returns sets the return type
+func (b *StaticMethodBuilder) Returns(typ hm.Type) *StaticMethodBuilder {
+	b.def.ReturnType = typ
+	return b
+}
+
+// Impl sets the implementation and registers the static method
+func (b *StaticMethodBuilder) Impl(fn func(context.Context, Args) (Value, error)) {
+	b.def.Impl = func(ctx context.Context, self Value, args Args) (Value, error) {
+		return fn(ctx, args)
+	}
+	Register(b.def)
+}
+
 var methodRegistry = make(map[*Module]map[string]BuiltinDef)
 
 func init() {
@@ -416,7 +508,9 @@ func GetMethodKey(receiverType *Module, methodName string) string {
 type BuiltinDef struct {
 	Name         string
 	IsMethod     bool
+	IsStatic     bool    // true for static methods on a module (e.g. Random.int)
 	ReceiverType *Module // nil for functions
+	HostModule   *Module // the module this static method belongs to
 	ParamTypes   []ParamDef
 	BlockType    *hm.FunctionType // nil if no block arg expected
 	ReturnType   hm.Type
@@ -454,6 +548,58 @@ func ForEachMethod(receiverType *Module, fn func(BuiltinDef)) {
 			fn(def)
 		}
 	}
+}
+
+// ForEachStaticMethod iterates over static methods for a specific host module
+func ForEachStaticMethod(hostModule *Module, fn func(BuiltinDef)) {
+	for _, def := range registry {
+		if def.IsStatic && def.HostModule == hostModule {
+			fn(def)
+		}
+	}
+}
+
+// StaticModules returns all modules that have static methods registered
+func StaticModules() []*Module {
+	seen := make(map[*Module]bool)
+	var modules []*Module
+	for _, def := range registry {
+		if def.IsStatic && def.HostModule != nil && !seen[def.HostModule] {
+			seen[def.HostModule] = true
+			modules = append(modules, def.HostModule)
+		}
+	}
+	return modules
+}
+
+// DefineEnum creates an enum type with the given values and registers it
+// as a nested type on a parent module. It handles both type-level and
+// eval-level registration so that the enum values are available during
+// both type checking and evaluation.
+//
+// Usage:
+//
+//	var CharsetEnum = DefineEnum(RandomModule, "Charset",
+//		"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX",
+//	)
+func DefineEnum(parent *Module, name string, values ...string) *Module {
+	enum := NewModule(name, EnumKind)
+
+	// Type-level: register each value and a values() accessor
+	for _, v := range values {
+		enum.Add(v, hm.NewScheme(nil, NonNull(enum)))
+		enum.SetVisibility(v, PublicVisibility)
+	}
+	valuesScheme := hm.NewScheme(nil, NonNull(ListType{NonNull(enum)}))
+	enum.Add("values", valuesScheme)
+	enum.SetVisibility("values", PublicVisibility)
+
+	// Register on parent as both a class and a value
+	parent.AddClass(name, enum)
+	parent.Add(name, hm.NewScheme(nil, NonNull(enum)))
+	parent.SetVisibility(name, PublicVisibility)
+
+	return enum
 }
 
 // TypeVar creates a type variable
