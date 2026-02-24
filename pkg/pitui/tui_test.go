@@ -1811,7 +1811,7 @@ func TestScanMouseZones_InlineMark(t *testing.T) {
 	// Attach the inline component so it has a TUI reference.
 	tui.Dispatch(func() {})
 	// Manual attach since we're not running the event loop.
-	inline.Compo.self = inline
+	inline.self = inline
 	inline.Compo.tui = tui
 	if tui.attachedComps == nil {
 		tui.attachedComps = make(map[Component]struct{})

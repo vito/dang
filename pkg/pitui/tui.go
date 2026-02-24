@@ -254,9 +254,9 @@ func newTUI(term Terminal) *TUI {
 	}
 	// Mount the TUI's own Container so children added via AddChild
 	// are automatically mounted (receiving lifecycle hooks).
-	t.Compo.tui = t
-	t.Compo.self = &t.Container
-	t.Container.Compo.mountCtx = context.Background()
+	t.tui = t
+	t.self = &t.Container
+	t.Container.mountCtx = context.Background()
 	// mountCancel is nil for the root — it's never dismounted.
 	return t
 }

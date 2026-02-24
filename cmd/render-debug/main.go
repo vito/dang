@@ -213,7 +213,7 @@ func tailFile(path string, hub *sseHub) {
 			}
 			scanner = bufio.NewScanner(f)
 		}
-		f.Close()
+		_ = f.Close()
 	}
 }
 
