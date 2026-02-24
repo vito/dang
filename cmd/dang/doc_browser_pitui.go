@@ -22,9 +22,9 @@ type docBrowserOverlay struct {
 	lastHeight int // cached from most recent Render; used by key handlers
 
 	// Mouse state — populated during Render for hit-testing in HandleMouse.
-	layout docBrowserLayout // layout from most recent Render
-	hoverCol  int           // column index under mouse, or -1
-	hoverItem int           // item index (within visible()) under mouse, or -1
+	layout    docBrowserLayout // layout from most recent Render
+	hoverCol  int              // column index under mouse, or -1
+	hoverItem int              // item index (within visible()) under mouse, or -1
 }
 
 // docBrowserLayout captures the spatial layout from the most recent render
@@ -405,7 +405,7 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 					leftStyled := selectedStyle.Render(prefix+label) + strings.Repeat(" ", gap) + tagStyled
 					lines = append(lines, leftStyled)
 				} else if isHovered {
-					leftStyled := hoverStyle.Render(prefix+label+strings.Repeat(" ", gap)+tag)
+					leftStyled := hoverStyle.Render(prefix + label + strings.Repeat(" ", gap) + tag)
 					lines = append(lines, leftStyled)
 				} else {
 					raw := leftPart + strings.Repeat(" ", gap) + tagStyled

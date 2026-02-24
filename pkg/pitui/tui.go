@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // InputListener is called with each decoded event before it reaches the
@@ -256,7 +256,7 @@ func newTUI(term Terminal) *TUI {
 	// are automatically mounted (receiving lifecycle hooks).
 	t.tui = t
 	t.self = &t.Container
-	t.Container.mountCtx = context.Background()
+	t.mountCtx = context.Background()
 	// mountCancel is nil for the root — it's never dismounted.
 	return t
 }

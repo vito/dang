@@ -1720,9 +1720,9 @@ func TestSpinnerMountDismountLifecycle(t *testing.T) {
 // mouseComponent is a MouseEnabled component for testing zone dispatch.
 type mouseComponent struct {
 	Compo
-	lines      []string
-	lastEvent  *MouseEvent
-	lastCtx    *EventContext
+	lines        []string
+	lastEvent    *MouseEvent
+	lastCtx      *EventContext
 	consumeMouse bool
 }
 
@@ -1812,7 +1812,7 @@ func TestScanMouseZones_InlineMark(t *testing.T) {
 	tui.Dispatch(func() {})
 	// Manual attach since we're not running the event loop.
 	inline.self = inline
-	inline.Compo.tui = tui
+	inline.tui = tui
 	if tui.attachedComps == nil {
 		tui.attachedComps = make(map[Component]struct{})
 	}
@@ -1867,22 +1867,22 @@ func TestZoneContains(t *testing.T) {
 	// Single-line zone at row 2, cols 5-10.
 	z := &mouseZone{startRow: 2, startCol: 5, endRow: 2, endCol: 10}
 
-	assert.True(t, zoneContains(z, 2, 5))  // start corner
-	assert.True(t, zoneContains(z, 2, 9))  // last col
-	assert.False(t, zoneContains(z, 2, 4)) // before start
+	assert.True(t, zoneContains(z, 2, 5))   // start corner
+	assert.True(t, zoneContains(z, 2, 9))   // last col
+	assert.False(t, zoneContains(z, 2, 4))  // before start
 	assert.False(t, zoneContains(z, 2, 10)) // at endCol (exclusive)
-	assert.False(t, zoneContains(z, 1, 7)) // wrong row
-	assert.False(t, zoneContains(z, 3, 7)) // wrong row
+	assert.False(t, zoneContains(z, 1, 7))  // wrong row
+	assert.False(t, zoneContains(z, 3, 7))  // wrong row
 
 	// Multi-line zone: rows 1-3, cols 3-7 (rectangular).
 	z2 := &mouseZone{startRow: 1, startCol: 3, endRow: 3, endCol: 8}
-	assert.False(t, zoneContains(z2, 1, 2))  // before startCol
-	assert.True(t, zoneContains(z2, 1, 3))   // start corner
-	assert.False(t, zoneContains(z2, 2, 0))  // middle row, before startCol
-	assert.True(t, zoneContains(z2, 2, 5))   // middle row, inside rect
-	assert.False(t, zoneContains(z2, 3, 0))  // last row, before startCol
-	assert.True(t, zoneContains(z2, 3, 7))   // last row, just before endCol
-	assert.False(t, zoneContains(z2, 3, 8))  // at endCol (exclusive)
-	assert.False(t, zoneContains(z2, 0, 5))  // above zone
-	assert.False(t, zoneContains(z2, 4, 5))  // below zone
+	assert.False(t, zoneContains(z2, 1, 2)) // before startCol
+	assert.True(t, zoneContains(z2, 1, 3))  // start corner
+	assert.False(t, zoneContains(z2, 2, 0)) // middle row, before startCol
+	assert.True(t, zoneContains(z2, 2, 5))  // middle row, inside rect
+	assert.False(t, zoneContains(z2, 3, 0)) // last row, before startCol
+	assert.True(t, zoneContains(z2, 3, 7))  // last row, just before endCol
+	assert.False(t, zoneContains(z2, 3, 8)) // at endCol (exclusive)
+	assert.False(t, zoneContains(z2, 0, 5)) // above zone
+	assert.False(t, zoneContains(z2, 4, 5)) // below zone
 }

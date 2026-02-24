@@ -209,7 +209,6 @@ type RenderResult struct {
 	// Cursor, if non-nil, is where the hardware cursor should be placed,
 	// relative to this component's output (Row 0 = first line of Lines).
 	Cursor *CursorPos
-
 }
 
 // ── Compo ──────────────────────────────────────────────────────────────────
@@ -296,8 +295,8 @@ type Compo struct {
 	renderedGen   int64        // generation when last rendered; render-goroutine only
 	cache         *renderCache // only accessed from the render goroutine
 	parent        *Compo
-	self          Component // the Component that embeds this Compo; set by setComponentParent
-	requestRender func()    // set on the root by TUI
+	self          Component    // the Component that embeds this Compo; set by setComponentParent
+	requestRender func()       // set on the root by TUI
 	markerID      atomic.Int64 // unique zone marker ID, lazy-allocated
 
 	// Double-buffered line slices for zero-allocation rendering.
