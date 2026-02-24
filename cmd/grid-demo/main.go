@@ -276,7 +276,7 @@ var curStyle = lipgloss.NewStyle().Background(lipgloss.Color("255")).Foreground(
 func (c *cell) renderBox(w, h, row, col int) string {
 	bg, fg := c.colors(row, col)
 	label := fmt.Sprintf("%d,%d", row, col)
-	styledLabel := lipgloss.NewStyle().Foreground(fg).Bold(c.focused).Render(label)
+	styledLabel := lipgloss.NewStyle().Foreground(fg).Background(bg).Bold(c.focused).Render(label)
 
 	// Render the base box — centered label on a colored background.
 	box := lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, styledLabel,
