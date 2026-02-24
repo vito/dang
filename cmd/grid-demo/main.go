@@ -258,10 +258,12 @@ func (g *grid) renderStatus(w int) string {
 
 type cell struct {
 	pitui.Compo
-	grid    *grid
-	index   int
-	hovered bool
-	focused bool
+	grid     *grid
+	index    int
+	hovered  bool
+	focused  bool
+	cursorR  int // cursor row within cell (zone-relative)
+	cursorC  int // cursor col within cell (zone-relative)
 }
 
 // Render returns empty — cells render inline via renderBox + Mark.
@@ -272,10 +274,65 @@ func (c *cell) Render(_ pitui.RenderContext) pitui.RenderResult {
 func (c *cell) renderBox(w, h, row, col int) string {
 	bg, fg := c.colors(row, col)
 	label := fmt.Sprintf("%d,%d", row, col)
-	styledLabel := lipgloss.NewStyle().Foreground(fg).Bold(c.focused).Render(label)
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, styledLabel,
-		lipgloss.WithWhitespaceStyle(lipgloss.NewStyle().Background(bg)),
-	)
+	labelRow := h / 2
+	labelCol := (w - len(label)) / 2 // ASCII label, len == width
+
+	bgStyle := lipgloss.NewStyle().Background(bg)
+	fgStyle := lipgloss.NewStyle().Foreground(fg).Background(bg).Bold(c.focused)
+	curStyle := lipgloss.NewStyle().Background(lipgloss.Color("255")).Foreground(lipgloss.Color("0"))
+
+	showCursor := c.hovered && c.cursorR >= 0 && c.cursorR < h && c.cursorC >= 0 && c.cursorC < w
+
+	lines := make([]string, h)
+	for r := range h {
+		isLabelRow := r == labelRow
+		curCol := -1
+		if showCursor && r == c.cursorR {
+			curCol = c.cursorC
+		}
+
+		// Fast path: no cursor on this line.
+		if curCol < 0 {
+			if isLabelRow {
+				left := strings.Repeat(" ", labelCol)
+				right := strings.Repeat(" ", max(w-labelCol-len(label), 0))
+				lines[r] = bgStyle.Render(left) + fgStyle.Render(label) + bgStyle.Render(right)
+			} else {
+				lines[r] = bgStyle.Render(strings.Repeat(" ", w))
+			}
+			continue
+		}
+
+		// Cursor on this line — render three segments: before, cursor, after.
+		// Each segment is either bg spaces or label text.
+		renderSpan := func(start, end int) string {
+			if start >= end {
+				return ""
+			}
+			if !isLabelRow || end <= labelCol || start >= labelCol+len(label) {
+				return bgStyle.Render(strings.Repeat(" ", end-start))
+			}
+			// Span overlaps label.
+			var s strings.Builder
+			if start < labelCol {
+				s.WriteString(bgStyle.Render(strings.Repeat(" ", labelCol-start)))
+			}
+			ls := max(start-labelCol, 0)
+			le := min(end-labelCol, len(label))
+			s.WriteString(fgStyle.Render(label[ls:le]))
+			if end > labelCol+len(label) {
+				s.WriteString(bgStyle.Render(strings.Repeat(" ", end-labelCol-len(label))))
+			}
+			return s.String()
+		}
+
+		ch := " "
+		if isLabelRow && curCol >= labelCol && curCol < labelCol+len(label) {
+			ch = string(label[curCol-labelCol])
+		}
+		lines[r] = renderSpan(0, curCol) + curStyle.Render(ch) + renderSpan(curCol+1, w)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (c *cell) colors(row, col int) (color.Color, color.Color) {
@@ -294,15 +351,23 @@ func (c *cell) colors(row, col int) (color.Color, color.Color) {
 	}
 }
 
-// HandleMouse implements pitui.MouseEnabled — click to focus.
+// HandleMouse implements pitui.MouseEnabled — click to focus, motion to track cursor.
 func (c *cell) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
-	if _, ok := ev.MouseEvent.(uv.MouseClickEvent); ok {
+	switch ev.MouseEvent.(type) {
+	case uv.MouseClickEvent:
 		if ev.Mouse().Button == uv.MouseLeft {
 			c.grid.selected = c.index
 			ctx.SetFocus(c)
 			c.grid.Update()
 			return true
 		}
+	case uv.MouseMotionEvent:
+		if c.cursorR != ev.Row || c.cursorC != ev.Col {
+			c.cursorR = ev.Row
+			c.cursorC = ev.Col
+			c.grid.Update()
+		}
+		return true
 	}
 	return false
 }
@@ -311,6 +376,10 @@ func (c *cell) HandleMouse(ctx pitui.EventContext, ev pitui.MouseEvent) bool {
 func (c *cell) SetHovered(_ pitui.EventContext, hovered bool) {
 	if hovered != c.hovered {
 		c.hovered = hovered
+		if !hovered {
+			c.cursorR = -1
+			c.cursorC = -1
+		}
 		c.grid.Update()
 	}
 }
