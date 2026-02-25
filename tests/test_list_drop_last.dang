@@ -1,0 +1,22 @@
+# Test list.dropLast() method
+
+# Default drops 1 element
+assert { [1, 2, 3, 4, 5].dropLast == [1, 2, 3, 4] }
+
+# Drop specific count
+assert { [1, 2, 3, 4, 5].dropLast(2) == [1, 2, 3] }
+assert { [1, 2, 3, 4, 5].dropLast(0) == [1, 2, 3, 4, 5] }
+
+# Drop more than length returns empty
+assert { [1, 2, 3].dropLast(5) == [] }
+
+# Drop from single element
+assert { [1].dropLast == [] }
+
+# Drop from empty list
+assert { [].dropLast == [] }
+
+# Works with strings
+assert { ["a", "b", "c"].dropLast == ["a", "b"] }
+
+print("List dropLast tests passed!")

@@ -1,0 +1,21 @@
+# Test list.takeWhile() method
+
+# Take while less than 4
+assert { [1, 2, 3, 4, 5].takeWhile { x => x < 4 } == [1, 2, 3] }
+
+# All match
+assert { [1, 2, 3].takeWhile { x => x < 10 } == [1, 2, 3] }
+
+# None match
+assert { [1, 2, 3].takeWhile { x => x > 10 } == [] }
+
+# Stops at first false even if later elements would match
+assert { [1, 2, 5, 3, 4].takeWhile { x => x < 4 } == [1, 2] }
+
+# Empty list
+assert { [].takeWhile { x => true } == [] }
+
+# Works with strings
+assert { ["a", "ab", "abc", "x"].takeWhile { s => s.hasPrefix("a") } == ["a", "ab", "abc"] }
+
+print("List takeWhile tests passed!")

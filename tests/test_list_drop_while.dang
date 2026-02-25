@@ -1,0 +1,21 @@
+# Test list.dropWhile() method
+
+# Drop while less than 4
+assert { [1, 2, 3, 4, 5].dropWhile { x => x < 4 } == [4, 5] }
+
+# All match - drops everything
+assert { [1, 2, 3].dropWhile { x => x < 10 } == [] }
+
+# None match - drops nothing
+assert { [1, 2, 3].dropWhile { x => x > 10 } == [1, 2, 3] }
+
+# Stops dropping at first false even if later elements would match
+assert { [1, 2, 5, 3, 4].dropWhile { x => x < 4 } == [5, 3, 4] }
+
+# Empty list
+assert { [].dropWhile { x => true } == [] }
+
+# Works with strings
+assert { ["a", "ab", "abc", "x", "ay"].dropWhile { s => s.hasPrefix("a") } == ["x", "ay"] }
+
+print("List dropWhile tests passed!")

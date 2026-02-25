@@ -493,6 +493,180 @@ func registerStdlib() {
 			return accumulator, nil
 		})
 
+	// List.dropLast method: dropLast(count: Int = 1) -> [a]!
+	Method(ListTypeModule, "dropLast").
+		Doc("returns a new list with the last count elements removed (default 1)").
+		Params("count", IntType, IntValue{Val: 1}).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			count := args.GetInt("count")
+			if count < 0 {
+				count = 0
+			}
+			end := len(list.Elements) - count
+			if end < 0 {
+				end = 0
+			}
+			return ListValue{
+				Elements: list.Elements[:end],
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.dropFirst method: dropFirst(count: Int = 1) -> [a]!
+	Method(ListTypeModule, "dropFirst").
+		Doc("returns a new list with the first count elements removed (default 1)").
+		Params("count", IntType, IntValue{Val: 1}).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			count := args.GetInt("count")
+			if count < 0 {
+				count = 0
+			}
+			start := count
+			if start > len(list.Elements) {
+				start = len(list.Elements)
+			}
+			return ListValue{
+				Elements: list.Elements[start:],
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.takeFirst method: takeFirst(count: Int = 1) -> [a]!
+	Method(ListTypeModule, "takeFirst").
+		Doc("returns a new list containing only the first count elements (default 1)").
+		Params("count", IntType, IntValue{Val: 1}).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			count := args.GetInt("count")
+			if count < 0 {
+				count = 0
+			}
+			end := count
+			if end > len(list.Elements) {
+				end = len(list.Elements)
+			}
+			return ListValue{
+				Elements: list.Elements[:end],
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.takeLast method: takeLast(count: Int = 1) -> [a]!
+	Method(ListTypeModule, "takeLast").
+		Doc("returns a new list containing only the last count elements (default 1)").
+		Params("count", IntType, IntValue{Val: 1}).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			count := args.GetInt("count")
+			if count < 0 {
+				count = 0
+			}
+			start := len(list.Elements) - count
+			if start < 0 {
+				start = 0
+			}
+			return ListValue{
+				Elements: list.Elements[start:],
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.takeWhile method: takeWhile(fn: \(a) -> Boolean!) -> [a]!
+	Method(ListTypeModule, "takeWhile").
+		Doc("returns a new list containing leading elements for which the predicate returns true, stopping at the first false").
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("takeWhile requires a block argument")
+			}
+			fn := *args.Block
+
+			var result []Value
+			for _, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("takeWhile predicate: %w", err)
+				}
+
+				boolVal, ok := res.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("takeWhile predicate must return Boolean!, got %T", res)
+				}
+
+				if !boolVal.Val {
+					break
+				}
+				result = append(result, item)
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
+	// List.dropWhile method: dropWhile(fn: \(a) -> Boolean!) -> [a]!
+	Method(ListTypeModule, "dropWhile").
+		Doc("returns a new list with leading elements removed for which the predicate returns true, stopping at the first false").
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("dropWhile requires a block argument")
+			}
+			fn := *args.Block
+
+			dropping := true
+			var result []Value
+			for _, item := range list.Elements {
+				if dropping {
+					res, err := callFunc(ctx, fn, item)
+					if err != nil {
+						return nil, fmt.Errorf("dropWhile predicate: %w", err)
+					}
+
+					boolVal, ok := res.(BoolValue)
+					if !ok {
+						return nil, fmt.Errorf("dropWhile predicate must return Boolean!, got %T", res)
+					}
+
+					if boolVal.Val {
+						continue
+					}
+					dropping = false
+				}
+				result = append(result, item)
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
 	// List.join method: join(separator: String!) -> String!
 	Method(ListTypeModule, "join").
 		Doc("joins the list elements into a string, converting each element to string and separating them with the given delimiter").

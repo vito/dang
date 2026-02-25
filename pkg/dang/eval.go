@@ -521,13 +521,27 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 }
 
 // addBuiltinFunctions adds builtin functions like print to the evaluation environment
+// allParamsDefaulted returns true if every parameter in the def has a default value.
+func allParamsDefaulted(def BuiltinDef) bool {
+	if len(def.ParamTypes) == 0 {
+		return false // no params means zero-arg, handled by the len==0 check
+	}
+	for _, p := range def.ParamTypes {
+		if p.DefaultValue == nil {
+			return false
+		}
+	}
+	return true
+}
+
 func addBuiltinFunctions(env EvalEnv) {
 	// Register all builtin functions
 	ForEachFunction(func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
 		builtinFn := BuiltinFunction{
-			Name:   def.Name,
-			FnType: fnType,
+			Name:         def.Name,
+			FnType:       fnType,
+			AllDefaulted: allParamsDefaulted(def),
 			CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 				// Apply defaults for missing arguments
 				argsWithDefaults := applyDefaults(args, def)
@@ -551,8 +565,9 @@ func addBuiltinFunctions(env EvalEnv) {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			builtinFn := BuiltinFunction{
-				Name:   def.Name,
-				FnType: fnType,
+				Name:         def.Name,
+				FnType:       fnType,
+				AllDefaulted: allParamsDefaulted(def),
 				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 					selfVal, _ := env.GetDynamicScope()
 					// Apply defaults for missing arguments
@@ -580,8 +595,9 @@ func addBuiltinFunctions(env EvalEnv) {
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			builtinFn := BuiltinFunction{
-				Name:   def.Name,
-				FnType: fnType,
+				Name:         def.Name,
+				FnType:       fnType,
+				AllDefaulted: allParamsDefaulted(def),
 				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 					argsWithDefaults := applyDefaults(args, def)
 					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
@@ -1318,9 +1334,10 @@ func (b BoundBuiltinMethod) IsAutoCallable() bool {
 
 // BuiltinFunction represents a builtin function like print
 type BuiltinFunction struct {
-	Name   string
-	FnType *hm.FunctionType
-	CallFn func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+	Name         string
+	FnType       *hm.FunctionType
+	CallFn       func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+	AllDefaulted bool // true when every parameter has a default value
 }
 
 func (b BuiltinFunction) Type() hm.Type {
@@ -1347,6 +1364,9 @@ func (b BuiltinFunction) ParameterNames() []string {
 }
 
 func (b BuiltinFunction) IsAutoCallable() bool {
+	if b.AllDefaulted {
+		return true
+	}
 	if rt, ok := b.FnType.Arg().(*RecordType); ok {
 		return len(rt.Fields) == 0
 	}

@@ -1,0 +1,22 @@
+# Test list.dropFirst() method
+
+# Default drops 1 element
+assert { [1, 2, 3, 4, 5].dropFirst == [2, 3, 4, 5] }
+
+# Drop specific count
+assert { [1, 2, 3, 4, 5].dropFirst(2) == [3, 4, 5] }
+assert { [1, 2, 3, 4, 5].dropFirst(0) == [1, 2, 3, 4, 5] }
+
+# Drop more than length returns empty
+assert { [1, 2, 3].dropFirst(5) == [] }
+
+# Drop from single element
+assert { [1].dropFirst == [] }
+
+# Drop from empty list
+assert { [].dropFirst == [] }
+
+# Works with strings
+assert { ["a", "b", "c"].dropFirst == ["b", "c"] }
+
+print("List dropFirst tests passed!")

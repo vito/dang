@@ -1,0 +1,22 @@
+# Test list.takeLast() method
+
+# Default takes 1 element
+assert { [1, 2, 3, 4, 5].takeLast == [5] }
+
+# Take specific count
+assert { [1, 2, 3, 4, 5].takeLast(3) == [3, 4, 5] }
+assert { [1, 2, 3, 4, 5].takeLast(0) == [] }
+
+# Take more than length returns whole list
+assert { [1, 2, 3].takeLast(5) == [1, 2, 3] }
+
+# Take from single element
+assert { [1].takeLast == [1] }
+
+# Take from empty list
+assert { [].takeLast == [] }
+
+# Works with strings
+assert { ["a", "b", "c"].takeLast(2) == ["b", "c"] }
+
+print("List takeLast tests passed!")

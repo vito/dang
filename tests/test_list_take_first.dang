@@ -1,0 +1,22 @@
+# Test list.takeFirst() method
+
+# Default takes 1 element
+assert { [1, 2, 3, 4, 5].takeFirst == [1] }
+
+# Take specific count
+assert { [1, 2, 3, 4, 5].takeFirst(3) == [1, 2, 3] }
+assert { [1, 2, 3, 4, 5].takeFirst(0) == [] }
+
+# Take more than length returns whole list
+assert { [1, 2, 3].takeFirst(5) == [1, 2, 3] }
+
+# Take from single element
+assert { [1].takeFirst == [1] }
+
+# Take from empty list
+assert { [].takeFirst == [] }
+
+# Works with strings
+assert { ["a", "b", "c"].takeFirst(2) == ["a", "b"] }
+
+print("List takeFirst tests passed!")
