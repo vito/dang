@@ -1,8 +1,6 @@
 module github.com/tree-sitter/tree-sitter-dang
 
-go 1.24.2
-
-toolchain go1.24.4
+go 1.25.6
 
 require github.com/vito/dang v0.0.0-20231014151113-edf550c4deca
 
@@ -43,7 +41,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.8.0 // indirect
 	golang.org/x/net v0.44.0 // indirect
-	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250825161204-c5933d9347a5 // indirect

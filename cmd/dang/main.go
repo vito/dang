@@ -22,6 +22,7 @@ import (
 // Config holds the application configuration
 type Config struct {
 	Debug      bool
+	DebugAddr  string
 	ClearCache bool
 	File       string
 	LSP        bool
@@ -65,6 +66,13 @@ It provides type-safe, composable abstractions for container operations.`,
 				defer pprof.StopCPUProfile()
 			}
 
+			// Start debug HTTP server if requested.
+			if cfg.DebugAddr != "" {
+				if err := setupDebugHandlers(cfg.DebugAddr); err != nil {
+					return fmt.Errorf("setup debug handlers: %w", err)
+				}
+			}
+
 			// Handle LSP mode first
 			if cfg.LSP {
 				return runLSP(cmd.Context(), cfg)
@@ -90,12 +98,13 @@ It provides type-safe, composable abstractions for container operations.`,
 
 	// Add flags
 	rootCmd.Flags().BoolVarP(&cfg.Debug, "debug", "d", false, "Enable debug logging")
+	rootCmd.Flags().StringVar(&cfg.DebugAddr, "debug-addr", "", "Serve debug/pprof handlers on this address (e.g. localhost:6060)")
 	rootCmd.Flags().BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear GraphQL schema cache and exit")
 	rootCmd.Flags().BoolVar(&cfg.LSP, "lsp", false, "Run in Language Server Protocol mode")
 	rootCmd.Flags().StringVar(&cfg.LSPLogFile, "lsp-log-file", "", "Path to LSP log file (stderr if not specified)")
 	rootCmd.Flags().StringVar(&cfg.CPUProfile, "cpuprofile", "", "Write CPU profile to file")
 
-	// Add fmt subcommand
+	// Add subcommands
 	rootCmd.AddCommand(fmtCmd())
 
 	// Use fang for styled execution with enhanced features
@@ -183,7 +192,7 @@ func runREPL(ctx context.Context, cfg Config) error {
 
 	moduleDir := findDaggerModule(cwd)
 
-	return runREPLPitui(ctx, importConfigs, moduleDir, cfg.Debug)
+	return runREPLTUI(ctx, importConfigs, moduleDir, cfg.Debug)
 }
 
 // findDaggerModule searches for a dagger.json starting from dir, walking up.

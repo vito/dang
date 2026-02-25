@@ -57,7 +57,7 @@ var (
 )
 
 // buildCompletionList builds the full list of completions from the environment.
-func buildCompletionList(typeEnv dang.Env) []string {
+func (r *replComponent) buildCompletionList(typeEnv dang.Env) []string {
 	seen := map[string]bool{}
 	var completions []string
 
@@ -68,8 +68,8 @@ func buildCompletionList(typeEnv dang.Env) []string {
 		}
 	}
 
-	for _, cmd := range replCommands() {
-		add(":" + cmd)
+	for _, cmd := range r.commands {
+		add(":" + cmd.name)
 	}
 
 	keywords := []string{
@@ -90,14 +90,6 @@ func buildCompletionList(typeEnv dang.Env) []string {
 
 	sort.Strings(completions)
 	return completions
-}
-
-// replCommands returns the list of REPL command names.
-func replCommands() []string {
-	return []string{
-		"help", "exit", "quit", "clear", "reset", "debug",
-		"env", "version", "schema", "type", "inspect", "find", "history", "doc",
-	}
 }
 
 // Completion helpers
