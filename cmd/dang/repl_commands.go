@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/pitui"
+	"codeberg.org/vito/tuist"
 )
 
 // ── command definitions ─────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ type replCommandDef struct {
 	name    string
 	aliases []string
 	desc    string
-	handler func(ctx pitui.EventContext, r *replComponent, e *replEntry, args []string)
+	handler func(ctx tuist.EventContext, r *replComponent, e *replEntry, args []string)
 }
 
 // buildCommandDefs returns the command definitions for the REPL. This is a
@@ -30,7 +30,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 		{
 			name: "help",
 			desc: "Show available commands",
-			handler: func(ctx pitui.EventContext, r *replComponent, e *replEntry, _ []string) {
+			handler: func(ctx tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				e.writeLogLine("Available commands:")
 				maxName := 0
 				for _, cmd := range r.commands {
@@ -54,28 +54,28 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			name:    "exit",
 			aliases: []string{"quit"},
 			desc:    "Exit the REPL",
-			handler: func(_ pitui.EventContext, r *replComponent, _ *replEntry, _ []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, _ *replEntry, _ []string) {
 				r.requestQuit()
 			},
 		},
 		{
 			name: "doc",
 			desc: "Interactive API browser",
-			handler: func(ctx pitui.EventContext, r *replComponent, _ *replEntry, _ []string) {
+			handler: func(ctx tuist.EventContext, r *replComponent, _ *replEntry, _ []string) {
 				r.showDocBrowser(ctx)
 			},
 		},
 		{
 			name: "env",
 			desc: "Show environment bindings",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, args []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, args []string) {
 				r.envCommand(e, args)
 			},
 		},
 		{
 			name: "type",
 			desc: "Show type of an expression",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, args []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, args []string) {
 				r.typeCommand(e, args)
 			},
 		},
@@ -83,14 +83,14 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			name:    "find",
 			aliases: []string{"search"},
 			desc:    "Find functions/types by pattern",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, args []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, args []string) {
 				r.findCommand(e, args)
 			},
 		},
 		{
 			name: "reset",
 			desc: "Reset the environment",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, _ []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				r.typeEnv, r.evalEnv = buildEnvFromImports(r.importConfigs)
 				r.refreshCompletions()
 				e.writeLogLine(resultStyle.Render("Environment reset."))
@@ -99,14 +99,14 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 		{
 			name: "clear",
 			desc: "Clear the screen",
-			handler: func(_ pitui.EventContext, r *replComponent, _ *replEntry, _ []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, _ *replEntry, _ []string) {
 				r.entryContainer.Clear()
 			},
 		},
 		{
 			name: "debug",
 			desc: "Toggle debug mode",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, _ []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				r.debug = !r.debug
 				status := "disabled"
 				if r.debug {
@@ -118,7 +118,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 		{
 			name: "debug-render",
 			desc: "Toggle render performance logging",
-			handler: func(ctx pitui.EventContext, r *replComponent, e *replEntry, _ []string) {
+			handler: func(ctx tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				r.debugRender = !r.debugRender
 				if r.debugRender {
 					logPath := "/tmp/dang_render_debug.log"
@@ -145,7 +145,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 		{
 			name: "version",
 			desc: "Show version info",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, _ []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				e.writeLogLine(resultStyle.Render("Dang REPL v0.1.0"))
 				if len(r.importConfigs) > 0 {
 					var names []string
@@ -161,7 +161,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 		{
 			name: "history",
 			desc: "Show recent history",
-			handler: func(_ pitui.EventContext, r *replComponent, e *replEntry, _ []string) {
+			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				e.writeLogLine("Recent history:")
 				entries := r.history.entries
 				start := 0
@@ -178,7 +178,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 
 // ── command dispatch ────────────────────────────────────────────────────────
 
-func (r *replComponent) handleCommand(ctx pitui.EventContext, cmdLine string) {
+func (r *replComponent) handleCommand(ctx tuist.EventContext, cmdLine string) {
 	ev := r.activeEntryView()
 	e := ev.entry
 

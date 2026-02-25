@@ -19,7 +19,7 @@ import (
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/pkg/pitui"
+	"codeberg.org/vito/tuist"
 )
 
 // ── sync writer (streams dagger output into TUI) ────────────────────────────
@@ -66,8 +66,8 @@ func (w *pituiSyncWriter) SetTarget(ev *entryView) {
 
 // ── entry view component ────────────────────────────────────────────────────
 
-// entryView wraps a single replEntry as a pitui.Component. It embeds
-// pitui.Compo for automatic render caching. Once finalized (result
+// entryView wraps a single replEntry as a tuist.Component. It embeds
+// tuist.Compo for automatic render caching. Once finalized (result
 // written, eval done), nobody calls Update(), so the framework skips
 // Render() entirely and returns the cached result — making 200+ past
 // entries O(1) per render cycle.
@@ -76,7 +76,7 @@ func (w *pituiSyncWriter) SetTarget(ev *entryView) {
 // handlers, or via Dispatch from background goroutines like the Dagger
 // log flusher), so no mutex is needed.
 type entryView struct {
-	pitui.Compo
+	tuist.Compo
 	entry *replEntry
 }
 
@@ -86,7 +86,7 @@ func newEntryView(entry *replEntry) *entryView {
 	return ev
 }
 
-func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
+func (ev *entryView) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	// Snapshot entry data.
 	input := ev.entry.input
 	logs := ev.entry.logs.String()
@@ -115,32 +115,32 @@ func (ev *entryView) Render(ctx pitui.RenderContext) pitui.RenderResult {
 		lines = append(lines, resLines...)
 	}
 	for i, line := range lines {
-		lines[i] = pitui.ExpandTabs(line, 8)
+		lines[i] = tuist.ExpandTabs(line, 8)
 	}
 	for i, line := range lines {
-		if pitui.VisibleWidth(line) > ctx.Width {
-			lines[i] = pitui.Truncate(line, ctx.Width, "")
+		if tuist.VisibleWidth(line) > ctx.Width {
+			lines[i] = tuist.Truncate(line, ctx.Width, "")
 		}
 	}
 
-	return pitui.RenderResult{Lines: lines}
+	return tuist.RenderResult{Lines: lines}
 }
 
 // ── completion menu overlay ─────────────────────────────────────────────────
 
 type completionOverlay struct {
-	pitui.Compo
+	tuist.Compo
 	items      []string
 	index      int
 	maxVisible int
 }
 
-func (c *completionOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
+func (c *completionOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	if len(c.items) == 0 {
-		return pitui.RenderResult{}
+		return tuist.RenderResult{}
 	}
 	lines := strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width), "\n")
-	return pitui.RenderResult{Lines: lines}
+	return tuist.RenderResult{Lines: lines}
 }
 
 // renderMenuBox renders the completion dropdown as a bordered box string.
@@ -196,13 +196,13 @@ func renderMenuBox(items []string, index, maxVisible, width int) string {
 // ── detail bubble (viewport-relative overlay) ───────────────────────────────
 
 type detailBubble struct {
-	pitui.Compo
+	tuist.Compo
 	item docItem
 }
 
-func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
+func (d *detailBubble) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	if d.item.name == "" {
-		return pitui.RenderResult{}
+		return tuist.RenderResult{}
 	}
 
 	// lipgloss Width(n) sets the TOTAL width including borders, so the
@@ -234,7 +234,7 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 
 	inner := strings.Join(lines, "\n")
 	box := detailBorderStyle.Width(ctx.Width).Render(inner)
-	return pitui.RenderResult{
+	return tuist.RenderResult{
 		Lines: strings.Split(box, "\n"),
 	}
 }
@@ -249,7 +249,7 @@ func (d *detailBubble) Render(ctx pitui.RenderContext) pitui.RenderResult {
 // run there directly, and background goroutines (eval, Dagger log flusher)
 // use Dispatch to mutate state. No mutex is needed.
 type replComponent struct {
-	pitui.Container
+	tuist.Container
 
 	// Dang state
 	importConfigs []dang.ImportConfig
@@ -259,10 +259,10 @@ type replComponent struct {
 	ctx           context.Context
 
 	// UI state
-	textInput      *pitui.TextInput
-	entryContainer *pitui.Container
-	spinner        *pitui.Spinner
-	inputSlot      *pitui.Slot // swaps between textInput and spinner
+	textInput      *tuist.TextInput
+	entryContainer *tuist.Container
+	spinner        *tuist.Spinner
+	inputSlot      *tuist.Slot // swaps between textInput and spinner
 
 	quit        context.Context
 	requestQuit context.CancelFunc
@@ -276,10 +276,10 @@ type replComponent struct {
 	menuIndex       int
 	menuMaxVisible  int
 	menuOverlay     *completionOverlay
-	menuHandle      *pitui.OverlayHandle
+	menuHandle      *tuist.OverlayHandle
 	detailBubble    *detailBubble
-	detailHandle    *pitui.OverlayHandle
-	completionGroup *pitui.CursorGroup
+	detailHandle    *tuist.OverlayHandle
+	completionGroup *tuist.CursorGroup
 
 	// Eval
 	evaluating bool
@@ -303,7 +303,7 @@ type replComponent struct {
 func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
 	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
 
-	ti := pitui.NewTextInput(promptStyle.Render("dang> "))
+	ti := tuist.NewTextInput(promptStyle.Render("dang> "))
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
 
 	r := &replComponent{
@@ -313,16 +313,16 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 		evalEnv:         evalEnv,
 		ctx:             ctx,
 		textInput:       ti,
-		entryContainer:  &pitui.Container{},
+		entryContainer:  &tuist.Container{},
 		menuMaxVisible:  8,
-		completionGroup: pitui.NewCursorGroup(),
+		completionGroup: tuist.NewCursorGroup(),
 		history:         newReplHistory(),
 	}
 	r.quit, r.requestQuit = context.WithCancel(context.Background())
 	r.commands = r.buildCommandDefs()
 
 	// Spinner
-	sp := pitui.NewSpinner()
+	sp := tuist.NewSpinner()
 	sp.Style = func(s string) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 	}
@@ -330,14 +330,14 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	r.spinner = sp
 
 	// Input slot starts with text input.
-	r.inputSlot = pitui.NewSlot(ti)
+	r.inputSlot = tuist.NewSlot(ti)
 
 	// Text input callbacks.
 	ti.SuggestionStyle = func(s string) string {
 		return dimStyle.Render(s)
 	}
 	ti.OnSubmit = r.onSubmit
-	ti.OnChange = func(ctx pitui.EventContext) { r.updateCompletionMenu(ctx) }
+	ti.OnChange = func(ctx tuist.EventContext) { r.updateCompletionMenu(ctx) }
 
 	// Welcome message.
 	welcome := newReplEntry("")
@@ -366,7 +366,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 }
 
 // OnMount focuses the text input when the REPL is added to the TUI.
-func (r *replComponent) OnMount(ctx pitui.EventContext) {
+func (r *replComponent) OnMount(ctx tuist.EventContext) {
 	ctx.SetFocus(r.textInput)
 }
 
@@ -391,7 +391,7 @@ func (r *replComponent) addEntry(input string) *entryView {
 }
 
 // onSubmit handles Enter in the text input.
-func (r *replComponent) onSubmit(ctx pitui.EventContext, line string) bool {
+func (r *replComponent) onSubmit(ctx tuist.EventContext, line string) bool {
 	if line == "" {
 		return false
 	}
@@ -428,7 +428,7 @@ func (r *replComponent) onSubmit(ctx pitui.EventContext, line string) bool {
 // handle (Up/Down for history, Ctrl+C, Ctrl+D, Ctrl+L, etc.).
 // When the spinner is focused during eval, this receives all keys
 // (the spinner doesn't implement Interactive, so everything bubbles).
-func (r *replComponent) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEvent) bool {
+func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEvent) bool {
 	key := uv.Key(ev)
 
 	// While evaluating: Ctrl+C cancels, swallow everything else.
@@ -502,7 +502,7 @@ func (r *replComponent) HandleKeyPress(ctx pitui.EventContext, ev uv.KeyPressEve
 
 // ── eval ────────────────────────────────────────────────────────────────────
 
-func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
+func (r *replComponent) startEval(ectx tuist.EventContext, expr string) {
 	ev := r.activeEntryView()
 
 	result, err := dang.Parse("repl", []byte(expr))
@@ -584,7 +584,7 @@ func (r *replComponent) startEval(ectx pitui.EventContext, expr string) {
 	}()
 }
 
-func (r *replComponent) finishEval(ctx pitui.EventContext, ev *entryView, logs, results []string, cancelled bool) {
+func (r *replComponent) finishEval(ctx tuist.EventContext, ev *entryView, logs, results []string, cancelled bool) {
 	// Dispatch to the UI goroutine so we can safely mutate component state.
 	ctx.Dispatch(func() {
 		r.evaluating = false
@@ -614,7 +614,7 @@ func (r *replComponent) finishEval(ctx pitui.EventContext, ev *entryView, logs, 
 
 // ── doc browser ─────────────────────────────────────────────────────────────
 
-func (r *replComponent) showDocBrowser(ctx pitui.EventContext) {
+func (r *replComponent) showDocBrowser(ctx tuist.EventContext) {
 	db := newDocBrowserOverlay(r.typeEnv)
 	db.onExit = func() {
 		if r.docBrowser != nil {
@@ -633,8 +633,8 @@ func (r *replComponent) showDocBrowser(ctx pitui.EventContext) {
 // ── entry point ─────────────────────────────────────────────────────────────
 
 func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDir string, debug bool) error {
-	term := pitui.NewProcessTerminal()
-	tui := pitui.New(term)
+	term := tuist.NewProcessTerminal()
+	tui := tuist.New(term)
 	tui.SetShowHardwareCursor(true)
 
 	// Install debug writer early so the loading spinner is captured.
@@ -656,7 +656,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	daggerLog := newPituiSyncWriter(tui.Dispatch)
 	var daggerConn *dagger.Client
 	if moduleDir != "" {
-		loadSp := pitui.NewSpinner()
+		loadSp := tuist.NewSpinner()
 		loadSp.Style = func(s string) string {
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}

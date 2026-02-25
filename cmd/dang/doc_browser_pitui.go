@@ -8,13 +8,13 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/pitui"
+	"codeberg.org/vito/tuist"
 )
 
-// docBrowserOverlay wraps the existing doc browser data model as a pitui
+// docBrowserOverlay wraps the existing doc browser data model as a tuist
 // overlay component.
 type docBrowserOverlay struct {
-	pitui.Compo
+	tuist.Compo
 	columns    []docColumn
 	activeCol  int
 	filtering  bool
@@ -61,7 +61,7 @@ func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 	return db
 }
 
-func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressEvent) bool {
+func (d *docBrowserOverlay) HandleKeyPress(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
 	defer d.Update()
 	// Clear hover state on keyboard navigation.
 	d.hoverCol = -1
@@ -75,10 +75,10 @@ func (d *docBrowserOverlay) HandleKeyPress(_ pitui.EventContext, ev uv.KeyPressE
 	return true // doc browser consumes all keys when focused
 }
 
-// HandleMouse implements pitui.MouseEnabled, enabling terminal mouse capture
+// HandleMouse implements tuist.MouseEnabled, enabling terminal mouse capture
 // while the doc browser is mounted. Supports hover highlighting and click
 // navigation on all column items.
-func (d *docBrowserOverlay) HandleMouse(_ pitui.EventContext, ev pitui.MouseEvent) bool {
+func (d *docBrowserOverlay) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) bool {
 	m := ev.Mouse()
 
 	col, item := d.hitTest(ev.Col, ev.Row)
@@ -281,14 +281,14 @@ func (d *docBrowserOverlay) handleFilterKey(key uv.Key) {
 	}
 }
 
-func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
+func (d *docBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	width := ctx.Width
 	height := ctx.Height
 	if height == 0 && ctx.ScreenHeight > 0 {
 		height = ctx.ScreenHeight
 	}
 	if width < 20 {
-		return pitui.RenderResult{Lines: []string{"(too narrow)"}}
+		return tuist.RenderResult{Lines: []string{"(too narrow)"}}
 	}
 
 	// Cache height for key handlers (clampScroll, page up/down).
@@ -466,12 +466,12 @@ func (d *docBrowserOverlay) Render(ctx pitui.RenderContext) pitui.RenderResult {
 
 	// Truncate lines to width.
 	for i, line := range result {
-		if pitui.VisibleWidth(line) > width {
-			result[i] = pitui.Truncate(line, width, "")
+		if tuist.VisibleWidth(line) > width {
+			result[i] = tuist.Truncate(line, width, "")
 		}
 	}
 
-	return pitui.RenderResult{Lines: result}
+	return tuist.RenderResult{Lines: result}
 }
 
 func (d *docBrowserOverlay) renderDetailContent(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {

@@ -1,17 +1,15 @@
 module github.com/vito/dang
 
-go 1.24.2
-
-toolchain go1.24.4
+go 1.25.6
 
 require (
-	charm.land/lipgloss/v2 v2.0.0-beta.3.0.20260213141939-54ce8ebb1690
+	charm.land/lipgloss/v2 v2.0.0
+	codeberg.org/vito/tuist v0.0.0-20260225043744-41f65f844111
 	dagger.io/dagger v0.19.11
 	github.com/99designs/gqlgen v0.17.81
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.4.4
-	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/creachadair/jrpc2 v1.3.3
 	github.com/dagger/testctx v0.0.5
 	github.com/dagger/testctx/oteltest v0.0.3
@@ -22,9 +20,13 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vektah/gqlparser/v2 v2.5.30
-	golang.org/x/sync v0.18.0
-	golang.org/x/sys v0.41.0
+	golang.org/x/sync v0.19.0
 	gotest.tools/v3 v3.5.2
+)
+
+require (
+	github.com/charmbracelet/x/ansi v0.11.6 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 )
 
 require (
@@ -32,14 +34,13 @@ require (
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20251205161215-1948445e3318
+	github.com/charmbracelet/ultraviolet v0.0.0-20260223171050-89c142e4aa73
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250603201427-c31516f43444 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.9.0 // indirect
-	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
+	github.com/clipperhouse/displaywidth v0.11.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
 	github.com/creachadair/mds v0.25.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect

@@ -6,7 +6,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/pitui"
+	"codeberg.org/vito/tuist"
 )
 
 // ── completion menu ─────────────────────────────────────────────────────────
@@ -55,13 +55,13 @@ func (r *replComponent) menuBoxHeight() int {
 	return h
 }
 
-func (r *replComponent) showCompletionMenu(ctx pitui.EventContext) {
+func (r *replComponent) showCompletionMenu(ctx tuist.EventContext) {
 	displayItems := r.menuDisplayItems()
 	menuH := r.menuBoxHeight()
 
-	opts := &pitui.OverlayOptions{
-		Width:          pitui.SizeAbs(r.menuBoxWidth()),
-		MaxHeight:      pitui.SizeAbs(menuH),
+	opts := &tuist.OverlayOptions{
+		Width:          tuist.SizeAbs(r.menuBoxWidth()),
+		MaxHeight:      tuist.SizeAbs(menuH),
 		CursorRelative: true,
 		PreferAbove:    true,
 		OffsetX:        -r.completionTokenLen(),
@@ -84,7 +84,7 @@ func (r *replComponent) showCompletionMenu(ctx pitui.EventContext) {
 	r.syncDetailBubble(ctx)
 }
 
-func (r *replComponent) syncMenu(ctx pitui.EventContext) {
+func (r *replComponent) syncMenu(ctx tuist.EventContext) {
 	if r.menuOverlay != nil {
 		r.menuOverlay.items = r.menuDisplayItems()
 		r.menuOverlay.index = r.menuIndex
@@ -94,16 +94,16 @@ func (r *replComponent) syncMenu(ctx pitui.EventContext) {
 	ctx.RequestRender(false)
 }
 
-func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
+func (r *replComponent) detailBubbleOptions() *tuist.OverlayOptions {
 	detailX := -r.completionTokenLen()
 	if r.menuHandle != nil {
 		// Menu visible — place detail to its right with a 1 col gap.
 		detailX += r.menuBoxWidth() + 1
 	}
 
-	return &pitui.OverlayOptions{
-		Width:          pitui.SizePct(35),
-		MaxHeight:      pitui.SizePct(80),
+	return &tuist.OverlayOptions{
+		Width:          tuist.SizePct(35),
+		MaxHeight:      tuist.SizePct(80),
 		CursorRelative: true,
 		PreferAbove:    true,
 		OffsetX:        detailX,
@@ -111,7 +111,7 @@ func (r *replComponent) detailBubbleOptions() *pitui.OverlayOptions {
 	}
 }
 
-func (r *replComponent) showDetailBubble(ctx pitui.EventContext) {
+func (r *replComponent) showDetailBubble(ctx tuist.EventContext) {
 	opts := r.detailBubbleOptions()
 	if r.detailBubble == nil {
 		r.detailBubble = &detailBubble{}
@@ -129,7 +129,7 @@ func (r *replComponent) hideDetailBubble() {
 	}
 }
 
-func (r *replComponent) syncDetailBubble(ctx pitui.EventContext) {
+func (r *replComponent) syncDetailBubble(ctx tuist.EventContext) {
 	if !r.menuVisible || len(r.menuCompletions) == 0 {
 		r.hideDetailBubble()
 		return
@@ -164,7 +164,7 @@ func (r *replComponent) syncDetailBubble(ctx pitui.EventContext) {
 
 // showDetailForCompletion shows the detail bubble for a single completion
 // item, without requiring the dropdown menu to be visible.
-func (r *replComponent) showDetailForCompletion(ctx pitui.EventContext, c dang.Completion) {
+func (r *replComponent) showDetailForCompletion(ctx tuist.EventContext, c dang.Completion) {
 	item, found := docItemFromEnv(r.typeEnv, c.Label)
 	if !found {
 		item, found = r.resolveCompletionDocItem(c)
@@ -235,7 +235,7 @@ func (r *replComponent) completionTokenLen() int {
 	return len(val) - (i + 1)
 }
 
-func (r *replComponent) updateCommandCompletionMenu(ctx pitui.EventContext, val string) {
+func (r *replComponent) updateCommandCompletionMenu(ctx tuist.EventContext, val string) {
 	partial := strings.TrimPrefix(val, ":")
 	partialLower := strings.ToLower(partial)
 
@@ -264,7 +264,7 @@ func (r *replComponent) updateCommandCompletionMenu(ctx pitui.EventContext, val 
 	r.setMenu(ctx, matches, completions)
 }
 
-func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
+func (r *replComponent) updateCompletionMenu(ctx tuist.EventContext) {
 	val := r.textInput.Value()
 
 	if val == "" {
@@ -349,7 +349,7 @@ func (r *replComponent) updateCompletionMenu(ctx pitui.EventContext) {
 	}
 }
 
-func (r *replComponent) setMenu(ctx pitui.EventContext, matches []string, completions []dang.Completion) {
+func (r *replComponent) setMenu(ctx tuist.EventContext, matches []string, completions []dang.Completion) {
 	if len(matches) == 0 {
 		r.hideCompletionMenu()
 		return

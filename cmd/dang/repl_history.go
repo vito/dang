@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vito/dang/pkg/pitui"
+	"codeberg.org/vito/tuist"
 )
 
 const maxHistoryEntries = 1000
@@ -53,7 +53,7 @@ func (h *replHistory) Add(line string) {
 
 // Navigate moves through history. direction < 0 goes back, > 0 goes forward.
 // Updates the text input value and cursor position.
-func (h *replHistory) Navigate(direction int, ti *pitui.TextInput) {
+func (h *replHistory) Navigate(direction int, ti *tuist.TextInput) {
 	if len(h.entries) == 0 {
 		return
 	}
