@@ -1,7 +1,7 @@
 charm.land/lipgloss/v2 v2.0.0 h1:sd8N/B3x892oiOjFfBQdXBQp3cAkvjGaU5TvVZC3ivo=
 charm.land/lipgloss/v2 v2.0.0/go.mod h1:w6SnmsBFBmEFBodiEDurGS/sdUY/u1+v72DqUzc6J14=
-codeberg.org/vito/tuist v0.0.0-20260225043744-41f65f844111 h1:36tZaHD33EaUwy5M+SdwPDWOO0uegkYx3r+bYQscBoY=
-codeberg.org/vito/tuist v0.0.0-20260225043744-41f65f844111/go.mod h1:rUVavdvuBRlxvWnuGNHDzk9hrCW/9GvTL6cn1IycwIM=
+codeberg.org/vito/tuist v0.0.0-20260226184348-2fa36dd96343 h1:PYxzZTeX4B1tBDzM+pA03qy4OvXlutdNTYRf9V2rZ0w=
+codeberg.org/vito/tuist v0.0.0-20260226184348-2fa36dd96343/go.mod h1:rUVavdvuBRlxvWnuGNHDzk9hrCW/9GvTL6cn1IycwIM=
 dagger.io/dagger v0.19.11 h1:Cra3wL1oaZsqXJcnPydocx3bIDD5tM7XCuwcn2Uh+2Q=
 dagger.io/dagger v0.19.11/go.mod h1:BjAJWl4Lx7XRW7nooNjBi0ZAC5Ici2pkthkdBIZdbTI=
 github.com/99designs/gqlgen v0.17.81 h1:kCkN/xVyRb5rEQpuwOHRTYq83i0IuTQg9vdIiwEerTs=

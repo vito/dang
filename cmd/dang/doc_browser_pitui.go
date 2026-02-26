@@ -11,8 +11,280 @@ import (
 	"codeberg.org/vito/tuist"
 )
 
-// docBrowserOverlay wraps the existing doc browser data model as a tuist
-// overlay component.
+// ── styles (shared across components) ───────────────────────────────────────
+
+var (
+	docTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	docActiveTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	docSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	docTextStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
+	docArgNameStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	docArgTypeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	docDimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	docSepStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	docHoverStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
+)
+
+// ── breadcrumb crumb ────────────────────────────────────────────────────────
+
+// breadcrumbCrumb is a small inline component representing a single
+// breadcrumb segment. It implements MouseEnabled and Hoverable so
+// tuist's positional dispatch handles hover and click automatically.
+type breadcrumbCrumb struct {
+	tuist.Compo
+	label   string
+	active  bool // true for the rightmost (current) crumb
+	hovered bool
+	onClick func()
+}
+
+func (b *breadcrumbCrumb) Render(_ tuist.RenderContext) tuist.RenderResult {
+	var st lipgloss.Style
+	switch {
+	case b.active:
+		st = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	case b.hovered:
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Underline(true)
+	default:
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Underline(true)
+	}
+	return tuist.RenderResult{Lines: []string{st.Render(b.label)}}
+}
+
+func (b *breadcrumbCrumb) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) bool {
+	switch ev.MouseEvent.(type) {
+	case uv.MouseClickEvent:
+		if b.onClick != nil {
+			b.onClick()
+		}
+		return true
+	}
+	return false
+}
+
+func (b *breadcrumbCrumb) SetHovered(_ tuist.EventContext, hovered bool) {
+	if b.hovered != hovered {
+		b.hovered = hovered
+		b.Update()
+	}
+}
+
+// ── column component ────────────────────────────────────────────────────────
+
+// docColumnComp renders a single doc browser column and handles mouse
+// interaction (click, scroll, hover) via tuist's positional dispatch.
+type docColumnComp struct {
+	tuist.Compo
+	browser  *docBrowserOverlay
+	colIdx   int // index into browser.columns
+	isActive bool
+	hovered  bool
+	hoverRow int // item row under mouse (0-based within visible items), or -1
+
+	// Layout info set during Render for mouse coordinate mapping.
+	itemStartRow int // row offset where items begin in this column's output
+	itemCount    int // number of rendered items
+	scrollOffset int // first visible item index
+
+
+}
+
+func (c *docColumnComp) Render(ctx tuist.RenderContext) tuist.RenderResult {
+	w := ctx.Width
+	col := c.browser.columns[c.colIdx]
+	isFiltering := c.browser.filtering && c.isActive
+
+	var lines []string
+
+	// Title
+	t := col.title
+	if c.isActive {
+		lines = append(lines, docActiveTitle.Render(truncate(t, w)))
+	} else {
+		lines = append(lines, docTitleStyle.Render(truncate(t, w)))
+	}
+	lines = append(lines, docSepStyle.Render(strings.Repeat("─", w)))
+
+	vis := col.visible()
+	filterLineH := 0
+	if len(col.items) > 0 && (isFiltering || col.filter != "") {
+		filterLineH = 1
+		filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+		filterText := "/" + col.filter
+		if isFiltering {
+			filterText += "_"
+		}
+		countText := docDimStyle.Render(fmt.Sprintf(" %d/%d", len(vis), len(col.items)))
+		countW := lipgloss.Width(countText)
+		filterDisp := filterStyle.Render(truncate(filterText, w-countW))
+		dispW := lipgloss.Width(filterDisp)
+		gap := max(w-dispW-countW, 0)
+		lines = append(lines, filterDisp+strings.Repeat(" ", gap)+countText)
+	}
+
+	c.itemStartRow = 2 + filterLineH // title + separator + optional filter
+	c.scrollOffset = col.offset
+
+	listH := ctx.Height - 2 // minus title and separator
+	if listH < 1 {
+		listH = 5
+	}
+	itemListH := listH - filterLineH
+	itemCount := 0
+
+	if len(col.items) > 0 {
+		end := min(col.offset+itemListH, len(vis))
+		for i := col.offset; i < end; i++ {
+			item := vis[i]
+			label := item.name
+			if len(item.args) > 0 {
+				label += "(...)"
+			}
+
+			tag := item.kind.label()
+			tagStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(item.kind.color())).Render(tag)
+			tagW := lipgloss.Width(tagStyled)
+
+			maxLabel := max(w-3-tagW, 4)
+			label = truncate(label, maxLabel)
+
+			prefix := "  "
+			if i == col.index {
+				prefix = "▸ "
+			}
+			leftPart := prefix + label
+			leftW := lipgloss.Width(leftPart)
+			gap := max(w-leftW-tagW, 1)
+
+			isHovered := c.hovered && c.hoverRow == (i-col.offset)
+
+			if i == col.index && c.isActive {
+				leftStyled := docSelectedStyle.Render(prefix+label) + strings.Repeat(" ", gap) + tagStyled
+				lines = append(lines, leftStyled)
+			} else if isHovered {
+				leftStyled := docHoverStyle.Render(prefix + label + strings.Repeat(" ", gap) + tag)
+				lines = append(lines, leftStyled)
+			} else {
+				raw := leftPart + strings.Repeat(" ", gap) + tagStyled
+				lines = append(lines, raw)
+			}
+			itemCount++
+		}
+	} else if c.colIdx > 0 {
+		prevCol := &c.browser.columns[c.colIdx-1]
+		if item, ok := prevCol.selectedItem(); ok {
+			detailContent := renderDocDetail(item, w, docTextStyle, docArgNameStyle, docArgTypeStyle, docDimStyle)
+			contentH := listH
+			dOffset := min(col.detailOffset, len(detailContent))
+			end := min(dOffset+contentH, len(detailContent))
+			lines = append(lines, detailContent[dOffset:end]...)
+		}
+	}
+	c.itemCount = itemCount
+
+	// Pad to full height and full width so that zone markers (added by
+	// RenderChild/markLines) span the entire column rectangle.
+	for len(lines) < listH+2 {
+		lines = append(lines, "")
+	}
+	for i, line := range lines {
+		lines[i] = padRight(line, w)
+	}
+
+	return tuist.RenderResult{Lines: lines}
+}
+
+func (c *docColumnComp) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) bool {
+	col := &c.browser.columns[c.colIdx]
+
+	// Map zone-relative row to item index.
+	itemRow := ev.Row - c.itemStartRow
+	isOnItem := itemRow >= 0 && itemRow < c.itemCount
+
+	switch e := ev.MouseEvent.(type) {
+	case uv.MouseMotionEvent:
+		_ = e
+		newHover := -1
+		if isOnItem {
+			newHover = itemRow
+		}
+		if c.hoverRow != newHover {
+			c.hoverRow = newHover
+			c.Update()
+		}
+		return true
+
+	case uv.MouseClickEvent:
+		if isOnItem {
+			absItem := c.scrollOffset + itemRow
+			vis := col.visible()
+			if absItem < len(vis) {
+				c.browser.activeCol = c.colIdx
+				col.index = absItem
+				c.browser.clampScroll(col)
+				c.browser.expandSelection()
+				c.browser.Update()
+			}
+		}
+		return true
+
+	case uv.MouseWheelEvent:
+		m := ev.Mouse()
+		vis := col.visible()
+		if len(col.items) > 0 {
+			switch m.Button {
+			case uv.MouseWheelUp:
+				if col.index > 0 {
+					col.index--
+					c.browser.activeCol = c.colIdx
+					c.browser.clampScroll(col)
+					c.browser.expandSelection()
+					c.browser.Update()
+				}
+			case uv.MouseWheelDown:
+				if col.index < len(vis)-1 {
+					col.index++
+					c.browser.activeCol = c.colIdx
+					c.browser.clampScroll(col)
+					c.browser.expandSelection()
+					c.browser.Update()
+				}
+			}
+		} else {
+			// Detail pane — scroll detail content.
+			switch m.Button {
+			case uv.MouseWheelUp:
+				if col.detailOffset > 0 {
+					col.detailOffset--
+					c.browser.Update()
+				}
+			case uv.MouseWheelDown:
+				col.detailOffset++
+				c.browser.Update()
+			}
+		}
+		return true
+	}
+
+	return false
+}
+
+func (c *docColumnComp) SetHovered(_ tuist.EventContext, hovered bool) {
+	if c.hovered != hovered {
+		c.hovered = hovered
+		if !hovered {
+			c.hoverRow = -1
+		}
+		c.Update()
+	}
+}
+
+// ── doc browser overlay ─────────────────────────────────────────────────────
+
+// docBrowserOverlay wraps the doc browser data model as a tuist component.
+// It is Interactive (handles keyboard input) but NOT MouseEnabled — mouse
+// interaction is handled by individual breadcrumb and column sub-components
+// via tuist's positional dispatch.
 type docBrowserOverlay struct {
 	tuist.Compo
 	columns    []docColumn
@@ -21,41 +293,15 @@ type docBrowserOverlay struct {
 	onExit     func()
 	lastHeight int // cached from most recent Render; used by key handlers
 
-	// Mouse state — populated during Render for hit-testing in HandleMouse.
-	layout    docBrowserLayout // layout from most recent Render
-	hoverCol  int              // column index under mouse, or -1
-	hoverItem int              // item index (within visible()) under mouse, or -1
-}
-
-// docBrowserLayout captures the spatial layout from the most recent render
-// so HandleMouse can map terminal coordinates to items.
-type docBrowserLayout struct {
-	visStart int // first visible column index
-	visEnd   int // one past last visible column index
-	colW     int // width of each column (except possibly the last)
-	lastColW int // width of the last visible column
-	sepW     int // width of each separator (" │ " = 3)
-	listH    int // height of the item list area
-
-	// Per visible column: the Y offset within the doc browser's output
-	// where items start (after title, separator, and optional filter).
-	colItemStartY []int
-	// Per visible column: the X offset where the column starts.
-	colStartX []int
-	// Per visible column: number of visible items rendered.
-	colItemCount []int
-	// Per visible column: scroll offset.
-	colOffset []int
-	// Per visible column: the column index in d.columns.
-	colIndex []int
+	// Sub-components for mouse interaction. Managed during Render.
+	crumbs  []*breadcrumbCrumb
+	colComps []*docColumnComp
 }
 
 func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 	root := buildColumn("(root)", "Top-level scope", typeEnv)
 	db := &docBrowserOverlay{
-		columns:   []docColumn{root},
-		hoverCol:  -1,
-		hoverItem: -1,
+		columns: []docColumn{root},
 	}
 	db.expandSelection()
 	return db
@@ -63,125 +309,13 @@ func newDocBrowserOverlay(typeEnv dang.Env) *docBrowserOverlay {
 
 func (d *docBrowserOverlay) HandleKeyPress(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
 	defer d.Update()
-	// Clear hover state on keyboard navigation.
-	d.hoverCol = -1
-	d.hoverItem = -1
 	key := uv.Key(ev)
 	if d.filtering {
 		d.handleFilterKey(key)
 	} else {
 		d.handleKey(key)
 	}
-	return true // doc browser consumes all keys when focused
-}
-
-// HandleMouse implements tuist.MouseEnabled, enabling terminal mouse capture
-// while the doc browser is mounted. Supports hover highlighting and click
-// navigation on all column items.
-func (d *docBrowserOverlay) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) bool {
-	m := ev.Mouse()
-
-	col, item := d.hitTest(ev.Col, ev.Row)
-
-	switch ev.MouseEvent.(type) {
-	case uv.MouseMotionEvent:
-		if col != d.hoverCol || item != d.hoverItem {
-			d.hoverCol = col
-			d.hoverItem = item
-			d.Update()
-		}
-	case uv.MouseClickEvent:
-		if col >= 0 && item >= 0 {
-			ci := col
-			colIdx := d.layout.colIndex[ci]
-			c := &d.columns[colIdx]
-			vis := c.visible()
-			absItem := d.layout.colOffset[ci] + item
-			if absItem < len(vis) {
-				// Switch active column and select the clicked item.
-				d.activeCol = colIdx
-				c.index = absItem
-				d.clampScroll(c)
-				d.expandSelection()
-				d.Update()
-			}
-		}
-	case uv.MouseWheelEvent:
-		if col >= 0 {
-			colIdx := d.layout.colIndex[col]
-			c := &d.columns[colIdx]
-			vis := c.visible()
-			if len(c.items) > 0 {
-				switch m.Button {
-				case uv.MouseWheelUp:
-					if c.index > 0 {
-						c.index--
-						d.activeCol = colIdx
-						d.clampScroll(c)
-						d.expandSelection()
-						d.Update()
-					}
-				case uv.MouseWheelDown:
-					if c.index < len(vis)-1 {
-						c.index++
-						d.activeCol = colIdx
-						d.clampScroll(c)
-						d.expandSelection()
-						d.Update()
-					}
-				}
-			} else {
-				// Detail pane — scroll detail content.
-				switch m.Button {
-				case uv.MouseWheelUp:
-					if c.detailOffset > 0 {
-						c.detailOffset--
-						d.Update()
-					}
-				case uv.MouseWheelDown:
-					c.detailOffset++
-					d.Update()
-				}
-			}
-		}
-	}
-
-	return true // consume all mouse events when focused
-}
-
-// hitTest maps terminal (x, y) coordinates to (visible column index, item
-// index within that column's rendered items). Returns (-1, -1) if the
-// coordinates don't land on an item.
-func (d *docBrowserOverlay) hitTest(x, y int) (col int, item int) {
-	lay := &d.layout
-	if len(lay.colStartX) == 0 {
-		return -1, -1
-	}
-
-	// Find which column the X coordinate falls in.
-	col = -1
-	for ci := range lay.colStartX {
-		w := lay.colW
-		if ci == len(lay.colStartX)-1 {
-			w = lay.lastColW
-		}
-		if x >= lay.colStartX[ci] && x < lay.colStartX[ci]+w {
-			col = ci
-			break
-		}
-	}
-	if col < 0 {
-		return -1, -1
-	}
-
-	// Check Y is within the item area.
-	itemStartY := lay.colItemStartY[col]
-	itemIdx := y - itemStartY
-	if itemIdx < 0 || itemIdx >= lay.colItemCount[col] {
-		return col, -1
-	}
-
-	return col, itemIdx
+	return true
 }
 
 func (d *docBrowserOverlay) handleKey(key uv.Key) {
@@ -291,21 +425,12 @@ func (d *docBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 		return tuist.RenderResult{Lines: []string{"(too narrow)"}}
 	}
 
-	// Cache height for key handlers (clampScroll, page up/down).
 	if height > 0 {
 		d.lastHeight = height
 	}
 	listH := max(height-4, 5)
 
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
-	activeTitle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	sep := sepStyle.Render(" │ ")
+	sep := docSepStyle.Render(" │ ")
 
 	visStart, visEnd := d.visibleRange()
 	numVis := max(visEnd-visStart, 1)
@@ -313,158 +438,68 @@ func (d *docBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	colW := max((width-sepW)/numVis, 15)
 	lastColW := max(width-sepW-colW*(numVis-1), colW)
 
-	hoverStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
+	// ── Sync column components ──────────────────────────────────────────
 
-	// Build layout info for mouse hit-testing.
-	lay := docBrowserLayout{
-		visStart: visStart,
-		visEnd:   visEnd,
-		colW:     colW,
-		lastColW: lastColW,
-		sepW:     3,
-		listH:    listH,
+	d.syncColComps(visStart, visEnd)
+	for ci, cc := range d.colComps {
+		cc.colIdx = visStart + ci
+		cc.isActive = cc.colIdx == d.activeCol
+		cc.Update()
 	}
+
+	// ── Render columns via RenderChild (auto-marks with zone markers) ───
 
 	var colRendered [][]string
-	xOffset := 0
-	for ci := visStart; ci < visEnd; ci++ {
-		col := d.columns[ci]
-		visIdx := ci - visStart // index into colRendered
+	for ci, cc := range d.colComps {
 		w := colW
-		if ci == visEnd-1 {
+		if ci == len(d.colComps)-1 {
 			w = lastColW
 		}
-		isActive := ci == d.activeCol
-		isFiltering := d.filtering && isActive
-
-		lay.colStartX = append(lay.colStartX, xOffset)
-		lay.colIndex = append(lay.colIndex, ci)
-
-		var lines []string
-
-		t := col.title
-		if isActive {
-			lines = append(lines, activeTitle.Render(truncate(t, w)))
-		} else {
-			lines = append(lines, titleStyle.Render(truncate(t, w)))
-		}
-		lines = append(lines, sepStyle.Render(strings.Repeat("─", w)))
-
-		vis := col.visible()
-		filterLineH := 0
-		if len(col.items) > 0 && (isFiltering || col.filter != "") {
-			filterLineH = 1
-			filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-			filterText := "/" + col.filter
-			if isFiltering {
-				filterText += "_"
-			}
-			countText := dimSt.Render(fmt.Sprintf(" %d/%d", len(vis), len(col.items)))
-			countW := lipgloss.Width(countText)
-			filterDisp := filterStyle.Render(truncate(filterText, w-countW))
-			dispW := lipgloss.Width(filterDisp)
-			gap := max(w-dispW-countW, 0)
-			lines = append(lines, filterDisp+strings.Repeat(" ", gap)+countText)
-		}
-
-		// Items start at: breadcrumb (1) + title (1) + sep (1) + filter (0 or 1) = 3 + filterLineH
-		// in the final output. Within colRendered, it's 2 + filterLineH.
-		lay.colItemStartY = append(lay.colItemStartY, 1+2+filterLineH) // +1 for breadcrumb row
-		lay.colOffset = append(lay.colOffset, col.offset)
-
-		itemListH := listH - filterLineH
-		itemCount := 0
-		if len(col.items) > 0 {
-			end := min(col.offset+itemListH, len(vis))
-			for i := col.offset; i < end; i++ {
-				item := vis[i]
-				label := item.name
-				if len(item.args) > 0 {
-					label += "(...)"
-				}
-
-				tag := item.kind.label()
-				tagStyled := lipgloss.NewStyle().Foreground(lipgloss.Color(item.kind.color())).Render(tag)
-				tagW := lipgloss.Width(tagStyled)
-
-				maxLabel := max(w-3-tagW, 4)
-				label = truncate(label, maxLabel)
-
-				prefix := "  "
-				if i == col.index {
-					prefix = "▸ "
-				}
-				leftPart := prefix + label
-				leftW := lipgloss.Width(leftPart)
-				gap := max(w-leftW-tagW, 1)
-
-				// Determine if this item is hovered.
-				isHovered := d.hoverCol == visIdx && d.hoverItem == (i-col.offset)
-
-				if i == col.index && isActive {
-					leftStyled := selectedStyle.Render(prefix+label) + strings.Repeat(" ", gap) + tagStyled
-					lines = append(lines, leftStyled)
-				} else if isHovered {
-					leftStyled := hoverStyle.Render(prefix + label + strings.Repeat(" ", gap) + tag)
-					lines = append(lines, leftStyled)
-				} else {
-					raw := leftPart + strings.Repeat(" ", gap) + tagStyled
-					lines = append(lines, raw)
-				}
-				itemCount++
-			}
-		} else if ci > 0 {
-			prevCol := &d.columns[ci-1]
-			if item, ok := prevCol.selectedItem(); ok {
-				detailContent := d.renderDetailContent(item, w, docTextStyle, argNameStyle, argTypeStyle, dimSt)
-				contentH := listH
-				dOffset := min(col.detailOffset, len(detailContent))
-				end := min(dOffset+contentH, len(detailContent))
-				lines = append(lines, detailContent[dOffset:end]...)
-			}
-		}
-		lay.colItemCount = append(lay.colItemCount, itemCount)
-
-		for len(lines) < listH+2 {
-			lines = append(lines, "")
-		}
-
-		colRendered = append(colRendered, lines)
-		xOffset += w
-		if visIdx < numVis-1 {
-			xOffset += 3 // separator width
-		}
+		r := d.RenderChild(cc, tuist.RenderContext{Width: w, Height: listH + 2, ScreenHeight: height})
+		colRendered = append(colRendered, r.Lines)
 	}
 
-	d.layout = lay
+	// ── Stitch columns side by side ─────────────────────────────────────
 
 	totalLines := listH + 2
 	var rows []string
 	for i := range totalLines {
 		var parts []string
-		for ci, cl := range colRendered {
-			w := colW
-			if ci == len(colRendered)-1 {
-				w = lastColW
-			}
-			parts = append(parts, padRight(getLine(cl, i), w))
+		for _, cl := range colRendered {
+			parts = append(parts, getLine(cl, i))
 		}
 		rows = append(rows, strings.Join(parts, sep))
 	}
 
-	var crumbs []string
-	for i := 0; i <= d.activeCol; i++ {
-		crumbs = append(crumbs, d.columns[i].title)
+	// ── Breadcrumbs ─────────────────────────────────────────────────────
+
+	d.syncCrumbs()
+	var crumbParts []string
+	for i, c := range d.crumbs {
+		if i > 0 {
+			crumbParts = append(crumbParts, docDimStyle.Render(" › "))
+		}
+		c.active = i == d.activeCol
+		c.label = d.columns[i].title
+		c.Update()
+		r := d.RenderChild(c, tuist.RenderContext{Width: width})
+		text := ""
+		if len(r.Lines) > 0 {
+			text = r.Lines[0]
+		}
+		crumbParts = append(crumbParts, text)
 	}
-	breadcrumb := dimSt.Render(strings.Join(crumbs, " › "))
-	help := dimSt.Render("Up/Down/hjkl navigate | Click/scroll | / filter | Tab cycle | q/Esc exit")
+	breadcrumb := strings.Join(crumbParts, "")
+
+	// ── Assemble final output ───────────────────────────────────────────
+
+	help := docDimStyle.Render("Up/Down/hjkl navigate | Click/scroll | / filter | Tab cycle | q/Esc exit")
 
 	var result []string
 	result = append(result, breadcrumb)
 	result = append(result, rows...)
 	result = append(result, help)
 
-	// Truncate lines to width.
 	for i, line := range result {
 		if tuist.VisibleWidth(line) > width {
 			result[i] = tuist.Truncate(line, width, "")
@@ -474,9 +509,41 @@ func (d *docBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	return tuist.RenderResult{Lines: result}
 }
 
-func (d *docBrowserOverlay) renderDetailContent(item docItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
-	return renderDocDetail(item, w, docStyle, argNameStyle, argTypeStyle, dimSt)
+// ── sub-component sync ──────────────────────────────────────────────────────
+
+// syncCrumbs ensures d.crumbs has exactly activeCol+1 entries.
+func (d *docBrowserOverlay) syncCrumbs() {
+	need := d.activeCol + 1
+	for len(d.crumbs) > need {
+		d.crumbs = d.crumbs[:len(d.crumbs)-1]
+	}
+	for len(d.crumbs) < need {
+		idx := len(d.crumbs)
+		c := &breadcrumbCrumb{}
+		c.onClick = func() {
+			if idx < d.activeCol {
+				d.activeCol = idx
+				d.expandSelection()
+				d.Update()
+			}
+		}
+		d.crumbs = append(d.crumbs, c)
+	}
 }
+
+// syncColComps ensures d.colComps has exactly visEnd-visStart entries.
+func (d *docBrowserOverlay) syncColComps(visStart, visEnd int) {
+	need := visEnd - visStart
+	for len(d.colComps) > need {
+		d.colComps = d.colComps[:len(d.colComps)-1]
+	}
+	for len(d.colComps) < need {
+		cc := &docColumnComp{browser: d, hoverRow: -1}
+		d.colComps = append(d.colComps, cc)
+	}
+}
+
+// ── detail rendering ────────────────────────────────────────────────────────
 
 // renderDocDetail renders structured documentation for a docItem. Shared by
 // the doc browser detail column and the completion detail bubble.
@@ -540,6 +607,8 @@ func renderDocDetail(item docItem, w int, docStyle, argNameStyle, argTypeStyle, 
 	return lines
 }
 
+// ── navigation ──────────────────────────────────────────────────────────────
+
 func (d *docBrowserOverlay) expandSelection() {
 	d.columns = d.columns[:d.activeCol+1]
 	col := &d.columns[d.activeCol]
@@ -570,8 +639,7 @@ func (d *docBrowserOverlay) clampScroll(col *docColumn) {
 }
 
 func (d *docBrowserOverlay) listHeight() int {
-	h := max(d.lastHeight-4, 5)
-	return h
+	return max(d.lastHeight-4, 5)
 }
 
 func (d *docBrowserOverlay) visibleRange() (int, int) {
