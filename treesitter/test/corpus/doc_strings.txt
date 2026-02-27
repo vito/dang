@@ -247,5 +247,4 @@ type Dev {
                               (immediate_string_content)
                               (immediate_quote_token))))))))
                 (sep)))))
-        (sep))))
-  (sep))
+        (sep)))))

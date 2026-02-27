@@ -55,8 +55,8 @@
           "name": "comma_token"
         },
         {
-          "type": "STRING",
-          "value": "\n"
+          "type": "SYMBOL",
+          "name": "_automatic_newline"
         }
       ]
     },
@@ -5039,6 +5039,12 @@
     {
       "type": "PATTERN",
       "value": "\\s"
+    }
+  ],
+  "externals": [
+    {
+      "type": "SYMBOL",
+      "name": "_automatic_newline"
     }
   ],
   "supertypes": [

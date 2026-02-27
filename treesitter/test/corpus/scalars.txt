@@ -93,5 +93,4 @@ false
         (non_zero_decimal_digit)
         (decimal_digit)
         (decimal_digit)))
-    (sep))
-  (sep))
+    (sep)))

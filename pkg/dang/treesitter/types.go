@@ -12,6 +12,7 @@ type Grammar struct {
 	Word        RuleName                    `json:"word"`
 	Rules       *OrderedMap[RuleName, Rule] `json:"rules"`
 	Extras      []Rule                      `json:"extras,omitempty"`
+	Externals   []Rule                      `json:"externals,omitempty"`
 	Inline      []string                    `json:"inline,omitempty"`
 	Supertypes  []string                    `json:"supertypes,omitempty"`
 	Conflicts   [][]RuleName                `json:"conflicts,omitempty"`
@@ -75,6 +76,15 @@ func (o *OrderedMap[K, T]) Add(key K, value T) {
 	if _, exists := o.values[key]; !exists {
 		o.keys = append(o.keys, key)
 	}
+	o.values[key] = value
+}
+
+func (o *OrderedMap[K, T]) Get(key K) (T, bool) {
+	v, ok := o.values[key]
+	return v, ok
+}
+
+func (o *OrderedMap[K, T]) Set(key K, value T) {
 	o.values[key] = value
 }
 

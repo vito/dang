@@ -354,5 +354,4 @@ print(test(bin(src)))
                                 (symbol_or_call
                                   (auto_call_symbol
                                     (id
-                                      (word_token)))))))))))))))))))
-  (sep))
+                                      (word_token))))))))))))))))))))

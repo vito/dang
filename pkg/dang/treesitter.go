@@ -47,6 +47,18 @@ func TreesitterGrammar() treesitter.Grammar {
 		},
 	}
 
+	// Register an external scanner token for automatic newline separators.
+	// The external scanner (src/scanner.c) decides at lex time whether a
+	// newline is a statement separator or just whitespace. Newlines followed
+	// by continuation tokens (like `.` for method chains) are NOT separators,
+	// allowing multi-line expressions to parse correctly.
+	ts.Externals = []treesitter.Rule{
+		{
+			Type: treesitter.RuleTypeSymbol,
+			Name: "_automatic_newline",
+		},
+	}
+
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i
 		tsRule := treesitterRule(rule, prec)
@@ -57,6 +69,21 @@ func TreesitterGrammar() treesitter.Grammar {
 			slog.Info("adding grammar rule", "rule", rule.name)
 			ts.Rules.Add(treesitter.Name(rule.name), *tsRule)
 		}
+	}
+
+	// Patch the sep rule: replace the literal "\n" with the external
+	// _automatic_newline token so the external scanner controls when
+	// newlines act as statement separators.
+	if sepRule, ok := ts.Rules.Get("sep"); ok {
+		for i, member := range sepRule.Members {
+			if member.Type == treesitter.RuleTypeString && member.Value == "\n" {
+				sepRule.Members[i] = treesitter.Rule{
+					Type: treesitter.RuleTypeSymbol,
+					Name: "_automatic_newline",
+				}
+			}
+		}
+		ts.Rules.Set("sep", sepRule)
 	}
 
 	return ts
