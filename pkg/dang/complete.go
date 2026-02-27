@@ -410,9 +410,15 @@ func MembersOf(t hm.Type, partial string) []Completion {
 		t = nn.Type
 	}
 
+	// Map built-in scalar and list types to their method module so that
+	// completions show e.g. split for strings and reduce for lists.
 	module, ok := t.(Env)
 	if !ok {
-		return nil
+		if mod := builtinModuleFor(t); mod != nil {
+			module = mod
+		} else {
+			return nil
+		}
 	}
 
 	partialLower := strings.ToLower(partial)
@@ -440,6 +446,22 @@ func MembersOf(t hm.Type, partial string) []Completion {
 	}
 
 	return completions
+}
+
+// builtinModuleFor returns the builtin method module for a primitive or list
+// type, or nil if the type has no builtin methods.
+func builtinModuleFor(t hm.Type) *Module {
+	switch t.(type) {
+	case ListType:
+		return ListTypeModule
+	}
+	if mod, ok := t.(*Module); ok {
+		switch mod {
+		case StringType, IntType, FloatType, BooleanType:
+			return mod
+		}
+	}
+	return nil
 }
 
 // completeLexical returns completions from the type environment matching a prefix.

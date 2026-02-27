@@ -712,6 +712,10 @@ func registerBuiltinTypes() {
 			fnType := createFunctionTypeFromDef(def)
 			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
 			receiverType.Add(def.Name, hm.NewScheme(nil, fnType))
+			receiverType.SetVisibility(def.Name, PublicVisibility)
+			if def.Doc != "" {
+				receiverType.SetDocString(def.Name, def.Doc)
+			}
 		})
 	}
 
