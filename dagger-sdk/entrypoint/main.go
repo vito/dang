@@ -623,8 +623,11 @@ func createObjectTypeDef(ctx context.Context, dag *dagger.Client, name string, m
 func createEnumTypeDef(dag *dagger.Client, name string, enumMod *dang.ModuleValue) (*dagger.TypeDef, error) {
 	enumDef := dag.TypeDef().WithEnum(name)
 
-	// Add each enum value as a member
-	for memberName := range enumMod.Values {
+	// Only include actual enum values, not accessors like values()
+	for memberName, val := range enumMod.Values {
+		if _, ok := val.(dang.EnumValue); !ok {
+			continue
+		}
 		enumDef = enumDef.WithEnumMember(memberName)
 	}
 

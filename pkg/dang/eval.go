@@ -614,8 +614,11 @@ func addBuiltinFunctions(env EvalEnv) {
 			}
 			enumModValue := NewModuleValue(subMod)
 			var enumValues []Value
-			for varName, _ := range subMod.Bindings(PublicVisibility) {
-				if varName == "values" {
+			for varName, scheme := range subMod.Bindings(PublicVisibility) {
+				// Only include actual enum members (whose type is the
+				// enum itself), not accessors like values().
+				t, _ := scheme.Type()
+				if nn, ok := t.(hm.NonNullType); !ok || nn.Type != hm.Type(subMod) {
 					continue
 				}
 				ev := EnumValue{Val: varName, EnumType: subMod}
