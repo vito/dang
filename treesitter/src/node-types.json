@@ -54,7 +54,15 @@
         "named": true
       },
       {
+        "type": "raise",
+        "named": true
+      },
+      {
         "type": "term",
+        "named": true
+      },
+      {
+        "type": "try_catch",
         "named": true
       },
       {
@@ -1044,6 +1052,56 @@
         },
         {
           "type": "else_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "catch_clause",
+    "named": true,
+    "fields": {
+      "binding": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "type_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
+          "named": true
+        },
+        {
+          "type": "colon_token",
           "named": true
         }
       ]
@@ -2996,6 +3054,32 @@
     }
   },
   {
+    "type": "raise",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "raise_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "reassignment",
     "named": true,
     "fields": {
@@ -3352,6 +3436,70 @@
       "types": [
         {
           "type": "triple_quote",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "try_catch",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "clause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "catch_clause",
+            "named": true
+          }
+        ]
+      },
+      "cs": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "catch_clause",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "catch_clause",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "catch_token",
+          "named": true
+        },
+        {
+          "type": "try_token",
           "named": true
         }
       ]
@@ -4242,6 +4390,10 @@
     "named": true
   },
   {
+    "type": "catch_token",
+    "named": true
+  },
+  {
     "type": "colon_token",
     "named": true
   },
@@ -4375,6 +4527,10 @@
     "named": true
   },
   {
+    "type": "raise_token",
+    "named": true
+  },
+  {
     "type": "scalar_token",
     "named": true
   },
@@ -4392,6 +4548,10 @@
   },
   {
     "type": "true_token",
+    "named": true
+  },
+  {
+    "type": "try_token",
     "named": true
   },
   {

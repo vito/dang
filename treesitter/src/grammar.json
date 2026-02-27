@@ -155,6 +155,14 @@
       "members": [
         {
           "type": "SYMBOL",
+          "name": "try_catch"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "raise"
+        },
+        {
+          "type": "SYMBOL",
           "name": "conditional"
         },
         {
@@ -193,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 154,
+      "value": 160,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -399,7 +407,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 147,
+      "value": 153,
       "content": {
         "type": "SEQ",
         "members": [
@@ -482,7 +490,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 146,
+      "value": 152,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2239,7 +2247,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 92,
+      "value": 98,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2288,7 +2296,7 @@
     },
     "named_type": {
       "type": "PREC_LEFT",
-      "value": 91,
+      "value": 97,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2433,7 +2441,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 87,
+      "value": 93,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2521,7 +2529,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 89,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2585,7 +2593,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 82,
+      "value": 88,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2649,7 +2657,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 81,
+      "value": 87,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2730,7 +2738,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 79,
+      "value": 85,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2819,7 +2827,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 77,
+      "value": 83,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2900,7 +2908,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 75,
+      "value": 81,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3792,6 +3800,180 @@
             }
           ]
         }
+      }
+    },
+    "try_catch": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "try_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "block"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "catch_token"
+        },
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "FIELD",
+          "name": "cs",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "FIELD",
+                  "name": "clause",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "catch_clause"
+                  }
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "sep"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "last",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "catch_clause"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "catch_clause": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "binding",
+              "content": {
+                "type": "SYMBOL",
+                "name": "symbol"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "colon_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "type_name",
+              "content": {
+                "type": "SYMBOL",
+                "name": "symbol"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "arrow_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "expr",
+              "content": {
+                "type": "SYMBOL",
+                "name": "form"
+              }
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "binding",
+              "content": {
+                "type": "SYMBOL",
+                "name": "symbol"
+              }
+            },
+            {
+              "type": "SYMBOL",
+              "name": "arrow_token"
+            },
+            {
+              "type": "FIELD",
+              "name": "expr",
+              "content": {
+                "type": "SYMBOL",
+                "name": "form"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "try_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "try"
+      }
+    },
+    "catch_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "catch"
+      }
+    },
+    "raise": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "raise_token"
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "form"
+          }
+        }
+      ]
+    },
+    "raise_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": "raise"
       }
     },
     "conditional": {
