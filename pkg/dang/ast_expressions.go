@@ -123,7 +123,40 @@ func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 
 // inferFunctionType handles type inference for FunctionType calls
 func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, ft *hm.FunctionType) (hm.Type, error) {
-	// Handle block arg first if present (needs special bidirectional inference)
+	// Handle positional argument mapping for type inference
+	argMapping, err := c.mapArgumentsForInference(ft)
+	if err != nil {
+		return nil, err
+	}
+
+	// Type check each argument first, collecting substitutions from unifying
+	// actual argument types with expected parameter types. This resolves type
+	// variables (e.g. 'b' in reduce's initial parameter) before we infer the
+	// block arg, which may depend on those type variables.
+	var argSubs hm.Subs
+	for i, arg := range c.Args {
+		k := c.getArgumentKey(arg, argMapping, i)
+		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
+		if err != nil {
+			return nil, fmt.Errorf("argument %q: %w", k, err)
+		}
+		if subs != nil {
+			if argSubs == nil {
+				argSubs = subs
+			} else {
+				argSubs = argSubs.Compose(subs)
+			}
+		}
+	}
+
+	// Apply argument substitutions to the function type before inferring the
+	// block arg, so that type variables resolved from arguments (like 'b' from
+	// reduce's initial arg) are concrete in the block's expected param types.
+	if argSubs != nil {
+		ft = ft.Apply(argSubs).(*hm.FunctionType)
+	}
+
+	// Handle block arg if present (needs special bidirectional inference)
 	var blockArgSubs hm.Subs
 	if c.BlockArg != nil {
 		subs, err := c.inferBlockArg(ctx, env, fresh, ft)
@@ -131,21 +164,6 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			return nil, fmt.Errorf("block argument: %w", err)
 		}
 		blockArgSubs = subs
-	}
-
-	// Handle positional argument mapping for type inference
-	argMapping, err := c.mapArgumentsForInference(ft)
-	if err != nil {
-		return nil, err
-	}
-
-	// Type check each argument
-	for i, arg := range c.Args {
-		k := c.getArgumentKey(arg, argMapping, i)
-		err := c.checkArgumentType(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
-		if err != nil {
-			return nil, fmt.Errorf("argument %q: %w", k, err)
-		}
 	}
 
 	// Check that all required arguments are provided
@@ -226,26 +244,35 @@ func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, ind
 
 // checkArgumentType validates an argument's type against the expected parameter type
 func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
+	_, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, value, recordType, key)
+	return err
+}
+
+// checkArgumentTypeWithSubs validates an argument's type against the expected
+// parameter type and returns any substitutions produced by unification. This is
+// used to resolve type variables from argument types before inferring block args.
+func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) (hm.Subs, error) {
 	scheme, has := recordType.SchemeOf(key)
 	if !has {
-		return fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
+		return nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
 	}
 
 	dt, isMono := scheme.Type()
 	if !isMono {
-		return fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
+		return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
 	}
 
 	// Infer the argument type
 	it, err := value.Infer(ctx, env, fresh)
 	if err != nil {
-		return fmt.Errorf("FunCall.Infer: %w", err)
+		return nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
-	if _, err := hm.Assignable(it, dt); err != nil {
-		return NewInferError(err, value)
+	subs, err := hm.Assignable(it, dt)
+	if err != nil {
+		return nil, NewInferError(err, value)
 	}
-	return nil
+	return subs, nil
 }
 
 var _ hm.Apply = (*FunCall)(nil)
