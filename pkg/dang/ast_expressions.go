@@ -630,30 +630,42 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, err
 		}
 
-		// Check if receiver is a list type - handle methods on lists specially
+		// Check if receiver is a list type - handle methods on lists specially.
+		// Supports both non-null lists ([T!]!) and nullable lists ([T!]).
+		var listElemType hm.Type
+		var nullableList bool
 		if nn, ok := lt.(hm.NonNullType); ok {
 			if listType, ok := nn.Type.(ListType); ok {
-				// Special handling for list methods
-				elemType := listType.Type
-
-				// Look up method definition
-				def, found := LookupMethod(ListTypeModule, d.Field.Name)
-				if !found {
-					tv := fresh.Fresh()
-					d.SetInferredType(tv)
-					return tv, fmt.Errorf("list does not have method %q", d.Field.Name)
-				}
-
-				// Build method type with element type substituted for type variable
-				methodType := instantiateListMethod(def, elemType)
-
-				if d.AutoCall {
-					methodType, _ = autoCallFnType(methodType)
-				}
-
-				d.SetInferredType(methodType)
-				return methodType, nil
+				listElemType = listType.Type
 			}
+		} else if listType, ok := lt.(ListType); ok {
+			listElemType = listType.Type
+			nullableList = true
+		}
+		if listElemType != nil {
+			// Look up method definition
+			def, found := LookupMethod(ListTypeModule, d.Field.Name)
+			if !found {
+				tv := fresh.Fresh()
+				d.SetInferredType(tv)
+				return tv, fmt.Errorf("list does not have method %q", d.Field.Name)
+			}
+
+			// Build method type with element type substituted for type variable
+			methodType := instantiateListMethod(def, listElemType)
+
+			if d.AutoCall {
+				methodType, _ = autoCallFnType(methodType)
+			}
+
+			// For nullable list receivers, mark as nullable so the call site
+			// propagates null and makes the return type nullable.
+			if nullableList {
+				d.NullableReceiver = true
+			}
+
+			d.SetInferredType(methodType)
+			return methodType, nil
 		}
 
 		// Check if receiver is nullable or non-null

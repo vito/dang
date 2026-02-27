@@ -1,0 +1,27 @@
+# Test that list methods work on nullable lists with null propagation.
+
+# map on a nullable list returns a nullable result
+let x: [Int!] = [1, 2, 3]
+let mapped: [Int!] = x.map { y => y + 2 }
+assert { mapped == [3, 4, 5] }
+
+# filter on a nullable list
+let filtered: [Int!] = x.filter { y => y > 1 }
+assert { filtered == [2, 3] }
+
+# reduce on a nullable list
+let sum: Int = x.reduce(0) { acc, y => acc + y }
+assert { sum == 6 }
+
+# length on a nullable list
+let len: Int = x.length
+assert { len == 3 }
+
+# null propagation: methods on a null list return null
+let empty: [Int!] = null
+assert { empty.map { y => y + 1 } == null }
+assert { empty.filter { y => y > 0 } == null }
+assert { empty.reduce(0) { acc, y => acc + y } == null }
+assert { empty.length == null }
+
+print("Nullable list method tests passed!")
