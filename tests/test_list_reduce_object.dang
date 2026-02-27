@@ -1,0 +1,45 @@
+# Test that reduce infers object types for accumulator and element parameters.
+#
+# This exercises the fix where type variables shared between regular arguments
+# and block parameters (e.g. 'b' for the accumulator in reduce) must be
+# resolved from the argument types before inferring the block body. Without
+# that, calling methods on the accumulator or element inside the block would
+# fail with "expected NonNullType or Env, got hm.TypeVariable".
+
+type Bag {
+  pub items: [String!]! = []
+
+  pub add(item: String!): Bag! {
+    self.items += [item]
+    self
+  }
+
+  pub merge(other: Bag!): Bag! {
+    self.items += other.items
+    self
+  }
+}
+
+# Reduce with an object accumulator — the block must know 'combined' is Bag!
+# so it can call .add() on it.
+pub names: [String!]! = ["alice", "bob", "carol"]
+pub collected: Bag! = names.reduce(Bag) { combined, name =>
+  combined.add(name)
+}
+assert { collected.items == ["alice", "bob", "carol"] }
+
+# Reduce where both accumulator and elements are object types — the block must
+# know the types of both parameters to call methods on them.
+pub bags: [Bag!]! = [Bag.add("a"), Bag.add("b").add("c")]
+pub merged: Bag! = bags.reduce(Bag) { combined, bag =>
+  combined.merge(bag)
+}
+assert { merged.items == ["a", "b", "c"] }
+
+# Chained method calls on the accumulator inside reduce.
+pub chained: Bag! = ["x", "y", "z"].reduce(Bag) { bag, item =>
+  bag.add(item).add(item)
+}
+assert { chained.items == ["x", "x", "y", "y", "z", "z"] }
+
+print("List reduce object type inference tests passed!")
