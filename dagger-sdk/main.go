@@ -22,7 +22,8 @@ func New(
 	//   "!**/go.mod",
 	//   "!**/go.sum",
 	//   "!pkg",
-	//   "!dagger-sdk"
+	//   "!dagger-sdk",
+	//   "!treesitter"
 	// ]
 	source *dagger.Directory,
 ) *DangSdk {
@@ -77,9 +78,23 @@ func (t *DangSdk) Repl() *dagger.Container {
 		})
 }
 
+const ZigURL = "https://ziglang.org/builds/zig-x86_64-linux-0.16.0-dev.2670+56253d9e3.tar.xz"
+
 func (t *DangSdk) goBase() *dagger.Container {
+	zigTarball := dag.HTTP(ZigURL)
+
+	zig := dag.Container().From(Golang).
+		WithExec([]string{"apt-get", "update"}).
+		WithExec([]string{"apt-get", "install", "-y", "xz-utils"}).
+		WithMountedFile("/tmp/zig.tar.xz", zigTarball).
+		WithExec([]string{"sh", "-c", "tar -xJf /tmp/zig.tar.xz -C /usr/local && mv /usr/local/zig-x86_64-linux-* /usr/local/zig"}).
+		Directory("/usr/local/zig")
+
 	return dag.Container().From(Golang).
-		WithEnvVariable("CGO_ENABLED", "0").
+		WithDirectory("/usr/local/zig", zig).
+		WithEnvVariable("PATH", "/usr/local/zig:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
+		WithEnvVariable("CC", "zig cc -target x86_64-linux-musl -lc").
+		WithEnvVariable("CXX", "zig c++ -target x86_64-linux-musl -lc").
 		WithDirectory("/src", t.Source).
 		WithDirectory("/src/dagger-sdk", dag.CurrentModule().Source()).
 		WithWorkdir("/src/dagger-sdk").
