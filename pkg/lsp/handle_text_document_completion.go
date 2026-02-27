@@ -70,19 +70,6 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 	}
 
 	if f.AST != nil {
-		// Check if we're completing a member access (e.g., "container.fr<TAB>")
-		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
-		if receiver != nil {
-			receiverType := receiver.GetInferredType()
-			if receiverType != nil {
-				completions := dang.MembersOf(receiverType, "")
-				items := completionsToItems(completions)
-				if len(items) > 0 {
-					return items, nil
-				}
-			}
-		}
-
 		// Add lexical bindings from enclosing scopes
 		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
 	}

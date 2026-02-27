@@ -1,68 +1,8 @@
 package lsp
 
 import (
-	"fmt"
-	"log/slog"
-
 	"github.com/vito/dang/pkg/dang"
 )
-
-// FindNodeAt returns the most specific AST node at the given position
-func FindNodeAt(root dang.Node, line, col int) dang.Node {
-	if root == nil {
-		return nil
-	}
-
-	var found dang.Node
-	root.Walk(func(node dang.Node) bool {
-		loc := node.GetSourceLocation()
-		if loc == nil {
-			return true
-		}
-
-		// Check if the cursor position is within this node's location
-		if containsPosition(loc, line, col) {
-			found = node
-			// Continue walking into children to find more specific (nested) nodes
-			return true
-		}
-		// Skip walking into children of nodes that don't contain the position
-		return false
-	})
-
-	return found
-}
-
-// containsPosition checks if a source location contains a line/column position
-func containsPosition(loc *dang.SourceLocation, line, col int) bool {
-	// LSP uses 0-based line/col, SourceLocation uses 1-based
-	dangLine := line + 1
-	dangCol := col + 1
-
-	// If we don't have an end position, fall back to simple same-line check
-	if loc.End == nil {
-		return loc.Line == dangLine && dangCol >= loc.Column
-	}
-
-	// Check if the position is within the bounds of this node
-	// Position must be after or at the start
-	if dangLine < loc.Line {
-		return false
-	}
-	if dangLine == loc.Line && dangCol < loc.Column {
-		return false
-	}
-
-	// Position must be before or at the end
-	if dangLine > loc.End.Line {
-		return false
-	}
-	if dangLine == loc.End.Line && dangCol > loc.End.Column {
-		return false
-	}
-
-	return true
-}
 
 // positionWithinNode checks if an LSP Position is within a node's source location
 func positionWithinNode(node dang.Node, pos Position) bool {
@@ -89,58 +29,6 @@ func positionWithinNode(node dang.Node, pos Position) bool {
 	// Check if position is within this node's range
 	return (pos.Line > startLine || (pos.Line == startLine && pos.Character >= startCol)) &&
 		(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol))
-}
-
-// FindReceiverAt finds the receiver expression for a Select node at the cursor
-// For "container.withDir", when cursor is after ".", return the "container" Symbol node
-func FindReceiverAt(body dang.Node, line, col int) dang.Node {
-	// Find ALL nodes at this position, looking specifically for Select nodes
-	var selectNode *dang.Select
-	body.Walk(func(node dang.Node) bool {
-		loc := node.GetSourceLocation()
-		if loc == nil {
-			slog.Warn("no source location for node", "want", []int{line, col}, "have", fmt.Sprintf("%T", node))
-			return true
-		}
-
-		// Check if this node contains the cursor position
-		if containsPosition(loc, line, col) {
-			// Check if it's a Select node
-			if sel, ok := node.(*dang.Select); ok {
-				selectNode = sel
-				// Continue walking to find the most specific Select
-			}
-			return true
-		}
-		// Skip walking into children of nodes that don't contain the position
-		return false
-	})
-
-	if selectNode != nil {
-		return selectNode.Receiver
-	}
-
-	return nil
-}
-
-// FindFunCallAt finds the innermost FunCall node whose argument list contains
-// the cursor. Returns the FunCall and the names of arguments already provided.
-func FindFunCallAt(root dang.Node, line, col int) *dang.FunCall {
-	var found *dang.FunCall
-	root.Walk(func(node dang.Node) bool {
-		loc := node.GetSourceLocation()
-		if loc == nil {
-			return true
-		}
-		if !containsPosition(loc, line, col) {
-			return false
-		}
-		if fc, ok := node.(*dang.FunCall); ok {
-			found = fc
-		}
-		return true
-	})
-	return found
 }
 
 // findEnclosingEnvironments walks the AST and collects all environments that enclose the given position.
