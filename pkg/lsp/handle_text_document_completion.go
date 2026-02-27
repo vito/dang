@@ -61,7 +61,8 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 			// resolve local variables (e.g. "ctr" defined inside a function).
 			env := h.buildCompletionEnv(f, params.Position)
 			if env != nil {
-				completions := dang.CompleteInput(ctx, env, tsResult.ReceiverText+"."+tsResult.Partial, len(tsResult.ReceiverText)+1+len(tsResult.Partial))
+				input := tsResult.ReceiverText + "." + tsResult.Partial
+				completions := dang.CompleteInput(ctx, env, input, len(input))
 				if len(completions) > 0 {
 					return completionsToItems(completions), nil
 				}
@@ -95,12 +96,9 @@ func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.Env {
 		return f.TypeEnv
 	}
 
-	// Build a layered env: start from the file-level env (cloned as a
-	// Module), then merge all enclosing scope bindings into it.
-	env, ok := f.TypeEnv.Clone().(*dang.Module)
-	if !ok {
-		return f.TypeEnv
-	}
+	// Build a layered env: start from the file-level env (cloned),
+	// then merge all enclosing scope bindings into it.
+	env := f.TypeEnv.Clone().(dang.Env)
 	for _, scopeEnv := range enclosing {
 		for name, scheme := range scopeEnv.Bindings(dang.PrivateVisibility) {
 			env.Add(name, scheme)
