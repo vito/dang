@@ -1562,7 +1562,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	// Create evaluation context for enhanced error reporting
 	evalCtx := NewEvalContext(filePath, source)
 
-	parsed, err := ParseFile(filePath, GlobalStore("filePath", filePath))
+	parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
 	if err != nil {
 		return err
 	}
@@ -1741,7 +1741,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 
 	for _, filePath := range dangFiles {
 		// Parse the file
-		parsed, err := ParseFile(filePath, GlobalStore("filePath", filePath))
+		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}

@@ -1,0 +1,9 @@
+[1m[31mError:[0m syntax error: incomplete 'if' expression
+  [2m[34m--> errors/syntax_incomplete_if.dang:1:1[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mif true
+[2m       [31m^^[0m
+ [2m  2 |   42[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

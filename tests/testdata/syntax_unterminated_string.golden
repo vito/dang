@@ -1,0 +1,9 @@
+[1m[31mError:[0m syntax error: unterminated string literal
+  [2m[34m--> errors/syntax_unterminated_string.dang:1:15[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlet x = "hello
+[2m                     [31m^[0m
+ [2m  2 | let y = 2[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

@@ -259,7 +259,7 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	f.Diagnostics = []Diagnostic{}
 
 	// Parse the Dang code
-	parsed, err := dang.Parse(string(uri), []byte(text))
+	parsed, err := dang.ParseWithRecovery(string(uri), []byte(text))
 	if err != nil {
 		// If parsing fails, add parse error as diagnostic and set empty structures
 		slog.Warn("failed to parse Dang code for LSP", "error", err)
