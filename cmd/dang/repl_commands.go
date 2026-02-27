@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/hm"
 	"codeberg.org/vito/tuist"
 )
 
@@ -250,7 +251,11 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("parse error: %v", err)))
 		return
 	}
-	node := result.(*dang.Block)
+	node, ok := result.(hm.Expression)
+	if !ok {
+		e.writeLogLine(errorStyle.Render("unexpected parse result"))
+		return
+	}
 	inferredType, err := dang.Infer(r.ctx, r.typeEnv, node, false)
 	if err != nil {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
