@@ -30,6 +30,12 @@ pub barQualified: Dagger.Container! {
   ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
+# local variable member completion (receiver not in top-level env)
+pub baz: Container! {
+  let ctr = container
+  ctr.fr # test: ^EEa<C-x><C-o> => ctr.from┃
+}
+
 # argument completion
 container.from() # nofmt test: ^f(a<C-x><C-o> => container.from(address┃)
 container.withExec() # nofmt test: ^f(a<C-x><C-o> => container.withExec(args┃)
