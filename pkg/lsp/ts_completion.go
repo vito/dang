@@ -3,12 +3,16 @@ package lsp
 import (
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/tree-sitter/go-tree-sitter"
 	"github.com/vito/dang/pkg/lsp/danglang"
 )
 
-var tsParser *tree_sitter.Parser
+var (
+	tsParser *tree_sitter.Parser
+	tsMu     sync.Mutex
+)
 
 func init() {
 	tsParser = tree_sitter.NewParser()
@@ -38,7 +42,12 @@ type tsReceiverResult struct {
 //   - Cursor positions past the end of Select nodes
 func tsParseAndFindReceiver(text string, line, col int) *tsReceiverResult {
 	source := []byte(text)
+
+	// tree-sitter parsers are not thread-safe; serialize access.
+	tsMu.Lock()
 	tree := tsParser.Parse(source, nil)
+	tsMu.Unlock()
+
 	if tree == nil {
 		return nil
 	}
