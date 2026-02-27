@@ -242,12 +242,6 @@ func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, ind
 	return arg.Key
 }
 
-// checkArgumentType validates an argument's type against the expected parameter type
-func (c *FunCall) checkArgumentType(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) error {
-	_, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, value, recordType, key)
-	return err
-}
-
 // checkArgumentTypeWithSubs validates an argument's type against the expected
 // parameter type and returns any substitutions produced by unification. This is
 // used to resolve type variables from argument types before inferring block args.
