@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented (Phases 1–5, with string-based arg detection as bridge)
+Implemented (Phases 1–6 complete; Phase 7 is optional/future)
 
 ## Problem
 
