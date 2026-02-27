@@ -962,6 +962,9 @@ func (l ListValue) String() string {
 }
 
 func (l ListValue) MarshalJSON() ([]byte, error) {
+	if l.Elements == nil {
+		return []byte("[]"), nil
+	}
 	return json.Marshal(l.Elements)
 }
 

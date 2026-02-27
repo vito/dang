@@ -26,4 +26,15 @@ pub json3 = toJSON(value: obj3)
 
 assert { json3 == "{\"data\":\"local\",\"timestamp\":1234567890}" }
 
+# Empty list from map should serialize as [] not null
+pub nums: [Int] = [1, 2, 3]
+pub emptyFiltered = nums.filter { x => false }
+pub json4 = toJSON(value: emptyFiltered)
+assert { json4 == "[]" }
+
+# map over empty result should also be []
+pub emptyMapped = emptyFiltered.map { x => x + 1 }
+pub json5 = toJSON(value: emptyMapped)
+assert { json5 == "[]" }
+
 print("JSON marshaling tests passed!")
