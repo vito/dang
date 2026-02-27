@@ -11,7 +11,7 @@ import (
 )
 
 // buildCompletionProvider returns a tuist.CompletionProvider that wraps
-// dang.CompleteInput, command completions, and static fallback completions.
+// dang.Complete, command completions, and static fallback completions.
 func (r *replComponent) buildCompletionProvider() tuist.CompletionProvider {
 	return func(input string, cursorPos int) tuist.CompletionResult {
 		if input == "" {
@@ -23,15 +23,36 @@ func (r *replComponent) buildCompletionProvider() tuist.CompletionProvider {
 			return r.commandCompletions(input)
 		}
 
-		// Type-aware completions via dang.CompleteInput.
-		completions := dang.CompleteInput(r.ctx, r.typeEnv, input, cursorPos)
-		if len(completions) > 0 {
-			return r.dangCompletions(input, completions)
+		// Convert byte offset to line/col for the tree-sitter based
+		// completion engine. For single-line input line=0, col=cursorPos.
+		// For multi-line input (Alt+Enter), count newlines.
+		line, col := byteOffsetToLineCol(input, cursorPos)
+
+		// Type-aware completions via the unified tree-sitter engine.
+		result := dang.Complete(r.ctx, r.typeEnv, input, line, col)
+		if len(result.Items) > 0 {
+			return r.dangCompletions(result)
 		}
 
 		// Fallback: static keyword/name completions.
 		return r.staticCompletions(input)
 	}
+}
+
+// byteOffsetToLineCol converts a byte offset in text to 0-based line/col.
+func byteOffsetToLineCol(text string, offset int) (line, col int) {
+	if offset > len(text) {
+		offset = len(text)
+	}
+	for i := 0; i < offset; i++ {
+		if text[i] == '\n' {
+			line++
+			col = 0
+		} else {
+			col++
+		}
+	}
+	return line, col
 }
 
 // commandCompletions returns completions for REPL commands.
@@ -56,24 +77,13 @@ func (r *replComponent) commandCompletions(input string) tuist.CompletionResult 
 	}
 }
 
-// dangCompletions converts dang.Completion results into tuist.CompletionResult,
-// applying the same filtering and sorting the old code did.
-func (r *replComponent) dangCompletions(input string, completions []dang.Completion) tuist.CompletionResult {
-	isArgCompletion := completions[0].IsArg
-	prefix, partial := splitForSuggestion(input)
-	replaceFrom := len(prefix)
+// dangCompletions converts a dang.CompletionResult into a tuist.CompletionResult,
+// applying filtering, sorting, and REPL-specific formatting.
+func (r *replComponent) dangCompletions(result dang.CompletionResult) tuist.CompletionResult {
+	isArgCompletion := len(result.Items) > 0 && result.Items[0].IsArg
 
-	partialLower := strings.ToLower(partial)
 	var items []tuist.Completion
-	for _, c := range completions {
-		cLower := strings.ToLower(c.Label)
-		if cLower == partialLower {
-			continue
-		}
-		if !strings.HasPrefix(cLower, partialLower) {
-			continue
-		}
-
+	for _, c := range result.Items {
 		item := tuist.Completion{
 			Label:         c.Label,
 			Detail:        c.Detail,
@@ -90,14 +100,36 @@ func (r *replComponent) dangCompletions(input string, completions []dang.Complet
 	}
 
 	// Sort exact-case matches before case-insensitive (skip for args).
-	if !isArgCompletion {
-		items = sortByCase(items, partial)
+	if !isArgCompletion && len(result.Items) > 0 {
+		// Extract the partial from the first completion's context.
+		// The partial is already filtered by Complete, so we just
+		// need to sort by case match.
+		partial := commonPrefix(result.Items)
+		if partial != "" {
+			items = sortByCase(items, partial)
+		}
 	}
 
 	return tuist.CompletionResult{
 		Items:       items,
-		ReplaceFrom: replaceFrom,
+		ReplaceFrom: result.ReplaceFrom,
 	}
+}
+
+// commonPrefix finds the longest common lowercase prefix of completion labels.
+// Used to determine the partial for case-sorting.
+func commonPrefix(completions []dang.Completion) string {
+	if len(completions) == 0 {
+		return ""
+	}
+	prefix := strings.ToLower(completions[0].Label)
+	for _, c := range completions[1:] {
+		label := strings.ToLower(c.Label)
+		for len(prefix) > 0 && !strings.HasPrefix(label, prefix) {
+			prefix = prefix[:len(prefix)-1]
+		}
+	}
+	return prefix
 }
 
 // staticCompletions returns fallback completions from the static keyword/name list.

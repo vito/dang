@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposal (not yet implemented)
+Implemented (Phases 1–5, with string-based arg detection as bridge)
 
 ## Problem
 

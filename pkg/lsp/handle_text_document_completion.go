@@ -2,25 +2,11 @@ package lsp
 
 import (
 	"context"
-	"strings"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
-
-// getLineUpToCursor returns the text of the given line up to the cursor column.
-func getLineUpToCursor(text string, line, col int) string {
-	lines := strings.Split(text, "\n")
-	if line < 0 || line >= len(lines) {
-		return ""
-	}
-	l := lines[line]
-	if col > len(l) {
-		col = len(l)
-	}
-	return strings.TrimLeft(l[:col], " \t")
-}
 
 func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {
 	if !req.HasParams() {
@@ -37,41 +23,16 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	// Try text-based completion first. This handles argument completion
-	// (inside parens) and member/method completion on expressions that the
-	// AST path can't resolve (e.g. "hello".sp where the cursor is past the
-	// end of the Select node, or builtin type methods on strings/lists).
-	if f.TypeEnv != nil {
-		lineText := getLineUpToCursor(f.Text, params.Position.Line, params.Position.Character)
-		if lineText != "" {
-			completions := dang.CompleteInput(ctx, f.TypeEnv, lineText, len(lineText))
-			if len(completions) > 0 {
-				return completionsToItems(completions), nil
-			}
+	env := h.buildCompletionEnv(f, params.Position)
+	if env != nil {
+		result := dang.Complete(ctx, env, f.Text, params.Position.Line, params.Position.Character)
+		if len(result.Items) > 0 {
+			return completionsToItems(result.Items), nil
 		}
 	}
 
-	// Use tree-sitter to parse the current buffer and find the receiver
-	// for dot-completion. Tree-sitter handles multi-line chains, local
-	// variable receivers, and cursor positions that the PEG AST misses.
-	if f.Text != "" {
-		tsResult := tsParseAndFindReceiver(f.Text, params.Position.Line, params.Position.Character)
-		if tsResult != nil {
-			// Build a combined env with all enclosing scopes so we can
-			// resolve local variables (e.g. "ctr" defined inside a function).
-			env := h.buildCompletionEnv(f, params.Position)
-			if env != nil {
-				input := tsResult.ReceiverText + "." + tsResult.Partial
-				completions := dang.CompleteInput(ctx, env, input, len(input))
-				if len(completions) > 0 {
-					return completionsToItems(completions), nil
-				}
-			}
-		}
-	}
-
+	// Fallback: lexical completions from all enclosing scopes.
 	if f.AST != nil {
-		// Add lexical bindings from enclosing scopes
 		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
 	}
 
