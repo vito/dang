@@ -51,6 +51,24 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		}
 	}
 
+	// Use tree-sitter to parse the current buffer and find the receiver
+	// for dot-completion. Tree-sitter handles multi-line chains, local
+	// variable receivers, and cursor positions that the PEG AST misses.
+	if f.Text != "" {
+		tsResult := tsParseAndFindReceiver(f.Text, params.Position.Line, params.Position.Character)
+		if tsResult != nil {
+			// Build a combined env with all enclosing scopes so we can
+			// resolve local variables (e.g. "ctr" defined inside a function).
+			env := h.buildCompletionEnv(f, params.Position)
+			if env != nil {
+				completions := dang.CompleteInput(ctx, env, tsResult.ReceiverText+"."+tsResult.Partial, len(tsResult.ReceiverText)+1+len(tsResult.Partial))
+				if len(completions) > 0 {
+					return completionsToItems(completions), nil
+				}
+			}
+		}
+	}
+
 	if f.AST != nil {
 		// Check if we're completing a member access (e.g., "container.fr<TAB>")
 		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
@@ -70,6 +88,39 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 	}
 
 	return nil, nil
+}
+
+// buildCompletionEnv creates a type environment that includes the file-level
+// env plus all enclosing scope bindings at the given position. This allows
+// resolving local variables (e.g. "ctr") that are not in the top-level env.
+func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.Env {
+	if f.TypeEnv == nil {
+		return nil
+	}
+
+	if f.AST == nil {
+		return f.TypeEnv
+	}
+
+	// Collect enclosing scope environments from the Dang AST
+	enclosing := findEnclosingEnvironments(f.AST, pos)
+	if len(enclosing) == 0 {
+		return f.TypeEnv
+	}
+
+	// Build a layered env: start from the file-level env (cloned as a
+	// Module), then merge all enclosing scope bindings into it.
+	env, ok := f.TypeEnv.Clone().(*dang.Module)
+	if !ok {
+		return f.TypeEnv
+	}
+	for _, scopeEnv := range enclosing {
+		for name, scheme := range scopeEnv.Bindings(dang.PrivateVisibility) {
+			env.Add(name, scheme)
+		}
+	}
+
+	return env
 }
 
 // getLexicalCompletions returns completion items for symbols in enclosing lexical scopes

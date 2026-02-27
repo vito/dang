@@ -33,7 +33,7 @@ pub barQualified: Dagger.Container! {
 # local variable member completion (receiver not in top-level env)
 pub baz: Container! {
   let ctr = container
-  ctr.fr # test: ^EEa<C-x><C-o> => ctr.from┃
+  ctr.fr # test: ^Ea<C-x><C-o> => ctr.from┃
 }
 
 # argument completion
