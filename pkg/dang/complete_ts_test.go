@@ -162,25 +162,83 @@ func TestComplete_ArgCompletion(t *testing.T) {
 		wantLabels []string
 		wantNone   bool
 	}{
+		// Pattern A: arg_values exists (well-formed enough for TS)
 		{
-			name:       "arg names after open paren",
+			name:       "arg names after open paren (Pattern A)",
 			text:       "container.from(",
 			line:       0,
 			col:        15,
 			wantLabels: []string{"address", "platform"},
 		},
 		{
-			name:       "partial arg name",
+			name:       "after comma with provided arg (Pattern A)",
+			text:       "container.from(address: x, ",
+			line:       0,
+			col:        27,
+			wantLabels: []string{"platform"},
+		},
+
+		// Pattern B: ERROR sibling of select_or_call
+		{
+			name:       "partial arg in ERROR sibling (Pattern B)",
 			text:       "container.from(addr",
 			line:       0,
 			col:        19,
 			wantLabels: []string{"address"},
 		},
 		{
+			name:       "multi-line method chain args (Pattern B)",
+			text:       "container\n  .from(",
+			line:       1,
+			col:        8,
+			wantLabels: []string{"address", "platform"},
+		},
+		{
+			name:       "multi-line partial arg (Pattern B)",
+			text:       "container\n  .from(addr",
+			line:       1,
+			col:        12,
+			wantLabels: []string{"address"},
+		},
+
+		// Pattern C: root ERROR with func + paren + args
+		{
+			name:       "provided arg excludes from results (Pattern C)",
+			text:       `container.from(address: "alpine", plat`,
+			line:       0,
+			col:        38,
+			wantLabels: []string{"platform"},
+		},
+
+		// Value position — should NOT suggest args
+		{
 			name:     "in value position after colon",
 			text:     "container.from(address: ",
 			line:     0,
 			col:      24,
+			wantNone: true,
+		},
+		{
+			name:     "in value position typing value",
+			text:     `container.from(address: "alp`,
+			line:     0,
+			col:      28,
+			wantNone: true,
+		},
+		{
+			name:     "after colon no space",
+			text:     "container.from(address:",
+			line:     0,
+			col:      23,
+			wantNone: true,
+		},
+
+		// Inside brackets — should NOT suggest args
+		{
+			name:     "inside brackets",
+			text:     "container.withExec(args: [",
+			line:     0,
+			col:      25,
 			wantNone: true,
 		},
 	}
@@ -296,7 +354,7 @@ func TestComplete_DotMemberAfterParensOnEarlierLines(t *testing.T) {
 	ctx := context.Background()
 
 	// Regression: earlier lines with parens (e.g. function calls) must not
-	// cause splitArgExpr to think the cursor is inside an arg list.
+	// cause argument detection to think the cursor is inside an arg list.
 	text := "container.from()\n\"hello\".sp"
 	result := Complete(ctx, env, text, 1, 10)
 
