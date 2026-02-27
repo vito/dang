@@ -5,7 +5,7 @@ go 1.25.6
 require github.com/vito/dang v0.0.0-20231014151113-edf550c4deca
 
 require (
-	dagger.io/dagger v0.19.11 // indirect
+	dagger.io/dagger v0.20.0 // indirect
 	github.com/99designs/gqlgen v0.17.81 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Khan/genqlient v0.8.1 // indirect
