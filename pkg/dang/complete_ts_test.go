@@ -291,6 +291,31 @@ func TestComplete_MultiLine(t *testing.T) {
 	}
 }
 
+func TestComplete_DotMemberAfterParensOnEarlierLines(t *testing.T) {
+	env := testCompletionEnv()
+	ctx := context.Background()
+
+	// Regression: earlier lines with parens (e.g. function calls) must not
+	// cause splitArgExpr to think the cursor is inside an arg list.
+	text := "container.from()\n\"hello\".sp"
+	result := Complete(ctx, env, text, 1, 10)
+
+	found := false
+	for _, c := range result.Items {
+		if c.Label == "split" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		labels := make([]string, len(result.Items))
+		for i, c := range result.Items {
+			labels[i] = c.Label
+		}
+		t.Errorf("expected 'split' in completions after parens on earlier line, got %v", labels)
+	}
+}
+
 func TestComplete_NoResults(t *testing.T) {
 	env := testCompletionEnv()
 	ctx := context.Background()

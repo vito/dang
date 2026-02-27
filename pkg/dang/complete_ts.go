@@ -104,10 +104,12 @@ func classifyCursorContext(root *tree_sitter.Node, source []byte, line, col uint
 	// Strategy 1: Argument context via string-based detection.
 	// Tree-sitter doesn't produce arg_values for incomplete calls (the
 	// content ends up in ERROR nodes), so we use the proven string-based
-	// splitArgExpr approach. This will be replaced by tree-sitter-based
+	// splitArgExpr approach. We use only the current line up to the cursor
+	// (not the full file text) to avoid false positives from unmatched
+	// parens on earlier lines. This will be replaced by tree-sitter-based
 	// arg detection in a future phase.
-	textUpToCursor := string(source[:lineColToOffset(source, line, col)])
-	if funcExpr, partial, alreadyProvided, ok := splitArgExpr(textUpToCursor); ok {
+	lineText := getLineUpToCursor(source, line, col)
+	if funcExpr, partial, alreadyProvided, ok := splitArgExpr(lineText); ok {
 		return &CompletionContext{
 			Kind:         ContextArgument,
 			FuncText:     funcExpr,
@@ -143,6 +145,23 @@ func classifyCursorContext(root *tree_sitter.Node, source []byte, line, col uint
 	}
 
 	return nil
+}
+
+// getLineUpToCursor extracts the current line text up to the cursor column,
+// trimming leading whitespace. This is used for string-based arg detection
+// which needs isolated line context to avoid false positives from unmatched
+// parens on other lines.
+func getLineUpToCursor(source []byte, line, col uint) string {
+	lines := strings.Split(string(source), "\n")
+	if int(line) >= len(lines) {
+		return ""
+	}
+	l := lines[line]
+	c := int(col)
+	if c > len(l) {
+		c = len(l)
+	}
+	return strings.TrimLeft(l[:c], " \t")
 }
 
 // tsReceiverResult holds the result of a tree-sitter receiver lookup.
