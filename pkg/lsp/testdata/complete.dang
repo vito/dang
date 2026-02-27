@@ -37,8 +37,8 @@ container.withExec() # nofmt test: ^f(a<C-x><C-o> => container.withExec(args┃)
 # builtin type methods
 "hello".sp # test: ^Ea<C-x><C-o> => "hello".split┃
 "hello".toU # test: ^Ea<C-x><C-o> => "hello".toUpper┃
-[1, 2, 3].filt # test: ^Ea<C-x><C-o> => [1, 2, 3].filter┃
-[1, 2, 3].red # test: ^Ea<C-x><C-o> => [1, 2, 3].reduce┃
+[1, 2, 3].filt # test: ^EEEa<C-x><C-o> => [1, 2, 3].filter┃
+[1, 2, 3].red # test: ^EEEa<C-x><C-o> => [1, 2, 3].reduce┃
 
 let url = "https://github.com/vito/dang"
 Dagger.git(url) # test: ^Ea.he<C-x><C-o>{delay:200ms}.tr<C-x><C-o> => git(url).head.tree┃

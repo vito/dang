@@ -37,14 +37,16 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	// Try text-based argument completion first, since incomplete function
-	// calls (no closing paren yet) won't parse into a FunCall AST node.
+	// Try text-based completion first. This handles argument completion
+	// (inside parens) and member/method completion on expressions that the
+	// AST path can't resolve (e.g. "hello".sp where the cursor is past the
+	// end of the Select node, or builtin type methods on strings/lists).
 	if f.TypeEnv != nil {
 		lineText := getLineUpToCursor(f.Text, params.Position.Line, params.Position.Character)
 		if lineText != "" {
-			argCompletions := dang.CompleteInput(ctx, f.TypeEnv, lineText, len(lineText))
-			if len(argCompletions) > 0 && argCompletions[0].IsArg {
-				return completionsToItems(argCompletions), nil
+			completions := dang.CompleteInput(ctx, f.TypeEnv, lineText, len(lineText))
+			if len(completions) > 0 {
+				return completionsToItems(completions), nil
 			}
 		}
 	}

@@ -88,6 +88,15 @@ func splitDotExpr(text string) (dotIdx int, receiver, partial string) {
 			}
 			// After the loop j is one before the opening bracket, which
 			// is correct for the next iteration.
+		} else if c == '"' {
+			// Walk back over a quoted string literal
+			j-- // skip closing quote
+			for j >= 0 && text[j] != '"' {
+				j--
+			}
+			if j >= 0 {
+				j-- // skip opening quote; loop continues from before it
+			}
 		} else {
 			break
 		}

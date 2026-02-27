@@ -32,6 +32,10 @@ func TestSplitDotExpr(t *testing.T) {
 		{"a.b(1).c(2).d", 11, "a.b(1).c(2)", "d"},
 		// Just a dot after parens, no partial
 		{"foo(1).", 6, "foo(1)", ""},
+		// String literal receiver
+		{`"hello".sp`, 7, `"hello"`, "sp"},
+		// String literal with chained call
+		{`"hello".split(",").len`, 18, `"hello".split(",")`, "len"},
 	}
 
 	for _, tt := range tests {
