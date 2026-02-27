@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -39,58 +38,14 @@ func (e *replEntry) writeResult(s string)  { e.result.WriteString(s); e.result.W
 
 // Styles (shared between REPL and doc browser)
 var (
-	promptStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
-	resultStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	menuStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
-	menuSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("63")).Bold(true)
-	menuBorderStyle   = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("63"))
-	detailBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("241"))
+	promptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
+	resultStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	errorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	detailTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("255")).Bold(true)
 	welcomeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
-
-// buildCompletionList builds the full list of completions from the environment.
-func (r *replComponent) buildCompletionList(typeEnv dang.Env) []string {
-	seen := map[string]bool{}
-	var completions []string
-
-	add := func(name string) {
-		if !seen[name] {
-			seen[name] = true
-			completions = append(completions, name)
-		}
-	}
-
-	for _, cmd := range r.commands {
-		add(":" + cmd.name)
-	}
-
-	keywords := []string{
-		"let", "if", "else", "for", "in", "true", "false", "null",
-		"self", "type", "pub", "new", "import", "assert", "try",
-		"catch", "raise", "print",
-	}
-	for _, kw := range keywords {
-		add(kw)
-	}
-
-	for name, scheme := range typeEnv.Bindings(dang.PublicVisibility) {
-		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) {
-			continue
-		}
-		add(name)
-	}
-
-	sort.Strings(completions)
-	return completions
-}
 
 // Completion helpers
 

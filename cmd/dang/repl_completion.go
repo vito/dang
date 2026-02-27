@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -9,186 +10,166 @@ import (
 	"codeberg.org/vito/tuist"
 )
 
-// ── completion menu ─────────────────────────────────────────────────────────
+// buildCompletionProvider returns a tuist.CompletionProvider that wraps
+// dang.CompleteInput, command completions, and static fallback completions.
+func (r *replComponent) buildCompletionProvider() tuist.CompletionProvider {
+	return func(input string, cursorPos int) tuist.CompletionResult {
+		if input == "" {
+			return tuist.CompletionResult{}
+		}
 
-func (r *replComponent) hideCompletionMenu() {
-	r.menuVisible = false
-	r.menuItems = nil
-	r.menuLabels = nil
-	r.menuCompletions = nil
-	r.menuIndex = 0
-	if r.menuHandle != nil {
-		r.menuHandle.Hide()
-		r.menuHandle = nil
-		r.menuOverlay = nil
+		// Command completions (":help", ":reset", etc.)
+		if strings.HasPrefix(input, ":") {
+			return r.commandCompletions(input)
+		}
+
+		// Type-aware completions via dang.CompleteInput.
+		completions := dang.CompleteInput(r.ctx, r.typeEnv, input, cursorPos)
+		if len(completions) > 0 {
+			return r.dangCompletions(input, completions)
+		}
+
+		// Fallback: static keyword/name completions.
+		return r.staticCompletions(input)
 	}
-	r.hideDetailBubble()
 }
 
-func (r *replComponent) menuDisplayItems() []string {
-	if len(r.menuLabels) > 0 {
-		return r.menuLabels
+// commandCompletions returns completions for REPL commands.
+func (r *replComponent) commandCompletions(input string) tuist.CompletionResult {
+	partial := strings.TrimPrefix(input, ":")
+	partialLower := strings.ToLower(partial)
+
+	var items []tuist.Completion
+	for _, cmd := range r.commands {
+		if strings.HasPrefix(cmd.name, partialLower) && cmd.name != partialLower {
+			items = append(items, tuist.Completion{
+				Label:         ":" + cmd.name,
+				Detail:        "command",
+				Documentation: cmd.desc,
+				Kind:          "command",
+			})
+		}
 	}
-	return r.menuItems
+	return tuist.CompletionResult{
+		Items:       items,
+		ReplaceFrom: 0, // replace entire input
+	}
 }
 
-func (r *replComponent) menuBoxWidth() int {
-	items := r.menuDisplayItems()
-	maxW := 0
+// dangCompletions converts dang.Completion results into tuist.CompletionResult,
+// applying the same filtering and sorting the old code did.
+func (r *replComponent) dangCompletions(input string, completions []dang.Completion) tuist.CompletionResult {
+	isArgCompletion := completions[0].IsArg
+	prefix, partial := splitForSuggestion(input)
+	replaceFrom := len(prefix)
+
+	partialLower := strings.ToLower(partial)
+	var items []tuist.Completion
+	for _, c := range completions {
+		cLower := strings.ToLower(c.Label)
+		if cLower == partialLower {
+			continue
+		}
+		if !strings.HasPrefix(cLower, partialLower) {
+			continue
+		}
+
+		item := tuist.Completion{
+			Label:         c.Label,
+			Detail:        c.Detail,
+			Documentation: c.Documentation,
+		}
+		if c.IsFunction {
+			item.Kind = "function"
+		} else if c.IsArg {
+			item.Kind = "arg"
+			item.InsertText = c.Label + ": "
+			item.DisplayLabel = c.Label + ": " + c.Detail
+		}
+		items = append(items, item)
+	}
+
+	// Sort exact-case matches before case-insensitive (skip for args).
+	if !isArgCompletion {
+		items = sortByCase(items, partial)
+	}
+
+	return tuist.CompletionResult{
+		Items:       items,
+		ReplaceFrom: replaceFrom,
+	}
+}
+
+// staticCompletions returns fallback completions from the static keyword/name list.
+func (r *replComponent) staticCompletions(input string) tuist.CompletionResult {
+	word := lastIdent(input)
+	if word == "" {
+		return tuist.CompletionResult{}
+	}
+
+	replaceFrom := len(input) - len(word)
+	wordLower := strings.ToLower(word)
+
+	var exactCase, otherCase []tuist.Completion
+	for _, c := range r.completions {
+		cLower := strings.ToLower(c)
+		if cLower == wordLower {
+			continue
+		}
+		item := tuist.Completion{Label: c}
+		if strings.HasPrefix(c, word) {
+			exactCase = append(exactCase, item)
+		} else if strings.HasPrefix(cLower, wordLower) {
+			otherCase = append(otherCase, item)
+		}
+	}
+
+	return tuist.CompletionResult{
+		Items:       append(exactCase, otherCase...),
+		ReplaceFrom: replaceFrom,
+	}
+}
+
+// sortByCase sorts completions so exact-case-prefix matches come first.
+func sortByCase(items []tuist.Completion, partial string) []tuist.Completion {
+	var exact, other []tuist.Completion
 	for _, item := range items {
-		if w := lipgloss.Width(item); w > maxW {
-			maxW = w
+		if strings.HasPrefix(item.Label, partial) {
+			exact = append(exact, item)
+		} else {
+			other = append(other, item)
 		}
 	}
-	if maxW > 60 {
-		maxW = 60
-	}
-	return maxW + 4 // 2 for padding (" item ") + 2 for border
+	return append(exact, other...)
 }
 
-func (r *replComponent) menuBoxHeight() int {
-	n := len(r.menuDisplayItems())
-	h := min(n, r.menuMaxVisible) + 2 // visible items + top/bottom border
-	if n > r.menuMaxVisible {
-		h++ // info line ("1/42")
-	}
-	return h
-}
-
-func (r *replComponent) showCompletionMenu(ctx tuist.EventContext) {
-	displayItems := r.menuDisplayItems()
-	menuH := r.menuBoxHeight()
-
-	opts := &tuist.OverlayOptions{
-		Width:          tuist.SizeAbs(r.menuBoxWidth()),
-		MaxHeight:      tuist.SizeAbs(menuH),
-		CursorRelative: true,
-		PreferAbove:    true,
-		OffsetX:        -r.completionTokenLen(),
-		CursorGroup:    r.completionGroup,
-	}
-	if r.menuHandle != nil {
-		// Reuse existing overlay — just update position and data.
-		r.menuOverlay.items = displayItems
-		r.menuOverlay.index = r.menuIndex
-		r.menuOverlay.Update()
-		r.menuHandle.SetOptions(opts)
-	} else {
-		r.menuOverlay = &completionOverlay{
-			items:      displayItems,
-			index:      r.menuIndex,
-			maxVisible: r.menuMaxVisible,
+// buildDetailRenderer returns a DetailRenderer that resolves rich docItems
+// from the dang type environment.
+func (r *replComponent) buildDetailRenderer() tuist.DetailRenderer {
+	return func(c tuist.Completion, width int) []string {
+		// Try to resolve a full docItem from the type environment.
+		item, found := docItemFromEnv(r.typeEnv, c.Label)
+		if !found {
+			item, found = r.resolveCompletionDocItem(c)
 		}
-		r.menuHandle = ctx.ShowOverlay(r.menuOverlay, opts)
-	}
-	r.syncDetailBubble(ctx)
-}
-
-func (r *replComponent) syncMenu(ctx tuist.EventContext) {
-	if r.menuOverlay != nil {
-		r.menuOverlay.items = r.menuDisplayItems()
-		r.menuOverlay.index = r.menuIndex
-		r.menuOverlay.Update()
-	}
-	r.syncDetailBubble(ctx)
-	ctx.RequestRender(false)
-}
-
-func (r *replComponent) detailBubbleOptions() *tuist.OverlayOptions {
-	detailX := -r.completionTokenLen()
-	if r.menuHandle != nil {
-		// Menu visible — place detail to its right with a 1 col gap.
-		detailX += r.menuBoxWidth() + 1
-	}
-
-	return &tuist.OverlayOptions{
-		Width:          tuist.SizePct(35),
-		MaxHeight:      tuist.SizePct(80),
-		CursorRelative: true,
-		PreferAbove:    true,
-		OffsetX:        detailX,
-		CursorGroup:    r.completionGroup,
-	}
-}
-
-func (r *replComponent) showDetailBubble(ctx tuist.EventContext) {
-	opts := r.detailBubbleOptions()
-	if r.detailBubble == nil {
-		r.detailBubble = &detailBubble{}
-		r.detailHandle = ctx.ShowOverlay(r.detailBubble, opts)
-	} else {
-		r.detailHandle.SetOptions(opts)
-	}
-}
-
-func (r *replComponent) hideDetailBubble() {
-	if r.detailHandle != nil {
-		r.detailHandle.Hide()
-		r.detailHandle = nil
-		r.detailBubble = nil
-	}
-}
-
-func (r *replComponent) syncDetailBubble(ctx tuist.EventContext) {
-	if !r.menuVisible || len(r.menuCompletions) == 0 {
-		r.hideDetailBubble()
-		return
-	}
-	idx := r.menuIndex
-	if idx < 0 || idx >= len(r.menuCompletions) {
-		r.hideDetailBubble()
-		return
-	}
-	c := r.menuCompletions[idx]
-
-	item, found := docItemFromEnv(r.typeEnv, c.Label)
-	if !found {
-		item, found = r.resolveCompletionDocItem(c)
-	}
-	if !found {
-		if c.Detail == "" && c.Documentation == "" {
-			r.hideDetailBubble()
-			return
+		if !found {
+			if c.Detail == "" && c.Documentation == "" {
+				return nil
+			}
+			item = docItem{
+				name:    c.Label,
+				typeStr: c.Detail,
+				doc:     c.Documentation,
+			}
 		}
-		item = docItem{
-			name:    c.Label,
-			typeStr: c.Detail,
-			doc:     c.Documentation,
-		}
-	}
 
-	r.showDetailBubble(ctx)
-	r.detailBubble.item = item
-	r.detailBubble.Update()
-}
-
-// showDetailForCompletion shows the detail bubble for a single completion
-// item, without requiring the dropdown menu to be visible.
-func (r *replComponent) showDetailForCompletion(ctx tuist.EventContext, c dang.Completion) {
-	item, found := docItemFromEnv(r.typeEnv, c.Label)
-	if !found {
-		item, found = r.resolveCompletionDocItem(c)
+		return r.renderDetailLines(item, width)
 	}
-	if !found {
-		if c.Detail == "" && c.Documentation == "" {
-			r.hideDetailBubble()
-			return
-		}
-		item = docItem{
-			name:    c.Label,
-			typeStr: c.Detail,
-			doc:     c.Documentation,
-		}
-	}
-
-	r.showDetailBubble(ctx)
-	r.detailBubble.item = item
-	r.detailBubble.Update()
 }
 
 // resolveCompletionDocItem tries to resolve a member completion's docItem
 // by inferring the receiver type from the current input.
-func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bool) {
+func (r *replComponent) resolveCompletionDocItem(c tuist.Completion) (docItem, bool) {
 	val := r.textInput.Value()
 	dotIdx := -1
 	for i := len(val) - 1; i >= 0; i-- {
@@ -213,185 +194,19 @@ func (r *replComponent) resolveCompletionDocItem(c dang.Completion) (docItem, bo
 	return docItemFromEnv(env, c.Label)
 }
 
-// completionTokenLen returns the length of the completion token ending at
-// the cursor. This includes "receiver.ident" for method completions and
-// ":command" for REPL command completions.
-func (r *replComponent) completionTokenLen() int {
-	val := r.textInput.Value()
-	// Command completions: the entire ":command" is the token.
-	if strings.HasPrefix(val, ":") {
-		return len(val)
-	}
-	i := len(val) - 1
-	for i >= 0 && isIdentByte(val[i]) {
-		i--
-	}
-	if i >= 0 && val[i] == '.' {
-		i--
-		for i >= 0 && isIdentByte(val[i]) {
-			i--
-		}
-	}
-	return len(val) - (i + 1)
-}
+// renderDetailLines renders a docItem for the detail panel.
+func (r *replComponent) renderDetailLines(item docItem, width int) []string {
+	contentW := max(8, width-2)
 
-func (r *replComponent) updateCommandCompletionMenu(ctx tuist.EventContext, val string) {
-	partial := strings.TrimPrefix(val, ":")
-	partialLower := strings.ToLower(partial)
+	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
+	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 
-	var matches []string
-	var labels []string
-	var completions []dang.Completion
-	for _, cmd := range r.commands {
-		if strings.HasPrefix(cmd.name, partialLower) && cmd.name != partialLower {
-			matches = append(matches, ":"+cmd.name)
-			labels = append(labels, ":"+cmd.name)
-			completions = append(completions, dang.Completion{
-				Label:         ":" + cmd.name,
-				Detail:        "command",
-				Documentation: cmd.desc,
-			})
-		}
-	}
-
-	r.menuLabels = labels
-	r.menuCompletions = completions
-	if len(matches) > 0 {
-		r.textInput.Suggestion = matches[0]
-	} else {
-		r.textInput.Suggestion = ""
-	}
-	r.setMenu(ctx, matches, completions)
-}
-
-func (r *replComponent) updateCompletionMenu(ctx tuist.EventContext) {
-	val := r.textInput.Value()
-
-	if val == "" {
-		r.hideCompletionMenu()
-		r.textInput.Suggestion = ""
-		return
-	}
-
-	if strings.HasPrefix(val, ":") {
-		r.updateCommandCompletionMenu(ctx, val)
-		return
-	}
-
-	cursorPos := len(val)
-	completions := dang.CompleteInput(r.ctx, r.typeEnv, val, cursorPos)
-
-	if len(completions) > 0 {
-		isArgCompletion := len(completions) > 0 && completions[0].IsArg
-		prefix, partial := splitForSuggestion(val)
-		var matches []string
-		var labels []string
-		var matchCompletions []dang.Completion
-		partialLower := strings.ToLower(partial)
-		for _, c := range completions {
-			cLower := strings.ToLower(c.Label)
-			if cLower == partialLower {
-				continue
-			}
-			if strings.HasPrefix(cLower, partialLower) {
-				if c.IsArg {
-					matches = append(matches, prefix+c.Label+": ")
-					labels = append(labels, c.Label+": "+c.Detail)
-				} else {
-					matches = append(matches, prefix+c.Label)
-					labels = append(labels, c.Label)
-				}
-				matchCompletions = append(matchCompletions, c)
-			}
-		}
-		if !isArgCompletion {
-			matches, matchCompletions = sortByCaseWithCompletions(matches, matchCompletions, prefix, partial)
-			labels, _ = sortByCaseWithCompletions(labels, nil, "", partial)
-		}
-		r.menuLabels = labels
-		r.setMenu(ctx, matches, matchCompletions)
-		if len(matches) > 0 {
-			r.textInput.Suggestion = matches[0]
-		} else {
-			r.textInput.Suggestion = ""
-		}
-		return
-	}
-
-	// Fallback: static completions.
-	word := lastIdent(val)
-	if word == "" {
-		r.hideCompletionMenu()
-		r.textInput.Suggestion = ""
-		return
-	}
-
-	var exactCase, otherCase []string
-	wordLower := strings.ToLower(word)
-	for _, c := range r.completions {
-		cLower := strings.ToLower(c)
-		if cLower == wordLower {
-			continue
-		}
-		if strings.HasPrefix(c, word) {
-			exactCase = append(exactCase, c)
-		} else if strings.HasPrefix(cLower, wordLower) {
-			otherCase = append(otherCase, c)
-		}
-	}
-	matches := append(exactCase, otherCase...)
-	r.menuLabels = nil
-	r.setMenu(ctx, matches, nil)
-	if len(matches) > 0 {
-		r.textInput.Suggestion = matches[0]
-	} else {
-		r.textInput.Suggestion = ""
-	}
-}
-
-func (r *replComponent) setMenu(ctx tuist.EventContext, matches []string, completions []dang.Completion) {
-	if len(matches) == 0 {
-		r.hideCompletionMenu()
-		return
-	}
-	if len(matches) == 1 {
-		// Single match: no dropdown, but show the detail bubble.
-		r.hideCompletionMenu()
-		if len(completions) == 1 {
-			r.showDetailForCompletion(ctx, completions[0])
-		}
-		return
-	}
-	r.menuItems = matches
-	// menuLabels is set by the caller before calling setMenu
-	r.menuCompletions = completions
-	r.menuVisible = true
-	if r.menuIndex >= len(matches) {
-		r.menuIndex = 0
-	}
-	r.showCompletionMenu(ctx)
-}
-
-// sortByCaseWithCompletions sorts matches (and their parallel completions)
-// so that exact-case-prefix matches come before case-insensitive ones.
-func sortByCaseWithCompletions(matches []string, completions []dang.Completion, prefix, partial string) ([]string, []dang.Completion) {
-	var exactM, otherM []string
-	var exactC, otherC []dang.Completion
-	for i, m := range matches {
-		suffix := strings.TrimPrefix(m, prefix)
-		if strings.HasPrefix(suffix, partial) {
-			exactM = append(exactM, m)
-			if i < len(completions) {
-				exactC = append(exactC, completions[i])
-			}
-		} else {
-			otherM = append(otherM, m)
-			if i < len(completions) {
-				otherC = append(otherC, completions[i])
-			}
-		}
-	}
-	return append(exactM, otherM...), append(exactC, otherC...)
+	titleLine := detailTitleStyle.Render(item.name)
+	lines := []string{titleLine}
+	lines = append(lines, renderDocDetail(item, contentW, docTextStyle, argNameStyle, argTypeStyle, dimSt)...)
+	return lines
 }
 
 func (r *replComponent) buildCompletions() []string {
@@ -400,4 +215,40 @@ func (r *replComponent) buildCompletions() []string {
 
 func (r *replComponent) refreshCompletions() {
 	r.completions = r.buildCompletions()
+}
+
+// buildCompletionList builds the full list of completions from the environment.
+func (r *replComponent) buildCompletionList(typeEnv dang.Env) []string {
+	seen := map[string]bool{}
+	var completions []string
+
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			completions = append(completions, name)
+		}
+	}
+
+	for _, cmd := range r.commands {
+		add(":" + cmd.name)
+	}
+
+	keywords := []string{
+		"let", "if", "else", "for", "in", "true", "false", "null",
+		"self", "type", "pub", "new", "import", "assert", "try",
+		"catch", "raise", "print",
+	}
+	for _, kw := range keywords {
+		add(kw)
+	}
+
+	for name, scheme := range typeEnv.Bindings(dang.PublicVisibility) {
+		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) {
+			continue
+		}
+		add(name)
+	}
+
+	sort.Strings(completions)
+	return completions
 }

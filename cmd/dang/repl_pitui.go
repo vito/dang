@@ -126,118 +126,7 @@ func (ev *entryView) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	return tuist.RenderResult{Lines: lines}
 }
 
-// ── completion menu overlay ─────────────────────────────────────────────────
-
-type completionOverlay struct {
-	tuist.Compo
-	items      []string
-	index      int
-	maxVisible int
-}
-
-func (c *completionOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
-	if len(c.items) == 0 {
-		return tuist.RenderResult{}
-	}
-	lines := strings.Split(renderMenuBox(c.items, c.index, c.maxVisible, ctx.Width), "\n")
-	return tuist.RenderResult{Lines: lines}
-}
-
-// renderMenuBox renders the completion dropdown as a bordered box string.
-func renderMenuBox(items []string, index, maxVisible, width int) string {
-	visible := min(len(items), maxVisible)
-	start := 0
-	if index >= visible {
-		start = index - visible + 1
-	}
-	end := start + visible
-
-	// Compute max width from ALL items so the box doesn't resize as the
-	// user scrolls through the list.
-	maxW := 0
-	for _, item := range items {
-		if w := lipgloss.Width(item); w > maxW {
-			maxW = w
-		}
-	}
-	if maxW > 60 {
-		maxW = 60
-	}
-	if maxW+4 > width {
-		maxW = width - 4
-	}
-	if maxW < 4 {
-		maxW = 4
-	}
-
-	var menuLines []string
-	for i := start; i < end && i < len(items); i++ {
-		item := items[i]
-		if lipgloss.Width(item) > maxW {
-			item = item[:maxW-3] + "..."
-		}
-		padded := fmt.Sprintf(" %-*s ", maxW, item)
-		if i == index {
-			menuLines = append(menuLines, menuSelectedStyle.Render(padded))
-		} else {
-			menuLines = append(menuLines, menuStyle.Render(padded))
-		}
-	}
-
-	if len(items) > visible {
-		info := fmt.Sprintf(" %d/%d ", index+1, len(items))
-		menuLines = append(menuLines, dimStyle.Render(info))
-	}
-
-	inner := strings.Join(menuLines, "\n")
-	return menuBorderStyle.Render(inner)
-}
-
-// ── detail bubble (viewport-relative overlay) ───────────────────────────────
-
-type detailBubble struct {
-	tuist.Compo
-	item docItem
-}
-
-func (d *detailBubble) Render(ctx tuist.RenderContext) tuist.RenderResult {
-	if d.item.name == "" {
-		return tuist.RenderResult{}
-	}
-
-	// lipgloss Width(n) sets the TOTAL width including borders, so the
-	// usable content area is n-2 (left border + right border).
-	contentW := max(8, ctx.Width-2)
-
-	docTextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	argNameStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	argTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	dimSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-
-	titleLine := detailTitleStyle.Render(d.item.name)
-	lines := []string{titleLine}
-
-	detail := renderDocDetail(d.item, contentW, docTextStyle, argNameStyle, argTypeStyle, dimSt)
-	lines = append(lines, detail...)
-
-	// Truncate inner content so the border fits within the height budget.
-	// The border adds 2 lines (top + bottom).
-	if ctx.Height > 0 && len(lines) > ctx.Height-2 {
-		maxInner := ctx.Height - 2
-		if maxInner > 1 {
-			lines = lines[:maxInner-1]
-			lines = append(lines, dimSt.Render("..."))
-		} else if maxInner > 0 {
-			lines = lines[:maxInner]
-		}
-	}
-
-	inner := strings.Join(lines, "\n")
-	box := detailBorderStyle.Width(ctx.Width).Render(inner)
-	return tuist.RenderResult{
-		Lines: strings.Split(box, "\n"),
-	}
-}
+// (completion menu overlay and detail bubble are now provided by tuist.CompletionMenu)
 
 // ── REPL component ─────────────────────────────────────────────────────────
 
@@ -268,18 +157,8 @@ type replComponent struct {
 	requestQuit context.CancelFunc
 
 	// Completion
-	completions     []string
-	menuVisible     bool
-	menuItems       []string          // replacement values (full input text)
-	menuLabels      []string          // display labels for the menu
-	menuCompletions []dang.Completion // parallel to menuItems; Detail/Documentation
-	menuIndex       int
-	menuMaxVisible  int
-	menuOverlay     *completionOverlay
-	menuHandle      *tuist.OverlayHandle
-	detailBubble    *detailBubble
-	detailHandle    *tuist.OverlayHandle
-	completionGroup *tuist.CursorGroup
+	completions    []string // static fallback completions
+	completionMenu *tuist.CompletionMenu
 
 	// Eval
 	evaluating bool
@@ -307,16 +186,14 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
 
 	r := &replComponent{
-		importConfigs:   importConfigs,
-		debug:           debug,
-		typeEnv:         typeEnv,
-		evalEnv:         evalEnv,
-		ctx:             ctx,
-		textInput:       ti,
-		entryContainer:  &tuist.Container{},
-		menuMaxVisible:  8,
-		completionGroup: tuist.NewCursorGroup(),
-		history:         newReplHistory(),
+		importConfigs:  importConfigs,
+		debug:          debug,
+		typeEnv:        typeEnv,
+		evalEnv:        evalEnv,
+		ctx:            ctx,
+		textInput:      ti,
+		entryContainer: &tuist.Container{},
+		history:        newReplHistory(),
 	}
 	r.quit, r.requestQuit = context.WithCancel(context.Background())
 	r.commands = r.buildCommandDefs()
@@ -332,12 +209,15 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	// Input slot starts with text input.
 	r.inputSlot = tuist.NewSlot(ti)
 
+	// Completion menu (wires into ti.OnChange automatically).
+	r.completionMenu = tuist.NewCompletionMenu(ti, r.buildCompletionProvider())
+	r.completionMenu.DetailRenderer = r.buildDetailRenderer()
+
 	// Text input callbacks.
 	ti.SuggestionStyle = func(s string) string {
 		return dimStyle.Render(s)
 	}
 	ti.OnSubmit = r.onSubmit
-	ti.OnChange = func(ctx tuist.EventContext) { r.updateCompletionMenu(ctx) }
 
 	// Welcome message.
 	welcome := newReplEntry("")
@@ -411,11 +291,11 @@ func (r *replComponent) onSubmit(ctx tuist.EventContext, line string) bool {
 
 	r.addEntry(strings.Join(echoedLines, "\n"))
 
-	r.hideCompletionMenu()
+	r.completionMenu.Hide()
 
 	if strings.HasPrefix(line, ":") {
 		r.handleCommand(ctx, line[1:])
-		r.updateCompletionMenu(ctx)
+		r.completionMenu.Refresh(ctx)
 		return true
 	}
 
@@ -443,35 +323,15 @@ func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEve
 
 	// Completion menu navigation — checked before general bindings so
 	// Up/Down/Escape/Ctrl+N/Ctrl+P go to the menu instead of history.
-	if r.menuVisible {
-		switch {
-		case key.Code == uv.KeyDown && key.Mod == 0,
-			key.Code == 'n' && key.Mod == uv.ModCtrl:
-			r.menuIndex++
-			if r.menuIndex >= len(r.menuItems) {
-				r.menuIndex = 0
-			}
-			r.syncMenu(ctx)
-			return true
-		case key.Code == uv.KeyUp && key.Mod == 0,
-			key.Code == 'p' && key.Mod == uv.ModCtrl:
-			r.menuIndex--
-			if r.menuIndex < 0 {
-				r.menuIndex = len(r.menuItems) - 1
-			}
-			r.syncMenu(ctx)
-			return true
-		case key.Code == uv.KeyEscape:
-			r.hideCompletionMenu()
-			return true
-		}
+	if r.completionMenu.HandleKeyPress(ctx, ev) {
+		return true
 	}
 
 	switch {
 	case key.Code == 'c' && key.Mod == uv.ModCtrl:
 		if r.textInput.Value() != "" {
 			r.textInput.SetValue("")
-			r.hideCompletionMenu()
+			r.completionMenu.Hide()
 			return true
 		}
 		r.requestQuit()
