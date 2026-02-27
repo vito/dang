@@ -2,25 +2,11 @@ package lsp
 
 import (
 	"context"
-	"strings"
 
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
-
-// getLineUpToCursor returns the text of the given line up to the cursor column.
-func getLineUpToCursor(text string, line, col int) string {
-	lines := strings.Split(text, "\n")
-	if line < 0 || line >= len(lines) {
-		return ""
-	}
-	l := lines[line]
-	if col > len(l) {
-		col = len(l)
-	}
-	return strings.TrimLeft(l[:col], " \t")
-}
 
 func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {
 	if !req.HasParams() {
@@ -37,39 +23,50 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	// Try text-based completion first. This handles argument completion
-	// (inside parens) and member/method completion on expressions that the
-	// AST path can't resolve (e.g. "hello".sp where the cursor is past the
-	// end of the Select node, or builtin type methods on strings/lists).
-	if f.TypeEnv != nil {
-		lineText := getLineUpToCursor(f.Text, params.Position.Line, params.Position.Character)
-		if lineText != "" {
-			completions := dang.CompleteInput(ctx, f.TypeEnv, lineText, len(lineText))
-			if len(completions) > 0 {
-				return completionsToItems(completions), nil
-			}
+	env := h.buildCompletionEnv(f, params.Position)
+	if env != nil {
+		result := dang.Complete(ctx, env, f.Text, params.Position.Line, params.Position.Character)
+		if len(result.Items) > 0 {
+			return completionsToItems(result.Items), nil
 		}
 	}
 
+	// Fallback: lexical completions from all enclosing scopes.
 	if f.AST != nil {
-		// Check if we're completing a member access (e.g., "container.fr<TAB>")
-		receiver := FindReceiverAt(f.AST, params.Position.Line, params.Position.Character)
-		if receiver != nil {
-			receiverType := receiver.GetInferredType()
-			if receiverType != nil {
-				completions := dang.MembersOf(receiverType, "")
-				items := completionsToItems(completions)
-				if len(items) > 0 {
-					return items, nil
-				}
-			}
-		}
-
-		// Add lexical bindings from enclosing scopes
 		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
 	}
 
 	return nil, nil
+}
+
+// buildCompletionEnv creates a type environment that includes the file-level
+// env plus all enclosing scope bindings at the given position. This allows
+// resolving local variables (e.g. "ctr") that are not in the top-level env.
+func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.Env {
+	if f.TypeEnv == nil {
+		return nil
+	}
+
+	if f.AST == nil {
+		return f.TypeEnv
+	}
+
+	// Collect enclosing scope environments from the Dang AST
+	enclosing := findEnclosingEnvironments(f.AST, pos)
+	if len(enclosing) == 0 {
+		return f.TypeEnv
+	}
+
+	// Build a layered env: start from the file-level env (cloned),
+	// then merge all enclosing scope bindings into it.
+	env := f.TypeEnv.Clone().(dang.Env)
+	for _, scopeEnv := range enclosing {
+		for name, scheme := range scopeEnv.Bindings(dang.PrivateVisibility) {
+			env.Add(name, scheme)
+		}
+	}
+
+	return env
 }
 
 // getLexicalCompletions returns completion items for symbols in enclosing lexical scopes

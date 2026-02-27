@@ -47,23 +47,12 @@ var (
 	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 
-// Completion helpers
-
-func splitForSuggestion(val string) (prefix, partial string) {
-	i := len(val) - 1
-	for i >= 0 && isIdentByte(val[i]) {
-		i--
-	}
-	if i >= 0 && val[i] == '.' {
-		return val[:i+1], val[i+1:]
-	}
-	return val[:i+1], val[i+1:]
-}
-
+// isIdentByte returns true for ASCII identifier characters.
 func isIdentByte(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }
 
+// lastIdent extracts the last identifier fragment from text.
 func lastIdent(s string) string {
 	i := len(s) - 1
 	for i >= 0 && isIdentByte(s[i]) {

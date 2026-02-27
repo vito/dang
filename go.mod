@@ -19,6 +19,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
+	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
 	golang.org/x/sync v0.19.0
 	gotest.tools/v3 v3.5.2
@@ -26,6 +27,7 @@ require (
 
 require (
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 )
 

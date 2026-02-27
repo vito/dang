@@ -1,0 +1,8 @@
+[1m[31mError:[0m syntax error: missing closing ')'
+  [2m[34m--> errors/syntax_unclosed_paren.dang:1:15[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlet x = (1 + 2
+[2m                     [31m^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+
