@@ -1,0 +1,91 @@
+# Test multiline and/or expressions
+
+# Multiline and
+assert {
+  true
+    and true
+}
+assert {
+  (true
+    and false) == false
+}
+
+# Multiline or
+assert {
+  true
+    or false
+}
+assert {
+  (false
+    or false) == false
+}
+
+# Chained multiline and
+assert {
+  true
+    and true
+    and true
+}
+assert {
+  (true
+    and true
+    and false) == false
+}
+
+# Chained multiline or
+assert {
+  false
+    or false
+    or true
+}
+assert {
+  (false
+    or false
+    or false) == false
+}
+
+# Multiline with complex operands
+let a = 1
+let b = 2
+let c = 3
+assert {
+  a == 1
+    and b == 2
+    and c == 3
+}
+assert {
+  a == 99
+    or b == 99
+    or c == 3
+}
+
+# Short-circuit still works across lines
+let side_effect = false
+let result = false
+  and {
+    side_effect = true
+    true
+  }
+assert { result == false }
+assert { side_effect == false }
+
+let side_effect2 = false
+let result2 = true
+  or {
+    side_effect2 = true
+    false
+  }
+assert { result2 }
+assert { side_effect2 == false }
+
+# Mixed with single-line
+assert {
+  true and true
+    and true
+}
+assert {
+  false or false
+    or true
+}
+
+print("Multiline logical operator tests passed")

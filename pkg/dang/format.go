@@ -603,9 +603,9 @@ func (f *Formatter) formatNode(node Node) {
 	case *Default:
 		f.formatBinaryOp(n.Left, n.Right, "??")
 	case *LogicalOr:
-		f.formatBinaryOp(n.Left, n.Right, "or")
+		f.formatLogicalOp(n, n.Left, n.Right, "or")
 	case *LogicalAnd:
-		f.formatBinaryOp(n.Left, n.Right, "and")
+		f.formatLogicalOp(n, n.Left, n.Right, "and")
 	case *Equality:
 		f.formatBinaryOp(n.Left, n.Right, "==")
 	case *UnaryNegation:
@@ -2656,6 +2656,103 @@ func (f *Formatter) formatGrouped(g *Grouped) {
 		f.formatNode(g.Expr)
 	}
 	f.write(")")
+}
+
+// formatLogicalOp formats and/or operators, supporting multiline layout.
+// When the original source had the operator split across lines, the operands
+// are collected into a flat list and each continuation is placed on its own
+// line with a leading operator, indented one level:
+//
+//	condition_a
+//	  and condition_b
+//	  and condition_c
+func (f *Formatter) formatLogicalOp(node Node, left, right Node, op string) {
+	if !f.wasLogicalOpMultiline(node, op) {
+		f.formatBinaryOp(left, right, op)
+		return
+	}
+
+	// Collect all chained operands of the same operator into a flat list.
+	operands := f.collectLogicalOperands(node, op)
+
+	// Format first operand
+	first := operands[0]
+	leftNeedsParens := needsParensForPrecedence(first, op, true)
+	if leftNeedsParens {
+		f.write("(")
+	}
+	f.formatNode(first)
+	if leftNeedsParens {
+		f.write(")")
+	}
+
+	// Format remaining operands on new lines with leading operator
+	f.indented(func() {
+		for _, operand := range operands[1:] {
+			f.newline()
+			f.writeIndent()
+			f.write(op)
+			f.write(" ")
+			rightNeedsParens := needsParensForPrecedence(operand, op, false)
+			if rightNeedsParens {
+				f.write("(")
+			}
+			f.formatNode(operand)
+			if rightNeedsParens {
+				f.write(")")
+			}
+		}
+	})
+}
+
+// wasLogicalOpMultiline checks if any part of a chained and/or expression was
+// originally written across multiple lines.
+func (f *Formatter) wasLogicalOpMultiline(node Node, op string) bool {
+	var left, right Node
+	switch n := node.(type) {
+	case *LogicalAnd:
+		left, right = n.Left, n.Right
+	case *LogicalOr:
+		left, right = n.Left, n.Right
+	default:
+		return false
+	}
+
+	leftEnd := nodeEndLine(left)
+	rightLoc := right.GetSourceLocation()
+	if leftEnd > 0 && rightLoc != nil && rightLoc.Line > leftEnd {
+		return true
+	}
+
+	// Recurse into left child if it's the same operator
+	if nodeOperator(left) == op {
+		return f.wasLogicalOpMultiline(left, op)
+	}
+	return false
+}
+
+// collectLogicalOperands flattens a left-associative chain of the same logical
+// operator into a list of operands. For example, (a and b) and c becomes [a, b, c].
+func (f *Formatter) collectLogicalOperands(node Node, op string) []Node {
+	var left, right Node
+	switch n := node.(type) {
+	case *LogicalAnd:
+		if op == "and" {
+			left, right = n.Left, n.Right
+		}
+	case *LogicalOr:
+		if op == "or" {
+			left, right = n.Left, n.Right
+		}
+	}
+
+	if left == nil {
+		return []Node{node}
+	}
+
+	// Recurse into left child if it's the same operator
+	leftOperands := f.collectLogicalOperands(left, op)
+	return append(leftOperands, right)
 }
 
 func (f *Formatter) formatBinaryOp(left, right Node, op string) {

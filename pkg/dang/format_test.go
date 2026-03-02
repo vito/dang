@@ -899,6 +899,99 @@ a + b
 	}
 }
 
+func (FormatSuite) TestLogicalOpFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single-line and stays single-line",
+			input:    `let x = a and b`,
+			expected: "let x = a and b\n",
+		},
+		{
+			name:     "single-line or stays single-line",
+			input:    `let x = a or b`,
+			expected: "let x = a or b\n",
+		},
+		{
+			name: "multiline and splits with leading operator",
+			input: `let x = a
+  and b`,
+			expected: `let x = a
+  and b
+`,
+		},
+		{
+			name: "multiline or splits with leading operator",
+			input: `let x = a
+  or b`,
+			expected: `let x = a
+  or b
+`,
+		},
+		{
+			name: "chained multiline and",
+			input: `let x = a
+  and b
+  and c`,
+			expected: `let x = a
+  and b
+  and c
+`,
+		},
+		{
+			name: "chained multiline or",
+			input: `let x = a
+  or b
+  or c`,
+			expected: `let x = a
+  or b
+  or c
+`,
+		},
+		{
+			name:     "chained single-line and stays single-line",
+			input:    `let x = a and b and c`,
+			expected: "let x = a and b and c\n",
+		},
+		{
+			name: "multiline and with complex operands",
+			input: `let x = foo.bar == 1
+  and baz.qux == 2`,
+			expected: `let x = foo.bar == 1
+  and baz.qux == 2
+`,
+		},
+		{
+			name: "multiline and inside if condition",
+			input: `if (a
+  and b) {
+  x
+}`,
+			expected: `if (a
+  and b) {
+  x
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			// Verify idempotency
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestImportFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

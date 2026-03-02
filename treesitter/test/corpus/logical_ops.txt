@@ -1,0 +1,301 @@
+===
+Single-line and
+===
+
+let x = a and b
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            (logical_and_expr
+              left: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token))))
+              (and_token)
+              right: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token)))))))))))
+
+===
+Single-line or
+===
+
+let x = a or b
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            left: (symbol_or_call
+              (auto_call_symbol
+                name: (id
+                  (word_token))))
+            (or_token)
+            right: (symbol_or_call
+              (auto_call_symbol
+                name: (id
+                  (word_token))))))))))
+
+===
+Multiline and
+===
+
+let x = a
+  and b
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            (logical_and_expr
+              left: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token))))
+              (and_token)
+              right: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token)))))))))))
+
+===
+Multiline or
+===
+
+let x = a
+  or b
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            left: (symbol_or_call
+              (auto_call_symbol
+                name: (id
+                  (word_token))))
+            (or_token)
+            right: (symbol_or_call
+              (auto_call_symbol
+                name: (id
+                  (word_token))))))))))
+
+===
+Chained multiline and
+===
+
+let x = a
+  and b
+  and c
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            (logical_and_expr
+              left: (logical_and_expr
+                left: (symbol_or_call
+                  (auto_call_symbol
+                    name: (id
+                      (word_token))))
+                (and_token)
+                right: (symbol_or_call
+                  (auto_call_symbol
+                    name: (id
+                      (word_token)))))
+              (and_token)
+              right: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token)))))))))))
+
+===
+Chained multiline or
+===
+
+let x = a
+  or b
+  or c
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            left: (logical_or_expr
+              left: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token))))
+              (or_token)
+              right: (symbol_or_call
+                (auto_call_symbol
+                  name: (id
+                    (word_token)))))
+            (or_token)
+            right: (symbol_or_call
+              (auto_call_symbol
+                name: (id
+                  (word_token))))))))))
+
+===
+Multiline and with complex operands
+===
+
+let x = foo == 1
+  and bar == 2
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (default_expr
+          (logical_or_expr
+            (logical_and_expr
+              left: (logical_and_expr
+                (equality_expr
+                  left: (symbol_or_call
+                    (auto_call_symbol
+                      name: (id
+                        (word_token))))
+                  op: (equality_op)
+                  right: (literal
+                    (int
+                      (non_zero_decimal_digit)))))
+              (and_token)
+              right: (equality_expr
+                left: (symbol_or_call
+                  (auto_call_symbol
+                    name: (id
+                      (word_token))))
+                op: (equality_op)
+                right: (literal
+                  (int
+                    (non_zero_decimal_digit)))))))))))
+
+===
+Identifier starting with and is not continuation
+===
+
+let x = a
+android
+
+---
+
+(dang
+  e: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (symbol_or_call
+          (auto_call_symbol
+            name: (id
+              (word_token)))))))
+  eles: (sep)
+  last: (symbol_or_call
+    (auto_call_symbol
+      name: (id
+        (word_token)))))
+
+===
+Identifier starting with or is not continuation
+===
+
+let x = a
+order
+
+---
+
+(dang
+  e: (decl
+    decl: (slot
+      (value_only_slot
+        vis: (visibility
+          (let_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (equal_token)
+        val: (symbol_or_call
+          (auto_call_symbol
+            name: (id
+              (word_token)))))))
+  eles: (sep)
+  last: (symbol_or_call
+    (auto_call_symbol
+      name: (id
+        (word_token)))))
