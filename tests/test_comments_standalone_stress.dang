@@ -91,10 +91,10 @@ pub case_result = case ("b") {
   "c" => "gamma"
 }
 
-# comment before for loop
+# comment before .each
 pub sum = 0
-for (n in [1, 2, 3]) {
-  # comment inside for body
+[1, 2, 3].each { n =>
+  # comment inside .each body
   sum += n
 }
 
@@ -187,17 +187,17 @@ assert { math == 19 }
 # comment before negation
 assert { (!false) == true }
 
-# comment before for with index
+# comment before .each with index
 pub index_sum = 0
-for (i, color in Color.values) {
-  # comment inside indexed for
+Color.values.each { color, i =>
+  # comment inside indexed .each
   index_sum += i
 }
 assert { index_sum == 3 }
 
 # comment before break/continue
 pub break_sum = 0
-for (n in [1, 2, 3, 4, 5]) {
+[1, 2, 3, 4, 5].each { n =>
   # comment before conditional break
   if (n > 3) {
     # comment before break
@@ -208,7 +208,7 @@ for (n in [1, 2, 3, 4, 5]) {
 assert { break_sum == 6 }
 
 pub skip_sum = 0
-for (n in [1, 2, 3, 4, 5]) {
+[1, 2, 3, 4, 5].each { n =>
   # comment before conditional continue
   if (n == 3) {
     # comment before continue

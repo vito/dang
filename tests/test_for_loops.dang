@@ -1,19 +1,17 @@
-# Test basic for..in loop over list
+# Test basic list iteration with .each
 pub numbers = [1, 2, 3, 4, 5]
 pub sum = 0
 
-for (num in numbers) {
-  sum += num
-}
+numbers.each { num => sum += num }
 
 assert { sum == 15 }
 
-# Test for..in loop with index
+# Test .each with index
 pub fruits = ["apple", "banana", "cherry"]
 pub result = ""
 pub indices = []
 
-for (index, fruit in fruits) {
+fruits.each { fruit, index =>
   result += fruit
   indices += [index]
 }
@@ -21,12 +19,12 @@ for (index, fruit in fruits) {
 assert { result == "applebananacherry" }
 assert { indices == [0, 1, 2] } # 0 + 1 + 2
 
-# Test nested for loops
+# Test nested .each
 pub matrix = [[1, 2], [3, 4]]
 pub total = 0
 
-for (row in matrix) {
-  for (value in row) {
+matrix.each { row =>
+  row.each { value =>
     total += value
   }
 }
@@ -37,9 +35,7 @@ assert { total == 10 }
 pub empty: [Int!]! = []
 pub count = 0
 
-for (item in empty) {
-  count += 1
-}
+empty.each { item => count += 1 }
 
 assert { count == 0 }
 
@@ -47,8 +43,6 @@ assert { count == 0 }
 pub single = [42]
 pub captured = 0
 
-for (item in single) {
-  captured = item
-}
+single.each { item => captured = item }
 
 assert { captured == 42 }

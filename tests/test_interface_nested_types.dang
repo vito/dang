@@ -44,7 +44,7 @@ type ValidationRegistry implements Registry {
 
   pub validateAll(input: String!): Boolean! {
     pub res = true
-    for (v in validators) {
+    validators.each { v =>
       if (!v.validate(input)) {
         res = false
         break

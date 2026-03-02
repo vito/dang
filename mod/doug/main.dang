@@ -88,7 +88,7 @@ type Doug {
       #	 .map { (i, x) => toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
       #	 .join("\n")
       let numbered = ""
-      for (i, line in fileContents.split("\n", 0)) {
+      fileContents.split("\n", 0).each { line, i =>
         # TODO: template
         numbered += toJSON(offset + i + 1).padLeft(6) + "→" + line + "\n"
       }
@@ -299,7 +299,7 @@ type Doug {
   ): Void {
     let matches = source.glob(pattern)
     let anyMatched = false
-    for (path in matches) {
+    matches.each { path =>
       if (path.hasPrefix(".") or path.contains("/.")) {
         # Filter out hidden files
         continue
@@ -552,7 +552,7 @@ type Doug {
     # Build list of all descriptions being updated
     let updatingDescriptions = pending + inProgress + completed
 
-    for (todo in currentTodoLines) {
+    currentTodoLines.each { todo =>
       if (todo != "") {
         # Split on first colon only (limit=2) to handle descriptions with colons
         let parts = todo.split(":", limit: 2)
@@ -575,15 +575,15 @@ type Doug {
     let formattedTodos = ""
     let encodedTodos = ""
 
-    for (todo in existingCompleted + completed) {
+    (existingCompleted + completed).each { todo =>
       encodedTodos += "completed:" + todo + "\n"
       formattedTodos += "■ \x1b[32m\x1b[9m" + todo + "\x1b[0m\n"
     }
-    for (todo in existingInProgress + inProgress) {
+    (existingInProgress + inProgress).each { todo =>
       encodedTodos += "in_progress:" + todo + "\n"
       formattedTodos += "□ \x1b[33m" + todo + "\x1b[0m\n"
     }
-    for (todo in existingPending + pending) {
+    (existingPending + pending).each { todo =>
       encodedTodos += "pending:" + todo + "\n"
       formattedTodos += "□ \x1b[37m" + todo + "\x1b[0m\n"
     }
@@ -609,7 +609,7 @@ type Doug {
 
     # Look for context files
     let contextSegment = ""
-    for (file in contextFiles) {
+    contextFiles.each { file =>
       if (entries.contains(file)) {
         let fileContents = workspace.file(file).contents
         if (fileContents != "") {

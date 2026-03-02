@@ -61,10 +61,10 @@ pub add(a: Int!, b: Int!): Int! { # trailing on function open
   a + b # trailing on function body
 }
 
-# for loop
+# .each iteration
 let total = 0 # trailing on mutable let
-for (num in [1, 2, 3]) { # trailing on for loop open
-  total += num # trailing on for body
+[1, 2, 3].each { num => # trailing on .each open
+  total += num # trailing on .each body
 }
 
 # conditional
@@ -117,10 +117,10 @@ pub outer = { # trailing on outer block open
 # binary operations
 pub math = (1 + 2) * 3 # trailing on grouped math
 
-# for with index
+# .each with index
 let indexed = "" # trailing on mutable string
-for (i, val in ["a", "b", "c"]) { # trailing on for with index
-  indexed += val # trailing on indexed for body
+["a", "b", "c"].each { val, i => # trailing on .each with index
+  indexed += val # trailing on indexed .each body
 }
 
 # boolean operations

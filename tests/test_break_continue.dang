@@ -1,8 +1,8 @@
-# Test break in for loop
+# Test break in .each
 pub numbers = [1, 2, 3, 4, 5]
 pub sum = 0
 
-for (num in numbers) {
+numbers.each { num =>
   if (num == 3) {
     break
   }
@@ -11,11 +11,11 @@ for (num in numbers) {
 
 assert { sum == 3 } # Only 1 + 2, stops before 3
 
-# Test continue in for loop
+# Test continue in .each
 pub numbers2 = [1, 2, 3, 4, 5]
 pub sum2 = 0
 
-for (num in numbers2) {
+numbers2.each { num =>
   if (num == 3) {
     continue
   }
@@ -49,12 +49,12 @@ for (count2 < 10) {
 
 assert { evens == 5 } # 2, 4, 6, 8, 10
 
-# Test nested loops with break
+# Test nested .each with break
 pub matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 pub found = 0
 
-for (row in matrix) {
-  for (value in row) {
+matrix.each { row =>
+  row.each { value =>
     if (value == 5) {
       found = value
       break
@@ -67,11 +67,11 @@ for (row in matrix) {
 
 assert { found == 5 }
 
-# Test nested loops with continue
+# Test nested .each with continue
 # continue should continue the innermost loop
 pub result = 0
-for (i in [1, 2, 3]) {
-  for (j in [1, 2, 3]) {
+[1, 2, 3].each { i =>
+  [1, 2, 3].each { j =>
     if (i == 2) {
       continue
     }
@@ -93,7 +93,7 @@ assert { result == 16 }
 pub items = ["a", "b", "c", "d"]
 pub lastIndex = 0 - 1
 
-for (index, value in items) {
+items.each { value, index =>
   if (value == "c") {
     lastIndex = index
     break
@@ -106,7 +106,7 @@ assert { lastIndex == 2 }
 pub items2 = ["a", "b", "c", "d"]
 pub result3 = ""
 
-for (index, value in items2) {
+items2.each { value, index =>
   if (index == 1) {
     continue
   }

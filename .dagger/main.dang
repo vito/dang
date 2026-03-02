@@ -159,7 +159,7 @@ type Dang {
   """
   pub bumpDagger(version: String! = "latest"): Changeset! {
     let ctr = base
-    for (pkg in [".", "dagger-sdk", "treesitter"]) {
+    [".", "dagger-sdk", "treesitter"].each { pkg =>
       ctr = ctr
         .withExec(["go", "-C", pkg, "get", "dagger.io/dagger@" + version])
         .withExec(["go", "-C", pkg, "mod", "tidy"])

@@ -23,7 +23,7 @@ pub issues = repository(owner: "golang", name: "go")
   node.{number, title}
 }
 
-for (edge in issues) {
+issues.each { edge =>
   let node = edge.node
   if (node != null) {
     print("  #" + toString(node.number) + "  " + node.title)
@@ -46,7 +46,7 @@ pub results = search(
 
 print("Top GraphQL clients for Go:")
 
-for (result in results) {
+results.each { result =>
   case (result.node) {
     r: Repository => print("  " + r.owner.login + "/" + r.name + " (" + toString(r.stargazerCount) + " stars)")
     else => print("  (other)")
