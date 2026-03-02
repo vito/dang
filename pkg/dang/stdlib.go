@@ -394,6 +394,82 @@ func registerStdlib() {
 			return list, nil
 		})
 
+	// List.any method: any(fn: \(a) -> Boolean!) -> Boolean!
+	Method(ListTypeModule, "any").
+		Doc("returns true if at least one element satisfies the predicate").
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("any requires a block argument")
+			}
+			fn := *args.Block
+
+			for _, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("any predicate: %w", err)
+				}
+
+				boolVal, ok := res.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("any predicate must return Boolean!, got %T", res)
+				}
+
+				if boolVal.Val {
+					return BoolValue{Val: true}, nil
+				}
+			}
+
+			return BoolValue{Val: false}, nil
+		})
+
+	// List.all method: all(fn: \(a) -> Boolean!) -> Boolean!
+	Method(ListTypeModule, "all").
+		Doc("returns true if all elements satisfy the predicate").
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("all requires a block argument")
+			}
+			fn := *args.Block
+
+			for _, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("all predicate: %w", err)
+				}
+
+				boolVal, ok := res.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("all predicate must return Boolean!, got %T", res)
+				}
+
+				if !boolVal.Val {
+					return BoolValue{Val: false}, nil
+				}
+			}
+
+			return BoolValue{Val: true}, nil
+		})
+
 	// List.map method: map(fn: \(a) -> b) -> [b]!
 	Method(ListTypeModule, "map").
 		Doc("returns a new list with each element transformed by the given function").

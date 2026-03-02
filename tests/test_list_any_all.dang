@@ -1,0 +1,40 @@
+# Test list.any and list.all methods
+
+# any: basic truthy case
+assert { [1, 2, 3].any { x => x > 2 } == true }
+
+# any: no match
+assert { [1, 2, 3].any { x => x > 5 } == false }
+
+# any: empty list
+pub empty: [Int!]! = []
+assert { empty.any { x => x > 0 } == false }
+
+# any: first element matches (short-circuits)
+assert { [10, 20, 30].any { x => x == 10 } == true }
+
+# any: last element matches
+assert { [10, 20, 30].any { x => x == 30 } == true }
+
+# all: basic truthy case
+assert { [1, 2, 3].all { x => x > 0 } == true }
+
+# all: one fails
+assert { [1, 2, 3].all { x => x > 1 } == false }
+
+# all: empty list (vacuously true)
+assert { empty.all { x => x > 0 } == true }
+
+# all: single element passes
+assert { [42].all { x => x == 42 } == true }
+
+# all: single element fails
+assert { [42].all { x => x == 0 } == false }
+
+# any/all with strings
+pub words = ["hello", "world", "hi"]
+assert { words.any { w => w.contains("or") } == true }
+assert { words.all { w => w.contains("h") } == false }
+assert { words.any { w => w == "hi" } == true }
+
+print("List any/all tests passed!")
