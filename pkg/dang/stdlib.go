@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -351,6 +352,46 @@ func registerStdlib() {
 				Elements: result,
 				ElemType: list.ElemType,
 			}, nil
+		})
+
+	// List.each method: each(fn: \(a, Int!) -> b) -> Null
+	Method(ListTypeModule, "each").
+		Doc("iterates over each element in the list, calling the block for each element; supports break and continue").
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "index",
+				Value: hm.NewScheme(nil, NonNull(IntType)),
+			}),
+			TypeVar('b'),
+		)).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("each requires a block argument")
+			}
+			fn := *args.Block
+
+			for i, item := range list.Elements {
+				_, err := callFunc(ctx, fn, item, IntValue{i})
+				if err != nil {
+					var breakEx *BreakException
+					var continueEx *ContinueException
+					if errors.As(err, &breakEx) {
+						break
+					}
+					if errors.As(err, &continueEx) {
+						continue
+					}
+					return nil, fmt.Errorf("each block: %w", err)
+				}
+			}
+
+			return list, nil
 		})
 
 	// List.map method: map(fn: \(a) -> b) -> [b]!
