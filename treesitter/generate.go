@@ -16,9 +16,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer grammarFile.Close()
+	defer grammarFile.Close() //nolint:errcheck
 
 	enc := json.NewEncoder(grammarFile)
 	enc.SetIndent("", "  ")
-	enc.Encode(dang.TreesitterGrammar())
+	enc.Encode(dang.TreesitterGrammar()) //nolint:errcheck
 }
