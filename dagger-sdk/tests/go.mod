@@ -5,12 +5,11 @@ go 1.25.0
 require (
 	github.com/dagger/otel-go v1.41.1-0.20260303185236-072f65948887
 	github.com/dagger/testctx v0.0.5
-	github.com/dagger/testctx/oteltest v0.0.3
+	github.com/dagger/testctx/oteltest v0.1.1-0.20260303185353-60d5e1194a6f
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
-	dagger.io/dagger v0.19.11 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
