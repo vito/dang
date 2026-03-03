@@ -911,31 +911,7 @@ ElseToken <- "else" !WordChar
 OrToken <- "or" !WordChar
 AndToken <- "and" !WordChar
 
-ForLoop <- ForTwoVarLoop / ForSingleVarLoop / ForConditionLoop / ForInfiniteLoop
-
-ForSingleVarLoop <- ForToken _ '(' _ variable:Id typeAnnotation:(_ ColonToken _ t:Type)? _ InToken _ iterable:Form _ ')' _ body:Block {
-  var varType TypeNode
-  if typeAnnotation != nil {
-    varType = typeAnnotation.([]interface{})[2].(TypeNode)
-  }
-  return &ForLoop{
-    Variable: variable.(string),
-    Type: varType,
-    Iterable: iterable.(Node),
-    LoopBody: body.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
-
-ForTwoVarLoop <- ForToken _ '(' _ key:Id _ CommaToken _ value:Id _ InToken _ iterable:Form _ ')' _ body:Block {
-  return &ForLoop{
-    KeyVariable: key.(string),
-    ValueVariable: value.(string),
-    Iterable: iterable.(Node),
-    LoopBody: body.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
+ForLoop <- ForConditionLoop / ForInfiniteLoop
 
 ForConditionLoop <- ForToken _ '(' _ cond:Form _ ')' _ body:Block {
   return &ForLoop{
@@ -953,7 +929,6 @@ ForInfiniteLoop <- ForToken _ body:Block {
 }
 
 ForToken <- "for" !WordChar
-InToken <- "in" !WordChar
 
 ArrowToken <- "=>"
 

@@ -2281,27 +2281,7 @@ func (f *Formatter) formatConditional(c *Conditional) {
 func (f *Formatter) formatForLoop(l *ForLoop) {
 	f.write("for ")
 
-	if l.KeyVariable != "" {
-		// Two-variable iteration: for (key, value in iterable)
-		f.write("(")
-		f.write(l.KeyVariable)
-		f.write(", ")
-		f.write(l.ValueVariable)
-		f.write(" in ")
-		f.formatNode(l.Iterable)
-		f.write(") ")
-	} else if l.Variable != "" {
-		// Single-variable iteration: for (var in iterable)
-		f.write("(")
-		f.write(l.Variable)
-		if l.Type != nil {
-			f.write(": ")
-			f.formatTypeNode(l.Type)
-		}
-		f.write(" in ")
-		f.formatNode(l.Iterable)
-		f.write(") ")
-	} else if l.Condition != nil {
+	if l.Condition != nil {
 		// Condition loop: for (condition)
 		f.write("(")
 		f.formatNode(l.Condition)

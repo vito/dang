@@ -2061,17 +2061,12 @@ func (c *Conditional) Walk(fn func(Node) bool) {
 	}
 }
 
-// ForLoop represents a for..in loop expression or condition-based loop
+// ForLoop represents a condition-based loop or infinite loop
 type ForLoop struct {
 	InferredTypeHolder
-	Variable      string   // Loop variable name (for single-variable iteration)
-	KeyVariable   string   // Key/Index variable name (for two-variable iteration)
-	ValueVariable string   // Value variable name (for two-variable iteration)
-	Type          TypeNode // Optional type annotation
-	Iterable      Node     // Expression that produces iterable (nil for condition-only loops)
-	Condition     Node     // Condition for condition-only loops (nil for iterator loops)
-	LoopBody      *Block   // Loop body
-	Loc           *SourceLocation
+	Condition Node   // Condition for condition-based loops (nil for infinite loops)
+	LoopBody  *Block // Loop body
+	Loc       *SourceLocation
 }
 
 var _ Node = (*ForLoop)(nil)
@@ -2083,9 +2078,6 @@ func (f *ForLoop) DeclaredSymbols() []string {
 
 func (f *ForLoop) ReferencedSymbols() []string {
 	var symbols []string
-	if f.Iterable != nil {
-		symbols = append(symbols, f.Iterable.ReferencedSymbols()...)
-	}
 	if f.Condition != nil {
 		symbols = append(symbols, f.Condition.ReferencedSymbols()...)
 	}
@@ -2099,7 +2091,7 @@ func (f *ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
 
 func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		// Check if this is a condition-only loop (while-style)
+		// Check if this is a condition-based loop
 		if f.Condition != nil {
 			// Infer the condition type
 			condType, err := f.Condition.Infer(ctx, env, fresh)
@@ -2125,114 +2117,17 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			return bodyType, nil
 		}
 
-		// Check if this is an infinite loop
-		if f.Iterable == nil {
-			// Infer body type
-			bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			// Infinite loops return the last value from the body, or null
-			if nonNull, ok := bodyType.(hm.NonNullType); ok {
-				return nonNull.Type, nil
-			}
-			return bodyType, nil
-		}
-
-		// Infer the type of the iterable
-		iterableType, err := f.Iterable.Infer(ctx, env, fresh)
+		// Infinite loop
+		bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		// Handle iteration - check if we have two variables or one
-		if f.KeyVariable == "" {
-			// Single variable iteration
-			var elementType hm.Type
-
-			// Unwrap non-nullable iterable type
-			if nonNullType, ok := iterableType.(hm.NonNullType); ok {
-				iterableType = nonNullType.Type
-			}
-
-			// Check if it's a list type
-			if listType, ok := iterableType.(ListType); ok {
-				elementType = listType.Type
-			} else if _, ok := iterableType.(GraphQLListType); ok {
-				return nil, NewInferError(fmt.Errorf("cannot iterate over GraphQL list of objects directly; use .{field1, field2, ...} to select fields first"), f.Iterable)
-			} else {
-				return nil, NewInferError(fmt.Errorf("expected list type for single-variable iteration, got %s", iterableType), f.Iterable)
-			}
-
-			// Check if explicit type annotation matches inferred element type
-			if f.Type != nil {
-				declaredType, err := f.Type.Infer(ctx, env, fresh)
-				if err != nil {
-					return nil, err
-				}
-				if _, err := hm.Assignable(elementType, declaredType); err != nil {
-					return nil, NewInferError(fmt.Errorf("type annotation %s doesn't match element type %s", declaredType, elementType), f)
-				}
-			}
-
-			// Single variable iteration - just add the element variable
-			loopEnv := env.Clone()
-			loopEnv = loopEnv.Add(f.Variable, hm.NewScheme(nil, elementType))
-
-			bodyType, err := f.LoopBody.Infer(ctx, loopEnv, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			// For loops return the last value from the body, or null if never executed
-			// Make the result nullable since the loop might not execute
-			if nonNull, ok := bodyType.(hm.NonNullType); ok {
-				return nonNull.Type, nil
-			}
-			return bodyType, nil
-
-		} else {
-			// Two variable iteration
-			iterableType, err := f.Iterable.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			loopEnv := env.Clone()
-
-			// Check if it's a list type (key=index, value=element)
-			if listType, ok := iterableType.(ListType); ok {
-				elementType := listType.Type
-				loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: IntType})) // index
-				loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, elementType))                 // element
-			} else if nonNullListType, ok := iterableType.(hm.NonNullType); ok {
-				if listType, ok := nonNullListType.Type.(ListType); ok {
-					elementType := listType.Type
-					loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: IntType})) // index
-					loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, elementType))                 // element
-				} else {
-					// Not a list, assume object iteration (key=string, value=string for now)
-					loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType}))   // key
-					loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType})) // value
-				}
-			} else {
-				// Not a list, assume object iteration (key=string, value=string for now)
-				loopEnv = loopEnv.Add(f.KeyVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType}))   // key
-				loopEnv = loopEnv.Add(f.ValueVariable, hm.NewScheme(nil, hm.NonNullType{Type: StringType})) // value
-			}
-
-			bodyType, err := f.LoopBody.Infer(ctx, loopEnv, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			// For loops return the last value from the body, or null if never executed
-			if nonNull, ok := bodyType.(hm.NonNullType); ok {
-				return nonNull.Type, nil
-			}
-			return bodyType, nil
+		// Infinite loops return the last value from the body, or null
+		if nonNull, ok := bodyType.(hm.NonNullType); ok {
+			return nonNull.Type, nil
 		}
+		return bodyType, nil
 	})
 }
 
@@ -2276,94 +2171,23 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return lastVal, nil
 		}
 
-		// Handle infinite loop
-		if f.Iterable == nil {
-			for {
-				val, err := EvalNode(ctx, env, f.LoopBody)
-				if err != nil {
-					// Check if it's a break or continue
-					var breakEx *BreakException
-					var continueEx *ContinueException
-					if errors.As(err, &breakEx) {
-						break
-					}
-					if errors.As(err, &continueEx) {
-						continue
-					}
-					return nil, fmt.Errorf("evaluating body: %w", err)
+		// Infinite loop
+		for {
+			val, err := EvalNode(ctx, env, f.LoopBody)
+			if err != nil {
+				// Check if it's a break or continue
+				var breakEx *BreakException
+				var continueEx *ContinueException
+				if errors.As(err, &breakEx) {
+					break
 				}
-				// Only update lastVal if there was no error
-				lastVal = val
-			}
-			return lastVal, nil
-		}
-
-		// Evaluate the iterable
-		iterableVal, err := EvalNode(ctx, env, f.Iterable)
-		if err != nil {
-			return nil, fmt.Errorf("evaluating iterable: %w", err)
-		}
-
-		if f.KeyVariable == "" {
-			// Single variable iteration
-			if listVal, ok := iterableVal.(ListValue); ok {
-				// Handle list iteration
-				for _, element := range listVal.Elements {
-					// Create new scope for loop iteration
-					loopEnv := env.Clone()
-					loopEnv.Set(f.Variable, element)
-
-					// Evaluate the body
-					val, err := EvalNode(ctx, loopEnv, f.LoopBody)
-					if err != nil {
-						// Check if it's a break or continue
-						var breakEx *BreakException
-						var continueEx *ContinueException
-						if errors.As(err, &breakEx) {
-							break
-						}
-						if errors.As(err, &continueEx) {
-							continue
-						}
-						return nil, fmt.Errorf("evaluating loop body: %w", err)
-					}
-					// Only update lastVal if there was no error
-					lastVal = val
+				if errors.As(err, &continueEx) {
+					continue
 				}
-			} else {
-				return nil, fmt.Errorf("single-variable iteration only supports lists, got %T", iterableVal)
+				return nil, fmt.Errorf("evaluating body: %w", err)
 			}
-		} else {
-			// Two variable iteration
-			if listVal, ok := iterableVal.(ListValue); ok {
-				// Handle list iteration with index (key=index, value=element)
-				for i, element := range listVal.Elements {
-					// Create new scope for loop iteration
-					loopEnv := env.Clone()
-					loopEnv.Set(f.KeyVariable, IntValue{Val: int(i)}) // key = index
-					loopEnv.Set(f.ValueVariable, element)             // value = element
-
-					// Evaluate the body
-					val, err := EvalNode(ctx, loopEnv, f.LoopBody)
-					if err != nil {
-						// Check if it's a break or continue
-						var breakEx *BreakException
-						var continueEx *ContinueException
-						if errors.As(err, &breakEx) {
-							break
-						}
-						if errors.As(err, &continueEx) {
-							continue
-						}
-						return nil, fmt.Errorf("evaluating loop body: %w", err)
-					}
-					// Only update lastVal if there was no error
-					lastVal = val
-				}
-			} else {
-				// Handle object iteration - for now, just return an error since we need more work on object types
-				return nil, fmt.Errorf("object iteration not yet implemented for type %T", iterableVal)
-			}
+			// Only update lastVal if there was no error
+			lastVal = val
 		}
 
 		return lastVal, nil
@@ -2373,9 +2197,6 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 func (f *ForLoop) Walk(fn func(Node) bool) {
 	if !fn(f) {
 		return
-	}
-	if f.Iterable != nil {
-		f.Iterable.Walk(fn)
 	}
 	if f.Condition != nil {
 		f.Condition.Walk(fn)
