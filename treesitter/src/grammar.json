@@ -201,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 160,
+      "value": 157,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -407,7 +407,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 153,
+      "value": 150,
       "content": {
         "type": "SEQ",
         "members": [
@@ -490,7 +490,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 152,
+      "value": 149,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2247,7 +2247,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 98,
+      "value": 95,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2296,7 +2296,7 @@
     },
     "named_type": {
       "type": "PREC_LEFT",
-      "value": 97,
+      "value": 94,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2441,7 +2441,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 93,
+      "value": 90,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2529,7 +2529,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 89,
+      "value": 86,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2593,7 +2593,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 88,
+      "value": 85,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2657,7 +2657,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 87,
+      "value": 84,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2738,7 +2738,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 85,
+      "value": 82,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2827,7 +2827,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 83,
+      "value": 80,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2908,7 +2908,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 81,
+      "value": 78,
       "content": {
         "type": "SEQ",
         "members": [
@@ -4097,150 +4097,11 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "for_two_var_loop"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "for_single_var_loop"
-        },
-        {
-          "type": "SYMBOL",
           "name": "for_condition_loop"
         },
         {
           "type": "SYMBOL",
           "name": "for_infinite_loop"
-        }
-      ]
-    },
-    "for_single_var_loop": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "for_token"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "variable",
-          "content": {
-            "type": "SYMBOL",
-            "name": "id"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "type_annotation",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SEQ",
-                "members": [
-                  {
-                    "type": "SYMBOL",
-                    "name": "colon_token"
-                  },
-                  {
-                    "type": "FIELD",
-                    "name": "t",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "type"
-                    }
-                  }
-                ]
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "in_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "iterable",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        },
-        {
-          "type": "FIELD",
-          "name": "body",
-          "content": {
-            "type": "SYMBOL",
-            "name": "block"
-          }
-        }
-      ]
-    },
-    "for_two_var_loop": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "for_token"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "key",
-          "content": {
-            "type": "SYMBOL",
-            "name": "id"
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "comma_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "id"
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "in_token"
-        },
-        {
-          "type": "FIELD",
-          "name": "iterable",
-          "content": {
-            "type": "SYMBOL",
-            "name": "form"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        },
-        {
-          "type": "FIELD",
-          "name": "body",
-          "content": {
-            "type": "SYMBOL",
-            "name": "block"
-          }
         }
       ]
     },
@@ -4299,13 +4160,6 @@
       "content": {
         "type": "STRING",
         "value": "for"
-      }
-    },
-    "in_token": {
-      "type": "TOKEN",
-      "content": {
-        "type": "STRING",
-        "value": "in"
       }
     },
     "arrow_token": {
