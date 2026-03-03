@@ -174,8 +174,10 @@ type Dang {
   pub nvimDebug: Container! {
     base
       .withFile("/usr/bin/dang", binary)
-      .withFile("/root/.config/nvim/init.vim", source
-        .file("pkg/lsp/testdata/config.vim"))
+      .withFile(
+        "/root/.config/nvim/init.vim",
+        source.file("pkg/lsp/testdata/config.vim"),
+      )
       .withWorkdir("./pkg/lsp")
       .terminal(experimentalPrivilegedNesting: true)
   }
