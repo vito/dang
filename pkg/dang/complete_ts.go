@@ -637,7 +637,19 @@ func findSelectAtCursor(node *tree_sitter.Node, source []byte, line, col uint) *
 	nameNode := bestSelect.ChildByFieldName("name")
 	var partial string
 	if nameNode != nil {
-		partial = nameNode.Utf8Text(source)
+		nameStart := nameNode.StartPosition()
+		nameEnd := nameNode.EndPosition()
+		if tsContains(nameStart, nameEnd, line, col) {
+			// Cursor is within the name node — use only the text up to the cursor.
+			nameOffset := lineColToOffset(source, nameStart.Row, nameStart.Column)
+			cursorOffset := lineColToOffset(source, line, col)
+			if cursorOffset > nameOffset {
+				partial = string(source[nameOffset:cursorOffset])
+			}
+		}
+		// else: cursor is before the name node (e.g. right after the dot
+		// with the name on the next line) — leave partial empty to show
+		// all members.
 	}
 
 	receiverText := leftNode.Utf8Text(source)

@@ -80,6 +80,20 @@ func TestComplete_DotMember(t *testing.T) {
 			col:        14,
 			wantLabels: []string{"withExec"},
 		},
+		{
+			name:       "dot before next line token",
+			text:       "container.\nfrom",
+			line:       0,
+			col:        10,
+			wantLabels: []string{"from", "withExec"},
+		},
+		{
+			name:       "dot before keyword on next line",
+			text:       "container.\ntype Foo {",
+			line:       0,
+			col:        10,
+			wantLabels: []string{"from", "withExec"},
+		},
 	}
 
 	for _, tt := range tests {
