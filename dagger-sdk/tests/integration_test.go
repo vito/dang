@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"dagger.io/dagger/telemetry"
+	telemetry "github.com/dagger/otel-go"
 	"github.com/dagger/testctx"
 	"github.com/dagger/testctx/oteltest"
 	"github.com/stretchr/testify/require"
