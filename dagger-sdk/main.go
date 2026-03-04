@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"runtime"
 
 	"dagger/dang/internal/dagger"
 )
@@ -78,23 +79,37 @@ func (t *DangSdk) Repl() *dagger.Container {
 		})
 }
 
-const ZigURL = "https://ziglang.org/builds/zig-x86_64-linux-0.16.0-dev.2670+56253d9e3.tar.xz"
+func zigArch() string {
+	if runtime.GOARCH == "arm64" {
+		return "aarch64"
+	}
+	return "x86_64"
+}
+
+func zigTarget() string {
+	return zigArch() + "-linux-musl"
+}
+
+func zigURL() string {
+	return fmt.Sprintf("https://ziglang.org/builds/zig-%s-linux-0.16.0-dev.2670+56253d9e3.tar.xz", zigArch())
+}
 
 func (t *DangSdk) goBase() *dagger.Container {
-	zigTarball := dag.HTTP(ZigURL)
+	zigTarball := dag.HTTP(zigURL())
 
 	zig := dag.Container().From(Golang).
 		WithExec([]string{"apt-get", "update"}).
 		WithExec([]string{"apt-get", "install", "-y", "xz-utils"}).
 		WithMountedFile("/tmp/zig.tar.xz", zigTarball).
-		WithExec([]string{"sh", "-c", "tar -xJf /tmp/zig.tar.xz -C /usr/local && mv /usr/local/zig-x86_64-linux-* /usr/local/zig"}).
+		WithExec([]string{"sh", "-c", "tar -xJf /tmp/zig.tar.xz -C /usr/local && mv /usr/local/zig-*-linux-* /usr/local/zig"}).
 		Directory("/usr/local/zig")
 
+	target := zigTarget()
 	return dag.Container().From(Golang).
 		WithDirectory("/usr/local/zig", zig).
 		WithEnvVariable("PATH", "/usr/local/zig:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").
-		WithEnvVariable("CC", "zig cc -target x86_64-linux-musl -lc").
-		WithEnvVariable("CXX", "zig c++ -target x86_64-linux-musl -lc").
+		WithEnvVariable("CC", fmt.Sprintf("zig cc -target %s -lc", target)).
+		WithEnvVariable("CXX", fmt.Sprintf("zig c++ -target %s -lc", target)).
 		WithDirectory("/src", t.Source).
 		WithDirectory("/src/dagger-sdk", dag.CurrentModule().Source()).
 		WithWorkdir("/src/dagger-sdk").
