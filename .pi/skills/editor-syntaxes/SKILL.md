@@ -18,13 +18,13 @@ three must be updated in sync.
 
 ### Zed
 - `editors/zed/languages/dang/highlights.scm` — tree-sitter highlights
-- **Submodule** pointing to `https://codeberg.org/vito/zed-dang`
+- **Submodule** pointing to `https://github.com/vito/zed-dang`
 - Commit inside the submodule first, then update the submodule pointer
   in the parent repo
 
 ### Neovim
 - `editors/nvim/queries/dang/highlights.scm` — tree-sitter highlights
-- **Submodule** pointing to `https://codeberg.org/vito/dang.nvim`
+- **Submodule** pointing to `https://github.com/vito/dang.nvim`
 - Commit inside the submodule first, then update the submodule pointer
   in the parent repo
 

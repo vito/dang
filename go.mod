@@ -4,7 +4,6 @@ go 1.25.6
 
 require (
 	charm.land/lipgloss/v2 v2.0.0
-	codeberg.org/vito/tuist v0.0.0-20260227010816-571b2a5a57a3
 	dagger.io/dagger v0.20.0
 	github.com/99designs/gqlgen v0.17.81
 	github.com/BurntSushi/toml v1.6.0
@@ -21,6 +20,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
+	github.com/vito/tuist v0.0.0-20260304203252-5b9b93a62853
 	golang.org/x/sync v0.19.0
 	gotest.tools/v3 v3.5.2
 )

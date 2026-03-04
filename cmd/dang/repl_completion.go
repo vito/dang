@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/vito/dang/pkg/dang"
-	"codeberg.org/vito/tuist"
+	"github.com/vito/tuist"
 )
 
 // buildCompletionProvider returns a tuist.CompletionProvider that wraps

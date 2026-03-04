@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"codeberg.org/vito/tuist"
+	"github.com/vito/tuist"
 )
 
 const maxHistoryEntries = 1000

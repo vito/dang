@@ -19,7 +19,7 @@ import (
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
-	"codeberg.org/vito/tuist"
+	"github.com/vito/tuist"
 )
 
 // ── sync writer (streams dagger output into TUI) ────────────────────────────

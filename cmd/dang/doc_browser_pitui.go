@@ -8,7 +8,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/vito/dang/pkg/dang"
-	"codeberg.org/vito/tuist"
+	"github.com/vito/tuist"
 )
 
 // ── styles (shared across components) ───────────────────────────────────────
@@ -85,7 +85,6 @@ type docColumnComp struct {
 	itemStartRow int // row offset where items begin in this column's output
 	itemCount    int // number of rendered items
 	scrollOffset int // first visible item index
-
 
 }
 
@@ -294,7 +293,7 @@ type docBrowserOverlay struct {
 	lastHeight int // cached from most recent Render; used by key handlers
 
 	// Sub-components for mouse interaction. Managed during Render.
-	crumbs  []*breadcrumbCrumb
+	crumbs   []*breadcrumbCrumb
 	colComps []*docColumnComp
 }
 

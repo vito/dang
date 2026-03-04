@@ -1,7 +1,5 @@
 charm.land/lipgloss/v2 v2.0.0 h1:sd8N/B3x892oiOjFfBQdXBQp3cAkvjGaU5TvVZC3ivo=
 charm.land/lipgloss/v2 v2.0.0/go.mod h1:w6SnmsBFBmEFBodiEDurGS/sdUY/u1+v72DqUzc6J14=
-codeberg.org/vito/tuist v0.0.0-20260227010816-571b2a5a57a3 h1:15rhDvW3DL9GjXKyUDi7NidzM64ze98BogfD8oTGLV4=
-codeberg.org/vito/tuist v0.0.0-20260227010816-571b2a5a57a3/go.mod h1:rUVavdvuBRlxvWnuGNHDzk9hrCW/9GvTL6cn1IycwIM=
 dagger.io/dagger v0.20.0 h1:f8bgsy8+T5Xfz2H1jSH96Hvy+SlIjoHJQQEos/lXMVQ=
 dagger.io/dagger v0.20.0/go.mod h1:BjAJWl4Lx7XRW7nooNjBi0ZAC5Ici2pkthkdBIZdbTI=
 github.com/99designs/gqlgen v0.17.81 h1:kCkN/xVyRb5rEQpuwOHRTYq83i0IuTQg9vdIiwEerTs=
@@ -167,6 +165,8 @@ github.com/urfave/cli/v2 v2.27.7 h1:bH59vdhbjLv3LAvIu6gd0usJHgoTTPhCFib8qqOwXYU=
 github.com/urfave/cli/v2 v2.27.7/go.mod h1:CyNAG/xg+iAOg0N4MPGZqVmv2rCoP267496AOXUZjA4=
 github.com/vektah/gqlparser/v2 v2.5.30 h1:EqLwGAFLIzt1wpx1IPpY67DwUujF1OfzgEyDsLrN6kE=
 github.com/vektah/gqlparser/v2 v2.5.30/go.mod h1:D1/VCZtV3LPnQrcPBeR/q5jkSQIPti0uYCP/RI0gIeo=
+github.com/vito/tuist v0.0.0-20260304203252-5b9b93a62853 h1:+QMR1Rar2q5v9PnBjg31OC14N9CnMBAqo0PHMTIR6Ls=
+github.com/vito/tuist v0.0.0-20260304203252-5b9b93a62853/go.mod h1:QLpvjo1f+Gh11eFAjy0R/qAWSSXi22i4YKmI1aTsWtI=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 h1:gEOO8jv9F4OT7lGCjxCBTO/36wtF6j2nSip77qHd4x4=

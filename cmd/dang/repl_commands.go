@@ -8,7 +8,7 @@ import (
 
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
-	"codeberg.org/vito/tuist"
+	"github.com/vito/tuist"
 )
 
 // ── command definitions ─────────────────────────────────────────────────────
