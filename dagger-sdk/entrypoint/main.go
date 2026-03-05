@@ -21,7 +21,7 @@ import (
 
 	"dagger/dang/internal/dagger"
 
-	"dagger.io/dagger/telemetry"
+	telemetry "github.com/dagger/otel-go"
 )
 
 const debug = false
