@@ -4,7 +4,7 @@ go 1.25.6
 
 require (
 	charm.land/lipgloss/v2 v2.0.0
-	dagger.io/dagger v0.20.0
+	dagger.io/dagger v0.20.1-0.20260303224807-c1603d90509e
 	github.com/99designs/gqlgen v0.17.81
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Khan/genqlient v0.8.1

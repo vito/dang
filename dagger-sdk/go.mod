@@ -2,13 +2,13 @@ module dagger/dang
 
 go 1.25.6
 
-replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.17.0
+replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.16.0
 
-replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.17.0
+replace go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp => go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.16.0
 
-replace go.opentelemetry.io/otel/log => go.opentelemetry.io/otel/log v0.17.0
+replace go.opentelemetry.io/otel/log => go.opentelemetry.io/otel/log v0.16.0
 
-replace go.opentelemetry.io/otel/sdk/log => go.opentelemetry.io/otel/sdk/log v0.17.0
+replace go.opentelemetry.io/otel/sdk/log => go.opentelemetry.io/otel/sdk/log v0.16.0
 
 replace github.com/vito/dang => ../
 
@@ -30,7 +30,7 @@ require (
 )
 
 require (
-	dagger.io/dagger v0.20.0
+	dagger.io/dagger v0.20.1-0.20260303224807-c1603d90509e
 	github.com/99designs/gqlgen v0.17.81
 	github.com/Khan/genqlient v0.8.1
 	github.com/adrg/xdg v0.5.3 // indirect
