@@ -1,7 +1,7 @@
 charm.land/lipgloss/v2 v2.0.0 h1:sd8N/B3x892oiOjFfBQdXBQp3cAkvjGaU5TvVZC3ivo=
 charm.land/lipgloss/v2 v2.0.0/go.mod h1:w6SnmsBFBmEFBodiEDurGS/sdUY/u1+v72DqUzc6J14=
-dagger.io/dagger v0.20.1-0.20260303224807-c1603d90509e h1:KaeKCh+GmPb4cLZ0Z+ys7jtmfZlOgYa36+g1iL5D7SA=
-dagger.io/dagger v0.20.1-0.20260303224807-c1603d90509e/go.mod h1:IGkMelq9tJrZdORyGMiy16mpBKeS2U7cH4MvDqplsHw=
+dagger.io/dagger v0.20.1 h1:BbQis4P12Ijvf+kzJrC1Gmm4VVwBu2ahMrDV1Sxl1Xk=
+dagger.io/dagger v0.20.1/go.mod h1:hoOWggeS4rxqcxyQruKDbx0nOwLNtnKjL+khAPwnU6g=
 github.com/99designs/gqlgen v0.17.81 h1:kCkN/xVyRb5rEQpuwOHRTYq83i0IuTQg9vdIiwEerTs=
 github.com/99designs/gqlgen v0.17.81/go.mod h1:vgNcZlLwemsUhYim4dC1pvFP5FX0pr2Y+uYUoHFb1ig=
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
