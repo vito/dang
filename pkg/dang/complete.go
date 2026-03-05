@@ -7,6 +7,31 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
+// CompletionContext describes the cursor context for completion.
+type CompletionContext struct {
+	Kind         ContextKind
+	ReceiverText string   // for DotMember: normalized receiver source
+	FuncText     string   // for Argument: normalized function expression
+	Partial      string   // prefix the user is typing
+	ProvidedArgs []string // for Argument: already-present named args
+}
+
+// ContextKind classifies what kind of completion the cursor needs.
+type ContextKind int
+
+const (
+	ContextNone      ContextKind = iota
+	ContextDotMember             // ctr.fr|  or  ctr.|
+	ContextArgument              // container.from(addr|
+	ContextBareIdent             // ct|  (no dot, no parens)
+)
+
+// CompletionResult holds the completions and where to start replacing.
+type CompletionResult struct {
+	Items       []Completion
+	ReplaceFrom int // byte offset in the input where the completed token starts
+}
+
 // Completion represents a single completion suggestion.
 type Completion struct {
 	Label         string // The text to insert
