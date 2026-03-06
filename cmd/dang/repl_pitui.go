@@ -22,6 +22,24 @@ import (
 	"github.com/vito/tuist"
 )
 
+// ── loading wrapper (makes loading phase interruptible) ─────────────────────
+
+// loadingWrapper wraps a spinner during module loading so that Ctrl+C
+// cancels the load context instead of being ignored.
+type loadingWrapper struct {
+	tuist.Container
+	cancel context.CancelFunc
+}
+
+func (l *loadingWrapper) HandleKeyPress(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
+	key := uv.Key(ev)
+	if key.Code == 'c' && key.Mod == uv.ModCtrl {
+		l.cancel()
+		return true
+	}
+	return false
+}
+
 // ── sync writer (streams dagger output into TUI) ────────────────────────────
 
 // pituiSyncWriter is an io.Writer that directs output to a specific
@@ -511,35 +529,56 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 		return fmt.Errorf("TUI start: %w", err)
 	}
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
 	// If there's a Dagger module, load it with a spinner visible.
 	// Spinner starts automatically via OnMount when added to the tree.
 	daggerLog := newPituiSyncWriter(tui.Dispatch)
 	var daggerConn *dagger.Client
 	if moduleDir != "" {
+		loadCtx, cancelLoad := context.WithCancel(ctx)
+
 		loadSp := tuist.NewSpinner()
 		loadSp.Style = func(s string) string {
 			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
 		}
-		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s...", moduleDir))
+		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s... (Ctrl+C to cancel)", moduleDir))
+
+		// Wrap spinner so Ctrl+C during loading cancels the load context.
+		loadWrapper := &loadingWrapper{cancel: cancelLoad}
+		loadWrapper.AddChild(loadSp)
 		tui.Dispatch(func() {
-			tui.AddChild(loadSp)
+			tui.AddChild(loadWrapper)
+			tui.SetFocus(loadWrapper)
 		})
 
-		dag, err := dagger.Connect(ctx,
+		dag, err := dagger.Connect(loadCtx,
 			dagger.WithLogOutput(daggerLog),
 			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
 		)
 		if err != nil {
 			tui.Dispatch(func() {
-				tui.RemoveChild(loadSp)
+				tui.RemoveChild(loadWrapper)
 			})
+			if loadCtx.Err() != nil {
+				tui.Stop()
+				fmt.Println("Goodbye!")
+				return nil
+			}
 			// Show error inline — spinner is already removed.
 			fmt.Fprintf(os.Stderr, "Failed to connect to Dagger: %v\n", err)
 		} else {
 			daggerConn = dag
 			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
-			client, schema, err := provider.ServeDaggerModule(ctx, dag, moduleDir)
+			client, schema, err := provider.ServeDaggerModule(loadCtx, dag, moduleDir)
 			if err != nil {
+				if loadCtx.Err() != nil {
+					dag.Close() //nolint:errcheck
+					tui.Stop()
+					fmt.Println("Goodbye!")
+					return nil
+				}
 				fmt.Fprintf(os.Stderr, "Failed to load Dagger module: %v\n", err)
 			} else {
 				importConfigs = append(importConfigs, dang.ImportConfig{
@@ -550,8 +589,9 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 				})
 			}
 		}
+		cancelLoad()
 		tui.Dispatch(func() {
-			tui.RemoveChild(loadSp)
+			tui.RemoveChild(loadWrapper)
 		})
 	}
 
@@ -574,9 +614,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	// Wait for quit signal or interrupt.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case <-repl.quit.Done():
 	case <-sigCh:
