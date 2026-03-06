@@ -19,6 +19,7 @@ import (
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/pkg/repl"
 	"github.com/vito/tuist"
 )
 
@@ -187,13 +188,13 @@ type replComponent struct {
 	ctrlCPending bool
 
 	// History
-	history *replHistory
+	history *repl.History
 
 	// Commands
 	commands []replCommandDef
 
 	// Doc browser
-	docBrowser *docBrowserOverlay
+	docBrowser *repl.DocBrowserOverlay
 
 	// Render debug
 	debugRender     bool
@@ -519,8 +520,8 @@ func (r *replComponent) finishEval(ctx tuist.EventContext, ev *entryView, logs, 
 // ── doc browser ─────────────────────────────────────────────────────────────
 
 func (r *replComponent) showDocBrowser(ctx tuist.EventContext) {
-	db := newDocBrowserOverlay(r.typeEnv)
-	db.onExit = func() {
+	db := repl.NewDocBrowserOverlay(r.typeEnv)
+	db.OnExit = func() {
 		if r.docBrowser != nil {
 			r.entryContainer.RemoveChild(r.docBrowser)
 			r.docBrowser = nil

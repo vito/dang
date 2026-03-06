@@ -1,4 +1,4 @@
-package dang
+package repl
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/tuist"
 )
@@ -14,7 +15,7 @@ import (
 // NewCompletionProvider returns a tuist.CompletionProvider that uses
 // tree-sitter-based type-aware completions, falling back to static
 // keyword/name completions.
-func NewCompletionProvider(ctx context.Context, typeEnv Env, staticCompletions []string) tuist.CompletionProvider {
+func NewCompletionProvider(ctx context.Context, typeEnv dang.Env, staticCompletions []string) tuist.CompletionProvider {
 	return func(input string, cursorPos int) tuist.CompletionResult {
 		if input == "" {
 			return tuist.CompletionResult{}
@@ -22,7 +23,7 @@ func NewCompletionProvider(ctx context.Context, typeEnv Env, staticCompletions [
 
 		line, col := byteOffsetToLineCol(input, cursorPos)
 
-		result := Complete(ctx, typeEnv, input, line, col)
+		result := dang.Complete(ctx, typeEnv, input, line, col)
 		if len(result.Items) > 0 {
 			return dangCompletionResult(result)
 		}
@@ -34,9 +35,9 @@ func NewCompletionProvider(ctx context.Context, typeEnv Env, staticCompletions [
 // NewDetailRenderer returns a tuist.DetailRenderer that resolves rich
 // documentation from the type environment. getInput returns the current
 // editor contents, used to infer receiver types for member completions.
-func NewDetailRenderer(ctx context.Context, typeEnv Env, getInput func() string) tuist.DetailRenderer {
+func NewDetailRenderer(ctx context.Context, typeEnv dang.Env, getInput func() string) tuist.DetailRenderer {
 	return func(c tuist.Completion, width int) []string {
-		item, found := docItemFromEnv(typeEnv, c.Label)
+		item, found := DocItemFromEnv(typeEnv, c.Label)
 		if !found {
 			item, found = resolveCompletionDocItem(ctx, typeEnv, getInput(), c)
 		}
@@ -44,19 +45,19 @@ func NewDetailRenderer(ctx context.Context, typeEnv Env, getInput func() string)
 			if c.Detail == "" && c.Documentation == "" {
 				return nil
 			}
-			item = docItem{
-				name:    c.Label,
-				typeStr: c.Detail,
-				doc:     c.Documentation,
+			item = DocItem{
+				Name:    c.Label,
+				TypeStr: c.Detail,
+				Doc:     c.Documentation,
 			}
 		}
-		return renderDetailLines(item, width)
+		return RenderDetailLines(item, width)
 	}
 }
 
 // BuildStaticCompletions builds a sorted list of completion strings from
 // a type environment, including keywords.
-func BuildStaticCompletions(typeEnv Env) []string {
+func BuildStaticCompletions(typeEnv dang.Env) []string {
 	seen := map[string]bool{}
 	var completions []string
 
@@ -76,8 +77,8 @@ func BuildStaticCompletions(typeEnv Env) []string {
 		add(kw)
 	}
 
-	for name, scheme := range typeEnv.Bindings(PublicVisibility) {
-		if IsTypeDefBinding(scheme) || IsIDTypeName(name) {
+	for name, scheme := range typeEnv.Bindings(dang.PublicVisibility) {
+		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) {
 			continue
 		}
 		add(name)
@@ -104,7 +105,7 @@ func byteOffsetToLineCol(text string, offset int) (line, col int) {
 	return line, col
 }
 
-func dangCompletionResult(result CompletionResult) tuist.CompletionResult {
+func dangCompletionResult(result dang.CompletionResult) tuist.CompletionResult {
 	isArgCompletion := len(result.Items) > 0 && result.Items[0].IsArg
 
 	var items []tuist.Completion
@@ -137,7 +138,7 @@ func dangCompletionResult(result CompletionResult) tuist.CompletionResult {
 	}
 }
 
-func commonPrefix(completions []Completion) string {
+func commonPrefix(completions []dang.Completion) string {
 	if len(completions) == 0 {
 		return ""
 	}
@@ -200,116 +201,159 @@ func lastIdent(s string) string {
 	return s[i+1:]
 }
 
+func isIdentByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+}
+
 // ── doc item types & resolution ─────────────────────────────────────────────
 
-type itemKind int
+// ItemKind classifies a doc browser entry.
+type ItemKind int
 
 const (
-	kindField itemKind = iota
-	kindType
-	kindInterface
-	kindEnum
-	kindScalar
-	kindUnion
-	kindInput
+	KindField ItemKind = iota
+	KindType
+	KindInterface
+	KindEnum
+	KindScalar
+	KindUnion
+	KindInput
 )
 
-type docItem struct {
-	name      string
-	kind      itemKind
-	typeStr   string
-	doc       string
-	args      []docArg
-	blockArgs []docArg
-	blockRet  string
-	retEnv    Env
+var kindOrder = [...]string{
+	KindField:     "field",
+	KindType:      "type",
+	KindInterface: "interface",
+	KindEnum:      "enum",
+	KindScalar:    "scalar",
+	KindUnion:     "union",
+	KindInput:     "input",
 }
 
-type docArg struct {
-	name    string
-	typeStr string
-	doc     string
+var kindColors = [...]string{
+	KindField:     "117",
+	KindType:      "213",
+	KindInterface: "141",
+	KindEnum:      "221",
+	KindScalar:    "114",
+	KindUnion:     "209",
+	KindInput:     "183",
 }
 
-func classifyEnv(env Env) itemKind {
-	if mod, ok := env.(*Module); ok {
+func (k ItemKind) Label() string {
+	if int(k) < len(kindOrder) {
+		return kindOrder[k]
+	}
+	return "?"
+}
+
+func (k ItemKind) Color() string {
+	if int(k) < len(kindColors) {
+		return kindColors[k]
+	}
+	return "247"
+}
+
+// DocItem is a single entry in the doc browser or completion detail.
+type DocItem struct {
+	Name      string
+	Kind      ItemKind
+	TypeStr   string
+	Doc       string
+	Args      []DocArg
+	BlockArgs []DocArg
+	BlockRet  string
+	RetEnv    dang.Env
+}
+
+// DocArg represents an argument to a function.
+type DocArg struct {
+	Name    string
+	TypeStr string
+	Doc     string
+}
+
+// ClassifyEnv determines the ItemKind for a module/env based on its ModuleKind.
+func ClassifyEnv(env dang.Env) ItemKind {
+	if mod, ok := env.(*dang.Module); ok {
 		switch mod.Kind {
-		case EnumKind:
-			return kindEnum
-		case ScalarKind:
-			return kindScalar
-		case InterfaceKind:
-			return kindInterface
-		case UnionKind:
-			return kindUnion
-		case InputKind:
-			return kindInput
+		case dang.EnumKind:
+			return KindEnum
+		case dang.ScalarKind:
+			return KindScalar
+		case dang.InterfaceKind:
+			return KindInterface
+		case dang.UnionKind:
+			return KindUnion
+		case dang.InputKind:
+			return KindInput
 		}
 	}
-	return kindType
+	return KindType
 }
 
-func docItemFromEnv(env Env, name string) (docItem, bool) {
+// DocItemFromEnv builds a DocItem for a named binding in env.
+func DocItemFromEnv(env dang.Env, name string) (DocItem, bool) {
 	if env == nil {
-		return docItem{}, false
+		return DocItem{}, false
 	}
 
-	for bName, scheme := range env.Bindings(PublicVisibility) {
+	for bName, scheme := range env.Bindings(dang.PublicVisibility) {
 		if bName != name {
 			continue
 		}
 		t, _ := scheme.Type()
 		if t == nil {
-			return docItem{}, false
+			return DocItem{}, false
 		}
-		item := docItem{
-			name:    name,
-			typeStr: t.String(),
+		item := DocItem{
+			Name:    name,
+			TypeStr: t.String(),
 		}
 		if d, found := env.GetDocString(name); found {
-			item.doc = d
+			item.Doc = d
 		}
 		if fn, ok := t.(*hm.FunctionType); ok {
-			item.kind = kindField
-			item.args = extractArgs(fn)
-			item.typeStr = formatReturnType(fn)
-			extractBlockInfo(fn, &item)
+			item.Kind = KindField
+			item.Args = ExtractArgs(fn)
+			item.TypeStr = FormatReturnType(fn)
+			ExtractBlockInfo(fn, &item)
 		} else {
-			inner := unwrapType(t)
-			if mod, ok := inner.(Env); ok {
-				item.kind = classifyEnv(mod)
+			inner := UnwrapType(t)
+			if mod, ok := inner.(dang.Env); ok {
+				item.Kind = ClassifyEnv(mod)
 			} else {
-				item.kind = kindField
+				item.Kind = KindField
 			}
 		}
 		return item, true
 	}
 
-	if mod, ok := env.(*Module); ok {
-		var found docItem
+	if mod, ok := env.(*dang.Module); ok {
+		var found DocItem
 		var matched bool
-		ForEachMethod(mod, func(def BuiltinDef) {
+		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
 			if matched || def.Name != name {
 				return
 			}
 			matched = true
-			found = docItem{
-				name: def.Name,
-				kind: kindField,
-				doc:  def.Doc,
+			found = DocItem{
+				Name: def.Name,
+				Kind: KindField,
+				Doc:  def.Doc,
 			}
 			for _, p := range def.ParamTypes {
-				found.args = append(found.args, docArg{
-					name:    p.Name,
-					typeStr: formatType(p.Type),
+				found.Args = append(found.Args, DocArg{
+					Name:    p.Name,
+					TypeStr: FormatType(p.Type),
 				})
 			}
 			if def.ReturnType != nil {
-				found.typeStr = "-> " + formatType(def.ReturnType)
+				found.TypeStr = "-> " + FormatType(def.ReturnType)
 			}
 			if def.BlockType != nil {
-				found.blockArgs = extractArgs(def.BlockType)
-				found.blockRet = formatType(def.BlockType.Ret(true))
+				found.BlockArgs = ExtractArgs(def.BlockType)
+				found.BlockRet = FormatType(def.BlockType.Ret(true))
 			}
 		})
 		if matched {
@@ -319,22 +363,22 @@ func docItemFromEnv(env Env, name string) (docItem, bool) {
 
 	for tName, namedEnv := range env.NamedTypes() {
 		if tName == name {
-			item := docItem{
-				name:    name,
-				typeStr: namedEnv.Name(),
-				kind:    classifyEnv(namedEnv),
+			item := DocItem{
+				Name:    name,
+				TypeStr: namedEnv.Name(),
+				Kind:    ClassifyEnv(namedEnv),
 			}
 			if d := namedEnv.GetModuleDocString(); d != "" {
-				item.doc = d
+				item.Doc = d
 			}
 			return item, true
 		}
 	}
 
-	return docItem{}, false
+	return DocItem{}, false
 }
 
-func resolveCompletionDocItem(ctx context.Context, typeEnv Env, input string, c tuist.Completion) (docItem, bool) {
+func resolveCompletionDocItem(ctx context.Context, typeEnv dang.Env, input string, c tuist.Completion) (DocItem, bool) {
 	dotIdx := -1
 	for i := len(input) - 1; i >= 0; i-- {
 		if input[i] == '.' {
@@ -343,37 +387,38 @@ func resolveCompletionDocItem(ctx context.Context, typeEnv Env, input string, c 
 		}
 	}
 	if dotIdx < 0 {
-		return docItem{}, false
+		return DocItem{}, false
 	}
 	receiverText := input[:dotIdx]
-	receiverType := InferReceiverType(ctx, typeEnv, receiverText)
+	receiverType := dang.InferReceiverType(ctx, typeEnv, receiverText)
 	if receiverType == nil {
-		return docItem{}, false
+		return DocItem{}, false
 	}
-	unwrapped := unwrapType(receiverType)
-	env, ok := unwrapped.(Env)
+	unwrapped := UnwrapType(receiverType)
+	env, ok := unwrapped.(dang.Env)
 	if !ok {
-		return docItem{}, false
+		return DocItem{}, false
 	}
-	return docItemFromEnv(env, c.Label)
+	return DocItemFromEnv(env, c.Label)
 }
 
-func extractArgs(fn *hm.FunctionType) []docArg {
+// ExtractArgs extracts function arguments as DocArgs.
+func ExtractArgs(fn *hm.FunctionType) []DocArg {
 	arg := fn.Arg()
-	rec, ok := arg.(*RecordType)
+	rec, ok := arg.(*dang.RecordType)
 	if !ok {
 		return nil
 	}
-	var args []docArg
+	var args []DocArg
 	for _, field := range rec.Fields {
 		t, _ := field.Value.Type()
-		a := docArg{
-			name:    field.Key,
-			typeStr: formatType(t),
+		a := DocArg{
+			Name:    field.Key,
+			TypeStr: FormatType(t),
 		}
 		if rec.DocStrings != nil {
 			if doc, found := rec.DocStrings[field.Key]; found {
-				a.doc = doc
+				a.Doc = doc
 			}
 		}
 		args = append(args, a)
@@ -381,35 +426,39 @@ func extractArgs(fn *hm.FunctionType) []docArg {
 	return args
 }
 
-func extractBlockInfo(fn *hm.FunctionType, item *docItem) {
+// ExtractBlockInfo populates block args/ret on a DocItem.
+func ExtractBlockInfo(fn *hm.FunctionType, item *DocItem) {
 	block := fn.Block()
 	if block == nil {
 		return
 	}
-	item.blockArgs = extractArgs(block)
-	item.blockRet = formatType(block.Ret(true))
+	item.BlockArgs = ExtractArgs(block)
+	item.BlockRet = FormatType(block.Ret(true))
 }
 
-func formatReturnType(fn *hm.FunctionType) string {
+// FormatReturnType formats a function's return type.
+func FormatReturnType(fn *hm.FunctionType) string {
 	ret := fn.Ret(true)
-	return "-> " + formatType(ret)
+	return "-> " + FormatType(ret)
 }
 
-func formatType(t hm.Type) string {
+// FormatType formats a type for display.
+func FormatType(t hm.Type) string {
 	if t == nil {
 		return "?"
 	}
 	return t.String()
 }
 
-func unwrapType(t hm.Type) hm.Type {
+// UnwrapType strips NonNull/List wrappers from a type.
+func UnwrapType(t hm.Type) hm.Type {
 	for {
 		switch inner := t.(type) {
 		case hm.NonNullType:
 			t = inner.Type
-		case ListType:
+		case dang.ListType:
 			t = inner.Type
-		case GraphQLListType:
+		case dang.GraphQLListType:
 			t = inner.Type
 		default:
 			return t
@@ -420,84 +469,86 @@ func unwrapType(t hm.Type) hm.Type {
 // ── detail rendering ────────────────────────────────────────────────────────
 
 var (
-	detailTitleStyle = lipgloss.NewStyle().
+	DetailTitleStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("255")).Bold(true)
-	docTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	argNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	argTypeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	DocTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
+	ArgNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
+	ArgTypeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	DimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 )
 
-func renderDetailLines(item docItem, width int) []string {
+// RenderDetailLines renders a DocItem for the completion detail panel.
+func RenderDetailLines(item DocItem, width int) []string {
 	contentW := max(8, width-2)
-
-	titleLine := detailTitleStyle.Render(item.name)
+	titleLine := DetailTitleStyle.Render(item.Name)
 	lines := []string{titleLine}
-	lines = append(lines, renderDocDetail(item, contentW)...)
+	lines = append(lines, RenderDocDetail(item, contentW, DocTextStyle, ArgNameStyle, ArgTypeStyle, DimStyle)...)
 	return lines
 }
 
-func renderDocDetail(item docItem, w int) []string {
+// RenderDocDetail renders structured documentation for a DocItem.
+func RenderDocDetail(item DocItem, w int, docStyle, argNameStyle, argTypeStyle, dimSt lipgloss.Style) []string {
 	var lines []string
 
-	if item.typeStr != "" {
-		lines = append(lines, argTypeStyle.Render(truncate(item.typeStr, w)))
+	if item.TypeStr != "" {
+		lines = append(lines, argTypeStyle.Render(Truncate(item.TypeStr, w)))
 		lines = append(lines, "")
 	}
 
-	if item.doc != "" {
-		wrapped := wordWrap(item.doc, w)
+	if item.Doc != "" {
+		wrapped := WordWrap(item.Doc, w)
 		for line := range strings.SplitSeq(wrapped, "\n") {
-			lines = append(lines, docTextStyle.Render(line))
+			lines = append(lines, docStyle.Render(line))
 		}
 		lines = append(lines, "")
 	}
 
-	if len(item.args) > 0 {
+	if len(item.Args) > 0 {
 		lines = append(lines, "Arguments:")
-		for _, arg := range item.args {
+		for _, arg := range item.Args {
 			lines = append(lines, fmt.Sprintf("  %s %s",
-				argNameStyle.Render(arg.name+":"),
-				argTypeStyle.Render(arg.typeStr),
+				argNameStyle.Render(arg.Name+":"),
+				argTypeStyle.Render(arg.TypeStr),
 			))
-			if arg.doc != "" {
-				wrapped := wordWrap(arg.doc, w-4)
+			if arg.Doc != "" {
+				wrapped := WordWrap(arg.Doc, w-4)
 				for line := range strings.SplitSeq(wrapped, "\n") {
-					lines = append(lines, "    "+dimStyle.Render(line))
+					lines = append(lines, "    "+dimSt.Render(line))
 				}
 			}
 		}
 	}
 
-	if len(item.blockArgs) > 0 {
+	if len(item.BlockArgs) > 0 {
 		lines = append(lines, "")
 		blockHeader := "Block:"
-		if item.blockRet != "" {
-			blockHeader = fmt.Sprintf("Block -> %s:", argTypeStyle.Render(item.blockRet))
+		if item.BlockRet != "" {
+			blockHeader = fmt.Sprintf("Block -> %s:", argTypeStyle.Render(item.BlockRet))
 		}
 		lines = append(lines, blockHeader)
-		for _, arg := range item.blockArgs {
+		for _, arg := range item.BlockArgs {
 			lines = append(lines, fmt.Sprintf("  %s %s",
-				argNameStyle.Render(arg.name+":"),
-				argTypeStyle.Render(arg.typeStr),
+				argNameStyle.Render(arg.Name+":"),
+				argTypeStyle.Render(arg.TypeStr),
 			))
-			if arg.doc != "" {
-				wrapped := wordWrap(arg.doc, w-4)
+			if arg.Doc != "" {
+				wrapped := WordWrap(arg.Doc, w-4)
 				for line := range strings.SplitSeq(wrapped, "\n") {
-					lines = append(lines, "    "+dimStyle.Render(line))
+					lines = append(lines, "    "+dimSt.Render(line))
 				}
 			}
 		}
 	}
 
-	if len(lines) <= 1 && item.doc == "" && len(item.args) == 0 && len(item.blockArgs) == 0 {
-		lines = append(lines, dimStyle.Render("(no documentation)"))
+	if len(lines) <= 1 && item.Doc == "" && len(item.Args) == 0 && len(item.BlockArgs) == 0 {
+		lines = append(lines, dimSt.Render("(no documentation)"))
 	}
 
 	return lines
 }
 
-func truncate(s string, maxW int) string {
+// Truncate truncates a string to maxW, adding an ellipsis if needed.
+func Truncate(s string, maxW int) string {
 	if len(s) <= maxW {
 		return s
 	}
@@ -507,7 +558,25 @@ func truncate(s string, maxW int) string {
 	return s[:maxW-1] + "…"
 }
 
-func wordWrap(s string, width int) string {
+// PadRight pads a string with spaces to width w.
+func PadRight(s string, w int) string {
+	visible := lipgloss.Width(s)
+	if visible >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-visible)
+}
+
+// GetLine returns lines[i] or "" if out of bounds.
+func GetLine(lines []string, i int) string {
+	if i < len(lines) {
+		return lines[i]
+	}
+	return ""
+}
+
+// WordWrap wraps text to the given width.
+func WordWrap(s string, width int) string {
 	if width <= 0 {
 		return s
 	}

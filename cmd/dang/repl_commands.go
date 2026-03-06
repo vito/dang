@@ -164,7 +164,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			desc: "Show recent history",
 			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
 				e.writeLogLine("Recent history:")
-				entries := r.history.entries
+				entries := r.history.Entries
 				start := 0
 				if len(entries) > 20 {
 					start = len(entries) - 20
