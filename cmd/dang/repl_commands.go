@@ -92,7 +92,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			name: "reset",
 			desc: "Reset the environment",
 			handler: func(_ tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
-				r.typeEnv, r.evalEnv = buildEnvFromImports(r.importConfigs)
+				r.typeEnv, r.evalEnv = dang.BuildEnvFromImports("", r.importConfigs)
 				r.refreshCompletions()
 				e.writeLogLine(resultStyle.Render("Environment reset."))
 			},

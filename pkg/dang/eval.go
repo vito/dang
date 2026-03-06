@@ -340,6 +340,67 @@ func NewEvalEnvWithSchema(typeEnv Env, client graphql.Client, schema *introspect
 	return env
 }
 
+// BuildEnvFromImports creates type and eval environments from a set of import
+// configurations. Each import's schema types and values are merged into the
+// environments, with the first import taking precedence on name collisions.
+func BuildEnvFromImports(name string, configs []ImportConfig) (Env, EvalEnv) {
+	typeEnv := NewPreludeEnv(name)
+
+	for _, config := range configs {
+		if config.Schema == nil {
+			continue
+		}
+
+		schemaModule := NewEnv(config.Name, config.Schema)
+		typeEnv.AddClass(config.Name, schemaModule)
+		typeEnv.Add(config.Name, hm.NewScheme(nil, NonNull(schemaModule)))
+		typeEnv.SetVisibility(config.Name, PublicVisibility)
+
+		for name, scheme := range schemaModule.Bindings(PublicVisibility) {
+			if name == config.Name {
+				continue
+			}
+			if _, exists := typeEnv.LocalSchemeOf(name); exists {
+				continue
+			}
+			typeEnv.Add(name, scheme)
+			typeEnv.SetVisibility(name, PublicVisibility)
+		}
+
+		for name, namedEnv := range schemaModule.NamedTypes() {
+			if name == config.Name {
+				continue
+			}
+			if _, exists := typeEnv.NamedType(name); exists {
+				continue
+			}
+			typeEnv.AddClass(name, namedEnv)
+		}
+	}
+
+	evalEnv := NewEvalEnv(typeEnv)
+
+	for _, config := range configs {
+		if config.Schema == nil {
+			continue
+		}
+		schemaModule := NewEnv(config.Name, config.Schema)
+		moduleEnv := NewEvalEnvWithSchema(schemaModule, config.Client, config.Schema)
+		evalEnv.Set(config.Name, moduleEnv)
+		for _, binding := range moduleEnv.Bindings(PublicVisibility) {
+			if binding.Key == config.Name {
+				continue
+			}
+			if _, exists := evalEnv.GetLocal(binding.Key); exists {
+				continue
+			}
+			evalEnv.Set(binding.Key, binding.Value)
+		}
+	}
+
+	return typeEnv, evalEnv
+}
+
 // populateSchemaFunctions adds GraphQL functions from a schema to an environment
 func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Client, schema *introspection.Schema) {
 	for _, t := range schema.Types {

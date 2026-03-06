@@ -201,7 +201,7 @@ type replComponent struct {
 }
 
 func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
-	typeEnv, evalEnv := buildEnvFromImports(importConfigs)
+	typeEnv, evalEnv := dang.BuildEnvFromImports("", importConfigs)
 
 	ti := tuist.NewTextInput(promptStyle.Render("dang> "))
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
