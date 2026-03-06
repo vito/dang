@@ -171,6 +171,8 @@ github.com/vektah/gqlparser/v2 v2.5.30 h1:EqLwGAFLIzt1wpx1IPpY67DwUujF1OfzgEyDsL
 github.com/vektah/gqlparser/v2 v2.5.30/go.mod h1:D1/VCZtV3LPnQrcPBeR/q5jkSQIPti0uYCP/RI0gIeo=
 github.com/vito/tuist v0.0.0-20260304203252-5b9b93a62853 h1:+QMR1Rar2q5v9PnBjg31OC14N9CnMBAqo0PHMTIR6Ls=
 github.com/vito/tuist v0.0.0-20260304203252-5b9b93a62853/go.mod h1:QLpvjo1f+Gh11eFAjy0R/qAWSSXi22i4YKmI1aTsWtI=
+github.com/vito/tuist v0.0.0-20260306013207-52628aa2527c h1:9hagjH1fKXX0ukhi6SBRfxuxm+hNURfvOyPWo3dhZ/g=
+github.com/vito/tuist v0.0.0-20260306013207-52628aa2527c/go.mod h1:QLpvjo1f+Gh11eFAjy0R/qAWSSXi22i4YKmI1aTsWtI=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 h1:gEOO8jv9F4OT7lGCjxCBTO/36wtF6j2nSip77qHd4x4=
