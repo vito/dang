@@ -217,13 +217,13 @@ func init() {
 	registerBuiltinTypes()
 }
 
-func NewPreludeEnv() *CompositeModule {
-	mod := NewModule("", ObjectKind)
+func NewPreludeEnv(name string) *CompositeModule {
+	mod := NewModule(name, ObjectKind)
 	return &CompositeModule{mod, Prelude}
 }
 
-func NewEnv(schema *introspection.Schema) Env {
-	env := NewPreludeEnv()
+func NewEnv(name string, schema *introspection.Schema) Env {
+	env := NewPreludeEnv(name)
 
 	for _, t := range schema.Directives {
 		var args []*SlotDecl

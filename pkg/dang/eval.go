@@ -288,14 +288,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	// Create a function type for this method call
 	args := NewRecordType("")
 	for _, arg := range field.Args {
-		argType, err := gqlToTypeNode(NewEnv(g.Schema), arg.TypeRef) // TOOD: NewEnv here is sus
+		argType, err := gqlToTypeNode(NewEnv("", g.Schema), arg.TypeRef) // TOOD: NewEnv here is sus
 		if err != nil {
 			continue
 		}
 		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	retType, err := gqlToTypeNode(NewEnv(g.Schema), field.TypeRef) // TOOD: NewEnv here is sus
+	retType, err := gqlToTypeNode(NewEnv("", g.Schema), field.TypeRef) // TOOD: NewEnv here is sus
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
@@ -1582,7 +1582,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		_, _ = pretty.Println(node)
 	}
 
-	typeEnv := NewPreludeEnv()
+	typeEnv := NewPreludeEnv("")
 
 	inferred, err := Infer(ctx, typeEnv, node, true)
 	if err != nil {
@@ -1776,7 +1776,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 	}
 
 	// Create type environment
-	typeEnv := NewPreludeEnv()
+	typeEnv := NewPreludeEnv("")
 
 	// Run type inference using phased approach
 	if isDebug {

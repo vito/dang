@@ -335,7 +335,7 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 			// Run type inference to annotate AST with types
 			{
-				typeEnv := dang.NewPreludeEnv()
+				typeEnv := dang.NewPreludeEnv("")
 				fresh := hm.NewSimpleFresher()
 				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
 				if err != nil {

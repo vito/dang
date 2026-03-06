@@ -63,14 +63,14 @@ func lastIdent(s string) string {
 
 // buildEnvFromImports creates type and eval environments from import configs.
 func buildEnvFromImports(configs []dang.ImportConfig) (dang.Env, dang.EvalEnv) {
-	typeEnv := dang.NewPreludeEnv()
+	typeEnv := dang.NewPreludeEnv("")
 
 	for _, config := range configs {
 		if config.Schema == nil {
 			continue
 		}
 
-		schemaModule := dang.NewEnv(config.Schema)
+		schemaModule := dang.NewEnv(config.Name, config.Schema)
 		typeEnv.AddClass(config.Name, schemaModule)
 		typeEnv.Add(config.Name, hm.NewScheme(nil, dang.NonNull(schemaModule)))
 		typeEnv.SetVisibility(config.Name, dang.PublicVisibility)
@@ -103,7 +103,7 @@ func buildEnvFromImports(configs []dang.ImportConfig) (dang.Env, dang.EvalEnv) {
 		if config.Schema == nil {
 			continue
 		}
-		schemaModule := dang.NewEnv(config.Schema)
+		schemaModule := dang.NewEnv(config.Name, config.Schema)
 		moduleEnv := dang.NewEvalEnvWithSchema(schemaModule, config.Client, config.Schema)
 		evalEnv.Set(config.Name, moduleEnv)
 		for _, binding := range moduleEnv.Bindings(dang.PublicVisibility) {

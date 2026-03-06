@@ -1166,7 +1166,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			}
 
 			// Create module with GraphQL schema types and functions
-			schemaModule := NewEnv(schema)
+			schemaModule := NewEnv(i.Name.Name, schema)
 
 			// Store client and schema information for runtime
 			i.client = client
