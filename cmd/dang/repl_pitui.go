@@ -215,7 +215,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 		ctx:            ctx,
 		textInput:      ti,
 		entryContainer: &tuist.Container{},
-		history:        newReplHistory(),
+		history:        repl.NewHistory(repl.DefaultHistoryPath("dang")),
 	}
 	r.quit, r.requestQuit = context.WithCancel(context.Background())
 	r.commands = r.buildCommandDefs()
