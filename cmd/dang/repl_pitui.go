@@ -183,6 +183,9 @@ type replComponent struct {
 	cancelEval context.CancelFunc
 	daggerLog  *pituiSyncWriter // Dagger log output target (set per-eval)
 
+	// Ctrl+C twice to exit
+	ctrlCPending bool
+
 	// History
 	history *replHistory
 
@@ -227,6 +230,15 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	// Input slot starts with text input.
 	r.inputSlot = tuist.NewSlot(ti)
 
+	// Reset double-Ctrl+C state on any keypress except Ctrl+C itself.
+	ti.KeyInterceptor = func(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
+		key := uv.Key(ev)
+		if !(key.Code == 'c' && key.Mod == uv.ModCtrl) {
+			r.ctrlCPending = false
+		}
+		return false // let TextInput handle the key normally
+	}
+
 	// Completion menu (wires into ti.OnChange automatically).
 	r.completionMenu = tuist.NewCompletionMenu(ti, r.buildCompletionProvider())
 	r.completionMenu.DetailRenderer = r.buildDetailRenderer()
@@ -248,7 +260,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 		welcome.writeLogLine(dimStyle.Render(fmt.Sprintf("Imports: %s", strings.Join(names, ", "))))
 	}
 	welcome.writeLogLine("")
-	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Alt+Enter for multiline, Ctrl+C to exit"))
+	welcome.writeLogLine(dimStyle.Render("Type :help for commands, Tab for completion, Alt+Enter for multiline, Ctrl+D to exit"))
 	welcome.writeLogLine("")
 	ev := newEntryView(welcome)
 	r.entryContainer.AddChild(ev)
@@ -329,6 +341,11 @@ func (r *replComponent) onSubmit(ctx tuist.EventContext, line string) bool {
 func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEvent) bool {
 	key := uv.Key(ev)
 
+	// Any key other than Ctrl+C resets the double-Ctrl+C exit.
+	if !(key.Code == 'c' && key.Mod == uv.ModCtrl) {
+		r.ctrlCPending = false
+	}
+
 	// While evaluating: Ctrl+C cancels, swallow everything else.
 	if r.evaluating {
 		if key.Code == 'c' && key.Mod == uv.ModCtrl {
@@ -350,9 +367,17 @@ func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEve
 		if r.textInput.Value() != "" {
 			r.textInput.SetValue("")
 			r.completionMenu.Hide()
+			r.ctrlCPending = false
 			return true
 		}
-		r.requestQuit()
+		if r.ctrlCPending {
+			r.requestQuit()
+			return true
+		}
+		r.ctrlCPending = true
+		ev := r.addEntry("")
+		ev.entry.writeLogLine(dimStyle.Render("Press Ctrl+C again to exit, or Ctrl+D"))
+		ev.Update()
 		return true
 
 	case key.Code == 'd' && key.Mod == uv.ModCtrl:
@@ -360,6 +385,7 @@ func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEve
 			r.requestQuit()
 			return true
 		}
+		r.ctrlCPending = false
 		return false
 
 	case key.Code == uv.KeyUp && key.Mod == 0:
