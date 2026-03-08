@@ -20,7 +20,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/tuist v0.0.0-20260306014439-e8007743f36b
+	github.com/vito/tuist v0.0.1
 	golang.org/x/sync v0.19.0
 	gotest.tools/v3 v3.5.2
 )
