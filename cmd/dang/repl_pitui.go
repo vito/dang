@@ -234,7 +234,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	// Reset double-Ctrl+C state on any keypress except Ctrl+C itself.
 	ti.KeyInterceptor = func(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
 		key := uv.Key(ev)
-		if !(key.Code == 'c' && key.Mod == uv.ModCtrl) {
+		if key.Code != 'c' || key.Mod != uv.ModCtrl {
 			r.ctrlCPending = false
 		}
 		return false // let TextInput handle the key normally
@@ -343,7 +343,7 @@ func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEve
 	key := uv.Key(ev)
 
 	// Any key other than Ctrl+C resets the double-Ctrl+C exit.
-	if !(key.Code == 'c' && key.Mod == uv.ModCtrl) {
+	if key.Code != 'c' || key.Mod != uv.ModCtrl {
 		r.ctrlCPending = false
 	}
 
