@@ -196,9 +196,6 @@ type replComponent struct {
 	// Doc browser
 	docBrowser *repl.DocBrowserOverlay
 
-	// Render debug
-	debugRender     bool
-	debugRenderFile *os.File
 }
 
 func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
@@ -542,16 +539,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	tui := tuist.New(term)
 	tui.SetShowHardwareCursor(true)
 
-	// Install debug writer early so the loading spinner is captured.
-	var debugRenderFile *os.File
-	if os.Getenv("DANG_DEBUG_RENDER") != "" {
-		logPath := "/tmp/dang_render_debug.log"
-		if f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644); err == nil {
-			debugRenderFile = f
-			tui.SetDebugWriter(f)
-		}
-	}
-
 	if err := tui.Start(); err != nil {
 		return fmt.Errorf("TUI start: %w", err)
 	}
@@ -627,10 +614,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	repl := newReplComponent(ctx, importConfigs, debug)
-	if debugRenderFile != nil {
-		repl.debugRender = true
-		repl.debugRenderFile = debugRenderFile
-	}
 	repl.daggerLog = daggerLog
 	tui.Dispatch(func() {
 		tui.AddChild(repl)
@@ -648,9 +631,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	}
 
 	signal.Stop(sigCh)
-	if debugRenderFile != nil {
-		_ = debugRenderFile.Close()
-	}
 	tui.Stop()
 	fmt.Println("Goodbye!")
 	return nil

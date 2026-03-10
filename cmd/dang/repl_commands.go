@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -116,33 +115,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 				e.writeLogLine(resultStyle.Render(fmt.Sprintf("Debug mode %s.", status)))
 			},
 		},
-		{
-			name: "debug-render",
-			desc: "Toggle render performance logging",
-			handler: func(ctx tuist.EventContext, r *replComponent, e *replEntry, _ []string) {
-				r.debugRender = !r.debugRender
-				if r.debugRender {
-					logPath := "/tmp/dang_render_debug.log"
-					f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-					if err != nil {
-						e.writeLogLine(errorStyle.Render(fmt.Sprintf("failed to open debug log: %v", err)))
-						r.debugRender = false
-					} else {
-						r.debugRenderFile = f
-						ctx.SetDebugWriter(f)
-						e.writeLogLine(resultStyle.Render(fmt.Sprintf("Render debug enabled. Logging to %s", logPath)))
-						e.writeLogLine(dimStyle.Render("  Use 'tail -f " + logPath + "' in another terminal to watch."))
-					}
-				} else {
-					ctx.SetDebugWriter(nil)
-					if r.debugRenderFile != nil {
-						_ = r.debugRenderFile.Close()
-						r.debugRenderFile = nil
-					}
-					e.writeLogLine(resultStyle.Render("Render debug disabled."))
-				}
-			},
-		},
+
 		{
 			name: "version",
 			desc: "Show version info",
