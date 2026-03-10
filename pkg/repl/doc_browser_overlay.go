@@ -35,7 +35,7 @@ type BreadcrumbCrumb struct {
 	OnClick func()
 }
 
-func (b *BreadcrumbCrumb) Render(_ tuist.RenderContext) tuist.RenderResult {
+func (b *BreadcrumbCrumb) Render(_ tuist.Context) tuist.RenderResult {
 	var st lipgloss.Style
 	switch {
 	case b.Active:
@@ -48,7 +48,7 @@ func (b *BreadcrumbCrumb) Render(_ tuist.RenderContext) tuist.RenderResult {
 	return tuist.RenderResult{Lines: []string{st.Render(b.Label)}}
 }
 
-func (b *BreadcrumbCrumb) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) bool {
+func (b *BreadcrumbCrumb) HandleMouse(_ tuist.Context, ev tuist.MouseEvent) bool {
 	switch ev.MouseEvent.(type) {
 	case uv.MouseClickEvent:
 		if b.OnClick != nil {
@@ -59,7 +59,7 @@ func (b *BreadcrumbCrumb) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent)
 	return false
 }
 
-func (b *BreadcrumbCrumb) SetHovered(_ tuist.EventContext, hovered bool) {
+func (b *BreadcrumbCrumb) SetHovered(_ tuist.Context, hovered bool) {
 	if b.Hovered != hovered {
 		b.Hovered = hovered
 		b.Update()
@@ -81,7 +81,7 @@ type DocColumnComp struct {
 	ScrollOffset int
 }
 
-func (c *DocColumnComp) Render(ctx tuist.RenderContext) tuist.RenderResult {
+func (c *DocColumnComp) Render(ctx tuist.Context) tuist.RenderResult {
 	w := ctx.Width
 	col := c.Browser.Columns[c.ColIdx]
 	isFiltering := c.Browser.Filtering && c.IsActive
@@ -183,7 +183,7 @@ func (c *DocColumnComp) Render(ctx tuist.RenderContext) tuist.RenderResult {
 	return tuist.RenderResult{Lines: lines}
 }
 
-func (c *DocColumnComp) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) bool {
+func (c *DocColumnComp) HandleMouse(_ tuist.Context, ev tuist.MouseEvent) bool {
 	col := &c.Browser.Columns[c.ColIdx]
 
 	itemRow := ev.Row - c.ItemStartRow
@@ -256,7 +256,7 @@ func (c *DocColumnComp) HandleMouse(_ tuist.EventContext, ev tuist.MouseEvent) b
 	return false
 }
 
-func (c *DocColumnComp) SetHovered(_ tuist.EventContext, hovered bool) {
+func (c *DocColumnComp) SetHovered(_ tuist.Context, hovered bool) {
 	if c.Hovered != hovered {
 		c.Hovered = hovered
 		if !hovered {
@@ -291,7 +291,7 @@ func NewDocBrowserOverlay(typeEnv dang.Env) *DocBrowserOverlay {
 	return db
 }
 
-func (d *DocBrowserOverlay) HandleKeyPress(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
+func (d *DocBrowserOverlay) HandleKeyPress(_ tuist.Context, ev uv.KeyPressEvent) bool {
 	defer d.Update()
 	key := uv.Key(ev)
 	if d.Filtering {
@@ -399,11 +399,11 @@ func (d *DocBrowserOverlay) handleFilterKey(key uv.Key) {
 	}
 }
 
-func (d *DocBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
+func (d *DocBrowserOverlay) Render(ctx tuist.Context) tuist.RenderResult {
 	width := ctx.Width
 	height := ctx.Height
-	if height == 0 && ctx.ScreenHeight > 0 {
-		height = ctx.ScreenHeight
+	if height == 0 && ctx.ScreenHeight() > 0 {
+		height = ctx.ScreenHeight()
 	}
 	if width < 20 {
 		return tuist.RenderResult{Lines: []string{"(too narrow)"}}
@@ -435,7 +435,7 @@ func (d *DocBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 		if ci == len(d.ColComps)-1 {
 			w = lastColW
 		}
-		r := d.RenderChild(cc, tuist.RenderContext{Width: w, Height: listH + 2, ScreenHeight: height})
+		r := d.RenderChild(ctx.Resize(w, listH+2), cc)
 		colRendered = append(colRendered, r.Lines)
 	}
 
@@ -458,7 +458,7 @@ func (d *DocBrowserOverlay) Render(ctx tuist.RenderContext) tuist.RenderResult {
 		c.Active = i == d.ActiveCol
 		c.Label = d.Columns[i].Title
 		c.Update()
-		r := d.RenderChild(c, tuist.RenderContext{Width: width})
+		r := d.RenderChild(ctx.Resize(width, 1), c)
 		text := ""
 		if len(r.Lines) > 0 {
 			text = r.Lines[0]

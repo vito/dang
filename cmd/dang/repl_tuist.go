@@ -32,7 +32,7 @@ type loadingWrapper struct {
 	cancel context.CancelFunc
 }
 
-func (l *loadingWrapper) HandleKeyPress(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
+func (l *loadingWrapper) HandleKeyPress(_ tuist.Context, ev uv.KeyPressEvent) bool {
 	key := uv.Key(ev)
 	if key.Code == 'c' && key.Mod == uv.ModCtrl {
 		l.cancel()
@@ -105,7 +105,7 @@ func newEntryView(entry *replEntry) *entryView {
 	return ev
 }
 
-func (ev *entryView) Render(ctx tuist.RenderContext) tuist.RenderResult {
+func (ev *entryView) Render(ctx tuist.Context) tuist.RenderResult {
 	// Snapshot entry data.
 	input := ev.entry.input
 	logs := ev.entry.logs.String()
@@ -195,7 +195,6 @@ type replComponent struct {
 
 	// Doc browser
 	docBrowser *repl.DocBrowserOverlay
-
 }
 
 func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
@@ -229,7 +228,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	r.inputSlot = tuist.NewSlot(ti)
 
 	// Reset double-Ctrl+C state on any keypress except Ctrl+C itself.
-	ti.KeyInterceptor = func(_ tuist.EventContext, ev uv.KeyPressEvent) bool {
+	ti.KeyInterceptor = func(_ tuist.Context, ev uv.KeyPressEvent) bool {
 		key := uv.Key(ev)
 		if key.Code != 'c' || key.Mod != uv.ModCtrl {
 			r.ctrlCPending = false
@@ -274,7 +273,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 }
 
 // OnMount focuses the text input when the REPL is added to the TUI.
-func (r *replComponent) OnMount(ctx tuist.EventContext) {
+func (r *replComponent) OnMount(ctx tuist.Context) {
 	ctx.SetFocus(r.textInput)
 }
 
@@ -299,7 +298,7 @@ func (r *replComponent) addEntry(input string) *entryView {
 }
 
 // onSubmit handles Enter in the text input.
-func (r *replComponent) onSubmit(ctx tuist.EventContext, line string) bool {
+func (r *replComponent) onSubmit(ctx tuist.Context, line string) bool {
 	if line == "" {
 		return false
 	}
@@ -336,7 +335,7 @@ func (r *replComponent) onSubmit(ctx tuist.EventContext, line string) bool {
 // handle (Up/Down for history, Ctrl+C, Ctrl+D, Ctrl+L, etc.).
 // When the spinner is focused during eval, this receives all keys
 // (the spinner doesn't implement Interactive, so everything bubbles).
-func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEvent) bool {
+func (r *replComponent) HandleKeyPress(ctx tuist.Context, ev uv.KeyPressEvent) bool {
 	key := uv.Key(ev)
 
 	// Any key other than Ctrl+C resets the double-Ctrl+C exit.
@@ -404,7 +403,7 @@ func (r *replComponent) HandleKeyPress(ctx tuist.EventContext, ev uv.KeyPressEve
 
 // ── eval ────────────────────────────────────────────────────────────────────
 
-func (r *replComponent) startEval(ectx tuist.EventContext, expr string) {
+func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	ev := r.activeEntryView()
 
 	result, err := dang.ParseWithRecovery("repl", []byte(expr))
@@ -486,7 +485,7 @@ func (r *replComponent) startEval(ectx tuist.EventContext, expr string) {
 	}()
 }
 
-func (r *replComponent) finishEval(ctx tuist.EventContext, ev *entryView, logs, results []string, cancelled bool) {
+func (r *replComponent) finishEval(ctx tuist.Context, ev *entryView, logs, results []string, cancelled bool) {
 	// Dispatch to the UI goroutine so we can safely mutate component state.
 	ctx.Dispatch(func() {
 		r.evaluating = false
@@ -516,7 +515,7 @@ func (r *replComponent) finishEval(ctx tuist.EventContext, ev *entryView, logs, 
 
 // ── doc browser ─────────────────────────────────────────────────────────────
 
-func (r *replComponent) showDocBrowser(ctx tuist.EventContext) {
+func (r *replComponent) showDocBrowser(ctx tuist.Context) {
 	db := repl.NewDocBrowserOverlay(r.typeEnv)
 	db.OnExit = func() {
 		if r.docBrowser != nil {
@@ -535,7 +534,7 @@ func (r *replComponent) showDocBrowser(ctx tuist.EventContext) {
 // ── entry point ─────────────────────────────────────────────────────────────
 
 func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDir string, debug bool) error {
-	term := tuist.NewProcessTerminal()
+	term := tuist.NewStdTerminal()
 	tui := tuist.New(term)
 	tui.SetShowHardwareCursor(true)
 
