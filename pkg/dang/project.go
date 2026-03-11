@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,6 +30,18 @@ type ProjectConfig struct {
 
 // ImportSource describes where an import's GraphQL schema comes from.
 type ImportSource struct {
+	// Dagger indicates this import connects to a Dagger Engine session.
+	// The service command (default: ["dagger", "session"]) outputs
+	// {"port": N, "session_token": "..."} and the client is configured
+	// with basic auth and OpenTelemetry trace propagation.
+	//
+	// To use a dev engine, point the service at a custom CLI binary:
+	//
+	//   [imports.Dagger]
+	//   dagger = true
+	//   service = ["~/src/dagger/bin/dagger", "session"]
+	Dagger bool `toml:"dagger,omitempty"`
+
 	// Schema is a path to a local .graphqls SDL file (relative to dang.toml).
 	// Provides type information for the LSP and type checker.
 	Schema string `toml:"schema,omitempty"`
@@ -42,6 +55,8 @@ type ImportSource struct {
 	// The process is started lazily on first use and killed when Dang exits.
 	// If Schema is also set, the schema is used for type checking and the
 	// service is only started when runtime queries are needed.
+	//
+	// When dagger = true, defaults to ["dagger", "session"].
 	Service []string `toml:"service,omitempty"`
 
 	// Authorization is the Authorization header value (e.g. "Bearer token").
@@ -124,6 +139,26 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	ic := ImportConfig{Name: name}
 	configPath := filepath.Join(configDir, "dang.toml")
 
+	// For Dagger imports, default the service command and set up the
+	// lazy client that starts a dagger session.
+	if source.Dagger {
+		ic.Dagger = true
+		service := source.Service
+		if len(service) == 0 {
+			service = []string{"dagger", "session"}
+		}
+		svc := &serviceProcess{
+			cmd:      service,
+			dir:      configDir,
+			parent:   source,
+			services: servicesFromContext(ctx),
+			dagger:   true,
+		}
+		ic.Client = svc
+
+		// If no schema specified, introspect lazily (handled below)
+	}
+
 	// Load schema from SDL file if specified
 	if source.Schema != "" {
 		schemaPath := source.Schema
@@ -184,7 +219,7 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 	}
 
 	if ic.Schema == nil && ic.Client == nil {
-		return ic, fmt.Errorf("must specify at least one of 'schema', 'endpoint', or 'service'")
+		return ic, fmt.Errorf("must specify at least one of 'dagger', 'schema', 'endpoint', or 'service'")
 	}
 
 	return ic, nil
@@ -226,12 +261,26 @@ type serviceProcess struct {
 	dir    string
 	parent *ImportSource // static config fields to use as defaults
 	depth  int
+	dagger bool // true if service speaks the dagger session protocol
 
 	services *ServiceRegistry
 
 	once     sync.Once
 	delegate graphql.Client
 	initErr  error
+}
+
+// NewDaggerServiceProcess creates a lazy graphql.Client that starts a default
+// `dagger session` when first used. Used by the LSP as a fallback when no
+// explicit Dagger import is configured in dang.toml.
+func NewDaggerServiceProcess(ctx context.Context) graphql.Client {
+	return &serviceProcess{
+		cmd:      []string{"dagger", "session"},
+		dir:      "",
+		parent:   &ImportSource{Dagger: true},
+		services: servicesFromContext(ctx),
+		dagger:   true,
+	}
 }
 
 const maxServiceDepth = 10
@@ -251,13 +300,25 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 		return nil, fmt.Errorf("service recursion depth exceeded (%d)", maxServiceDepth)
 	}
 
-	slog.Info("starting import service", "cmd", s.cmd, "dir", s.dir)
+	slog.Info("starting import service", "cmd", s.cmd, "dir", s.dir, "dagger", s.dagger)
 
 	cmd := exec.CommandContext(ctx, s.cmd[0], s.cmd[1:]...)
 	cmd.Dir = s.dir
 	cmd.Stderr = os.Stderr
 	// Use process group so we can kill the whole tree (e.g. go run -> child)
 	setProcessGroup(cmd)
+
+	// For Dagger sessions, propagate OTel trace context to the child process
+	if s.dagger {
+		cmd.Env = append(os.Environ(), otelPropagationEnv(ctx)...)
+		// Kill by closing stdin (gives the session a chance to drain),
+		// matching the behavior of the Dagger SDK.
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, fmt.Errorf("stdin pipe: %w", err)
+		}
+		cmd.Cancel = stdin.Close
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -271,6 +332,10 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 	// Register for cleanup
 	if s.services != nil {
 		s.services.register(cmd)
+	}
+
+	if s.dagger {
+		return s.startDagger(ctx, stdout)
 	}
 
 	// Read a JSON object from stdout
@@ -297,6 +362,32 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 	}
 
 	return s.resolve(ctx, source)
+}
+
+// startDagger reads the {port, session_token} JSON from a dagger session
+// process and creates a client with basic auth and OTel propagation.
+func (s *serviceProcess) startDagger(ctx context.Context, stdout io.ReadCloser) (graphql.Client, error) {
+	resultCh := make(chan *daggerSessionParams, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		var params daggerSessionParams
+		if err := json.NewDecoder(stdout).Decode(&params); err != nil {
+			errCh <- fmt.Errorf("reading dagger session params: %w", err)
+			return
+		}
+		resultCh <- &params
+	}()
+
+	select {
+	case params := <-resultCh:
+		slog.Info("dagger session ready", "port", params.Port)
+		return newDaggerClient(params), nil
+	case err := <-errCh:
+		return nil, err
+	case <-time.After(300 * time.Second):
+		// Long timeout matching the Dagger SDK — extensions may need to build
+		return nil, fmt.Errorf("timed out waiting for dagger session")
+	}
 }
 
 // resolve turns an ImportSource (returned by a service) into a client,

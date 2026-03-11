@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"charm.land/lipgloss/v2"
-	"dagger.io/dagger"
+	"github.com/Khan/genqlient/graphql"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/kr/pretty"
@@ -548,7 +548,7 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	// If there's a Dagger module, load it with a spinner visible.
 	// Spinner starts automatically via OnMount when added to the tree.
 	daggerLog := newPituiSyncWriter(tui.Dispatch)
-	var daggerConn *dagger.Client
+	_ = daggerLog // TODO: wire up dagger session stderr to the TUI log
 	if moduleDir != "" {
 		loadCtx, cancelLoad := context.WithCancel(ctx)
 
@@ -566,42 +566,38 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 			tui.SetFocus(loadWrapper)
 		})
 
-		dag, err := dagger.Connect(loadCtx,
-			dagger.WithLogOutput(daggerLog),
-			dagger.WithEnvironmentVariable("DAGGER_PROGRESS", "dots"),
-		)
+		// Find an existing Dagger client from import configs, or start a
+		// default session.
+		var daggerClient graphql.Client
+		for _, ic := range importConfigs {
+			if ic.Dagger {
+				daggerClient = ic.Client
+				break
+			}
+		}
+		if daggerClient == nil {
+			daggerClient = dang.NewDaggerServiceProcess(loadCtx)
+		}
+
+		// Serve the module and introspect the live schema
+		schema, err := dang.DaggerServeModule(loadCtx, daggerClient, moduleDir)
 		if err != nil {
-			tui.Dispatch(func() {
-				tui.RemoveChild(loadWrapper)
-			})
 			if loadCtx.Err() != nil {
 				tui.Stop()
 				fmt.Println("Goodbye!")
 				return nil
 			}
-			// Show error inline — spinner is already removed.
-			fmt.Fprintf(os.Stderr, "Failed to connect to Dagger: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Failed to load Dagger module: %v\n", err)
 		} else {
-			daggerConn = dag
-			provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{})
-			client, schema, err := provider.ServeDaggerModule(loadCtx, dag, moduleDir)
-			if err != nil {
-				if loadCtx.Err() != nil {
-					dag.Close() //nolint:errcheck
-					tui.Stop()
-					fmt.Println("Goodbye!")
-					return nil
-				}
-				fmt.Fprintf(os.Stderr, "Failed to load Dagger module: %v\n", err)
-			} else {
-				importConfigs = append(importConfigs, dang.ImportConfig{
-					Name:       "Dagger",
-					Client:     client,
-					Schema:     schema,
-					AutoImport: true,
-				})
-			}
+			importConfigs = append(importConfigs, dang.ImportConfig{
+				Name:       "Dagger",
+				Client:     daggerClient,
+				Schema:     schema,
+				AutoImport: true,
+				Dagger:     true,
+			})
 		}
+
 		cancelLoad()
 		tui.Dispatch(func() {
 			tui.RemoveChild(loadWrapper)
@@ -617,10 +613,6 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	tui.Dispatch(func() {
 		tui.AddChild(repl)
 	})
-
-	if daggerConn != nil {
-		defer daggerConn.Close() //nolint:errcheck
-	}
 
 	// Wait for quit signal or interrupt.
 	select {

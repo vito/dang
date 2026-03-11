@@ -11,7 +11,6 @@ import (
 	"sync"
 	"unicode"
 
-	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
@@ -37,29 +36,12 @@ func (h *langHandler) SetServer(srv *jrpc2.Server) {
 	h.server = srv
 }
 
-func (h *langHandler) DaggerClient() (*dagger.Client, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.cachedDag != nil {
-		return h.cachedDag, nil
-	}
-	dag, err := dagger.Connect(h.rootCtx)
-	if err != nil {
-		slog.WarnContext(h.rootCtx, "failed to connect to Dagger, will retry on demand", "error", err)
-		return nil, err
-	}
-	h.cachedDag = dag
-	return dag, nil
-}
-
 type langHandler struct {
 	rootCtx  context.Context
 	files    map[DocumentURI]*File
 	server   *jrpc2.Server
 	rootPath string
 	folders  []string
-
-	cachedDag *dagger.Client
 
 	// Per-module schema cache
 	moduleSchemas map[string]*moduleSchema // moduleDir -> schema
@@ -68,9 +50,8 @@ type langHandler struct {
 	loadedEnvDirs map[string]bool
 
 	// Default schema/client for non-module files
-	defaultSchema   *introspection.Schema
-	defaultClient   graphql.Client
-	defaultProvider *dang.GraphQLClientProvider
+	defaultSchema *introspection.Schema
+	defaultClient graphql.Client
 
 	// TODO?: make per-file or something
 	mu *sync.Mutex
@@ -312,8 +293,11 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				}
 			}
 
-			// Get Dagger schema for this file's module (if in a Dagger module)
-			schema, client, err := h.getSchemaForFile(ctx, fp)
+			// Get Dagger schema for this file's module (if in a Dagger module).
+			// If the resolved imports already contain a Dagger import, use
+			// its client for module introspection. Otherwise, start a
+			// default dagger session.
+			schema, client, err := h.getSchemaForFile(ctx, fp, importConfigs)
 			if err != nil {
 				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
 			}
@@ -598,43 +582,50 @@ func stringPtr(s string) *string {
 
 // getSchemaForFile returns the appropriate schema for a given file path.
 // It searches for a dagger.json in the file's directory or parent directories,
-// and caches the result per module directory.
-func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*introspection.Schema, graphql.Client, error) {
+// and uses a Dagger client (from import configs or a default session) to
+// introspect the module schema. Results are cached per module directory.
+func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string, importConfigs []dang.ImportConfig) (*introspection.Schema, graphql.Client, error) {
 	// Find the module directory for this file
 	moduleDir := findDaggerModule(filepath.Dir(filePath))
 
-	slog.WarnContext(ctx, "getting schema for file", "filePath", filePath)
+	slog.DebugContext(ctx, "getting schema for file", "filePath", filePath)
 	if moduleDir == "" {
-		slog.WarnContext(ctx, "module dir not found", "filePath", filePath)
+		slog.DebugContext(ctx, "module dir not found", "filePath", filePath)
 
-		// Not in a module, use default schema
+		// Not in a module — use default Dagger schema if available
 		if h.defaultSchema == nil {
-			// Lazily load default schema on first use
-			if err := h.loadDefaultSchema(ctx); err != nil {
-				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
+			client := h.findDaggerClient(importConfigs)
+			if client == nil {
+				// No Dagger import configured — start a default session
+				client = h.getDefaultDaggerClient(ctx)
 			}
+			if client == nil {
+				return nil, nil, nil // no Dagger available
+			}
+			schema, err := dang.IntrospectSchema(ctx, client)
+			if err != nil {
+				return nil, nil, fmt.Errorf("introspecting default Dagger schema: %w", err)
+			}
+			h.defaultSchema = schema
+			h.defaultClient = client
 		}
 		return h.defaultSchema, h.defaultClient, nil
 	}
 
 	// Check cache for this module
 	if cached, ok := h.moduleSchemas[moduleDir]; ok {
-		slog.WarnContext(ctx, "module schema cache hit", "filePath", filePath)
+		slog.DebugContext(ctx, "module schema cache hit", "filePath", filePath)
 		return cached.schema, cached.client, nil
 	}
 
-	// Check if we have a Dagger client available
-	dag, err := h.DaggerClient()
-	if err != nil {
-		slog.WarnContext(ctx, "failed to get Dagger client", "error", err)
-		// No Dagger client, fall back to default schema
-		slog.WarnContext(ctx, "no Dagger client available, falling back to default", "dir", moduleDir)
-		if h.defaultSchema == nil {
-			if err := h.loadDefaultSchema(ctx); err != nil {
-				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
-			}
-		}
-		return h.defaultSchema, h.defaultClient, nil
+	// Find a Dagger client from import configs or start a default session
+	client := h.findDaggerClient(importConfigs)
+	if client == nil {
+		client = h.getDefaultDaggerClient(ctx)
+	}
+	if client == nil {
+		slog.WarnContext(ctx, "no Dagger client available", "dir", moduleDir)
+		return nil, nil, nil
 	}
 
 	// Load and cache module schema
@@ -657,17 +648,14 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 		}
 	}
 
-	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
-	client, schema, err := provider.GetDaggerModuleSchema(ctx, dag, moduleDir)
+	schema, err := dang.DaggerModuleSchema(ctx, client, moduleDir)
 	if err != nil {
-		// If module schema loading fails, fall back to default schema
-		slog.WarnContext(ctx, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
-		if h.defaultSchema == nil {
-			if err := h.loadDefaultSchema(ctx); err != nil {
-				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
-			}
+		slog.WarnContext(ctx, "failed to load module schema", "dir", moduleDir, "error", err)
+		// Fall back to base Dagger schema
+		schema, err = dang.IntrospectSchema(ctx, client)
+		if err != nil {
+			return nil, nil, fmt.Errorf("introspecting Dagger schema: %w", err)
 		}
-		return h.defaultSchema, h.defaultClient, nil
 	}
 
 	h.moduleSchemas[moduleDir] = &moduleSchema{
@@ -679,37 +667,27 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*i
 	return schema, client, nil
 }
 
-// loadDefaultSchema loads the default GraphQL schema from environment/config
-func (h *langHandler) loadDefaultSchema(ctx context.Context) error {
-	// Create a progress token
-	token := "dang-schema-default"
-
-	// Create and begin progress
-	if err := h.createWorkDoneProgress(ctx, token); err != nil {
-		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
-	} else {
-		defer func() {
-			_ = h.endProgress(ctx, token, nil)
-		}()
-
-		if err := h.beginProgress(ctx, token, "initializing module: default"); err != nil {
-			slog.WarnContext(ctx, "failed to begin progress", "error", err)
+// findDaggerClient looks for a Dagger import in the given configs and
+// returns its client. Returns nil if none found.
+func (h *langHandler) findDaggerClient(configs []dang.ImportConfig) graphql.Client {
+	for _, ic := range configs {
+		if ic.Dagger {
+			return ic.Client
 		}
 	}
-
-	config := dang.LoadGraphQLConfig()
-	h.defaultProvider = dang.NewGraphQLClientProvider(config)
-
-	client, schema, err := h.defaultProvider.GetClientAndSchema(ctx)
-	if err != nil {
-		return err
-	}
-
-	h.defaultClient = client
-	h.defaultSchema = schema
-
-	slog.InfoContext(ctx, "loaded default GraphQL schema", "types", len(schema.Types))
 	return nil
+}
+
+// getDefaultDaggerClient returns a lazily-started default Dagger session
+// client for when no explicit Dagger import is configured in dang.toml.
+func (h *langHandler) getDefaultDaggerClient(ctx context.Context) graphql.Client {
+	if h.defaultClient != nil {
+		return h.defaultClient
+	}
+	// Create a default dagger session service process
+	svc := dang.NewDaggerServiceProcess(ctx)
+	h.defaultClient = svc
+	return svc
 }
 
 func isIdentifierChar(r rune) bool {

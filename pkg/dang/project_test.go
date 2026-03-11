@@ -187,6 +187,86 @@ func TestLoadProjectConfig(t *testing.T) {
 	require.NotNil(t, config.Imports["Other"])
 }
 
+func TestDaggerImportSource(t *testing.T) {
+	t.Run("parses dagger = true", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "dang.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`
+[imports.Dagger]
+dagger = true
+`), 0644))
+
+		config, err := LoadProjectConfig(configPath)
+		require.NoError(t, err)
+		require.NotNil(t, config.Imports["Dagger"])
+		assert.True(t, config.Imports["Dagger"].Dagger)
+		assert.Empty(t, config.Imports["Dagger"].Service)
+	})
+
+	t.Run("dagger with custom service", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "dang.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`
+[imports.DaggerDev]
+dagger = true
+service = ["~/src/dagger/bin/dagger", "session"]
+`), 0644))
+
+		config, err := LoadProjectConfig(configPath)
+		require.NoError(t, err)
+		require.NotNil(t, config.Imports["DaggerDev"])
+		assert.True(t, config.Imports["DaggerDev"].Dagger)
+		assert.Equal(t, []string{"~/src/dagger/bin/dagger", "session"}, config.Imports["DaggerDev"].Service)
+	})
+
+	t.Run("resolve sets Dagger flag on ImportConfig", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "dang.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`
+[imports.Dagger]
+dagger = true
+`), 0644))
+
+		config, err := LoadProjectConfig(configPath)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		resolved, err := ResolveImportConfigs(ctx, config, dir)
+		require.NoError(t, err)
+		require.Len(t, resolved, 1)
+		assert.Equal(t, "Dagger", resolved[0].Name)
+		assert.True(t, resolved[0].Dagger)
+		assert.NotNil(t, resolved[0].Client, "dagger import should have a lazy client")
+	})
+
+	t.Run("multiple dagger imports", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "dang.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(`
+[imports.Dagger]
+dagger = true
+
+[imports.DaggerDev]
+dagger = true
+service = ["/usr/local/bin/dagger-dev", "session"]
+`), 0644))
+
+		config, err := LoadProjectConfig(configPath)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		resolved, err := ResolveImportConfigs(ctx, config, dir)
+		require.NoError(t, err)
+		require.Len(t, resolved, 2)
+
+		// Both should be marked as dagger imports
+		for _, ic := range resolved {
+			assert.True(t, ic.Dagger, "import %q should be dagger", ic.Name)
+			assert.NotNil(t, ic.Client)
+		}
+	})
+}
+
 func TestExpandEnvVars(t *testing.T) {
 	t.Run("no variables", func(t *testing.T) {
 		result, err := expandEnvVars("hello world")
