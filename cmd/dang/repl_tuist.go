@@ -546,10 +546,17 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// If there's a Dagger module, load it with a spinner visible.
-	// Spinner starts automatically via OnMount when added to the tree.
+	// Skip if dang.toml already provides an explicit "Dagger" import.
 	daggerLog := newPituiSyncWriter(tui.Dispatch)
 	_ = daggerLog // TODO: wire up dagger session stderr to the TUI log
-	if moduleDir != "" {
+	hasDaggerImport := false
+	for _, ic := range importConfigs {
+		if ic.Name == "Dagger" {
+			hasDaggerImport = true
+			break
+		}
+	}
+	if moduleDir != "" && !hasDaggerImport {
 		loadCtx, cancelLoad := context.WithCancel(ctx)
 
 		loadSp := tuist.NewSpinner()

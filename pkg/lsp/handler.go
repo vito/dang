@@ -293,21 +293,23 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				}
 			}
 
-			// Get Dagger schema for this file's module (if in a Dagger module).
-			// If the resolved imports already contain a Dagger import, use
-			// its client for module introspection. Otherwise, start a
-			// default dagger session.
-			schema, client, err := h.getSchemaForFile(ctx, fp, importConfigs)
-			if err != nil {
-				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
-			}
-			if schema != nil {
-				importConfigs = append(importConfigs, dang.ImportConfig{
-					Name:       "Dagger",
-					Client:     client,
-					Schema:     schema,
-					AutoImport: true,
-				})
+			// Auto-detect a Dagger module (dagger.json) unless dang.toml
+			// already provides an explicit "Dagger" import — the explicit
+			// config takes precedence.
+			if !hasImportNamed(importConfigs, "Dagger") {
+				schema, client, err := h.getSchemaForFile(ctx, fp, importConfigs)
+				if err != nil {
+					slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
+				}
+				if schema != nil {
+					importConfigs = append(importConfigs, dang.ImportConfig{
+						Name:       "Dagger",
+						Client:     client,
+						Schema:     schema,
+						AutoImport: true,
+						Dagger:     true,
+					})
+				}
 			}
 
 			if len(importConfigs) > 0 {
@@ -665,6 +667,16 @@ func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string, imp
 
 	slog.InfoContext(ctx, "cached schema for module", "dir", moduleDir, "types", len(schema.Types))
 	return schema, client, nil
+}
+
+// hasImportNamed checks if an import config with the given name exists.
+func hasImportNamed(configs []dang.ImportConfig, name string) bool {
+	for _, ic := range configs {
+		if ic.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // findDaggerClient looks for a Dagger import in the given configs and
