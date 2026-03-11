@@ -2600,13 +2600,29 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 		f.formatNode(block.Forms[0])
 		f.write(" }")
 	} else if isBlock {
-		// Multi-line block arg
-		f.newline()
+		// Multi-line block arg - use nl() to emit trailing comment on opening line
+		if block.Loc != nil {
+			f.nl(block.Loc.Line)
+		} else {
+			f.newline()
+		}
 		f.indented(func() {
+			f.resetLastLineForForms(block.Forms)
 			for _, form := range block.Forms {
+				if f.handleNoFmtForm(form) {
+					f.newline()
+					continue
+				}
+				f.emitCommentsForNode(form)
 				f.writeIndent()
 				f.formatNode(form)
+				f.finishForm(form)
 				f.newline()
+			}
+
+			// Emit comments between last form and closing }
+			if block.Loc != nil && block.Loc.End != nil {
+				f.emitCommentsBeforeNode(block.Loc.End.Line, false)
 			}
 		})
 		f.writeIndent()

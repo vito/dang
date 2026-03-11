@@ -1059,6 +1059,68 @@ pub x = 1
 	}
 }
 
+func (FormatSuite) TestCommentsInBlockArgs(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "comment inside multiline block arg stays inside",
+			input: `pub x = items.each { item =>
+  # process item
+  handle(item)
+}`,
+			expected: `pub x = items.each { item =>
+  # process item
+  handle(item)
+}
+`,
+		},
+		{
+			name: "multiple comments inside multiline block arg",
+			input: `pub x = items.each { item =>
+  # first comment
+  a(item)
+  # second comment
+  b(item)
+}`,
+			expected: `pub x = items.each { item =>
+  # first comment
+  a(item)
+  # second comment
+  b(item)
+}
+`,
+		},
+		{
+			name: "comment inside block arg without params",
+			input: `pub x = foo.bar {
+  # a comment
+  baz
+}`,
+			expected: `pub x = foo.bar {
+  # a comment
+  baz
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			// Verify idempotency
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
