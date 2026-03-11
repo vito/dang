@@ -539,11 +539,15 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 	var loc *dang.SourceLocation
 
 	// Try to extract parse or infer error with location info
+	var sourceErr *dang.SourceError
 	var parseErr interface {
 		ParseErrorLocation() *dang.SourceLocation
 	}
 	var inferErr *dang.InferError
-	if errors.As(err, &parseErr) {
+	if errors.As(err, &sourceErr) {
+		loc = sourceErr.Location
+		slog.Warn("got source error", "err", sourceErr, "loc", loc)
+	} else if errors.As(err, &parseErr) {
 		loc = parseErr.ParseErrorLocation()
 		slog.Warn("got parse error", "err", parseErr, "loc", loc)
 	} else if errors.As(err, &inferErr) {
@@ -568,6 +572,13 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 		}
 	}
 
+	// For SourceErrors, use the inner error message to avoid the full
+	// formatted output with source highlighting in the diagnostic.
+	message := err.Error()
+	if sourceErr != nil {
+		message = sourceErr.Inner.Error()
+	}
+
 	return []Diagnostic{
 		{
 			Range: Range{
@@ -576,7 +587,7 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 			},
 			Severity: 1, // Error
 			Source:   stringPtr("dang"),
-			Message:  err.Error(),
+			Message:  message,
 		},
 	}
 }
