@@ -1,14 +1,4 @@
 type Dev {
-  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
-    # TODO: respecting .gitignore would be nice
-    "Session.vim",
-    "dang",
-    "editors",
-    ".env",
-    ".envrc",
-    ".dagger",
-  ])
-
   """
   GitHub token to use for fetching issue/PR comments
   """
@@ -22,15 +12,15 @@ type Dev {
   """
   Start a coding agent with the provided module.
   """
-  pub withTools(tools: Module!): LLM! {
-    agent(llm.withEnv(env.withModule(tools)))
+  pub withTools(source: Workspace!, tools: Module!): LLM! {
+    agent(source, llm.withEnv(env.withModule(tools)))
   }
 
   """
   Start a coding agent.
   """
-  pub agent(base: LLM!): LLM! {
-    let env = base.env.withWorkspace(source).withCurrentModule
+  pub agent(source: Workspace!, base: LLM!): LLM! {
+    let env = base.env.withCurrentModule
 
     let gopls = apko
       .wolfi(["bash", "go"])
@@ -41,12 +31,14 @@ type Dev {
       .withEnvVariable("GOBIN", "/go/bin")
       .withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true)
       .withExec(["go", "install", "golang.org/x/tools/gopls@latest"])
-      .withDirectory("/workspace", source)
+      # TODO: my kingdom for 'withMountedWorkspace'!
+      .withDirectory("/workspace", source.directory("."))
       .withWorkdir("/workspace")
       .withDefaultArgs(["gopls", "mcp"])
 
     let agent = doug
       .agent(
+        source,
         base
           .withEnv(env)
           .withMCPServer(name: "gopls", service: gopls.asService)
@@ -68,7 +60,8 @@ type Dev {
           "kagi",
           apko
             .wolfi(["bash", "uv", "python3"])
-            .withDirectory("/workspace", source)
+            # TODO: my kingdom for 'withMountedWorkspace'!
+            .withDirectory("/workspace", source.directory("."))
             .withWorkdir("/workspace")
             .withExec(["uv", "venv", "/opt/venv"])
             .withEnvVariable("VIRTUAL_ENV", "/opt/venv")
@@ -89,8 +82,8 @@ type Dev {
   """
   Run a git command and return its output.
   """
-  pub git(args: [String!]!): String! {
-    sandbox
+  pub git(source: Workspace!, args: [String!]!): String! {
+    sandbox(source)
       .withExec(["git"] + args)
       .combinedOutput
   }
@@ -98,11 +91,11 @@ type Dev {
   """
   Run a gh command and return its output.
   """
-  pub github(args: [String!]!): String! {
+  pub github(source: Workspace!, args: [String!]!): String! {
     let ctr = if (githubToken != null) {
-      sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
+      sandbox(source).withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
     } else {
-      sandbox
+      sandbox(source)
     }
 
     ctr
@@ -119,10 +112,11 @@ type Dev {
   We don't expose this directly and instead expose wrappers just to keep the
   agent from going wild and relying too much on the shell.
   """
-  let sandbox: Container! {
+  let sandbox(source: Workspace!): Container! {
     apko
       .wolfi(["bash", "git", "gh"])
       .withWorkdir("/workspace")
-      .withDirectory("/workspace", source)
+      # TODO: my kingdom for 'withMountedWorkspace'!
+      .withDirectory("/workspace", source.directory("."))
   }
 }

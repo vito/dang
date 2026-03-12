@@ -5,26 +5,24 @@ let workspacePath = "/workspace"
 A Dagger-native sandboxed coding agent.
 """
 type Doug {
-  let source: Directory! @defaultPath(path: "/")
-
   """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.
   """
   pub dev(
-    source: Directory!,
+    source: Workspace!,
     module: Module,
   ): LLM! {
-    let e = env.withWorkspace(source)
+    let e = env
     if (module != null) {
-      e = e.withModule(module)
+      e = e.withMainModule(module)
     }
-    agent(base: llm.withEnv(e))
+    agent(source: source, base: llm.withEnv(e))
   }
 
   """
   Returns a Doug coding agent
   """
-  pub agent(base: LLM!): LLM! {
+  pub agent(source: Workspace!, base: LLM!): LLM! {
     base
       .withEnv(
         base
@@ -43,7 +41,7 @@ type Doug {
           }
         },
       )
-      .withSystemPrompt(reminderPrompt(base.env.workspace))
+      .withSystemPrompt(reminderPrompt(source))
   }
 
   """
@@ -60,6 +58,7 @@ type Doug {
   	- If multiple files are interesting, you can read them all at once using multiple tool calls.
   """
   pub readFile(
+    source: Workspace!,
     """
     Relative path within the workspace
     """
@@ -92,6 +91,7 @@ type Doug {
         # TODO: template
         numbered += toJSON(offset + i + 1).padLeft(6) + "→" + line + "\n"
       }
+
       numbered.trimSuffix("\n")
     }
   }
@@ -146,6 +146,7 @@ type Doug {
   Remember: when making multiple file edits in a row to the same file, you should prefer to send all edits in a single message with multiple calls to this tool, rather than multiple messages with a single call each.
   """
   pub editFile(
+    source: Workspace!,
     """
     Relative path within the workspace
     """
@@ -164,26 +165,31 @@ type Doug {
     replaceAll: Boolean! = false,
   ): Changeset! {
     let normalizedPath = normalize(filePath)
-    source
+    let base = source.directory(".", include: [normalizedPath])
+    base
       .withFile(
         normalizedPath,
         source
           .file(normalizedPath)
           .withReplaced(oldString, newString, all: replaceAll),
       )
-      .changes(source)
+      .changes(base)
   }
 
   """
   Remove a file or directory from the project workspace.
   """
   pub rm(
+    source: Workspace!,
     """
     Relative path within the workspace
     """
     path: String!,
   ): Changeset! {
-    source.withoutFile(path).changes(source)
+    let normalizedPath = normalize(path)
+    let base = source
+      .directory(".", include: [normalizedPath])
+    base.withoutFile(path).changes(base)
   }
 
   """
@@ -192,6 +198,7 @@ type Doug {
   Parent directories for the destination path will be created automatically.
   """
   pub mv(
+    source: Workspace!,
     """
     Relative path within the workspace of the file or directory to move
     """
@@ -201,16 +208,19 @@ type Doug {
     """
     newPath: String!,
   ): Changeset {
-    if (source.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
-      source
+    let normalizedPath = normalize(oldPath)
+    let base = source
+      .directory(".", include: [normalizedPath])
+    if (base.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
+      base
         .withFile(newPath, source.file(oldPath))
         .withoutFile(oldPath)
-        .changes(source)
-    } else if (source.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
-      source
+        .changes(base)
+    } else if (base.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
+      base
         .withDirectory(newPath, source.directory(oldPath))
         .withoutDirectory(oldPath)
-        .changes(source)
+        .changes(base)
     }
   }
 
@@ -242,6 +252,7 @@ type Doug {
   - Combine with Glob and Grep tools to find and modify multiple files
   """
   pub write(
+    source: Workspace!,
     """
     Relative path within the workspace
     """
@@ -251,7 +262,8 @@ type Doug {
     """
     contents: String!,
   ): Changeset! {
-    source.withNewFile(normalize(filePath), contents).changes(source)
+    let base = source.directory(".", exclude: ["*"])
+    base.withNewFile(normalize(filePath), contents).changes(base)
   }
 
   """
@@ -292,6 +304,7 @@ type Doug {
   - Always check if results are truncated and refine your search pattern if needed
   """
   pub glob(
+    source: Workspace!,
     """
     Relative glob pattern to find within the workspace
     """
@@ -358,6 +371,7 @@ type Doug {
   - Use literal_text=true when searching for exact text containing special characters like dots, parentheses, etc.
   """
   pub grep(
+    source: Workspace!,
     """
     Regular expression pattern to grep for
     """
@@ -404,6 +418,7 @@ type Doug {
         filesOnly: !content,
         insensitive: insensitive,
         limit: limit,
+        skipIgnored: true,
       )
 
     toJSON(matches.{id}.length) + " matches found"
@@ -433,6 +448,7 @@ type Doug {
   	- IMPORTANT: The agent runs in a copy-on-write sandboxed environment. Any writes made by the agent will not be visible to the user, but will be available to the agent's next invocation.
   """
   pub research(
+    source: Workspace!,
     """
     A brief description of the task to show to the user
     """
@@ -472,6 +488,7 @@ type Doug {
   - All necessary Research has already been performed
   """
   pub rabbithole(
+    source: Workspace!,
     """
     A brief description of the task to show to the user
     """
@@ -593,7 +610,7 @@ type Doug {
     currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
   }
 
-  let reminderPrompt(workspace: Directory!): String! {
+  let reminderPrompt(workspace: Workspace!): String! {
     let baseSegment = """
     # System Reminder
 
@@ -604,7 +621,7 @@ type Doug {
     - Only create documentation files if explicitly requested by the User.
     """
 
-    let entries = workspace.entries
+    let entries = workspace.glob("*.md")
     let contextFiles = ["DOUG.md", "AGENTS.md", "CLAUDE.md"]
 
     # Look for context files
