@@ -1,7 +1,6 @@
 package dang
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -449,35 +448,16 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 
 // startDagger reads the {port, session_token} JSON from a dagger session
 // process and creates a client with basic auth and OTel propagation.
-//
-// The session writes a single JSON line to stdout then keeps the pipe open.
-// Non-JSON lines (e.g. ANSI progress output) are skipped. After finding the
-// params, remaining stdout is drained in the background so the process
-// doesn't block.
 func (s *serviceProcess) startDagger(ctx context.Context, stdout io.ReadCloser) (graphql.Client, error) {
 	resultCh := make(chan *daggerSessionParams, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		reader := bufio.NewReader(stdout)
-		for {
-			line, err := reader.ReadBytes('\n')
-			if err != nil {
-				errCh <- fmt.Errorf("reading dagger session params: %w", err)
-				return
-			}
-			var params daggerSessionParams
-			if err := json.Unmarshal(line, &params); err != nil {
-				slog.Debug("skipping non-JSON dagger session output", "line", strings.TrimSpace(string(line)))
-				continue
-			}
-			if params.Port == 0 {
-				continue
-			}
-			resultCh <- &params
-			// Drain remaining stdout so the process doesn't block
-			io.Copy(io.Discard, reader)
+		var params daggerSessionParams
+		if err := json.NewDecoder(stdout).Decode(&params); err != nil {
+			errCh <- fmt.Errorf("reading dagger session params: %w", err)
 			return
 		}
+		resultCh <- &params
 	}()
 
 	select {
