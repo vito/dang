@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 
 	"charm.land/lipgloss/v2"
-	"github.com/Khan/genqlient/graphql"
 	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/kr/pretty"
@@ -533,7 +534,7 @@ func (r *replComponent) showDocBrowser(ctx tuist.Context) {
 
 // ── entry point ─────────────────────────────────────────────────────────────
 
-func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDir string, debug bool) error {
+func runREPLTUI(ctx context.Context, moduleDir string, debug bool) error {
 	term := tuist.NewStdTerminal()
 	tui := tuist.New(term)
 	tui.SetShowHardwareCursor(true)
@@ -545,18 +546,32 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// If there's a Dagger module, load it with a spinner visible.
-	// Skip if dang.toml already provides an explicit "Dagger" import.
+	// Set up the Dagger log writer that routes service stderr through the
+	// TUI. This must be set on the context before resolving imports so
+	// that lazy service processes (started on first request) pick it up.
 	daggerLog := newPituiSyncWriter(tui.Dispatch)
-	_ = daggerLog // TODO: wire up dagger session stderr to the TUI log
-	hasDaggerImport := false
-	for _, ic := range importConfigs {
-		if ic.Name == "Dagger" {
-			hasDaggerImport = true
-			break
+	ctx = ioctx.StderrToContext(ctx, daggerLog)
+
+	// Find and resolve dang.toml imports
+	var importConfigs []dang.ImportConfig
+	cwd, _ := os.Getwd()
+	configPath, config, err := dang.FindProjectConfig(cwd)
+	if err != nil {
+		slog.Warn("failed to find dang.toml", "error", err)
+	} else if config != nil {
+		configDir := filepath.Dir(configPath)
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, config)
+		resolved, resolveErr := dang.ResolveImportConfigs(ctx, config, configDir)
+		if resolveErr != nil {
+			slog.Warn("failed to resolve dang.toml imports", "error", resolveErr)
+		} else {
+			importConfigs = resolved
 		}
 	}
-	if moduleDir != "" && !hasDaggerImport {
+
+	// Load the Dagger module if present: find or create a Dagger import,
+	// serve the module, and introspect the live schema.
+	if moduleDir != "" {
 		loadCtx, cancelLoad := context.WithCancel(ctx)
 
 		loadSp := tuist.NewSpinner()
@@ -573,36 +588,30 @@ func runREPLTUI(ctx context.Context, importConfigs []dang.ImportConfig, moduleDi
 			tui.SetFocus(loadWrapper)
 		})
 
-		// Find an existing Dagger client from import configs, or start a
-		// default session.
-		var daggerClient graphql.Client
-		for _, ic := range importConfigs {
-			if ic.Dagger {
-				daggerClient = ic.Client
-				break
+		// ResolveDaggerImport finds or creates a Dagger import and
+		// eagerly introspects the schema. For the REPL we also need
+		// to serve the module so we can execute queries against it.
+		importConfigs = dang.ResolveDaggerImport(loadCtx, importConfigs, moduleDir)
+		var serveErr error
+		for i, ic := range importConfigs {
+			if !ic.Dagger || ic.Client == nil {
+				continue
 			}
+			schema, err := dang.DaggerServeModule(loadCtx, ic.Client, moduleDir)
+			if err != nil {
+				serveErr = err
+			} else {
+				importConfigs[i].Schema = schema
+			}
+			break
 		}
-		if daggerClient == nil {
-			daggerClient = dang.NewDaggerServiceProcess(loadCtx)
-		}
-
-		// Serve the module and introspect the live schema
-		schema, err := dang.DaggerServeModule(loadCtx, daggerClient, moduleDir)
-		if err != nil {
+		if serveErr != nil {
 			if loadCtx.Err() != nil {
 				tui.Stop()
 				fmt.Println("Goodbye!")
 				return nil
 			}
-			fmt.Fprintf(os.Stderr, "Failed to load Dagger module: %v\n", err)
-		} else {
-			importConfigs = append(importConfigs, dang.ImportConfig{
-				Name:       "Dagger",
-				Client:     daggerClient,
-				Schema:     schema,
-				AutoImport: true,
-				Dagger:     true,
-			})
+			fmt.Fprintf(os.Stderr, "Failed to load Dagger module: %v\n", serveErr)
 		}
 
 		cancelLoad()

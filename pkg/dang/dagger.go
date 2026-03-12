@@ -4,15 +4,44 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/pkg/introspection"
 	"go.opentelemetry.io/otel/propagation"
 )
+
+// FindDaggerModule searches for a dagger.json starting from dir, walking
+// up parent directories. Returns the directory containing dagger.json, or
+// empty string if not found. Stops at .git boundaries.
+func FindDaggerModule(startPath string) string {
+	dir, err := filepath.Abs(startPath)
+	if err != nil {
+		return ""
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "dagger.json")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return ""
+		}
+		// .not-dagger is a marker for test fixtures etc. to suppress detection
+		if _, err := os.Stat(filepath.Join(dir, ".not-dagger")); err == nil {
+			return ""
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
 
 // daggerSessionParams is the JSON output from `dagger session`.
 type daggerSessionParams struct {
@@ -139,6 +168,7 @@ func newDaggerClient(params *daggerSessionParams) graphql.Client {
 // DaggerModuleSchema introspects a Dagger module's schema via raw GraphQL.
 // This is the equivalent of dag.ModuleSource(moduleDir).IntrospectionSchemaJSON().Contents().
 func DaggerModuleSchema(ctx context.Context, client graphql.Client, moduleDir string) (*introspection.Schema, error) {
+	slog.Debug("querying module introspection schema", "moduleDir", moduleDir)
 	var resp struct {
 		ModuleSource struct {
 			IntrospectionSchemaJSON struct {
