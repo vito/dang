@@ -208,19 +208,6 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		f.mu.Unlock()
 	}()
 
-	// Set up progress reporting for this file update.
-	progressToken := "dang/updateFile/" + string(uri)
-	if err := h.createWorkDoneProgress(ctx, progressToken); err != nil {
-		slog.DebugContext(ctx, "failed to create progress token", "error", err)
-		progressToken = "" // disable progress if client doesn't support it
-	}
-	if progressToken != "" {
-		_ = h.beginProgress(ctx, progressToken, "Analyzing")
-		defer func() {
-			_ = h.endProgress(ctx, progressToken, nil)
-		}()
-	}
-
 	f.Text = text
 	if version != nil {
 		f.Version = *version
@@ -229,6 +216,19 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 	fp, err := fromURI(uri)
 	if err != nil {
 		return fmt.Errorf("file path from URI: %w", err)
+	}
+
+	// Set up progress reporting for this file update.
+	progressToken := "dang/updateFile/" + string(uri)
+	if err := h.createWorkDoneProgress(ctx, progressToken); err != nil {
+		slog.DebugContext(ctx, "failed to create progress token", "error", err)
+		progressToken = "" // disable progress if client doesn't support it
+	}
+	if progressToken != "" {
+		_ = h.beginProgress(ctx, progressToken, "Analyzing: "+fp)
+		defer func() {
+			_ = h.endProgress(ctx, progressToken, nil)
+		}()
 	}
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
