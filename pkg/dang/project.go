@@ -379,9 +379,7 @@ func (s *serviceProcess) start(ctx context.Context) (graphql.Client, error) {
 	// Wrap the context's stderr writer so the child never inherits a
 	// raw TTY fd. Programs like dagger detect a TTY on stderr and
 	// launch an interactive TUI that can block or corrupt stdout.
-	if w := ioctx.StderrFromContext(ctx); w != nil {
-		cmd.Stderr = nonFileWriter{w}
-	}
+	cmd.Stderr = nonFileWriter{ioctx.StderrFromContext(ctx)}
 	// Use process group so we can kill the whole tree (e.g. go run -> child)
 	setProcessGroup(cmd)
 
