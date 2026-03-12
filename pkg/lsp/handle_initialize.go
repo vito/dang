@@ -112,5 +112,3 @@ func (h *langHandler) loadEnvrc(ctx context.Context, configDir string) {
 
 	slog.InfoContext(ctx, "loaded environment from .envrc", "dir", configDir, "vars", loaded)
 }
-
-

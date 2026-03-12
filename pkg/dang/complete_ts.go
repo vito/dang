@@ -400,7 +400,7 @@ func tsPointBefore(p tree_sitter.Point, line, col uint) bool {
 func reconstructFuncFromError(errorNode *tree_sitter.Node, parenIdx int, source []byte) string {
 	// Collect non-trivial children before the paren.
 	var parts []string
-	for i := 0; i < parenIdx; i++ {
+	for i := range parenIdx {
 		child := errorNode.Child(uint(i))
 		if child == nil {
 			continue
