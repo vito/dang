@@ -96,28 +96,9 @@ assert { Pipeline("start").steps == ["start", "init", "ready"] }
 ### Mutating Self in Loops Inside Constructors
 
 Closures inside constructors (e.g. `.each` blocks) share the constructor's
-dynamic scope for `self`. This means mutations to `self.field` accumulate
-across loop iterations:
-
-```dang
-type Accumulator {
-  pub items: [String!]!
-
-  new(source: [String!]!) {
-    self.items = []
-    source.each { item =>
-      self.items += [item]   # Each iteration sees previous mutations
-    }
-    self
-  }
-}
-
-assert { Accumulator(["a", "b", "c"]).items == ["a", "b", "c"] }
-```
-
-This works because `ConstructorEnv` uses a shared dynamic scope cell.
-See `mutability-and-assignment.md` for the full explanation of shared vs
-isolated dynamic scope.
+dynamic scope for `self`, so mutations to `self.field` accumulate across
+loop iterations. See `scoping-and-self.md` for the full explanation of
+shared vs isolated dynamic scope cells.
 
 ### Bare Field Assignment in Constructors
 
