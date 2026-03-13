@@ -150,6 +150,72 @@ Dang uses two distinct scoping mechanisms:
 - Compound assignment validates addition compatibility
 - All assignments must maintain type safety
 
+## Dynamic Scope and Closures in Constructors
+
+### Shared Dynamic Scope in Constructor Blocks
+
+When a block/closure runs inside a `new()` constructor (e.g. inside `.each`),
+mutations to `self` are visible across iterations and back to the constructor.
+This is because `ConstructorEnv` uses a **shared dynamic scope cell** — clones
+of the constructor environment share the same mutable reference to `self`.
+
+```dang
+type Accumulator {
+  pub items: [String!]!
+
+  new(source: [String!]!) {
+    self.items = []
+    source.each { item =>
+      self.items += [item]   # Each iteration sees previous mutations
+    }
+    self
+  }
+}
+
+let acc = Accumulator(["a", "b", "c"])
+assert { acc.items == ["a", "b", "c"] }
+```
+
+### Method Calls Remain Isolated
+
+Regular method calls use `ModuleValue` environments, which create **fresh**
+(non-shared) dynamic scope cells on Clone/Fork. This preserves copy-on-write
+isolation — calling a method that mutates `self` does not affect the caller's
+reference:
+
+```dang
+type Counter {
+  pub value: Int!
+
+  pub incr: Counter! {
+    self.value += 1
+    self
+  }
+}
+
+let a = Counter(0)
+let b = a.incr
+assert { a.value == 0 }  # Original unchanged
+assert { b.value == 1 }  # Method returned a new copy
+```
+
+### Why the Distinction Matters
+
+The two behaviors serve different purposes:
+
+- **Constructor closures (shared scope)**: A constructor is building up a
+  single object. Blocks like `.each` or `.map` that mutate `self.field` are
+  conceptually part of the same initialization sequence. Each iteration should
+  see the accumulated state.
+
+- **Method calls (isolated scope)**: Methods operate on a copy of the
+  receiver. The caller keeps its original reference, and only the return
+  value carries mutations. This is the foundation of Dang's copy-on-write
+  immutability model.
+
+Internally, `ConstructorEnv.Clone()` shares a `*DynamicScope` pointer (a
+mutable cell), while `ModuleValue.Clone()` copies the value into a new cell.
+
 ## Patterns and Best Practices
 
 ### 1. Fluent Interface Pattern

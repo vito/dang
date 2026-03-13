@@ -2,62 +2,163 @@
 
 ## Type Construction Methods
 
-Dang uses copy-on-write semantics for object construction and mutation. There are several patterns for creating and initializing objects:
+Dang uses copy-on-write semantics for object construction and mutation. There
+are two ways to construct objects: **field-derived constructors** (implicit)
+and **explicit `new()` constructors**.
 
-### Direct Type Reference
+### Field-Derived Constructors (Implicit)
+
+When a type has no `new()` block, its public fields become constructor
+parameters in declaration order. Fields with defaults are optional:
+
 ```dang
-type MyType {
-  let value = 42
+type Config {
+  pub host: String!
+  pub port: Int! = 8080
+  pub debug: Boolean! = false
 }
 
-# Simply reference the type to get an instance
-let instance = MyType
+# Positional or named arguments
+let c1 = Config("localhost")            # port=8080, debug=false
+let c2 = Config("localhost", 9090)
+let c3 = Config(host: "localhost", debug: true)
 ```
 
-### Builder Pattern with Assignment
+Types with all-default or no-parameter fields support **auto-calling** — just
+reference the type name:
+
 ```dang
-type Container {
-  let name = ""
-  let size = 0
+type Defaults {
+  pub name: String! = "Unknown"
+  pub age: Int! = 0
 }
 
-let container = Container
-container.name = "my-container"
-container.size = 100
+let d = Defaults          # auto-called, name="Unknown", age=0
+let d2 = Defaults("Alice") # name="Alice", age=0
 ```
 
-### Constructor-like Methods
+### Explicit `new()` Constructors
+
+For complex initialization logic, define a `new()` block. The constructor
+must assign all required fields and return `self` as its last expression:
+
 ```dang
-type Compose {
-  let dir: Directory!
-  let files: [String!]!
-  
-  pub new(dir: Directory!, files: [String!]! = ["docker-compose.yml"]): Compose! {
-    let instance = Compose
-    instance.dir = dir
-    instance.files = files
-    instance
+type Greeter {
+  pub greeting: String!
+
+  new(name: String!) {
+    self.greeting = "Hello, " + name + "!"
+    self
+  }
+}
+
+assert { Greeter("World").greeting == "Hello, World!" }
+```
+
+Constructor args with defaults support auto-calling:
+
+```dang
+type Logger {
+  pub prefix: String!
+
+  new(name: String! = "app", level: String! = "INFO") {
+    self.prefix = "[" + level + "] " + name
+    self
+  }
+}
+
+assert { Logger.prefix == "[INFO] app" }
+```
+
+### Calling Methods from Constructors
+
+Constructors can call methods on `self`. The return value carries the
+mutations (copy-on-write):
+
+```dang
+type Pipeline {
+  pub steps: [String!]! = []
+
+  new(name: String!) {
+    self.steps = [name]
+    self.addStep("init").addStep("ready")
+  }
+
+  pub addStep(step: String!): Pipeline! {
+    self.steps = self.steps + [step]
+    self
+  }
+}
+
+assert { Pipeline("start").steps == ["start", "init", "ready"] }
+```
+
+### Mutating Self in Loops Inside Constructors
+
+Closures inside constructors (e.g. `.each` blocks) share the constructor's
+dynamic scope for `self`. This means mutations to `self.field` accumulate
+across loop iterations:
+
+```dang
+type Accumulator {
+  pub items: [String!]!
+
+  new(source: [String!]!) {
+    self.items = []
+    source.each { item =>
+      self.items += [item]   # Each iteration sees previous mutations
+    }
+    self
+  }
+}
+
+assert { Accumulator(["a", "b", "c"]).items == ["a", "b", "c"] }
+```
+
+This works because `ConstructorEnv` uses a shared dynamic scope cell.
+See `mutability-and-assignment.md` for the full explanation of shared vs
+isolated dynamic scope.
+
+### Bare Field Assignment in Constructors
+
+When constructor parameter names don't shadow field names, you can assign
+fields without the `self.` prefix:
+
+```dang
+type Vector {
+  pub x: Int! = 0
+  pub y: Int! = 0
+
+  new(vx: Int!, vy: Int!) {
+    x = vx
+    y = vy
+    self
   }
 }
 ```
 
-### Record Literals (NOT for type construction)
-Record literals `{{}}` are for creating anonymous records, not for constructing instances of named types:
+When parameter names match field names, use `self.` to disambiguate:
 
 ```dang
-# This creates an anonymous record
-let record = {{ name: "test", value: 42 }}
+type Point {
+  pub x: Int!
+  pub y: Int!
 
-# This is WRONG for type construction
-# let instance = MyType {{ field: value }}  # Don't do this
+  new(x: Int!, y: Int!) {
+    self.x = x    # self.x is the field, x is the parameter
+    self.y = y
+    self
+  }
+}
 ```
 
-## Key Principles
+## Record Literals (NOT for type construction)
 
-1. **Types are prototypes**: Referencing a type name gives you an instance
-2. **Copy-on-write**: Assignments create new objects, preserving immutability
-3. **Method chaining**: Methods typically return `self` for fluent APIs
-4. **Constructor methods**: Use `new()` or similar methods for complex initialization
+Record literals `{{}}` create anonymous records, not instances of named types:
+
+```dang
+let record = {{ name: "test", value: 42 }}
+```
 
 ## Common Patterns
 
@@ -69,6 +170,18 @@ let daemon = Daemon.
   service
 ```
 
+### Builder Pattern
+```dang
+type MyClass {
+  pub name: String! = "Jeff"
+
+  pub withName(name: String!): MyClass! {
+    self.name = name
+    self
+  }
+}
+```
+
 ### Conditional Initialization
 ```dang
 let container = baseContainer
@@ -77,22 +190,11 @@ if (needsCache) {
 }
 ```
 
-### Factory Methods
-```dang
-type Docker {
-  pub daemon: Daemon! {
-    Daemon  # Return default instance
-  }
-  
-  pub compose(dir: Directory!): Compose! {
-    Compose.new(dir)  # Use constructor method
-  }
-}
-```
+## Key Principles
 
-## Important Notes
-
-- **No explicit constructors**: Types don't have constructor syntax like `new Type()`
-- **Assignment is mutation**: `obj.field = value` modifies the object
-- **Method returns**: Constructor-like methods should return the modified instance
-- **Default values**: Use field initialization in type definition for defaults
+1. **Copy-on-write**: Assignments create new objects; originals are unchanged
+2. **Method chaining**: Methods return `self` for fluent APIs
+3. **Constructor closures share scope**: Blocks inside `new()` see accumulated
+   `self` mutations (shared dynamic scope cell)
+4. **Method calls are isolated**: Calling a method doesn't mutate the caller's
+   reference (fresh dynamic scope cell)
