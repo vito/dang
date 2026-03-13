@@ -90,19 +90,88 @@ func zigTarget() string {
 	return zigArch() + "-linux-musl"
 }
 
-func zigURL() string {
-	return fmt.Sprintf("https://ziglang.org/builds/zig-%s-linux-0.16.0-dev.2670+56253d9e3.tar.xz", zigArch())
+func zigTarballName() string {
+	return fmt.Sprintf("zig-%s-linux-0.16.0-dev.2670+56253d9e3.tar.xz", zigArch())
+}
+
+const zigMinisignPubKey = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U"
+
+// fetchZig downloads a Zig tarball from community mirrors with minisign
+// signature verification. It shuffles the mirror list and tries each one in
+// turn, verifying the tarball signature and checking that the trusted comment
+// references the expected tarball name (to prevent downgrade attacks).
+func fetchZig() *dagger.Directory {
+	tarballName := zigTarballName()
+
+	script := fmt.Sprintf(`#!/bin/sh
+set -eu
+
+TARBALL_NAME="%s"
+PUBKEY="%s"
+
+# Fetch community mirror list
+MIRRORS=$(wget -qO- "https://ziglang.org/download/community-mirrors.txt")
+
+# Shuffle mirrors (shuf is provided by coreutils)
+MIRRORS=$(printf '%%s\n' $MIRRORS | shuf)
+
+for MIRROR_URL in $MIRRORS; do
+  echo "Trying mirror: $MIRROR_URL"
+
+  # Download tarball
+  if ! wget -q -O "/tmp/$TARBALL_NAME" "$MIRROR_URL/$TARBALL_NAME?source=dang-dagger-sdk"; then
+    echo "  Failed to download tarball"
+    rm -f "/tmp/$TARBALL_NAME"
+    continue
+  fi
+
+  # Download signature — NEVER SKIP THIS STEP
+  if ! wget -q -O "/tmp/$TARBALL_NAME.minisig" "$MIRROR_URL/$TARBALL_NAME.minisig?source=dang-dagger-sdk"; then
+    echo "  Failed to download signature"
+    rm -f "/tmp/$TARBALL_NAME" "/tmp/$TARBALL_NAME.minisig"
+    continue
+  fi
+
+  # Verify the signature against the public key — NEVER SKIP THIS STEP
+  if ! minisign -Vm "/tmp/$TARBALL_NAME" -P "$PUBKEY" -x "/tmp/$TARBALL_NAME.minisig"; then
+    echo "  Signature verification failed"
+    rm -f "/tmp/$TARBALL_NAME" "/tmp/$TARBALL_NAME.minisig"
+    continue
+  fi
+
+  # Verify the tarball name in the trusted comment to prevent downgrade attacks.
+  # The ZSF minisign signatures include a "file:" field in the trusted comment
+  # that must match the requested tarball name.
+  TRUSTED_COMMENT=$(grep '^trusted comment:' "/tmp/$TARBALL_NAME.minisig")
+  case "$TRUSTED_COMMENT" in
+    *"file:$TARBALL_NAME"*) ;;
+    *)
+      echo "  Tarball name mismatch in trusted comment: $TRUSTED_COMMENT"
+      rm -f "/tmp/$TARBALL_NAME" "/tmp/$TARBALL_NAME.minisig"
+      continue
+      ;;
+  esac
+
+  echo "Successfully fetched and verified $TARBALL_NAME from $MIRROR_URL"
+  tar -xJf "/tmp/$TARBALL_NAME" -C /usr/local
+  mv /usr/local/zig-*-linux-* /usr/local/zig
+  rm -f "/tmp/$TARBALL_NAME" "/tmp/$TARBALL_NAME.minisig"
+  exit 0
+done
+
+echo "ERROR: Failed to fetch Zig from any mirror"
+exit 1
+`, tarballName, zigMinisignPubKey)
+
+	return dag.Container().From("alpine:latest").
+		WithExec([]string{"apk", "add", "--no-cache", "minisign", "xz", "coreutils"}).
+		WithNewFile("/fetch-zig.sh", script, dagger.ContainerWithNewFileOpts{Permissions: 0o755}).
+		WithExec([]string{"/fetch-zig.sh"}).
+		Directory("/usr/local/zig")
 }
 
 func (t *DangSdk) goBase() *dagger.Container {
-	zigTarball := dag.HTTP(zigURL())
-
-	zig := dag.Container().From(Golang).
-		WithExec([]string{"apt-get", "update"}).
-		WithExec([]string{"apt-get", "install", "-y", "xz-utils"}).
-		WithMountedFile("/tmp/zig.tar.xz", zigTarball).
-		WithExec([]string{"sh", "-c", "tar -xJf /tmp/zig.tar.xz -C /usr/local && mv /usr/local/zig-*-linux-* /usr/local/zig"}).
-		Directory("/usr/local/zig")
+	zig := fetchZig()
 
 	target := zigTarget()
 	return dag.Container().From(Golang).
