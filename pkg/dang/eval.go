@@ -56,9 +56,14 @@ type EvalEnv interface {
 	Visibility(name string) Visibility
 	Clone() EvalEnv
 	Fork() EvalEnv
-	// Dynamic scope support for 'self'
+	// Dynamic scope support for 'self'.
+	// Clone/Fork share the DynamicScope cell so that closures (e.g. block
+	// args passed to .each) see mutations to self from prior iterations.
+	// Code that establishes a NEW self (e.g. BoundMethod.Call) must call
+	// NewDynamicScope to create a fresh, unshared cell.
 	GetDynamicScope() (Value, bool)
 	SetDynamicScope(value Value)
+	NewDynamicScope(value Value)
 }
 
 // InputObjectConstructor creates a ModuleValue from named arguments,
@@ -1249,37 +1254,26 @@ func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
 func (m *ModuleValue) Clone() EvalEnv {
 	newValues := make(map[string]Value)
 	newVisibilities := make(map[string]Visibility)
-	// Copy dynamic scope value into a NEW cell so method calls get
-	// isolation (mutations to self inside a method don't leak back).
-	var ds *DynamicScope
-	if m.dynamicScope != nil {
-		ds = &DynamicScope{Value: m.dynamicScope.Value}
-	}
 	return &ModuleValue{
 		Mod:          m.Mod,
 		Values:       newValues,
 		Visibilities: newVisibilities,
 		Parent:       m,
-		dynamicScope: ds,
+		dynamicScope: m.dynamicScope, // Share cell so closures see mutations
 	}
 }
 
 func (m *ModuleValue) Fork() EvalEnv {
-	// Create shallow copy with fork boundary marker.
-	// Copy dynamic scope value into a NEW cell (same rationale as Clone).
+	// Create shallow copy with fork boundary marker
 	newValues := make(map[string]Value)
 	newVisibilities := make(map[string]Visibility)
-	var ds *DynamicScope
-	if m.dynamicScope != nil {
-		ds = &DynamicScope{Value: m.dynamicScope.Value}
-	}
 	return &ModuleValue{
 		Mod:          m.Mod,
 		Values:       newValues,
 		Visibilities: newVisibilities,
 		Parent:       m,
-		IsForked:     true, // This prevents SetInScope from traversing to parent
-		dynamicScope: ds,
+		IsForked:     true,           // This prevents SetInScope from traversing to parent
+		dynamicScope: m.dynamicScope, // Share cell so closures see mutations
 	}
 }
 
@@ -1325,13 +1319,21 @@ func (m *ModuleValue) GetDynamicScope() (Value, bool) {
 	return nil, false
 }
 
-// SetDynamicScope sets the dynamic scope value ('self')
+// SetDynamicScope updates the dynamic scope value ('self') in the
+// existing shared cell, or creates a new cell if none exists.
 func (m *ModuleValue) SetDynamicScope(value Value) {
 	if m.dynamicScope != nil {
 		m.dynamicScope.Value = value
 	} else {
 		m.dynamicScope = &DynamicScope{Value: value}
 	}
+}
+
+// NewDynamicScope creates a fresh, unshared dynamic scope cell.
+// Use this when establishing a new self (e.g. entering a method body)
+// rather than updating self within the current scope.
+func (m *ModuleValue) NewDynamicScope(value Value) {
+	m.dynamicScope = &DynamicScope{Value: value}
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue
@@ -1369,7 +1371,7 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Fork()
 	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
-	fnEnv.SetDynamicScope(recv)
+	fnEnv.NewDynamicScope(recv)
 
 	if err := b.Method.BindArgs(ctx, fnEnv, args); err != nil {
 		return nil, err
@@ -1408,7 +1410,7 @@ func (b BoundBuiltinMethod) Call(ctx context.Context, env EvalEnv, args map[stri
 	// Create a temporary environment with the receiver as dynamic scope
 	tempMod := NewModule("_temp_", ObjectKind)
 	tempEnv := NewModuleValue(tempMod)
-	tempEnv.SetDynamicScope(b.Receiver)
+	tempEnv.NewDynamicScope(b.Receiver)
 
 	// Call the builtin function with the receiver context
 	return b.Method.Call(ctx, tempEnv, args)
@@ -1489,7 +1491,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	instanceEnv := CreateCompositeEnv(instance, c.Closure)
 
 	// Set dynamic scope to the instance so self is available
-	instanceEnv.SetDynamicScope(instance)
+	instanceEnv.NewDynamicScope(instance)
 
 	if c.NewBody != nil {
 		// Explicit new() constructor: evaluate field declarations that have
@@ -1539,7 +1541,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// We evaluate forms directly (not via Block.Eval) to avoid cloning
 		// the env, which would lose dynamic scope updates for self assignments.
 		newBodyEnv := CreateConstructorEnv(instance, argEnv, c.Closure)
-		newBodyEnv.SetDynamicScope(instance)
+		newBodyEnv.NewDynamicScope(instance)
 
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
@@ -1553,7 +1555,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 				instance = updatedInstance.(*ModuleValue)
 				// Update newBodyEnv to use the new instance
 				newBodyEnv = CreateConstructorEnv(instance, argEnv, c.Closure)
-				newBodyEnv.SetDynamicScope(instance)
+				newBodyEnv.NewDynamicScope(instance)
 			}
 		}
 

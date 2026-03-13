@@ -1,0 +1,51 @@
+# Test that self field mutation inside a loop in a method accumulates
+
+# List accumulation via .each in a method
+type Builder {
+  pub items: [String!]! = []
+
+  pub addAll(source: [String!]!): Builder! {
+    source.each { item =>
+      self.items += [item]
+    }
+    self
+  }
+}
+
+let b = Builder.addAll(["a", "b", "c"])
+assert("items should accumulate in method loop") { b.items == ["a", "b", "c"] }
+
+# Original should be unchanged (copy-on-write)
+let original = Builder
+let modified = original.addAll(["x", "y"])
+assert("original unchanged") { original.items == [] }
+assert("modified has items") { modified.items == ["x", "y"] }
+
+# Chaining addAll calls
+let chained = Builder.addAll(["a"]).addAll(["b", "c"])
+assert("chained addAll") { chained.items == ["a", "b", "c"] }
+
+# Integer accumulation via .each in a method
+type Summer {
+  pub total: Int! = 0
+
+  pub sumAll(nums: [Int!]!): Summer! {
+    nums.each { n =>
+      self.total += n
+    }
+    self
+  }
+}
+
+let s = Summer.sumAll([1, 2, 3, 4])
+assert("total should sum") { s.total == 10 }
+
+# Multiple method calls on the same receiver are independent
+let base = Summer
+let s1 = base.sumAll([10, 20])
+let s2 = base.sumAll([100, 200])
+assert("s1 independent") { s1.total == 30 }
+assert("s2 independent") { s2.total == 300 }
+assert("base unchanged") { base.total == 0 }
+
+print("Method loop mutation test passed!")

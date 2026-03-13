@@ -365,6 +365,11 @@ func (c CompositeEnv) SetDynamicScope(value Value) {
 	c.primary.SetDynamicScope(value)
 }
 
+// NewDynamicScope creates a fresh dynamic scope cell in the primary environment
+func (c CompositeEnv) NewDynamicScope(value Value) {
+	c.primary.NewDynamicScope(value)
+}
+
 // CreateCompositeEnv creates a composite environment for reopening
 func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
 	return CompositeEnv{
@@ -497,6 +502,10 @@ func (e *ConstructorEnv) SetDynamicScope(value Value) {
 	} else {
 		e.dynamicScope = &DynamicScope{Value: value}
 	}
+}
+
+func (e *ConstructorEnv) NewDynamicScope(value Value) {
+	e.dynamicScope = &DynamicScope{Value: value}
 }
 
 func (e *ConstructorEnv) Type() hm.Type {
