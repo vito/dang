@@ -170,7 +170,9 @@ func (h *langHandler) endProgress(ctx context.Context, token string, message *st
 }
 
 func (h *langHandler) closeFile(uri DocumentURI) error {
+	h.mu.Lock()
 	delete(h.files, uri)
+	h.mu.Unlock()
 	return nil
 }
 
