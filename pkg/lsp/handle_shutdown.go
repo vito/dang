@@ -7,17 +7,6 @@ import (
 )
 
 func (h *langHandler) handleShutdown(ctx context.Context, req *jrpc2.Request) (any, error) {
-	// Close the shared Dagger client
-	if h.cachedDag != nil {
-		if err := h.cachedDag.Close(); err != nil {
-			return nil, err
-		}
-	}
-
-	// Clean up default GraphQL provider connection if it exists
-	if h.defaultProvider != nil {
-		_ = h.defaultProvider.Close()
-	}
-
+	// Service processes are cleaned up via the ServiceRegistry.
 	return nil, nil
 }

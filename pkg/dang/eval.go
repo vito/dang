@@ -1745,6 +1745,9 @@ func ensureProjectImports(ctx context.Context, dir string) (context.Context, err
 		return ctx, err
 	}
 
+	// Resolve Dagger import (from dang.toml or auto-detected from dagger.json)
+	resolved = ResolveDaggerImport(ctx, resolved, dir)
+
 	// Merge: project configs go first, then any existing context configs
 	// (existing configs take priority by name in loadImportConfig)
 	existing := importConfigsFromContext(ctx)

@@ -89,22 +89,13 @@ func TestCustomTransport(t *testing.T) {
 }
 
 func TestGraphQLClientProvider(t *testing.T) {
-	t.Run("default Dagger config", func(t *testing.T) {
-		// This test will require a running Dagger engine, so we'll skip it if not available
-		t.Skip("Requires Dagger engine to be running")
-
+	t.Run("empty config returns error", func(t *testing.T) {
 		provider := NewGraphQLClientProvider(GraphQLConfig{})
 
 		ctx := context.Background()
-		client, schema, err := provider.GetClientAndSchema(ctx)
-
-		require.NoError(t, err)
-		require.NotNil(t, client)
-		require.NotNil(t, schema)
-		require.NotEmpty(t, schema.Types)
-
-		// Cleanup
-		_ = provider.Close()
+		_, _, err := provider.GetClientAndSchema(ctx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no endpoint configured")
 	})
 
 	t.Run("custom GraphQL endpoint", func(t *testing.T) {
@@ -262,14 +253,12 @@ func TestSchemaCaching(t *testing.T) {
 		assert.Equal(t, 1, introspectionCalls, "should still have made only 1 introspection call")
 	})
 
-	t.Run("dagger endpoint should not use cache", func(t *testing.T) {
-		// Test that Dagger endpoints bypass caching
-		// This would require a running Dagger engine, so we'll just verify the behavior conceptually
-		daggerProvider := NewGraphQLClientProvider(GraphQLConfig{}) // Empty config = Dagger
-
-		// We can't actually test this without Dagger running, but the implementation
-		// ensures that getDaggerClientAndSchema doesn't use caching
-		assert.NotNil(t, daggerProvider)
+	t.Run("dagger imports use service process not GraphQLClientProvider", func(t *testing.T) {
+		// Dagger imports are handled via the service process mechanism
+		// in project.go, not through GraphQLClientProvider.
+		// GraphQLClientProvider now only handles custom HTTP endpoints.
+		provider := NewGraphQLClientProvider(GraphQLConfig{})
+		assert.NotNil(t, provider)
 	})
 }
 

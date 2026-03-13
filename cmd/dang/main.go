@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"runtime/pprof"
 	"strings"
 
@@ -174,46 +173,10 @@ func runREPL(ctx context.Context, cfg Config) error {
 	defer services.StopAll()
 	ctx = dang.ContextWithServices(ctx, services)
 
-	// Find and resolve dang.toml imports
 	cwd, _ := os.Getwd()
-	var importConfigs []dang.ImportConfig
-	configPath, config, err := dang.FindProjectConfig(cwd)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to find dang.toml: %v\n", err)
-	} else if config != nil {
-		configDir := filepath.Dir(configPath)
-		ctx = dang.ContextWithProjectConfig(ctx, configPath, config)
-		resolved, err := dang.ResolveImportConfigs(ctx, config, configDir)
-		if err != nil {
-			return fmt.Errorf("failed to resolve imports from %s: %w", configPath, err)
-		}
-		importConfigs = resolved
-	}
+	moduleDir := dang.FindDaggerModule(cwd)
 
-	moduleDir := findDaggerModule(cwd)
-
-	return runREPLTUI(ctx, importConfigs, moduleDir, cfg.Debug)
-}
-
-// findDaggerModule searches for a dagger.json starting from dir, walking up.
-func findDaggerModule(startPath string) string {
-	dir, err := filepath.Abs(startPath)
-	if err != nil {
-		return ""
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "dagger.json")); err == nil {
-			return dir
-		}
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return "" // stop at repo boundary
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
+	return runREPLTUI(ctx, moduleDir, cfg.Debug)
 }
 
 func runLSP(ctx context.Context, cfg Config) error {
@@ -242,6 +205,11 @@ func runLSP(ctx context.Context, cfg Config) error {
 	slog.SetDefault(logger)
 
 	logger.InfoContext(ctx, "starting LSP server")
+
+	// Set up service registry for service-based imports
+	services := &dang.ServiceRegistry{}
+	defer services.StopAll()
+	ctx = dang.ContextWithServices(ctx, services)
 
 	handler := lsp.NewHandler(ctx)
 	srv := jrpc2.NewServer(handler, &jrpc2.ServerOptions{

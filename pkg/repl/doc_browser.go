@@ -11,14 +11,14 @@ import (
 // DocColumn represents one column in the Miller-column browser.
 type DocColumn struct {
 	Title        string
-	Doc          string     // doc string for the column header
-	Items        []DocItem  // all items (unfiltered)
-	Filtered     []int      // indices into Items matching filter (nil = show all)
-	Filter       string     // current filter text
-	Index        int        // selected index within Visible() items
-	Offset       int        // scroll offset (for item lists)
-	DetailOffset int        // scroll offset (for detail panes)
-	TypeEnv      dang.Env   // the env this column lists members of (nil for detail)
+	Doc          string    // doc string for the column header
+	Items        []DocItem // all items (unfiltered)
+	Filtered     []int     // indices into Items matching filter (nil = show all)
+	Filter       string    // current filter text
+	Index        int       // selected index within Visible() items
+	Offset       int       // scroll offset (for item lists)
+	DetailOffset int       // scroll offset (for detail panes)
+	TypeEnv      dang.Env  // the env this column lists members of (nil for detail)
 }
 
 // Visible returns the items to display, respecting the filter.

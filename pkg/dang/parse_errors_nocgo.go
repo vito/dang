@@ -2,8 +2,6 @@
 
 package dang
 
-
-
 // ParseWithRecovery parses source using the PEG parser. Without CGo,
 // tree-sitter error enhancement is not available.
 func ParseWithRecovery(filename string, source []byte, opts ...Option) (any, error) {

@@ -4,7 +4,6 @@ go 1.25.6
 
 require (
 	charm.land/lipgloss/v2 v2.0.0
-	dagger.io/dagger v0.20.1
 	github.com/99designs/gqlgen v0.17.81
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Khan/genqlient v0.8.1
@@ -20,7 +19,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/tuist v0.0.3
+	github.com/vito/tuist v0.0.6-0.20260312132600-9e5bee0d1980
 	golang.org/x/sync v0.19.0
 	gotest.tools/v3 v3.5.2
 )
@@ -34,7 +33,6 @@ require (
 )
 
 require (
-	github.com/adrg/xdg v0.5.3 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
@@ -60,7 +58,6 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
-	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mna/pigeon v1.3.0 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/mango v0.1.0 // indirect
@@ -77,7 +74,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.41.0 // indirect
+	go.opentelemetry.io/otel v1.41.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.17.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.17.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.41.0 // indirect

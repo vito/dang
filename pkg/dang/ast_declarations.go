@@ -1104,6 +1104,10 @@ type ImportConfig struct {
 	// without an explicit import statement. Used by SDKs (e.g. Dagger)
 	// that want their import available implicitly.
 	AutoImport bool
+
+	// Dagger indicates this import connects to a Dagger Engine session.
+	// Used by the LSP to find the client for module introspection.
+	Dagger bool
 }
 
 type importConfigsKey struct{}

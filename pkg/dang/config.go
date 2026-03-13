@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"dagger.io/dagger"
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/pkg/introspection"
 )
@@ -20,7 +19,6 @@ import (
 // GraphQLConfig holds configuration for connecting to a GraphQL API
 type GraphQLConfig struct {
 	// Endpoint is the GraphQL endpoint URL (e.g., "https://api.example.com/graphql")
-	// If empty, defaults to Dagger
 	Endpoint string `json:"endpoint,omitempty"`
 
 	// Authorization header value (e.g., "Bearer token123")
@@ -32,8 +30,7 @@ type GraphQLConfig struct {
 
 // GraphQLClientProvider provides a configured GraphQL client and schema
 type GraphQLClientProvider struct {
-	config     GraphQLConfig
-	daggerConn *dagger.Client // Keep reference to close connection if needed
+	config GraphQLConfig
 }
 
 // schemaCache represents a cached GraphQL schema
@@ -50,113 +47,27 @@ func NewGraphQLClientProvider(config GraphQLConfig) *GraphQLClientProvider {
 
 // GetClientAndSchema returns a configured GraphQL client and introspected schema
 func (p *GraphQLClientProvider) GetClientAndSchema(ctx context.Context) (graphql.Client, *introspection.Schema, error) {
-	// If no endpoint is configured, use Dagger (default behavior)
 	if p.config.Endpoint == "" {
-		return p.getDaggerClientAndSchema(ctx)
+		return nil, nil, fmt.Errorf("no endpoint configured")
 	}
-
-	// Configure custom GraphQL endpoint
 	return p.getCustomClientAndSchema(ctx)
-}
-
-// getDaggerClientAndSchema provides the default Dagger client and schema
-func (p *GraphQLClientProvider) getDaggerClientAndSchema(ctx context.Context) (graphql.Client, *introspection.Schema, error) {
-	// Connect to Dagger
-	dag, err := dagger.Connect(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to Dagger: %w", err)
-	}
-
-	// Store the connection for cleanup
-	p.daggerConn = dag
-
-	client := dag.GraphQLClient()
-
-	// Introspect the schema
-	schema, err := introspectSchema(ctx, client)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to introspect Dagger schema: %w", err)
-	}
-
-	return client, schema, nil
-}
-
-// GetDaggerModuleSchema loads the schema from a Dagger module directory
-// Takes a shared *dagger.Client to avoid spawning multiple Dagger sessions
-func (p *GraphQLClientProvider) GetDaggerModuleSchema(ctx context.Context, dag *dagger.Client, moduleDir string) (graphql.Client, *introspection.Schema, error) {
-	if dag == nil {
-		return nil, nil, fmt.Errorf("dagger client is nil")
-	}
-
-	// Load the module from the directory
-	modSource := dag.ModuleSource(moduleDir)
-
-	// Get the introspection JSON from the module
-	introspectionJSON, err := modSource.IntrospectionSchemaJSON().Contents(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get introspection JSON from module: %w", err)
-	}
-
-	// Parse the introspection JSON into the standard response format
-	// The IntrospectionJSON() returns a JSON object with a "data" field containing the "__schema" object
-	var response introspection.Response
-	if err := json.Unmarshal([]byte(introspectionJSON), &response); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse introspection JSON: %w", err)
-	}
-
-	if response.Schema == nil {
-		return nil, nil, fmt.Errorf("introspection response missing schema")
-	}
-
-	client := dag.GraphQLClient()
-	return client, response.Schema, nil
-}
-
-// ServeDaggerModule loads a Dagger module, serves it in the current session
-// (making its API available for queries), and introspects the live schema.
-// This is used by the REPL where we need to actually execute queries against the module.
-// For schema-only use (e.g. LSP), use GetDaggerModuleSchema instead.
-func (p *GraphQLClientProvider) ServeDaggerModule(ctx context.Context, dag *dagger.Client, moduleDir string) (graphql.Client, *introspection.Schema, error) {
-	if dag == nil {
-		return nil, nil, fmt.Errorf("dagger client is nil")
-	}
-
-	// Load the module from the directory and serve it
-	mod := dag.ModuleSource(moduleDir).AsModule()
-	if err := mod.Serve(ctx, dagger.ModuleServeOpts{IncludeDependencies: true}); err != nil {
-		return nil, nil, fmt.Errorf("failed to serve module: %w", err)
-	}
-
-	// Now that the module is served, introspect the live session schema
-	client := dag.GraphQLClient()
-	schema, err := introspectSchema(ctx, client)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to introspect served module schema: %w", err)
-	}
-
-	return client, schema, nil
 }
 
 // getCustomClientAndSchema provides a client and schema for a custom GraphQL endpoint
 func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (graphql.Client, *introspection.Schema, error) {
-	// Create HTTP client with custom headers
-	httpClient := &http.Client{}
-
-	// Create custom transport to add headers
-	transport := &customTransport{
-		base:          http.DefaultTransport,
-		authorization: p.config.Authorization,
-		headers:       p.config.Headers,
+	httpClient := &http.Client{
+		Transport: &customTransport{
+			base:          http.DefaultTransport,
+			authorization: p.config.Authorization,
+			headers:       p.config.Headers,
+		},
 	}
-	httpClient.Transport = transport
 
-	// Create GraphQL client with custom endpoint
 	client := graphql.NewClient(p.config.Endpoint, httpClient)
 
 	// Try to load from cache first
 	cachedSchema, err := loadCachedSchema(p.config.Endpoint)
 	if err == nil && cachedSchema != nil {
-		// Cache hit!
 		return client, cachedSchema, nil
 	}
 
@@ -166,40 +77,39 @@ func (p *GraphQLClientProvider) getCustomClientAndSchema(ctx context.Context) (g
 		return nil, nil, fmt.Errorf("failed to introspect schema from %s: %w", p.config.Endpoint, err)
 	}
 
-	// Save to cache for future use (best effort, ignore errors)
 	_ = saveCachedSchema(p.config.Endpoint, schema)
 
 	return client, schema, nil
 }
 
+// Close is a no-op retained for API compatibility.
+func (p *GraphQLClientProvider) Close() error {
+	return nil
+}
+
 // getCacheDir returns the directory for schema caches
 func getCacheDir() string {
-	// Try XDG_CACHE_HOME first
 	if cacheHome := os.Getenv("XDG_CACHE_HOME"); cacheHome != "" {
 		return filepath.Join(cacheHome, "dang", "schemas")
 	}
-	// Fall back to ~/.cache
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, ".cache", "dang", "schemas")
 	}
-	// Last resort: temp dir
 	return filepath.Join(os.TempDir(), "dang-cache", "schemas")
 }
 
-// getCacheKey generates a cache key for an endpoint
 func getCacheKey(endpoint string) string {
 	h := sha256.Sum256([]byte(endpoint))
 	return hex.EncodeToString(h[:])
 }
 
-// loadCachedSchema attempts to load a cached schema for the given endpoint
 func loadCachedSchema(endpoint string) (*introspection.Schema, error) {
 	cacheDir := getCacheDir()
 	cacheFile := filepath.Join(cacheDir, getCacheKey(endpoint)+".json")
 
 	data, err := os.ReadFile(cacheFile)
 	if err != nil {
-		return nil, err // Cache miss
+		return nil, err
 	}
 
 	var cached schemaCache
@@ -207,7 +117,6 @@ func loadCachedSchema(endpoint string) (*introspection.Schema, error) {
 		return nil, err
 	}
 
-	// Verify endpoint matches (paranoid check)
 	if cached.Endpoint != endpoint {
 		return nil, fmt.Errorf("cache corruption: endpoint mismatch")
 	}
@@ -215,7 +124,6 @@ func loadCachedSchema(endpoint string) (*introspection.Schema, error) {
 	return cached.Schema, nil
 }
 
-// saveCachedSchema saves a schema to the cache
 func saveCachedSchema(endpoint string, schema *introspection.Schema) error {
 	cacheDir := getCacheDir()
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
@@ -237,15 +145,12 @@ func saveCachedSchema(endpoint string, schema *introspection.Schema) error {
 	return os.WriteFile(cacheFile, data, 0644)
 }
 
-// clearSchemaCache removes all cached schemas
 func clearSchemaCache() error {
 	cacheDir := getCacheDir()
 	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
-		// Cache directory doesn't exist, nothing to clear
 		return nil
 	}
 
-	// Remove all files in the cache directory
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		return fmt.Errorf("failed to read cache directory: %w", err)
@@ -263,7 +168,7 @@ func clearSchemaCache() error {
 	return nil
 }
 
-// ClearSchemaCache is a public function to clear the schema cache
+// ClearSchemaCache removes all cached schemas
 func ClearSchemaCache() error {
 	return clearSchemaCache()
 }
@@ -276,20 +181,22 @@ type customTransport struct {
 }
 
 func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Clone the request to avoid modifying the original
 	req = req.Clone(req.Context())
 
-	// Add authorization header if provided
 	if t.authorization != "" {
 		req.Header.Set("Authorization", t.authorization)
 	}
 
-	// Add custom headers
 	for key, value := range t.headers {
 		req.Header.Set(key, value)
 	}
 
 	return t.base.RoundTrip(req)
+}
+
+// IntrospectSchema performs GraphQL introspection on the given client.
+func IntrospectSchema(ctx context.Context, client graphql.Client) (*introspection.Schema, error) {
+	return introspectSchema(ctx, client)
 }
 
 // introspectSchema performs GraphQL introspection on the given client
@@ -316,8 +223,6 @@ func LoadGraphQLConfig() GraphQLConfig {
 		Headers:       make(map[string]string),
 	}
 
-	// Parse additional headers from environment variables
-	// Format: DANG_GRAPHQL_HEADER_<NAME>=<value>
 	for _, env := range os.Environ() {
 		if strings.HasPrefix(env, "DANG_GRAPHQL_HEADER_") {
 			parts := strings.SplitN(env, "=", 2)
@@ -330,12 +235,4 @@ func LoadGraphQLConfig() GraphQLConfig {
 	}
 
 	return config
-}
-
-// Close closes any open connections (e.g., Dagger connections)
-func (p *GraphQLClientProvider) Close() error {
-	if p.daggerConn != nil {
-		return p.daggerConn.Close()
-	}
-	return nil
 }

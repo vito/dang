@@ -5,6 +5,7 @@ package dang
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
@@ -213,12 +214,7 @@ func describeError(node *tree_sitter.Node, source []byte) string {
 
 // contains checks if a string slice contains a value.
 func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s, v)
 }
 
 // containsAny checks if a string slice contains any of the given values.

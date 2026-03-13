@@ -617,14 +617,8 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			count := args.GetInt("count")
-			if count < 0 {
-				count = 0
-			}
-			end := len(list.Elements) - count
-			if end < 0 {
-				end = 0
-			}
+			count := max(args.GetInt("count"), 0)
+			end := max(len(list.Elements)-count, 0)
 			return ListValue{
 				Elements: list.Elements[:end],
 				ElemType: list.ElemType,
@@ -638,14 +632,8 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			count := args.GetInt("count")
-			if count < 0 {
-				count = 0
-			}
-			start := count
-			if start > len(list.Elements) {
-				start = len(list.Elements)
-			}
+			count := max(args.GetInt("count"), 0)
+			start := min(count, len(list.Elements))
 			return ListValue{
 				Elements: list.Elements[start:],
 				ElemType: list.ElemType,
@@ -659,14 +647,8 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			count := args.GetInt("count")
-			if count < 0 {
-				count = 0
-			}
-			end := count
-			if end > len(list.Elements) {
-				end = len(list.Elements)
-			}
+			count := max(args.GetInt("count"), 0)
+			end := min(count, len(list.Elements))
 			return ListValue{
 				Elements: list.Elements[:end],
 				ElemType: list.ElemType,
@@ -680,14 +662,8 @@ func registerStdlib() {
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
-			count := args.GetInt("count")
-			if count < 0 {
-				count = 0
-			}
-			start := len(list.Elements) - count
-			if start < 0 {
-				start = 0
-			}
+			count := max(args.GetInt("count"), 0)
+			start := max(len(list.Elements)-count, 0)
 			return ListValue{
 				Elements: list.Elements[start:],
 				ElemType: list.ElemType,

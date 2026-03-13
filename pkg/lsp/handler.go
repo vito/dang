@@ -11,12 +11,9 @@ import (
 	"sync"
 	"unicode"
 
-	"dagger.io/dagger"
-	"github.com/Khan/genqlient/graphql"
 	"github.com/creachadair/jrpc2"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
 )
 
 // NewHandler create JSON-RPC handler for this language server.
@@ -24,7 +21,6 @@ func NewHandler(rootCtx context.Context) *langHandler {
 	handler := &langHandler{
 		rootCtx:       rootCtx,
 		files:         make(map[DocumentURI]*File),
-		moduleSchemas: make(map[string]*moduleSchema),
 		loadedEnvDirs: make(map[string]bool),
 		mu:            new(sync.Mutex),
 	}
@@ -37,21 +33,6 @@ func (h *langHandler) SetServer(srv *jrpc2.Server) {
 	h.server = srv
 }
 
-func (h *langHandler) DaggerClient() (*dagger.Client, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.cachedDag != nil {
-		return h.cachedDag, nil
-	}
-	dag, err := dagger.Connect(h.rootCtx)
-	if err != nil {
-		slog.WarnContext(h.rootCtx, "failed to connect to Dagger, will retry on demand", "error", err)
-		return nil, err
-	}
-	h.cachedDag = dag
-	return dag, nil
-}
-
 type langHandler struct {
 	rootCtx  context.Context
 	files    map[DocumentURI]*File
@@ -59,27 +40,11 @@ type langHandler struct {
 	rootPath string
 	folders  []string
 
-	cachedDag *dagger.Client
-
-	// Per-module schema cache
-	moduleSchemas map[string]*moduleSchema // moduleDir -> schema
-
 	// Directories where we've already loaded .envrc via direnv
 	loadedEnvDirs map[string]bool
 
-	// Default schema/client for non-module files
-	defaultSchema   *introspection.Schema
-	defaultClient   graphql.Client
-	defaultProvider *dang.GraphQLClientProvider
-
 	// TODO?: make per-file or something
 	mu *sync.Mutex
-}
-
-// moduleSchema holds the schema and client for a specific Dagger module
-type moduleSchema struct {
-	schema *introspection.Schema
-	client graphql.Client
 }
 
 // File is
@@ -253,6 +218,19 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		return fmt.Errorf("file path from URI: %w", err)
 	}
 
+	// Set up progress reporting for this file update.
+	progressToken := "dang/updateFile/" + string(uri)
+	if err := h.createWorkDoneProgress(ctx, progressToken); err != nil {
+		slog.DebugContext(ctx, "failed to create progress token", "error", err)
+		progressToken = "" // disable progress if client doesn't support it
+	}
+	if progressToken != "" {
+		_ = h.beginProgress(ctx, progressToken, "Analyzing: "+fp)
+		defer func() {
+			_ = h.endProgress(ctx, progressToken, nil)
+		}()
+	}
+
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
 	// Clear diagnostics before collecting new ones
@@ -304,7 +282,10 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				h.loadEnvrc(ctx, configDir)
 
 				ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
-				resolved, resolveErr := dang.ResolveImportConfigs(ctx, projectConfig, configDir)
+				// Use rootCtx for import resolution so that service
+				// processes outlive individual LSP requests.
+				resolveCtx := dang.ContextWithProjectConfig(h.rootCtx, configPath, projectConfig)
+				resolved, resolveErr := dang.ResolveImportConfigs(resolveCtx, projectConfig, configDir)
 				if resolveErr != nil {
 					slog.WarnContext(ctx, "failed to resolve dang.toml imports", "error", resolveErr)
 				} else {
@@ -312,19 +293,10 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 				}
 			}
 
-			// Get Dagger schema for this file's module (if in a Dagger module)
-			schema, client, err := h.getSchemaForFile(ctx, fp)
-			if err != nil {
-				slog.WarnContext(ctx, "failed to get schema for file", "path", fp, "error", err)
-			}
-			if schema != nil {
-				importConfigs = append(importConfigs, dang.ImportConfig{
-					Name:       "Dagger",
-					Client:     client,
-					Schema:     schema,
-					AutoImport: true,
-				})
-			}
+			// Resolve the Dagger import: use an explicit one from
+			// dang.toml or auto-detect from dagger.json. The schema
+			// is eagerly introspected (module-aware).
+			importConfigs = dang.ResolveDaggerImport(ctx, importConfigs, filepath.Dir(fp))
 
 			if len(importConfigs) > 0 {
 				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
@@ -594,122 +566,6 @@ func (h *langHandler) errorToDiagnostics(err error, uri DocumentURI) []Diagnosti
 
 func stringPtr(s string) *string {
 	return &s
-}
-
-// getSchemaForFile returns the appropriate schema for a given file path.
-// It searches for a dagger.json in the file's directory or parent directories,
-// and caches the result per module directory.
-func (h *langHandler) getSchemaForFile(ctx context.Context, filePath string) (*introspection.Schema, graphql.Client, error) {
-	// Find the module directory for this file
-	moduleDir := findDaggerModule(filepath.Dir(filePath))
-
-	slog.WarnContext(ctx, "getting schema for file", "filePath", filePath)
-	if moduleDir == "" {
-		slog.WarnContext(ctx, "module dir not found", "filePath", filePath)
-
-		// Not in a module, use default schema
-		if h.defaultSchema == nil {
-			// Lazily load default schema on first use
-			if err := h.loadDefaultSchema(ctx); err != nil {
-				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
-			}
-		}
-		return h.defaultSchema, h.defaultClient, nil
-	}
-
-	// Check cache for this module
-	if cached, ok := h.moduleSchemas[moduleDir]; ok {
-		slog.WarnContext(ctx, "module schema cache hit", "filePath", filePath)
-		return cached.schema, cached.client, nil
-	}
-
-	// Check if we have a Dagger client available
-	dag, err := h.DaggerClient()
-	if err != nil {
-		slog.WarnContext(ctx, "failed to get Dagger client", "error", err)
-		// No Dagger client, fall back to default schema
-		slog.WarnContext(ctx, "no Dagger client available, falling back to default", "dir", moduleDir)
-		if h.defaultSchema == nil {
-			if err := h.loadDefaultSchema(ctx); err != nil {
-				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
-			}
-		}
-		return h.defaultSchema, h.defaultClient, nil
-	}
-
-	// Load and cache module schema
-	slog.InfoContext(ctx, "loading schema for module", "dir", moduleDir)
-
-	// Create a progress token
-	token := fmt.Sprintf("dang-schema-%s", filepath.Base(moduleDir))
-
-	// Create and begin progress
-	if err := h.createWorkDoneProgress(ctx, token); err != nil {
-		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
-	} else {
-		defer func() {
-			_ = h.endProgress(ctx, token, nil)
-		}()
-
-		message := fmt.Sprintf("initializing module: %s", moduleDir)
-		if err := h.beginProgress(ctx, token, message); err != nil {
-			slog.WarnContext(ctx, "failed to begin progress", "error", err)
-		}
-	}
-
-	provider := dang.NewGraphQLClientProvider(dang.GraphQLConfig{}) // Empty config means use Dagger
-	client, schema, err := provider.GetDaggerModuleSchema(ctx, dag, moduleDir)
-	if err != nil {
-		// If module schema loading fails, fall back to default schema
-		slog.WarnContext(ctx, "failed to load module schema, falling back to default", "dir", moduleDir, "error", err)
-		if h.defaultSchema == nil {
-			if err := h.loadDefaultSchema(ctx); err != nil {
-				return nil, nil, fmt.Errorf("failed to load default schema: %w", err)
-			}
-		}
-		return h.defaultSchema, h.defaultClient, nil
-	}
-
-	h.moduleSchemas[moduleDir] = &moduleSchema{
-		schema: schema,
-		client: client,
-	}
-
-	slog.InfoContext(ctx, "cached schema for module", "dir", moduleDir, "types", len(schema.Types))
-	return schema, client, nil
-}
-
-// loadDefaultSchema loads the default GraphQL schema from environment/config
-func (h *langHandler) loadDefaultSchema(ctx context.Context) error {
-	// Create a progress token
-	token := "dang-schema-default"
-
-	// Create and begin progress
-	if err := h.createWorkDoneProgress(ctx, token); err != nil {
-		slog.WarnContext(ctx, "failed to create work done progress", "error", err)
-	} else {
-		defer func() {
-			_ = h.endProgress(ctx, token, nil)
-		}()
-
-		if err := h.beginProgress(ctx, token, "initializing module: default"); err != nil {
-			slog.WarnContext(ctx, "failed to begin progress", "error", err)
-		}
-	}
-
-	config := dang.LoadGraphQLConfig()
-	h.defaultProvider = dang.NewGraphQLClientProvider(config)
-
-	client, schema, err := h.defaultProvider.GetClientAndSchema(ctx)
-	if err != nil {
-		return err
-	}
-
-	h.defaultClient = client
-	h.defaultSchema = schema
-
-	slog.InfoContext(ctx, "loaded default GraphQL schema", "types", len(schema.Types))
-	return nil
 }
 
 func isIdentifierChar(r rune) bool {
