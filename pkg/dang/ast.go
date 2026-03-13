@@ -381,7 +381,7 @@ type ConstructorEnv struct {
 	args     EvalEnv // Constructor arguments (shadow everything on reads)
 	closure  EvalEnv // Lexical closure (outer scope)
 
-	dynamicScope Value
+	dynamicScope *DynamicScope
 }
 
 func CreateConstructorEnv(instance EvalEnv, args EvalEnv, closure EvalEnv) *ConstructorEnv {
@@ -485,14 +485,18 @@ func (e *ConstructorEnv) Clone() EvalEnv {
 }
 
 func (e *ConstructorEnv) GetDynamicScope() (Value, bool) {
-	if e.dynamicScope != nil {
-		return e.dynamicScope, true
+	if e.dynamicScope != nil && e.dynamicScope.Value != nil {
+		return e.dynamicScope.Value, true
 	}
 	return nil, false
 }
 
 func (e *ConstructorEnv) SetDynamicScope(value Value) {
-	e.dynamicScope = value
+	if e.dynamicScope != nil {
+		e.dynamicScope.Value = value
+	} else {
+		e.dynamicScope = &DynamicScope{Value: value}
+	}
 }
 
 func (e *ConstructorEnv) Type() hm.Type {

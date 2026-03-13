@@ -1151,6 +1151,14 @@ func (f FunctionValue) IsAutoCallable() bool {
 	return true
 }
 
+// DynamicScope is a shared mutable cell for the 'self' value.
+// Cloned environments share the same cell so that mutations to self
+// inside closures (e.g. inside .each blocks) are visible to the
+// enclosing scope.
+type DynamicScope struct {
+	Value Value
+}
+
 // ModuleValue represents a module value that implements EvalEnv
 type ModuleValue struct {
 	Mod          Env
@@ -1158,7 +1166,7 @@ type ModuleValue struct {
 	Visibilities map[string]Visibility // Track visibility of each field
 	Parent       *ModuleValue          // For hierarchical scoping
 	IsForked     bool                  // Prevents SetInScope from traversing to parent
-	dynamicScope Value                 // The value of 'self' in this scope
+	dynamicScope *DynamicScope         // Shared cell for 'self' in this scope
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
@@ -1241,26 +1249,37 @@ func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
 func (m *ModuleValue) Clone() EvalEnv {
 	newValues := make(map[string]Value)
 	newVisibilities := make(map[string]Visibility)
+	// Copy dynamic scope value into a NEW cell so method calls get
+	// isolation (mutations to self inside a method don't leak back).
+	var ds *DynamicScope
+	if m.dynamicScope != nil {
+		ds = &DynamicScope{Value: m.dynamicScope.Value}
+	}
 	return &ModuleValue{
 		Mod:          m.Mod,
 		Values:       newValues,
 		Visibilities: newVisibilities,
 		Parent:       m,
-		dynamicScope: m.dynamicScope, // Preserve dynamic scope
+		dynamicScope: ds,
 	}
 }
 
 func (m *ModuleValue) Fork() EvalEnv {
-	// Create shallow copy with fork boundary marker
+	// Create shallow copy with fork boundary marker.
+	// Copy dynamic scope value into a NEW cell (same rationale as Clone).
 	newValues := make(map[string]Value)
 	newVisibilities := make(map[string]Visibility)
+	var ds *DynamicScope
+	if m.dynamicScope != nil {
+		ds = &DynamicScope{Value: m.dynamicScope.Value}
+	}
 	return &ModuleValue{
 		Mod:          m.Mod,
 		Values:       newValues,
 		Visibilities: newVisibilities,
 		Parent:       m,
-		IsForked:     true,           // This prevents SetInScope from traversing to parent
-		dynamicScope: m.dynamicScope, // Preserve dynamic scope
+		IsForked:     true, // This prevents SetInScope from traversing to parent
+		dynamicScope: ds,
 	}
 }
 
@@ -1297,8 +1316,8 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 
 // GetDynamicScope returns the dynamic scope value ('self')
 func (m *ModuleValue) GetDynamicScope() (Value, bool) {
-	if m.dynamicScope != nil {
-		return m.dynamicScope, true
+	if m.dynamicScope != nil && m.dynamicScope.Value != nil {
+		return m.dynamicScope.Value, true
 	}
 	if m.Parent != nil {
 		return m.Parent.GetDynamicScope()
@@ -1308,7 +1327,11 @@ func (m *ModuleValue) GetDynamicScope() (Value, bool) {
 
 // SetDynamicScope sets the dynamic scope value ('self')
 func (m *ModuleValue) SetDynamicScope(value Value) {
-	m.dynamicScope = value
+	if m.dynamicScope != nil {
+		m.dynamicScope.Value = value
+	} else {
+		m.dynamicScope = &DynamicScope{Value: value}
+	}
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue

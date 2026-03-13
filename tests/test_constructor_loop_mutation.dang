@@ -1,0 +1,40 @@
+# Test that self field mutation inside a loop in a constructor accumulates
+
+type Accumulator {
+  pub items: [String!]!
+
+  new(source: [String!]!) {
+    self.items = []
+    source.each { item =>
+      self.items += [item]
+    }
+    self
+  }
+}
+
+let acc = Accumulator(["a", "b", "c"])
+assert("items should accumulate in loop") { acc.items == ["a", "b", "c"] }
+
+# Also test with direct assignment (+=) on a non-list field
+type Counter {
+  pub total: Int!
+
+  new(nums: [Int!]!) {
+    self.total = 0
+    nums.each { n =>
+      self.total += n
+    }
+    self
+  }
+}
+
+let counter = Counter([10, 20, 30])
+assert("total should sum all values") { counter.total == 60 }
+
+# Multiple instances should be independent
+let acc1 = Accumulator(["x"])
+let acc2 = Accumulator(["y", "z"])
+assert("acc1 independent") { acc1.items == ["x"] }
+assert("acc2 independent") { acc2.items == ["y", "z"] }
+
+print("Constructor loop mutation test passed!")
