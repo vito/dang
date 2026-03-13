@@ -93,12 +93,12 @@ type Pipeline {
 assert { Pipeline("start").steps == ["start", "init", "ready"] }
 ```
 
-### Mutating Self in Loops Inside Constructors
+### Mutating Self in Loops
 
-Closures inside constructors (e.g. `.each` blocks) share the constructor's
-dynamic scope for `self`, so mutations to `self.field` accumulate across
-loop iterations. See `scoping-and-self.md` for the full explanation of
-shared vs isolated dynamic scope cells.
+Closures (e.g. `.each` blocks) share the enclosing scope's dynamic scope
+cell, so mutations to `self.field` accumulate across loop iterations.
+This works identically in constructors and methods. See
+`scoping-and-self.md` for the full explanation.
 
 ### Bare Field Assignment in Constructors
 

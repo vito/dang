@@ -193,12 +193,12 @@ assert { d.value == 1 }   # d is the returned copy
 Internally, `BoundMethod.Call` does:
 
 1. `recv = Receiver.Fork()` — creates a fork of the receiver
-2. Sets the fork as the dynamic scope for the method body
+2. Creates a fresh dynamic scope cell via `NewDynamicScope(recv)`
 3. The method's mutations go into the fork; the original is untouched
 
-The dynamic scope cell is **not shared** between the caller and the method
-(`ModuleValue.Fork` creates a fresh `DynamicScope` cell). This is what
-makes copy-on-write work — each method invocation is isolated.
+The **fresh cell** is key. It means the method has its own independent
+`self` that doesn't leak back to the caller. This is what makes
+copy-on-write work.
 
 ### Chaining
 
@@ -224,11 +224,58 @@ assert { a.value == 1 }
 assert { b.value == 1 }   # not 2 — each starts from base
 ```
 
-## Constructor Dynamic Scope: Shared Cells
+## Closures and the Shared Dynamic Scope Cell
 
-Inside a `new()` constructor, the situation is different. Blocks and
-closures that run during construction (e.g. `.each`, `.map`) need to
-accumulate mutations to `self` across iterations.
+When a closure (block argument) runs inside a method or constructor, it
+needs to see accumulated mutations to `self`. This applies anywhere a
+block mutates `self` — `.each`, `.map`, or any user-defined method that
+takes a block.
+
+### The Problem Without Sharing
+
+When a block like `{ item => self.items += [item] }` is called repeatedly
+(e.g. by `.each`), each call clones the block's captured environment.
+Without sharing, each clone gets its own snapshot of `self`, so mutations
+in one iteration are invisible to the next.
+
+### How It Works
+
+Clone and Fork **share** the dynamic scope cell (a `*DynamicScope`
+pointer). When `self.field = value` updates the dynamic scope via
+`SetDynamicScope`, it writes through the shared cell, so the next
+iteration's clone sees the updated `self`.
+
+The isolation boundary is `NewDynamicScope`, which creates a **fresh**
+cell. This is called when entering a new method (`BoundMethod.Call`) or
+constructing a new instance (`ConstructorFunction.Call`). Everything
+inside that scope — including closures, blocks, and nested calls to
+`.each` — shares the same cell.
+
+### In Methods
+
+```dang
+type Builder {
+  pub items: [String!]! = []
+
+  pub addAll(source: [String!]!): Builder! {
+    source.each { item =>
+      self.items += [item]   # updates shared cell each iteration
+    }
+    self
+  }
+}
+
+let b = Builder.addAll(["a", "b", "c"])
+assert { b.items == ["a", "b", "c"] }
+
+# Copy-on-write still works — original is unchanged
+let original = Builder
+let modified = original.addAll(["x", "y"])
+assert { original.items == [] }
+assert { modified.items == ["x", "y"] }
+```
+
+### In Constructors
 
 ```dang
 type Collector {
@@ -237,7 +284,7 @@ type Collector {
   new(source: [String!]!) {
     self.items = []
     source.each { item =>
-      self.items += [item]   # must see previous iterations' changes
+      self.items += [item]
     }
     self
   }
@@ -246,30 +293,18 @@ type Collector {
 assert { Collector(["a", "b", "c"]).items == ["a", "b", "c"] }
 ```
 
-This works because `ConstructorEnv` uses a **shared** `*DynamicScope`
-cell. When the `.each` block is called:
+### The Two Operations
 
-1. The block captures the constructor's `ConstructorEnv` as its closure
-2. `FunctionValue.Call` clones the closure for each invocation
-3. The clone shares the same `*DynamicScope` pointer as the original
-4. `self.items += [item]` clones self, updates the clone, and writes back
-   through the shared cell
-5. The next iteration's clone sees the updated self
-
-### Why Constructors and Methods Differ
-
-| Context | Dynamic scope cell | Behavior |
+| Operation | What it does | When used |
 |---|---|---|
-| Method call (`BoundMethod`) | **Fresh** cell per call | Isolated — mutations don't leak back |
-| Constructor closure (`ConstructorEnv`) | **Shared** cell across clones | Accumulated — loop mutations persist |
+| `SetDynamicScope(v)` | Updates the existing shared cell | `self.field = value` (COW assignment) |
+| `NewDynamicScope(v)` | Creates a fresh, unshared cell | Entering a method or constructor |
 
-This distinction exists because:
-
-- **Methods** implement copy-on-write: the caller keeps its original
-  reference, and only the return value carries changes.
-- **Constructors** are building a single object. Closures inside them are
-  part of the same initialization sequence and must see each other's
-  mutations to `self`.
+This means:
+- Within a single method or constructor body, all closures share the same
+  `self` and see each other's mutations.
+- Across method calls, each method gets its own `self` that doesn't leak
+  back to the caller.
 
 ## Bare vs `self.` in Methods
 

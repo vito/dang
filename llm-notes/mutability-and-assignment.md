@@ -152,9 +152,10 @@ Dang uses two distinct scoping mechanisms:
 
 ## Dynamic Scope, Self, and Copy-on-Write
 
-For a comprehensive explanation of how `self` works, dynamic scope cells,
-copy-on-write field assignment (`obj.a.b.c = value`), method call isolation,
-and how constructor closures differ from method calls, see
+For a comprehensive explanation of how `self` works, the shared dynamic
+scope cell (which makes `self` mutations visible across loop iterations
+in both methods and constructors), copy-on-write field assignment
+(`obj.a.b.c = value`), and method call isolation, see
 `scoping-and-self.md`.
 
 ## Patterns and Best Practices
