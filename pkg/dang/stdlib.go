@@ -15,6 +15,7 @@ import (
 // This is called from init() in env.go after type definitions are set up
 func registerStdlib() {
 	registerRandomAndUUID()
+	registerSemver()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").
@@ -293,6 +294,15 @@ func registerStdlib() {
 			// Center the string
 			centered := strings.Repeat(" ", leftPad) + str + strings.Repeat(" ", rightPad)
 			return ToValue(centered)
+		})
+
+	// String.length method: length -> Int!
+	Method(StringType, "length").
+		Doc("returns the number of characters (runes) in the string").
+		Returns(NonNull(IntType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return IntValue{Val: len([]rune(str))}, nil
 		})
 
 	// List.contains method: contains(element: a) -> Boolean!

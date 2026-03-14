@@ -195,8 +195,10 @@ func init() {
 	// Install built-in modules (as both classes and values)
 	Prelude.AddClass("Random", RandomModule)
 	Prelude.AddClass("UUID", UUIDModule)
+	Prelude.AddClass("Semver", SemverModule)
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
+	Prelude.Add("Semver", hm.NewScheme(nil, hm.NonNullType{Type: SemverModule}))
 
 	// Install Error interface with message field
 	Prelude.AddClass("Error", ErrorType)
