@@ -91,7 +91,10 @@ type Dang {
   """
   Start a Dang coding agent.
   """
-  pub coder(source: Workspace!): LLM! {
+  pub coder(source: Workspace!, branch: String): LLM! {
+    if (branch != null) {
+      source = source.withBranch(branch)
+    }
     dev.agent(llm.withEnv(env.withCurrentModule.withWorkspace(source)))
   }
 
