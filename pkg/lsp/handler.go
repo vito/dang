@@ -22,6 +22,7 @@ func NewHandler(rootCtx context.Context) *langHandler {
 		rootCtx:       rootCtx,
 		files:         make(map[DocumentURI]*File),
 		loadedEnvDirs: make(map[string]bool),
+		importCache:   make(map[string][]dang.ImportConfig),
 		mu:            new(sync.Mutex),
 	}
 
@@ -42,6 +43,11 @@ type langHandler struct {
 
 	// Directories where we've already loaded .envrc via direnv
 	loadedEnvDirs map[string]bool
+
+	// Cached import configs keyed by the dang.toml config path (or "" for
+	// auto-detected Dagger imports without a config file). Prevents spawning
+	// a new dagger session on every keystroke.
+	importCache map[string][]dang.ImportConfig
 
 	// TODO?: make per-file or something
 	mu *sync.Mutex
@@ -267,37 +273,10 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 			// Build symbol table from the AST
 			f.Symbols = h.buildSymbolTable(uri, block.Forms)
 
-			// Load import configs from dang.toml (if present)
-			var importConfigs []dang.ImportConfig
+			// Resolve import configs, using a cache to avoid spawning
+			// new dagger sessions on every keystroke.
 			fileDir := filepath.Dir(fp)
-			configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
-			if configErr != nil {
-				slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
-			}
-			if projectConfig != nil {
-				configDir := filepath.Dir(configPath)
-
-				// Load .envrc before resolving imports, so that ${VAR}
-				// expansion in dang.toml picks up direnv variables.
-				h.loadEnvrc(ctx, configDir)
-
-				ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
-				// Use rootCtx for import resolution so that service
-				// processes outlive individual LSP requests.
-				resolveCtx := dang.ContextWithProjectConfig(h.rootCtx, configPath, projectConfig)
-				resolved, resolveErr := dang.ResolveImportConfigs(resolveCtx, projectConfig, configDir)
-				if resolveErr != nil {
-					slog.WarnContext(ctx, "failed to resolve dang.toml imports", "error", resolveErr)
-				} else {
-					importConfigs = append(importConfigs, resolved...)
-				}
-			}
-
-			// Resolve the Dagger import: use an explicit one from
-			// dang.toml or auto-detect from dagger.json. The schema
-			// is eagerly introspected (module-aware).
-			importConfigs = dang.ResolveDaggerImport(ctx, importConfigs, filepath.Dir(fp))
-
+			importConfigs, ctx := h.resolveImports(ctx, fileDir)
 			if len(importConfigs) > 0 {
 				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 			}
@@ -344,6 +323,59 @@ func (h *langHandler) waitForFile(uri DocumentURI) *File {
 	f.mu.Unlock()
 
 	return f
+}
+
+// resolveImports returns cached import configs for the given file directory,
+// resolving them on first access. The returned context has the project config
+// attached if a dang.toml was found.
+func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dang.ImportConfig, context.Context) {
+	configPath, projectConfig, configErr := dang.FindProjectConfig(fileDir)
+	if configErr != nil {
+		slog.WarnContext(ctx, "failed to find dang.toml", "error", configErr)
+	}
+
+	// Cache key: config path, or a synthetic key for auto-detected Dagger.
+	cacheKey := configPath
+	if cacheKey == "" {
+		cacheKey = "auto:" + fileDir
+	}
+
+	if cached, ok := h.importCache[cacheKey]; ok {
+		// Re-attach project config to the context even on cache hit.
+		if projectConfig != nil {
+			ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
+		}
+		return cached, ctx
+	}
+
+	var importConfigs []dang.ImportConfig
+
+	if projectConfig != nil {
+		configDir := filepath.Dir(configPath)
+
+		// Load .envrc before resolving imports, so that ${VAR}
+		// expansion in dang.toml picks up direnv variables.
+		h.loadEnvrc(ctx, configDir)
+
+		ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
+		// Use rootCtx for import resolution so that service
+		// processes outlive individual LSP requests.
+		resolveCtx := dang.ContextWithProjectConfig(h.rootCtx, configPath, projectConfig)
+		resolved, resolveErr := dang.ResolveImportConfigs(resolveCtx, projectConfig, configDir)
+		if resolveErr != nil {
+			slog.WarnContext(ctx, "failed to resolve dang.toml imports", "error", resolveErr)
+		} else {
+			importConfigs = append(importConfigs, resolved...)
+		}
+	}
+
+	// Resolve the Dagger import: use an explicit one from
+	// dang.toml or auto-detect from dagger.json. The schema
+	// is eagerly introspected (module-aware).
+	importConfigs = dang.ResolveDaggerImport(ctx, importConfigs, fileDir)
+
+	h.importCache[cacheKey] = importConfigs
+	return importConfigs, ctx
 }
 
 func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *SymbolTable {
