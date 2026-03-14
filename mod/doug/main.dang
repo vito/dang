@@ -225,6 +225,34 @@ type Doug {
   }
 
   """
+  Commit the currently staged changes in the workspace.
+
+  WHEN TO USE THIS TOOL:
+  	- After completing a logical unit of work (e.g. a feature, bugfix, or refactor)
+  	- When the user explicitly asks you to commit
+  	- Before switching to a different task or branch
+
+  HOW TO USE:
+  	- Provide a clear, concise commit message describing the changes
+  	- All previously staged changes (from EditFile, Write, Rm, Mv) will be committed
+  	- Returns the commit hash
+
+  TIPS:
+  	- Write commit messages in the imperative mood (e.g. "Add feature" not "Added feature")
+  	- Keep the first line under 72 characters
+  	- If the change is complex, add a blank line after the summary and then a longer description
+  """
+  pub commit(
+    source: Workspace!,
+    """
+    The commit message
+    """
+    message: String!,
+  ): String! {
+    source.commit(message)
+  }
+
+  """
   File writing tool that creates or updates files in the filesystem, allowing you to save or modify text content.
 
   WHEN TO USE THIS TOOL:
