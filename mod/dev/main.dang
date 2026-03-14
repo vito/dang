@@ -13,13 +13,14 @@ type Dev {
   Start a coding agent with the provided module.
   """
   pub withTools(source: Workspace!, tools: Module!): LLM! {
-    agent(source, llm.withEnv(env.withModule(tools)))
+    agent(llm.withEnv(env.withModule(tools).withWorkspace(source)))
   }
 
   """
   Start a coding agent.
   """
-  pub agent(source: Workspace!, base: LLM!): LLM! {
+  pub agent(base: LLM!): LLM! {
+    let source = base.env.workspace
     let env = base.env.withCurrentModule
 
     let gopls = apko
@@ -38,7 +39,6 @@ type Dev {
 
     let agent = doug
       .agent(
-        source,
         base
           .withEnv(env)
           .withMCPServer(name: "gopls", service: gopls.asService)

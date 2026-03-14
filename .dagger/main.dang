@@ -92,7 +92,7 @@ type Dang {
   Start a Dang coding agent.
   """
   pub coder(source: Workspace!): LLM! {
-    dev.agent(source, llm.withEnv(env.withCurrentModule))
+    dev.agent(llm.withEnv(env.withCurrentModule.withWorkspace(source)))
   }
 
   """
