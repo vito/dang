@@ -204,7 +204,8 @@ type Doug {
     """
     contents: String!,
   ): Changeset! {
-    let base = source.directory(".", exclude: ["*"])
+    let normalizedPath = normalize(filePath)
+    let base = source.directory(".", include: [normalizedPath])
     let changes = base.withNewFile(normalize(filePath), contents).changes(base)
     source.stage(changes)
     changes
