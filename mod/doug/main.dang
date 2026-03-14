@@ -11,18 +11,23 @@ type Doug {
   pub dev(
     source: Workspace!,
     module: Module,
+    branch: String! = "",
   ): LLM! {
-    let e = env
+    let agentEnv = env
     if (module != null) {
-      e = e.withMainModule(module)
+      agentEnv = agentEnv.withMainModule(module)
     }
-    agent(source: source, base: llm.withEnv(e))
+    if (branch != "") {
+      source = source.withBranch(branch)
+    }
+    agentEnv = agentEnv.withWorkspace(source)
+    agent(llm.withEnv(agentEnv))
   }
 
   """
   Returns a Doug coding agent
   """
-  pub agent(source: Workspace!, base: LLM!): LLM! {
+  pub agent(base: LLM!): LLM! {
     base
       .withEnv(
         base
@@ -41,7 +46,7 @@ type Doug {
           }
         },
       )
-      .withSystemPrompt(reminderPrompt(source))
+      .withSystemPrompt(reminderPrompt(llm.env.workspace))
   }
 
   """
@@ -138,9 +143,7 @@ type Doug {
   When making edits:
 
   	- Ensure the edit results in idiomatic, correct code
-
   	- Do not leave the code in a broken state
-
   	- Always use relative file paths
 
   Remember: when making multiple file edits in a row to the same file, you should prefer to send all edits in a single message with multiple calls to this tool, rather than multiple messages with a single call each.
@@ -166,7 +169,7 @@ type Doug {
   ): Changeset! {
     let normalizedPath = normalize(filePath)
     let base = source.directory(".", include: [normalizedPath])
-    base
+    let changes = base
       .withFile(
         normalizedPath,
         source
@@ -174,6 +177,8 @@ type Doug {
           .withReplaced(oldString, newString, all: replaceAll),
       )
       .changes(base)
+    source.stage(changes)
+    changes
   }
 
   """
@@ -189,7 +194,9 @@ type Doug {
     let normalizedPath = normalize(path)
     let base = source
       .directory(".", include: [normalizedPath])
-    base.withoutFile(path).changes(base)
+    let changes = base.withoutFile(path).changes(base)
+    source.stage(changes)
+    changes
   }
 
   """
@@ -211,7 +218,7 @@ type Doug {
     let normalizedPath = normalize(oldPath)
     let base = source
       .directory(".", include: [normalizedPath])
-    if (base.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
+    let changes = if (base.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
       base
         .withFile(newPath, source.file(oldPath))
         .withoutFile(oldPath)
@@ -222,6 +229,8 @@ type Doug {
         .withoutDirectory(oldPath)
         .changes(base)
     }
+    source.stage(changes)
+    changes
   }
 
   """
@@ -291,7 +300,9 @@ type Doug {
     contents: String!,
   ): Changeset! {
     let base = source.directory(".", exclude: ["*"])
-    base.withNewFile(normalize(filePath), contents).changes(base)
+    let changes = base.withNewFile(normalize(filePath), contents).changes(base)
+    source.stage(changes)
+    changes
   }
 
   """
@@ -487,7 +498,7 @@ type Doug {
     prompt: String!,
   ): String! {
     llm
-      .withEnv(currentEnv.withoutOutputs)
+      .withEnv(currentEnv.withoutOutputs) # TODO: this isn't actually read-only... do we need it to be?
       .withBlockedFunction("Doug", "research")
       .withBlockedFunction("Doug", "rabbithole")
       .withoutDefaultSystemPrompt
@@ -525,7 +536,7 @@ type Doug {
     The prompt for the sub-agent
     """
     prompt: String!,
-  ): Env! {
+  ): Void {
     let reminderPromptText = reminderPrompt(workspace: source)
 
     let result = llm
@@ -549,8 +560,7 @@ type Doug {
     # show the reply, which will be tl;dred
     print(result.lastReply)
 
-    # propagate workspace changes
-    currentEnv.withWorkspace(result.env.workspace)
+    null
   }
 
   """
@@ -635,6 +645,7 @@ type Doug {
 
     print(formattedTodos)
 
+    # TODO: maybe this should just go into a file? do we need it at all?
     currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
   }
 
