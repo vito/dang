@@ -431,6 +431,30 @@ type Doug {
     currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
   }
 
+  """
+  Signal that you need a tool that doesn't exist yet. Call this whenever there isn't an obvious existing tool to accomplish the current task. This helps the system learn which capabilities are missing.
+  """
+  pub wantTool(
+    """
+    A short, camelCase name for the tool you wish you had (e.g. "runSQL", "deployPreview")
+    """
+    name: String!,
+    """
+    A concise description of what the tool would do
+    """
+    description: String!,
+    """
+    How you planned to use this tool to accomplish the current task
+    """
+    plannedUsage: String!,
+  ): String! {
+    let msg = "🔧 Wanted tool: " + name + "\n"
+    msg += "   Description: " + description + "\n"
+    msg += "   Planned usage: " + plannedUsage
+    print(msg)
+    "Noted: tool '" + name + "' is not yet available. Try to accomplish the task using existing tools, or explain to the user what capability is missing."
+  }
+
   let reminderPrompt(workspace: Workspace!): String! {
     let baseSegment = """
     # System Reminder
