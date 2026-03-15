@@ -47,6 +47,7 @@ type Doug {
         },
       )
       .withSystemPrompt(reminderPrompt(llm.env.workspace))
+      .withSystemPrompt(skillsPrompt(llm.env.workspace))
   }
 
   """
@@ -432,6 +433,15 @@ type Doug {
   }
 
   """
+  Install a tool module into the current environment.
+  """
+  pub installModule(
+    moduleRef: String!,
+  ): Env! {
+    currentEnv.withModule(moduleSource(moduleRef).asModule)
+  }
+
+  """
   Signal that you need a tool that doesn't exist yet. Call this whenever there isn't an obvious existing tool to accomplish the current task. This helps the system learn which capabilities are missing.
   """
   pub wantTool(
@@ -453,6 +463,90 @@ type Doug {
     msg += "   Planned usage: " + plannedUsage
     print(msg)
     "Noted: tool '" + name + "' is not yet available. Try to accomplish the task using existing tools, or explain to the user what capability is missing."
+  }
+
+  let skillsPrompt(workspace: Workspace!): String! {
+    let skillDirs = [".pi/skills", ".agents/skills"]
+    let skills = [] :: [[String!]!]!
+
+    skillDirs.each { dir =>
+      # Discover SKILL.md files recursively
+      let skillFiles = try {
+        workspace.glob(dir + "/**/SKILL.md")
+      } catch {
+        _ => [] :: [String!]!
+      }
+
+      skillFiles.each { path =>
+        let content = try {
+          workspace.file(path).contents
+        } catch {
+          _ => ""
+        }
+        if (content != "") {
+          let fm = content.frontmatter
+          if (fm != null) {
+            let meta = parseYAML(fm)
+            let name = meta.string("name") ?? ""
+            let description = meta.string("description") ?? ""
+            let disabled = meta.bool("disable-model-invocation") ?? false
+            if (description != "" and !disabled) {
+              skills = skills + [[name, description, path]]
+            }
+          }
+        }
+      }
+
+      # Discover direct .md files at the root of the skills dir
+      let rootFiles = try {
+        workspace.glob(dir + "/*.md")
+      } catch {
+        _ => [] :: [String!]!
+      }
+
+      rootFiles.each { path =>
+        let content = try {
+          workspace.file(path).contents
+        } catch {
+          _ => ""
+        }
+        if (content != "") {
+          let fm = content.frontmatter
+          if (fm != null) {
+            let meta = parseYAML(fm)
+            let name = meta.string("name") ?? ""
+            let description = meta.string("description") ?? ""
+            let disabled = meta.bool("disable-model-invocation") ?? false
+            if (description != "" and !disabled) {
+              skills = skills + [[name, description, path]]
+            }
+          }
+        }
+      }
+    }
+
+    if (skills.length == 0) {
+      ""
+    } else {
+      let prompt = """
+      The following skills provide specialized instructions for specific tasks.
+      Use the ReadFile tool to load a skill's file when the task matches its description.
+      When a skill file references a relative path, resolve it relative to the skill file's directory.
+
+      <available_skills>
+      """
+
+      skills.each { skill =>
+        prompt = prompt + "  <skill>\n"
+        prompt = prompt + "    <name>" + (skill[0] ?? "") + "</name>\n"
+        prompt = prompt + "    <description>" + (skill[1] ?? "") + "</description>\n"
+        prompt = prompt + "    <location>" + (skill[2] ?? "") + "</location>\n"
+        prompt = prompt + "  </skill>\n"
+      }
+
+      prompt = prompt + "</available_skills>"
+      prompt
+    }
   }
 
   let reminderPrompt(workspace: Workspace!): String! {
