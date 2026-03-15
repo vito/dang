@@ -1,0 +1,132 @@
+# Test YAML parsing builtins
+
+# =============================================================================
+# Test parseYAML with basic key-value pairs
+# =============================================================================
+
+let yaml = parseYAML("name: my-skill\ndescription: Does things\nversion: 3\nenabled: true")
+
+assert { yaml.string("name") == "my-skill" }
+assert { yaml.string("description") == "Does things" }
+assert { yaml.int("version") == 3 }
+assert { yaml.bool("enabled") == true }
+
+# =============================================================================
+# Test missing keys return null
+# =============================================================================
+
+assert { yaml.string("missing") == null }
+assert { yaml.int("missing") == null }
+assert { yaml.bool("missing") == null }
+assert { yaml.yaml("missing") == null }
+
+# =============================================================================
+# Test has() method
+# =============================================================================
+
+assert { yaml.has("name") == true }
+assert { yaml.has("missing") == false }
+
+# =============================================================================
+# Test keys
+# =============================================================================
+
+let keys = yaml.keys
+assert { keys.length == 4 }
+assert { keys.contains("name") }
+assert { keys.contains("description") }
+assert { keys.contains("version") }
+assert { keys.contains("enabled") }
+
+# =============================================================================
+# Test nested YAML
+# =============================================================================
+
+let nested = parseYAML("outer:\n  inner: hello\n  count: 42")
+let inner = nested.yaml("outer")
+assert { inner != null }
+if (inner != null) {
+  assert { inner.string("inner") == "hello" }
+  assert { inner.int("count") == 42 }
+}
+
+# =============================================================================
+# Test list values
+# =============================================================================
+
+let withList = parseYAML("tags:\n  - alpha\n  - beta\n  - gamma")
+let tags = withList.list("tags")
+assert { tags != null }
+if (tags != null) {
+  assert { tags.length == 3 }
+  assert { tags[0].asString == "alpha" }
+  assert { tags[1].asString == "beta" }
+  assert { tags[2].asString == "gamma" }
+}
+
+# =============================================================================
+# Test asString on scalar YAML values
+# =============================================================================
+
+let scalarList = parseYAML("items:\n  - hello\n  - 42\n  - true")
+let items = scalarList.list("items")
+if (items != null) {
+  assert { items[0].asString == "hello" }
+  assert { items[1].asString == "42" }
+  assert { items[2].asString == "true" }
+}
+
+# =============================================================================
+# Test empty YAML
+# =============================================================================
+
+let empty = parseYAML("")
+assert { empty.keys.length == 0 }
+assert { empty.string("anything") == null }
+
+# =============================================================================
+# Test frontmatter extraction
+# =============================================================================
+
+let doc = "---\nname: test\ndescription: A test skill\n---\n# Hello\n\nThis is the body."
+
+let fm = doc.frontmatter
+assert { fm != null }
+assert { fm == "name: test\ndescription: A test skill" }
+
+let body = doc.frontmatterBody
+assert { body == "# Hello\n\nThis is the body." }
+
+# =============================================================================
+# Test frontmatter + parseYAML together
+# =============================================================================
+
+let fmYaml = parseYAML(doc.frontmatter ?? "")
+assert { fmYaml.string("name") == "test" }
+assert { fmYaml.string("description") == "A test skill" }
+
+# =============================================================================
+# Test no frontmatter
+# =============================================================================
+
+let noFm = "Just a regular document.\nNo frontmatter here."
+assert { noFm.frontmatter == null }
+assert { noFm.frontmatterBody == noFm }
+
+# =============================================================================
+# Test frontmatter with only opening ---
+# =============================================================================
+
+let badFm = "---\nname: test\nno closing marker"
+assert { badFm.frontmatter == null }
+assert { badFm.frontmatterBody == badFm }
+
+# =============================================================================
+# Test non-null coalescing with frontmatter
+# =============================================================================
+
+let maybeFm = noFm.frontmatter ?? ""
+let parsed = parseYAML(maybeFm)
+assert { parsed.string("name") == null }
+
+print("All YAML tests passed!")
