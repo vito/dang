@@ -16,6 +16,7 @@ import (
 func registerStdlib() {
 	registerRandomAndUUID()
 	registerSemver()
+	registerYAML()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").

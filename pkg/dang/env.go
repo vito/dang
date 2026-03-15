@@ -196,6 +196,7 @@ func init() {
 	Prelude.AddClass("Random", RandomModule)
 	Prelude.AddClass("UUID", UUIDModule)
 	Prelude.AddClass("Semver", SemverModule)
+	Prelude.AddClass("YAML", YAMLModule)
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 	Prelude.Add("Semver", hm.NewScheme(nil, hm.NonNullType{Type: SemverModule}))
@@ -709,7 +710,7 @@ func registerBuiltinTypes() {
 	})
 
 	// Register all builtin method types
-	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType, ListTypeModule} {
+	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType, ListTypeModule, YAMLModule} {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
