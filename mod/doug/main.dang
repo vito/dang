@@ -63,7 +63,7 @@ type Doug {
   """
   Read the contents of a file. Output is truncated to 2000 lines by default. Each line is prefixed with its line number. Use offset/limit for large files. When you need the full file, continue with offset until complete.
   """
-  pub readFile(
+  pub read(
     source: Workspace!,
     """
     Relative path within the workspace
@@ -117,7 +117,7 @@ type Doug {
   """
   Edit a file by replacing exact text. The oldString must match exactly (including whitespace). Use this for precise, surgical edits. For larger edits, use the Write tool to overwrite files.
   """
-  pub editFile(
+  pub edit(
     source: Workspace!,
     """
     Relative path within the workspace
@@ -126,11 +126,11 @@ type Doug {
     """
     Unique search string to replace within the file, or non-unique if replaceAll is true
     """
-    oldString: String!,
+    oldText: String!,
     """
     New text content
     """
-    newString: String!,
+    newText: String!,
     """
     Replace all occurrences
     """
@@ -143,7 +143,7 @@ type Doug {
         normalizedPath,
         source
           .file(normalizedPath)
-          .withReplaced(oldString, newString, all: replaceAll),
+          .withReplaced(oldText, newText, all: replaceAll),
       )
       .changes(base)
     source.stage(changes)
@@ -235,9 +235,9 @@ type Doug {
   }
 
   """
-  Find files by glob pattern. Use '**' to match across directories.
+  Find paths by glob pattern. Use '**' to match across directories.
   """
-  pub glob(
+  pub find(
     source: Workspace!,
     """
     Relative glob pattern to find within the workspace
@@ -263,7 +263,7 @@ type Doug {
     """
     Regular expression pattern to grep for
     """
-    pattern: String!,
+    regex: String!,
     """
     Treat pattern as literal text instead of a regular expression
     """
@@ -297,7 +297,7 @@ type Doug {
 
     let matches = source
       .search(
-        pattern: pattern,
+        pattern: regex,
         literal: literalText,
         paths: normalizedPaths,
         globs: glob,
