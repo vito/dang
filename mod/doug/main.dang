@@ -28,12 +28,15 @@ type Doug {
   Returns a Doug coding agent
   """
   pub agent(base: LLM!): LLM! {
+    let docsDir = currentModule.source.directory("docs/")
+
     base
       .withEnv(
         base
           .env
           .withCurrentModule
-          .withStringInput("TODOs", "", "Your TODO list"),
+          .withStringInput("TODOs", "", "Your TODO list")
+          .withDirectoryInput("docs", docsDir, "Doug's own documentation"),
       )
       .withSystemPrompt(
         {
@@ -44,6 +47,12 @@ type Doug {
           } else {
             promptsDir.file("doug.txt").contents
           }
+        },
+      )
+      .withSystemPrompt(
+        {
+          let docFiles = docsDir.entries.join(", ")
+          "Doug documentation (read with ReadDoc when asked about skills or Doug features): " + docFiles
         },
       )
       .withSystemPrompt(reminderPrompt(llm.env.workspace))
@@ -90,6 +99,18 @@ type Doug {
 
       numbered.trimSuffix("\n")
     }
+  }
+
+  """
+  Read a Doug documentation file. Use when asked about skills, Doug features, or how Doug works.
+  """
+  pub readDoc(
+    """
+    The doc filename to read (e.g. "skills.md")
+    """
+    name: String!,
+  ): String! {
+    currentEnv.input("docs").asDirectory.file(name).contents
   }
 
   """
