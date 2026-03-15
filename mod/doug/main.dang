@@ -203,8 +203,8 @@ type Doug {
   """
   Run checks (tests, lints, etc.), optionally filtering by glob patterns (e.g. `test:*`, `go:*`).
   """
-  pub checks(include: [String!]! = []): Void {
-    let matched = currentEnv.checks(include)
+  pub checks(workspace: Workspace!, include: [String!]! = []): Void {
+    let matched = currentEnv.withWorkspace(workspace).checks(include)
     if (matched.list.{name}.isEmpty) {
       print("WARNING: no checks matched. Available checks:")
       listChecks
