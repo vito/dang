@@ -7,6 +7,8 @@ description: Add a builtin method or function to the Dang standard library. Use 
 
 All builtins are defined in `pkg/dang/stdlib.go` inside `registerStdlib()` using a fluent DSL. No other files need modification — the DSL handles type registration, eval registration, and method dispatch automatically.
 
+Methods are grouped by receiver type (String, List, Int, etc.). Add new methods at the end of the relevant group. Read `pkg/dang/stdlib.go` to find the insertion point — no other exploration is needed.
+
 ## DSL Reference
 
 ```go
