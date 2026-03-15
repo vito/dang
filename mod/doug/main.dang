@@ -12,13 +12,14 @@ type Doug {
     source: Workspace!,
     module: Module,
     branch: String! = "",
+    base: String,
   ): LLM! {
     let agentEnv = env
     if (module != null) {
       agentEnv = agentEnv.withMainModule(module)
     }
     if (branch != "") {
-      source = source.withBranch(branch)
+      source = source.withBranch(branch, base: base)
     }
     agentEnv = agentEnv.withWorkspace(source)
     agent(llm.withEnv(agentEnv))
