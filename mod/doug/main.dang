@@ -201,6 +201,33 @@ type Doug {
   }
 
   """
+  Run checks (tests, lints, etc.), optionally filtering by glob patterns (e.g. `test:*`, `go:*`).
+  """
+  pub checks(include: [String!]! = []): Void {
+    let matched = currentEnv.checks(include)
+    if (matched.list.{name}.isEmpty) {
+      print("WARNING: no checks matched. Available checks:")
+      listChecks
+    } else {
+      print(matched.run.report.contents)
+    }
+  }
+
+  """
+  List available checks.
+  """
+  pub listChecks(include: [String!]! = []): Void {
+    currentEnv.checks(include).list.{name, description}.each { x =>
+      if (x.description != "") {
+        print(x.name + ": " + x.description)
+      } else {
+        print(x.name)
+      }
+    }
+    null
+  }
+
+  """
   Commit staged changes. All prior EditFile, Write, Rm, and Mv changes are included. Returns the commit hash.
   """
   pub commit(
