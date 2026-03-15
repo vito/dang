@@ -89,16 +89,6 @@ type Dang {
   }
 
   """
-  Start a Dang coding agent.
-  """
-  pub coder(source: Workspace!, branch: String, base: String): LLM! {
-    if (branch != null) {
-      source = source.withBranch(branch, base)
-    }
-    dev.agent(llm.withEnv(env.withCurrentModule.withWorkspace(source)))
-  }
-
-  """
   Update the Golden-style test specimens, treating the current output as
   correct.
   """
