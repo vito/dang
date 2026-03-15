@@ -627,7 +627,7 @@ func addBuiltinFunctions(env EvalEnv) {
 	})
 
 	// Register all builtin methods with naming convention
-	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType, ListTypeModule} {
+	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType, ListTypeModule, YAMLModule} {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			builtinFn := BuiltinFunction{

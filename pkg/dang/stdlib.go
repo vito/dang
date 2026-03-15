@@ -15,6 +15,7 @@ import (
 // This is called from init() in env.go after type definitions are set up
 func registerStdlib() {
 	registerRandomAndUUID()
+	registerYAML()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").

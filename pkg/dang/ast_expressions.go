@@ -808,6 +808,16 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				}
 				return nil, fmt.Errorf("list value does not have method %q", d.Field.Name)
 
+			case YAMLValue:
+				// Handle methods on YAML values by looking them up in the evaluation environment
+				methodKey := fmt.Sprintf("_yaml_%s_builtin", d.Field.Name)
+				if method, found := env.Get(methodKey); found {
+					if builtinFn, ok := method.(BuiltinFunction); ok {
+						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					}
+				}
+				return nil, fmt.Errorf("YAML value does not have method %q", d.Field.Name)
+
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
 			}
