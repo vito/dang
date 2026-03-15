@@ -14,7 +14,8 @@ var YAMLModule = NewModule("YAML", ObjectKind)
 
 // YAMLValue wraps a parsed YAML document (typically a mapping)
 type YAMLValue struct {
-	Data any // The parsed YAML data (map[string]any, []any, or scalar)
+	Data any    // The parsed YAML data (map[string]any, []any, or scalar)
+	Body string // The content after frontmatter (only set when frontmatter: true)
 }
 
 var _ Value = YAMLValue{}
@@ -51,21 +52,37 @@ func (y YAMLValue) asMap() map[string]any {
 func registerYAML() {
 	YAMLModule.SetModuleDocString("a parsed YAML value with key-based accessors")
 
-	// parseYAML(data: String!) -> YAML!
+	// parseYAML(data: String!, frontmatter: Boolean! = false) -> YAML!
 	Builtin("parseYAML").
-		Doc("parses a YAML string into a YAML value").
-		Params("data", NonNull(StringType)).
+		Doc("parses a YAML string into a YAML value. When frontmatter is true, extracts YAML from between --- markers and makes the remaining content available via .body").
+		Params("data", NonNull(StringType), "frontmatter", NonNull(BooleanType), BoolValue{Val: false}).
 		Returns(NonNull(YAMLModule)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			data := args.GetString("data")
+			frontmatter := args.GetBool("frontmatter")
+
+			var toParse string
+			var body string
+			if frontmatter {
+				fm := extractFrontmatter(data)
+				if fm == nil {
+					// No frontmatter found — return empty YAML with full string as body
+					return YAMLValue{Data: map[string]any{}, Body: data}, nil
+				}
+				toParse = *fm
+				body = extractFrontmatterBody(data)
+			} else {
+				toParse = data
+			}
+
 			var parsed any
-			if err := yaml.Unmarshal([]byte(data), &parsed); err != nil {
+			if err := yaml.Unmarshal([]byte(toParse), &parsed); err != nil {
 				return nil, fmt.Errorf("parseYAML: %w", err)
 			}
 			if parsed == nil {
 				parsed = map[string]any{}
 			}
-			return YAMLValue{Data: parsed}, nil
+			return YAMLValue{Data: parsed, Body: body}, nil
 		})
 
 	// YAML.string(key: String!) -> String (nullable)
@@ -259,29 +276,14 @@ func registerYAML() {
 			}
 		})
 
-	// String.frontmatter -> String (nullable)
-	// Extracts the YAML frontmatter between --- markers
-	Method(StringType, "frontmatter").
-		Doc("extracts the YAML frontmatter between --- markers, or null if no frontmatter is present").
-		Returns(StringType).
-		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			str := self.(StringValue).Val
-			fm := extractFrontmatter(str)
-			if fm == nil {
-				return NullValue{}, nil
-			}
-			return StringValue{Val: *fm}, nil
-		})
-
-	// String.frontmatterBody -> String!
-	// Returns the content after the frontmatter
-	Method(StringType, "frontmatterBody").
-		Doc("returns the content after the frontmatter block, or the full string if no frontmatter is present").
+	// YAML.body -> String!
+	// Returns the content after the frontmatter (only meaningful when parsed with frontmatter: true)
+	Method(YAMLModule, "body").
+		Doc("returns the content after the frontmatter block. Only populated when parseYAML was called with frontmatter: true.").
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			str := self.(StringValue).Val
-			body := extractFrontmatterBody(str)
-			return StringValue{Val: body}, nil
+			y := self.(YAMLValue)
+			return StringValue{Val: y.Body}, nil
 		})
 }
 

@@ -502,15 +502,12 @@ type Doug {
           _ => ""
         }
         if (content != "") {
-          let fm = content.frontmatter
-          if (fm != null) {
-            let meta = parseYAML(fm)
-            let name = meta.string("name") ?? ""
-            let description = meta.string("description") ?? ""
-            let disabled = meta.bool("disable-model-invocation") ?? false
-            if (description != "" and !disabled) {
-              skills = skills + [[name, description, path]]
-            }
+          let meta = parseYAML(content, frontmatter: true)
+          let name = meta.string("name") ?? ""
+          let description = meta.string("description") ?? ""
+          let disabled = meta.bool("disable-model-invocation") ?? false
+          if (description != "" and !disabled) {
+            skills = skills + [[name, description, path]]
           }
         }
       }
@@ -529,15 +526,12 @@ type Doug {
           _ => ""
         }
         if (content != "") {
-          let fm = content.frontmatter
-          if (fm != null) {
-            let meta = parseYAML(fm)
-            let name = meta.string("name") ?? ""
-            let description = meta.string("description") ?? ""
-            let disabled = meta.bool("disable-model-invocation") ?? false
-            if (description != "" and !disabled) {
-              skills = skills + [[name, description, path]]
-            }
+          let meta = parseYAML(content, frontmatter: true)
+          let name = meta.string("name") ?? ""
+          let description = meta.string("description") ?? ""
+          let disabled = meta.bool("disable-model-invocation") ?? false
+          if (description != "" and !disabled) {
+            skills = skills + [[name, description, path]]
           }
         }
       }

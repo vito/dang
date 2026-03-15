@@ -85,48 +85,39 @@ assert { empty.keys.length == 0 }
 assert { empty.string("anything") == null }
 
 # =============================================================================
-# Test frontmatter extraction
+# Test frontmatter parsing
 # =============================================================================
 
 let doc = "---\nname: test\ndescription: A test skill\n---\n# Hello\n\nThis is the body."
 
-let fm = doc.frontmatter
-assert { fm != null }
-assert { fm == "name: test\ndescription: A test skill" }
-
-let body = doc.frontmatterBody
-assert { body == "# Hello\n\nThis is the body." }
-
-# =============================================================================
-# Test frontmatter + parseYAML together
-# =============================================================================
-
-let fmYaml = parseYAML(doc.frontmatter ?? "")
+let fmYaml = parseYAML(doc, frontmatter: true)
 assert { fmYaml.string("name") == "test" }
 assert { fmYaml.string("description") == "A test skill" }
+assert { fmYaml.body == "# Hello\n\nThis is the body." }
 
 # =============================================================================
 # Test no frontmatter
 # =============================================================================
 
 let noFm = "Just a regular document.\nNo frontmatter here."
-assert { noFm.frontmatter == null }
-assert { noFm.frontmatterBody == noFm }
+let noFmYaml = parseYAML(noFm, frontmatter: true)
+assert { noFmYaml.string("name") == null }
+assert { noFmYaml.body == noFm }
 
 # =============================================================================
 # Test frontmatter with only opening ---
 # =============================================================================
 
 let badFm = "---\nname: test\nno closing marker"
-assert { badFm.frontmatter == null }
-assert { badFm.frontmatterBody == badFm }
+let badFmYaml = parseYAML(badFm, frontmatter: true)
+assert { badFmYaml.string("name") == null }
+assert { badFmYaml.body == badFm }
 
 # =============================================================================
-# Test non-null coalescing with frontmatter
+# Test body is empty string without frontmatter mode
 # =============================================================================
 
-let maybeFm = noFm.frontmatter ?? ""
-let parsed = parseYAML(maybeFm)
-assert { parsed.string("name") == null }
+let plain = parseYAML("name: test")
+assert { plain.body == "" }
 
 print("All YAML tests passed!")
