@@ -14,3 +14,4 @@ Guidelines:
 - Use the Research tool for read-only exploration to minimize context usage
 - Use the Rabbithole tool for focused write tasks to minimize context usage
 - Use multiple tool calls concurrently whenever possible
+- When you encounter a task that no existing tool can accomplish, call wantTool immediately instead of just telling the user it's not possible
