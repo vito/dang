@@ -56,8 +56,8 @@ type Doug {
           "Doug documentation (read with ReadDoc when asked about skills or Doug features): " + docFiles
         },
       )
-      .withSystemPrompt(reminderPrompt(llm.env.workspace))
-      .withSystemPrompt(skillsPrompt(llm.env.workspace))
+      .withSystemPrompt(reminderPrompt(base.env.workspace))
+      .withSystemPrompt(skillsPrompt(base.env.workspace))
   }
 
   """
@@ -484,55 +484,20 @@ type Doug {
   }
 
   let skillsPrompt(workspace: Workspace!): String! {
-    let skillDirs = [".doug/skills", ".agents/skills"]
-    let skills = [] :: [[String!]!]!
+    let skills = [] :: [Skill!]!
 
-    skillDirs.each { dir =>
-      # Discover SKILL.md files recursively
-      let skillFiles = try {
-        workspace.glob(dir + "/**/SKILL.md")
-      } catch {
-        _ => [] :: [String!]!
-      }
+    # TODO: findUp
+    [".doug/skills", ".agents/skills"].each { dir =>
+      let skillFiles = workspace.glob(dir + "/**/SKILL.md")
 
       skillFiles.each { path =>
-        let content = try {
-          workspace.file(path).contents
-        } catch {
-          _ => ""
-        }
-        if (content != "") {
-          let meta = parseYAML(content, frontmatter: true)
-          let name = meta.string("name") ?? ""
-          let description = meta.string("description") ?? ""
-          let disabled = meta.bool("disable-model-invocation") ?? false
-          if (description != "" and !disabled) {
-            skills = skills + [[name, description, path]]
-          }
-        }
-      }
-
-      # Discover direct .md files at the root of the skills dir
-      let rootFiles = try {
-        workspace.glob(dir + "/*.md")
-      } catch {
-        _ => [] :: [String!]!
-      }
-
-      rootFiles.each { path =>
-        let content = try {
-          workspace.file(path).contents
-        } catch {
-          _ => ""
-        }
-        if (content != "") {
-          let meta = parseYAML(content, frontmatter: true)
-          let name = meta.string("name") ?? ""
-          let description = meta.string("description") ?? ""
-          let disabled = meta.bool("disable-model-invocation") ?? false
-          if (description != "" and !disabled) {
-            skills = skills + [[name, description, path]]
-          }
+        let content = workspace.file(path).contents
+        let meta = parseYAML(content, frontmatter: true)
+        let name = meta.string("name") ?? ""
+        let description = meta.string("description") ?? ""
+        let disabled = meta.bool("disable-model-invocation") ?? false
+        if (description != "" and !disabled) {
+          skills += [Skill(name, description, path)]
         }
       }
     }
@@ -549,14 +514,14 @@ type Doug {
       """
 
       skills.each { skill =>
-        prompt = prompt + "  <skill>\n"
-        prompt = prompt + "    <name>" + (skill[0] ?? "") + "</name>\n"
-        prompt = prompt + "    <description>" + (skill[1] ?? "") + "</description>\n"
-        prompt = prompt + "    <location>" + (skill[2] ?? "") + "</location>\n"
-        prompt = prompt + "  </skill>\n"
+        prompt += "  <skill>\n"
+        prompt += "    <name>" + skill.name + "</name>\n"
+        prompt += "    <description>" + skill.description + "</description>\n"
+        prompt += "    <location>" + skill.path + "</location>\n"
+        prompt += "  </skill>\n"
       }
 
-      prompt = prompt + "</available_skills>"
+      prompt += "</available_skills>"
       prompt
     }
   }
@@ -603,4 +568,10 @@ type Doug {
   let normalize(path: String!): String! {
     path.trimPrefix(workspacePath)
   }
+}
+
+type Skill {
+  pub name: String!
+  pub description: String!
+  pub path: String!
 }
