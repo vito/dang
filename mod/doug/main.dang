@@ -135,6 +135,10 @@ type Doug {
     Replace all occurrences
     """
     replaceAll: Boolean! = false,
+    """
+    Force-write the file - only used to resolve merge conflicts
+    """
+    force: Boolean! = false,
   ): Changeset! {
     let normalizedPath = normalize(filePath)
     let base = source.directory(".", include: [normalizedPath])
@@ -146,7 +150,7 @@ type Doug {
           .withReplaced(oldText, newText, all: replaceAll),
       )
       .changes(base)
-    source.stage(changes)
+    source.stage(changes, force: force)
     changes
   }
 
@@ -159,12 +163,16 @@ type Doug {
     Relative path within the workspace
     """
     path: String!,
+    """
+    Force-remove the file - only used to resolve merge conflicts
+    """
+    force: Boolean! = false,
   ): Changeset! {
     let normalizedPath = normalize(path)
     let base = source
       .directory(".", include: [normalizedPath])
     let changes = base.withoutFile(path).changes(base)
-    source.stage(changes)
+    source.stage(changes, force: force)
     changes
   }
 
@@ -181,6 +189,10 @@ type Doug {
     Destination path within the workspace
     """
     newPath: String!,
+    """
+    Force-move the file - only used to resolve merge conflicts
+    """
+    force: Boolean! = false,
   ): Changeset {
     let normalizedPath = normalize(oldPath)
     let base = source
@@ -253,11 +265,15 @@ type Doug {
     Complete file content to write
     """
     contents: String!,
+    """
+    Force-write the file - only used to resolve merge conflicts
+    """
+    force: Boolean! = false,
   ): Changeset! {
     let normalizedPath = normalize(filePath)
     let base = source.directory(".", include: [normalizedPath])
     let changes = base.withNewFile(normalize(filePath), contents).changes(base)
-    source.stage(changes)
+    source.stage(changes, force: force)
     changes
   }
 
