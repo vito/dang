@@ -235,7 +235,7 @@ type Doug {
   }
 
   """
-  Find files by glob pattern. Hidden files are skipped. Use '**' to match across directories.
+  Find files by glob pattern. Use '**' to match across directories.
   """
   pub glob(
     source: Workspace!,
@@ -245,18 +245,14 @@ type Doug {
     pattern: String!,
   ): Void {
     let matches = source.glob(pattern)
-    let anyMatched = false
-    matches.each { path =>
-      if (path.hasPrefix(".") or path.contains("/.")) {
-        # Filter out hidden files
-        continue
-      }
-      anyMatched = true
-      print(path)
-    }
-    if (!anyMatched) {
+    if (matches.length == 0) {
       print("No files found.")
+    } else {
+      matches.each { path =>
+        print(path)
+      }
     }
+    null
   }
 
   """
