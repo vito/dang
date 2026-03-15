@@ -2,17 +2,17 @@ type Dang {
   """
   The source directory for the Dang project.
   """
-  pub source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
-    # TODO: respecting .gitignore would be nice
-    "Session.vim",
-    "dang",
-    "editors",
-    "!editors/nvim",
-    "!editors/zed/extension.toml",
-    ".env",
-    ".envrc",
-    ".dagger",
-  ])
+  pub source: Directory!
+
+  new(workspace: Workspace!) {
+    self.source = workspace.directory("/", gitignore: true, exclude: [
+      "editors",
+      "!editors/nvim",
+      "!editors/zed/extension.toml",
+      ".dagger",
+    ])
+    self
+  }
 
   """
   Return a compiled Dang binary.
@@ -91,9 +91,9 @@ type Dang {
   """
   Start a Dang coding agent.
   """
-  pub coder(source: Workspace!, branch: String): LLM! {
+  pub coder(source: Workspace!, branch: String, base: String): LLM! {
     if (branch != null) {
-      source = source.withBranch(branch)
+      source = source.withBranch(branch, base)
     }
     dev.agent(llm.withEnv(env.withCurrentModule.withWorkspace(source)))
   }
