@@ -32,13 +32,8 @@ type Doug {
     let docsDir = currentModule.source.directory("docs/")
 
     base
-      .withEnv(
-        base
-          .env
-          .withCurrentModule
-          .withStringInput("TODOs", "", "Your TODO list")
-          .withDirectoryInput("docs", docsDir, "Doug's own documentation"),
-      )
+      .withoutDefaultSystemPrompt
+      .withEnv(base.env.withCurrentModule)
       .withSystemPrompt(
         {
           let promptsDir = currentModule.source.directory("prompts/system/")
@@ -111,7 +106,7 @@ type Doug {
     """
     name: String!,
   ): String! {
-    currentEnv.input("docs").asDirectory.file(name).contents
+    currentModule.source.directory("docs").file(name).contents
   }
 
   """
@@ -353,144 +348,6 @@ type Doug {
       )
 
     toJSON(matches.{id}.length) + " matches found"
-  }
-
-  """
-  Launch a read-only sub-agent for research. Runs in a sandboxed fork; all filesystem changes are discarded. Launch multiple concurrently when possible. The agent returns a single message report.
-  """
-  pub research(
-    source: Workspace!,
-    """
-    A brief description of the task to show to the user
-    """
-    description: String!,
-    """
-    The prompt for the sub-agent
-    """
-    prompt: String!,
-  ): String! {
-    llm
-      .withEnv(currentEnv.withoutOutputs) # TODO: this isn't actually read-only... do we need it to be?
-      .withBlockedFunction("Doug", "research")
-      .withBlockedFunction("Doug", "rabbithole")
-      .withoutDefaultSystemPrompt
-      .withSystemPrompt("""
-      Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
-
-      Notes:
-      - You are running in a sandboxed copy of the original filesystem; your writes will be discarded, so feel free to use it as a scratch space if needed.
-      - You are in an isolated sandboxed environment. Any writes you perform will be discarded. If the task implies they should be kept, fail early.
-      - Your final response should always share relevant file names and code snippets. Paths should always be relative to the project root.
-      - You MUST avoid using emojis.
-      """)
-      .withSystemPrompt(reminderPrompt(workspace: source))
-      .withPrompt(prompt)
-      .loop
-      .lastReply
-  }
-
-  """
-  Launch a read-write sub-agent for a focused task. Runs in series. Use to reduce context usage when the goal and scope are clear.
-  """
-  pub rabbithole(
-    source: Workspace!,
-    """
-    A brief description of the task to show to the user
-    """
-    description: String!,
-    """
-    The prompt for the sub-agent
-    """
-    prompt: String!,
-  ): Void {
-    let reminderPromptText = reminderPrompt(workspace: source)
-
-    let result = llm
-      .withEnv(currentEnv.withoutOutputs)
-      .withBlockedFunction("Doug", "research")
-      .withBlockedFunction("Doug", "rabbithole")
-      .withoutDefaultSystemPrompt
-      .withSystemPrompt("""
-      Given the user's message, use the tools available to complete the task. Do what has been asked; nothing more, nothing less. When you complete the task simply respond with a detailed writeup.
-
-      Notes:
-      - Don't worry about saying which files you updated; that'll happen automatically.
-      - Put a tl;dr at the bottom so the caller can decide whether it needs to
-      read the rest of the report.
-      - You MUST avoid using emojis.
-      """)
-      .withSystemPrompt(reminderPromptText)
-      .withPrompt(prompt)
-      .loop
-
-    # show the reply, which will be tl;dred
-    print(result.lastReply)
-
-    null
-  }
-
-  """
-  Track TODOs. Call with items in pending/inProgress/completed to update. Call with no arguments to print the current list. Use for tasks with 3+ steps.
-  """
-  pub todoWrite(
-    pending: [String!]! = [],
-    inProgress: [String!]! = [],
-    completed: [String!]! = [],
-  ): Env! {
-    # Try to get current TODOs, default to empty string if not found
-    # Since we don't have try/catch, we'll assume it returns empty string on failure
-    let currentTodos = currentEnv.input("TODOs").asString
-
-    let existingCompleted = [] :: [String!]!
-    let existingInProgress = [] :: [String!]!
-    let existingPending = [] :: [String!]!
-
-    # Parse current TODOs from "state:description" format
-    let currentTodoLines = currentTodos.split("\n")
-
-    # Build list of all descriptions being updated
-    let updatingDescriptions = pending + inProgress + completed
-
-    currentTodoLines.each { todo =>
-      if (todo != "") {
-        # Split on first colon only (limit=2) to handle descriptions with colons
-        let parts = todo.split(":", limit: 2)
-        let state = parts[0] ?? "pending"
-        let description = parts[1] ?? todo
-
-        # Only keep existing TODOs that aren't being updated
-        if (!updatingDescriptions.contains(description)) {
-          if (state == "completed") {
-            existingCompleted += [description]
-          } else if (state == "in_progress") {
-            existingInProgress += [description]
-          } else {
-            existingPending = existingPending + [description]
-          }
-        }
-      }
-    }
-
-    let formattedTodos = ""
-    let encodedTodos = ""
-
-    (existingCompleted + completed).each { todo =>
-      encodedTodos += "completed:" + todo + "\n"
-      formattedTodos += "■ \x1b[32m\x1b[9m" + todo + "\x1b[0m\n"
-    }
-    (existingInProgress + inProgress).each { todo =>
-      encodedTodos += "in_progress:" + todo + "\n"
-      formattedTodos += "□ \x1b[33m" + todo + "\x1b[0m\n"
-    }
-    (existingPending + pending).each { todo =>
-      encodedTodos += "pending:" + todo + "\n"
-      formattedTodos += "□ \x1b[37m" + todo + "\x1b[0m\n"
-    }
-
-    print(formattedTodos)
-
-    # TODO: maybe this should just go into a file? do we need it at all?
-    currentEnv.withStringInput("TODOs", encodedTodos, "Your TODO list")
   }
 
   """
