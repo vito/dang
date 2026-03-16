@@ -1,6 +1,6 @@
 module github.com/vito/dang
 
-go 1.25.6
+go 1.25.3
 
 require (
 	charm.land/lipgloss/v2 v2.0.0
@@ -19,7 +19,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/tuist v0.0.6-0.20260312132600-9e5bee0d1980
+	github.com/vito/tuist v0.0.6-0.20260316153320-d7b0953fcda9
 	golang.org/x/sync v0.19.0
 	gotest.tools/v3 v3.5.2
 )
