@@ -1,0 +1,15 @@
+# Test String.reverse method
+
+pub reversed = "hello".reverse
+assert { reversed == "olleh" }
+
+pub empty = "".reverse
+assert { empty == "" }
+
+pub single = "a".reverse
+assert { single == "a" }
+
+pub palindrome = "racecar".reverse
+assert { palindrome == "racecar" }
+
+print("String.reverse tests passed!")
