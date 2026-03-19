@@ -296,6 +296,18 @@ func registerStdlib() {
 			return ToValue(centered)
 		})
 
+	// String.reverse method: reverse -> String!
+	Method(StringType, "reverse").
+		Doc("reverses the characters in the string").
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			runes := []rune(self.(StringValue).Val)
+			for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+				runes[i], runes[j] = runes[j], runes[i]
+			}
+			return ToValue(string(runes))
+		})
+
 	// List.contains method: contains(element: a) -> Boolean!
 	Method(ListTypeModule, "contains").
 		Doc("checks if the list contains the specified element").
