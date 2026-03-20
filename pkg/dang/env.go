@@ -454,8 +454,9 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			continue
 		}
 
-		// Get the implementing type module
-		implType, found := env.NamedType(t.Name)
+		// Get the implementing type module — only mutate locally owned types,
+		// not shared Prelude types.
+		implType, found := env.primary.NamedType(t.Name)
 		if !found {
 			continue
 		}
@@ -474,8 +475,11 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 				implMod.AddInterface(ifaceModule)
 				slog.Debug("linked interface implementation", "type", t.Name, "interface", iface.Name)
 			}
-			if ifaceMod, ok := ifaceModule.(*Module); ok {
-				ifaceMod.AddImplementer(implType)
+			// Only add implementer to locally owned interfaces
+			if _, local := env.primary.NamedType(iface.Name); local {
+				if ifaceMod, ok := ifaceModule.(*Module); ok {
+					ifaceMod.AddImplementer(implType)
+				}
 			}
 		}
 	}
@@ -486,7 +490,8 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			continue
 		}
 
-		unionType, found := env.NamedType(t.Name)
+		// Only mutate locally owned union types.
+		unionType, found := env.primary.NamedType(t.Name)
 		if !found {
 			continue
 		}

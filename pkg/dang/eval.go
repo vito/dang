@@ -293,14 +293,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	// Create a function type for this method call
 	args := NewRecordType("")
 	for _, arg := range field.Args {
-		argType, err := gqlToTypeNode(NewEnv("", g.Schema), arg.TypeRef) // TOOD: NewEnv here is sus
+		argType, err := gqlToTypeNode(g.TypeEnv, arg.TypeRef)
 		if err != nil {
 			continue
 		}
 		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	retType, err := gqlToTypeNode(NewEnv("", g.Schema), field.TypeRef) // TOOD: NewEnv here is sus
+	retType, err := gqlToTypeNode(g.TypeEnv, field.TypeRef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
