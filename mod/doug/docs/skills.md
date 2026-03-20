@@ -111,13 +111,11 @@ description: Structured code review with a checklist. Use when asked to review c
 ## Doug-Specific Considerations
 
 Skills in `.doug/skills/` can reference Doug-specific tools:
-- `ReadFile` — read file contents
-- `EditFile` — surgical edits
+- `Read` — read file contents
+- `Edit` — surgical edits
 - `Write` — create/overwrite files
-- `Glob` — find files by pattern
+- `Find` — find files by pattern
 - `Grep` — search file contents
-- `Research` — launch read-only sub-agent
-- `Rabbithole` — launch read-write sub-agent
 - `Commit` — commit staged changes
 
 Skills in `.agents/skills/` should use generic language to work across harnesses.
