@@ -1,0 +1,65 @@
+"""
+Helpers for working with Go modules.
+"""
+type Go {
+  """
+  Read a source file from a Go module in the module cache.
+
+  Downloads the module and reads the specified file from it. Useful for
+  inspecting API surfaces of dependencies.
+  """
+  pub readModuleFile(
+    """
+    Go module path (e.g. "github.com/alecthomas/chroma/v2").
+    """
+    module: String!,
+    """
+    Version of the module (e.g. "v2.23.1"). If omitted, uses "latest".
+    """
+    version: String! = "latest",
+    """
+    File path within the module (e.g. "lexers/go.go").
+    """
+    path: String!,
+  ): String! {
+    let ref = module + "@" + version
+    goContainer
+      .withExec(["sh", "-c",
+        "dir=$(go mod download -json " + ref + " | grep '\"Dir\"' | head -1 | sed 's/.*\"Dir\": \"//;s/\".*//') && cat \"$dir/" + path + "\"",
+      ])
+      .stdout
+  }
+
+  """
+  List files in a Go module directory.
+
+  Downloads the module and lists files at the given path.
+  """
+  pub listModuleFiles(
+    """
+    Go module path (e.g. "github.com/alecthomas/chroma/v2").
+    """
+    module: String!,
+    """
+    Version of the module (e.g. "v2.23.1"). If omitted, uses "latest".
+    """
+    version: String! = "latest",
+    """
+    Directory path within the module to list (e.g. "lexers"). Defaults to root.
+    """
+    path: String! = ".",
+  ): String! {
+    let ref = module + "@" + version
+    goContainer
+      .withExec(["sh", "-c",
+        "dir=$(go mod download -json " + ref + " | grep '\"Dir\"' | head -1 | sed 's/.*\"Dir\": \"//;s/\".*//') && find \"$dir/" + path + "\" -maxdepth 1 -type f -name '*.go' | sort",
+      ])
+      .stdout
+  }
+
+  let goContainer: Container! {
+    container
+      .from("golang:1.24-alpine")
+      .withMountedCache("/go/pkg/mod", cacheVolume("go-mod-cache"))
+  }
+}
