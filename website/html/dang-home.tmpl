@@ -1,0 +1,8 @@
+<div class="header">
+  <h1><a id="{{.PrimaryTag.Name}}"></a>{{.Title | render}}</h1>
+  {{.Body | render}}
+</div>
+
+{{range .Children}}
+  {{. | render}}
+{{end}}

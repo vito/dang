@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title.String}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d0f14;--bg2:#13161d;--bg3:#1a1e28;
+  --fg:#c9d1d9;--fg2:#8b949e;--fg3:#6e7681;
+  --accent:#7c6aef;--accent2:#a78bfa;
+  --green:#34d399;--cyan:#22d3ee;--pink:#f472b6;--orange:#ffa657;--yellow:#fbbf24;
+  --code-bg:#0d1117;--code-border:#30363d;
+}
+html{font-size:16px}
+body{background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,sans-serif;line-height:1.6;max-width:860px;margin:0 auto;padding:2rem 1.5rem 4rem}
+code,pre,.mono{font-family:'JetBrains Mono',monospace}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+p code{background:var(--bg3);padding:.15em .4em;border-radius:4px;font-size:.85em}
+
+h1{font-size:1.6rem;font-weight:600;margin-bottom:.25rem}
+h2{font-size:1.15rem;font-weight:600;margin:3rem 0 .75rem;padding-bottom:.4rem;border-bottom:1px solid var(--code-border)}
+h3{font-size:1rem;font-weight:600;margin:1.5rem 0 .5rem}
+p{color:var(--fg2);font-size:.92rem;margin-bottom:.75rem}
+li{color:var(--fg2);font-size:.92rem;margin-bottom:.25rem}
+ul{padding-left:1.25rem;margin-bottom:.75rem}
+
+pre{
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
+  padding:1rem 1.25rem;font-size:.8rem;line-height:1.65;overflow-x:auto;margin:.75rem 0;
+}
+
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
+th{text-align:left;padding:.5rem .6rem;color:var(--fg3);font-weight:500;border-bottom:1px solid var(--code-border)}
+td{padding:.4rem .6rem;border-bottom:1px solid rgba(48,54,61,.3)}
+
+.links p{margin:0}
+
+footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border);font-size:.8rem;color:var(--fg3)}
+</style>
+</head>
+<body>
+{{. | render}}
+<footer>
+  <a href="https://github.com/vito/dang">github.com/vito/dang</a> · MIT
+</footer>
+</body>
+</html>
