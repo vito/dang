@@ -6,6 +6,16 @@ A Dagger-native sandboxed coding agent.
 """
 type Doug {
   """
+  The sandbox container for Bash commands.
+  """
+  let sandbox: Container!
+
+  new(packages: [String!]! = ["bash", "git"]) {
+    self.sandbox = apko.wolfi(packages)
+    self
+  }
+
+  """
   A CLI friendly entrypoint for starting a coding agent developing in a workdir.
   """
   pub dev(
@@ -149,64 +159,63 @@ type Doug {
     changes
   }
 
-  """
-  Remove a file or directory.
-  """
-  pub rm(
-    source: Workspace!,
-    """
-    Relative path within the workspace
-    """
-    path: String!,
-    """
-    Force-remove the file - only used to resolve merge conflicts
-    """
-    force: Boolean! = false,
-  ): Changeset! {
-    let normalizedPath = normalize(path)
-    let base = source
-      .directory(".", include: [normalizedPath])
-    let changes = base.withoutFile(path).changes(base)
-    source.stage(changes, force: force)
-    changes
-  }
+  # """
+  # Remove a file or directory.
+  # """
+  # pub rm(
+  #   source: Workspace!,
+  #   """
+  #   Relative path within the workspace
+  #   """
+  #   path: String!,
+  #   """
+  #   Force-remove the file - only used to resolve merge conflicts
+  #   """
+  #   force: Boolean! = false,
+  # ): Changeset! {
+  #   let normalizedPath = normalize(path)
+  #   let base = source
+  #     .directory(".", include: [normalizedPath])
+  #   let changes = base.withoutFile(path).changes(base)
+  #   source.stage(changes, force: force)
+  #   changes
+  # }
 
-  """
-  Rename or move a file or directory. Parent directories are created automatically.
-  """
-  pub mv(
-    source: Workspace!,
-    """
-    Relative path within the workspace of the file or directory to move
-    """
-    oldPath: String!,
-    """
-    Destination path within the workspace
-    """
-    newPath: String!,
-    """
-    Force-move the file - only used to resolve merge conflicts
-    """
-    force: Boolean! = false,
-  ): Changeset {
-    let normalizedPath = normalize(oldPath)
-    let base = source
-      .directory(".", include: [normalizedPath])
-    let changes = if (base.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
-      base
-        .withFile(newPath, source.file(oldPath))
-        .withoutFile(oldPath)
-        .changes(base)
-    } else if (base.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
-      base
-        .withDirectory(newPath, source.directory(oldPath))
-        .withoutDirectory(oldPath)
-        .changes(base)
-    }
-    source.stage(changes)
-    changes
-  }
-
+  # """
+  # Rename or move a file or directory. Parent directories are created automatically.
+  # """
+  # pub mv(
+  #   source: Workspace!,
+  #   """
+  #   Relative path within the workspace of the file or directory to move
+  #   """
+  #   oldPath: String!,
+  #   """
+  #   Destination path within the workspace
+  #   """
+  #   newPath: String!,
+  #   """
+  #   Force-move the file - only used to resolve merge conflicts
+  #   """
+  #   force: Boolean! = false,
+  # ): Changeset {
+  #   let normalizedPath = normalize(oldPath)
+  #   let base = source
+  #     .directory(".", include: [normalizedPath])
+  #   let changes = if (base.exists(oldPath, expectedType: ExistsType.REGULAR_TYPE)) {
+  #     base
+  #       .withFile(newPath, source.file(oldPath))
+  #       .withoutFile(oldPath)
+  #       .changes(base)
+  #   } else if (base.exists(oldPath, expectedType: ExistsType.DIRECTORY_TYPE)) {
+  #     base
+  #       .withDirectory(newPath, source.directory(oldPath))
+  #       .withoutDirectory(oldPath)
+  #       .changes(base)
+  #   }
+  #   source.stage(changes)
+  #   changes
+  # }
   """
   Run checks (tests, lints, etc.), optionally filtering by glob patterns (e.g. `test:*`, `go:*`).
   """
@@ -272,82 +281,113 @@ type Doug {
     changes
   }
 
+  # """
+  # Find paths by glob pattern. Use '**' to match across directories.
+  # """
+  # pub find(
+  #   source: Workspace!,
+  #   """
+  #   Relative glob pattern to find within the workspace
+  #   """
+  #   pattern: String!,
+  # ): Void {
+  #   let matches = source.glob(pattern)
+  #   if (matches.length == 0) {
+  #     print("No files found.")
+  #   } else {
+  #     matches.each { path =>
+  #       print(path)
+  #     }
+  #   }
+  #   null
+  # }
+
+  # """
+  # Search file contents for a regex pattern. Respects .gitignore. Use literalText for exact matches. Use glob to filter by file type.
+  # """
+  # pub grep(
+  #   source: Workspace!,
+  #   """
+  #   Regular expression pattern to grep for
+  #   """
+  #   regex: String!,
+  #   """
+  #   Treat pattern as literal text instead of a regular expression
+  #   """
+  #   literalText: Boolean! = false,
+  #   """
+  #   Relative paths within the workspace to limit the search
+  #   """
+  #   paths: [String!]! = [],
+  #   """
+  #   Relative path globs within the workspace to limit the search
+  #   """
+  #   glob: [String!]! = [],
+  #   """
+  #   Allow the pattern to span multiple lines
+  #   """
+  #   multiline: Boolean! = false,
+  #   """
+  #   Show the matching content
+  #   """
+  #   content: Boolean! = true,
+  #   """
+  #   Case-insensitive search
+  #   """
+  #   insensitive: Boolean! = false,
+  #   """
+  #   Limit the number of matches
+  #   """
+  #   limit: Int! = 1000,
+  # ): String! {
+  #   let normalizedPaths = paths.map { p => normalize(p) }
+
+  #   let matches = source
+  #     .search(
+  #       pattern: regex,
+  #       literal: literalText,
+  #       paths: normalizedPaths,
+  #       globs: glob,
+  #       multiline: multiline,
+  #       dotall: multiline,
+  #       filesOnly: !content,
+  #       insensitive: insensitive,
+  #       limit: limit,
+  #       skipIgnored: true,
+  #     )
+
+  #   toJSON(matches.{id}.length) + " matches found"
+  # }
   """
-  Find paths by glob pattern. Use '**' to match across directories.
+  Run a bash command in a container.
+
+  NOTES:
+  - Use `apk` to install packages.
+  - Your initial working directory is always /work. Prepend `cd foo &&` to your command to change it.
   """
-  pub find(
-    source: Workspace!,
-    """
-    Relative glob pattern to find within the workspace
-    """
-    pattern: String!,
-  ): Void {
-    let matches = source.glob(pattern)
-    if (matches.length == 0) {
-      print("No files found.")
-    } else {
-      matches.each { path =>
-        print(path)
-      }
+  pub bash(ws: Workspace!, cmd: String!): Doug! {
+    # wire the workspace into the sandbox
+    let before = sandbox
+      .withDirectory("/work", ws.directory("/"))
+      .withWorkdir("/work")
+
+    # run the command - note: we still keep the result of a nonzero exit
+    let after = before.withExec(["bash", "-c", cmd], expect: ReturnType.ANY)
+    if (after.exitCode != 0) {
+      print("exit code: " + toString(after.exitCode))
     }
-    null
-  }
 
-  """
-  Search file contents for a regex pattern. Respects .gitignore. Use literalText for exact matches. Use glob to filter by file type.
-  """
-  pub grep(
-    source: Workspace!,
-    """
-    Regular expression pattern to grep for
-    """
-    regex: String!,
-    """
-    Treat pattern as literal text instead of a regular expression
-    """
-    literalText: Boolean! = false,
-    """
-    Relative paths within the workspace to limit the search
-    """
-    paths: [String!]! = [],
-    """
-    Relative path globs within the workspace to limit the search
-    """
-    glob: [String!]! = [],
-    """
-    Allow the pattern to span multiple lines
-    """
-    multiline: Boolean! = false,
-    """
-    Show the matching content
-    """
-    content: Boolean! = false,
-    """
-    Case-insensitive search
-    """
-    insensitive: Boolean! = false,
-    """
-    Limit the number of matches
-    """
-    limit: Int! = 1000,
-  ): String! {
-    let normalizedPaths = paths.map { p => normalize(p) }
+    # see if the command changed anything
+    let diff = after
+      .directory("/work")
+      .changes(before.directory("/work"))
+    if (!diff.isEmpty) {
+      ws.apply(diff)
+    }
 
-    let matches = source
-      .search(
-        pattern: regex,
-        literal: literalText,
-        paths: normalizedPaths,
-        globs: glob,
-        multiline: multiline,
-        dotall: multiline,
-        filesOnly: !content,
-        insensitive: insensitive,
-        limit: limit,
-        skipIgnored: true,
-      )
-
-    toJSON(matches.{id}.length) + " matches found"
+    # save the result for future calls
+    self.sandbox = after
+    self
   }
 
   """

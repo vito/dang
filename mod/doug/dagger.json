@@ -3,5 +3,11 @@
   "engineVersion": "v0.20.1",
   "sdk": {
     "source": "dang"
-  }
+  },
+  "dependencies": [
+    {
+      "name": "apko",
+      "source": "../apko"
+    }
+  ]
 }
