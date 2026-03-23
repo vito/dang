@@ -1005,6 +1005,7 @@ func (f *FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
 type InlineFragment struct {
 	TypeName *Symbol
 	Fields   []*FieldSelection
+	NonNull  bool // Whether the type assertion is non-null (... on Container!)
 	Loc      *SourceLocation
 
 	Inferred *Module // The concrete type module for this fragment
@@ -1164,32 +1165,56 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			}
 		}
 
-		// Create a narrowed module with only the selected fields.
-		// Link back to the canonical type for runtime matching.
-		narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
-		narrowedMember.Canonical = memberMod
+		if len(frag.Fields) == 0 {
+			// Lazy inline fragment: no field sub-selection, use the full concrete type.
+			// This allows chaining further calls on the result as a GraphQLValue.
+			narrowedUnion.AddMember(memberMod)
+			frag.Inferred = memberMod
+		} else {
+			// Create a narrowed module with only the selected fields.
+			// Link back to the canonical type for runtime matching.
+			narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
+			narrowedMember.Canonical = memberMod
 
-		// Validate each field in the fragment exists on the concrete type
-		// and add it to the narrowed module (including nested selections)
-		for _, field := range frag.Fields {
-			fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
-			if err != nil {
-				return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
+			// Validate each field in the fragment exists on the concrete type
+			// and add it to the narrowed module (including nested selections)
+			for _, field := range frag.Fields {
+				fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
+				if err != nil {
+					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
+				}
+				narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
 			}
-			narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
-		}
 
-		narrowedUnion.AddMember(narrowedMember)
-		frag.Inferred = narrowedMember
+			narrowedUnion.AddMember(narrowedMember)
+			frag.Inferred = narrowedMember
+		}
 	}
 
 	o.IsList = isList
 	o.ElementIsNonNull = elementIsNonNull
 
-	// The result type is the narrowed union, preserving list/non-null wrapping
-	var resultType hm.Type = narrowedUnion
+	// For a single lazy fragment (no fields), the result type is the concrete type directly,
+	// not wrapped in a union. This enables chaining as a GraphQLValue.
+	// Nullability is driven by the fragment's NonNull flag (... on Container!).
+	if len(o.InlineFragments) == 1 && len(o.InlineFragments[0].Fields) == 0 {
+		frag := o.InlineFragments[0]
+		var resultType hm.Type = frag.Inferred
+		if frag.NonNull {
+			resultType = hm.NonNullType{Type: resultType}
+		}
+		o.IsList = isList
+		o.ElementIsNonNull = elementIsNonNull
+		o.SetInferredType(resultType)
+		return resultType, nil
+	}
+
+	var baseType hm.Type = narrowedUnion
+
+	// The result type preserves list/non-null wrapping from the receiver
+	var resultType hm.Type = baseType
 	if isList {
-		var elemType hm.Type = narrowedUnion
+		var elemType hm.Type = baseType
 		if elementIsNonNull {
 			elemType = hm.NonNullType{Type: elemType}
 		}
@@ -1406,6 +1431,10 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 
 	for _, frag := range o.InlineFragments {
 		if frag.TypeName.Name == mod.Name() {
+			if len(frag.Fields) == 0 {
+				// Lazy inline fragment: return the value as-is (type assertion only)
+				return val, nil
+			}
 			// Build a result with the selected fields, preserving the concrete type
 			resultModuleValue := NewModuleValue(frag.Inferred)
 			for _, field := range frag.Fields {
@@ -1419,12 +1448,36 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 		}
 	}
 
-	return nil, fmt.Errorf("no inline fragment matched type %s", mod.Name())
+	// No fragment matched - check if any fragment requires non-null
+	for _, frag := range o.InlineFragments {
+		if frag.NonNull {
+			return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got %s",
+				o.inlineFragmentTypeNames(), mod.Name())
+		}
+	}
+
+	return NullValue{}, nil
+}
+
+// isLazyInlineFragments returns true when all inline fragments have no field
+// sub-selections, meaning the result should be a lazy GraphQLValue rather than
+// an eagerly-fetched ModuleValue.
+func (o *ObjectSelection) isLazyInlineFragments() bool {
+	for _, frag := range o.InlineFragments {
+		if len(frag.Fields) > 0 {
+			return false
+		}
+	}
+	return len(o.InlineFragments) > 0
 }
 
 // evalGraphQLInlineFragments builds a GraphQL query with __typename and inline fragments,
 // executes it, and returns properly-typed results.
 func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+	if o.isLazyInlineFragments() {
+		return o.evalGraphQLLazyInlineFragments(gqlVal, ctx, env)
+	}
+
 	// Build the query with __typename and inline fragments
 	query := gqlVal.QueryChain
 	if query == nil {
@@ -1459,6 +1512,68 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 
 	// Convert results to properly-typed ModuleValues
 	return o.convertInlineFragmentResult(result, gqlVal.Schema, gqlVal.TypeEnv)
+}
+
+// evalGraphQLLazyInlineFragments handles inline fragments with no field sub-selections.
+// It queries only __typename to determine the concrete type, then returns a GraphQLValue
+// that can be chained further. If the runtime type doesn't match any fragment, returns
+// null (for nullable receivers) or an error (for non-null receivers).
+func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+	query := gqlVal.QueryChain
+	if query == nil {
+		return nil, fmt.Errorf("GraphQL lazy inline fragments: no query chain")
+	}
+
+	// Query __typename to discover the concrete type
+	var typeName string
+	err := query.Select("__typename").Client(gqlVal.Client).Bind(&typeName).Execute(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GraphQL lazy inline fragments: querying __typename: %w", err)
+	}
+
+	// Find matching fragment
+	for _, frag := range o.InlineFragments {
+		if frag.TypeName.Name == typeName {
+			// Look up the concrete type in the schema
+			concreteSchemaType := gqlVal.Schema.Types.Get(typeName)
+			if concreteSchemaType == nil {
+				return nil, fmt.Errorf("type %s not found in GraphQL schema", typeName)
+			}
+
+			// Return a GraphQLValue for the concrete type, preserving the query chain
+			// so it can be chained further
+			return GraphQLValue{
+				Name:       gqlVal.Name,
+				TypeName:   typeName,
+				Field:      gqlVal.Field,
+				ValType:    frag.Inferred,
+				Client:     gqlVal.Client,
+				Schema:     gqlVal.Schema,
+				TypeEnv:    gqlVal.TypeEnv,
+				QueryChain: query,
+				IsMutation: gqlVal.IsMutation,
+			}, nil
+		}
+	}
+
+	// No fragment matched - check if any fragment requires non-null
+	for _, frag := range o.InlineFragments {
+		if frag.NonNull {
+			return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got %s",
+				o.inlineFragmentTypeNames(), typeName)
+		}
+	}
+
+	return NullValue{}, nil
+}
+
+// inlineFragmentTypeNames returns a comma-separated list of type names from inline fragments.
+func (o *ObjectSelection) inlineFragmentTypeNames() string {
+	names := make([]string, len(o.InlineFragments))
+	for i, frag := range o.InlineFragments {
+		names[i] = frag.TypeName.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // convertInlineFragmentResult converts a GraphQL response with __typename into typed ModuleValues.

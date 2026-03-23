@@ -217,6 +217,13 @@ InlineFragment <- SpreadToken _ OnToken _ typeName:Symbol _ '{' _ fields:(f:Fiel
     Fields:   sliceOfAppend[*FieldSelection](fields, last),
     Loc:      c.Loc(),
   }, nil
+} / SpreadToken _ OnToken _ typeName:Symbol nonNull:'!'? {
+  return &InlineFragment{
+    TypeName: typeName.(*Symbol),
+    Fields:   nil,
+    NonNull:  nonNull != nil,
+    Loc:      c.Loc(),
+  }, nil
 }
 
 SpreadToken <- "..."

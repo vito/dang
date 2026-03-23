@@ -1,0 +1,11 @@
+[1m[31mError:[0m inline fragment type assertion failed: expected one of Dog, got Cat
+  [2m[34m--> errors/lazy_inline_fragment_nonnull_mismatch.dang:16:16[0m
+ [2m    |[0m
+ [2m 14 | [0m
+ [2m 15 | # This should error at runtime - cat is a Cat, not a Dog[0m
+ [2m[34m[1m 16 | [0mpub oops = cat.{... on Dog!}
+[2m                      [31m^^^^^^^^^^^^^[0m
+ [2m 17 | print(oops)[0m
+ [2m 18 | [0m
+ [2m    |[0m
+

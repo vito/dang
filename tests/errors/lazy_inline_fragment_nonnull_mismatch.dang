@@ -1,0 +1,17 @@
+# Error: non-null lazy inline fragment that doesn't match
+
+type Cat {
+  pub name: String!
+}
+
+type Dog {
+  pub name: String!
+}
+
+union Pet = Cat | Dog
+
+pub cat: Pet! = Cat(name: "Whiskers")
+
+# This should error at runtime - cat is a Cat, not a Dog
+pub oops = cat.{... on Dog!}
+print(oops)

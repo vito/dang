@@ -1,0 +1,41 @@
+# Test lazy inline fragments (no field sub-selection)
+
+type Cat {
+  pub name: String!
+  pub lives: Int! = 9
+}
+
+type Dog {
+  pub name: String!
+  pub tricks: Int! = 3
+}
+
+union Pet = Cat | Dog
+
+pub cat: Pet! = Cat(name: "Whiskers")
+pub dog: Pet! = Dog(name: "Rex", tricks: 5)
+
+# Single lazy inline fragment - type assertion
+pub narrowed_cat = cat.{... on Cat}
+assert { narrowed_cat.name == "Whiskers" }
+assert { narrowed_cat.lives == 9 }
+
+# Type assertion that doesn't match - should return null
+pub not_a_dog = cat.{... on Dog}
+assert { not_a_dog == null }
+
+# Multiple lazy inline fragments on a list
+pub pets: [Pet!]! = [cat, dog]
+pub narrowed_pets = pets.{
+  ... on Cat,
+  ... on Dog
+}
+
+pub first = narrowed_pets[0]
+pub desc = case (first) {
+  c: Cat => c.name + " has " + toString(c.lives) + " lives"
+  d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
+}
+assert { desc == "Whiskers has 9 lives" }
+
+print("Lazy inline fragment tests passed!")

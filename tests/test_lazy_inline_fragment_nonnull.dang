@@ -1,0 +1,22 @@
+# Test non-null lazy inline fragment
+
+type Cat {
+  pub name: String!
+  pub lives: Int! = 9
+}
+
+type Dog {
+  pub name: String!
+  pub tricks: Int! = 3
+}
+
+union Pet = Cat | Dog
+
+pub cat: Pet! = Cat(name: "Whiskers")
+
+# Non-null type assertion that matches
+pub narrowed: Cat! = cat.{... on Cat!}
+assert { narrowed.name == "Whiskers" }
+assert { narrowed.lives == 9 }
+
+print("Non-null lazy inline fragment tests passed!")

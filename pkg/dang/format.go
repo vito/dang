@@ -2548,15 +2548,20 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 	f.write("... on ")
 	f.write(frag.TypeName.Name)
-	f.write(" {")
-	for i, field := range frag.Fields {
-		if i > 0 {
-			f.write(",")
-		}
-		f.write(" ")
-		f.formatFieldSelection(field)
+	if frag.NonNull {
+		f.write("!")
 	}
-	f.write(" }")
+	if len(frag.Fields) > 0 {
+		f.write(" {")
+		for i, field := range frag.Fields {
+			if i > 0 {
+				f.write(",")
+			}
+			f.write(" ")
+			f.formatFieldSelection(field)
+		}
+		f.write(" }")
+	}
 }
 
 func (f *Formatter) formatFieldSelection(field *FieldSelection) {
