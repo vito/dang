@@ -1524,6 +1524,11 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 		return nil, fmt.Errorf("GraphQL lazy inline fragments: no query chain")
 	}
 
+	// Handle list types: query __typename for each element, return a list of GraphQLValues
+	if o.IsList {
+		return o.evalGraphQLLazyInlineFragmentsList(gqlVal, ctx, env)
+	}
+
 	// Query __typename to discover the concrete type
 	var typeName string
 	err := query.Select("__typename").Client(gqlVal.Client).Bind(&typeName).Execute(ctx)
@@ -1531,7 +1536,50 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 		return nil, fmt.Errorf("GraphQL lazy inline fragments: querying __typename: %w", err)
 	}
 
-	// Find matching fragment
+	return o.matchLazyInlineFragment(gqlVal, typeName, query)
+}
+
+// evalGraphQLLazyInlineFragmentsList handles lazy inline fragments on a list-typed GraphQL value.
+// It queries __typename for all elements, then returns a list of GraphQLValues.
+func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+	query := gqlVal.QueryChain
+
+	// Query __typename for all elements in the list
+	var result any
+	err := query.Select("__typename").Client(gqlVal.Client).Bind(&result).Execute(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("GraphQL lazy inline fragments list: querying __typename: %w", err)
+	}
+
+	resultSlice, ok := result.([]any)
+	if !ok {
+		return nil, fmt.Errorf("GraphQL lazy inline fragments list: expected array, got %T", result)
+	}
+
+	var elements []Value
+	for _, item := range resultSlice {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("GraphQL lazy inline fragments list: expected object in array, got %T", item)
+		}
+		typeName, ok := itemMap["__typename"].(string)
+		if !ok {
+			return nil, fmt.Errorf("GraphQL lazy inline fragments list: missing __typename in element")
+		}
+
+		val, err := o.matchLazyInlineFragment(gqlVal, typeName, query)
+		if err != nil {
+			return nil, err
+		}
+		elements = append(elements, val)
+	}
+
+	return ListValue{Elements: elements, ElemType: o.GetInferredType()}, nil
+}
+
+// matchLazyInlineFragment finds the matching fragment for a given __typename and returns
+// a GraphQLValue for the concrete type, or null/error if no match.
+func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName string, query *querybuilder.Selection) (Value, error) {
 	for _, frag := range o.InlineFragments {
 		if frag.TypeName.Name == typeName {
 			// Look up the concrete type in the schema
@@ -1540,8 +1588,9 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 				return nil, fmt.Errorf("type %s not found in GraphQL schema", typeName)
 			}
 
-			// Return a GraphQLValue for the concrete type, preserving the query chain
-			// so it can be chained further
+			// Return a GraphQLValue for the concrete type, with an inline fragment
+			// added to the query chain so subsequent field selections are scoped
+			// to the concrete type (e.g. node(id:...){... on Container{field}}).
 			return GraphQLValue{
 				Name:       gqlVal.Name,
 				TypeName:   typeName,
@@ -1550,7 +1599,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 				Client:     gqlVal.Client,
 				Schema:     gqlVal.Schema,
 				TypeEnv:    gqlVal.TypeEnv,
-				QueryChain: query,
+				QueryChain: query.InlineFragment(typeName),
 				IsMutation: gqlVal.IsMutation,
 			}, nil
 		}

@@ -24,6 +24,11 @@ type QueryBuilder struct {
 	fields        []string
 	subSelections map[string]*QueryBuilder
 
+	// inlineFragment is the type name for an inline fragment (... on TypeName).
+	// When set, this step emits "... on TypeName" instead of a field name.
+	// It does not add a nesting level in the response — unpack skips it.
+	inlineFragment string
+
 	prev *QueryBuilder
 
 	client     graphql.Client
@@ -76,6 +81,18 @@ func (q *QueryBuilder) SelectWithAlias(alias, name string) *QueryBuilder {
 
 func (q *QueryBuilder) Select(name string) *QueryBuilder {
 	return q.SelectWithAlias("", name)
+}
+
+// InlineFragment adds an inline fragment type condition (... on TypeName).
+// Subsequent selections will be nested inside the fragment. The response
+// data is flat — the fragment doesn't add a nesting level during unpack.
+func (q *QueryBuilder) InlineFragment(typeName string) *QueryBuilder {
+	return &QueryBuilder{
+		inlineFragment: typeName,
+		prev:           q,
+		client:         q.client,
+		isMutation:     q.isMutation,
+	}
 }
 
 func (q *QueryBuilder) SelectMultiple(name ...string) *QueryBuilder {
@@ -200,6 +217,9 @@ func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
 				}
 				needSpace = true
 			}
+		} else if sel.inlineFragment != "" {
+			b.WriteString("... on ")
+			b.WriteString(sel.inlineFragment)
 		} else {
 			// Handle regular single field selection
 			if sel.alias != "" {
@@ -232,6 +252,20 @@ func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
 
 func (q *QueryBuilder) unpack(data any) error {
 	for _, i := range q.path() {
+		// Inline fragments don't add a nesting level in the response.
+		if i.inlineFragment != "" {
+			if i.bind != nil {
+				marshalled, err := json.Marshal(data)
+				if err != nil {
+					return err
+				}
+				if err := json.Unmarshal(marshalled, i.bind); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
 		k := i.name
 		if i.alias != "" {
 			k = i.alias
