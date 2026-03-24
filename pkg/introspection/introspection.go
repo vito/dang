@@ -228,6 +228,14 @@ func (r TypeRef) IsObject() bool {
 	return false
 }
 
+func (r TypeRef) IsInterface() bool {
+	ref := r
+	if r.Kind == TypeKindNonNull {
+		ref = *ref.OfType
+	}
+	return ref.Kind == TypeKindInterface
+}
+
 func (r TypeRef) IsList() bool {
 	ref := r
 	if r.Kind == TypeKindNonNull {
@@ -344,6 +352,14 @@ func (t *Directives) SourceMap() *SourceMap {
 		Line:     fromJSON[int](*d.Arg("line").Value),
 		Column:   fromJSON[int](*d.Arg("column").Value),
 	}
+}
+
+func (t Directives) ExpectedType() string {
+	d := t.Directive("expectedType")
+	if d == nil {
+		return ""
+	}
+	return fromJSON[string](*d.Arg("name").Value)
 }
 
 func (t *Directives) EnumValue() string {

@@ -293,14 +293,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	// Create a function type for this method call
 	args := NewRecordType("")
 	for _, arg := range field.Args {
-		argType, err := gqlToTypeNode(g.TypeEnv, arg.TypeRef)
+		argType, err := gqlToTypeNode(g.TypeEnv, arg.TypeRef, arg.Directives)
 		if err != nil {
 			continue
 		}
 		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	retType, err := gqlToTypeNode(g.TypeEnv, field.TypeRef)
+	retType, err := gqlToTypeNode(g.TypeEnv, field.TypeRef, field.Directives)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
@@ -497,7 +497,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 			args := NewRecordType("")
 			for _, f := range t.InputFields {
-				argType, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				argType, err := gqlToTypeNode(typeEnv, f.TypeRef, f.Directives)
 				if err != nil {
 					continue
 				}
@@ -514,7 +514,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 		}
 
 		for _, f := range t.Fields {
-			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
+			ret, err := gqlToTypeNode(typeEnv, f.TypeRef, f.Directives)
 			if err != nil {
 				continue
 			}
@@ -522,7 +522,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			// This is a function - create a GraphQLFunction value
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+				argType, err := gqlToTypeNode(typeEnv, arg.TypeRef, arg.Directives)
 				if err != nil {
 					continue
 				}
@@ -555,13 +555,13 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			}
 			mutModule := NewModuleValue(mutTypeEnv)
 			for _, f := range t.Fields {
-				ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				ret, err := gqlToTypeNode(typeEnv, f.TypeRef, f.Directives)
 				if err != nil {
 					continue
 				}
 				args := NewRecordType("")
 				for _, arg := range f.Args {
-					argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+					argType, err := gqlToTypeNode(typeEnv, arg.TypeRef, arg.Directives)
 					if err != nil {
 						continue
 					}
@@ -858,7 +858,7 @@ func (m gqlObjectMarshaller) XXX_GraphQLType() string {
 }
 
 func (m gqlObjectMarshaller) XXX_GraphQLIDType() string {
-	return m.val.TypeName + "ID"
+	return "ID"
 }
 
 // XXX_GraphqlID is an internal function. It returns the underlying type ID

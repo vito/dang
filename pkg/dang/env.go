@@ -143,26 +143,52 @@ func NewModule(name string, kind ModuleKind) *Module {
 	return env
 }
 
-func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
+func gqlToTypeNode(mod Env, ref *introspection.TypeRef, directives ...introspection.Directives) (hm.Type, error) {
+	// Extract @expectedType from directives if provided
+	var expectedType string
+	if len(directives) > 0 && directives[0] != nil {
+		expectedType = directives[0].ExpectedType()
+	}
+
 	switch ref.Kind {
 	case introspection.TypeKindList:
-		inner, err := gqlToTypeNode(mod, ref.OfType)
+		inner, err := gqlToTypeNode(mod, ref.OfType, directives...)
 		if err != nil {
 			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
 		}
 		// Lists of objects use GraphQLListType (not directly iterable)
 		// Lists of scalars use regular ListType (iterable)
-		if ref.OfType.IsObject() {
+		if ref.OfType.IsObject() || ref.OfType.IsInterface() {
 			return GraphQLListType{inner}, nil
+		}
+		// If the inner type is ID with @expectedType, it's a list of objects
+		if expectedType != "" && ref.OfType.Kind == introspection.TypeKindScalar && ref.OfType.Name == "ID" {
+			return GraphQLListType{inner}, nil
+		}
+		if ref.OfType.Kind == introspection.TypeKindNonNull && ref.OfType.OfType != nil {
+			if ref.OfType.OfType.IsObject() || ref.OfType.OfType.IsInterface() {
+				return GraphQLListType{inner}, nil
+			}
+			if expectedType != "" && ref.OfType.OfType.Kind == introspection.TypeKindScalar && ref.OfType.OfType.Name == "ID" {
+				return GraphQLListType{inner}, nil
+			}
 		}
 		return ListType{inner}, nil
 	case introspection.TypeKindNonNull:
-		inner, err := gqlToTypeNode(mod, ref.OfType)
+		inner, err := gqlToTypeNode(mod, ref.OfType, directives...)
 		if err != nil {
 			return nil, fmt.Errorf("gqlToTypeNode NonNull: %w", err)
 		}
 		return hm.NonNullType{Type: inner}, nil
 	case introspection.TypeKindScalar:
+		// Unified ID: resolve to the expected type if @expectedType is present
+		if ref.Name == "ID" && expectedType != "" {
+			return gqlToTypeNode(mod, &introspection.TypeRef{
+				Name: expectedType,
+				Kind: introspection.TypeKindObject,
+			})
+		}
+		// Legacy: FooID scalar → Foo object
 		if strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID" {
 			return gqlToTypeNode(mod, &introspection.TypeRef{
 				Name: strings.TrimSuffix(ref.Name, "ID"),
