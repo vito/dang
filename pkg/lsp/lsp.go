@@ -283,7 +283,7 @@ type Command struct {
 // WorkspaceEdit is
 type WorkspaceEdit struct {
 	Changes         any `json:"changes"`         // { [uri: DocumentUri]: TextEdit[]; };
-	DocumentChanges any `json:"documentChanges"` // (TextDocumentEdit[] | (TextDocumentEdit | CreateFile | RenameFile | DeleteFile)[]);
+	DocumentChanges any `json:"documentChanges,omitempty"` // (TextDocumentEdit[] | (TextDocumentEdit | CreateFile | RenameFile | DeleteFile)[]);
 }
 
 // CodeAction is
