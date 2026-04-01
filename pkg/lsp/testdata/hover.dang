@@ -1,3 +1,5 @@
+import Test
+
 # directive hover
 
 """
@@ -8,28 +10,28 @@ directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITIO
 directive @experimental on FIELD_DEFINITION
 
 type Directives {
-  @deprecated(reason: "use new instead")
-  pub old: String! { # test: ^kwK => hover: Marks a field as deprecated.
-    "old"
-  }
+	@deprecated(reason: "use new instead")
+	pub old: String! { # test: ^kwK => hover: Marks a field as deprecated.
+		"old"
+	}
 
-  @experimental
-  pub beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
-    "beta"
-  }
+	@experimental
+	pub beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
+		"beta"
+	}
 }
 
 # local variable hover
-let hello = 42
+let greeting = 42
 
-hello # test: K => hover: Int!
+greeting # test: K => hover: Int!
 
 # function hover
 """
 Adds two numbers.
 """
 pub addNums(x: Int!, y: Int!): Int! {
-  x + y
+	x + y
 }
 
 addNums # test: K => hover: (x: Int!, y: Int!): Int!
@@ -40,43 +42,43 @@ Multiplies two numbers together.
 Returns the product of x and y.
 """
 pub multiply(x: Int!, y: Int!): Int! {
-  x * y
+	x * y
 }
 
 multiply # test: K => hover: Multiplies two numbers together
 
-# builtin hover
-Dagger.container # test: ^wwK => hover: Container!
+# qualified type hover
+Test.serverInfo # test: ^wwK => hover: ServerInfo!
 
 # field access hover
-Dagger.container.from # test: ^wwwwK => hover: Download a container image
+Test.serverInfo.version # test: ^wwwwK => hover: String!
 
 type MyModule {
-  pub ctr(address: String!): Container! { # test: ^wK => hover: pub ctr(address: String!): Container!
-    container.from(address)
-  }
+	pub info: ServerInfo! {
+		serverInfo
+	}
 
-  pub build: File! {
-    generated.file("built") # test: ^K => hover: Base with ./hack/generate ran.
-  }
+	pub build: String! {
+		generated.ver # test: ^K => hover: Generated server info.
+	}
 
-  """
-  Base with ./hack/generate ran.
-  """
-  let generated: Container! {
-    container.withExec(["./hack/generate"])
-  }
+	"""
+	Generated server info.
+	"""
+	let generated: ServerInfo! {
+		serverInfo
+	}
 
-  pub buildQualified: Dagger.File! {
-    generatedQualified.file("built") # test: ^K => hover: Base with ./hack/generate ran.
-  }
+	pub buildQualified: Test.ServerInfo! {
+		generatedQualified.ver # test: ^K => hover: Generated server info.
+	}
 
-  """
-  Base with ./hack/generate ran.
-  """
-  let generatedQualified: Dagger.Container! {
-    Dagger.container.withExec(["./hack/generate"])
-  }
+	"""
+	Generated server info.
+	"""
+	let generatedQualified: Test.ServerInfo! {
+		Test.serverInfo
+	}
 }
 
 # enum hover
@@ -87,11 +89,11 @@ Color # test: K => hover: //   RED
 
 # union hover
 type Cat {
-  pub name: String! { "cat" }
+	pub name: String! { "cat" }
 }
 
 type Dog {
-  pub name: String! { "dog" }
+	pub name: String! { "dog" }
 }
 
 union Pet = Cat | Dog
@@ -101,12 +103,12 @@ Pet # test: K => hover: //   Cat
 
 # object with lexical scope
 let obj = {
-  """
-  Helper value for the object.
-  """
-  let helper = 42
+	"""
+	Helper value for the object.
+	"""
+	let helper = 42
 
-  pub value: Int! {
-    helper # test: ^K => hover: Helper value for the object.
-  }
+	pub value: Int! {
+		helper # test: ^K => hover: Helper value for the object.
+	}
 }

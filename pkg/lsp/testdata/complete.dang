@@ -1,4 +1,4 @@
-import Dagger
+import Test
 
 # local bindings
 let hello = 42
@@ -6,39 +6,39 @@ let hello = 42
 hel # test: ^ea<C-x><C-o> => hello┃
 
 # global functions (from Query type)
-dir # test: ^Ea<C-x><C-o> => directory┃
-cont # test: ^Ea<C-x><C-o> => container┃
+ser # test: ^Ea<C-x><C-o> => serverInfo┃
+hom # test: ^Ea<C-x><C-o> => homepage┃
 # qualified functions
-Dagger.dir # test: ^Ea<C-x><C-o> => Dagger.directory┃
-Dagger.cont # test: ^Ea<C-x><C-o> => Dagger.container┃
+Test.ser # test: ^Ea<C-x><C-o> => Test.serverInfo┃
+Test.hom # test: ^Ea<C-x><C-o> => Test.homepage┃
 
 # lexical bindings (function parameters)
 pub foo(jxkqv: Int!): [Int!] {
-  [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
+	[] # test: ^ajx<C-x><C-o> => [jxkqv┃]
 }
 
 # lexical bindings (let within block)
-pub bar: Container! {
-  let ctr = container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
-  let d = container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
-  ct # test: ^ea<C-x><C-o> => ctr┃
+pub bar: ServerInfo! {
+	let ctr = serverInfo.ver # test: ^EEEEa<C-x><C-o> => serverInfo.version┃
+	let d = serverInfo.pl # test: ^EEEEa<C-x><C-o> => serverInfo.platform┃
+	ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
-pub barQualified: Dagger.Container! {
-  let ctr = Dagger.container.fr # test: ^EEEEa<C-x><C-o> => container.from┃
-  let d = Dagger.container.withDir # test: ^EEEEa<C-x><C-o> => container.withDirectory┃
-  ct # test: ^ea<C-x><C-o> => ctr┃
+pub barQualified: Test.ServerInfo! {
+	let ctr = Test.serverInfo.ver # test: ^EEEEa<C-x><C-o> => serverInfo.version┃
+	let d = Test.serverInfo.pl # test: ^EEEEa<C-x><C-o> => serverInfo.platform┃
+	ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 # local variable member completion (receiver not in top-level env)
-pub baz: Container! {
-  let ctr = container
-  ctr.fr # test: ^Ea<C-x><C-o> => ctr.from┃
+pub baz: ServerInfo! {
+	let si = serverInfo
+	si.ver # test: ^Ea<C-x><C-o> => si.version┃
 }
 
 # argument completion
-container.from() # nofmt test: ^f(a<C-x><C-o> => container.from(address┃)
-container.withExec() # nofmt test: ^f(a<C-x><C-o> => container.withExec(args┃)
+fetchURL() # nofmt test: ^f(a<C-x><C-o> => fetchURL(url┃)
+user() # nofmt test: ^f(a<C-x><C-o> => user(id┃)
 
 # builtin type methods
 "hello".sp # test: ^Ea<C-x><C-o> => "hello".split┃
@@ -46,5 +46,5 @@ container.withExec() # nofmt test: ^f(a<C-x><C-o> => container.withExec(args┃)
 [1, 2, 3].filt # test: ^EEEa<C-x><C-o> => [1, 2, 3].filter┃
 [1, 2, 3].red # test: ^EEEa<C-x><C-o> => [1, 2, 3].reduce┃
 
-let url = "https://github.com/vito/dang"
-Dagger.git(url) # test: ^Ea.he<C-x><C-o>{delay:200ms}.tr<C-x><C-o> => git(url).head.tree┃
+# chained completion
+Test.serverInfo # test: ^Ea.ver<C-x><C-o>{delay:200ms}.sp<C-x><C-o> => serverInfo.version.split┃
