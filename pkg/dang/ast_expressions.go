@@ -1212,9 +1212,9 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	var baseType hm.Type = narrowedUnion
 
 	// The result type preserves list/non-null wrapping from the receiver
-	var resultType hm.Type = baseType
+	resultType := baseType
 	if isList {
-		var elemType hm.Type = baseType
+		elemType := baseType
 		if elementIsNonNull {
 			elemType = hm.NonNullType{Type: elemType}
 		}
