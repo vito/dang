@@ -10,15 +10,15 @@ directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITIO
 directive @experimental on FIELD_DEFINITION
 
 type Directives {
-	@deprecated(reason: "use new instead")
-	pub old: String! { # test: ^kwK => hover: Marks a field as deprecated.
-		"old"
-	}
+  @deprecated(reason: "use new instead")
+  pub old: String! { # test: ^kwK => hover: Marks a field as deprecated.
+    "old"
+  }
 
-	@experimental
-	pub beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
-		"beta"
-	}
+  @experimental
+  pub beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
+    "beta"
+  }
 }
 
 # local variable hover
@@ -31,7 +31,7 @@ greeting # test: K => hover: Int!
 Adds two numbers.
 """
 pub addNums(x: Int!, y: Int!): Int! {
-	x + y
+  x + y
 }
 
 addNums # test: K => hover: (x: Int!, y: Int!): Int!
@@ -42,7 +42,7 @@ Multiplies two numbers together.
 Returns the product of x and y.
 """
 pub multiply(x: Int!, y: Int!): Int! {
-	x * y
+  x * y
 }
 
 multiply # test: K => hover: Multiplies two numbers together
@@ -54,31 +54,31 @@ Test.serverInfo # test: ^wwK => hover: ServerInfo!
 Test.serverInfo.version # test: ^wwwwK => hover: String!
 
 type MyModule {
-	pub info: ServerInfo! {
-		serverInfo
-	}
+  pub info: ServerInfo! {
+    serverInfo
+  }
 
-	pub build: String! {
-		generated.ver # test: ^K => hover: Generated server info.
-	}
+  pub build: String! {
+    generated.ver # test: ^K => hover: Generated server info.
+  }
 
-	"""
-	Generated server info.
-	"""
-	let generated: ServerInfo! {
-		serverInfo
-	}
+  """
+  Generated server info.
+  """
+  let generated: ServerInfo! {
+    serverInfo
+  }
 
-	pub buildQualified: Test.ServerInfo! {
-		generatedQualified.ver # test: ^K => hover: Generated server info.
-	}
+  pub buildQualified: Test.ServerInfo! {
+    generatedQualified.ver # test: ^K => hover: Generated server info.
+  }
 
-	"""
-	Generated server info.
-	"""
-	let generatedQualified: Test.ServerInfo! {
-		Test.serverInfo
-	}
+  """
+  Generated server info.
+  """
+  let generatedQualified: Test.ServerInfo! {
+    Test.serverInfo
+  }
 }
 
 # enum hover
@@ -89,11 +89,11 @@ Color # test: K => hover: //   RED
 
 # union hover
 type Cat {
-	pub name: String! { "cat" }
+  pub name: String! { "cat" }
 }
 
 type Dog {
-	pub name: String! { "dog" }
+  pub name: String! { "dog" }
 }
 
 union Pet = Cat | Dog
@@ -103,12 +103,12 @@ Pet # test: K => hover: //   Cat
 
 # object with lexical scope
 let obj = {
-	"""
-	Helper value for the object.
-	"""
-	let helper = 42
+  """
+  Helper value for the object.
+  """
+  let helper = 42
 
-	pub value: Int! {
-		helper # test: ^K => hover: Helper value for the object.
-	}
+  pub value: Int! {
+    helper # test: ^K => hover: Helper value for the object.
+  }
 }

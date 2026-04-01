@@ -14,26 +14,26 @@ Test.hom # test: ^Ea<C-x><C-o> => Test.homepage┃
 
 # lexical bindings (function parameters)
 pub foo(jxkqv: Int!): [Int!] {
-	[] # test: ^ajx<C-x><C-o> => [jxkqv┃]
+  [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
 }
 
 # lexical bindings (let within block)
 pub bar: ServerInfo! {
-	let ctr = serverInfo.ver # test: ^EEEEa<C-x><C-o> => serverInfo.version┃
-	let d = serverInfo.pl # test: ^EEEEa<C-x><C-o> => serverInfo.platform┃
-	ct # test: ^ea<C-x><C-o> => ctr┃
+  let ctr = serverInfo.ver # test: ^EEEEa<C-x><C-o> => serverInfo.version┃
+  let d = serverInfo.pl # test: ^EEEEa<C-x><C-o> => serverInfo.platform┃
+  ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 pub barQualified: Test.ServerInfo! {
-	let ctr = Test.serverInfo.ver # test: ^EEEEa<C-x><C-o> => serverInfo.version┃
-	let d = Test.serverInfo.pl # test: ^EEEEa<C-x><C-o> => serverInfo.platform┃
-	ct # test: ^ea<C-x><C-o> => ctr┃
+  let ctr = Test.serverInfo.ver # test: ^EEEEa<C-x><C-o> => serverInfo.version┃
+  let d = Test.serverInfo.pl # test: ^EEEEa<C-x><C-o> => serverInfo.platform┃
+  ct # test: ^ea<C-x><C-o> => ctr┃
 }
 
 # local variable member completion (receiver not in top-level env)
 pub baz: ServerInfo! {
-	let si = serverInfo
-	si.ver # test: ^Ea<C-x><C-o> => si.version┃
+  let si = serverInfo
+  si.ver # test: ^Ea<C-x><C-o> => si.version┃
 }
 
 # argument completion
