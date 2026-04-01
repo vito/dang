@@ -318,7 +318,7 @@ type CompletionItem struct {
 // Hover is
 type Hover struct {
 	Contents any    `json:"contents"`
-	Range    *Range `json:"range"`
+	Range    *Range `json:"range,omitempty"`
 }
 
 // MarkedString is
