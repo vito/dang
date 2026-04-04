@@ -9,8 +9,8 @@ require (
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.4.4
 	github.com/creachadair/jrpc2 v1.3.3
-	github.com/dagger/testctx v0.0.5
-	github.com/dagger/testctx/oteltest v0.1.1-0.20260303185353-60d5e1194a6f
+	github.com/dagger/testctx v0.1.2
+	github.com/dagger/testctx/oteltest v0.1.2
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
