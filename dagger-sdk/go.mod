@@ -15,7 +15,7 @@ replace github.com/vito/dang => ../
 require (
 	github.com/dagger/otel-go v1.41.1-0.20260303185236-072f65948887
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/dang v0.0.0-20260122171644-51f774928f44
+	github.com/vito/dang v0.0.0-20260404202102-62a11b85e9a2
 	go.opentelemetry.io/otel v1.41.0
 	go.opentelemetry.io/otel/sdk v1.41.0
 	go.opentelemetry.io/otel/trace v1.41.0
@@ -30,7 +30,7 @@ require (
 )
 
 require (
-	dagger.io/dagger v0.20.1
+	dagger.io/dagger v0.19.11
 	github.com/99designs/gqlgen v0.17.81 // indirect
 	github.com/Khan/genqlient v0.8.1
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
