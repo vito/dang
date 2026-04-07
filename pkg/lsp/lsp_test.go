@@ -4,24 +4,24 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dagger/otel-go/oteltestctx"
 	"github.com/dagger/testctx"
-	"github.com/dagger/testctx/oteltest"
 	"github.com/neovim/go-client/nvim"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(oteltest.Main(m))
+	os.Exit(oteltestctx.Main(m))
 }
 
 func TestLSP(tT *testing.T) {
 	testctx.New(tT,
-		oteltest.WithTracing[*testing.T](),
-		oteltest.WithLogging[*testing.T](),
+		oteltestctx.WithTracing[*testing.T](),
 	).RunTests(LSPSuite{})
 }
 
@@ -290,11 +290,13 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		}
 	}
 
+	nvimLog := filepath.Join(t.TempDir(), "nvim.log")
+
 	client, err := nvim.NewChildProcess(
 		nvim.ChildProcessCommand(cmd),
-		nvim.ChildProcessArgs("--clean", "-n", "--embed", "--headless", "--noplugin", "-V10nvim.log"),
+		nvim.ChildProcessArgs("--clean", "-n", "--embed", "--headless", "--noplugin", "-V10"+nvimLog),
 		nvim.ChildProcessContext(ctx),
-		nvim.ChildProcessLogf(t.Logf),
+		// nvim.ChildProcessLogf(t.Logf),
 	)
 	require.NoError(t, err)
 
@@ -305,16 +307,23 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		}
 
 		if t.Failed() {
-			nvimLogs, err := os.ReadFile("nvim.log")
-			if err == nil {
-				for _, line := range lastN(strings.Split(string(nvimLogs), "\n"), 10) {
-					t.Logf("neovim: %s", line)
-				}
-			}
+			// nvimLogs, err := os.ReadFile(nvimLog)
+			// if err == nil {
+			// 	for _, line := range lastN(strings.Split(string(nvimLogs), "\n"), 10) {
+			// 		t.Logf("neovim: %s", line)
+			// 	}
+			// }
 		}
 	})
 
 	err = client.Command(`source testdata/config.lua`)
+	require.NoError(t, err)
+
+	// Use a per-test LSP log file so that parallel tests don't share
+	// the global ~/.local/state/nvim/lsp.log. Without this, every
+	// test cleanup dumps the entire accumulated log from all tests.
+	lspLog := filepath.Join(t.TempDir(), "lsp.log")
+	err = client.ExecLua(`vim.lsp.log.set_filename(...)`, nil, lspLog)
 	require.NoError(t, err)
 
 	paths, err := client.RuntimePaths()
@@ -323,12 +332,4 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 	t.Logf("runtimepath: %v", paths)
 
 	return client
-}
-
-func lastN[T any](vals []T, n int) []T {
-	if len(vals) <= n {
-		return vals
-	}
-
-	return vals[len(vals)-n:]
 }
