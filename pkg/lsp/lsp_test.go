@@ -290,12 +290,20 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		}
 	}
 
+	// Use NVIM_APPNAME to isolate this neovim instance's config, data,
+	// state, cache, and log directories. This prevents parallel tests
+	// from sharing the global LSP log file and isolates them from the
+	// host machine's neovim config.
+	appName := strings.ReplaceAll(t.Name(), "/", "_")
+	env := append(os.Environ(), "NVIM_APPNAME="+appName)
+
 	nvimLog := filepath.Join(t.TempDir(), "nvim.log")
 
 	client, err := nvim.NewChildProcess(
 		nvim.ChildProcessCommand(cmd),
 		nvim.ChildProcessArgs("--clean", "-n", "--embed", "--headless", "--noplugin", "-V10"+nvimLog),
 		nvim.ChildProcessContext(ctx),
+		nvim.ChildProcessEnv(env),
 		// nvim.ChildProcessLogf(t.Logf),
 	)
 	require.NoError(t, err)
@@ -317,13 +325,6 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 	})
 
 	err = client.Command(`source testdata/config.lua`)
-	require.NoError(t, err)
-
-	// Use a per-test LSP log file so that parallel tests don't share
-	// the global ~/.local/state/nvim/lsp.log. Without this, every
-	// test cleanup dumps the entire accumulated log from all tests.
-	lspLog := filepath.Join(t.TempDir(), "lsp.log")
-	err = client.ExecLua(`vim.lsp.log.set_filename(...)`, nil, lspLog)
 	require.NoError(t, err)
 
 	paths, err := client.RuntimePaths()
