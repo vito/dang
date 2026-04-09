@@ -226,19 +226,6 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		return fmt.Errorf("file path from URI: %w", err)
 	}
 
-	// Set up progress reporting for this file update.
-	progressToken := "dang/updateFile/" + string(uri)
-	if err := h.createWorkDoneProgress(ctx, progressToken); err != nil {
-		slog.DebugContext(ctx, "failed to create progress token", "error", err)
-		progressToken = "" // disable progress if client doesn't support it
-	}
-	if progressToken != "" {
-		_ = h.beginProgress(ctx, progressToken, "Analyzing: "+fp)
-		defer func() {
-			_ = h.endProgress(ctx, progressToken, nil)
-		}()
-	}
-
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
 	// Clear diagnostics before collecting new ones
