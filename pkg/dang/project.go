@@ -163,7 +163,7 @@ func ResolveDaggerImport(ctx context.Context, configs []ImportConfig, dir string
 			return configs // no Dagger module, nothing to do
 		}
 		slog.Debug("auto-creating Dagger import", "moduleDir", moduleDir)
-		svc := NewDaggerServiceProcess(ctx)
+		svc := NewDaggerServiceProcess(context.WithoutCancel(ctx))
 		configs = append(configs, ImportConfig{
 			Name:       "Dagger",
 			Client:     svc,
