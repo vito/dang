@@ -17,8 +17,8 @@ github.com/cenkalti/backoff/v5 v5.0.3/go.mod h1:rkhZdG3JZukswDf7f0cwqPNk4K0sa+F9
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
-github.com/dagger/otel-go v1.41.1-0.20260303185236-072f65948887 h1:M+yTYQkNo0ZC0A6+CS9vEXtYDhsr4xmSu5RfQaMVEfE=
-github.com/dagger/otel-go v1.41.1-0.20260303185236-072f65948887/go.mod h1:RP74B3xmOq2MWL1lBsAWD9uvTryDhZ+m1dDzJj9QJEI=
+github.com/dagger/otel-go v1.41.1-0.20260407144833-6774e40702c7 h1:Q41jsFqryHyx1Dr7SnNGQ+OsFqr672nxzY8piFwmfh4=
+github.com/dagger/otel-go v1.41.1-0.20260407144833-6774e40702c7/go.mod h1:LBrd0YIiyPVzx47Lf/GvXw65jqZCh18GHkvYOuigKQc=
 github.com/dagger/testctx v0.1.2 h1:p9/92CttP6N3AhTWnAOrGfFGGNSqD5uDgY32+LISFoE=
 github.com/dagger/testctx v0.1.2/go.mod h1:2T9w5oiFscVVzgQo7YW2q1WxVkLFumHWjwlGQqVT/Sk=
 github.com/dagger/testctx/oteltest v0.1.2 h1:uw84VFKcHY9AVjx/ETWT0hw6+fds1001ozkGLQBTi54=
@@ -140,8 +140,8 @@ google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 h1:
 google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171/go.mod h1:M5krXqk4GhBKvB596udGL3UyjL4I1+cTbK0orROM9ng=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 h1:ggcbiqK8WWh6l1dnltU4BgWGIGo+EVYxCaAPih/zQXQ=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171/go.mod h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=
-google.golang.org/grpc v1.79.1 h1:zGhSi45ODB9/p3VAawt9a+O/MULLl9dpizzNNpq7flY=
-google.golang.org/grpc v1.79.1/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
+google.golang.org/grpc v1.79.3 h1:sybAEdRIEtvcD68Gx7dmnwjZKlyfuc61Dyo9pGXXkKE=
+google.golang.org/grpc v1.79.3/go.mod h1:KmT0Kjez+0dde/v2j9vzwoAScgEPx/Bw1CYChhHLrHQ=
 google.golang.org/protobuf v1.36.11 h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=
 google.golang.org/protobuf v1.36.11/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=

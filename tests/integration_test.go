@@ -11,13 +11,13 @@ import (
 	"testing"
 
 	"github.com/dagger/testctx"
-	"github.com/dagger/testctx/oteltest"
+	"github.com/dagger/otel-go/oteltestctx"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/ioctx"
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(oteltest.Main(m))
+	os.Exit(oteltestctx.Main(m))
 }
 
 type DangSuite struct {
@@ -25,8 +25,7 @@ type DangSuite struct {
 
 func TestDang(tT *testing.T) {
 	testctx.New(tT,
-		oteltest.WithTracing[*testing.T](),
-		oteltest.WithLogging[*testing.T](),
+		oteltestctx.WithTracing[*testing.T](),
 	).RunTests(DangSuite{})
 }
 

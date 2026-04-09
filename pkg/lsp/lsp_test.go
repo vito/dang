@@ -163,7 +163,7 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 		err := client.Eval(`luaeval('vim.lsp.log.get_filename()')`, &fn)
 		require.NoError(t, err)
 
-		if testing.Verbose() {
+		if t.Failed() || testing.Verbose() {
 			lspLogs, err := os.ReadFile(fn)
 			if err == nil {
 				t.Logf("language server logs:\n\n%s", string(lspLogs))
@@ -304,7 +304,7 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 		nvim.ChildProcessArgs("--clean", "-n", "--embed", "--headless", "--noplugin", "-V10"+nvimLog),
 		nvim.ChildProcessContext(ctx),
 		nvim.ChildProcessEnv(env),
-		// nvim.ChildProcessLogf(t.Logf),
+		nvim.ChildProcessLogf(t.Logf),
 	)
 	require.NoError(t, err)
 
@@ -314,13 +314,13 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 			t.Logf("failed to close neovim: %s", err)
 		}
 
-		if t.Failed() {
-			// nvimLogs, err := os.ReadFile(nvimLog)
-			// if err == nil {
-			// 	for _, line := range lastN(strings.Split(string(nvimLogs), "\n"), 10) {
-			// 		t.Logf("neovim: %s", line)
-			// 	}
-			// }
+		if t.Failed() || testing.Verbose() {
+			nvimLogs, err := os.ReadFile(nvimLog)
+			if err == nil {
+				for _, line := range lastN(strings.Split(string(nvimLogs), "\n"), 10) {
+					t.Logf("neovim: %s", line)
+				}
+			}
 		}
 	})
 
@@ -333,4 +333,12 @@ func sandboxNvim(t *testctx.T) *nvim.Nvim {
 	t.Logf("runtimepath: %v", paths)
 
 	return client
+}
+
+func lastN[T any](vals []T, n int) []T {
+	if len(vals) <= n {
+		return vals
+	}
+
+	return vals[len(vals)-n:]
 }

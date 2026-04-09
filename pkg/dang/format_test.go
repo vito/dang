@@ -6,20 +6,19 @@ import (
 	"testing"
 
 	"github.com/dagger/testctx"
-	"github.com/dagger/testctx/oteltest"
+	"github.com/dagger/otel-go/oteltestctx"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
-	os.Exit(oteltest.Main(m))
+	os.Exit(oteltestctx.Main(m))
 }
 
 type FormatSuite struct{}
 
 func TestFormat(tT *testing.T) {
 	testctx.New(tT,
-		oteltest.WithTracing[*testing.T](),
-		oteltest.WithLogging[*testing.T](),
+		oteltestctx.WithTracing[*testing.T](),
 	).RunTests(FormatSuite{})
 }
 

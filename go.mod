@@ -9,8 +9,8 @@ require (
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.4.4
 	github.com/creachadair/jrpc2 v1.3.3
+	github.com/dagger/otel-go v1.41.1-0.20260409001409-0fcfffbd7443
 	github.com/dagger/testctx v0.1.2
-	github.com/dagger/testctx/oteltest v0.1.2
 	github.com/iancoleman/strcase v0.3.0
 	github.com/kr/pretty v0.3.1
 	github.com/neovim/go-client v1.2.2-0.20220118223211-7c85d516f28c
@@ -27,7 +27,6 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
-	github.com/dagger/otel-go v1.41.1-0.20260303185236-072f65948887 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 )
@@ -95,11 +94,14 @@ require (
 	golang.org/x/tools v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
-	google.golang.org/grpc v1.79.1 // indirect
+	google.golang.org/grpc v1.79.3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 tool github.com/mna/pigeon
 
-tool github.com/99designs/gqlgen
+tool (
+	github.com/99designs/gqlgen
+	github.com/dagger/otel-go/cmd/otelgotest
+)
