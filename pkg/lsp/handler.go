@@ -129,46 +129,6 @@ func toURI(path string) DocumentURI {
 	}).String())
 }
 
-// createWorkDoneProgress creates a work done progress token
-func (h *langHandler) createWorkDoneProgress(ctx context.Context, token string) error {
-	if h.server == nil {
-		return fmt.Errorf("no server available")
-	}
-
-	_, err := h.server.Callback(ctx, "window/workDoneProgress/create", &WorkDoneProgressCreateParams{
-		Token: token,
-	})
-	return err
-}
-
-// reportProgress reports progress using the work done progress API
-func (h *langHandler) reportProgress(ctx context.Context, token string, value any) error {
-	if h.server == nil {
-		return nil
-	}
-
-	return h.server.Notify(ctx, "$/progress", &ProgressParams{
-		Token: token,
-		Value: value,
-	})
-}
-
-// beginProgress starts a progress notification
-func (h *langHandler) beginProgress(ctx context.Context, token, title string) error {
-	return h.reportProgress(ctx, token, &WorkDoneProgressBegin{
-		Kind:  "begin",
-		Title: title,
-	})
-}
-
-// endProgress ends a progress notification
-func (h *langHandler) endProgress(ctx context.Context, token string, message *string) error {
-	return h.reportProgress(ctx, token, &WorkDoneProgressEnd{
-		Kind:    "end",
-		Message: message,
-	})
-}
-
 func (h *langHandler) closeFile(uri DocumentURI) error {
 	h.mu.Lock()
 	delete(h.files, uri)
