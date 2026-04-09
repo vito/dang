@@ -4,12 +4,6 @@
   "sdk": {
     "source": "dang"
   },
-  "toolchains": [
-    {
-      "name": "dev",
-      "source": "mod/dev"
-    }
-  ],
   "dependencies": [
     {
       "name": "apko",
