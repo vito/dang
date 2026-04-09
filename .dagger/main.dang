@@ -182,7 +182,7 @@ type Dang {
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")
       .withMountedCache("/go/build-cache", cacheVolume("go-build"))
       .withEnvVariable("GOCACHE", "/go/build-cache")
-      .withExec(["npm", "install", "-g", "tree-sitter-cli@v0.25.8"])
+      .withExec(["npm", "install", "-g", "tree-sitter-cli@v0.26.8"])
       .withEnvVariable("GOBIN", "/go/bin")
       .withEnvVariable("PATH", "${GOBIN}:${PATH}", expand: true)
       .withDirectory("/src", source)
