@@ -36,16 +36,6 @@ case *ScalarDecl:
 
 This ensures scalar declarations are processed BEFORE function signatures that reference them.
 
-### Dagger SDK Integration
-
-In `dagger-sdk/entrypoint/main.go`:
-
-1. **Input conversion** (`anyToDang`): String inputs are converted to `ScalarValue`
-2. **Module initialization** (`initModule`): Scalar modules are skipped (handled as strings)
-3. **Type mapping** (`dangTypeToTypeDef`): Scalars map to `StringKind` TypeDef in the Dagger API
-
-Scalars effectively map to `string` in the generated Dagger API.
-
 ## Usage Examples
 
 ```dang
@@ -83,7 +73,5 @@ Scalars align with GraphQL custom scalar types. When a GraphQL API defines custo
 - `pkg/dang/env.go` - ScalarKind definition, scalar hoisting
 - `pkg/dang/block.go` - Form classification for phased compilation
 - `pkg/dang/dang.peg` - Grammar for scalar declarations
-- `dagger-sdk/entrypoint/main.go` - Dagger SDK scalar support
 - `tests/test_scalar.dang` - Basic scalar tests
 - `tests/test_scalar_comprehensive.dang` - Comprehensive scalar tests
-- `mod/test-scalar/` - Dagger module testing scalars

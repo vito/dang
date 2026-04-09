@@ -155,20 +155,6 @@ type Dang {
   }
 
   """
-  Bump the Dagger version across the repo.
-  """
-  pub bumpDagger(version: String! = "latest"): Changeset! {
-    let ctr = base
-    [".", "dagger-sdk", "treesitter"].each { pkg =>
-      ctr = ctr
-        .withExec(["go", "-C", pkg, "get", "dagger.io/dagger@" + version])
-        .withExec(["go", "-C", pkg, "mod", "tidy"])
-    }
-
-    ctr.directory(".").changes(base.directory("."))
-  }
-
-  """
   Enter a terminal for debugging the Neovim LSP setup.
   """
   pub nvimDebug: Container! {
@@ -202,15 +188,6 @@ type Dang {
       .withDirectory("/src", source)
       .withWorkdir("/src")
       .withExec(["go", "install", "github.com/dagger/otel-go/cmd/otelgotest"])
-      # install dagger binary for Dagger tests
-      .withExec([
-        "sh", "-exc",
-        if (Dagger.version.contains("-dev-")) {
-          "curl -fsSL https://dl.dagger.io/dagger/install.sh | BIN_DIR=/usr/local/bin sh"
-        } else {
-          "curl -fsSL https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=" + Dagger.version + " BIN_DIR=/usr/local/bin sh"
-        },
-      ])
   }
 
   """
@@ -273,16 +250,6 @@ type Test {
   @cache(policy: FunctionCachePolicy.Never)
   pub language: Void {
     run(["-count=1", "./tests"]).sync
-    null
-  }
-
-  """
-  Run the Dagger SDK tests.
-  """
-  @check
-  @cache(policy: FunctionCachePolicy.Never)
-  pub dagger: Void {
-    run(["-C", "./dagger-sdk/tests", "-count=1"]).sync
     null
   }
 

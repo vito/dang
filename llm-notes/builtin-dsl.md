@@ -144,10 +144,6 @@ The `ToValue` helper is the **single source of truth** for Go→Dang type conver
 - `pkg/dang/eval.go` - converting GraphQL query results to Dang values
 - `pkg/dang/ast_expressions.go` - converting GraphQL field values
 
-The sole exception is `anyToDang()` in `dagger-sdk/entrypoint/main.go` - which
-has specialized GraphQL module handling when converting from strings, to handle
-GraphQL IDs.
-
 ## Optional Parameters with Defaults
 
 To define optional parameters with default values, include the default after the type:

@@ -2,6 +2,6 @@
   "name": "doug",
   "engineVersion": "v0.20.1",
   "sdk": {
-    "source": "../../dagger-sdk"
+    "source": "dang"
   }
 }
