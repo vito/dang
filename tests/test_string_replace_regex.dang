@@ -1,0 +1,39 @@
+# Test String.replaceRegex method
+
+# Test default behavior (replace all occurrences with count=-1)
+pub replace_all = "hello world hello".replaceRegex(pattern: "hel+o", new: "hi")
+assert { replace_all == "hi world hi" }
+
+# Test with count=1 to replace only first occurrence
+pub first_only = "hello world hello".replaceRegex(pattern: "hel+o", new: "hi", count: 1)
+assert { first_only == "hi world hello" }
+
+# Test with count=2 to replace first two occurrences
+pub first_two = "abc abc abc abc".replaceRegex(pattern: "a[bc]+", new: "xyz", count: 2)
+assert { first_two == "xyz xyz abc abc" }
+
+# Test with no matches
+pub no_match = "hello world".replaceRegex(pattern: "goodbye", new: "hi")
+assert { no_match == "hello world" }
+
+# Test replacing with empty string (all)
+pub remove_all = "foo123 bar foo456".replaceRegex(pattern: "[0-9]+", new: "")
+assert { remove_all == "foo bar foo" }
+
+# Test replacing with empty string (first only)
+pub remove_first = "foo123 bar foo456".replaceRegex(pattern: "[0-9]+", new: "", count: 1)
+assert { remove_first == "foo bar foo456" }
+
+# Test full string replacement
+pub full = "hello".replaceRegex(pattern: "h.*o", new: "goodbye")
+assert { full == "goodbye" }
+
+# Test capture group substitution
+pub capture = "2024-04-17".replaceRegex(pattern: "([0-9]{4})-([0-9]{2})-([0-9]{2})", new: "$3/$2/$1")
+assert { capture == "17/04/2024" }
+
+# Test multiple different patterns (all)
+pub multiple_all = "abc ABC def abc".replaceRegex(pattern: "(?i)abc", new: "xyz")
+assert { multiple_all == "xyz xyz def xyz" }
+
+print("String.replaceRegex() tests passed!")
