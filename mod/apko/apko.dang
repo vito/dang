@@ -52,11 +52,11 @@ type Apko {
   }
 
   pub asContainer: Container! {
+    pub apko = container.from("cgr.dev/chainguard/apko")
     container
       .import(
-        container
-          .from("cgr.dev/chainguard/apko")
-          .withMountedCache("/apkache/", cacheVolume("apko"))
+        apko
+          .withMountedCache("/apkache/", cacheVolume("apko"), owner: apko.user)
           .withNewFile("/config.yml", contents: toJSON(config))
           .withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest", "layout.tar"])
           .file("layout.tar"),
