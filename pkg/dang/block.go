@@ -495,10 +495,20 @@ func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		primary: mod,
 		lexical: env.(Env),
 	}
-	for _, slot := range o.Slots {
-		_, err := slot.Infer(ctx, inferEnv, fresh)
-		if err != nil {
-			return nil, err
+	graph, err := buildObjectSlotGraph(o.Slots)
+	if err != nil {
+		return nil, NewInferError(err, o)
+	}
+	layers, err := graph.Layers()
+	if err != nil {
+		return nil, NewInferError(err, o)
+	}
+	for _, layer := range layers {
+		for _, slotIdx := range layer {
+			_, err := o.Slots[slotIdx].Infer(ctx, inferEnv, fresh)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	o.Mod = mod
@@ -513,10 +523,65 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 	newMod := NewModuleValue(o.Mod)
 	evalEnv := CreateCompositeEnv(newMod, env)
-	for _, slot := range o.Slots {
-		_, err := EvalNode(ctx, evalEnv, slot)
-		if err != nil {
-			return nil, err
+	graph, err := buildObjectSlotGraph(o.Slots)
+	if err != nil {
+		return nil, err
+	}
+	layers, err := graph.Layers()
+	if err != nil {
+		return nil, err
+	}
+
+	evalCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	for _, layer := range layers {
+		type slotResult struct {
+			idx int
+			val Value
+			err error
+		}
+		results := make(chan slotResult, len(layer))
+		for _, slotIdx := range layer {
+			slot := o.Slots[slotIdx]
+			go func(idx int, slot *SlotDecl) {
+				// Evaluate each slot against a fork of the object environment. The
+				// fork can read already-published dependency fields through its
+				// parent, but any incidental local writes remain private to this
+				// slot. The object itself is only mutated below, after the whole
+				// layer has completed.
+				slotEnv := CreateCompositeEnv(newMod.Fork(), env)
+				val, err := WithEvalErrorHandling(evalCtx, slot, func() (Value, error) {
+					return slot.EvalValue(evalCtx, slotEnv)
+				})
+				if err != nil {
+					err = fmt.Errorf("evaluating object field %q: %w", slot.Name.Name, err)
+				}
+				results <- slotResult{idx: idx, val: val, err: err}
+			}(slotIdx, slot)
+		}
+
+		values := make(map[int]Value, len(layer))
+		var firstErr error
+		firstErrIdx := len(o.Slots)
+		for range layer {
+			res := <-results
+			if res.err != nil {
+				cancel()
+				if firstErr == nil || res.idx < firstErrIdx {
+					firstErr = res.err
+					firstErrIdx = res.idx
+				}
+				continue
+			}
+			values[res.idx] = res.val
+		}
+		if firstErr != nil {
+			return nil, firstErr
+		}
+
+		// Publish completed fields in source order for deterministic object layout.
+		for _, slotIdx := range layer {
+			o.Slots[slotIdx].Publish(evalEnv, values[slotIdx])
 		}
 	}
 	return newMod, nil
