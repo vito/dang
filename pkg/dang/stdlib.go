@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/vito/dang/pkg/hm"
@@ -230,6 +231,39 @@ func registerStdlib() {
 			count := args.GetInt("count")
 
 			result := strings.Replace(str, old, new, count)
+			return ToValue(result)
+		})
+
+	// String.replaceRegex method: replaceRegex(pattern: String!, new: String!, count: Int = -1) -> String!
+	Method(StringType, "replaceRegex").
+		Doc("replaces regex matches with new in the string. The count parameter controls how many replacements to make: -1 (default) replaces all occurrences, 1 replaces only the first, etc.").
+		Params(
+			"pattern", NonNull(StringType),
+			"new", NonNull(StringType),
+			"count", IntType, IntValue{Val: -1},
+		).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			pattern := args.GetString("pattern")
+			new := args.GetString("new")
+			count := args.GetInt("count")
+
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				return nil, fmt.Errorf("replaceRegex: invalid pattern: %w", err)
+			}
+			if count < 0 {
+				return ToValue(re.ReplaceAllString(str, new))
+			}
+			n := 0
+			result := re.ReplaceAllStringFunc(str, func(match string) string {
+				if n >= count {
+					return match
+				}
+				n++
+				return re.ReplaceAllString(match, new)
+			})
 			return ToValue(result)
 		})
 
