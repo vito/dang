@@ -175,40 +175,48 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	return definedType, nil
 }
 
+func (s *SlotDecl) EvalValue(ctx context.Context, env EvalEnv) (Value, error) {
+	val, defined := env.GetLocal(s.Name.Name)
+	if defined {
+		// already defined (e.g. through constructor), nothing to do
+		return val, nil
+	}
+
+	if s.Value == nil {
+		// Check if this is a required (non-null) type without a value
+		// This is a runtime error - required types must have values
+		if inferredType := s.GetInferredType(); inferredType != nil {
+			if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
+				return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType.Name())
+			}
+		}
+
+		// If no value is provided, this is just a type declaration
+		// Add a null value to the environment as a placeholder
+		return NullValue{}, nil
+	}
+
+	// Evaluate the value expression with proper error context
+	val, err := EvalNode(ctx, env, s.Value)
+	if err != nil {
+		// Convert error with proper source location from the failing node
+		return nil, err
+	}
+
+	return val, nil
+}
+
+func (s *SlotDecl) Publish(env EvalEnv, val Value) {
+	env.SetWithVisibility(s.Name.Name, val, s.Visibility)
+}
+
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.GetLocal(s.Name.Name)
-		if defined {
-			// already defined (e.g. through constructor), nothing to do
-			return val, nil
-		}
-
-		if s.Value == nil {
-			// Check if this is a required (non-null) type without a value
-			// This is a runtime error - required types must have values
-			if inferredType := s.GetInferredType(); inferredType != nil {
-				if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
-					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType.Name())
-				}
-			}
-
-			// If no value is provided, this is just a type declaration
-			// Add a null value to the environment as a placeholder
-			env.SetWithVisibility(s.Name.Name, NullValue{}, s.Visibility)
-			return NullValue{}, nil
-		}
-
-		// Evaluate the value expression with proper error context
-		val, err := EvalNode(ctx, env, s.Value)
+		val, err := s.EvalValue(ctx, env)
 		if err != nil {
-			// Convert error with proper source location from the failing node
 			return nil, err
 		}
-
-		// Add the value to the environment for future use
-		// If it's a ModuleValue, use SetWithVisibility to track visibility
-		env.SetWithVisibility(s.Name.Name, val, s.Visibility)
-
+		s.Publish(env, val)
 		return val, nil
 	})
 }

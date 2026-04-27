@@ -1,0 +1,19 @@
+pub obj = {{
+  a: 1,
+  b: 2,
+  c: a + b,
+  base: "hello",
+  derived: base + " world",
+  independent: "!"
+}}
+
+assert { obj.c == 3 }
+assert { obj.derived == "hello world" }
+assert { obj.independent == "!" }
+
+pub forward = {{
+  derived: base + " world",
+  base: "hello"
+}}
+
+assert { forward.derived == "hello world" }

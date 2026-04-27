@@ -1,0 +1,6 @@
+pub bad = {{
+  a: b
+  b: a
+}}
+
+bad
