@@ -12,6 +12,9 @@ import (
 )
 
 func (DangSuite) TestExpectedTypeDirectivesFromIntrospection(ctx context.Context, t *testctx.T) {
+	// Use a client-only import instead of tests/dang.toml's SDL-backed import so
+	// Dang has to introspect the live server. This exercises the test server's
+	// extended introspection path for applied directives such as @expectedType.
 	testGraphQLServer, err := gqlserver.StartServer()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = testGraphQLServer.Stop() })

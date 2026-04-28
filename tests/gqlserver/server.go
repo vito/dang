@@ -39,6 +39,10 @@ func StartServer() (*Server, error) {
 	// Create GraphQL handler
 	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: &Resolver{}}))
 
+	// Dang asks GraphQL servers for applied directive metadata using Dagger's
+	// "extended introspection" fields. gqlgen only implements the standard
+	// introspection schema, so keep a Dang-friendly schema handy and intercept
+	// just those extended introspection requests below.
 	introspectionSchema, err := loadIntrospectionSchema()
 	if err != nil {
 		return nil, err
@@ -70,6 +74,9 @@ func StartServer() (*Server, error) {
 	return server, nil
 }
 
+// loadIntrospectionSchema converts this test server's SDL into Dang's
+// introspection shape. This preserves applied directives from schema.graphqls
+// without maintaining a large handwritten introspection JSON fixture.
 func loadIntrospectionSchema() (*introspection.Schema, error) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
@@ -83,6 +90,14 @@ func loadIntrospectionSchema() (*introspection.Schema, error) {
 	return schema, nil
 }
 
+// introspectionHandler serves Dagger-style extended introspection for Dang's
+// schema loader while delegating ordinary GraphQL operations to gqlgen.
+//
+// The non-standard part is the `_DirectiveApplication` type plus `directives`
+// fields on introspection objects such as __Field and __InputValue. Dang uses
+// these to discover applied directives like @expectedType. Since gqlgen rejects
+// those fields during validation, tests intercept that specific query and return
+// the equivalent schema converted from SDL.
 func introspectionHandler(next http.Handler, schema *introspection.Schema) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -117,6 +132,8 @@ func introspectionHandler(next http.Handler, schema *introspection.Schema) http.
 }
 
 func isExtendedIntrospectionQuery(query string) bool {
+	// Standard introspection queries should continue through gqlgen. Dang's
+	// extended query is identifiable by the Dagger-only fragment type.
 	return strings.Contains(query, "_DirectiveApplication")
 }
 
