@@ -29,6 +29,7 @@ type Query {
   hello(name: String!): String!
   users: [User!]!
   status: Status!
+  expectedUser(id: ID! @expectedType(name: "User")): ID! @expectedType(name: "User")
 }
 
 type User implements Node {
@@ -43,6 +44,7 @@ input CreateUserInput {
 }
 
 directive @custom(message: String) on FIELD_DEFINITION
+directive @expectedType(name: String!) on ARGUMENT_DEFINITION | FIELD_DEFINITION
 `
 
 	schema, err := SchemaFromSDL(sdl, "test.graphqls")
@@ -72,6 +74,18 @@ directive @custom(message: String) on FIELD_DEFINITION
 	// arg type should be String! (NON_NULL -> String)
 	require.Equal(t, introspection.TypeKindNonNull, helloField.Args[0].TypeRef.Kind)
 	require.Equal(t, "String", helloField.Args[0].TypeRef.OfType.Name)
+
+	var expectedUserField *introspection.Field
+	for _, f := range queryType.Fields {
+		if f.Name == "expectedUser" {
+			expectedUserField = f
+			break
+		}
+	}
+	require.NotNil(t, expectedUserField)
+	require.Equal(t, "User", expectedUserField.Directives.ExpectedType())
+	require.Len(t, expectedUserField.Args, 1)
+	require.Equal(t, "User", expectedUserField.Args[0].Directives.ExpectedType())
 
 	// Enum type
 	statusType := schema.Types.Get("Status")

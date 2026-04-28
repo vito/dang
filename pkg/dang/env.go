@@ -143,12 +143,16 @@ func NewModule(name string, kind ModuleKind) *Module {
 	return env
 }
 
-func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
+func gqlFieldToTypeNode(mod Env, field *introspection.Field) (hm.Type, error) {
+	return gqlOutputTypeRefToTypeNode(mod, field.TypeRef, field.Directives.ExpectedType())
+}
+
+func gqlOutputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedType string) (hm.Type, error) {
 	switch ref.Kind {
 	case introspection.TypeKindList:
-		inner, err := gqlToTypeNode(mod, ref.OfType)
+		inner, err := gqlOutputTypeRefToTypeNode(mod, ref.OfType, expectedType)
 		if err != nil {
-			return nil, fmt.Errorf("gqlToTypeNode List: %w", err)
+			return nil, fmt.Errorf("gqlOutputTypeRefToTypeNode List: %w", err)
 		}
 		// Lists of objects use GraphQLListType (not directly iterable)
 		// Lists of scalars use regular ListType (iterable)
@@ -157,23 +161,72 @@ func gqlToTypeNode(mod Env, ref *introspection.TypeRef) (hm.Type, error) {
 		}
 		return ListType{inner}, nil
 	case introspection.TypeKindNonNull:
-		inner, err := gqlToTypeNode(mod, ref.OfType)
+		inner, err := gqlOutputTypeRefToTypeNode(mod, ref.OfType, expectedType)
 		if err != nil {
-			return nil, fmt.Errorf("gqlToTypeNode NonNull: %w", err)
+			return nil, fmt.Errorf("gqlOutputTypeRefToTypeNode NonNull: %w", err)
 		}
 		return hm.NonNullType{Type: inner}, nil
 	case introspection.TypeKindScalar:
+		if ref.Name == "ID" && expectedType != "" {
+			t, found := mod.NamedType(expectedType)
+			if !found {
+				return nil, fmt.Errorf("gqlOutputTypeRefToTypeNode: expected type %q not found", expectedType)
+			}
+			return t, nil
+		}
 		if strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID" {
-			return gqlToTypeNode(mod, &introspection.TypeRef{
+			return gqlOutputTypeRefToTypeNode(mod, &introspection.TypeRef{
 				Name: strings.TrimSuffix(ref.Name, "ID"),
 				Kind: introspection.TypeKindObject,
-			})
+			}, "")
 		}
 		fallthrough
 	default:
 		t, found := mod.NamedType(ref.Name)
 		if !found {
-			return nil, fmt.Errorf("gqlToTypeNode: %s %q not found", ref.Kind, ref.Name)
+			return nil, fmt.Errorf("gqlOutputTypeRefToTypeNode: %s %q not found", ref.Kind, ref.Name)
+		}
+		return t, nil
+	}
+}
+
+func gqlInputToTypeNode(mod Env, input introspection.InputValue) (hm.Type, error) {
+	return gqlInputTypeRefToTypeNode(mod, input.TypeRef, input.Directives.ExpectedType())
+}
+
+func gqlInputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedType string) (hm.Type, error) {
+	switch ref.Kind {
+	case introspection.TypeKindList:
+		inner, err := gqlInputTypeRefToTypeNode(mod, ref.OfType, expectedType)
+		if err != nil {
+			return nil, fmt.Errorf("gqlInputTypeRefToTypeNode List: %w", err)
+		}
+		return ListType{inner}, nil
+	case introspection.TypeKindNonNull:
+		inner, err := gqlInputTypeRefToTypeNode(mod, ref.OfType, expectedType)
+		if err != nil {
+			return nil, fmt.Errorf("gqlInputTypeRefToTypeNode NonNull: %w", err)
+		}
+		return hm.NonNullType{Type: inner}, nil
+	case introspection.TypeKindScalar:
+		if ref.Name == "ID" && expectedType != "" {
+			t, found := mod.NamedType(expectedType)
+			if !found {
+				return nil, fmt.Errorf("gqlInputTypeRefToTypeNode: expected type %q not found", expectedType)
+			}
+			return t, nil
+		}
+		if strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID" {
+			return gqlInputTypeRefToTypeNode(mod, &introspection.TypeRef{
+				Name: strings.TrimSuffix(ref.Name, "ID"),
+				Kind: introspection.TypeKindObject,
+			}, "")
+		}
+		fallthrough
+	default:
+		t, found := mod.NamedType(ref.Name)
+		if !found {
+			return nil, fmt.Errorf("gqlInputTypeRefToTypeNode: %s %q not found", ref.Kind, ref.Name)
 		}
 		return t, nil
 	}
@@ -342,7 +395,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			if found {
 				args := NewRecordType("")
 				for _, f := range t.InputFields {
-					fieldType, err := gqlToTypeNode(env, f.TypeRef)
+					fieldType, err := gqlInputToTypeNode(env, f)
 					if err != nil {
 						continue
 					}
@@ -371,7 +424,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 		// Input objects: register their fields so they can be used as constructors
 		if t.Kind == introspection.TypeKindInputObject {
 			for _, f := range t.InputFields {
-				fieldType, err := gqlToTypeNode(env, f.TypeRef)
+				fieldType, err := gqlInputToTypeNode(env, f)
 				if err != nil {
 					panic(err)
 				}
@@ -409,14 +462,14 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 		}
 
 		for _, f := range t.Fields {
-			ret, err := gqlToTypeNode(env, f.TypeRef)
+			ret, err := gqlFieldToTypeNode(env, f)
 			if err != nil {
 				panic(err)
 			}
 
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlToTypeNode(env, arg.TypeRef)
+				argType, err := gqlInputToTypeNode(env, arg)
 				if err != nil {
 					panic(err)
 				}
