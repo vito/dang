@@ -16,6 +16,7 @@ type Env interface {
 	hm.Env
 	hm.Type
 	NamedType(string) (Env, bool)
+	LocalNamedType(string) (Env, bool)
 	AddClass(string, Env)
 	SetDocString(string, string)
 	GetDocString(string) (string, bool)
@@ -579,7 +580,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 				continue
 			}
 
-			unionMod.AddMember(memberType)
+			unionMod.LinkMember(memberType)
 			slog.Debug("linked union member", "union", t.Name, "member", member.Name)
 		}
 	}
@@ -720,7 +721,7 @@ func (e *Module) GetDirective(name string) (*DirectiveDecl, bool) {
 }
 
 func (e *Module) NamedType(name string) (Env, bool) {
-	t, ok := e.classes[name]
+	t, ok := e.LocalNamedType(name)
 	if ok {
 		return t, ok
 	}
@@ -728,6 +729,11 @@ func (e *Module) NamedType(name string) (Env, bool) {
 		return e.Parent.NamedType(name)
 	}
 	return nil, false
+}
+
+func (e *Module) LocalNamedType(name string) (Env, bool) {
+	t, ok := e.classes[name]
+	return t, ok
 }
 
 func (e *Module) Remove(name string) hm.Env {
@@ -955,10 +961,17 @@ func (m *Module) ImplementsInterface(iface Env) bool {
 	return slices.Contains(m.interfaces, iface)
 }
 
-// AddMember adds a member type to this union (for union modules)
+// AddMember adds a member type to this union (for union modules).
 func (m *Module) AddMember(member Env) {
 	m.members = append(m.members, member)
-	// Also track the reverse relationship on the member
+}
+
+// LinkMember adds a union member and records the reverse relationship on the
+// member. Only call this when the member module is owned by the same local
+// environment; Prelude modules are shared process-wide and must not record
+// per-module union declarations.
+func (m *Module) LinkMember(member Env) {
+	m.AddMember(member)
 	if memberMod, ok := member.(*Module); ok {
 		memberMod.unions = append(memberMod.unions, m)
 	}

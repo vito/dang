@@ -1,6 +1,9 @@
 package dang
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -60,6 +63,73 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 	}
 	_, found := ErrorType.LocalSchemeOf("id")
 	require.False(t, found)
+}
+
+func TestRunDirDeclarationsShadowPreludeTypes(t *testing.T) {
+	env := runDangSnippet(t, `
+type Error {
+  pub id: String! = "x"
+}
+assert { Error.id == "x" }
+`)
+	classVal, found := env.Get("Error")
+	require.True(t, found)
+	classFn, ok := classVal.(*ConstructorFunction)
+	require.True(t, ok)
+	require.NotSame(t, ErrorType, classFn.ClassType)
+	_, found = ErrorType.LocalSchemeOf("id")
+	require.False(t, found)
+
+	env = runDangSnippet(t, `
+enum Error { FOO }
+assert { Error.FOO == Error.FOO }
+`)
+	enumVal, found := env.Get("Error")
+	require.True(t, found)
+	enumMod, ok := enumVal.(*ModuleValue)
+	require.True(t, ok)
+	require.NotSame(t, ErrorType, enumMod.Mod)
+	_, found = ErrorType.LocalSchemeOf("FOO")
+	require.False(t, found)
+
+	env = runDangSnippet(t, `
+scalar Error
+`)
+	scalarVal, found := env.Get("Error")
+	require.True(t, found)
+	scalarMod, ok := scalarVal.(*ModuleValue)
+	require.True(t, ok)
+	require.NotSame(t, ErrorType, scalarMod.Mod)
+	require.Equal(t, ScalarKind, scalarMod.Mod.(*Module).Kind)
+}
+
+func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {
+	before := len(ErrorType.GetImplementers())
+	runDangSnippet(t, `
+type MyError implements Error {
+  pub message: String! = "x"
+}
+assert { MyError.message == "x" }
+`)
+	require.Len(t, ErrorType.GetImplementers(), before)
+}
+
+func TestRunDirUnionWithPreludeMemberDoesNotMutatePrelude(t *testing.T) {
+	before := len(BasicErrorType.GetUnions())
+	runDangSnippet(t, `
+union MyUnion = BasicError
+assert { MyUnion != null }
+`)
+	require.Len(t, BasicErrorType.GetUnions(), before)
+}
+
+func runDangSnippet(t *testing.T, source string) EvalEnv {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(source), 0o600))
+	env, err := RunDir(context.Background(), dir, false)
+	require.NoError(t, err)
+	return env
 }
 
 func schemaWithErrorObject() *introspection.Schema {

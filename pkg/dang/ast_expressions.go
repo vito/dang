@@ -1168,7 +1168,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		if len(frag.Fields) == 0 {
 			// Lazy inline fragment: no field sub-selection, use the full concrete type.
 			// This allows chaining further calls on the result as a GraphQLValue.
-			narrowedUnion.AddMember(memberMod)
+			narrowedUnion.LinkMember(memberMod)
 			frag.Inferred = memberMod
 		} else {
 			// Create a narrowed module with only the selected fields.
@@ -1186,7 +1186,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 				narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
 			}
 
-			narrowedUnion.AddMember(narrowedMember)
+			narrowedUnion.LinkMember(narrowedMember)
 			frag.Inferred = narrowedMember
 		}
 	}
