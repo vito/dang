@@ -348,7 +348,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
 	}
 
-	class, found := mod.NamedType(c.Name.Name)
+	class, found := mod.LocalNamedType(c.Name.Name)
 	if !found {
 		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
@@ -398,9 +398,14 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 					)
 				}
 
-				// Add "blindly" initially, we'll validate later
+				// Add "blindly" initially, we'll validate later. The reverse
+				// implementer index is only maintained for locally owned interfaces;
+				// Prelude interfaces are shared process-wide and must not be mutated
+				// by per-module declarations.
 				classMod.AddInterface(ifaceType)
-				ifaceMod.AddImplementer(classMod)
+				if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
+					ifaceMod.AddImplementer(classMod)
+				}
 			}
 		}
 	}
@@ -434,7 +439,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
 	}
 
-	class, found := mod.NamedType(c.Name.Name)
+	class, found := mod.LocalNamedType(c.Name.Name)
 	if !found {
 		class = NewModule(c.Name.Name, ObjectKind)
 		mod.AddClass(c.Name.Name, class)
@@ -724,7 +729,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	}
 
 	// Create the enum type (module) if it doesn't exist
-	enumType, found := mod.NamedType(e.Name.Name)
+	enumType, found := mod.LocalNamedType(e.Name.Name)
 	if !found {
 		enumType = NewModule(e.Name.Name, EnumKind)
 		mod.AddClass(e.Name.Name, enumType)
@@ -766,7 +771,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
 	}
 
-	enumType, found := mod.NamedType(e.Name.Name)
+	enumType, found := mod.LocalNamedType(e.Name.Name)
 	if !found {
 		enumType = NewModule(e.Name.Name, EnumKind)
 		mod.AddClass(e.Name.Name, enumType)
@@ -858,7 +863,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 
 	// Create the scalar type (module) if it doesn't exist
-	scalarType, found := mod.NamedType(s.Name.Name)
+	scalarType, found := mod.LocalNamedType(s.Name.Name)
 	if !found {
 		scalarType = NewModule(s.Name.Name, ScalarKind)
 		mod.AddClass(s.Name.Name, scalarType)
@@ -883,7 +888,7 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
 	}
 
-	scalarType, found := mod.NamedType(s.Name.Name)
+	scalarType, found := mod.LocalNamedType(s.Name.Name)
 	if !found {
 		scalarType = NewModule(s.Name.Name, ScalarKind)
 		mod.AddClass(s.Name.Name, scalarType)
@@ -982,7 +987,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, fmt.Errorf("InterfaceDecl.Infer: environment does not support module operations")
 		}
 
-		iface, found := mod.NamedType(i.Name.Name)
+		iface, found := mod.LocalNamedType(i.Name.Name)
 		if !found {
 			return nil, fmt.Errorf("interface %s not found", i.Name.Name)
 		}
@@ -1088,7 +1093,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			return nil, fmt.Errorf("UnionDecl.Infer: environment does not support module operations")
 		}
 
-		unionType, found := mod.NamedType(u.Name.Name)
+		unionType, found := mod.LocalNamedType(u.Name.Name)
 		if !found {
 			return nil, fmt.Errorf("union %s not found", u.Name.Name)
 		}
@@ -1120,7 +1125,11 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 				)
 			}
 
-			unionMod.AddMember(memberType)
+			if localMember, found := mod.LocalNamedType(memberSym.Name); found && localMember == memberType {
+				unionMod.LinkMember(memberType)
+			} else {
+				unionMod.AddMember(memberType)
+			}
 		}
 
 		u.Inferred = unionMod

@@ -76,6 +76,82 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
 	return nil, fmt.Errorf("user not found")
 }
 
+// PrimaryUser is the resolver for the primaryUser field.
+func (r *queryResolver) PrimaryUser(ctx context.Context) (*User, error) {
+	if len(users) == 0 {
+		return nil, fmt.Errorf("no users available")
+	}
+	return users[0], nil
+}
+
+// SecondaryUser is the resolver for the secondaryUser field.
+func (r *queryResolver) SecondaryUser(ctx context.Context) (*User, error) {
+	if len(users) < 2 {
+		return nil, fmt.Errorf("secondary user not available")
+	}
+	return users[1], nil
+}
+
+// UserName is the resolver for the userName field.
+func (r *queryResolver) UserName(ctx context.Context, user string) (string, error) {
+	found, err := findUserByID(user)
+	if err != nil {
+		return "", err
+	}
+	return found.Name, nil
+}
+
+// UserNames is the resolver for the userNames field.
+func (r *queryResolver) UserNames(ctx context.Context, users []string) ([]string, error) {
+	names := make([]string, 0, len(users))
+	for _, id := range users {
+		user, err := findUserByID(id)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, user.Name)
+	}
+	return names, nil
+}
+
+// NodeLabel is the resolver for the nodeLabel field.
+func (r *queryResolver) NodeLabel(ctx context.Context, node string) (string, error) {
+	found, err := r.findNodeByID(node)
+	if err != nil {
+		return "", err
+	}
+	switch n := found.(type) {
+	case *User:
+		return "User:" + n.Name, nil
+	case *Post:
+		return "Post:" + n.Title, nil
+	default:
+		return "", fmt.Errorf("node not found")
+	}
+}
+
+// FavoriteUserID is the resolver for the favoriteUserID field.
+func (r *queryResolver) FavoriteUserID(ctx context.Context) (string, error) {
+	if len(users) == 0 {
+		return "", fmt.Errorf("no users available")
+	}
+	return users[0].ID, nil
+}
+
+// FavoriteUserIDs is the resolver for the favoriteUserIDs field.
+func (r *queryResolver) FavoriteUserIDs(ctx context.Context) ([]string, error) {
+	ids := make([]string, 0, len(users))
+	for _, user := range users {
+		ids = append(ids, user.ID)
+	}
+	return ids, nil
+}
+
+// FavoriteNodeID is the resolver for the favoriteNodeID field.
+func (r *queryResolver) FavoriteNodeID(ctx context.Context) (string, error) {
+	return r.FavoriteUserID(ctx)
+}
+
 // ServerInfo is the resolver for the serverInfo field.
 func (r *queryResolver) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 	uptime := time.Since(serverStartTime)
@@ -309,6 +385,11 @@ func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *
 
 	// Implement cursor-based pagination
 	return paginatePosts(userPosts, first, after, last, before)
+}
+
+// Sync is the resolver for the sync field.
+func (r *userResolver) Sync(ctx context.Context, obj *User) (string, error) {
+	return obj.ID, nil
 }
 
 // Mutation returns MutationResolver implementation.

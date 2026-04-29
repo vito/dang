@@ -93,6 +93,7 @@ type User struct {
 	Age    *int            `json:"age,omitempty"`
 	Status Status          `json:"status"`
 	Posts  *PostConnection `json:"posts"`
+	Sync   string          `json:"sync"`
 }
 
 func (User) IsNode()            {}

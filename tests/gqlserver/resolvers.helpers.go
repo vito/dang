@@ -1,6 +1,9 @@
 package gqlserver
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // paginatePosts implements cursor-based pagination for posts using Post ID as cursor
 func paginatePosts(posts []*Post, first *int, after *string, last *int, before *string) (*PostConnection, error) {
@@ -95,6 +98,15 @@ func paginatePosts(posts []*Post, first *int, after *string, last *int, before *
 			EndCursor:       endCursor,
 		},
 	}, nil
+}
+
+func findUserByID(id string) (*User, error) {
+	for _, user := range users {
+		if user.ID == id {
+			return user, nil
+		}
+	}
+	return nil, fmt.Errorf("user not found")
 }
 
 // findNodeByID finds a node (User or Post) by ID

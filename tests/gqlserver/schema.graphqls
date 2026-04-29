@@ -1,3 +1,8 @@
+directive @expectedType(
+  """The name of the expected object or interface type."""
+  name: String!
+) on ARGUMENT_DEFINITION | FIELD_DEFINITION
+
 enum Status {
   ACTIVE
   INACTIVE
@@ -22,6 +27,14 @@ type Query {
   hello(name: String!): String!
   users: [User!]!
   user(id: String!): User
+  primaryUser: User!
+  secondaryUser: User!
+  userName(user: ID! @expectedType(name: "User")): String!
+  userNames(users: [ID!]! @expectedType(name: "User")): [String!]!
+  nodeLabel(node: ID! @expectedType(name: "Node")): String!
+  favoriteUserID: ID! @expectedType(name: "User")
+  favoriteUserIDs: [ID!]! @expectedType(name: "User")
+  favoriteNodeID: ID! @expectedType(name: "Node")
   serverInfo: ServerInfo!
   posts(authorId: String, limit: Int): [Post!]!
   userProfile(userId: String, includeStats: Boolean): UserProfile
@@ -73,6 +86,7 @@ type User implements Node {
   age: Int
   status: Status!
   posts(first: Int, after: String, last: Int, before: String): PostConnection! @goField(forceResolver: true)
+  sync: ID! @expectedType(name: "User") @goField(forceResolver: true)
 }
 
 type Post implements Node & Timestamped {
