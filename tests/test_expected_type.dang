@@ -1,0 +1,39 @@
+# Test @expectedType directives on GraphQL ID arguments and return values.
+# The GraphQL test server exposes ID-typed fields/arguments annotated with
+# @expectedType so Dang can treat those IDs as object/interface handles.
+
+import Test
+
+pub john = primaryUser
+pub jane = secondaryUser
+
+# ID arguments annotated with @expectedType(name: "User") accept User objects.
+assert { userName(user: john) == "John Doe" }
+assert { userName(user: jane) == "Jane Smith" }
+
+# Lists of ID arguments preserve the expected object type for each element.
+pub selectedNames = userNames(users: [john, jane])
+assert { selectedNames[0] == "John Doe" }
+assert { selectedNames[1] == "Jane Smith" }
+
+# Interface expectations accept concrete implementers.
+assert { nodeLabel(node: john) == "User:John Doe" }
+
+# ID return values annotated with @expectedType(name: "User") infer as the
+# expected object type and can flow into arguments expecting that object type.
+pub returnedUser: User! = favoriteUserID
+pub syncedUser: User! = john.sync
+assert { userName(user: returnedUser) == "John Doe" }
+assert { userName(user: syncedUser) == "John Doe" }
+
+# Lists of ID return values preserve the expected object type for downstream args.
+pub returnedUsers: [User!]! = favoriteUserIDs
+pub favoriteNames = userNames(users: returnedUsers)
+assert { favoriteNames[0] == "John Doe" }
+assert { favoriteNames[1] == "Jane Smith" }
+
+# Return values can also carry interface expectations.
+pub returnedNode: Node! = favoriteNodeID
+assert { nodeLabel(node: returnedNode) == "User:John Doe" }
+
+print("expectedType directive tests passed!")

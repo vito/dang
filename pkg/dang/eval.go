@@ -293,14 +293,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	// Create a function type for this method call
 	args := NewRecordType("")
 	for _, arg := range field.Args {
-		argType, err := gqlToTypeNode(g.TypeEnv, arg.TypeRef)
+		argType, err := gqlInputToTypeNode(g.TypeEnv, arg)
 		if err != nil {
 			continue
 		}
 		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	retType, err := gqlToTypeNode(g.TypeEnv, field.TypeRef)
+	retType, err := gqlFieldToTypeNode(g.TypeEnv, field)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
@@ -497,7 +497,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 			args := NewRecordType("")
 			for _, f := range t.InputFields {
-				argType, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				argType, err := gqlInputToTypeNode(typeEnv, f)
 				if err != nil {
 					continue
 				}
@@ -514,7 +514,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 		}
 
 		for _, f := range t.Fields {
-			ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
+			ret, err := gqlFieldToTypeNode(typeEnv, f)
 			if err != nil {
 				continue
 			}
@@ -522,7 +522,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			// This is a function - create a GraphQLFunction value
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+				argType, err := gqlInputToTypeNode(typeEnv, arg)
 				if err != nil {
 					continue
 				}
@@ -555,13 +555,13 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			}
 			mutModule := NewModuleValue(mutTypeEnv)
 			for _, f := range t.Fields {
-				ret, err := gqlToTypeNode(typeEnv, f.TypeRef)
+				ret, err := gqlFieldToTypeNode(typeEnv, f)
 				if err != nil {
 					continue
 				}
 				args := NewRecordType("")
 				for _, arg := range f.Args {
-					argType, err := gqlToTypeNode(typeEnv, arg.TypeRef)
+					argType, err := gqlInputToTypeNode(typeEnv, arg)
 					if err != nil {
 						continue
 					}
@@ -714,6 +714,21 @@ func applyDefaults(args map[string]Value, def BuiltinDef) map[string]Value {
 	return result
 }
 
+func isObjectLikeType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
+	currentType := typeRef
+	if currentType.Kind == "NON_NULL" {
+		currentType = currentType.OfType
+	}
+	if currentType.Kind == introspection.TypeKindObject || currentType.Kind == introspection.TypeKindInterface {
+		return true
+	}
+	if schema == nil {
+		return false
+	}
+	t := schema.Types.Get(currentType.Name)
+	return t != nil && (t.Kind == introspection.TypeKindObject || t.Kind == introspection.TypeKindInterface)
+}
+
 // Helper function to determine if a GraphQL type is scalar
 func isScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
 	// Unwrap NonNull and List wrappers
@@ -829,7 +844,7 @@ func dangValueToGo(val Value) (any, error) {
 		}
 		return result, nil
 	case GraphQLValue:
-		if v.Field.TypeRef.IsObject() {
+		if isObjectLikeType(v.Field.TypeRef, v.Schema) {
 			return gqlObjectMarshaller{val: v}, nil
 		}
 		return nil, fmt.Errorf("unsupported value type (%T): %s", val, pretty.Sprint(v))
@@ -858,7 +873,7 @@ func (m gqlObjectMarshaller) XXX_GraphQLType() string {
 }
 
 func (m gqlObjectMarshaller) XXX_GraphQLIDType() string {
-	return m.val.TypeName + "ID"
+	return "ID"
 }
 
 // XXX_GraphqlID is an internal function. It returns the underlying type ID

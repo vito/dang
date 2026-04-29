@@ -634,6 +634,10 @@ func (c *CompositeModule) NamedType(name string) (Env, bool) {
 	return c.lexical.NamedType(name)
 }
 
+func (c *CompositeModule) LocalNamedType(name string) (Env, bool) {
+	return c.primary.LocalNamedType(name)
+}
+
 func (c *CompositeModule) NamedTypes() iter.Seq2[string, Env] {
 	return func(yield func(string, Env) bool) {
 		seen := map[string]bool{}

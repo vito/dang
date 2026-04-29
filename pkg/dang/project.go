@@ -702,6 +702,7 @@ func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspectio
 	it := &introspection.Type{
 		Name:        t.Name,
 		Description: t.Description,
+		Directives:  astDirectivesToIntrospection(t.Directives),
 	}
 
 	switch t.Kind {
@@ -714,7 +715,9 @@ func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspectio
 			if strings.HasPrefix(f.Name, "__") {
 				continue
 			}
-			it.Fields = append(it.Fields, astFieldToIntrospection(schema, f))
+			field := astFieldToIntrospection(schema, f)
+			field.ParentObject = it
+			it.Fields = append(it.Fields, field)
 		}
 		for _, iface := range t.Interfaces {
 			it.Interfaces = append(it.Interfaces, &introspection.Type{
@@ -725,7 +728,9 @@ func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspectio
 	case ast.Interface:
 		it.Kind = introspection.TypeKindInterface
 		for _, f := range t.Fields {
-			it.Fields = append(it.Fields, astFieldToIntrospection(schema, f))
+			field := astFieldToIntrospection(schema, f)
+			field.ParentObject = it
+			it.Fields = append(it.Fields, field)
 		}
 	case ast.Union:
 		it.Kind = introspection.TypeKindUnion
@@ -743,6 +748,7 @@ func astTypeToIntrospection(schema *ast.Schema, t *ast.Definition) *introspectio
 				Description:       v.Description,
 				IsDeprecated:      v.Directives.ForName("deprecated") != nil,
 				DeprecationReason: deprecationReason(v.Directives),
+				Directives:        astDirectivesToIntrospection(v.Directives),
 			})
 		}
 	case ast.InputObject:
@@ -762,6 +768,7 @@ func astFieldToIntrospection(schema *ast.Schema, f *ast.FieldDefinition) *intros
 		TypeRef:           astTypeRefToIntrospection(schema, f.Type),
 		IsDeprecated:      f.Directives.ForName("deprecated") != nil,
 		DeprecationReason: deprecationReason(f.Directives),
+		Directives:        astDirectivesToIntrospection(f.Directives),
 	}
 	for _, arg := range f.Arguments {
 		field.Args = append(field.Args, astInputValueToIntrospection(schema, arg))
@@ -774,6 +781,7 @@ func astInputValueToIntrospection(schema *ast.Schema, v *ast.ArgumentDefinition)
 		Name:        v.Name,
 		Description: v.Description,
 		TypeRef:     astTypeRefToIntrospection(schema, v.Type),
+		Directives:  astDirectivesToIntrospection(v.Directives),
 	}
 	if v.DefaultValue != nil {
 		s := v.DefaultValue.String()
@@ -787,6 +795,7 @@ func astInputValueFromField(schema *ast.Schema, f *ast.FieldDefinition) introspe
 		Name:        f.Name,
 		Description: f.Description,
 		TypeRef:     astTypeRefToIntrospection(schema, f.Type),
+		Directives:  astDirectivesToIntrospection(f.Directives),
 	}
 	if f.DefaultValue != nil {
 		s := f.DefaultValue.String()
@@ -838,6 +847,31 @@ func astDirectiveToIntrospection(schema *ast.Schema, d *ast.DirectiveDefinition)
 		dd.Args = append(dd.Args, astInputValueToIntrospection(schema, arg))
 	}
 	return dd
+}
+
+func astDirectivesToIntrospection(directives ast.DirectiveList) introspection.Directives {
+	if len(directives) == 0 {
+		return nil
+	}
+	converted := make(introspection.Directives, 0, len(directives))
+	for _, d := range directives {
+		directive := &introspection.Directive{
+			Name: d.Name,
+		}
+		for _, arg := range d.Arguments {
+			var value *string
+			if arg.Value != nil {
+				v := arg.Value.String()
+				value = &v
+			}
+			directive.Args = append(directive.Args, &introspection.DirectiveArg{
+				Name:  arg.Name,
+				Value: value,
+			})
+		}
+		converted = append(converted, directive)
+	}
+	return converted
 }
 
 func deprecationReason(directives ast.DirectiveList) string {

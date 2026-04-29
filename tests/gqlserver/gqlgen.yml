@@ -14,3 +14,7 @@ resolver:
   package: gqlserver
   layout: single-file
   filename: resolvers.go
+
+directives:
+  expectedType:
+    skip_runtime: true
