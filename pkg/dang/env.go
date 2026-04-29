@@ -278,6 +278,18 @@ func NewPreludeEnv(name string) *CompositeModule {
 func NewEnv(name string, schema *introspection.Schema) Env {
 	env := NewPreludeEnv(name)
 
+	isBuiltinScalar := func(t *introspection.Type) bool {
+		if t.Kind != introspection.TypeKindScalar {
+			return false
+		}
+		switch t.Name {
+		case "ID", "String", "Int", "Float", "Boolean":
+			return true
+		default:
+			return false
+		}
+	}
+
 	for _, t := range schema.Directives {
 		var args []*SlotDecl
 		for _, arg := range t.Args {
@@ -302,20 +314,38 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 		env.AddDirective(t.Name, directive)
 	}
 
+	// Track schema-owned types separately from env.NamedType. env has Prelude as
+	// a lexical fallback, which is useful for resolving built-in scalars but must
+	// not participate in schema declaration ownership. A schema type named Error,
+	// Random, etc. is a new GraphQL type that shadows the Dang Prelude type.
+	schemaTypes := map[string]Env{}
+
 	for _, t := range schema.Types {
-		sub, found := env.NamedType(t.Name)
-		if !found {
-			kind, err := ModuleKindFromGraphQLKind(t.Kind)
-			if err != nil {
-				slog.Warn("skipping unsupported type", "type", t.Name, "kind", t.Kind, "error", err)
+		var sub Env
+		if isBuiltinScalar(t) {
+			var found bool
+			sub, found = env.lexical.NamedType(t.Name)
+			if !found {
+				slog.Warn("built-in scalar not found", "type", t.Name)
 				continue
 			}
-			sub = NewModule(t.Name, kind)
-			// Store type description as module documentation
-			if t.Description != "" {
-				sub.SetModuleDocString(t.Description)
+		} else {
+			var found bool
+			sub, found = schemaTypes[t.Name]
+			if !found {
+				kind, err := ModuleKindFromGraphQLKind(t.Kind)
+				if err != nil {
+					slog.Warn("skipping unsupported type", "type", t.Name, "kind", t.Kind, "error", err)
+					continue
+				}
+				sub = NewModule(t.Name, kind)
+				// Store type description as module documentation
+				if t.Description != "" {
+					sub.SetModuleDocString(t.Description)
+				}
+				schemaTypes[t.Name] = sub
+				env.AddClass(t.Name, sub)
 			}
-			env.AddClass(t.Name, sub)
 		}
 		if t.Name == schema.QueryType.Name {
 			// TODO: "lexical" is maybe not the right word anymore
@@ -332,7 +362,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	// Make enum types available as values in the module
 	for _, t := range schema.Types {
 		if t.Kind == introspection.TypeKindEnum {
-			sub, found := env.NamedType(t.Name)
+			sub, found := schemaTypes[t.Name]
 			if found {
 				// Add the enum type as a scheme that represents the module itself
 				env.Add(t.Name, hm.NewScheme(nil, NonNull(sub)))
@@ -345,17 +375,12 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	for _, t := range schema.Types {
 		if t.Kind == introspection.TypeKindScalar {
 			// Skip built-in scalars (String, Int, Float, Boolean, ID)
-			if t.Name == "String" || t.Name == "Int" || t.Name == "Float" || t.Name == "Boolean" || t.Name == "ID" {
+			if isBuiltinScalar(t) {
 				continue
 			}
-			sub, found := env.NamedType(t.Name)
+			sub, found := schemaTypes[t.Name]
 			if !found {
-				// Create a scalar type module
-				sub = NewModule(t.Name, ScalarKind)
-				if t.Description != "" {
-					sub.SetModuleDocString(t.Description)
-				}
-				env.AddClass(t.Name, sub)
+				continue
 			}
 			// Add the scalar type as a scheme
 			env.Add(t.Name, hm.NewScheme(nil, sub))
@@ -366,7 +391,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	// Make interface types available as values in the module
 	for _, t := range schema.Types {
 		if t.Kind == introspection.TypeKindInterface {
-			sub, found := env.NamedType(t.Name)
+			sub, found := schemaTypes[t.Name]
 			if found {
 				// Add the interface type as a scheme that represents the module itself
 				env.Add(t.Name, hm.NewScheme(nil, sub))
@@ -378,7 +403,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	// Make union types available as values in the module
 	for _, t := range schema.Types {
 		if t.Kind == introspection.TypeKindUnion {
-			sub, found := env.NamedType(t.Name)
+			sub, found := schemaTypes[t.Name]
 			if found {
 				// Add the union type as a scheme that represents the module itself
 				env.Add(t.Name, hm.NewScheme(nil, sub))
@@ -391,7 +416,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	// UserSort(field: ..., direction: ...) creates a UserSort value
 	for _, t := range schema.Types {
 		if t.Kind == introspection.TypeKindInputObject {
-			sub, found := env.NamedType(t.Name)
+			sub, found := schemaTypes[t.Name]
 			if found {
 				args := NewRecordType("")
 				for _, f := range t.InputFields {
@@ -414,10 +439,10 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	}
 
 	for _, t := range schema.Types {
-		install, found := env.NamedType(t.Name)
+		install, found := schemaTypes[t.Name]
 		if !found {
-			// we just set it above...
-			// This should never happen, but handle gracefully
+			// Built-in GraphQL scalars live in the shared Prelude and have no schema
+			// fields to install. All schema-owned types were recorded above.
 			continue
 		}
 
@@ -507,17 +532,14 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			continue
 		}
 
-		// Get the implementing type module — only mutate locally owned types,
-		// not shared Prelude types.
-		implType, found := env.primary.NamedType(t.Name)
+		implType, found := schemaTypes[t.Name]
 		if !found {
 			continue
 		}
 
 		// For each interface this type implements
 		for _, iface := range t.Interfaces {
-			// Look up the interface module
-			ifaceModule, found := env.NamedType(iface.Name)
+			ifaceModule, found := schemaTypes[iface.Name]
 			if !found {
 				slog.Warn("interface not found", "interface", iface.Name, "implementer", t.Name)
 				continue
@@ -528,11 +550,8 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 				implMod.AddInterface(ifaceModule)
 				slog.Debug("linked interface implementation", "type", t.Name, "interface", iface.Name)
 			}
-			// Only add implementer to locally owned interfaces
-			if _, local := env.primary.NamedType(iface.Name); local {
-				if ifaceMod, ok := ifaceModule.(*Module); ok {
-					ifaceMod.AddImplementer(implType)
-				}
+			if ifaceMod, ok := ifaceModule.(*Module); ok {
+				ifaceMod.AddImplementer(implType)
 			}
 		}
 	}
@@ -543,8 +562,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			continue
 		}
 
-		// Only mutate locally owned union types.
-		unionType, found := env.primary.NamedType(t.Name)
+		unionType, found := schemaTypes[t.Name]
 		if !found {
 			continue
 		}
@@ -555,7 +573,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 		}
 
 		for _, member := range t.PossibleTypes {
-			memberType, found := env.NamedType(member.Name)
+			memberType, found := schemaTypes[member.Name]
 			if !found {
 				slog.Warn("union member not found", "union", t.Name, "member", member.Name)
 				continue
