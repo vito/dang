@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -464,27 +465,25 @@ func (b *StaticMethodBuilder) Impl(fn func(context.Context, Args) (Value, error)
 	Register(b.def)
 }
 
-var methodRegistry = make(map[*Module]map[string]BuiltinDef)
+var (
+	methodRegistry     map[*Module]map[string]BuiltinDef
+	methodRegistryOnce sync.Once
+)
 
-func init() {
-	// This will be called after all init() functions that call Register()
-	// We'll populate it lazily instead
-}
-
-// buildMethodRegistry builds the method lookup table
+// buildMethodRegistry builds the method lookup table.
 func buildMethodRegistry() {
-	if len(methodRegistry) > 0 {
-		return // already built
-	}
-
-	for _, def := range registry {
-		if def.IsMethod {
-			if methodRegistry[def.ReceiverType] == nil {
-				methodRegistry[def.ReceiverType] = make(map[string]BuiltinDef)
+	methodRegistryOnce.Do(func() {
+		methods := make(map[*Module]map[string]BuiltinDef)
+		for _, def := range registry {
+			if def.IsMethod {
+				if methods[def.ReceiverType] == nil {
+					methods[def.ReceiverType] = make(map[string]BuiltinDef)
+				}
+				methods[def.ReceiverType][def.Name] = def
 			}
-			methodRegistry[def.ReceiverType][def.Name] = def
 		}
-	}
+		methodRegistry = methods
+	})
 }
 
 // LookupMethod finds a method for a given receiver type
