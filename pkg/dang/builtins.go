@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -212,6 +211,50 @@ func ToValue(v any) (Value, error) {
 	}
 }
 
+func parseParamDefs(pairs ...any) []ParamDef {
+	var params []ParamDef
+	for i := 0; i < len(pairs); {
+		if i+1 >= len(pairs) {
+			panic(fmt.Sprintf("Params: missing type for parameter at position %d", i))
+		}
+
+		name, ok := pairs[i].(string)
+		if !ok {
+			panic(fmt.Sprintf("Params: expected string at position %d, got %T", i, pairs[i]))
+		}
+
+		typ, ok := pairs[i+1].(hm.Type)
+		if !ok {
+			panic(fmt.Sprintf("Params: expected hm.Type at position %d, got %T", i+1, pairs[i+1]))
+		}
+
+		param := ParamDef{
+			Name: name,
+			Type: typ,
+		}
+
+		// Check if there's a default value. If the next item is not a
+		// string, it is the default for this parameter.
+		if i+2 < len(pairs) {
+			if _, isString := pairs[i+2].(string); !isString {
+				val, isValue := pairs[i+2].(Value)
+				if !isValue {
+					panic(fmt.Sprintf("Params: expected Value at position %d, got %T", i+2, pairs[i+2]))
+				}
+				param.DefaultValue = val
+				i += 3
+			} else {
+				i += 2
+			}
+		} else {
+			i += 2
+		}
+
+		params = append(params, param)
+	}
+	return params
+}
+
 // BuiltinBuilder provides a fluent API for defining builtin functions
 type BuiltinBuilder struct {
 	def BuiltinDef
@@ -234,48 +277,12 @@ func (b *BuiltinBuilder) Doc(doc string) *BuiltinBuilder {
 	return b
 }
 
-// Params adds parameters to the function
-// Usage: Params("name", type) or Params("name", type, defaultValue, "name2", type2, ...)
+// Params adds parameters to the function.
+//
+// Usage: Params("name", type) or
+// Params("name", type, defaultValue, "name2", type2, ...)
 func (b *BuiltinBuilder) Params(pairs ...any) *BuiltinBuilder {
-	for i := 0; i < len(pairs); {
-		if i+1 >= len(pairs) {
-			panic(fmt.Sprintf("Params: missing type for parameter at position %d", i))
-		}
-
-		name, ok := pairs[i].(string)
-		if !ok {
-			panic(fmt.Sprintf("Params: expected string at position %d, got %T", i, pairs[i]))
-		}
-
-		typ, ok := pairs[i+1].(hm.Type)
-		if !ok {
-			panic(fmt.Sprintf("Params: expected hm.Type at position %d, got %T", i+1, pairs[i+1]))
-		}
-
-		param := ParamDef{
-			Name: name,
-			Type: typ,
-		}
-
-		// Check if there's a default value
-		if i+2 < len(pairs) {
-			// Peek ahead - if next item is not a string, it's a default value
-			if _, isString := pairs[i+2].(string); !isString {
-				if val, isValue := pairs[i+2].(Value); isValue {
-					param.DefaultValue = val
-					i += 3
-				} else {
-					panic(fmt.Sprintf("Params: expected Value at position %d, got %T", i+2, pairs[i+2]))
-				}
-			} else {
-				i += 2
-			}
-		} else {
-			i += 2
-		}
-
-		b.def.ParamTypes = append(b.def.ParamTypes, param)
-	}
+	b.def.ParamTypes = append(b.def.ParamTypes, parseParamDefs(pairs...)...)
 	return b
 }
 
@@ -323,47 +330,9 @@ func (b *MethodBuilder) Doc(doc string) *MethodBuilder {
 	return b
 }
 
-// Params adds parameters to the method
+// Params adds parameters to the method.
 func (b *MethodBuilder) Params(pairs ...any) *MethodBuilder {
-	for i := 0; i < len(pairs); {
-		if i+1 >= len(pairs) {
-			panic(fmt.Sprintf("Params: missing type for parameter at position %d", i))
-		}
-
-		name, ok := pairs[i].(string)
-		if !ok {
-			panic(fmt.Sprintf("Params: expected string at position %d, got %T", i, pairs[i]))
-		}
-
-		typ, ok := pairs[i+1].(hm.Type)
-		if !ok {
-			panic(fmt.Sprintf("Params: expected hm.Type at position %d, got %T", i+1, pairs[i+1]))
-		}
-
-		param := ParamDef{
-			Name: name,
-			Type: typ,
-		}
-
-		// Check if there's a default value
-		if i+2 < len(pairs) {
-			// Peek ahead - if next item is not a string, it's a default value
-			if _, isString := pairs[i+2].(string); !isString {
-				if val, isValue := pairs[i+2].(Value); isValue {
-					param.DefaultValue = val
-					i += 3
-				} else {
-					panic(fmt.Sprintf("Params: expected Value at position %d, got %T", i+2, pairs[i+2]))
-				}
-			} else {
-				i += 2
-			}
-		} else {
-			i += 2
-		}
-
-		b.def.ParamTypes = append(b.def.ParamTypes, param)
-	}
+	b.def.ParamTypes = append(b.def.ParamTypes, parseParamDefs(pairs...)...)
 	return b
 }
 
@@ -408,46 +377,9 @@ func (b *StaticMethodBuilder) Doc(doc string) *StaticMethodBuilder {
 	return b
 }
 
-// Params adds parameters to the function
+// Params adds parameters to the static method.
 func (b *StaticMethodBuilder) Params(pairs ...any) *StaticMethodBuilder {
-	for i := 0; i < len(pairs); {
-		if i+1 >= len(pairs) {
-			panic(fmt.Sprintf("Params: missing type for parameter at position %d", i))
-		}
-
-		name, ok := pairs[i].(string)
-		if !ok {
-			panic(fmt.Sprintf("Params: expected string at position %d, got %T", i, pairs[i]))
-		}
-
-		typ, ok := pairs[i+1].(hm.Type)
-		if !ok {
-			panic(fmt.Sprintf("Params: expected hm.Type at position %d, got %T", i+1, pairs[i+1]))
-		}
-
-		param := ParamDef{
-			Name: name,
-			Type: typ,
-		}
-
-		// Check if there's a default value
-		if i+2 < len(pairs) {
-			if _, isString := pairs[i+2].(string); !isString {
-				if val, isValue := pairs[i+2].(Value); isValue {
-					param.DefaultValue = val
-					i += 3
-				} else {
-					panic(fmt.Sprintf("Params: expected Value at position %d, got %T", i+2, pairs[i+2]))
-				}
-			} else {
-				i += 2
-			}
-		} else {
-			i += 2
-		}
-
-		b.def.ParamTypes = append(b.def.ParamTypes, param)
-	}
+	b.def.ParamTypes = append(b.def.ParamTypes, parseParamDefs(pairs...)...)
 	return b
 }
 
@@ -465,45 +397,7 @@ func (b *StaticMethodBuilder) Impl(fn func(context.Context, Args) (Value, error)
 	Register(b.def)
 }
 
-var (
-	methodRegistry     map[*Module]map[string]BuiltinDef
-	methodRegistryOnce sync.Once
-)
-
-// buildMethodRegistry builds the method lookup table.
-func buildMethodRegistry() {
-	methodRegistryOnce.Do(func() {
-		methods := make(map[*Module]map[string]BuiltinDef)
-		for _, def := range registry {
-			if def.IsMethod {
-				if methods[def.ReceiverType] == nil {
-					methods[def.ReceiverType] = make(map[string]BuiltinDef)
-				}
-				methods[def.ReceiverType][def.Name] = def
-			}
-		}
-		methodRegistry = methods
-	})
-}
-
-// LookupMethod finds a method for a given receiver type
-func LookupMethod(receiverType *Module, methodName string) (BuiltinDef, bool) {
-	buildMethodRegistry()
-	methods, ok := methodRegistry[receiverType]
-	if !ok {
-		return BuiltinDef{}, false
-	}
-	def, ok := methods[methodName]
-	return def, ok
-}
-
-// GetMethodKey returns the environment key for a method
-func GetMethodKey(receiverType *Module, methodName string) string {
-	return fmt.Sprintf("_%s_%s_builtin",
-		strings.ToLower(receiverType.Named), methodName)
-}
-
-// BuiltinDef defines a builtin function or method
+// BuiltinDef defines a builtin function or method.
 type BuiltinDef struct {
 	Name         string
 	IsMethod     bool
@@ -517,58 +411,111 @@ type BuiltinDef struct {
 	Doc          string
 }
 
-// ParamDef defines a parameter with optional default value
+// ParamDef defines a parameter with optional default value.
 type ParamDef struct {
 	Name         string
 	Type         hm.Type
 	DefaultValue Value // nil if no default
 }
 
-var registry []BuiltinDef
+type builtinRegistry struct {
+	functions []BuiltinDef
 
-// Register adds a builtin definition to the registry
+	methods      map[*Module][]BuiltinDef
+	methodByName map[*Module]map[string]BuiltinDef
+
+	staticMethods    map[*Module][]BuiltinDef
+	staticModules    []*Module
+	staticModuleSeen map[*Module]bool
+}
+
+func newBuiltinRegistry() *builtinRegistry {
+	return &builtinRegistry{
+		methods:          make(map[*Module][]BuiltinDef),
+		methodByName:     make(map[*Module]map[string]BuiltinDef),
+		staticMethods:    make(map[*Module][]BuiltinDef),
+		staticModuleSeen: make(map[*Module]bool),
+	}
+}
+
+var builtins = newBuiltinRegistry()
+
+// Register adds a builtin definition to the registry.
 func Register(def BuiltinDef) {
-	registry = append(registry, def)
+	builtins.register(def)
 }
 
-// ForEachFunction iterates over all registered functions
+func (r *builtinRegistry) register(def BuiltinDef) {
+	if def.IsMethod && def.IsStatic {
+		panic(fmt.Sprintf("builtin %q cannot be both method and static method", def.Name))
+	}
+
+	switch {
+	case def.IsMethod:
+		if def.ReceiverType == nil {
+			panic(fmt.Sprintf("method builtin %q is missing a receiver", def.Name))
+		}
+		r.methods[def.ReceiverType] = append(r.methods[def.ReceiverType], def)
+		if r.methodByName[def.ReceiverType] == nil {
+			r.methodByName[def.ReceiverType] = make(map[string]BuiltinDef)
+		}
+		r.methodByName[def.ReceiverType][def.Name] = def
+
+	case def.IsStatic:
+		if def.HostModule == nil {
+			panic(fmt.Sprintf("static builtin %q is missing a host module", def.Name))
+		}
+		r.staticMethods[def.HostModule] = append(r.staticMethods[def.HostModule], def)
+		if !r.staticModuleSeen[def.HostModule] {
+			r.staticModuleSeen[def.HostModule] = true
+			r.staticModules = append(r.staticModules, def.HostModule)
+		}
+
+	default:
+		r.functions = append(r.functions, def)
+	}
+}
+
+// LookupMethod finds a method for a given receiver type.
+func LookupMethod(receiverType *Module, methodName string) (BuiltinDef, bool) {
+	methods, ok := builtins.methodByName[receiverType]
+	if !ok {
+		return BuiltinDef{}, false
+	}
+	def, ok := methods[methodName]
+	return def, ok
+}
+
+// GetMethodKey returns the environment key for a method.
+func GetMethodKey(receiverType *Module, methodName string) string {
+	return fmt.Sprintf("_%s_%s_builtin",
+		strings.ToLower(receiverType.Named), methodName)
+}
+
+// ForEachFunction iterates over all registered functions.
 func ForEachFunction(fn func(BuiltinDef)) {
-	for _, def := range registry {
-		if !def.IsMethod {
-			fn(def)
-		}
+	for _, def := range builtins.functions {
+		fn(def)
 	}
 }
 
-// ForEachMethod iterates over methods for a specific receiver type
+// ForEachMethod iterates over methods for a specific receiver type.
 func ForEachMethod(receiverType *Module, fn func(BuiltinDef)) {
-	for _, def := range registry {
-		if def.IsMethod && def.ReceiverType == receiverType {
-			fn(def)
-		}
+	for _, def := range builtins.methods[receiverType] {
+		fn(def)
 	}
 }
 
-// ForEachStaticMethod iterates over static methods for a specific host module
+// ForEachStaticMethod iterates over static methods for a specific host module.
 func ForEachStaticMethod(hostModule *Module, fn func(BuiltinDef)) {
-	for _, def := range registry {
-		if def.IsStatic && def.HostModule == hostModule {
-			fn(def)
-		}
+	for _, def := range builtins.staticMethods[hostModule] {
+		fn(def)
 	}
 }
 
-// StaticModules returns all modules that have static methods registered
+// StaticModules returns all modules that have static methods registered.
 func StaticModules() []*Module {
-	seen := make(map[*Module]bool)
-	var modules []*Module
-	for _, def := range registry {
-		if def.IsStatic && def.HostModule != nil && !seen[def.HostModule] {
-			seen[def.HostModule] = true
-			modules = append(modules, def.HostModule)
-		}
-	}
-	return modules
+	return append([]*Module(nil), builtins.staticModules...)
 }
 
 // DefineEnum creates an enum type with the given values and registers it
