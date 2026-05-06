@@ -421,8 +421,10 @@ type ParamDef struct {
 type builtinRegistry struct {
 	functions []BuiltinDef
 
-	methods      map[*Module][]BuiltinDef
-	methodByName map[*Module]map[string]BuiltinDef
+	methods            map[*Module][]BuiltinDef
+	methodByName       map[*Module]map[string]BuiltinDef
+	methodReceivers    []*Module
+	methodReceiverSeen map[*Module]bool
 
 	staticMethods    map[*Module][]BuiltinDef
 	staticModules    []*Module
@@ -431,10 +433,11 @@ type builtinRegistry struct {
 
 func newBuiltinRegistry() *builtinRegistry {
 	return &builtinRegistry{
-		methods:          make(map[*Module][]BuiltinDef),
-		methodByName:     make(map[*Module]map[string]BuiltinDef),
-		staticMethods:    make(map[*Module][]BuiltinDef),
-		staticModuleSeen: make(map[*Module]bool),
+		methods:            make(map[*Module][]BuiltinDef),
+		methodByName:       make(map[*Module]map[string]BuiltinDef),
+		methodReceiverSeen: make(map[*Module]bool),
+		staticMethods:      make(map[*Module][]BuiltinDef),
+		staticModuleSeen:   make(map[*Module]bool),
 	}
 }
 
@@ -460,6 +463,10 @@ func (r *builtinRegistry) register(def BuiltinDef) {
 			r.methodByName[def.ReceiverType] = make(map[string]BuiltinDef)
 		}
 		r.methodByName[def.ReceiverType][def.Name] = def
+		if !r.methodReceiverSeen[def.ReceiverType] {
+			r.methodReceiverSeen[def.ReceiverType] = true
+			r.methodReceivers = append(r.methodReceivers, def.ReceiverType)
+		}
 
 	case def.IsStatic:
 		if def.HostModule == nil {
@@ -504,6 +511,11 @@ func ForEachMethod(receiverType *Module, fn func(BuiltinDef)) {
 	for _, def := range builtins.methods[receiverType] {
 		fn(def)
 	}
+}
+
+// MethodReceivers returns all modules that have builtin methods registered.
+func MethodReceivers() []*Module {
+	return append([]*Module(nil), builtins.methodReceivers...)
 }
 
 // ForEachStaticMethod iterates over static methods for a specific host module.

@@ -24,6 +24,15 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 			t.Fatalf("list method %q was not indexed", name)
 		}
 	}
+	listReceiverFound := false
+	for _, receiver := range MethodReceivers() {
+		if receiver == ListTypeModule {
+			listReceiverFound = true
+		}
+	}
+	if !listReceiverFound {
+		t.Fatalf("list method receiver was not registered")
+	}
 
 	randomMethods := map[string]bool{}
 	ForEachStaticMethod(RandomModule, func(def BuiltinDef) {

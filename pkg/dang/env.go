@@ -789,7 +789,7 @@ func registerBuiltinTypes() {
 	})
 
 	// Register all builtin method types
-	for _, receiverType := range []*Module{StringType, IntType, FloatType, BooleanType, ListTypeModule} {
+	for _, receiverType := range MethodReceivers() {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
