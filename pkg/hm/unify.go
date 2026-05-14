@@ -35,19 +35,16 @@ func Assignable(have, want Type) (Subs, error) {
 		return bindVar(wantTV, have)
 	}
 
-	// Handle inline union types. Assigning to a union succeeds if any option
-	// accepts the value. Assigning from a union requires every possible option to
-	// be assignable to the target.
-	if wantUnion, ok := want.(*UnionType); ok {
-		return assignableToUnion(have, wantUnion)
-	}
-	if haveUnion, ok := have.(*UnionType); ok {
-		return assignableFromUnion(haveUnion, want)
-	}
-
 	// Try Type.Eq first (simplest check)
 	if have.Eq(want) {
 		return NewSubs(), nil
+	}
+
+	// Handle inline union sources. Assigning from a union requires every
+	// possible option to be assignable to the target. If the target is also a
+	// union, each option may match any of the target union's options.
+	if haveUnion, ok := have.(*UnionType); ok {
+		return assignableFromUnion(haveUnion, want)
 	}
 
 	// Handle composite types using Types() method
@@ -100,6 +97,12 @@ func Assignable(have, want Type) (Subs, error) {
 		if coercible.AcceptsCoercionFrom(have) {
 			return NewSubs(), nil
 		}
+	}
+
+	// Assigning to a union succeeds if any option accepts the value. This runs
+	// after supertype checks so NonNull(T1 | T2) can still flow to T1 | T2.
+	if wantUnion, ok := want.(*UnionType); ok {
+		return assignableToUnion(have, wantUnion)
 	}
 
 	return nil, UnificationError{have, want}

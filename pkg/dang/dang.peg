@@ -556,7 +556,19 @@ PositionalValue <- value:Form {
 }
 ColonToken <- ':'
 
-Type <- NonNull / NamedType / ListType / ObjectType / TypeVariable
+Type <- UnionType / SimpleType
+UnionType <- types:(t:SimpleType _ '|' _ { return t, nil })+ last:SimpleType? {
+  options := sliceOfAppend[TypeNode](types, last)
+  if len(options) == 1 {
+    return options[0], nil
+  }
+  return UnionTypeNode{Options: options}, nil
+}
+SimpleType <- NonNull / PrimaryType
+PrimaryType <- NamedType / ListType / ObjectType / TypeVariable / GroupedType
+GroupedType <- '(' _ inner:Type _ ')' {
+  return inner, nil
+}
 NamedType <- qual:(n:NamedType DotToken { return n, nil })? name:UpperId {
   var base *NamedTypeNode
   if qual != nil {
@@ -582,7 +594,7 @@ ObjectTypeField <- key:Id _ ColonToken _ type_:Type {
     Type: type_.(TypeNode),
   }, nil
 }
-NonNull <- inner:Type BangToken {
+NonNull <- inner:PrimaryType BangToken {
   return NonNullTypeNode{inner.(TypeNode)}, nil
 }
 TypeVariable <- v:[a-z] {

@@ -344,6 +344,9 @@ type NonNullType struct {
 }
 
 func (t NonNullType) Name() string {
+	if _, ok := t.Type.(*UnionType); ok {
+		return fmt.Sprintf("(%s)!", t.Type.Name())
+	}
 	return fmt.Sprintf("%s!", t.Type.Name())
 }
 
@@ -392,9 +395,12 @@ func (t NonNullType) Supertypes() []Type {
 }
 
 func (t NonNullType) String() string {
+	if _, ok := t.Type.(*UnionType); ok {
+		return fmt.Sprintf("(%s)!", t.Type)
+	}
 	return fmt.Sprintf("%s!", t.Type)
 }
 
 func (t NonNullType) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s!", t.Type)
+	_, _ = fmt.Fprint(s, t.String())
 }

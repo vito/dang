@@ -150,60 +150,108 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		unwrapped = nn.Type
 	}
 
-	// The operand must be a union or interface type
-	operandMod, ok := unwrapped.(*Module)
-	if !ok {
-		return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s", exprType), c.Expr)
-	}
-
-	if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
-		return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod.Name()), c.Expr)
-	}
-
 	// Resolve the type pattern from the operand's members first (handles
 	// narrowed unions from inline fragments), falling back to the environment.
 	var memberMod *Module
-	if operandMod.Kind == UnionKind {
-		for _, m := range operandMod.GetMembers() {
-			if mod, ok := m.(*Module); ok && mod.Name() == clause.TypePattern.Name {
-				memberMod = mod
-				break
-			}
+	if operandMod, ok := unwrapped.(*Module); ok {
+		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
+			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod.Name()), c.Expr)
 		}
-		if memberMod == nil {
-			return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
-		}
-	} else if operandMod.Kind == InterfaceKind {
-		memberType, found := modEnv.NamedType(clause.TypePattern.Name)
-		if !found {
-			return NewInferError(fmt.Errorf("unknown type %s in type pattern", clause.TypePattern.Name), clause.TypePattern)
-		}
-		mod, ok := memberType.(*Module)
-		if !ok {
-			return NewInferError(fmt.Errorf("type pattern %s is not an object type", clause.TypePattern.Name), clause.TypePattern)
-		}
-		memberMod = mod
 
-		// Allow the interface itself as a type pattern (matches any
-		// implementer, like a typed catch-all).
-		if memberMod != operandMod {
-			// Otherwise the type must implement the interface.
-			found2 := false
-			for _, iface := range memberMod.Supertypes() {
-				if iface == operandMod {
-					found2 = true
+		if operandMod.Kind == UnionKind {
+			for _, m := range operandMod.GetMembers() {
+				if mod, ok := m.(*Module); ok && mod.Name() == clause.TypePattern.Name {
+					memberMod = mod
 					break
 				}
 			}
-			if !found2 {
-				return NewInferError(fmt.Errorf("type %s does not implement interface %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+			if memberMod == nil {
+				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+			}
+		} else if operandMod.Kind == InterfaceKind {
+			var err error
+			memberMod, err = resolveInterfaceTypePattern(modEnv, operandMod, clause.TypePattern.Name)
+			if err != nil {
+				return NewInferError(err, clause.TypePattern)
 			}
 		}
+	} else if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
+		var err error
+		memberMod, err = resolveInlineUnionTypePattern(modEnv, operandUnion, clause.TypePattern.Name)
+		if err != nil {
+			return NewInferError(err, clause.TypePattern)
+		}
+	} else {
+		return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s", exprType), c.Expr)
 	}
 
 	// Store the resolved member type for use when inferring the clause body
 	clause.resolvedMemberType = memberMod
 	return nil
+}
+
+func resolveInterfaceTypePattern(env Env, iface *Module, patternName string) (*Module, error) {
+	memberType, found := env.NamedType(patternName)
+	if !found {
+		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
+	}
+	memberMod, ok := memberType.(*Module)
+	if !ok {
+		return nil, fmt.Errorf("type pattern %s is not an object type", patternName)
+	}
+
+	// Allow the interface itself as a type pattern (matches any implementer,
+	// like a typed catch-all).
+	if memberMod == iface {
+		return memberMod, nil
+	}
+
+	// Otherwise the type must implement the interface.
+	for _, super := range memberMod.Supertypes() {
+		if super == iface {
+			return memberMod, nil
+		}
+	}
+	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface.Name())
+}
+
+func resolveInlineUnionTypePattern(env Env, union *hm.UnionType, patternName string) (*Module, error) {
+	patternType, found := env.NamedType(patternName)
+	if !found {
+		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
+	}
+	patternMod, ok := patternType.(*Module)
+	if !ok {
+		return nil, fmt.Errorf("type pattern %s is not a named type", patternName)
+	}
+
+	for _, option := range union.Options {
+		optionMod, ok := moduleType(option)
+		if !ok {
+			continue
+		}
+		if optionMod == patternMod || optionMod.Name() == patternName {
+			return patternMod, nil
+		}
+		if optionMod.Kind == UnionKind && optionMod.HasMember(patternMod) {
+			return patternMod, nil
+		}
+		if optionMod.Kind == InterfaceKind {
+			if _, err := resolveInterfaceTypePattern(env, optionMod, patternName); err == nil {
+				return patternMod, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("type %s is not a member of union %s", patternName, union)
+}
+
+func moduleType(t hm.Type) (*Module, bool) {
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	mod, ok := t.(*Module)
+	return mod, ok
 }
 
 func (c *Case) Walk(fn func(Node) bool) {
@@ -303,6 +351,30 @@ func valueModule(val Value) *Module {
 			if mod, ok := v.Mod.(*Module); ok {
 				return mod
 			}
+		}
+	case GraphQLValue:
+		if v.TypeEnv != nil {
+			if typeEnv, found := v.TypeEnv.NamedType(v.TypeName); found {
+				if mod, ok := typeEnv.(*Module); ok {
+					return mod
+				}
+			}
+		}
+	case StringValue:
+		return StringType
+	case IntValue:
+		return IntType
+	case FloatValue:
+		return FloatType
+	case BoolValue:
+		return BooleanType
+	case ScalarValue:
+		if mod, ok := v.ScalarType.(*Module); ok {
+			return mod
+		}
+	case EnumValue:
+		if mod, ok := v.EnumType.(*Module); ok {
+			return mod
 		}
 	}
 	return nil

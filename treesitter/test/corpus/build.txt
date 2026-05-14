@@ -108,7 +108,7 @@ print(test(bin(src)))
               (colon_token)
               (type
                 (non_null
-                  (type
+                  (primary_type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -116,7 +116,7 @@ print(test(bin(src)))
         (colon_token)
         (type
           (non_null
-            (type
+            (primary_type
               (named_type
                 (upper_id
                   (upper_token))))
@@ -253,7 +253,7 @@ print(test(bin(src)))
               (colon_token)
               (type
                 (non_null
-                  (type
+                  (primary_type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -261,7 +261,7 @@ print(test(bin(src)))
         (colon_token)
         (type
           (non_null
-            (type
+            (primary_type
               (named_type
                 (upper_id
                   (upper_token))))

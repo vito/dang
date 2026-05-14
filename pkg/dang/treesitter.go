@@ -26,7 +26,7 @@ func TreesitterGrammar() treesitter.Grammar {
 			Value: `\s`,
 		},
 	}
-	ts.Supertypes = []string{"expr", "form", "term"}
+	ts.Supertypes = []string{"expr", "form", "term", "simple_type"}
 	ts.Conflicts = [][]treesitter.RuleName{
 		{treesitter.Name("Float"), treesitter.Name("Int")},
 	}
