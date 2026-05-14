@@ -37,6 +37,7 @@ type Dang {
   """
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
+  @generate
   pub generate: Changeset! {
     generated.directory(".").changes(base.directory("/src"))
   }
