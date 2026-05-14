@@ -210,18 +210,24 @@ func gqlInputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedType
 		}
 		return hm.NonNullType{Type: inner}, nil
 	case introspection.TypeKindScalar:
-		if ref.Name == "ID" && expectedType != "" {
-			t, found := mod.NamedType(expectedType)
+		isIDScalar := ref.Name == "ID" || (strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID")
+		if expectedType != "" && isIDScalar {
+			expected, found := mod.NamedType(expectedType)
 			if !found {
 				return nil, fmt.Errorf("gqlInputTypeRefToTypeNode: expected type %q not found", expectedType)
 			}
-			return t, nil
+			scalar, found := mod.NamedType(ref.Name)
+			if !found {
+				return nil, fmt.Errorf("gqlInputTypeRefToTypeNode: scalar %q not found", ref.Name)
+			}
+			return hm.NewUnionType(expected, scalar), nil
 		}
 		if strings.HasSuffix(ref.Name, "ID") && ref.Name != "ID" {
-			return gqlInputTypeRefToTypeNode(mod, &introspection.TypeRef{
-				Name: strings.TrimSuffix(ref.Name, "ID"),
-				Kind: introspection.TypeKindObject,
-			}, "")
+			scalar, scalarFound := mod.NamedType(ref.Name)
+			object, objectFound := mod.NamedType(strings.TrimSuffix(ref.Name, "ID"))
+			if scalarFound && objectFound {
+				return hm.NewUnionType(object, scalar), nil
+			}
 		}
 		fallthrough
 	default:

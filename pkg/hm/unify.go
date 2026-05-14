@@ -35,6 +35,16 @@ func Assignable(have, want Type) (Subs, error) {
 		return bindVar(wantTV, have)
 	}
 
+	// Handle inline union types. Assigning to a union succeeds if any option
+	// accepts the value. Assigning from a union requires every possible option to
+	// be assignable to the target.
+	if wantUnion, ok := want.(*UnionType); ok {
+		return assignableToUnion(have, wantUnion)
+	}
+	if haveUnion, ok := have.(*UnionType); ok {
+		return assignableFromUnion(haveUnion, want)
+	}
+
 	// Try Type.Eq first (simplest check)
 	if have.Eq(want) {
 		return NewSubs(), nil
@@ -93,6 +103,29 @@ func Assignable(have, want Type) (Subs, error) {
 	}
 
 	return nil, UnificationError{have, want}
+}
+
+func assignableToUnion(have Type, want *UnionType) (Subs, error) {
+	for _, option := range want.Options {
+		if subs, err := Assignable(have, option); err == nil {
+			return subs, nil
+		}
+	}
+	return nil, UnificationError{have, want}
+}
+
+func assignableFromUnion(have *UnionType, want Type) (Subs, error) {
+	subs := NewSubs()
+	for _, option := range have.Options {
+		optionType := option.Apply(subs).(Type)
+		wantType := want.Apply(subs).(Type)
+		optionSubs, err := Assignable(optionType, wantType)
+		if err != nil {
+			return nil, UnificationError{have, want}
+		}
+		subs = subs.Compose(optionSubs)
+	}
+	return subs, nil
 }
 
 // bindVar binds a type variable to a type
