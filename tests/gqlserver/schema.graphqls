@@ -14,6 +14,7 @@ scalar Timestamp
 scalar URL
 scalar JSON
 scalar BigInt
+scalar UserID
 
 interface Node {
   id: String!
@@ -27,6 +28,8 @@ type Query {
   hello(name: String!): String!
   users: [User!]!
   user(id: String!): User
+  loadUserFromID(id: UserID!): User!
+  loadUsersFromIDs(ids: [UserID!]!): [User!]!
   primaryUser: User!
   secondaryUser: User!
   userName(user: ID! @expectedType(name: "User")): String!

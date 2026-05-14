@@ -72,6 +72,20 @@
     ]
   },
   {
+    "type": "simple_type",
+    "named": true,
+    "subtypes": [
+      {
+        "type": "non_null",
+        "named": true
+      },
+      {
+        "type": "primary_type",
+        "named": true
+      }
+    ]
+  },
+  {
     "type": "term",
     "named": true,
     "subtypes": [
@@ -1913,6 +1927,22 @@
     }
   },
   {
+    "type": "grouped_type",
+    "named": true,
+    "fields": {
+      "inner": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "header_slot",
     "named": true,
     "fields": {
@@ -2154,6 +2184,16 @@
           {
             "type": "field_selection",
             "named": true
+          }
+        ]
+      },
+      "non_null": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "!",
+            "named": false
           }
         ]
       },
@@ -2611,7 +2651,7 @@
         "required": true,
         "types": [
           {
-            "type": "type",
+            "type": "primary_type",
             "named": true
           }
         ]
@@ -2883,6 +2923,37 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "primary_type",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "grouped_type",
+          "named": true
+        },
+        {
+          "type": "list_type",
+          "named": true
+        },
+        {
+          "type": "named_type",
+          "named": true
+        },
+        {
+          "type": "object_type",
+          "named": true
+        },
+        {
+          "type": "type_variable",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -3372,23 +3443,11 @@
       "required": true,
       "types": [
         {
-          "type": "list_type",
+          "type": "simple_type",
           "named": true
         },
         {
-          "type": "named_type",
-          "named": true
-        },
-        {
-          "type": "non_null",
-          "named": true
-        },
-        {
-          "type": "object_type",
-          "named": true
-        },
-        {
-          "type": "type_variable",
+          "type": "union_type",
           "named": true
         }
       ]
@@ -4019,6 +4078,46 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "union_type",
+    "named": true,
+    "fields": {
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "simple_type",
+            "named": true
+          }
+        ]
+      },
+      "t": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "simple_type",
+            "named": true
+          }
+        ]
+      },
+      "types": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "simple_type",
+            "named": true
+          },
+          {
+            "type": "|",
+            "named": false
+          }
+        ]
+      }
     }
   },
   {

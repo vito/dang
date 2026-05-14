@@ -40,6 +40,13 @@ func Assignable(have, want Type) (Subs, error) {
 		return NewSubs(), nil
 	}
 
+	// Handle inline union sources. Assigning from a union requires every
+	// possible option to be assignable to the target. If the target is also a
+	// union, each option may match any of the target union's options.
+	if haveUnion, ok := have.(*UnionType); ok {
+		return assignableFromUnion(haveUnion, want)
+	}
+
 	// Handle composite types using Types() method
 	haveTypes := have.Types()
 	wantTypes := want.Types()
@@ -92,7 +99,36 @@ func Assignable(have, want Type) (Subs, error) {
 		}
 	}
 
+	// Assigning to a union succeeds if any option accepts the value. This runs
+	// after supertype checks so NonNull(T1 | T2) can still flow to T1 | T2.
+	if wantUnion, ok := want.(*UnionType); ok {
+		return assignableToUnion(have, wantUnion)
+	}
+
 	return nil, UnificationError{have, want}
+}
+
+func assignableToUnion(have Type, want *UnionType) (Subs, error) {
+	for _, option := range want.Options {
+		if subs, err := Assignable(have, option); err == nil {
+			return subs, nil
+		}
+	}
+	return nil, UnificationError{have, want}
+}
+
+func assignableFromUnion(have *UnionType, want Type) (Subs, error) {
+	subs := NewSubs()
+	for _, option := range have.Options {
+		optionType := option.Apply(subs).(Type)
+		wantType := want.Apply(subs).(Type)
+		optionSubs, err := Assignable(optionType, wantType)
+		if err != nil {
+			return nil, UnificationError{have, want}
+		}
+		subs = subs.Compose(optionSubs)
+	}
+	return subs, nil
 }
 
 // bindVar binds a type variable to a type

@@ -228,20 +228,130 @@ func BorrowTypes(capacity int) Types {
 	return make(Types, capacity)
 }
 
+// UnionType represents an inline "one of" type. A value is assignable to a
+// UnionType if it is assignable to any of the options.
+type UnionType struct {
+	Options []Type
+}
+
+// NewUnionType creates a flattened, de-duplicated inline union type. If only
+// one distinct option remains, that option is returned directly.
+func NewUnionType(options ...Type) Type {
+	flattened := make([]Type, 0, len(options))
+	for _, option := range options {
+		if union, ok := option.(*UnionType); ok {
+			flattened = append(flattened, union.Options...)
+			continue
+		}
+		flattened = append(flattened, option)
+	}
+
+	deduped := make([]Type, 0, len(flattened))
+	for _, option := range flattened {
+		duplicate := false
+		for _, existing := range deduped {
+			if option.Eq(existing) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			deduped = append(deduped, option)
+		}
+	}
+
+	if len(deduped) == 1 {
+		return deduped[0]
+	}
+	return &UnionType{Options: deduped}
+}
+
+func (t *UnionType) Name() string {
+	parts := make([]string, len(t.Options))
+	for i, option := range t.Options {
+		parts[i] = option.Name()
+	}
+	return strings.Join(parts, " | ")
+}
+
+func (t *UnionType) Apply(subs Subs) Substitutable {
+	options := make([]Type, len(t.Options))
+	for i, option := range t.Options {
+		options[i] = option.Apply(subs).(Type)
+	}
+	return NewUnionType(options...)
+}
+
+func (t *UnionType) FreeTypeVar() TypeVarSet {
+	var result TypeVarSet
+	for _, option := range t.Options {
+		result = result.Union(option.FreeTypeVar())
+	}
+	return result
+}
+
+func (t *UnionType) Normalize(k, v TypeVarSet) (Type, error) {
+	options := make([]Type, len(t.Options))
+	for i, option := range t.Options {
+		normalized, err := option.Normalize(k, v)
+		if err != nil {
+			return nil, err
+		}
+		options[i] = normalized
+	}
+	return NewUnionType(options...), nil
+}
+
+func (t *UnionType) Types() Types {
+	return nil
+}
+
+func (t *UnionType) Eq(other Type) bool {
+	otherUnion, ok := other.(*UnionType)
+	if !ok || len(t.Options) != len(otherUnion.Options) {
+		return false
+	}
+	for _, option := range t.Options {
+		found := false
+		for _, otherOption := range otherUnion.Options {
+			if option.Eq(otherOption) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *UnionType) Supertypes() []Type {
+	return nil
+}
+
+func (t *UnionType) String() string {
+	parts := make([]string, len(t.Options))
+	for i, option := range t.Options {
+		parts[i] = option.String()
+	}
+	return strings.Join(parts, " | ")
+}
+
 // NonNullType represents a non-nullable type wrapper
 type NonNullType struct {
 	Type Type
 }
 
 func (t NonNullType) Name() string {
+	if _, ok := t.Type.(*UnionType); ok {
+		return fmt.Sprintf("(%s)!", t.Type.Name())
+	}
 	return fmt.Sprintf("%s!", t.Type.Name())
 }
 
 func (t NonNullType) Apply(subs Subs) Substitutable {
 	applied := t.Type.Apply(subs).(Type)
-	if applied == t.Type {
-		return t
-	}
 	return NonNullType{applied}
 }
 
@@ -285,9 +395,12 @@ func (t NonNullType) Supertypes() []Type {
 }
 
 func (t NonNullType) String() string {
+	if _, ok := t.Type.(*UnionType); ok {
+		return fmt.Sprintf("(%s)!", t.Type)
+	}
 	return fmt.Sprintf("%s!", t.Type)
 }
 
 func (t NonNullType) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s!", t.Type)
+	_, _ = fmt.Fprint(s, t.String())
 }

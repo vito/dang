@@ -8,32 +8,21 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
-func TestExpectedTypeDirectiveMapsIDArgumentToObject(t *testing.T) {
+func TestExpectedTypeDirectiveMapsIDArgumentToObjectOrID(t *testing.T) {
 	env := NewEnv("Dagger", expectedTypeTestSchema())
 
-	useCacheScheme, found := env.SchemeOf("useCache")
-	require.True(t, found)
-	useCacheType, mono := useCacheScheme.Type()
-	require.True(t, mono)
-	useCacheFn, ok := useCacheType.(*hm.FunctionType)
-	require.True(t, ok)
-
-	cacheArgScheme, found := useCacheFn.Arg().(*RecordType).SchemeOf("cache")
-	require.True(t, found)
-	cacheArgType, mono := cacheArgScheme.Type()
-	require.True(t, mono)
+	cacheArgType := requireFunctionArgType(t, env, "useCache", "cache")
 	cacheArgNonNull, ok := cacheArgType.(hm.NonNullType)
 	require.True(t, ok)
-	require.Equal(t, "CacheVolume", cacheArgNonNull.Type.Name())
-
-	cacheVolumeScheme, found := env.SchemeOf("cacheVolume")
-	require.True(t, found)
-	cacheVolumeType, mono := cacheVolumeScheme.Type()
-	require.True(t, mono)
-	cacheVolumeFn, ok := cacheVolumeType.(*hm.FunctionType)
+	cacheArgUnion, ok := cacheArgNonNull.Type.(*hm.UnionType)
 	require.True(t, ok)
+	require.ElementsMatch(t, []string{"CacheVolume", "ID"}, unionOptionNames(cacheArgUnion))
 
-	_, err := hm.Assignable(cacheVolumeFn.Ret(false), cacheArgType)
+	cacheVolumeRet := requireFunctionReturnType(t, env, "cacheVolume")
+	_, err := hm.Assignable(cacheVolumeRet, cacheArgType)
+	require.NoError(t, err)
+
+	_, err = hm.Assignable(hm.NonNullType{Type: IDType}, cacheArgType)
 	require.NoError(t, err)
 }
 
@@ -71,17 +60,7 @@ func TestExpectedTypeDirectiveMapsIDReturnToObject(t *testing.T) {
 func TestExpectedTypeDirectiveMapsIDListArgumentToPlainList(t *testing.T) {
 	env := NewEnv("Dagger", expectedTypeTestSchema())
 
-	useCachesScheme, found := env.SchemeOf("useCaches")
-	require.True(t, found)
-	useCachesType, mono := useCachesScheme.Type()
-	require.True(t, mono)
-	useCachesFn, ok := useCachesType.(*hm.FunctionType)
-	require.True(t, ok)
-
-	cachesArgScheme, found := useCachesFn.Arg().(*RecordType).SchemeOf("caches")
-	require.True(t, found)
-	cachesArgType, mono := cachesArgScheme.Type()
-	require.True(t, mono)
+	cachesArgType := requireFunctionArgType(t, env, "useCaches", "caches")
 	cachesArgNonNull, ok := cachesArgType.(hm.NonNullType)
 	require.True(t, ok)
 
@@ -92,7 +71,94 @@ func TestExpectedTypeDirectiveMapsIDListArgumentToPlainList(t *testing.T) {
 	require.True(t, ok)
 	cacheElemNonNull, ok := cachesList.Type.(hm.NonNullType)
 	require.True(t, ok)
-	require.Equal(t, "CacheVolume", cacheElemNonNull.Type.Name())
+	cacheElemUnion, ok := cacheElemNonNull.Type.(*hm.UnionType)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"CacheVolume", "ID"}, unionOptionNames(cacheElemUnion))
+
+	cacheVolumeRet := requireFunctionReturnType(t, env, "cacheVolume")
+	objectList := hm.NonNullType{Type: ListType{Type: cacheVolumeRet}}
+	_, err := hm.Assignable(objectList, cachesArgType)
+	require.NoError(t, err)
+
+	idList := hm.NonNullType{Type: ListType{Type: hm.NonNullType{Type: IDType}}}
+	_, err = hm.Assignable(idList, cachesArgType)
+	require.NoError(t, err)
+}
+
+func TestCustomIDScalarInputAcceptsObjectOrScalarID(t *testing.T) {
+	env := NewEnv("Dagger", expectedTypeTestSchema())
+
+	idArgType := requireFunctionArgType(t, env, "loadCacheVolumeFromID", "id")
+	idArgNonNull, ok := idArgType.(hm.NonNullType)
+	require.True(t, ok)
+	idArgUnion, ok := idArgNonNull.Type.(*hm.UnionType)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"CacheVolume", "CacheVolumeID"}, unionOptionNames(idArgUnion))
+
+	cacheVolumeRet := requireFunctionReturnType(t, env, "cacheVolume")
+	_, err := hm.Assignable(cacheVolumeRet, idArgType)
+	require.NoError(t, err)
+
+	cacheVolumeID, found := env.NamedType("CacheVolumeID")
+	require.True(t, found)
+	_, err = hm.Assignable(hm.NonNullType{Type: cacheVolumeID}, idArgType)
+	require.NoError(t, err)
+
+	_, err = hm.Assignable(hm.NonNullType{Type: StringType}, idArgType)
+	require.NoError(t, err)
+}
+
+func TestCustomIDScalarListInputAcceptsObjectOrScalarIDLists(t *testing.T) {
+	env := NewEnv("Dagger", expectedTypeTestSchema())
+
+	idsArgType := requireFunctionArgType(t, env, "loadCacheVolumesFromIDs", "ids")
+	cacheVolumeRet := requireFunctionReturnType(t, env, "cacheVolume")
+	objectList := hm.NonNullType{Type: ListType{Type: cacheVolumeRet}}
+	_, err := hm.Assignable(objectList, idsArgType)
+	require.NoError(t, err)
+
+	cacheVolumeID, found := env.NamedType("CacheVolumeID")
+	require.True(t, found)
+	idList := hm.NonNullType{Type: ListType{Type: hm.NonNullType{Type: cacheVolumeID}}}
+	_, err = hm.Assignable(idList, idsArgType)
+	require.NoError(t, err)
+}
+
+func requireFunctionArgType(t *testing.T, env Env, funcName, argName string) hm.Type {
+	t.Helper()
+
+	scheme, found := env.SchemeOf(funcName)
+	require.True(t, found)
+	type_, mono := scheme.Type()
+	require.True(t, mono)
+	fn, ok := type_.(*hm.FunctionType)
+	require.True(t, ok)
+
+	argScheme, found := fn.Arg().(*RecordType).SchemeOf(argName)
+	require.True(t, found)
+	argType, mono := argScheme.Type()
+	require.True(t, mono)
+	return argType
+}
+
+func requireFunctionReturnType(t *testing.T, env Env, funcName string) hm.Type {
+	t.Helper()
+
+	scheme, found := env.SchemeOf(funcName)
+	require.True(t, found)
+	type_, mono := scheme.Type()
+	require.True(t, mono)
+	fn, ok := type_.(*hm.FunctionType)
+	require.True(t, ok)
+	return fn.Ret(false)
+}
+
+func unionOptionNames(union *hm.UnionType) []string {
+	names := make([]string, len(union.Options))
+	for i, option := range union.Options {
+		names[i] = option.Name()
+	}
+	return names
 }
 
 func expectedTypeTestSchema() *introspection.Schema {
@@ -109,6 +175,10 @@ func expectedTypeTestSchema() *introspection.Schema {
 			{
 				Kind: introspection.TypeKindScalar,
 				Name: "String",
+			},
+			{
+				Kind: introspection.TypeKindScalar,
+				Name: "CacheVolumeID",
 			},
 			{
 				Kind: introspection.TypeKindObject,
@@ -149,6 +219,62 @@ func expectedTypeTestSchema() *introspection.Schema {
 							OfType: &introspection.TypeRef{
 								Kind: introspection.TypeKindObject,
 								Name: "CacheVolume",
+							},
+						},
+					},
+					{
+						Name: "loadCacheVolumeFromID",
+						Args: introspection.InputValues{
+							{
+								Name: "id",
+								TypeRef: &introspection.TypeRef{
+									Kind: introspection.TypeKindNonNull,
+									OfType: &introspection.TypeRef{
+										Kind: introspection.TypeKindScalar,
+										Name: "CacheVolumeID",
+									},
+								},
+							},
+						},
+						TypeRef: &introspection.TypeRef{
+							Kind: introspection.TypeKindNonNull,
+							OfType: &introspection.TypeRef{
+								Kind: introspection.TypeKindObject,
+								Name: "CacheVolume",
+							},
+						},
+					},
+					{
+						Name: "loadCacheVolumesFromIDs",
+						Args: introspection.InputValues{
+							{
+								Name: "ids",
+								TypeRef: &introspection.TypeRef{
+									Kind: introspection.TypeKindNonNull,
+									OfType: &introspection.TypeRef{
+										Kind: introspection.TypeKindList,
+										OfType: &introspection.TypeRef{
+											Kind: introspection.TypeKindNonNull,
+											OfType: &introspection.TypeRef{
+												Kind: introspection.TypeKindScalar,
+												Name: "CacheVolumeID",
+											},
+										},
+									},
+								},
+							},
+						},
+						TypeRef: &introspection.TypeRef{
+							Kind: introspection.TypeKindNonNull,
+							OfType: &introspection.TypeRef{
+								Kind: introspection.TypeKindList,
+								OfType: &introspection.TypeRef{
+									Kind: introspection.TypeKindNonNull,
+									OfType: &introspection.TypeRef{
+										Kind: introspection.TypeKindObject,
+										Name: "CacheVolume",
+									},
+								},
 							},
 						},
 					},

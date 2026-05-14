@@ -67,7 +67,7 @@ type Dev {
               (colon_token)
               (type
                 (non_null
-                  (type
+                  (primary_type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -90,7 +90,7 @@ type Dev {
               (colon_token)
               (type
                 (non_null
-                  (type
+                  (primary_type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -162,7 +162,7 @@ type Dev {
                     (colon_token)
                     (type
                       (non_null
-                        (type
+                        (primary_type
                           (named_type
                             (upper_id
                               (upper_token))))
@@ -174,9 +174,10 @@ type Dev {
                 (sep))
               (colon_token)
               (type
-                (named_type
-                  (upper_id
-                    (upper_token))))
+                (primary_type
+                  (named_type
+                    (upper_id
+                      (upper_token)))))
               (block
                 (select_or_call
                   (symbol_or_call
@@ -212,7 +213,7 @@ type Dev {
               (colon_token)
               (type
                 (non_null
-                  (type
+                  (primary_type
                     (named_type
                       (upper_id
                         (upper_token))))
