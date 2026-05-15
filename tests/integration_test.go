@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dagger/testctx"
 	"github.com/dagger/otel-go/oteltestctx"
+	"github.com/dagger/testctx"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/ioctx"
 )
