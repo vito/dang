@@ -208,13 +208,15 @@ type Test {
   let dang: Dang!
 
   """
-  Run go test directly.
+  Run go tests.
   """
-  pub run(
+  @check
+  @cache(policy: FunctionCachePolicy.Never)
+  pub go(
     """
-    Flags to pass along to go test.
+    Arguments to pass along to go test.
     """
-    args: [String!]! = [],
+    args: [String!]! = ["./..."],
   ): Container! {
     dang
       .generated
@@ -231,7 +233,7 @@ type Test {
   """
   pub list(source: Workspace!): String! {
     let out = "Tests from go test -list . ./...:\n"
-    out += run(["-list", ".", "./..."]).stdout
+    out += go(["-list", ".", "./..."]).stdout
     out += "\n\n"
     out += "Tests from ./tests/test_*:\n"
     source.directory("tests").glob("test_*").each { path =>
@@ -243,26 +245,6 @@ type Test {
       out += "- TestDang/TestErrorMessages/" + path.trimSuffix(".dang") + "\n"
     }
     out
-  }
-
-  """
-  Run the Dang language tests.
-  """
-  @check
-  @cache(policy: FunctionCachePolicy.Never)
-  pub language: Void {
-    run(["-count=1", "./tests"]).sync
-    null
-  }
-
-  """
-  Run the Dang LSP tests.
-  """
-  @check
-  @cache(policy: FunctionCachePolicy.Never)
-  pub lsp: Void {
-    run(["-count=1", "./pkg/lsp/..."]).sync
-    null
   }
 
   """
