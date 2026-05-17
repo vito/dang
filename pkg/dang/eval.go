@@ -1092,7 +1092,14 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 		return nil, err
 	}
 
-	return EvalNode(ctx, fnEnv, f.Body)
+	val, err := EvalNode(ctx, fnEnv, f.Body)
+	if err != nil {
+		if returnVal, ok := returnValueFromError(err); ok {
+			return returnVal, nil
+		}
+		return nil, err
+	}
+	return val, nil
 }
 
 func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
@@ -1392,7 +1399,14 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 		return nil, err
 	}
 
-	return EvalNode(ctx, fnEnv, b.Method.Body)
+	val, err := EvalNode(ctx, fnEnv, b.Method.Body)
+	if err != nil {
+		if returnVal, ok := returnValueFromError(err); ok {
+			return returnVal, nil
+		}
+		return nil, err
+	}
+	return val, nil
 }
 
 func (b BoundMethod) ParameterNames() []string {
@@ -1560,9 +1574,15 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
+			returned := false
 			lastVal, err = EvalNode(ctx, newBodyEnv, form)
 			if err != nil {
-				return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
+				if returnVal, ok := returnValueFromError(err); ok {
+					lastVal = returnVal
+					returned = true
+				} else {
+					return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
+				}
 			}
 			// After each form, update the instance from the dynamic scope
 			// (copy-on-write may have replaced it via self.field = value)
@@ -1571,6 +1591,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 				// Update newBodyEnv to use the new instance
 				newBodyEnv = CreateConstructorEnv(instance, argEnv, c.Closure)
 				newBodyEnv.NewDynamicScope(instance)
+			}
+			if returned {
+				break
 			}
 		}
 
@@ -1702,6 +1725,14 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		var sourceErr *SourceError
 		if errors.As(err, &sourceErr) {
 			return err
+		}
+		var returned *ReturnException
+		if errors.As(err, &returned) {
+			return NewSourceError(
+				errors.New(returned.Error()),
+				returned.Location,
+				evalCtx.Source,
+			)
 		}
 		// Surface uncaught raise errors with source highlighting.
 		var raised *RaisedError
@@ -1932,10 +1963,10 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, env)
 		if err != nil {
-			// Let user-level raise errors propagate unwrapped so
-			// TryCatch can intercept them cleanly.
+			// Let control-flow sentinel errors propagate unwrapped so their
+			// nearest runtime boundary can intercept them cleanly.
 			var raised *RaisedError
-			if errors.As(err, &raised) {
+			if errors.As(err, &raised) || isReturnException(err) {
 				return nil, err
 			}
 			if evalCtx != nil {

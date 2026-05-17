@@ -1,0 +1,67 @@
+# Test early returns from functions and constructors
+
+pub describe(n: Int!): String! {
+  if (n < 0) {
+    return "negative"
+  }
+  if (n == 0) {
+    return "zero"
+  }
+  "positive"
+}
+
+assert { describe(0 - 1) == "negative" }
+assert { describe(0) == "zero" }
+assert { describe(2) == "positive" }
+
+# Return should unwind through ordinary blocks and loops.
+pub stopAtThree: Int! {
+  let count = 0
+  for (count < 10) {
+    count += 1
+    if (count == 3) {
+      return count
+    }
+  }
+  99
+}
+
+assert { stopAtThree == 3 }
+
+# try/catch catches raises, not returns.
+pub returnThroughTry: String! {
+  try {
+    return "done"
+  } catch {
+    err => "caught: " + err.message
+  }
+}
+
+assert { returnThroughTry == "done" }
+
+type EarlyReturnGreeter {
+  pub greeting: String!
+
+  new(useDefault: Boolean!) {
+    if (useDefault) {
+      self.greeting = "Hello, world!"
+      return self
+    }
+    self.greeting = "Hello, Dang!"
+    self
+  }
+
+  pub label(short: Boolean!): String! {
+    if (short) {
+      return "short"
+    }
+    self.greeting
+  }
+}
+
+assert { EarlyReturnGreeter(true).greeting == "Hello, world!" }
+assert { EarlyReturnGreeter(false).greeting == "Hello, Dang!" }
+assert { EarlyReturnGreeter(false).label(true) == "short" }
+assert { EarlyReturnGreeter(false).label(false) == "Hello, Dang!" }
+
+print("Early return tests passed!")

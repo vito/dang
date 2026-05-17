@@ -164,11 +164,9 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
 
-	// Unify explicit and inferred return types if both exist
-	if definedRet != nil {
-		if _, err := hm.Assignable(inferredRet, definedRet); err != nil {
-			return nil, NewInferError(fmt.Errorf("return type mismatch: declared %s, inferred %s", definedRet, inferredRet), f.Body)
-		}
+	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create function type with optional block parameter

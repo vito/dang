@@ -578,6 +578,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatTryCatch(n)
 	case *Raise:
 		f.formatRaise(n)
+	case *Return:
+		f.formatReturn(n)
 	case *Conditional:
 		f.formatConditional(n)
 	case *ForLoop:
@@ -2393,6 +2395,11 @@ func (f *Formatter) formatTryCatch(t *TryCatch) {
 
 func (f *Formatter) formatRaise(r *Raise) {
 	f.write("raise ")
+	f.formatNode(r.Value)
+}
+
+func (f *Formatter) formatReturn(r *Return) {
+	f.write("return ")
 	f.formatNode(r.Value)
 }
 
