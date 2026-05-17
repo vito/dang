@@ -953,6 +953,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 		f.formatDeclForms(i.Value.Forms)
 	})
 
+	f.writeIndent()
 	f.write("}")
 	// Emit trailing comment on closing brace line
 	if i.Loc != nil && i.Loc.End != nil {
@@ -1017,6 +1018,7 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 			}
 		})
 
+		f.writeIndent()
 		f.write("}")
 		// Emit trailing comment on closing brace line
 		if e.Loc != nil && e.Loc.End != nil {
