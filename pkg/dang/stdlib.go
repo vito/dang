@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/vito/dang/pkg/hm"
@@ -41,32 +40,6 @@ func registerStdlib() {
 				return nil, fmt.Errorf("toJSON: %w", err)
 			}
 			return ToValue(string(jsonBytes))
-		})
-
-	// fromJSON function: fromJSON(data: String!) -> a
-	Builtin("fromJSON").
-		Doc("parses JSON into an opaque value which is coerced by an expected type").
-		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			data := args.GetString("data")
-			decoder := json.NewDecoder(strings.NewReader(data))
-			decoder.UseNumber()
-
-			var decoded any
-			if err := decoder.Decode(&decoded); err != nil {
-				return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
-			}
-
-			var extra any
-			if err := decoder.Decode(&extra); err != io.EOF {
-				if err != nil {
-					return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
-				}
-				return nil, fmt.Errorf("fromJSON: invalid JSON: trailing data")
-			}
-
-			return JSONValue{Raw: decoded}, nil
 		})
 
 	// toString function: toString(value: b) -> String!

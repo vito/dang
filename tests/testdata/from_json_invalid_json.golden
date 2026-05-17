@@ -1,8 +1,0 @@
-[1m[31mError:[0m fromJSON: invalid JSON: unexpected EOF
-  [2m[34m--> errors/from_json_invalid_json.dang:1:11[0m
- [2m    |[0m
- [2m[34m[1m  1 | [0mlet bad = fromJSON("{") :: String!
-[2m                 [31m^^^^^^^^^^^^^[0m
- [2m  2 | [0m
- [2m    |[0m
-

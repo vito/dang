@@ -348,7 +348,6 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			if _, err := hm.Assignable(valueType, targetType); err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
-			r.SetInferredType(targetType)
 			return targetType, nil
 		case "+":
 			// For compound assignment, check that it's compatible with addition
@@ -358,7 +357,6 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			if err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
 			}
-			r.SetInferredType(targetType)
 			return targetType, nil
 		default:
 			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
@@ -372,16 +370,6 @@ func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		value, err := EvalNode(ctx, env, r.Value)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
-		}
-
-		if r.Modifier == "=" {
-			if targetType := r.Target.GetInferredType(); targetType != nil {
-				coerced, err := coerceValue(ctx, env, value, targetType, "")
-				if err != nil {
-					return nil, err
-				}
-				value = coerced
-			}
 		}
 
 		// Handle different assignment types based on target
