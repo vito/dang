@@ -641,6 +641,19 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		)
 	}
 
+	for _, ret := range collectReturnStatements(newDecl.BodyBlock) {
+		retType := returnValueType(ret)
+		if retType == nil {
+			continue
+		}
+		if _, err := hm.Assignable(retType, expectedType); err != nil {
+			return NewInferError(
+				fmt.Errorf("new() must return %s, got %s", expectedType.Name(), retType.Name()),
+				ret.Value,
+			)
+		}
+	}
+
 	return nil
 }
 

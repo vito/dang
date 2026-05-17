@@ -2720,12 +2720,34 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// If we have an expected return type, unify with the body type
 		if b.ExpectedReturnType != nil {
-			if _, err := hm.Assignable(bodyType, b.ExpectedReturnType); err != nil {
+			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
+			if err != nil {
 				return nil, NewInferError(
 					fmt.Errorf("block argument body has type %s but expected type %s",
 						bodyType, b.ExpectedReturnType),
 					b.BodyNode,
 				)
+			}
+			bodyType = bodyType.Apply(subs).(hm.Type)
+
+			for _, ret := range collectReturnStatements(b.BodyNode) {
+				retType := returnValueType(ret)
+				if retType == nil {
+					continue
+				}
+				retSubs, err := hm.Assignable(retType, b.ExpectedReturnType)
+				if err != nil {
+					return nil, NewInferError(
+						fmt.Errorf("return type mismatch: declared %s, inferred %s", b.ExpectedReturnType, retType),
+						ret.Value,
+					)
+				}
+				bodyType = bodyType.Apply(retSubs).(hm.Type)
+			}
+		} else {
+			bodyType, err = inferReturnTypeWithEarlyReturns(b.BodyNode, bodyType, nil)
+			if err != nil {
+				return nil, err
 			}
 		}
 

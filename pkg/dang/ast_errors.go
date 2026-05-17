@@ -155,6 +155,10 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return val, nil
 		}
 
+		if isReturnException(err) {
+			return nil, err
+		}
+
 		// Resolve the error value to bind in catch clauses.
 		errVal := extractErrorValue(err)
 
