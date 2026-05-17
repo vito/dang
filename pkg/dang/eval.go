@@ -896,6 +896,30 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 
 // Runtime value implementations
 
+// JSONValue is an opaque, deferred JSON value returned by fromJSON. It is
+// materialized only when an expected type is available.
+type JSONValue struct {
+	Raw any
+}
+
+var _ Value = JSONValue{}
+
+func (j JSONValue) Type() hm.Type {
+	return hm.TypeVariable('j')
+}
+
+func (j JSONValue) String() string {
+	bytes, err := json.Marshal(j.Raw)
+	if err != nil {
+		return fmt.Sprintf("json:%v", j.Raw)
+	}
+	return string(bytes)
+}
+
+func (j JSONValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(j.Raw)
+}
+
 // StringValue represents a string value
 type StringValue struct {
 	Val string
@@ -1095,11 +1119,11 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 	val, err := EvalNode(ctx, fnEnv, f.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err); ok {
-			return returnVal, nil
+			return materializeValue(ctx, fnEnv, returnVal, f.FnType.Ret(false), "")
 		}
 		return nil, err
 	}
-	return val, nil
+	return materializeValue(ctx, fnEnv, val, f.FnType.Ret(false), "")
 }
 
 func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
@@ -1402,11 +1426,11 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	val, err := EvalNode(ctx, fnEnv, b.Method.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err); ok {
-			return returnVal, nil
+			return materializeValue(ctx, fnEnv, returnVal, b.Method.FnType.Ret(false), "")
 		}
 		return nil, err
 	}
-	return val, nil
+	return materializeValue(ctx, fnEnv, val, b.Method.FnType.Ret(false), "")
 }
 
 func (b BoundMethod) ParameterNames() []string {

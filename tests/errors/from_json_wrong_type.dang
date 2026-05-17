@@ -1,0 +1,5 @@
+type Summary {
+  pub children: [String!]!
+}
+
+let summary: Summary! = fromJSON("\"oops\"")

@@ -921,20 +921,25 @@ func (t *Module) Supertypes() []Type {
 	return result
 }
 
-// AcceptsCoercionFrom implements hm.Coercible for custom scalar types.
-// Custom scalars accept coercion from any built-in scalar type (String, Int, Float, Boolean).
-// This allows literals like "foo" to be used where a custom scalar like URL is expected.
+// AcceptsCoercionFrom implements hm.Coercible for narrow scalar/enum coercions.
+// Custom scalars accept coercion from built-in scalar types, and enums accept
+// coercion from String so string values can be explicitly materialized as enum
+// members at expected-type boundaries.
 func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
-	// Only custom scalar types accept coercion
+	if t.Kind == EnumKind {
+		return other == StringType
+	}
+
+	// Only custom scalar types accept scalar coercion.
 	if t.Kind != ScalarKind {
 		return false
 	}
-	// Built-in scalars don't accept coercion from other types
+	// Built-in scalars don't accept coercion from other types.
 	switch t {
 	case StringType, IntType, FloatType, BooleanType, IDType:
 		return false
 	}
-	// Custom scalars accept coercion from any built-in scalar
+	// Custom scalars accept coercion from any built-in scalar.
 	switch other {
 	case StringType, IntType, FloatType, BooleanType:
 		return true

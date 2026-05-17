@@ -179,8 +179,15 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, defined := env.GetLocal(s.Name.Name)
 		if defined {
-			// already defined (e.g. through constructor), nothing to do
-			return val, nil
+			// Already defined (e.g. through constructor). Still materialize in
+			// case a constructor argument came from fromJSON or a narrow string
+			// coercion, while leaving ordinary values otherwise unchanged.
+			materialized, err := materializeValue(ctx, env, val, s.GetInferredType(), s.Name.Name)
+			if err != nil {
+				return nil, err
+			}
+			env.SetWithVisibility(s.Name.Name, materialized, s.Visibility)
+			return materialized, nil
 		}
 
 		if s.Value == nil {
@@ -202,6 +209,11 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		val, err := EvalNode(ctx, env, s.Value)
 		if err != nil {
 			// Convert error with proper source location from the failing node
+			return nil, err
+		}
+
+		val, err = materializeValue(ctx, env, val, s.GetInferredType(), s.Name.Name)
+		if err != nil {
 			return nil, err
 		}
 

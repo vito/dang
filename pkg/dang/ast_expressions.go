@@ -338,17 +338,35 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 			return nil, err
 		}
 
+		var paramName string
 		if arg.Positional {
-			err := c.handlePositionalArgument(arg, val, argValues, positionallySet, paramNames, &positionalIndex)
-			if err != nil {
-				return nil, err
+			if positionalIndex >= len(paramNames) {
+				return nil, fmt.Errorf("too many positional arguments: got %d, expected at most %d",
+					positionalIndex+1, len(paramNames))
 			}
+			paramName = paramNames[positionalIndex]
+			if _, exists := argValues[paramName]; exists {
+				return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
+			}
+			positionallySet[paramName] = true
+			positionalIndex++
 		} else {
-			err := c.handleNamedArgument(arg, val, argValues, positionallySet)
+			paramName = arg.Key
+			if _, exists := argValues[paramName]; exists {
+				if positionallySet[paramName] {
+					return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
+				}
+				return nil, fmt.Errorf("argument %q specified multiple times", paramName)
+			}
+		}
+
+		if paramType, ok := parameterType(funVal, paramName); ok {
+			val, err = materializeValue(ctx, env, val, paramType, paramName)
 			if err != nil {
 				return nil, err
 			}
 		}
+		argValues[paramName] = val
 	}
 
 	// Don't add block arg to argValues - it will be handled specially
@@ -2580,6 +2598,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			// Unification succeeded - apply substitutions to the hint and return it
 			// This allows the hint to override the expression's type (including nullability)
 			result := hintType.Apply(subs).(hm.Type)
+			t.SetInferredType(result)
 			return result, nil
 		}
 
@@ -2591,14 +2610,18 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Apply substitutions to the hint type and return it
 		result := hintType.Apply(subs).(hm.Type)
+		t.SetInferredType(result)
 		return result, nil
 	})
 }
 
 func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
-		// Type hints don't change runtime behavior - just evaluate the expression
-		return EvalNode(ctx, env, t.Expr)
+		val, err := EvalNode(ctx, env, t.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return materializeValue(ctx, env, val, t.GetInferredType(), "")
 	})
 }
 
