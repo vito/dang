@@ -179,7 +179,16 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, defined := env.GetLocal(s.Name.Name)
 		if defined {
-			// already defined (e.g. through constructor), nothing to do
+			// already defined (e.g. through constructor); coerce to the slot type
+			// in case the value came from a runtime coercion boundary.
+			if target := s.GetInferredType(); target != nil {
+				coerced, err := coerceValue(ctx, env, val, target, "")
+				if err != nil {
+					return nil, err
+				}
+				env.SetWithVisibility(s.Name.Name, coerced, s.Visibility)
+				val = coerced
+			}
 			return val, nil
 		}
 
@@ -203,6 +212,14 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		if err != nil {
 			// Convert error with proper source location from the failing node
 			return nil, err
+		}
+
+		if target := s.GetInferredType(); target != nil {
+			coerced, err := coerceValue(ctx, env, val, target, "")
+			if err != nil {
+				return nil, err
+			}
+			val = coerced
 		}
 
 		// Add the value to the environment for future use

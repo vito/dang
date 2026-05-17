@@ -1,0 +1,62 @@
+enum Status { PASSED FAILED }
+scalar CustomScalar
+
+type Child {
+  pub name: String!
+  pub outcome: Status!
+}
+
+type Summary {
+  pub children: [Child!]!
+  pub optional: String
+  pub withDefault: String! = "default"
+}
+
+pub echoStatus(status: Status!): Status! {
+  status
+}
+
+pub parseSummary(data: String!): Summary! {
+  fromJSON(data)
+}
+
+let status1 = fromJSON("\"PASSED\"") :: Status!
+assert { status1 == Status.PASSED }
+
+let status2: Status! = fromJSON("\"FAILED\"")
+assert { status2 == Status.FAILED }
+
+let status3 = echoStatus(fromJSON("\"PASSED\""))
+assert { status3 == Status.PASSED }
+
+let direct = "FAILED" :: Status!
+assert { direct == Status.FAILED }
+
+let scalar: CustomScalar! = fromJSON("\"hello\"")
+assert { scalar == "hello" }
+
+let summaryJSON = """
+{
+  "children": [
+    {"name": "one", "outcome": "PASSED", "ignored": true},
+    {"name": "two", "outcome": "FAILED"}
+  ]
+}
+"""
+
+let summary: Summary! = fromJSON(summaryJSON)
+let summary2 = parseSummary(summaryJSON)
+
+assert { summary.children.length == 2 }
+assert { summary.children[0].name == "one" }
+assert { summary.children[0].outcome == Status.PASSED }
+assert { summary.children[1].outcome == Status.FAILED }
+assert { summary.optional == null }
+assert { summary.withDefault == "default" }
+assert { summary2.children[1].name == "two" }
+
+let anon = fromJSON("{\"foo\": 1, \"bar\": \"PASSED\", \"extra\": 2}") :: {{foo: Int!, bar: Status!}}!
+assert { anon.foo == 1 }
+assert { anon.bar == Status.PASSED }
+
+print("fromJSON tests passed!")

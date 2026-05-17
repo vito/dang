@@ -329,6 +329,7 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 	argValues := make(map[string]Value)
 	positionallySet := make(map[string]bool)
 	paramNames := c.getParameterNames(funVal)
+	fnType, _ := funVal.Type().(*hm.FunctionType)
 
 	// Process all arguments
 	positionalIndex := 0
@@ -338,17 +339,36 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 			return nil, err
 		}
 
+		var paramName string
 		if arg.Positional {
-			err := c.handlePositionalArgument(arg, val, argValues, positionallySet, paramNames, &positionalIndex)
-			if err != nil {
-				return nil, err
+			if positionalIndex >= len(paramNames) {
+				return nil, fmt.Errorf("too many positional arguments: got %d, expected at most %d",
+					positionalIndex+1, len(paramNames))
 			}
+			paramName = paramNames[positionalIndex]
+			if _, exists := argValues[paramName]; exists {
+				return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
+			}
+			positionallySet[paramName] = true
+			positionalIndex++
 		} else {
-			err := c.handleNamedArgument(arg, val, argValues, positionallySet)
-			if err != nil {
-				return nil, err
+			paramName = arg.Key
+			if _, exists := argValues[paramName]; exists {
+				if positionallySet[paramName] {
+					return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
+				}
+				return nil, fmt.Errorf("argument %q specified multiple times", paramName)
 			}
 		}
+
+		if targetType := functionParamType(fnType, paramName); targetType != nil {
+			coerced, err := coerceValue(ctx, env, val, targetType, paramName)
+			if err != nil {
+				return nil, err
+			}
+			val = coerced
+		}
+		argValues[paramName] = val
 	}
 
 	// Don't add block arg to argValues - it will be handled specially
@@ -2580,6 +2600,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			// Unification succeeded - apply substitutions to the hint and return it
 			// This allows the hint to override the expression's type (including nullability)
 			result := hintType.Apply(subs).(hm.Type)
+			t.SetInferredType(result)
 			return result, nil
 		}
 
@@ -2591,14 +2612,23 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Apply substitutions to the hint type and return it
 		result := hintType.Apply(subs).(hm.Type)
+		t.SetInferredType(result)
 		return result, nil
 	})
 }
 
 func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
-		// Type hints don't change runtime behavior - just evaluate the expression
-		return EvalNode(ctx, env, t.Expr)
+		val, err := EvalNode(ctx, env, t.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		target := t.GetInferredType()
+		if target == nil {
+			return val, nil
+		}
+		return coerceValue(ctx, env, val, target, "")
 	})
 }
 

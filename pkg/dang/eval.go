@@ -1095,16 +1095,24 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 	val, err := EvalNode(ctx, fnEnv, f.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err); ok {
-			return returnVal, nil
+			return f.coerceReturn(ctx, fnEnv, returnVal)
 		}
 		return nil, err
 	}
-	return val, nil
+	return f.coerceReturn(ctx, fnEnv, val)
+}
+
+func (f FunctionValue) coerceReturn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
+	if f.FnType == nil {
+		return val, nil
+	}
+	return coerceValue(ctx, env, val, f.FnType.Ret(false), "")
 }
 
 func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
 	// Bind arguments to the function environment
 	for _, argName := range f.Args {
+		targetType := functionParamType(f.FnType, argName)
 		if val, exists := args[argName]; exists {
 			// Handle null values with defaults
 			if _, isNull := val.(NullValue); isNull {
@@ -1114,11 +1122,24 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 					if err != nil {
 						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 					}
+					if targetType != nil {
+						defaultVal, err = coerceValue(ctx, fnEnv, defaultVal, targetType, argName)
+						if err != nil {
+							return err
+						}
+					}
 					fnEnv.Set(argName, defaultVal)
 				} else {
 					fnEnv.Set(argName, val)
 				}
 			} else {
+				if targetType != nil {
+					coerced, err := coerceValue(ctx, fnEnv, val, targetType, argName)
+					if err != nil {
+						return err
+					}
+					val = coerced
+				}
 				fnEnv.Set(argName, val)
 			}
 		} else if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
@@ -1127,6 +1148,12 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 			defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
 			if err != nil {
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
+			}
+			if targetType != nil {
+				defaultVal, err = coerceValue(ctx, fnEnv, defaultVal, targetType, argName)
+				if err != nil {
+					return err
+				}
 			}
 			fnEnv.Set(argName, defaultVal)
 		} else {
@@ -1402,11 +1429,11 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	val, err := EvalNode(ctx, fnEnv, b.Method.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err); ok {
-			return returnVal, nil
+			return b.Method.coerceReturn(ctx, fnEnv, returnVal)
 		}
 		return nil, err
 	}
-	return val, nil
+	return b.Method.coerceReturn(ctx, fnEnv, val)
 }
 
 func (b BoundMethod) ParameterNames() []string {

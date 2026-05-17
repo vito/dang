@@ -1,0 +1,5 @@
+type Summary {
+  pub name: String!
+}
+
+let summary: Summary! = fromJSON("\"not an object\"")

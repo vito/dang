@@ -1,0 +1,11 @@
+enum Outcome { PASSED FAILED }
+
+type Child {
+  pub outcome: Outcome!
+}
+
+type Summary {
+  pub children: [Child!]!
+}
+
+let summary: Summary! = fromJSON("{\"children\":[{\"outcome\":\"SKIPPED\"}]}")
