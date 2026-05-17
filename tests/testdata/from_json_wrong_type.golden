@@ -1,4 +1,4 @@
-[1m[31mError:[0m fromJSON: summary: expected object for Summary, got string
+[1m[31mError:[0m summary: expected object for Summary, got string
   [2m[34m--> errors/from_json_wrong_type.dang:5:1[0m
  [2m    |[0m
  [2m  3 | }[0m

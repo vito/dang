@@ -896,28 +896,29 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 
 // Runtime value implementations
 
-// JSONValue is an opaque, deferred JSON value returned by fromJSON. It is
-// materialized only when an expected type is available.
-type JSONValue struct {
+// DeferredValue is an opaque decoded data value returned by deserializers like
+// fromJSON and fromYAML. It is materialized only when an expected type is
+// available.
+type DeferredValue struct {
 	Raw any
 }
 
-var _ Value = JSONValue{}
+var _ Value = DeferredValue{}
 
-func (j JSONValue) Type() hm.Type {
-	return hm.TypeVariable('j')
+func (d DeferredValue) Type() hm.Type {
+	return hm.TypeVariable('d')
 }
 
-func (j JSONValue) String() string {
-	bytes, err := json.Marshal(j.Raw)
+func (d DeferredValue) String() string {
+	bytes, err := json.Marshal(d.Raw)
 	if err != nil {
-		return fmt.Sprintf("json:%v", j.Raw)
+		return fmt.Sprintf("deferred:%v", d.Raw)
 	}
 	return string(bytes)
 }
 
-func (j JSONValue) MarshalJSON() ([]byte, error) {
-	return json.Marshal(j.Raw)
+func (d DeferredValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Raw)
 }
 
 // StringValue represents a string value

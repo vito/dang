@@ -9,7 +9,7 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-// materializeValue resolves deferred JSON values at expected-type boundaries.
+// materializeValue resolves deferred decoded values at expected-type boundaries.
 //
 // This is intentionally not a general runtime type assertion. Normal Dang
 // values are trusted to match their inferred type and are returned unchanged,
@@ -21,8 +21,8 @@ func materializeValue(ctx context.Context, env EvalEnv, val Value, target hm.Typ
 	}
 
 	switch v := val.(type) {
-	case JSONValue:
-		return materializeJSON(ctx, env, v.Raw, target, path)
+	case DeferredValue:
+		return materializeDecoded(ctx, env, v.Raw, target, path)
 	case StringValue:
 		return materializeStringValue(v, target, path)
 	case ListValue:
@@ -67,12 +67,12 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 	}
 }
 
-func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, path string) (Value, error) {
+func materializeDecoded(ctx context.Context, env EvalEnv, raw any, target hm.Type, path string) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
-			return nil, jsonMaterializeError(path, "null is not allowed for %s", target.Name())
+			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
 		}
-		return materializeJSON(ctx, env, raw, nn.Type, path)
+		return materializeDecoded(ctx, env, raw, nn.Type, path)
 	}
 
 	if raw == nil {
@@ -81,17 +81,17 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 
 	switch target.(type) {
 	case hm.TypeVariable, hm.NullableTypeVariable:
-		return JSONValue{Raw: raw}, nil
+		return DeferredValue{Raw: raw}, nil
 	}
 
 	if union, ok := target.(*hm.UnionType); ok {
-		return materializeJSONUnion(ctx, env, raw, union, path)
+		return materializeDecodedUnion(ctx, env, raw, union, path)
 	}
 
 	if target == StringType {
 		s, ok := raw.(string)
 		if !ok {
-			return nil, jsonMaterializeError(path, "expected string, got %s", jsonKind(raw))
+			return nil, materializeDeferredError(path, "expected string, got %s", decodedKind(raw))
 		}
 		return StringValue{Val: s}, nil
 	}
@@ -99,11 +99,11 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 	if target == IntType {
 		num, ok := raw.(json.Number)
 		if !ok {
-			return nil, jsonMaterializeError(path, "expected int, got %s", jsonKind(raw))
+			return nil, materializeDeferredError(path, "expected int, got %s", decodedKind(raw))
 		}
-		val, err := jsonNumberToInt(num)
+		val, err := decodedNumberToInt(num)
 		if err != nil {
-			return nil, jsonMaterializeError(path, "expected integral number for Int, got %q", num.String())
+			return nil, materializeDeferredError(path, "expected integral number for Int, got %q", num.String())
 		}
 		return IntValue{Val: val}, nil
 	}
@@ -111,11 +111,11 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 	if target == FloatType {
 		num, ok := raw.(json.Number)
 		if !ok {
-			return nil, jsonMaterializeError(path, "expected number, got %s", jsonKind(raw))
+			return nil, materializeDeferredError(path, "expected number, got %s", decodedKind(raw))
 		}
 		val, err := num.Float64()
 		if err != nil {
-			return nil, jsonMaterializeError(path, "invalid number %q", num.String())
+			return nil, materializeDeferredError(path, "invalid number %q", num.String())
 		}
 		return FloatValue{Val: val}, nil
 	}
@@ -123,7 +123,7 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 	if target == BooleanType {
 		b, ok := raw.(bool)
 		if !ok {
-			return nil, jsonMaterializeError(path, "expected boolean, got %s", jsonKind(raw))
+			return nil, materializeDeferredError(path, "expected boolean, got %s", decodedKind(raw))
 		}
 		return BoolValue{Val: b}, nil
 	}
@@ -131,11 +131,11 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 	if elemTarget, ok := listElementTarget(target); ok {
 		arr, ok := raw.([]any)
 		if !ok {
-			return nil, jsonMaterializeError(path, "expected array, got %s", jsonKind(raw))
+			return nil, materializeDeferredError(path, "expected array, got %s", decodedKind(raw))
 		}
 		elements := make([]Value, len(arr))
 		for i, elem := range arr {
-			materialized, err := materializeJSON(ctx, env, elem, elemTarget, joinIndexPath(path, i))
+			materialized, err := materializeDecoded(ctx, env, elem, elemTarget, joinIndexPath(path, i))
 			if err != nil {
 				return nil, err
 			}
@@ -149,16 +149,16 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 		case EnumKind:
 			s, ok := raw.(string)
 			if !ok {
-				return nil, jsonMaterializeError(path, "expected string for enum %s, got %s", mod.Name(), jsonKind(raw))
+				return nil, materializeDeferredError(path, "expected string for enum %s, got %s", mod.Name(), decodedKind(raw))
 			}
 			if !enumHasValue(mod, s) {
-				return nil, jsonMaterializeError(path, "invalid enum value %q for %s", s, mod.Name())
+				return nil, materializeDeferredError(path, "invalid enum value %q for %s", s, mod.Name())
 			}
 			return EnumValue{Val: s, EnumType: mod}, nil
 		case ScalarKind:
 			s, ok := raw.(string)
 			if !ok {
-				return nil, jsonMaterializeError(path, "expected string for scalar %s, got %s", mod.Name(), jsonKind(raw))
+				return nil, materializeDeferredError(path, "expected string for scalar %s, got %s", mod.Name(), decodedKind(raw))
 			}
 			if mod == StringType {
 				return StringValue{Val: s}, nil
@@ -174,37 +174,37 @@ func materializeJSON(ctx context.Context, env EvalEnv, raw any, target hm.Type, 
 		}
 	}
 
-	return nil, jsonMaterializeError(path, "cannot materialize JSON as %s", target.Name())
+	return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", target.Name())
 }
 
-func materializeJSONUnion(ctx context.Context, env EvalEnv, raw any, union *hm.UnionType, path string) (Value, error) {
+func materializeDecodedUnion(ctx context.Context, env EvalEnv, raw any, union *hm.UnionType, path string) (Value, error) {
 	var lastErr error
 	for _, option := range union.Options {
-		val, err := materializeJSON(ctx, env, raw, option, path)
+		val, err := materializeDecoded(ctx, env, raw, option, path)
 		if err == nil {
 			return val, nil
 		}
 		lastErr = err
 	}
 	if lastErr != nil {
-		return nil, jsonMaterializeError(path, "cannot materialize JSON as %s", union.Name())
+		return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", union.Name())
 	}
-	return JSONValue{Raw: raw}, nil
+	return DeferredValue{Raw: raw}, nil
 }
 
 func materializeNamedObject(ctx context.Context, env EvalEnv, raw any, mod *Module, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
-		return nil, jsonMaterializeError(path, "expected object for %s, got %s", mod.Name(), jsonKind(raw))
+		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
 	}
 
 	constructorVal, found := env.Get(mod.Named)
 	if !found {
-		return nil, jsonMaterializeError(path, "constructor for %s not found", mod.Name())
+		return nil, materializeDeferredError(path, "constructor for %s not found", mod.Name())
 	}
 	callable, ok := constructorVal.(Callable)
 	if !ok {
-		return nil, jsonMaterializeError(path, "%s is not callable", mod.Name())
+		return nil, materializeDeferredError(path, "%s is not callable", mod.Name())
 	}
 
 	args, err := materializeConstructorArgs(ctx, env, obj, callable, path)
@@ -228,7 +228,7 @@ func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string
 			}
 			fieldPath := joinFieldPath(path, name)
 			if rawVal, found := obj[name]; found {
-				materialized, err := materializeJSON(ctx, env, rawVal, paramType, fieldPath)
+				materialized, err := materializeDecoded(ctx, env, rawVal, paramType, fieldPath)
 				if err != nil {
 					return nil, err
 				}
@@ -244,7 +244,7 @@ func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string
 				args[name] = NullValue{}
 				continue
 			}
-			return nil, jsonMaterializeError(fieldPath, "missing required field")
+			return nil, materializeDeferredError(fieldPath, "missing required field")
 		}
 		return args, nil
 	}
@@ -254,7 +254,7 @@ func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string
 		paramType := paramTypes[name]
 		fieldPath := joinFieldPath(path, name)
 		if rawVal, found := obj[name]; found {
-			materialized, err := materializeJSON(ctx, env, rawVal, paramType, fieldPath)
+			materialized, err := materializeDecoded(ctx, env, rawVal, paramType, fieldPath)
 			if err != nil {
 				return nil, err
 			}
@@ -265,7 +265,7 @@ func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string
 			args[name] = NullValue{}
 			continue
 		}
-		return nil, jsonMaterializeError(fieldPath, "missing required field")
+		return nil, materializeDeferredError(fieldPath, "missing required field")
 	}
 	return args, nil
 }
@@ -273,7 +273,7 @@ func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string
 func materializeAnonymousObject(ctx context.Context, env EvalEnv, raw any, mod *Module, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
-		return nil, jsonMaterializeError(path, "expected object, got %s", jsonKind(raw))
+		return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
 	}
 
 	value := NewModuleValue(mod)
@@ -281,11 +281,11 @@ func materializeAnonymousObject(ctx context.Context, env EvalEnv, raw any, mod *
 		name := field.Key
 		fieldType, mono := field.Value.Type()
 		if !mono {
-			return nil, jsonMaterializeError(joinFieldPath(path, name), "field type is not monomorphic")
+			return nil, materializeDeferredError(joinFieldPath(path, name), "field type is not monomorphic")
 		}
 		fieldPath := joinFieldPath(path, name)
 		if rawVal, found := obj[name]; found {
-			materialized, err := materializeJSON(ctx, env, rawVal, fieldType, fieldPath)
+			materialized, err := materializeDecoded(ctx, env, rawVal, fieldType, fieldPath)
 			if err != nil {
 				return nil, err
 			}
@@ -296,7 +296,7 @@ func materializeAnonymousObject(ctx context.Context, env EvalEnv, raw any, mod *
 			value.Set(name, NullValue{})
 			continue
 		}
-		return nil, jsonMaterializeError(fieldPath, "missing required field")
+		return nil, materializeDeferredError(fieldPath, "missing required field")
 	}
 	return value, nil
 }
@@ -388,7 +388,7 @@ func isPrimitiveScalar(mod *Module) bool {
 	}
 }
 
-func jsonNumberToInt(num json.Number) (int, error) {
+func decodedNumberToInt(num json.Number) (int, error) {
 	rat, ok := new(big.Rat).SetString(num.String())
 	if !ok || !rat.IsInt() {
 		return 0, fmt.Errorf("not an integer")
@@ -426,15 +426,15 @@ func materializeError(path, format string, args ...any) error {
 	return fmt.Errorf("%s: %s", path, msg)
 }
 
-func jsonMaterializeError(path, format string, args ...any) error {
+func materializeDeferredError(path, format string, args ...any) error {
 	msg := fmt.Sprintf(format, args...)
 	if path == "" || path == "$" {
-		return fmt.Errorf("fromJSON: %s", msg)
+		return fmt.Errorf("%s", msg)
 	}
-	return fmt.Errorf("fromJSON: %s: %s", path, msg)
+	return fmt.Errorf("%s: %s", path, msg)
 }
 
-func jsonKind(raw any) string {
+func decodedKind(raw any) string {
 	switch raw.(type) {
 	case nil:
 		return "null"

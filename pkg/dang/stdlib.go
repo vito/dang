@@ -66,7 +66,21 @@ func registerStdlib() {
 				return nil, fmt.Errorf("fromJSON: invalid JSON: trailing data")
 			}
 
-			return JSONValue{Raw: raw}, nil
+			return DeferredValue{Raw: raw}, nil
+		})
+
+	// fromYAML function: fromYAML(data: String!) -> a
+	Builtin("fromYAML").
+		Doc("parses YAML into an opaque value that is materialized by an expected type").
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			data := args.GetString("data")
+			raw, err := decodeYAML(data)
+			if err != nil {
+				return nil, fmt.Errorf("fromYAML: invalid YAML: %w", err)
+			}
+			return DeferredValue{Raw: raw}, nil
 		})
 
 	// toString function: toString(value: b) -> String!

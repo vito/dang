@@ -1,11 +1,11 @@
 [1m[31mError:[0m summary.children[0].outcome: invalid enum value "Skipped" for Status
-  [2m[34m--> errors/from_json_invalid_enum.dang:12:1[0m
+  [2m[34m--> errors/from_yaml_invalid_enum.dang:12:1[0m
  [2m    |[0m
  [2m 10 | }[0m
  [2m 11 | [0m
- [2m[34m[1m 12 | [0mlet summary: Summary! = fromJSON("""
+ [2m[34m[1m 12 | [0mlet summary: Summary! = fromYAML("""
 [2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m 13 | {[0m
- [2m 14 |   "children": [[0m
+ [2m 13 | children:[0m
+ [2m 14 |   - name: one[0m
  [2m    |[0m
 
