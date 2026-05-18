@@ -1,0 +1,13 @@
+# These declarations intentionally refer to types in z_types.dang.
+
+type UsesLater {
+  let later: Later!
+
+  pub label: String! {
+    later.name
+  }
+}
+
+type ImplementsLater implements LaterInterface {
+  pub name: String!
+}

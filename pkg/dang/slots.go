@@ -354,6 +354,14 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		mod.AddClass(c.Name.Name, class)
 	}
 
+	// Pass 0 must only register the type name. Other top-level types may refer
+	// to this class before its file is reached, so anything that resolves field
+	// annotations, constructor params, or implemented interfaces has to wait
+	// until every type has had this registration pass.
+	if pass == 0 {
+		return nil
+	}
+
 	inferEnv := &CompositeModule{
 		primary: class,
 		lexical: env.(Env),
@@ -377,55 +385,52 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
 
-	if pass == 0 {
-		// Link the implementation
-		if len(c.Implements) > 0 {
-			classMod := class.(*Module)
-			for _, ifaceSym := range c.Implements {
-				ifaceType, found := mod.NamedType(ifaceSym.Name)
-				if !found {
-					return WrapInferError(
-						fmt.Errorf("interface %s not found", ifaceSym.Name),
-						ifaceSym,
-					)
-				}
+	// Link the implementation after all interface type names have been
+	// registered by pass 0.
+	if len(c.Implements) > 0 {
+		classMod := class.(*Module)
+		for _, ifaceSym := range c.Implements {
+			ifaceType, found := mod.NamedType(ifaceSym.Name)
+			if !found {
+				return WrapInferError(
+					fmt.Errorf("interface %s not found", ifaceSym.Name),
+					ifaceSym,
+				)
+			}
 
-				ifaceMod, ok := ifaceType.(*Module)
-				if !ok || ifaceMod.Kind != InterfaceKind {
-					return WrapInferError(
-						fmt.Errorf("%s is not an interface", ifaceSym.Name),
-						ifaceSym,
-					)
-				}
+			ifaceMod, ok := ifaceType.(*Module)
+			if !ok || ifaceMod.Kind != InterfaceKind {
+				return WrapInferError(
+					fmt.Errorf("%s is not an interface", ifaceSym.Name),
+					ifaceSym,
+				)
+			}
 
-				// Add "blindly" initially, we'll validate later. The reverse
-				// implementer index is only maintained for locally owned interfaces;
-				// Prelude interfaces are shared process-wide and must not be mutated
-				// by per-module declarations.
-				classMod.AddInterface(ifaceType)
-				if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
-					ifaceMod.AddImplementer(classMod)
-				}
+			// Add "blindly" initially, we'll validate later. The reverse
+			// implementer index is only maintained for locally owned interfaces;
+			// Prelude interfaces are shared process-wide and must not be mutated
+			// by per-module declarations.
+			classMod.AddInterface(ifaceType)
+			if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
+				ifaceMod.AddImplementer(classMod)
 			}
 		}
 	}
 
-	if pass > 0 {
-		// Set dynamic scope type to the class type
-		selfType := hm.NonNullType{Type: class}
-		class.SetDynamicScopeType(selfType)
+	// Set dynamic scope type to the class type
+	selfType := hm.NonNullType{Type: class}
+	class.SetDynamicScopeType(selfType)
 
-		// Hoist body forms directly (not via Block.Hoist which clones the env)
-		// to register method signatures on the class module. This enables
-		// forward references between types defined in any order. We hoist at
-		// pass 0 so that FunDecl.Hoist registers signatures and
-		// SlotDecl.Hoist registers typed field declarations.
-		bodyForms := c.bodyFormsWithoutNew()
-		for _, form := range bodyForms {
-			if hoister, ok := form.(Hoister); ok {
-				if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
-					return err
-				}
+	// Hoist body forms directly (not via Block.Hoist which clones the env)
+	// to register method signatures on the class module. This enables
+	// forward references between types defined in any order. We hoist at
+	// pass 0 so that FunDecl.Hoist registers signatures and
+	// SlotDecl.Hoist registers typed field declarations.
+	bodyForms := c.bodyFormsWithoutNew()
+	for _, form := range bodyForms {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+				return err
 			}
 		}
 	}
