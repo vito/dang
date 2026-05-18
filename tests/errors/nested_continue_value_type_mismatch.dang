@@ -1,0 +1,7 @@
+# Nested continue expressions in a continue value still target the block invocation
+pub result: [String!]! = [1].map { x =>
+  continue {
+    continue 42
+  }
+  "ok"
+}

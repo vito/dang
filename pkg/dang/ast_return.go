@@ -124,7 +124,10 @@ func collectReturnStatements(root Node, target *InferControlTarget) []*Return {
 			if target == nil || ret.Target == target {
 				returns = append(returns, ret)
 			}
-			return false
+			// A return's value is evaluated before the return is raised, so
+			// nested returns inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
 		}
 
 		return true

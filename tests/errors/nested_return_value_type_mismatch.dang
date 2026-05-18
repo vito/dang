@@ -1,0 +1,8 @@
+# Nested return expressions in a return value still target the enclosing function
+pub bad(): String! {
+  return {
+    return 42
+  }
+}
+
+pub result = bad()

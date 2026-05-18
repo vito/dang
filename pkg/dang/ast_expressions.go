@@ -2629,7 +2629,10 @@ func collectBreakStatements(root Node, target *InferControlTarget) []*Break {
 			if target == nil || br.Target == target {
 				breaks = append(breaks, br)
 			}
-			return false
+			// A break's value is evaluated before the break is raised, so
+			// nested breaks inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
 		}
 
 		return true
@@ -2655,7 +2658,10 @@ func collectContinueStatements(root Node, target *InferControlTarget) []*Continu
 			if target == nil || cont.Target == target {
 				continues = append(continues, cont)
 			}
-			return false
+			// A continue's value is evaluated before the continue is raised, so
+			// nested continues inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
 		}
 
 		return true
