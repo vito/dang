@@ -2228,6 +2228,13 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			}
 		}
 
+		if c.Else == nil {
+			// A conditional without an else can skip the then branch and
+			// evaluate to null. Preserve that fallthrough even when the then
+			// branch is a control-flow expression with a fresh result type.
+			thenType = nullableControlResultType(thenType)
+		}
+
 		return thenType, nil
 	})
 }

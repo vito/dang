@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared String!, inferred a?
+  [2m[34m--> errors/conditional_return_nonnull.dang:3:34[0m
+ [2m    |[0m
+ [2m  1 | # A conditional without an else may skip its body, so a return inside the[0m
+ [2m  2 | # then branch cannot make the function non-null.[0m
+ [2m[34m[1m  3 | [0mpub bad(flag: Boolean!): String! {
+[2m                                        [31m^[0m
+ [2m  4 |   if (flag) {[0m
+ [2m  5 |     return "x"[0m
+ [2m    |[0m
+
