@@ -610,6 +610,8 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 
 // inferNewConstructor infers the body of an explicit new() constructor
 func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
+	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
+
 	// Create an environment with the constructor args in scope
 	newEnv := inferEnv.Clone().(*CompositeModule)
 	for _, arg := range newDecl.Args {
@@ -617,7 +619,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		if argType == nil {
 			// Infer the arg type if not already done
 			var err error
-			argType, err = arg.Infer(ctx, newEnv, fresh)
+			argType, err = arg.Infer(constructorCtx, newEnv, fresh)
 			if err != nil {
 				return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 			}
@@ -625,9 +627,10 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
 
-	// Infer the new() body with a constructor return target.
+	// Infer the new() body with a constructor return target. Constructors are
+	// function boundaries for break/continue just like ordinary functions.
 	returnTarget := NewInferControlTarget(ReturnFrame)
-	bodyCtx := contextWithInferReturnTarget(ctx, returnTarget)
+	bodyCtx := contextWithInferReturnTarget(constructorCtx, returnTarget)
 	bodyType, err := newDecl.BodyBlock.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() body: %w", err)

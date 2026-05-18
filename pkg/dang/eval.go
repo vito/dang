@@ -1120,7 +1120,8 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
-	fnCtx := contextWithReturnFrame(ctx, returnFrame)
+	fnCtx := contextWithFunctionControlBoundary(ctx)
+	fnCtx = contextWithReturnFrame(fnCtx, returnFrame)
 
 	if err := f.BindArgs(fnCtx, fnEnv, args); err != nil {
 		return nil, err
@@ -1552,6 +1553,8 @@ func (c *ConstructorFunction) String() string {
 }
 
 func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	ctx = contextWithFunctionControlBoundary(ctx)
+
 	// Create a new instance of the class
 	instance := NewModuleValue(c.ClassType)
 

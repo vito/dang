@@ -81,6 +81,13 @@ func contextWithBlockCallFrame(ctx context.Context, frame *ControlFrame) context
 	return context.WithValue(ctx, blockCallFrameContextKey, frame)
 }
 
+func contextWithFunctionControlBoundary(ctx context.Context) context.Context {
+	ctx = contextWithBreakFrame(ctx, nil)
+	ctx = contextWithContinueFrame(ctx, nil)
+	ctx = contextWithBlockCallFrame(ctx, nil)
+	return ctx
+}
+
 func controlFrameMatches(target, frame *ControlFrame) bool {
 	return target != nil && frame != nil && target == frame
 }
@@ -124,6 +131,12 @@ func contextWithInferBreakTarget(ctx context.Context, target *InferControlTarget
 
 func contextWithInferContinueTarget(ctx context.Context, target *InferControlTarget) context.Context {
 	return context.WithValue(ctx, inferContinueTargetContextKey, target)
+}
+
+func contextWithInferFunctionControlBoundary(ctx context.Context) context.Context {
+	ctx = contextWithInferBreakTarget(ctx, nil)
+	ctx = contextWithInferContinueTarget(ctx, nil)
+	return ctx
 }
 
 func isBreakException(err error) bool {
