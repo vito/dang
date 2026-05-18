@@ -134,6 +134,7 @@ func contextWithInferContinueTarget(ctx context.Context, target *InferControlTar
 }
 
 func contextWithInferFunctionControlBoundary(ctx context.Context) context.Context {
+	ctx = contextWithInferReturnTarget(ctx, nil)
 	ctx = contextWithInferBreakTarget(ctx, nil)
 	ctx = contextWithInferContinueTarget(ctx, nil)
 	return ctx

@@ -120,7 +120,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	f.InferredScope = newEnv.(Env)
 
 	// Process arguments using shared logic. Defaults are evaluated at function
-	// call time, so they must not inherit the caller's break/continue targets.
+	// call time, so they must not inherit the caller's return/break/continue targets.
 	args, directives, docStrings, err := f.inferFunctionArguments(functionCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
@@ -236,7 +236,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 
 		// Process arguments to get function signature. Default values belong to
-		// this function, not to the caller's break/continue frames.
+		// this function, not to the caller's return/break/continue frames.
 		args, directives, docStrings, err := f.inferFunctionArguments(signatureCtx, signatureEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
