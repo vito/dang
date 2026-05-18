@@ -87,6 +87,10 @@ type NullableTypeVariable struct {
 	TypeVariable
 }
 
+func (ntv NullableTypeVariable) Name() string {
+	return ntv.String()
+}
+
 func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
 	// Look up by the underlying TypeVariable key
 	if t, exists := subs[ntv.TypeVariable]; exists {

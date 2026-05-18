@@ -21,6 +21,9 @@ func Assignable(have, want Type) (Subs, error) {
 	// Handle nullable type variables first (before regular TypeVariable,
 	// since NullableTypeVariable embeds TypeVariable)
 	if haveNTV, ok := have.(NullableTypeVariable); ok {
+		if _, wantNonNull := want.(NonNullType); wantNonNull {
+			return nil, UnificationError{have, want}
+		}
 		return bindNullableVar(haveNTV, want)
 	}
 	if wantNTV, ok := want.(NullableTypeVariable); ok {

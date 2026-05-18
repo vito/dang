@@ -2184,12 +2184,16 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 
 			thenSubs, err := hm.Assignable(elseType, thenType)
 			if err != nil {
-				// Point to the specific else block for better error targeting
-				var errorNode Node = elseBlock
-				if len(elseBlock.Forms) > 0 {
-					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
+				var reverseErr error
+				thenSubs, reverseErr = hm.Assignable(thenType, elseType)
+				if reverseErr != nil {
+					// Point to the specific else block for better error targeting
+					var errorNode Node = elseBlock
+					if len(elseBlock.Forms) > 0 {
+						errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
+					}
+					return nil, NewInferError(err, errorNode)
 				}
-				return nil, NewInferError(err, errorNode)
 			}
 
 			// Propagate substitutions backwards to the 'then'

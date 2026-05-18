@@ -1,0 +1,11 @@
+[1m[31mError:[0m new() must return BadNullConstructor!, got a?
+  [2m[34m--> errors/constructor_return_null_type_mismatch.dang:4:12[0m
+ [2m    |[0m
+ [2m  2 | type BadNullConstructor {[0m
+ [2m  3 |   new() {[0m
+ [2m[34m[1m  4 | [0m    return null
+[2m                  [31m^^^^[0m
+ [2m  5 |   }[0m
+ [2m  6 | }[0m
+ [2m    |[0m
+

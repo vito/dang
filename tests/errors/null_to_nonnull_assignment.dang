@@ -1,0 +1,2 @@
+# Null cannot initialize a non-null slot
+pub value: String! = null

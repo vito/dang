@@ -61,9 +61,15 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 		if t == nil {
 			t = et
 		} else {
-			// Try to assign new element to accumulated type
+			// Try to assign new element to accumulated type.
 			if subs, err := hm.Assignable(et, t); err == nil {
 				t = t.Apply(subs).(hm.Type)
+				continue
+			}
+			// If the new element is nullable (e.g. [1, null]), the reverse
+			// direction preserves order-independent nullable inference.
+			if subs, err := hm.Assignable(t, et); err == nil {
+				t = et.Apply(subs).(hm.Type)
 				continue
 			}
 
