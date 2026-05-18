@@ -873,7 +873,18 @@
   {
     "type": "break",
     "named": true,
-    "fields": {},
+    "fields": {
+      "v": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,
@@ -1250,7 +1261,18 @@
   {
     "type": "continue",
     "named": true,
-    "fields": {},
+    "fields": {
+      "v": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,

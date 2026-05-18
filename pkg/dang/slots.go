@@ -625,8 +625,10 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
 
-	// Infer the new() body
-	bodyType, err := newDecl.BodyBlock.Infer(ctx, newEnv, fresh)
+	// Infer the new() body with a constructor return target.
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(ctx, returnTarget)
+	bodyType, err := newDecl.BodyBlock.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() body: %w", err)
 	}
@@ -641,7 +643,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		)
 	}
 
-	for _, ret := range collectReturnStatements(newDecl.BodyBlock) {
+	for _, ret := range collectReturnStatements(newDecl.BodyBlock, returnTarget) {
 		retType := returnValueType(ret)
 		if retType == nil {
 			continue

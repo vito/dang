@@ -1060,6 +1060,10 @@ type FunctionValue struct {
 	BlockParamName string          // Name of the block parameter, if any
 	Directives     []*DirectiveApplication
 	IsDynamic      bool // True if this function has access to dynamic scope
+
+	IsBlockArg          bool
+	CapturedReturnFrame *ControlFrame
+	CapturedBreakFrame  *ControlFrame
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -1088,13 +1092,43 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 		}
 	}
 
-	if err := f.BindArgs(ctx, fnEnv, args); err != nil {
+	if f.IsBlockArg {
+		invocationFrame := NewControlFrame(BlockInvocationFrame)
+		defer invocationFrame.Deactivate()
+
+		blockCtx := contextWithReturnFrame(ctx, f.CapturedReturnFrame)
+		blockCtx = contextWithBreakFrame(blockCtx, f.CapturedBreakFrame)
+		blockCtx = contextWithContinueFrame(blockCtx, invocationFrame)
+
+		if err := f.BindArgs(blockCtx, fnEnv, args); err != nil {
+			return nil, err
+		}
+
+		val, err := EvalNode(blockCtx, fnEnv, f.Body)
+		if err != nil {
+			var continueEx *ContinueException
+			if errors.As(err, &continueEx) && controlFrameMatches(continueEx.Target, invocationFrame) {
+				if continueEx.HasValue && continueEx.Value != nil {
+					return continueEx.Value, nil
+				}
+				return NullValue{}, nil
+			}
+			return nil, err
+		}
+		return val, nil
+	}
+
+	returnFrame := NewControlFrame(ReturnFrame)
+	defer returnFrame.Deactivate()
+	fnCtx := contextWithReturnFrame(ctx, returnFrame)
+
+	if err := f.BindArgs(fnCtx, fnEnv, args); err != nil {
 		return nil, err
 	}
 
-	val, err := EvalNode(ctx, fnEnv, f.Body)
+	val, err := EvalNode(fnCtx, fnEnv, f.Body)
 	if err != nil {
-		if returnVal, ok := returnValueFromError(err); ok {
+		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 			return returnVal, nil
 		}
 		return nil, err
@@ -1395,13 +1429,17 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
 	fnEnv.NewDynamicScope(recv)
 
-	if err := b.Method.BindArgs(ctx, fnEnv, args); err != nil {
+	returnFrame := NewControlFrame(ReturnFrame)
+	defer returnFrame.Deactivate()
+	methodCtx := contextWithReturnFrame(ctx, returnFrame)
+
+	if err := b.Method.BindArgs(methodCtx, fnEnv, args); err != nil {
 		return nil, err
 	}
 
-	val, err := EvalNode(ctx, fnEnv, b.Method.Body)
+	val, err := EvalNode(methodCtx, fnEnv, b.Method.Body)
 	if err != nil {
-		if returnVal, ok := returnValueFromError(err); ok {
+		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 			return returnVal, nil
 		}
 		return nil, err
@@ -1571,13 +1609,16 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// the env, which would lose dynamic scope updates for self assignments.
 		newBodyEnv := CreateConstructorEnv(instance, argEnv, c.Closure)
 		newBodyEnv.NewDynamicScope(instance)
+		returnFrame := NewControlFrame(ReturnFrame)
+		defer returnFrame.Deactivate()
+		newBodyCtx := contextWithReturnFrame(ctx, returnFrame)
 
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
 			returned := false
-			lastVal, err = EvalNode(ctx, newBodyEnv, form)
+			lastVal, err = EvalNode(newBodyCtx, newBodyEnv, form)
 			if err != nil {
-				if returnVal, ok := returnValueFromError(err); ok {
+				if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 					lastVal = returnVal
 					returned = true
 				} else {
@@ -1731,6 +1772,22 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 			return NewSourceError(
 				errors.New(returned.Error()),
 				returned.Location,
+				evalCtx.Source,
+			)
+		}
+		var broken *BreakException
+		if errors.As(err, &broken) {
+			return NewSourceError(
+				errors.New(broken.Error()),
+				broken.Location,
+				evalCtx.Source,
+			)
+		}
+		var continued *ContinueException
+		if errors.As(err, &continued) {
+			return NewSourceError(
+				errors.New(continued.Error()),
+				continued.Location,
 				evalCtx.Source,
 			)
 		}
@@ -1966,7 +2023,7 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 			// Let control-flow sentinel errors propagate unwrapped so their
 			// nearest runtime boundary can intercept them cleanly.
 			var raised *RaisedError
-			if errors.As(err, &raised) || isReturnException(err) {
+			if errors.As(err, &raised) || isControlFlowException(err) {
 				return nil, err
 			}
 			if evalCtx != nil {

@@ -1,0 +1,2 @@
+# return is only valid inside a function, method, or constructor
+return 1

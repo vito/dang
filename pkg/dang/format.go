@@ -589,9 +589,9 @@ func (f *Formatter) formatNode(node Node) {
 	case *Assert:
 		f.formatAssert(n)
 	case *Break:
-		f.write("break")
+		f.formatBreak(n)
 	case *Continue:
-		f.write("continue")
+		f.formatContinue(n)
 	case *Reassignment:
 		f.formatReassignment(n)
 	case *TypeHint:
@@ -2403,6 +2403,22 @@ func (f *Formatter) formatRaise(r *Raise) {
 func (f *Formatter) formatReturn(r *Return) {
 	f.write("return ")
 	f.formatNode(r.Value)
+}
+
+func (f *Formatter) formatBreak(b *Break) {
+	f.write("break")
+	if b.Value != nil {
+		f.write(" ")
+		f.formatNode(b.Value)
+	}
+}
+
+func (f *Formatter) formatContinue(c *Continue) {
+	f.write("continue")
+	if c.Value != nil {
+		f.write(" ")
+		f.formatNode(c.Value)
+	}
 }
 
 func (f *Formatter) formatReassignment(r *Reassignment) {

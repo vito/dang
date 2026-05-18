@@ -18,6 +18,7 @@ Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
 _lineSpace <- [ \t]* CommentToken?
+_inlineSpace <- [ \t]+
 
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
@@ -897,7 +898,7 @@ CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr
 TryToken <- "try" !WordChar
 CatchToken <- "catch" !WordChar
 
-Raise <- RaiseToken _ value:Form {
+Raise <- RaiseToken _inlineSpace value:Form {
   return &Raise{
     Value: value.(Node),
     Loc: c.Loc(),
@@ -906,7 +907,7 @@ Raise <- RaiseToken _ value:Form {
 
 RaiseToken <- "raise" !WordChar
 
-Return <- ReturnToken _ value:Form {
+Return <- ReturnToken _inlineSpace value:Form {
   return &Return{
     Value: value.(Node),
     Loc: c.Loc(),
@@ -1053,16 +1054,26 @@ MessageArgs <- '(' _ msg:Form _ ')' {
 
 AssertToken <- "assert" !WordChar
 
-Break <- BreakToken {
+Break <- BreakToken value:(_inlineSpace v:Form { return v, nil })? {
+  var val Node
+  if value != nil {
+    val = value.(Node)
+  }
   return &Break{
+    Value: val,
     Loc: c.Loc(),
   }, nil
 }
 
 BreakToken <- "break" !WordChar
 
-Continue <- ContinueToken {
+Continue <- ContinueToken value:(_inlineSpace v:Form { return v, nil })? {
+  var val Node
+  if value != nil {
+    val = value.(Node)
+  }
   return &Continue{
+    Value: val,
     Loc: c.Loc(),
   }, nil
 }

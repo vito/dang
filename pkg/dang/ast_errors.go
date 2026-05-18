@@ -155,7 +155,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return val, nil
 		}
 
-		if isReturnException(err) {
+		if isControlFlowException(err) {
 			return nil, err
 		}
 

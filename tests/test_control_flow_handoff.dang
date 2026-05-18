@@ -1,0 +1,124 @@
+# Test Ruby-like block control-flow handoff
+
+pub firstEven: Int! {
+  [1, 2, 3, 4].each { x =>
+    if (x % 2 == 0) {
+      return x
+    }
+  }
+  0
+}
+
+assert { firstEven == 2 }
+
+pub yieldTwice(&block(x: Int!): Int!): Int! {
+  block(1)
+  block(2)
+  99
+}
+
+pub returnFromUserBlock: Int! {
+  yieldTwice { x =>
+    if (x == 2) {
+      return x
+    }
+    0
+  }
+  99
+}
+
+assert { returnFromUserBlock == 2 }
+
+pub mapped = [1, 2, 3].map { x =>
+  if (x == 2) {
+    continue 20
+  }
+  x
+}
+
+assert { mapped == [1, 20, 3] }
+
+let sum = 0
+[1, 2, 3].each { x =>
+  if (x == 2) {
+    continue
+  }
+  sum += x
+}
+assert { sum == 4 }
+
+pub eachBreak = [1, 2, 3].each { x =>
+  if (x == 2) {
+    break "done"
+  }
+  x
+}
+
+assert { eachBreak == "done" }
+
+pub mapBreak = [1, 2, 3].map { x =>
+  if (x == 2) {
+    break "done"
+  }
+  x * 10
+}
+
+assert { mapBreak == "done" }
+
+pub yieldBreak = yieldTwice { x =>
+  break x
+}
+
+assert { yieldBreak == 1 }
+
+pub noValueBreak = [1].each { x =>
+  break
+  "not the break value"
+}
+assert { noValueBreak == null }
+
+pub noValueContinue = [1].map { x =>
+  continue
+  99
+}
+assert { noValueContinue == [null] }
+
+pub loopBreakValue = for {
+  break "loop done"
+}
+assert { loopBreakValue == "loop done" }
+
+let nestedLoopCount = 0
+[1, 2, 3].each { x =>
+  for {
+    nestedLoopCount += 1
+    break
+  }
+}
+assert { nestedLoopCount == 3 }
+
+let nestedContinueCount = 0
+[1, 2].each { x =>
+  let i = 0
+  for (i < 2) {
+    i += 1
+    continue
+    break "wrong target"
+  }
+  nestedContinueCount += i
+}
+assert { nestedContinueCount == 4 }
+
+let nestedBlockCount = 0
+pub nestedBlockBreak = [1, 2, 3].map { x =>
+  nestedBlockCount += 1
+  [10, 20].each { y =>
+    break "inner"
+  }
+  x
+}
+
+assert { nestedBlockBreak == [1, 2, 3] }
+assert { nestedBlockCount == 3 }
+
+print("Control-flow handoff tests passed!")

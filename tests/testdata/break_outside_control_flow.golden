@@ -1,0 +1,9 @@
+[1m[31mError:[0m break outside of loop or block-taking call
+  [2m[34m--> errors/break_outside_control_flow.dang:2:1[0m
+ [2m    |[0m
+ [2m  1 | # break is only valid inside a loop or block-taking call[0m
+ [2m[34m[1m  2 | [0mbreak
+[2m       [31m^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

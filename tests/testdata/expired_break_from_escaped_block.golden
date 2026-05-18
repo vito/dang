@@ -1,0 +1,11 @@
+[1m[31mError:[0m break from expired block call
+  [2m[34m--> errors/expired_break_from_escaped_block.dang:11:5[0m
+ [2m    |[0m
+ [2m  9 | pub makeBreaker: Int! {[0m
+ [2m 10 |   storeBreak { x =>[0m
+ [2m[34m[1m 11 | [0m    break x
+[2m           [31m^^^^^^^[0m
+ [2m 12 |   }[0m
+ [2m 13 |   0[0m
+ [2m    |[0m
+

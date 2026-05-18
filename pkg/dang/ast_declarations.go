@@ -158,13 +158,17 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
-	// Infer return type from function body
-	inferredRet, err := f.Body.Infer(ctx, newEnv, fresh)
+	// Infer return type from function body. A fresh return target lets
+	// returns inside block args created in this body contribute to this
+	// function, while nested functions/constructors get their own targets.
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(ctx, returnTarget)
+	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
 
-	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet)
+	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
 	if err != nil {
 		return nil, err
 	}

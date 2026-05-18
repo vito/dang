@@ -11,9 +11,11 @@ import (
 // Return exits the current function early with a value.
 type Return struct {
 	InferredTypeHolder
-	Value     Node
-	ValueType hm.Type
-	Loc       *SourceLocation
+	Value      Node
+	ValueType  hm.Type
+	Target     *InferControlTarget
+	TargetKind ControlFrameKind
+	Loc        *SourceLocation
 }
 
 var _ Node = (*Return)(nil)
@@ -31,6 +33,13 @@ func (r *Return) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r *Return) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
+		target := currentInferReturnTarget(ctx)
+		if target == nil {
+			return nil, NewInferError(fmt.Errorf("return outside of function"), r)
+		}
+		r.Target = target
+		r.TargetKind = target.Kind
+
 		valueType, err := r.Value.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
@@ -47,11 +56,16 @@ func (r *Return) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 }
 
 func (r *Return) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	target := currentReturnFrame(ctx)
+	if target == nil || !target.Active {
+		return nil, &ReturnException{Target: target, Location: r.Loc}
+	}
+
 	val, err := EvalNode(ctx, env, r.Value)
 	if err != nil {
 		return nil, err
 	}
-	return nil, &ReturnException{Value: val, Location: r.Loc}
+	return nil, &ReturnException{Target: target, Value: val, Location: r.Loc}
 }
 
 func (r *Return) Walk(fn func(Node) bool) {
@@ -64,17 +78,21 @@ func (r *Return) Walk(fn func(Node) bool) {
 // ReturnException carries a function return value up the evaluator stack until
 // the nearest function call boundary catches it.
 type ReturnException struct {
+	Target   *ControlFrame
 	Value    Value
 	Location *SourceLocation
 }
 
 func (e *ReturnException) Error() string {
+	if e.Target != nil && !e.Target.Active {
+		return "return from expired function"
+	}
 	return "return outside of function"
 }
 
-func returnValueFromError(err error) (Value, bool) {
+func returnValueFromError(err error, frame *ControlFrame) (Value, bool) {
 	var ret *ReturnException
-	if errors.As(err, &ret) {
+	if errors.As(err, &ret) && controlFrameMatches(ret.Target, frame) {
 		if ret.Value == nil {
 			return NullValue{}, true
 		}
@@ -88,7 +106,7 @@ func isReturnException(err error) bool {
 	return errors.As(err, &ret)
 }
 
-func collectReturnStatements(root Node) []*Return {
+func collectReturnStatements(root Node, target *InferControlTarget) []*Return {
 	if root == nil {
 		return nil
 	}
@@ -97,13 +115,15 @@ func collectReturnStatements(root Node) []*Return {
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *BlockArg, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ClassDecl:
 				return false
 			}
 		}
 
 		if ret, ok := node.(*Return); ok {
-			returns = append(returns, ret)
+			if target == nil || ret.Target == target {
+				returns = append(returns, ret)
+			}
 			return false
 		}
 
@@ -122,8 +142,8 @@ func returnValueType(ret *Return) hm.Type {
 	return nil
 }
 
-func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType hm.Type) (hm.Type, error) {
-	returns := collectReturnStatements(body)
+func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType hm.Type, target *InferControlTarget) (hm.Type, error) {
+	returns := collectReturnStatements(body, target)
 
 	if declaredType != nil {
 		subs, err := hm.Assignable(bodyType, declaredType)

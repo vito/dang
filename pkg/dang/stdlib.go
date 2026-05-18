@@ -3,7 +3,6 @@ package dang
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -354,9 +353,9 @@ func registerStdlib() {
 			}, nil
 		})
 
-	// List.each method: each(fn: \(a, Int!) -> b) -> Null
+	// List.each method: each(fn: \(a, Int!) -> b) -> [a]!
 	Method(ListTypeModule, "each").
-		Doc("iterates over each element in the list, calling the block for each element; supports break and continue").
+		Doc("iterates over each element in the list, calling the block for each element").
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -379,14 +378,6 @@ func registerStdlib() {
 			for i, item := range list.Elements {
 				_, err := callFunc(ctx, fn, item, IntValue{i})
 				if err != nil {
-					var breakEx *BreakException
-					var continueEx *ContinueException
-					if errors.As(err, &breakEx) {
-						break
-					}
-					if errors.As(err, &continueEx) {
-						continue
-					}
 					return nil, fmt.Errorf("each block: %w", err)
 				}
 			}
