@@ -4070,6 +4070,10 @@
           "name": "raise_token"
         },
         {
+          "type": "SYMBOL",
+          "name": "_inline_space"
+        },
+        {
           "type": "FIELD",
           "name": "value",
           "content": {
@@ -4092,6 +4096,10 @@
         {
           "type": "SYMBOL",
           "name": "return_token"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_inline_space"
         },
         {
           "type": "FIELD",
@@ -4682,12 +4690,21 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "FIELD",
-                "name": "v",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "form"
-                }
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_inline_space"
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "v",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "form"
+                    }
+                  }
+                ]
               },
               {
                 "type": "BLANK"
@@ -4718,12 +4735,21 @@
             "type": "CHOICE",
             "members": [
               {
-                "type": "FIELD",
-                "name": "v",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "form"
-                }
+                "type": "SEQ",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_inline_space"
+                  },
+                  {
+                    "type": "FIELD",
+                    "name": "v",
+                    "content": {
+                      "type": "SYMBOL",
+                      "name": "form"
+                    }
+                  }
+                ]
               },
               {
                 "type": "BLANK"
@@ -5083,6 +5109,10 @@
     {
       "type": "SYMBOL",
       "name": "_automatic_newline"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_inline_space"
     }
   ],
   "supertypes": [

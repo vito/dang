@@ -1,0 +1,70 @@
+===
+Single-line return
+===
+
+pub f: Int! {
+  return 1
+}
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (type_and_block_slot
+        vis: (visibility
+          (pub_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (colon_token)
+        type_: (type
+          (non_null
+            inner: (primary_type
+              (named_type
+                name: (upper_id
+                  (upper_token))))
+            (bang_token)))
+        block: (block
+          e: (return
+            (return_token)
+            value: (literal
+              (int
+                (non_zero_decimal_digit))))
+          eles: (sep))))))
+
+===
+Multiline return value is not accepted
+===
+
+pub f: Int! {
+  return
+  1
+}
+
+---
+
+(dang
+  last: (decl
+    decl: (slot
+      (type_and_block_slot
+        vis: (visibility
+          (pub_token))
+        name: (symbol
+          name: (id
+            (word_token)))
+        (colon_token)
+        type_: (type
+          (non_null
+            inner: (primary_type
+              (named_type
+                name: (upper_id
+                  (upper_token))))
+            (bang_token)))
+        block: (block
+          (ERROR
+            (return_token))
+          e: (literal
+            (int
+              (non_zero_decimal_digit)))
+          eles: (sep))))))
