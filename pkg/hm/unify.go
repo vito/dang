@@ -70,18 +70,21 @@ func Assignable(have, want Type) (Subs, error) {
 			var subs = NewSubs()
 			for i, comp1 := range haveTypes {
 				comp2 := wantTypes[i]
-				// Apply current substitutions to both components
-				comp1Applied := comp1.Apply(subs).(Type)
-				comp2Applied := comp2.Apply(subs).(Type)
 
-				// Unify the components
-				componentSubs, err := Assignable(comp1Applied, comp2Applied)
+				// Unify each component against the original component types, then
+				// merge the resulting substitutions. Applying substitutions eagerly
+				// makes repeated type variables order-dependent (e.g. (Int!, null)
+				// against (a, a)); checked composition widens those constraints once
+				// all component evidence is available.
+				componentSubs, err := Assignable(comp1, comp2)
 				if err != nil {
 					return nil, UnificationError{have, want}
 				}
 
-				// Compose the substitutions
-				subs = subs.Compose(componentSubs)
+				subs, err = subs.Compose(componentSubs)
+				if err != nil {
+					return nil, UnificationError{have, want}
+				}
 			}
 			return subs, nil
 		}
@@ -129,7 +132,11 @@ func assignableFromUnion(have *UnionType, want Type) (Subs, error) {
 		if err != nil {
 			return nil, UnificationError{have, want}
 		}
-		subs = subs.Compose(optionSubs)
+		var composeErr error
+		subs, composeErr = subs.Compose(optionSubs)
+		if composeErr != nil {
+			return nil, UnificationError{have, want}
+		}
 	}
 	return subs, nil
 }

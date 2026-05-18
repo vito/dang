@@ -1094,7 +1094,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	if !ifaceIsFn {
 		if !classIsFn {
 			// Both are non-function types - check covariance
-			if !isSubtypeOf(classFieldType, ifaceFieldType) {
+			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, classFieldType, ifaceFieldType)
 			}
@@ -1117,7 +1117,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
 		// Compare the return type with the class field type
-		if !isSubtypeOf(classFieldType, ifaceRetType) {
+		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, classFieldType, ifaceRetType)
 		}
@@ -1133,7 +1133,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	classRetType := classFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !isSubtypeOf(classRetType, ifaceRetType) {
+	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
 			fieldName, classRetType, ifaceRetType)
 	}
@@ -1161,7 +1161,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// For contravariance: class arg type must be a supertype of interface arg type
 		// This means: if interface requires String!, class can accept String or String!
 		// But if interface requires String, class must accept String (can't require String!)
-		if !isSupertypeOf(classArgType, ifaceArgType) {
+		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
 		}
@@ -1182,88 +1182,4 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	}
 
 	return nil
-}
-
-// isSubtypeOf checks if sub is a subtype of super (covariance check)
-// For return types: String! is a subtype of String, User is a subtype of Node
-func isSubtypeOf(sub, super hm.Type) bool {
-	_, err := hm.Assignable(sub, super)
-	return err == nil
-}
-
-// isSupertypeOf checks if super is a supertype of sub (contravariance check)
-// For argument types: String is a supertype of String!, Node is a supertype of User
-func isSupertypeOf(super, sub hm.Type) bool {
-	// Contravariance is just flipped subtyping
-	return isSubtypeOf(sub, super)
-}
-
-// findCommonSupertype finds the least common supertype of two types.
-// This is used for inferring list types with heterogeneous elements.
-// Returns nil if no common supertype exists (other than Any).
-func findCommonSupertype(t1, t2 hm.Type) hm.Type {
-	// If types are equal, return either one
-	if t1.Eq(t2) {
-		return t1
-	}
-
-	// If one is a subtype of the other, return the supertype
-	if isSubtypeOf(t1, t2) {
-		return t2
-	}
-	if isSubtypeOf(t2, t1) {
-		return t1
-	}
-
-	// Build supertype sets for both types
-	supers1 := buildSupertypeSet(t1)
-	supers2 := buildSupertypeSet(t2)
-
-	// Find common supertypes
-	var common []hm.Type
-	for super := range supers1 {
-		if supers2[super] {
-			common = append(common, super)
-		}
-	}
-
-	if len(common) == 0 {
-		return nil
-	}
-
-	// Find the most specific common supertype (LUB - Least Upper Bound)
-	// This is the one that is a subtype of all others
-	for _, candidate := range common {
-		isLeast := true
-		for _, other := range common {
-			if candidate.Eq(other) {
-				continue
-			}
-			// If candidate is a supertype of other, then other is more specific
-			if isSubtypeOf(other, candidate) {
-				isLeast = false
-				break
-			}
-		}
-		if isLeast {
-			return candidate
-		}
-	}
-
-	// Fallback: return first common supertype (shouldn't reach here if LUB exists)
-	return common[0]
-}
-
-// buildSupertypeSet builds the transitive closure of all supertypes
-func buildSupertypeSet(t hm.Type) map[hm.Type]bool {
-	result := make(map[hm.Type]bool)
-	result[t] = true
-
-	for _, super := range t.Supertypes() {
-		for s := range buildSupertypeSet(super) {
-			result[s] = true
-		}
-	}
-
-	return result
 }

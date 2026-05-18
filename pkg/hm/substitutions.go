@@ -15,43 +15,61 @@ func (s Subs) Apply(t Type) Type {
 	return t.Apply(s).(Type)
 }
 
-// Compose composes two substitutions
-func (s Subs) Compose(other Subs) Subs {
+// Compose composes substitutions while checking repeated bindings for
+// compatibility. When both substitutions constrain the same type variable, the
+// variable is bound to the least common assignable type (preserving nullable
+// taint) instead of whichever binding happened to be seen first.
+func (s Subs) Compose(other Subs) (Subs, error) {
 	result := make(Subs)
 
-	// Apply other to all types in s
+	// Apply other to all types in s, matching normal substitution composition.
 	for tv, t := range s {
 		result[tv] = t.Apply(other).(Type)
 	}
 
-	// Add mappings from other that aren't in s. If both substitutions mention
-	// the same variable, preserve nullable taint from either side instead of
-	// letting a later non-null binding silently erase it.
 	for tv, t := range other {
 		if existing, exists := result[tv]; exists {
-			result[tv] = mergeSubstitution(existing, t)
+			merged, extraSubs, err := MergeTypes(existing, t)
+			if err != nil {
+				return nil, err
+			}
+			if len(extraSubs) > 0 {
+				var err error
+				result, err = result.mergeIn(extraSubs)
+				if err != nil {
+					return nil, err
+				}
+				merged = merged.Apply(extraSubs).(Type)
+			}
+			result[tv] = merged
 			continue
 		}
 		result[tv] = t
 	}
 
-	return result
+	return result, nil
 }
 
-func mergeSubstitution(existing, incoming Type) Type {
-	if _, ok := existing.(NullableTypeVariable); ok {
-		return makeNullable(incoming)
+func (s Subs) mergeIn(extra Subs) (Subs, error) {
+	result := make(Subs, len(s)+len(extra))
+	for tv, t := range s {
+		result[tv] = t.Apply(extra).(Type)
 	}
-	if _, ok := incoming.(NullableTypeVariable); ok {
-		return makeNullable(existing)
+	for tv, t := range extra {
+		if existing, exists := result[tv]; exists {
+			merged, moreSubs, err := MergeTypes(existing, t)
+			if err != nil {
+				return nil, err
+			}
+			result[tv] = merged
+			if len(moreSubs) > 0 {
+				return result.mergeIn(moreSubs)
+			}
+			continue
+		}
+		result[tv] = t
 	}
-	if existingNonNull, ok := existing.(NonNullType); ok && existingNonNull.Type.Eq(incoming) {
-		return incoming
-	}
-	if incomingNonNull, ok := incoming.(NonNullType); ok && incomingNonNull.Type.Eq(existing) {
-		return existing
-	}
-	return existing
+	return result, nil
 }
 
 // Clone creates a copy of the substitution

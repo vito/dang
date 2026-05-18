@@ -130,19 +130,18 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 
 	// Type check each argument first, collecting substitutions from unifying
-	// actual argument types with expected parameter types. This resolves type
-	// variables (e.g. 'b' in reduce's initial parameter) before we infer the
-	// block arg, which may depend on those type variables.
+	// actual argument types with expected parameter types. We merge the
+	// substitutions without applying them eagerly so repeated type variables are
+	// inferred from all arguments order-independently (e.g. (Int!, null) for
+	// (a, a) becomes Int). The final substitutions are then available before we
+	// infer a block arg, which may depend on those type variables.
 	var argSubs hm.Subs
+	argRecord, ok := ft.Arg().(*RecordType)
+	if !ok {
+		return nil, fmt.Errorf("FunCall.Infer: expected record type for arguments, got %T", ft.Arg())
+	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		argRecord, ok := ft.Arg().(*RecordType)
-		if !ok {
-			return nil, fmt.Errorf("FunCall.Infer: expected record type for arguments, got %T", ft.Arg())
-		}
-		if argSubs != nil {
-			argRecord = argRecord.Apply(argSubs).(*RecordType)
-		}
 		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
@@ -151,7 +150,10 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			if argSubs == nil {
 				argSubs = subs
 			} else {
-				argSubs = argSubs.Compose(subs)
+				argSubs, err = argSubs.Compose(subs)
+				if err != nil {
+					return nil, NewInferError(err, arg.Value)
+				}
 			}
 		}
 	}
@@ -2216,7 +2218,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 						thenType = resolvedElseNonNull.Type
 					}
 				}
-			} else if common := findCommonSupertype(thenType, elseType); common != nil {
+			} else if common := hm.CommonSupertype(thenType, elseType); common != nil {
 				thenType = common
 			} else {
 				// Point to the specific else block for better error targeting.
@@ -2713,39 +2715,10 @@ func nullableControlResultType(t hm.Type) hm.Type {
 }
 
 func mergeControlResultTypes(current hm.Type, next hm.Type) hm.Type {
-	if current == nil {
-		return next
-	}
-	if next == nil {
-		return current
-	}
-
-	if subs, err := hm.Assignable(next, current); err == nil {
-		merged := current.Apply(subs).(hm.Type)
-		resolvedNext := next.Apply(subs).(hm.Type)
-		if mergedNonNull, ok := merged.(hm.NonNullType); ok {
-			if _, nextNonNull := resolvedNext.(hm.NonNullType); !nextNonNull {
-				merged = mergedNonNull.Type
-			}
-		}
+	merged, _, err := hm.MergeTypes(current, next)
+	if err == nil {
 		return merged
 	}
-
-	if subs, err := hm.Assignable(current, next); err == nil {
-		merged := next.Apply(subs).(hm.Type)
-		resolvedCurrent := current.Apply(subs).(hm.Type)
-		if mergedNonNull, ok := merged.(hm.NonNullType); ok {
-			if _, currentNonNull := resolvedCurrent.(hm.NonNullType); !currentNonNull {
-				merged = mergedNonNull.Type
-			}
-		}
-		return merged
-	}
-
-	if common := findCommonSupertype(next, current); common != nil {
-		return common
-	}
-
 	return hm.NewUnionType(current, next)
 }
 

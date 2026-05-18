@@ -197,20 +197,6 @@ func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType h
 }
 
 func mergeInferredReturnTypes(current hm.Type, next hm.Type) (hm.Type, error) {
-	subs, err := hm.Assignable(next, current)
-	if err != nil {
-		if common := findCommonSupertype(next, current); common != nil {
-			return common, nil
-		}
-		return nil, err
-	}
-
-	merged := current.Apply(subs).(hm.Type)
-	resolvedNext := next.Apply(subs).(hm.Type)
-	if mergedNonNull, ok := merged.(hm.NonNullType); ok {
-		if _, nextNonNull := resolvedNext.(hm.NonNullType); !nextNonNull {
-			merged = mergedNonNull.Type
-		}
-	}
-	return merged, nil
+	merged, _, err := hm.MergeTypes(current, next)
+	return merged, err
 }
