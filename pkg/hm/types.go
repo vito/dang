@@ -92,11 +92,26 @@ func (ntv NullableTypeVariable) Name() string {
 }
 
 func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
-	// Look up by the underlying TypeVariable key
+	// Look up by the underlying TypeVariable key. Applying a substitution must
+	// preserve the nullable taint: a? with a := T! resolves to T, and a? with
+	// a := b resolves to b?.
 	if t, exists := subs[ntv.TypeVariable]; exists {
-		return t
+		return makeNullable(t)
 	}
 	return ntv
+}
+
+func makeNullable(t Type) Type {
+	switch tt := t.(type) {
+	case NullableTypeVariable:
+		return tt
+	case NonNullType:
+		return tt.Type
+	case TypeVariable:
+		return NullableTypeVariable{TypeVariable: tt}
+	default:
+		return t
+	}
 }
 
 func (ntv NullableTypeVariable) Eq(other Type) bool {

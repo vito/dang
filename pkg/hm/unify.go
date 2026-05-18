@@ -151,14 +151,30 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	return subs, nil
 }
 
-// bindNullableVar binds a nullable type variable to a type, stripping
-// NonNull if present. This ensures that null always resolves to a nullable
-// type: binding NullableTypeVariable to String! produces String, not String!.
+// bindNullableVar binds a nullable type variable to a type while preserving
+// its nullability taint. This ensures that null always resolves to a nullable
+// type: binding NullableTypeVariable to String! produces String, not String!,
+// and binding it to a plain type variable taints that variable as nullable.
 func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
-	// Strip NonNull — null is inherently nullable
-	if nn, ok := t.(NonNullType); ok {
-		t = nn.Type
+	subs := NewSubs()
+
+	if tv2, ok := t.(NullableTypeVariable); ok {
+		if tv.TypeVariable == tv2.TypeVariable {
+			return subs, nil
+		}
+		subs.Add(tv.TypeVariable, tv2)
+		return subs, nil
 	}
+
+	if tv2, ok := t.(TypeVariable); ok {
+		// Bind the other variable to the nullable one so the taint is visible when
+		// that variable appears elsewhere, such as a generic function's return type.
+		subs.Add(tv2, tv)
+		return subs, nil
+	}
+
+	// Strip NonNull — null is inherently nullable.
+	t = makeNullable(t)
 	return bindVar(tv.TypeVariable, t)
 }
 

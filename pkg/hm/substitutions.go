@@ -24,14 +24,34 @@ func (s Subs) Compose(other Subs) Subs {
 		result[tv] = t.Apply(other).(Type)
 	}
 
-	// Add mappings from other that aren't in s
+	// Add mappings from other that aren't in s. If both substitutions mention
+	// the same variable, preserve nullable taint from either side instead of
+	// letting a later non-null binding silently erase it.
 	for tv, t := range other {
-		if _, exists := result[tv]; !exists {
-			result[tv] = t
+		if existing, exists := result[tv]; exists {
+			result[tv] = mergeSubstitution(existing, t)
+			continue
 		}
+		result[tv] = t
 	}
 
 	return result
+}
+
+func mergeSubstitution(existing, incoming Type) Type {
+	if _, ok := existing.(NullableTypeVariable); ok {
+		return makeNullable(incoming)
+	}
+	if _, ok := incoming.(NullableTypeVariable); ok {
+		return makeNullable(existing)
+	}
+	if existingNonNull, ok := existing.(NonNullType); ok && existingNonNull.Type.Eq(incoming) {
+		return incoming
+	}
+	if incomingNonNull, ok := incoming.(NonNullType); ok && incomingNonNull.Type.Eq(existing) {
+		return existing
+	}
+	return existing
 }
 
 // Clone creates a copy of the substitution

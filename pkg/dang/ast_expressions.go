@@ -136,7 +136,14 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	var argSubs hm.Subs
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
+		argRecord, ok := ft.Arg().(*RecordType)
+		if !ok {
+			return nil, fmt.Errorf("FunCall.Infer: expected record type for arguments, got %T", ft.Arg())
+		}
+		if argSubs != nil {
+			argRecord = argRecord.Apply(argSubs).(*RecordType)
+		}
+		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
 		}
