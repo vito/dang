@@ -2322,8 +2322,13 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 		}
 
 		// Loops return the last value from the body, or null if never executed.
+		// Condition-based loops may skip their body entirely, so preserve that
+		// nullable possibility even when the body type is still a type variable
+		// from a local control-flow expression like return/break/continue.
 		loopType := bodyType
-		if nonNull, ok := loopType.(hm.NonNullType); ok {
+		if f.Condition != nil {
+			loopType = nullableControlResultType(loopType)
+		} else if nonNull, ok := loopType.(hm.NonNullType); ok {
 			loopType = nonNull.Type
 		}
 
@@ -2687,6 +2692,17 @@ func collectContinueStatements(root Node, target *InferControlTarget) []*Continu
 		return true
 	})
 	return continues
+}
+
+func nullableControlResultType(t hm.Type) hm.Type {
+	switch typ := t.(type) {
+	case hm.NonNullType:
+		return typ.Type
+	case hm.TypeVariable:
+		return hm.NullableTypeVariable{TypeVariable: typ}
+	default:
+		return t
+	}
 }
 
 func mergeControlResultTypes(current hm.Type, next hm.Type) hm.Type {
