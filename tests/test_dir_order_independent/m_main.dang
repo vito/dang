@@ -1,0 +1,8 @@
+let later = Later("Ada")
+let uses = UsesLater(later)
+let impl = ImplementsLater("Grace")
+
+assert { uses.label == "Ada" }
+assert { impl.name == "Grace" }
+
+print("Order-independent directory loading works!")
