@@ -55,6 +55,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 		var resultType hm.Type
 		for i, clause := range c.Clauses {
+			var caseType hm.Type
 			if clause.IsTypePattern() {
 				// Type pattern clause: binding: TypeName => expr
 				if err := c.inferTypePatternClause(ctx, env, fresh, clause, exprType); err != nil {
@@ -64,27 +65,15 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				// Infer the clause body in a scoped env with the binding.
 				// Use resolvedMemberType which respects narrowed unions from
 				// inline fragment selections.
-				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
 					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
 					return clause.Expr.Infer(ctx, clauseEnv, fresh)
 				})
-				if err != nil {
-					return nil, err
-				}
-
-				if i == 0 {
-					resultType = caseType
-				} else {
-					subs, err := hm.Assignable(caseType, resultType)
-					if err != nil {
-						return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
-					}
-					resultType = resultType.Apply(subs).(hm.Type)
-				}
 			} else if !clause.IsElse {
 				// Value match clause
-				valueType, err := clause.Value.Infer(ctx, env, fresh)
+				var valueType hm.Type
+				valueType, err = clause.Value.Infer(ctx, env, fresh)
 				if err != nil {
 					return nil, err
 				}
@@ -95,41 +84,28 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause)
 				}
 
-				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
-				if err != nil {
-					return nil, err
-				}
-
-				if i == 0 {
-					resultType = caseType
-				} else {
-					subs, err := hm.Assignable(caseType, resultType)
-					if err != nil {
-						return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
-					}
-					resultType = resultType.Apply(subs).(hm.Type)
-				}
 			} else {
 				// Else clause
-				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
-				if err != nil {
-					return nil, err
-				}
-
-				if i == 0 {
-					resultType = caseType
-				} else {
-					subs, err := hm.Assignable(caseType, resultType)
-					if err != nil {
-						return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
-					}
-					resultType = resultType.Apply(subs).(hm.Type)
-				}
 			}
+			if err != nil {
+				return nil, err
+			}
+
+			if i == 0 {
+				resultType = caseType
+				continue
+			}
+			mergedType, _, err := hm.MergeTypes(resultType, caseType)
+			if err != nil {
+				return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
+			}
+			resultType = mergedType
 		}
 
 		return resultType, nil

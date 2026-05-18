@@ -2191,36 +2191,8 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, err
 			}
 
-			if thenSubs, err := hm.Assignable(elseType, thenType); err == nil {
-				// Propagate substitutions backwards to the 'then'.
-				thenType = thenType.Apply(thenSubs).(hm.Type)
-				c.Then.SetInferredType(thenType)
-
-				// If either branch is nullable after substitution, the result
-				// must be nullable. NullableTypeVariable (from null literals)
-				// strips NonNull during binding, so a null branch naturally
-				// resolves to a nullable type here.
-				resolvedElse := elseType.Apply(thenSubs).(hm.Type)
-				if resolvedThenNonNull, ok := thenType.(hm.NonNullType); ok {
-					if _, elseNonNull := resolvedElse.(hm.NonNullType); !elseNonNull {
-						thenType = resolvedThenNonNull.Type
-					}
-				}
-			} else if elseSubs, reverseErr := hm.Assignable(thenType, elseType); reverseErr == nil {
-				// The else branch is wider than the then branch. Use the wider else
-				// type as the conditional result; otherwise an interface/supertype
-				// else value could be inferred as the concrete then type.
-				resolvedThen := thenType.Apply(elseSubs).(hm.Type)
-				c.Then.SetInferredType(resolvedThen)
-				thenType = elseType.Apply(elseSubs).(hm.Type)
-				if resolvedElseNonNull, ok := thenType.(hm.NonNullType); ok {
-					if _, thenNonNull := resolvedThen.(hm.NonNullType); !thenNonNull {
-						thenType = resolvedElseNonNull.Type
-					}
-				}
-			} else if common := hm.CommonSupertype(thenType, elseType); common != nil {
-				thenType = common
-			} else {
+			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
+			if err != nil {
 				// Point to the specific else block for better error targeting.
 				var errorNode Node = elseBlock
 				if len(elseBlock.Forms) > 0 {
@@ -2228,6 +2200,11 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				}
 				return nil, NewInferError(err, errorNode)
 			}
+
+			// Propagate substitutions backwards to the 'then' branch without
+			// widening the branch itself to the merged conditional result.
+			c.Then.SetInferredType(thenType.Apply(subs).(hm.Type))
+			thenType = mergedType
 		}
 
 		if c.Else == nil {
