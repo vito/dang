@@ -2189,33 +2189,42 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, err
 			}
 
-			thenSubs, err := hm.Assignable(elseType, thenType)
-			if err != nil {
-				var reverseErr error
-				thenSubs, reverseErr = hm.Assignable(thenType, elseType)
-				if reverseErr != nil {
-					// Point to the specific else block for better error targeting
-					var errorNode Node = elseBlock
-					if len(elseBlock.Forms) > 0 {
-						errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
+			if thenSubs, err := hm.Assignable(elseType, thenType); err == nil {
+				// Propagate substitutions backwards to the 'then'.
+				thenType = thenType.Apply(thenSubs).(hm.Type)
+				c.Then.SetInferredType(thenType)
+
+				// If either branch is nullable after substitution, the result
+				// must be nullable. NullableTypeVariable (from null literals)
+				// strips NonNull during binding, so a null branch naturally
+				// resolves to a nullable type here.
+				resolvedElse := elseType.Apply(thenSubs).(hm.Type)
+				if resolvedThenNonNull, ok := thenType.(hm.NonNullType); ok {
+					if _, elseNonNull := resolvedElse.(hm.NonNullType); !elseNonNull {
+						thenType = resolvedThenNonNull.Type
 					}
-					return nil, NewInferError(err, errorNode)
 				}
-			}
-
-			// Propagate substitutions backwards to the 'then'
-			thenType = thenType.Apply(thenSubs).(hm.Type)
-			c.Then.SetInferredType(thenType)
-
-			// If either branch is nullable after substitution, the result
-			// must be nullable. NullableTypeVariable (from null literals)
-			// strips NonNull during binding, so a null branch naturally
-			// resolves to a nullable type here.
-			resolvedElse := elseType.Apply(thenSubs).(hm.Type)
-			_, thenNonNull := thenType.(hm.NonNullType)
-			_, elseNonNull := resolvedElse.(hm.NonNullType)
-			if thenNonNull && !elseNonNull {
-				thenType = thenType.(hm.NonNullType).Type
+			} else if elseSubs, reverseErr := hm.Assignable(thenType, elseType); reverseErr == nil {
+				// The else branch is wider than the then branch. Use the wider else
+				// type as the conditional result; otherwise an interface/supertype
+				// else value could be inferred as the concrete then type.
+				resolvedThen := thenType.Apply(elseSubs).(hm.Type)
+				c.Then.SetInferredType(resolvedThen)
+				thenType = elseType.Apply(elseSubs).(hm.Type)
+				if resolvedElseNonNull, ok := thenType.(hm.NonNullType); ok {
+					if _, thenNonNull := resolvedThen.(hm.NonNullType); !thenNonNull {
+						thenType = resolvedElseNonNull.Type
+					}
+				}
+			} else if common := findCommonSupertype(thenType, elseType); common != nil {
+				thenType = common
+			} else {
+				// Point to the specific else block for better error targeting.
+				var errorNode Node = elseBlock
+				if len(elseBlock.Forms) > 0 {
+					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
+				}
+				return nil, NewInferError(err, errorNode)
 			}
 		}
 

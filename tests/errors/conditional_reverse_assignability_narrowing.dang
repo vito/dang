@@ -1,0 +1,23 @@
+# A conditional with a concrete then branch and interface-typed else branch
+# must infer the interface type, not the concrete branch type.
+interface ConditionalAnimal {
+  pub name: String!
+}
+
+type ConditionalCat implements ConditionalAnimal {
+  pub name: String!
+  pub lives: Int!
+}
+
+type ConditionalDog implements ConditionalAnimal {
+  pub name: String!
+  pub bark: String!
+}
+
+let dogAsAnimal: ConditionalAnimal! = ConditionalDog(name: "Fido", bark: "woof")
+
+pub chosenCat: ConditionalCat! = if (false) {
+  ConditionalCat(name: "Mog", lives: 9)
+} else {
+  dogAsAnimal
+}
