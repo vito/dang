@@ -1765,43 +1765,8 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
-		// If it's already a SourceError, don't wrap it again
-		var sourceErr *SourceError
-		if errors.As(err, &sourceErr) {
-			return err
-		}
-		var returned *ReturnException
-		if errors.As(err, &returned) {
-			return NewSourceError(
-				errors.New(returned.Error()),
-				returned.Location,
-				evalCtx.Source,
-			)
-		}
-		var broken *BreakException
-		if errors.As(err, &broken) {
-			return NewSourceError(
-				errors.New(broken.Error()),
-				broken.Location,
-				evalCtx.Source,
-			)
-		}
-		var continued *ContinueException
-		if errors.As(err, &continued) {
-			return NewSourceError(
-				errors.New(continued.Error()),
-				continued.Location,
-				evalCtx.Source,
-			)
-		}
-		// Surface uncaught raise errors with source highlighting.
-		var raised *RaisedError
-		if errors.As(err, &raised) {
-			return NewSourceError(
-				fmt.Errorf("uncaught error: %s", raised.Error()),
-				raised.Location,
-				evalCtx.Source,
-			)
+		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
+			return translated
 		}
 		return fmt.Errorf("evaluation error: %w", err)
 	}
@@ -1810,6 +1775,58 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	slog.Debug("final program result", "result", result.String())
 
 	return nil
+}
+
+func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
+	// If it's already a SourceError, don't wrap it again.
+	var sourceErr *SourceError
+	if errors.As(err, &sourceErr) {
+		return err, true
+	}
+
+	source := ""
+	if evalCtx != nil {
+		source = evalCtx.Source
+	}
+
+	var returned *ReturnException
+	if errors.As(err, &returned) {
+		return NewSourceError(
+			errors.New(returned.Error()),
+			returned.Location,
+			source,
+		), true
+	}
+
+	var broken *BreakException
+	if errors.As(err, &broken) {
+		return NewSourceError(
+			errors.New(broken.Error()),
+			broken.Location,
+			source,
+		), true
+	}
+
+	var continued *ContinueException
+	if errors.As(err, &continued) {
+		return NewSourceError(
+			errors.New(continued.Error()),
+			continued.Location,
+			source,
+		), true
+	}
+
+	// Surface uncaught raise errors with source highlighting.
+	var raised *RaisedError
+	if errors.As(err, &raised) {
+		return NewSourceError(
+			fmt.Errorf("uncaught error: %s", raised.Error()),
+			raised.Location,
+			source,
+		), true
+	}
+
+	return nil, false
 }
 
 // ensureServiceRegistry adds a ServiceRegistry to the context if one isn't
@@ -2000,6 +2017,9 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
 	if err != nil {
+		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
+			return nil, translated
+		}
 		return nil, err
 	}
 
