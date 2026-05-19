@@ -229,6 +229,8 @@ func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
 		AutoImport: true,
 	})
 	env := runDangSnippetContext(t, ctx, `
+pub maybe: Container = null
+
 type TestShadowing {
   pub makeLocal: Container! {
     Container("local")
@@ -262,6 +264,15 @@ type Directory {
 	containerCtor, ok := containerVal.(*ConstructorFunction)
 	require.True(t, ok)
 	require.NotSame(t, importedContainer, containerCtor.ClassType)
+
+	moduleVal, ok := env.(*ModuleValue)
+	require.True(t, ok)
+	maybeScheme, found := moduleVal.Mod.SchemeOf("maybe")
+	require.True(t, found)
+	maybeType, mono := maybeScheme.Type()
+	require.True(t, mono)
+	require.Same(t, containerCtor.ClassType, maybeType)
+	require.NotSame(t, importedContainer, maybeType)
 
 	directoryVal, found := env.Get("Directory")
 	require.True(t, found)

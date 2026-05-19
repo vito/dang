@@ -237,10 +237,12 @@ func classifyForms(forms []Node) ClassifiedForms {
 // InferFormsWithPhases implements phased compilation:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
-// 3. Typecheck constants and types (which can reference each other)
-// 4. Declare function signatures (without bodies)
-// 5. Typecheck variables in dependency order (can now reference function signatures)
-// 6. Typecheck function bodies last (can reference all package-level declarations)
+// 3. Import external schemas
+// 4. Hoist local type names so annotations shadow imported types immediately
+// 5. Typecheck constants and types (which can reference each other)
+// 6. Declare function signatures (without bodies)
+// 7. Typecheck variables in dependency order (can now reference function signatures)
+// 8. Typecheck function bodies last (can reference all package-level declarations)
 //
 // This function collects all errors instead of failing fast, allowing partial inference
 // to succeed and providing better error messages showing all problems at once.
@@ -254,6 +256,9 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 	}{
 		{"imports", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferImportsPhaseResilient(ctx, classified.Imports, env, fresh, errs)
+		}},
+		{"type names", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferTypeNamesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
 		{"directives", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferDirectivesPhaseResilient(ctx, classified.Directives, env, fresh, errs)
@@ -585,8 +590,10 @@ func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.
 	return lastT, nil
 }
 
-func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
-	// Pass 0: Create class types
+func inferTypeNamesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	// Pass 0 only registers local type names. Running it before any phase that
+	// resolves annotations ensures a local type shadows an unqualified import as
+	// soon as imports are installed.
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
@@ -595,7 +602,10 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 			}
 		}
 	}
+	return nil, nil
+}
 
+func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	// Pass 1: Infer class bodies
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
