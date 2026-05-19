@@ -188,7 +188,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			// This is a runtime error - required types must have values
 			if inferredType := s.GetInferredType(); inferredType != nil {
 				if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
-					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType.Name())
+					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType)
 				}
 			}
 
@@ -581,7 +581,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		classFieldType, _ := classFieldScheme.Type()
 
 		// Validate field type compatibility
-		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceSym.Name, c.Name.Name); err != nil {
+		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceMod.String(), classMod.String()); err != nil {
 			return WrapInferError(err, ifaceSym)
 		}
 	}
@@ -592,7 +592,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		for _, field := range missingFields {
 			fieldScheme, _ := ifaceMod.SchemeOf(field)
 			errs.Add(WrapInferError(
-				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", c.Name.Name, field, fieldScheme, ifaceSym.Name),
+				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", classMod, field, fieldScheme, ifaceMod),
 				ifaceSym,
 			))
 		}
@@ -677,7 +677,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
 		lastForm := newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
 		return NewInferError(
-			fmt.Errorf("new() must return %s, got %s", expectedType.Name(), bodyType.Name()),
+			fmt.Errorf("new() must return %s, got %s", expectedType, bodyType),
 			lastForm,
 		)
 	}
@@ -689,7 +689,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		}
 		if _, err := hm.Assignable(retType, expectedType); err != nil {
 			return NewInferError(
-				fmt.Errorf("new() must return %s, got %s", expectedType.Name(), retType.Name()),
+				fmt.Errorf("new() must return %s, got %s", expectedType, retType),
 				ret.Value,
 			)
 		}

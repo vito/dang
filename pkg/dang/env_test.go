@@ -104,6 +104,30 @@ scalar Error
 	require.Equal(t, ScalarKind, scalarMod.Mod.(*Module).Kind)
 }
 
+func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
+	env := NewEnv("Dagger", schemaWithCoreShadowTypes())
+
+	container, found := env.NamedType("Container")
+	require.True(t, found)
+	require.Equal(t, "Container", container.Name())
+	require.Equal(t, "Dagger.Container", container.String())
+	require.Equal(t, "Dagger.Container", container.Clone().(Env).String())
+
+	nonNullContainer := hm.NonNullType{Type: container}
+	require.Equal(t, "Dagger.Container!", nonNullContainer.String())
+	require.Equal(t, "Dagger.Container!", nonNullContainer.Name())
+
+	containerList := ListType{nonNullContainer}
+	require.Equal(t, "[Dagger.Container!]", containerList.String())
+	require.Equal(t, "[Dagger.Container!]", containerList.Name())
+
+	fn := hm.NewFnType(
+		NewRecordType("", Keyed[*hm.Scheme]{Key: "input", Value: hm.NewScheme(nil, nonNullContainer)}),
+		nonNullContainer,
+	)
+	require.Equal(t, "(input: Dagger.Container!): Dagger.Container!", fn.String())
+}
+
 func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",

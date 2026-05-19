@@ -1170,7 +1170,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s", unwrapped), o.Receiver)
 	}
 	if unionOrIface.Kind != UnionKind && unionOrIface.Kind != InterfaceKind {
-		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s type %s", unionOrIface.Kind, unionOrIface.Name()), o.Receiver)
+		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s type %s", unionOrIface.Kind, unionOrIface), o.Receiver)
 	}
 
 	// Create a narrowed union whose members only have the selected fields.
@@ -1194,7 +1194,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		// Check membership
 		if unionOrIface.Kind == UnionKind {
 			if !unionOrIface.HasMember(memberMod) {
-				return nil, NewInferError(fmt.Errorf("type %s is not a member of union %s", frag.TypeName.Name, unionOrIface.Name()), frag.TypeName)
+				return nil, NewInferError(fmt.Errorf("type %s is not a member of union %s", frag.TypeName.Name, unionOrIface), frag.TypeName)
 			}
 		}
 
@@ -1474,7 +1474,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 			for _, field := range frag.Fields {
 				fieldVal, exists := modVal.Get(field.Name)
 				if !exists {
-					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod.Name())
+					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod)
 				}
 				resultModuleValue.Set(field.Name, fieldVal)
 			}
@@ -1486,7 +1486,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 	for _, frag := range o.InlineFragments {
 		if frag.NonNull {
 			return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got %s",
-				o.inlineFragmentTypeNames(), mod.Name())
+				o.inlineFragmentTypeNames(), mod)
 		}
 	}
 

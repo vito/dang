@@ -204,8 +204,8 @@ func (ft *FunctionType) Supertypes() []Type {
 
 func (ft *FunctionType) String() string {
 	return fmt.Sprintf("(%s): %s",
-		strings.TrimSuffix(strings.TrimPrefix(ft.arg.Name(), "{"), "}"),
-		ft.ret.Name())
+		strings.TrimSuffix(strings.TrimPrefix(ft.arg.String(), "{"), "}"),
+		ft.ret.String())
 }
 
 func (ft *FunctionType) Format(s fmt.State, c rune) {
@@ -288,7 +288,7 @@ func NewUnionType(options ...Type) Type {
 func (t *UnionType) Name() string {
 	parts := make([]string, len(t.Options))
 	for i, option := range t.Options {
-		parts[i] = option.Name()
+		parts[i] = option.String()
 	}
 	return strings.Join(parts, " | ")
 }
@@ -364,9 +364,9 @@ type NonNullType struct {
 
 func (t NonNullType) Name() string {
 	if _, ok := t.Type.(*UnionType); ok {
-		return fmt.Sprintf("(%s)!", t.Type.Name())
+		return fmt.Sprintf("(%s)!", t.Type)
 	}
-	return fmt.Sprintf("%s!", t.Type.Name())
+	return fmt.Sprintf("%s!", t.Type)
 }
 
 func (t NonNullType) Apply(subs Subs) Substitutable {
