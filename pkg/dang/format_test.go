@@ -298,6 +298,53 @@ func (FormatSuite) TestConstructorBlockParamFormatting(ctx context.Context, t *t
 	require.Equal(t, expected, result)
 }
 
+func (FormatSuite) TestFunctionRefFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "symbol",
+			input:    `pub x = &foo`,
+			expected: "pub x = &foo\n",
+		},
+		{
+			name:     "field selection",
+			input:    `pub y = &self.foo`,
+			expected: "pub y = &self.foo\n",
+		},
+		{
+			name: "constructor assignment",
+			input: `type DeferredCondition {
+  let condition: Boolean! { true }
+
+  new(&condition: Boolean!) {
+    self.condition = &condition
+    self
+  }
+}`,
+			expected: `type DeferredCondition {
+  let condition: Boolean! { true }
+
+  new(&condition: Boolean!) {
+    self.condition = &condition
+    self
+  }
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

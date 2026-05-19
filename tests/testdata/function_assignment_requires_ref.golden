@@ -1,0 +1,11 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign Boolean! to (): Boolean!: cannot use Boolean! as (): Boolean!
+  [2m[34m--> errors/function_assignment_requires_ref.dang:5:5[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 |   new(&condition: Boolean!) {[0m
+ [2m[34m[1m  5 | [0m    self.condition = condition
+[2m           [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  6 |     self[0m
+ [2m  7 |   }[0m
+ [2m    |[0m
+

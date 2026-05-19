@@ -81,6 +81,11 @@ UnaryExpr <- '!' _ expr:Term {
     Expr: expr.(Node),
     Loc: c.Loc(),
   }, nil
+} / AmpersandToken _ expr:Term {
+  return &FunctionRef{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
 }
 
 ParenForm <- '(' _ expr:Form _ ')' {

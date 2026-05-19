@@ -25,4 +25,41 @@ type PredicateBox {
 assert { PredicateBox(2) { x => x > 1 }.ok == true }
 assert { PredicateBox(0) { x => x > 1 }.ok == false }
 
+type DeferredCondition {
+  let condition: Boolean! { true }
+
+  new(&condition: Boolean!) {
+    self.condition = &condition
+    self
+  }
+
+  pub check: Boolean! {
+    condition
+  }
+}
+
+let count = 0
+let deferred = DeferredCondition { count < 1 }
+assert { deferred.check == true }
+count += 1
+assert { deferred.check == false }
+
+type MethodRefBox {
+  let value: Int! = 0
+  let getValue: Int! { 0 }
+
+  new(value: Int!) {
+    self.value = value
+    self.getValue = &self.currentValue
+    self
+  }
+
+  pub currentValue: Int! {
+    value
+  }
+}
+
+let box = MethodRefBox(42)
+assert { box.getValue == 42 }
+
 print("Constructor block arg tests passed!")

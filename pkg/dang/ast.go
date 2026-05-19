@@ -128,6 +128,58 @@ func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
 	return funCall.Eval(ctx, env)
 }
 
+func inferNodeWithoutAutoCall(ctx context.Context, env hm.Env, fresh hm.Fresher, node Node) (hm.Type, error) {
+	switch n := node.(type) {
+	case *Symbol:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return n.Infer(ctx, env, fresh)
+	case *Select:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return n.Infer(ctx, env, fresh)
+	case *Index:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return n.Infer(ctx, env, fresh)
+	case *Grouped:
+		t, err := inferNodeWithoutAutoCall(ctx, env, fresh, n.Expr)
+		if err == nil {
+			n.SetInferredType(t)
+		}
+		return t, err
+	default:
+		return node.Infer(ctx, env, fresh)
+	}
+}
+
+func evalNodeWithoutAutoCall(ctx context.Context, env EvalEnv, node Node) (Value, error) {
+	switch n := node.(type) {
+	case *Symbol:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return EvalNode(ctx, env, n)
+	case *Select:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return EvalNode(ctx, env, n)
+	case *Index:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return EvalNode(ctx, env, n)
+	case *Grouped:
+		return evalNodeWithoutAutoCall(ctx, env, n.Expr)
+	default:
+		return EvalNode(ctx, env, node)
+	}
+}
+
 // ValueNode is a simple node that evaluates to a given value
 type ValueNode struct {
 	InferredTypeHolder

@@ -366,8 +366,9 @@ func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
-		// Infer the type of the target (left-hand side)
-		targetType, err := r.Target.Infer(ctx, env, fresh)
+		// Infer the type of the target (left-hand side) as a storage location,
+		// without auto-calling zero-arity functions stored in that location.
+		targetType, err := inferNodeWithoutAutoCall(ctx, env, fresh, r.Target)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}

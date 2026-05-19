@@ -1,0 +1,10 @@
+type DeferredCondition {
+  let condition: Boolean! { true }
+
+  new(&condition: Boolean!) {
+    self.condition = condition
+    self
+  }
+}
+
+pub deferred = DeferredCondition { true }
