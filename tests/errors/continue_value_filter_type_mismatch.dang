@@ -1,0 +1,7 @@
+# continue value must match the expected block return type
+pub xs = [1, 2, 3].filter { x =>
+  if (x == 2) {
+    continue 20
+  }
+  x > 0
+}

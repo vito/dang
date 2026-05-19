@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dagger/testctx"
 	"github.com/dagger/otel-go/oteltestctx"
+	"github.com/dagger/testctx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -352,6 +352,46 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
   pub bar: Int! {
     42
   }
+}
+`,
+		},
+		{
+			name: "nested enum closing brace stays indented",
+			input: `pub check: Void {
+  enum Outcome {
+    PASSED
+    FAILED
+  }
+  null
+}`,
+			expected: `pub check: Void {
+  enum Outcome {
+    PASSED
+    FAILED
+  }
+  null
+}
+`,
+		},
+		{
+			name: "nested type declarations keep source order",
+			input: `pub check: Void {
+  type ParseResultChild {
+    pub name: String!
+  }
+  type ParseResult {
+    pub children: [ParseResultChild!]
+  }
+  null
+}`,
+			expected: `pub check: Void {
+  type ParseResultChild {
+    pub name: String!
+  }
+  type ParseResult {
+    pub children: [ParseResultChild!]
+  }
+  null
 }
 `,
 		},

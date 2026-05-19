@@ -1,0 +1,4 @@
+# Null flowing through a generic function cannot satisfy a non-null list element
+pub id(x: a): a { x }
+
+pub result: [Int!]! = [id(null)]

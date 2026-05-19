@@ -1,0 +1,7 @@
+# A condition-based loop may skip its body, so a value-bearing break inside
+# the body cannot make the loop expression non-null.
+pub bad: String! {
+  for (false) {
+    break "x"
+  }
+}

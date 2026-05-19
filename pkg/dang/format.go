@@ -578,6 +578,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatTryCatch(n)
 	case *Raise:
 		f.formatRaise(n)
+	case *Return:
+		f.formatReturn(n)
 	case *Conditional:
 		f.formatConditional(n)
 	case *ForLoop:
@@ -587,9 +589,9 @@ func (f *Formatter) formatNode(node Node) {
 	case *Assert:
 		f.formatAssert(n)
 	case *Break:
-		f.write("break")
+		f.formatBreak(n)
 	case *Continue:
-		f.write("continue")
+		f.formatContinue(n)
 	case *Reassignment:
 		f.formatReassignment(n)
 	case *TypeHint:
@@ -951,6 +953,7 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 		f.formatDeclForms(i.Value.Forms)
 	})
 
+	f.writeIndent()
 	f.write("}")
 	// Emit trailing comment on closing brace line
 	if i.Loc != nil && i.Loc.End != nil {
@@ -1015,6 +1018,7 @@ func (f *Formatter) formatEnumDecl(e *EnumDecl) {
 			}
 		})
 
+		f.writeIndent()
 		f.write("}")
 		// Emit trailing comment on closing brace line
 		if e.Loc != nil && e.Loc.End != nil {
@@ -2394,6 +2398,27 @@ func (f *Formatter) formatTryCatch(t *TryCatch) {
 func (f *Formatter) formatRaise(r *Raise) {
 	f.write("raise ")
 	f.formatNode(r.Value)
+}
+
+func (f *Formatter) formatReturn(r *Return) {
+	f.write("return ")
+	f.formatNode(r.Value)
+}
+
+func (f *Formatter) formatBreak(b *Break) {
+	f.write("break")
+	if b.Value != nil {
+		f.write(" ")
+		f.formatNode(b.Value)
+	}
+}
+
+func (f *Formatter) formatContinue(c *Continue) {
+	f.write("continue")
+	if c.Value != nil {
+		f.write(" ")
+		f.formatNode(c.Value)
+	}
 }
 
 func (f *Formatter) formatReassignment(r *Reassignment) {

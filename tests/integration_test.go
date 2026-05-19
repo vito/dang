@@ -3,9 +3,13 @@ package tests
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -30,17 +34,16 @@ func TestDang(tT *testing.T) {
 }
 
 func (DangSuite) TestLanguage(ctx context.Context, t *testctx.T) {
-	runLanguageTests(ctx, t, false)
+	runLanguageTests(ctx, t)
 }
 
-func (DangSuite) TestFormatLanguage(ctx context.Context, t *testctx.T) {
-	runLanguageTests(ctx, t, true)
+func (DangSuite) TestFormatLanguage(_ context.Context, t *testctx.T) {
+	runFormatLanguageTests(t)
 }
 
-func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
+func runLanguageTests(ctx context.Context, t *testctx.T) {
 	// Import configs come from dang.toml (schema + service).
-	// Pre-load them so they're available even when running formatted files
-	// from temp directories.
+	// Pre-load them so they're available to each test without re-resolving.
 	services := &dang.ServiceRegistry{}
 	t.Cleanup(func() { services.StopAll() })
 
@@ -67,7 +70,7 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 		t.Skip("No test_* files or directories found")
 	}
 
-	// Run each test file in parallel
+	// Run each test file or package.
 	for _, testFileOrDir := range paths {
 		t.Run(filepath.Base(testFileOrDir), func(ctx context.Context, t *testctx.T) {
 			ctx = ioctx.StdoutToContext(ctx, NewTWriter(t))
@@ -84,62 +87,10 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 			}
 
 			var runErr error
-			if formatFirst {
-				// Format the file(s) first, then run the formatted version
-				if fi.IsDir() {
-					// Format all .dang files in directory to a temp dir
-					tempDir, err := os.MkdirTemp("", "dang-fmt-test-*")
-					if err != nil {
-						t.Errorf("Failed to create temp dir: %v", err)
-						return
-					}
-					t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
-
-					entries, err := os.ReadDir(testFileOrDir)
-					if err != nil {
-						t.Errorf("Failed to read dir %s: %v", testFileOrDir, err)
-						return
-					}
-
-					for _, entry := range entries {
-						if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".dang") {
-							continue
-						}
-						srcPath := filepath.Join(testFileOrDir, entry.Name())
-						dstPath := filepath.Join(tempDir, entry.Name())
-
-						if err := formatFileTo(srcPath, dstPath); err != nil {
-							t.Errorf("Failed to format %s: %v", srcPath, err)
-							return
-						}
-					}
-
-					_, runErr = dang.RunDir(ctx, tempDir, false)
-				} else {
-					// Format single file to temp file
-					tempFile, err := os.CreateTemp("", "dang-fmt-test-*.dang")
-					if err != nil {
-						t.Errorf("Failed to create temp file: %v", err)
-						return
-					}
-					tempPath := tempFile.Name()
-					_ = tempFile.Close()
-					t.Cleanup(func() { _ = os.Remove(tempPath) })
-
-					if err := formatFileTo(testFileOrDir, tempPath); err != nil {
-						t.Errorf("Failed to format %s: %v", testFileOrDir, err)
-						return
-					}
-
-					runErr = dang.RunFile(ctx, tempPath, false)
-				}
+			if fi.IsDir() {
+				_, runErr = dang.RunDir(ctx, testFileOrDir, false)
 			} else {
-				// Run without formatting
-				if fi.IsDir() {
-					_, runErr = dang.RunDir(ctx, testFileOrDir, false)
-				} else {
-					runErr = dang.RunFile(ctx, testFileOrDir, false)
-				}
+				runErr = dang.RunFile(ctx, testFileOrDir, false)
 			}
 
 			if runErr != nil {
@@ -149,19 +100,224 @@ func runLanguageTests(ctx context.Context, t *testctx.T, formatFirst bool) {
 	}
 }
 
-// formatFileTo formats a Dang source file and writes the result to dst
-func formatFileTo(src, dst string) error {
-	source, err := os.ReadFile(src)
+func runFormatLanguageTests(t *testctx.T) {
+	// Find all test_*.dang files or test_* packages
+	paths, err := filepath.Glob("test_*")
 	if err != nil {
-		return err
+		t.Fatalf("Failed to find test files: %v", err)
+	}
+
+	if len(paths) == 0 {
+		t.Skip("No test_* files or directories found")
+	}
+
+	for _, testFileOrDir := range paths {
+		t.Run(filepath.Base(testFileOrDir), func(_ context.Context, t *testctx.T) {
+			fi, err := os.Stat(testFileOrDir)
+			if err != nil {
+				t.Errorf("Failed to stat test file or directory %s: %v", testFileOrDir, err)
+				return
+			}
+
+			if !fi.IsDir() {
+				assertFormatPreservesSyntax(t, testFileOrDir)
+				return
+			}
+
+			entries, err := os.ReadDir(testFileOrDir)
+			if err != nil {
+				t.Errorf("Failed to read dir %s: %v", testFileOrDir, err)
+				return
+			}
+
+			for _, entry := range entries {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".dang") {
+					continue
+				}
+
+				testPath := filepath.Join(testFileOrDir, entry.Name())
+				t.Run(entry.Name(), func(_ context.Context, t *testctx.T) {
+					assertFormatPreservesSyntax(t, testPath)
+				})
+			}
+		})
+	}
+}
+
+func assertFormatPreservesSyntax(t *testctx.T, path string) {
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Errorf("Failed to read %s: %v", path, err)
+		return
+	}
+
+	before, err := parseSyntaxTree(path, source)
+	if err != nil {
+		t.Errorf("Failed to parse %s: %v", path, err)
+		return
 	}
 
 	formatted, err := dang.FormatFile(source)
 	if err != nil {
-		return err
+		t.Errorf("Failed to format %s: %v", path, err)
+		return
 	}
 
-	return os.WriteFile(dst, []byte(formatted), 0644)
+	after, err := parseSyntaxTree(path+" (formatted)", []byte(formatted))
+	if err != nil {
+		t.Errorf("Failed to parse formatted %s: %v\nFormatted source:\n%s", path, err, formatted)
+		return
+	}
+
+	if !reflect.DeepEqual(before, after) {
+		t.Errorf(
+			"format changed syntax tree for %s\nFormatted source:\n%s\nBefore:\n%s\nAfter:\n%s",
+			path,
+			formatted,
+			formatSyntaxTree(before),
+			formatSyntaxTree(after),
+		)
+	}
+}
+
+func parseSyntaxTree(path string, source []byte) (any, error) {
+	parsed, err := dang.Parse(path, source, dang.GlobalStore("filePath", path))
+	if err != nil {
+		return nil, err
+	}
+
+	return syntaxTreeSnapshot(parsed), nil
+}
+
+var (
+	sourceLocationType     = reflect.TypeOf(dang.SourceLocation{})
+	inferredTypeHolderType = reflect.TypeOf(dang.InferredTypeHolder{})
+)
+
+type syntaxTreeVisit struct {
+	typ reflect.Type
+	ptr uintptr
+}
+
+func syntaxTreeSnapshot(v any) any {
+	return syntaxTreeSnapshotValue(reflect.ValueOf(v), map[syntaxTreeVisit]bool{})
+}
+
+func syntaxTreeSnapshotValue(v reflect.Value, seen map[syntaxTreeVisit]bool) any {
+	if !v.IsValid() {
+		return nil
+	}
+
+	if isSourceLocationType(v.Type()) {
+		return nil
+	}
+
+	switch v.Kind() {
+	case reflect.Interface:
+		if v.IsNil() {
+			return nil
+		}
+		return syntaxTreeSnapshotValue(v.Elem(), seen)
+	case reflect.Pointer:
+		if v.IsNil() {
+			return nil
+		}
+		visit := syntaxTreeVisit{typ: v.Type(), ptr: v.Pointer()}
+		if seen[visit] {
+			return map[string]any{"$ref": v.Type().String()}
+		}
+		seen[visit] = true
+		defer delete(seen, visit)
+		return syntaxTreeSnapshotValue(v.Elem(), seen)
+	case reflect.Struct:
+		if v.Type() == inferredTypeHolderType {
+			return nil
+		}
+
+		fields := map[string]any{"$type": v.Type().String()}
+		for i := 0; i < v.NumField(); i++ {
+			field := v.Type().Field(i)
+			if field.PkgPath != "" || skipSyntaxTreeField(field) {
+				continue
+			}
+			fields[field.Name] = syntaxTreeSnapshotValue(v.Field(i), seen)
+		}
+		return fields
+	case reflect.Slice, reflect.Array:
+		elements := make([]any, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			elements[i] = syntaxTreeSnapshotValue(v.Index(i), seen)
+		}
+		return map[string]any{
+			"$type":    v.Type().String(),
+			"Elements": elements,
+		}
+	case reflect.Map:
+		entries := make([]map[string]any, 0, v.Len())
+		iter := v.MapRange()
+		for iter.Next() {
+			entries = append(entries, map[string]any{
+				"Key":   syntaxTreeSnapshotValue(iter.Key(), seen),
+				"Value": syntaxTreeSnapshotValue(iter.Value(), seen),
+			})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return fmt.Sprint(entries[i]["Key"]) < fmt.Sprint(entries[j]["Key"])
+		})
+		return map[string]any{
+			"$type":   v.Type().String(),
+			"Entries": entries,
+		}
+	case reflect.Bool:
+		return v.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return v.Uint()
+	case reflect.Float32, reflect.Float64:
+		return v.Float()
+	case reflect.String:
+		return v.String()
+	case reflect.Func:
+		return nil
+	default:
+		if v.CanInterface() {
+			return fmt.Sprintf("%#v", v.Interface())
+		}
+		return fmt.Sprintf("<%s>", v.Type())
+	}
+}
+
+func isSourceLocationType(t reflect.Type) bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	return t == sourceLocationType
+}
+
+func skipSyntaxTreeField(field reflect.StructField) bool {
+	if isSourceLocationType(field.Type) || field.Type.Kind() == reflect.Func {
+		return true
+	}
+
+	if field.Type == inferredTypeHolderType {
+		return true
+	}
+
+	switch field.Name {
+	case "ContextInferredType", "Env", "Inferred", "InferredScope", "InferredTypeHolder":
+		return true
+	default:
+		return false
+	}
+}
+
+func formatSyntaxTree(tree any) string {
+	jsonBytes, err := json.MarshalIndent(tree, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("%#v", tree)
+	}
+	return string(jsonBytes)
 }
 
 // tWriter is a writer that writes to testing.T

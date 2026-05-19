@@ -58,6 +58,10 @@
         "named": true
       },
       {
+        "type": "return",
+        "named": true
+      },
+      {
         "type": "term",
         "named": true
       },
@@ -869,7 +873,18 @@
   {
     "type": "break",
     "named": true,
-    "fields": {},
+    "fields": {
+      "v": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,
@@ -1246,7 +1261,18 @@
   {
     "type": "continue",
     "named": true,
-    "fields": {},
+    "fields": {
+      "v": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,
@@ -3104,6 +3130,32 @@
     "fields": {}
   },
   {
+    "type": "return",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "return_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "scalar",
     "named": true,
     "fields": {
@@ -4477,6 +4529,10 @@
   },
   {
     "type": "raise_token",
+    "named": true
+  },
+  {
+    "type": "return_token",
     "named": true
   },
   {

@@ -1,0 +1,9 @@
+[1m[31mError:[0m return outside of function
+  [2m[34m--> errors/return_outside_function.dang:2:1[0m
+ [2m    |[0m
+ [2m  1 | # return is only valid inside a function, method, or constructor[0m
+ [2m[34m[1m  2 | [0mreturn 1
+[2m       [31m^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

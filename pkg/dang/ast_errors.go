@@ -102,29 +102,15 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 				return nil, NewInferError(fmt.Errorf("catch clauses must be type patterns or a catch-all"), clause)
 			}
 
-			// Unify this clause's return type with the body type.
-			subs, err := hm.Assignable(clauseType, resultType)
+			// Merge this clause's return type with the body type.
+			mergedType, _, err := hm.MergeTypes(resultType, clauseType)
 			if err != nil {
 				if i == 0 {
 					return nil, NewInferError(err, clause)
 				}
 				return nil, NewInferError(fmt.Errorf("catch clause type mismatch: %s vs %s", clauseType, resultType), clause)
 			}
-			resultType = resultType.Apply(subs).(hm.Type)
-		}
-
-		// If either side is nullable the result is nullable.
-		_, bodyNonNull := resultType.(hm.NonNullType)
-		lastClause := t.Clauses[len(t.Clauses)-1]
-		lastClauseType := lastClause.GetInferredType()
-		if lastClauseType == nil {
-			lastClauseType = resultType
-		}
-		_, handlerNonNull := lastClauseType.(hm.NonNullType)
-		if bodyNonNull && !handlerNonNull {
-			if nn, ok := resultType.(hm.NonNullType); ok {
-				resultType = nn.Type
-			}
+			resultType = mergedType
 		}
 
 		return resultType, nil
@@ -153,6 +139,10 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		val, err := EvalNode(ctx, env, t.TryBody)
 		if err == nil {
 			return val, nil
+		}
+
+		if isControlFlowException(err) {
+			return nil, err
 		}
 
 		// Resolve the error value to bind in catch clauses.

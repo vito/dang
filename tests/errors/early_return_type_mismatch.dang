@@ -1,0 +1,7 @@
+# Early return values must match the declared function return type
+pub bad(flag: Boolean!): String! {
+  if (flag) {
+    return 42
+  }
+  "ok"
+}

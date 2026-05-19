@@ -1,0 +1,19 @@
+# return from an escaped block fails once its lexical function has returned
+let saved(x: Int!): Int! { x }
+
+pub store(&block(x: Int!): Int!): Int! {
+  saved = block
+  0
+}
+
+pub makeReturner: Int! {
+  store { x =>
+    return x
+  }
+  0
+}
+
+pub result = {
+  makeReturner
+  saved(1)
+}

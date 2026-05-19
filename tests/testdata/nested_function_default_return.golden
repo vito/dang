@@ -1,0 +1,11 @@
+[1m[31mError:[0m return outside of function
+  [2m[34m--> errors/nested_function_default_return.dang:3:23[0m
+ [2m    |[0m
+ [2m  1 | # Default values for nested function arguments must not inherit the enclosing return target.[0m
+ [2m  2 | pub outer: Int! {[0m
+ [2m[34m[1m  3 | [0m  let inner(x: Int! = return 1): Int! {
+[2m                             [31m^^^^^^^^[0m
+ [2m  4 |     x[0m
+ [2m  5 |   }[0m
+ [2m    |[0m
+

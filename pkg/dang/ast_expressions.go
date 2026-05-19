@@ -130,13 +130,19 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 
 	// Type check each argument first, collecting substitutions from unifying
-	// actual argument types with expected parameter types. This resolves type
-	// variables (e.g. 'b' in reduce's initial parameter) before we infer the
-	// block arg, which may depend on those type variables.
+	// actual argument types with expected parameter types. We merge the
+	// substitutions without applying them eagerly so repeated type variables are
+	// inferred from all arguments order-independently (e.g. (Int!, null) for
+	// (a, a) becomes Int). The final substitutions are then available before we
+	// infer a block arg, which may depend on those type variables.
 	var argSubs hm.Subs
+	argRecord, ok := ft.Arg().(*RecordType)
+	if !ok {
+		return nil, fmt.Errorf("FunCall.Infer: expected record type for arguments, got %T", ft.Arg())
+	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
+		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
 		}
@@ -144,7 +150,10 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			if argSubs == nil {
 				argSubs = subs
 			} else {
-				argSubs = argSubs.Compose(subs)
+				argSubs, err = argSubs.Compose(subs)
+				if err != nil {
+					return nil, NewInferError(err, arg.Value)
+				}
 			}
 		}
 	}
@@ -156,10 +165,14 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		ft = ft.Apply(argSubs).(*hm.FunctionType)
 	}
 
-	// Handle block arg if present (needs special bidirectional inference)
+	// Handle block arg if present (needs special bidirectional inference).
+	// The block body sees this call as its break target.
 	var blockArgSubs hm.Subs
+	var blockBreakTarget *InferControlTarget
 	if c.BlockArg != nil {
-		subs, err := c.inferBlockArg(ctx, env, fresh, ft)
+		blockBreakTarget = NewInferControlTarget(BlockCallFrame)
+		blockCtx := contextWithInferBreakTarget(ctx, blockBreakTarget)
+		subs, err := c.inferBlockArg(blockCtx, env, fresh, ft)
 		if err != nil {
 			return nil, fmt.Errorf("block argument: %w", err)
 		}
@@ -181,6 +194,9 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	retType := ft.Ret(false)
 	if blockArgSubs != nil {
 		retType = retType.Apply(blockArgSubs).(hm.Type)
+	}
+	if blockBreakTarget != nil {
+		retType = mergeCallBreakTypes(retType, c.BlockArg.BodyNode, blockBreakTarget, blockArgSubs, fresh)
 	}
 	return retType, nil
 }
@@ -295,18 +311,34 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, err
 		}
 
-		// Evaluate block arg if present and add to context
+		var blockCallFrame *ControlFrame
+		// Evaluate block arg if present and add to context. The frame is captured
+		// by the block so a break can exit this whole call expression.
 		if c.BlockArg != nil {
-			blockVal, err := c.BlockArg.Eval(ctx, env)
+			blockCallFrame = NewControlFrame(BlockCallFrame)
+			defer blockCallFrame.Deactivate()
+
+			blockCtx := contextWithBlockCallFrame(ctx, blockCallFrame)
+			blockVal, err := c.BlockArg.Eval(blockCtx, env)
 			if err != nil {
 				return nil, err
 			}
 			// Store block in context for builtin functions to access
-			ctx = context.WithValue(ctx, blockArgContextKey, blockVal)
+			ctx = context.WithValue(blockCtx, blockArgContextKey, blockVal)
 		}
 
 		// Dispatch to appropriate function call handler
-		return c.callFunction(ctx, env, funVal, argValues)
+		val, err := c.callFunction(ctx, env, funVal, argValues)
+		if err != nil && blockCallFrame != nil {
+			var breakEx *BreakException
+			if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, blockCallFrame) {
+				if breakEx.HasValue && breakEx.Value != nil {
+					return breakEx.Value, nil
+				}
+				return NullValue{}, nil
+			}
+		}
+		return val, err
 	})
 }
 
@@ -2159,9 +2191,9 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, err
 			}
 
-			thenSubs, err := hm.Assignable(elseType, thenType)
+			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
 			if err != nil {
-				// Point to the specific else block for better error targeting
+				// Point to the specific else block for better error targeting.
 				var errorNode Node = elseBlock
 				if len(elseBlock.Forms) > 0 {
 					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
@@ -2169,20 +2201,17 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, NewInferError(err, errorNode)
 			}
 
-			// Propagate substitutions backwards to the 'then'
-			thenType = thenType.Apply(thenSubs).(hm.Type)
-			c.Then.SetInferredType(thenType)
+			// Propagate substitutions backwards to the 'then' branch without
+			// widening the branch itself to the merged conditional result.
+			c.Then.SetInferredType(thenType.Apply(subs).(hm.Type))
+			thenType = mergedType
+		}
 
-			// If either branch is nullable after substitution, the result
-			// must be nullable. NullableTypeVariable (from null literals)
-			// strips NonNull during binding, so a null branch naturally
-			// resolves to a nullable type here.
-			resolvedElse := elseType.Apply(thenSubs).(hm.Type)
-			_, thenNonNull := thenType.(hm.NonNullType)
-			_, elseNonNull := resolvedElse.(hm.NonNullType)
-			if thenNonNull && !elseNonNull {
-				thenType = thenType.(hm.NonNullType).Type
-			}
+		if c.Else == nil {
+			// A conditional without an else can skip the then branch and
+			// evaluate to null. Preserve that fallthrough even when the then
+			// branch is a control-flow expression with a fresh result type.
+			thenType = nullableControlResultType(thenType)
 		}
 
 		return thenType, nil
@@ -2257,7 +2286,7 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
 		// Check if this is a condition-based loop
 		if f.Condition != nil {
-			// Infer the condition type
+			// Infer the condition type outside the loop control-flow target.
 			condType, err := f.Condition.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, err
@@ -2267,41 +2296,51 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
 				return nil, NewInferError(fmt.Errorf("condition must be boolean, got %s", condType), f.Condition)
 			}
-
-			// Infer body type
-			bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			// Condition loops return the last value from the body, or null if never executed
-			if nonNull, ok := bodyType.(hm.NonNullType); ok {
-				return nonNull.Type, nil
-			}
-			return bodyType, nil
 		}
 
-		// Infinite loop
-		bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
+		loopTarget := NewInferControlTarget(LoopFrame)
+		bodyCtx := contextWithInferBreakTarget(ctx, loopTarget)
+		bodyCtx = contextWithInferContinueTarget(bodyCtx, loopTarget)
+
+		bodyType, err := f.LoopBody.Infer(bodyCtx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		// Infinite loops return the last value from the body, or null
-		if nonNull, ok := bodyType.(hm.NonNullType); ok {
-			return nonNull.Type, nil
+		// Loops return the last value from the body, or null if never executed.
+		// Condition-based loops may skip their body entirely, so preserve that
+		// nullable possibility even when the body type is still a type variable
+		// from a local control-flow expression like return/break/continue.
+		loopType := bodyType
+		if f.Condition != nil {
+			loopType = nullableControlResultType(loopType)
+		} else if nonNull, ok := loopType.(hm.NonNullType); ok {
+			loopType = nonNull.Type
 		}
-		return bodyType, nil
+
+		// A value-bearing break overrides the loop result; plain break preserves
+		// the previous last value for backwards compatibility.
+		for _, br := range collectBreakStatements(f.LoopBody, loopTarget) {
+			if !br.HasValue {
+				continue
+			}
+			loopType = mergeControlResultTypes(loopType, breakValueType(br))
+		}
+
+		return loopType, nil
 	})
 }
 
 func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
 		var lastVal Value = NullValue{}
+		loopFrame := NewControlFrame(LoopFrame)
+		defer loopFrame.Deactivate()
+		bodyCtx := contextWithBreakFrame(ctx, loopFrame)
+		bodyCtx = contextWithContinueFrame(bodyCtx, loopFrame)
 
-		// Handle condition-only loop (while-style)
-		if f.Condition != nil {
-			for {
+		for {
+			if f.Condition != nil {
 				condVal, err := EvalNode(ctx, env, f.Condition)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating condition: %w", err)
@@ -2315,42 +2354,25 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				if !boolVal.Val {
 					break
 				}
-
-				val, err := EvalNode(ctx, env, f.LoopBody)
-				if err != nil {
-					// Check if it's a break or continue
-					var breakEx *BreakException
-					var continueEx *ContinueException
-					if errors.As(err, &breakEx) {
-						break
-					}
-					if errors.As(err, &continueEx) {
-						continue
-					}
-					return nil, fmt.Errorf("evaluating body: %w", err)
-				}
-				// Only update lastVal if there was no error
-				lastVal = val
 			}
-			return lastVal, nil
-		}
 
-		// Infinite loop
-		for {
-			val, err := EvalNode(ctx, env, f.LoopBody)
+			val, err := EvalNode(bodyCtx, env, f.LoopBody)
 			if err != nil {
-				// Check if it's a break or continue
 				var breakEx *BreakException
-				var continueEx *ContinueException
-				if errors.As(err, &breakEx) {
+				if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, loopFrame) {
+					if breakEx.HasValue && breakEx.Value != nil {
+						lastVal = breakEx.Value
+					}
 					break
 				}
-				if errors.As(err, &continueEx) {
+
+				var continueEx *ContinueException
+				if errors.As(err, &continueEx) && controlFrameMatches(continueEx.Target, loopFrame) {
 					continue
 				}
+
 				return nil, fmt.Errorf("evaluating body: %w", err)
 			}
-			// Only update lastVal if there was no error
 			lastVal = val
 		}
 
@@ -2368,10 +2390,15 @@ func (f *ForLoop) Walk(fn func(Node) bool) {
 	f.LoopBody.Walk(fn)
 }
 
-// Break represents a break statement in a loop
+// Break represents a break statement in a loop or block-taking call.
 type Break struct {
 	InferredTypeHolder
-	Loc *SourceLocation
+	Value      Node
+	ValueType  hm.Type
+	HasValue   bool
+	Target     *InferControlTarget
+	TargetKind ControlFrameKind
+	Loc        *SourceLocation
 }
 
 var _ Node = (*Break)(nil)
@@ -2382,7 +2409,10 @@ func (b *Break) DeclaredSymbols() []string {
 }
 
 func (b *Break) ReferencedSymbols() []string {
-	return nil // Break doesn't reference anything
+	if b.Value == nil {
+		return nil
+	}
+	return b.Value.ReferencedSymbols()
 }
 
 func (b *Break) Body() hm.Expression { return b }
@@ -2391,7 +2421,25 @@ func (b *Break) GetSourceLocation() *SourceLocation { return b.Loc }
 
 func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
-		// Break returns a fresh type variable that can unify with anything
+		target := currentInferBreakTarget(ctx)
+		if target == nil {
+			return nil, NewInferError(fmt.Errorf("break outside of loop or block-taking call"), b)
+		}
+		b.Target = target
+		b.TargetKind = target.Kind
+		b.HasValue = b.Value != nil
+
+		if b.Value != nil {
+			valueType, err := b.Value.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			b.ValueType = valueType
+		} else {
+			b.ValueType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+		}
+
+		// Break never produces a local value for the surrounding expression.
 		t := fresh.Fresh()
 		b.SetInferredType(t)
 		return t, nil
@@ -2399,17 +2447,41 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 }
 
 func (b *Break) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return nil, &BreakException{}
+	target := currentBreakFrame(ctx)
+	if target == nil || !target.Active {
+		return nil, &BreakException{Target: target, Location: b.Loc}
+	}
+
+	var val Value
+	if b.Value != nil {
+		var err error
+		val, err = EvalNode(ctx, env, b.Value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, &BreakException{Target: target, Value: val, HasValue: b.Value != nil, Location: b.Loc}
 }
 
 func (b *Break) Walk(fn func(Node) bool) {
-	fn(b)
+	if !fn(b) {
+		return
+	}
+	if b.Value != nil {
+		b.Value.Walk(fn)
+	}
 }
 
-// Continue represents a continue statement in a loop
+// Continue represents a continue statement in a loop or block invocation.
 type Continue struct {
 	InferredTypeHolder
-	Loc *SourceLocation
+	Value      Node
+	ValueType  hm.Type
+	HasValue   bool
+	Target     *InferControlTarget
+	TargetKind ControlFrameKind
+	Loc        *SourceLocation
 }
 
 var _ Node = (*Continue)(nil)
@@ -2420,7 +2492,10 @@ func (c *Continue) DeclaredSymbols() []string {
 }
 
 func (c *Continue) ReferencedSymbols() []string {
-	return nil // Continue doesn't reference anything
+	if c.Value == nil {
+		return nil
+	}
+	return c.Value.ReferencedSymbols()
 }
 
 func (c *Continue) Body() hm.Expression { return c }
@@ -2429,7 +2504,25 @@ func (c *Continue) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		// Continue returns a fresh type variable that can unify with anything
+		target := currentInferContinueTarget(ctx)
+		if target == nil {
+			return nil, NewInferError(fmt.Errorf("continue outside of loop or block arg invocation"), c)
+		}
+		c.Target = target
+		c.TargetKind = target.Kind
+		c.HasValue = c.Value != nil
+
+		if c.Value != nil {
+			valueType, err := c.Value.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			c.ValueType = valueType
+		} else {
+			c.ValueType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+		}
+
+		// Continue never produces a local value for the surrounding expression.
 		t := fresh.Fresh()
 		c.SetInferredType(t)
 		return t, nil
@@ -2437,25 +2530,191 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 }
 
 func (c *Continue) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return nil, &ContinueException{}
+	target := currentContinueFrame(ctx)
+	if target == nil || !target.Active {
+		return nil, &ContinueException{Target: target, Location: c.Loc}
+	}
+
+	var val Value
+	if c.Value != nil {
+		var err error
+		val, err = EvalNode(ctx, env, c.Value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, &ContinueException{Target: target, Value: val, HasValue: c.Value != nil, Location: c.Loc}
 }
 
 func (c *Continue) Walk(fn func(Node) bool) {
-	fn(c)
+	if !fn(c) {
+		return
+	}
+	if c.Value != nil {
+		c.Value.Walk(fn)
+	}
 }
 
-// BreakException is used to signal a break statement
-type BreakException struct{}
+// BreakException is used to signal a break statement.
+type BreakException struct {
+	Target   *ControlFrame
+	Value    Value
+	HasValue bool
+	Location *SourceLocation
+}
 
 func (e *BreakException) Error() string {
-	return "break outside of loop"
+	if e.Target != nil && !e.Target.Active {
+		switch e.Target.Kind {
+		case BlockCallFrame:
+			return "break from expired block call"
+		case LoopFrame:
+			return "break from expired loop"
+		}
+	}
+	return "break outside of loop or block-taking call"
 }
 
-// ContinueException is used to signal a continue statement
-type ContinueException struct{}
+// ContinueException is used to signal a continue statement.
+type ContinueException struct {
+	Target   *ControlFrame
+	Value    Value
+	HasValue bool
+	Location *SourceLocation
+}
 
 func (e *ContinueException) Error() string {
-	return "continue outside of loop"
+	if e.Target != nil && !e.Target.Active {
+		switch e.Target.Kind {
+		case BlockInvocationFrame:
+			return "continue from expired block invocation"
+		case LoopFrame:
+			return "continue from expired loop"
+		}
+	}
+	return "continue outside of loop or block arg invocation"
+}
+
+func breakValueType(br *Break) hm.Type {
+	if br == nil {
+		return nil
+	}
+	if br.ValueType != nil {
+		return br.ValueType
+	}
+	if br.Value != nil {
+		return br.Value.GetInferredType()
+	}
+	return nil
+}
+
+func continueValueType(cont *Continue) hm.Type {
+	if cont == nil {
+		return nil
+	}
+	if cont.ValueType != nil {
+		return cont.ValueType
+	}
+	if cont.Value != nil {
+		return cont.Value.GetInferredType()
+	}
+	return nil
+}
+
+func collectBreakStatements(root Node, target *InferControlTarget) []*Break {
+	if root == nil {
+		return nil
+	}
+
+	var breaks []*Break
+	root.Walk(func(node Node) bool {
+		if node != root {
+			switch node.(type) {
+			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+				return false
+			}
+		}
+
+		if br, ok := node.(*Break); ok {
+			if target == nil || br.Target == target {
+				breaks = append(breaks, br)
+			}
+			// A break's value is evaluated before the break is raised, so
+			// nested breaks inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
+		}
+
+		return true
+	})
+	return breaks
+}
+
+func collectContinueStatements(root Node, target *InferControlTarget) []*Continue {
+	if root == nil {
+		return nil
+	}
+
+	var continues []*Continue
+	root.Walk(func(node Node) bool {
+		if node != root {
+			switch node.(type) {
+			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+				return false
+			}
+		}
+
+		if cont, ok := node.(*Continue); ok {
+			if target == nil || cont.Target == target {
+				continues = append(continues, cont)
+			}
+			// A continue's value is evaluated before the continue is raised, so
+			// nested continues inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
+		}
+
+		return true
+	})
+	return continues
+}
+
+func nullableControlResultType(t hm.Type) hm.Type {
+	switch typ := t.(type) {
+	case hm.NonNullType:
+		return typ.Type
+	case hm.TypeVariable:
+		return hm.NullableTypeVariable{TypeVariable: typ}
+	default:
+		return t
+	}
+}
+
+func mergeControlResultTypes(current hm.Type, next hm.Type) hm.Type {
+	merged, _, err := hm.MergeTypes(current, next)
+	if err == nil {
+		return merged
+	}
+	return hm.NewUnionType(current, next)
+}
+
+func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget, subs hm.Subs, fresh hm.Fresher) hm.Type {
+	for _, br := range collectBreakStatements(body, target) {
+		breakType := breakValueType(br)
+		if breakType == nil {
+			breakType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+		}
+		if subs != nil {
+			breakType = breakType.Apply(subs).(hm.Type)
+		}
+		if br.HasValue {
+			retType = hm.NewUnionType(retType, breakType)
+		} else {
+			retType = mergeControlResultTypes(retType, breakType)
+		}
+	}
+	return retType
 }
 
 // Let represents a let binding expression
@@ -2712,21 +2971,66 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			})
 		}
 
-		// Infer the body with parameters in scope
-		bodyType, err := b.BodyNode.Infer(ctx, newEnv, fresh)
+		// Infer the body with parameters in scope. A block invocation target makes
+		// `continue value` contribute to this block's return type, while `return`
+		// still targets the enclosing function from the surrounding context.
+		continueTarget := NewInferControlTarget(BlockInvocationFrame)
+		bodyCtx := contextWithInferContinueTarget(ctx, continueTarget)
+		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
 		}
 
-		// If we have an expected return type, unify with the body type
+		// Continue values are block-local results. Plain returns inside a block arg
+		// are non-local and are checked against the enclosing function instead.
+		continues := collectContinueStatements(b.BodyNode, continueTarget)
+		for _, cont := range continues {
+			contType := continueValueType(cont)
+			if contType == nil {
+				contType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+			}
+			bodyType = mergeControlResultTypes(bodyType, contType)
+		}
+
+		// If we have an expected return type, unify with the block's normal result
+		// plus any `continue value` results targeting this invocation.
 		if b.ExpectedReturnType != nil {
-			if _, err := hm.Assignable(bodyType, b.ExpectedReturnType); err != nil {
+			if _, expectedNonNull := b.ExpectedReturnType.(hm.NonNullType); expectedNonNull {
+				for _, cont := range continues {
+					if !cont.HasValue {
+						return nil, NewInferError(
+							fmt.Errorf("continue type mismatch: expected %s, inferred null", b.ExpectedReturnType),
+							cont,
+						)
+					}
+				}
+			}
+			for _, cont := range continues {
+				contType := continueValueType(cont)
+				if contType == nil {
+					continue
+				}
+				if _, err := hm.Assignable(contType, b.ExpectedReturnType); err != nil {
+					errorNode := Node(cont)
+					if cont.Value != nil {
+						errorNode = cont.Value
+					}
+					return nil, NewInferError(
+						fmt.Errorf("continue type mismatch: expected %s, inferred %s", b.ExpectedReturnType, contType),
+						errorNode,
+					)
+				}
+			}
+
+			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
+			if err != nil {
 				return nil, NewInferError(
 					fmt.Errorf("block argument body has type %s but expected type %s",
 						bodyType, b.ExpectedReturnType),
 					b.BodyNode,
 				)
 			}
+			bodyType = bodyType.Apply(subs).(hm.Type)
 		}
 
 		// Build the function type
@@ -2756,12 +3060,15 @@ func (b *BlockArg) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		return FunctionValue{
-			Args:     argNames,
-			Body:     b.BodyNode,
-			Closure:  env,
-			FnType:   b.Inferred,
-			Defaults: make(map[string]Node), // Block args don't support defaults
-			ArgDecls: b.Args,
+			Args:                argNames,
+			Body:                b.BodyNode,
+			Closure:             env,
+			FnType:              b.Inferred,
+			Defaults:            make(map[string]Node), // Block args don't support defaults
+			ArgDecls:            b.Args,
+			IsBlockArg:          true,
+			CapturedReturnFrame: currentReturnFrame(ctx),
+			CapturedBreakFrame:  currentBlockCallFrame(ctx),
 		}, nil
 	})
 }

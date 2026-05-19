@@ -114,12 +114,14 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
+	functionCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(Env)
 
-	// Process arguments using shared logic
-	args, directives, docStrings, err := f.inferFunctionArguments(ctx, newEnv, fresh)
+	// Process arguments using shared logic. Defaults are evaluated at function
+	// call time, so they must not inherit the caller's return/break/continue targets.
+	args, directives, docStrings, err := f.inferFunctionArguments(functionCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
@@ -132,7 +134,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	var blockType *hm.FunctionType
 	if f.BlockParam != nil {
 		// Infer block parameter type
-		blockParamType, err := f.BlockParam.Type_.Infer(ctx, env, fresh)
+		blockParamType, err := f.BlockParam.Type_.Infer(functionCtx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("%s.Infer block parameter: %w", contextName, err)
 		}
@@ -158,17 +160,21 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
-	// Infer return type from function body
-	inferredRet, err := f.Body.Infer(ctx, newEnv, fresh)
+	// Infer return type from function body. A fresh return target lets
+	// returns inside block args created in this body contribute to this
+	// function, while nested functions/constructors get their own targets.
+	// Ordinary functions are control-flow boundaries for break/continue; only
+	// block arguments may intentionally hand those effects to an enclosing call.
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(functionCtx, returnTarget)
+	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
 
-	// Unify explicit and inferred return types if both exist
-	if definedRet != nil {
-		if _, err := hm.Assignable(inferredRet, definedRet); err != nil {
-			return nil, NewInferError(fmt.Errorf("return type mismatch: declared %s, inferred %s", definedRet, inferredRet), f.Body)
-		}
+	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create function type with optional block parameter
@@ -227,9 +233,11 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		// Pass 0: Hoist function signature (declare type without inferring body)
 		// Clone environment to avoid mutating original during signature inference
 		signatureEnv := env.Clone()
+		signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 
-		// Process arguments to get function signature
-		args, directives, docStrings, err := f.inferFunctionArguments(ctx, signatureEnv, fresh)
+		// Process arguments to get function signature. Default values belong to
+		// this function, not to the caller's return/break/continue frames.
+		args, directives, docStrings, err := f.inferFunctionArguments(signatureCtx, signatureEnv, fresh)
 		if err != nil {
 			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
 		}
@@ -240,7 +248,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		// Process block parameter if present
 		var blockType *hm.FunctionType
 		if f.BlockParam != nil {
-			blockParamType, err := f.BlockParam.Type_.Infer(ctx, env, fresh)
+			blockParamType, err := f.BlockParam.Type_.Infer(signatureCtx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("FuncDecl.Hoist: %s block parameter: %w", f.Named, err)
 			}
@@ -254,7 +262,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		// Handle explicit return type if provided
 		var retType hm.Type
 		if f.Ret != nil {
-			retType, err = f.Ret.Infer(ctx, env, fresh)
+			retType, err = f.Ret.Infer(signatureCtx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("FuncDecl.Hoist: %s return type: %w", f.Named, err)
 			}

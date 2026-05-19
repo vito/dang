@@ -3,6 +3,7 @@
 // External token types — must match the order in the grammar's "externals" array.
 enum {
   AUTOMATIC_NEWLINE,
+  INLINE_SPACE,
 };
 
 void *tree_sitter_dang_external_scanner_create(void) { return NULL; }
@@ -66,6 +67,26 @@ static bool is_leading_logical_op(TSLexer *lexer) {
   return false;
 }
 
+static bool scan_inline_space(TSLexer *lexer) {
+  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
+    return false;
+  }
+
+  do {
+    lexer->advance(lexer, false);
+  } while (lexer->lookahead == ' ' || lexer->lookahead == '\t');
+
+  // `_inlineSpace` is used before required same-line values. Do not let
+  // comments or newlines be consumed as extras before the value.
+  if (lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
+      lexer->lookahead == '#' || lexer->eof(lexer)) {
+    return false;
+  }
+
+  lexer->result_symbol = INLINE_SPACE;
+  return true;
+}
+
 // Scan for an automatic newline separator.
 //
 // A newline acts as a statement separator UNLESS the first
@@ -81,6 +102,10 @@ bool tree_sitter_dang_external_scanner_scan(
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
+  if (valid_symbols[INLINE_SPACE] && scan_inline_space(lexer)) {
+    return true;
+  }
+
   if (!valid_symbols[AUTOMATIC_NEWLINE]) {
     return false;
   }

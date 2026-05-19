@@ -1,0 +1,5 @@
+# Early return values must preserve nested non-null requirements
+pub bad(): [Int!]! {
+  return [null]
+  []
+}

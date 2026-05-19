@@ -1,0 +1,6 @@
+# Null flowing through a generic function cannot be passed to a non-null argument
+pub id(x: a): a { x }
+
+pub takes(value: Int!): Int! { value }
+
+pub result = takes(id(null))

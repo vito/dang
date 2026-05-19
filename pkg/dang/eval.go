@@ -1060,6 +1060,10 @@ type FunctionValue struct {
 	BlockParamName string          // Name of the block parameter, if any
 	Directives     []*DirectiveApplication
 	IsDynamic      bool // True if this function has access to dynamic scope
+
+	IsBlockArg          bool
+	CapturedReturnFrame *ControlFrame
+	CapturedBreakFrame  *ControlFrame
 }
 
 func (f FunctionValue) Type() hm.Type {
@@ -1088,11 +1092,49 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 		}
 	}
 
-	if err := f.BindArgs(ctx, fnEnv, args); err != nil {
+	if f.IsBlockArg {
+		invocationFrame := NewControlFrame(BlockInvocationFrame)
+		defer invocationFrame.Deactivate()
+
+		blockCtx := contextWithReturnFrame(ctx, f.CapturedReturnFrame)
+		blockCtx = contextWithBreakFrame(blockCtx, f.CapturedBreakFrame)
+		blockCtx = contextWithContinueFrame(blockCtx, invocationFrame)
+
+		if err := f.BindArgs(blockCtx, fnEnv, args); err != nil {
+			return nil, err
+		}
+
+		val, err := EvalNode(blockCtx, fnEnv, f.Body)
+		if err != nil {
+			var continueEx *ContinueException
+			if errors.As(err, &continueEx) && controlFrameMatches(continueEx.Target, invocationFrame) {
+				if continueEx.HasValue && continueEx.Value != nil {
+					return continueEx.Value, nil
+				}
+				return NullValue{}, nil
+			}
+			return nil, err
+		}
+		return val, nil
+	}
+
+	returnFrame := NewControlFrame(ReturnFrame)
+	defer returnFrame.Deactivate()
+	fnCtx := contextWithFunctionControlBoundary(ctx)
+	fnCtx = contextWithReturnFrame(fnCtx, returnFrame)
+
+	if err := f.BindArgs(fnCtx, fnEnv, args); err != nil {
 		return nil, err
 	}
 
-	return EvalNode(ctx, fnEnv, f.Body)
+	val, err := EvalNode(fnCtx, fnEnv, f.Body)
+	if err != nil {
+		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
+			return returnVal, nil
+		}
+		return nil, err
+	}
+	return val, nil
 }
 
 func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
@@ -1383,16 +1425,31 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 }
 
 func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	if b.Method.IsBlockArg {
+		return b.Method.Call(ctx, env, args)
+	}
+
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Fork()
 	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
 	fnEnv.NewDynamicScope(recv)
 
-	if err := b.Method.BindArgs(ctx, fnEnv, args); err != nil {
+	returnFrame := NewControlFrame(ReturnFrame)
+	defer returnFrame.Deactivate()
+	methodCtx := contextWithReturnFrame(ctx, returnFrame)
+
+	if err := b.Method.BindArgs(methodCtx, fnEnv, args); err != nil {
 		return nil, err
 	}
 
-	return EvalNode(ctx, fnEnv, b.Method.Body)
+	val, err := EvalNode(methodCtx, fnEnv, b.Method.Body)
+	if err != nil {
+		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
+			return returnVal, nil
+		}
+		return nil, err
+	}
+	return val, nil
 }
 
 func (b BoundMethod) ParameterNames() []string {
@@ -1500,6 +1557,8 @@ func (c *ConstructorFunction) String() string {
 }
 
 func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	ctx = contextWithFunctionControlBoundary(ctx)
+
 	// Create a new instance of the class
 	instance := NewModuleValue(c.ClassType)
 
@@ -1557,12 +1616,21 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// the env, which would lose dynamic scope updates for self assignments.
 		newBodyEnv := CreateConstructorEnv(instance, argEnv, c.Closure)
 		newBodyEnv.NewDynamicScope(instance)
+		returnFrame := NewControlFrame(ReturnFrame)
+		defer returnFrame.Deactivate()
+		newBodyCtx := contextWithReturnFrame(ctx, returnFrame)
 
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
-			lastVal, err = EvalNode(ctx, newBodyEnv, form)
+			returned := false
+			lastVal, err = EvalNode(newBodyCtx, newBodyEnv, form)
 			if err != nil {
-				return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
+				if returnVal, ok := returnValueFromError(err, returnFrame); ok {
+					lastVal = returnVal
+					returned = true
+				} else {
+					return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
+				}
 			}
 			// After each form, update the instance from the dynamic scope
 			// (copy-on-write may have replaced it via self.field = value)
@@ -1571,6 +1639,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 				// Update newBodyEnv to use the new instance
 				newBodyEnv = CreateConstructorEnv(instance, argEnv, c.Closure)
 				newBodyEnv.NewDynamicScope(instance)
+			}
+			if returned {
+				break
 			}
 		}
 
@@ -1698,19 +1769,8 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
 	if err != nil {
-		// If it's already a SourceError, don't wrap it again
-		var sourceErr *SourceError
-		if errors.As(err, &sourceErr) {
-			return err
-		}
-		// Surface uncaught raise errors with source highlighting.
-		var raised *RaisedError
-		if errors.As(err, &raised) {
-			return NewSourceError(
-				fmt.Errorf("uncaught error: %s", raised.Error()),
-				raised.Location,
-				evalCtx.Source,
-			)
+		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
+			return translated
 		}
 		return fmt.Errorf("evaluation error: %w", err)
 	}
@@ -1719,6 +1779,58 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	slog.Debug("final program result", "result", result.String())
 
 	return nil
+}
+
+func translateBoundaryEvalError(err error, evalCtx *EvalContext) (error, bool) {
+	// If it's already a SourceError, don't wrap it again.
+	var sourceErr *SourceError
+	if errors.As(err, &sourceErr) {
+		return err, true
+	}
+
+	source := ""
+	if evalCtx != nil {
+		source = evalCtx.Source
+	}
+
+	var returned *ReturnException
+	if errors.As(err, &returned) {
+		return NewSourceError(
+			errors.New(returned.Error()),
+			returned.Location,
+			source,
+		), true
+	}
+
+	var broken *BreakException
+	if errors.As(err, &broken) {
+		return NewSourceError(
+			errors.New(broken.Error()),
+			broken.Location,
+			source,
+		), true
+	}
+
+	var continued *ContinueException
+	if errors.As(err, &continued) {
+		return NewSourceError(
+			errors.New(continued.Error()),
+			continued.Location,
+			source,
+		), true
+	}
+
+	// Surface uncaught raise errors with source highlighting.
+	var raised *RaisedError
+	if errors.As(err, &raised) {
+		return NewSourceError(
+			fmt.Errorf("uncaught error: %s", raised.Error()),
+			raised.Location,
+			source,
+		), true
+	}
+
+	return nil, false
 }
 
 // ensureServiceRegistry adds a ServiceRegistry to the context if one isn't
@@ -1909,6 +2021,9 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
 	if err != nil {
+		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
+			return nil, translated
+		}
 		return nil, err
 	}
 
@@ -1932,10 +2047,10 @@ func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *E
 	if evaluator, ok := node.(Evaluator); ok {
 		val, err := evaluator.Eval(ctx, env)
 		if err != nil {
-			// Let user-level raise errors propagate unwrapped so
-			// TryCatch can intercept them cleanly.
+			// Let control-flow sentinel errors propagate unwrapped so their
+			// nearest runtime boundary can intercept them cleanly.
 			var raised *RaisedError
-			if errors.As(err, &raised) {
+			if errors.As(err, &raised) || isControlFlowException(err) {
 				return nil, err
 			}
 			if evalCtx != nil {
