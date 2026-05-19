@@ -121,4 +121,23 @@ pub nestedBlockBreak = [1, 2, 3].map { x =>
 assert { nestedBlockBreak == [1, 2, 3] }
 assert { nestedBlockCount == 3 }
 
+type StoredBlockHandler {
+  let saved(x: Int!): Int! { x }
+
+  pub store(&block(x: Int!): Int!): StoredBlockHandler! {
+    self.saved = block
+    self
+  }
+
+  pub callSaved(n: Int!): Int! {
+    self.saved(n)
+  }
+}
+
+pub storedBlockContinue = StoredBlockHandler.store { x =>
+  continue x + 10
+}.callSaved(5)
+
+assert { storedBlockContinue == 15 }
+
 print("Control-flow handoff tests passed!")

@@ -1425,6 +1425,10 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 }
 
 func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+	if b.Method.IsBlockArg {
+		return b.Method.Call(ctx, env, args)
+	}
+
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Fork()
 	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
