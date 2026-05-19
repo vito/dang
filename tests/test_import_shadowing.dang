@@ -1,0 +1,83 @@
+# Local declarations should shadow unqualified GraphQL imports while qualified
+# imports remain available. Test and Other expose the same schema, so these
+# local declarations also prove a local type resolves import ambiguity.
+
+import Other
+import Test
+
+type User {
+  pub name: String!
+  pub origin: String! = "local"
+}
+
+pub localUser: User! = User("Local User")
+assert { localUser.name == "Local User" }
+assert { localUser.origin == "local" }
+
+pub testUser: Test.User! = Test.primaryUser
+assert { testUser.name == "John Doe" }
+
+pub otherUser: Other.User! = Other.secondaryUser
+assert { otherUser.name == "Jane Smith" }
+
+enum Status { LOCAL REMOTE }
+
+pub localStatus: Status! = Status.LOCAL
+assert { localStatus == Status.LOCAL }
+assert { localStatus != Status.REMOTE }
+assert { Test.status == Test.Status.ACTIVE }
+assert { Other.status == Other.Status.ACTIVE }
+
+scalar URL
+
+pub localURL = URL
+assert { localURL != null }
+
+pub testURL: Test.URL! = Test.homepage
+assert { testURL == "https://dang-lang.dev" }
+
+pub otherURL: Other.URL! = Other.homepage
+assert { otherURL == "https://dang-lang.dev" }
+
+interface Node {
+  pub label: String!
+}
+
+type Labelled implements Node {
+  pub label: String!
+}
+
+pub localNode: Node! = Labelled("local-node")
+assert { Node != null }
+assert { localNode.label == "local-node" }
+
+pub testNode: Test.Node = Test.node(id: "1")
+assert { testNode.id == "1" }
+
+pub otherNode: Other.Node = Other.node(id: "2")
+assert { otherNode.id == "2" }
+
+type Cat {
+  pub name: String!
+}
+
+type Dog {
+  pub name: String!
+}
+
+union SearchResult = Cat | Dog
+
+pub localSearchResult: SearchResult! = Cat("Whiskers")
+assert { SearchResult != null }
+
+pub localSearchName = case (localSearchResult) {
+  c: Cat => c.name
+  d: Dog => d.name
+}
+assert { localSearchName == "Whiskers" }
+
+pub testSearchResults: [Test.SearchResult!]! = Test.search(query: "John")
+assert { testSearchResults != null }
+
+pub otherSearchResults: [Other.SearchResult!]! = Other.search(query: "Jane")
+assert { otherSearchResults != null }

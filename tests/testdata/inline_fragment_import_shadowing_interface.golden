@@ -1,0 +1,11 @@
+[1m[31mError:[0m field origin not found on type Test.User
+  [2m[34m--> errors/inline_fragment_import_shadowing_interface.dang:12:17[0m
+ [2m    |[0m
+ [2m 10 | [0m
+ [2m 11 | pub bad = node(id: "1").{[0m
+ [2m[34m[1m 12 | [0m  ... on User { origin }
+[2m                       [31m^^^^^^[0m
+ [2m 13 | }[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

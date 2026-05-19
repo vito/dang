@@ -131,7 +131,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 	var memberMod *Module
 	if operandMod, ok := unwrapped.(*Module); ok {
 		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
-			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod.Name()), c.Expr)
+			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod), c.Expr)
 		}
 
 		if operandMod.Kind == UnionKind {
@@ -142,7 +142,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 				}
 			}
 			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod), clause.TypePattern)
 			}
 		} else if operandMod.Kind == InterfaceKind {
 			var err error
@@ -188,7 +188,7 @@ func resolveInterfaceTypePattern(env Env, iface *Module, patternName string) (*M
 			return memberMod, nil
 		}
 	}
-	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface.Name())
+	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
 
 func resolveInlineUnionTypePattern(env Env, union *hm.UnionType, patternName string) (*Module, error) {

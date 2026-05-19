@@ -549,6 +549,14 @@ func (c *CompositeModule) Add(name string, scheme *hm.Scheme) hm.Env {
 	return c
 }
 
+func (c *CompositeModule) SetValueOrigin(name string, origin BindingOrigin) {
+	c.primary.SetValueOrigin(name, origin)
+}
+
+func (c *CompositeModule) LocalValueOrigin(name string) (BindingOrigin, bool) {
+	return c.primary.LocalValueOrigin(name)
+}
+
 func (c *CompositeModule) SetVisibility(name string, visibility Visibility) {
 	c.primary.SetVisibility(name, visibility)
 }
@@ -662,20 +670,12 @@ func (c *CompositeModule) AddClass(name string, class Env) {
 	c.primary.AddClass(name, class)
 }
 
-// TrackUnqualifiedTypeImport delegates to the primary module
-func (c *CompositeModule) TrackUnqualifiedTypeImport(symbolName, importName string) bool {
-	if mod, ok := c.primary.(*Module); ok {
-		return mod.TrackUnqualifiedTypeImport(symbolName, importName)
-	}
-	return false
+func (c *CompositeModule) SetTypeOrigin(name string, origin BindingOrigin) {
+	c.primary.SetTypeOrigin(name, origin)
 }
 
-// TrackUnqualifiedValueImport delegates to the primary module
-func (c *CompositeModule) TrackUnqualifiedValueImport(symbolName, importName string) bool {
-	if mod, ok := c.primary.(*Module); ok {
-		return mod.TrackUnqualifiedValueImport(symbolName, importName)
-	}
-	return false
+func (c *CompositeModule) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+	return c.primary.LocalTypeOrigin(name)
 }
 
 // CheckTypeConflict delegates to the primary module
@@ -702,14 +702,6 @@ func (c *CompositeModule) CheckValueConflict(symbolName string) []string {
 	return imports
 }
 
-// TrackUnqualifiedDirectiveImport delegates to the primary module
-func (c *CompositeModule) TrackUnqualifiedDirectiveImport(directiveName, importName string) bool {
-	if mod, ok := c.primary.(*Module); ok {
-		return mod.TrackUnqualifiedDirectiveImport(directiveName, importName)
-	}
-	return false
-}
-
 // CheckDirectiveConflict delegates to the primary module
 func (c *CompositeModule) CheckDirectiveConflict(directiveName string) []string {
 	imports := c.primary.CheckDirectiveConflict(directiveName)
@@ -725,6 +717,14 @@ func (c *CompositeModule) CheckDirectiveConflict(directiveName string) []string 
 // AddDirective adds a directive to the primary environment
 func (c *CompositeModule) AddDirective(name string, directive *DirectiveDecl) {
 	c.primary.AddDirective(name, directive)
+}
+
+func (c *CompositeModule) SetDirectiveOrigin(name string, origin BindingOrigin) {
+	c.primary.SetDirectiveOrigin(name, origin)
+}
+
+func (c *CompositeModule) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+	return c.primary.LocalDirectiveOrigin(name)
 }
 
 // GetDirective gets a directive from either environment

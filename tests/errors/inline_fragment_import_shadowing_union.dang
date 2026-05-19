@@ -1,0 +1,13 @@
+# Local fields on a type that shadows an imported GraphQL type must not be
+# accepted inside inline fragments for the imported union member.
+
+import Test
+
+type User {
+  pub name: String!
+  pub origin: String! = "local"
+}
+
+pub bad = search(query: "John").{
+  ... on User { origin }
+}

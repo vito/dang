@@ -1,0 +1,65 @@
+5 inference errors:
+
+Error 1:
+[1m[31mError:[0m cannot use Test.User! as User!
+  [2m[34m--> errors/import_shadowing_local_distinct.dang:30:29[0m
+ [2m    |[0m
+ [2m 28 | [0m
+ [2m 29 | # These imported values have qualified Test.* types, not the local shadowing types.[0m
+ [2m[34m[1m 30 | [0mlet userShouldFail: User! = Test.primaryUser
+[2m                                   [31m^^^^^^^^^^^^^^^^[0m
+ [2m 31 | let statusShouldFail: Status! = Test.status[0m
+ [2m 32 | let urlShouldFail: URL! = Test.homepage[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m cannot use Test.Status! as Status!
+  [2m[34m--> errors/import_shadowing_local_distinct.dang:31:33[0m
+ [2m    |[0m
+ [2m 29 | # These imported values have qualified Test.* types, not the local shadowing types.[0m
+ [2m 30 | let userShouldFail: User! = Test.primaryUser[0m
+ [2m[34m[1m 31 | [0mlet statusShouldFail: Status! = Test.status
+[2m                                       [31m^^^^^^^^^^^[0m
+ [2m 32 | let urlShouldFail: URL! = Test.homepage[0m
+ [2m 33 | let nodeShouldFail: Node = Test.node(id: "1")[0m
+ [2m    |[0m
+
+
+Error 3:
+[1m[31mError:[0m cannot use Test.URL! as URL!
+  [2m[34m--> errors/import_shadowing_local_distinct.dang:32:27[0m
+ [2m    |[0m
+ [2m 30 | let userShouldFail: User! = Test.primaryUser[0m
+ [2m 31 | let statusShouldFail: Status! = Test.status[0m
+ [2m[34m[1m 32 | [0mlet urlShouldFail: URL! = Test.homepage
+[2m                                 [31m^^^^^^^^^^^^^[0m
+ [2m 33 | let nodeShouldFail: Node = Test.node(id: "1")[0m
+ [2m 34 | let searchShouldFail: [SearchResult!]! = Test.search(query: "John")[0m
+ [2m    |[0m
+
+
+Error 4:
+[1m[31mError:[0m cannot use Test.Node as Node
+  [2m[34m--> errors/import_shadowing_local_distinct.dang:33:28[0m
+ [2m    |[0m
+ [2m 31 | let statusShouldFail: Status! = Test.status[0m
+ [2m 32 | let urlShouldFail: URL! = Test.homepage[0m
+ [2m[34m[1m 33 | [0mlet nodeShouldFail: Node = Test.node(id: "1")
+[2m                                  [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m 34 | let searchShouldFail: [SearchResult!]! = Test.search(query: "John")[0m
+ [2m 35 | [0m
+ [2m    |[0m
+
+
+Error 5:
+[1m[31mError:[0m cannot use [Test.SearchResult!]! as [SearchResult!]!
+  [2m[34m--> errors/import_shadowing_local_distinct.dang:34:42[0m
+ [2m    |[0m
+ [2m 32 | let urlShouldFail: URL! = Test.homepage[0m
+ [2m 33 | let nodeShouldFail: Node = Test.node(id: "1")[0m
+ [2m[34m[1m 34 | [0mlet searchShouldFail: [SearchResult!]! = Test.search(query: "John")
+[2m                                                [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 35 | [0m
+ [2m    |[0m
+
