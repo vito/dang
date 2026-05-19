@@ -1,0 +1,13 @@
+# Local fields on a type that shadows an imported GraphQL type must not be
+# accepted inside inline fragments for the imported interface implementer.
+
+import Test
+
+type User {
+  pub name: String!
+  pub origin: String! = "local"
+}
+
+pub bad = node(id: "1").{
+  ... on User { origin }
+}

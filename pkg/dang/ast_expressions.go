@@ -1184,21 +1184,9 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 
 	// Validate each fragment
 	for _, frag := range o.InlineFragments {
-		memberType, found := modEnv.NamedType(frag.TypeName.Name)
-		if !found {
-			return nil, NewInferError(fmt.Errorf("unknown type %s in inline fragment", frag.TypeName.Name), frag.TypeName)
-		}
-
-		memberMod, ok := memberType.(*Module)
-		if !ok {
-			return nil, NewInferError(fmt.Errorf("type %s in inline fragment is not an object type", frag.TypeName.Name), frag.TypeName)
-		}
-
-		// Check membership
-		if unionOrIface.Kind == UnionKind {
-			if !unionOrIface.HasMember(memberMod) {
-				return nil, NewInferError(fmt.Errorf("type %s is not a member of union %s", frag.TypeName.Name, unionOrIface), frag.TypeName)
-			}
+		memberMod, err := resolveInlineFragmentMemberType(unionOrIface, frag.TypeName.Name)
+		if err != nil {
+			return nil, NewInferError(err, frag.TypeName)
 		}
 
 		if len(frag.Fields) == 0 {
@@ -1209,16 +1197,16 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		} else {
 			// Create a narrowed module with only the selected fields.
 			// Link back to the canonical type for runtime matching.
-			narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
+			narrowedMember := NewModule(memberMod.Name(), ObjectKind)
 			narrowedMember.Qualifier = memberMod.Qualifier
 			narrowedMember.Canonical = memberMod
 
 			// Validate each field in the fragment exists on the concrete type
 			// and add it to the narrowed module (including nested selections)
 			for _, field := range frag.Fields {
-				fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
+				fieldType, err := o.inferFieldType(ctx, field, memberMod, modEnv, fresh)
 				if err != nil {
-					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
+					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
 				}
 				narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
 			}
@@ -1263,6 +1251,37 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 
 	o.SetInferredType(resultType)
 	return resultType, nil
+}
+
+func resolveInlineFragmentMemberType(receiver *Module, typeName string) (*Module, error) {
+	switch receiver.Kind {
+	case UnionKind:
+		if member, found := findMemberModuleByName(receiver.GetMembers(), typeName); found {
+			return member, nil
+		}
+		return nil, fmt.Errorf("type %s is not a member of union %s", typeName, receiver)
+	case InterfaceKind:
+		if implementer, found := findMemberModuleByName(receiver.GetImplementers(), typeName); found {
+			return implementer, nil
+		}
+		return nil, fmt.Errorf("type %s does not implement interface %s", typeName, receiver)
+	default:
+		return nil, fmt.Errorf("inline fragments require a union or interface type, got %s type %s", receiver.Kind, receiver)
+	}
+}
+
+func findMemberModuleByName(members []Env, typeName string) (*Module, bool) {
+	for _, member := range members {
+		if member.Name() != typeName {
+			continue
+		}
+		memberMod, ok := member.(*Module)
+		if !ok {
+			return nil, false
+		}
+		return memberMod, true
+	}
+	return nil, false
 }
 
 func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
