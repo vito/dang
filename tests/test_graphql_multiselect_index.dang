@@ -1,0 +1,10 @@
+# Regression test for indexing a GraphQL list after a multiselect containing
+# a field call with a positional argument and no nested selection.
+
+import Test
+
+pub first_user = users.{posts(1)}[0]
+
+assert { first_user.posts != null }
+
+print("GraphQL multiselect indexing tests passed!")
