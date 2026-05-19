@@ -2,13 +2,15 @@ package dang
 
 import "github.com/vito/dang/pkg/hm"
 
+const importedBindingVisibility = PrivateVisibility
+
 func installImportedTypeEnvironment(parentEnv Env, importName string, schemaModule Env) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
 	parentEnv.AddClass(importName, schemaModule)
 	parentEnv.SetTypeOrigin(importName, qualifiedOrigin)
 	parentEnv.Add(importName, hm.NewScheme(nil, NonNull(schemaModule)))
-	parentEnv.SetVisibility(importName, PublicVisibility)
+	parentEnv.SetVisibility(importName, importedBindingVisibility)
 	parentEnv.SetValueOrigin(importName, qualifiedOrigin)
 
 	installUnqualifiedImportSymbols(parentEnv, schemaModule, importName)
@@ -45,7 +47,7 @@ func installUnqualifiedImportValuesForInference(parentEnv Env, schemaModule Env,
 		}
 
 		parentEnv.Add(name, scheme)
-		parentEnv.SetVisibility(name, PublicVisibility)
+		parentEnv.SetVisibility(name, importedBindingVisibility)
 		parentEnv.SetValueOrigin(name, origin)
 	}
 }
@@ -84,7 +86,7 @@ func installUnqualifiedImportEnumValuesForInference(parentEnv Env, enumMod *Modu
 		}
 
 		parentEnv.Add(enumValName, enumValScheme)
-		parentEnv.SetVisibility(enumValName, PublicVisibility)
+		parentEnv.SetVisibility(enumValName, importedBindingVisibility)
 		parentEnv.SetValueOrigin(enumValName, origin)
 	}
 }
@@ -106,7 +108,7 @@ func installUnqualifiedImportDirectivesFromModule(parentEnv Env, mod *Module, im
 
 func installImportedEvalEnvironment(parentEnv EvalEnv, importName string, moduleEnv EvalEnv) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
-	parentEnv.SetWithVisibility(importName, moduleEnv, PublicVisibility)
+	parentEnv.SetWithVisibility(importName, moduleEnv, importedBindingVisibility)
 	setEvalValueOrigin(parentEnv, importName, qualifiedOrigin)
 
 	installUnqualifiedImportValues(parentEnv, moduleEnv, importName)
@@ -128,7 +130,7 @@ func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, import
 			continue
 		}
 
-		parentEnv.SetWithVisibility(name, value, PublicVisibility)
+		parentEnv.SetWithVisibility(name, value, importedBindingVisibility)
 		setEvalValueOrigin(parentEnv, name, origin)
 
 		if enumModuleVal, ok := value.(*ModuleValue); ok {
@@ -152,7 +154,7 @@ func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *Module
 			continue
 		}
 
-		parentEnv.SetWithVisibility(enumValName, enumVal, PublicVisibility)
+		parentEnv.SetWithVisibility(enumValName, enumVal, importedBindingVisibility)
 		setEvalValueOrigin(parentEnv, enumValName, origin)
 	}
 }

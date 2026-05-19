@@ -147,6 +147,37 @@ func TestBuildEnvFromImportsTracksImportedTypeOrigins(t *testing.T) {
 	require.Same(t, importedContainer, qualifiedContainer)
 }
 
+func TestBuildEnvFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
+	typeEnv, evalEnv := BuildEnvFromImports("", []ImportConfig{{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	}})
+
+	publicTypeBindings := map[string]bool{}
+	for name := range typeEnv.Bindings(PublicVisibility) {
+		publicTypeBindings[name] = true
+	}
+	require.NotContains(t, publicTypeBindings, "Dagger")
+	require.NotContains(t, publicTypeBindings, "container")
+
+	_, found := typeEnv.SchemeOf("Dagger")
+	require.True(t, found)
+	_, found = typeEnv.SchemeOf("container")
+	require.True(t, found)
+
+	publicEvalBindings := map[string]bool{}
+	for _, binding := range evalEnv.Bindings(PublicVisibility) {
+		publicEvalBindings[binding.Key] = true
+	}
+	require.NotContains(t, publicEvalBindings, "Dagger")
+	require.NotContains(t, publicEvalBindings, "container")
+
+	_, found = evalEnv.Get("Dagger")
+	require.True(t, found)
+	_, found = evalEnv.Get("container")
+	require.True(t, found)
+}
+
 func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",
