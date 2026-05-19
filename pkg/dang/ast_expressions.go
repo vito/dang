@@ -1177,6 +1177,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	// This ensures downstream code (e.g. case type patterns) can only access
 	// fields that were actually selected in the inline fragment.
 	narrowedUnion := NewModule(unionOrIface.Name(), UnionKind)
+	narrowedUnion.Qualifier = unionOrIface.Qualifier
 
 	// Validate each fragment
 	for _, frag := range o.InlineFragments {
@@ -1206,6 +1207,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			// Create a narrowed module with only the selected fields.
 			// Link back to the canonical type for runtime matching.
 			narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
+			narrowedMember.Qualifier = memberMod.Qualifier
 			narrowedMember.Canonical = memberMod
 
 			// Validate each field in the fragment exists on the concrete type

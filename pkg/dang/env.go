@@ -93,6 +93,9 @@ type Module struct {
 	Named string
 	Kind  ModuleKind
 
+	// Qualifier is the import/module alias used for display-only type names.
+	Qualifier string
+
 	Parent Env
 
 	classes         map[string]Env
@@ -346,6 +349,9 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 					continue
 				}
 				sub = NewModule(t.Name, kind)
+				if subMod, ok := sub.(*Module); ok {
+					subMod.Qualifier = name
+				}
 				// Store type description as module documentation
 				if t.Description != "" {
 					sub.SetModuleDocString(t.Description)
@@ -678,6 +684,7 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 
 func (e *Module) Clone() hm.Env {
 	mod := NewModule(e.Named, e.Kind)
+	mod.Qualifier = e.Qualifier
 	mod.Parent = e
 	mod.dynamicScopeType = e.dynamicScopeType
 	return mod
@@ -874,6 +881,9 @@ func (t *Module) Types() hm.Types                            { return nil }
 
 func (t *Module) String() string {
 	if t.Named != "" {
+		if t.Qualifier != "" {
+			return t.Qualifier + "." + t.Named
+		}
 		return t.Named
 	}
 	return t.AsRecord().String()
