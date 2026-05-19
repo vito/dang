@@ -1,0 +1,28 @@
+# Explicit constructors can take Ruby-style block arguments.
+
+type Loop {
+  pub ok: Boolean!
+
+  new(&condition: Boolean!) {
+    self.ok = condition
+    self
+  }
+}
+
+let x = 0
+let loop = Loop { x < 1 }
+assert { loop.ok == true }
+
+type PredicateBox {
+  pub ok: Boolean!
+
+  new(value: Int!, &predicate(x: Int!): Boolean!) {
+    self.ok = predicate(value)
+    self
+  }
+}
+
+assert { PredicateBox(2) { x => x > 1 }.ok == true }
+assert { PredicateBox(0) { x => x > 1 }.ok == false }
+
+print("Constructor block arg tests passed!")

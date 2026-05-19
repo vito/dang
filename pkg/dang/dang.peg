@@ -310,8 +310,25 @@ Scalar <- ScalarToken _ name:Symbol {
 ScalarToken <- "scalar" !WordChar
 
 NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
+  // Separate block parameters from regular constructor arguments.
+  allArgs := args.([]*SlotDecl)
+  var regularArgs []*SlotDecl
+  var blockParam *SlotDecl
+
+  for _, arg := range allArgs {
+    if arg.IsBlockParam {
+      if blockParam != nil {
+        return nil, fmt.Errorf("constructor can only have one block parameter")
+      }
+      blockParam = arg
+    } else {
+      regularArgs = append(regularArgs, arg)
+    }
+  }
+
   return &NewConstructorDecl{
-    Args: args.([]*SlotDecl),
+    Args: regularArgs,
+    BlockParam: blockParam,
     BodyBlock: block.(*Block),
     Loc: c.Loc(),
   }, nil

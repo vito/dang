@@ -280,6 +280,24 @@ func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestConstructorBlockParamFormatting(ctx context.Context, t *testctx.T) {
+	input := `type Loop {
+  new(&condition(x: Int!): Boolean!) {
+    self
+  }
+}`
+	expected := `type Loop {
+  new(&condition(x: Int!): Boolean!) {
+    self
+  }
+}
+`
+
+	result, err := FormatFile([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+}
+
 func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

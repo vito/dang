@@ -1512,6 +1512,7 @@ type ConstructorFunction struct {
 	Closure        EvalEnv
 	ClassName      string
 	Parameters     []*SlotDecl
+	BlockParamName string
 	ClassType      *Module
 	FnType         *hm.FunctionType
 	ClassBodyForms []Node // Field declarations to evaluate (excluding NewConstructorDecl)
@@ -1579,6 +1580,18 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 				argEnv.Set(param.Name.Name, defaultVal)
 				defaultEvalEnv.Set(param.Name.Name, defaultVal)
 			}
+		}
+		if c.BlockParamName != "" {
+			blockRaw := ctx.Value(blockArgContextKey)
+			if blockRaw == nil {
+				return nil, fmt.Errorf("missing block argument for constructor %s", c.ClassName)
+			}
+			blockVal, ok := blockRaw.(Value)
+			if !ok {
+				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ClassName)
+			}
+			argEnv.Set(c.BlockParamName, blockVal)
+			defaultEvalEnv.Set(c.BlockParamName, blockVal)
 		}
 
 		// Execute the new() body with access to self and constructor args.

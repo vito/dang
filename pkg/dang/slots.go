@@ -320,10 +320,11 @@ type ClassDecl struct {
 // NewConstructorDecl represents an explicit `new(...) { ... }` constructor
 type NewConstructorDecl struct {
 	InferredTypeHolder
-	Args      []*SlotDecl
-	BodyBlock *Block
-	DocString string
-	Loc       *SourceLocation
+	Args       []*SlotDecl
+	BlockParam *SlotDecl
+	BodyBlock  *Block
+	DocString  string
+	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
 }
@@ -340,6 +341,9 @@ func (n *NewConstructorDecl) ReferencedSymbols() []string {
 	for _, arg := range n.Args {
 		symbols = append(symbols, arg.ReferencedSymbols()...)
 	}
+	if n.BlockParam != nil {
+		symbols = append(symbols, n.BlockParam.ReferencedSymbols()...)
+	}
 	symbols = append(symbols, n.BodyBlock.ReferencedSymbols()...)
 	return symbols
 }
@@ -354,6 +358,9 @@ func (n *NewConstructorDecl) Walk(fn func(Node) bool) {
 	}
 	for _, arg := range n.Args {
 		arg.Walk(fn)
+	}
+	if n.BlockParam != nil {
+		n.BlockParam.Walk(fn)
 	}
 	n.BodyBlock.Walk(fn)
 }
@@ -481,12 +488,14 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// Build constructor type: use explicit new() if present, otherwise derive from fields
 	newDecl := c.findNewConstructor()
 	var constructorParams []*SlotDecl
+	var constructorBlockParam *SlotDecl
 	if newDecl != nil {
 		constructorParams = newDecl.Args
+		constructorBlockParam = newDecl.BlockParam
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
-	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, class, fresh)
+	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, class, fresh)
 	if err != nil {
 		return err
 	}
@@ -706,17 +715,34 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
-	fnDecl := FunctionBase{Args: params}
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+	fnDecl := FunctionBase{
+		Args:       params,
+		BlockParam: blockParam,
+	}
+	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 	argEnv := env.Clone()
-	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(contextWithInferFunctionControlBoundary(ctx), argEnv, fresh)
+	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
 	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
-	return hm.NewFnType(argsRec, hm.NonNullType{Type: classType}), nil
+
+	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: classType})
+	if blockParam != nil {
+		blockParamType, err := blockParam.Type_.Infer(signatureCtx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", classType.Named, err)
+		}
+		blockType, ok := blockParamType.(*hm.FunctionType)
+		if !ok {
+			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", classType.Named, blockParamType)
+		}
+		constructorType.SetBlock(blockType)
+	}
+	return constructorType, nil
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
@@ -735,6 +761,19 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		}
 		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
+	if newDecl.BlockParam != nil {
+		var blockType hm.Type
+		if c.ConstructorFnType != nil && c.ConstructorFnType.Block() != nil {
+			blockType = c.ConstructorFnType.Block()
+		} else {
+			var err error
+			blockType, err = newDecl.BlockParam.Type_.Infer(constructorCtx, inferEnv, fresh)
+			if err != nil {
+				return fmt.Errorf("inferring new() block parameter %s: %w", newDecl.BlockParam.Name.Name, err)
+			}
+		}
+		newEnv.Add(newDecl.BlockParam.Name.Name, hm.NewScheme(nil, blockType))
+	}
 
 	// Infer the new() body with a constructor return target. Constructors are
 	// function boundaries for break/continue just like ordinary functions.
@@ -748,10 +787,13 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	// The new() body must return the class type
 	expectedType := hm.NonNullType{Type: c.Inferred}
 	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
-		lastForm := newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		errorNode := Node(newDecl.BodyBlock)
+		if len(newDecl.BodyBlock.Forms) > 0 {
+			errorNode = newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		}
 		return NewInferError(
-			fmt.Errorf("new() must return %s, got %s", expectedType, bodyType),
-			lastForm,
+			fmt.Errorf("new() must return %s, got %s", expectedType.Name(), bodyType.Name()),
+			errorNode,
 		)
 	}
 
@@ -785,12 +827,19 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Find explicit new() or derive constructor from fields
 		newDecl := c.findNewConstructor()
 		var constructorParams []*SlotDecl
+		var constructorBlockParam *SlotDecl
 		var newBody *Block
 		if newDecl != nil {
 			constructorParams = newDecl.Args
+			constructorBlockParam = newDecl.BlockParam
 			newBody = newDecl.BodyBlock
 		} else {
 			constructorParams = c.extractConstructorParameters()
+		}
+
+		var blockParamName string
+		if constructorBlockParam != nil {
+			blockParamName = constructorBlockParam.Name.Name
 		}
 
 		// Create a constructor function that evaluates the class body when called
@@ -798,6 +847,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			Closure:        env,
 			ClassName:      c.Name.Name,
 			Parameters:     constructorParams,
+			BlockParamName: blockParamName,
 			ClassType:      c.Inferred,
 			ClassBodyForms: c.bodyFormsWithoutNew(),
 			FnType:         c.ConstructorFnType,
