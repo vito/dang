@@ -137,7 +137,8 @@ func TestBuildEnvFromImportsTracksImportedTypeOrigins(t *testing.T) {
 	importedContainer, found := typeEnv.NamedType("Container")
 	require.True(t, found)
 
-	localContainer := declareLocalType(typeEnv, "Container", ObjectKind)
+	localContainer, err := declareLocalType(typeEnv, "Container", ObjectKind)
+	require.NoError(t, err)
 	require.NotSame(t, importedContainer, localContainer)
 
 	daggerType, found := typeEnv.NamedType("Dagger")
@@ -176,6 +177,49 @@ func TestBuildEnvFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
 	require.True(t, found)
 	_, found = evalEnv.Get("container")
 	require.True(t, found)
+}
+
+func TestDeclareLocalTypeRejectsQualifiedImportAlias(t *testing.T) {
+	typeEnv, _ := BuildEnvFromImports("", []ImportConfig{{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	}})
+
+	importAlias, found := typeEnv.NamedType("Dagger")
+	require.True(t, found)
+	importedContainer, found := importAlias.NamedType("Container")
+	require.True(t, found)
+
+	localDagger, err := declareLocalType(typeEnv, "Dagger", ObjectKind)
+	require.ErrorContains(t, err, `type "Dagger" conflicts with import alias`)
+	require.Nil(t, localDagger)
+
+	aliasAfter, found := typeEnv.NamedType("Dagger")
+	require.True(t, found)
+	require.Same(t, importAlias, aliasAfter)
+	qualifiedContainer, found := aliasAfter.NamedType("Container")
+	require.True(t, found)
+	require.Same(t, importedContainer, qualifiedContainer)
+}
+
+func TestRunDirDeclarationCannotShadowImportAlias(t *testing.T) {
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+import Dagger
+
+type Dagger {
+  pub value: String!
+}
+
+pub core: Dagger.Container! = Dagger.container
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.ErrorContains(t, err, `type "Dagger" conflicts with import alias`)
 }
 
 func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {

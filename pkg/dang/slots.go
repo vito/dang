@@ -323,23 +323,35 @@ var _ Hoister = &ClassDecl{}
 
 // Imported schema types are installed into the local type map so they can be
 // referenced unqualified. A real type declaration with the same name must
-// replace that imported alias, not mutate the imported schema type; qualified
-// references like Dagger.Container still resolve through the import module.
+// replace an unqualified imported alias, not mutate the imported schema type.
+// Qualified import aliases like Dagger are protected so Dagger.Container keeps
+// resolving through the imported module.
 func localTypeShadowsImport(env Env, name string) bool {
 	origin, found := env.LocalTypeOrigin(name)
 	return found && origin.IsUnqualifiedImport()
 }
 
-func declareLocalType(env Env, name string, kind ModuleKind) *Module {
-	if existing, found := env.LocalNamedType(name); found && !localTypeShadowsImport(env, name) {
-		if mod, ok := existing.(*Module); ok {
-			return mod
+func localTypeIsQualifiedImport(env Env, name string) bool {
+	origin, found := env.LocalTypeOrigin(name)
+	return found && origin.Kind == BindingOriginImport && origin.Qualified
+}
+
+func declareLocalType(env Env, name string, kind ModuleKind) (*Module, error) {
+	if existing, found := env.LocalNamedType(name); found {
+		if localTypeShadowsImport(env, name) {
+			// Local declarations intentionally shadow unqualified imports.
+		} else if localTypeIsQualifiedImport(env, name) {
+			return nil, fmt.Errorf("type %q conflicts with import alias", name)
+		} else if mod, ok := existing.(*Module); ok {
+			return mod, nil
+		} else {
+			return nil, fmt.Errorf("type %q conflicts with existing type", name)
 		}
 	}
 
 	mod := NewModule(name, kind)
 	env.AddClass(name, mod)
-	return mod
+	return mod, nil
 }
 
 // findNewConstructor returns the NewConstructorDecl from the class body, if any
@@ -369,7 +381,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
 	}
 
-	class := declareLocalType(mod, c.Name.Name, ObjectKind)
+	class, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, c.Name)
+	}
 
 	// Pass 0 must only register the type name. Other top-level types may refer
 	// to this class before its file is reached, so anything that resolves field
@@ -461,7 +476,10 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
 	}
 
-	class := declareLocalType(mod, c.Name.Name, ObjectKind)
+	class, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	if declareErr != nil {
+		return nil, WrapInferError(declareErr, c.Name)
+	}
 
 	// Store doc string for the class name in the environment
 	if c.DocString != "" {
@@ -764,7 +782,10 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		return fmt.Errorf("EnumDecl.Hoist: environment does not support module operations")
 	}
 
-	enumType := declareLocalType(mod, e.Name.Name, EnumKind)
+	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, e.Name)
+	}
 
 	e.Inferred = enumType
 
@@ -802,7 +823,10 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
 	}
 
-	enumType := declareLocalType(mod, e.Name.Name, EnumKind)
+	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	if declareErr != nil {
+		return nil, WrapInferError(declareErr, e.Name)
+	}
 	if e.DocString != "" {
 		mod.SetDocString(e.Name.Name, e.DocString)
 	}
@@ -888,7 +912,10 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ScalarDecl.Hoist: environment does not support module operations")
 	}
 
-	scalarType := declareLocalType(mod, s.Name.Name, ScalarKind)
+	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, s.Name)
+	}
 
 	s.Inferred = scalarType
 
@@ -909,7 +936,10 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
 	}
 
-	scalarType := declareLocalType(mod, s.Name.Name, ScalarKind)
+	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	if declareErr != nil {
+		return nil, WrapInferError(declareErr, s.Name)
+	}
 	if s.DocString != "" {
 		mod.SetDocString(s.Name.Name, s.DocString)
 	}
@@ -984,7 +1014,10 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 	// Pass 0: Register the interface type
 	if pass == 0 {
-		iface := declareLocalType(mod, i.Name.Name, InterfaceKind)
+		iface, declareErr := declareLocalType(mod, i.Name.Name, InterfaceKind)
+		if declareErr != nil {
+			return WrapInferError(declareErr, i.Name)
+		}
 
 		// Add the interface type to the environment so it can be referenced
 		interfaceScheme := hm.NewScheme(nil, iface)
@@ -1091,7 +1124,10 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 
 	if pass == 0 {
 		// Pass 0: Register the union type
-		unionMod := declareLocalType(mod, u.Name.Name, UnionKind)
+		unionMod, declareErr := declareLocalType(mod, u.Name.Name, UnionKind)
+		if declareErr != nil {
+			return WrapInferError(declareErr, u.Name)
+		}
 
 		// Add the union type to the environment so it can be referenced
 		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
