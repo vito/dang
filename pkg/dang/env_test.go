@@ -128,6 +128,25 @@ func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
 	require.Equal(t, "(input: Dagger.Container!): Dagger.Container!", fn.String())
 }
 
+func TestBuildEnvFromImportsTracksImportedTypeOrigins(t *testing.T) {
+	typeEnv, _ := BuildEnvFromImports("", []ImportConfig{{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	}})
+
+	importedContainer, found := typeEnv.NamedType("Container")
+	require.True(t, found)
+
+	localContainer := declareLocalType(typeEnv, "Container", ObjectKind)
+	require.NotSame(t, importedContainer, localContainer)
+
+	daggerType, found := typeEnv.NamedType("Dagger")
+	require.True(t, found)
+	qualifiedContainer, found := daggerType.NamedType("Container")
+	require.True(t, found)
+	require.Same(t, importedContainer, qualifiedContainer)
+}
+
 func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",

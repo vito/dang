@@ -355,32 +355,8 @@ func BuildEnvFromImports(name string, configs []ImportConfig) (Env, EvalEnv) {
 		if config.Schema == nil {
 			continue
 		}
-
 		schemaModule := NewEnv(config.Name, config.Schema)
-		typeEnv.AddClass(config.Name, schemaModule)
-		typeEnv.Add(config.Name, hm.NewScheme(nil, NonNull(schemaModule)))
-		typeEnv.SetVisibility(config.Name, PublicVisibility)
-
-		for name, scheme := range schemaModule.Bindings(PublicVisibility) {
-			if name == config.Name {
-				continue
-			}
-			if _, exists := typeEnv.LocalSchemeOf(name); exists {
-				continue
-			}
-			typeEnv.Add(name, scheme)
-			typeEnv.SetVisibility(name, PublicVisibility)
-		}
-
-		for name, namedEnv := range schemaModule.NamedTypes() {
-			if name == config.Name {
-				continue
-			}
-			if _, exists := typeEnv.NamedType(name); exists {
-				continue
-			}
-			typeEnv.AddClass(name, namedEnv)
-		}
+		installImportedTypeEnvironment(typeEnv, config.Name, schemaModule)
 	}
 
 	evalEnv := NewEvalEnv(typeEnv)
@@ -389,18 +365,12 @@ func BuildEnvFromImports(name string, configs []ImportConfig) (Env, EvalEnv) {
 		if config.Schema == nil {
 			continue
 		}
-		schemaModule := NewEnv(config.Name, config.Schema)
-		moduleEnv := NewEvalEnvWithSchema(schemaModule, config.Client, config.Schema)
-		evalEnv.Set(config.Name, moduleEnv)
-		for _, binding := range moduleEnv.Bindings(PublicVisibility) {
-			if binding.Key == config.Name {
-				continue
-			}
-			if _, exists := evalEnv.GetLocal(binding.Key); exists {
-				continue
-			}
-			evalEnv.Set(binding.Key, binding.Value)
+		schemaModule, found := typeEnv.NamedType(config.Name)
+		if !found {
+			continue
 		}
+		moduleEnv := NewEvalEnvWithSchema(schemaModule, config.Client, config.Schema)
+		installImportedEvalEnvironment(evalEnv, config.Name, moduleEnv)
 	}
 
 	return typeEnv, evalEnv
@@ -1268,6 +1238,7 @@ func (m *ModuleValue) Set(name string, value Value) EvalEnv {
 	// TODO: check the type, set it if not present?
 	m.Values[name] = value
 	m.Visibilities[name] = m.Visibility(name)
+	m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 	return m
 }
 
@@ -1338,6 +1309,7 @@ func (m *ModuleValue) Fork() EvalEnv {
 func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
+	m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 }
 
 // Reassign reassigns a value following proper scoping rules:
@@ -1349,6 +1321,7 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
+		m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 	} else if m.Parent != nil && !m.IsForked {
 		if _, existsInParent := m.Parent.Get(name); existsInParent {
 			// Variable exists in parent, update parent (only if not forked)
@@ -1357,11 +1330,13 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 			// Variable doesn't exist anywhere, set it locally
 			m.Values[name] = value
 			m.Visibilities[name] = m.Visibility(name)
+			m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 		}
 	} else {
 		// No parent or forked boundary, set it locally
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
+		m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 	}
 }
 

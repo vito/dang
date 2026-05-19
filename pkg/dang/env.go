@@ -12,12 +12,58 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
+type BindingOriginKind int
+
+const (
+	BindingOriginUnknown BindingOriginKind = iota
+	BindingOriginLocal
+	BindingOriginImport
+)
+
+type BindingOrigin struct {
+	Kind        BindingOriginKind
+	ImportNames []string
+	Qualified   bool
+}
+
+func LocalBindingOrigin() BindingOrigin {
+	return BindingOrigin{Kind: BindingOriginLocal}
+}
+
+func ImportedBindingOrigin(importName string, qualified bool) BindingOrigin {
+	return BindingOrigin{Kind: BindingOriginImport, ImportNames: []string{importName}, Qualified: qualified}
+}
+
+func (o BindingOrigin) IsUnqualifiedImport() bool {
+	return o.Kind == BindingOriginImport && !o.Qualified
+}
+
+func (o BindingOrigin) AddImportProvider(importName string) BindingOrigin {
+	if o.Kind != BindingOriginImport {
+		return ImportedBindingOrigin(importName, false)
+	}
+	if slices.Contains(o.ImportNames, importName) {
+		return o
+	}
+	o.ImportNames = append(o.ImportNames, importName)
+	return o
+}
+
+func (o BindingOrigin) ConflictingImports() []string {
+	if !o.IsUnqualifiedImport() || len(o.ImportNames) < 2 {
+		return nil
+	}
+	return o.ImportNames
+}
+
 type Env interface {
 	hm.Env
 	hm.Type
 	NamedType(string) (Env, bool)
 	LocalNamedType(string) (Env, bool)
 	AddClass(string, Env)
+	SetTypeOrigin(string, BindingOrigin)
+	LocalTypeOrigin(string) (BindingOrigin, bool)
 	SetDocString(string, string)
 	GetDocString(string) (string, bool)
 	SetDirectives(string, []*DirectiveApplication)
@@ -26,12 +72,13 @@ type Env interface {
 	GetModuleDocString() string
 	SetVisibility(string, Visibility)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
+	SetValueOrigin(string, BindingOrigin)
+	LocalValueOrigin(string) (BindingOrigin, bool)
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
+	SetDirectiveOrigin(string, BindingOrigin)
+	LocalDirectiveOrigin(string) (BindingOrigin, bool)
 	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
-	TrackUnqualifiedTypeImport(symbolName, importName string) bool
-	TrackUnqualifiedValueImport(symbolName, importName string) bool
-	TrackUnqualifiedDirectiveImport(directiveName, importName string) bool
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
 	CheckDirectiveConflict(directiveName string) []string
@@ -98,13 +145,16 @@ type Module struct {
 
 	Parent Env
 
-	classes         map[string]Env
-	vars            map[string]*hm.Scheme
-	visibility      map[string]Visibility
-	directives      map[string]*DirectiveDecl
-	slotDirectives  map[string][]*DirectiveApplication
-	docStrings      map[string]string
-	moduleDocString string
+	classes          map[string]Env
+	vars             map[string]*hm.Scheme
+	visibility       map[string]Visibility
+	directives       map[string]*DirectiveDecl
+	typeOrigins      map[string]BindingOrigin
+	valueOrigins     map[string]BindingOrigin
+	directiveOrigins map[string]BindingOrigin
+	slotDirectives   map[string][]*DirectiveApplication
+	docStrings       map[string]string
+	moduleDocString  string
 
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
@@ -122,27 +172,22 @@ type Module struct {
 	members []Env // Member types of this union (for union modules)
 	unions  []Env // Unions this type is a member of
 
-	// Import conflict tracking for unqualified imports
-	// Maps symbol name -> list of import names that provide it
-	unqualifiedTypeImports      map[string][]string // For type-level symbols
-	unqualifiedValueImports     map[string][]string // For value-level symbols
-	unqualifiedDirectiveImports map[string][]string // For directives
 }
 
 func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
-		Named:                       name,
-		Kind:                        kind,
-		classes:                     make(map[string]Env),
-		vars:                        make(map[string]*hm.Scheme),
-		visibility:                  make(map[string]Visibility),
-		directives:                  make(map[string]*DirectiveDecl),
-		slotDirectives:              make(map[string][]*DirectiveApplication),
-		docStrings:                  make(map[string]string),
-		moduleDocString:             "",
-		unqualifiedTypeImports:      make(map[string][]string),
-		unqualifiedValueImports:     make(map[string][]string),
-		unqualifiedDirectiveImports: make(map[string][]string),
+		Named:            name,
+		Kind:             kind,
+		classes:          make(map[string]Env),
+		vars:             make(map[string]*hm.Scheme),
+		visibility:       make(map[string]Visibility),
+		directives:       make(map[string]*DirectiveDecl),
+		typeOrigins:      make(map[string]BindingOrigin),
+		valueOrigins:     make(map[string]BindingOrigin),
+		directiveOrigins: make(map[string]BindingOrigin),
+		slotDirectives:   make(map[string][]*DirectiveApplication),
+		docStrings:       make(map[string]string),
+		moduleDocString:  "",
 	}
 	return env
 }
@@ -656,10 +701,20 @@ func (e *Module) FreeTypeVar() hm.TypeVarSet {
 
 func (e *Module) Add(name string, s *hm.Scheme) hm.Env {
 	e.vars[name] = s
+	e.valueOrigins[name] = LocalBindingOrigin()
 	if _, ok := e.visibility[name]; !ok {
 		e.visibility[name] = PrivateVisibility
 	}
 	return e
+}
+
+func (e *Module) SetValueOrigin(name string, origin BindingOrigin) {
+	e.valueOrigins[name] = origin
+}
+
+func (e *Module) LocalValueOrigin(name string) (BindingOrigin, bool) {
+	origin, ok := e.valueOrigins[name]
+	return origin, ok
 }
 
 func (e *Module) SetVisibility(name string, visibility Visibility) {
@@ -716,10 +771,30 @@ func (e *Module) NamedTypes() iter.Seq2[string, Env] {
 
 func (e *Module) AddClass(name string, c Env) {
 	e.classes[name] = c
+	e.typeOrigins[name] = LocalBindingOrigin()
+}
+
+func (e *Module) SetTypeOrigin(name string, origin BindingOrigin) {
+	e.typeOrigins[name] = origin
+}
+
+func (e *Module) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+	origin, ok := e.typeOrigins[name]
+	return origin, ok
 }
 
 func (e *Module) AddDirective(name string, directive *DirectiveDecl) {
 	e.directives[name] = directive
+	e.directiveOrigins[name] = LocalBindingOrigin()
+}
+
+func (e *Module) SetDirectiveOrigin(name string, origin BindingOrigin) {
+	e.directiveOrigins[name] = origin
+}
+
+func (e *Module) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+	origin, ok := e.directiveOrigins[name]
+	return origin, ok
 }
 
 func (e *Module) GetDirective(name string) (*DirectiveDecl, bool) {
@@ -1008,83 +1083,38 @@ func (m *Module) GetUnions() []Env {
 	return m.unions
 }
 
-// TrackUnqualifiedTypeImport records that an import provides a type-level symbol
-// Returns true if this creates a conflict (symbol already provided by a different import)
-func (m *Module) TrackUnqualifiedTypeImport(symbolName, importName string) bool {
-	existing := m.unqualifiedTypeImports[symbolName]
-	if slices.Contains(existing, importName) {
-		// Already tracked from this import
-		return len(existing) > 1
-	}
-	m.unqualifiedTypeImports[symbolName] = append(existing, importName)
-	return len(m.unqualifiedTypeImports[symbolName]) > 1
-}
-
-// TrackUnqualifiedValueImport records that an import provides a value-level symbol
-// Returns true if this creates a conflict (symbol already provided by a different import)
-func (m *Module) TrackUnqualifiedValueImport(symbolName, importName string) bool {
-	existing := m.unqualifiedValueImports[symbolName]
-	if slices.Contains(existing, importName) {
-		// Already tracked from this import
-		return len(existing) > 1
-	}
-	m.unqualifiedValueImports[symbolName] = append(existing, importName)
-	return len(m.unqualifiedValueImports[symbolName]) > 1
-}
-
-// CheckTypeConflict checks if a type-level symbol has import conflicts
-// Returns the list of imports that provide it (empty if no conflict or not tracked)
+// CheckTypeConflict checks if a type-level symbol has import conflicts.
+// Returns the list of imports that provide it (empty if no conflict or not tracked).
 func (m *Module) CheckTypeConflict(symbolName string) []string {
-	imports := m.unqualifiedTypeImports[symbolName]
-	if len(imports) > 1 {
-		return imports
+	if origin, found := m.LocalTypeOrigin(symbolName); found {
+		return origin.ConflictingImports()
 	}
 	if m.Parent != nil {
-		if parent, ok := m.Parent.(*Module); ok {
-			return parent.CheckTypeConflict(symbolName)
-		}
+		return m.Parent.CheckTypeConflict(symbolName)
 	}
 	return nil
 }
 
-// CheckValueConflict checks if a value-level symbol has import conflicts
-// Returns the list of imports that provide it (empty if no conflict or not tracked)
+// CheckValueConflict checks if a value-level symbol has import conflicts.
+// Returns the list of imports that provide it (empty if no conflict or not tracked).
 func (m *Module) CheckValueConflict(symbolName string) []string {
-	imports := m.unqualifiedValueImports[symbolName]
-	if len(imports) > 1 {
-		return imports
+	if origin, found := m.LocalValueOrigin(symbolName); found {
+		return origin.ConflictingImports()
 	}
 	if m.Parent != nil {
-		if parent, ok := m.Parent.(*Module); ok {
-			return parent.CheckValueConflict(symbolName)
-		}
+		return m.Parent.CheckValueConflict(symbolName)
 	}
 	return nil
 }
 
-// TrackUnqualifiedDirectiveImport records that an import provides a directive
-// Returns true if this creates a conflict (directive already provided by a different import)
-func (m *Module) TrackUnqualifiedDirectiveImport(directiveName, importName string) bool {
-	existing := m.unqualifiedDirectiveImports[directiveName]
-	if slices.Contains(existing, importName) {
-		// Already tracked from this import
-		return len(existing) > 1
-	}
-	m.unqualifiedDirectiveImports[directiveName] = append(existing, importName)
-	return len(m.unqualifiedDirectiveImports[directiveName]) > 1
-}
-
-// CheckDirectiveConflict checks if a directive has import conflicts
-// Returns the list of imports that provide it (empty if no conflict or not tracked)
+// CheckDirectiveConflict checks if a directive has import conflicts.
+// Returns the list of imports that provide it (empty if no conflict or not tracked).
 func (m *Module) CheckDirectiveConflict(directiveName string) []string {
-	imports := m.unqualifiedDirectiveImports[directiveName]
-	if len(imports) > 1 {
-		return imports
+	if origin, found := m.LocalDirectiveOrigin(directiveName); found {
+		return origin.ConflictingImports()
 	}
 	if m.Parent != nil {
-		if parent, ok := m.Parent.(*Module); ok {
-			return parent.CheckDirectiveConflict(directiveName)
-		}
+		return m.Parent.CheckDirectiveConflict(directiveName)
 	}
 	return nil
 }

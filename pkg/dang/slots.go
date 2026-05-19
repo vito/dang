@@ -326,24 +326,8 @@ var _ Hoister = &ClassDecl{}
 // replace that imported alias, not mutate the imported schema type; qualified
 // references like Dagger.Container still resolve through the import module.
 func localTypeShadowsImport(env Env, name string) bool {
-	switch e := env.(type) {
-	case *Module:
-		return len(e.unqualifiedTypeImports[name]) > 0
-	case *CompositeModule:
-		return localTypeShadowsImport(e.primary, name)
-	default:
-		return false
-	}
-}
-
-func clearShadowedUnqualifiedImports(env Env, name string) {
-	switch e := env.(type) {
-	case *Module:
-		delete(e.unqualifiedTypeImports, name)
-		delete(e.unqualifiedValueImports, name)
-	case *CompositeModule:
-		clearShadowedUnqualifiedImports(e.primary, name)
-	}
+	origin, found := env.LocalTypeOrigin(name)
+	return found && origin.IsUnqualifiedImport()
 }
 
 func declareLocalType(env Env, name string, kind ModuleKind) *Module {
@@ -355,14 +339,7 @@ func declareLocalType(env Env, name string, kind ModuleKind) *Module {
 
 	mod := NewModule(name, kind)
 	env.AddClass(name, mod)
-	clearShadowedUnqualifiedImports(env, name)
 	return mod
-}
-
-func clearEvalShadowedUnqualifiedImports(env EvalEnv, name string) {
-	if modVal, ok := env.(*ModuleValue); ok {
-		clearShadowedUnqualifiedImports(modVal.Mod, name)
-	}
 }
 
 // findNewConstructor returns the NewConstructorDecl from the class body, if any
@@ -732,7 +709,6 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the constructor to the evaluation environment
-		clearEvalShadowedUnqualifiedImports(env, c.Name.Name)
 		env.SetWithVisibility(c.Name.Name, constructor, c.Visibility)
 
 		return constructor, nil
@@ -859,7 +835,6 @@ func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Register the enum module in the environment
-	clearEvalShadowedUnqualifiedImports(env, e.Name.Name)
 	env.SetWithVisibility(e.Name.Name, enumModule, e.Visibility)
 
 	return enumModule, nil
@@ -951,7 +926,6 @@ func (s *ScalarDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	scalarModule := NewModuleValue(s.Inferred)
 
 	// Register the scalar type in the environment
-	clearEvalShadowedUnqualifiedImports(env, s.Name.Name)
 	env.SetWithVisibility(s.Name.Name, scalarModule, s.Visibility)
 
 	return scalarModule, nil
@@ -1060,7 +1034,6 @@ func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
 	// Just register the interface module in the environment
 	interfaceModule := NewModuleValue(i.Inferred)
-	clearEvalShadowedUnqualifiedImports(env, i.Name.Name)
 	env.SetWithVisibility(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
@@ -1188,7 +1161,6 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Unions are pure type declarations - register the union module
 	unionModule := NewModuleValue(u.Inferred)
-	clearEvalShadowedUnqualifiedImports(env, u.Name.Name)
 	env.SetWithVisibility(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }

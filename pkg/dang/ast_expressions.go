@@ -563,6 +563,9 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		// Check for import conflicts before resolving
 		if dangEnv, ok := env.(Env); ok {
+			if conflicts := dangEnv.CheckValueConflict(s.Name); len(conflicts) > 0 {
+				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
+			}
 			if conflicts := dangEnv.CheckTypeConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
