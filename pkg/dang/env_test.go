@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/introspection"
 )
 
@@ -103,6 +104,67 @@ scalar Error
 	require.Equal(t, ScalarKind, scalarMod.Mod.(*Module).Kind)
 }
 
+func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:       "Dagger",
+		Schema:     schemaWithCoreShadowTypes(),
+		AutoImport: true,
+	})
+	env := runDangSnippetContext(t, ctx, `
+type TestShadowing {
+  pub makeLocal: Container! {
+    Container("local")
+  }
+
+  pub makeCore: Dagger.Container! {
+    Dagger.container
+  }
+}
+
+type Container {
+  pub value: String!
+}
+
+type Directory {
+  pub value: String!
+}
+`)
+
+	daggerVal, found := env.Get("Dagger")
+	require.True(t, found)
+	daggerMod, ok := daggerVal.(*ModuleValue)
+	require.True(t, ok)
+	importedContainer, found := daggerMod.Mod.NamedType("Container")
+	require.True(t, found)
+	importedDirectory, found := daggerMod.Mod.NamedType("Directory")
+	require.True(t, found)
+
+	containerVal, found := env.Get("Container")
+	require.True(t, found)
+	containerCtor, ok := containerVal.(*ConstructorFunction)
+	require.True(t, ok)
+	require.NotSame(t, importedContainer, containerCtor.ClassType)
+
+	directoryVal, found := env.Get("Directory")
+	require.True(t, found)
+	directoryCtor, ok := directoryVal.(*ConstructorFunction)
+	require.True(t, ok)
+	require.NotSame(t, importedDirectory, directoryCtor.ClassType)
+
+	testVal, found := env.Get("TestShadowing")
+	require.True(t, found)
+	testCtor, ok := testVal.(*ConstructorFunction)
+	require.True(t, ok)
+
+	localScheme, found := testCtor.ClassType.LocalSchemeOf("makeLocal")
+	require.True(t, found)
+	require.Same(t, containerCtor.ClassType, functionReturnType(t, localScheme))
+
+	coreScheme, found := testCtor.ClassType.LocalSchemeOf("makeCore")
+	require.True(t, found)
+	require.Same(t, importedContainer, functionReturnType(t, coreScheme))
+}
+
 func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {
 	before := len(ErrorType.GetImplementers())
 	runDangSnippet(t, `
@@ -125,11 +187,94 @@ assert { MyUnion != null }
 
 func runDangSnippet(t *testing.T, source string) EvalEnv {
 	t.Helper()
+	return runDangSnippetContext(t, context.Background(), source)
+}
+
+func runDangSnippetContext(t *testing.T, ctx context.Context, source string) EvalEnv {
+	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(source), 0o600))
-	env, err := RunDir(context.Background(), dir, false)
+	env, err := RunDir(ctx, dir, false)
 	require.NoError(t, err)
 	return env
+}
+
+func functionReturnType(t *testing.T, scheme *hm.Scheme) hm.Type {
+	t.Helper()
+	typ, mono := scheme.Type()
+	require.True(t, mono)
+	fn, ok := typ.(*hm.FunctionType)
+	require.True(t, ok)
+	ret := fn.Ret(false)
+	if nn, ok := ret.(hm.NonNullType); ok {
+		ret = nn.Type
+	}
+	return ret
+}
+
+func schemaWithCoreShadowTypes() *introspection.Schema {
+	schema := &introspection.Schema{
+		Types: introspection.Types{
+			{
+				Kind: introspection.TypeKindScalar,
+				Name: "ID",
+			},
+			{
+				Kind: introspection.TypeKindScalar,
+				Name: "String",
+			},
+			{
+				Kind: introspection.TypeKindObject,
+				Name: "Container",
+				Fields: []*introspection.Field{
+					{
+						Name: "id",
+						TypeRef: &introspection.TypeRef{
+							Kind: introspection.TypeKindNonNull,
+							OfType: &introspection.TypeRef{
+								Kind: introspection.TypeKindScalar,
+								Name: "ID",
+							},
+						},
+					},
+				},
+			},
+			{
+				Kind: introspection.TypeKindObject,
+				Name: "Directory",
+				Fields: []*introspection.Field{
+					{
+						Name: "id",
+						TypeRef: &introspection.TypeRef{
+							Kind: introspection.TypeKindNonNull,
+							OfType: &introspection.TypeRef{
+								Kind: introspection.TypeKindScalar,
+								Name: "ID",
+							},
+						},
+					},
+				},
+			},
+			{
+				Kind: introspection.TypeKindObject,
+				Name: "Query",
+				Fields: []*introspection.Field{
+					{
+						Name: "container",
+						TypeRef: &introspection.TypeRef{
+							Kind: introspection.TypeKindNonNull,
+							OfType: &introspection.TypeRef{
+								Kind: introspection.TypeKindObject,
+								Name: "Container",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	schema.QueryType.Name = "Query"
+	return schema
 }
 
 func schemaWithErrorObject() *introspection.Schema {
