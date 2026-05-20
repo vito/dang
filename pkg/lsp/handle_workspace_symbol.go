@@ -22,15 +22,24 @@ func (h *langHandler) handleWorkspaceSymbol(ctx context.Context, req *jrpc2.Requ
 
 	var symbols []SymbolInformation
 
-	// Search all open files for symbols matching the query
+	// Search all open files for symbols matching the query.
 	query := strings.ToLower(params.Query)
+
+	h.mu.Lock()
+	files := make(map[DocumentURI]*File, len(h.files))
 	for uri, file := range h.files {
-		if file.Symbols == nil {
+		files[uri] = file
+	}
+	h.mu.Unlock()
+
+	for uri, file := range files {
+		snapshot := file.waitForSnapshot()
+		if snapshot.Symbols == nil {
 			continue
 		}
 
 		// Search through all defined symbols in this file
-		for name, info := range file.Symbols.Definitions {
+		for name, info := range snapshot.Symbols.Definitions {
 			// Fuzzy match: check if query appears anywhere in the symbol name (case-insensitive)
 			if query == "" || strings.Contains(strings.ToLower(name), query) {
 				symbols = append(symbols, SymbolInformation{
@@ -41,7 +50,7 @@ func (h *langHandler) handleWorkspaceSymbol(ctx context.Context, req *jrpc2.Requ
 			}
 		}
 
-		slog.InfoContext(ctx, "searched file", "uri", uri, "definitions", len(file.Symbols.Definitions), "matches", len(symbols))
+		slog.InfoContext(ctx, "searched file", "uri", uri, "definitions", len(snapshot.Symbols.Definitions), "matches", len(symbols))
 	}
 
 	slog.InfoContext(ctx, "workspace symbol results", "query", params.Query, "total", len(symbols))

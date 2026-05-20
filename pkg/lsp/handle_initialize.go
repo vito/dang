@@ -55,10 +55,13 @@ func (h *langHandler) handleInitialize(ctx context.Context, req *jrpc2.Request) 
 // expansion in dang.toml work even when the editor doesn't inherit the
 // direnv environment. Results are cached per directory.
 func (h *langHandler) loadEnvrc(ctx context.Context, configDir string) {
+	h.mu.Lock()
 	if h.loadedEnvDirs[configDir] {
+		h.mu.Unlock()
 		return
 	}
 	h.loadedEnvDirs[configDir] = true
+	h.mu.Unlock()
 
 	envrcPath := filepath.Join(configDir, ".envrc")
 	if _, err := os.Stat(envrcPath); err != nil {
