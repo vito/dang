@@ -178,7 +178,8 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	fp, err := fromURI(uri)
 	if err != nil {
-		h.finishFileUpdate(f, nil)
+		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
+		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 		return fmt.Errorf("file path from URI: %w", err)
 	}
 
@@ -186,7 +187,8 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	analysis, err := h.analyzeDirectory(ctx, uri, fp)
 	if err != nil {
-		h.finishFileUpdate(f, nil)
+		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
+		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 		return err
 	}
 
@@ -211,10 +213,7 @@ type fileAnalysis struct {
 }
 
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
-	analysis := &fileAnalysis{
-		Diagnostics: []Diagnostic{},
-		Symbols:     emptySymbolTable(),
-	}
+	analysis := emptyFileAnalysis()
 
 	fileDir := filepath.Dir(fp)
 	files, err := h.directoryDangFiles(fileDir)
@@ -310,6 +309,13 @@ func (h *langHandler) finishFileUpdate(f *File, analysis *fileAnalysis) (int, []
 
 	diagnostics := append([]Diagnostic(nil), f.Diagnostics...)
 	return f.Version, diagnostics
+}
+
+func emptyFileAnalysis() *fileAnalysis {
+	return &fileAnalysis{
+		Diagnostics: []Diagnostic{},
+		Symbols:     emptySymbolTable(),
+	}
 }
 
 func emptySymbolTable() *SymbolTable {
