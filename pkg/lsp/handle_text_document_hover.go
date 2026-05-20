@@ -240,27 +240,24 @@ func sortStrings(s []string) {
 func formatDeclSignature(node dang.Node) string {
 	switch n := node.(type) {
 	case *dang.SlotDecl:
-		// Temporarily strip the doc string, value, and body to format just the signature.
-		savedDoc := n.DocString
-		savedValue := n.Value
-		n.DocString = ""
+		// Format a shallow copy so concurrent hover/completion requests don't
+		// mutate the shared, inferred AST.
+		slotCopy := *n
+		slotCopy.DocString = ""
 
 		if funDecl, ok := n.Value.(*dang.FunDecl); ok {
 			// For functions, keep the FunDecl but strip its body.
-			savedBody := funDecl.FunctionBase.Body
-			funDecl.FunctionBase.Body = nil
-			sig := dang.Format(n)
-			funDecl.FunctionBase.Body = savedBody
-			n.DocString = savedDoc
-			return sig
+			funCopy := *funDecl
+			baseCopy := funDecl.FunctionBase
+			baseCopy.Body = nil
+			funCopy.FunctionBase = baseCopy
+			slotCopy.Value = &funCopy
+			return dang.Format(&slotCopy)
 		}
 
 		// For non-function slots, strip the value so we get just the type annotation.
-		n.Value = nil
-		sig := dang.Format(n)
-		n.Value = savedValue
-		n.DocString = savedDoc
-		return sig
+		slotCopy.Value = nil
+		return dang.Format(&slotCopy)
 
 	case *dang.ClassDecl:
 		return fmt.Sprintf("type %s", n.Name.Name)
@@ -293,10 +290,9 @@ func (h *langHandler) hoverDirectiveApplication(ctx context.Context, f *File, ap
 	}
 
 	// Format without the doc string so we can show it separately as markdown.
-	savedDoc := decl.DocString
-	decl.DocString = ""
-	schema := dang.Format(decl)
-	decl.DocString = savedDoc
+	declCopy := *decl
+	declCopy.DocString = ""
+	schema := dang.Format(&declCopy)
 
 	var content string
 	if decl.DocString != "" {

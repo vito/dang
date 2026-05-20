@@ -1,0 +1,10 @@
+[1m[31mError:[0m Reassignment.Infer: cannot assign (): String! to (&block: (x: Int!): String!): String!: cannot use (): String! as (&block: (x: Int!): String!): String!
+  [2m[34m--> errors/function_ref_block_incompatible.dang:11:1[0m
+ [2m    |[0m
+ [2m  9 | }[0m
+ [2m 10 | [0m
+ [2m[34m[1m 11 | [0mwithBlock = &noBlock
+[2m       [31m^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 12 | [0m
+ [2m    |[0m
+

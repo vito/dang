@@ -629,6 +629,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatBinaryOp(n.Left, n.Right, "==")
 	case *UnaryNegation:
 		f.formatUnaryNegation(n)
+	case *FunctionRef:
+		f.formatFunctionRef(n)
 	case *Addition:
 		f.formatBinaryOp(n.Left, n.Right, "+")
 	case *Subtraction:
@@ -942,9 +944,9 @@ func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 		f.formatDocString(n.DocString)
 	}
 
-	if len(n.Args) > 0 {
+	if len(n.Args) > 0 || n.BlockParam != nil {
 		f.write("new(")
-		f.formatFunctionArgs(n.Args, nil, n.Loc)
+		f.formatFunctionArgs(n.Args, n.BlockParam, n.Loc)
 		f.write(") ")
 	} else {
 		f.write("new ")
@@ -2759,6 +2761,11 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 	f.write("!")
 	f.formatNode(u.Expr)
+}
+
+func (f *Formatter) formatFunctionRef(r *FunctionRef) {
+	f.write("&")
+	f.formatNode(r.Expr)
 }
 
 func (f *Formatter) formatGrouped(g *Grouped) {

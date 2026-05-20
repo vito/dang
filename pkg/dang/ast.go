@@ -61,8 +61,13 @@ const (
 
 // autoCallFnType returns the type that should be used for zero-arity function auto-calling
 func autoCallFnType(t hm.Type) (hm.Type, bool) {
-	// Check if this is a zero-arity function and return its return type
+	// Check if this is a zero-arity function and return its return type.
+	// A declared block parameter is required, so functions that expect a block
+	// cannot be auto-called by a bare reference.
 	if ft, ok := t.(*hm.FunctionType); ok {
+		if ft.Block() != nil {
+			return t, false
+		}
 		if rt, ok := ft.Arg().(*RecordType); ok {
 			// Check if all fields are optional (no NonNullType fields)
 			// Note: This function only has type information, not default value information
@@ -126,6 +131,58 @@ func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
 		Loc:  nil,
 	}
 	return funCall.Eval(ctx, env)
+}
+
+func inferNodeWithoutAutoCall(ctx context.Context, env hm.Env, fresh hm.Fresher, node Node) (hm.Type, error) {
+	switch n := node.(type) {
+	case *Symbol:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return n.Infer(ctx, env, fresh)
+	case *Select:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return n.Infer(ctx, env, fresh)
+	case *Index:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return n.Infer(ctx, env, fresh)
+	case *Grouped:
+		t, err := inferNodeWithoutAutoCall(ctx, env, fresh, n.Expr)
+		if err == nil {
+			n.SetInferredType(t)
+		}
+		return t, err
+	default:
+		return node.Infer(ctx, env, fresh)
+	}
+}
+
+func evalNodeWithoutAutoCall(ctx context.Context, env EvalEnv, node Node) (Value, error) {
+	switch n := node.(type) {
+	case *Symbol:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return EvalNode(ctx, env, n)
+	case *Select:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return EvalNode(ctx, env, n)
+	case *Index:
+		prev := n.AutoCall
+		n.AutoCall = false
+		defer func() { n.AutoCall = prev }()
+		return EvalNode(ctx, env, n)
+	case *Grouped:
+		return evalNodeWithoutAutoCall(ctx, env, n.Expr)
+	default:
+		return EvalNode(ctx, env, node)
+	}
 }
 
 // ValueNode is a simple node that evaluates to a given value

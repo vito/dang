@@ -164,38 +164,38 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		return fmt.Errorf("document not found: %v", uri)
 	}
 
-	// Mark the file as being processed
+	// Mark the file as being processed and publish the latest text before
+	// analysis. Readers either get a complete snapshot from before this point or
+	// wait until this update finishes.
 	f.mu.Lock()
 	f.processing = true
-	f.mu.Unlock()
-	h.mu.Unlock()
-
-	// Ensure we signal completion when done
-	defer func() {
-		f.mu.Lock()
-		f.processing = false
-		f.cond.Broadcast() // Wake up all waiting handlers
-		f.mu.Unlock()
-	}()
-
 	f.Text = text
 	if version != nil {
 		f.Version = *version
 	}
+	f.mu.Unlock()
+	h.mu.Unlock()
 
 	fp, err := fromURI(uri)
 	if err != nil {
+		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
+		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 		return fmt.Errorf("file path from URI: %w", err)
 	}
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
-	if err := h.analyzeDirectory(ctx, uri, fp, f); err != nil {
+	analysis, err := h.analyzeDirectory(ctx, uri, fp)
+	if err != nil {
+		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
+		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 		return err
 	}
 
-	// Publish diagnostics to the client
-	h.publishDiagnostics(ctx, uri, f)
+	versionNumber, diagnostics := h.finishFileUpdate(f, analysis)
+
+	// Publish diagnostics to the client.
+	h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 
 	return nil
 }
@@ -205,17 +205,20 @@ type directoryFile struct {
 	Block *dang.ModuleBlock
 }
 
-func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string, f *File) error {
-	// Clear diagnostics before collecting new ones.
-	f.Diagnostics = []Diagnostic{}
-	f.Symbols = emptySymbolTable()
-	f.AST = nil
-	f.TypeEnv = nil
+type fileAnalysis struct {
+	Diagnostics []Diagnostic
+	Symbols     *SymbolTable
+	AST         *dang.ModuleBlock
+	TypeEnv     dang.Env
+}
+
+func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
+	analysis := emptyFileAnalysis()
 
 	fileDir := filepath.Dir(fp)
 	files, err := h.directoryDangFiles(fileDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var parsedFiles []directoryFile
@@ -226,14 +229,14 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 		fileURI := toURI(path)
 		fileText, err := h.textForPath(path)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		parsed, err := dang.ParseWithRecovery(path, []byte(fileText), dang.GlobalStore("filePath", path))
 		if err != nil {
 			slog.WarnContext(ctx, "failed to parse Dang code for LSP", "path", path, "error", err)
 			if sameFile(path, fp) {
-				f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
+				analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnostics(err, uri)...)
 			}
 			continue
 		}
@@ -246,7 +249,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 
 		if sameFile(path, fp) {
 			currentBlock = block
-			f.AST = block
+			analysis.AST = block
 		}
 
 		parsedFiles = append(parsedFiles, directoryFile{
@@ -257,13 +260,13 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	}
 
 	if currentBlock == nil {
-		return nil
+		return analysis, nil
 	}
 
 	// Build a directory-wide symbol table so features like go-to-definition can
 	// resolve declarations from sibling files while still reporting the correct
 	// URI for each declaration.
-	f.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
+	analysis.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
 
 	// Resolve import configs once for the directory, using a cache to avoid
 	// spawning new dagger sessions on every keystroke.
@@ -282,12 +285,37 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	fresh := hm.NewSimpleFresher()
 	_, err = dang.InferFormsWithPhases(ctx, allForms, typeEnv, fresh)
 	if err != nil {
-		f.Diagnostics = append(f.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
+		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
 	// Store the type environment in the File for later use (e.g., hover).
-	f.TypeEnv = typeEnv
+	analysis.TypeEnv = typeEnv
 
-	return nil
+	return analysis, nil
+}
+
+func (h *langHandler) finishFileUpdate(f *File, analysis *fileAnalysis) (int, []Diagnostic) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if analysis != nil {
+		f.Diagnostics = analysis.Diagnostics
+		f.Symbols = analysis.Symbols
+		f.AST = analysis.AST
+		f.TypeEnv = analysis.TypeEnv
+	}
+
+	f.processing = false
+	f.cond.Broadcast()
+
+	diagnostics := append([]Diagnostic(nil), f.Diagnostics...)
+	return f.Version, diagnostics
+}
+
+func emptyFileAnalysis() *fileAnalysis {
+	return &fileAnalysis{
+		Diagnostics: []Diagnostic{},
+		Symbols:     emptySymbolTable(),
+	}
 }
 
 func emptySymbolTable() *SymbolTable {
@@ -338,6 +366,8 @@ func (h *langHandler) textForPath(path string) (string, error) {
 	h.mu.Unlock()
 
 	if openFile != nil {
+		openFile.mu.Lock()
+		defer openFile.mu.Unlock()
 		return openFile.Text, nil
 	}
 
@@ -396,14 +426,27 @@ func (h *langHandler) waitForFile(uri DocumentURI) *File {
 		return nil
 	}
 
-	// Wait for processing to complete
+	return f.waitForSnapshot()
+}
+
+func (f *File) waitForSnapshot() *File {
+	// Wait for processing to complete, then return a snapshot so subsequent
+	// didChange processing can update the shared File without racing readers.
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	for f.processing {
 		f.cond.Wait()
 	}
-	f.mu.Unlock()
 
-	return f
+	return &File{
+		LanguageID:  f.LanguageID,
+		Text:        f.Text,
+		Version:     f.Version,
+		Diagnostics: append([]Diagnostic(nil), f.Diagnostics...),
+		Symbols:     f.Symbols,
+		AST:         f.AST,
+		TypeEnv:     f.TypeEnv,
+	}
 }
 
 // resolveImports returns cached import configs for the given file directory,
@@ -421,7 +464,10 @@ func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dan
 		cacheKey = "auto:" + fileDir
 	}
 
-	if cached, ok := h.importCache[cacheKey]; ok {
+	h.mu.Lock()
+	cached, ok := h.importCache[cacheKey]
+	h.mu.Unlock()
+	if ok {
 		// Re-attach project config to the context even on cache hit.
 		if projectConfig != nil {
 			ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
@@ -455,7 +501,9 @@ func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dan
 	// is eagerly introspected (module-aware).
 	importConfigs = dang.ResolveDaggerImport(ctx, importConfigs, fileDir)
 
+	h.mu.Lock()
 	h.importCache[cacheKey] = importConfigs
+	h.mu.Unlock()
 	return importConfigs, ctx
 }
 
@@ -582,12 +630,11 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	}
 }
 
-func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f *File) {
+func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, diagnostics []Diagnostic, version int) {
 	if h.server == nil {
 		return
 	}
 
-	diagnostics := f.Diagnostics
 	if diagnostics == nil {
 		diagnostics = []Diagnostic{}
 	}
@@ -595,7 +642,7 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 	err := h.server.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: diagnostics,
-		Version:     f.Version,
+		Version:     version,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
@@ -721,6 +768,8 @@ func isIdentifierChar(r rune) bool {
 
 func (h *langHandler) addFolder(folder string) {
 	folder = filepath.Clean(folder)
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	found := slices.Contains(h.folders, folder)
 	if !found {
 		h.folders = append(h.folders, folder)

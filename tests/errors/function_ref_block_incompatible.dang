@@ -1,0 +1,11 @@
+# Test: function refs must match required block parameters
+
+pub noBlock: String! {
+  "no block"
+}
+
+let withBlock(&block(x: Int!): String!): String! {
+  block(42)
+}
+
+withBlock = &noBlock

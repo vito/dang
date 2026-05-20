@@ -84,7 +84,7 @@
       "name": "support.function.builtin.dang"
     },
     "operator": {
-      "match": "(==|!=|<=|>=|<|>|\\+\\=|\\?\\?|=>|=|!)",
+      "match": "(==|!=|<=|>=|<|>|\\+\\=|\\?\\?|=>|=|!|&)",
       "name": "keyword.operator.dang"
     },
     "punctuation": {
@@ -98,7 +98,7 @@
           "name": "punctuation.delimiter.dang"
         },
         {
-          "match": "[&|]",
+          "match": "[|]",
           "name": "punctuation.special.dang"
         }
       ]

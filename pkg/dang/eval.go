@@ -1160,6 +1160,10 @@ func (f FunctionValue) ParameterNames() []string {
 }
 
 func (f FunctionValue) IsAutoCallable() bool {
+	if f.BlockParamName != "" || (f.FnType != nil && f.FnType.Block() != nil) {
+		return false
+	}
+
 	for _, argName := range f.Args {
 		// If this argument has a default value, it's optional
 		if _, hasDefault := f.Defaults[argName]; hasDefault {
@@ -1498,6 +1502,9 @@ func (b BuiltinFunction) ParameterNames() []string {
 }
 
 func (b BuiltinFunction) IsAutoCallable() bool {
+	if b.FnType != nil && b.FnType.Block() != nil {
+		return false
+	}
 	if b.AllDefaulted {
 		return true
 	}
@@ -1512,6 +1519,7 @@ type ConstructorFunction struct {
 	Closure        EvalEnv
 	ClassName      string
 	Parameters     []*SlotDecl
+	BlockParamName string
 	ClassType      *Module
 	FnType         *hm.FunctionType
 	ClassBodyForms []Node // Field declarations to evaluate (excluding NewConstructorDecl)
@@ -1579,6 +1587,18 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 				argEnv.Set(param.Name.Name, defaultVal)
 				defaultEvalEnv.Set(param.Name.Name, defaultVal)
 			}
+		}
+		if c.BlockParamName != "" {
+			blockRaw := ctx.Value(blockArgContextKey)
+			if blockRaw == nil {
+				return nil, fmt.Errorf("missing block argument for constructor %s", c.ClassName)
+			}
+			blockVal, ok := blockRaw.(Value)
+			if !ok {
+				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ClassName)
+			}
+			argEnv.Set(c.BlockParamName, blockVal)
+			defaultEvalEnv.Set(c.BlockParamName, blockVal)
 		}
 
 		// Execute the new() body with access to self and constructor args.
@@ -1672,6 +1692,10 @@ func (c *ConstructorFunction) ParameterNames() []string {
 }
 
 func (c *ConstructorFunction) IsAutoCallable() bool {
+	if c.BlockParamName != "" || (c.FnType != nil && c.FnType.Block() != nil) {
+		return false
+	}
+
 	for _, param := range c.Parameters {
 		if param.Value == nil {
 			// No default value, so this is a required parameter
