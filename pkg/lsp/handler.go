@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"sync"
 	"unicode"
 
@@ -188,69 +190,199 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
-	// Clear diagnostics before collecting new ones
-	f.Diagnostics = []Diagnostic{}
-
-	// Parse the Dang code
-	parsed, err := dang.ParseWithRecovery(string(uri), []byte(text))
-	if err != nil {
-		// If parsing fails, add parse error as diagnostic and set empty structures
-		slog.Warn("failed to parse Dang code for LSP", "error", err)
-
-		// Try to extract location info from parse error
-		f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
-
-		f.Symbols = &SymbolTable{
-			Definitions: make(map[string]*SymbolInfo),
-			References:  make(map[string]*SymbolRef),
-		}
-		f.AST = nil
-	} else {
-		// The parser returns a Block
-		block, ok := parsed.(*dang.ModuleBlock)
-		if !ok {
-			slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
-			f.Symbols = &SymbolTable{
-				Definitions: make(map[string]*SymbolInfo),
-				References:  make(map[string]*SymbolRef),
-			}
-			f.AST = nil
-		} else {
-			// Store the AST
-			f.AST = block
-
-			// Build symbol table from the AST
-			f.Symbols = h.buildSymbolTable(uri, block.Forms)
-
-			// Resolve import configs, using a cache to avoid spawning
-			// new dagger sessions on every keystroke.
-			fileDir := filepath.Dir(fp)
-			importConfigs, ctx := h.resolveImports(ctx, fileDir)
-			if len(importConfigs) > 0 {
-				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
-			}
-
-			// Inject auto-imports (e.g. Dagger) before inference
-			block.Forms = dang.InjectAutoImports(ctx, block.Forms)
-
-			// Run type inference to annotate AST with types
-			{
-				typeEnv := dang.NewPreludeEnv("")
-				fresh := hm.NewSimpleFresher()
-				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
-				if err != nil {
-					f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
-				}
-				// Store the type environment in the File for later use (e.g., hover)
-				f.TypeEnv = typeEnv
-			}
-		}
+	if err := h.analyzeDirectory(ctx, uri, fp, f); err != nil {
+		return err
 	}
 
 	// Publish diagnostics to the client
 	h.publishDiagnostics(ctx, uri, f)
 
 	return nil
+}
+
+type directoryFile struct {
+	URI   DocumentURI
+	Block *dang.ModuleBlock
+}
+
+func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string, f *File) error {
+	// Clear diagnostics before collecting new ones.
+	f.Diagnostics = []Diagnostic{}
+	f.Symbols = emptySymbolTable()
+	f.AST = nil
+	f.TypeEnv = nil
+
+	fileDir := filepath.Dir(fp)
+	files, err := h.directoryDangFiles(fileDir)
+	if err != nil {
+		return err
+	}
+
+	var parsedFiles []directoryFile
+	var allForms []dang.Node
+	var currentBlock *dang.ModuleBlock
+
+	for _, path := range files {
+		fileURI := toURI(path)
+		fileText, err := h.textForPath(path)
+		if err != nil {
+			return err
+		}
+
+		parsed, err := dang.ParseWithRecovery(path, []byte(fileText), dang.GlobalStore("filePath", path))
+		if err != nil {
+			slog.WarnContext(ctx, "failed to parse Dang code for LSP", "path", path, "error", err)
+			if sameFile(path, fp) {
+				f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
+			}
+			continue
+		}
+
+		block, ok := parsed.(*dang.ModuleBlock)
+		if !ok {
+			slog.WarnContext(ctx, "parsed result is not a ModuleBlock", "path", path, "type", fmt.Sprintf("%T", parsed))
+			continue
+		}
+
+		if sameFile(path, fp) {
+			currentBlock = block
+			f.AST = block
+		}
+
+		parsedFiles = append(parsedFiles, directoryFile{
+			URI:   fileURI,
+			Block: block,
+		})
+		allForms = append(allForms, block.Forms...)
+	}
+
+	if currentBlock == nil {
+		return nil
+	}
+
+	// Build a directory-wide symbol table so features like go-to-definition can
+	// resolve declarations from sibling files while still reporting the correct
+	// URI for each declaration.
+	f.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
+
+	// Resolve import configs once for the directory, using a cache to avoid
+	// spawning new dagger sessions on every keystroke.
+	importConfigs, ctx := h.resolveImports(ctx, fileDir)
+	if len(importConfigs) > 0 {
+		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+	}
+
+	// Inject auto-imports (e.g. Dagger) before inference. Keep each file's AST
+	// forms untouched so editor features work against user-written source only.
+	allForms = dang.InjectAutoImports(ctx, allForms)
+
+	// Run type inference over every .dang file in the directory, matching the
+	// interpreter's directory-module semantics.
+	typeEnv := dang.NewPreludeEnv("")
+	fresh := hm.NewSimpleFresher()
+	_, err = dang.InferFormsWithPhases(ctx, allForms, typeEnv, fresh)
+	if err != nil {
+		f.Diagnostics = append(f.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
+	}
+	// Store the type environment in the File for later use (e.g., hover).
+	f.TypeEnv = typeEnv
+
+	return nil
+}
+
+func emptySymbolTable() *SymbolTable {
+	return &SymbolTable{
+		Definitions: make(map[string]*SymbolInfo),
+		References:  make(map[string]*SymbolRef),
+	}
+}
+
+func (h *langHandler) directoryDangFiles(dir string) ([]string, error) {
+	dangFiles, err := filepath.Glob(filepath.Join(dir, "*.dang"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to find .dang files in directory %s: %w", dir, err)
+	}
+
+	seen := make(map[string]bool, len(dangFiles))
+	for i, path := range dangFiles {
+		path = filepath.Clean(path)
+		dangFiles[i] = path
+		seen[path] = true
+	}
+
+	// Include open, unsaved .dang files that may not exist on disk yet.
+	h.mu.Lock()
+	for openURI := range h.files {
+		path, err := fromURI(openURI)
+		if err != nil {
+			continue
+		}
+		path = filepath.Clean(path)
+		if filepath.Dir(path) != dir || filepath.Ext(path) != ".dang" || seen[path] {
+			continue
+		}
+		dangFiles = append(dangFiles, path)
+		seen[path] = true
+	}
+	h.mu.Unlock()
+
+	sort.Strings(dangFiles)
+	return dangFiles, nil
+}
+
+func (h *langHandler) textForPath(path string) (string, error) {
+	uri := toURI(path)
+
+	h.mu.Lock()
+	openFile := h.files[uri]
+	h.mu.Unlock()
+
+	if openFile != nil {
+		return openFile.Text, nil
+	}
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read source file %s: %w", path, err)
+	}
+	return string(contents), nil
+}
+
+func (h *langHandler) buildDirectorySymbolTable(files []directoryFile, currentURI DocumentURI) *SymbolTable {
+	st := emptySymbolTable()
+
+	// Prefer declarations in the current file for simple symbol lookup. Sibling
+	// declarations are fallbacks for references that are genuinely cross-file.
+	for _, file := range files {
+		if file.URI == currentURI && file.Block != nil {
+			h.collectSymbols(file.URI, file.Block.Forms, st)
+			break
+		}
+	}
+
+	for _, file := range files {
+		if file.URI == currentURI || file.Block == nil {
+			continue
+		}
+
+		siblingSymbols := h.buildSymbolTable(file.URI, file.Block.Forms)
+		for name, info := range siblingSymbols.Definitions {
+			if _, exists := st.Definitions[name]; !exists {
+				st.Definitions[name] = info
+			}
+		}
+		for pos, ref := range siblingSymbols.References {
+			if _, exists := st.References[pos]; !exists {
+				st.References[pos] = ref
+			}
+		}
+	}
+
+	return st
+}
+
+func sameFile(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 // waitForFile waits for a file to finish processing and returns it.
@@ -468,6 +600,39 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
 	}
+}
+
+func (h *langHandler) errorToDiagnosticsForPath(err error, uri DocumentURI, path string) []Diagnostic {
+	var inferErrs *dang.InferenceErrors
+	if errors.As(err, &inferErrs) {
+		var ds []Diagnostic
+		for _, e := range inferErrs.Errors {
+			ds = append(ds, h.errorToDiagnosticsForPath(e, uri, path)...)
+		}
+		return ds
+	}
+
+	if loc := errorLocation(err); loc != nil && loc.Filename != "" && !sameFile(loc.Filename, path) {
+		return nil
+	}
+
+	return h.errorToDiagnostics(err, uri)
+}
+
+func errorLocation(err error) *dang.SourceLocation {
+	var sourceErr *dang.SourceError
+	var parseErr interface {
+		ParseErrorLocation() *dang.SourceLocation
+	}
+	var inferErr *dang.InferError
+	if errors.As(err, &sourceErr) {
+		return sourceErr.Location
+	} else if errors.As(err, &parseErr) {
+		return parseErr.ParseErrorLocation()
+	} else if errors.As(err, &inferErr) {
+		return inferErr.Location
+	}
+	return nil
 }
 
 // errorToDiagnostic converts a Dang error to an LSP Diagnostic
