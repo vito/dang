@@ -1,0 +1,34 @@
+# Function references keep zero-arity functions callable without invoking them.
+
+let dynamicValue = 1
+
+pub currentValue: Int! {
+  dynamicValue
+}
+
+let currentGetter = &currentValue
+assert { currentGetter == 1 }
+dynamicValue += 1
+assert { currentGetter == 2 }
+
+# Function references can be assigned to existing function-valued slots.
+let storedGetter: Int! { 0 }
+storedGetter = &currentValue
+assert { storedGetter == 2 }
+dynamicValue += 1
+assert { storedGetter == 3 }
+
+# Selecting a function through a receiver can also be captured without auto-call.
+type DynamicMethodRefBox {
+  pub currentValue: Int! {
+    dynamicValue
+  }
+}
+
+let foo = DynamicMethodRefBox
+let fooGetter = &foo.currentValue
+assert { fooGetter == 3 }
+dynamicValue += 1
+assert { fooGetter == 4 }
+
+print("Function ref tests passed!")

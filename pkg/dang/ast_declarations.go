@@ -383,6 +383,9 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		switch r.Modifier {
 		case "=":
 			if _, err := hm.Assignable(valueType, targetType); err != nil {
+				if refErr := r.functionRefAssignmentError(ctx, env, fresh, targetType, valueType); refErr != nil {
+					return nil, refErr
+				}
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
 			return targetType, nil
@@ -399,6 +402,32 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 		}
 	})
+}
+
+func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.Env, fresh hm.Fresher, targetType, valueType hm.Type) error {
+	if _, targetIsFn := targetType.(*hm.FunctionType); !targetIsFn {
+		return nil
+	}
+
+	valueFnType, err := inferNodeWithoutAutoCall(ctx, env, fresh, r.Value)
+	if err != nil {
+		return nil
+	}
+	if _, valueIsFn := valueFnType.(*hm.FunctionType); !valueIsFn {
+		return nil
+	}
+	if _, err := hm.Assignable(valueFnType, targetType); err != nil {
+		return nil
+	}
+
+	expr := strings.TrimSpace(Format(r.Value))
+	if expr == "" {
+		expr = "this expression"
+	}
+	return NewInferError(
+		fmt.Errorf("assigning `%s` calls it and produces %s; use `&%s` to assign the function itself (%s)", expr, valueType, expr, targetType),
+		r.Value,
+	)
 }
 
 func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {

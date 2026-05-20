@@ -1,10 +1,4 @@
-type DeferredCondition {
-  let condition: Boolean! { true }
+let source: Boolean! { true }
+let target: Boolean! { false }
 
-  new(&condition: Boolean!) {
-    self.condition = condition
-    self
-  }
-}
-
-pub deferred = DeferredCondition { true }
+target = source
