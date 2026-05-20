@@ -1029,6 +1029,9 @@ func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
 
 // AddInterface adds an interface that this type implements
 func (m *Module) AddInterface(iface Env) {
+	if slices.Contains(m.interfaces, iface) {
+		return
+	}
 	m.interfaces = append(m.interfaces, iface)
 }
 
@@ -1039,6 +1042,9 @@ func (m *Module) GetInterfaces() []Env {
 
 // AddImplementer adds a type that implements this interface (for interface modules)
 func (m *Module) AddImplementer(impl Env) {
+	if slices.Contains(m.implementers, impl) {
+		return
+	}
 	m.implementers = append(m.implementers, impl)
 }
 
@@ -1054,6 +1060,9 @@ func (m *Module) ImplementsInterface(iface Env) bool {
 
 // AddMember adds a member type to this union (for union modules).
 func (m *Module) AddMember(member Env) {
+	if slices.Contains(m.members, member) {
+		return
+	}
 	m.members = append(m.members, member)
 }
 
@@ -1064,6 +1073,9 @@ func (m *Module) AddMember(member Env) {
 func (m *Module) LinkMember(member Env) {
 	m.AddMember(member)
 	if memberMod, ok := member.(*Module); ok {
+		if slices.Contains(memberMod.unions, Env(m)) {
+			return
+		}
 		memberMod.unions = append(memberMod.unions, m)
 	}
 }

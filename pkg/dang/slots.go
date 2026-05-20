@@ -61,36 +61,113 @@ func (s *SlotDecl) Body() hm.Expression {
 func (s *SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
 func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	// If the slot value is a hoister (e.g. wraps a FunDecl), delegate.
-	if funDecl, ok := s.Value.(Hoister); ok {
-		return funDecl.Hoist(ctx, env, fresh, pass)
+	// If the slot value is a hoister (e.g. wraps a FunDecl), delegate while
+	// preserving the slot's name and metadata. This is the signature boundary:
+	// function bodies are not inferred, but callers can see the function type.
+	if funDecl, ok := s.Value.(*FunDecl); ok {
+		if funDecl.Named == "" {
+			funDecl.Named = s.Name.Name
+		}
+		if err := funDecl.Hoist(ctx, env, fresh, pass); err != nil {
+			return err
+		}
+		if pass == 0 {
+			s.SetInferredType(funDecl.Inferred)
+			if e, ok := env.(Env); ok {
+				e.SetVisibility(s.Name.Name, s.Visibility)
+				if s.DocString != "" {
+					e.SetDocString(s.Name.Name, s.DocString)
+				}
+				directives := s.Directives
+				if len(directives) == 0 {
+					directives = funDecl.Directives
+				}
+				if len(directives) > 0 {
+					e.SetDirectives(s.Name.Name, directives)
+				}
+			}
+		}
+		return nil
+	}
+	if hoister, ok := s.Value.(Hoister); ok {
+		return hoister.Hoist(ctx, env, fresh, pass)
 	}
 
 	// For non-function slots, register the type during pass 0 so that
 	// sibling declarations (e.g. method default-value expressions) can
-	// reference it before full inference runs.  This mirrors what
-	// FunDecl.Hoist does for function signatures.
+	// reference it before full inference runs. This mirrors the declaration
+	// pass for function signatures.
 	//
 	// The type is determined from the explicit annotation if present,
 	// otherwise from the value if it implements Constant (literals whose
-	// type is known without consulting the environment).
+	// type is known without consulting the environment). Computed values are
+	// intentionally not inferred at the hoist boundary.
 	if pass == 0 {
-		var slotType hm.Type
-		if s.Type_ != nil {
-			var err error
-			slotType, err = s.Type_.Infer(ctx, env, fresh)
-			if err != nil {
-				return err
-			}
-		} else if c, ok := s.Value.(Constant); ok {
-			slotType = c.ConstantType()
+		slotType, err := s.signatureType(ctx, env, fresh, false)
+		if err != nil {
+			return err
 		}
 		if slotType != nil {
 			env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+			s.SetInferredType(slotType)
+			if e, ok := env.(Env); ok {
+				e.SetVisibility(s.Name.Name, s.Visibility)
+				if s.DocString != "" {
+					e.SetDocString(s.Name.Name, s.DocString)
+				}
+				if len(s.Directives) > 0 {
+					e.SetDirectives(s.Name.Name, s.Directives)
+				}
+			}
 		}
 	}
 
 	return nil
+}
+
+func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
+	if s.Type_ != nil {
+		slotType, err := s.Type_.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		return slotType, nil
+	}
+	if constant, ok := s.Value.(Constant); ok {
+		return constant.ConstantType(), nil
+	}
+	if s.Value == nil {
+		if allowComputed {
+			return fresh.Fresh(), nil
+		}
+		return nil, nil
+	}
+	if allowComputed {
+		return s.Value.Infer(ctx, env, fresh)
+	}
+	return nil, nil
+}
+
+func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	slotType, err := s.signatureType(ctx, env, fresh, true)
+	if err != nil {
+		return nil, err
+	}
+	if slotType == nil {
+		slotType = fresh.Fresh()
+	}
+	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+	s.SetInferredType(slotType)
+	if e, ok := env.(Env); ok {
+		e.SetVisibility(s.Name.Name, s.Visibility)
+		if s.DocString != "" {
+			e.SetDocString(s.Name.Name, s.DocString)
+		}
+		if len(s.Directives) > 0 {
+			e.SetDirectives(s.Name.Name, s.Directives)
+		}
+	}
+	return slotType, nil
 }
 
 func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
@@ -385,6 +462,8 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	if declareErr != nil {
 		return WrapInferError(declareErr, c.Name)
 	}
+	c.Inferred = class
+	c.SetInferredType(class)
 
 	// Pass 0 must only register the type name. Other top-level types may refer
 	// to this class before its file is reached, so anything that resolves field
@@ -628,15 +707,16 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 
 // buildConstructorType creates a function type for the constructor based on the parameters
 func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
-	fnDecl := FunctionBase{
-		Args: params,
-		Body: &Block{
-			Forms: []Node{
-				&ValueNode{Val: NewModuleValue(classType)},
-			},
-		},
+	fnDecl := FunctionBase{Args: params}
+	argEnv := env.Clone()
+	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(contextWithInferFunctionControlBoundary(ctx), argEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
 	}
-	return fnDecl.inferFunctionType(ctx, env, fresh, nil, classType.Named+" Constructor")
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
+	return hm.NewFnType(argsRec, hm.NonNullType{Type: classType}), nil
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
@@ -646,14 +726,12 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	// Create an environment with the constructor args in scope
 	newEnv := inferEnv.Clone().(*CompositeModule)
 	for _, arg := range newDecl.Args {
-		argType := arg.GetInferredType()
-		if argType == nil {
-			// Infer the arg type if not already done
-			var err error
-			argType, err = arg.Infer(constructorCtx, newEnv, fresh)
-			if err != nil {
-				return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
-			}
+		// Fully infer constructor arguments here so default expressions are
+		// validated during normal inference. Declaration may have recorded the
+		// signature without checking computed defaults.
+		argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+		if err != nil {
+			return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 		}
 		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
@@ -788,6 +866,10 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	}
 
 	e.Inferred = enumType
+	e.SetInferredType(enumType)
+	if e.DocString != "" {
+		mod.SetDocString(e.Name.Name, e.DocString)
+	}
 
 	// Add the enum module to the environment so it can be referenced
 	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
@@ -802,10 +884,6 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 			enumType.Add(value.Name, valueScheme)
 			enumType.SetVisibility(value.Name, PublicVisibility)
 
-			// Store doc string if present
-			if e.DocString != "" {
-				mod.SetDocString(e.Name.Name, e.DocString)
-			}
 		}
 
 		// Add the values() method that returns all enum values as a list
@@ -918,6 +996,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	}
 
 	s.Inferred = scalarType
+	s.SetInferredType(scalarType)
 
 	// Add the scalar type to the environment
 	scalarScheme := hm.NewScheme(nil, scalarType)
@@ -1012,19 +1091,38 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		return fmt.Errorf("InterfaceDecl.Hoist: environment does not support module operations")
 	}
 
-	// Pass 0: Register the interface type
-	if pass == 0 {
-		iface, declareErr := declareLocalType(mod, i.Name.Name, InterfaceKind)
-		if declareErr != nil {
-			return WrapInferError(declareErr, i.Name)
-		}
-
-		// Add the interface type to the environment so it can be referenced
-		interfaceScheme := hm.NewScheme(nil, iface)
-		env.Add(i.Name.Name, interfaceScheme)
+	iface, declareErr := declareLocalType(mod, i.Name.Name, InterfaceKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, i.Name)
+	}
+	i.Inferred = iface
+	i.SetInferredType(iface)
+	if i.DocString != "" {
+		mod.SetDocString(i.Name.Name, i.DocString)
 	}
 
-	// Interface fields are handled in Infer, not Hoist
+	// Pass 0: Register the interface type.
+	if pass == 0 {
+		// Add the interface type to the environment so it can be referenced.
+		interfaceScheme := hm.NewScheme(nil, iface)
+		env.Add(i.Name.Name, interfaceScheme)
+		return nil
+	}
+
+	// Pass 1: Declare interface field and method signatures without inferring
+	// implementation bodies. Interface bodies only describe the public shape.
+	inferEnv := &CompositeModule{
+		primary: iface,
+		lexical: mod,
+	}
+	for _, form := range i.Value.Forms {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1122,15 +1220,40 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("UnionDecl.Hoist: environment does not support module operations")
 	}
 
+	unionMod, declareErr := declareLocalType(mod, u.Name.Name, UnionKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, u.Name)
+	}
+	u.Inferred = unionMod
+	u.SetInferredType(unionMod)
+	if u.DocString != "" {
+		mod.SetDocString(u.Name.Name, u.DocString)
+	}
+
 	if pass == 0 {
-		// Pass 0: Register the union type
-		unionMod, declareErr := declareLocalType(mod, u.Name.Name, UnionKind)
-		if declareErr != nil {
-			return WrapInferError(declareErr, u.Name)
+		// Pass 0: Register the union type so it can be referenced.
+		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+		return nil
+	}
+
+	// Pass 1: Link member names. This is still signature information; no
+	// expression bodies are inferred.
+	for _, memberSym := range u.Members {
+		memberType, found := mod.NamedType(memberSym.Name)
+		if !found {
+			continue
 		}
 
-		// Add the union type to the environment so it can be referenced
-		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+		memberMod, ok := memberType.(*Module)
+		if !ok || memberMod.Kind != ObjectKind {
+			continue
+		}
+
+		if localMember, found := mod.LocalNamedType(memberSym.Name); found && localMember == memberType {
+			unionMod.LinkMember(memberType)
+		} else {
+			unionMod.AddMember(memberType)
+		}
 	}
 
 	return nil

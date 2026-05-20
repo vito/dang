@@ -234,6 +234,85 @@ func classifyForms(forms []Node) ClassifiedForms {
 	return classified
 }
 
+// DeclareFormsWithPhases performs the declaration/signature half of phased
+// compilation. It establishes imports, directives, constants, type names,
+// object/interface/union shapes, constructors, fields, and function signatures,
+// but deliberately does not infer computed variables, function bodies, or other
+// executable expressions.
+//
+// This is the boundary used by tooling that needs a module's public API before
+// the full program can be checked, such as Dagger self-call bootstrapping.
+func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	errs := &InferenceErrors{}
+	classified := classifyForms(forms)
+
+	phases := []struct {
+		name string
+		fn   func(*InferenceErrors) (hm.Type, error)
+	}{
+		{"imports", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferImportsPhaseResilient(ctx, classified.Imports, env, fresh, errs)
+		}},
+		{"type names", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferTypeNamesPhaseResilient(ctx, classified.Types, env, fresh, errs)
+		}},
+		{"directives", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferDirectivesPhaseResilient(ctx, classified.Directives, env, fresh, errs)
+		}},
+		{"constants", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferConstantsPhaseResilient(ctx, classified.Constants, env, fresh, errs)
+		}},
+		{"type signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareTypeSignaturesPhaseResilient(ctx, classified.Types, env, fresh, errs)
+		}},
+		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+		}},
+	}
+
+	var lastT hm.Type
+	for _, phase := range phases {
+		t, err := phase.fn(errs)
+		if err != nil {
+			errs.Add(fmt.Errorf("%s phase failed: %w", phase.name, err))
+		}
+		if t != nil {
+			lastT = t
+		}
+	}
+
+	if errs.HasErrors() {
+		return lastT, errs
+	}
+	return lastT, nil
+}
+
+// EvaluateDeclaredFormsWithPhases evaluates only the declaration forms made
+// safe by DeclareFormsWithPhases. Function and method bodies are captured as
+// closures but not executed; variables and non-declarations are skipped.
+func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+	var result Value = NullValue{}
+	classified := classifyForms(forms)
+
+	for _, group := range [][]Node{
+		classified.Imports,
+		classified.Directives,
+		classified.Constants,
+		classified.Types,
+		classified.Functions,
+	} {
+		for _, form := range group {
+			val, err := EvalNode(ctx, env, form)
+			if err != nil {
+				return nil, err
+			}
+			result = val
+		}
+	}
+
+	return result, nil
+}
+
 // InferFormsWithPhases implements phased compilation:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
@@ -270,7 +349,7 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 			return inferTypesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
 		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
-			return inferFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+			return declareFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
 		}},
 		{"variables", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferVariablesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
@@ -605,15 +684,23 @@ func inferTypeNamesPhaseResilient(ctx context.Context, types []Node, env hm.Env,
 	return nil, nil
 }
 
-func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
-	// Pass 1: Infer class bodies
+func declareTypeSignaturesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	// Pass 1: Declare type signatures (constructors, fields, methods,
+	// interface members, union members) without inferring executable bodies.
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
 				errs.Add(err)
-				// Continue to try other types
+				// Continue to try other types.
 			}
 		}
+	}
+	return nil, nil
+}
+
+func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	if _, err := declareTypeSignaturesPhaseResilient(ctx, types, env, fresh, errs); err != nil {
+		return nil, err
 	}
 
 	// Complete type inference
@@ -632,7 +719,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	return lastT, nil
 }
 
-func inferFunctionSignaturesPhaseResilient(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+func declareFunctionSignaturesPhaseResilient(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
