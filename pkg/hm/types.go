@@ -184,7 +184,11 @@ func (ft *FunctionType) Normalize(k, v TypeVarSet) (Type, error) {
 }
 
 func (ft *FunctionType) Types() Types {
-	return Types{ft.arg, ft.ret}
+	types := Types{ft.arg, ft.ret}
+	if ft.block != nil {
+		types = append(types, ft.block)
+	}
+	return types
 }
 
 func (ft *FunctionType) Eq(other Type) bool {
@@ -203,9 +207,14 @@ func (ft *FunctionType) Supertypes() []Type {
 }
 
 func (ft *FunctionType) String() string {
-	return fmt.Sprintf("(%s): %s",
-		strings.TrimSuffix(strings.TrimPrefix(ft.arg.String(), "{"), "}"),
-		ft.ret.String())
+	args := strings.TrimSuffix(strings.TrimPrefix(ft.arg.String(), "{"), "}")
+	if ft.block != nil {
+		if args != "" {
+			args += ", "
+		}
+		args += "&block: " + ft.block.String()
+	}
+	return fmt.Sprintf("(%s): %s", args, ft.ret.String())
 }
 
 func (ft *FunctionType) Format(s fmt.State, c rune) {
