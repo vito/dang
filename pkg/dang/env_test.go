@@ -294,7 +294,7 @@ type Directory {
 	require.Same(t, importedContainer, functionReturnType(t, coreScheme))
 }
 
-func TestHoistDirSkipsBodiesAndKeepsDaggerTypes(t *testing.T) {
+func TestDeclareDirSkipsBodiesAndKeepsDaggerTypes(t *testing.T) {
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",
 		Schema:     schemaWithCoreShadowTypes(),
@@ -316,7 +316,7 @@ type Test {
 	_, err := RunDir(ctx, dir, false)
 	require.Error(t, err)
 
-	env, err := HoistDir(ctx, dir, false)
+	env, err := DeclareDir(ctx, dir, false)
 	require.NoError(t, err)
 
 	daggerVal, found := env.Get("Dagger")

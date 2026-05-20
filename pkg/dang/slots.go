@@ -95,15 +95,15 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 
 	// For non-function slots, register the type during pass 0 so that
 	// sibling declarations (e.g. method default-value expressions) can
-	// reference it before full inference runs. This mirrors what
-	// FunDecl.Hoist does for function signatures.
+	// reference it before full inference runs. This mirrors the declaration
+	// pass for function signatures.
 	//
 	// The type is determined from the explicit annotation if present,
 	// otherwise from the value if it implements Constant (literals whose
 	// type is known without consulting the environment). Computed values are
 	// intentionally not inferred at the hoist boundary.
 	if pass == 0 {
-		slotType, err := s.inferSignatureType(ctx, env, fresh, false)
+		slotType, err := s.signatureType(ctx, env, fresh, false)
 		if err != nil {
 			return err
 		}
@@ -125,7 +125,7 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	return nil
 }
 
-func (s *SlotDecl) inferSignatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
+func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	if s.Type_ != nil {
 		slotType, err := s.Type_.Infer(ctx, env, fresh)
 		if err != nil {
@@ -148,8 +148,8 @@ func (s *SlotDecl) inferSignatureType(ctx context.Context, env hm.Env, fresh hm.
 	return nil, nil
 }
 
-func (s *SlotDecl) InferSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	slotType, err := s.inferSignatureType(ctx, env, fresh, true)
+func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	slotType, err := s.signatureType(ctx, env, fresh, true)
 	if err != nil {
 		return nil, err
 	}
@@ -709,9 +709,9 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{Args: params}
 	argEnv := env.Clone()
-	args, directives, docStrings, err := fnDecl.inferFunctionSignatureArguments(contextWithInferFunctionControlBoundary(ctx), argEnv, fresh)
+	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(contextWithInferFunctionControlBoundary(ctx), argEnv, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("%s Constructor.Hoist: %w", classType.Named, err)
+		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
 	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
@@ -727,7 +727,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	newEnv := inferEnv.Clone().(*CompositeModule)
 	for _, arg := range newDecl.Args {
 		// Fully infer constructor arguments here so default expressions are
-		// validated during normal inference. Hoisting may have recorded the
+		// validated during normal inference. Declaration may have recorded the
 		// signature without checking computed defaults.
 		argType, err := arg.Infer(constructorCtx, newEnv, fresh)
 		if err != nil {
@@ -1109,7 +1109,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		return nil
 	}
 
-	// Pass 1: Hoist interface field and method signatures without inferring
+	// Pass 1: Declare interface field and method signatures without inferring
 	// implementation bodies. Interface bodies only describe the public shape.
 	inferEnv := &CompositeModule{
 		primary: iface,

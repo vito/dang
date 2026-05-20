@@ -1945,11 +1945,11 @@ func parseDirForms(ctx context.Context, dirPath string) (context.Context, []Node
 	return ctx, allForms, len(dangFiles), nil
 }
 
-// HoistDir hoists all .dang files in a directory as a single module and returns
-// an evaluation environment containing only hoisted declarations. It resolves
-// imports and signatures, but it does not infer or evaluate function bodies,
-// computed variables, or non-declaration expressions.
-func HoistDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
+// DeclareDir declares all .dang files in a directory as a single module and
+// returns an evaluation environment containing only declared API-shape values.
+// It resolves imports and signatures, but it does not infer or evaluate
+// function bodies, computed variables, or non-declaration expressions.
+func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Ensure service registry exists for cleanup.
 	ctx, services := ensureServiceRegistry(ctx)
 	if services != nil {
@@ -1970,18 +1970,18 @@ func HoistDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error
 	}
 
 	if isDebug {
-		fmt.Printf("Hoisting directory: %s\n", dirPath)
+		fmt.Printf("Declaring directory: %s\n", dirPath)
 		fmt.Printf("Found %d .dang files with %d total forms\n", fileCount, len(masterBlock.Forms))
 	}
 
 	typeEnv := NewPreludeEnv("")
 	fresh := hm.NewSimpleFresher()
-	if _, err := HoistFormsWithPhases(ctx, masterBlock.Forms, typeEnv, fresh); err != nil {
+	if _, err := DeclareFormsWithPhases(ctx, masterBlock.Forms, typeEnv, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
 	evalEnv := NewEvalEnv(typeEnv)
-	if _, err := EvaluateHoistedFormsWithPhases(ctx, masterBlock.Forms, evalEnv); err != nil {
+	if _, err := EvaluateDeclaredFormsWithPhases(ctx, masterBlock.Forms, evalEnv); err != nil {
 		return nil, err
 	}
 

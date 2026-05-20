@@ -31,8 +31,8 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).Infer)
 }
 
-func (f *FunctionBase) inferFunctionSignatureArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
-	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).InferSignature)
+func (f *FunctionBase) declareFunctionSignatureArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).DeclareSignature)
 }
 
 func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.Env, fresh hm.Fresher, inferArg func(*SlotDecl, context.Context, hm.Env, hm.Fresher) (hm.Type, error)) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
@@ -89,7 +89,7 @@ func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.En
 	return args, directives, docStrings, nil
 }
 
-func (f *FunctionBase) inferFunctionSignature(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics and so argument names don't leak.
 	newEnv := env.Clone()
 	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
@@ -98,9 +98,9 @@ func (f *FunctionBase) inferFunctionSignature(ctx context.Context, env hm.Env, f
 		f.InferredScope = dangEnv
 	}
 
-	args, directives, docStrings, err := f.inferFunctionSignatureArguments(signatureCtx, newEnv, fresh)
+	args, directives, docStrings, err := f.declareFunctionSignatureArguments(signatureCtx, newEnv, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("%s.Hoist: %w", contextName, err)
+		return nil, fmt.Errorf("%s.Declare: %w", contextName, err)
 	}
 
 	argsRec := NewRecordType("", args...)
@@ -111,11 +111,11 @@ func (f *FunctionBase) inferFunctionSignature(ctx context.Context, env hm.Env, f
 	if f.BlockParam != nil {
 		blockParamType, err := f.BlockParam.Type_.Infer(signatureCtx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("%s.Hoist block parameter: %w", contextName, err)
+			return nil, fmt.Errorf("%s.Declare block parameter: %w", contextName, err)
 		}
 		bt, ok := blockParamType.(*hm.FunctionType)
 		if !ok {
-			return nil, fmt.Errorf("%s.Hoist: block parameter must be a function type, got %T", contextName, blockParamType)
+			return nil, fmt.Errorf("%s.Declare: block parameter must be a function type, got %T", contextName, blockParamType)
 		}
 		blockType = bt
 	}
@@ -124,7 +124,7 @@ func (f *FunctionBase) inferFunctionSignature(ctx context.Context, env hm.Env, f
 	if explicitRetType != nil {
 		retType, err = explicitRetType.Infer(signatureCtx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("%s.Hoist return type: %w", contextName, err)
+			return nil, fmt.Errorf("%s.Declare return type: %w", contextName, err)
 		}
 	} else {
 		retType = fresh.Fresh()
@@ -292,7 +292,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 	switch pass {
 	case 0:
 		// Pass 0: Hoist function signature (declare type without inferring body).
-		fnType, err := f.inferFunctionSignature(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
+		fnType, err := f.declareFunctionSignature(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 		if err != nil {
 			return err
 		}
