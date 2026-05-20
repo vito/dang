@@ -129,6 +129,16 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return nil, err
 	}
 
+	// Resolve positional argument keys so downstream consumers (e.g. GraphQL
+	// query building in ObjectSelection) can read them off arg.Key directly.
+	for i := range c.Args {
+		if c.Args[i].Positional && c.Args[i].Key == "" {
+			if mapped, ok := argMapping[i]; ok {
+				c.Args[i].Key = mapped
+			}
+		}
+	}
+
 	// Type check each argument first, collecting substitutions from unifying
 	// actual argument types with expected parameter types. We merge the
 	// substitutions without applying them eagerly so repeated type variables are
