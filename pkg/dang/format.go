@@ -236,6 +236,23 @@ func extractComments(source []byte) []Comment {
 	return comments
 }
 
+// hasTrailingCommentOnLine reports whether a source line has an un-emitted
+// trailing comment.
+func (f *Formatter) hasTrailingCommentOnLine(line int) bool {
+	if line <= 0 || f.emittedComments[line] {
+		return false
+	}
+	for _, comment := range f.comments {
+		if comment.Line == line && comment.IsTrailing {
+			return true
+		}
+		if comment.Line > line {
+			break
+		}
+	}
+	return false
+}
+
 // emitTrailingComment emits a trailing comment for the given line if one exists
 func (f *Formatter) emitTrailingComment(line int) {
 	// Skip if already emitted via nl()
@@ -1467,7 +1484,7 @@ func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
 
 	if len(d.Args) > 0 {
 		f.write("(")
-		f.formatCallArgs(d.Args, false)
+		f.formatCallArgs(d.Args, false, 0)
 		f.write(")")
 	}
 }
@@ -1700,7 +1717,14 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 			parenLoc = sel.Field.Loc
 		}
 		multiline := forceMultiline || f.shouldSplitArgs(c.Args, parenLoc)
-		f.formatCallArgs(c.Args, multiline)
+		if multiline && parenLoc != nil {
+			f.emitTrailingComment(parenLoc.Line)
+		}
+		closingLine := 0
+		if c.BlockArg == nil && c.Loc != nil && c.Loc.End != nil {
+			closingLine = c.Loc.End.Line
+		}
+		f.formatCallArgs(c.Args, multiline, closingLine)
 		f.write(")")
 	}
 
@@ -1715,7 +1739,7 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 	f.formatNodeInline(c.Fun)
 	if len(c.Args) > 0 {
 		f.write("(")
-		f.formatCallArgs(c.Args, false)
+		f.formatCallArgs(c.Args, false, 0)
 		f.write(")")
 	}
 	if c.BlockArg != nil {
@@ -1823,16 +1847,37 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 			f.write(".")
 			switch e := elem.(type) {
 			case *FunCall:
+				var fieldLoc *SourceLocation
 				if sel, ok := e.Fun.(*Select); ok {
 					f.write(sel.Field.Name)
+					fieldLoc = sel.Field.Loc
 				}
 				if len(e.Args) > 0 {
 					f.write("(")
 					// In chains, don't use single-arg line check since we've already
 					// reformatted the chain structure. Only split if multiple args
 					// were on different lines.
+					callLine := 0
+					if fieldLoc != nil {
+						callLine = fieldLoc.Line
+					}
 					multiline := f.shouldSplitArgs(e.Args, nil)
-					f.formatCallArgs(e.Args, multiline)
+					if !multiline && f.hasCommentsBeforeArgs(e.Args, callLine) {
+						multiline = true
+					}
+					if !multiline && callLine > 0 && f.hasTrailingCommentOnLine(callLine) {
+						if firstArgLoc := e.Args[0].Value.GetSourceLocation(); firstArgLoc != nil && firstArgLoc.Line > callLine {
+							multiline = true
+						}
+					}
+					if multiline && callLine > 0 {
+						f.emitTrailingComment(callLine)
+					}
+					closingLine := 0
+					if e.BlockArg == nil && e.Loc != nil && e.Loc.End != nil {
+						closingLine = e.Loc.End.Line
+					}
+					f.formatCallArgs(e.Args, multiline, closingLine)
 					f.write(")")
 				}
 				if e.BlockArg != nil {
@@ -1872,9 +1917,47 @@ func (f *Formatter) collectChain(node Node, chain *[]Node, root *Node) {
 	}
 }
 
+func (f *Formatter) hasCommentsBeforeArgs(args []Keyed[Node], callLine int) bool {
+	prevLine := callLine
+	for _, arg := range args {
+		loc := arg.Value.GetSourceLocation()
+		argLine := 0
+		if loc != nil {
+			argLine = loc.Line
+		}
+		if prevLine > 0 && argLine > 0 {
+			for _, comment := range f.comments {
+				if comment.Line <= prevLine || f.emittedComments[comment.Line] {
+					continue
+				}
+				if comment.Line >= argLine {
+					break
+				}
+				if !comment.IsTrailing {
+					return true
+				}
+			}
+		}
+		if endLine := nodeEndLine(arg.Value); endLine > 0 {
+			prevLine = endLine
+		} else if argLine > 0 {
+			prevLine = argLine
+		}
+	}
+	return false
+}
+
 func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	if len(args) == 0 {
 		return false
+	}
+
+	callLine := 0
+	if callLoc != nil {
+		callLine = callLoc.Line
+	}
+	if f.hasCommentsBeforeArgs(args, callLine) {
+		return true
 	}
 
 	// Check if any arg STARTS on a different line than the previous arg STARTS
@@ -1925,11 +2008,17 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	return false
 }
 
-func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
+func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLine int) {
 	if multiline {
 		f.newline()
 		f.indented(func() {
+			if len(args) > 0 {
+				if loc := args[0].Value.GetSourceLocation(); loc != nil && loc.Line > 0 {
+					f.lastLine = loc.Line - 1
+				}
+			}
 			for _, arg := range args {
+				f.emitCommentsForNode(arg.Value)
 				f.writeIndent()
 				if !arg.Positional && arg.Key != "" {
 					f.write(arg.Key)
@@ -1937,7 +2026,14 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
 				}
 				f.formatNode(arg.Value)
 				f.write(",")
+				if endLine := nodeEndLine(arg.Value); endLine > 0 {
+					f.emitTrailingComment(endLine)
+					f.lastLine = endLine
+				}
 				f.newline()
+			}
+			if closingLine > 0 {
+				f.emitCommentsBeforeNode(closingLine, false)
 			}
 		})
 		f.writeIndent()
@@ -2593,7 +2689,7 @@ func (f *Formatter) formatFieldSelection(field *FieldSelection) {
 	f.write(field.Name)
 	if len(field.Args) > 0 {
 		f.write("(")
-		f.formatCallArgs(field.Args, false)
+		f.formatCallArgs(field.Args, false, 0)
 		f.write(")")
 	}
 	if field.Selection != nil {

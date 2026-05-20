@@ -463,6 +463,79 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestCommentsInCallArgs(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "standalone comment stays between multiline call args",
+			input: `pub x = foo.search(
+	pattern: "a",
+	# pattern: ` + "`a`" + `,
+	globs: ["b"],
+)`,
+			expected: `pub x = foo.search(
+  pattern: "a",
+  # pattern: ` + "`a`" + `,
+  globs: ["b"],
+)
+`,
+		},
+		{
+			name: "trailing comment stays on multiline call arg",
+			input: `pub x = foo(
+	a: 1, # comment on a
+	b: 2,
+)`,
+			expected: `pub x = foo(
+  a: 1, # comment on a
+  b: 2,
+)
+`,
+		},
+		{
+			name: "comment before single chained call arg keeps args multiline",
+			input: `pub x = foo
+  .bar(
+    # comment on arg
+    a
+  )`,
+			expected: `pub x = foo
+  .bar(
+    # comment on arg
+    a,
+  )
+`,
+		},
+		{
+			name: "trailing comment on chained call opening paren stays before args",
+			input: `pub x = foo
+  .bar( # opening comment
+    a
+  )`,
+			expected: `pub x = foo
+  .bar( # opening comment
+    a,
+  )
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
+		})
+	}
+}
+
 func (FormatSuite) TestTrailingCommentsInChains(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
