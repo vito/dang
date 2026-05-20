@@ -107,15 +107,15 @@ func installUnqualifiedImportDirectivesFromModule(parentEnv Env, mod *Module, im
 }
 
 func installImportedEvalEnvironment(parentEnv EvalEnv, importName string, moduleEnv EvalEnv) {
-	qualifiedOrigin := ImportedBindingOrigin(importName, true)
+	// Binding origins live on the type environment and are established during
+	// inference. Evaluation only populates runtime values; mutating origins here
+	// can clobber local declarations and races with shared/static type modules.
 	parentEnv.SetWithVisibility(importName, moduleEnv, importedBindingVisibility)
-	setEvalValueOrigin(parentEnv, importName, qualifiedOrigin)
 
 	installUnqualifiedImportValues(parentEnv, moduleEnv, importName)
 }
 
 func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, importName string) {
-	origin := ImportedBindingOrigin(importName, false)
 	for _, binding := range moduleEnv.Bindings(PublicVisibility) {
 		name := binding.Key
 		value := binding.Value
@@ -124,38 +124,29 @@ func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, import
 		}
 
 		if _, exists := parentEnv.GetLocal(name); exists {
-			if evalValueBindingIsUnqualifiedImport(parentEnv, name) {
-				addEvalValueImportProvider(parentEnv, name, importName)
-			}
 			continue
 		}
 
 		parentEnv.SetWithVisibility(name, value, importedBindingVisibility)
-		setEvalValueOrigin(parentEnv, name, origin)
 
 		if enumModuleVal, ok := value.(*ModuleValue); ok {
 			if mod, ok := enumModuleVal.Mod.(*Module); ok && mod.Kind == EnumKind {
-				installUnqualifiedImportEnumValues(parentEnv, enumModuleVal, importName)
+				installUnqualifiedImportEnumValues(parentEnv, enumModuleVal)
 			}
 		}
 	}
 }
 
-func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *ModuleValue, importName string) {
-	origin := ImportedBindingOrigin(importName, false)
+func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *ModuleValue) {
 	for _, enumBinding := range enumModuleVal.Bindings(PublicVisibility) {
 		enumValName := enumBinding.Key
 		enumVal := enumBinding.Value
 
 		if _, exists := parentEnv.GetLocal(enumValName); exists {
-			if evalValueBindingIsUnqualifiedImport(parentEnv, enumValName) {
-				addEvalValueImportProvider(parentEnv, enumValName, importName)
-			}
 			continue
 		}
 
 		parentEnv.SetWithVisibility(enumValName, enumVal, importedBindingVisibility)
-		setEvalValueOrigin(parentEnv, enumValName, origin)
 	}
 }
 
@@ -189,35 +180,5 @@ func addValueImportProvider(env Env, name, importName string) {
 func addDirectiveImportProvider(env Env, name, importName string) {
 	if origin, found := env.LocalDirectiveOrigin(name); found {
 		env.SetDirectiveOrigin(name, origin.AddImportProvider(importName))
-	}
-}
-
-func evalValueBindingIsUnqualifiedImport(env EvalEnv, name string) bool {
-	if modVal, ok := evalEnvModuleValue(env); ok {
-		return localValueBindingIsUnqualifiedImport(modVal.Mod, name)
-	}
-	return false
-}
-
-func addEvalValueImportProvider(env EvalEnv, name, importName string) {
-	if modVal, ok := evalEnvModuleValue(env); ok {
-		addValueImportProvider(modVal.Mod, name, importName)
-	}
-}
-
-func setEvalValueOrigin(env EvalEnv, name string, origin BindingOrigin) {
-	if modVal, ok := evalEnvModuleValue(env); ok {
-		modVal.Mod.SetValueOrigin(name, origin)
-	}
-}
-
-func evalEnvModuleValue(env EvalEnv) (*ModuleValue, bool) {
-	switch e := env.(type) {
-	case *ModuleValue:
-		return e, true
-	case CompositeEnv:
-		return evalEnvModuleValue(e.primary)
-	default:
-		return nil, false
 	}
 }

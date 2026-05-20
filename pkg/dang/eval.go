@@ -1238,7 +1238,6 @@ func (m *ModuleValue) Set(name string, value Value) EvalEnv {
 	// TODO: check the type, set it if not present?
 	m.Values[name] = value
 	m.Visibilities[name] = m.Visibility(name)
-	m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 	return m
 }
 
@@ -1309,7 +1308,6 @@ func (m *ModuleValue) Fork() EvalEnv {
 func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
-	m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 }
 
 // Reassign reassigns a value following proper scoping rules:
@@ -1321,7 +1319,6 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
-		m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 	} else if m.Parent != nil && !m.IsForked {
 		if _, existsInParent := m.Parent.Get(name); existsInParent {
 			// Variable exists in parent, update parent (only if not forked)
@@ -1330,13 +1327,11 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 			// Variable doesn't exist anywhere, set it locally
 			m.Values[name] = value
 			m.Visibilities[name] = m.Visibility(name)
-			m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 		}
 	} else {
 		// No parent or forked boundary, set it locally
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
-		m.Mod.SetValueOrigin(name, LocalBindingOrigin())
 	}
 }
 

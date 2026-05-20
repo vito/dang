@@ -1,8 +1,10 @@
 package dang
 
 import (
+	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
 )
 
 func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
@@ -61,6 +63,64 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 	}
 	if randomIndex == -1 || uuidIndex == -1 || randomIndex > uuidIndex {
 		t.Fatalf("unexpected static module order: %v", StaticModules())
+	}
+}
+
+func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
+	savedBuiltins := builtins
+	builtins = newBuiltinRegistry()
+	t.Cleanup(func() {
+		builtins = savedBuiltins
+	})
+
+	host := NewModule("TestStatic", ObjectKind)
+	StaticMethod(host, "value").
+		Returns(NonNull(StringType)).
+		Impl(func(context.Context, Args) (Value, error) {
+			return StringValue{Val: "ok"}, nil
+		})
+
+	if _, found := host.LocalValueOrigin("value"); found {
+		t.Fatalf("test static method unexpectedly has an origin before evaluation")
+	}
+
+	const goroutines = 128
+	synctest.Test(t, func(t *testing.T) {
+		start := make(chan struct{})
+		misses := make(chan string, goroutines)
+
+		for range goroutines {
+			go func() {
+				<-start
+
+				env := NewEvalEnv(NewPreludeEnv("test"))
+				hostVal, found := env.Get("TestStatic")
+				if !found {
+					misses <- "module"
+					return
+				}
+				modVal, ok := hostVal.(*ModuleValue)
+				if !ok {
+					misses <- "module type"
+					return
+				}
+				if _, found := modVal.Get("value"); !found {
+					misses <- "method"
+				}
+			}()
+		}
+
+		close(start)
+		synctest.Wait()
+		close(misses)
+
+		if len(misses) > 0 {
+			t.Fatalf("missing static module runtime values during concurrent NewEvalEnv: %d", len(misses))
+		}
+	})
+
+	if _, found := host.LocalValueOrigin("value"); found {
+		t.Fatalf("concurrent NewEvalEnv mutated static module value origins")
 	}
 }
 

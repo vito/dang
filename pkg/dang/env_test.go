@@ -66,6 +66,38 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 	require.False(t, found)
 }
 
+func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
+	mod := NewModule("runtime", ObjectKind)
+	val := NewModuleValue(mod)
+
+	val.Set("plain", StringValue{Val: "a"})
+	val.SetWithVisibility("visible", StringValue{Val: "b"}, PublicVisibility)
+	val.Reassign("reassigned", StringValue{Val: "c"})
+
+	for _, name := range []string{"plain", "visible", "reassigned"} {
+		_, found := val.GetLocal(name)
+		require.True(t, found)
+		_, found = mod.LocalValueOrigin(name)
+		require.False(t, found, "runtime set for %q created a type-environment origin", name)
+	}
+
+	importedOrigin := ImportedBindingOrigin("Upstream", false)
+	for _, name := range []string{"existingPlain", "existingVisible", "existingReassigned"} {
+		mod.Add(name, hm.NewScheme(nil, StringType))
+		mod.SetValueOrigin(name, importedOrigin)
+	}
+
+	val.Set("existingPlain", StringValue{Val: "d"})
+	val.SetWithVisibility("existingVisible", StringValue{Val: "e"}, PublicVisibility)
+	val.Reassign("existingReassigned", StringValue{Val: "f"})
+
+	for _, name := range []string{"existingPlain", "existingVisible", "existingReassigned"} {
+		origin, found := mod.LocalValueOrigin(name)
+		require.True(t, found)
+		require.Equal(t, importedOrigin, origin, "runtime set for %q clobbered type-environment origin", name)
+	}
+}
+
 func TestRunDirDeclarationsShadowPreludeTypes(t *testing.T) {
 	env := runDangSnippet(t, `
 type Error {
