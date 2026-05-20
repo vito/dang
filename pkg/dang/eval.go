@@ -1160,6 +1160,10 @@ func (f FunctionValue) ParameterNames() []string {
 }
 
 func (f FunctionValue) IsAutoCallable() bool {
+	if f.BlockParamName != "" || (f.FnType != nil && f.FnType.Block() != nil) {
+		return false
+	}
+
 	for _, argName := range f.Args {
 		// If this argument has a default value, it's optional
 		if _, hasDefault := f.Defaults[argName]; hasDefault {
@@ -1498,6 +1502,9 @@ func (b BuiltinFunction) ParameterNames() []string {
 }
 
 func (b BuiltinFunction) IsAutoCallable() bool {
+	if b.FnType != nil && b.FnType.Block() != nil {
+		return false
+	}
 	if b.AllDefaulted {
 		return true
 	}
@@ -1685,6 +1692,10 @@ func (c *ConstructorFunction) ParameterNames() []string {
 }
 
 func (c *ConstructorFunction) IsAutoCallable() bool {
+	if c.BlockParamName != "" || (c.FnType != nil && c.FnType.Block() != nil) {
+		return false
+	}
+
 	for _, param := range c.Parameters {
 		if param.Value == nil {
 			// No default value, so this is a required parameter

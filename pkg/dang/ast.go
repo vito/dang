@@ -61,8 +61,13 @@ const (
 
 // autoCallFnType returns the type that should be used for zero-arity function auto-calling
 func autoCallFnType(t hm.Type) (hm.Type, bool) {
-	// Check if this is a zero-arity function and return its return type
+	// Check if this is a zero-arity function and return its return type.
+	// A declared block parameter is required, so functions that expect a block
+	// cannot be auto-called by a bare reference.
 	if ft, ok := t.(*hm.FunctionType); ok {
+		if ft.Block() != nil {
+			return t, false
+		}
 		if rt, ok := ft.Arg().(*RecordType); ok {
 			// Check if all fields are optional (no NonNullType fields)
 			// Note: This function only has type information, not default value information
