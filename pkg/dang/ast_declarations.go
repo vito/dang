@@ -28,21 +28,33 @@ type FunctionBase struct {
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
 func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).Infer)
+}
+
+func (f *FunctionBase) inferFunctionSignatureArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).InferSignature)
+}
+
+func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.Env, fresh hm.Fresher, inferArg func(*SlotDecl, context.Context, hm.Env, hm.Fresher) (hm.Type, error)) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
 	docStrings := make(map[string]string)
 	for _, arg := range f.Args {
-		_, err := arg.Infer(ctx, env, fresh)
+		finalArgType, err := inferArg(arg, ctx, env, fresh)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		scheme, found := env.SchemeOf(arg.Name.Name)
-		if !found {
-			return nil, nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
-		}
-		finalArgType, isMono := scheme.Type()
-		if !isMono {
-			return nil, nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
+
+		if finalArgType == nil {
+			scheme, found := env.SchemeOf(arg.Name.Name)
+			if !found {
+				return nil, nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
+			}
+			var isMono bool
+			finalArgType, isMono = scheme.Type()
+			if !isMono {
+				return nil, nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
+			}
 		}
 
 		// For arguments with defaults, make them nullable in the function signature
@@ -75,6 +87,55 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 		}
 	}
 	return args, directives, docStrings, nil
+}
+
+func (f *FunctionBase) inferFunctionSignature(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+	// Clone environment for closure semantics and so argument names don't leak.
+	newEnv := env.Clone()
+	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
+
+	if dangEnv, ok := newEnv.(Env); ok {
+		f.InferredScope = dangEnv
+	}
+
+	args, directives, docStrings, err := f.inferFunctionSignatureArguments(signatureCtx, newEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s.Hoist: %w", contextName, err)
+	}
+
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
+
+	var blockType *hm.FunctionType
+	if f.BlockParam != nil {
+		blockParamType, err := f.BlockParam.Type_.Infer(signatureCtx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s.Hoist block parameter: %w", contextName, err)
+		}
+		bt, ok := blockParamType.(*hm.FunctionType)
+		if !ok {
+			return nil, fmt.Errorf("%s.Hoist: block parameter must be a function type, got %T", contextName, blockParamType)
+		}
+		blockType = bt
+	}
+
+	var retType hm.Type
+	if explicitRetType != nil {
+		retType, err = explicitRetType.Infer(signatureCtx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s.Hoist return type: %w", contextName, err)
+		}
+	} else {
+		retType = fresh.Fresh()
+	}
+
+	f.Inferred = hm.NewFnType(argsRec, retType)
+	if blockType != nil {
+		f.Inferred.SetBlock(blockType)
+	}
+	f.SetInferredType(f.Inferred)
+	return f.Inferred, nil
 }
 
 // createFunctionValue creates a FunctionValue from processed arguments
@@ -230,57 +291,22 @@ var _ Hoister = &FunDecl{}
 func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	switch pass {
 	case 0:
-		// Pass 0: Hoist function signature (declare type without inferring body)
-		// Clone environment to avoid mutating original during signature inference
-		signatureEnv := env.Clone()
-		signatureCtx := contextWithInferFunctionControlBoundary(ctx)
-
-		// Process arguments to get function signature. Default values belong to
-		// this function, not to the caller's return/break/continue frames.
-		args, directives, docStrings, err := f.inferFunctionArguments(signatureCtx, signatureEnv, fresh)
+		// Pass 0: Hoist function signature (declare type without inferring body).
+		fnType, err := f.inferFunctionSignature(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 		if err != nil {
-			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
-		}
-		argsRec := NewRecordType("", args...)
-		argsRec.Directives = directives
-		argsRec.DocStrings = docStrings
-
-		// Process block parameter if present
-		var blockType *hm.FunctionType
-		if f.BlockParam != nil {
-			blockParamType, err := f.BlockParam.Type_.Infer(signatureCtx, env, fresh)
-			if err != nil {
-				return fmt.Errorf("FuncDecl.Hoist: %s block parameter: %w", f.Named, err)
-			}
-			bt, ok := blockParamType.(*hm.FunctionType)
-			if !ok {
-				return fmt.Errorf("FuncDecl.Hoist: %s block parameter must be a function type, got %T", f.Named, blockParamType)
-			}
-			blockType = bt
-		}
-
-		// Handle explicit return type if provided
-		var retType hm.Type
-		if f.Ret != nil {
-			retType, err = f.Ret.Infer(signatureCtx, env, fresh)
-			if err != nil {
-				return fmt.Errorf("FuncDecl.Hoist: %s return type: %w", f.Named, err)
-			}
-		} else {
-			// Use a fresh type variable for the return type if not specified
-			retType = fresh.Fresh()
-		}
-
-		// Create function type and add to environment
-		fnType := hm.NewFnType(argsRec, retType)
-		if blockType != nil {
-			fnType.SetBlock(blockType)
+			return err
 		}
 		env.Add(f.Named, hm.NewScheme(nil, fnType))
+		if e, ok := env.(Env); ok {
+			e.SetVisibility(f.Named, f.Visibility)
+			if len(f.Directives) > 0 {
+				e.SetDirectives(f.Named, f.Directives)
+			}
+		}
 		return nil
 	case 1:
 		// Pass 1: Infer function body (function signature already available)
-		// The actual inference will happen in the normal Infer method
+		// The actual inference will happen in the normal Infer method.
 		return nil
 	}
 	return nil

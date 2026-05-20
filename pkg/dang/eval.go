@@ -1906,6 +1906,88 @@ func InjectAutoImports(ctx context.Context, forms []Node) []Node {
 	return append(injected, forms...)
 }
 
+func parseDirForms(ctx context.Context, dirPath string) (context.Context, []Node, int, error) {
+	// Load project config (dang.toml) if not already in context.
+	ctx, err := ensureProjectImports(ctx, dirPath)
+	if err != nil {
+		return ctx, nil, 0, fmt.Errorf("loading project config: %w", err)
+	}
+
+	// Discover all .dang files in the directory.
+	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
+	if err != nil {
+		return ctx, nil, 0, fmt.Errorf("failed to find .dang files in directory %s: %w", dirPath, err)
+	}
+
+	if len(dangFiles) == 0 {
+		return ctx, nil, 0, nil
+	}
+
+	// Sort files for deterministic order.
+	sort.Strings(dangFiles)
+
+	var allForms []Node
+	for _, filePath := range dangFiles {
+		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
+		if err != nil {
+			return ctx, nil, len(dangFiles), fmt.Errorf("failed to parse file %s: %w", filePath, err)
+		}
+
+		moduleBlock := parsed.(*ModuleBlock)
+		allForms = append(allForms, moduleBlock.Forms...)
+	}
+
+	// Auto-inject imports for any import configs in context that aren't
+	// already explicitly imported. This allows SDKs (e.g. Dagger) to make
+	// their import available without requiring module authors to write it.
+	allForms = InjectAutoImports(ctx, allForms)
+
+	return ctx, allForms, len(dangFiles), nil
+}
+
+// HoistDir hoists all .dang files in a directory as a single module and returns
+// an evaluation environment containing only hoisted declarations. It resolves
+// imports and signatures, but it does not infer or evaluate function bodies,
+// computed variables, or non-declaration expressions.
+func HoistDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
+	// Ensure service registry exists for cleanup.
+	ctx, services := ensureServiceRegistry(ctx)
+	if services != nil {
+		defer services.StopAll()
+	}
+
+	ctx, allForms, fileCount, err := parseDirForms(ctx, dirPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(allForms) == 0 {
+		return NewEvalEnv(NewPreludeEnv("")), nil
+	}
+
+	masterBlock := &ModuleBlock{
+		Forms:  allForms,
+		Inline: true,
+	}
+
+	if isDebug {
+		fmt.Printf("Hoisting directory: %s\n", dirPath)
+		fmt.Printf("Found %d .dang files with %d total forms\n", fileCount, len(masterBlock.Forms))
+	}
+
+	typeEnv := NewPreludeEnv("")
+	fresh := hm.NewSimpleFresher()
+	if _, err := HoistFormsWithPhases(ctx, masterBlock.Forms, typeEnv, fresh); err != nil {
+		return nil, ConvertInferError(err)
+	}
+
+	evalEnv := NewEvalEnv(typeEnv)
+	if _, err := EvaluateHoistedFormsWithPhases(ctx, masterBlock.Forms, evalEnv); err != nil {
+		return nil, err
+	}
+
+	return evalEnv, nil
+}
+
 // RunDir evaluates all .dang files in a directory as a single module
 func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Ensure service registry exists for cleanup

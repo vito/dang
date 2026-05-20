@@ -294,6 +294,52 @@ type Directory {
 	require.Same(t, importedContainer, functionReturnType(t, coreScheme))
 }
 
+func TestHoistDirSkipsBodiesAndKeepsDaggerTypes(t *testing.T) {
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:       "Dagger",
+		Schema:     schemaWithCoreShadowTypes(),
+		AutoImport: true,
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+type Test {
+  pub containerEcho(stringArg: String! = missing.default): Container! {
+    Dagger.container
+  }
+
+  pub print(stringArg: String!): String! {
+    test.containerEcho(stringArg: stringArg).stdout
+  }
+}
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.Error(t, err)
+
+	env, err := HoistDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	daggerVal, found := env.Get("Dagger")
+	require.True(t, found)
+	daggerMod, ok := daggerVal.(*ModuleValue)
+	require.True(t, ok)
+	importedContainer, found := daggerMod.Mod.NamedType("Container")
+	require.True(t, found)
+
+	testVal, found := env.Get("Test")
+	require.True(t, found)
+	testCtor, ok := testVal.(*ConstructorFunction)
+	require.True(t, ok)
+
+	containerEcho, found := testCtor.ClassType.LocalSchemeOf("containerEcho")
+	require.True(t, found)
+	require.Same(t, importedContainer, functionReturnType(t, containerEcho))
+
+	print, found := testCtor.ClassType.LocalSchemeOf("print")
+	require.True(t, found)
+	require.Same(t, StringType, functionReturnType(t, print))
+}
+
 func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {
 	before := len(ErrorType.GetImplementers())
 	runDangSnippet(t, `
