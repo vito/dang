@@ -87,3 +87,23 @@ hello ${name}!
   (@punctuation.bracket @punctuation.special "}")
   (@string "!\n```")
 )
+
+===
+multi-line template lone dollar
+===
+
+pub price = ```
+cost $5
+```
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "price")
+  " "
+  (@operator "=")
+  " "
+  (@string "```\ncost $5\n```")
+)
