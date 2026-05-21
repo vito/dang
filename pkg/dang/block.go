@@ -88,7 +88,8 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 		}
 	}
 
-	if cycle := findDependencyCycle(dependencies, len(variables)); len(cycle) > 0 {
+	order, cycle := dfsTopologicalOrder(len(variables), dependencies)
+	if cycle != nil {
 		cycleNames := make([]string, len(cycle))
 		for i, idx := range cycle {
 			cycleNames[i] = names[idx]
@@ -105,10 +106,16 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 		return nil, NewInferError(err, node)
 	}
 
-	return topologicalSort(variables, dependencies)
+	sorted := make([]Node, len(order))
+	for i, idx := range order {
+		sorted[i] = variables[idx]
+	}
+	return sorted, nil
 }
 
-func findDependencyCycle(dependencies map[int][]int, n int) []int {
+// dfsTopologicalOrder returns either a topological order (deps before
+// dependents) or, if one exists, a cycle path through the dependency graph.
+func dfsTopologicalOrder(n int, dependencies map[int][]int) (order []int, cycle []int) {
 	const (
 		unvisited = iota
 		visiting
@@ -128,80 +135,31 @@ func findDependencyCycle(dependencies map[int][]int, n int) []int {
 		for _, dep := range dependencies[i] {
 			switch state[dep] {
 			case unvisited:
-				if cycle := visit(dep); len(cycle) > 0 {
-					return cycle
+				if c := visit(dep); c != nil {
+					return c
 				}
 			case visiting:
-				cycle := append([]int(nil), stack[positions[dep]:]...)
-				cycle = append(cycle, dep)
-				return cycle
+				c := append([]int(nil), stack[positions[dep]:]...)
+				return append(c, dep)
 			}
 		}
 
 		stack = stack[:len(stack)-1]
 		delete(positions, i)
 		state[i] = done
+		order = append(order, i)
 		return nil
 	}
 
 	for i := range n {
 		if state[i] == unvisited {
-			if cycle := visit(i); len(cycle) > 0 {
-				return cycle
+			if c := visit(i); c != nil {
+				return nil, c
 			}
 		}
 	}
 
-	return nil
-}
-
-// topologicalSort performs Kahn's algorithm for topological sorting
-func topologicalSort(nodes []Node, dependencies map[int][]int) ([]Node, error) {
-	n := len(nodes)
-	inDegree := make([]int, n)
-
-	// Calculate in-degrees
-	for dependent, deps := range dependencies {
-		inDegree[dependent] = len(deps)
-	}
-
-	// Start with nodes that have no dependencies
-	queue := []int{}
-	for i := range n {
-		if inDegree[i] == 0 {
-			queue = append(queue, i)
-		}
-	}
-
-	var result []Node
-	processed := 0
-
-	for len(queue) > 0 {
-		// Remove node from queue
-		current := queue[0]
-		queue = queue[1:]
-		result = append(result, nodes[current])
-		processed++
-
-		// For each node that depends on current, reduce its in-degree
-		for dependent, deps := range dependencies {
-			for _, dep := range deps {
-				if dep == current {
-					inDegree[dependent]--
-					if inDegree[dependent] == 0 {
-						queue = append(queue, dependent)
-					}
-				}
-			}
-		}
-	}
-
-	// Check for cycles
-	if processed != n {
-		return nil, errors.New("circular dependency detected in declarations")
-	}
-
-	return result, nil
+	return order, nil
 }
 
 // ClassifiedForms holds forms categorized by their compilation phase
