@@ -23,14 +23,6 @@ type SlotDecl struct {
 	ContextInferredType hm.Type
 }
 
-var _ Declarer = SlotDecl{}
-
-func (f SlotDecl) IsDeclarer() bool {
-	// SlotDecl always declares a symbol (the Named field)
-	// regardless of what its Value is
-	return true
-}
-
 var _ Node = (*SlotDecl)(nil)
 var _ Evaluator = (*SlotDecl)(nil)
 var _ Hoister = (*SlotDecl)(nil)
@@ -397,10 +389,6 @@ func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fre
 func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// The new() constructor body is evaluated by ConstructorFunction.Call
 	return NullValue{}, nil
-}
-
-func (f *ClassDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &ClassDecl{}
@@ -905,10 +893,6 @@ type EnumDecl struct {
 	Inferred *Module
 }
 
-func (e *EnumDecl) IsDeclarer() bool {
-	return true
-}
-
 var _ Node = &EnumDecl{}
 var _ Evaluator = &EnumDecl{}
 
@@ -1035,10 +1019,6 @@ type ScalarDecl struct {
 	Inferred *Module
 }
 
-func (s *ScalarDecl) IsDeclarer() bool {
-	return true
-}
-
 var _ Node = &ScalarDecl{}
 var _ Evaluator = &ScalarDecl{}
 
@@ -1131,10 +1111,6 @@ type InterfaceDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (i *InterfaceDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &InterfaceDecl{}
@@ -1260,10 +1236,6 @@ type UnionDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (u *UnionDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &UnionDecl{}

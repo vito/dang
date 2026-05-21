@@ -262,12 +262,6 @@ type FunDecl struct {
 	Visibility Visibility
 }
 
-var _ Declarer = &FunDecl{}
-
-func (f *FunDecl) IsDeclarer() bool {
-	return true
-}
-
 var _ hm.Expression = &FunDecl{}
 var _ Evaluator = &FunDecl{}
 
@@ -466,13 +460,12 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 		return value, nil
 	case "+":
 		// Compound assignment: x += value
-		currentValue, found := env.Get(varName)
-		if !found {
-			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
-		}
-		currentValue, err := forceLazyValue(ctx, currentValue)
+		currentValue, found, err := getForcedValue(ctx, env, varName)
 		if err != nil {
 			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
 
 		// Perform addition using existing Addition logic
@@ -507,13 +500,12 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		}
 	} else if rootSymbol, ok := rootNode.(*Symbol); ok {
 		rootSymbolName = rootSymbol.Name
-		rootObj, found = env.Get(rootSymbolName)
-		if !found {
-			return nil, fmt.Errorf("object %q not found", rootSymbolName)
-		}
-		rootObj, err = forceLazyValue(ctx, rootObj)
+		rootObj, found, err = getForcedValue(ctx, env, rootSymbolName)
 		if err != nil {
 			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("object %q not found", rootSymbolName)
 		}
 	} else {
 		return nil, fmt.Errorf("unexpected root node type: %T", rootNode)
@@ -526,7 +518,10 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	currentObj := newRoot
 	for i := range len(path) - 1 {
 		fieldName := path[i]
-		val, found := currentObj.Get(fieldName)
+		val, found, err := getForcedValue(ctx, currentObj, fieldName)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
@@ -545,7 +540,10 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		currentObj.Set(finalField, value)
 	case "+":
 		// Compound assignment: obj.field += value
-		currentValue, found := currentObj.Get(finalField)
+		currentValue, found, err := getForcedValue(ctx, currentObj, finalField)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("field %q not found", finalField)
 		}
@@ -911,12 +909,7 @@ type DirectiveDecl struct {
 }
 
 var _ Node = &DirectiveDecl{}
-var _ Declarer = &DirectiveDecl{}
 var _ Hoister = &DirectiveDecl{}
-
-func (d *DirectiveDecl) IsDeclarer() bool {
-	return true
-}
 
 func (d *DirectiveDecl) DeclaredSymbols() []string {
 	return []string{d.Name} // Directive declarations declare their name
@@ -1198,11 +1191,6 @@ func importConfigsFromContext(ctx context.Context) []ImportConfig {
 }
 
 var _ Node = &ImportDecl{}
-var _ Declarer = &ImportDecl{}
-
-func (i *ImportDecl) IsDeclarer() bool {
-	return true
-}
 
 func (i *ImportDecl) DeclaredSymbols() []string {
 	return []string{i.Name.Name}

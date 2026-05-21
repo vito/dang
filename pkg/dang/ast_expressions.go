@@ -615,15 +615,12 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			}
 		}
 
-		val, found := env.Get(s.Name)
-		if !found {
-			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
-		}
-
-		var err error
-		val, err = forceLazyValue(ctx, val)
+		val, found, err := getForcedValue(ctx, env, s.Name)
 		if err != nil {
 			return nil, err
+		}
+		if !found {
+			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
 		}
 
 		if val == nil {
@@ -809,11 +806,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return NullValue{}, nil
 
 			case EvalEnv:
-				if val, found := rec.Get(d.Field.Name); found {
-					val, err := forceLazyValue(ctx, val)
-					if err != nil {
-						return nil, err
-					}
+				if val, found, err := getForcedValue(ctx, rec, d.Field.Name); err != nil {
+					return nil, err
+				} else if found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
 					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
 						return BoundMethod{Method: fnVal, Receiver: rec}, nil
@@ -1514,7 +1509,10 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 			// Build a result with the selected fields, preserving the concrete type
 			resultModuleValue := NewModuleValue(frag.Inferred)
 			for _, field := range frag.Fields {
-				fieldVal, exists := modVal.Get(field.Name)
+				fieldVal, exists, err := getForcedValue(ctx, modVal, field.Name)
+				if err != nil {
+					return nil, err
+				}
 				if !exists {
 					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod)
 				}
@@ -1868,7 +1866,10 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 		} else {
 			// No arguments - get field value directly
 			var exists bool
-			fieldVal, exists = objVal.Get(field.Name)
+			fieldVal, exists, err = getForcedValue(ctx, objVal, field.Name)
+			if err != nil {
+				return nil, err
+			}
 			if !exists {
 				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: field %q not found", field.Name)
 			}

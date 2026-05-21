@@ -15,10 +15,10 @@ const (
 	lazySlotDone
 )
 
-// LazySlotValue is a module-level runtime initializer installed before its
+// lazySlotValue is a module-level runtime initializer installed before its
 // value is evaluated. It is forced on first read, caches the result, and
 // detects real initialization cycles.
-type LazySlotValue struct {
+type lazySlotValue struct {
 	Name       string
 	Slot       *SlotDecl
 	Env        EvalEnv
@@ -27,9 +27,9 @@ type LazySlotValue struct {
 	Value      Value
 }
 
-var _ Value = (*LazySlotValue)(nil)
+var _ Value = (*lazySlotValue)(nil)
 
-func (l *LazySlotValue) Type() hm.Type {
+func (l *lazySlotValue) Type() hm.Type {
 	if l.Value != nil {
 		return l.Value.Type()
 	}
@@ -39,16 +39,28 @@ func (l *LazySlotValue) Type() hm.Type {
 	return nil
 }
 
-func (l *LazySlotValue) String() string {
+func (l *lazySlotValue) String() string {
 	if l.Value != nil {
 		return l.Value.String()
 	}
 	return fmt.Sprintf("<lazy %s>", l.Name)
 }
 
+func getForcedValue(ctx context.Context, env EvalEnv, name string) (Value, bool, error) {
+	val, found := env.Get(name)
+	if !found {
+		return nil, false, nil
+	}
+	forced, err := forceLazyValue(ctx, val)
+	if err != nil {
+		return nil, true, err
+	}
+	return forced, true, nil
+}
+
 func forceLazyValue(ctx context.Context, val Value) (Value, error) {
 	for {
-		lazy, ok := val.(*LazySlotValue)
+		lazy, ok := val.(*lazySlotValue)
 		if !ok {
 			return val, nil
 		}
@@ -60,7 +72,7 @@ func forceLazyValue(ctx context.Context, val Value) (Value, error) {
 	}
 }
 
-func forceLazySlot(ctx context.Context, lazy *LazySlotValue) (Value, error) {
+func forceLazySlot(ctx context.Context, lazy *lazySlotValue) (Value, error) {
 	switch lazy.State {
 	case lazySlotDone:
 		return lazy.Value, nil

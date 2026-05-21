@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -46,10 +47,6 @@ type Hoister interface {
 
 var _ Hoister = (*Block)(nil)
 
-type Declarer interface {
-	IsDeclarer() bool
-}
-
 func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
 	newEnv := env.Clone()
 	var errs []error
@@ -63,26 +60,27 @@ func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth i
 	return errors.Join(errs...)
 }
 
-// orderByDependencies orders the declarers using topological sort based on dependencies
-func orderByDependencies(declarers []Node) ([]Node, error) {
-	if len(declarers) <= 1 {
-		return declarers, nil
+// orderNodesBySymbolDependencies orders nodes by shallow symbol references to
+// sibling declarations. It is still used for eager class-field evaluation.
+func orderNodesBySymbolDependencies(nodes []Node) ([]Node, error) {
+	if len(nodes) <= 1 {
+		return nodes, nil
 	}
 
 	// Build dependency graph
-	declared := make(map[string]int)    // symbol name -> index in declarers
-	dependencies := make(map[int][]int) // declarer index -> list of indices it depends on
+	declared := make(map[string]int)    // symbol name -> index in nodes
+	dependencies := make(map[int][]int) // node index -> list of indices it depends on
 
-	// First pass: collect what each declarer declares
-	for i, declarer := range declarers {
-		for _, name := range declarer.DeclaredSymbols() {
+	// First pass: collect what each node declares
+	for i, node := range nodes {
+		for _, name := range node.DeclaredSymbols() {
 			declared[name] = i
 		}
 	}
 
-	// Second pass: collect what each declarer depends on
-	for i, declarer := range declarers {
-		for _, ref := range declarer.ReferencedSymbols() {
+	// Second pass: collect what each node depends on
+	for i, node := range nodes {
+		for _, ref := range node.ReferencedSymbols() {
 			if depIndex, exists := declared[ref]; exists && depIndex != i {
 				dependencies[i] = append(dependencies[i], depIndex)
 			}
@@ -90,11 +88,103 @@ func orderByDependencies(declarers []Node) ([]Node, error) {
 	}
 
 	// Topological sort
-	return topologicalSort(declarers, dependencies)
+	return topologicalSort(nodes, dependencies)
 }
 
-// extractSymbols is deprecated - use node.ReferencedSymbols() instead
-// This function is kept for backward compatibility but should not be used in new code
+func orderVariablesForInference(variables []Node) ([]Node, error) {
+	if len(variables) <= 1 {
+		return variables, nil
+	}
+
+	declared := make(map[string]int)
+	names := make([]string, len(variables))
+	dependencies := make(map[int][]int)
+
+	for i, variable := range variables {
+		decls := variable.DeclaredSymbols()
+		if len(decls) > 0 {
+			names[i] = decls[0]
+		}
+		for _, name := range decls {
+			declared[name] = i
+		}
+	}
+
+	for i, variable := range variables {
+		for _, ref := range variable.ReferencedSymbols() {
+			dep, ok := declared[ref]
+			if ok && dep != i {
+				dependencies[i] = append(dependencies[i], dep)
+			}
+		}
+	}
+
+	if cycle := findDependencyCycle(dependencies, len(variables)); len(cycle) > 0 {
+		cycleNames := make([]string, len(cycle))
+		for i, idx := range cycle {
+			cycleNames[i] = names[idx]
+			if cycleNames[i] == "" {
+				cycleNames[i] = fmt.Sprintf("<variable %d>", idx)
+			}
+		}
+
+		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(cycleNames, " -> "))
+		node := variables[cycle[0]]
+		if slot, ok := node.(*SlotDecl); ok && slot.Value != nil {
+			return nil, NewInferError(err, slot.Value)
+		}
+		return nil, NewInferError(err, node)
+	}
+
+	return topologicalSort(variables, dependencies)
+}
+
+func findDependencyCycle(dependencies map[int][]int, n int) []int {
+	const (
+		unvisited = iota
+		visiting
+		done
+	)
+
+	state := make([]int, n)
+	var stack []int
+	positions := make(map[int]int)
+
+	var visit func(int) []int
+	visit = func(i int) []int {
+		state[i] = visiting
+		positions[i] = len(stack)
+		stack = append(stack, i)
+
+		for _, dep := range dependencies[i] {
+			switch state[dep] {
+			case unvisited:
+				if cycle := visit(dep); len(cycle) > 0 {
+					return cycle
+				}
+			case visiting:
+				cycle := append([]int(nil), stack[positions[dep]:]...)
+				cycle = append(cycle, dep)
+				return cycle
+			}
+		}
+
+		stack = stack[:len(stack)-1]
+		delete(positions, i)
+		state[i] = done
+		return nil
+	}
+
+	for i := range n {
+		if state[i] == unvisited {
+			if cycle := visit(i); len(cycle) > 0 {
+				return cycle
+			}
+		}
+	}
+
+	return nil
+}
 
 // topologicalSort performs Kahn's algorithm for topological sorting
 func topologicalSort(nodes []Node, dependencies map[int][]int) ([]Node, error) {
@@ -142,32 +232,6 @@ func topologicalSort(nodes []Node, dependencies map[int][]int) ([]Node, error) {
 		return nil, errors.New("circular dependency detected in declarations")
 	}
 
-	return result, nil
-}
-
-// OrderFormsByDependencies reorders the forms in a block based on dependencies
-func OrderFormsByDependencies(forms []Node) ([]Node, error) {
-	var declarers, nonDeclarers []Node
-	for _, form := range forms {
-		if declarer, ok := form.(Declarer); ok {
-			if declarer.IsDeclarer() {
-				declarers = append(declarers, form)
-			} else {
-				nonDeclarers = append(nonDeclarers, form)
-			}
-		} else {
-			nonDeclarers = append(nonDeclarers, form)
-		}
-	}
-
-	// Order declarers by their dependencies
-	orderedDeclarers, err := orderByDependencies(declarers)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the ordered forms
-	result := append(orderedDeclarers, nonDeclarers...)
 	return result, nil
 }
 
@@ -397,9 +461,9 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 	return evaluateFormsWithPhases(ctx, forms, env, true)
 }
 
-// EvaluateFormsWithPhasesEagerVariables evaluates forms with eager variable evaluation.
+// evaluateFormsWithPhasesEagerVariables evaluates forms with eager variable evaluation.
 // This is used for class bodies, where field/default evaluation should not become lazy.
-func EvaluateFormsWithPhasesEagerVariables(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+func evaluateFormsWithPhasesEagerVariables(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	return evaluateFormsWithPhases(ctx, forms, env, false)
 }
 
@@ -485,7 +549,7 @@ func installAndForceLazyModuleVariables(ctx context.Context, variables []Node, e
 			// Preserve SlotDecl.Eval's existing "already defined" behavior.
 			continue
 		}
-		env.SetWithVisibility(slot.Name.Name, &LazySlotValue{
+		env.SetWithVisibility(slot.Name.Name, &lazySlotValue{
 			Name:       slot.Name.Name,
 			Slot:       slot,
 			Env:        env,
@@ -512,7 +576,7 @@ func installAndForceLazyModuleVariables(ctx context.Context, variables []Node, e
 }
 
 func evaluateVariablesEager(ctx context.Context, variables []Node, env EvalEnv) error {
-	orderedVars, err := orderByDependencies(variables)
+	orderedVars, err := orderNodesBySymbolDependencies(variables)
 	if err != nil {
 		return fmt.Errorf("variable dependency ordering failed: %w", err)
 	}
@@ -812,10 +876,10 @@ func inferVariablesPhaseResilient(ctx context.Context, variables []Node, env hm.
 		return nil, nil
 	}
 
-	orderedVars, err := orderByDependencies(variables)
+	orderedVars, err := orderVariablesForInference(variables)
 	if err != nil {
 		// Can't continue if we can't order dependencies - return critical error
-		return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
+		return nil, err
 	}
 
 	var lastT hm.Type
