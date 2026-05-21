@@ -528,7 +528,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 		// Assign enum values as string fields for enum types
 		if t.Kind == introspection.TypeKindEnum {
 			for _, enumVal := range t.EnumValues {
-				slog.Debug("adding enum value", "type", t.Name, "value", enumVal.Name)
 				// Enum values are represented with the enum type itself
 				install.Add(enumVal.Name, hm.NewScheme(nil, NonNull(install)))
 				// Enum values are public by default
@@ -572,7 +571,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 					args.DocStrings[arg.Name] = arg.Description
 				}
 			}
-			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
 			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
 			// GraphQL schema fields are public by default
 			install.SetVisibility(f.Name, PublicVisibility)
@@ -606,7 +604,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			// Link them together
 			if implMod, ok := implType.(*Module); ok {
 				implMod.AddInterface(ifaceModule)
-				slog.Debug("linked interface implementation", "type", t.Name, "interface", iface.Name)
 			}
 			if ifaceMod, ok := ifaceModule.(*Module); ok {
 				ifaceMod.AddImplementer(implType)
@@ -638,7 +635,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			}
 
 			unionMod.LinkMember(memberType)
-			slog.Debug("linked union member", "union", t.Name, "member", member.Name)
 		}
 	}
 
@@ -872,7 +868,6 @@ func registerBuiltinTypes() {
 	// Register all builtin function types
 	ForEachFunction(func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
-		slog.Debug("adding builtin function", "function", def.Name)
 		Prelude.Add(def.Name, hm.NewScheme(nil, fnType))
 	})
 
@@ -880,7 +875,6 @@ func registerBuiltinTypes() {
 	for _, receiverType := range MethodReceivers() {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
-			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
 			receiverType.Add(def.Name, hm.NewScheme(nil, fnType))
 			receiverType.SetVisibility(def.Name, PublicVisibility)
 			if def.Doc != "" {
@@ -893,7 +887,6 @@ func registerBuiltinTypes() {
 	for _, hostModule := range StaticModules() {
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
-			slog.Debug("adding static method", "module", hostModule.Named, "method", def.Name)
 			hostModule.Add(def.Name, hm.NewScheme(nil, fnType))
 			hostModule.SetVisibility(def.Name, PublicVisibility)
 		})

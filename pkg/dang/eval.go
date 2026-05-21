@@ -1770,7 +1770,6 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	}
 
 	slog.Debug("evaluation completed", "result", result.String())
-	slog.Debug("final program result", "result", result.String())
 
 	return nil
 }
