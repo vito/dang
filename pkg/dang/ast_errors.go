@@ -151,7 +151,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
 			if clause.IsElse {
-				childEnv := env.Fork()
+				childEnv := env.Derive(true)
 				if clause.Binding != "" {
 					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
@@ -160,7 +160,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
-					childEnv := env.Fork()
+					childEnv := env.Derive(true)
 					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}

@@ -511,7 +511,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	}
 
 	// Clone the root object to begin the copy-on-write process
-	newRoot := rootObj.(EvalEnv).Clone()
+	newRoot := rootObj.(EvalEnv).Derive(false)
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
@@ -524,7 +524,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
-		clonedVal := val.(EvalEnv).Clone()
+		clonedVal := val.(EvalEnv).Derive(false)
 		currentObj.Bind(fieldName, clonedVal.(Value), currentObj.Visibility(fieldName))
 		currentObj = clonedVal
 	}

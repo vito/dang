@@ -388,18 +388,10 @@ func (c CompositeEnv) Visibility(name string) Visibility {
 	return c.primary.Visibility(name)
 }
 
-func (c CompositeEnv) Fork() EvalEnv {
-	// Fork the primary environment and keep the same lexical environment
+func (c CompositeEnv) Derive(sealed bool) EvalEnv {
+	// Derive the primary environment and keep the same lexical environment
 	return CompositeEnv{
-		primary: c.primary.Fork(),
-		lexical: c.lexical,
-	}
-}
-
-func (c CompositeEnv) Clone() EvalEnv {
-	// Clone the primary environment and keep the same lexical environment
-	return CompositeEnv{
-		primary: c.primary.Clone(),
+		primary: c.primary.Derive(sealed),
 		lexical: c.lexical,
 	}
 }
@@ -519,18 +511,9 @@ func (e *ConstructorEnv) Visibility(name string) Visibility {
 	return e.instance.Visibility(name)
 }
 
-func (e *ConstructorEnv) Fork() EvalEnv {
+func (e *ConstructorEnv) Derive(sealed bool) EvalEnv {
 	return &ConstructorEnv{
-		instance:     e.instance.Fork(),
-		args:         e.args,
-		closure:      e.closure,
-		dynamicScope: e.dynamicScope,
-	}
-}
-
-func (e *ConstructorEnv) Clone() EvalEnv {
-	return &ConstructorEnv{
-		instance:     e.instance.Clone(),
+		instance:     e.instance.Derive(sealed),
 		args:         e.args,
 		closure:      e.closure,
 		dynamicScope: e.dynamicScope,

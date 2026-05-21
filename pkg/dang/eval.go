@@ -60,8 +60,9 @@ type EvalEnv interface {
 	BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility)
 	Update(name string, value Value)
 	Visibility(name string) Visibility
-	Clone() EvalEnv
-	Fork() EvalEnv
+	// Derive returns a fresh child scope. Local bindings shadow this scope.
+	// If sealed, Update stays in the child rather than walking into parents.
+	Derive(sealed bool) EvalEnv
 	// Dynamic scope support for 'self'.
 	// Clone/Fork share the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -1054,7 +1055,7 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 }
 
 func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-	fnEnv := f.Closure.Clone()
+	fnEnv := f.Closure.Derive(false)
 
 	if f.IsDynamic {
 		// Propagate dynamic scope from calling environment
@@ -1373,28 +1374,13 @@ func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
 	return bindings
 }
 
-func (m *ModuleValue) Clone() EvalEnv {
-	newValues := make(map[string]Value)
-	newVisibilities := make(map[string]Visibility)
+func (m *ModuleValue) Derive(sealed bool) EvalEnv {
 	return &ModuleValue{
 		Mod:          m.Mod,
-		Values:       newValues,
-		Visibilities: newVisibilities,
+		Values:       make(map[string]Value),
+		Visibilities: make(map[string]Visibility),
 		Parent:       m,
-		dynamicScope: m.dynamicScope, // Share cell so closures see mutations
-	}
-}
-
-func (m *ModuleValue) Fork() EvalEnv {
-	// Create shallow copy with fork boundary marker
-	newValues := make(map[string]Value)
-	newVisibilities := make(map[string]Visibility)
-	return &ModuleValue{
-		Mod:          m.Mod,
-		Values:       newValues,
-		Visibilities: newVisibilities,
-		Parent:       m,
-		IsForked:     true,           // This prevents SetInScope from traversing to parent
+		IsForked:     sealed,         // Sealed scopes keep Update local
 		dynamicScope: m.dynamicScope, // Share cell so closures see mutations
 	}
 }
@@ -1489,8 +1475,8 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	}
 
 	// Create a composite environment that includes both the receiver and the method's closure
-	recv := b.Receiver.Fork()
-	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
+	recv := b.Receiver.Derive(true)
+	fnEnv := CreateCompositeEnv(recv.Derive(false), b.Method.Closure)
 	fnEnv.EnterSelf(recv)
 
 	returnFrame := NewControlFrame(ReturnFrame)
@@ -1658,7 +1644,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		argEnv := NewModuleValue(NewModule("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
 		// expressions for later parameters can see earlier parameters.
-		defaultEvalEnv := c.Closure.Clone()
+		defaultEvalEnv := c.Closure.Derive(false)
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
 				argEnv.Bind(param.Name.Name, arg, PrivateVisibility)

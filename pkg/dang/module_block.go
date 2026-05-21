@@ -85,7 +85,7 @@ func (m *ModuleBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 func (m *ModuleBlock) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	newEnv := env
 	if !m.Inline {
-		newEnv = env.Clone()
+		newEnv = env.Derive(false)
 	}
 
 	forms := m.Forms

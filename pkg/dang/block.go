@@ -526,7 +526,7 @@ func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return NullValue{}, nil
 	}
 
-	newEnv := env.Clone()
+	newEnv := env.Derive(false)
 
 	// Blocks evaluate forms in textual order
 	var result Value = NullValue{}

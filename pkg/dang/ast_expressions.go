@@ -2816,7 +2816,7 @@ func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, fmt.Errorf("evaluating let value: %w", err)
 		}
 
-		newEnv := env.Clone()
+		newEnv := env.Derive(false)
 		newEnv.Bind(l.Name, val, PrivateVisibility)
 
 		return EvalNode(ctx, newEnv, l.Expr)
