@@ -9,6 +9,7 @@ type Dang {
     "editors",
     "!editors/nvim",
     "!editors/zed/extension.toml",
+    "!editors/zed/languages",
     ".env",
     ".envrc",
     ".dagger",

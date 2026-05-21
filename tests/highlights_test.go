@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/dagger/testctx"
 	"gotest.tools/v3/golden"
 )
@@ -56,6 +57,16 @@ type highlightSpan struct {
 	EndByte   int    `json:"end_byte"`
 	Priority  int    `json:"priority"`
 	Order     int    `json:"order"`
+}
+
+type zedExtensionConfig struct {
+	Grammars map[string]zedGrammarConfig `toml:"grammars"`
+}
+
+type zedGrammarConfig struct {
+	Repository string `toml:"repository"`
+	Commit     string `toml:"commit"`
+	Path       string `toml:"path"`
 }
 
 func (DangSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
@@ -114,6 +125,53 @@ func (DangSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
 							"TestDang/TestNeovimHighlights",
 						)
 					}
+				})
+			}
+		})
+	}
+}
+
+func (DangSuite) TestZedHighlightQueryCompatibility(ctx context.Context, t *testctx.T) {
+	if testing.Short() {
+		t.Skip("skipping Zed highlight query compatibility tests in short mode")
+	}
+
+	if _, err := exec.LookPath("tree-sitter"); err != nil {
+		t.Skip("tree-sitter CLI not installed; skipping Zed highlight query compatibility tests")
+	}
+
+	repoRoot, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatalf("resolve repo root: %v", err)
+	}
+
+	casesByFile, _, err := loadHighlightCorpus(filepath.Join("highlights", "corpus"))
+	if err != nil {
+		t.Fatalf("load highlight corpus: %v", err)
+	}
+
+	extensionPath := filepath.Join(repoRoot, "editors", "zed", "extension.toml")
+	queryPath := filepath.Join(repoRoot, "editors", "zed", "languages", "dang", "highlights.scm")
+	trackTestInput(t, extensionPath)
+	trackTestInput(t, queryPath)
+
+	grammar := loadZedDangGrammarConfig(t, extensionPath)
+	if grammar.Path == "" {
+		t.Fatalf("editors/zed/extension.toml [grammars.dang] is missing path")
+	}
+	if grammar.Commit == "" {
+		t.Fatalf("editors/zed/extension.toml [grammars.dang] is missing commit")
+	}
+
+	grammarPath := extractGitTree(t, repoRoot, grammar.Commit, grammar.Path)
+
+	for _, file := range sortedMapKeys(casesByFile) {
+		fileCases := casesByFile[file]
+		t.Run(filepath.Base(file), func(ctx context.Context, t *testctx.T) {
+			for _, testCase := range fileCases {
+				testCase := testCase
+				t.Run(testCase.Name, func(ctx context.Context, t *testctx.T) {
+					runZedHighlightQuerySmoke(ctx, t, grammarPath, queryPath, testCase)
 				})
 			}
 		})
@@ -232,6 +290,78 @@ func writeHighlightCorpus(path string, cases []*highlightCorpusCase) error {
 		fmt.Fprintf(&buf, "===\n%s\n===\n\n%s\n\n---\n\n%s\n", testCase.Name, testCase.Source, testCase.Actual)
 	}
 	return os.WriteFile(path, buf.Bytes(), 0644)
+}
+
+func loadZedDangGrammarConfig(t *testctx.T, extensionPath string) zedGrammarConfig {
+	t.Helper()
+
+	var config zedExtensionConfig
+	if _, err := toml.DecodeFile(extensionPath, &config); err != nil {
+		t.Fatalf("decode %s: %v", extensionPath, err)
+	}
+
+	grammar, ok := config.Grammars["dang"]
+	if !ok {
+		t.Fatalf("%s is missing [grammars.dang]", extensionPath)
+	}
+	return grammar
+}
+
+func extractGitTree(t *testctx.T, repoRoot, commit, path string) string {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Zed highlight query compatibility tests on Windows")
+	}
+	if _, err := exec.LookPath("tar"); err != nil {
+		t.Skip("tar not installed; skipping Zed highlight query compatibility tests")
+	}
+
+	cmd := exec.Command("git", "-C", repoRoot, "cat-file", "-e", commit+"^{commit}")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("grammar commit %s from editors/zed/extension.toml is not present locally; skipping Zed compatibility test\n%s", commit, output)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "tree.tar")
+	cmd = exec.Command("git", "-C", repoRoot, "archive", "--format=tar", "--output", archivePath, commit, path)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("archive %s:%s: %v\n%s", commit, path, err, output)
+	}
+
+	outDir := t.TempDir()
+	cmd = exec.Command("tar", "-xf", archivePath, "-C", outDir)
+	output, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("extract %s: %v\n%s", archivePath, err, output)
+	}
+
+	return filepath.Join(outDir, filepath.FromSlash(path))
+}
+
+func runZedHighlightQuerySmoke(ctx context.Context, t *testctx.T, grammarPath, queryPath string, testCase *highlightCorpusCase) {
+	t.Helper()
+
+	tmp := t.TempDir()
+	sourcePath := filepath.Join(tmp, "case.dang")
+	if err := os.WriteFile(sourcePath, []byte(testCase.Source), 0644); err != nil {
+		t.Fatalf("write Zed highlight source: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "tree-sitter", "query", "--captures", "--grammar-path", grammarPath, queryPath, sourcePath)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("tree-sitter query timed out\n%s", output)
+	}
+	if err != nil {
+		t.Fatalf("tree-sitter query failed: %v\n%s", err, output)
+	}
+	if !bytes.Contains(output, []byte("capture:")) {
+		t.Fatalf("tree-sitter query produced no captures\n%s", output)
+	}
 }
 
 func buildDangTreeSitterParser(t *testctx.T, repoRoot string) string {
