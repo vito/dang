@@ -53,8 +53,8 @@ type EvalEnv interface {
 	Has(name string) bool
 	LookupLocal(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
-	Set(name string, value Value) EvalEnv
-	SetWithVisibility(name string, value Value, visibility Visibility)
+	// Bind installs (or replaces) a binding in this scope.
+	Bind(name string, value Value, visibility Visibility)
 	// BindLazy installs a deferred initializer for name. The initializer
 	// runs on first Lookup and the result replaces the pending entry.
 	BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility)
@@ -96,7 +96,7 @@ func (c InputObjectConstructor) ParameterNames() []string {
 func (c InputObjectConstructor) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 	instance := NewModuleValue(c.TypeEnv)
 	for name, val := range args {
-		instance.Set(name, val)
+		instance.Bind(name, val, PublicVisibility)
 	}
 	return instance, nil
 }
@@ -403,19 +403,18 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 					Val:      enumVal.Name,
 					EnumType: enumTypeEnv,
 				}
-				enumModuleVal.Set(enumVal.Name, ev)
-				enumModuleVal.SetWithVisibility(enumVal.Name, ev, PublicVisibility)
+				enumModuleVal.Bind(enumVal.Name, ev, PublicVisibility)
 				enumValues[i] = ev
 			}
 
 			// Add the values() method that returns all enum values as a list
-			enumModuleVal.Set("values", ListValue{
+			enumModuleVal.Bind("values", ListValue{
 				Elements: enumValues,
 				ElemType: NonNull(enumTypeEnv),
-			})
+			}, PublicVisibility)
 
 			// Add the enum module to the environment
-			env.SetWithVisibility(t.Name, enumModuleVal, PublicVisibility)
+			env.Bind(t.Name, enumModuleVal, PublicVisibility)
 		}
 
 		// Add scalar types as available values for custom scalars
@@ -435,7 +434,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			scalarModuleVal := NewModuleValue(scalarTypeEnv)
 
 			// Add the scalar module to the environment
-			env.SetWithVisibility(t.Name, scalarModuleVal, PublicVisibility)
+			env.Bind(t.Name, scalarModuleVal, PublicVisibility)
 		}
 
 		// Add interface types as available values
@@ -450,7 +449,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			interfaceModuleVal := NewModuleValue(interfaceTypeEnv)
 
 			// Add the interface module to the environment
-			env.SetWithVisibility(t.Name, interfaceModuleVal, PublicVisibility)
+			env.Bind(t.Name, interfaceModuleVal, PublicVisibility)
 		}
 
 		// Add union types as available values
@@ -461,7 +460,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			}
 
 			unionModuleVal := NewModuleValue(unionTypeEnv)
-			env.SetWithVisibility(t.Name, unionModuleVal, PublicVisibility)
+			env.Bind(t.Name, unionModuleVal, PublicVisibility)
 		}
 
 		// Add input object constructors: UserSort(field: ..., direction: ...)
@@ -486,7 +485,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 				TypeEnv:  inputTypeEnv.(*Module),
 				FnType:   fnType,
 			}
-			env.SetWithVisibility(t.Name, constructor, PublicVisibility)
+			env.Bind(t.Name, constructor, PublicVisibility)
 		}
 
 		for _, f := range t.Fields {
@@ -519,7 +518,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 			// Add to environment if it's from the Query type
 			if t.Name == schema.QueryType.Name {
-				env.SetWithVisibility(f.Name, gqlFunc, PublicVisibility)
+				env.Bind(f.Name, gqlFunc, PublicVisibility)
 			}
 		}
 
@@ -555,9 +554,9 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 					QueryChain: nil,
 					IsMutation: true,
 				}
-				mutModule.SetWithVisibility(f.Name, mutFunc, PublicVisibility)
+				mutModule.Bind(f.Name, mutFunc, PublicVisibility)
 			}
-			env.SetWithVisibility("Mutation", mutModule, PublicVisibility)
+			env.Bind("Mutation", mutModule, PublicVisibility)
 		}
 	}
 }
@@ -599,7 +598,7 @@ func addBuiltinFunctions(env EvalEnv) {
 				return def.Impl(ctx, nil, Args{Values: argsWithDefaults, Block: blockArg})
 			},
 		}
-		env.Set(def.Name, builtinFn)
+		env.Bind(def.Name, builtinFn, PublicVisibility)
 	})
 
 	// Register all builtin methods with naming convention
@@ -627,7 +626,7 @@ func addBuiltinFunctions(env EvalEnv) {
 				},
 			}
 			methodKey := GetMethodKey(receiverType, def.Name)
-			env.Set(methodKey, builtinFn)
+			env.Bind(methodKey, builtinFn, PrivateVisibility)
 		})
 	}
 
@@ -645,7 +644,7 @@ func addBuiltinFunctions(env EvalEnv) {
 					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
 				},
 			}
-			modValue.SetWithVisibility(def.Name, builtinFn, PublicVisibility)
+			modValue.Bind(def.Name, builtinFn, PublicVisibility)
 		})
 
 		// Populate nested enum types with their values
@@ -664,17 +663,17 @@ func addBuiltinFunctions(env EvalEnv) {
 					continue
 				}
 				ev := EnumValue{Val: varName, EnumType: subMod}
-				enumModValue.SetWithVisibility(varName, ev, PublicVisibility)
+				enumModValue.Bind(varName, ev, PublicVisibility)
 				enumValues = append(enumValues, ev)
 			}
-			enumModValue.SetWithVisibility("values", ListValue{
+			enumModValue.Bind("values", ListValue{
 				Elements: enumValues,
 				ElemType: NonNull(subMod),
 			}, PublicVisibility)
-			modValue.SetWithVisibility(name, enumModValue, PublicVisibility)
+			modValue.Bind(name, enumModValue, PublicVisibility)
 		}
 
-		env.Set(hostModule.Named, modValue)
+		env.Bind(hostModule.Named, modValue, PublicVisibility)
 	}
 }
 
@@ -1125,12 +1124,12 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 					if err != nil {
 						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 					}
-					fnEnv.Set(argName, defaultVal)
+					fnEnv.Bind(argName, defaultVal, PrivateVisibility)
 				} else {
-					fnEnv.Set(argName, val)
+					fnEnv.Bind(argName, val, PrivateVisibility)
 				}
 			} else {
-				fnEnv.Set(argName, val)
+				fnEnv.Bind(argName, val, PrivateVisibility)
 			}
 		} else if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
 			// Use default value when argument not provided.
@@ -1139,9 +1138,9 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 			if err != nil {
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
-			fnEnv.Set(argName, defaultVal)
+			fnEnv.Bind(argName, defaultVal, PrivateVisibility)
 		} else {
-			fnEnv.Set(argName, NullValue{})
+			fnEnv.Bind(argName, NullValue{}, PrivateVisibility)
 		}
 	}
 
@@ -1153,7 +1152,7 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[str
 		if blockParamName != "" {
 			// Extract block arg from context
 			if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
-				fnEnv.Set(blockParamName, blockVal.(Value))
+				fnEnv.Bind(blockParamName, blockVal.(Value), PrivateVisibility)
 			}
 		}
 	}
@@ -1332,11 +1331,9 @@ func (m *ModuleValue) lookupValue(name string) (Value, bool) {
 	return nil, false
 }
 
-func (m *ModuleValue) Set(name string, value Value) EvalEnv {
-	// TODO: check the type, set it if not present?
+func (m *ModuleValue) Bind(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
-	m.Visibilities[name] = m.Visibility(name)
-	return m
+	m.Visibilities[name] = visibility
 }
 
 func (m *ModuleValue) Visibility(name string) Visibility {
@@ -1400,12 +1397,6 @@ func (m *ModuleValue) Fork() EvalEnv {
 		IsForked:     true,           // This prevents SetInScope from traversing to parent
 		dynamicScope: m.dynamicScope, // Share cell so closures see mutations
 	}
-}
-
-// SetWithVisibility sets a value with explicit visibility information
-func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Visibility) {
-	m.Values[name] = value
-	m.Visibilities[name] = visibility
 }
 
 // Update overwrites the nearest existing binding following proper scoping rules:
@@ -1670,16 +1661,16 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		defaultEvalEnv := c.Closure.Clone()
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
-				argEnv.Set(param.Name.Name, arg)
-				defaultEvalEnv.Set(param.Name.Name, arg)
+				argEnv.Bind(param.Name.Name, arg, PrivateVisibility)
+				defaultEvalEnv.Bind(param.Name.Name, arg, PrivateVisibility)
 			} else if param.Value != nil {
 				// Evaluate in defaultEvalEnv so earlier args are visible.
 				defaultVal, err := EvalNode(ctx, defaultEvalEnv, param.Value)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
-				argEnv.Set(param.Name.Name, defaultVal)
-				defaultEvalEnv.Set(param.Name.Name, defaultVal)
+				argEnv.Bind(param.Name.Name, defaultVal, PrivateVisibility)
+				defaultEvalEnv.Bind(param.Name.Name, defaultVal, PrivateVisibility)
 			}
 		}
 		if c.BlockParamName != "" {
@@ -1691,8 +1682,8 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			if !ok {
 				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ClassName)
 			}
-			argEnv.Set(c.BlockParamName, blockVal)
-			defaultEvalEnv.Set(c.BlockParamName, blockVal)
+			argEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
+			defaultEvalEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 		}
 
 		// Execute the new() body with access to self and constructor args.
@@ -1746,7 +1737,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// then evaluate field declarations.
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
-				instanceEnv.SetWithVisibility(param.Name.Name, arg, param.Visibility)
+				instanceEnv.Bind(param.Name.Name, arg, param.Visibility)
 			}
 		}
 

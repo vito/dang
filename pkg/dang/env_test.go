@@ -77,8 +77,8 @@ func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
 	mod := NewModule("runtime", ObjectKind)
 	val := NewModuleValue(mod)
 
-	val.Set("plain", StringValue{Val: "a"})
-	val.SetWithVisibility("visible", StringValue{Val: "b"}, PublicVisibility)
+	val.Bind("plain", StringValue{Val: "a"}, PrivateVisibility)
+	val.Bind("visible", StringValue{Val: "b"}, PublicVisibility)
 	val.Update("reassigned", StringValue{Val: "c"})
 
 	for _, name := range []string{"plain", "visible", "reassigned"} {
@@ -94,8 +94,8 @@ func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
 		mod.SetValueOrigin(name, importedOrigin)
 	}
 
-	val.Set("existingPlain", StringValue{Val: "d"})
-	val.SetWithVisibility("existingVisible", StringValue{Val: "e"}, PublicVisibility)
+	val.Bind("existingPlain", StringValue{Val: "d"}, PrivateVisibility)
+	val.Bind("existingVisible", StringValue{Val: "e"}, PublicVisibility)
 	val.Update("existingReassigned", StringValue{Val: "f"})
 
 	for _, name := range []string{"existingPlain", "existingVisible", "existingReassigned"} {

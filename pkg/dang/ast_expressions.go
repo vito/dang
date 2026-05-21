@@ -1522,7 +1522,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 				if !exists {
 					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod)
 				}
-				resultModuleValue.Set(field.Name, fieldVal)
+				resultModuleValue.Bind(field.Name, fieldVal, PublicVisibility)
 			}
 			return resultModuleValue, nil
 		}
@@ -1752,7 +1752,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 						if err != nil {
 							return nil, fmt.Errorf("converting nested field %s: %w", field.Name, err)
 						}
-						resultModuleValue.Set(field.Name, nestedVal)
+						resultModuleValue.Bind(field.Name, nestedVal, PublicVisibility)
 						continue
 					}
 
@@ -1766,7 +1766,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 									if strVal, ok := fieldValue.(string); ok {
 										enumType, found := typeEnv.NamedType(fieldType.Name)
 										if found {
-											resultModuleValue.Set(field.Name, EnumValue{Val: strVal, EnumType: enumType})
+											resultModuleValue.Bind(field.Name, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
 											continue
 										}
 									}
@@ -1780,7 +1780,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 					if err != nil {
 						return nil, fmt.Errorf("converting field %s: %w", field.Name, err)
 					}
-					resultModuleValue.Set(field.Name, dangVal)
+					resultModuleValue.Bind(field.Name, dangVal, PublicVisibility)
 				}
 			}
 
@@ -1812,13 +1812,13 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 				if err != nil {
 					return nil, err
 				}
-				mod.Set(f.Name, nested)
+				mod.Bind(f.Name, nested, PublicVisibility)
 			} else {
 				dv, err := ToValue(fv)
 				if err != nil {
 					return nil, fmt.Errorf("converting field %s: %w", f.Name, err)
 				}
-				mod.Set(f.Name, dv)
+				mod.Bind(f.Name, dv, PublicVisibility)
 			}
 		}
 	}
@@ -1889,7 +1889,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 			}
 		}
 
-		resultModuleValue.Set(field.Name, fieldVal)
+		resultModuleValue.Bind(field.Name, fieldVal, PublicVisibility)
 	}
 
 	return resultModuleValue, nil
@@ -2077,7 +2077,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q inline fragments: %w", field.Name, err)
 						}
-						resultModuleValue.Set(field.Name, nestedResult)
+						resultModuleValue.Bind(field.Name, nestedResult, PublicVisibility)
 					} else if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
 						// Sub-selecting arrays
 						var elements []Value
@@ -2088,14 +2088,14 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 							}
 							elements = append(elements, itemResult)
 						}
-						resultModuleValue.Set(field.Name, ListValue{Elements: elements})
+						resultModuleValue.Bind(field.Name, ListValue{Elements: elements}, PublicVisibility)
 					} else {
 						// Sub-selecting objects
 						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeEnv)
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
 						}
-						resultModuleValue.Set(field.Name, nestedResult)
+						resultModuleValue.Bind(field.Name, nestedResult, PublicVisibility)
 					}
 				} else if fieldType := schema.Types.Get(o.unwrapType(nestedField.TypeRef).Name); fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
 					// Convert enums
@@ -2108,17 +2108,17 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 					if !found {
 						return nil, fmt.Errorf("type not defined for enum: %q", fieldType.Name)
 					}
-					resultModuleValue.Set(field.Name, EnumValue{
+					resultModuleValue.Bind(field.Name, EnumValue{
 						Val:      strVal,
 						EnumType: enumType,
-					})
+					}, PublicVisibility)
 				} else {
 					// Convert GraphQL value to Dang value
 					dangVal, err := ToValue(fieldValue)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
-					resultModuleValue.Set(field.Name, dangVal)
+					resultModuleValue.Bind(field.Name, dangVal, PublicVisibility)
 				}
 			}
 		}
@@ -2817,7 +2817,7 @@ func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		newEnv := env.Clone()
-		newEnv.Set(l.Name, val)
+		newEnv.Bind(l.Name, val, PrivateVisibility)
 
 		return EvalNode(ctx, newEnv, l.Expr)
 	})

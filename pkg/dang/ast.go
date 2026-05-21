@@ -373,15 +373,9 @@ func (c CompositeEnv) Type() hm.Type {
 	return c.primary.Type()
 }
 
-func (c CompositeEnv) Set(name string, value Value) EvalEnv {
+func (c CompositeEnv) Bind(name string, value Value, visibility Visibility) {
 	// All new bindings go to the primary environment (copy-on-write semantics)
-	c.primary.Set(name, value)
-	return c
-}
-
-func (c CompositeEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
-	// All new bindings go to the primary environment (copy-on-write semantics)
-	c.primary.SetWithVisibility(name, value, visibility)
+	c.primary.Bind(name, value, visibility)
 }
 
 func (c CompositeEnv) Update(name string, value Value) {
@@ -506,13 +500,8 @@ func (e *ConstructorEnv) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.instance)
 }
 
-func (e *ConstructorEnv) Set(name string, value Value) EvalEnv {
-	e.instance.Set(name, value)
-	return e
-}
-
-func (e *ConstructorEnv) SetWithVisibility(name string, value Value, visibility Visibility) {
-	e.instance.SetWithVisibility(name, value, visibility)
+func (e *ConstructorEnv) Bind(name string, value Value, visibility Visibility) {
+	e.instance.Bind(name, value, visibility)
 }
 
 func (e *ConstructorEnv) Update(name string, value Value) {

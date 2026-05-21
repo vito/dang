@@ -525,7 +525,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
 		clonedVal := val.(EvalEnv).Clone()
-		currentObj.Set(fieldName, clonedVal.(Value))
+		currentObj.Bind(fieldName, clonedVal.(Value), currentObj.Visibility(fieldName))
 		currentObj = clonedVal
 	}
 
@@ -536,7 +536,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: obj.field = value
-		currentObj.Set(finalField, value)
+		currentObj.Bind(finalField, value, currentObj.Visibility(finalField))
 	case "+":
 		// Compound assignment: obj.field += value
 		currentValue, found, err := currentObj.Lookup(ctx, finalField)
@@ -553,7 +553,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 			return nil, err
 		}
 
-		currentObj.Set(finalField, newValue)
+		currentObj.Bind(finalField, newValue, currentObj.Visibility(finalField))
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}

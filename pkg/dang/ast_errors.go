@@ -153,7 +153,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if clause.IsElse {
 				childEnv := env.Fork()
 				if clause.Binding != "" {
-					childEnv.Set(clause.Binding, errVal)
+					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
 				return EvalNode(ctx, childEnv, clause.Expr)
 			}
@@ -161,7 +161,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
 					childEnv := env.Fork()
-					childEnv.Set(clause.Binding, errVal)
+					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}
 				continue
@@ -194,8 +194,7 @@ func extractErrorValue(err error) Value {
 // message.
 func newBasicError(message string) *ModuleValue {
 	mv := NewModuleValue(BasicErrorType)
-	mv.Set("message", StringValue{Val: message})
-	mv.Visibilities["message"] = PublicVisibility
+	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
 	return mv
 }
 

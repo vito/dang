@@ -285,7 +285,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 			// If no value is provided, this is just a type declaration
 			// Add a null value to the environment as a placeholder
-			env.SetWithVisibility(s.Name.Name, NullValue{}, s.Visibility)
+			env.Bind(s.Name.Name, NullValue{}, s.Visibility)
 			return NullValue{}, nil
 		}
 
@@ -297,8 +297,8 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the value to the environment for future use
-		// If it's a ModuleValue, use SetWithVisibility to track visibility
-		env.SetWithVisibility(s.Name.Name, val, s.Visibility)
+		// If it's a ModuleValue, track visibility explicitly
+		env.Bind(s.Name.Name, val, s.Visibility)
 
 		return val, nil
 	})
@@ -865,7 +865,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the constructor to the evaluation environment
-		env.SetWithVisibility(c.Name.Name, constructor, c.Visibility)
+		env.Bind(c.Name.Name, constructor, c.Visibility)
 
 		return constructor, nil
 	})
@@ -993,7 +993,7 @@ func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Register the enum module in the environment
-	env.SetWithVisibility(e.Name.Name, enumModule, e.Visibility)
+	env.Bind(e.Name.Name, enumModule, e.Visibility)
 
 	return enumModule, nil
 }
@@ -1087,7 +1087,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	scalarModule := NewModuleValue(s.Inferred)
 
 	// Register the scalar type in the environment
-	env.SetWithVisibility(s.Name.Name, scalarModule, s.Visibility)
+	env.Bind(s.Name.Name, scalarModule, s.Visibility)
 
 	return scalarModule, nil
 }
@@ -1213,7 +1213,7 @@ func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
 	// Just register the interface module in the environment
 	interfaceModule := NewModuleValue(i.Inferred)
-	env.SetWithVisibility(i.Name.Name, interfaceModule, i.Visibility)
+	env.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
 
@@ -1364,7 +1364,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Unions are pure type declarations - register the union module
 	unionModule := NewModuleValue(u.Inferred)
-	env.SetWithVisibility(u.Name.Name, unionModule, u.Visibility)
+	env.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }
 
