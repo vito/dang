@@ -268,7 +268,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.GetLocal(s.Name.Name)
+		val, defined := env.LookupLocal(s.Name.Name)
 		if defined {
 			// already defined (e.g. through constructor), nothing to do
 			return val, nil

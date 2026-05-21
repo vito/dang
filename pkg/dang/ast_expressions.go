@@ -615,7 +615,7 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			}
 		}
 
-		val, found, err := env.Get(ctx, s.Name)
+		val, found, err := env.Lookup(ctx, s.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -806,7 +806,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return NullValue{}, nil
 
 			case EvalEnv:
-				if val, found, err := rec.Get(ctx, d.Field.Name); err != nil {
+				if val, found, err := rec.Lookup(ctx, d.Field.Name); err != nil {
 					return nil, err
 				} else if found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
@@ -826,7 +826,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on string values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field.Name)
-				if method, found, err := env.Get(ctx, methodKey); err != nil {
+				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -840,7 +840,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on float values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field.Name)
-				if method, found, err := env.Get(ctx, methodKey); err != nil {
+				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -854,7 +854,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on list values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field.Name)
-				if method, found, err := env.Get(ctx, methodKey); err != nil {
+				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -1515,7 +1515,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 			// Build a result with the selected fields, preserving the concrete type
 			resultModuleValue := NewModuleValue(frag.Inferred)
 			for _, field := range frag.Fields {
-				fieldVal, exists, err := modVal.Get(ctx, field.Name)
+				fieldVal, exists, err := modVal.Lookup(ctx, field.Name)
 				if err != nil {
 					return nil, err
 				}
@@ -1872,7 +1872,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 		} else {
 			// No arguments - get field value directly
 			var exists bool
-			fieldVal, exists, err = objVal.Get(ctx, field.Name)
+			fieldVal, exists, err = objVal.Lookup(ctx, field.Name)
 			if err != nil {
 				return nil, err
 			}

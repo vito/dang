@@ -94,7 +94,7 @@ func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
 				<-start
 
 				env := NewEvalEnv(NewPreludeEnv("test"))
-				hostVal, found, err := env.Get(context.Background(), "TestStatic")
+				hostVal, found, err := env.Lookup(context.Background(), "TestStatic")
 				if err != nil {
 					misses <- err.Error()
 					return
@@ -108,7 +108,7 @@ func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
 					misses <- "module type"
 					return
 				}
-				if _, found, err := modVal.Get(context.Background(), "value"); err != nil {
+				if _, found, err := modVal.Lookup(context.Background(), "value"); err != nil {
 					misses <- err.Error()
 				} else if !found {
 					misses <- "method"

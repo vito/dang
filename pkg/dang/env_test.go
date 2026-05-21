@@ -14,7 +14,7 @@ import (
 
 func requireEvalGet(t *testing.T, env EvalEnv, name string) (Value, bool) {
 	t.Helper()
-	val, found, err := env.Get(context.Background(), name)
+	val, found, err := env.Lookup(context.Background(), name)
 	require.NoError(t, err)
 	return val, found
 }
@@ -79,10 +79,10 @@ func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
 
 	val.Set("plain", StringValue{Val: "a"})
 	val.SetWithVisibility("visible", StringValue{Val: "b"}, PublicVisibility)
-	val.Reassign("reassigned", StringValue{Val: "c"})
+	val.Update("reassigned", StringValue{Val: "c"})
 
 	for _, name := range []string{"plain", "visible", "reassigned"} {
-		_, found := val.GetLocal(name)
+		_, found := val.LookupLocal(name)
 		require.True(t, found)
 		_, found = mod.LocalValueOrigin(name)
 		require.False(t, found, "runtime set for %q created a type-environment origin", name)
@@ -96,7 +96,7 @@ func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
 
 	val.Set("existingPlain", StringValue{Val: "d"})
 	val.SetWithVisibility("existingVisible", StringValue{Val: "e"}, PublicVisibility)
-	val.Reassign("existingReassigned", StringValue{Val: "f"})
+	val.Update("existingReassigned", StringValue{Val: "f"})
 
 	for _, name := range []string{"existingPlain", "existingVisible", "existingReassigned"} {
 		origin, found := mod.LocalValueOrigin(name)

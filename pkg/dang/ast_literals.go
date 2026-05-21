@@ -191,7 +191,7 @@ func (s *SelfKeyword) ReferencedSymbols() []string {
 }
 
 func (s *SelfKeyword) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	if dynScope, ok := env.GetDynamicScope(); ok {
+	if dynScope, ok := env.Self(); ok {
 		return dynScope, nil
 	}
 	return nil, fmt.Errorf("'self' is not available in this context")

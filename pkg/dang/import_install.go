@@ -123,7 +123,7 @@ func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, import
 			continue
 		}
 
-		if _, exists := parentEnv.GetLocal(name); exists {
+		if _, exists := parentEnv.LookupLocal(name); exists {
 			continue
 		}
 
@@ -142,7 +142,7 @@ func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *Module
 		enumValName := enumBinding.Key
 		enumVal := enumBinding.Value
 
-		if _, exists := parentEnv.GetLocal(enumValName); exists {
+		if _, exists := parentEnv.LookupLocal(enumValName); exists {
 			continue
 		}
 

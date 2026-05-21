@@ -47,18 +47,18 @@ type Callable interface {
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
 	Value
-	// Get resolves a binding, forcing pending initializers on first read.
-	Get(ctx context.Context, name string) (Value, bool, error)
+	// Lookup resolves a binding, forcing pending initializers on first read.
+	Lookup(ctx context.Context, name string) (Value, bool, error)
 	// Has reports whether name is bound (as a real value or a pending initializer).
 	Has(name string) bool
-	GetLocal(name string) (Value, bool)
+	LookupLocal(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
-	// SetLazy installs a deferred initializer for name. The initializer
-	// runs on first Get and the result replaces the pending entry.
-	SetLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility)
-	Reassign(name string, value Value)
+	// BindLazy installs a deferred initializer for name. The initializer
+	// runs on first Lookup and the result replaces the pending entry.
+	BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility)
+	Update(name string, value Value)
 	Visibility(name string) Visibility
 	Clone() EvalEnv
 	Fork() EvalEnv
@@ -66,10 +66,10 @@ type EvalEnv interface {
 	// Clone/Fork share the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
 	// Code that establishes a NEW self (e.g. BoundMethod.Call) must call
-	// NewDynamicScope to create a fresh, unshared cell.
-	GetDynamicScope() (Value, bool)
-	SetDynamicScope(value Value)
-	NewDynamicScope(value Value)
+	// EnterSelf to create a fresh, unshared cell.
+	Self() (Value, bool)
+	MutateSelf(value Value)
+	EnterSelf(value Value)
 }
 
 // InputObjectConstructor creates a ModuleValue from named arguments,
@@ -611,7 +611,7 @@ func addBuiltinFunctions(env EvalEnv) {
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
 				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-					selfVal, _ := env.GetDynamicScope()
+					selfVal, _ := env.Self()
 					// Apply defaults for missing arguments
 					argsWithDefaults := applyDefaults(args, def)
 
@@ -1063,8 +1063,8 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 		// A dynamic FunctionValue being called will ALWAYS mean we're coming from a
 		// 'naked' self-call (foo() instead of self.foo()) from a sibling method, so
 		// we can inherit the caller's `self`.
-		if dynScope, hasDynScope := env.GetDynamicScope(); hasDynScope {
-			fnEnv.SetDynamicScope(dynScope)
+		if dynScope, hasDynScope := env.Self(); hasDynScope {
+			fnEnv.MutateSelf(dynScope)
 		}
 	}
 
@@ -1248,7 +1248,7 @@ func (m *ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod)
 }
 
-func (m *ModuleValue) Get(ctx context.Context, name string) (Value, bool, error) {
+func (m *ModuleValue) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	if p, ok := m.Pending[name]; ok {
 		return m.force(ctx, name, p)
 	}
@@ -1256,7 +1256,7 @@ func (m *ModuleValue) Get(ctx context.Context, name string) (Value, bool, error)
 		return val, true, nil
 	}
 	if m.Parent != nil {
-		return m.Parent.Get(ctx, name)
+		return m.Parent.Lookup(ctx, name)
 	}
 	return nil, false, nil
 }
@@ -1274,11 +1274,11 @@ func (m *ModuleValue) Has(name string) bool {
 	return false
 }
 
-// SetLazy records a deferred initializer. The first Get for name will run
-// init and replace the pending entry with the resulting value. SetLazy is a
+// BindLazy records a deferred initializer. The first Lookup for name will run
+// init and replace the pending entry with the resulting value. BindLazy is a
 // no-op if name is already bound locally — letting earlier bindings
 // (constructor args, prior installs) shadow the placeholder.
-func (m *ModuleValue) SetLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+func (m *ModuleValue) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
 	if _, alreadyReal := m.Values[name]; alreadyReal {
 		return
 	}
@@ -1314,14 +1314,14 @@ func (m *ModuleValue) force(ctx context.Context, name string, p *pendingInit) (V
 	return val, true, nil
 }
 
-func (m *ModuleValue) GetLocal(name string) (Value, bool) {
+func (m *ModuleValue) LookupLocal(name string) (Value, bool) {
 	val, ok := m.Values[name]
 	return val, ok
 }
 
 // lookupValue walks Values + the parent chain (without forcing pending
 // initializers). Use this only when pending has already been forced —
-// otherwise Get is the right call.
+// otherwise Lookup is the right call.
 func (m *ModuleValue) lookupValue(name string) (Value, bool) {
 	if val, ok := m.Values[name]; ok {
 		return val, true
@@ -1408,11 +1408,11 @@ func (m *ModuleValue) SetWithVisibility(name string, value Value, visibility Vis
 	m.Visibilities[name] = visibility
 }
 
-// Reassign reassigns a value following proper scoping rules:
+// Update overwrites the nearest existing binding following proper scoping rules:
 // - If the variable exists locally, update it locally
 // - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
 // - If the variable doesn't exist anywhere, set it locally
-func (m *ModuleValue) Reassign(name string, value Value) {
+func (m *ModuleValue) Update(name string, value Value) {
 	if _, existsLocally := m.Values[name]; existsLocally {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
@@ -1420,7 +1420,7 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 	} else if m.Parent != nil && !m.IsForked {
 		if m.Parent.Has(name) {
 			// Variable exists in parent, update parent (only if not forked)
-			m.Parent.Reassign(name, value)
+			m.Parent.Update(name, value)
 		} else {
 			// Variable doesn't exist anywhere, set it locally
 			m.Values[name] = value
@@ -1433,20 +1433,20 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 	}
 }
 
-// GetDynamicScope returns the dynamic scope value ('self')
-func (m *ModuleValue) GetDynamicScope() (Value, bool) {
+// Self returns the dynamic scope value ('self')
+func (m *ModuleValue) Self() (Value, bool) {
 	if m.dynamicScope != nil && m.dynamicScope.Value != nil {
 		return m.dynamicScope.Value, true
 	}
 	if m.Parent != nil {
-		return m.Parent.GetDynamicScope()
+		return m.Parent.Self()
 	}
 	return nil, false
 }
 
-// SetDynamicScope updates the dynamic scope value ('self') in the
+// MutateSelf updates the dynamic scope value ('self') in the
 // existing shared cell, or creates a new cell if none exists.
-func (m *ModuleValue) SetDynamicScope(value Value) {
+func (m *ModuleValue) MutateSelf(value Value) {
 	if m.dynamicScope != nil {
 		m.dynamicScope.Value = value
 	} else {
@@ -1454,10 +1454,10 @@ func (m *ModuleValue) SetDynamicScope(value Value) {
 	}
 }
 
-// NewDynamicScope creates a fresh, unshared dynamic scope cell.
+// EnterSelf creates a fresh, unshared dynamic scope cell.
 // Use this when establishing a new self (e.g. entering a method body)
 // rather than updating self within the current scope.
-func (m *ModuleValue) NewDynamicScope(value Value) {
+func (m *ModuleValue) EnterSelf(value Value) {
 	m.dynamicScope = &DynamicScope{Value: value}
 }
 
@@ -1500,7 +1500,7 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Fork()
 	fnEnv := CreateCompositeEnv(recv.Clone(), b.Method.Closure)
-	fnEnv.NewDynamicScope(recv)
+	fnEnv.EnterSelf(recv)
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
@@ -1550,7 +1550,7 @@ func (b BoundBuiltinMethod) Call(ctx context.Context, env EvalEnv, args map[stri
 	// Create a temporary environment with the receiver as dynamic scope
 	tempMod := NewModule("_temp_", ObjectKind)
 	tempEnv := NewModuleValue(tempMod)
-	tempEnv.NewDynamicScope(b.Receiver)
+	tempEnv.EnterSelf(b.Receiver)
 
 	// Call the builtin function with the receiver context
 	return b.Method.Call(ctx, tempEnv, args)
@@ -1637,7 +1637,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	instanceEnv := CreateCompositeEnv(instance, c.Closure)
 
 	// Set dynamic scope to the instance so self is available
-	instanceEnv.NewDynamicScope(instance)
+	instanceEnv.EnterSelf(instance)
 
 	if c.NewBody != nil {
 		// Explicit new() constructor: evaluate field declarations that have
@@ -1662,7 +1662,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 		// Bind constructor args so they shadow both instance fields and
 		// the outer closure (see #23). Args go in a separate env that is
-		// only consulted for reads (Get), while writes (Set/Reassign) go
+		// only consulted for reads (Lookup), while writes (Set/Update) go
 		// to the instance as before.
 		argEnv := NewModuleValue(NewModule("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
@@ -1699,7 +1699,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// We evaluate forms directly (not via Block.Eval) to avoid cloning
 		// the env, which would lose dynamic scope updates for self assignments.
 		newBodyEnv := CreateConstructorEnv(instance, argEnv, c.Closure)
-		newBodyEnv.NewDynamicScope(instance)
+		newBodyEnv.EnterSelf(instance)
 		returnFrame := NewControlFrame(ReturnFrame)
 		defer returnFrame.Deactivate()
 		newBodyCtx := contextWithReturnFrame(ctx, returnFrame)
@@ -1718,11 +1718,11 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			}
 			// After each form, update the instance from the dynamic scope
 			// (copy-on-write may have replaced it via self.field = value)
-			if updatedInstance, found := newBodyEnv.GetDynamicScope(); found {
+			if updatedInstance, found := newBodyEnv.Self(); found {
 				instance = updatedInstance.(*ModuleValue)
 				// Update newBodyEnv to use the new instance
 				newBodyEnv = CreateConstructorEnv(instance, argEnv, c.Closure)
-				newBodyEnv.NewDynamicScope(instance)
+				newBodyEnv.EnterSelf(instance)
 			}
 			if returned {
 				break
@@ -1767,7 +1767,7 @@ func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance 
 	for name, scheme := range c.ClassType.Bindings(PrivateVisibility) {
 		fieldType, _ := scheme.Type()
 		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
-			val, found, err := instance.Get(ctx, name)
+			val, found, err := instance.Lookup(ctx, name)
 			if err != nil {
 				return err
 			}

@@ -459,7 +459,7 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Eva
 		if !ok {
 			continue
 		}
-		env.SetLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
+		env.BindLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
 			return EvalNode(ctx, env, slot.Value)
 		}, slot.Visibility)
 	}
@@ -469,7 +469,7 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Eva
 		if !ok {
 			continue
 		}
-		if _, _, err := env.Get(ctx, slot.Name.Name); err != nil {
+		if _, _, err := env.Lookup(ctx, slot.Name.Name); err != nil {
 			return err
 		}
 	}

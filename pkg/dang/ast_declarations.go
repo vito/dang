@@ -156,7 +156,7 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 	}
 
 	// Check if this function has access to dynamic scope
-	_, hasDynamicScope := env.GetDynamicScope()
+	_, hasDynamicScope := env.Self()
 
 	return FunctionValue{
 		Args:           argNames,
@@ -455,11 +455,11 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 		if !env.Has(varName) {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
-		env.Reassign(varName, value)
+		env.Update(varName, value)
 		return value, nil
 	case "+":
 		// Compound assignment: x += value
-		currentValue, found, err := env.Get(ctx, varName)
+		currentValue, found, err := env.Lookup(ctx, varName)
 		if err != nil {
 			return nil, err
 		}
@@ -473,7 +473,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 			return nil, err
 		}
 
-		env.Reassign(varName, newValue)
+		env.Update(varName, newValue)
 		return newValue, nil
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
@@ -493,13 +493,13 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	var rootSymbolName string
 
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
-		rootObj, found = env.GetDynamicScope()
+		rootObj, found = env.Self()
 		if !found {
 			return nil, fmt.Errorf("'self' is not available in this context")
 		}
 	} else if rootSymbol, ok := rootNode.(*Symbol); ok {
 		rootSymbolName = rootSymbol.Name
-		rootObj, found, err = env.Get(ctx, rootSymbolName)
+		rootObj, found, err = env.Lookup(ctx, rootSymbolName)
 		if err != nil {
 			return nil, err
 		}
@@ -517,7 +517,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	currentObj := newRoot
 	for i := range len(path) - 1 {
 		fieldName := path[i]
-		val, found, err := currentObj.Get(ctx, fieldName)
+		val, found, err := currentObj.Lookup(ctx, fieldName)
 		if err != nil {
 			return nil, err
 		}
@@ -539,7 +539,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		currentObj.Set(finalField, value)
 	case "+":
 		// Compound assignment: obj.field += value
-		currentValue, found, err := currentObj.Get(ctx, finalField)
+		currentValue, found, err := currentObj.Lookup(ctx, finalField)
 		if err != nil {
 			return nil, err
 		}
@@ -561,9 +561,9 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	// Update the root object in the environment (respects Fork boundaries)
 	// For self, update the dynamic scope so subsequent references see the change
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
-		env.SetDynamicScope(newRoot.(Value))
+		env.MutateSelf(newRoot.(Value))
 	} else {
-		env.Reassign(rootSymbolName, newRoot.(Value))
+		env.Update(rootSymbolName, newRoot.(Value))
 	}
 
 	return newRoot.(Value), nil
