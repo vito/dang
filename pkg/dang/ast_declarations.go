@@ -470,6 +470,10 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 		if !found {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
+		currentValue, err := forceLazyValue(ctx, currentValue)
+		if err != nil {
+			return nil, err
+		}
 
 		// Perform addition using existing Addition logic
 		newValue, err := r.performAddition(currentValue, value, varName)
@@ -506,6 +510,10 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		rootObj, found = env.Get(rootSymbolName)
 		if !found {
 			return nil, fmt.Errorf("object %q not found", rootSymbolName)
+		}
+		rootObj, err = forceLazyValue(ctx, rootObj)
+		if err != nil {
+			return nil, err
 		}
 	} else {
 		return nil, fmt.Errorf("unexpected root node type: %T", rootNode)

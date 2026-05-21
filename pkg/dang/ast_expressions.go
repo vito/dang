@@ -620,6 +620,12 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
 		}
 
+		var err error
+		val, err = forceLazyValue(ctx, val)
+		if err != nil {
+			return nil, err
+		}
+
 		if val == nil {
 			return nil, fmt.Errorf("Symbol: found nil value for %q", s.Name)
 		}
@@ -804,6 +810,10 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 			case EvalEnv:
 				if val, found := rec.Get(d.Field.Name); found {
+					val, err := forceLazyValue(ctx, val)
+					if err != nil {
+						return nil, err
+					}
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
 					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
 						return BoundMethod{Method: fnVal, Receiver: rec}, nil
