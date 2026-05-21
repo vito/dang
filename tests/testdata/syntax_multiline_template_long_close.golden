@@ -1,0 +1,11 @@
+[1m[31mError:[0m syntax error: unexpected 'still'
+  [2m[34m--> errors/syntax_multiline_template_long_close.dang:3:1[0m
+ [2m    |[0m
+ [2m  1 | pub bad = ```[0m
+ [2m  2 | ````[0m
+ [2m[34m[1m  3 | [0mstill inside
+[2m       [31m^^^^^[0m
+ [2m  4 | ```[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

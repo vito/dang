@@ -172,20 +172,19 @@ static bool scan_template_open(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
-// Scan a closing fence: exactly N consecutive backticks where N matches the
-// current top of the fence stack. Pops the stack on success.
+// Scan a closing fence: the first N backticks close the current template,
+// where N matches the current top of the fence stack. Any extra backticks are
+// left for parser recovery, making longer runs invalid instead of content.
 static bool scan_template_close(Scanner *s, TSLexer *lexer) {
   if (s->depth == 0 || lexer->lookahead != '`') {
     return false;
   }
   unsigned expected = s->fence_stack[s->depth - 1];
-  unsigned count = 0;
-  while (lexer->lookahead == '`') {
-    count++;
+  for (unsigned i = 0; i < expected; i++) {
+    if (lexer->lookahead != '`') {
+      return false;
+    }
     lexer->advance(lexer, false);
-  }
-  if (count != expected) {
-    return false;
   }
   s->depth--;
   lexer->result_symbol = TEMPLATE_MULTI_CLOSE;
@@ -206,8 +205,8 @@ static bool scan_lang_tag_terminator(Scanner *s, TSLexer *lexer) {
 }
 
 // Scan one piece of template content: one or more bytes that are neither a
-// $$ / ${...} marker nor part of a matching close fence. A run of backticks
-// whose length doesn't match the open fence is consumed as content.
+// $$ / ${...} marker nor part of a matching close fence. Shorter backtick
+// runs are content; longer runs are invalid and left for parser recovery.
 static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
   if (s->depth == 0 || lexer->eof(lexer)) {
     return false;
@@ -238,11 +237,12 @@ static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
       count++;
       lexer->advance(lexer, false);
     }
-    if (count == expected) {
-      // This is the matching close fence; do not consume.
+    if (count >= expected) {
+      // This is either the matching close fence or an invalid longer run; do
+      // not treat it as content.
       return false;
     }
-    // Otherwise the backtick run is content; we've already advanced past it.
+    // Shorter backtick runs are content; we've already advanced past them.
     lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
     return true;
   }

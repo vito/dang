@@ -93,12 +93,4 @@ inner
 `````
 assert { deeper == "````\ninner\n````" }
 
-# Longer backtick runs than the opening fence are content, not a close on
-# their suffix.
-pub longer_run_content = ```
-````
-still inside
-```
-assert { longer_run_content == "````\nstill inside" }
-
 print("String template tests passed!")

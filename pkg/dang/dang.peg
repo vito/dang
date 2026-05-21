@@ -896,22 +896,17 @@ MultiTemplatePart <-
   / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
-  / ticks:MultiTemplateContentBackticks {
-      return TemplatePart{Lit: ticks.(string)}, nil
-    }
   / ch:MultiTemplateContentChar {
       return TemplatePart{Lit: ch.(string)}, nil
     }
 
-MultiTemplateContentBackticks <- ticks:('`'+) !'`' &{
+MultiTemplateLongerBackticks <- ticks:('`'+) !'`' &{
   d, _ := c.state["fence_depth"].(int)
   expected, _ := c.state[templateFenceKey(d)].(int)
-  return len(ticks.([]interface{})) != expected, nil
-} {
-  return string(c.text), nil
+  return len(ticks.([]interface{})) > expected, nil
 }
 
-MultiTemplateContentChar <- !MultiTemplateCloseToken !"${" . {
+MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBackticks !"${" . {
   return string(c.text), nil
 }
 
