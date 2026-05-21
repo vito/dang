@@ -60,37 +60,6 @@ func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth i
 	return errors.Join(errs...)
 }
 
-// orderNodesBySymbolDependencies orders nodes by shallow symbol references to
-// sibling declarations. It is still used for eager class-field evaluation.
-func orderNodesBySymbolDependencies(nodes []Node) ([]Node, error) {
-	if len(nodes) <= 1 {
-		return nodes, nil
-	}
-
-	// Build dependency graph
-	declared := make(map[string]int)    // symbol name -> index in nodes
-	dependencies := make(map[int][]int) // node index -> list of indices it depends on
-
-	// First pass: collect what each node declares
-	for i, node := range nodes {
-		for _, name := range node.DeclaredSymbols() {
-			declared[name] = i
-		}
-	}
-
-	// Second pass: collect what each node depends on
-	for i, node := range nodes {
-		for _, ref := range node.ReferencedSymbols() {
-			if depIndex, exists := declared[ref]; exists && depIndex != i {
-				dependencies[i] = append(dependencies[i], depIndex)
-			}
-		}
-	}
-
-	// Topological sort
-	return topologicalSort(nodes, dependencies)
-}
-
 func orderVariablesForInference(variables []Node) ([]Node, error) {
 	if len(variables) <= 1 {
 		return variables, nil
@@ -454,26 +423,17 @@ func isConstantValue(value Node) bool {
 	}
 }
 
-// EvaluateFormsWithPhases evaluates module-level forms using the same phased approach as inference.
-// Module-level computed variables are installed as lazy slots, forced on first read, and then
-// forced in source order before non-declarations run.
+// EvaluateFormsWithPhases evaluates forms using the same phased approach as
+// inference. Computed variables are installed as lazy slots, forced on first
+// read, and then forced in source order before non-declarations run. This is
+// used for both module top-levels and class bodies.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
-	return evaluateFormsWithPhases(ctx, forms, env, true)
-}
-
-// evaluateFormsWithPhasesEagerVariables evaluates forms with eager variable evaluation.
-// This is used for class bodies, where field/default evaluation should not become lazy.
-func evaluateFormsWithPhasesEagerVariables(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
-	return evaluateFormsWithPhases(ctx, forms, env, false)
-}
-
-func evaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv, lazyModuleVariables bool) (Value, error) {
 	var result Value = NullValue{}
 	var err error
 
 	// Classify forms by their compilation requirements
 	classified := classifyForms(forms)
-	//
+
 	// Phase 1: Evaluate imports
 	for _, form := range classified.Imports {
 		result, err = EvalNode(ctx, env, form)
@@ -514,17 +474,13 @@ func evaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv, laz
 		}
 	}
 
-	// Phase 6: Evaluate variables. Module-level variables are lazy placeholders
-	// that force on first read; non-module variables (e.g. class fields) remain eager.
+	// Phase 6: Install lazy slots for computed variables, then force them in
+	// source order. Forward references hidden behind constructors or function
+	// calls are resolved by the force-on-read mechanism; the source-order pass
+	// guarantees side effects still happen.
 	if len(classified.Variables) > 0 {
-		if lazyModuleVariables {
-			if err := installAndForceLazyModuleVariables(ctx, classified.Variables, env); err != nil {
-				return nil, fmt.Errorf("variable evaluation failed: %w", err)
-			}
-		} else {
-			if err := evaluateVariablesEager(ctx, classified.Variables, env); err != nil {
-				return nil, err
-			}
+		if err := installAndForceLazyVariables(ctx, classified.Variables, env); err != nil {
+			return nil, fmt.Errorf("variable evaluation failed: %w", err)
 		}
 	}
 
@@ -539,14 +495,16 @@ func evaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv, laz
 	return result, nil
 }
 
-func installAndForceLazyModuleVariables(ctx context.Context, variables []Node, env EvalEnv) error {
+func installAndForceLazyVariables(ctx context.Context, variables []Node, env EvalEnv) error {
 	for _, form := range variables {
 		slot, ok := form.(*SlotDecl)
 		if !ok {
 			continue
 		}
 		if _, defined := env.GetLocal(slot.Name.Name); defined {
-			// Preserve SlotDecl.Eval's existing "already defined" behavior.
+			// Preserve SlotDecl.Eval's existing "already defined" behavior:
+			// constructor args or earlier bindings may have already populated
+			// the slot before this phase runs.
 			continue
 		}
 		env.SetWithVisibility(slot.Name.Name, &lazySlotValue{
@@ -569,21 +527,6 @@ func installAndForceLazyModuleVariables(ctx context.Context, variables []Node, e
 		}
 		if _, err := forceLazyValue(ctx, val); err != nil {
 			return err
-		}
-	}
-
-	return nil
-}
-
-func evaluateVariablesEager(ctx context.Context, variables []Node, env EvalEnv) error {
-	orderedVars, err := orderNodesBySymbolDependencies(variables)
-	if err != nil {
-		return fmt.Errorf("variable dependency ordering failed: %w", err)
-	}
-
-	for _, form := range orderedVars {
-		if _, err := EvalNode(ctx, env, form); err != nil {
-			return fmt.Errorf("variable evaluation failed: %w", err)
 		}
 	}
 

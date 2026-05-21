@@ -1574,7 +1574,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			formsWithDefaults = append(formsWithDefaults, form)
 		}
 
-		_, err := evaluateFormsWithPhasesEagerVariables(ctx, formsWithDefaults, instanceEnv)
+		_, err := EvaluateFormsWithPhases(ctx, formsWithDefaults, instanceEnv)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
 		}
@@ -1669,7 +1669,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			}
 		}
 
-		_, err := evaluateFormsWithPhasesEagerVariables(ctx, c.ClassBodyForms, instanceEnv)
+		_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
 		}
