@@ -127,7 +127,7 @@ type RaisedError struct {
 
 func (r *RaisedError) Error() string {
 	if mv, ok := r.Value.(*ModuleValue); ok {
-		if msg, found := getRawValue(mv, "message"); found {
+		if msg, found := mv.getRaw("message"); found {
 			return msg.String()
 		}
 	}

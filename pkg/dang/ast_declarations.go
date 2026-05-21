@@ -452,7 +452,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: x = value
-		_, found := getRawValue(env, varName)
+		_, found := env.getRaw(varName)
 		if !found {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}

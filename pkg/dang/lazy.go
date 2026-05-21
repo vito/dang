@@ -46,17 +46,6 @@ func (l *lazySlotValue) String() string {
 	return fmt.Sprintf("<lazy %s>", l.Name)
 }
 
-type rawValueGetter interface {
-	getRaw(name string) (Value, bool)
-}
-
-func getRawValue(env EvalEnv, name string) (Value, bool) {
-	if raw, ok := env.(rawValueGetter); ok {
-		return raw.getRaw(name)
-	}
-	return nil, false
-}
-
 func forceLazyValue(ctx context.Context, val Value) (Value, error) {
 	for {
 		lazy, ok := val.(*lazySlotValue)

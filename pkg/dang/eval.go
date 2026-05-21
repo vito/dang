@@ -49,6 +49,10 @@ type EvalEnv interface {
 	Value
 	// Get resolves a binding and forces lazy module initializers before returning.
 	Get(ctx context.Context, name string) (Value, bool, error)
+	// getRaw resolves a binding without forcing lazy initializers. It is used for
+	// existence checks and for reads that must not trigger initialization (e.g.
+	// from within Error() methods that have no ctx, or for write routing).
+	getRaw(name string) (Value, bool)
 	GetLocal(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
@@ -1684,7 +1688,7 @@ func (c *ConstructorFunction) checkRequiredFields(instance *ModuleValue) error {
 		fieldType, _ := scheme.Type()
 		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
 			// Check if this field has a value on the instance
-			val, found := getRawValue(instance, name)
+			val, found := instance.getRaw(name)
 			if !found {
 				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
 			}

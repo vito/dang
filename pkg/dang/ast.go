@@ -330,10 +330,10 @@ func (c CompositeEnv) Get(ctx context.Context, name string) (Value, bool, error)
 }
 
 func (c CompositeEnv) getRaw(name string) (Value, bool) {
-	if val, found := getRawValue(c.primary, name); found {
+	if val, found := c.primary.getRaw(name); found {
 		return val, true
 	}
-	return getRawValue(c.lexical, name)
+	return c.lexical.getRaw(name)
 }
 
 func (c CompositeEnv) GetLocal(name string) (Value, bool) {
@@ -469,13 +469,13 @@ func (e *ConstructorEnv) Get(ctx context.Context, name string) (Value, bool, err
 }
 
 func (e *ConstructorEnv) getRaw(name string) (Value, bool) {
-	if val, found := getRawValue(e.args, name); found {
+	if val, found := e.args.getRaw(name); found {
 		return val, true
 	}
-	if val, found := getRawValue(e.instance, name); found {
+	if val, found := e.instance.getRaw(name); found {
 		return val, true
 	}
-	return getRawValue(e.closure, name)
+	return e.closure.getRaw(name)
 }
 
 func (e *ConstructorEnv) GetLocal(name string) (Value, bool) {
@@ -519,7 +519,7 @@ func (e *ConstructorEnv) SetWithVisibility(name string, value Value, visibility 
 func (e *ConstructorEnv) Reassign(name string, value Value) {
 	// If the name is a constructor arg, reassign there so that
 	// subsequent reads (which check args first) see the new value.
-	if _, found := getRawValue(e.args, name); found {
+	if _, found := e.args.getRaw(name); found {
 		e.args.Reassign(name, value)
 		return
 	}
