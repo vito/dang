@@ -55,9 +55,9 @@ type EvalEnv interface {
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
-	// setPending installs a deferred initializer for name. The initializer
+	// SetLazy installs a deferred initializer for name. The initializer
 	// runs on first Get and the result replaces the pending entry.
-	setPending(name string, init *pendingInit)
+	SetLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility)
 	Reassign(name string, value Value)
 	Visibility(name string) Visibility
 	Clone() EvalEnv
@@ -1274,11 +1274,11 @@ func (m *ModuleValue) Has(name string) bool {
 	return false
 }
 
-// setPending records a deferred initializer. The first Get for name will
-// run init and replace the pending entry with the resulting value. setPending
-// is a no-op if name is already bound locally — letting earlier bindings
+// SetLazy records a deferred initializer. The first Get for name will run
+// init and replace the pending entry with the resulting value. SetLazy is a
+// no-op if name is already bound locally — letting earlier bindings
 // (constructor args, prior installs) shadow the placeholder.
-func (m *ModuleValue) setPending(name string, init *pendingInit) {
+func (m *ModuleValue) SetLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
 	if _, alreadyReal := m.Values[name]; alreadyReal {
 		return
 	}
@@ -1288,8 +1288,11 @@ func (m *ModuleValue) setPending(name string, init *pendingInit) {
 	if m.Pending == nil {
 		m.Pending = make(map[string]*pendingInit)
 	}
-	m.Pending[name] = init
-	m.Visibilities[name] = init.Visibility
+	m.Pending[name] = &pendingInit{
+		Init:       init,
+		Visibility: visibility,
+	}
+	m.Visibilities[name] = visibility
 }
 
 func (m *ModuleValue) force(ctx context.Context, name string, p *pendingInit) (Value, bool, error) {

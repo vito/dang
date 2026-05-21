@@ -333,8 +333,8 @@ func (c CompositeEnv) Has(name string) bool {
 	return c.primary.Has(name) || c.lexical.Has(name)
 }
 
-func (c CompositeEnv) setPending(name string, init *pendingInit) {
-	c.primary.setPending(name, init)
+func (c CompositeEnv) SetLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+	c.primary.SetLazy(name, init, visibility)
 }
 
 func (c CompositeEnv) GetLocal(name string) (Value, bool) {
@@ -473,8 +473,8 @@ func (e *ConstructorEnv) Has(name string) bool {
 	return e.args.Has(name) || e.instance.Has(name) || e.closure.Has(name)
 }
 
-func (e *ConstructorEnv) setPending(name string, init *pendingInit) {
-	e.instance.setPending(name, init)
+func (e *ConstructorEnv) SetLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+	e.instance.SetLazy(name, init, visibility)
 }
 
 func (e *ConstructorEnv) GetLocal(name string) (Value, bool) {

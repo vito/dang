@@ -459,12 +459,9 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Eva
 		if !ok {
 			continue
 		}
-		env.setPending(slot.Name.Name, &pendingInit{
-			Init: func(ctx context.Context) (Value, error) {
-				return EvalNode(ctx, env, slot.Value)
-			},
-			Visibility: slot.Visibility,
-		})
+		env.SetLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
+			return EvalNode(ctx, env, slot.Value)
+		}, slot.Visibility)
 	}
 
 	for _, form := range variables {
