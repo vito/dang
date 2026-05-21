@@ -329,11 +329,12 @@ func (c CompositeEnv) Get(ctx context.Context, name string) (Value, bool, error)
 	return c.lexical.Get(ctx, name)
 }
 
-func (c CompositeEnv) getRaw(name string) (Value, bool) {
-	if val, found := c.primary.getRaw(name); found {
-		return val, true
-	}
-	return c.lexical.getRaw(name)
+func (c CompositeEnv) Has(name string) bool {
+	return c.primary.Has(name) || c.lexical.Has(name)
+}
+
+func (c CompositeEnv) setPending(name string, init *pendingInit) {
+	c.primary.setPending(name, init)
 }
 
 func (c CompositeEnv) GetLocal(name string) (Value, bool) {
@@ -468,14 +469,12 @@ func (e *ConstructorEnv) Get(ctx context.Context, name string) (Value, bool, err
 	return e.closure.Get(ctx, name)
 }
 
-func (e *ConstructorEnv) getRaw(name string) (Value, bool) {
-	if val, found := e.args.getRaw(name); found {
-		return val, true
-	}
-	if val, found := e.instance.getRaw(name); found {
-		return val, true
-	}
-	return e.closure.getRaw(name)
+func (e *ConstructorEnv) Has(name string) bool {
+	return e.args.Has(name) || e.instance.Has(name) || e.closure.Has(name)
+}
+
+func (e *ConstructorEnv) setPending(name string, init *pendingInit) {
+	e.instance.setPending(name, init)
 }
 
 func (e *ConstructorEnv) GetLocal(name string) (Value, bool) {
@@ -519,7 +518,7 @@ func (e *ConstructorEnv) SetWithVisibility(name string, value Value, visibility 
 func (e *ConstructorEnv) Reassign(name string, value Value) {
 	// If the name is a constructor arg, reassign there so that
 	// subsequent reads (which check args first) see the new value.
-	if _, found := e.args.getRaw(name); found {
+	if e.args.Has(name) {
 		e.args.Reassign(name, value)
 		return
 	}

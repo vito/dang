@@ -47,16 +47,17 @@ type Callable interface {
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
 	Value
-	// Get resolves a binding and forces lazy module initializers before returning.
+	// Get resolves a binding, forcing pending initializers on first read.
 	Get(ctx context.Context, name string) (Value, bool, error)
-	// getRaw resolves a binding without forcing lazy initializers. It is used for
-	// existence checks and for reads that must not trigger initialization (e.g.
-	// from within Error() methods that have no ctx, or for write routing).
-	getRaw(name string) (Value, bool)
+	// Has reports whether name is bound (as a real value or a pending initializer).
+	Has(name string) bool
 	GetLocal(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
 	SetWithVisibility(name string, value Value, visibility Visibility)
+	// setPending installs a deferred initializer for name. The initializer
+	// runs on first Get and the result replaces the pending entry.
+	setPending(name string, init *pendingInit)
 	Reassign(name string, value Value)
 	Visibility(name string) Visibility
 	Clone() EvalEnv
@@ -1192,6 +1193,24 @@ func (f FunctionValue) IsAutoCallable() bool {
 	return true
 }
 
+// pendingState tracks whether a deferred initializer is idle or actively
+// running. Reaching pendingEvaluating again means a real init cycle.
+type pendingState int
+
+const (
+	pendingReady pendingState = iota
+	pendingEvaluating
+)
+
+// pendingInit is a deferred initializer registered via setPending. It runs
+// at most once: on the first Get for its name. The result replaces the
+// pending entry in Values, so subsequent reads bypass the initializer.
+type pendingInit struct {
+	Init       func(ctx context.Context) (Value, error)
+	Visibility Visibility
+	State      pendingState
+}
+
 // DynamicScope is a shared mutable cell for the 'self' value.
 // Cloned environments share the same cell so that mutations to self
 // inside closures (e.g. inside .each blocks) are visible to the
@@ -1204,10 +1223,11 @@ type DynamicScope struct {
 type ModuleValue struct {
 	Mod          Env
 	Values       map[string]Value
-	Visibilities map[string]Visibility // Track visibility of each field
-	Parent       *ModuleValue          // For hierarchical scoping
-	IsForked     bool                  // Prevents SetInScope from traversing to parent
-	dynamicScope *DynamicScope         // Shared cell for 'self' in this scope
+	Visibilities map[string]Visibility   // Track visibility of each field
+	Pending      map[string]*pendingInit // Deferred initializers; entries move to Values on force
+	Parent       *ModuleValue            // For hierarchical scoping
+	IsForked     bool                    // Prevents SetInScope from traversing to parent
+	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 }
 
 // NewModuleValue creates a new ModuleValue with an empty values map
@@ -1229,30 +1249,84 @@ func (m *ModuleValue) String() string {
 }
 
 func (m *ModuleValue) Get(ctx context.Context, name string) (Value, bool, error) {
-	val, found := m.getRaw(name)
-	if !found {
-		return nil, false, nil
+	if p, ok := m.Pending[name]; ok {
+		return m.force(ctx, name, p)
 	}
-	forced, err := forceLazyValue(ctx, val)
-	if err != nil {
-		return nil, true, err
-	}
-	return forced, true, nil
-}
-
-func (m *ModuleValue) getRaw(name string) (Value, bool) {
 	if val, ok := m.Values[name]; ok {
-		return val, true
+		return val, true, nil
 	}
 	if m.Parent != nil {
-		return m.Parent.getRaw(name)
+		return m.Parent.Get(ctx, name)
 	}
-	return nil, false
+	return nil, false, nil
+}
+
+func (m *ModuleValue) Has(name string) bool {
+	if _, ok := m.Pending[name]; ok {
+		return true
+	}
+	if _, ok := m.Values[name]; ok {
+		return true
+	}
+	if m.Parent != nil {
+		return m.Parent.Has(name)
+	}
+	return false
+}
+
+// setPending records a deferred initializer. The first Get for name will
+// run init and replace the pending entry with the resulting value. setPending
+// is a no-op if name is already bound locally — letting earlier bindings
+// (constructor args, prior installs) shadow the placeholder.
+func (m *ModuleValue) setPending(name string, init *pendingInit) {
+	if _, alreadyReal := m.Values[name]; alreadyReal {
+		return
+	}
+	if _, alreadyPending := m.Pending[name]; alreadyPending {
+		return
+	}
+	if m.Pending == nil {
+		m.Pending = make(map[string]*pendingInit)
+	}
+	m.Pending[name] = init
+	m.Visibilities[name] = init.Visibility
+}
+
+func (m *ModuleValue) force(ctx context.Context, name string, p *pendingInit) (Value, bool, error) {
+	if p.State == pendingEvaluating {
+		return nil, true, fmt.Errorf("initialization cycle while evaluating variable %q", name)
+	}
+	p.State = pendingEvaluating
+	val, err := p.Init(ctx)
+	if err != nil {
+		p.State = pendingReady
+		return nil, true, err
+	}
+	if val == nil {
+		p.State = pendingReady
+		return nil, true, fmt.Errorf("initializer for variable %q returned nil", name)
+	}
+	delete(m.Pending, name)
+	m.Values[name] = val
+	return val, true, nil
 }
 
 func (m *ModuleValue) GetLocal(name string) (Value, bool) {
 	val, ok := m.Values[name]
 	return val, ok
+}
+
+// lookupValue walks Values + the parent chain (without forcing pending
+// initializers). Use this only when pending has already been forced —
+// otherwise Get is the right call.
+func (m *ModuleValue) lookupValue(name string) (Value, bool) {
+	if val, ok := m.Values[name]; ok {
+		return val, true
+	}
+	if m.Parent != nil {
+		return m.Parent.lookupValue(name)
+	}
+	return nil, false
 }
 
 func (m *ModuleValue) Set(name string, value Value) EvalEnv {
@@ -1341,7 +1415,7 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
 	} else if m.Parent != nil && !m.IsForked {
-		if _, existsInParent := m.Parent.getRaw(name); existsInParent {
+		if m.Parent.Has(name) {
 			// Variable exists in parent, update parent (only if not forked)
 			m.Parent.Reassign(name, value)
 		} else {
@@ -1661,7 +1735,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		}
 
 		// Check that all non-null fields have been assigned
-		if err := c.checkRequiredFields(instance); err != nil {
+		if err := c.checkRequiredFields(ctx, instance); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1682,13 +1756,18 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 	return instance, nil
 }
 
-// checkRequiredFields verifies that all non-null fields have been assigned
-func (c *ConstructorFunction) checkRequiredFields(instance *ModuleValue) error {
+// checkRequiredFields verifies that all non-null fields have been assigned.
+// By the time this runs, the class body's pending initializers have all been
+// forced; Get walks the instance's parent chain to cover fields placed on
+// earlier copy-on-write generations (each `self.f = ...` clones the instance).
+func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance *ModuleValue) error {
 	for name, scheme := range c.ClassType.Bindings(PrivateVisibility) {
 		fieldType, _ := scheme.Type()
 		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
-			// Check if this field has a value on the instance
-			val, found := instance.getRaw(name)
+			val, found, err := instance.Get(ctx, name)
+			if err != nil {
+				return err
+			}
 			if !found {
 				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
 			}

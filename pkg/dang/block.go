@@ -459,19 +459,12 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Eva
 		if !ok {
 			continue
 		}
-		if _, defined := env.GetLocal(slot.Name.Name); defined {
-			// Preserve SlotDecl.Eval's existing "already defined" behavior:
-			// constructor args or earlier bindings may have already populated
-			// the slot before this phase runs.
-			continue
-		}
-		env.SetWithVisibility(slot.Name.Name, &lazySlotValue{
-			Name:       slot.Name.Name,
-			Slot:       slot,
-			Env:        env,
+		env.setPending(slot.Name.Name, &pendingInit{
+			Init: func(ctx context.Context) (Value, error) {
+				return EvalNode(ctx, env, slot.Value)
+			},
 			Visibility: slot.Visibility,
-			State:      lazySlotPending,
-		}, slot.Visibility)
+		})
 	}
 
 	for _, form := range variables {
@@ -479,11 +472,7 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Eva
 		if !ok {
 			continue
 		}
-		val, found := env.GetLocal(slot.Name.Name)
-		if !found {
-			return fmt.Errorf("variable %q was not installed", slot.Name.Name)
-		}
-		if _, err := forceLazyValue(ctx, val); err != nil {
+		if _, _, err := env.Get(ctx, slot.Name.Name); err != nil {
 			return err
 		}
 	}
