@@ -889,7 +889,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			input: `pub x = ["sh", "-c", """
 	hello
 	"""]`,
-			expected: "pub x = [\"sh\", \"-c\", \"\"\"\nhello\n\"\"\"]\n",
+			expected: "pub x = [\"sh\", \"-c\", \"\"\"\n  hello\n  \"\"\"]\n",
 		},
 		{
 			name: "list in chain call stays on one line even when chain splits",
@@ -900,8 +900,9 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			"""])
 		.directory(".")
 }`,
-			// Chain gets split, list elements stay together
-			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n    echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
+			// Chain gets split, list elements stay together; content
+			// indented one step deeper than the opening fence's scope.
+			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n      \"\"\"])\n    .directory(\".\")\n}\n",
 		},
 		{
 			name: "method args not split by multiline receiver",
