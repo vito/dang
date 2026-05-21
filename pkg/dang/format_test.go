@@ -187,6 +187,21 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  ```\n",
 		},
 		{
+			name: "multi-line interpolation comment is preserved",
+			input: "pub who = \"world\"\n" +
+				"pub x = ```\n" +
+				"  hello ${ # who to greet\n" +
+				"    who\n" +
+				"  }!\n" +
+				"  ```",
+			expected: "pub who = \"world\"\n" +
+				"pub x = ```\n" +
+				"  hello ${ # who to greet\n" +
+				"    who\n" +
+				"  }!\n" +
+				"  ```\n",
+		},
+		{
 			name: "multi-line fence bumping preserved",
 			input: "pub x = ````\n" +
 				"```go\n" +
