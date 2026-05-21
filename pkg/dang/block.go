@@ -262,6 +262,9 @@ func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh
 		{"constants", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferConstantsPhaseResilient(ctx, classified.Constants, env, fresh, errs)
 		}},
+		{"variable signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareVariableSignaturesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
+		}},
 		{"type signatures", func(errs *InferenceErrors) (hm.Type, error) {
 			return declareTypeSignaturesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
@@ -345,6 +348,9 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 		{"constants", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferConstantsPhaseResilient(ctx, classified.Constants, env, fresh, errs)
 		}},
+		{"variable signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareVariableSignaturesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
+		}},
 		{"types", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferTypesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
@@ -386,9 +392,11 @@ func isConstantValue(value Node) bool {
 		return true // Type-only declarations
 	}
 
-	switch value.(type) {
+	switch v := value.(type) {
 	case *String, *Int, *Boolean, *Null:
 		return true
+	case *Template:
+		return v.IsLiteralOnly()
 	default:
 		return false
 	}
@@ -665,6 +673,25 @@ func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.
 			continue
 		}
 		lastT = t
+	}
+	return lastT, nil
+}
+
+func declareVariableSignaturesPhaseResilient(ctx context.Context, variables []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range variables {
+		slot, ok := form.(*SlotDecl)
+		if !ok {
+			continue
+		}
+		t, err := slot.DeclareKnownSignature(ctx, env, fresh)
+		if err != nil {
+			errs.Add(err)
+			continue
+		}
+		if t != nil {
+			lastT = t
+		}
 	}
 	return lastT, nil
 }

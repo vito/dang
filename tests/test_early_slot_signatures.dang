@@ -1,0 +1,27 @@
+# Variables with explicit or statically-known types are declared before type
+# bodies are checked, even when their values are evaluated later.
+
+pub computedDefault: String! = "A" + "da"
+
+type ComputedDefaultUser {
+  pub name: String! = computedDefault
+}
+
+assert { ComputedDefaultUser.name == "Ada" }
+
+pub literalTemplateDefault = `Ada`
+
+type LiteralTemplateDefaultUser {
+  pub name: String! = literalTemplateDefault
+}
+
+assert { LiteralTemplateDefaultUser.name == "Ada" }
+
+pub who = "Grace"
+pub templatedDefault = `hello ${who}`
+
+type TemplateDefaultUser {
+  pub message: String! = templatedDefault
+}
+
+assert { TemplateDefaultUser.message == "hello Grace" }

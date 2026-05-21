@@ -148,6 +148,28 @@ func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresh
 	return nil, nil
 }
 
+func (s *SlotDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	slotType, err := s.signatureType(ctx, env, fresh, false)
+	if err != nil {
+		return nil, err
+	}
+	if slotType == nil {
+		return nil, nil
+	}
+	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+	s.SetInferredType(slotType)
+	if e, ok := env.(Env); ok {
+		e.SetVisibility(s.Name.Name, s.Visibility)
+		if s.DocString != "" {
+			e.SetDocString(s.Name.Name, s.DocString)
+		}
+		if len(s.Directives) > 0 {
+			e.SetDirectives(s.Name.Name, s.Directives)
+		}
+	}
+	return slotType, nil
+}
+
 func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	slotType, err := s.signatureType(ctx, env, fresh, true)
 	if err != nil {

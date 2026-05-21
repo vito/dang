@@ -32,6 +32,7 @@ type Constant interface {
 }
 
 var _ Constant = (*String)(nil)
+var _ Constant = (*Template)(nil)
 var _ Constant = (*Int)(nil)
 var _ Constant = (*Boolean)(nil)
 
@@ -265,6 +266,17 @@ func (t *Template) Body() hm.Expression { return t }
 
 func (t *Template) GetSourceLocation() *SourceLocation { return t.Loc }
 
+func (t *Template) ConstantType() hm.Type { return hm.NonNullType{Type: StringType} }
+
+func (t *Template) IsLiteralOnly() bool {
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func (t *Template) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	for _, p := range t.Parts {
 		if p.Expr == nil {
@@ -274,7 +286,7 @@ func (t *Template) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			return nil, err
 		}
 	}
-	tt := hm.NonNullType{Type: StringType}
+	tt := t.ConstantType()
 	t.SetInferredType(tt)
 	return tt, nil
 }
