@@ -848,7 +848,7 @@ SingleTemplatePart <-
   / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
-  / [^`\n] {
+  / !"${" [^`\n] {
       return TemplatePart{Lit: string(c.text)}, nil
     }
 
@@ -900,7 +900,7 @@ MultiTemplatePart <-
       return TemplatePart{Lit: ch.(string)}, nil
     }
 
-MultiTemplateContentChar <- !MultiTemplateCloseToken . {
+MultiTemplateContentChar <- !MultiTemplateCloseToken !"${" . {
   return string(c.text), nil
 }
 
