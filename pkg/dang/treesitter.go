@@ -231,13 +231,16 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 	case *notExpr:
 		// ignored
 		return nil
+	case *stateCodeExpr:
+		// Pigeon state mutation has no tree-sitter equivalent; the runtime
+		// constraint it enforces is dropped from the tree-sitter grammar.
+		return nil
+	case *andCodeExpr:
+		// Same: pigeon code predicates don't translate.
+		return nil
 	// case *throwExpr:
 	// 	// ignored
 	// case *recoveryExpr:
-	// 	// ignored
-	// case *stateCodeExpr:
-	// 	// ignored
-	// case *andCodeExpr:
 	// 	// ignored
 	// case *notCodeExpr:
 	// 	// ignored

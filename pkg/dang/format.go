@@ -174,6 +174,8 @@ func extractComments(source []byte) []Comment {
 
 	// Track if we're inside a triple-quoted string across lines
 	inTripleQuote := false
+	// Track open backtick-template fence length (0 = not in a template)
+	tickFence := 0
 	lines := bytes.Split(source, []byte("\n"))
 
 	for i, line := range lines {
@@ -186,7 +188,7 @@ func extractComments(source []byte) []Comment {
 
 		for j < len(lineStr) {
 			// Check for triple quotes
-			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` {
+			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` && tickFence == 0 {
 				inTripleQuote = !inTripleQuote
 				j += 3
 				continue
@@ -194,6 +196,31 @@ func extractComments(source []byte) []Comment {
 
 			// Skip everything inside triple-quoted strings
 			if inTripleQuote {
+				j++
+				continue
+			}
+
+			// Backtick template fences. A run of backticks either opens or
+			// closes a template; only an exact-length match closes the open one.
+			if lineStr[j] == '`' && !inString {
+				k := j
+				for k < len(lineStr) && lineStr[k] == '`' {
+					k++
+				}
+				run := k - j
+				if tickFence == 0 {
+					if run >= 3 || run == 1 {
+						tickFence = run
+					}
+				} else if run == tickFence {
+					tickFence = 0
+				}
+				j = k
+				continue
+			}
+
+			// Skip everything inside backtick templates.
+			if tickFence > 0 {
 				j++
 				continue
 			}
@@ -577,6 +604,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatSymbol(n)
 	case *String:
 		f.formatString(n)
+	case *Template:
+		f.formatTemplate(n)
 	case *Int:
 		f.formatInt(n)
 	case *Float:
@@ -2116,6 +2145,73 @@ func (f *Formatter) formatSelectInline(s *Select) {
 
 func (f *Formatter) formatSymbol(s *Symbol) {
 	f.write(s.Name)
+}
+
+func (f *Formatter) formatTemplate(t *Template) {
+	fence := strings.Repeat("`", t.Fence)
+	if t.Fence == 1 {
+		f.write(fence)
+		for _, p := range t.Parts {
+			f.formatTemplatePart(p)
+		}
+		f.write(fence)
+		return
+	}
+
+	// Multi-line: open fence (+ optional lang) on its own line, content
+	// indented, close fence on its own indented line.
+	f.write(fence)
+	if t.Lang != "" {
+		f.write(t.Lang)
+	}
+	f.newline()
+	needIndent := true
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.write("${")
+			f.formatNodeInline(p.Expr)
+			f.write("}")
+			continue
+		}
+		lines := strings.Split(p.Lit, "\n")
+		for i, line := range lines {
+			if i > 0 {
+				f.newline()
+				needIndent = true
+			}
+			if line == "" {
+				continue
+			}
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.write(escapeTemplateLit(line))
+		}
+	}
+	if !needIndent {
+		f.newline()
+	}
+	f.writeIndent()
+	f.write(fence)
+}
+
+func (f *Formatter) formatTemplatePart(p TemplatePart) {
+	if p.Expr != nil {
+		f.write("${")
+		f.formatNodeInline(p.Expr)
+		f.write("}")
+		return
+	}
+	f.write(escapeTemplateLit(p.Lit))
+}
+
+func escapeTemplateLit(s string) string {
+	return strings.ReplaceAll(s, "$", "$$")
 }
 
 func (f *Formatter) formatString(s *String) {

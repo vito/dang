@@ -2,6 +2,8 @@ package dang
 
 import (
 	"bytes"
+	"regexp"
+	"strconv"
 )
 
 // ParseWithComments parses source and returns the AST along with a map of
@@ -122,4 +124,75 @@ func normalizeTripleQuoteString(content []byte) string {
 	}
 
 	return string(bytes.Join(trimmedLines, []byte{'\n'}))
+}
+
+func templateFenceKey(depth int) string {
+	return "fence_" + strconv.Itoa(depth)
+}
+
+func makeTemplate(rawParts any, fence int, lang string, loc *SourceLocation) *Template {
+	parts := sliceOf[TemplatePart](rawParts)
+	if fence >= 3 {
+		parts = normalizeTemplateParts(parts)
+	}
+	parts = coalesceTemplateParts(parts)
+	return &Template{
+		Parts: parts,
+		Fence: fence,
+		Lang:  lang,
+		Loc:   loc,
+	}
+}
+
+var templateMarkerRe = regexp.MustCompile("\x00(\\d+)\x00")
+
+// normalizeTemplateParts applies the same dedent/trim rules as triple-quoted
+// strings to template content, treating expression parts as opaque markers
+// so their positions are preserved across the rewrite.
+func normalizeTemplateParts(parts []TemplatePart) []TemplatePart {
+	if len(parts) == 0 {
+		return parts
+	}
+	var buf bytes.Buffer
+	exprs := make([]Node, 0, len(parts))
+	for _, p := range parts {
+		if p.Expr != nil {
+			buf.WriteByte(0)
+			buf.WriteString(strconv.Itoa(len(exprs)))
+			buf.WriteByte(0)
+			exprs = append(exprs, p.Expr)
+		} else {
+			buf.WriteString(p.Lit)
+		}
+	}
+	normalized := normalizeTripleQuoteString(buf.Bytes())
+	var out []TemplatePart
+	last := 0
+	for _, m := range templateMarkerRe.FindAllStringSubmatchIndex(normalized, -1) {
+		if m[0] > last {
+			out = append(out, TemplatePart{Lit: normalized[last:m[0]]})
+		}
+		idx, _ := strconv.Atoi(normalized[m[2]:m[3]])
+		out = append(out, TemplatePart{Expr: exprs[idx]})
+		last = m[1]
+	}
+	if last < len(normalized) {
+		out = append(out, TemplatePart{Lit: normalized[last:]})
+	}
+	return out
+}
+
+// coalesceTemplateParts merges runs of adjacent literal parts into a single
+// part so downstream consumers (formatter, eval) see one chunk per literal
+// region instead of per-character.
+func coalesceTemplateParts(parts []TemplatePart) []TemplatePart {
+	var out []TemplatePart
+	for _, p := range parts {
+		if p.Expr == nil && len(out) > 0 && out[len(out)-1].Expr == nil {
+			out[len(out)-1].Lit += p.Lit
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
