@@ -558,7 +558,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 
-	// Update the root object in the environment (respects Fork boundaries)
+	// Update the root object in the environment (respects sealed scope boundaries)
 	// For self, update the dynamic scope so subsequent references see the change
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
 		env.MutateSelf(newRoot.(Value))

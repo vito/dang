@@ -64,7 +64,7 @@ type EvalEnv interface {
 	// If sealed, Update stays in the child rather than walking into parents.
 	Derive(sealed bool) EvalEnv
 	// Dynamic scope support for 'self'.
-	// Clone/Fork share the DynamicScope cell so that closures (e.g. block
+	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
 	// Code that establishes a NEW self (e.g. BoundMethod.Call) must call
 	// EnterSelf to create a fresh, unshared cell.
@@ -1226,7 +1226,7 @@ type ModuleValue struct {
 	Visibilities map[string]Visibility   // Track visibility of each field
 	Pending      map[string]*pendingInit // Deferred initializers; entries move to Values on force
 	Parent       *ModuleValue            // For hierarchical scoping
-	IsForked     bool                    // Prevents SetInScope from traversing to parent
+	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 }
 
@@ -1639,7 +1639,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 		// Bind constructor args so they shadow both instance fields and
 		// the outer closure (see #23). Args go in a separate env that is
-		// only consulted for reads (Lookup), while writes (Set/Update) go
+		// only consulted for reads (Lookup), while writes (Bind/Update) go
 		// to the instance as before.
 		argEnv := NewModuleValue(NewModule("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
