@@ -85,6 +85,15 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
+	input := "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n  name\n}`"
+	expected := "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n  name\n}`\n"
+
+	result, err := FormatFile([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+}
+
 func (FormatSuite) TestBlankLines(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string

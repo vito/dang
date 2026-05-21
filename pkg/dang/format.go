@@ -2148,6 +2148,13 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 }
 
 func (f *Formatter) formatTemplate(t *Template) {
+	if f.templateHasInterpolationComment(t) {
+		if orig := f.getOriginalSource(t); orig != "" {
+			f.write(orig)
+			return
+		}
+	}
+
 	fence := strings.Repeat("`", t.Fence)
 	if t.Fence == 1 {
 		f.write(fence)
@@ -2208,6 +2215,89 @@ func (f *Formatter) formatTemplatePart(p TemplatePart) {
 		return
 	}
 	f.write(escapeTemplateLit(p.Lit))
+}
+
+func (f *Formatter) templateHasInterpolationComment(t *Template) bool {
+	if t.Loc == nil || len(f.source) == 0 {
+		return false
+	}
+	return templateSourceHasInterpolationComment(f.getOriginalSource(t))
+}
+
+func templateSourceHasInterpolationComment(src string) bool {
+	if src == "" || src[0] != '`' {
+		return false
+	}
+
+	fence := 0
+	for fence < len(src) && src[fence] == '`' {
+		fence++
+	}
+	if fence == 0 {
+		return false
+	}
+
+	exprDepth := 0
+	inString := false
+	inTripleString := false
+	escaped := false
+	for i := fence; i < len(src); {
+		if exprDepth == 0 {
+			if strings.HasPrefix(src[i:], "${") {
+				exprDepth = 1
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+
+		if inTripleString {
+			if strings.HasPrefix(src[i:], `"""`) {
+				inTripleString = false
+				i += 3
+				continue
+			}
+			i++
+			continue
+		}
+
+		if inString {
+			if escaped {
+				escaped = false
+				i++
+				continue
+			}
+			switch src[i] {
+			case '\\':
+				escaped = true
+			case '"':
+				inString = false
+			}
+			i++
+			continue
+		}
+
+		if strings.HasPrefix(src[i:], `"""`) {
+			inTripleString = true
+			i += 3
+			continue
+		}
+
+		switch src[i] {
+		case '"':
+			inString = true
+		case '#':
+			return true
+		case '{':
+			exprDepth++
+		case '}':
+			exprDepth--
+		}
+		i++
+	}
+
+	return false
 }
 
 func escapeTemplateLit(s string) string {
