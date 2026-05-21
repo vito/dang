@@ -615,7 +615,7 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			}
 		}
 
-		val, found, err := getForcedValue(ctx, env, s.Name)
+		val, found, err := env.Get(ctx, s.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -806,7 +806,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return NullValue{}, nil
 
 			case EvalEnv:
-				if val, found, err := getForcedValue(ctx, rec, d.Field.Name); err != nil {
+				if val, found, err := rec.Get(ctx, d.Field.Name); err != nil {
 					return nil, err
 				} else if found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
@@ -826,7 +826,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on string values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field.Name)
-				if method, found := env.Get(methodKey); found {
+				if method, found, err := env.Get(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the string as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
@@ -838,7 +840,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on float values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field.Name)
-				if method, found := env.Get(methodKey); found {
+				if method, found, err := env.Get(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the float as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
@@ -850,7 +854,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on list values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field.Name)
-				if method, found := env.Get(methodKey); found {
+				if method, found, err := env.Get(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the list as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
@@ -1509,7 +1515,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 			// Build a result with the selected fields, preserving the concrete type
 			resultModuleValue := NewModuleValue(frag.Inferred)
 			for _, field := range frag.Fields {
-				fieldVal, exists, err := getForcedValue(ctx, modVal, field.Name)
+				fieldVal, exists, err := modVal.Get(ctx, field.Name)
 				if err != nil {
 					return nil, err
 				}
@@ -1866,7 +1872,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 		} else {
 			// No arguments - get field value directly
 			var exists bool
-			fieldVal, exists, err = getForcedValue(ctx, objVal, field.Name)
+			fieldVal, exists, err = objVal.Get(ctx, field.Name)
 			if err != nil {
 				return nil, err
 			}

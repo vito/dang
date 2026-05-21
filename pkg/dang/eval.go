@@ -47,7 +47,8 @@ type Callable interface {
 // EvalEnv represents the evaluation environment
 type EvalEnv interface {
 	Value
-	Get(name string) (Value, bool)
+	// Get resolves a binding and forces lazy module initializers before returning.
+	Get(ctx context.Context, name string) (Value, bool, error)
 	GetLocal(name string) (Value, bool)
 	Bindings(Visibility) []Keyed[Value]
 	Set(name string, value Value) EvalEnv
@@ -1223,12 +1224,24 @@ func (m *ModuleValue) String() string {
 	return fmt.Sprintf("module %s", m.Mod)
 }
 
-func (m *ModuleValue) Get(name string) (Value, bool) {
+func (m *ModuleValue) Get(ctx context.Context, name string) (Value, bool, error) {
+	val, found := m.getRaw(name)
+	if !found {
+		return nil, false, nil
+	}
+	forced, err := forceLazyValue(ctx, val)
+	if err != nil {
+		return nil, true, err
+	}
+	return forced, true, nil
+}
+
+func (m *ModuleValue) getRaw(name string) (Value, bool) {
 	if val, ok := m.Values[name]; ok {
 		return val, true
 	}
 	if m.Parent != nil {
-		return m.Parent.Get(name)
+		return m.Parent.getRaw(name)
 	}
 	return nil, false
 }
@@ -1324,7 +1337,7 @@ func (m *ModuleValue) Reassign(name string, value Value) {
 		m.Values[name] = value
 		m.Visibilities[name] = m.Visibility(name)
 	} else if m.Parent != nil && !m.IsForked {
-		if _, existsInParent := m.Parent.Get(name); existsInParent {
+		if _, existsInParent := m.Parent.getRaw(name); existsInParent {
 			// Variable exists in parent, update parent (only if not forked)
 			m.Parent.Reassign(name, value)
 		} else {
@@ -1671,7 +1684,7 @@ func (c *ConstructorFunction) checkRequiredFields(instance *ModuleValue) error {
 		fieldType, _ := scheme.Type()
 		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
 			// Check if this field has a value on the instance
-			val, found := instance.Get(name)
+			val, found := getRawValue(instance, name)
 			if !found {
 				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
 			}

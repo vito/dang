@@ -46,16 +46,15 @@ func (l *lazySlotValue) String() string {
 	return fmt.Sprintf("<lazy %s>", l.Name)
 }
 
-func getForcedValue(ctx context.Context, env EvalEnv, name string) (Value, bool, error) {
-	val, found := env.Get(name)
-	if !found {
-		return nil, false, nil
+type rawValueGetter interface {
+	getRaw(name string) (Value, bool)
+}
+
+func getRawValue(env EvalEnv, name string) (Value, bool) {
+	if raw, ok := env.(rawValueGetter); ok {
+		return raw.getRaw(name)
 	}
-	forced, err := forceLazyValue(ctx, val)
-	if err != nil {
-		return nil, true, err
-	}
-	return forced, true, nil
+	return nil, false
 }
 
 func forceLazyValue(ctx context.Context, val Value) (Value, error) {

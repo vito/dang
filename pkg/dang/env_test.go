@@ -12,6 +12,13 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
+func requireEvalGet(t *testing.T, env EvalEnv, name string) (Value, bool) {
+	t.Helper()
+	val, found, err := env.Get(context.Background(), name)
+	require.NoError(t, err)
+	return val, found
+}
+
 func TestNewEnvSchemaTypeShadowsPreludeType(t *testing.T) {
 	_, found := ErrorType.LocalSchemeOf("id")
 	require.False(t, found)
@@ -105,7 +112,7 @@ type Error {
 }
 assert { Error.id == "x" }
 `)
-	classVal, found := env.Get("Error")
+	classVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
 	classFn, ok := classVal.(*ConstructorFunction)
 	require.True(t, ok)
@@ -117,7 +124,7 @@ assert { Error.id == "x" }
 enum Error { FOO }
 assert { Error.FOO == Error.FOO }
 `)
-	enumVal, found := env.Get("Error")
+	enumVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
 	enumMod, ok := enumVal.(*ModuleValue)
 	require.True(t, ok)
@@ -128,7 +135,7 @@ assert { Error.FOO == Error.FOO }
 	env = runDangSnippet(t, `
 scalar Error
 `)
-	scalarVal, found := env.Get("Error")
+	scalarVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
 	scalarMod, ok := scalarVal.(*ModuleValue)
 	require.True(t, ok)
@@ -205,9 +212,9 @@ func TestBuildEnvFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
 	require.NotContains(t, publicEvalBindings, "Dagger")
 	require.NotContains(t, publicEvalBindings, "container")
 
-	_, found = evalEnv.Get("Dagger")
+	_, found = requireEvalGet(t, evalEnv, "Dagger")
 	require.True(t, found)
-	_, found = evalEnv.Get("container")
+	_, found = requireEvalGet(t, evalEnv, "container")
 	require.True(t, found)
 }
 
@@ -282,7 +289,7 @@ type Directory {
 }
 `)
 
-	daggerVal, found := env.Get("Dagger")
+	daggerVal, found := requireEvalGet(t, env, "Dagger")
 	require.True(t, found)
 	daggerMod, ok := daggerVal.(*ModuleValue)
 	require.True(t, ok)
@@ -291,7 +298,7 @@ type Directory {
 	importedDirectory, found := daggerMod.Mod.NamedType("Directory")
 	require.True(t, found)
 
-	containerVal, found := env.Get("Container")
+	containerVal, found := requireEvalGet(t, env, "Container")
 	require.True(t, found)
 	containerCtor, ok := containerVal.(*ConstructorFunction)
 	require.True(t, ok)
@@ -306,13 +313,13 @@ type Directory {
 	require.Same(t, containerCtor.ClassType, maybeType)
 	require.NotSame(t, importedContainer, maybeType)
 
-	directoryVal, found := env.Get("Directory")
+	directoryVal, found := requireEvalGet(t, env, "Directory")
 	require.True(t, found)
 	directoryCtor, ok := directoryVal.(*ConstructorFunction)
 	require.True(t, ok)
 	require.NotSame(t, importedDirectory, directoryCtor.ClassType)
 
-	testVal, found := env.Get("TestShadowing")
+	testVal, found := requireEvalGet(t, env, "TestShadowing")
 	require.True(t, found)
 	testCtor, ok := testVal.(*ConstructorFunction)
 	require.True(t, ok)
@@ -351,14 +358,14 @@ type Test {
 	env, err := DeclareDir(ctx, dir, false)
 	require.NoError(t, err)
 
-	daggerVal, found := env.Get("Dagger")
+	daggerVal, found := requireEvalGet(t, env, "Dagger")
 	require.True(t, found)
 	daggerMod, ok := daggerVal.(*ModuleValue)
 	require.True(t, ok)
 	importedContainer, found := daggerMod.Mod.NamedType("Container")
 	require.True(t, found)
 
-	testVal, found := env.Get("Test")
+	testVal, found := requireEvalGet(t, env, "Test")
 	require.True(t, found)
 	testCtor, ok := testVal.(*ConstructorFunction)
 	require.True(t, ok)

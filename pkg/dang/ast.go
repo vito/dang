@@ -317,14 +317,23 @@ type CompositeEnv struct {
 	lexical EvalEnv // Where to look for external variables (current environment)
 }
 
-func (c CompositeEnv) Get(name string) (Value, bool) {
+func (c CompositeEnv) Get(ctx context.Context, name string) (Value, bool, error) {
 	// First check the primary environment (receiver/parameters)
 	// This allows parameters and receiver fields to shadow lexical scope
-	if val, found := c.primary.Get(name); found {
-		return val, true
+	if val, found, err := c.primary.Get(ctx, name); err != nil {
+		return nil, found, err
+	} else if found {
+		return val, true, nil
 	}
 	// Then check the lexical environment for fallback
-	return c.lexical.Get(name)
+	return c.lexical.Get(ctx, name)
+}
+
+func (c CompositeEnv) getRaw(name string) (Value, bool) {
+	if val, found := getRawValue(c.primary, name); found {
+		return val, true
+	}
+	return getRawValue(c.lexical, name)
 }
 
 func (c CompositeEnv) GetLocal(name string) (Value, bool) {
@@ -358,11 +367,11 @@ func (m CompositeEnv) MarshalJSON() ([]byte, error) {
 func (c CompositeEnv) GetForAssignment(name string) (Value, bool) {
 	// For assignment operations, prefer the primary environment (receiver)
 	// This ensures compound assignments like += work on receiver fields
-	if val, found := c.primary.Get(name); found {
+	if val, found := getRawValue(c.primary, name); found {
 		return val, true
 	}
 	// Fall back to lexical environment only if not found in primary
-	return c.lexical.Get(name)
+	return getRawValue(c.lexical, name)
 }
 
 var _ Value = CompositeEnv{}
@@ -454,17 +463,31 @@ func CreateConstructorEnv(instance EvalEnv, args EvalEnv, closure EvalEnv) *Cons
 	}
 }
 
-func (e *ConstructorEnv) Get(name string) (Value, bool) {
+func (e *ConstructorEnv) Get(ctx context.Context, name string) (Value, bool, error) {
 	// Constructor args shadow everything
-	if val, found := e.args.Get(name); found {
-		return val, true
+	if val, found, err := e.args.Get(ctx, name); err != nil {
+		return nil, found, err
+	} else if found {
+		return val, true, nil
 	}
 	// Then instance fields
-	if val, found := e.instance.Get(name); found {
-		return val, true
+	if val, found, err := e.instance.Get(ctx, name); err != nil {
+		return nil, found, err
+	} else if found {
+		return val, true, nil
 	}
 	// Then lexical closure
-	return e.closure.Get(name)
+	return e.closure.Get(ctx, name)
+}
+
+func (e *ConstructorEnv) getRaw(name string) (Value, bool) {
+	if val, found := getRawValue(e.args, name); found {
+		return val, true
+	}
+	if val, found := getRawValue(e.instance, name); found {
+		return val, true
+	}
+	return getRawValue(e.closure, name)
 }
 
 func (e *ConstructorEnv) GetLocal(name string) (Value, bool) {
@@ -498,10 +521,10 @@ func (e *ConstructorEnv) MarshalJSON() ([]byte, error) {
 
 func (e *ConstructorEnv) GetForAssignment(name string) (Value, bool) {
 	// For assignments, use the instance
-	if val, found := e.instance.Get(name); found {
+	if val, found := getRawValue(e.instance, name); found {
 		return val, true
 	}
-	return e.closure.Get(name)
+	return getRawValue(e.closure, name)
 }
 
 func (e *ConstructorEnv) Set(name string, value Value) EvalEnv {
@@ -516,7 +539,7 @@ func (e *ConstructorEnv) SetWithVisibility(name string, value Value, visibility 
 func (e *ConstructorEnv) Reassign(name string, value Value) {
 	// If the name is a constructor arg, reassign there so that
 	// subsequent reads (which check args first) see the new value.
-	if _, found := e.args.Get(name); found {
+	if _, found := getRawValue(e.args, name); found {
 		e.args.Reassign(name, value)
 		return
 	}

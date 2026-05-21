@@ -452,7 +452,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: x = value
-		_, found := env.Get(varName)
+		_, found := getRawValue(env, varName)
 		if !found {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
@@ -460,7 +460,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 		return value, nil
 	case "+":
 		// Compound assignment: x += value
-		currentValue, found, err := getForcedValue(ctx, env, varName)
+		currentValue, found, err := env.Get(ctx, varName)
 		if err != nil {
 			return nil, err
 		}
@@ -500,7 +500,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		}
 	} else if rootSymbol, ok := rootNode.(*Symbol); ok {
 		rootSymbolName = rootSymbol.Name
-		rootObj, found, err = getForcedValue(ctx, env, rootSymbolName)
+		rootObj, found, err = env.Get(ctx, rootSymbolName)
 		if err != nil {
 			return nil, err
 		}
@@ -518,7 +518,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	currentObj := newRoot
 	for i := range len(path) - 1 {
 		fieldName := path[i]
-		val, found, err := getForcedValue(ctx, currentObj, fieldName)
+		val, found, err := currentObj.Get(ctx, fieldName)
 		if err != nil {
 			return nil, err
 		}
@@ -540,7 +540,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		currentObj.Set(finalField, value)
 	case "+":
 		// Compound assignment: obj.field += value
-		currentValue, found, err := getForcedValue(ctx, currentObj, finalField)
+		currentValue, found, err := currentObj.Get(ctx, finalField)
 		if err != nil {
 			return nil, err
 		}
