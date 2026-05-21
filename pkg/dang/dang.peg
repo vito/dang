@@ -895,9 +895,13 @@ MultiTemplatePart <-
   / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
-  / !MultiTemplateCloseToken . {
-      return TemplatePart{Lit: string(c.text)}, nil
+  / ch:MultiTemplateContentChar {
+      return TemplatePart{Lit: ch.(string)}, nil
     }
+
+MultiTemplateContentChar <- !MultiTemplateCloseToken . {
+  return string(c.text), nil
+}
 
 DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
   return normalizeTripleQuoteString(content.([]byte)), nil

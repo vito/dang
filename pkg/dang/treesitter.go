@@ -8,17 +8,38 @@ import (
 	"github.com/vito/dang/pkg/dang/treesitter"
 )
 
+// tsSkippedRules lists named rules whose bodies should not appear in the
+// tree-sitter grammar because they are produced by the external scanner
+// instead. References to these rules are redirected via tsRuleRefAliases.
+var tsSkippedRules = map[string]bool{
+	"MultiTemplateOpenToken":   true,
+	"MultiTemplateCloseToken":  true,
+	"MultiTemplateContentChar": true,
+}
+
 func skipTS(name string) bool {
-	return strings.HasPrefix(name, "_")
+	if strings.HasPrefix(name, "_") {
+		return true
+	}
+	return tsSkippedRules[name]
 }
 
 var tsExternalRuleNames = []treesitter.RuleName{
 	"_automatic_newline",
 	"_inline_space",
+	// Backtick template fences. Variable-length matching can't be done in
+	// tree-sitter's built-in lexer, so an external scanner tracks the open
+	// fence count and refuses non-matching close runs as content.
+	"multi_template_open_token",
+	"multi_template_close_token",
+	"_template_content_char",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
-	"_inlineSpace": "_inline_space",
+	"_inlineSpace":             "_inline_space",
+	"MultiTemplateOpenToken":   "multi_template_open_token",
+	"MultiTemplateCloseToken":  "multi_template_close_token",
+	"MultiTemplateContentChar": "_template_content_char",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
