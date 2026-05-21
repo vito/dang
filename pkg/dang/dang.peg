@@ -881,12 +881,13 @@ MultiTemplateCloseToken <- ticks:('`'+) !'`' &{
   return len(ticks.([]interface{})) == expected, nil
 }
 
-LangTagPart <- name:LangTagName '\n' {
+LangTagPart <- name:LangTagName LangTagTerminator {
   return name, nil
 }
 LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
   return string(c.text), nil
 }
+LangTagTerminator <- '\n'
 
 MultiTemplatePart <-
     "$$" {

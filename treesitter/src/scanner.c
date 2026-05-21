@@ -9,6 +9,7 @@ enum {
   TEMPLATE_MULTI_OPEN,
   TEMPLATE_MULTI_CLOSE,
   TEMPLATE_CONTENT_CHAR,
+  LANG_TAG_TERMINATOR,
 };
 
 // Maximum nesting depth for backtick templates. Each level stores the open
@@ -17,6 +18,11 @@ enum {
 
 typedef struct {
   unsigned char depth;
+  // After an open fence is consumed, the very next position might start a
+  // language tag. This flag tells the content scanner to refuse a leading
+  // letter once, so the internal lexer gets a chance to match the optional
+  // lang_tag_part. Reset after the first refusal or first successful match.
+  unsigned char just_opened;
   unsigned char fence_stack[TEMPLATE_MAX_DEPTH];
 } Scanner;
 
@@ -33,6 +39,7 @@ unsigned tree_sitter_dang_external_scanner_serialize(void *payload, char *buffer
   Scanner *s = (Scanner *)payload;
   unsigned n = 0;
   buffer[n++] = (char)s->depth;
+  buffer[n++] = (char)s->just_opened;
   for (unsigned i = 0; i < s->depth && i < TEMPLATE_MAX_DEPTH; i++) {
     buffer[n++] = (char)s->fence_stack[i];
   }
@@ -42,6 +49,7 @@ unsigned tree_sitter_dang_external_scanner_serialize(void *payload, char *buffer
 void tree_sitter_dang_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
   Scanner *s = (Scanner *)payload;
   s->depth = 0;
+  s->just_opened = 0;
   memset(s->fence_stack, 0, sizeof(s->fence_stack));
   if (length == 0) {
     return;
@@ -51,8 +59,11 @@ void tree_sitter_dang_external_scanner_deserialize(void *payload, const char *bu
     d = TEMPLATE_MAX_DEPTH;
   }
   s->depth = (unsigned char)d;
-  for (unsigned i = 0; i < d && (i + 1) < length; i++) {
-    s->fence_stack[i] = (unsigned char)buffer[i + 1];
+  if (length >= 2) {
+    s->just_opened = (unsigned char)buffer[1];
+  }
+  for (unsigned i = 0; i < d && (i + 2) < length; i++) {
+    s->fence_stack[i] = (unsigned char)buffer[i + 2];
   }
 }
 
@@ -156,6 +167,7 @@ static bool scan_template_open(Scanner *s, TSLexer *lexer) {
     return false;
   }
   s->fence_stack[s->depth++] = (unsigned char)(count > 255 ? 255 : count);
+  s->just_opened = 1;
   lexer->result_symbol = TEMPLATE_MULTI_OPEN;
   return true;
 }
@@ -180,6 +192,19 @@ static bool scan_template_close(Scanner *s, TSLexer *lexer) {
   return true;
 }
 
+// Scan the newline that terminates a language tag. Consuming it clears the
+// "just opened" flag so the first byte of actual content (which may be a
+// letter) isn't mistaken for the start of another lang tag.
+static bool scan_lang_tag_terminator(Scanner *s, TSLexer *lexer) {
+  if (!s->just_opened || lexer->lookahead != '\n') {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  s->just_opened = 0;
+  lexer->result_symbol = LANG_TAG_TERMINATOR;
+  return true;
+}
+
 // Scan one piece of template content: one or more bytes that are neither a
 // dollar (so the parser can match $$ / ${...}) nor part of a matching close
 // fence. A run of backticks whose length doesn't match the open fence is
@@ -187,6 +212,17 @@ static bool scan_template_close(Scanner *s, TSLexer *lexer) {
 static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
   if (s->depth == 0 || lexer->eof(lexer)) {
     return false;
+  }
+  // Right after an open fence, defer letters to the internal lexer so it can
+  // try the optional language tag (`[A-Za-z][A-Za-z0-9_-]*` followed by \n).
+  // After one refusal we hand control back; if no lang tag matched, the
+  // letter will be picked up as content on the next scan.
+  if (s->just_opened) {
+    s->just_opened = 0;
+    if ((lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
+        (lexer->lookahead >= 'a' && lexer->lookahead <= 'z')) {
+      return false;
+    }
   }
   if (lexer->lookahead == '$') {
     return false;
@@ -230,6 +266,9 @@ bool tree_sitter_dang_external_scanner_scan(
 
   // Template tokens are checked before the generic newline/space ones because
   // their content scanner may consume whitespace inside templates.
+  if (valid_symbols[LANG_TAG_TERMINATOR] && scan_lang_tag_terminator(s, lexer)) {
+    return true;
+  }
   if (valid_symbols[TEMPLATE_MULTI_CLOSE] && scan_template_close(s, lexer)) {
     return true;
   }

@@ -1,1 +1,1 @@
-zed-dang/languages/dang/outline.scm
+../../editors/zed/languages/dang/outline.scm

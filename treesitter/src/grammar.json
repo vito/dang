@@ -205,7 +205,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 173,
+      "value": 174,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -433,7 +433,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 166,
+      "value": 167,
       "content": {
         "type": "SEQ",
         "members": [
@@ -516,7 +516,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 165,
+      "value": 166,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2432,7 +2432,7 @@
     },
     "named_type": {
       "type": "PREC_LEFT",
-      "value": 106,
+      "value": 107,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2661,7 +2661,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 98,
+      "value": 99,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2725,7 +2725,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 97,
+      "value": 98,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2789,7 +2789,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 96,
+      "value": 97,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2870,7 +2870,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 94,
+      "value": 95,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2959,7 +2959,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 92,
+      "value": 93,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3040,7 +3040,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 90,
+      "value": 91,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3915,8 +3915,8 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "\n"
+          "type": "SYMBOL",
+          "name": "_lang_tag_terminator"
         }
       ]
     },
@@ -5334,6 +5334,10 @@
     {
       "type": "SYMBOL",
       "name": "_template_content_char"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_lang_tag_terminator"
     }
   ],
   "supertypes": [

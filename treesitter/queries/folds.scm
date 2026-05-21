@@ -1,1 +1,1 @@
-zed-dang/languages/dang/folds.scm
+../../editors/zed/languages/dang/folds.scm

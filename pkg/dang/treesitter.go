@@ -15,6 +15,7 @@ var tsSkippedRules = map[string]bool{
 	"MultiTemplateOpenToken":   true,
 	"MultiTemplateCloseToken":  true,
 	"MultiTemplateContentChar": true,
+	"LangTagTerminator":        true,
 }
 
 func skipTS(name string) bool {
@@ -33,6 +34,11 @@ var tsExternalRuleNames = []treesitter.RuleName{
 	"multi_template_open_token",
 	"multi_template_close_token",
 	"_template_content_char",
+	// Terminator for the optional language tag. External so the scanner can
+	// clear its "just opened" flag at the right moment — once we've consumed
+	// the newline after a lang tag, the next content letter is safe to treat
+	// as content rather than the start of another lang tag attempt.
+	"_lang_tag_terminator",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
@@ -40,6 +46,7 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 	"MultiTemplateOpenToken":   "multi_template_open_token",
 	"MultiTemplateCloseToken":  "multi_template_close_token",
 	"MultiTemplateContentChar": "_template_content_char",
+	"LangTagTerminator":        "_lang_tag_terminator",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
