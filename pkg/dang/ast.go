@@ -362,18 +362,6 @@ func (m CompositeEnv) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.primary)
 }
 
-// GetForAssignment returns the value from the environment where assignment should occur
-// For compound assignments, we want to read and write from the same environment (primary)
-func (c CompositeEnv) GetForAssignment(name string) (Value, bool) {
-	// For assignment operations, prefer the primary environment (receiver)
-	// This ensures compound assignments like += work on receiver fields
-	if val, found := getRawValue(c.primary, name); found {
-		return val, true
-	}
-	// Fall back to lexical environment only if not found in primary
-	return getRawValue(c.lexical, name)
-}
-
 var _ Value = CompositeEnv{}
 
 func (c CompositeEnv) String() string {
@@ -517,14 +505,6 @@ func (e *ConstructorEnv) Bindings(vis Visibility) []Keyed[Value] {
 
 func (e *ConstructorEnv) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.instance)
-}
-
-func (e *ConstructorEnv) GetForAssignment(name string) (Value, bool) {
-	// For assignments, use the instance
-	if val, found := getRawValue(e.instance, name); found {
-		return val, true
-	}
-	return getRawValue(e.closure, name)
 }
 
 func (e *ConstructorEnv) Set(name string, value Value) EvalEnv {
