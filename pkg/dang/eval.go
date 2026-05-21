@@ -2000,24 +2000,19 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, err
 		return NewEvalEnv(NewPreludeEnv("")), nil
 	}
 
-	masterBlock := &ModuleBlock{
-		Forms:  allForms,
-		Inline: true,
-	}
-
 	if isDebug {
 		fmt.Printf("Declaring directory: %s\n", dirPath)
-		fmt.Printf("Found %d .dang files with %d total forms\n", fileCount, len(masterBlock.Forms))
+		fmt.Printf("Found %d .dang files with %d total forms\n", fileCount, len(allForms))
 	}
 
 	typeEnv := NewPreludeEnv("")
 	fresh := hm.NewSimpleFresher()
-	if _, err := DeclareFormsWithPhases(ctx, masterBlock.Forms, typeEnv, fresh); err != nil {
+	if _, err := DeclareFormsWithPhases(ctx, allForms, typeEnv, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
 	evalEnv := NewEvalEnv(typeEnv)
-	if _, err := EvaluateDeclaredFormsWithPhases(ctx, masterBlock.Forms, evalEnv); err != nil {
+	if _, err := EvaluateDeclaredFormsWithPhases(ctx, allForms, evalEnv); err != nil {
 		return nil, err
 	}
 
