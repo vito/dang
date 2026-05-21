@@ -25,3 +25,17 @@ type TemplateDefaultUser {
 }
 
 assert { TemplateDefaultUser.message == "hello Grace" }
+
+# A variable can construct a hoisted type before a later computed default's
+# value has been evaluated. The constructor must wait for the default's
+# dependency even though it is hidden inside the type body.
+pub runtimeUser = RuntimeTemplateDefaultUser
+
+pub runtimeWho = "Katherine"
+pub runtimeTemplatedDefault = `hello ${runtimeWho}`
+
+type RuntimeTemplateDefaultUser {
+  pub message: String! = runtimeTemplatedDefault
+}
+
+assert { runtimeUser.message == "hello Katherine" }

@@ -65,6 +65,10 @@ func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth i
 
 // orderByDependencies orders the declarers using topological sort based on dependencies
 func orderByDependencies(declarers []Node) ([]Node, error) {
+	return orderByDependenciesWithReferences(declarers, getSymbolReferences)
+}
+
+func orderByDependenciesWithReferences(declarers []Node, references func(Node) []string) ([]Node, error) {
 	if len(declarers) <= 1 {
 		return declarers, nil
 	}
@@ -83,7 +87,7 @@ func orderByDependencies(declarers []Node) ([]Node, error) {
 
 	// Second pass: collect what each declarer depends on
 	for i, declarer := range declarers {
-		refs := getSymbolReferences(declarer)
+		refs := references(declarer)
 		for _, ref := range refs {
 			if depIndex, exists := declared[ref]; exists && depIndex != i {
 				dependencies[i] = append(dependencies[i], depIndex)
@@ -232,6 +236,165 @@ func classifyForms(forms []Node) ClassifiedForms {
 	}
 
 	return classified
+}
+
+func orderVariablesByRuntimeDependencies(variables []Node, classified ClassifiedForms) ([]Node, error) {
+	runtimeDeps := buildRuntimeDependencyIndex(classified)
+	return orderByDependenciesWithReferences(variables, func(node Node) []string {
+		return expandRuntimeDependencies(runtimeValueReferences(node), runtimeDeps)
+	})
+}
+
+func buildRuntimeDependencyIndex(classified ClassifiedForms) map[string][]string {
+	deps := make(map[string][]string)
+	for _, form := range classified.Types {
+		if class, ok := form.(*ClassDecl); ok {
+			deps[class.Name.Name] = classConstructorRuntimeReferences(class)
+		}
+	}
+	for _, form := range classified.Functions {
+		switch fn := form.(type) {
+		case *SlotDecl:
+			if funDecl, ok := fn.Value.(*FunDecl); ok {
+				deps[fn.Name.Name] = functionRuntimeReferences(funDecl)
+			}
+		case *FunDecl:
+			if fn.Named != "" {
+				deps[fn.Named] = functionRuntimeReferences(fn)
+			}
+		}
+	}
+	return deps
+}
+
+func expandRuntimeDependencies(refs []string, runtimeDeps map[string][]string) []string {
+	var out []string
+	seen := make(map[string]bool)
+	var visit func(string)
+	visit = func(ref string) {
+		if seen[ref] {
+			return
+		}
+		seen[ref] = true
+		out = append(out, ref)
+		for _, dep := range runtimeDeps[ref] {
+			visit(dep)
+		}
+	}
+	for _, ref := range refs {
+		visit(ref)
+	}
+	return out
+}
+
+func classConstructorRuntimeReferences(class *ClassDecl) []string {
+	bound := make(map[string]bool)
+	memberRuntimeDeps := make(map[string][]string)
+	for _, form := range class.Value.Forms {
+		if slot, ok := form.(*SlotDecl); ok {
+			bound[slot.Name.Name] = true
+			if funDecl, ok := slot.Value.(*FunDecl); ok {
+				memberRuntimeDeps[slot.Name.Name] = functionRuntimeReferences(funDecl)
+			}
+		}
+	}
+
+	var refs []string
+	var memberRefs []string
+	newDecl := class.findNewConstructor()
+	if newDecl != nil {
+		argBound := make(map[string]bool)
+		for _, arg := range newDecl.Args {
+			if arg.Value != nil {
+				refs = append(refs, filterRuntimeReferences(runtimeValueReferences(arg.Value), argBound)...)
+			}
+			bound[arg.Name.Name] = true
+			argBound[arg.Name.Name] = true
+		}
+		if newDecl.BlockParam != nil {
+			bound[newDecl.BlockParam.Name.Name] = true
+		}
+	}
+
+	for _, form := range class.bodyFormsWithoutNew() {
+		slot, ok := form.(*SlotDecl)
+		if !ok {
+			memberRefs = append(memberRefs, runtimeValueReferences(form)...)
+			continue
+		}
+		if slot.Value == nil {
+			continue
+		}
+		if _, isFun := slot.Value.(*FunDecl); isFun {
+			continue
+		}
+		memberRefs = append(memberRefs, runtimeValueReferences(slot.Value)...)
+	}
+
+	if newDecl != nil {
+		memberRefs = append(memberRefs, runtimeValueReferences(newDecl.BodyBlock)...)
+	}
+
+	memberRefs = expandRuntimeDependencies(memberRefs, memberRuntimeDeps)
+	refs = append(refs, filterRuntimeReferences(memberRefs, bound)...)
+	return refs
+}
+
+func functionRuntimeReferences(fun *FunDecl) []string {
+	bound := make(map[string]bool)
+	var refs []string
+	for _, arg := range fun.Args {
+		if arg.Value != nil {
+			refs = append(refs, filterRuntimeReferences(runtimeValueReferences(arg.Value), bound)...)
+		}
+		bound[arg.Name.Name] = true
+	}
+	if fun.BlockParam != nil {
+		bound[fun.BlockParam.Name.Name] = true
+	}
+	if fun.FunctionBase.Body != nil {
+		refs = append(refs, filterRuntimeReferences(runtimeValueReferences(fun.FunctionBase.Body), bound)...)
+	}
+	return refs
+}
+
+func runtimeValueReferences(node Node) []string {
+	if node == nil {
+		return nil
+	}
+	switch n := node.(type) {
+	case *SlotDecl:
+		if n.Value == nil {
+			return nil
+		}
+		if _, isFun := n.Value.(*FunDecl); isFun {
+			return nil
+		}
+		return runtimeValueReferences(n.Value)
+	case *FunDecl, *ClassDecl, *InterfaceDecl, *UnionDecl, *EnumDecl, *ScalarDecl, *NewConstructorDecl:
+		return nil
+	case *Block:
+		var refs []string
+		for _, form := range n.Forms {
+			refs = append(refs, runtimeValueReferences(form)...)
+		}
+		return refs
+	default:
+		return n.ReferencedSymbols()
+	}
+}
+
+func filterRuntimeReferences(refs []string, bound map[string]bool) []string {
+	if len(bound) == 0 {
+		return refs
+	}
+	filtered := refs[:0]
+	for _, ref := range refs {
+		if !bound[ref] {
+			filtered = append(filtered, ref)
+		}
+	}
+	return filtered
 }
 
 // DeclareFormsWithPhases performs the declaration/signature half of phased
@@ -451,9 +614,11 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 6: Evaluate variables in dependency order
+	// Phase 6: Evaluate variables in dependency order, including dependencies
+	// hidden behind constructors or auto-called functions that may execute while
+	// evaluating a variable initializer.
 	if len(classified.Variables) > 0 {
-		orderedVars, err := orderByDependencies(classified.Variables)
+		orderedVars, err := orderVariablesByRuntimeDependencies(classified.Variables, classified)
 		if err != nil {
 			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
 		}
