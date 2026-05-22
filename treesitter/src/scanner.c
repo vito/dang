@@ -150,9 +150,11 @@ static bool scan_template_open(Scanner *s, TSLexer *lexer) {
     return false;
   }
   // The external scanner runs before extras are skipped, so consume any
-  // leading inline whitespace ourselves (as extras, via skip=true) so we
-  // see the actual fence start.
-  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+  // leading whitespace ourselves (as extras, via skip=true) so we see the
+  // actual fence start — including newlines, so fences can open on a fresh
+  // line inside paren-arg contexts.
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         lexer->lookahead == '\n' || lexer->lookahead == '\r') {
     lexer->advance(lexer, true);
   }
   if (lexer->lookahead != '`') {

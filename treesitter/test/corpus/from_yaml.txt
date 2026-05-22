@@ -1,0 +1,42 @@
+===
+Triple-backtick fence inside call args after a newline
+===
+
+fromYAML(
+  ```yaml
+  foo: 1
+  ```,
+)
+
+---
+
+(dang
+  last: (symbol_or_call
+    (call
+      name: (symbol
+        name: (id
+          (word_token)))
+      args: (arg_values
+        (immediate_paren)
+        a: (argument
+          (positional_value
+            value: (literal
+              (template
+                (multi_template
+                  ticks: (multi_template_open_token)
+                  lang: (lang_tag_part
+                    name: (lang_tag_name))
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  parts: (multi_template_part)
+                  (multi_template_close_token))))))
+        args: (sep
+          (comma_token))))))
