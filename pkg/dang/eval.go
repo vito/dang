@@ -2144,28 +2144,188 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 	}
 
 	evalCtx := NewEvalContext(dirPath, "")
+	ctx = WithEvalContext(ctx, evalCtx)
 
-	// InferDirectoryFiles already prepended auto-imports into each block. The
-	// shared evalEnv is the cross-file declaration store; per-file imports are
-	// evaluated in source order with the rest of each file's forms.
-	var allForms []Node
-	for _, block := range blocks {
-		allForms = append(allForms, block.Forms...)
-	}
-	masterBlock := &ModuleBlock{Forms: allForms, Inline: true}
-
-	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
-	if err != nil {
+	// Per-file evaluation matches type inference: each file's imports populate
+	// a fresh per-file env, composed with the shared evalEnv so cross-file
+	// declarations stay visible to siblings while imported names don't leak.
+	if err := evaluateDirectoryFiles(ctx, blocks, evalEnv); err != nil {
 		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
 			return nil, translated
 		}
 		return nil, err
 	}
 
-	slog.Debug("directory evaluation completed", "result", result.String(), "dir", dirPath)
+	slog.Debug("directory evaluation completed", "dir", dirPath)
 
 	return evalEnv, nil
 }
+
+// evaluateDirectoryFiles evaluates each file's forms with file-local imports
+// composed over the shared evalEnv, mirroring InferDirectoryFiles' per-file
+// scoping. Phases run in lockstep across files so cross-file references resolve
+// regardless of file order.
+//
+// A single-file directory has no sibling to leak imports to, so its forms are
+// evaluated directly against evalEnv — the imports end up reachable from the
+// returned env, which is what callers like RunDir's single-file tests rely on.
+func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv EvalEnv) error {
+	if len(blocks) == 1 {
+		_, err := EvaluateFormsWithPhases(ctx, blocks[0].Forms, evalEnv)
+		return err
+	}
+
+	type fileEvalScope struct {
+		classified ClassifiedForms
+		env        EvalEnv
+	}
+
+	scopes := make([]fileEvalScope, 0, len(blocks))
+	for _, block := range blocks {
+		imports, rest := partitionImports(block.Forms)
+
+		// Install imports into a fresh per-file env. Using Derive (rather than
+		// a sibling ModuleValue) keeps the prelude reachable for any lookups
+		// the imports phase performs during installation.
+		importsEnv := evalEnv.Derive(true)
+		for _, imp := range imports {
+			if _, err := EvalNode(ctx, importsEnv, imp); err != nil {
+				return err
+			}
+		}
+
+		fileEnv := &CompositeEvalEnv{primary: evalEnv, lexical: importsEnv}
+		scopes = append(scopes, fileEvalScope{
+			classified: classifyForms(rest),
+			env:        fileEnv,
+		})
+	}
+
+	// Phase order matches EvaluateFormsWithPhases (minus imports, which we
+	// already ran per file above): directives, constants, types, functions,
+	// variables (as lazy slots), then non-declarations.
+	for _, scope := range scopes {
+		for _, form := range scope.classified.Directives {
+			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+				return fmt.Errorf("directive evaluation failed: %w", err)
+			}
+		}
+	}
+	for _, scope := range scopes {
+		for _, form := range scope.classified.Constants {
+			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+				return fmt.Errorf("constant evaluation failed: %w", err)
+			}
+		}
+	}
+	for _, scope := range scopes {
+		for _, form := range scope.classified.Types {
+			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+				return fmt.Errorf("type evaluation failed: %w", err)
+			}
+		}
+	}
+	for _, scope := range scopes {
+		for _, form := range scope.classified.Functions {
+			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+				return fmt.Errorf("function evaluation failed: %w", err)
+			}
+		}
+	}
+	for _, scope := range scopes {
+		if len(scope.classified.Variables) > 0 {
+			if err := installAndForceLazyVariables(ctx, scope.classified.Variables, scope.env); err != nil {
+				return fmt.Errorf("variable evaluation failed: %w", err)
+			}
+		}
+	}
+	for _, scope := range scopes {
+		for _, form := range scope.classified.NonDeclarations {
+			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+				return fmt.Errorf("non-declaration evaluation failed: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// CompositeEvalEnv overlays a file-local evaluation env onto a shared
+// directory env. Writes (Bind/BindLazy/Update) go to primary so cross-file
+// declarations are visible to siblings; reads check primary first so local
+// declarations correctly shadow imported names, then fall through to lexical
+// (where the file's imports live).
+//
+// This is the runtime analogue of dang.CompositeModule: it preserves the
+// file-scoped semantics of imports during evaluation, so a file's `import X`
+// doesn't bleed `X.foo` into siblings' runtime scope.
+type CompositeEvalEnv struct {
+	primary EvalEnv
+	lexical EvalEnv
+}
+
+var _ EvalEnv = (*CompositeEvalEnv)(nil)
+
+func (c *CompositeEvalEnv) Type() hm.Type  { return c.primary.Type() }
+func (c *CompositeEvalEnv) String() string { return c.primary.String() }
+
+func (c *CompositeEvalEnv) Lookup(ctx context.Context, name string) (Value, bool, error) {
+	if val, found, err := c.primary.Lookup(ctx, name); err != nil {
+		return nil, false, err
+	} else if found {
+		return val, true, nil
+	}
+	return c.lexical.Lookup(ctx, name)
+}
+
+func (c *CompositeEvalEnv) Has(name string) bool {
+	return c.primary.Has(name) || c.lexical.Has(name)
+}
+
+func (c *CompositeEvalEnv) LookupLocal(name string) (Value, bool) {
+	if val, ok := c.primary.LookupLocal(name); ok {
+		return val, true
+	}
+	return c.lexical.LookupLocal(name)
+}
+
+func (c *CompositeEvalEnv) Bindings(vis Visibility) []Keyed[Value] {
+	primary := c.primary.Bindings(vis)
+	seen := make(map[string]struct{}, len(primary))
+	for _, b := range primary {
+		seen[b.Key] = struct{}{}
+	}
+	for _, b := range c.lexical.Bindings(vis) {
+		if _, dup := seen[b.Key]; dup {
+			continue
+		}
+		primary = append(primary, b)
+	}
+	return primary
+}
+
+func (c *CompositeEvalEnv) Bind(name string, value Value, vis Visibility) {
+	c.primary.Bind(name, value, vis)
+}
+
+func (c *CompositeEvalEnv) BindLazy(name string, init func(ctx context.Context) (Value, error), vis Visibility) {
+	c.primary.BindLazy(name, init, vis)
+}
+
+func (c *CompositeEvalEnv) Update(name string, value Value) { c.primary.Update(name, value) }
+
+func (c *CompositeEvalEnv) Visibility(name string) Visibility { return c.primary.Visibility(name) }
+
+func (c *CompositeEvalEnv) Derive(sealed bool) EvalEnv {
+	return &CompositeEvalEnv{
+		primary: c.primary.Derive(sealed),
+		lexical: c.lexical,
+	}
+}
+
+func (c *CompositeEvalEnv) Self() (Value, bool)    { return c.primary.Self() }
+func (c *CompositeEvalEnv) MutateSelf(value Value) { c.primary.MutateSelf(value) }
+func (c *CompositeEvalEnv) EnterSelf(value Value)  { c.primary.EnterSelf(value) }
 
 // EvalNode evaluates any AST node (legacy interface)
 func EvalNode(ctx context.Context, env EvalEnv, node Node) (Value, error) {

@@ -382,6 +382,37 @@ type Test {
 	require.Same(t, StringType, functionReturnType(t, print))
 }
 
+func TestRunDirImportedValueDoesNotShadowLocalDeclaration(t *testing.T) {
+	// File-local imports must hold at runtime too: file A's `import Dagger`
+	// brings in an unqualified `container` value, but file B's `pub container`
+	// declaration owns that name in B's scope. With a global eval env the
+	// import would be installed first and SlotDecl.Eval would skip B's
+	// declaration as "already defined".
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a_uses_dagger.dang"), []byte(`
+import Dagger
+
+pub fromA: Dagger.Container! = Dagger.container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b_declares_container.dang"), []byte(`
+pub container: String! = "local"
+pub useContainer: String! = container
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	useVal, found := requireEvalGet(t, env, "useContainer")
+	require.True(t, found)
+	str, ok := useVal.(StringValue)
+	require.True(t, ok, "useContainer should resolve to file-local container, got %T", useVal)
+	require.Equal(t, "local", str.Val)
+}
+
 func TestRunDirImportsAreFileLocal(t *testing.T) {
 	// File A imports Dagger and uses an unqualified imported symbol.
 	// File B never imports Dagger and so cannot see container.
