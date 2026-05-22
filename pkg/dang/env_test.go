@@ -511,6 +511,47 @@ pub piped: Container! = take(c: make)
 	require.NoError(t, err)
 }
 
+func TestRunDirNestedBlockImportResolves(t *testing.T) {
+	// An import inside a nested block (here a function body) should make the
+	// imported names available within that block. The shared schema-module
+	// cache on the context resolves Dagger to the same *Module a file-level
+	// import would, so Dagger.container etc. work fine inside the block.
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+pub use = {
+  import Dagger
+  Dagger.container
+}
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+}
+
+func TestRunDirNestedBlockImportStaysLocal(t *testing.T) {
+	// An import inside a nested block must not be visible outside that block.
+	// Here Dagger is imported inside the function body but the outer return
+	// type annotation references Dagger.Container — that should fail.
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+pub useDagger: Dagger.Container! {
+  import Dagger
+  Dagger.container
+}
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.ErrorContains(t, err, "Dagger")
+}
+
 func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {
 	before := len(ErrorType.GetImplementers())
 	runDangSnippet(t, `

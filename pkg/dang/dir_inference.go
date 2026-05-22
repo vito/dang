@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
 )
 
 // InferDirectoryFiles runs phased type inference across multiple file blocks of
@@ -51,19 +49,14 @@ type fileScope struct {
 // is also stashed on block.Env so editor features can look up symbols (e.g.
 // unqualified imported names) against the same env inference saw.
 //
-// Schema modules are deduplicated across files: every file that imports the
-// same name gets the same *Module pointer, so types like Dagger.Workspace
-// unify across file boundaries. Without this, each ImportDecl would build its
-// own module via NewEnv and unification would fail on identity even when the
-// schemas are identical.
+// Schema modules dedupe automatically: ImportDecl.Infer consults a
+// name-keyed cache on the import context, so every ImportDecl with the same
+// name — whether at file top level or nested inside a block — installs the
+// same *Module and types like Dagger.Workspace unify across file boundaries.
 func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv Env, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
-	for _, block := range files {
-		block.Forms = prependAutoImports(ctx, block.Forms)
-	}
-	shareImportModules(ctx, files, errs)
-
 	scopes := make([]fileScope, 0, len(files))
 	for _, block := range files {
+		block.Forms = prependAutoImports(ctx, block.Forms)
 		imports, rest := partitionImports(block.Forms)
 
 		importsEnv := NewModule("", ObjectKind)
@@ -79,64 +72,6 @@ func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv Env, fr
 		})
 	}
 	return scopes
-}
-
-// shareImportModules pre-populates ImportDecl.inferred (and the schema/client
-// fields used by Eval) so that every ImportDecl with the same name across the
-// given files points at one shared *Module. If any ImportDecl already has
-// inferred state from a previous call (e.g. via the LSP's parse cache), that
-// existing module wins — across calls, identities are preserved so newly added
-// files snap to the existing module rather than producing a divergent build.
-func shareImportModules(ctx context.Context, files []*ModuleBlock, errs *InferenceErrors) {
-	type sharedImport struct {
-		mod    Env
-		client graphql.Client
-		schema *introspection.Schema
-	}
-	shared := make(map[string]sharedImport)
-
-	for _, block := range files {
-		for _, form := range block.Forms {
-			imp, ok := form.(*ImportDecl)
-			if !ok || imp.Name == nil {
-				continue
-			}
-			name := imp.Name.Name
-			if _, done := shared[name]; done {
-				continue
-			}
-			if imp.inferred != nil {
-				shared[name] = sharedImport{mod: imp.inferred, client: imp.client, schema: imp.schema}
-				continue
-			}
-			config, err := imp.loadImportConfig(ctx)
-			if err != nil {
-				errs.Add(err)
-				continue
-			}
-			shared[name] = sharedImport{
-				mod:    NewEnv(name, config.Schema),
-				client: config.Client,
-				schema: config.Schema,
-			}
-		}
-	}
-
-	for _, block := range files {
-		for _, form := range block.Forms {
-			imp, ok := form.(*ImportDecl)
-			if !ok || imp.Name == nil {
-				continue
-			}
-			s, ok := shared[imp.Name.Name]
-			if !ok {
-				continue
-			}
-			imp.inferred = s.mod
-			imp.client = s.client
-			imp.schema = s.schema
-		}
-	}
 }
 
 // directoryPhase runs a single phase against every file's forms in order. The

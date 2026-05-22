@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/pkg/hm"
@@ -935,17 +936,47 @@ type ImportConfig struct {
 
 type importConfigsKey struct{}
 
+// importContext bundles the directory's import configs with a name-keyed
+// schema-module cache. The cache exists so that every ImportDecl with the
+// same name — whether at file top level or nested inside a block — shares
+// the same *Module identity. Without it each NewEnv call would produce a
+// distinct module and types would fail to unify across files.
+type importContext struct {
+	configs []ImportConfig
+	modules sync.Map // map[string]Env, populated by ImportDecl.Infer
+}
+
 func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) context.Context {
-	return context.WithValue(ctx, importConfigsKey{}, configs)
+	return context.WithValue(ctx, importConfigsKey{}, &importContext{configs: configs})
 }
 
 func importConfigsFromContext(ctx context.Context) []ImportConfig {
-	if v := ctx.Value(importConfigsKey{}); v != nil {
-		if configs, ok := v.([]ImportConfig); ok {
-			return configs
-		}
+	if ic, _ := ctx.Value(importConfigsKey{}).(*importContext); ic != nil {
+		return ic.configs
 	}
 	return nil
+}
+
+// sharedImportModule looks up the cached schema module for name in ctx. The
+// cache is populated lazily by ImportDecl.Infer the first time a given import
+// name is resolved, so subsequent inferences (in sibling files, nested blocks,
+// or function bodies) reuse the same module by reference.
+func sharedImportModule(ctx context.Context, name string) Env {
+	ic, _ := ctx.Value(importConfigsKey{}).(*importContext)
+	if ic == nil {
+		return nil
+	}
+	v, ok := ic.modules.Load(name)
+	if !ok {
+		return nil
+	}
+	return v.(Env)
+}
+
+func cacheImportModule(ctx context.Context, name string, mod Env) {
+	if ic, _ := ctx.Value(importConfigsKey{}).(*importContext); ic != nil {
+		ic.modules.Store(name, mod)
+	}
 }
 
 var _ Node = &ImportDecl{}
@@ -966,19 +997,36 @@ var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		// Build the schema module on first Infer; subsequent calls reuse the
-		// cached module but still install it into env. The LSP reuses parsed
-		// blocks (and thus their ImportDecls) across keystrokes against fresh
-		// per-file envs, so installation has to run every time even on cache
-		// hit.
+		// Resolve i.inferred to the shared schema module for this import name
+		// in ctx. The context-scoped cache ensures every ImportDecl referring to
+		// the same name — whether at file top level, in a sibling file, or
+		// nested inside a block — gets the same *Module identity. Without it,
+		// each NewEnv produces a distinct module and types fail to unify.
+		//
+		// Subsequent calls (e.g. LSP reusing cached blocks) reuse the
+		// per-node i.inferred but still install into the current env, since
+		// the env changes per file or per nested scope.
 		if i.inferred == nil {
-			config, err := i.loadImportConfig(ctx)
-			if err != nil {
-				return nil, err
+			if mod := sharedImportModule(ctx, i.Name.Name); mod != nil {
+				i.inferred = mod
+				if i.client == nil {
+					config, err := i.loadImportConfig(ctx)
+					if err != nil {
+						return nil, err
+					}
+					i.client = config.Client
+					i.schema = config.Schema
+				}
+			} else {
+				config, err := i.loadImportConfig(ctx)
+				if err != nil {
+					return nil, err
+				}
+				i.client = config.Client
+				i.schema = config.Schema
+				i.inferred = NewEnv(i.Name.Name, config.Schema)
+				cacheImportModule(ctx, i.Name.Name, i.inferred)
 			}
-			i.client = config.Client
-			i.schema = config.Schema
-			i.inferred = NewEnv(i.Name.Name, config.Schema)
 		}
 
 		if dangEnv, ok := env.(Env); ok {
