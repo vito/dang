@@ -23,12 +23,13 @@ import (
 // NewHandler create JSON-RPC handler for this language server.
 func NewHandler(rootCtx context.Context) *langHandler {
 	handler := &langHandler{
-		rootCtx:       rootCtx,
-		files:         make(map[DocumentURI]*File),
-		loadedEnvDirs: make(map[string]bool),
-		importCache:   make(map[string][]dang.ImportConfig),
-		parseCache:    make(map[string]parsedFile),
-		mu:            new(sync.Mutex),
+		rootCtx:            rootCtx,
+		files:              make(map[DocumentURI]*File),
+		loadedEnvDirs:      make(map[string]bool),
+		importCache:        make(map[string][]dang.ImportConfig),
+		schemaModuleCaches: make(map[string]*sync.Map),
+		parseCache:         make(map[string]parsedFile),
+		mu:                 new(sync.Mutex),
 	}
 
 	return handler
@@ -53,6 +54,13 @@ type langHandler struct {
 	// auto-detected Dagger imports without a config file). Prevents spawning
 	// a new dagger session on every keystroke.
 	importCache map[string][]dang.ImportConfig
+
+	// Per-directory cache of *Module pointers for imported schemas. A long-
+	// lived cache is essential here: each analyzeDirectory call otherwise
+	// gets a fresh ContextWithImportConfigs cache, so a sibling file whose
+	// parse gets invalidated (e.g. open-buffer transition) re-builds its
+	// schema module and breaks type identity with the rest of the directory.
+	schemaModuleCaches map[string]*sync.Map
 
 	// Cached file parses keyed by absolute file path. Sibling files in the
 	// same directory don't change on every keystroke, so reusing their parse
@@ -293,6 +301,12 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	// Resolve import configs once for the directory, using a cache to avoid
 	// spawning new dagger sessions on every keystroke.
 	importConfigs, ctx := h.resolveImports(ctx, fileDir)
+	// Attach a long-lived schema-module cache for this directory BEFORE
+	// installing the import configs, so the configs' helpers find an existing
+	// cache and reuse it. Without this, each analyzeDirectory call gets a
+	// fresh cache and ImportDecls in re-parsed sibling files build divergent
+	// *Module instances — types like Test.ServerInfo fail to unify.
+	ctx = dang.WithSchemaModuleCache(ctx, h.schemaModuleCacheFor(fileDir))
 	if len(importConfigs) > 0 {
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
@@ -381,6 +395,21 @@ func (h *langHandler) directoryDangFiles(dir string) ([]string, error) {
 
 	sort.Strings(dangFiles)
 	return dangFiles, nil
+}
+
+// schemaModuleCacheFor returns the persistent schema-module cache for a
+// directory, creating it on first reference. Sharing the cache across all
+// analyzeDirectory calls for the same directory keeps imported-type identity
+// stable when sibling parses get invalidated (e.g. on open-buffer transitions).
+func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if cache, ok := h.schemaModuleCaches[dirPath]; ok {
+		return cache
+	}
+	cache := &sync.Map{}
+	h.schemaModuleCaches[dirPath] = cache
+	return cache
 }
 
 // parseFileCached returns the parsed *ModuleBlock for path. When the file is

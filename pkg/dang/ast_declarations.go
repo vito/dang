@@ -935,38 +935,44 @@ type ImportConfig struct {
 }
 
 type importConfigsKey struct{}
+type schemaModuleCacheKey struct{}
 
-// importContext bundles the directory's import configs with a name-keyed
-// schema-module cache. The cache exists so that every ImportDecl with the
-// same name — whether at file top level or nested inside a block — shares
-// the same *Module identity. Without it each NewEnv call would produce a
-// distinct module and types would fail to unify across files.
-type importContext struct {
-	configs []ImportConfig
-	modules sync.Map // map[string]Env, populated by ImportDecl.Infer
+// WithSchemaModuleCache attaches a name-keyed schema-module cache to ctx. The
+// cache is consulted by ImportDecl.Infer so every ImportDecl with the same
+// name — whether at file top level, in a sibling file, or nested inside a
+// block — gets the same *Module identity. Without a shared cache, each
+// NewEnv call produces a distinct module and types fail to unify.
+//
+// Callers that want the cache to persist across multiple inference passes
+// (the LSP, for instance, where each keystroke is a fresh pass over the same
+// directory) construct the cache themselves and reuse it. ContextWithImportConfigs
+// auto-creates a per-call cache when none is attached, so one-shot callers
+// don't have to.
+func WithSchemaModuleCache(ctx context.Context, cache *sync.Map) context.Context {
+	return context.WithValue(ctx, schemaModuleCacheKey{}, cache)
 }
 
 func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) context.Context {
-	return context.WithValue(ctx, importConfigsKey{}, &importContext{configs: configs})
+	if _, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); !ok {
+		ctx = WithSchemaModuleCache(ctx, &sync.Map{})
+	}
+	return context.WithValue(ctx, importConfigsKey{}, configs)
 }
 
 func importConfigsFromContext(ctx context.Context) []ImportConfig {
-	if ic, _ := ctx.Value(importConfigsKey{}).(*importContext); ic != nil {
-		return ic.configs
-	}
-	return nil
+	configs, _ := ctx.Value(importConfigsKey{}).([]ImportConfig)
+	return configs
 }
 
 // sharedImportModule looks up the cached schema module for name in ctx. The
 // cache is populated lazily by ImportDecl.Infer the first time a given import
-// name is resolved, so subsequent inferences (in sibling files, nested blocks,
-// or function bodies) reuse the same module by reference.
+// name is resolved, so subsequent inferences reuse the same module.
 func sharedImportModule(ctx context.Context, name string) Env {
-	ic, _ := ctx.Value(importConfigsKey{}).(*importContext)
-	if ic == nil {
+	cache, _ := ctx.Value(schemaModuleCacheKey{}).(*sync.Map)
+	if cache == nil {
 		return nil
 	}
-	v, ok := ic.modules.Load(name)
+	v, ok := cache.Load(name)
 	if !ok {
 		return nil
 	}
@@ -974,8 +980,8 @@ func sharedImportModule(ctx context.Context, name string) Env {
 }
 
 func cacheImportModule(ctx context.Context, name string, mod Env) {
-	if ic, _ := ctx.Value(importConfigsKey{}).(*importContext); ic != nil {
-		ic.modules.Store(name, mod)
+	if cache, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); ok {
+		cache.Store(name, mod)
 	}
 }
 

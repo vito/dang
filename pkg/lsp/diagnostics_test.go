@@ -164,6 +164,57 @@ pub bad_add = "hello" + 42
 	require.Empty(t, diagnostics, "sibling body errors should not surface on the active buffer")
 }
 
+func (LSPSuite) TestDiagnosticsImportedTypesUnifyAcrossFiles(ctx context.Context, t *testctx.T) {
+	// Two files that exchange an imported type must agree on type identity.
+	// Mirrors the go-sdk failure pattern: one file declares a type with a
+	// field of an imported schema type, another file declares a type that
+	// constructs the first one and passes that imported value through.
+	//
+	// Without shared schema modules across the directory, each file's
+	// `import Test` builds its own *Module and unification fails with
+	// "cannot use Test.ServerInfo as Test.ServerInfo".
+	root := t.TempDir()
+
+	schemaPath, err := filepath.Abs(filepath.Join("..", "..", "tests", "gqlserver", "schema.graphqls"))
+	require.NoError(t, err)
+	writeDangFile(t, filepath.Join(root, "dang.toml"), fmt.Sprintf("[imports.Test]\nschema = %q\n", schemaPath))
+
+	holderPath := filepath.Join(root, "holder.dang")
+	writeDangFile(t, holderPath, `import Test
+
+type Holder {
+  let info: Test.ServerInfo!
+}
+`)
+
+	ownerPath := filepath.Join(root, "owner.dang")
+	writeDangFile(t, ownerPath, `import Test
+
+type Owner {
+  let info: Test.ServerInfo!
+
+  pub make: Holder! {
+    Holder(info: info)
+  }
+}
+`)
+
+	h := newLSPHarness(ctx, t, root)
+
+	// Mirror the editor sequence: open holder.dang first (its analyzeDirectory
+	// builds and caches a *Module), then open owner.dang. If the cache isn't
+	// shared across the two analysis passes, owner.dang's ImportDecl builds a
+	// distinct *Module and Test.ServerInfo fails to unify across the
+	// Holder(info: info) call boundary.
+	_ = h.open(ctx, t, holderPath)
+	_ = h.waitForDiagnostics(ctx, t, fileURI(t, holderPath))
+
+	uri := h.open(ctx, t, ownerPath)
+	diagnostics := h.waitForDiagnostics(ctx, t, uri)
+
+	require.Empty(t, diagnostics, "Test.ServerInfo should unify across files")
+}
+
 func (LSPSuite) TestDiagnosticsResolvesUnannotatedSiblingVars(ctx context.Context, t *testctx.T) {
 	// A sibling's `pub answer = expr` has no type annotation, so the variable
 	// signatures phase doesn't publish a type — body inference does. The
