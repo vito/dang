@@ -2283,10 +2283,10 @@ func (c *CompositeEvalEnv) Has(name string) bool {
 }
 
 func (c *CompositeEvalEnv) LookupLocal(name string) (Value, bool) {
-	if val, ok := c.primary.LookupLocal(name); ok {
-		return val, true
-	}
-	return c.lexical.LookupLocal(name)
+	// Only consult primary: lexical holds file-scoped imports, which must not
+	// be treated as already-defined "local" bindings by SlotDecl.Eval — that
+	// would silently swallow declarations that share a name with an import.
+	return c.primary.LookupLocal(name)
 }
 
 func (c *CompositeEvalEnv) Bindings(vis Visibility) []Keyed[Value] {

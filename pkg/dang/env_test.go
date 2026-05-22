@@ -382,6 +382,36 @@ type Test {
 	require.Same(t, StringType, functionReturnType(t, print))
 }
 
+func TestRunDirSameFileImportAndDeclaration(t *testing.T) {
+	// A file that both imports and declares the same name should evaluate the
+	// local declaration, not the import — the file's own decl wins. This used
+	// to surface as a value/type mismatch (declared String! but evaluated to
+	// the imported Container).
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte(`
+import Dagger
+
+pub container: String! = "from_a"
+pub use: String! = container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte(`
+pub other: String! = "from_b"
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	useVal, found := requireEvalGet(t, env, "use")
+	require.True(t, found)
+	str, ok := useVal.(StringValue)
+	require.True(t, ok, "use should resolve to local container, got %T", useVal)
+	require.Equal(t, "from_a", str.Val)
+}
+
 func TestRunDirImportedValueDoesNotShadowLocalDeclaration(t *testing.T) {
 	// File-local imports must hold at runtime too: file A's `import Dagger`
 	// brings in an unqualified `container` value, but file B's `pub container`
