@@ -2232,9 +2232,29 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 			}
 		}
 	}
+	// Variables phase across files: install all lazy slots first, then force.
+	// Without the split, file order would dictate eval order — a consumer file
+	// would force its body before a producer's `pub make = ...` had even been
+	// bound, so cross-file `make` lookups would fail.
 	for _, scope := range scopes {
-		if len(scope.classified.Variables) > 0 {
-			if err := installAndForceLazyVariables(ctx, scope.classified.Variables, scope.env); err != nil {
+		scopeEnv := scope.env
+		for _, form := range scope.classified.Variables {
+			slot, ok := form.(*SlotDecl)
+			if !ok {
+				continue
+			}
+			scopeEnv.BindLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
+				return EvalNode(ctx, scopeEnv, slot.Value)
+			}, slot.Visibility)
+		}
+	}
+	for _, scope := range scopes {
+		for _, form := range scope.classified.Variables {
+			slot, ok := form.(*SlotDecl)
+			if !ok {
+				continue
+			}
+			if _, _, err := scope.env.Lookup(ctx, slot.Name.Name); err != nil {
 				return fmt.Errorf("variable evaluation failed: %w", err)
 			}
 		}

@@ -488,6 +488,29 @@ pub fromB: Dagger.Container! = Dagger.container
 	require.NoError(t, err)
 }
 
+func TestRunDirImportedTypesUnifyAcrossFiles(t *testing.T) {
+	// Two files that import the same schema and exchange one of its types
+	// must agree on type identity. Without shared schema modules, each file
+	// would build its own *Module via NewEnv and unification would fail with
+	// "cannot use Dagger.Container as Dagger.Container".
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:       "Dagger",
+		Schema:     schemaWithCoreShadowTypes(),
+		AutoImport: true,
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "producer.dang"), []byte(`
+pub make: Container! = Dagger.container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "consumer.dang"), []byte(`
+pub take(c: Container!): Container! { c }
+pub piped: Container! = take(c: make)
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+}
+
 func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {
 	before := len(ErrorType.GetImplementers())
 	runDangSnippet(t, `
