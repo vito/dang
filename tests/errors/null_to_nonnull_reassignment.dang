@@ -1,0 +1,3 @@
+# Null cannot be assigned to an existing non-null slot
+let value: String! = "ok"
+value = null

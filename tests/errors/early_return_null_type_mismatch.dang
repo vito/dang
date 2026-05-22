@@ -1,0 +1,5 @@
+# Early return null must not satisfy a non-null declared return type
+pub bad(): String! {
+  return null
+  "ok"
+}

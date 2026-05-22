@@ -55,6 +55,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 		var resultType hm.Type
 		for i, clause := range c.Clauses {
+			var caseType hm.Type
 			if clause.IsTypePattern() {
 				// Type pattern clause: binding: TypeName => expr
 				if err := c.inferTypePatternClause(ctx, env, fresh, clause, exprType); err != nil {
@@ -64,27 +65,15 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				// Infer the clause body in a scoped env with the binding.
 				// Use resolvedMemberType which respects narrowed unions from
 				// inline fragment selections.
-				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
 					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
 					return clause.Expr.Infer(ctx, clauseEnv, fresh)
 				})
-				if err != nil {
-					return nil, err
-				}
-
-				if i == 0 {
-					resultType = caseType
-				} else {
-					subs, err := hm.Assignable(caseType, resultType)
-					if err != nil {
-						return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
-					}
-					resultType = resultType.Apply(subs).(hm.Type)
-				}
 			} else if !clause.IsElse {
 				// Value match clause
-				valueType, err := clause.Value.Infer(ctx, env, fresh)
+				var valueType hm.Type
+				valueType, err = clause.Value.Infer(ctx, env, fresh)
 				if err != nil {
 					return nil, err
 				}
@@ -95,41 +84,28 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause)
 				}
 
-				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
-				if err != nil {
-					return nil, err
-				}
-
-				if i == 0 {
-					resultType = caseType
-				} else {
-					subs, err := hm.Assignable(caseType, resultType)
-					if err != nil {
-						return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
-					}
-					resultType = resultType.Apply(subs).(hm.Type)
-				}
 			} else {
 				// Else clause
-				caseType, err := WithInferErrorHandling(clause, func() (hm.Type, error) {
+				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
-				if err != nil {
-					return nil, err
-				}
-
-				if i == 0 {
-					resultType = caseType
-				} else {
-					subs, err := hm.Assignable(caseType, resultType)
-					if err != nil {
-						return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
-					}
-					resultType = resultType.Apply(subs).(hm.Type)
-				}
 			}
+			if err != nil {
+				return nil, err
+			}
+
+			if i == 0 {
+				resultType = caseType
+				continue
+			}
+			mergedType, _, err := hm.MergeTypes(resultType, caseType)
+			if err != nil {
+				return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause)
+			}
+			resultType = mergedType
 		}
 
 		return resultType, nil
@@ -155,7 +131,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 	var memberMod *Module
 	if operandMod, ok := unwrapped.(*Module); ok {
 		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
-			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod.Name()), c.Expr)
+			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod), c.Expr)
 		}
 
 		if operandMod.Kind == UnionKind {
@@ -166,7 +142,7 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 				}
 			}
 			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod.Name()), clause.TypePattern)
+				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod), clause.TypePattern)
 			}
 		} else if operandMod.Kind == InterfaceKind {
 			var err error
@@ -212,7 +188,7 @@ func resolveInterfaceTypePattern(env Env, iface *Module, patternName string) (*M
 			return memberMod, nil
 		}
 	}
-	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface.Name())
+	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
 
 func resolveInlineUnionTypePattern(env Env, union *hm.UnionType, patternName string) (*Module, error) {
@@ -289,8 +265,8 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if clause.IsTypePattern() {
 				if matchesType(exprVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding
-					childEnv := env.Fork()
-					childEnv.Set(clause.Binding, exprVal)
+					childEnv := env.Derive(true)
+					childEnv.Bind(clause.Binding, exprVal, PrivateVisibility)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}
 				continue

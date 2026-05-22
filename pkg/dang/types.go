@@ -116,7 +116,7 @@ type ListType struct {
 var _ hm.Type = ListType{}
 
 func (t ListType) Name() string {
-	return fmt.Sprintf("[%s]", t.Type.Name())
+	return fmt.Sprintf("[%s]", t.Type)
 }
 
 func (t ListType) Apply(subs hm.Subs) hm.Substitutable {
@@ -171,7 +171,7 @@ type GraphQLListType struct {
 var _ hm.Type = GraphQLListType{}
 
 func (t GraphQLListType) Name() string {
-	return fmt.Sprintf("GraphQL[%s]", t.Type.Name())
+	return fmt.Sprintf("GraphQL[%s]", t.Type)
 }
 
 func (t GraphQLListType) Apply(subs hm.Subs) hm.Substitutable {

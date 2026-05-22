@@ -1,0 +1,44 @@
+# Constructor args are local mutable bindings. Writing to the bare name
+# rebinds the arg locally; writing to a field requires self.field.
+
+type SimpleAssign {
+  pub foo: Int!
+
+  new(foo: Int!) {
+    foo = foo + 10
+    self.foo = foo
+    self
+  }
+}
+
+assert { SimpleAssign(5).foo == 15 }
+
+type CompoundAssign {
+  pub foo: Int!
+
+  new(foo: Int!) {
+    foo += foo
+    self.foo = foo
+    self
+  }
+}
+
+assert { CompoundAssign(10).foo == 20 }
+
+# Mutating the arg does not implicitly write to the field of the same name.
+type ArgVsField {
+  pub foo: Int! = 99
+  pub bar: Int!
+
+  new(foo: Int!) {
+    foo = foo + 1
+    self.bar = foo
+    # self.foo was never assigned, so it keeps its default
+    self
+  }
+}
+
+assert { ArgVsField(7).foo == 99 }
+assert { ArgVsField(7).bar == 8 }
+
+print("Constructor arg mutation tests passed!")

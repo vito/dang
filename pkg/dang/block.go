@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -46,10 +47,6 @@ type Hoister interface {
 
 var _ Hoister = (*Block)(nil)
 
-type Declarer interface {
-	IsDeclarer() bool
-}
-
 func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
 	newEnv := env.Clone()
 	var errs []error
@@ -63,124 +60,106 @@ func (b *Block) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth i
 	return errors.Join(errs...)
 }
 
-// orderByDependencies orders the declarers using topological sort based on dependencies
-func orderByDependencies(declarers []Node) ([]Node, error) {
-	if len(declarers) <= 1 {
-		return declarers, nil
+func orderVariablesForInference(variables []Node) ([]Node, error) {
+	if len(variables) <= 1 {
+		return variables, nil
 	}
 
-	// Build dependency graph
-	declared := make(map[string]int)    // symbol name -> index in declarers
-	dependencies := make(map[int][]int) // declarer index -> list of indices it depends on
+	declared := make(map[string]int)
+	names := make([]string, len(variables))
+	dependencies := make(map[int][]int)
 
-	// First pass: collect what each declarer declares
-	for i, declarer := range declarers {
-		names := getDeclarationNames(declarer)
-		for _, name := range names {
+	for i, variable := range variables {
+		decls := variable.DeclaredSymbols()
+		if len(decls) > 0 {
+			names[i] = decls[0]
+		}
+		for _, name := range decls {
 			declared[name] = i
 		}
 	}
 
-	// Second pass: collect what each declarer depends on
-	for i, declarer := range declarers {
-		refs := getSymbolReferences(declarer)
-		for _, ref := range refs {
-			if depIndex, exists := declared[ref]; exists && depIndex != i {
-				dependencies[i] = append(dependencies[i], depIndex)
+	for i, variable := range variables {
+		for _, ref := range variable.ReferencedSymbols() {
+			dep, ok := declared[ref]
+			if ok && dep != i {
+				dependencies[i] = append(dependencies[i], dep)
 			}
 		}
 	}
 
-	// Topological sort
-	return topologicalSort(declarers, dependencies)
-}
-
-// getDeclarationNames extracts the symbol names that a declarer introduces
-func getDeclarationNames(node Node) []string {
-	return node.DeclaredSymbols()
-}
-
-// getSymbolReferences extracts all symbol references in a node's value/body
-func getSymbolReferences(node Node) []string {
-	return node.ReferencedSymbols()
-}
-
-// extractSymbols is deprecated - use node.ReferencedSymbols() instead
-// This function is kept for backward compatibility but should not be used in new code
-
-// topologicalSort performs Kahn's algorithm for topological sorting
-func topologicalSort(nodes []Node, dependencies map[int][]int) ([]Node, error) {
-	n := len(nodes)
-	inDegree := make([]int, n)
-
-	// Calculate in-degrees
-	for dependent, deps := range dependencies {
-		inDegree[dependent] = len(deps)
-	}
-
-	// Start with nodes that have no dependencies
-	queue := []int{}
-	for i := range n {
-		if inDegree[i] == 0 {
-			queue = append(queue, i)
+	order, cycle := dfsTopologicalOrder(len(variables), dependencies)
+	if cycle != nil {
+		cycleNames := make([]string, len(cycle))
+		for i, idx := range cycle {
+			cycleNames[i] = names[idx]
+			if cycleNames[i] == "" {
+				cycleNames[i] = fmt.Sprintf("<variable %d>", idx)
+			}
 		}
+
+		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(cycleNames, " -> "))
+		node := variables[cycle[0]]
+		if slot, ok := node.(*SlotDecl); ok && slot.Value != nil {
+			return nil, NewInferError(err, slot.Value)
+		}
+		return nil, NewInferError(err, node)
 	}
 
-	var result []Node
-	processed := 0
+	sorted := make([]Node, len(order))
+	for i, idx := range order {
+		sorted[i] = variables[idx]
+	}
+	return sorted, nil
+}
 
-	for len(queue) > 0 {
-		// Remove node from queue
-		current := queue[0]
-		queue = queue[1:]
-		result = append(result, nodes[current])
-		processed++
+// dfsTopologicalOrder returns either a topological order (deps before
+// dependents) or, if one exists, a cycle path through the dependency graph.
+func dfsTopologicalOrder(n int, dependencies map[int][]int) (order []int, cycle []int) {
+	const (
+		unvisited = iota
+		visiting
+		done
+	)
 
-		// For each node that depends on current, reduce its in-degree
-		for dependent, deps := range dependencies {
-			for _, dep := range deps {
-				if dep == current {
-					inDegree[dependent]--
-					if inDegree[dependent] == 0 {
-						queue = append(queue, dependent)
-					}
+	state := make([]int, n)
+	var stack []int
+	positions := make(map[int]int)
+
+	var visit func(int) []int
+	visit = func(i int) []int {
+		state[i] = visiting
+		positions[i] = len(stack)
+		stack = append(stack, i)
+
+		for _, dep := range dependencies[i] {
+			switch state[dep] {
+			case unvisited:
+				if c := visit(dep); c != nil {
+					return c
 				}
+			case visiting:
+				c := append([]int(nil), stack[positions[dep]:]...)
+				return append(c, dep)
+			}
+		}
+
+		stack = stack[:len(stack)-1]
+		delete(positions, i)
+		state[i] = done
+		order = append(order, i)
+		return nil
+	}
+
+	for i := range n {
+		if state[i] == unvisited {
+			if c := visit(i); c != nil {
+				return nil, c
 			}
 		}
 	}
 
-	// Check for cycles
-	if processed != n {
-		return nil, errors.New("circular dependency detected in declarations")
-	}
-
-	return result, nil
-}
-
-// OrderFormsByDependencies reorders the forms in a block based on dependencies
-func OrderFormsByDependencies(forms []Node) ([]Node, error) {
-	var declarers, nonDeclarers []Node
-	for _, form := range forms {
-		if declarer, ok := form.(Declarer); ok {
-			if declarer.IsDeclarer() {
-				declarers = append(declarers, form)
-			} else {
-				nonDeclarers = append(nonDeclarers, form)
-			}
-		} else {
-			nonDeclarers = append(nonDeclarers, form)
-		}
-	}
-
-	// Order declarers by their dependencies
-	orderedDeclarers, err := orderByDependencies(declarers)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the ordered forms
-	result := append(orderedDeclarers, nonDeclarers...)
-	return result, nil
+	return order, nil
 }
 
 // ClassifiedForms holds forms categorized by their compilation phase
@@ -234,13 +213,97 @@ func classifyForms(forms []Node) ClassifiedForms {
 	return classified
 }
 
+// DeclareFormsWithPhases performs the declaration/signature half of phased
+// compilation. It establishes imports, directives, constants, type names,
+// object/interface/union shapes, constructors, fields, and function signatures,
+// but deliberately does not infer computed variables, function bodies, or other
+// executable expressions.
+//
+// This is the boundary used by tooling that needs a module's public API before
+// the full program can be checked, such as Dagger self-call bootstrapping.
+func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	errs := &InferenceErrors{}
+	classified := classifyForms(forms)
+
+	phases := []struct {
+		name string
+		fn   func(*InferenceErrors) (hm.Type, error)
+	}{
+		{"imports", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferImportsPhaseResilient(ctx, classified.Imports, env, fresh, errs)
+		}},
+		{"type names", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferTypeNamesPhaseResilient(ctx, classified.Types, env, fresh, errs)
+		}},
+		{"directives", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferDirectivesPhaseResilient(ctx, classified.Directives, env, fresh, errs)
+		}},
+		{"constants", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferConstantsPhaseResilient(ctx, classified.Constants, env, fresh, errs)
+		}},
+		{"variable signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareVariableSignaturesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
+		}},
+		{"type signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareTypeSignaturesPhaseResilient(ctx, classified.Types, env, fresh, errs)
+		}},
+		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+		}},
+	}
+
+	var lastT hm.Type
+	for _, phase := range phases {
+		t, err := phase.fn(errs)
+		if err != nil {
+			errs.Add(fmt.Errorf("%s phase failed: %w", phase.name, err))
+		}
+		if t != nil {
+			lastT = t
+		}
+	}
+
+	if errs.HasErrors() {
+		return lastT, errs
+	}
+	return lastT, nil
+}
+
+// EvaluateDeclaredFormsWithPhases evaluates only the declaration forms made
+// safe by DeclareFormsWithPhases. Function and method bodies are captured as
+// closures but not executed; variables and non-declarations are skipped.
+func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+	var result Value = NullValue{}
+	classified := classifyForms(forms)
+
+	for _, group := range [][]Node{
+		classified.Imports,
+		classified.Directives,
+		classified.Constants,
+		classified.Types,
+		classified.Functions,
+	} {
+		for _, form := range group {
+			val, err := EvalNode(ctx, env, form)
+			if err != nil {
+				return nil, err
+			}
+			result = val
+		}
+	}
+
+	return result, nil
+}
+
 // InferFormsWithPhases implements phased compilation:
 // 1. Parse all files (already done)
 // 2. Build dependency graph of all declarations
-// 3. Typecheck constants and types (which can reference each other)
-// 4. Declare function signatures (without bodies)
-// 5. Typecheck variables in dependency order (can now reference function signatures)
-// 6. Typecheck function bodies last (can reference all package-level declarations)
+// 3. Import external schemas
+// 4. Hoist local type names so annotations shadow imported types immediately
+// 5. Typecheck constants and types (which can reference each other)
+// 6. Declare function signatures (without bodies)
+// 7. Typecheck variables in dependency order (can now reference function signatures)
+// 8. Typecheck function bodies last (can reference all package-level declarations)
 //
 // This function collects all errors instead of failing fast, allowing partial inference
 // to succeed and providing better error messages showing all problems at once.
@@ -255,17 +318,23 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 		{"imports", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferImportsPhaseResilient(ctx, classified.Imports, env, fresh, errs)
 		}},
+		{"type names", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferTypeNamesPhaseResilient(ctx, classified.Types, env, fresh, errs)
+		}},
 		{"directives", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferDirectivesPhaseResilient(ctx, classified.Directives, env, fresh, errs)
 		}},
 		{"constants", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferConstantsPhaseResilient(ctx, classified.Constants, env, fresh, errs)
 		}},
+		{"variable signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareVariableSignaturesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
+		}},
 		{"types", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferTypesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
 		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
-			return inferFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+			return declareFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
 		}},
 		{"variables", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferVariablesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
@@ -302,23 +371,27 @@ func isConstantValue(value Node) bool {
 		return true // Type-only declarations
 	}
 
-	switch value.(type) {
+	switch v := value.(type) {
 	case *String, *Int, *Boolean, *Null:
 		return true
+	case *Template:
+		return v.IsLiteralOnly()
 	default:
 		return false
 	}
 }
 
-// EvaluateFormsWithPhases evaluates forms using the same phased approach as inference.
-// This ensures that constants, types, functions, and variables are evaluated in the correct order.
+// EvaluateFormsWithPhases evaluates forms using the same phased approach as
+// inference. Computed variables are installed as lazy slots, forced on first
+// read, and then forced in source order before non-declarations run. This is
+// used for both module top-levels and class bodies.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	var result Value = NullValue{}
 	var err error
 
 	// Classify forms by their compilation requirements
 	classified := classifyForms(forms)
-	//
+
 	// Phase 1: Evaluate imports
 	for _, form := range classified.Imports {
 		result, err = EvalNode(ctx, env, form)
@@ -359,18 +432,13 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 6: Evaluate variables in dependency order
+	// Phase 6: Install lazy slots for computed variables, then force them in
+	// source order. Forward references hidden behind constructors or function
+	// calls are resolved by the force-on-read mechanism; the source-order pass
+	// guarantees side effects still happen.
 	if len(classified.Variables) > 0 {
-		orderedVars, err := orderByDependencies(classified.Variables)
-		if err != nil {
-			return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
-		}
-
-		for _, form := range orderedVars {
-			_, err = EvalNode(ctx, env, form)
-			if err != nil {
-				return nil, fmt.Errorf("variable evaluation failed: %w", err)
-			}
+		if err := installAndForceLazyVariables(ctx, classified.Variables, env); err != nil {
+			return nil, fmt.Errorf("variable evaluation failed: %w", err)
 		}
 	}
 
@@ -383,6 +451,36 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 	}
 
 	return result, nil
+}
+
+func installAndForceLazyVariables(ctx context.Context, variables []Node, env EvalEnv) error {
+	for _, form := range variables {
+		slot, ok := form.(*SlotDecl)
+		if !ok {
+			continue
+		}
+		env.BindLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
+			return WithEvalErrorHandling(ctx, slot, func() (Value, error) {
+				val, err := EvalNode(ctx, env, slot.Value)
+				if err != nil {
+					return nil, err
+				}
+				return materializeValue(ctx, env, val, slot.GetInferredType(), slot.Name.Name)
+			})
+		}, slot.Visibility)
+	}
+
+	for _, form := range variables {
+		slot, ok := form.(*SlotDecl)
+		if !ok {
+			continue
+		}
+		if _, _, err := env.Lookup(ctx, slot.Name.Name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 var _ hm.Inferer = (*Block)(nil)
@@ -414,6 +512,12 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 					errs.Add(err)
 				}
 			}
+			// Propagate guard-clause narrowings to subsequent forms: if a
+			// conditional's branch diverges (raise/return/break/continue),
+			// the opposite branch's refinements are guaranteed to hold.
+			if cond, ok := form.(*Conditional); ok {
+				applyNarrowings(newEnv, conditionalExitNarrowings(cond, newEnv))
+			}
 		}
 
 		if errs.HasErrors() {
@@ -434,7 +538,7 @@ func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		return NullValue{}, nil
 	}
 
-	newEnv := env.Clone()
+	newEnv := env.Derive(false)
 
 	// Blocks evaluate forms in textual order
 	var result Value = NullValue{}
@@ -585,8 +689,29 @@ func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.
 	return lastT, nil
 }
 
-func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
-	// Pass 0: Create class types
+func declareVariableSignaturesPhaseResilient(ctx context.Context, variables []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	var lastT hm.Type
+	for _, form := range variables {
+		slot, ok := form.(*SlotDecl)
+		if !ok {
+			continue
+		}
+		t, err := slot.DeclareKnownSignature(ctx, env, fresh)
+		if err != nil {
+			errs.Add(err)
+			continue
+		}
+		if t != nil {
+			lastT = t
+		}
+	}
+	return lastT, nil
+}
+
+func inferTypeNamesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	// Pass 0 only registers local type names. Running it before any phase that
+	// resolves annotations ensures a local type shadows an unqualified import as
+	// soon as imports are installed.
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
@@ -595,18 +720,31 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 			}
 		}
 	}
+	return nil, nil
+}
 
-	// Pass 1: Infer class bodies
+func declareTypeSignaturesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	// Pass 1: Declare type signatures (constructors, fields, methods,
+	// interface members, union members) without inferring executable bodies.
 	for _, form := range types {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 1); err != nil {
 				errs.Add(err)
-				// Continue to try other types
+				// Continue to try other types.
 			}
 		}
 	}
+	return nil, nil
+}
 
-	// Complete type inference
+func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	if _, err := declareTypeSignaturesPhaseResilient(ctx, types, env, fresh, errs); err != nil {
+		return nil, err
+	}
+	return inferTypeBodiesPhaseResilient(ctx, types, env, fresh, errs)
+}
+
+func inferTypeBodiesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range types {
 		t, err := form.Infer(ctx, env, fresh)
@@ -622,7 +760,7 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	return lastT, nil
 }
 
-func inferFunctionSignaturesPhaseResilient(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+func declareFunctionSignaturesPhaseResilient(ctx context.Context, functions []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	for _, form := range functions {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, env, fresh, 0); err != nil {
@@ -639,10 +777,10 @@ func inferVariablesPhaseResilient(ctx context.Context, variables []Node, env hm.
 		return nil, nil
 	}
 
-	orderedVars, err := orderByDependencies(variables)
+	orderedVars, err := orderVariablesForInference(variables)
 	if err != nil {
 		// Can't continue if we can't order dependencies - return critical error
-		return nil, fmt.Errorf("variable dependency ordering failed: %w", err)
+		return nil, err
 	}
 
 	var lastT hm.Type

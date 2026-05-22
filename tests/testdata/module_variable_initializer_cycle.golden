@@ -1,0 +1,10 @@
+[1m[31mError:[0m circular module variable initializer: staticCycleA -> staticCycleB -> staticCycleA
+  [2m[34m--> errors/module_variable_initializer_cycle.dang:2:29[0m
+ [2m    |[0m
+ [2m  1 | # Direct module variable initializer cycles are rejected statically.[0m
+ [2m[34m[1m  2 | [0mpub staticCycleA: String! = staticCycleB
+[2m                                   [31m^^^^^^^^^^^^[0m
+ [2m  3 | pub staticCycleB: String! = staticCycleA[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

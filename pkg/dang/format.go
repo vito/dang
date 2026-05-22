@@ -174,6 +174,8 @@ func extractComments(source []byte) []Comment {
 
 	// Track if we're inside a triple-quoted string across lines
 	inTripleQuote := false
+	// Track open backtick-template fence length (0 = not in a template)
+	tickFence := 0
 	lines := bytes.Split(source, []byte("\n"))
 
 	for i, line := range lines {
@@ -186,7 +188,7 @@ func extractComments(source []byte) []Comment {
 
 		for j < len(lineStr) {
 			// Check for triple quotes
-			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` {
+			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` && tickFence == 0 {
 				inTripleQuote = !inTripleQuote
 				j += 3
 				continue
@@ -194,6 +196,31 @@ func extractComments(source []byte) []Comment {
 
 			// Skip everything inside triple-quoted strings
 			if inTripleQuote {
+				j++
+				continue
+			}
+
+			// Backtick template fences. A run of backticks either opens or
+			// closes a template; only an exact-length match closes the open one.
+			if lineStr[j] == '`' && !inString {
+				k := j
+				for k < len(lineStr) && lineStr[k] == '`' {
+					k++
+				}
+				run := k - j
+				if tickFence == 0 {
+					if run >= 3 || run == 1 {
+						tickFence = run
+					}
+				} else if run == tickFence {
+					tickFence = 0
+				}
+				j = k
+				continue
+			}
+
+			// Skip everything inside backtick templates.
+			if tickFence > 0 {
 				j++
 				continue
 			}
@@ -234,6 +261,23 @@ func extractComments(source []byte) []Comment {
 	}
 
 	return comments
+}
+
+// hasTrailingCommentOnLine reports whether a source line has an un-emitted
+// trailing comment.
+func (f *Formatter) hasTrailingCommentOnLine(line int) bool {
+	if line <= 0 || f.emittedComments[line] {
+		return false
+	}
+	for _, comment := range f.comments {
+		if comment.Line == line && comment.IsTrailing {
+			return true
+		}
+		if comment.Line > line {
+			break
+		}
+	}
+	return false
 }
 
 // emitTrailingComment emits a trailing comment for the given line if one exists
@@ -560,6 +604,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatSymbol(n)
 	case *String:
 		f.formatString(n)
+	case *Template:
+		f.formatTemplate(n)
 	case *Int:
 		f.formatInt(n)
 	case *Float:
@@ -586,12 +632,10 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatForLoop(n)
 	case *Case:
 		f.formatCase(n)
-	case *Assert:
-		f.formatAssert(n)
 	case *Break:
-		f.write("break")
+		f.formatBreak(n)
 	case *Continue:
-		f.write("continue")
+		f.formatContinue(n)
 	case *Reassignment:
 		f.formatReassignment(n)
 	case *TypeHint:
@@ -612,6 +656,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatBinaryOp(n.Left, n.Right, "==")
 	case *UnaryNegation:
 		f.formatUnaryNegation(n)
+	case *FunctionRef:
+		f.formatFunctionRef(n)
 	case *Addition:
 		f.formatBinaryOp(n.Left, n.Right, "+")
 	case *Subtraction:
@@ -816,8 +862,15 @@ func isImport(node Node) bool {
 }
 
 func isAssert(node Node) bool {
-	_, ok := node.(*Assert)
-	return ok
+	call, ok := node.(*FunCall)
+	if !ok {
+		return false
+	}
+	sym, ok := call.Fun.(*Symbol)
+	if !ok {
+		return false
+	}
+	return sym.Name == "assert"
 }
 
 func isFunctionDef(node Node) bool {
@@ -925,9 +978,9 @@ func (f *Formatter) formatNewConstructorDecl(n *NewConstructorDecl) {
 		f.formatDocString(n.DocString)
 	}
 
-	if len(n.Args) > 0 {
+	if len(n.Args) > 0 || n.BlockParam != nil {
 		f.write("new(")
-		f.formatFunctionArgs(n.Args, nil, n.Loc)
+		f.formatFunctionArgs(n.Args, n.BlockParam, n.Loc)
 		f.write(") ")
 	} else {
 		f.write("new ")
@@ -1467,7 +1520,7 @@ func (f *Formatter) formatDirectiveApplication(d *DirectiveApplication) {
 
 	if len(d.Args) > 0 {
 		f.write("(")
-		f.formatCallArgs(d.Args, false)
+		f.formatCallArgs(d.Args, false, 0)
 		f.write(")")
 	}
 }
@@ -1700,7 +1753,14 @@ func (f *Formatter) formatFunCall(c *FunCall, forceMultiline bool) {
 			parenLoc = sel.Field.Loc
 		}
 		multiline := forceMultiline || f.shouldSplitArgs(c.Args, parenLoc)
-		f.formatCallArgs(c.Args, multiline)
+		if multiline && parenLoc != nil {
+			f.emitTrailingComment(parenLoc.Line)
+		}
+		closingLine := 0
+		if c.BlockArg == nil && c.Loc != nil && c.Loc.End != nil {
+			closingLine = c.Loc.End.Line
+		}
+		f.formatCallArgs(c.Args, multiline, closingLine)
 		f.write(")")
 	}
 
@@ -1715,7 +1775,7 @@ func (f *Formatter) formatFunCallInline(c *FunCall) {
 	f.formatNodeInline(c.Fun)
 	if len(c.Args) > 0 {
 		f.write("(")
-		f.formatCallArgs(c.Args, false)
+		f.formatCallArgs(c.Args, false, 0)
 		f.write(")")
 	}
 	if c.BlockArg != nil {
@@ -1823,16 +1883,37 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 			f.write(".")
 			switch e := elem.(type) {
 			case *FunCall:
+				var fieldLoc *SourceLocation
 				if sel, ok := e.Fun.(*Select); ok {
 					f.write(sel.Field.Name)
+					fieldLoc = sel.Field.Loc
 				}
 				if len(e.Args) > 0 {
 					f.write("(")
 					// In chains, don't use single-arg line check since we've already
 					// reformatted the chain structure. Only split if multiple args
 					// were on different lines.
+					callLine := 0
+					if fieldLoc != nil {
+						callLine = fieldLoc.Line
+					}
 					multiline := f.shouldSplitArgs(e.Args, nil)
-					f.formatCallArgs(e.Args, multiline)
+					if !multiline && f.hasCommentsBeforeArgs(e.Args, callLine) {
+						multiline = true
+					}
+					if !multiline && callLine > 0 && f.hasTrailingCommentOnLine(callLine) {
+						if firstArgLoc := e.Args[0].Value.GetSourceLocation(); firstArgLoc != nil && firstArgLoc.Line > callLine {
+							multiline = true
+						}
+					}
+					if multiline && callLine > 0 {
+						f.emitTrailingComment(callLine)
+					}
+					closingLine := 0
+					if e.BlockArg == nil && e.Loc != nil && e.Loc.End != nil {
+						closingLine = e.Loc.End.Line
+					}
+					f.formatCallArgs(e.Args, multiline, closingLine)
 					f.write(")")
 				}
 				if e.BlockArg != nil {
@@ -1872,9 +1953,47 @@ func (f *Formatter) collectChain(node Node, chain *[]Node, root *Node) {
 	}
 }
 
+func (f *Formatter) hasCommentsBeforeArgs(args []Keyed[Node], callLine int) bool {
+	prevLine := callLine
+	for _, arg := range args {
+		loc := arg.Value.GetSourceLocation()
+		argLine := 0
+		if loc != nil {
+			argLine = loc.Line
+		}
+		if prevLine > 0 && argLine > 0 {
+			for _, comment := range f.comments {
+				if comment.Line <= prevLine || f.emittedComments[comment.Line] {
+					continue
+				}
+				if comment.Line >= argLine {
+					break
+				}
+				if !comment.IsTrailing {
+					return true
+				}
+			}
+		}
+		if endLine := nodeEndLine(arg.Value); endLine > 0 {
+			prevLine = endLine
+		} else if argLine > 0 {
+			prevLine = argLine
+		}
+	}
+	return false
+}
+
 func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	if len(args) == 0 {
 		return false
+	}
+
+	callLine := 0
+	if callLoc != nil {
+		callLine = callLoc.Line
+	}
+	if f.hasCommentsBeforeArgs(args, callLine) {
+		return true
 	}
 
 	// Check if any arg STARTS on a different line than the previous arg STARTS
@@ -1925,11 +2044,17 @@ func (f *Formatter) shouldSplitArgs(args Record, callLoc *SourceLocation) bool {
 	return false
 }
 
-func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
+func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLine int) {
 	if multiline {
 		f.newline()
 		f.indented(func() {
+			if len(args) > 0 {
+				if loc := args[0].Value.GetSourceLocation(); loc != nil && loc.Line > 0 {
+					f.lastLine = loc.Line - 1
+				}
+			}
 			for _, arg := range args {
+				f.emitCommentsForNode(arg.Value)
 				f.writeIndent()
 				if !arg.Positional && arg.Key != "" {
 					f.write(arg.Key)
@@ -1937,7 +2062,14 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool) {
 				}
 				f.formatNode(arg.Value)
 				f.write(",")
+				if endLine := nodeEndLine(arg.Value); endLine > 0 {
+					f.emitTrailingComment(endLine)
+					f.lastLine = endLine
+				}
 				f.newline()
+			}
+			if closingLine > 0 {
+				f.emitCommentsBeforeNode(closingLine, false)
 			}
 		})
 		f.writeIndent()
@@ -2020,11 +2152,216 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 	f.write(s.Name)
 }
 
+func (f *Formatter) formatTemplate(t *Template) {
+	// Echo the original source when available. Templates carry layout
+	// the AST throws away — the dedent algorithm strips intentional
+	// indentation from multi-line content, and the `$$` -> `$` collapse
+	// loses the escape the user wrote. Preserving source also keeps any
+	// comments living inside ${...} interpolations intact.
+	if orig := f.getOriginalSource(t); orig != "" {
+		if t.Fence >= 3 {
+			f.write(f.normalizeMultilineLiteral(t, orig))
+		} else {
+			f.write(orig)
+		}
+		return
+	}
+
+	fence := strings.Repeat("`", t.Fence)
+	if t.Fence == 1 {
+		f.write(fence)
+		for _, p := range t.Parts {
+			f.formatTemplatePart(p)
+		}
+		f.write(fence)
+		return
+	}
+
+	// Fallback for multi-line templates without source (synthetic AST).
+	f.write(fence)
+	if t.Lang != "" {
+		f.write(t.Lang)
+	}
+	f.newline()
+	needIndent := true
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.write("${")
+			f.formatNodeInline(p.Expr)
+			f.write("}")
+			continue
+		}
+		lines := strings.Split(p.Lit, "\n")
+		for i, line := range lines {
+			if i > 0 {
+				f.newline()
+				needIndent = true
+			}
+			if line == "" {
+				continue
+			}
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.write(escapeTemplateLit(line))
+		}
+	}
+	if !needIndent {
+		f.newline()
+	}
+	f.writeIndent()
+	f.write(fence)
+}
+
+func (f *Formatter) formatTemplatePart(p TemplatePart) {
+	if p.Expr != nil {
+		f.write("${")
+		f.formatNodeInline(p.Expr)
+		f.write("}")
+		return
+	}
+	f.write(escapeTemplateLit(p.Lit))
+}
+
+// normalizeMultilineLiteral takes the original source of a multi-line
+// string or template and rewrites its body so that:
+//   - if the content was indented above its opening line's indent, content
+//     and closing fence sit one indent step deeper than the formatter's
+//     current scope;
+//   - otherwise content and closing fence sit flush with the current scope.
+//
+// Single-line literals are returned unchanged; the AST throws away enough
+// layout for both forms that echoing the source is the right default.
+func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
+	if !strings.Contains(orig, "\n") {
+		return orig
+	}
+	loc := n.GetSourceLocation()
+	if loc == nil {
+		return orig
+	}
+
+	// Outer indent: leading whitespace of the source line that holds the
+	// opening fence, up to (but not including) the fence column.
+	outerIndent := f.leadingWhitespace(loc.Line, loc.Column)
+
+	lines := strings.Split(orig, "\n")
+	// Anything before the first newline is the opening fence (+ lang for
+	// backtick templates) and is already correctly placed by the caller.
+	openingLine := lines[0]
+	bodyLines := lines[1 : len(lines)-1]
+	closingLine := lines[len(lines)-1]
+
+	// Min indent of non-empty body lines determines whether the user
+	// intended any extra indent.
+	minBodyIndent := -1
+	for _, line := range bodyLines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		wsLen := leadingWSLen(line)
+		if minBodyIndent < 0 || wsLen < minBodyIndent {
+			minBodyIndent = wsLen
+		}
+	}
+	if minBodyIndent < 0 {
+		// No content lines — use the closing fence's indent as a proxy.
+		minBodyIndent = leadingWSLen(closingLine)
+	}
+
+	indented := minBodyIndent > len(outerIndent)
+	emitPrefix := strings.Repeat(indentString, f.indent)
+	if indented {
+		emitPrefix += indentString
+	}
+
+	var buf strings.Builder
+	buf.WriteString(openingLine)
+	for _, line := range bodyLines {
+		buf.WriteByte('\n')
+		if strings.TrimSpace(line) == "" {
+			// Leave blank lines blank — no trailing whitespace.
+			continue
+		}
+		stripped := line
+		if len(stripped) >= minBodyIndent {
+			stripped = stripped[minBodyIndent:]
+		} else {
+			stripped = strings.TrimLeft(stripped, " \t")
+		}
+		buf.WriteString(emitPrefix)
+		buf.WriteString(stripped)
+	}
+	buf.WriteByte('\n')
+	buf.WriteString(emitPrefix)
+	buf.WriteString(strings.TrimLeft(closingLine, " \t"))
+	return buf.String()
+}
+
+// leadingWhitespace returns the run of spaces and tabs at the start of the
+// given (1-indexed) source line, stopping at maxCol-1 (1-indexed) so we
+// never read past where a fence begins.
+func (f *Formatter) leadingWhitespace(line, maxCol int) string {
+	start := f.lineColumnToOffset(line, 1)
+	if start < 0 {
+		return ""
+	}
+	limit := start + maxCol - 1
+	if limit > len(f.source) {
+		limit = len(f.source)
+	}
+	end := start
+	for end < limit && (f.source[end] == ' ' || f.source[end] == '\t') {
+		end++
+	}
+	return string(f.source[start:end])
+}
+
+func leadingWSLen(s string) int {
+	n := 0
+	for n < len(s) && (s[n] == ' ' || s[n] == '\t') {
+		n++
+	}
+	return n
+}
+
+// escapeTemplateLit re-escapes a literal so it round-trips through the
+// template grammar. Only `$` immediately followed by `$` or `{` is
+// significant; a stray `$` followed by anything else (or end of input)
+// is already literal in the source, so leave it alone.
+func escapeTemplateLit(s string) string {
+	var buf strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '$' && i+1 < len(s) && (s[i+1] == '$' || s[i+1] == '{') {
+			buf.WriteString("$$")
+			continue
+		}
+		buf.WriteByte(s[i])
+	}
+	return buf.String()
+}
+
 func (f *Formatter) formatString(s *String) {
 	// Preserve triple-quoted strings as triple-quoted
 	if s.TripleQuoted {
-		// If the original was on a single line, keep it inline: """value"""
 		wasInline := s.Loc != nil && (s.Loc.End == nil || s.Loc.End.Line == s.Loc.Line)
+		// Echo the original source so intentional indentation (which the
+		// dedent algorithm strips out of s.Value) survives. Matches the
+		// behavior of multi-line backtick templates.
+		if orig := f.getOriginalSource(s); orig != "" {
+			if wasInline {
+				f.write(orig)
+			} else {
+				f.write(f.normalizeMultilineLiteral(s, orig))
+			}
+			return
+		}
+		// Fallback for synthetic AST without source.
 		if wasInline {
 			f.write(`"""`)
 			f.write(s.Value)
@@ -2345,18 +2682,6 @@ func (f *Formatter) formatCase(c *Case) {
 	f.write("}")
 }
 
-func (f *Formatter) formatAssert(a *Assert) {
-	f.write("assert")
-	if a.Message != nil {
-		f.write("(")
-		f.formatNode(a.Message)
-		f.write(")")
-	}
-	f.write(" {")
-	f.formatBlockContents(a.Block)
-	f.write("}")
-}
-
 func (f *Formatter) formatTryCatch(t *TryCatch) {
 	f.write("try {")
 	f.formatBlockContents(t.TryBody)
@@ -2403,6 +2728,22 @@ func (f *Formatter) formatRaise(r *Raise) {
 func (f *Formatter) formatReturn(r *Return) {
 	f.write("return ")
 	f.formatNode(r.Value)
+}
+
+func (f *Formatter) formatBreak(b *Break) {
+	f.write("break")
+	if b.Value != nil {
+		f.write(" ")
+		f.formatNode(b.Value)
+	}
+}
+
+func (f *Formatter) formatContinue(c *Continue) {
+	f.write("continue")
+	if c.Value != nil {
+		f.write(" ")
+		f.formatNode(c.Value)
+	}
 }
 
 func (f *Formatter) formatReassignment(r *Reassignment) {
@@ -2577,7 +2918,7 @@ func (f *Formatter) formatFieldSelection(field *FieldSelection) {
 	f.write(field.Name)
 	if len(field.Args) > 0 {
 		f.write("(")
-		f.formatCallArgs(field.Args, false)
+		f.formatCallArgs(field.Args, false, 0)
 		f.write(")")
 	}
 	if field.Selection != nil {
@@ -2647,6 +2988,11 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 	f.write("!")
 	f.formatNode(u.Expr)
+}
+
+func (f *Formatter) formatFunctionRef(r *FunctionRef) {
+	f.write("&")
+	f.formatNode(r.Expr)
 }
 
 func (f *Formatter) formatGrouped(g *Grouped) {

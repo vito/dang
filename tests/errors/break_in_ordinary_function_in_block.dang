@@ -1,0 +1,7 @@
+# An ordinary nested function must not inherit the enclosing block call's break target
+pub result = [1].map { x =>
+  let bad: Int! {
+    break "done"
+  }
+  x
+}

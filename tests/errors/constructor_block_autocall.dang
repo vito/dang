@@ -1,0 +1,12 @@
+# Test: constructors requiring a block are not auto-called by bare references
+
+type Loop {
+  pub ok: Boolean!
+
+  new(&condition: Boolean!) {
+    self.ok = condition
+    self
+  }
+}
+
+pub loop: Loop! = Loop

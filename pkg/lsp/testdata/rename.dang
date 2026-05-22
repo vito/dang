@@ -1,7 +1,7 @@
 # local variable rename
-let hello = 42
+let renamable = 42
 
-hello # test: ^grn<C-u>world<CR> => ┃world
+renamable # test: ^grn<C-u>world<CR> => ┃world
 
 # function parameter rename
 pub add(x: Int!, y: Int!): Int! { x + y } # test: ^fxgrn<C-u>a<CR> => pub add(┃a: Int!, y: Int!): Int! { a + y }
@@ -12,6 +12,6 @@ pub sub(x: Int!, y: Int!): Int! { x - y } # test: ^wgrn<C-u>minus<CR> => pub ┃
 add
 
 # multiple occurrences
-let foo = 10
+let occurrences = 10
 
-foo + foo + foo # test: ^grn<C-u>bar<CR> => ┃bar + bar + bar
+occurrences + occurrences + occurrences # test: ^grn<C-u>bar<CR> => ┃bar + bar + bar

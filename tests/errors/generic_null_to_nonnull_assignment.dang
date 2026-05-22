@@ -1,0 +1,4 @@
+# Null flowing through a generic function cannot initialize a non-null slot
+pub id(x: a): a { x }
+
+pub result: Int! = id(null)

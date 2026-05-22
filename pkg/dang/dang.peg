@@ -18,6 +18,7 @@ Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
 
 _ "whitespace" <- ([ \t\r\n] / CommentToken)*
 _lineSpace <- [ \t]* CommentToken?
+_inlineSpace <- [ \t]+
 
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
@@ -71,12 +72,17 @@ Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / N
   }
 }
 
-Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
 UnaryExpr <- '!' _ expr:Term {
   return &UnaryNegation{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
+} / AmpersandToken _ expr:Term {
+  return &FunctionRef{
     Expr: expr.(Node),
     Loc: c.Loc(),
   }, nil
@@ -309,8 +315,25 @@ Scalar <- ScalarToken _ name:Symbol {
 ScalarToken <- "scalar" !WordChar
 
 NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
+  // Separate block parameters from regular constructor arguments.
+  allArgs := args.([]*SlotDecl)
+  var regularArgs []*SlotDecl
+  var blockParam *SlotDecl
+
+  for _, arg := range allArgs {
+    if arg.IsBlockParam {
+      if blockParam != nil {
+        return nil, fmt.Errorf("constructor can only have one block parameter")
+      }
+      blockParam = arg
+    } else {
+      regularArgs = append(regularArgs, arg)
+    }
+  }
+
   return &NewConstructorDecl{
-    Args: args.([]*SlotDecl),
+    Args: regularArgs,
+    BlockParam: blockParam,
     BodyBlock: block.(*Block),
     Loc: c.Loc(),
   }, nil
@@ -736,7 +759,7 @@ HeadersBlock <- '{' _ eles:(e:HeaderSlot Sep { return e, nil })* last:HeaderSlot
 
 // Literals
 
-Literal <- Float / Int / Boolean / TripleQuoteString / String / Quoted / Null / SelfKeyword
+Literal <- Float / Int / Boolean / TripleQuoteString / String / Template / Quoted / Null / SelfKeyword
 
 Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit+) Exponent)) {
   value, err := strconv.ParseFloat(string(c.text), 64)
@@ -809,6 +832,83 @@ ImmediateEscape <- '\\' (
   / 'U' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / [0-7] [0-7] [0-7]
 )
+
+// Backtick-delimited template strings with optional ${...} interpolations.
+// Single-line uses one backtick; multi-line uses three or more.
+Template <- MultiTemplate / SingleTemplate
+
+SingleTemplate <- '`' parts:SingleTemplatePart* '`' {
+  return makeTemplate(parts, 1, "", c.Loc()), nil
+}
+
+SingleTemplatePart <-
+    "$$" {
+      return TemplatePart{Lit: "$"}, nil
+    }
+  / "${" _ e:Expr _ "}" {
+      return TemplatePart{Expr: e.(Node)}, nil
+    }
+  / !"${" [^`\n] {
+      return TemplatePart{Lit: string(c.text)}, nil
+    }
+
+MultiTemplate <- ticks:MultiTemplateOpenToken #{
+  d, _ := c.state["fence_depth"].(int)
+  d++
+  c.state["fence_depth"] = d
+  c.state[templateFenceKey(d)] = len(ticks.([]byte))
+  return nil
+} lang:LangTagPart? parts:MultiTemplatePart* MultiTemplateCloseToken #{
+  d, _ := c.state["fence_depth"].(int)
+  delete(c.state, templateFenceKey(d))
+  c.state["fence_depth"] = d - 1
+  return nil
+} {
+  l := ""
+  if lang != nil {
+    l = lang.(string)
+  }
+  return makeTemplate(parts, len(ticks.([]byte)), l, c.Loc()), nil
+}
+
+MultiTemplateOpenToken <- '`' '`' '`' '`'* !'`' {
+  return c.text, nil
+}
+
+MultiTemplateCloseToken <- ticks:('`'+) !'`' &{
+  d, _ := c.state["fence_depth"].(int)
+  expected, _ := c.state[templateFenceKey(d)].(int)
+  return len(ticks.([]interface{})) == expected, nil
+}
+
+LangTagPart <- name:LangTagName LangTagTerminator {
+  return name, nil
+}
+LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
+  return string(c.text), nil
+}
+LangTagTerminator <- '\n'
+
+MultiTemplatePart <-
+    "$$" {
+      return TemplatePart{Lit: "$"}, nil
+    }
+  / "${" _ e:Expr _ "}" {
+      return TemplatePart{Expr: e.(Node)}, nil
+    }
+  / ch:MultiTemplateContentChar {
+      return TemplatePart{Lit: ch.(string)}, nil
+    }
+
+MultiTemplateLongerBackticks <- ticks:('`'+) !'`' &{
+  d, _ := c.state["fence_depth"].(int)
+  expected, _ := c.state[templateFenceKey(d)].(int)
+  return len(ticks.([]interface{})) > expected, nil
+}
+
+MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBackticks !"${" . {
+  return string(c.text), nil
+}
 
 DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
   return normalizeTripleQuoteString(content.([]byte)), nil
@@ -897,7 +997,7 @@ CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr
 TryToken <- "try" !WordChar
 CatchToken <- "catch" !WordChar
 
-Raise <- RaiseToken _ value:Form {
+Raise <- RaiseToken _inlineSpace value:Form {
   return &Raise{
     Value: value.(Node),
     Loc: c.Loc(),
@@ -906,7 +1006,7 @@ Raise <- RaiseToken _ value:Form {
 
 RaiseToken <- "raise" !WordChar
 
-Return <- ReturnToken _ value:Form {
+Return <- ReturnToken _inlineSpace value:Form {
   return &Return{
     Value: value.(Node),
     Loc: c.Loc(),
@@ -1035,34 +1135,26 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
 
 CaseToken <- "case" !WordChar
 
-Assert <- AssertToken message:MessageArgs? _ block:Block {
-  var msg Node
-  if message != nil {
-    msg = message.(Node)
+Break <- BreakToken value:(_inlineSpace v:Form { return v, nil })? {
+  var val Node
+  if value != nil {
+    val = value.(Node)
   }
-  return &Assert{
-    Message: msg,
-    Block: block.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
-
-MessageArgs <- '(' _ msg:Form _ ')' {
-  return msg, nil
-}
-
-AssertToken <- "assert" !WordChar
-
-Break <- BreakToken {
   return &Break{
+    Value: val,
     Loc: c.Loc(),
   }, nil
 }
 
 BreakToken <- "break" !WordChar
 
-Continue <- ContinueToken {
+Continue <- ContinueToken value:(_inlineSpace v:Form { return v, nil })? {
+  var val Node
+  if value != nil {
+    val = value.(Node)
+  }
   return &Continue{
+    Value: val,
     Loc: c.Loc(),
   }, nil
 }

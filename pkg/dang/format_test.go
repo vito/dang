@@ -85,6 +85,146 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single-line literal",
+			input:    "pub x = `hello world`",
+			expected: "pub x = `hello world`\n",
+		},
+		{
+			name:     "single-line with interpolation",
+			input:    "pub name = \"Ada\"\npub x = `hello ${name}!`",
+			expected: "pub name = \"Ada\"\npub x = `hello ${name}!`\n",
+		},
+		{
+			name: "single-line interpolation comment is preserved",
+			input: "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n" +
+				"  name\n}`",
+			expected: "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n" +
+				"  name\n}`\n",
+		},
+		{
+			name:     "double dollar escape is preserved",
+			input:    "pub x = `$$ is dollar`",
+			expected: "pub x = `$$ is dollar`\n",
+		},
+		{
+			name:     "lone dollar is not re-escaped",
+			input:    "pub x = `cost $5`",
+			expected: "pub x = `cost $5`\n",
+		},
+		{
+			name: "multi-line flush content stays flush",
+			input: "pub x = ```\n" +
+				"hello\n" +
+				"```",
+			expected: "pub x = ```\n" +
+				"hello\n" +
+				"```\n",
+		},
+		{
+			name: "multi-line indented content keeps one step indent",
+			input: "pub x = ```\n" +
+				"  indented\n" +
+				"  body\n" +
+				"  ```",
+			expected: "pub x = ```\n" +
+				"  indented\n" +
+				"  body\n" +
+				"  ```\n",
+		},
+		{
+			name: "multi-line content above outer scope gets one step indent",
+			input: "type Foo {\n" +
+				"\tpub x = ```\n" +
+				"\t\tindented\n" +
+				"\t\tbody\n" +
+				"\t\t```\n" +
+				"}",
+			expected: "type Foo {\n" +
+				"  pub x = ```\n" +
+				"    indented\n" +
+				"    body\n" +
+				"    ```\n" +
+				"}\n",
+		},
+		{
+			name: "multi-line flush content stays flush when nested",
+			input: "type Foo {\n" +
+				"\tpub x = ```\n" +
+				"\tflush\n" +
+				"\t```\n" +
+				"}",
+			expected: "type Foo {\n" +
+				"  pub x = ```\n" +
+				"  flush\n" +
+				"  ```\n" +
+				"}\n",
+		},
+		{
+			name: "multi-line with lang tag",
+			input: "pub x = ```go\n" +
+				"  func main() {}\n" +
+				"  ```",
+			expected: "pub x = ```go\n" +
+				"  func main() {}\n" +
+				"  ```\n",
+		},
+		{
+			name: "multi-line with interpolation",
+			input: "pub who = \"world\"\n" +
+				"pub x = ```\n" +
+				"  hello ${who}!\n" +
+				"  ```",
+			expected: "pub who = \"world\"\n" +
+				"pub x = ```\n" +
+				"  hello ${who}!\n" +
+				"  ```\n",
+		},
+		{
+			name: "multi-line interpolation comment is preserved",
+			input: "pub who = \"world\"\n" +
+				"pub x = ```\n" +
+				"  hello ${ # who to greet\n" +
+				"    who\n" +
+				"  }!\n" +
+				"  ```",
+			expected: "pub who = \"world\"\n" +
+				"pub x = ```\n" +
+				"  hello ${ # who to greet\n" +
+				"    who\n" +
+				"  }!\n" +
+				"  ```\n",
+		},
+		{
+			name: "multi-line fence bumping preserved",
+			input: "pub x = ````\n" +
+				"```go\n" +
+				"func main() {}\n" +
+				"```\n" +
+				"````",
+			expected: "pub x = ````\n" +
+				"```go\n" +
+				"func main() {}\n" +
+				"```\n" +
+				"````\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestBlankLines(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
@@ -177,7 +317,7 @@ func (FormatSuite) TestStringFormatting(ctx context.Context, t *testctx.T) {
 			expected: "pub x = \"this is a very long string that should not be converted to triple quotes\"\n",
 		},
 		{
-			name: "triple-quoted string stays triple-quoted",
+			name: "triple-quoted flush content stays flush",
 			input: `pub x = """
 hello
 world
@@ -185,7 +325,30 @@ world
 			expected: "pub x = \"\"\"\nhello\nworld\n\"\"\"\n",
 		},
 		{
-			name: "indented triple-quoted string with empty lines has no trailing whitespace",
+			name: "triple-quoted indented content keeps one step indent",
+			input: `pub x = """
+  indented
+  body
+  """`,
+			expected: "pub x = \"\"\"\n  indented\n  body\n  \"\"\"\n",
+		},
+		{
+			name: "triple-quoted content above outer scope gets one step indent",
+			input: "type Foo {\n" +
+				"\tpub x = \"\"\"\n" +
+				"\t\tindented\n" +
+				"\t\tbody\n" +
+				"\t\t\"\"\"\n" +
+				"}",
+			expected: "type Foo {\n" +
+				"  pub x = \"\"\"\n" +
+				"    indented\n" +
+				"    body\n" +
+				"    \"\"\"\n" +
+				"}\n",
+		},
+		{
+			name: "triple-quoted with empty lines has no trailing whitespace",
 			input: `type Foo {
 	pub x = """
 	First paragraph.
@@ -194,6 +357,11 @@ world
 	"""
 }`,
 			expected: "type Foo {\n  pub x = \"\"\"\n  First paragraph.\n\n  Second paragraph.\n  \"\"\"\n}\n",
+		},
+		{
+			name: "triple-quoted inline stays inline",
+			input: `pub x = """hello"""`,
+			expected: "pub x = \"\"\"hello\"\"\"\n",
 		},
 	}
 
@@ -268,6 +436,71 @@ func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 			name:     "no empty parens before block arg",
 			input:    `pub x = foo.map { x => x }`,
 			expected: "pub x = foo.map { x => x }\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func (FormatSuite) TestConstructorBlockParamFormatting(ctx context.Context, t *testctx.T) {
+	input := `type Loop {
+  new(&condition(x: Int!): Boolean!) {
+    self
+  }
+}`
+	expected := `type Loop {
+  new(&condition(x: Int!): Boolean!) {
+    self
+  }
+}
+`
+
+	result, err := FormatFile([]byte(input))
+	require.NoError(t, err)
+	require.Equal(t, expected, result)
+}
+
+func (FormatSuite) TestFunctionRefFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "symbol",
+			input:    `pub x = &foo`,
+			expected: "pub x = &foo\n",
+		},
+		{
+			name:     "field selection",
+			input:    `pub y = &self.foo`,
+			expected: "pub y = &self.foo\n",
+		},
+		{
+			name: "constructor assignment",
+			input: `type DeferredCondition {
+  let condition: Boolean! { true }
+
+  new(&condition: Boolean!) {
+    self.condition = &condition
+    self
+  }
+}`,
+			expected: `type DeferredCondition {
+  let condition: Boolean! { true }
+
+  new(&condition: Boolean!) {
+    self.condition = &condition
+    self
+  }
+}
+`,
 		},
 	}
 
@@ -459,6 +692,79 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 			result, err := FormatFile([]byte(tt.input))
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func (FormatSuite) TestCommentsInCallArgs(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "standalone comment stays between multiline call args",
+			input: `pub x = foo.search(
+	pattern: "a",
+	# pattern: ` + "`a`" + `,
+	globs: ["b"],
+)`,
+			expected: `pub x = foo.search(
+  pattern: "a",
+  # pattern: ` + "`a`" + `,
+  globs: ["b"],
+)
+`,
+		},
+		{
+			name: "trailing comment stays on multiline call arg",
+			input: `pub x = foo(
+	a: 1, # comment on a
+	b: 2,
+)`,
+			expected: `pub x = foo(
+  a: 1, # comment on a
+  b: 2,
+)
+`,
+		},
+		{
+			name: "comment before single chained call arg keeps args multiline",
+			input: `pub x = foo
+  .bar(
+    # comment on arg
+    a
+  )`,
+			expected: `pub x = foo
+  .bar(
+    # comment on arg
+    a,
+  )
+`,
+		},
+		{
+			name: "trailing comment on chained call opening paren stays before args",
+			input: `pub x = foo
+  .bar( # opening comment
+    a
+  )`,
+			expected: `pub x = foo
+  .bar( # opening comment
+    a,
+  )
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+
+			result2, err := FormatFile([]byte(result))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result2, "formatting should be idempotent")
 		})
 	}
 }
@@ -742,7 +1048,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			input: `pub x = ["sh", "-c", """
 	hello
 	"""]`,
-			expected: "pub x = [\"sh\", \"-c\", \"\"\"\nhello\n\"\"\"]\n",
+			expected: "pub x = [\"sh\", \"-c\", \"\"\"\n  hello\n  \"\"\"]\n",
 		},
 		{
 			name: "list in chain call stays on one line even when chain splits",
@@ -753,8 +1059,9 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			"""])
 		.directory(".")
 }`,
-			// Chain gets split, list elements stay together
-			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n    echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
+			// Chain gets split, list elements stay together; content
+			// indented one step deeper than the opening fence's scope.
+			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n      \"\"\"])\n    .directory(\".\")\n}\n",
 		},
 		{
 			name: "method args not split by multiline receiver",

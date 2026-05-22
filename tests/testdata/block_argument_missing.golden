@@ -1,4 +1,4 @@
-[1m[31mError:[0m map requires a block argument
+[1m[31mError:[0m cannot use (&block: (item: Int!, index: Int!): b): [b]! as [Int!]!
   [2m[34m--> errors/block_argument_missing.dang:6:23[0m
  [2m    |[0m
  [2m  4 | [0m

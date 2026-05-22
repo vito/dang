@@ -1,0 +1,36 @@
+# Inline fragment type conditions should resolve against the receiver schema,
+# not a local type that shadows an imported GraphQL type.
+
+import Test
+
+type User {
+  pub name: String!
+  pub origin: String! = "local"
+}
+
+pub localUser: User! = User("Local User")
+assert { localUser.origin == "local" }
+
+# search returns [Test.SearchResult!]!, whose User member is Test.User.
+pub searchResults = search(query: "John").{
+  ... on User { name, age }
+}
+
+pub searchAge = case (searchResults[0]) {
+  u: User => u.age
+  else => null
+}
+assert { searchAge == 30 }
+
+# node returns Test.Node, whose User implementer is Test.User.
+pub nodeResult = node(id: "1").{
+  ... on User { name, age }
+}
+
+pub nodeAge = case (nodeResult) {
+  u: User => u.age
+  else => null
+}
+assert { nodeAge == 30 }
+
+print("Inline fragment import shadowing tests passed!")

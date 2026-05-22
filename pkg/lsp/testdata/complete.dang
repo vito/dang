@@ -12,8 +12,13 @@ hom # test: ^Ea<C-x><C-o> => homepage┃
 Test.ser # test: ^Ea<C-x><C-o> => Test.serverInfo┃
 Test.hom # test: ^Ea<C-x><C-o> => Test.homepage┃
 
+# cross-file: pub addNums(...) is declared in gd.dang
+addN # test: ^Ea<C-x><C-o> => addNums┃
+# cross-file: pub multiply(...) is declared in hover.dang
+mult # test: ^Ea<C-x><C-o> => multiply┃
+
 # lexical bindings (function parameters)
-pub foo(jxkqv: Int!): [Int!] {
+pub paramScope(jxkqv: Int!): [Int!] {
   [] # test: ^ajx<C-x><C-o> => [jxkqv┃]
 }
 

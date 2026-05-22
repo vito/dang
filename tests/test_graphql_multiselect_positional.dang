@@ -1,0 +1,10 @@
+import Test
+
+# Regression: a FieldSelection inside an ObjectSelection (multi-field
+# selection) used to drop the keys of positional arguments when building the
+# GraphQL query, producing malformed GraphQL like `posts(: 1)`.
+pub first_user = users.{posts(1).{posts.{title}}}[0]
+
+assert { first_user.posts.posts[0].title != null }
+
+print("GraphQL multiselect positional argument tests passed!")

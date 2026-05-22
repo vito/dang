@@ -8,8 +8,81 @@ import (
 	"github.com/vito/dang/pkg/dang/treesitter"
 )
 
+// tsSkippedRules lists named rules whose bodies should not appear in the
+// tree-sitter grammar because they are produced by the external scanner
+// instead. References to these rules are redirected via tsRuleRefAliases.
+var tsSkippedRules = map[string]bool{
+	"MultiTemplateOpenToken":   true,
+	"MultiTemplateCloseToken":  true,
+	"MultiTemplateContentChar": true,
+	"LangTagTerminator":        true,
+}
+
 func skipTS(name string) bool {
-	return strings.HasPrefix(name, "_")
+	if strings.HasPrefix(name, "_") {
+		return true
+	}
+	return tsSkippedRules[name]
+}
+
+var tsExternalRuleNames = []treesitter.RuleName{
+	"_automatic_newline",
+	"_inline_space",
+	// Backtick template fences. Variable-length matching can't be done in
+	// tree-sitter's built-in lexer, so an external scanner tracks the open
+	// fence count and refuses non-matching close runs as content.
+	"multi_template_open_token",
+	"multi_template_close_token",
+	"_template_content_char",
+	// Terminator for the optional language tag. External so the scanner can
+	// clear its "just opened" flag at the right moment — once we've consumed
+	// the newline after a lang tag, the next content letter is safe to treat
+	// as content rather than the start of another lang tag attempt.
+	"_lang_tag_terminator",
+}
+
+var tsRuleRefAliases = map[string]treesitter.RuleName{
+	"_inlineSpace":             "_inline_space",
+	"MultiTemplateOpenToken":   "multi_template_open_token",
+	"MultiTemplateCloseToken":  "multi_template_close_token",
+	"MultiTemplateContentChar": "_template_content_char",
+	"LangTagTerminator":        "_lang_tag_terminator",
+}
+
+var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
+	treesitter.Name("Sep"): patchSepAutomaticNewline,
+}
+
+func tsExternalSymbol(name treesitter.RuleName) treesitter.Rule {
+	return treesitter.Rule{
+		Type: treesitter.RuleTypeSymbol,
+		Name: name,
+	}
+}
+
+func tsExternalRules() []treesitter.Rule {
+	rules := make([]treesitter.Rule, len(tsExternalRuleNames))
+	for i, name := range tsExternalRuleNames {
+		rules[i] = tsExternalSymbol(name)
+	}
+	return rules
+}
+
+func patchTSRule(name treesitter.RuleName, rule treesitter.Rule) treesitter.Rule {
+	patch, ok := tsRulePatches[name]
+	if !ok {
+		return rule
+	}
+	return patch(rule)
+}
+
+func patchSepAutomaticNewline(rule treesitter.Rule) treesitter.Rule {
+	for i, member := range rule.Members {
+		if member.Type == treesitter.RuleTypeString && member.Value == "\n" {
+			rule.Members[i] = tsExternalSymbol("_automatic_newline")
+		}
+	}
+	return rule
 }
 
 func TreesitterGrammar() treesitter.Grammar {
@@ -47,43 +120,22 @@ func TreesitterGrammar() treesitter.Grammar {
 		},
 	}
 
-	// Register an external scanner token for automatic newline separators.
-	// The external scanner (src/scanner.c) decides at lex time whether a
-	// newline is a statement separator or just whitespace. Newlines followed
-	// by continuation tokens (like `.` for method chains) are NOT separators,
-	// allowing multi-line expressions to parse correctly.
-	ts.Externals = []treesitter.Rule{
-		{
-			Type: treesitter.RuleTypeSymbol,
-			Name: "_automatic_newline",
-		},
-	}
+	// Register external scanner tokens. The scanner decides at lex time
+	// whether a newline is a statement separator or just whitespace, and
+	// whether PEG-only inline whitespace should be preserved for tree-sitter.
+	ts.Externals = tsExternalRules()
 
 	for i, rule := range g.rules {
 		prec := len(g.rules) - i
+		ruleName := treesitter.Name(rule.name)
 		tsRule := treesitterRule(rule, prec)
 		if tsRule == nil || skipTS(rule.name) {
 			slog.Warn("skipping grammar rule", "rule", rule.name)
 			continue
 		} else {
 			slog.Info("adding grammar rule", "rule", rule.name)
-			ts.Rules.Add(treesitter.Name(rule.name), *tsRule)
+			ts.Rules.Add(ruleName, patchTSRule(ruleName, *tsRule))
 		}
-	}
-
-	// Patch the sep rule: replace the literal "\n" with the external
-	// _automatic_newline token so the external scanner controls when
-	// newlines act as statement separators.
-	if sepRule, ok := ts.Rules.Get("sep"); ok {
-		for i, member := range sepRule.Members {
-			if member.Type == treesitter.RuleTypeString && member.Value == "\n" {
-				sepRule.Members[i] = treesitter.Rule{
-					Type: treesitter.RuleTypeSymbol,
-					Name: "_automatic_newline",
-				}
-			}
-		}
-		ts.Rules.Set("sep", sepRule)
 	}
 
 	return ts
@@ -128,6 +180,10 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 			expr: t.expr,
 		}, prec)
 	case *ruleRefExpr:
+		if alias, ok := tsRuleRefAliases[t.name]; ok {
+			rule := tsExternalSymbol(alias)
+			return &rule
+		}
 		if skipTS(t.name) {
 			// ignore whitespace; tree-sitter works differently
 			return nil
@@ -203,13 +259,16 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 	case *notExpr:
 		// ignored
 		return nil
+	case *stateCodeExpr:
+		// Pigeon state mutation has no tree-sitter equivalent; the runtime
+		// constraint it enforces is dropped from the tree-sitter grammar.
+		return nil
+	case *andCodeExpr:
+		// Same: pigeon code predicates don't translate.
+		return nil
 	// case *throwExpr:
 	// 	// ignored
 	// case *recoveryExpr:
-	// 	// ignored
-	// case *stateCodeExpr:
-	// 	// ignored
-	// case *andCodeExpr:
 	// 	// ignored
 	// case *notCodeExpr:
 	// 	// ignored

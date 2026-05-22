@@ -7,10 +7,11 @@ vim.cmd('runtime! ftdetect/*.lua')
 -- Load and configure the plugin
 require('dang').setup()
 
--- All keymaps used by tests are Neovim 0.11 defaults:
---   gd   -> vim.lsp.buf.definition()
---   K    -> vim.lsp.buf.hover()
---   grn  -> vim.lsp.buf.rename()
+-- Keymaps used by tests:
+--   K    -> vim.lsp.buf.hover()    (Neovim default)
+--   grn  -> vim.lsp.buf.rename()   (Neovim default)
+--   gd   -> vim.lsp.buf.definition() (bound here; Neovim 0.12 has no default)
 -- Omnicompletion (C-x C-o) uses omnifunc set automatically by LSP.
+vim.keymap.set('n', 'gd', function() vim.lsp.buf.definition() end)
 
 vim.lsp.log.set_level('trace')

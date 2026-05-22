@@ -102,29 +102,15 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 				return nil, NewInferError(fmt.Errorf("catch clauses must be type patterns or a catch-all"), clause)
 			}
 
-			// Unify this clause's return type with the body type.
-			subs, err := hm.Assignable(clauseType, resultType)
+			// Merge this clause's return type with the body type.
+			mergedType, _, err := hm.MergeTypes(resultType, clauseType)
 			if err != nil {
 				if i == 0 {
 					return nil, NewInferError(err, clause)
 				}
 				return nil, NewInferError(fmt.Errorf("catch clause type mismatch: %s vs %s", clauseType, resultType), clause)
 			}
-			resultType = resultType.Apply(subs).(hm.Type)
-		}
-
-		// If either side is nullable the result is nullable.
-		_, bodyNonNull := resultType.(hm.NonNullType)
-		lastClause := t.Clauses[len(t.Clauses)-1]
-		lastClauseType := lastClause.GetInferredType()
-		if lastClauseType == nil {
-			lastClauseType = resultType
-		}
-		_, handlerNonNull := lastClauseType.(hm.NonNullType)
-		if bodyNonNull && !handlerNonNull {
-			if nn, ok := resultType.(hm.NonNullType); ok {
-				resultType = nn.Type
-			}
+			resultType = mergedType
 		}
 
 		return resultType, nil
@@ -141,7 +127,7 @@ type RaisedError struct {
 
 func (r *RaisedError) Error() string {
 	if mv, ok := r.Value.(*ModuleValue); ok {
-		if msg, found := mv.Get("message"); found {
+		if msg, found := mv.lookupValue("message"); found {
 			return msg.String()
 		}
 	}
@@ -155,7 +141,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return val, nil
 		}
 
-		if isReturnException(err) {
+		if isControlFlowException(err) {
 			return nil, err
 		}
 
@@ -165,17 +151,17 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
 			if clause.IsElse {
-				childEnv := env.Fork()
+				childEnv := env.Derive(true)
 				if clause.Binding != "" {
-					childEnv.Set(clause.Binding, errVal)
+					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
 				return EvalNode(ctx, childEnv, clause.Expr)
 			}
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
-					childEnv := env.Fork()
-					childEnv.Set(clause.Binding, errVal)
+					childEnv := env.Derive(true)
+					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}
 				continue
@@ -208,8 +194,7 @@ func extractErrorValue(err error) Value {
 // message.
 func newBasicError(message string) *ModuleValue {
 	mv := NewModuleValue(BasicErrorType)
-	mv.Set("message", StringValue{Val: message})
-	mv.Visibilities["message"] = PublicVisibility
+	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
 	return mv
 }
 

@@ -129,14 +129,30 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		return nil, err
 	}
 
+	// Resolve positional argument keys so downstream consumers (e.g. GraphQL
+	// query building in ObjectSelection) can read them off arg.Key directly.
+	for i := range c.Args {
+		if c.Args[i].Positional && c.Args[i].Key == "" {
+			if mapped, ok := argMapping[i]; ok {
+				c.Args[i].Key = mapped
+			}
+		}
+	}
+
 	// Type check each argument first, collecting substitutions from unifying
-	// actual argument types with expected parameter types. This resolves type
-	// variables (e.g. 'b' in reduce's initial parameter) before we infer the
-	// block arg, which may depend on those type variables.
+	// actual argument types with expected parameter types. We merge the
+	// substitutions without applying them eagerly so repeated type variables are
+	// inferred from all arguments order-independently (e.g. (Int!, null) for
+	// (a, a) becomes Int). The final substitutions are then available before we
+	// infer a block arg, which may depend on those type variables.
 	var argSubs hm.Subs
+	argRecord, ok := ft.Arg().(*RecordType)
+	if !ok {
+		return nil, fmt.Errorf("FunCall.Infer: expected record type for arguments, got %T", ft.Arg())
+	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, ft.Arg().(*RecordType), k)
+		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
 		}
@@ -144,7 +160,10 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 			if argSubs == nil {
 				argSubs = subs
 			} else {
-				argSubs = argSubs.Compose(subs)
+				argSubs, err = argSubs.Compose(subs)
+				if err != nil {
+					return nil, NewInferError(err, arg.Value)
+				}
 			}
 		}
 	}
@@ -156,10 +175,14 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 		ft = ft.Apply(argSubs).(*hm.FunctionType)
 	}
 
-	// Handle block arg if present (needs special bidirectional inference)
+	// Handle block arg if present (needs special bidirectional inference).
+	// The block body sees this call as its break target.
 	var blockArgSubs hm.Subs
+	var blockBreakTarget *InferControlTarget
 	if c.BlockArg != nil {
-		subs, err := c.inferBlockArg(ctx, env, fresh, ft)
+		blockBreakTarget = NewInferControlTarget(BlockCallFrame)
+		blockCtx := contextWithInferBreakTarget(ctx, blockBreakTarget)
+		subs, err := c.inferBlockArg(blockCtx, env, fresh, ft)
 		if err != nil {
 			return nil, fmt.Errorf("block argument: %w", err)
 		}
@@ -181,6 +204,9 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	retType := ft.Ret(false)
 	if blockArgSubs != nil {
 		retType = retType.Apply(blockArgSubs).(hm.Type)
+	}
+	if blockBreakTarget != nil {
+		retType = mergeCallBreakTypes(retType, c.BlockArg.BodyNode, blockBreakTarget, blockArgSubs, fresh)
 	}
 	return retType, nil
 }
@@ -295,18 +321,34 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return nil, err
 		}
 
-		// Evaluate block arg if present and add to context
+		var blockCallFrame *ControlFrame
+		// Evaluate block arg if present and add to context. The frame is captured
+		// by the block so a break can exit this whole call expression.
 		if c.BlockArg != nil {
-			blockVal, err := c.BlockArg.Eval(ctx, env)
+			blockCallFrame = NewControlFrame(BlockCallFrame)
+			defer blockCallFrame.Deactivate()
+
+			blockCtx := contextWithBlockCallFrame(ctx, blockCallFrame)
+			blockVal, err := c.BlockArg.Eval(blockCtx, env)
 			if err != nil {
 				return nil, err
 			}
 			// Store block in context for builtin functions to access
-			ctx = context.WithValue(ctx, blockArgContextKey, blockVal)
+			ctx = context.WithValue(blockCtx, blockArgContextKey, blockVal)
 		}
 
 		// Dispatch to appropriate function call handler
-		return c.callFunction(ctx, env, funVal, argValues)
+		val, err := c.callFunction(ctx, env, funVal, argValues)
+		if err != nil && blockCallFrame != nil {
+			var breakEx *BreakException
+			if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, blockCallFrame) {
+				if breakEx.HasValue && breakEx.Value != nil {
+					return breakEx.Value, nil
+				}
+				return NullValue{}, nil
+			}
+		}
+		return val, err
 	})
 }
 
@@ -345,19 +387,8 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 					positionalIndex+1, len(paramNames))
 			}
 			paramName = paramNames[positionalIndex]
-			if _, exists := argValues[paramName]; exists {
-				return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
-			}
-			positionallySet[paramName] = true
-			positionalIndex++
 		} else {
 			paramName = arg.Key
-			if _, exists := argValues[paramName]; exists {
-				if positionallySet[paramName] {
-					return nil, fmt.Errorf("argument %q specified both positionally and by name", paramName)
-				}
-				return nil, fmt.Errorf("argument %q specified multiple times", paramName)
-			}
 		}
 
 		if paramType, ok := parameterType(funVal, paramName); ok {
@@ -366,7 +397,18 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 				return nil, err
 			}
 		}
-		argValues[paramName] = val
+
+		if arg.Positional {
+			err := c.handlePositionalArgument(arg, val, argValues, positionallySet, paramNames, &positionalIndex)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			err := c.handleNamedArgument(arg, val, argValues, positionallySet)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Don't add block arg to argValues - it will be handled specially
@@ -549,6 +591,9 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		// Check for import conflicts before resolving
 		if dangEnv, ok := env.(Env); ok {
+			if conflicts := dangEnv.CheckValueConflict(s.Name); len(conflicts) > 0 {
+				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
+			}
 			if conflicts := dangEnv.CheckTypeConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
@@ -588,7 +633,10 @@ func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			}
 		}
 
-		val, found := env.Get(s.Name)
+		val, found, err := env.Lookup(ctx, s.Name)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
 		}
@@ -776,7 +824,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				return NullValue{}, nil
 
 			case EvalEnv:
-				if val, found := rec.Get(d.Field.Name); found {
+				if val, found, err := rec.Lookup(ctx, d.Field.Name); err != nil {
+					return nil, err
+				} else if found {
 					// If this is a FunctionValue accessed from a module, bind it to the receiver
 					if fnVal, isFunctionValue := val.(FunctionValue); isFunctionValue {
 						return BoundMethod{Method: fnVal, Receiver: rec}, nil
@@ -794,7 +844,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on string values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field.Name)
-				if method, found := env.Get(methodKey); found {
+				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the string as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
@@ -806,7 +858,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on float values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field.Name)
-				if method, found := env.Get(methodKey); found {
+				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the float as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
@@ -818,7 +872,9 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Handle methods on list values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field.Name)
-				if method, found := env.Get(methodKey); found {
+				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
 						// Create a bound method that will pass the list as self
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
@@ -1156,31 +1212,20 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s", unwrapped), o.Receiver)
 	}
 	if unionOrIface.Kind != UnionKind && unionOrIface.Kind != InterfaceKind {
-		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s type %s", unionOrIface.Kind, unionOrIface.Name()), o.Receiver)
+		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s type %s", unionOrIface.Kind, unionOrIface), o.Receiver)
 	}
 
 	// Create a narrowed union whose members only have the selected fields.
 	// This ensures downstream code (e.g. case type patterns) can only access
 	// fields that were actually selected in the inline fragment.
 	narrowedUnion := NewModule(unionOrIface.Name(), UnionKind)
+	narrowedUnion.Qualifier = unionOrIface.Qualifier
 
 	// Validate each fragment
 	for _, frag := range o.InlineFragments {
-		memberType, found := modEnv.NamedType(frag.TypeName.Name)
-		if !found {
-			return nil, NewInferError(fmt.Errorf("unknown type %s in inline fragment", frag.TypeName.Name), frag.TypeName)
-		}
-
-		memberMod, ok := memberType.(*Module)
-		if !ok {
-			return nil, NewInferError(fmt.Errorf("type %s in inline fragment is not an object type", frag.TypeName.Name), frag.TypeName)
-		}
-
-		// Check membership
-		if unionOrIface.Kind == UnionKind {
-			if !unionOrIface.HasMember(memberMod) {
-				return nil, NewInferError(fmt.Errorf("type %s is not a member of union %s", frag.TypeName.Name, unionOrIface.Name()), frag.TypeName)
-			}
+		memberMod, err := resolveInlineFragmentMemberType(unionOrIface, frag.TypeName.Name)
+		if err != nil {
+			return nil, NewInferError(err, frag.TypeName)
 		}
 
 		if len(frag.Fields) == 0 {
@@ -1191,15 +1236,16 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		} else {
 			// Create a narrowed module with only the selected fields.
 			// Link back to the canonical type for runtime matching.
-			narrowedMember := NewModule(frag.TypeName.Name, ObjectKind)
+			narrowedMember := NewModule(memberMod.Name(), ObjectKind)
+			narrowedMember.Qualifier = memberMod.Qualifier
 			narrowedMember.Canonical = memberMod
 
 			// Validate each field in the fragment exists on the concrete type
 			// and add it to the narrowed module (including nested selections)
 			for _, field := range frag.Fields {
-				fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
+				fieldType, err := o.inferFieldType(ctx, field, memberMod, modEnv, fresh)
 				if err != nil {
-					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, frag.TypeName.Name), field)
+					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
 				}
 				narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
 			}
@@ -1244,6 +1290,37 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 
 	o.SetInferredType(resultType)
 	return resultType, nil
+}
+
+func resolveInlineFragmentMemberType(receiver *Module, typeName string) (*Module, error) {
+	switch receiver.Kind {
+	case UnionKind:
+		if member, found := findMemberModuleByName(receiver.GetMembers(), typeName); found {
+			return member, nil
+		}
+		return nil, fmt.Errorf("type %s is not a member of union %s", typeName, receiver)
+	case InterfaceKind:
+		if implementer, found := findMemberModuleByName(receiver.GetImplementers(), typeName); found {
+			return implementer, nil
+		}
+		return nil, fmt.Errorf("type %s does not implement interface %s", typeName, receiver)
+	default:
+		return nil, fmt.Errorf("inline fragments require a union or interface type, got %s type %s", receiver.Kind, receiver)
+	}
+}
+
+func findMemberModuleByName(members []Env, typeName string) (*Module, bool) {
+	for _, member := range members {
+		if member.Name() != typeName {
+			continue
+		}
+		memberMod, ok := member.(*Module)
+		if !ok {
+			return nil, false
+		}
+		return memberMod, true
+	}
+	return nil, false
 }
 
 func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
@@ -1456,11 +1533,14 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 			// Build a result with the selected fields, preserving the concrete type
 			resultModuleValue := NewModuleValue(frag.Inferred)
 			for _, field := range frag.Fields {
-				fieldVal, exists := modVal.Get(field.Name)
-				if !exists {
-					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod.Name())
+				fieldVal, exists, err := modVal.Lookup(ctx, field.Name)
+				if err != nil {
+					return nil, err
 				}
-				resultModuleValue.Set(field.Name, fieldVal)
+				if !exists {
+					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod)
+				}
+				resultModuleValue.Bind(field.Name, fieldVal, PublicVisibility)
 			}
 			return resultModuleValue, nil
 		}
@@ -1470,7 +1550,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 	for _, frag := range o.InlineFragments {
 		if frag.NonNull {
 			return nil, fmt.Errorf("inline fragment type assertion failed: expected one of %s, got %s",
-				o.inlineFragmentTypeNames(), mod.Name())
+				o.inlineFragmentTypeNames(), mod)
 		}
 	}
 
@@ -1690,7 +1770,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 						if err != nil {
 							return nil, fmt.Errorf("converting nested field %s: %w", field.Name, err)
 						}
-						resultModuleValue.Set(field.Name, nestedVal)
+						resultModuleValue.Bind(field.Name, nestedVal, PublicVisibility)
 						continue
 					}
 
@@ -1704,7 +1784,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 									if strVal, ok := fieldValue.(string); ok {
 										enumType, found := typeEnv.NamedType(fieldType.Name)
 										if found {
-											resultModuleValue.Set(field.Name, EnumValue{Val: strVal, EnumType: enumType})
+											resultModuleValue.Bind(field.Name, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
 											continue
 										}
 									}
@@ -1718,7 +1798,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 					if err != nil {
 						return nil, fmt.Errorf("converting field %s: %w", field.Name, err)
 					}
-					resultModuleValue.Set(field.Name, dangVal)
+					resultModuleValue.Bind(field.Name, dangVal, PublicVisibility)
 				}
 			}
 
@@ -1750,13 +1830,13 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 				if err != nil {
 					return nil, err
 				}
-				mod.Set(f.Name, nested)
+				mod.Bind(f.Name, nested, PublicVisibility)
 			} else {
 				dv, err := ToValue(fv)
 				if err != nil {
 					return nil, fmt.Errorf("converting field %s: %w", f.Name, err)
 				}
-				mod.Set(f.Name, dv)
+				mod.Bind(f.Name, dv, PublicVisibility)
 			}
 		}
 	}
@@ -1810,7 +1890,10 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 		} else {
 			// No arguments - get field value directly
 			var exists bool
-			fieldVal, exists = objVal.Get(field.Name)
+			fieldVal, exists, err = objVal.Lookup(ctx, field.Name)
+			if err != nil {
+				return nil, err
+			}
 			if !exists {
 				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: field %q not found", field.Name)
 			}
@@ -1824,7 +1907,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 			}
 		}
 
-		resultModuleValue.Set(field.Name, fieldVal)
+		resultModuleValue.Bind(field.Name, fieldVal, PublicVisibility)
 	}
 
 	return resultModuleValue, nil
@@ -2012,7 +2095,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q inline fragments: %w", field.Name, err)
 						}
-						resultModuleValue.Set(field.Name, nestedResult)
+						resultModuleValue.Bind(field.Name, nestedResult, PublicVisibility)
 					} else if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
 						// Sub-selecting arrays
 						var elements []Value
@@ -2023,14 +2106,14 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 							}
 							elements = append(elements, itemResult)
 						}
-						resultModuleValue.Set(field.Name, ListValue{Elements: elements})
+						resultModuleValue.Bind(field.Name, ListValue{Elements: elements}, PublicVisibility)
 					} else {
 						// Sub-selecting objects
 						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeEnv)
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
 						}
-						resultModuleValue.Set(field.Name, nestedResult)
+						resultModuleValue.Bind(field.Name, nestedResult, PublicVisibility)
 					}
 				} else if fieldType := schema.Types.Get(o.unwrapType(nestedField.TypeRef).Name); fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
 					// Convert enums
@@ -2043,17 +2126,17 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 					if !found {
 						return nil, fmt.Errorf("type not defined for enum: %q", fieldType.Name)
 					}
-					resultModuleValue.Set(field.Name, EnumValue{
+					resultModuleValue.Bind(field.Name, EnumValue{
 						Val:      strVal,
 						EnumType: enumType,
-					})
+					}, PublicVisibility)
 				} else {
 					// Convert GraphQL value to Dang value
 					dangVal, err := ToValue(fieldValue)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
-					resultModuleValue.Set(field.Name, dangVal)
+					resultModuleValue.Bind(field.Name, dangVal, PublicVisibility)
 				}
 			}
 		}
@@ -2153,15 +2236,10 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), c.Condition)
 		}
 
-		// Analyze null assertions in the condition for flow-sensitive type checking
-		assertions := AnalyzeNullAssertions(c.Condition)
-		thenRefinements, elseRefinements, err := CreateTypeRefinements(assertions, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("creating type refinements: %w", err)
-		}
+		// Apply flow-sensitive narrowings to each branch based on the condition.
+		facts := analyzeCondition(c.Condition, env)
 
-		// Apply type refinements to the then branch
-		thenEnv := ApplyTypeRefinements(env, thenRefinements)
+		thenEnv := withNarrowings(env, facts.Truthy)
 		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
@@ -2170,16 +2248,15 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		if c.Else != nil {
 			elseBlock := c.Else.(*Block)
 
-			// Apply type refinements to the else branch
-			elseEnv := ApplyTypeRefinements(env, elseRefinements)
+			elseEnv := withNarrowings(env, facts.Falsy)
 			elseType, err := elseBlock.Infer(ctx, elseEnv, fresh)
 			if err != nil {
 				return nil, err
 			}
 
-			thenSubs, err := hm.Assignable(elseType, thenType)
+			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
 			if err != nil {
-				// Point to the specific else block for better error targeting
+				// Point to the specific else block for better error targeting.
 				var errorNode Node = elseBlock
 				if len(elseBlock.Forms) > 0 {
 					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
@@ -2187,20 +2264,17 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				return nil, NewInferError(err, errorNode)
 			}
 
-			// Propagate substitutions backwards to the 'then'
-			thenType = thenType.Apply(thenSubs).(hm.Type)
-			c.Then.SetInferredType(thenType)
+			// Propagate substitutions backwards to the 'then' branch without
+			// widening the branch itself to the merged conditional result.
+			c.Then.SetInferredType(thenType.Apply(subs).(hm.Type))
+			thenType = mergedType
+		}
 
-			// If either branch is nullable after substitution, the result
-			// must be nullable. NullableTypeVariable (from null literals)
-			// strips NonNull during binding, so a null branch naturally
-			// resolves to a nullable type here.
-			resolvedElse := elseType.Apply(thenSubs).(hm.Type)
-			_, thenNonNull := thenType.(hm.NonNullType)
-			_, elseNonNull := resolvedElse.(hm.NonNullType)
-			if thenNonNull && !elseNonNull {
-				thenType = thenType.(hm.NonNullType).Type
-			}
+		if c.Else == nil {
+			// A conditional without an else can skip the then branch and
+			// evaluate to null. Preserve that fallthrough even when the then
+			// branch is a control-flow expression with a fresh result type.
+			thenType = nullableControlResultType(thenType)
 		}
 
 		return thenType, nil
@@ -2273,9 +2347,12 @@ func (f *ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
 
 func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		// Check if this is a condition-based loop
+		// Apply truthy facts from the condition inside the body. The body
+		// only executes when the condition is true, so refinements derived
+		// from it hold for each iteration.
+		bodyEnv := env
 		if f.Condition != nil {
-			// Infer the condition type
+			// Infer the condition type outside the loop control-flow target.
 			condType, err := f.Condition.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, err
@@ -2286,40 +2363,53 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 				return nil, NewInferError(fmt.Errorf("condition must be boolean, got %s", condType), f.Condition)
 			}
 
-			// Infer body type
-			bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			// Condition loops return the last value from the body, or null if never executed
-			if nonNull, ok := bodyType.(hm.NonNullType); ok {
-				return nonNull.Type, nil
-			}
-			return bodyType, nil
+			facts := analyzeCondition(f.Condition, env)
+			bodyEnv = withNarrowings(env, facts.Truthy)
 		}
 
-		// Infinite loop
-		bodyType, err := f.LoopBody.Infer(ctx, env, fresh)
+		loopTarget := NewInferControlTarget(LoopFrame)
+		bodyCtx := contextWithInferBreakTarget(ctx, loopTarget)
+		bodyCtx = contextWithInferContinueTarget(bodyCtx, loopTarget)
+
+		bodyType, err := f.LoopBody.Infer(bodyCtx, bodyEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		// Infinite loops return the last value from the body, or null
-		if nonNull, ok := bodyType.(hm.NonNullType); ok {
-			return nonNull.Type, nil
+		// Loops return the last value from the body, or null if never executed.
+		// Condition-based loops may skip their body entirely, so preserve that
+		// nullable possibility even when the body type is still a type variable
+		// from a local control-flow expression like return/break/continue.
+		loopType := bodyType
+		if f.Condition != nil {
+			loopType = nullableControlResultType(loopType)
+		} else if nonNull, ok := loopType.(hm.NonNullType); ok {
+			loopType = nonNull.Type
 		}
-		return bodyType, nil
+
+		// A value-bearing break overrides the loop result; plain break preserves
+		// the previous last value for backwards compatibility.
+		for _, br := range collectBreakStatements(f.LoopBody, loopTarget) {
+			if !br.HasValue {
+				continue
+			}
+			loopType = mergeControlResultTypes(loopType, breakValueType(br))
+		}
+
+		return loopType, nil
 	})
 }
 
 func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
 		var lastVal Value = NullValue{}
+		loopFrame := NewControlFrame(LoopFrame)
+		defer loopFrame.Deactivate()
+		bodyCtx := contextWithBreakFrame(ctx, loopFrame)
+		bodyCtx = contextWithContinueFrame(bodyCtx, loopFrame)
 
-		// Handle condition-only loop (while-style)
-		if f.Condition != nil {
-			for {
+		for {
+			if f.Condition != nil {
 				condVal, err := EvalNode(ctx, env, f.Condition)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating condition: %w", err)
@@ -2333,42 +2423,25 @@ func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				if !boolVal.Val {
 					break
 				}
-
-				val, err := EvalNode(ctx, env, f.LoopBody)
-				if err != nil {
-					// Check if it's a break or continue
-					var breakEx *BreakException
-					var continueEx *ContinueException
-					if errors.As(err, &breakEx) {
-						break
-					}
-					if errors.As(err, &continueEx) {
-						continue
-					}
-					return nil, fmt.Errorf("evaluating body: %w", err)
-				}
-				// Only update lastVal if there was no error
-				lastVal = val
 			}
-			return lastVal, nil
-		}
 
-		// Infinite loop
-		for {
-			val, err := EvalNode(ctx, env, f.LoopBody)
+			val, err := EvalNode(bodyCtx, env, f.LoopBody)
 			if err != nil {
-				// Check if it's a break or continue
 				var breakEx *BreakException
-				var continueEx *ContinueException
-				if errors.As(err, &breakEx) {
+				if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, loopFrame) {
+					if breakEx.HasValue && breakEx.Value != nil {
+						lastVal = breakEx.Value
+					}
 					break
 				}
-				if errors.As(err, &continueEx) {
+
+				var continueEx *ContinueException
+				if errors.As(err, &continueEx) && controlFrameMatches(continueEx.Target, loopFrame) {
 					continue
 				}
+
 				return nil, fmt.Errorf("evaluating body: %w", err)
 			}
-			// Only update lastVal if there was no error
 			lastVal = val
 		}
 
@@ -2386,10 +2459,15 @@ func (f *ForLoop) Walk(fn func(Node) bool) {
 	f.LoopBody.Walk(fn)
 }
 
-// Break represents a break statement in a loop
+// Break represents a break statement in a loop or block-taking call.
 type Break struct {
 	InferredTypeHolder
-	Loc *SourceLocation
+	Value      Node
+	ValueType  hm.Type
+	HasValue   bool
+	Target     *InferControlTarget
+	TargetKind ControlFrameKind
+	Loc        *SourceLocation
 }
 
 var _ Node = (*Break)(nil)
@@ -2400,7 +2478,10 @@ func (b *Break) DeclaredSymbols() []string {
 }
 
 func (b *Break) ReferencedSymbols() []string {
-	return nil // Break doesn't reference anything
+	if b.Value == nil {
+		return nil
+	}
+	return b.Value.ReferencedSymbols()
 }
 
 func (b *Break) Body() hm.Expression { return b }
@@ -2409,7 +2490,25 @@ func (b *Break) GetSourceLocation() *SourceLocation { return b.Loc }
 
 func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
-		// Break returns a fresh type variable that can unify with anything
+		target := currentInferBreakTarget(ctx)
+		if target == nil {
+			return nil, NewInferError(fmt.Errorf("break outside of loop or block-taking call"), b)
+		}
+		b.Target = target
+		b.TargetKind = target.Kind
+		b.HasValue = b.Value != nil
+
+		if b.Value != nil {
+			valueType, err := b.Value.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			b.ValueType = valueType
+		} else {
+			b.ValueType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+		}
+
+		// Break never produces a local value for the surrounding expression.
 		t := fresh.Fresh()
 		b.SetInferredType(t)
 		return t, nil
@@ -2417,17 +2516,41 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 }
 
 func (b *Break) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return nil, &BreakException{}
+	target := currentBreakFrame(ctx)
+	if target == nil || !target.Active {
+		return nil, &BreakException{Target: target, Location: b.Loc}
+	}
+
+	var val Value
+	if b.Value != nil {
+		var err error
+		val, err = EvalNode(ctx, env, b.Value)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return nil, &BreakException{Target: target, Value: val, HasValue: b.Value != nil, Location: b.Loc}
 }
 
 func (b *Break) Walk(fn func(Node) bool) {
-	fn(b)
+	if !fn(b) {
+		return
+	}
+	if b.Value != nil {
+		b.Value.Walk(fn)
+	}
 }
 
-// Continue represents a continue statement in a loop
+// Continue represents a continue statement in a loop or block invocation.
 type Continue struct {
 	InferredTypeHolder
-	Loc *SourceLocation
+	Value      Node
+	ValueType  hm.Type
+	HasValue   bool
+	Target     *InferControlTarget
+	TargetKind ControlFrameKind
+	Loc        *SourceLocation
 }
 
 var _ Node = (*Continue)(nil)
@@ -2438,7 +2561,10 @@ func (c *Continue) DeclaredSymbols() []string {
 }
 
 func (c *Continue) ReferencedSymbols() []string {
-	return nil // Continue doesn't reference anything
+	if c.Value == nil {
+		return nil
+	}
+	return c.Value.ReferencedSymbols()
 }
 
 func (c *Continue) Body() hm.Expression { return c }
@@ -2447,7 +2573,25 @@ func (c *Continue) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		// Continue returns a fresh type variable that can unify with anything
+		target := currentInferContinueTarget(ctx)
+		if target == nil {
+			return nil, NewInferError(fmt.Errorf("continue outside of loop or block arg invocation"), c)
+		}
+		c.Target = target
+		c.TargetKind = target.Kind
+		c.HasValue = c.Value != nil
+
+		if c.Value != nil {
+			valueType, err := c.Value.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			c.ValueType = valueType
+		} else {
+			c.ValueType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+		}
+
+		// Continue never produces a local value for the surrounding expression.
 		t := fresh.Fresh()
 		c.SetInferredType(t)
 		return t, nil
@@ -2455,88 +2599,191 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 }
 
 func (c *Continue) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return nil, &ContinueException{}
-}
+	target := currentContinueFrame(ctx)
+	if target == nil || !target.Active {
+		return nil, &ContinueException{Target: target, Location: c.Loc}
+	}
 
-func (c *Continue) Walk(fn func(Node) bool) {
-	fn(c)
-}
-
-// BreakException is used to signal a break statement
-type BreakException struct{}
-
-func (e *BreakException) Error() string {
-	return "break outside of loop"
-}
-
-// ContinueException is used to signal a continue statement
-type ContinueException struct{}
-
-func (e *ContinueException) Error() string {
-	return "continue outside of loop"
-}
-
-// Let represents a let binding expression
-type Let struct {
-	InferredTypeHolder
-	Name  string
-	Value Node
-	Expr  Node
-	Loc   *SourceLocation
-}
-
-var _ Node = (*Let)(nil)
-var _ Evaluator = (*Let)(nil)
-
-func (l *Let) DeclaredSymbols() []string {
-	return nil // Let expressions don't declare symbols in the global scope
-}
-
-func (l *Let) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, l.Value.ReferencedSymbols()...)
-	symbols = append(symbols, l.Expr.ReferencedSymbols()...)
-	return symbols
-}
-
-func (l *Let) Body() hm.Expression { return l }
-
-func (l *Let) GetSourceLocation() *SourceLocation { return l.Loc }
-
-func (l *Let) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(l, func() (hm.Type, error) {
-		valueType, err := l.Value.Infer(ctx, env, fresh)
+	var val Value
+	if c.Value != nil {
+		var err error
+		val, err = EvalNode(ctx, env, c.Value)
 		if err != nil {
 			return nil, err
 		}
+	}
 
-		newEnv := env.Clone()
-		newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
-
-		return l.Expr.Infer(ctx, newEnv, fresh)
-	})
+	return nil, &ContinueException{Target: target, Value: val, HasValue: c.Value != nil, Location: c.Loc}
 }
 
-func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
-		val, err := EvalNode(ctx, env, l.Value)
-		if err != nil {
-			return nil, fmt.Errorf("evaluating let value: %w", err)
-		}
-
-		newEnv := env.Clone()
-		newEnv.Set(l.Name, val)
-
-		return EvalNode(ctx, newEnv, l.Expr)
-	})
-}
-
-func (l *Let) Walk(fn func(Node) bool) {
-	if !fn(l) {
+func (c *Continue) Walk(fn func(Node) bool) {
+	if !fn(c) {
 		return
 	}
-	l.Value.Walk(fn)
-	l.Expr.Walk(fn)
+	if c.Value != nil {
+		c.Value.Walk(fn)
+	}
+}
+
+// BreakException is used to signal a break statement.
+type BreakException struct {
+	Target   *ControlFrame
+	Value    Value
+	HasValue bool
+	Location *SourceLocation
+}
+
+func (e *BreakException) Error() string {
+	if e.Target != nil && !e.Target.Active {
+		switch e.Target.Kind {
+		case BlockCallFrame:
+			return "break from expired block call"
+		case LoopFrame:
+			return "break from expired loop"
+		}
+	}
+	return "break outside of loop or block-taking call"
+}
+
+// ContinueException is used to signal a continue statement.
+type ContinueException struct {
+	Target   *ControlFrame
+	Value    Value
+	HasValue bool
+	Location *SourceLocation
+}
+
+func (e *ContinueException) Error() string {
+	if e.Target != nil && !e.Target.Active {
+		switch e.Target.Kind {
+		case BlockInvocationFrame:
+			return "continue from expired block invocation"
+		case LoopFrame:
+			return "continue from expired loop"
+		}
+	}
+	return "continue outside of loop or block arg invocation"
+}
+
+func breakValueType(br *Break) hm.Type {
+	if br == nil {
+		return nil
+	}
+	if br.ValueType != nil {
+		return br.ValueType
+	}
+	if br.Value != nil {
+		return br.Value.GetInferredType()
+	}
+	return nil
+}
+
+func continueValueType(cont *Continue) hm.Type {
+	if cont == nil {
+		return nil
+	}
+	if cont.ValueType != nil {
+		return cont.ValueType
+	}
+	if cont.Value != nil {
+		return cont.Value.GetInferredType()
+	}
+	return nil
+}
+
+func collectBreakStatements(root Node, target *InferControlTarget) []*Break {
+	if root == nil {
+		return nil
+	}
+
+	var breaks []*Break
+	root.Walk(func(node Node) bool {
+		if node != root {
+			switch node.(type) {
+			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+				return false
+			}
+		}
+
+		if br, ok := node.(*Break); ok {
+			if target == nil || br.Target == target {
+				breaks = append(breaks, br)
+			}
+			// A break's value is evaluated before the break is raised, so
+			// nested breaks inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
+		}
+
+		return true
+	})
+	return breaks
+}
+
+func collectContinueStatements(root Node, target *InferControlTarget) []*Continue {
+	if root == nil {
+		return nil
+	}
+
+	var continues []*Continue
+	root.Walk(func(node Node) bool {
+		if node != root {
+			switch node.(type) {
+			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+				return false
+			}
+		}
+
+		if cont, ok := node.(*Continue); ok {
+			if target == nil || cont.Target == target {
+				continues = append(continues, cont)
+			}
+			// A continue's value is evaluated before the continue is raised, so
+			// nested continues inside the value can be the one that actually
+			// escapes and must be checked too.
+			return true
+		}
+
+		return true
+	})
+	return continues
+}
+
+func nullableControlResultType(t hm.Type) hm.Type {
+	switch typ := t.(type) {
+	case hm.NonNullType:
+		return typ.Type
+	case hm.TypeVariable:
+		return hm.NullableTypeVariable{TypeVariable: typ}
+	default:
+		return t
+	}
+}
+
+func mergeControlResultTypes(current hm.Type, next hm.Type) hm.Type {
+	merged, _, err := hm.MergeTypes(current, next)
+	if err == nil {
+		return merged
+	}
+	return hm.NewUnionType(current, next)
+}
+
+func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget, subs hm.Subs, fresh hm.Fresher) hm.Type {
+	for _, br := range collectBreakStatements(body, target) {
+		breakType := breakValueType(br)
+		if breakType == nil {
+			breakType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+		}
+		if subs != nil {
+			breakType = breakType.Apply(subs).(hm.Type)
+		}
+		if br.HasValue {
+			retType = hm.NewUnionType(retType, breakType)
+		} else {
+			retType = mergeControlResultTypes(retType, breakType)
+		}
+	}
+	return retType
 }
 
 // TypeHint represents a type hint expression using :: syntax
@@ -2735,14 +2982,57 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			})
 		}
 
-		// Infer the body with parameters in scope
-		bodyType, err := b.BodyNode.Infer(ctx, newEnv, fresh)
+		// Infer the body with parameters in scope. A block invocation target makes
+		// `continue value` contribute to this block's return type, while `return`
+		// still targets the enclosing function from the surrounding context.
+		continueTarget := NewInferControlTarget(BlockInvocationFrame)
+		bodyCtx := contextWithInferContinueTarget(ctx, continueTarget)
+		bodyType, err := b.BodyNode.Infer(bodyCtx, newEnv, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("BlockArg body: %w", err)
 		}
 
-		// If we have an expected return type, unify with the body type
+		// Continue values are block-local results. Plain returns inside a block arg
+		// are non-local and are checked against the enclosing function instead.
+		continues := collectContinueStatements(b.BodyNode, continueTarget)
+		for _, cont := range continues {
+			contType := continueValueType(cont)
+			if contType == nil {
+				contType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
+			}
+			bodyType = mergeControlResultTypes(bodyType, contType)
+		}
+
+		// If we have an expected return type, unify with the block's normal result
+		// plus any `continue value` results targeting this invocation.
 		if b.ExpectedReturnType != nil {
+			if _, expectedNonNull := b.ExpectedReturnType.(hm.NonNullType); expectedNonNull {
+				for _, cont := range continues {
+					if !cont.HasValue {
+						return nil, NewInferError(
+							fmt.Errorf("continue type mismatch: expected %s, inferred null", b.ExpectedReturnType),
+							cont,
+						)
+					}
+				}
+			}
+			for _, cont := range continues {
+				contType := continueValueType(cont)
+				if contType == nil {
+					continue
+				}
+				if _, err := hm.Assignable(contType, b.ExpectedReturnType); err != nil {
+					errorNode := Node(cont)
+					if cont.Value != nil {
+						errorNode = cont.Value
+					}
+					return nil, NewInferError(
+						fmt.Errorf("continue type mismatch: expected %s, inferred %s", b.ExpectedReturnType, contType),
+						errorNode,
+					)
+				}
+			}
+
 			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
 			if err != nil {
 				return nil, NewInferError(
@@ -2752,26 +3042,6 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 				)
 			}
 			bodyType = bodyType.Apply(subs).(hm.Type)
-
-			for _, ret := range collectReturnStatements(b.BodyNode) {
-				retType := returnValueType(ret)
-				if retType == nil {
-					continue
-				}
-				retSubs, err := hm.Assignable(retType, b.ExpectedReturnType)
-				if err != nil {
-					return nil, NewInferError(
-						fmt.Errorf("return type mismatch: declared %s, inferred %s", b.ExpectedReturnType, retType),
-						ret.Value,
-					)
-				}
-				bodyType = bodyType.Apply(retSubs).(hm.Type)
-			}
-		} else {
-			bodyType, err = inferReturnTypeWithEarlyReturns(b.BodyNode, bodyType, nil)
-			if err != nil {
-				return nil, err
-			}
 		}
 
 		// Build the function type
@@ -2801,12 +3071,15 @@ func (b *BlockArg) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		return FunctionValue{
-			Args:     argNames,
-			Body:     b.BodyNode,
-			Closure:  env,
-			FnType:   b.Inferred,
-			Defaults: make(map[string]Node), // Block args don't support defaults
-			ArgDecls: b.Args,
+			Args:                argNames,
+			Body:                b.BodyNode,
+			Closure:             env,
+			FnType:              b.Inferred,
+			Defaults:            make(map[string]Node), // Block args don't support defaults
+			ArgDecls:            b.Args,
+			IsBlockArg:          true,
+			CapturedReturnFrame: currentReturnFrame(ctx),
+			CapturedBreakFrame:  currentBlockCallFrame(ctx),
 		}, nil
 	})
 }

@@ -23,14 +23,6 @@ type SlotDecl struct {
 	ContextInferredType hm.Type
 }
 
-var _ Declarer = SlotDecl{}
-
-func (f SlotDecl) IsDeclarer() bool {
-	// SlotDecl always declares a symbol (the Named field)
-	// regardless of what its Value is
-	return true
-}
-
 var _ Node = (*SlotDecl)(nil)
 var _ Evaluator = (*SlotDecl)(nil)
 var _ Hoister = (*SlotDecl)(nil)
@@ -61,36 +53,135 @@ func (s *SlotDecl) Body() hm.Expression {
 func (s *SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
 func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	// If the slot value is a hoister (e.g. wraps a FunDecl), delegate.
-	if funDecl, ok := s.Value.(Hoister); ok {
-		return funDecl.Hoist(ctx, env, fresh, pass)
+	// If the slot value is a hoister (e.g. wraps a FunDecl), delegate while
+	// preserving the slot's name and metadata. This is the signature boundary:
+	// function bodies are not inferred, but callers can see the function type.
+	if funDecl, ok := s.Value.(*FunDecl); ok {
+		if funDecl.Named == "" {
+			funDecl.Named = s.Name.Name
+		}
+		if err := funDecl.Hoist(ctx, env, fresh, pass); err != nil {
+			return err
+		}
+		if pass == 0 {
+			s.SetInferredType(funDecl.Inferred)
+			if e, ok := env.(Env); ok {
+				e.SetVisibility(s.Name.Name, s.Visibility)
+				if s.DocString != "" {
+					e.SetDocString(s.Name.Name, s.DocString)
+				}
+				directives := s.Directives
+				if len(directives) == 0 {
+					directives = funDecl.Directives
+				}
+				if len(directives) > 0 {
+					e.SetDirectives(s.Name.Name, directives)
+				}
+			}
+		}
+		return nil
+	}
+	if hoister, ok := s.Value.(Hoister); ok {
+		return hoister.Hoist(ctx, env, fresh, pass)
 	}
 
 	// For non-function slots, register the type during pass 0 so that
 	// sibling declarations (e.g. method default-value expressions) can
-	// reference it before full inference runs.  This mirrors what
-	// FunDecl.Hoist does for function signatures.
+	// reference it before full inference runs. This mirrors the declaration
+	// pass for function signatures.
 	//
 	// The type is determined from the explicit annotation if present,
 	// otherwise from the value if it implements Constant (literals whose
-	// type is known without consulting the environment).
+	// type is known without consulting the environment). Computed values are
+	// intentionally not inferred at the hoist boundary.
 	if pass == 0 {
-		var slotType hm.Type
-		if s.Type_ != nil {
-			var err error
-			slotType, err = s.Type_.Infer(ctx, env, fresh)
-			if err != nil {
-				return err
-			}
-		} else if c, ok := s.Value.(Constant); ok {
-			slotType = c.ConstantType()
+		slotType, err := s.signatureType(ctx, env, fresh, false)
+		if err != nil {
+			return err
 		}
 		if slotType != nil {
 			env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+			s.SetInferredType(slotType)
+			if e, ok := env.(Env); ok {
+				e.SetVisibility(s.Name.Name, s.Visibility)
+				if s.DocString != "" {
+					e.SetDocString(s.Name.Name, s.DocString)
+				}
+				if len(s.Directives) > 0 {
+					e.SetDirectives(s.Name.Name, s.Directives)
+				}
+			}
 		}
 	}
 
 	return nil
+}
+
+func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
+	if s.Type_ != nil {
+		slotType, err := s.Type_.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+		return slotType, nil
+	}
+	if constant, ok := s.Value.(Constant); ok {
+		return constant.ConstantType(), nil
+	}
+	if s.Value == nil {
+		if allowComputed {
+			return fresh.Fresh(), nil
+		}
+		return nil, nil
+	}
+	if allowComputed {
+		return s.Value.Infer(ctx, env, fresh)
+	}
+	return nil, nil
+}
+
+func (s *SlotDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	slotType, err := s.signatureType(ctx, env, fresh, false)
+	if err != nil {
+		return nil, err
+	}
+	if slotType == nil {
+		return nil, nil
+	}
+	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+	s.SetInferredType(slotType)
+	if e, ok := env.(Env); ok {
+		e.SetVisibility(s.Name.Name, s.Visibility)
+		if s.DocString != "" {
+			e.SetDocString(s.Name.Name, s.DocString)
+		}
+		if len(s.Directives) > 0 {
+			e.SetDirectives(s.Name.Name, s.Directives)
+		}
+	}
+	return slotType, nil
+}
+
+func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	slotType, err := s.signatureType(ctx, env, fresh, true)
+	if err != nil {
+		return nil, err
+	}
+	if slotType == nil {
+		slotType = fresh.Fresh()
+	}
+	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+	s.SetInferredType(slotType)
+	if e, ok := env.(Env); ok {
+		e.SetVisibility(s.Name.Name, s.Visibility)
+		if s.DocString != "" {
+			e.SetDocString(s.Name.Name, s.DocString)
+		}
+		if len(s.Directives) > 0 {
+			e.SetDirectives(s.Name.Name, s.Directives)
+		}
+	}
+	return slotType, nil
 }
 
 func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
@@ -177,7 +268,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.GetLocal(s.Name.Name)
+		val, defined := env.LookupLocal(s.Name.Name)
 		if defined {
 			// Already defined (e.g. through constructor). Still materialize in
 			// case a constructor argument came from fromJSON or a narrow string
@@ -186,7 +277,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			env.SetWithVisibility(s.Name.Name, materialized, s.Visibility)
+			env.Bind(s.Name.Name, materialized, s.Visibility)
 			return materialized, nil
 		}
 
@@ -195,13 +286,13 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			// This is a runtime error - required types must have values
 			if inferredType := s.GetInferredType(); inferredType != nil {
 				if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
-					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType.Name())
+					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType)
 				}
 			}
 
 			// If no value is provided, this is just a type declaration
 			// Add a null value to the environment as a placeholder
-			env.SetWithVisibility(s.Name.Name, NullValue{}, s.Visibility)
+			env.Bind(s.Name.Name, NullValue{}, s.Visibility)
 			return NullValue{}, nil
 		}
 
@@ -218,8 +309,8 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the value to the environment for future use
-		// If it's a ModuleValue, use SetWithVisibility to track visibility
-		env.SetWithVisibility(s.Name.Name, val, s.Visibility)
+		// If it's a ModuleValue, track visibility explicitly
+		env.Bind(s.Name.Name, val, s.Visibility)
 
 		return val, nil
 	})
@@ -255,10 +346,11 @@ type ClassDecl struct {
 // NewConstructorDecl represents an explicit `new(...) { ... }` constructor
 type NewConstructorDecl struct {
 	InferredTypeHolder
-	Args      []*SlotDecl
-	BodyBlock *Block
-	DocString string
-	Loc       *SourceLocation
+	Args       []*SlotDecl
+	BlockParam *SlotDecl
+	BodyBlock  *Block
+	DocString  string
+	Loc        *SourceLocation
 
 	Inferred *hm.FunctionType
 }
@@ -275,6 +367,9 @@ func (n *NewConstructorDecl) ReferencedSymbols() []string {
 	for _, arg := range n.Args {
 		symbols = append(symbols, arg.ReferencedSymbols()...)
 	}
+	if n.BlockParam != nil {
+		symbols = append(symbols, n.BlockParam.ReferencedSymbols()...)
+	}
 	symbols = append(symbols, n.BodyBlock.ReferencedSymbols()...)
 	return symbols
 }
@@ -290,6 +385,9 @@ func (n *NewConstructorDecl) Walk(fn func(Node) bool) {
 	for _, arg := range n.Args {
 		arg.Walk(fn)
 	}
+	if n.BlockParam != nil {
+		n.BlockParam.Walk(fn)
+	}
 	n.BodyBlock.Walk(fn)
 }
 
@@ -303,10 +401,6 @@ func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fre
 func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// The new() constructor body is evaluated by ConstructorFunction.Call
 	return NullValue{}, nil
-}
-
-func (f *ClassDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &ClassDecl{}
@@ -332,6 +426,39 @@ func (c *ClassDecl) Body() hm.Expression { return c.Value }
 func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
 var _ Hoister = &ClassDecl{}
+
+// Imported schema types are installed into the local type map so they can be
+// referenced unqualified. A real type declaration with the same name must
+// replace an unqualified imported alias, not mutate the imported schema type.
+// Qualified import aliases like Dagger are protected so Dagger.Container keeps
+// resolving through the imported module.
+func localTypeShadowsImport(env Env, name string) bool {
+	origin, found := env.LocalTypeOrigin(name)
+	return found && origin.IsUnqualifiedImport()
+}
+
+func localTypeIsQualifiedImport(env Env, name string) bool {
+	origin, found := env.LocalTypeOrigin(name)
+	return found && origin.Kind == BindingOriginImport && origin.Qualified
+}
+
+func declareLocalType(env Env, name string, kind ModuleKind) (*Module, error) {
+	if existing, found := env.LocalNamedType(name); found {
+		if localTypeShadowsImport(env, name) {
+			// Local declarations intentionally shadow unqualified imports.
+		} else if localTypeIsQualifiedImport(env, name) {
+			return nil, fmt.Errorf("type %q conflicts with import alias", name)
+		} else if mod, ok := existing.(*Module); ok {
+			return mod, nil
+		} else {
+			return nil, fmt.Errorf("type %q conflicts with existing type", name)
+		}
+	}
+
+	mod := NewModule(name, kind)
+	env.AddClass(name, mod)
+	return mod, nil
+}
 
 // findNewConstructor returns the NewConstructorDecl from the class body, if any
 func (c *ClassDecl) findNewConstructor() *NewConstructorDecl {
@@ -360,10 +487,19 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
 	}
 
-	class, found := mod.LocalNamedType(c.Name.Name)
-	if !found {
-		class = NewModule(c.Name.Name, ObjectKind)
-		mod.AddClass(c.Name.Name, class)
+	class, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, c.Name)
+	}
+	c.Inferred = class
+	c.SetInferredType(class)
+
+	// Pass 0 must only register the type name. Other top-level types may refer
+	// to this class before its file is reached, so anything that resolves field
+	// annotations, constructor params, or implemented interfaces has to wait
+	// until every type has had this registration pass.
+	if pass == 0 {
+		return nil
 	}
 
 	inferEnv := &CompositeModule{
@@ -374,12 +510,14 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// Build constructor type: use explicit new() if present, otherwise derive from fields
 	newDecl := c.findNewConstructor()
 	var constructorParams []*SlotDecl
+	var constructorBlockParam *SlotDecl
 	if newDecl != nil {
 		constructorParams = newDecl.Args
+		constructorBlockParam = newDecl.BlockParam
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
-	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, class.(*Module), fresh)
+	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, class, fresh)
 	if err != nil {
 		return err
 	}
@@ -389,55 +527,52 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	constructorScheme := hm.NewScheme(nil, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
 
-	if pass == 0 {
-		// Link the implementation
-		if len(c.Implements) > 0 {
-			classMod := class.(*Module)
-			for _, ifaceSym := range c.Implements {
-				ifaceType, found := mod.NamedType(ifaceSym.Name)
-				if !found {
-					return WrapInferError(
-						fmt.Errorf("interface %s not found", ifaceSym.Name),
-						ifaceSym,
-					)
-				}
+	// Link the implementation after all interface type names have been
+	// registered by pass 0.
+	if len(c.Implements) > 0 {
+		classMod := class
+		for _, ifaceSym := range c.Implements {
+			ifaceType, found := mod.NamedType(ifaceSym.Name)
+			if !found {
+				return WrapInferError(
+					fmt.Errorf("interface %s not found", ifaceSym.Name),
+					ifaceSym,
+				)
+			}
 
-				ifaceMod, ok := ifaceType.(*Module)
-				if !ok || ifaceMod.Kind != InterfaceKind {
-					return WrapInferError(
-						fmt.Errorf("%s is not an interface", ifaceSym.Name),
-						ifaceSym,
-					)
-				}
+			ifaceMod, ok := ifaceType.(*Module)
+			if !ok || ifaceMod.Kind != InterfaceKind {
+				return WrapInferError(
+					fmt.Errorf("%s is not an interface", ifaceSym.Name),
+					ifaceSym,
+				)
+			}
 
-				// Add "blindly" initially, we'll validate later. The reverse
-				// implementer index is only maintained for locally owned interfaces;
-				// Prelude interfaces are shared process-wide and must not be mutated
-				// by per-module declarations.
-				classMod.AddInterface(ifaceType)
-				if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
-					ifaceMod.AddImplementer(classMod)
-				}
+			// Add "blindly" initially, we'll validate later. The reverse
+			// implementer index is only maintained for locally owned interfaces;
+			// Prelude interfaces are shared process-wide and must not be mutated
+			// by per-module declarations.
+			classMod.AddInterface(ifaceType)
+			if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
+				ifaceMod.AddImplementer(classMod)
 			}
 		}
 	}
 
-	if pass > 0 {
-		// Set dynamic scope type to the class type
-		selfType := hm.NonNullType{Type: class}
-		class.SetDynamicScopeType(selfType)
+	// Set dynamic scope type to the class type
+	selfType := hm.NonNullType{Type: class}
+	class.SetDynamicScopeType(selfType)
 
-		// Hoist body forms directly (not via Block.Hoist which clones the env)
-		// to register method signatures on the class module. This enables
-		// forward references between types defined in any order. We hoist at
-		// pass 0 so that FunDecl.Hoist registers signatures and
-		// SlotDecl.Hoist registers typed field declarations.
-		bodyForms := c.bodyFormsWithoutNew()
-		for _, form := range bodyForms {
-			if hoister, ok := form.(Hoister); ok {
-				if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
-					return err
-				}
+	// Hoist body forms directly (not via Block.Hoist which clones the env)
+	// to register method signatures on the class module. This enables
+	// forward references between types defined in any order. We hoist at
+	// pass 0 so that FunDecl.Hoist registers signatures and
+	// SlotDecl.Hoist registers typed field declarations.
+	bodyForms := c.bodyFormsWithoutNew()
+	for _, form := range bodyForms {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+				return err
 			}
 		}
 	}
@@ -451,10 +586,9 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
 	}
 
-	class, found := mod.LocalNamedType(c.Name.Name)
-	if !found {
-		class = NewModule(c.Name.Name, ObjectKind)
-		mod.AddClass(c.Name.Name, class)
+	class, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	if declareErr != nil {
+		return nil, WrapInferError(declareErr, c.Name)
 	}
 
 	// Store doc string for the class name in the environment
@@ -463,7 +597,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	}
 
 	// Set this early so we can at least partially infer.
-	c.Inferred = class.(*Module)
+	c.Inferred = class
 
 	// Set dynamic scope type to the class type
 	selfType := hm.NonNullType{Type: class}
@@ -552,7 +686,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		classFieldType, _ := classFieldScheme.Type()
 
 		// Validate field type compatibility
-		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceSym.Name, c.Name.Name); err != nil {
+		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceMod.String(), classMod.String()); err != nil {
 			return WrapInferError(err, ifaceSym)
 		}
 	}
@@ -563,7 +697,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		for _, field := range missingFields {
 			fieldScheme, _ := ifaceMod.SchemeOf(field)
 			errs.Add(WrapInferError(
-				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", c.Name.Name, field, fieldScheme, ifaceSym.Name),
+				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", classMod, field, fieldScheme, ifaceMod),
 				ifaceSym,
 			))
 		}
@@ -603,37 +737,71 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
-		Args: params,
-		Body: &Block{
-			Forms: []Node{
-				&ValueNode{Val: NewModuleValue(classType)},
-			},
-		},
+		Args:       params,
+		BlockParam: blockParam,
 	}
-	return fnDecl.inferFunctionType(ctx, env, fresh, nil, classType.Named+" Constructor")
+	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
+	argEnv := env.Clone()
+	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
+	}
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
+
+	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: classType})
+	if blockParam != nil {
+		blockParamType, err := blockParam.Type_.Infer(signatureCtx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", classType.Named, err)
+		}
+		blockType, ok := blockParamType.(*hm.FunctionType)
+		if !ok {
+			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", classType.Named, blockParamType)
+		}
+		constructorType.SetBlock(blockType)
+	}
+	return constructorType, nil
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
 func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
+	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
+
 	// Create an environment with the constructor args in scope
 	newEnv := inferEnv.Clone().(*CompositeModule)
 	for _, arg := range newDecl.Args {
-		argType := arg.GetInferredType()
-		if argType == nil {
-			// Infer the arg type if not already done
-			var err error
-			argType, err = arg.Infer(ctx, newEnv, fresh)
-			if err != nil {
-				return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
-			}
+		// Fully infer constructor arguments here so default expressions are
+		// validated during normal inference. Declaration may have recorded the
+		// signature without checking computed defaults.
+		argType, err := arg.Infer(constructorCtx, newEnv, fresh)
+		if err != nil {
+			return fmt.Errorf("inferring new() arg %s: %w", arg.Name.Name, err)
 		}
 		newEnv.Add(arg.Name.Name, hm.NewScheme(nil, argType))
 	}
+	if newDecl.BlockParam != nil {
+		var blockType hm.Type
+		if c.ConstructorFnType != nil && c.ConstructorFnType.Block() != nil {
+			blockType = c.ConstructorFnType.Block()
+		} else {
+			var err error
+			blockType, err = newDecl.BlockParam.Type_.Infer(constructorCtx, inferEnv, fresh)
+			if err != nil {
+				return fmt.Errorf("inferring new() block parameter %s: %w", newDecl.BlockParam.Name.Name, err)
+			}
+		}
+		newEnv.Add(newDecl.BlockParam.Name.Name, hm.NewScheme(nil, blockType))
+	}
 
-	// Infer the new() body
-	bodyType, err := newDecl.BodyBlock.Infer(ctx, newEnv, fresh)
+	// Infer the new() body with a constructor return target. Constructors are
+	// function boundaries for break/continue just like ordinary functions.
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(constructorCtx, returnTarget)
+	bodyType, err := newDecl.BodyBlock.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return fmt.Errorf("inferring new() body: %w", err)
 	}
@@ -641,21 +809,24 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	// The new() body must return the class type
 	expectedType := hm.NonNullType{Type: c.Inferred}
 	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
-		lastForm := newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		errorNode := Node(newDecl.BodyBlock)
+		if len(newDecl.BodyBlock.Forms) > 0 {
+			errorNode = newDecl.BodyBlock.Forms[len(newDecl.BodyBlock.Forms)-1]
+		}
 		return NewInferError(
 			fmt.Errorf("new() must return %s, got %s", expectedType.Name(), bodyType.Name()),
-			lastForm,
+			errorNode,
 		)
 	}
 
-	for _, ret := range collectReturnStatements(newDecl.BodyBlock) {
+	for _, ret := range collectReturnStatements(newDecl.BodyBlock, returnTarget) {
 		retType := returnValueType(ret)
 		if retType == nil {
 			continue
 		}
 		if _, err := hm.Assignable(retType, expectedType); err != nil {
 			return NewInferError(
-				fmt.Errorf("new() must return %s, got %s", expectedType.Name(), retType.Name()),
+				fmt.Errorf("new() must return %s, got %s", expectedType, retType),
 				ret.Value,
 			)
 		}
@@ -678,12 +849,19 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Find explicit new() or derive constructor from fields
 		newDecl := c.findNewConstructor()
 		var constructorParams []*SlotDecl
+		var constructorBlockParam *SlotDecl
 		var newBody *Block
 		if newDecl != nil {
 			constructorParams = newDecl.Args
+			constructorBlockParam = newDecl.BlockParam
 			newBody = newDecl.BodyBlock
 		} else {
 			constructorParams = c.extractConstructorParameters()
+		}
+
+		var blockParamName string
+		if constructorBlockParam != nil {
+			blockParamName = constructorBlockParam.Name.Name
 		}
 
 		// Create a constructor function that evaluates the class body when called
@@ -691,6 +869,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			Closure:        env,
 			ClassName:      c.Name.Name,
 			Parameters:     constructorParams,
+			BlockParamName: blockParamName,
 			ClassType:      c.Inferred,
 			ClassBodyForms: c.bodyFormsWithoutNew(),
 			FnType:         c.ConstructorFnType,
@@ -698,7 +877,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the constructor to the evaluation environment
-		env.SetWithVisibility(c.Name.Name, constructor, c.Visibility)
+		env.Bind(c.Name.Name, constructor, c.Visibility)
 
 		return constructor, nil
 	})
@@ -726,10 +905,6 @@ type EnumDecl struct {
 	Inferred *Module
 }
 
-func (e *EnumDecl) IsDeclarer() bool {
-	return true
-}
-
 var _ Node = &EnumDecl{}
 var _ Evaluator = &EnumDecl{}
 
@@ -753,14 +928,16 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		return fmt.Errorf("EnumDecl.Hoist: environment does not support module operations")
 	}
 
-	// Create the enum type (module) if it doesn't exist
-	enumType, found := mod.LocalNamedType(e.Name.Name)
-	if !found {
-		enumType = NewModule(e.Name.Name, EnumKind)
-		mod.AddClass(e.Name.Name, enumType)
+	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, e.Name)
 	}
 
-	e.Inferred = enumType.(*Module)
+	e.Inferred = enumType
+	e.SetInferredType(enumType)
+	if e.DocString != "" {
+		mod.SetDocString(e.Name.Name, e.DocString)
+	}
 
 	// Add the enum module to the environment so it can be referenced
 	// Note: We add the enum type itself, not wrapped in NonNullType, matching GraphQL enum behavior
@@ -775,10 +952,6 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 			enumType.Add(value.Name, valueScheme)
 			enumType.SetVisibility(value.Name, PublicVisibility)
 
-			// Store doc string if present
-			if e.DocString != "" {
-				mod.SetDocString(e.Name.Name, e.DocString)
-			}
 		}
 
 		// Add the values() method that returns all enum values as a list
@@ -796,17 +969,15 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
 	}
 
-	enumType, found := mod.LocalNamedType(e.Name.Name)
-	if !found {
-		enumType = NewModule(e.Name.Name, EnumKind)
-		mod.AddClass(e.Name.Name, enumType)
-
-		if e.DocString != "" {
-			mod.SetDocString(e.Name.Name, e.DocString)
-		}
+	enumType, declareErr := declareLocalType(mod, e.Name.Name, EnumKind)
+	if declareErr != nil {
+		return nil, WrapInferError(declareErr, e.Name)
+	}
+	if e.DocString != "" {
+		mod.SetDocString(e.Name.Name, e.DocString)
 	}
 
-	e.Inferred = enumType.(*Module)
+	e.Inferred = enumType
 	e.SetInferredType(enumType)
 
 	return enumType, nil
@@ -834,7 +1005,7 @@ func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Register the enum module in the environment
-	env.SetWithVisibility(e.Name.Name, enumModule, e.Visibility)
+	env.Bind(e.Name.Name, enumModule, e.Visibility)
 
 	return enumModule, nil
 }
@@ -860,10 +1031,6 @@ type ScalarDecl struct {
 	Inferred *Module
 }
 
-func (s *ScalarDecl) IsDeclarer() bool {
-	return true
-}
-
 var _ Node = &ScalarDecl{}
 var _ Evaluator = &ScalarDecl{}
 
@@ -887,14 +1054,13 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return fmt.Errorf("ScalarDecl.Hoist: environment does not support module operations")
 	}
 
-	// Create the scalar type (module) if it doesn't exist
-	scalarType, found := mod.LocalNamedType(s.Name.Name)
-	if !found {
-		scalarType = NewModule(s.Name.Name, ScalarKind)
-		mod.AddClass(s.Name.Name, scalarType)
+	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, s.Name)
 	}
 
-	s.Inferred = scalarType.(*Module)
+	s.Inferred = scalarType
+	s.SetInferredType(scalarType)
 
 	// Add the scalar type to the environment
 	scalarScheme := hm.NewScheme(nil, scalarType)
@@ -913,17 +1079,15 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
 	}
 
-	scalarType, found := mod.LocalNamedType(s.Name.Name)
-	if !found {
-		scalarType = NewModule(s.Name.Name, ScalarKind)
-		mod.AddClass(s.Name.Name, scalarType)
-
-		if s.DocString != "" {
-			mod.SetDocString(s.Name.Name, s.DocString)
-		}
+	scalarType, declareErr := declareLocalType(mod, s.Name.Name, ScalarKind)
+	if declareErr != nil {
+		return nil, WrapInferError(declareErr, s.Name)
+	}
+	if s.DocString != "" {
+		mod.SetDocString(s.Name.Name, s.DocString)
 	}
 
-	s.Inferred = scalarType.(*Module)
+	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 
 	return scalarType, nil
@@ -935,7 +1099,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	scalarModule := NewModuleValue(s.Inferred)
 
 	// Register the scalar type in the environment
-	env.SetWithVisibility(s.Name.Name, scalarModule, s.Visibility)
+	env.Bind(s.Name.Name, scalarModule, s.Visibility)
 
 	return scalarModule, nil
 }
@@ -959,10 +1123,6 @@ type InterfaceDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (i *InterfaceDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &InterfaceDecl{}
@@ -991,17 +1151,38 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		return fmt.Errorf("InterfaceDecl.Hoist: environment does not support module operations")
 	}
 
-	// Pass 0: Register the interface type
-	if pass == 0 {
-		iface := NewModule(i.Name.Name, InterfaceKind)
-		mod.AddClass(i.Name.Name, iface)
-
-		// Add the interface type to the environment so it can be referenced
-		interfaceScheme := hm.NewScheme(nil, iface)
-		env.Add(i.Name.Name, interfaceScheme)
+	iface, declareErr := declareLocalType(mod, i.Name.Name, InterfaceKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, i.Name)
+	}
+	i.Inferred = iface
+	i.SetInferredType(iface)
+	if i.DocString != "" {
+		mod.SetDocString(i.Name.Name, i.DocString)
 	}
 
-	// Interface fields are handled in Infer, not Hoist
+	// Pass 0: Register the interface type.
+	if pass == 0 {
+		// Add the interface type to the environment so it can be referenced.
+		interfaceScheme := hm.NewScheme(nil, iface)
+		env.Add(i.Name.Name, interfaceScheme)
+		return nil
+	}
+
+	// Pass 1: Declare interface field and method signatures without inferring
+	// implementation bodies. Interface bodies only describe the public shape.
+	inferEnv := &CompositeModule{
+		primary: iface,
+		lexical: mod,
+	}
+	for _, form := range i.Value.Forms {
+		if hoister, ok := form.(Hoister); ok {
+			if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -1044,7 +1225,7 @@ func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
 	// Just register the interface module in the environment
 	interfaceModule := NewModuleValue(i.Inferred)
-	env.SetWithVisibility(i.Name.Name, interfaceModule, i.Visibility)
+	env.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
 
@@ -1067,10 +1248,6 @@ type UnionDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (u *UnionDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &UnionDecl{}
@@ -1099,13 +1276,40 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		return fmt.Errorf("UnionDecl.Hoist: environment does not support module operations")
 	}
 
-	if pass == 0 {
-		// Pass 0: Register the union type
-		unionMod := NewModule(u.Name.Name, UnionKind)
-		mod.AddClass(u.Name.Name, unionMod)
+	unionMod, declareErr := declareLocalType(mod, u.Name.Name, UnionKind)
+	if declareErr != nil {
+		return WrapInferError(declareErr, u.Name)
+	}
+	u.Inferred = unionMod
+	u.SetInferredType(unionMod)
+	if u.DocString != "" {
+		mod.SetDocString(u.Name.Name, u.DocString)
+	}
 
-		// Add the union type to the environment so it can be referenced
+	if pass == 0 {
+		// Pass 0: Register the union type so it can be referenced.
 		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
+		return nil
+	}
+
+	// Pass 1: Link member names. This is still signature information; no
+	// expression bodies are inferred.
+	for _, memberSym := range u.Members {
+		memberType, found := mod.NamedType(memberSym.Name)
+		if !found {
+			continue
+		}
+
+		memberMod, ok := memberType.(*Module)
+		if !ok || memberMod.Kind != ObjectKind {
+			continue
+		}
+
+		if localMember, found := mod.LocalNamedType(memberSym.Name); found && localMember == memberType {
+			unionMod.LinkMember(memberType)
+		} else {
+			unionMod.AddMember(memberType)
+		}
 	}
 
 	return nil
@@ -1172,7 +1376,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Unions are pure type declarations - register the union module
 	unionModule := NewModuleValue(u.Inferred)
-	env.SetWithVisibility(u.Name.Name, unionModule, u.Visibility)
+	env.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }
 

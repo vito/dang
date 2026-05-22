@@ -330,7 +330,7 @@ func WithEvalErrorHandling(ctx context.Context, node SourceLocatable, fn func() 
 		var sourceErr *SourceError
 		var assertionErr *AssertionError
 		var raisedErr *RaisedError
-		if errors.As(err, &sourceErr) || errors.As(err, &assertionErr) || errors.As(err, &raisedErr) || isReturnException(err) {
+		if errors.As(err, &sourceErr) || errors.As(err, &assertionErr) || errors.As(err, &raisedErr) || isControlFlowException(err) {
 			// Already has context or is a control-flow sentinel; preserve it
 			return nil, err
 		}

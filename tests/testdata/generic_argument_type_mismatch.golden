@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use String! as Int!
+  [2m[34m--> errors/generic_argument_type_mismatch.dang:4:24[0m
+ [2m    |[0m
+ [2m  2 | pub choose(x: a, y: a): a { x }[0m
+ [2m  3 | [0m
+ [2m[34m[1m  4 | [0mpub result = choose(1, "one")
+[2m                              [31m^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

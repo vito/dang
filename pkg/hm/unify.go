@@ -21,6 +21,9 @@ func Assignable(have, want Type) (Subs, error) {
 	// Handle nullable type variables first (before regular TypeVariable,
 	// since NullableTypeVariable embeds TypeVariable)
 	if haveNTV, ok := have.(NullableTypeVariable); ok {
+		if _, wantNonNull := want.(NonNullType); wantNonNull {
+			return nil, UnificationError{have, want}
+		}
 		return bindNullableVar(haveNTV, want)
 	}
 	if wantNTV, ok := want.(NullableTypeVariable); ok {
@@ -67,18 +70,21 @@ func Assignable(have, want Type) (Subs, error) {
 			var subs = NewSubs()
 			for i, comp1 := range haveTypes {
 				comp2 := wantTypes[i]
-				// Apply current substitutions to both components
-				comp1Applied := comp1.Apply(subs).(Type)
-				comp2Applied := comp2.Apply(subs).(Type)
 
-				// Unify the components
-				componentSubs, err := Assignable(comp1Applied, comp2Applied)
+				// Unify each component against the original component types, then
+				// merge the resulting substitutions. Applying substitutions eagerly
+				// makes repeated type variables order-dependent (e.g. (Int!, null)
+				// against (a, a)); checked composition widens those constraints once
+				// all component evidence is available.
+				componentSubs, err := Assignable(comp1, comp2)
 				if err != nil {
 					return nil, UnificationError{have, want}
 				}
 
-				// Compose the substitutions
-				subs = subs.Compose(componentSubs)
+				subs, err = subs.Compose(componentSubs)
+				if err != nil {
+					return nil, UnificationError{have, want}
+				}
 			}
 			return subs, nil
 		}
@@ -126,7 +132,11 @@ func assignableFromUnion(have *UnionType, want Type) (Subs, error) {
 		if err != nil {
 			return nil, UnificationError{have, want}
 		}
-		subs = subs.Compose(optionSubs)
+		var composeErr error
+		subs, composeErr = subs.Compose(optionSubs)
+		if composeErr != nil {
+			return nil, UnificationError{have, want}
+		}
 	}
 	return subs, nil
 }
@@ -148,14 +158,30 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 	return subs, nil
 }
 
-// bindNullableVar binds a nullable type variable to a type, stripping
-// NonNull if present. This ensures that null always resolves to a nullable
-// type: binding NullableTypeVariable to String! produces String, not String!.
+// bindNullableVar binds a nullable type variable to a type while preserving
+// its nullability taint. This ensures that null always resolves to a nullable
+// type: binding NullableTypeVariable to String! produces String, not String!,
+// and binding it to a plain type variable taints that variable as nullable.
 func bindNullableVar(tv NullableTypeVariable, t Type) (Subs, error) {
-	// Strip NonNull — null is inherently nullable
-	if nn, ok := t.(NonNullType); ok {
-		t = nn.Type
+	subs := NewSubs()
+
+	if tv2, ok := t.(NullableTypeVariable); ok {
+		if tv.TypeVariable == tv2.TypeVariable {
+			return subs, nil
+		}
+		subs.Add(tv.TypeVariable, tv2)
+		return subs, nil
 	}
+
+	if tv2, ok := t.(TypeVariable); ok {
+		// Bind the other variable to the nullable one so the taint is visible when
+		// that variable appears elsewhere, such as a generic function's return type.
+		subs.Add(tv2, tv)
+		return subs, nil
+	}
+
+	// Strip NonNull — null is inherently nullable.
+	t = makeNullable(t)
 	return bindVar(tv.TypeVariable, t)
 }
 

@@ -87,12 +87,31 @@ type NullableTypeVariable struct {
 	TypeVariable
 }
 
+func (ntv NullableTypeVariable) Name() string {
+	return ntv.String()
+}
+
 func (ntv NullableTypeVariable) Apply(subs Subs) Substitutable {
-	// Look up by the underlying TypeVariable key
+	// Look up by the underlying TypeVariable key. Applying a substitution must
+	// preserve the nullable taint: a? with a := T! resolves to T, and a? with
+	// a := b resolves to b?.
 	if t, exists := subs[ntv.TypeVariable]; exists {
-		return t
+		return makeNullable(t)
 	}
 	return ntv
+}
+
+func makeNullable(t Type) Type {
+	switch tt := t.(type) {
+	case NullableTypeVariable:
+		return tt
+	case NonNullType:
+		return tt.Type
+	case TypeVariable:
+		return NullableTypeVariable{TypeVariable: tt}
+	default:
+		return t
+	}
 }
 
 func (ntv NullableTypeVariable) Eq(other Type) bool {
@@ -165,7 +184,11 @@ func (ft *FunctionType) Normalize(k, v TypeVarSet) (Type, error) {
 }
 
 func (ft *FunctionType) Types() Types {
-	return Types{ft.arg, ft.ret}
+	types := Types{ft.arg, ft.ret}
+	if ft.block != nil {
+		types = append(types, ft.block)
+	}
+	return types
 }
 
 func (ft *FunctionType) Eq(other Type) bool {
@@ -184,9 +207,14 @@ func (ft *FunctionType) Supertypes() []Type {
 }
 
 func (ft *FunctionType) String() string {
-	return fmt.Sprintf("(%s): %s",
-		strings.TrimSuffix(strings.TrimPrefix(ft.arg.Name(), "{"), "}"),
-		ft.ret.Name())
+	args := strings.TrimSuffix(strings.TrimPrefix(ft.arg.String(), "{"), "}")
+	if ft.block != nil {
+		if args != "" {
+			args += ", "
+		}
+		args += "&block: " + ft.block.String()
+	}
+	return fmt.Sprintf("(%s): %s", args, ft.ret.String())
 }
 
 func (ft *FunctionType) Format(s fmt.State, c rune) {
@@ -269,7 +297,7 @@ func NewUnionType(options ...Type) Type {
 func (t *UnionType) Name() string {
 	parts := make([]string, len(t.Options))
 	for i, option := range t.Options {
-		parts[i] = option.Name()
+		parts[i] = option.String()
 	}
 	return strings.Join(parts, " | ")
 }
@@ -345,9 +373,9 @@ type NonNullType struct {
 
 func (t NonNullType) Name() string {
 	if _, ok := t.Type.(*UnionType); ok {
-		return fmt.Sprintf("(%s)!", t.Type.Name())
+		return fmt.Sprintf("(%s)!", t.Type)
 	}
-	return fmt.Sprintf("%s!", t.Type.Name())
+	return fmt.Sprintf("%s!", t.Type)
 }
 
 func (t NonNullType) Apply(subs Subs) Substitutable {

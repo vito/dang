@@ -1,0 +1,11 @@
+[1m[31mError:[0m break outside of loop or block-taking call
+  [2m[34m--> errors/break_in_ordinary_function_in_block.dang:4:5[0m
+ [2m    |[0m
+ [2m  2 | pub result = [1].map { x =>[0m
+ [2m  3 |   let bad: Int! {[0m
+ [2m[34m[1m  4 | [0m    break "done"
+[2m           [31m^^^^^^^^^^^^[0m
+ [2m  5 |   }[0m
+ [2m  6 |   x[0m
+ [2m    |[0m
+

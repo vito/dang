@@ -198,7 +198,10 @@ func materializeNamedObject(ctx context.Context, env EvalEnv, raw any, mod *Modu
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
 	}
 
-	constructorVal, found := env.Get(mod.Named)
+	constructorVal, found, err := env.Lookup(ctx, mod.Named)
+	if err != nil {
+		return nil, err
+	}
 	if !found {
 		return nil, materializeDeferredError(path, "constructor for %s not found", mod.Name())
 	}
@@ -289,11 +292,11 @@ func materializeAnonymousObject(ctx context.Context, env EvalEnv, raw any, mod *
 			if err != nil {
 				return nil, err
 			}
-			value.Set(name, materialized)
+			value.Bind(name, materialized, PublicVisibility)
 			continue
 		}
 		if isNullableType(fieldType) {
-			value.Set(name, NullValue{})
+			value.Bind(name, NullValue{}, PublicVisibility)
 			continue
 		}
 		return nil, materializeDeferredError(fieldPath, "missing required field")

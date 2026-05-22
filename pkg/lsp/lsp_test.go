@@ -153,6 +153,24 @@ func testFile(t *testctx.T, client *nvim.Nvim, file string) {
 		return err == nil && b
 	}, 5*time.Second, 10*time.Millisecond)
 
+	// Wait for the initial didOpen analysis to finish before driving any
+	// tests. The completion handler blocks on the file's processing flag;
+	// firing <C-x><C-o> while analysis is still in flight races Neovim's
+	// synchronous omnifunc (1s default). A synchronous hover probe goes
+	// through the same waitForFile() path, so once it returns the server
+	// is caught up.
+	require.Eventually(t, func() bool {
+		var ok bool
+		err := client.ExecLua(`
+			local params = {
+				textDocument = { uri = vim.uri_from_bufnr(0) },
+				position = { line = 0, character = 0 },
+			}
+			return vim.lsp.buf_request_sync(0, 'textDocument/hover', params, 500) ~= nil
+		`, &ok)
+		return err == nil && ok
+	}, 5*time.Second, 50*time.Millisecond)
+
 	lineCount, err := client.BufferLineCount(testBuf)
 	require.NoError(t, err)
 

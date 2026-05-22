@@ -12,12 +12,58 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
+type BindingOriginKind int
+
+const (
+	BindingOriginUnknown BindingOriginKind = iota
+	BindingOriginLocal
+	BindingOriginImport
+)
+
+type BindingOrigin struct {
+	Kind        BindingOriginKind
+	ImportNames []string
+	Qualified   bool
+}
+
+func LocalBindingOrigin() BindingOrigin {
+	return BindingOrigin{Kind: BindingOriginLocal}
+}
+
+func ImportedBindingOrigin(importName string, qualified bool) BindingOrigin {
+	return BindingOrigin{Kind: BindingOriginImport, ImportNames: []string{importName}, Qualified: qualified}
+}
+
+func (o BindingOrigin) IsUnqualifiedImport() bool {
+	return o.Kind == BindingOriginImport && !o.Qualified
+}
+
+func (o BindingOrigin) AddImportProvider(importName string) BindingOrigin {
+	if o.Kind != BindingOriginImport {
+		return ImportedBindingOrigin(importName, false)
+	}
+	if slices.Contains(o.ImportNames, importName) {
+		return o
+	}
+	o.ImportNames = append(o.ImportNames, importName)
+	return o
+}
+
+func (o BindingOrigin) ConflictingImports() []string {
+	if !o.IsUnqualifiedImport() || len(o.ImportNames) < 2 {
+		return nil
+	}
+	return o.ImportNames
+}
+
 type Env interface {
 	hm.Env
 	hm.Type
 	NamedType(string) (Env, bool)
 	LocalNamedType(string) (Env, bool)
 	AddClass(string, Env)
+	SetTypeOrigin(string, BindingOrigin)
+	LocalTypeOrigin(string) (BindingOrigin, bool)
 	SetDocString(string, string)
 	GetDocString(string) (string, bool)
 	SetDirectives(string, []*DirectiveApplication)
@@ -26,12 +72,13 @@ type Env interface {
 	GetModuleDocString() string
 	SetVisibility(string, Visibility)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
+	SetValueOrigin(string, BindingOrigin)
+	LocalValueOrigin(string) (BindingOrigin, bool)
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
+	SetDirectiveOrigin(string, BindingOrigin)
+	LocalDirectiveOrigin(string) (BindingOrigin, bool)
 	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
-	TrackUnqualifiedTypeImport(symbolName, importName string) bool
-	TrackUnqualifiedValueImport(symbolName, importName string) bool
-	TrackUnqualifiedDirectiveImport(directiveName, importName string) bool
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
 	CheckDirectiveConflict(directiveName string) []string
@@ -93,15 +140,21 @@ type Module struct {
 	Named string
 	Kind  ModuleKind
 
+	// Qualifier is the import/module alias used for display-only type names.
+	Qualifier string
+
 	Parent Env
 
-	classes         map[string]Env
-	vars            map[string]*hm.Scheme
-	visibility      map[string]Visibility
-	directives      map[string]*DirectiveDecl
-	slotDirectives  map[string][]*DirectiveApplication
-	docStrings      map[string]string
-	moduleDocString string
+	classes          map[string]Env
+	vars             map[string]*hm.Scheme
+	visibility       map[string]Visibility
+	directives       map[string]*DirectiveDecl
+	typeOrigins      map[string]BindingOrigin
+	valueOrigins     map[string]BindingOrigin
+	directiveOrigins map[string]BindingOrigin
+	slotDirectives   map[string][]*DirectiveApplication
+	docStrings       map[string]string
+	moduleDocString  string
 
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
@@ -119,27 +172,22 @@ type Module struct {
 	members []Env // Member types of this union (for union modules)
 	unions  []Env // Unions this type is a member of
 
-	// Import conflict tracking for unqualified imports
-	// Maps symbol name -> list of import names that provide it
-	unqualifiedTypeImports      map[string][]string // For type-level symbols
-	unqualifiedValueImports     map[string][]string // For value-level symbols
-	unqualifiedDirectiveImports map[string][]string // For directives
 }
 
 func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
-		Named:                       name,
-		Kind:                        kind,
-		classes:                     make(map[string]Env),
-		vars:                        make(map[string]*hm.Scheme),
-		visibility:                  make(map[string]Visibility),
-		directives:                  make(map[string]*DirectiveDecl),
-		slotDirectives:              make(map[string][]*DirectiveApplication),
-		docStrings:                  make(map[string]string),
-		moduleDocString:             "",
-		unqualifiedTypeImports:      make(map[string][]string),
-		unqualifiedValueImports:     make(map[string][]string),
-		unqualifiedDirectiveImports: make(map[string][]string),
+		Named:            name,
+		Kind:             kind,
+		classes:          make(map[string]Env),
+		vars:             make(map[string]*hm.Scheme),
+		visibility:       make(map[string]Visibility),
+		directives:       make(map[string]*DirectiveDecl),
+		typeOrigins:      make(map[string]BindingOrigin),
+		valueOrigins:     make(map[string]BindingOrigin),
+		directiveOrigins: make(map[string]BindingOrigin),
+		slotDirectives:   make(map[string][]*DirectiveApplication),
+		docStrings:       make(map[string]string),
+		moduleDocString:  "",
 	}
 	return env
 }
@@ -346,6 +394,9 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 					continue
 				}
 				sub = NewModule(t.Name, kind)
+				if subMod, ok := sub.(*Module); ok {
+					subMod.Qualifier = name
+				}
 				// Store type description as module documentation
 				if t.Description != "" {
 					sub.SetModuleDocString(t.Description)
@@ -477,7 +528,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 		// Assign enum values as string fields for enum types
 		if t.Kind == introspection.TypeKindEnum {
 			for _, enumVal := range t.EnumValues {
-				slog.Debug("adding enum value", "type", t.Name, "value", enumVal.Name)
 				// Enum values are represented with the enum type itself
 				install.Add(enumVal.Name, hm.NewScheme(nil, NonNull(install)))
 				// Enum values are public by default
@@ -521,7 +571,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 					args.DocStrings[arg.Name] = arg.Description
 				}
 			}
-			slog.Debug("adding function binding", "type", t.Name, "function", f.Name)
 			install.Add(f.Name, hm.NewScheme(nil, hm.NewFnType(args, ret)))
 			// GraphQL schema fields are public by default
 			install.SetVisibility(f.Name, PublicVisibility)
@@ -555,7 +604,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			// Link them together
 			if implMod, ok := implType.(*Module); ok {
 				implMod.AddInterface(ifaceModule)
-				slog.Debug("linked interface implementation", "type", t.Name, "interface", iface.Name)
 			}
 			if ifaceMod, ok := ifaceModule.(*Module); ok {
 				ifaceMod.AddImplementer(implType)
@@ -587,7 +635,6 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			}
 
 			unionMod.LinkMember(memberType)
-			slog.Debug("linked union member", "union", t.Name, "member", member.Name)
 		}
 	}
 
@@ -650,10 +697,20 @@ func (e *Module) FreeTypeVar() hm.TypeVarSet {
 
 func (e *Module) Add(name string, s *hm.Scheme) hm.Env {
 	e.vars[name] = s
+	e.valueOrigins[name] = LocalBindingOrigin()
 	if _, ok := e.visibility[name]; !ok {
 		e.visibility[name] = PrivateVisibility
 	}
 	return e
+}
+
+func (e *Module) SetValueOrigin(name string, origin BindingOrigin) {
+	e.valueOrigins[name] = origin
+}
+
+func (e *Module) LocalValueOrigin(name string) (BindingOrigin, bool) {
+	origin, ok := e.valueOrigins[name]
+	return origin, ok
 }
 
 func (e *Module) SetVisibility(name string, visibility Visibility) {
@@ -678,6 +735,7 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 
 func (e *Module) Clone() hm.Env {
 	mod := NewModule(e.Named, e.Kind)
+	mod.Qualifier = e.Qualifier
 	mod.Parent = e
 	mod.dynamicScopeType = e.dynamicScopeType
 	return mod
@@ -709,10 +767,30 @@ func (e *Module) NamedTypes() iter.Seq2[string, Env] {
 
 func (e *Module) AddClass(name string, c Env) {
 	e.classes[name] = c
+	e.typeOrigins[name] = LocalBindingOrigin()
+}
+
+func (e *Module) SetTypeOrigin(name string, origin BindingOrigin) {
+	e.typeOrigins[name] = origin
+}
+
+func (e *Module) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+	origin, ok := e.typeOrigins[name]
+	return origin, ok
 }
 
 func (e *Module) AddDirective(name string, directive *DirectiveDecl) {
 	e.directives[name] = directive
+	e.directiveOrigins[name] = LocalBindingOrigin()
+}
+
+func (e *Module) SetDirectiveOrigin(name string, origin BindingOrigin) {
+	e.directiveOrigins[name] = origin
+}
+
+func (e *Module) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+	origin, ok := e.directiveOrigins[name]
+	return origin, ok
 }
 
 func (e *Module) GetDirective(name string) (*DirectiveDecl, bool) {
@@ -790,7 +868,6 @@ func registerBuiltinTypes() {
 	// Register all builtin function types
 	ForEachFunction(func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
-		slog.Debug("adding builtin function", "function", def.Name)
 		Prelude.Add(def.Name, hm.NewScheme(nil, fnType))
 	})
 
@@ -798,7 +875,6 @@ func registerBuiltinTypes() {
 	for _, receiverType := range MethodReceivers() {
 		ForEachMethod(receiverType, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
-			slog.Debug("adding builtin method", "type", receiverType.Named, "method", def.Name)
 			receiverType.Add(def.Name, hm.NewScheme(nil, fnType))
 			receiverType.SetVisibility(def.Name, PublicVisibility)
 			if def.Doc != "" {
@@ -811,7 +887,6 @@ func registerBuiltinTypes() {
 	for _, hostModule := range StaticModules() {
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
-			slog.Debug("adding static method", "module", hostModule.Named, "method", def.Name)
 			hostModule.Add(def.Name, hm.NewScheme(nil, fnType))
 			hostModule.SetVisibility(def.Name, PublicVisibility)
 		})
@@ -874,6 +949,9 @@ func (t *Module) Types() hm.Types                            { return nil }
 
 func (t *Module) String() string {
 	if t.Named != "" {
+		if t.Qualifier != "" {
+			return t.Qualifier + "." + t.Named
+		}
 		return t.Named
 	}
 	return t.AsRecord().String()
@@ -949,6 +1027,9 @@ func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
 
 // AddInterface adds an interface that this type implements
 func (m *Module) AddInterface(iface Env) {
+	if slices.Contains(m.interfaces, iface) {
+		return
+	}
 	m.interfaces = append(m.interfaces, iface)
 }
 
@@ -959,6 +1040,9 @@ func (m *Module) GetInterfaces() []Env {
 
 // AddImplementer adds a type that implements this interface (for interface modules)
 func (m *Module) AddImplementer(impl Env) {
+	if slices.Contains(m.implementers, impl) {
+		return
+	}
 	m.implementers = append(m.implementers, impl)
 }
 
@@ -974,6 +1058,9 @@ func (m *Module) ImplementsInterface(iface Env) bool {
 
 // AddMember adds a member type to this union (for union modules).
 func (m *Module) AddMember(member Env) {
+	if slices.Contains(m.members, member) {
+		return
+	}
 	m.members = append(m.members, member)
 }
 
@@ -984,6 +1071,9 @@ func (m *Module) AddMember(member Env) {
 func (m *Module) LinkMember(member Env) {
 	m.AddMember(member)
 	if memberMod, ok := member.(*Module); ok {
+		if slices.Contains(memberMod.unions, Env(m)) {
+			return
+		}
 		memberMod.unions = append(memberMod.unions, m)
 	}
 }
@@ -1003,83 +1093,38 @@ func (m *Module) GetUnions() []Env {
 	return m.unions
 }
 
-// TrackUnqualifiedTypeImport records that an import provides a type-level symbol
-// Returns true if this creates a conflict (symbol already provided by a different import)
-func (m *Module) TrackUnqualifiedTypeImport(symbolName, importName string) bool {
-	existing := m.unqualifiedTypeImports[symbolName]
-	if slices.Contains(existing, importName) {
-		// Already tracked from this import
-		return len(existing) > 1
-	}
-	m.unqualifiedTypeImports[symbolName] = append(existing, importName)
-	return len(m.unqualifiedTypeImports[symbolName]) > 1
-}
-
-// TrackUnqualifiedValueImport records that an import provides a value-level symbol
-// Returns true if this creates a conflict (symbol already provided by a different import)
-func (m *Module) TrackUnqualifiedValueImport(symbolName, importName string) bool {
-	existing := m.unqualifiedValueImports[symbolName]
-	if slices.Contains(existing, importName) {
-		// Already tracked from this import
-		return len(existing) > 1
-	}
-	m.unqualifiedValueImports[symbolName] = append(existing, importName)
-	return len(m.unqualifiedValueImports[symbolName]) > 1
-}
-
-// CheckTypeConflict checks if a type-level symbol has import conflicts
-// Returns the list of imports that provide it (empty if no conflict or not tracked)
+// CheckTypeConflict checks if a type-level symbol has import conflicts.
+// Returns the list of imports that provide it (empty if no conflict or not tracked).
 func (m *Module) CheckTypeConflict(symbolName string) []string {
-	imports := m.unqualifiedTypeImports[symbolName]
-	if len(imports) > 1 {
-		return imports
+	if origin, found := m.LocalTypeOrigin(symbolName); found {
+		return origin.ConflictingImports()
 	}
 	if m.Parent != nil {
-		if parent, ok := m.Parent.(*Module); ok {
-			return parent.CheckTypeConflict(symbolName)
-		}
+		return m.Parent.CheckTypeConflict(symbolName)
 	}
 	return nil
 }
 
-// CheckValueConflict checks if a value-level symbol has import conflicts
-// Returns the list of imports that provide it (empty if no conflict or not tracked)
+// CheckValueConflict checks if a value-level symbol has import conflicts.
+// Returns the list of imports that provide it (empty if no conflict or not tracked).
 func (m *Module) CheckValueConflict(symbolName string) []string {
-	imports := m.unqualifiedValueImports[symbolName]
-	if len(imports) > 1 {
-		return imports
+	if origin, found := m.LocalValueOrigin(symbolName); found {
+		return origin.ConflictingImports()
 	}
 	if m.Parent != nil {
-		if parent, ok := m.Parent.(*Module); ok {
-			return parent.CheckValueConflict(symbolName)
-		}
+		return m.Parent.CheckValueConflict(symbolName)
 	}
 	return nil
 }
 
-// TrackUnqualifiedDirectiveImport records that an import provides a directive
-// Returns true if this creates a conflict (directive already provided by a different import)
-func (m *Module) TrackUnqualifiedDirectiveImport(directiveName, importName string) bool {
-	existing := m.unqualifiedDirectiveImports[directiveName]
-	if slices.Contains(existing, importName) {
-		// Already tracked from this import
-		return len(existing) > 1
-	}
-	m.unqualifiedDirectiveImports[directiveName] = append(existing, importName)
-	return len(m.unqualifiedDirectiveImports[directiveName]) > 1
-}
-
-// CheckDirectiveConflict checks if a directive has import conflicts
-// Returns the list of imports that provide it (empty if no conflict or not tracked)
+// CheckDirectiveConflict checks if a directive has import conflicts.
+// Returns the list of imports that provide it (empty if no conflict or not tracked).
 func (m *Module) CheckDirectiveConflict(directiveName string) []string {
-	imports := m.unqualifiedDirectiveImports[directiveName]
-	if len(imports) > 1 {
-		return imports
+	if origin, found := m.LocalDirectiveOrigin(directiveName); found {
+		return origin.ConflictingImports()
 	}
 	if m.Parent != nil {
-		if parent, ok := m.Parent.(*Module); ok {
-			return parent.CheckDirectiveConflict(directiveName)
-		}
+		return m.Parent.CheckDirectiveConflict(directiveName)
 	}
 	return nil
 }
@@ -1099,7 +1144,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	if !ifaceIsFn {
 		if !classIsFn {
 			// Both are non-function types - check covariance
-			if !isSubtypeOf(classFieldType, ifaceFieldType) {
+			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, classFieldType, ifaceFieldType)
 			}
@@ -1122,7 +1167,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
 		// Compare the return type with the class field type
-		if !isSubtypeOf(classFieldType, ifaceRetType) {
+		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, classFieldType, ifaceRetType)
 		}
@@ -1138,7 +1183,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	classRetType := classFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !isSubtypeOf(classRetType, ifaceRetType) {
+	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
 			fieldName, classRetType, ifaceRetType)
 	}
@@ -1166,7 +1211,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// For contravariance: class arg type must be a supertype of interface arg type
 		// This means: if interface requires String!, class can accept String or String!
 		// But if interface requires String, class must accept String (can't require String!)
-		if !isSupertypeOf(classArgType, ifaceArgType) {
+		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
 		}
@@ -1187,88 +1232,4 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	}
 
 	return nil
-}
-
-// isSubtypeOf checks if sub is a subtype of super (covariance check)
-// For return types: String! is a subtype of String, User is a subtype of Node
-func isSubtypeOf(sub, super hm.Type) bool {
-	_, err := hm.Assignable(sub, super)
-	return err == nil
-}
-
-// isSupertypeOf checks if super is a supertype of sub (contravariance check)
-// For argument types: String is a supertype of String!, Node is a supertype of User
-func isSupertypeOf(super, sub hm.Type) bool {
-	// Contravariance is just flipped subtyping
-	return isSubtypeOf(sub, super)
-}
-
-// findCommonSupertype finds the least common supertype of two types.
-// This is used for inferring list types with heterogeneous elements.
-// Returns nil if no common supertype exists (other than Any).
-func findCommonSupertype(t1, t2 hm.Type) hm.Type {
-	// If types are equal, return either one
-	if t1.Eq(t2) {
-		return t1
-	}
-
-	// If one is a subtype of the other, return the supertype
-	if isSubtypeOf(t1, t2) {
-		return t2
-	}
-	if isSubtypeOf(t2, t1) {
-		return t1
-	}
-
-	// Build supertype sets for both types
-	supers1 := buildSupertypeSet(t1)
-	supers2 := buildSupertypeSet(t2)
-
-	// Find common supertypes
-	var common []hm.Type
-	for super := range supers1 {
-		if supers2[super] {
-			common = append(common, super)
-		}
-	}
-
-	if len(common) == 0 {
-		return nil
-	}
-
-	// Find the most specific common supertype (LUB - Least Upper Bound)
-	// This is the one that is a subtype of all others
-	for _, candidate := range common {
-		isLeast := true
-		for _, other := range common {
-			if candidate.Eq(other) {
-				continue
-			}
-			// If candidate is a supertype of other, then other is more specific
-			if isSubtypeOf(other, candidate) {
-				isLeast = false
-				break
-			}
-		}
-		if isLeast {
-			return candidate
-		}
-	}
-
-	// Fallback: return first common supertype (shouldn't reach here if LUB exists)
-	return common[0]
-}
-
-// buildSupertypeSet builds the transitive closure of all supertypes
-func buildSupertypeSet(t hm.Type) map[hm.Type]bool {
-	result := make(map[hm.Type]bool)
-	result[t] = true
-
-	for _, super := range t.Supertypes() {
-		for s := range buildSupertypeSet(super) {
-			result[s] = true
-		}
-	}
-
-	return result
 }

@@ -1,0 +1,99 @@
+===
+print is a builtin function
+===
+
+print("hi")
+
+---
+
+(highlights
+  (@variable @function.call @function.builtin "print")
+  "("
+  (@string "\"hi\"")
+  (@punctuation.bracket ")")
+)
+
+===
+toJSON is a builtin function
+===
+
+pub j = toJSON(42)
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "j")
+  " "
+  (@operator "=")
+  " "
+  (@variable @function.call @function.builtin "toJSON")
+  "("
+  (@number "42")
+  (@punctuation.bracket ")")
+)
+
+===
+toString is a builtin function
+===
+
+pub s = toString(42)
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "s")
+  " "
+  (@operator "=")
+  " "
+  (@variable @function.call @function.builtin "toString")
+  "("
+  (@number "42")
+  (@punctuation.bracket ")")
+)
+
+===
+assert with message and block is a builtin function
+===
+
+assert("must equal") { 1 == 1 }
+
+---
+
+(highlights
+  (@variable @function.call @function.builtin "assert")
+  "("
+  (@string "\"must equal\"")
+  (@punctuation.bracket ")")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@number "1")
+  " == "
+  (@number "1")
+  " "
+  (@punctuation.bracket "}")
+)
+
+===
+assert with only a block is a builtin function
+===
+
+assert { 1 == 1 }
+
+---
+
+(highlights
+  (@variable @function.builtin "assert")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@number "1")
+  " == "
+  (@number "1")
+  " "
+  (@punctuation.bracket "}")
+)

@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/creachadair/jrpc2"
@@ -19,11 +23,13 @@ import (
 // NewHandler create JSON-RPC handler for this language server.
 func NewHandler(rootCtx context.Context) *langHandler {
 	handler := &langHandler{
-		rootCtx:       rootCtx,
-		files:         make(map[DocumentURI]*File),
-		loadedEnvDirs: make(map[string]bool),
-		importCache:   make(map[string][]dang.ImportConfig),
-		mu:            new(sync.Mutex),
+		rootCtx:            rootCtx,
+		files:              make(map[DocumentURI]*File),
+		loadedEnvDirs:      make(map[string]bool),
+		importCache:        make(map[string][]dang.ImportConfig),
+		schemaModuleCaches: make(map[string]*sync.Map),
+		parseCache:         make(map[string]parsedFile),
+		mu:                 new(sync.Mutex),
 	}
 
 	return handler
@@ -49,8 +55,36 @@ type langHandler struct {
 	// a new dagger session on every keystroke.
 	importCache map[string][]dang.ImportConfig
 
+	// Per-directory cache of *Module pointers for imported schemas. A long-
+	// lived cache is essential here: each analyzeDirectory call otherwise
+	// gets a fresh ContextWithImportConfigs cache, so a sibling file whose
+	// parse gets invalidated (e.g. open-buffer transition) re-builds its
+	// schema module and breaks type identity with the rest of the directory.
+	schemaModuleCaches map[string]*sync.Map
+
+	// Cached file parses keyed by absolute file path. Sibling files in the
+	// same directory don't change on every keystroke, so reusing their parse
+	// trees turns directory analysis from O(files) into O(1) parses.
+	parseCache map[string]parsedFile
+
 	// TODO?: make per-file or something
 	mu *sync.Mutex
+}
+
+// parsedFile is a cache entry for a single .dang file's parse output. The
+// block is reused across analyzeDirectory calls when the file's content is
+// unchanged; its ImportDecls' inferred schema modules are also cached on the
+// nodes, so the imports phase runs in O(1) on cache hit.
+//
+// For files on disk, mtime+size is used as the fingerprint so cache hits skip
+// the disk read entirely. For open buffers (no mtime), text is the
+// fingerprint.
+type parsedFile struct {
+	block *dang.ModuleBlock
+	text  string // populated only when sourced from an open buffer
+	mtime time.Time
+	size  int64
+	open  bool // true if sourced from an open buffer
 }
 
 // File is
@@ -162,95 +196,316 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 		return fmt.Errorf("document not found: %v", uri)
 	}
 
-	// Mark the file as being processed
+	// Mark the file as being processed and publish the latest text before
+	// analysis. Readers either get a complete snapshot from before this point or
+	// wait until this update finishes.
 	f.mu.Lock()
 	f.processing = true
-	f.mu.Unlock()
-	h.mu.Unlock()
-
-	// Ensure we signal completion when done
-	defer func() {
-		f.mu.Lock()
-		f.processing = false
-		f.cond.Broadcast() // Wake up all waiting handlers
-		f.mu.Unlock()
-	}()
-
 	f.Text = text
 	if version != nil {
 		f.Version = *version
 	}
+	f.mu.Unlock()
+	h.mu.Unlock()
 
 	fp, err := fromURI(uri)
 	if err != nil {
+		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
+		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
 		return fmt.Errorf("file path from URI: %w", err)
 	}
 
 	slog.InfoContext(ctx, "file updated", "path", fp)
 
-	// Clear diagnostics before collecting new ones
-	f.Diagnostics = []Diagnostic{}
-
-	// Parse the Dang code
-	parsed, err := dang.ParseWithRecovery(string(uri), []byte(text))
+	analysis, err := h.analyzeDirectory(ctx, uri, fp)
 	if err != nil {
-		// If parsing fails, add parse error as diagnostic and set empty structures
-		slog.Warn("failed to parse Dang code for LSP", "error", err)
+		versionNumber, diagnostics := h.finishFileUpdate(f, emptyFileAnalysis())
+		h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
+		return err
+	}
 
-		// Try to extract location info from parse error
-		f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
+	versionNumber, diagnostics := h.finishFileUpdate(f, analysis)
 
-		f.Symbols = &SymbolTable{
-			Definitions: make(map[string]*SymbolInfo),
-			References:  make(map[string]*SymbolRef),
+	// Publish diagnostics to the client.
+	h.publishDiagnostics(ctx, uri, diagnostics, versionNumber)
+
+	return nil
+}
+
+type directoryFile struct {
+	URI   DocumentURI
+	Block *dang.ModuleBlock
+}
+
+type fileAnalysis struct {
+	Diagnostics []Diagnostic
+	Symbols     *SymbolTable
+	AST         *dang.ModuleBlock
+	TypeEnv     dang.Env
+}
+
+func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
+	analysis := emptyFileAnalysis()
+
+	fileDir := filepath.Dir(fp)
+	files, err := h.directoryDangFiles(fileDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var parsedFiles []directoryFile
+	var blocks []*dang.ModuleBlock
+	var currentBlock *dang.ModuleBlock
+
+	for _, path := range files {
+		fileURI := toURI(path)
+
+		block, err := h.parseFileCached(path)
+		if err != nil {
+			// IO errors (missing file, permission denied, broken symlink)
+			// are fatal — bail out so the caller can surface them. Parse
+			// errors are reported as diagnostics for the active buffer and
+			// otherwise skipped so the rest of the directory still analyzes.
+			var pathErr *fs.PathError
+			if errors.As(err, &pathErr) {
+				return nil, err
+			}
+			slog.WarnContext(ctx, "failed to parse Dang code for LSP", "path", path, "error", err)
+			if sameFile(path, fp) {
+				analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnostics(err, uri)...)
+			}
+			continue
 		}
-		f.AST = nil
+
+		if sameFile(path, fp) {
+			currentBlock = block
+			analysis.AST = block
+		}
+
+		parsedFiles = append(parsedFiles, directoryFile{
+			URI:   fileURI,
+			Block: block,
+		})
+		blocks = append(blocks, block)
+	}
+
+	if currentBlock == nil {
+		return analysis, nil
+	}
+
+	// Build a directory-wide symbol table so features like go-to-definition can
+	// resolve declarations from sibling files while still reporting the correct
+	// URI for each declaration.
+	analysis.Symbols = h.buildDirectorySymbolTable(parsedFiles, uri)
+
+	// Resolve import configs once for the directory, using a cache to avoid
+	// spawning new dagger sessions on every keystroke.
+	importConfigs, ctx := h.resolveImports(ctx, fileDir)
+	// Attach a long-lived schema-module cache for this directory BEFORE
+	// installing the import configs, so the configs' helpers find an existing
+	// cache and reuse it. Without this, each analyzeDirectory call gets a
+	// fresh cache and ImportDecls in re-parsed sibling files build divergent
+	// *Module instances — types like Test.ServerInfo fail to unify.
+	ctx = dang.WithSchemaModuleCache(ctx, h.schemaModuleCacheFor(fileDir))
+	if len(importConfigs) > 0 {
+		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
+	}
+
+	// Run type inference focused on the active buffer: full body inference for
+	// the open file, declarations only for siblings. Cross-file declarations
+	// still resolve through the shared dirEnv; sibling body errors do not run
+	// on every keystroke.
+	typeEnv := dang.NewPreludeEnv("")
+	fresh := hm.NewSimpleFresher()
+	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeEnv, fresh); err != nil {
+		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
+	}
+	// The block's Env composes the shared dirEnv with the file's own imports,
+	// so editor features see exactly what inference saw — including the file's
+	// unqualified imported symbols, which only live in the file-local env.
+	if currentBlock.Env != nil {
+		analysis.TypeEnv = currentBlock.Env
 	} else {
-		// The parser returns a Block
-		block, ok := parsed.(*dang.ModuleBlock)
-		if !ok {
-			slog.Warn("parsed result is not a Block", "type", fmt.Sprintf("%T", parsed))
-			f.Symbols = &SymbolTable{
-				Definitions: make(map[string]*SymbolInfo),
-				References:  make(map[string]*SymbolRef),
+		analysis.TypeEnv = typeEnv
+	}
+
+	return analysis, nil
+}
+
+func (h *langHandler) finishFileUpdate(f *File, analysis *fileAnalysis) (int, []Diagnostic) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if analysis != nil {
+		f.Diagnostics = analysis.Diagnostics
+		f.Symbols = analysis.Symbols
+		f.AST = analysis.AST
+		f.TypeEnv = analysis.TypeEnv
+	}
+
+	f.processing = false
+	f.cond.Broadcast()
+
+	diagnostics := append([]Diagnostic(nil), f.Diagnostics...)
+	return f.Version, diagnostics
+}
+
+func emptyFileAnalysis() *fileAnalysis {
+	return &fileAnalysis{
+		Diagnostics: []Diagnostic{},
+		Symbols:     emptySymbolTable(),
+	}
+}
+
+func emptySymbolTable() *SymbolTable {
+	return &SymbolTable{
+		Definitions: make(map[string]*SymbolInfo),
+		References:  make(map[string]*SymbolRef),
+	}
+}
+
+func (h *langHandler) directoryDangFiles(dir string) ([]string, error) {
+	dangFiles, err := filepath.Glob(filepath.Join(dir, "*.dang"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to find .dang files in directory %s: %w", dir, err)
+	}
+
+	seen := make(map[string]bool, len(dangFiles))
+	for i, path := range dangFiles {
+		path = filepath.Clean(path)
+		dangFiles[i] = path
+		seen[path] = true
+	}
+
+	// Include open, unsaved .dang files that may not exist on disk yet.
+	h.mu.Lock()
+	for openURI := range h.files {
+		path, err := fromURI(openURI)
+		if err != nil {
+			continue
+		}
+		path = filepath.Clean(path)
+		if filepath.Dir(path) != dir || filepath.Ext(path) != ".dang" || seen[path] {
+			continue
+		}
+		dangFiles = append(dangFiles, path)
+		seen[path] = true
+	}
+	h.mu.Unlock()
+
+	sort.Strings(dangFiles)
+	return dangFiles, nil
+}
+
+// schemaModuleCacheFor returns the persistent schema-module cache for a
+// directory, creating it on first reference. Sharing the cache across all
+// analyzeDirectory calls for the same directory keeps imported-type identity
+// stable when sibling parses get invalidated (e.g. on open-buffer transitions).
+func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if cache, ok := h.schemaModuleCaches[dirPath]; ok {
+		return cache
+	}
+	cache := &sync.Map{}
+	h.schemaModuleCaches[dirPath] = cache
+	return cache
+}
+
+// parseFileCached returns the parsed *ModuleBlock for path. When the file is
+// unchanged from the cached entry, the cached block is returned without
+// re-parsing. For files on disk, the fingerprint is mtime+size — a stat call
+// is enough to know if the cache is still good, avoiding even the file read.
+// For open buffers, the fingerprint is the buffer's text.
+//
+// Auto-imports prepended into block.Forms by InferDirectoryFiles persist
+// across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
+// blocks keep their inferred schema modules, so the imports phase doesn't
+// re-introspect on cache hit.
+func (h *langHandler) parseFileCached(path string) (*dang.ModuleBlock, error) {
+	uri := toURI(path)
+
+	h.mu.Lock()
+	openFile := h.files[uri]
+	cached, hit := h.parseCache[path]
+	h.mu.Unlock()
+
+	if openFile != nil {
+		openFile.mu.Lock()
+		text := openFile.Text
+		openFile.mu.Unlock()
+		if hit && cached.open && cached.text == text {
+			return cached.block, nil
+		}
+		return h.parseAndStore(path, text, parsedFile{open: true, text: text})
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if hit && !cached.open && cached.mtime.Equal(info.ModTime()) && cached.size == info.Size() {
+		return cached.block, nil
+	}
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size()})
+}
+
+func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.ModuleBlock, error) {
+	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path))
+	if err != nil {
+		return nil, err
+	}
+	block, ok := parsed.(*dang.ModuleBlock)
+	if !ok {
+		return nil, fmt.Errorf("parsed result for %s is not a ModuleBlock", path)
+	}
+	entry.block = block
+	h.mu.Lock()
+	h.parseCache[path] = entry
+	h.mu.Unlock()
+	return block, nil
+}
+
+func (h *langHandler) buildDirectorySymbolTable(files []directoryFile, currentURI DocumentURI) *SymbolTable {
+	st := emptySymbolTable()
+
+	// Prefer declarations in the current file for simple symbol lookup. Sibling
+	// declarations are fallbacks for references that are genuinely cross-file.
+	for _, file := range files {
+		if file.URI == currentURI && file.Block != nil {
+			h.collectSymbols(file.URI, file.Block.Forms, st)
+			break
+		}
+	}
+
+	for _, file := range files {
+		if file.URI == currentURI || file.Block == nil {
+			continue
+		}
+
+		siblingSymbols := h.buildSymbolTable(file.URI, file.Block.Forms)
+		for name, info := range siblingSymbols.Definitions {
+			if _, exists := st.Definitions[name]; !exists {
+				st.Definitions[name] = info
 			}
-			f.AST = nil
-		} else {
-			// Store the AST
-			f.AST = block
-
-			// Build symbol table from the AST
-			f.Symbols = h.buildSymbolTable(uri, block.Forms)
-
-			// Resolve import configs, using a cache to avoid spawning
-			// new dagger sessions on every keystroke.
-			fileDir := filepath.Dir(fp)
-			importConfigs, ctx := h.resolveImports(ctx, fileDir)
-			if len(importConfigs) > 0 {
-				ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
-			}
-
-			// Inject auto-imports (e.g. Dagger) before inference
-			block.Forms = dang.InjectAutoImports(ctx, block.Forms)
-
-			// Run type inference to annotate AST with types
-			{
-				typeEnv := dang.NewPreludeEnv("")
-				fresh := hm.NewSimpleFresher()
-				_, err := dang.InferFormsWithPhases(ctx, block.Forms, typeEnv, fresh)
-				if err != nil {
-					f.Diagnostics = append(f.Diagnostics, h.errorToDiagnostics(err, uri)...)
-				}
-				// Store the type environment in the File for later use (e.g., hover)
-				f.TypeEnv = typeEnv
+		}
+		for pos, ref := range siblingSymbols.References {
+			if _, exists := st.References[pos]; !exists {
+				st.References[pos] = ref
 			}
 		}
 	}
 
-	// Publish diagnostics to the client
-	h.publishDiagnostics(ctx, uri, f)
+	return st
+}
 
-	return nil
+func sameFile(a, b string) bool {
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 // waitForFile waits for a file to finish processing and returns it.
@@ -264,14 +519,27 @@ func (h *langHandler) waitForFile(uri DocumentURI) *File {
 		return nil
 	}
 
-	// Wait for processing to complete
+	return f.waitForSnapshot()
+}
+
+func (f *File) waitForSnapshot() *File {
+	// Wait for processing to complete, then return a snapshot so subsequent
+	// didChange processing can update the shared File without racing readers.
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	for f.processing {
 		f.cond.Wait()
 	}
-	f.mu.Unlock()
 
-	return f
+	return &File{
+		LanguageID:  f.LanguageID,
+		Text:        f.Text,
+		Version:     f.Version,
+		Diagnostics: append([]Diagnostic(nil), f.Diagnostics...),
+		Symbols:     f.Symbols,
+		AST:         f.AST,
+		TypeEnv:     f.TypeEnv,
+	}
 }
 
 // resolveImports returns cached import configs for the given file directory,
@@ -289,7 +557,10 @@ func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dan
 		cacheKey = "auto:" + fileDir
 	}
 
-	if cached, ok := h.importCache[cacheKey]; ok {
+	h.mu.Lock()
+	cached, ok := h.importCache[cacheKey]
+	h.mu.Unlock()
+	if ok {
 		// Re-attach project config to the context even on cache hit.
 		if projectConfig != nil {
 			ctx = dang.ContextWithProjectConfig(ctx, configPath, projectConfig)
@@ -323,7 +594,9 @@ func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dan
 	// is eagerly introspected (module-aware).
 	importConfigs = dang.ResolveDaggerImport(ctx, importConfigs, fileDir)
 
+	h.mu.Lock()
 	h.importCache[cacheKey] = importConfigs
+	h.mu.Unlock()
 	return importConfigs, ctx
 }
 
@@ -450,12 +723,11 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	}
 }
 
-func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f *File) {
+func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, diagnostics []Diagnostic, version int) {
 	if h.server == nil {
 		return
 	}
 
-	diagnostics := f.Diagnostics
 	if diagnostics == nil {
 		diagnostics = []Diagnostic{}
 	}
@@ -463,11 +735,44 @@ func (h *langHandler) publishDiagnostics(ctx context.Context, uri DocumentURI, f
 	err := h.server.Notify(ctx, "textDocument/publishDiagnostics", &PublishDiagnosticsParams{
 		URI:         uri,
 		Diagnostics: diagnostics,
-		Version:     f.Version,
+		Version:     version,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to publish diagnostics", "error", err)
 	}
+}
+
+func (h *langHandler) errorToDiagnosticsForPath(err error, uri DocumentURI, path string) []Diagnostic {
+	var inferErrs *dang.InferenceErrors
+	if errors.As(err, &inferErrs) {
+		var ds []Diagnostic
+		for _, e := range inferErrs.Errors {
+			ds = append(ds, h.errorToDiagnosticsForPath(e, uri, path)...)
+		}
+		return ds
+	}
+
+	if loc := errorLocation(err); loc != nil && loc.Filename != "" && !sameFile(loc.Filename, path) {
+		return nil
+	}
+
+	return h.errorToDiagnostics(err, uri)
+}
+
+func errorLocation(err error) *dang.SourceLocation {
+	var sourceErr *dang.SourceError
+	var parseErr interface {
+		ParseErrorLocation() *dang.SourceLocation
+	}
+	var inferErr *dang.InferError
+	if errors.As(err, &sourceErr) {
+		return sourceErr.Location
+	} else if errors.As(err, &parseErr) {
+		return parseErr.ParseErrorLocation()
+	} else if errors.As(err, &inferErr) {
+		return inferErr.Location
+	}
+	return nil
 }
 
 // errorToDiagnostic converts a Dang error to an LSP Diagnostic
@@ -556,6 +861,8 @@ func isIdentifierChar(r rune) bool {
 
 func (h *langHandler) addFolder(folder string) {
 	folder = filepath.Clean(folder)
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	found := slices.Contains(h.folders, folder)
 	if !found {
 		h.folders = append(h.folders, folder)

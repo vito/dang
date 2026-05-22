@@ -1,0 +1,17 @@
+# A guard clause using `and` (both must be null to diverge) tells us only
+# that *at least one* of the variables is non-null afterwards — it does NOT
+# narrow either of them individually.
+let optional(s: String): String { s }
+
+let f(a: String, b: String): String! {
+  let x = optional(a)
+  let y = optional(b)
+  if (x == null and y == null) {
+    raise "both missing"
+  }
+  # x is still nullable, so x.trimPrefix returns String (nullable),
+  # which is not assignable to String!.
+  x.trimPrefix("/")
+}
+
+print(f("a", "b"))

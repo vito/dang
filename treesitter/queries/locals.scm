@@ -1,1 +1,1 @@
-zed-dang/languages/dang/locals.scm
+../../editors/zed/languages/dang/locals.scm

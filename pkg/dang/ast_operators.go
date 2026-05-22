@@ -791,6 +791,66 @@ func (u *UnaryNegation) Walk(fn func(Node) bool) {
 	u.Expr.Walk(fn)
 }
 
+// FunctionRef represents the &foo function-reference operator.
+type FunctionRef struct {
+	InferredTypeHolder
+	Expr Node
+	Loc  *SourceLocation
+}
+
+var _ Node = (*FunctionRef)(nil)
+var _ Evaluator = (*FunctionRef)(nil)
+
+func (f *FunctionRef) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(f, func() (hm.Type, error) {
+		t, err := inferNodeWithoutAutoCall(ctx, env, fresh, f.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, ok := t.(*hm.FunctionType); !ok {
+			return nil, NewInferError(fmt.Errorf("& requires a function, got %s", t.Name()), f.Expr)
+		}
+
+		f.SetInferredType(t)
+		return t, nil
+	})
+}
+
+func (f *FunctionRef) DeclaredSymbols() []string {
+	return nil
+}
+
+func (f *FunctionRef) ReferencedSymbols() []string {
+	return f.Expr.ReferencedSymbols()
+}
+
+func (f *FunctionRef) Body() hm.Expression { return f }
+
+func (f *FunctionRef) GetSourceLocation() *SourceLocation { return f.Loc }
+
+func (f *FunctionRef) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
+		val, err := evalNodeWithoutAutoCall(ctx, env, f.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, ok := val.(Callable); !ok {
+			return nil, fmt.Errorf("& requires a function, got %T", val)
+		}
+
+		return val, nil
+	})
+}
+
+func (f *FunctionRef) Walk(fn func(Node) bool) {
+	if !fn(f) {
+		return
+	}
+	f.Expr.Walk(fn)
+}
+
 // LogicalAnd represents the 'and' operator with short-circuit evaluation
 type LogicalAnd struct {
 	InferredTypeHolder

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vito/dang/pkg/hm"
@@ -28,21 +29,33 @@ type FunctionBase struct {
 
 // inferFunctionArguments processes SlotDecl arguments into function type arguments
 func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).Infer)
+}
+
+func (f *FunctionBase) declareFunctionSignatureArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).DeclareSignature)
+}
+
+func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.Env, fresh hm.Fresher, inferArg func(*SlotDecl, context.Context, hm.Env, hm.Fresher) (hm.Type, error)) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
 	docStrings := make(map[string]string)
 	for _, arg := range f.Args {
-		_, err := arg.Infer(ctx, env, fresh)
+		finalArgType, err := inferArg(arg, ctx, env, fresh)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		scheme, found := env.SchemeOf(arg.Name.Name)
-		if !found {
-			return nil, nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
-		}
-		finalArgType, isMono := scheme.Type()
-		if !isMono {
-			return nil, nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
+
+		if finalArgType == nil {
+			scheme, found := env.SchemeOf(arg.Name.Name)
+			if !found {
+				return nil, nil, nil, fmt.Errorf("argument %q not found in environment after inference", arg.Name.Name)
+			}
+			var isMono bool
+			finalArgType, isMono = scheme.Type()
+			if !isMono {
+				return nil, nil, nil, fmt.Errorf("argument %q has polymorphic type %s", arg.Name.Name, scheme)
+			}
 		}
 
 		// For arguments with defaults, make them nullable in the function signature
@@ -77,6 +90,55 @@ func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, f
 	return args, directives, docStrings, nil
 }
 
+func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
+	// Clone environment for closure semantics and so argument names don't leak.
+	newEnv := env.Clone()
+	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
+
+	if dangEnv, ok := newEnv.(Env); ok {
+		f.InferredScope = dangEnv
+	}
+
+	args, directives, docStrings, err := f.declareFunctionSignatureArguments(signatureCtx, newEnv, fresh)
+	if err != nil {
+		return nil, fmt.Errorf("%s.Declare: %w", contextName, err)
+	}
+
+	argsRec := NewRecordType("", args...)
+	argsRec.Directives = directives
+	argsRec.DocStrings = docStrings
+
+	var blockType *hm.FunctionType
+	if f.BlockParam != nil {
+		blockParamType, err := f.BlockParam.Type_.Infer(signatureCtx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s.Declare block parameter: %w", contextName, err)
+		}
+		bt, ok := blockParamType.(*hm.FunctionType)
+		if !ok {
+			return nil, fmt.Errorf("%s.Declare: block parameter must be a function type, got %T", contextName, blockParamType)
+		}
+		blockType = bt
+	}
+
+	var retType hm.Type
+	if explicitRetType != nil {
+		retType, err = explicitRetType.Infer(signatureCtx, env, fresh)
+		if err != nil {
+			return nil, fmt.Errorf("%s.Declare return type: %w", contextName, err)
+		}
+	} else {
+		retType = fresh.Fresh()
+	}
+
+	f.Inferred = hm.NewFnType(argsRec, retType)
+	if blockType != nil {
+		f.Inferred.SetBlock(blockType)
+	}
+	f.SetInferredType(f.Inferred)
+	return f.Inferred, nil
+}
+
 // createFunctionValue creates a FunctionValue from processed arguments
 func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
@@ -95,7 +157,7 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 	}
 
 	// Check if this function has access to dynamic scope
-	_, hasDynamicScope := env.GetDynamicScope()
+	_, hasDynamicScope := env.Self()
 
 	return FunctionValue{
 		Args:           argNames,
@@ -114,12 +176,14 @@ func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType)
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
+	functionCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Assign early so we can still use partial inference results.
 	f.InferredScope = newEnv.(Env)
 
-	// Process arguments using shared logic
-	args, directives, docStrings, err := f.inferFunctionArguments(ctx, newEnv, fresh)
+	// Process arguments using shared logic. Defaults are evaluated at function
+	// call time, so they must not inherit the caller's return/break/continue targets.
+	args, directives, docStrings, err := f.inferFunctionArguments(functionCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer: %w", contextName, err)
 	}
@@ -132,7 +196,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	var blockType *hm.FunctionType
 	if f.BlockParam != nil {
 		// Infer block parameter type
-		blockParamType, err := f.BlockParam.Type_.Infer(ctx, env, fresh)
+		blockParamType, err := f.BlockParam.Type_.Infer(functionCtx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("%s.Infer block parameter: %w", contextName, err)
 		}
@@ -158,13 +222,19 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
-	// Infer return type from function body
-	inferredRet, err := f.Body.Infer(ctx, newEnv, fresh)
+	// Infer return type from function body. A fresh return target lets
+	// returns inside block args created in this body contribute to this
+	// function, while nested functions/constructors get their own targets.
+	// Ordinary functions are control-flow boundaries for break/continue; only
+	// block arguments may intentionally hand those effects to an enclosing call.
+	returnTarget := NewInferControlTarget(ReturnFrame)
+	bodyCtx := contextWithInferReturnTarget(functionCtx, returnTarget)
+	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)
 	}
 
-	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet)
+	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -193,12 +263,6 @@ type FunDecl struct {
 	Visibility Visibility
 }
 
-var _ Declarer = &FunDecl{}
-
-func (f *FunDecl) IsDeclarer() bool {
-	return true
-}
-
 var _ hm.Expression = &FunDecl{}
 var _ Evaluator = &FunDecl{}
 
@@ -222,55 +286,22 @@ var _ Hoister = &FunDecl{}
 func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	switch pass {
 	case 0:
-		// Pass 0: Hoist function signature (declare type without inferring body)
-		// Clone environment to avoid mutating original during signature inference
-		signatureEnv := env.Clone()
-
-		// Process arguments to get function signature
-		args, directives, docStrings, err := f.inferFunctionArguments(ctx, signatureEnv, fresh)
+		// Pass 0: Hoist function signature (declare type without inferring body).
+		fnType, err := f.declareFunctionSignature(ctx, env, fresh, f.Ret, fmt.Sprintf("FuncDecl(%s)", f.Named))
 		if err != nil {
-			return fmt.Errorf("FuncDecl.Hoist: %s signature: %w", f.Named, err)
-		}
-		argsRec := NewRecordType("", args...)
-		argsRec.Directives = directives
-		argsRec.DocStrings = docStrings
-
-		// Process block parameter if present
-		var blockType *hm.FunctionType
-		if f.BlockParam != nil {
-			blockParamType, err := f.BlockParam.Type_.Infer(ctx, env, fresh)
-			if err != nil {
-				return fmt.Errorf("FuncDecl.Hoist: %s block parameter: %w", f.Named, err)
-			}
-			bt, ok := blockParamType.(*hm.FunctionType)
-			if !ok {
-				return fmt.Errorf("FuncDecl.Hoist: %s block parameter must be a function type, got %T", f.Named, blockParamType)
-			}
-			blockType = bt
-		}
-
-		// Handle explicit return type if provided
-		var retType hm.Type
-		if f.Ret != nil {
-			retType, err = f.Ret.Infer(ctx, env, fresh)
-			if err != nil {
-				return fmt.Errorf("FuncDecl.Hoist: %s return type: %w", f.Named, err)
-			}
-		} else {
-			// Use a fresh type variable for the return type if not specified
-			retType = fresh.Fresh()
-		}
-
-		// Create function type and add to environment
-		fnType := hm.NewFnType(argsRec, retType)
-		if blockType != nil {
-			fnType.SetBlock(blockType)
+			return err
 		}
 		env.Add(f.Named, hm.NewScheme(nil, fnType))
+		if e, ok := env.(Env); ok {
+			e.SetVisibility(f.Named, f.Visibility)
+			if len(f.Directives) > 0 {
+				e.SetDirectives(f.Named, f.Directives)
+			}
+		}
 		return nil
 	case 1:
 		// Pass 1: Infer function body (function signature already available)
-		// The actual inference will happen in the normal Infer method
+		// The actual inference will happen in the normal Infer method.
 		return nil
 	}
 	return nil
@@ -330,8 +361,9 @@ func (r *Reassignment) GetSourceLocation() *SourceLocation { return r.Loc }
 
 func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(r, func() (hm.Type, error) {
-		// Infer the type of the target (left-hand side)
-		targetType, err := r.Target.Infer(ctx, env, fresh)
+		// Infer the type of the target (left-hand side) as a storage location,
+		// without auto-calling zero-arity functions stored in that location.
+		targetType, err := inferNodeWithoutAutoCall(ctx, env, fresh, r.Target)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Infer: target: %w", err)
 		}
@@ -346,9 +378,11 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		switch r.Modifier {
 		case "=":
 			if _, err := hm.Assignable(valueType, targetType); err != nil {
+				if refErr := r.functionRefAssignmentError(ctx, env, fresh, targetType, valueType); refErr != nil {
+					return nil, refErr
+				}
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
-			r.SetInferredType(targetType)
 			return targetType, nil
 		case "+":
 			// For compound assignment, check that it's compatible with addition
@@ -358,12 +392,37 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 			if err != nil {
 				return nil, fmt.Errorf("Reassignment.Infer: compound assignment: %w", err)
 			}
-			r.SetInferredType(targetType)
 			return targetType, nil
 		default:
 			return nil, fmt.Errorf("Reassignment.Infer: unsupported modifier %q", r.Modifier)
 		}
 	})
+}
+
+func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.Env, fresh hm.Fresher, targetType, valueType hm.Type) error {
+	if _, targetIsFn := targetType.(*hm.FunctionType); !targetIsFn {
+		return nil
+	}
+
+	valueFnType, err := inferNodeWithoutAutoCall(ctx, env, fresh, r.Value)
+	if err != nil {
+		return nil
+	}
+	if _, valueIsFn := valueFnType.(*hm.FunctionType); !valueIsFn {
+		return nil
+	}
+	if _, err := hm.Assignable(valueFnType, targetType); err != nil {
+		return nil
+	}
+
+	expr := strings.TrimSpace(Format(r.Value))
+	if expr == "" {
+		expr = "this expression"
+	}
+	return NewInferError(
+		fmt.Errorf("assigning `%s` calls it and produces %s; use `&%s` to assign the function itself (%s)", expr, valueType, expr, targetType),
+		r.Value,
+	)
 }
 
 func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
@@ -405,15 +464,17 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: x = value
-		_, found := env.Get(varName)
-		if !found {
+		if !env.Has(varName) {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
-		env.Reassign(varName, value)
+		env.Update(varName, value)
 		return value, nil
 	case "+":
 		// Compound assignment: x += value
-		currentValue, found := env.Get(varName)
+		currentValue, found, err := env.Lookup(ctx, varName)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
@@ -424,7 +485,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 			return nil, err
 		}
 
-		env.Reassign(varName, newValue)
+		env.Update(varName, newValue)
 		return newValue, nil
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
@@ -444,13 +505,16 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	var rootSymbolName string
 
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
-		rootObj, found = env.GetDynamicScope()
+		rootObj, found = env.Self()
 		if !found {
 			return nil, fmt.Errorf("'self' is not available in this context")
 		}
 	} else if rootSymbol, ok := rootNode.(*Symbol); ok {
 		rootSymbolName = rootSymbol.Name
-		rootObj, found = env.Get(rootSymbolName)
+		rootObj, found, err = env.Lookup(ctx, rootSymbolName)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("object %q not found", rootSymbolName)
 		}
@@ -459,18 +523,21 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	}
 
 	// Clone the root object to begin the copy-on-write process
-	newRoot := rootObj.(EvalEnv).Clone()
+	newRoot := rootObj.(EvalEnv).Derive(false)
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
 	for i := range len(path) - 1 {
 		fieldName := path[i]
-		val, found := currentObj.Get(fieldName)
+		val, found, err := currentObj.Lookup(ctx, fieldName)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
-		clonedVal := val.(EvalEnv).Clone()
-		currentObj.Set(fieldName, clonedVal.(Value))
+		clonedVal := val.(EvalEnv).Derive(false)
+		currentObj.Bind(fieldName, clonedVal.(Value), currentObj.Visibility(fieldName))
 		currentObj = clonedVal
 	}
 
@@ -481,10 +548,13 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: obj.field = value
-		currentObj.Set(finalField, value)
+		currentObj.Bind(finalField, value, currentObj.Visibility(finalField))
 	case "+":
 		// Compound assignment: obj.field += value
-		currentValue, found := currentObj.Get(finalField)
+		currentValue, found, err := currentObj.Lookup(ctx, finalField)
+		if err != nil {
+			return nil, err
+		}
 		if !found {
 			return nil, fmt.Errorf("field %q not found", finalField)
 		}
@@ -495,17 +565,17 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 			return nil, err
 		}
 
-		currentObj.Set(finalField, newValue)
+		currentObj.Bind(finalField, newValue, currentObj.Visibility(finalField))
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 
-	// Update the root object in the environment (respects Fork boundaries)
+	// Update the root object in the environment (respects sealed scope boundaries)
 	// For self, update the dynamic scope so subsequent references see the change
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
-		env.SetDynamicScope(newRoot.(Value))
+		env.MutateSelf(newRoot.(Value))
 	} else {
-		env.Reassign(rootSymbolName, newRoot.(Value))
+		env.Update(rootSymbolName, newRoot.(Value))
 	}
 
 	return newRoot.(Value), nil
@@ -591,247 +661,6 @@ func (r *Reassignment) Walk(fn func(Node) bool) {
 	r.Value.Walk(fn)
 }
 
-type Assert struct {
-	InferredTypeHolder
-	Message Node   // Optional message expression
-	Block   *Block // Block containing the assertion expression
-	Loc     *SourceLocation
-}
-
-var _ Node = (*Assert)(nil)
-var _ Evaluator = (*Assert)(nil)
-
-func (a *Assert) DeclaredSymbols() []string {
-	return nil // Assert expressions don't declare anything
-}
-
-func (a *Assert) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, a.Block.ReferencedSymbols()...)
-	if a.Message != nil {
-		symbols = append(symbols, a.Message.ReferencedSymbols()...)
-	}
-	return symbols
-}
-
-func (a *Assert) Body() hm.Expression { return a.Block }
-
-func (a *Assert) GetSourceLocation() *SourceLocation { return a.Loc }
-
-func (a *Assert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(a, func() (hm.Type, error) {
-		// Infer the block type - the assertion will be evaluated
-		_, err := a.Block.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, err
-		}
-
-		// Infer the message type if present
-		if a.Message != nil {
-			_, err := a.Message.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		// Assert returns nothing (unit type / null)
-		return hm.TypeVariable('a'), nil
-	})
-}
-
-func (a *Assert) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return WithEvalErrorHandling(ctx, a, func() (Value, error) {
-		// Evaluate the block (gets the last expression's value)
-		blockVal, err := EvalNode(ctx, env, a.Block)
-		if err != nil {
-			return nil, err
-		}
-
-		// Check if assertion passed
-		if isTruthy(blockVal) {
-			return NullValue{}, nil
-		}
-
-		// Assertion failed - analyze the last expression
-		if len(a.Block.Forms) == 0 {
-			return nil, &AssertionError{Message: "Empty assertion block", Location: a.Loc}
-		}
-
-		lastExpr := a.Block.Forms[len(a.Block.Forms)-1]
-		return nil, a.createAssertionError(ctx, env, lastExpr)
-	})
-}
-
-// createAssertionError builds a detailed error message with child node values
-func (a *Assert) createAssertionError(ctx context.Context, env EvalEnv, expr Node) error {
-	var message strings.Builder
-
-	// Optional user message
-	if a.Message != nil {
-		msgVal, err := EvalNode(ctx, env, a.Message)
-		if err == nil {
-			fmt.Fprintf(&message, "Assertion failed: %s\n", msgVal.String())
-		} else {
-			message.WriteString("Assertion failed\n")
-		}
-	} else {
-		message.WriteString("Assertion failed\n")
-	}
-
-	// Show the failed expression
-	fmt.Fprintf(&message, "  Expression: %s\n", a.nodeToString(expr))
-
-	// Extract and evaluate immediate children
-	children := a.getImmediateChildren(expr)
-	if len(children) > 0 {
-		message.WriteString("  Values:\n")
-		for _, child := range children {
-			if val, err := EvalNode(ctx, env, child.Node); err == nil {
-				fmt.Fprintf(&message, "    %s: %s\n", child.Name, val.String())
-			}
-		}
-	}
-
-	return &AssertionError{
-		Message:  message.String(),
-		Location: expr.GetSourceLocation(),
-	}
-}
-
-type ChildNode struct {
-	InferredTypeHolder
-	Name string
-	Node Node
-}
-
-// getImmediateChildren extracts immediate child nodes for error reporting
-func (a *Assert) getImmediateChildren(expr Node) []ChildNode {
-	switch n := expr.(type) {
-	case *Select:
-		// Handle both field access and method calls
-		var children []ChildNode
-
-		// Add receiver if present
-		if n.Receiver != nil {
-			children = append(children, ChildNode{
-				Name: "receiver",
-				Node: n.Receiver,
-			})
-		}
-
-		return children
-
-	case *FunCall:
-		// Function call arguments
-		var children []ChildNode
-		for i, arg := range n.Args {
-			if arg.Positional {
-				children = append(children, ChildNode{
-					Name: fmt.Sprintf("arg%d", i),
-					Node: arg.Value,
-				})
-			} else {
-				children = append(children, ChildNode{
-					Name: arg.Key,
-					Node: arg.Value,
-				})
-			}
-		}
-		return children
-
-	case *List:
-		// List elements
-		var children []ChildNode
-		for i, elem := range n.Elements {
-			children = append(children, ChildNode{
-				Name: fmt.Sprintf("[%d]", i),
-				Node: elem,
-			})
-		}
-		return children
-
-	case *Default:
-		// Default operator children
-		return []ChildNode{
-			{Name: "left", Node: n.Left},
-			{Name: "right", Node: n.Right},
-		}
-
-	case *Equality:
-		// Equality operator children
-		return []ChildNode{
-			{Name: "left", Node: n.Left},
-			{Name: "right", Node: n.Right},
-		}
-
-	case *Conditional:
-		// Conditional expression children
-		return []ChildNode{
-			{Name: "condition", Node: n.Condition},
-		}
-
-	case *Let:
-		// Let expression children
-		return []ChildNode{
-			{Name: "value", Node: n.Value},
-		}
-	}
-
-	return nil
-}
-
-// nodeToString converts a node to its string representation
-func (a *Assert) nodeToString(node Node) string {
-	switch n := node.(type) {
-	case *Symbol:
-		return n.Name
-	case *Select:
-		if n.Receiver == nil {
-			return n.Field.Name
-		}
-		receiver := a.nodeToString(n.Receiver)
-		return fmt.Sprintf("%s.%s", receiver, n.Field.Name)
-	case *FunCall:
-		fun := a.nodeToString(n.Fun)
-		return fmt.Sprintf("%s(...)", fun)
-	case *String:
-		return fmt.Sprintf("\"%s\"", n.Value)
-	case *Int:
-		return fmt.Sprintf("%d", n.Value)
-	case *Boolean:
-		return fmt.Sprintf("%t", n.Value)
-	case *Null:
-		return "null"
-	case *List:
-		return "[...]"
-	case *Default:
-		left := a.nodeToString(n.Left)
-		right := a.nodeToString(n.Right)
-		return fmt.Sprintf("%s ?? %s", left, right)
-	case *Equality:
-		left := a.nodeToString(n.Left)
-		right := a.nodeToString(n.Right)
-		return fmt.Sprintf("%s == %s", left, right)
-	case *Conditional:
-		condition := a.nodeToString(n.Condition)
-		return fmt.Sprintf("if %s { ... }", condition)
-	case *Let:
-		return fmt.Sprintf("let %s = %s in ...", n.Name, a.nodeToString(n.Value))
-	default:
-		return fmt.Sprintf("%T", node)
-	}
-}
-
-func (a *Assert) Walk(fn func(Node) bool) {
-	if !fn(a) {
-		return
-	}
-	if a.Message != nil {
-		a.Message.Walk(fn)
-	}
-	a.Block.Walk(fn)
-}
-
 // DirectiveLocation represents a valid location where a directive can be applied
 type DirectiveLocation struct {
 	InferredTypeHolder
@@ -850,12 +679,7 @@ type DirectiveDecl struct {
 }
 
 var _ Node = &DirectiveDecl{}
-var _ Declarer = &DirectiveDecl{}
 var _ Hoister = &DirectiveDecl{}
-
-func (d *DirectiveDecl) IsDeclarer() bool {
-	return true
-}
 
 func (d *DirectiveDecl) DeclaredSymbols() []string {
 	return []string{d.Name} // Directive declarations declare their name
@@ -1122,26 +946,57 @@ type ImportConfig struct {
 }
 
 type importConfigsKey struct{}
+type schemaModuleCacheKey struct{}
+
+// WithSchemaModuleCache attaches a name-keyed schema-module cache to ctx. The
+// cache is consulted by ImportDecl.Infer so every ImportDecl with the same
+// name — whether at file top level, in a sibling file, or nested inside a
+// block — gets the same *Module identity. Without a shared cache, each
+// NewEnv call produces a distinct module and types fail to unify.
+//
+// Callers that want the cache to persist across multiple inference passes
+// (the LSP, for instance, where each keystroke is a fresh pass over the same
+// directory) construct the cache themselves and reuse it. ContextWithImportConfigs
+// auto-creates a per-call cache when none is attached, so one-shot callers
+// don't have to.
+func WithSchemaModuleCache(ctx context.Context, cache *sync.Map) context.Context {
+	return context.WithValue(ctx, schemaModuleCacheKey{}, cache)
+}
 
 func ContextWithImportConfigs(ctx context.Context, configs ...ImportConfig) context.Context {
+	if _, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); !ok {
+		ctx = WithSchemaModuleCache(ctx, &sync.Map{})
+	}
 	return context.WithValue(ctx, importConfigsKey{}, configs)
 }
 
 func importConfigsFromContext(ctx context.Context) []ImportConfig {
-	if v := ctx.Value(importConfigsKey{}); v != nil {
-		if configs, ok := v.([]ImportConfig); ok {
-			return configs
-		}
+	configs, _ := ctx.Value(importConfigsKey{}).([]ImportConfig)
+	return configs
+}
+
+// sharedImportModule looks up the cached schema module for name in ctx. The
+// cache is populated lazily by ImportDecl.Infer the first time a given import
+// name is resolved, so subsequent inferences reuse the same module.
+func sharedImportModule(ctx context.Context, name string) Env {
+	cache, _ := ctx.Value(schemaModuleCacheKey{}).(*sync.Map)
+	if cache == nil {
+		return nil
 	}
-	return nil
+	v, ok := cache.Load(name)
+	if !ok {
+		return nil
+	}
+	return v.(Env)
+}
+
+func cacheImportModule(ctx context.Context, name string, mod Env) {
+	if cache, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); ok {
+		cache.Store(name, mod)
+	}
 }
 
 var _ Node = &ImportDecl{}
-var _ Declarer = &ImportDecl{}
-
-func (i *ImportDecl) IsDeclarer() bool {
-	return true
-}
 
 func (i *ImportDecl) DeclaredSymbols() []string {
 	return []string{i.Name.Name}
@@ -1159,47 +1014,40 @@ var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		if i.inferred != nil {
-			// If we've already inferred, skip.
-			// (This is defensive.)
-			return NonNull(i.inferred), nil
-		}
-
-		// Perform actual schema introspection now during hoisting
-		config, err := i.loadImportConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
-		client := config.Client
-		schema := config.Schema
-
-		// Add the import declaration to the environment for later resolution
-		if dangEnv, ok := env.(Env); ok {
-			// Import with alias - check for conflicts and create schema module
-			if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
-				return nil, err
+		// Resolve i.inferred to the shared schema module for this import name
+		// in ctx. The context-scoped cache ensures every ImportDecl referring to
+		// the same name — whether at file top level, in a sibling file, or
+		// nested inside a block — gets the same *Module identity. Without it,
+		// each NewEnv produces a distinct module and types fail to unify.
+		//
+		// Subsequent calls (e.g. LSP reusing cached blocks) reuse the
+		// per-node i.inferred but still install into the current env, since
+		// the env changes per file or per nested scope.
+		if i.inferred == nil {
+			if mod := sharedImportModule(ctx, i.Name.Name); mod != nil {
+				i.inferred = mod
+				if i.client == nil {
+					config, err := i.loadImportConfig(ctx)
+					if err != nil {
+						return nil, err
+					}
+					i.client = config.Client
+					i.schema = config.Schema
+				}
+			} else {
+				config, err := i.loadImportConfig(ctx)
+				if err != nil {
+					return nil, err
+				}
+				i.client = config.Client
+				i.schema = config.Schema
+				i.inferred = NewEnv(i.Name.Name, config.Schema)
+				cacheImportModule(ctx, i.Name.Name, i.inferred)
 			}
+		}
 
-			// Create module with GraphQL schema types and functions
-			schemaModule := NewEnv(i.Name.Name, schema)
-
-			// Store client and schema information for runtime
-			i.client = client
-			i.schema = schema
-
-			// Register type for the module
-			// TOOD: is this useful? i guess it means we can pass GH around which is
-			// kinda neat?
-			dangEnv.AddClass(i.Name.Name, schemaModule)
-
-			// Also add as a scheme so the type checker can find it
-			dangEnv.Add(i.Name.Name, hm.NewScheme(nil, NonNull(schemaModule)))
-
-			// Import all symbols from the schema module as unqualified names
-			// unless they conflict with existing symbols
-			i.importUnqualifiedSymbols(dangEnv, schemaModule, i.Name.Name)
-
-			i.inferred = schemaModule
+		if dangEnv, ok := env.(Env); ok {
+			installImportedTypeEnvironment(dangEnv, i.Name.Name, i.inferred)
 		}
 
 		return NonNull(i.inferred), nil
@@ -1214,11 +1062,7 @@ func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Create evaluation environment for the imported schema
 	moduleEnv := NewEvalEnvWithSchema(i.inferred, i.client, i.schema)
 
-	// Set the module in the evaluation environment
-	env.Set(i.Name.Name, moduleEnv)
-
-	// Import all runtime values as unqualified symbols (unless they conflict)
-	i.importUnqualifiedValues(env, moduleEnv, i.Name.Name)
+	installImportedEvalEnvironment(env, i.Name.Name, moduleEnv)
 
 	return moduleEnv, nil
 }
@@ -1245,184 +1089,3 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 	// ImportDecl has no child nodes to walk
 }
 
-// checkAliasConflicts checks if an import alias conflicts with existing symbols
-//
-// TODO: remove, feels redundant
-func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
-	// Check if alias conflicts with existing classes (types)
-	if _, exists := env.NamedType(alias); exists {
-		return fmt.Errorf("import alias %q conflicts with existing type", alias)
-	}
-
-	// Check if alias conflicts with existing variables/functions
-	if _, exists := env.LocalSchemeOf(alias); exists {
-		return fmt.Errorf("import alias %q conflicts with existing symbol", alias)
-	}
-
-	// Check if alias conflicts with built-in types
-	builtinTypes := []string{"String", "Int", "Boolean"}
-	for _, builtin := range builtinTypes {
-		if alias == builtin {
-			return fmt.Errorf("import alias %q conflicts with built-in type %s", alias, builtin)
-		}
-	}
-
-	return nil
-}
-
-// importUnqualifiedSymbols imports all symbols from an imported module into
-// the parent environment, unless they conflict with existing symbols or
-// symbols from other imports.
-func (i *ImportDecl) importUnqualifiedSymbols(parentEnv Env, schemaModule Env, importName string) {
-	// Import all value bindings (functions, etc.) from the schema module
-	for name, scheme := range schemaModule.Bindings(PublicVisibility) {
-		// Skip the import name itself (e.g., don't import "Test" as unqualified)
-		if name == importName {
-			continue
-		}
-
-		// Check if this name already exists in the parent environment
-		if existing, exists := parentEnv.LocalSchemeOf(name); exists {
-			// Symbol already exists - check if it's from another import or locally defined
-			// For now, we simply skip adding it (qualified access will still work)
-			_ = existing
-			// Track the conflict
-			parentEnv.TrackUnqualifiedTypeImport(name, importName)
-			continue
-		}
-
-		// Add the symbol to the parent environment
-		parentEnv.Add(name, scheme)
-		// Track that this import provides this symbol
-		parentEnv.TrackUnqualifiedTypeImport(name, importName)
-	}
-
-	// Import all type bindings (classes) from the schema module
-	// We need to iterate through all types in the module
-	if mod, ok := schemaModule.(*CompositeModule); ok {
-		// For CompositeModule, get the primary module and import from it
-		if primaryMod, ok := mod.primary.(*Module); ok {
-			i.importTypesFromModule(parentEnv, primaryMod, importName)
-			i.importDirectivesFromModule(parentEnv, primaryMod, importName)
-		}
-	} else if mod, ok := schemaModule.(*Module); ok {
-		// For regular Module
-		i.importTypesFromModule(parentEnv, mod, importName)
-		i.importDirectivesFromModule(parentEnv, mod, importName)
-	}
-}
-
-func (i *ImportDecl) importTypesFromModule(parentEnv Env, mod *Module, importName string) {
-	// Import all classes (types) from the module
-	for name, class := range mod.classes {
-		// Skip the import name itself
-		if name == importName {
-			continue
-		}
-
-		// Check if this type already exists in the parent environment
-		if _, exists := parentEnv.NamedType(name); exists {
-			// Type already exists - track the conflict
-			parentEnv.TrackUnqualifiedTypeImport(name, importName)
-			continue
-		}
-
-		// Add the type to the parent environment
-		parentEnv.AddClass(name, class)
-		// Track that this import provides this type
-		parentEnv.TrackUnqualifiedTypeImport(name, importName)
-
-		// For enum types, also import their values as unqualified symbols
-		if enumMod, ok := class.(*Module); ok && enumMod.Kind == EnumKind {
-			for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
-				// Check if this enum value name conflicts with existing symbols
-				if _, exists := parentEnv.LocalSchemeOf(enumValName); exists {
-					// Conflict - track it
-					parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
-					continue
-				}
-
-				// Add the enum value to the parent environment
-				parentEnv.Add(enumValName, enumValScheme)
-				// Track that this import provides this enum value
-				parentEnv.TrackUnqualifiedTypeImport(enumValName, importName)
-			}
-		}
-	}
-}
-
-func (i *ImportDecl) importDirectivesFromModule(parentEnv Env, mod *Module, importName string) {
-	// Import all directives from the module
-	for directiveName, directive := range mod.directives {
-		// Check if this directive already exists in the parent environment
-		if _, exists := parentEnv.GetDirective(directiveName); exists {
-			// Directive already exists - track the conflict
-			parentEnv.TrackUnqualifiedDirectiveImport(directiveName, importName)
-			continue
-		}
-
-		// Add the directive to the parent environment
-		parentEnv.AddDirective(directiveName, directive)
-		// Track that this import provides this directive
-		parentEnv.TrackUnqualifiedDirectiveImport(directiveName, importName)
-	}
-}
-
-// importUnqualifiedValues imports all runtime values from an imported module
-// into the parent environment, unless they conflict with existing values.
-func (i *ImportDecl) importUnqualifiedValues(parentEnv EvalEnv, moduleEnv EvalEnv, importName string) {
-	// Iterate through all bindings in the module environment
-	for _, binding := range moduleEnv.Bindings(PublicVisibility) {
-		name := binding.Key
-		value := binding.Value
-
-		// Skip the import name itself
-		if name == importName {
-			continue
-		}
-
-		// Check if this name already exists in the parent environment
-		if _, exists := parentEnv.GetLocal(name); exists {
-			// Value already exists - track the conflict
-			if mod, ok := parentEnv.(*ModuleValue); ok {
-				mod.Mod.TrackUnqualifiedValueImport(name, importName)
-			}
-			continue
-		}
-
-		// Add the value to the parent environment
-		parentEnv.Set(name, value)
-		// Track that this import provides this value
-		if mod, ok := parentEnv.(*ModuleValue); ok {
-			mod.Mod.TrackUnqualifiedValueImport(name, importName)
-		}
-
-		// If this is an enum module, also import its enum values as unqualified symbols
-		if enumModuleVal, ok := value.(*ModuleValue); ok {
-			// Check if this is an enum type by looking at the module kind
-			if mod, ok := enumModuleVal.Mod.(*Module); ok && mod.Kind == EnumKind {
-				// Import all enum values
-				for _, enumBinding := range enumModuleVal.Bindings(PublicVisibility) {
-					enumValName := enumBinding.Key
-					enumVal := enumBinding.Value
-
-					// Check if this enum value name conflicts with existing symbols
-					if _, exists := parentEnv.GetLocal(enumValName); exists {
-						// Conflict - track it
-						if parentMod, ok := parentEnv.(*ModuleValue); ok {
-							parentMod.Mod.TrackUnqualifiedValueImport(enumValName, importName)
-						}
-						continue
-					}
-
-					// Add the enum value to the parent environment
-					parentEnv.Set(enumValName, enumVal)
-					// Track that this import provides this enum value
-					if parentMod, ok := parentEnv.(*ModuleValue); ok {
-						parentMod.Mod.TrackUnqualifiedValueImport(enumValName, importName)
-					}
-				}
-			}
-		}
-	}
-}

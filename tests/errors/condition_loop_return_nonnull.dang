@@ -1,0 +1,7 @@
+# A condition-based loop may skip its body, so a return inside the body
+# cannot make the loop expression non-null.
+pub bad: String! {
+  for (false) {
+    return "x"
+  }
+}

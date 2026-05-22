@@ -1,6 +1,7 @@
 package dang
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -31,6 +32,7 @@ type Constant interface {
 }
 
 var _ Constant = (*String)(nil)
+var _ Constant = (*Template)(nil)
 var _ Constant = (*Int)(nil)
 var _ Constant = (*Boolean)(nil)
 
@@ -61,18 +63,11 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 		if t == nil {
 			t = et
 		} else {
-			// Try to assign new element to accumulated type
-			if subs, err := hm.Assignable(et, t); err == nil {
-				t = t.Apply(subs).(hm.Type)
-				continue
-			}
-
-			// Not assignable, find common supertype
-			commonType := findCommonSupertype(et, t)
-			if commonType == nil {
+			merged, _, err := hm.MergeTypes(t, et)
+			if err != nil {
 				return nil, NewInferError(fmt.Errorf("unify index %d: no common type between %s and %s", i, et, t), l.Elements[i])
 			}
-			t = commonType
+			t = merged
 		}
 	}
 	listType := hm.NonNullType{Type: ListType{t}}
@@ -196,7 +191,7 @@ func (s *SelfKeyword) ReferencedSymbols() []string {
 }
 
 func (s *SelfKeyword) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	if dynScope, ok := env.GetDynamicScope(); ok {
+	if dynScope, ok := env.Self(); ok {
 		return dynScope, nil
 	}
 	return nil, fmt.Errorf("'self' is not available in this context")
@@ -243,6 +238,100 @@ func (s *String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 func (s *String) Walk(fn func(Node) bool) {
 	fn(s)
+}
+
+// TemplatePart is one segment of a Template: either a literal string chunk
+// (Expr is nil) or an interpolated expression (Lit is empty).
+type TemplatePart struct {
+	Lit  string
+	Expr Node
+}
+
+// Template represents a backtick-delimited template string literal with
+// optional ${...} interpolations. Fence is the count of backticks used as the
+// delimiter (1 for single-line, >=3 for multi-line). Lang is the optional
+// language tag on multi-line templates (used for editor highlighting).
+type Template struct {
+	InferredTypeHolder
+	Parts []TemplatePart
+	Fence int
+	Lang  string
+	Loc   *SourceLocation
+}
+
+var _ Node = (*Template)(nil)
+var _ Evaluator = (*Template)(nil)
+
+func (t *Template) Body() hm.Expression { return t }
+
+func (t *Template) GetSourceLocation() *SourceLocation { return t.Loc }
+
+func (t *Template) ConstantType() hm.Type { return hm.NonNullType{Type: StringType} }
+
+func (t *Template) IsLiteralOnly() bool {
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *Template) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	for _, p := range t.Parts {
+		if p.Expr == nil {
+			continue
+		}
+		if _, err := p.Expr.Infer(ctx, env, fresh); err != nil {
+			return nil, err
+		}
+	}
+	tt := t.ConstantType()
+	t.SetInferredType(tt)
+	return tt, nil
+}
+
+func (t *Template) DeclaredSymbols() []string { return nil }
+
+func (t *Template) ReferencedSymbols() []string {
+	var syms []string
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			syms = append(syms, p.Expr.ReferencedSymbols()...)
+		}
+	}
+	return syms
+}
+
+func (t *Template) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	var buf bytes.Buffer
+	for i, p := range t.Parts {
+		if p.Expr == nil {
+			buf.WriteString(p.Lit)
+			continue
+		}
+		val, err := EvalNode(ctx, env, p.Expr)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating template part %d: %w", i, err)
+		}
+		if s, ok := val.(StringValue); ok {
+			buf.WriteString(s.Val)
+		} else {
+			buf.WriteString(val.String())
+		}
+	}
+	return StringValue{Val: buf.String()}, nil
+}
+
+func (t *Template) Walk(fn func(Node) bool) {
+	if !fn(t) {
+		return
+	}
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			p.Expr.Walk(fn)
+		}
+	}
 }
 
 // Quoted represents a quoted string literal

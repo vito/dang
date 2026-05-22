@@ -1,1 +1,1 @@
-zed-dang/languages/dang/indents.scm
+../../editors/zed/languages/dang/indents.scm

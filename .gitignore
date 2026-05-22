@@ -5,3 +5,4 @@ Session.vim
 /.envrc
 CLAUDE.local.md
 *.log
+/treesitter/parser.so

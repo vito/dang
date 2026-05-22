@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -49,6 +50,43 @@ func (DangSuite) TestErrorMessages(ctx context.Context, t *testctx.T) {
 }
 
 // runDangFile runs a Dang file and captures combined stdout/stderr
+func (DangSuite) TestRunDirControlFlowSourceErrors(ctx context.Context, t *testctx.T) {
+	dir, err := os.MkdirTemp("", "dang-rundir-control-flow-*")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	path := filepath.Join(dir, "main.dang")
+	err = os.WriteFile(path, []byte(`let saved(x: Int!): Int! { x }
+
+pub store(&block(x: Int!): Int!): Int! {
+  saved = block
+  0
+}
+
+pub makeReturner: Int! {
+  store { x =>
+    return x
+  }
+  0
+}
+
+pub result = {
+  makeReturner
+  saved(1)
+}
+`), 0644)
+	require.NoError(t, err)
+
+	_, err = dang.RunDir(ctx, dir, false)
+	require.Error(t, err)
+
+	message := err.Error()
+	require.Contains(t, message, "Error:")
+	require.Contains(t, message, "return from expired function")
+	require.Contains(t, message, "return x")
+	require.Contains(t, message, path)
+}
+
 func runDangFile(ctx context.Context, t *testctx.T, client graphql.Client, dangFile string) string {
 	// Create buffers to capture output
 	var stdout, stderr bytes.Buffer
