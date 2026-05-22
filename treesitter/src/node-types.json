@@ -26,10 +26,6 @@
     "named": true,
     "subtypes": [
       {
-        "type": "assert",
-        "named": true
-      },
-      {
         "type": "break",
         "named": true
       },
@@ -564,42 +560,6 @@
         },
         {
           "type": "positional_value",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "assert",
-    "named": true,
-    "fields": {
-      "block": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "message": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "message_args",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "assert_token",
           "named": true
         }
       ]
@@ -2558,22 +2518,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "message_args",
-    "named": true,
-    "fields": {
-      "msg": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
     }
   },
   {
@@ -4536,10 +4480,6 @@
   },
   {
     "type": "arrow_token",
-    "named": true
-  },
-  {
-    "type": "assert_token",
     "named": true
   },
   {

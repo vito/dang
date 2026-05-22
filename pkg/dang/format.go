@@ -632,8 +632,6 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatForLoop(n)
 	case *Case:
 		f.formatCase(n)
-	case *Assert:
-		f.formatAssert(n)
 	case *Break:
 		f.formatBreak(n)
 	case *Continue:
@@ -864,8 +862,15 @@ func isImport(node Node) bool {
 }
 
 func isAssert(node Node) bool {
-	_, ok := node.(*Assert)
-	return ok
+	call, ok := node.(*FunCall)
+	if !ok {
+		return false
+	}
+	sym, ok := call.Fun.(*Symbol)
+	if !ok {
+		return false
+	}
+	return sym.Name == "assert"
 }
 
 func isFunctionDef(node Node) bool {
@@ -2674,18 +2679,6 @@ func (f *Formatter) formatCase(c *Case) {
 		}
 	})
 	f.writeIndent()
-	f.write("}")
-}
-
-func (f *Formatter) formatAssert(a *Assert) {
-	f.write("assert")
-	if a.Message != nil {
-		f.write("(")
-		f.formatNode(a.Message)
-		f.write(")")
-	}
-	f.write(" {")
-	f.formatBlockContents(a.Block)
 	f.write("}")
 }
 

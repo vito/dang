@@ -84,8 +84,8 @@ To that end:
 * There's a single [Pigeon] grammar from which a [Tree-sitter] grammar is
   generated, so I don't have to maintain both. Feel free to steal this for your
   own esolang!
-* The language has a built-in `assert { ... }` syntax so that I can test it at
-  a very high level (a Big Pile of Dang Scripts).
+* The stdlib ships an `assert { ... }` function so that I can test the
+  language at a very high level (a Big Pile of Dang Scripts).
 * Large swathes of the codebase have been implemented with AI. The language
   design is still my fault, but I've let AI do a lot of the typing.
 

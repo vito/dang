@@ -72,7 +72,7 @@ Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / N
   }
 }
 
-Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Assert / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
 
@@ -1134,24 +1134,6 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
 }
 
 CaseToken <- "case" !WordChar
-
-Assert <- AssertToken message:MessageArgs? _ block:Block {
-  var msg Node
-  if message != nil {
-    msg = message.(Node)
-  }
-  return &Assert{
-    Message: msg,
-    Block: block.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
-
-MessageArgs <- '(' _ msg:Form _ ')' {
-  return msg, nil
-}
-
-AssertToken <- "assert" !WordChar
 
 Break <- BreakToken value:(_inlineSpace v:Form { return v, nil })? {
   var val Node
