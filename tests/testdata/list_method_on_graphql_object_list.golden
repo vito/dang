@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot call list method "length" directly on a GraphQL object list; select fields first, e.g. value.{id}.length
+  [2m[34m--> errors/list_method_on_graphql_object_list.dang:6:14[0m
+ [2m    |[0m
+ [2m  4 | import Test[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mpub result = users.length
+[2m                    [31m^^^^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

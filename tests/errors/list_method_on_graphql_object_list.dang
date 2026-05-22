@@ -1,0 +1,6 @@
+# Calling a list method directly on a list of GraphQL objects must surface
+# a helpful error pointing at the object-selection workaround.
+
+import Test
+
+pub result = users.length

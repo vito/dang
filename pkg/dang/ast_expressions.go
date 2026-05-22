@@ -714,6 +714,23 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return methodType, nil
 		}
 
+		// GraphQL object lists are not directly iterable: callers must first
+		// select fields on the elements (e.g. value.{id}) to convert them
+		// into a regular list. Detect this case before falling through to
+		// the env path, which would surface a confusing internal error.
+		var gqlListReceiver bool
+		if nn, ok := lt.(hm.NonNullType); ok {
+			_, gqlListReceiver = nn.Type.(GraphQLListType)
+		} else {
+			_, gqlListReceiver = lt.(GraphQLListType)
+		}
+		if gqlListReceiver {
+			if _, found := LookupMethod(ListTypeModule, d.Field.Name); found {
+				return nil, fmt.Errorf("cannot call list method %q directly on a GraphQL object list; select fields first, e.g. value.{id}.%s", d.Field.Name, d.Field.Name)
+			}
+			return nil, fmt.Errorf("cannot select %q from a GraphQL object list; select fields on its elements first, e.g. value.{id}", d.Field.Name)
+		}
+
 		// Check if receiver is nullable or non-null
 		var rec Env
 		var isNullable bool
