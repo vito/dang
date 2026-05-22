@@ -43,6 +43,9 @@ pub multiply(x: Int!, y: Int!): Int! {
 
 multiply # test: K => hover: Multiplies two numbers together
 
+# unqualified imported value hover (file-local: composite reads lexical)
+serverInfo # test: K => hover: ServerInfo!
+
 # qualified type hover
 Test.serverInfo # test: ^wwK => hover: ServerInfo!
 
