@@ -2768,69 +2768,6 @@ func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget,
 	return retType
 }
 
-// Let represents a let binding expression
-type Let struct {
-	InferredTypeHolder
-	Name  string
-	Value Node
-	Expr  Node
-	Loc   *SourceLocation
-}
-
-var _ Node = (*Let)(nil)
-var _ Evaluator = (*Let)(nil)
-
-func (l *Let) DeclaredSymbols() []string {
-	return nil // Let expressions don't declare symbols in the global scope
-}
-
-func (l *Let) ReferencedSymbols() []string {
-	var symbols []string
-	symbols = append(symbols, l.Value.ReferencedSymbols()...)
-	symbols = append(symbols, l.Expr.ReferencedSymbols()...)
-	return symbols
-}
-
-func (l *Let) Body() hm.Expression { return l }
-
-func (l *Let) GetSourceLocation() *SourceLocation { return l.Loc }
-
-func (l *Let) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(l, func() (hm.Type, error) {
-		valueType, err := l.Value.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, err
-		}
-
-		newEnv := env.Clone()
-		newEnv.Add(l.Name, hm.NewScheme(nil, valueType))
-
-		return l.Expr.Infer(ctx, newEnv, fresh)
-	})
-}
-
-func (l *Let) Eval(ctx context.Context, env EvalEnv) (Value, error) {
-	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
-		val, err := EvalNode(ctx, env, l.Value)
-		if err != nil {
-			return nil, fmt.Errorf("evaluating let value: %w", err)
-		}
-
-		newEnv := env.Derive(false)
-		newEnv.Bind(l.Name, val, PrivateVisibility)
-
-		return EvalNode(ctx, newEnv, l.Expr)
-	})
-}
-
-func (l *Let) Walk(fn func(Node) bool) {
-	if !fn(l) {
-		return
-	}
-	l.Value.Walk(fn)
-	l.Expr.Walk(fn)
-}
-
 // TypeHint represents a type hint expression using :: syntax
 type TypeHint struct {
 	InferredTypeHolder

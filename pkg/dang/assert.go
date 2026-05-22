@@ -125,11 +125,6 @@ func assertImmediateChildren(expr Node) []assertChildNode {
 		return []assertChildNode{
 			{Name: "condition", Node: n.Condition},
 		}
-
-	case *Let:
-		return []assertChildNode{
-			{Name: "value", Node: n.Value},
-		}
 	}
 
 	return nil
@@ -163,8 +158,6 @@ func assertNodeToString(node Node) string {
 		return fmt.Sprintf("%s == %s", assertNodeToString(n.Left), assertNodeToString(n.Right))
 	case *Conditional:
 		return fmt.Sprintf("if %s { ... }", assertNodeToString(n.Condition))
-	case *Let:
-		return fmt.Sprintf("let %s = %s in ...", n.Name, assertNodeToString(n.Value))
 	default:
 		return fmt.Sprintf("%T", node)
 	}
