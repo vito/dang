@@ -1,0 +1,109 @@
+===
+single-line template interpolation
+===
+
+pub greeting = `hello ${name}!`
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "greeting")
+  " "
+  (@operator "=")
+  " "
+  (@string "`hello ")
+  (@punctuation.special "${")
+  "name"
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "!`")
+)
+
+===
+no-space template interpolation
+===
+
+pub greeting = `hello${name}!`
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "greeting")
+  " "
+  (@operator "=")
+  " "
+  (@string "`hello")
+  (@punctuation.special "${")
+  "name"
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "!`")
+)
+
+===
+interpolation expression highlighting
+===
+
+pub answer = `answer ${42}`
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "answer")
+  " "
+  (@operator "=")
+  " "
+  (@string "`answer ")
+  (@punctuation.special "${")
+  (@number "42")
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "`")
+)
+
+===
+multi-line template interpolation
+===
+
+pub greeting = ```
+hello ${name}!
+```
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "greeting")
+  " "
+  (@operator "=")
+  " "
+  (@string "```\nhello ")
+  (@punctuation.special "${")
+  "name"
+  (@punctuation.bracket @punctuation.special "}")
+  (@string "!\n```")
+)
+
+===
+multi-line template lone dollar
+===
+
+pub price = ```
+cost $5
+```
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "price")
+  " "
+  (@operator "=")
+  " "
+  (@string "```\ncost $5\n```")
+)

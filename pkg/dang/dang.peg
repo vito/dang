@@ -759,7 +759,7 @@ HeadersBlock <- '{' _ eles:(e:HeaderSlot Sep { return e, nil })* last:HeaderSlot
 
 // Literals
 
-Literal <- Float / Int / Boolean / TripleQuoteString / String / Quoted / Null / SelfKeyword
+Literal <- Float / Int / Boolean / TripleQuoteString / String / Template / Quoted / Null / SelfKeyword
 
 Float <- ((('0' / NonZeroDecimalDigit DecimalDigit*) '.' DecimalDigit+ Exponent?) / (('0' / NonZeroDecimalDigit DecimalDigit+) Exponent)) {
   value, err := strconv.ParseFloat(string(c.text), 64)
@@ -832,6 +832,83 @@ ImmediateEscape <- '\\' (
   / 'U' [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i [0-9a-f]i
   / [0-7] [0-7] [0-7]
 )
+
+// Backtick-delimited template strings with optional ${...} interpolations.
+// Single-line uses one backtick; multi-line uses three or more.
+Template <- MultiTemplate / SingleTemplate
+
+SingleTemplate <- '`' parts:SingleTemplatePart* '`' {
+  return makeTemplate(parts, 1, "", c.Loc()), nil
+}
+
+SingleTemplatePart <-
+    "$$" {
+      return TemplatePart{Lit: "$"}, nil
+    }
+  / "${" _ e:Expr _ "}" {
+      return TemplatePart{Expr: e.(Node)}, nil
+    }
+  / !"${" [^`\n] {
+      return TemplatePart{Lit: string(c.text)}, nil
+    }
+
+MultiTemplate <- ticks:MultiTemplateOpenToken #{
+  d, _ := c.state["fence_depth"].(int)
+  d++
+  c.state["fence_depth"] = d
+  c.state[templateFenceKey(d)] = len(ticks.([]byte))
+  return nil
+} lang:LangTagPart? parts:MultiTemplatePart* MultiTemplateCloseToken #{
+  d, _ := c.state["fence_depth"].(int)
+  delete(c.state, templateFenceKey(d))
+  c.state["fence_depth"] = d - 1
+  return nil
+} {
+  l := ""
+  if lang != nil {
+    l = lang.(string)
+  }
+  return makeTemplate(parts, len(ticks.([]byte)), l, c.Loc()), nil
+}
+
+MultiTemplateOpenToken <- '`' '`' '`' '`'* !'`' {
+  return c.text, nil
+}
+
+MultiTemplateCloseToken <- ticks:('`'+) !'`' &{
+  d, _ := c.state["fence_depth"].(int)
+  expected, _ := c.state[templateFenceKey(d)].(int)
+  return len(ticks.([]interface{})) == expected, nil
+}
+
+LangTagPart <- name:LangTagName LangTagTerminator {
+  return name, nil
+}
+LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
+  return string(c.text), nil
+}
+LangTagTerminator <- '\n'
+
+MultiTemplatePart <-
+    "$$" {
+      return TemplatePart{Lit: "$"}, nil
+    }
+  / "${" _ e:Expr _ "}" {
+      return TemplatePart{Expr: e.(Node)}, nil
+    }
+  / ch:MultiTemplateContentChar {
+      return TemplatePart{Lit: ch.(string)}, nil
+    }
+
+MultiTemplateLongerBackticks <- ticks:('`'+) !'`' &{
+  d, _ := c.state["fence_depth"].(int)
+  expected, _ := c.state[templateFenceKey(d)].(int)
+  return len(ticks.([]interface{})) > expected, nil
+}
+
+MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBackticks !"${" . {
+  return string(c.text), nil
+}
 
 DocString <- TripleQuote content:ImmediateTripleQuoteStringContent TripleQuote _ {
   return normalizeTripleQuoteString(content.([]byte)), nil

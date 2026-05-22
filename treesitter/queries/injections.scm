@@ -1,1 +1,1 @@
-zed-dang/languages/dang/injections.scm
+../../editors/zed/languages/dang/injections.scm

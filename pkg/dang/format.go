@@ -174,6 +174,8 @@ func extractComments(source []byte) []Comment {
 
 	// Track if we're inside a triple-quoted string across lines
 	inTripleQuote := false
+	// Track open backtick-template fence length (0 = not in a template)
+	tickFence := 0
 	lines := bytes.Split(source, []byte("\n"))
 
 	for i, line := range lines {
@@ -186,7 +188,7 @@ func extractComments(source []byte) []Comment {
 
 		for j < len(lineStr) {
 			// Check for triple quotes
-			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` {
+			if j+2 < len(lineStr) && lineStr[j:j+3] == `"""` && tickFence == 0 {
 				inTripleQuote = !inTripleQuote
 				j += 3
 				continue
@@ -194,6 +196,31 @@ func extractComments(source []byte) []Comment {
 
 			// Skip everything inside triple-quoted strings
 			if inTripleQuote {
+				j++
+				continue
+			}
+
+			// Backtick template fences. A run of backticks either opens or
+			// closes a template; only an exact-length match closes the open one.
+			if lineStr[j] == '`' && !inString {
+				k := j
+				for k < len(lineStr) && lineStr[k] == '`' {
+					k++
+				}
+				run := k - j
+				if tickFence == 0 {
+					if run >= 3 || run == 1 {
+						tickFence = run
+					}
+				} else if run == tickFence {
+					tickFence = 0
+				}
+				j = k
+				continue
+			}
+
+			// Skip everything inside backtick templates.
+			if tickFence > 0 {
 				j++
 				continue
 			}
@@ -577,6 +604,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatSymbol(n)
 	case *String:
 		f.formatString(n)
+	case *Template:
+		f.formatTemplate(n)
 	case *Int:
 		f.formatInt(n)
 	case *Float:
@@ -2118,11 +2147,216 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 	f.write(s.Name)
 }
 
+func (f *Formatter) formatTemplate(t *Template) {
+	// Echo the original source when available. Templates carry layout
+	// the AST throws away — the dedent algorithm strips intentional
+	// indentation from multi-line content, and the `$$` -> `$` collapse
+	// loses the escape the user wrote. Preserving source also keeps any
+	// comments living inside ${...} interpolations intact.
+	if orig := f.getOriginalSource(t); orig != "" {
+		if t.Fence >= 3 {
+			f.write(f.normalizeMultilineLiteral(t, orig))
+		} else {
+			f.write(orig)
+		}
+		return
+	}
+
+	fence := strings.Repeat("`", t.Fence)
+	if t.Fence == 1 {
+		f.write(fence)
+		for _, p := range t.Parts {
+			f.formatTemplatePart(p)
+		}
+		f.write(fence)
+		return
+	}
+
+	// Fallback for multi-line templates without source (synthetic AST).
+	f.write(fence)
+	if t.Lang != "" {
+		f.write(t.Lang)
+	}
+	f.newline()
+	needIndent := true
+	for _, p := range t.Parts {
+		if p.Expr != nil {
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.write("${")
+			f.formatNodeInline(p.Expr)
+			f.write("}")
+			continue
+		}
+		lines := strings.Split(p.Lit, "\n")
+		for i, line := range lines {
+			if i > 0 {
+				f.newline()
+				needIndent = true
+			}
+			if line == "" {
+				continue
+			}
+			if needIndent {
+				f.writeIndent()
+				needIndent = false
+			}
+			f.write(escapeTemplateLit(line))
+		}
+	}
+	if !needIndent {
+		f.newline()
+	}
+	f.writeIndent()
+	f.write(fence)
+}
+
+func (f *Formatter) formatTemplatePart(p TemplatePart) {
+	if p.Expr != nil {
+		f.write("${")
+		f.formatNodeInline(p.Expr)
+		f.write("}")
+		return
+	}
+	f.write(escapeTemplateLit(p.Lit))
+}
+
+// normalizeMultilineLiteral takes the original source of a multi-line
+// string or template and rewrites its body so that:
+//   - if the content was indented above its opening line's indent, content
+//     and closing fence sit one indent step deeper than the formatter's
+//     current scope;
+//   - otherwise content and closing fence sit flush with the current scope.
+//
+// Single-line literals are returned unchanged; the AST throws away enough
+// layout for both forms that echoing the source is the right default.
+func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
+	if !strings.Contains(orig, "\n") {
+		return orig
+	}
+	loc := n.GetSourceLocation()
+	if loc == nil {
+		return orig
+	}
+
+	// Outer indent: leading whitespace of the source line that holds the
+	// opening fence, up to (but not including) the fence column.
+	outerIndent := f.leadingWhitespace(loc.Line, loc.Column)
+
+	lines := strings.Split(orig, "\n")
+	// Anything before the first newline is the opening fence (+ lang for
+	// backtick templates) and is already correctly placed by the caller.
+	openingLine := lines[0]
+	bodyLines := lines[1 : len(lines)-1]
+	closingLine := lines[len(lines)-1]
+
+	// Min indent of non-empty body lines determines whether the user
+	// intended any extra indent.
+	minBodyIndent := -1
+	for _, line := range bodyLines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		wsLen := leadingWSLen(line)
+		if minBodyIndent < 0 || wsLen < minBodyIndent {
+			minBodyIndent = wsLen
+		}
+	}
+	if minBodyIndent < 0 {
+		// No content lines — use the closing fence's indent as a proxy.
+		minBodyIndent = leadingWSLen(closingLine)
+	}
+
+	indented := minBodyIndent > len(outerIndent)
+	emitPrefix := strings.Repeat(indentString, f.indent)
+	if indented {
+		emitPrefix += indentString
+	}
+
+	var buf strings.Builder
+	buf.WriteString(openingLine)
+	for _, line := range bodyLines {
+		buf.WriteByte('\n')
+		if strings.TrimSpace(line) == "" {
+			// Leave blank lines blank — no trailing whitespace.
+			continue
+		}
+		stripped := line
+		if len(stripped) >= minBodyIndent {
+			stripped = stripped[minBodyIndent:]
+		} else {
+			stripped = strings.TrimLeft(stripped, " \t")
+		}
+		buf.WriteString(emitPrefix)
+		buf.WriteString(stripped)
+	}
+	buf.WriteByte('\n')
+	buf.WriteString(emitPrefix)
+	buf.WriteString(strings.TrimLeft(closingLine, " \t"))
+	return buf.String()
+}
+
+// leadingWhitespace returns the run of spaces and tabs at the start of the
+// given (1-indexed) source line, stopping at maxCol-1 (1-indexed) so we
+// never read past where a fence begins.
+func (f *Formatter) leadingWhitespace(line, maxCol int) string {
+	start := f.lineColumnToOffset(line, 1)
+	if start < 0 {
+		return ""
+	}
+	limit := start + maxCol - 1
+	if limit > len(f.source) {
+		limit = len(f.source)
+	}
+	end := start
+	for end < limit && (f.source[end] == ' ' || f.source[end] == '\t') {
+		end++
+	}
+	return string(f.source[start:end])
+}
+
+func leadingWSLen(s string) int {
+	n := 0
+	for n < len(s) && (s[n] == ' ' || s[n] == '\t') {
+		n++
+	}
+	return n
+}
+
+// escapeTemplateLit re-escapes a literal so it round-trips through the
+// template grammar. Only `$` immediately followed by `$` or `{` is
+// significant; a stray `$` followed by anything else (or end of input)
+// is already literal in the source, so leave it alone.
+func escapeTemplateLit(s string) string {
+	var buf strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '$' && i+1 < len(s) && (s[i+1] == '$' || s[i+1] == '{') {
+			buf.WriteString("$$")
+			continue
+		}
+		buf.WriteByte(s[i])
+	}
+	return buf.String()
+}
+
 func (f *Formatter) formatString(s *String) {
 	// Preserve triple-quoted strings as triple-quoted
 	if s.TripleQuoted {
-		// If the original was on a single line, keep it inline: """value"""
 		wasInline := s.Loc != nil && (s.Loc.End == nil || s.Loc.End.Line == s.Loc.Line)
+		// Echo the original source so intentional indentation (which the
+		// dedent algorithm strips out of s.Value) survives. Matches the
+		// behavior of multi-line backtick templates.
+		if orig := f.getOriginalSource(s); orig != "" {
+			if wasInline {
+				f.write(orig)
+			} else {
+				f.write(f.normalizeMultilineLiteral(s, orig))
+			}
+			return
+		}
+		// Fallback for synthetic AST without source.
 		if wasInline {
 			f.write(`"""`)
 			f.write(s.Value)

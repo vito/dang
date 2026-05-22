@@ -8,17 +8,45 @@ import (
 	"github.com/vito/dang/pkg/dang/treesitter"
 )
 
+// tsSkippedRules lists named rules whose bodies should not appear in the
+// tree-sitter grammar because they are produced by the external scanner
+// instead. References to these rules are redirected via tsRuleRefAliases.
+var tsSkippedRules = map[string]bool{
+	"MultiTemplateOpenToken":   true,
+	"MultiTemplateCloseToken":  true,
+	"MultiTemplateContentChar": true,
+	"LangTagTerminator":        true,
+}
+
 func skipTS(name string) bool {
-	return strings.HasPrefix(name, "_")
+	if strings.HasPrefix(name, "_") {
+		return true
+	}
+	return tsSkippedRules[name]
 }
 
 var tsExternalRuleNames = []treesitter.RuleName{
 	"_automatic_newline",
 	"_inline_space",
+	// Backtick template fences. Variable-length matching can't be done in
+	// tree-sitter's built-in lexer, so an external scanner tracks the open
+	// fence count and refuses non-matching close runs as content.
+	"multi_template_open_token",
+	"multi_template_close_token",
+	"_template_content_char",
+	// Terminator for the optional language tag. External so the scanner can
+	// clear its "just opened" flag at the right moment — once we've consumed
+	// the newline after a lang tag, the next content letter is safe to treat
+	// as content rather than the start of another lang tag attempt.
+	"_lang_tag_terminator",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
-	"_inlineSpace": "_inline_space",
+	"_inlineSpace":             "_inline_space",
+	"MultiTemplateOpenToken":   "multi_template_open_token",
+	"MultiTemplateCloseToken":  "multi_template_close_token",
+	"MultiTemplateContentChar": "_template_content_char",
+	"LangTagTerminator":        "_lang_tag_terminator",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
@@ -231,13 +259,16 @@ func treesitterRule(r *rule, prec int) *treesitter.Rule {
 	case *notExpr:
 		// ignored
 		return nil
+	case *stateCodeExpr:
+		// Pigeon state mutation has no tree-sitter equivalent; the runtime
+		// constraint it enforces is dropped from the tree-sitter grammar.
+		return nil
+	case *andCodeExpr:
+		// Same: pigeon code predicates don't translate.
+		return nil
 	// case *throwExpr:
 	// 	// ignored
 	// case *recoveryExpr:
-	// 	// ignored
-	// case *stateCodeExpr:
-	// 	// ignored
-	// case *andCodeExpr:
 	// 	// ignored
 	// case *notCodeExpr:
 	// 	// ignored

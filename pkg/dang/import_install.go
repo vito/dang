@@ -110,7 +110,7 @@ func installImportedEvalEnvironment(parentEnv EvalEnv, importName string, module
 	// Binding origins live on the type environment and are established during
 	// inference. Evaluation only populates runtime values; mutating origins here
 	// can clobber local declarations and races with shared/static type modules.
-	parentEnv.SetWithVisibility(importName, moduleEnv, importedBindingVisibility)
+	parentEnv.Bind(importName, moduleEnv, importedBindingVisibility)
 
 	installUnqualifiedImportValues(parentEnv, moduleEnv, importName)
 }
@@ -123,11 +123,11 @@ func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, import
 			continue
 		}
 
-		if _, exists := parentEnv.GetLocal(name); exists {
+		if _, exists := parentEnv.LookupLocal(name); exists {
 			continue
 		}
 
-		parentEnv.SetWithVisibility(name, value, importedBindingVisibility)
+		parentEnv.Bind(name, value, importedBindingVisibility)
 
 		if enumModuleVal, ok := value.(*ModuleValue); ok {
 			if mod, ok := enumModuleVal.Mod.(*Module); ok && mod.Kind == EnumKind {
@@ -142,11 +142,11 @@ func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *Module
 		enumValName := enumBinding.Key
 		enumVal := enumBinding.Value
 
-		if _, exists := parentEnv.GetLocal(enumValName); exists {
+		if _, exists := parentEnv.LookupLocal(enumValName); exists {
 			continue
 		}
 
-		parentEnv.SetWithVisibility(enumValName, enumVal, importedBindingVisibility)
+		parentEnv.Bind(enumValName, enumVal, importedBindingVisibility)
 	}
 }
 

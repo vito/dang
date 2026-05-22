@@ -4,6 +4,7 @@
   "scopeName": "source.dang",
   "patterns": [
     { "include": "#comment" },
+    { "include": "#template-string" },
     { "include": "#string" },
     { "include": "#triple-quote-string" },
     { "include": "#number" },
@@ -27,6 +28,61 @@
       "begin": "\"\"\"",
       "end": "\"\"\"",
       "name": "string.quoted.triple.dang"
+    },
+    "template-string": {
+      "patterns": [
+        {
+          "begin": "(`{3,})([A-Za-z][A-Za-z0-9_-]*)?",
+          "beginCaptures": {
+            "1": { "name": "punctuation.definition.string.begin.dang" },
+            "2": { "name": "entity.name.tag.dang" }
+          },
+          "end": "\\1",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.dang" }
+          },
+          "name": "string.quoted.multi.backtick.dang",
+          "patterns": [
+            { "include": "#template-interpolation" },
+            {
+              "match": "\\$\\$",
+              "name": "constant.character.escape.dang"
+            }
+          ]
+        },
+        {
+          "begin": "`",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.dang" }
+          },
+          "end": "`",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.dang" }
+          },
+          "name": "string.quoted.backtick.dang",
+          "patterns": [
+            { "include": "#template-interpolation" },
+            {
+              "match": "\\$\\$",
+              "name": "constant.character.escape.dang"
+            }
+          ]
+        }
+      ]
+    },
+    "template-interpolation": {
+      "begin": "\\$\\{",
+      "beginCaptures": {
+        "0": { "name": "punctuation.section.interpolation.begin.dang" }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.interpolation.end.dang" }
+      },
+      "name": "meta.interpolation.dang",
+      "patterns": [
+        { "include": "$self" }
+      ]
     },
     "string": {
       "begin": "\"",

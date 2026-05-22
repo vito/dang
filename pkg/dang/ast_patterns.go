@@ -265,8 +265,8 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			if clause.IsTypePattern() {
 				if matchesType(exprVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding
-					childEnv := env.Fork()
-					childEnv.Set(clause.Binding, exprVal)
+					childEnv := env.Derive(true)
+					childEnv.Bind(clause.Binding, exprVal, PrivateVisibility)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}
 				continue

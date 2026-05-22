@@ -23,14 +23,6 @@ type SlotDecl struct {
 	ContextInferredType hm.Type
 }
 
-var _ Declarer = SlotDecl{}
-
-func (f SlotDecl) IsDeclarer() bool {
-	// SlotDecl always declares a symbol (the Named field)
-	// regardless of what its Value is
-	return true
-}
-
 var _ Node = (*SlotDecl)(nil)
 var _ Evaluator = (*SlotDecl)(nil)
 var _ Hoister = (*SlotDecl)(nil)
@@ -148,6 +140,28 @@ func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresh
 	return nil, nil
 }
 
+func (s *SlotDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	slotType, err := s.signatureType(ctx, env, fresh, false)
+	if err != nil {
+		return nil, err
+	}
+	if slotType == nil {
+		return nil, nil
+	}
+	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
+	s.SetInferredType(slotType)
+	if e, ok := env.(Env); ok {
+		e.SetVisibility(s.Name.Name, s.Visibility)
+		if s.DocString != "" {
+			e.SetDocString(s.Name.Name, s.DocString)
+		}
+		if len(s.Directives) > 0 {
+			e.SetDirectives(s.Name.Name, s.Directives)
+		}
+	}
+	return slotType, nil
+}
+
 func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	slotType, err := s.signatureType(ctx, env, fresh, true)
 	if err != nil {
@@ -254,7 +268,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.GetLocal(s.Name.Name)
+		val, defined := env.LookupLocal(s.Name.Name)
 		if defined {
 			// already defined (e.g. through constructor), nothing to do
 			return val, nil
@@ -271,7 +285,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 			// If no value is provided, this is just a type declaration
 			// Add a null value to the environment as a placeholder
-			env.SetWithVisibility(s.Name.Name, NullValue{}, s.Visibility)
+			env.Bind(s.Name.Name, NullValue{}, s.Visibility)
 			return NullValue{}, nil
 		}
 
@@ -283,8 +297,8 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the value to the environment for future use
-		// If it's a ModuleValue, use SetWithVisibility to track visibility
-		env.SetWithVisibility(s.Name.Name, val, s.Visibility)
+		// If it's a ModuleValue, track visibility explicitly
+		env.Bind(s.Name.Name, val, s.Visibility)
 
 		return val, nil
 	})
@@ -375,10 +389,6 @@ func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fre
 func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// The new() constructor body is evaluated by ConstructorFunction.Call
 	return NullValue{}, nil
-}
-
-func (f *ClassDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &ClassDecl{}
@@ -855,7 +865,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Add the constructor to the evaluation environment
-		env.SetWithVisibility(c.Name.Name, constructor, c.Visibility)
+		env.Bind(c.Name.Name, constructor, c.Visibility)
 
 		return constructor, nil
 	})
@@ -881,10 +891,6 @@ type EnumDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (e *EnumDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &EnumDecl{}
@@ -987,7 +993,7 @@ func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 
 	// Register the enum module in the environment
-	env.SetWithVisibility(e.Name.Name, enumModule, e.Visibility)
+	env.Bind(e.Name.Name, enumModule, e.Visibility)
 
 	return enumModule, nil
 }
@@ -1011,10 +1017,6 @@ type ScalarDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (s *ScalarDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &ScalarDecl{}
@@ -1085,7 +1087,7 @@ func (s *ScalarDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	scalarModule := NewModuleValue(s.Inferred)
 
 	// Register the scalar type in the environment
-	env.SetWithVisibility(s.Name.Name, scalarModule, s.Visibility)
+	env.Bind(s.Name.Name, scalarModule, s.Visibility)
 
 	return scalarModule, nil
 }
@@ -1109,10 +1111,6 @@ type InterfaceDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (i *InterfaceDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &InterfaceDecl{}
@@ -1215,7 +1213,7 @@ func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
 	// Just register the interface module in the environment
 	interfaceModule := NewModuleValue(i.Inferred)
-	env.SetWithVisibility(i.Name.Name, interfaceModule, i.Visibility)
+	env.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
 
@@ -1238,10 +1236,6 @@ type UnionDecl struct {
 	Loc        *SourceLocation
 
 	Inferred *Module
-}
-
-func (u *UnionDecl) IsDeclarer() bool {
-	return true
 }
 
 var _ Node = &UnionDecl{}
@@ -1370,7 +1364,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Unions are pure type declarations - register the union module
 	unionModule := NewModuleValue(u.Inferred)
-	env.SetWithVisibility(u.Name.Name, unionModule, u.Visibility)
+	env.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }
 

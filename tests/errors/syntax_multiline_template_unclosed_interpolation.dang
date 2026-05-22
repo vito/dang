@@ -1,0 +1,4 @@
+pub name = "Ada"
+pub bad = ```
+hello ${name
+```

@@ -9,6 +9,7 @@ type Dang {
     "editors",
     "!editors/nvim",
     "!editors/zed/extension.toml",
+    "!editors/zed/languages",
     ".env",
     ".envrc",
     ".dagger",
@@ -178,7 +179,7 @@ type Dang {
         "go", "golangci-lint",
         "nodejs", "npm",
         "neovim",
-        "gcc",
+        "clang",
       ])
       .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")

@@ -127,7 +127,7 @@ type RaisedError struct {
 
 func (r *RaisedError) Error() string {
 	if mv, ok := r.Value.(*ModuleValue); ok {
-		if msg, found := mv.Get("message"); found {
+		if msg, found := mv.lookupValue("message"); found {
 			return msg.String()
 		}
 	}
@@ -151,17 +151,17 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
 			if clause.IsElse {
-				childEnv := env.Fork()
+				childEnv := env.Derive(true)
 				if clause.Binding != "" {
-					childEnv.Set(clause.Binding, errVal)
+					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
 				return EvalNode(ctx, childEnv, clause.Expr)
 			}
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
-					childEnv := env.Fork()
-					childEnv.Set(clause.Binding, errVal)
+					childEnv := env.Derive(true)
+					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
 					return EvalNode(ctx, childEnv, clause.Expr)
 				}
 				continue
@@ -194,8 +194,7 @@ func extractErrorValue(err error) Value {
 // message.
 func newBasicError(message string) *ModuleValue {
 	mv := NewModuleValue(BasicErrorType)
-	mv.Set("message", StringValue{Val: message})
-	mv.Visibilities["message"] = PublicVisibility
+	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
 	return mv
 }
 
