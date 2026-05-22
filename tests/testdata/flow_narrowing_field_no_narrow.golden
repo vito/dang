@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared String!, inferred String
+  [2m[34m--> errors/flow_narrowing_field_no_narrow.dang:9:28[0m
+ [2m    |[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0mlet f(h: Holder!): String! {
+[2m                                  [31m^[0m
+ [2m 10 |   if (h.val == null) {[0m
+ [2m 11 |     raise "missing"[0m
+ [2m    |[0m
+

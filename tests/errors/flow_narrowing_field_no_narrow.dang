@@ -1,0 +1,17 @@
+# Narrowing applies to bare symbols only. A null check on a field access
+# does not narrow subsequent accesses, because each `.field` access could
+# in principle return a different value (the first call non-null, the next
+# null). To narrow, bind the field to a local variable first.
+type Holder {
+  let val: String = null
+}
+
+let f(h: Holder!): String! {
+  if (h.val == null) {
+    raise "missing"
+  }
+  # h.val is still nullable here — null check on a field access does not narrow.
+  h.val
+}
+
+print(f(Holder))

@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared String!, inferred String
+  [2m[34m--> errors/flow_narrowing_and_guard_no_narrow.dang:6:38[0m
+ [2m    |[0m
+ [2m  4 | let optional(s: String): String { s }[0m
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mlet f(a: String, b: String): String! {
+[2m                                            [31m^[0m
+ [2m  7 |   let x = optional(a)[0m
+ [2m  8 |   let y = optional(b)[0m
+ [2m    |[0m
+

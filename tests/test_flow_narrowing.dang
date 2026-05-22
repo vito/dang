@@ -1,0 +1,212 @@
+# Flow-sensitive type narrowing tests.
+#
+# These cover the guard-clause pattern (where a diverging branch narrows the
+# surrounding scope), compound boolean conditions (and / or), narrowing
+# inside while-loop bodies, and nested patterns.
+
+let optional(s: String): String { s }
+
+# Guard clause with no else: a raise in the then-branch narrows the
+# enclosing scope so the variable becomes non-null afterwards.
+let guardWithRaise(s: String): String! {
+  let x = optional(s)
+  if (x == null) {
+    raise "missing"
+  }
+  # x is now String! — assignable to String!
+  let y: String! = x
+  y
+}
+
+assert("guard with raise narrows variable") {
+  guardWithRaise("hello") == "hello"
+}
+
+# Guard clause using "x != null" with a raise on the negated branch.
+let guardWithNotEqual(s: String): String! {
+  let x = optional(s)
+  if (x != null) {
+    # No-op then-branch — narrowing still works after the conditional
+    # only when one branch diverges.
+  } else {
+    raise "missing"
+  }
+  let y: String! = x
+  y
+}
+
+assert("guard via else-raise narrows variable") {
+  guardWithNotEqual("world") == "world"
+}
+
+# Compound condition with "or" — both null checks fail when entering
+# the diverging branch, so both variables narrow to non-null.
+let guardCompoundOr(a: String, b: String): String! {
+  let x = optional(a)
+  let y = optional(b)
+  if (x == null or y == null) {
+    raise "missing"
+  }
+  let xx: String! = x
+  let yy: String! = y
+  xx + yy
+}
+
+assert("guard with `or` narrows both variables") {
+  guardCompoundOr("foo", "bar") == "foobar"
+}
+
+# Else-if chains work because the parser wraps `else if` in a Block.
+# The outer guard's then-branch diverges, so the outer condition's falsy
+# facts apply afterwards — narrowing x regardless of what the else-if does.
+let guardElseIf(s: String): String! {
+  let x = optional(s)
+  if (x == null) {
+    raise "missing"
+  } else if (s == "skip") {
+    # Non-diverging else-if shouldn't affect the outer narrowing of x.
+  }
+  let y: String! = x
+  y
+}
+
+assert("guard before else-if narrows outer variable") {
+  guardElseIf("ok") == "ok"
+}
+
+# Nested guards: each guard narrows independently, and narrowings
+# accumulate as we process forms sequentially.
+let nestedGuards(a: String, b: String): String! {
+  let x = optional(a)
+  let y = optional(b)
+  if (x == null) {
+    raise "no x"
+  }
+  if (y == null) {
+    raise "no y"
+  }
+  # Both x and y narrowed to String!.
+  let xx: String! = x
+  let yy: String! = y
+  xx + yy
+}
+
+assert("sequential guards narrow each variable") {
+  nestedGuards("ab", "cd") == "abcd"
+}
+
+# return inside a function body diverges, so the guard narrows the rest.
+let guardWithReturn(s: String): String! {
+  let x = optional(s)
+  if (x == null) {
+    return "default"
+  }
+  let y: String! = x
+  y
+}
+
+assert("guard with return narrows variable") {
+  guardWithReturn("present") == "present"
+}
+
+# break inside a loop body diverges that iteration's block —
+# subsequent forms in the same iteration see the narrowed type.
+let guardWithBreak(s: String): String! {
+  let x = optional(s)
+  let result = for (true) {
+    if (x == null) { break }
+    let y: String! = x
+    break y
+  }
+  if (result == null) {
+    raise "missing"
+  }
+  result
+}
+
+assert("guard with break narrows within loop iteration") {
+  guardWithBreak("loop") == "loop"
+}
+
+# continue inside a loop body diverges — same as break for narrowing purposes.
+let guardWithContinue(s: String): String! {
+  let x = optional(s)
+  let count = 0
+  for (count == 0) {
+    if (x == null) { continue }
+    let y: String! = x
+    break
+  }
+  if (x == null) {
+    raise "missing"
+  }
+  x
+}
+
+assert("guard with continue narrows within loop iteration") {
+  guardWithContinue("c") == "c"
+}
+
+# While-loop condition narrows the body. Inside the body, x is non-null,
+# so we can bind it to a String! and break with that value.
+let whileCondNarrows(s: String): String! {
+  let x = optional(s)
+  let result = for (x != null) {
+    let y: String! = x
+    break y
+  }
+  if (result == null) {
+    raise "missing"
+  }
+  result
+}
+
+assert("while-loop condition narrows the body") {
+  whileCondNarrows("present") == "present"
+}
+
+# Branch narrowing still applies inside then/else.
+type Holder {
+  let maybe: String = null
+
+  pub describeNotEq: String! {
+    if (maybe != null) {
+      "got " + maybe
+    } else {
+      "missing"
+    }
+  }
+
+  pub describeEq: String! {
+    if (maybe == null) {
+      "missing"
+    } else {
+      "got " + maybe
+    }
+  }
+
+  # Compound `and` inside a condition: both narrowings apply in then-branch.
+  let other: String = null
+
+  pub bothBranches: String! {
+    if (maybe != null and other != null) {
+      maybe + other
+    } else {
+      "missing"
+    }
+  }
+
+  # Guard clause inside a method: bare field references on `self` are
+  # plain Symbols, so they narrow.
+  pub useGuard: String! {
+    if (maybe == null) {
+      raise "no maybe"
+    }
+    "got " + maybe
+  }
+}
+
+let h = Holder
+assert("then-branch narrows via !=") { h.describeNotEq == "missing" }
+assert("else-branch narrows via ==") { h.describeEq == "missing" }
+assert("compound and narrows both in then-branch") { h.bothBranches == "missing" }
