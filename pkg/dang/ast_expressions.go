@@ -2218,15 +2218,10 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			return nil, NewInferError(fmt.Errorf("condition must be Boolean, got %s", condType), c.Condition)
 		}
 
-		// Analyze null assertions in the condition for flow-sensitive type checking
-		assertions := AnalyzeNullAssertions(c.Condition)
-		thenRefinements, elseRefinements, err := CreateTypeRefinements(assertions, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("creating type refinements: %w", err)
-		}
+		// Apply flow-sensitive narrowings to each branch based on the condition.
+		facts := analyzeCondition(c.Condition, env)
 
-		// Apply type refinements to the then branch
-		thenEnv := ApplyTypeRefinements(env, thenRefinements)
+		thenEnv := withNarrowings(env, facts.Truthy)
 		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
@@ -2235,8 +2230,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		if c.Else != nil {
 			elseBlock := c.Else.(*Block)
 
-			// Apply type refinements to the else branch
-			elseEnv := ApplyTypeRefinements(env, elseRefinements)
+			elseEnv := withNarrowings(env, facts.Falsy)
 			elseType, err := elseBlock.Infer(ctx, elseEnv, fresh)
 			if err != nil {
 				return nil, err
@@ -2335,7 +2329,10 @@ func (f *ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
 
 func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		// Check if this is a condition-based loop
+		// Apply truthy facts from the condition inside the body. The body
+		// only executes when the condition is true, so refinements derived
+		// from it hold for each iteration.
+		bodyEnv := env
 		if f.Condition != nil {
 			// Infer the condition type outside the loop control-flow target.
 			condType, err := f.Condition.Infer(ctx, env, fresh)
@@ -2347,13 +2344,16 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 			if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
 				return nil, NewInferError(fmt.Errorf("condition must be boolean, got %s", condType), f.Condition)
 			}
+
+			facts := analyzeCondition(f.Condition, env)
+			bodyEnv = withNarrowings(env, facts.Truthy)
 		}
 
 		loopTarget := NewInferControlTarget(LoopFrame)
 		bodyCtx := contextWithInferBreakTarget(ctx, loopTarget)
 		bodyCtx = contextWithInferContinueTarget(bodyCtx, loopTarget)
 
-		bodyType, err := f.LoopBody.Infer(bodyCtx, env, fresh)
+		bodyType, err := f.LoopBody.Infer(bodyCtx, bodyEnv, fresh)
 		if err != nil {
 			return nil, err
 		}

@@ -506,6 +506,12 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 					errs.Add(err)
 				}
 			}
+			// Propagate guard-clause narrowings to subsequent forms: if a
+			// conditional's branch diverges (raise/return/break/continue),
+			// the opposite branch's refinements are guaranteed to hold.
+			if cond, ok := form.(*Conditional); ok {
+				applyNarrowings(newEnv, conditionalExitNarrowings(cond, newEnv))
+			}
 		}
 
 		if errs.HasErrors() {
