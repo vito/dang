@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/url"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/creachadair/jrpc2"
@@ -62,12 +64,19 @@ type langHandler struct {
 }
 
 // parsedFile is a cache entry for a single .dang file's parse output. The
-// block is reused across analyzeDirectory calls when text is unchanged; its
-// ImportDecls' inferred schema modules are also cached on the nodes, so the
-// imports phase runs in O(1) on cache hit.
+// block is reused across analyzeDirectory calls when the file's content is
+// unchanged; its ImportDecls' inferred schema modules are also cached on the
+// nodes, so the imports phase runs in O(1) on cache hit.
+//
+// For files on disk, mtime+size is used as the fingerprint so cache hits skip
+// the disk read entirely. For open buffers (no mtime), text is the
+// fingerprint.
 type parsedFile struct {
-	text  string
 	block *dang.ModuleBlock
+	text  string // populated only when sourced from an open buffer
+	mtime time.Time
+	size  int64
+	open  bool // true if sourced from an open buffer
 }
 
 // File is
@@ -242,13 +251,17 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 
 	for _, path := range files {
 		fileURI := toURI(path)
-		fileText, err := h.textForPath(path)
-		if err != nil {
-			return nil, err
-		}
 
-		block, err := h.parseFileCached(path, fileText)
+		block, err := h.parseFileCached(path)
 		if err != nil {
+			// IO errors (missing file, permission denied, broken symlink)
+			// are fatal — bail out so the caller can surface them. Parse
+			// errors are reported as diagnostics for the active buffer and
+			// otherwise skipped so the rest of the directory still analyzes.
+			var pathErr *fs.PathError
+			if errors.As(err, &pathErr) {
+				return nil, err
+			}
 			slog.WarnContext(ctx, "failed to parse Dang code for LSP", "path", path, "error", err)
 			if sameFile(path, fp) {
 				analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnostics(err, uri)...)
@@ -370,23 +383,50 @@ func (h *langHandler) directoryDangFiles(dir string) ([]string, error) {
 	return dangFiles, nil
 }
 
-// parseFileCached parses the .dang file at path against the given text,
-// reusing the cached *ModuleBlock when text is unchanged from the previous
-// call. The cache is keyed by absolute path; siblings unchanged between
-// keystrokes return their previous parse immediately. ImportDecl nodes in
-// reused blocks keep their cached schema modules, so subsequent imports
-// phases skip schema introspection.
+// parseFileCached returns the parsed *ModuleBlock for path. When the file is
+// unchanged from the cached entry, the cached block is returned without
+// re-parsing. For files on disk, the fingerprint is mtime+size — a stat call
+// is enough to know if the cache is still good, avoiding even the file read.
+// For open buffers, the fingerprint is the buffer's text.
 //
 // Auto-imports prepended into block.Forms by InferDirectoryFiles persist
-// across calls; prependAutoImports is idempotent.
-func (h *langHandler) parseFileCached(path, text string) (*dang.ModuleBlock, error) {
+// across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
+// blocks keep their inferred schema modules, so the imports phase doesn't
+// re-introspect on cache hit.
+func (h *langHandler) parseFileCached(path string) (*dang.ModuleBlock, error) {
+	uri := toURI(path)
+
 	h.mu.Lock()
-	cached, ok := h.parseCache[path]
+	openFile := h.files[uri]
+	cached, hit := h.parseCache[path]
 	h.mu.Unlock()
-	if ok && cached.text == text {
+
+	if openFile != nil {
+		openFile.mu.Lock()
+		text := openFile.Text
+		openFile.mu.Unlock()
+		if hit && cached.open && cached.text == text {
+			return cached.block, nil
+		}
+		return h.parseAndStore(path, text, parsedFile{open: true, text: text})
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", path, err)
+	}
+	if hit && !cached.open && cached.mtime.Equal(info.ModTime()) && cached.size == info.Size() {
 		return cached.block, nil
 	}
 
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size()})
+}
+
+func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.ModuleBlock, error) {
 	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path))
 	if err != nil {
 		return nil, err
@@ -395,31 +435,11 @@ func (h *langHandler) parseFileCached(path, text string) (*dang.ModuleBlock, err
 	if !ok {
 		return nil, fmt.Errorf("parsed result for %s is not a ModuleBlock", path)
 	}
-
+	entry.block = block
 	h.mu.Lock()
-	h.parseCache[path] = parsedFile{text: text, block: block}
+	h.parseCache[path] = entry
 	h.mu.Unlock()
 	return block, nil
-}
-
-func (h *langHandler) textForPath(path string) (string, error) {
-	uri := toURI(path)
-
-	h.mu.Lock()
-	openFile := h.files[uri]
-	h.mu.Unlock()
-
-	if openFile != nil {
-		openFile.mu.Lock()
-		defer openFile.mu.Unlock()
-		return openFile.Text, nil
-	}
-
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to read source file %s: %w", path, err)
-	}
-	return string(contents), nil
 }
 
 func (h *langHandler) buildDirectorySymbolTable(files []directoryFile, currentURI DocumentURI) *SymbolTable {
