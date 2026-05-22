@@ -1,9 +1,12 @@
 # local binding
-let hello = 42
+let bound = 42
 
-hello # test: gd => ┃hello = 42
+bound # test: gd => ┃bound = 42
 
 # function definition
+"""
+Adds two numbers.
+"""
 pub addNums(x: Int!, y: Int!): Int! {
   x + y # test: ^gd => pub addNums(┃x: Int!, y: Int!): Int! {
 }
@@ -27,3 +30,6 @@ type Person {
 }
 
 Person # test: ^gd => type ┃Person {
+
+# cross-file: pub multiply(...) is declared in hover.dang
+multiply # test: ^gd => pub ┃multiply(x: Int!, y: Int!): Int! {
