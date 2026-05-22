@@ -2000,49 +2000,48 @@ func InjectAutoImports(ctx context.Context, forms []Node) []Node {
 	return append(injected, forms...)
 }
 
-func parseDirForms(ctx context.Context, dirPath string) (context.Context, []Node, int, error) {
-	// Load project config (dang.toml) if not already in context.
+// parseDirBlocks parses every .dang file in dirPath into a *ModuleBlock and
+// returns them in deterministic order. Files keep their own forms so that
+// downstream callers can apply file-scoped policy (e.g. file-local imports).
+func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*ModuleBlock, error) {
 	ctx, err := ensureProjectImports(ctx, dirPath)
 	if err != nil {
-		return ctx, nil, 0, fmt.Errorf("loading project config: %w", err)
+		return ctx, nil, fmt.Errorf("loading project config: %w", err)
 	}
 
-	// Discover all .dang files in the directory.
 	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
 	if err != nil {
-		return ctx, nil, 0, fmt.Errorf("failed to find .dang files in directory %s: %w", dirPath, err)
+		return ctx, nil, fmt.Errorf("failed to find .dang files in directory %s: %w", dirPath, err)
 	}
 
 	if len(dangFiles) == 0 {
-		return ctx, nil, 0, nil
+		return ctx, nil, nil
 	}
 
-	// Sort files for deterministic order.
 	sort.Strings(dangFiles)
 
-	var allForms []Node
+	blocks := make([]*ModuleBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
 		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
 		if err != nil {
-			return ctx, nil, len(dangFiles), fmt.Errorf("failed to parse file %s: %w", filePath, err)
+			return ctx, nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
-
-		moduleBlock := parsed.(*ModuleBlock)
-		allForms = append(allForms, moduleBlock.Forms...)
+		block, ok := parsed.(*ModuleBlock)
+		if !ok {
+			return ctx, nil, fmt.Errorf("parsed result for %s is not a ModuleBlock", filePath)
+		}
+		blocks = append(blocks, block)
 	}
 
-	// Auto-inject imports for any import configs in context that aren't
-	// already explicitly imported. This allows SDKs (e.g. Dagger) to make
-	// their import available without requiring module authors to write it.
-	allForms = InjectAutoImports(ctx, allForms)
-
-	return ctx, allForms, len(dangFiles), nil
+	return ctx, blocks, nil
 }
 
 // DeclareDir declares all .dang files in a directory as a single module and
 // returns an evaluation environment containing only declared API-shape values.
 // It resolves imports and signatures, but it does not infer or evaluate
-// function bodies, computed variables, or non-declaration expressions.
+// function bodies, computed variables, or non-declaration expressions. Each
+// file's imports are file-local: a sibling file's `import X` does not make X
+// visible here.
 func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Ensure service registry exists for cleanup.
 	ctx, services := ensureServiceRegistry(ctx)
@@ -2050,34 +2049,57 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, err
 		defer services.StopAll()
 	}
 
-	ctx, allForms, fileCount, err := parseDirForms(ctx, dirPath)
+	ctx, blocks, err := parseDirBlocks(ctx, dirPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(allForms) == 0 {
+	if len(blocks) == 0 {
 		return NewEvalEnv(NewPreludeEnv("")), nil
 	}
 
 	if isDebug {
+		var totalForms int
+		for _, b := range blocks {
+			totalForms += len(b.Forms)
+		}
 		fmt.Printf("Declaring directory: %s\n", dirPath)
-		fmt.Printf("Found %d .dang files with %d total forms\n", fileCount, len(allForms))
+		fmt.Printf("Found %d .dang files with %d total forms\n", len(blocks), totalForms)
 	}
 
 	typeEnv := NewPreludeEnv("")
 	fresh := hm.NewSimpleFresher()
-	if _, err := DeclareFormsWithPhases(ctx, allForms, typeEnv, fresh); err != nil {
+	if err := declareDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
 	evalEnv := NewEvalEnv(typeEnv)
-	if _, err := EvaluateDeclaredFormsWithPhases(ctx, allForms, evalEnv); err != nil {
-		return nil, err
+	for _, block := range blocks {
+		if _, err := EvaluateDeclaredFormsWithPhases(ctx, block.Forms, evalEnv); err != nil {
+			return nil, err
+		}
 	}
 
 	return evalEnv, nil
 }
 
-// RunDir evaluates all .dang files in a directory as a single module
+// declareDirectoryFiles runs only the declaration phases across files (no body
+// inference). It is the DeclareDir counterpart to InferDirectoryFiles. Mutates
+// block.Forms to prepend auto-imports so later evaluation reuses the same
+// *ImportDecl nodes inferred here.
+func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv Env, fresh hm.Fresher) error {
+	overall := &InferenceErrors{}
+	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
+	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
+
+	if overall.HasErrors() {
+		return overall
+	}
+	return nil
+}
+
+// RunDir evaluates all .dang files in a directory as a single module. Each
+// file's imports are file-local during type inference: a sibling file's
+// `import X` does not make X visible here.
 func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
 	// Ensure service registry exists for cleanup
 	ctx, services := ensureServiceRegistry(ctx)
@@ -2085,85 +2107,52 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 		defer services.StopAll()
 	}
 
-	// Load project config (dang.toml) if not already in context
-	ctx, err := ensureProjectImports(ctx, dirPath)
+	ctx, blocks, err := parseDirBlocks(ctx, dirPath)
 	if err != nil {
-		return nil, fmt.Errorf("loading project config: %w", err)
+		return nil, err
 	}
-
-	// Discover all .dang files in the directory
-	dangFiles, err := filepath.Glob(filepath.Join(dirPath, "*.dang"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to find .dang files in directory %s: %w", dirPath, err)
-	}
-
-	if len(dangFiles) == 0 {
+	if len(blocks) == 0 {
 		return nil, fmt.Errorf("no .dang files found in directory: %s", dirPath)
 	}
 
-	// Sort files for deterministic order
-	sort.Strings(dangFiles)
-
-	// Parse all files and collect their blocks
-	var allForms []Node
-
-	for _, filePath := range dangFiles {
-		// Parse the file
-		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
-		}
-
-		moduleBlock := parsed.(*ModuleBlock)
-		// Add all forms from this file to the combined block
-		allForms = append(allForms, moduleBlock.Forms...)
-	}
-
-	// Auto-inject imports for any import configs in context that aren't
-	// already explicitly imported. This allows SDKs (e.g. Dagger) to make
-	// their import available without requiring module authors to write it.
-	allForms = InjectAutoImports(ctx, allForms)
-
-	// Create a master ModuleBlock containing all forms from all files
-	// The phased approach will handle dependency ordering
-	masterBlock := &ModuleBlock{
-		Forms:  allForms,
-		Inline: true,
-	}
-
 	if isDebug {
+		var totalForms int
+		for _, b := range blocks {
+			totalForms += len(b.Forms)
+		}
 		fmt.Printf("Evaluating directory: %s\n", dirPath)
-		fmt.Printf("Found %d .dang files with %d total forms\n", len(dangFiles), len(masterBlock.Forms))
-		// pretty.Println(masterBlock)
+		fmt.Printf("Found %d .dang files with %d total forms\n", len(blocks), totalForms)
 	}
 
-	// Create type environment
 	typeEnv := NewPreludeEnv("")
+	fresh := hm.NewSimpleFresher()
 
-	// Run type inference using phased approach
 	if isDebug {
 		fmt.Println("Running phased inference...")
 	}
 
-	inferred, err := Infer(ctx, typeEnv, masterBlock, true)
-	if err != nil {
+	if err := InferDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
-	slog.Debug("directory type inference completed", "type", inferred, "dir", dirPath)
+	slog.Debug("directory type inference completed", "dir", dirPath)
 
-	// Create evaluation environment
 	evalEnv := NewEvalEnv(typeEnv)
 
-	// Evaluate the combined block using phased evaluation
 	if isDebug {
 		fmt.Println("Running phased evaluation...")
 	}
 
-	// Create an eval context for error reporting. Since we're evaluating
-	// forms from multiple files, we don't provide a source string here.
-	// The error formatter will read individual source files as needed.
 	evalCtx := NewEvalContext(dirPath, "")
+
+	// InferDirectoryFiles already prepended auto-imports into each block. The
+	// shared evalEnv is the cross-file declaration store; per-file imports are
+	// evaluated in source order with the rest of each file's forms.
+	var allForms []Node
+	for _, block := range blocks {
+		allForms = append(allForms, block.Forms...)
+	}
+	masterBlock := &ModuleBlock{Forms: allForms, Inline: true}
 
 	result, err := EvalNodeWithContext(ctx, evalEnv, masterBlock, evalCtx)
 	if err != nil {

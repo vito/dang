@@ -729,8 +729,10 @@ func inferTypesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fre
 	if _, err := declareTypeSignaturesPhaseResilient(ctx, types, env, fresh, errs); err != nil {
 		return nil, err
 	}
+	return inferTypeBodiesPhaseResilient(ctx, types, env, fresh, errs)
+}
 
-	// Complete type inference
+func inferTypeBodiesPhaseResilient(ctx context.Context, types []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range types {
 		t, err := form.Infer(ctx, env, fresh)

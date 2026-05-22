@@ -222,7 +222,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	}
 
 	var parsedFiles []directoryFile
-	var allForms []dang.Node
+	var blocks []*dang.ModuleBlock
 	var currentBlock *dang.ModuleBlock
 
 	for _, path := range files {
@@ -256,7 +256,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 			URI:   fileURI,
 			Block: block,
 		})
-		allForms = append(allForms, block.Forms...)
+		blocks = append(blocks, block)
 	}
 
 	if currentBlock == nil {
@@ -275,16 +275,12 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
-	// Inject auto-imports (e.g. Dagger) before inference. Keep each file's AST
-	// forms untouched so editor features work against user-written source only.
-	allForms = dang.InjectAutoImports(ctx, allForms)
-
-	// Run type inference over every .dang file in the directory, matching the
-	// interpreter's directory-module semantics.
+	// Run type inference per file with file-local import scopes. Cross-file
+	// declarations resolve through the shared dirEnv; siblings' imports do not
+	// leak into this file's lookups.
 	typeEnv := dang.NewPreludeEnv("")
 	fresh := hm.NewSimpleFresher()
-	_, err = dang.InferFormsWithPhases(ctx, allForms, typeEnv, fresh)
-	if err != nil {
+	if err := dang.InferDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
 	// Store the type environment in the File for later use (e.g., hover).
