@@ -3,6 +3,7 @@ package dang
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -87,9 +88,10 @@ func runDirectoryPhases(ctx context.Context, scopes []fileScope, fresh hm.Freshe
 	}
 }
 
-// inferencePhases mirrors InferFormsWithPhases but with each phase reachable
-// per-file. Phase order is critical: type names → signatures → bodies.
-var inferencePhases = []directoryPhase{
+// declarationPhases is the subset of phases that build the directory's public
+// API. Body inference is skipped, matching DeclareFormsWithPhases. Phase order
+// is critical: type names → signatures.
+var declarationPhases = []directoryPhase{
 	{"type names", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return inferTypeNamesPhaseResilient(ctx, c.Types, env, fresh, errs)
 	}},
@@ -108,34 +110,44 @@ var inferencePhases = []directoryPhase{
 	{"function signatures", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return declareFunctionSignaturesPhaseResilient(ctx, c.Functions, env, fresh, errs)
 	}},
-	{"type bodies", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
-		return inferTypeBodiesPhaseResilient(ctx, c.Types, env, fresh, errs)
-	}},
+}
+
+// variablePhase is broken out (rather than living inline in bodyPhases) so
+// the LSP focused path can run it for sibling files without paying for the
+// rest of body inference. Siblings need it because declaration-phase
+// signatures don't cover `pub answer = expr` (no annotation) — without the
+// variables phase, the active file's references to such a sibling export
+// show up as "not found".
+var variablePhase = []directoryPhase{
 	{"variables", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return inferVariablesPhaseResilient(ctx, c.Variables, env, fresh, errs)
 	}},
-	{"function bodies", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
-		return inferFunctionBodiesPhaseResilient(ctx, c.Functions, env, fresh, errs)
-	}},
-	{"non-declarations", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
-		return inferNonDeclarationsPhaseResilient(ctx, c.NonDeclarations, env, fresh, errs)
-	}},
 }
 
-// declarationPhases is the subset of phases that build the directory's public
-// API. Body inference is skipped, matching DeclareFormsWithPhases.
-var declarationPhases = inferencePhases[:6]
+// bodyPhases are the post-declaration phases that walk into bodies. Order
+// matters: type bodies first (so method return types are pinned), then
+// variables (which may reference method types), then function bodies, then
+// non-declarations.
+var bodyPhases = slices.Concat(
+	[]directoryPhase{
+		{"type bodies", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+			return inferTypeBodiesPhaseResilient(ctx, c.Types, env, fresh, errs)
+		}},
+	},
+	variablePhase,
+	[]directoryPhase{
+		{"function bodies", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+			return inferFunctionBodiesPhaseResilient(ctx, c.Functions, env, fresh, errs)
+		}},
+		{"non-declarations", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+			return inferNonDeclarationsPhaseResilient(ctx, c.NonDeclarations, env, fresh, errs)
+		}},
+	},
+)
 
-// bodyPhases are the post-signature phases that walk into bodies: type bodies,
-// variable bodies, function bodies, and non-declarations.
-var bodyPhases = inferencePhases[6:]
-
-// variablePhase is the body-inference phase that publishes types for
-// unannotated computed variables. It must run even for sibling files in the
-// focused LSP path, because their declaration-phase signatures don't cover
-// `pub answer = expr` (no annotation) — without inferring the body, the
-// active file's references to such a sibling export show up as "not found".
-var variablePhase = []directoryPhase{inferencePhases[7]}
+// inferencePhases mirrors InferFormsWithPhases but with each phase reachable
+// per-file. Phase order is critical: declarations before bodies.
+var inferencePhases = slices.Concat(declarationPhases, bodyPhases)
 
 // InferDirectoryFilesFocused runs phased inference with full body checks only
 // for the active file. Sibling files run the declaration phases plus the
