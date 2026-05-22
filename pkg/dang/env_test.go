@@ -241,7 +241,10 @@ func TestDeclareLocalTypeRejectsQualifiedImportAlias(t *testing.T) {
 	require.Same(t, importedContainer, qualifiedContainer)
 }
 
-func TestRunDirDeclarationCannotShadowImportAlias(t *testing.T) {
+func TestRunDirDeclarationShadowsImportAlias(t *testing.T) {
+	// A local type declaration shadows an import of the same name. The
+	// reference to Dagger.Container then resolves through the local Dagger
+	// (which has no Container), surfacing as an unresolved-type error.
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
@@ -258,7 +261,7 @@ pub core: Dagger.Container! = Dagger.container
 `), 0o600))
 
 	_, err := RunDir(ctx, dir, false)
-	require.ErrorContains(t, err, `type "Dagger" conflicts with import alias`)
+	require.ErrorContains(t, err, "unresolved type: Container")
 }
 
 func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
@@ -377,6 +380,112 @@ type Test {
 	print, found := testCtor.ClassType.LocalSchemeOf("print")
 	require.True(t, found)
 	require.Same(t, StringType, functionReturnType(t, print))
+}
+
+func TestRunDirSameFileImportAndDeclaration(t *testing.T) {
+	// A file that both imports and declares the same name should evaluate the
+	// local declaration, not the import — the file's own decl wins. This used
+	// to surface as a value/type mismatch (declared String! but evaluated to
+	// the imported Container).
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte(`
+import Dagger
+
+pub container: String! = "from_a"
+pub use: String! = container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte(`
+pub other: String! = "from_b"
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	useVal, found := requireEvalGet(t, env, "use")
+	require.True(t, found)
+	str, ok := useVal.(StringValue)
+	require.True(t, ok, "use should resolve to local container, got %T", useVal)
+	require.Equal(t, "from_a", str.Val)
+}
+
+func TestRunDirImportedValueDoesNotShadowLocalDeclaration(t *testing.T) {
+	// File-local imports must hold at runtime too: file A's `import Dagger`
+	// brings in an unqualified `container` value, but file B's `pub container`
+	// declaration owns that name in B's scope. With a global eval env the
+	// import would be installed first and SlotDecl.Eval would skip B's
+	// declaration as "already defined".
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a_uses_dagger.dang"), []byte(`
+import Dagger
+
+pub fromA: Dagger.Container! = Dagger.container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b_declares_container.dang"), []byte(`
+pub container: String! = "local"
+pub useContainer: String! = container
+`), 0o600))
+
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+
+	useVal, found := requireEvalGet(t, env, "useContainer")
+	require.True(t, found)
+	str, ok := useVal.(StringValue)
+	require.True(t, ok, "useContainer should resolve to file-local container, got %T", useVal)
+	require.Equal(t, "local", str.Val)
+}
+
+func TestRunDirImportsAreFileLocal(t *testing.T) {
+	// File A imports Dagger and uses an unqualified imported symbol.
+	// File B never imports Dagger and so cannot see container.
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a_uses_dagger.dang"), []byte(`
+import Dagger
+
+pub fromA: Dagger.Container! = Dagger.container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b_no_import.dang"), []byte(`
+pub fromB: String! = container.value
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "container")
+}
+
+func TestRunDirMultipleFilesCanImportSameSchema(t *testing.T) {
+	// Both files import Test independently. With file-local imports this is
+	// no longer an alias conflict; each file gets its own Test in scope.
+	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+		Name:   "Dagger",
+		Schema: schemaWithCoreShadowTypes(),
+	})
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte(`
+import Dagger
+
+pub fromA: Dagger.Container! = Dagger.container
+`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte(`
+import Dagger
+
+pub fromB: Dagger.Container! = Dagger.container
+`), 0o600))
+
+	_, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
 }
 
 func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {

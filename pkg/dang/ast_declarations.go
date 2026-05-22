@@ -1207,37 +1207,23 @@ var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		if i.inferred != nil {
-			// If we've already inferred, skip.
-			// (This is defensive.)
-			return NonNull(i.inferred), nil
-		}
-
-		// Perform actual schema introspection now during hoisting
-		config, err := i.loadImportConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
-		client := config.Client
-		schema := config.Schema
-
-		// Add the import declaration to the environment for later resolution
-		if dangEnv, ok := env.(Env); ok {
-			// Import with alias - check for conflicts and create schema module
-			if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
+		// Build the schema module on first Infer; subsequent calls reuse the
+		// cached module but still install it into env. The LSP reuses parsed
+		// blocks (and thus their ImportDecls) across keystrokes against fresh
+		// per-file envs, so installation has to run every time even on cache
+		// hit.
+		if i.inferred == nil {
+			config, err := i.loadImportConfig(ctx)
+			if err != nil {
 				return nil, err
 			}
+			i.client = config.Client
+			i.schema = config.Schema
+			i.inferred = NewEnv(i.Name.Name, config.Schema)
+		}
 
-			// Create module with GraphQL schema types and functions
-			schemaModule := NewEnv(i.Name.Name, schema)
-
-			// Store client and schema information for runtime
-			i.client = client
-			i.schema = schema
-
-			installImportedTypeEnvironment(dangEnv, i.Name.Name, schemaModule)
-
-			i.inferred = schemaModule
+		if dangEnv, ok := env.(Env); ok {
+			installImportedTypeEnvironment(dangEnv, i.Name.Name, i.inferred)
 		}
 
 		return NonNull(i.inferred), nil
@@ -1279,27 +1265,3 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 	// ImportDecl has no child nodes to walk
 }
 
-// checkAliasConflicts checks if an import alias conflicts with existing symbols
-//
-// TODO: remove, feels redundant
-func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
-	// Check if alias conflicts with existing classes (types)
-	if _, exists := env.NamedType(alias); exists {
-		return fmt.Errorf("import alias %q conflicts with existing type", alias)
-	}
-
-	// Check if alias conflicts with existing variables/functions
-	if _, exists := env.LocalSchemeOf(alias); exists {
-		return fmt.Errorf("import alias %q conflicts with existing symbol", alias)
-	}
-
-	// Check if alias conflicts with built-in types
-	builtinTypes := []string{"String", "Int", "Boolean"}
-	for _, builtin := range builtinTypes {
-		if alias == builtin {
-			return fmt.Errorf("import alias %q conflicts with built-in type %s", alias, builtin)
-		}
-	}
-
-	return nil
-}

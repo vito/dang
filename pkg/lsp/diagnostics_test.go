@@ -143,6 +143,46 @@ func (LSPSuite) TestDiagnosticsReportsFileErrors(ctx context.Context, t *testctx
 	)
 }
 
+func (LSPSuite) TestDiagnosticsIgnoresSiblingBodyErrors(ctx context.Context, t *testctx.T) {
+	// Active file inference is "focused": siblings contribute only their
+	// declarations (so cross-file references resolve), and their bodies are
+	// not inferred. Diagnostics for the open buffer therefore reflect only
+	// the open buffer's own errors.
+	root := t.TempDir()
+	writeDangFile(t, filepath.Join(root, "broken.dang"), `pub helper: String! { "ok" }
+
+pub bad_add = "hello" + 42
+`)
+	mainPath := filepath.Join(root, "main.dang")
+	writeDangFile(t, mainPath, `pub greeting: String! { helper }
+`)
+
+	h := newLSPHarness(ctx, t, root)
+	uri := h.open(ctx, t, mainPath)
+	diagnostics := h.waitForDiagnostics(ctx, t, uri)
+
+	require.Empty(t, diagnostics, "sibling body errors should not surface on the active buffer")
+}
+
+func (LSPSuite) TestDiagnosticsResolvesUnannotatedSiblingVars(ctx context.Context, t *testctx.T) {
+	// A sibling's `pub answer = expr` has no type annotation, so the variable
+	// signatures phase doesn't publish a type — body inference does. The
+	// focused inference path runs the variables phase across all scopes so
+	// the active file's reference still resolves.
+	root := t.TempDir()
+	writeDangFile(t, filepath.Join(root, "defs.dang"), `pub answer = "ok".toUpper
+`)
+	mainPath := filepath.Join(root, "main.dang")
+	writeDangFile(t, mainPath, `pub use: String! = answer
+`)
+
+	h := newLSPHarness(ctx, t, root)
+	uri := h.open(ctx, t, mainPath)
+	diagnostics := h.waitForDiagnostics(ctx, t, uri)
+
+	require.Empty(t, diagnostics, "unannotated sibling exports should publish their inferred types")
+}
+
 func (LSPSuite) TestDiagnosticsLoadsSiblingFiles(ctx context.Context, t *testctx.T) {
 	root := t.TempDir()
 	writeDangFile(t, filepath.Join(root, "defs.dang"), `type Template {

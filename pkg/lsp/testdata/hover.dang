@@ -26,15 +26,11 @@ let greeting = 42
 
 greeting # test: K => hover: Int!
 
-# function hover
-"""
-Adds two numbers.
-"""
-pub addNums(x: Int!, y: Int!): Int! {
-  x + y
-}
-
+# function hover (cross-file: pub addNums declared in gd.dang)
 addNums # test: K => hover: (x: Int!, y: Int!): Int!
+
+# function docs hover (cross-file: gd.dang's addNums has a docstring)
+addNums # test: K => hover: Adds two numbers
 
 # function with docs
 """
@@ -46,6 +42,9 @@ pub multiply(x: Int!, y: Int!): Int! {
 }
 
 multiply # test: K => hover: Multiplies two numbers together
+
+# unqualified imported value hover (file-local: composite reads lexical)
+serverInfo # test: K => hover: ServerInfo!
 
 # qualified type hover
 Test.serverInfo # test: ^wwK => hover: ServerInfo!
