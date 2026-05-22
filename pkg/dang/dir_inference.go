@@ -44,7 +44,9 @@ type fileScope struct {
 // prepareFileScopes per-file: prepends auto-imports, splits imports from the
 // rest, runs the imports phase against a fresh per-file env, and builds the
 // file's composite env. The file-local imports are installed once up front so
-// that all subsequent phases can refer to them through fileEnv.
+// that all subsequent phases can refer to them through fileEnv. The composite
+// is also stashed on block.Env so editor features can look up symbols (e.g.
+// unqualified imported names) against the same env inference saw.
 func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv Env, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
 	scopes := make([]fileScope, 0, len(files))
 
@@ -53,9 +55,12 @@ func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv Env, fr
 		imports, rest := partitionImports(block.Forms)
 
 		importsEnv := NewModule("", ObjectKind)
-		inferImportsPhaseResilient(ctx, imports, importsEnv, fresh, errs)
+		if _, err := inferImportsPhaseResilient(ctx, imports, importsEnv, fresh, errs); err != nil {
+			errs.Add(err)
+		}
 
 		fileEnv := &CompositeModule{primary: dirEnv, lexical: importsEnv}
+		block.Env = fileEnv
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),
 			fileEnv:    fileEnv,

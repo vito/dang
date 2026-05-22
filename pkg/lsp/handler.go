@@ -284,8 +284,14 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeEnv, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
-	// Store the type environment in the File for later use (e.g., hover).
-	analysis.TypeEnv = typeEnv
+	// The block's Env composes the shared dirEnv with the file's own imports,
+	// so editor features see exactly what inference saw — including the file's
+	// unqualified imported symbols, which only live in the file-local env.
+	if currentBlock.Env != nil {
+		analysis.TypeEnv = currentBlock.Env
+	} else {
+		analysis.TypeEnv = typeEnv
+	}
 
 	return analysis, nil
 }
