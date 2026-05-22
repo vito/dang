@@ -1223,11 +1223,6 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 		// Add the import declaration to the environment for later resolution
 		if dangEnv, ok := env.(Env); ok {
-			// Import with alias - check for conflicts and create schema module
-			if err := i.checkAliasConflicts(dangEnv, i.Name.Name); err != nil {
-				return nil, err
-			}
-
 			// Create module with GraphQL schema types and functions
 			schemaModule := NewEnv(i.Name.Name, schema)
 
@@ -1279,27 +1274,3 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 	// ImportDecl has no child nodes to walk
 }
 
-// checkAliasConflicts checks if an import alias conflicts with existing symbols
-//
-// TODO: remove, feels redundant
-func (i *ImportDecl) checkAliasConflicts(env Env, alias string) error {
-	// Check if alias conflicts with existing classes (types)
-	if _, exists := env.NamedType(alias); exists {
-		return fmt.Errorf("import alias %q conflicts with existing type", alias)
-	}
-
-	// Check if alias conflicts with existing variables/functions
-	if _, exists := env.LocalSchemeOf(alias); exists {
-		return fmt.Errorf("import alias %q conflicts with existing symbol", alias)
-	}
-
-	// Check if alias conflicts with built-in types
-	builtinTypes := []string{"String", "Int", "Boolean"}
-	for _, builtin := range builtinTypes {
-		if alias == builtin {
-			return fmt.Errorf("import alias %q conflicts with built-in type %s", alias, builtin)
-		}
-	}
-
-	return nil
-}
