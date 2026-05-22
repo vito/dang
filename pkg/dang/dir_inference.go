@@ -121,6 +121,39 @@ var inferencePhases = []directoryPhase{
 // API. Body inference is skipped, matching DeclareFormsWithPhases.
 var declarationPhases = inferencePhases[:6]
 
+// bodyPhases are the post-signature phases that walk into bodies: type bodies,
+// variable bodies, function bodies, and non-declarations.
+var bodyPhases = inferencePhases[6:]
+
+// InferDirectoryFilesFocused runs phased inference with full body checks only
+// for the active file. Sibling files contribute their declarations (imports,
+// type names, signatures) to dirEnv so cross-file references in the active
+// file resolve, but their bodies are not inferred. Used by the LSP to keep
+// keystroke-driven analysis cheap without losing sibling visibility.
+//
+// active must be one of files (pointer equality). A nil active runs only the
+// declaration phases.
+func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirEnv Env, fresh hm.Fresher) error {
+	overall := &InferenceErrors{}
+	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
+
+	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
+
+	if active != nil {
+		for i, block := range files {
+			if block == active {
+				runDirectoryPhases(ctx, scopes[i:i+1], fresh, overall, bodyPhases)
+				break
+			}
+		}
+	}
+
+	if overall.HasErrors() {
+		return overall
+	}
+	return nil
+}
+
 // partitionImports splits forms into ImportDecls and everything else, preserving
 // original order within each partition.
 func partitionImports(forms []Node) (imports, rest []Node) {

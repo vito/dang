@@ -275,12 +275,13 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
 	}
 
-	// Run type inference per file with file-local import scopes. Cross-file
-	// declarations resolve through the shared dirEnv; siblings' imports do not
-	// leak into this file's lookups.
+	// Run type inference focused on the active buffer: full body inference for
+	// the open file, declarations only for siblings. Cross-file declarations
+	// still resolve through the shared dirEnv; sibling body errors do not run
+	// on every keystroke.
 	typeEnv := dang.NewPreludeEnv("")
 	fresh := hm.NewSimpleFresher()
-	if err := dang.InferDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
+	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeEnv, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
 	// Store the type environment in the File for later use (e.g., hover).
