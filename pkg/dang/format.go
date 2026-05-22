@@ -2275,9 +2275,10 @@ func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
 	}
 
 	indented := minBodyIndent > len(outerIndent)
-	emitPrefix := strings.Repeat(indentString, f.indent)
+	scopePrefix := strings.Repeat(indentString, f.indent)
+	bodyPrefix := scopePrefix
 	if indented {
-		emitPrefix += indentString
+		bodyPrefix += indentString
 	}
 
 	var buf strings.Builder
@@ -2294,11 +2295,13 @@ func (f *Formatter) normalizeMultilineLiteral(n Node, orig string) string {
 		} else {
 			stripped = strings.TrimLeft(stripped, " \t")
 		}
-		buf.WriteString(emitPrefix)
+		buf.WriteString(bodyPrefix)
 		buf.WriteString(stripped)
 	}
 	buf.WriteByte('\n')
-	buf.WriteString(emitPrefix)
+	// Closing fence always aligns with the opening fence's scope, never
+	// with the (possibly deeper) body indent.
+	buf.WriteString(scopePrefix)
 	buf.WriteString(strings.TrimLeft(closingLine, " \t"))
 	return buf.String()
 }
