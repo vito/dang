@@ -1,0 +1,18 @@
+enum Status { PASSED FAILED }
+
+type Child {
+  pub name: String!
+  pub outcome: Status!
+}
+
+type Summary {
+  pub children: [Child!]!
+}
+
+let summary: Summary! = fromJSON("""
+{
+  "children": [
+    {"name": "one"}
+  ]
+}
+""")

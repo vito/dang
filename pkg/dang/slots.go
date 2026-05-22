@@ -216,6 +216,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			if _, err := hm.Assignable(inferredType, definedType); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
+			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)
 		} else {
 			definedType = inferredType
 		}
@@ -270,7 +271,8 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, defined := env.LookupLocal(s.Name.Name)
 		if defined {
-			// already defined (e.g. through constructor), nothing to do
+			// Already defined (e.g. through constructor). The value reached us
+			// through a Coerce-wrapped argument so it is already materialized.
 			return val, nil
 		}
 
@@ -289,17 +291,15 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			return NullValue{}, nil
 		}
 
-		// Evaluate the value expression with proper error context
+		// Evaluate the value expression with proper error context. The Value
+		// node is wrapped in a Coerce by SlotDecl.Infer when the slot has an
+		// explicit type, so materialization happens during EvalNode.
 		val, err := EvalNode(ctx, env, s.Value)
 		if err != nil {
-			// Convert error with proper source location from the failing node
 			return nil, err
 		}
 
-		// Add the value to the environment for future use
-		// If it's a ModuleValue, track visibility explicitly
 		env.Bind(s.Name.Name, val, s.Visibility)
-
 		return val, nil
 	})
 }

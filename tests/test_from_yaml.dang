@@ -1,0 +1,61 @@
+enum Status { PASSED FAILED }
+scalar CustomScalar
+
+type Child {
+  pub name: String!
+  pub outcome: Status!
+}
+
+type Summary {
+  pub children: [Child!]!
+  pub optional: String
+  pub withDefault: String! = "default"
+}
+
+pub echoStatus(status: Status!): Status! { status }
+
+pub parseSummary(data: String!): Summary! { fromYAML(data) }
+
+let status1 = fromYAML("PASSED") :: Status!
+assert { status1 == Status.PASSED }
+
+let status2: Status! = fromYAML("FAILED")
+assert { status2 == Status.FAILED }
+
+let status3 = echoStatus(fromYAML("PASSED"))
+assert { status3 == Status.PASSED }
+
+let scalar: CustomScalar! = fromYAML("hello")
+assert { scalar == "hello" }
+
+let summary: Summary! = fromYAML(```yaml
+children:
+  - name: one
+    outcome: PASSED
+    ignored: true
+  - name: two
+    outcome: FAILED
+```)
+
+assert { summary.children.length == 2 }
+assert { summary.children[0].name == "one" }
+assert { summary.children[0].outcome == Status.PASSED }
+assert { summary.children[1].outcome == Status.FAILED }
+assert { summary.optional == null }
+assert { summary.withDefault == "default" }
+
+let parsed = parseSummary(```yaml
+children:
+  - name: three
+    outcome: PASSED
+```)
+assert { parsed.children[0].name == "three" }
+assert { parsed.children[0].outcome == Status.PASSED }
+
+let anon = fromYAML(```yaml
+foo: 1
+bar: PASSED
+extra: 2
+```) :: {{foo: Int!, bar: Status!}}!
+assert { anon.foo == 1 }
+assert { anon.bar == Status.PASSED }

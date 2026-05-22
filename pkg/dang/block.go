@@ -460,7 +460,9 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Eva
 			continue
 		}
 		env.BindLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
-			return EvalNode(ctx, env, slot.Value)
+			return WithEvalErrorHandling(ctx, slot, func() (Value, error) {
+				return EvalNode(ctx, env, slot.Value)
+			})
 		}, slot.Visibility)
 	}
 

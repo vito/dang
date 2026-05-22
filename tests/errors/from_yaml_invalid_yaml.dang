@@ -1,0 +1,3 @@
+enum Status { PASSED FAILED }
+
+let status: Status! = fromYAML("[oops")

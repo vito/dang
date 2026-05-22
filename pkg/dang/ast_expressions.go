@@ -152,10 +152,11 @@ func (c *FunCall) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fr
 	}
 	for i, arg := range c.Args {
 		k := c.getArgumentKey(arg, argMapping, i)
-		subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
+		coerced, subs, err := c.checkArgumentTypeWithSubs(ctx, env, fresh, arg.Value, argRecord, k)
 		if err != nil {
 			return nil, fmt.Errorf("argument %q: %w", k, err)
 		}
+		c.Args[i].Value = coerced
 		if subs != nil {
 			if argSubs == nil {
 				argSubs = subs
@@ -269,30 +270,31 @@ func (c *FunCall) getArgumentKey(arg Keyed[Node], argMapping map[int]string, ind
 }
 
 // checkArgumentTypeWithSubs validates an argument's type against the expected
-// parameter type and returns any substitutions produced by unification. This is
-// used to resolve type variables from argument types before inferring block args.
-func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) (hm.Subs, error) {
+// parameter type and returns the (possibly Coerce-wrapped) argument node along
+// with any substitutions produced by unification. The substitutions are used to
+// resolve type variables from argument types before inferring block args.
+func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fresh hm.Fresher, value Node, recordType *RecordType, key string) (Node, hm.Subs, error) {
 	scheme, has := recordType.SchemeOf(key)
 	if !has {
-		return nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
+		return value, nil, fmt.Errorf("FunCall.Infer: %q not found in %s", key, recordType)
 	}
 
 	dt, isMono := scheme.Type()
 	if !isMono {
-		return nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
+		return value, nil, fmt.Errorf("FunCall.Infer: %q is not monomorphic", key)
 	}
 
 	// Infer the argument type
 	it, err := value.Infer(ctx, env, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("FunCall.Infer: %w", err)
+		return value, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
 	subs, err := hm.Assignable(it, dt)
 	if err != nil {
-		return nil, NewInferError(err, value)
+		return value, nil, NewInferError(err, value)
 	}
-	return subs, nil
+	return wrapCoerce(value, dt, key), subs, nil
 }
 
 var _ hm.Apply = (*FunCall)(nil)
@@ -372,7 +374,9 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Val
 	positionallySet := make(map[string]bool)
 	paramNames := c.getParameterNames(funVal)
 
-	// Process all arguments
+	// Process all arguments. Each arg.Value is wrapped in a Coerce by
+	// FunCall.checkArgumentTypeWithSubs when types are known, so
+	// materialization happens during EvalNode.
 	positionalIndex := 0
 	for _, arg := range c.Args {
 		val, err := EvalNode(ctx, env, arg.Value)
@@ -2827,6 +2831,8 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			// Unification succeeded - apply substitutions to the hint and return it
 			// This allows the hint to override the expression's type (including nullability)
 			result := hintType.Apply(subs).(hm.Type)
+			t.SetInferredType(result)
+			t.Expr = wrapCoerce(t.Expr, result, "")
 			return result, nil
 		}
 
@@ -2838,13 +2844,16 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Apply substitutions to the hint type and return it
 		result := hintType.Apply(subs).(hm.Type)
+		t.SetInferredType(result)
+		t.Expr = wrapCoerce(t.Expr, result, "")
 		return result, nil
 	})
 }
 
 func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
-		// Type hints don't change runtime behavior - just evaluate the expression
+		// t.Expr is wrapped in a Coerce by TypeHint.Infer, so materialization
+		// happens inside EvalNode.
 		return EvalNode(ctx, env, t.Expr)
 	})
 }

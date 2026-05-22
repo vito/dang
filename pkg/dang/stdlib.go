@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/vito/dang/pkg/hm"
@@ -40,6 +41,46 @@ func registerStdlib() {
 				return nil, fmt.Errorf("toJSON: %w", err)
 			}
 			return ToValue(string(jsonBytes))
+		})
+
+	// fromJSON function: fromJSON(data: String!) -> a
+	Builtin("fromJSON").
+		Doc("parses JSON into an opaque value that is materialized by an expected type").
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			data := args.GetString("data")
+			decoder := json.NewDecoder(strings.NewReader(data))
+			decoder.UseNumber()
+
+			var raw any
+			if err := decoder.Decode(&raw); err != nil {
+				return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
+			}
+
+			var extra any
+			if err := decoder.Decode(&extra); err != io.EOF {
+				if err != nil {
+					return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
+				}
+				return nil, fmt.Errorf("fromJSON: invalid JSON: trailing data")
+			}
+
+			return DeferredValue{Raw: raw}, nil
+		})
+
+	// fromYAML function: fromYAML(data: String!) -> a
+	Builtin("fromYAML").
+		Doc("parses YAML into an opaque value that is materialized by an expected type").
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			data := args.GetString("data")
+			raw, err := decodeYAML(data)
+			if err != nil {
+				return nil, fmt.Errorf("fromYAML: invalid YAML: %w", err)
+			}
+			return DeferredValue{Raw: raw}, nil
 		})
 
 	// toString function: toString(value: b) -> String!
