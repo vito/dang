@@ -239,6 +239,18 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		return nil, err
 	}
 
+	// When the function has an explicit return type, wrap the body and any
+	// early returns with Coerce so that fromJSON/fromYAML values produced at
+	// the function boundary materialize against the declared type.
+	if definedRet != nil {
+		for _, ret := range collectReturnStatements(f.Body, returnTarget) {
+			if ret.Value != nil {
+				ret.Value = wrapCoerce(ret.Value, inferredRet, "")
+			}
+		}
+		f.Body = wrapCoerce(f.Body, inferredRet, "")
+	}
+
 	// Create function type with optional block parameter
 	f.Inferred = hm.NewFnType(argsRec, inferredRet)
 	if blockType != nil {
@@ -383,6 +395,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 				}
 				return nil, fmt.Errorf("Reassignment.Infer: cannot assign %s to %s: %w", valueType, targetType, err)
 			}
+			r.Value = wrapCoerce(r.Value, targetType, materializePathForNode(r.Target))
 			return targetType, nil
 		case "+":
 			// For compound assignment, check that it's compatible with addition
@@ -427,21 +440,12 @@ func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.En
 
 func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, r, func() (Value, error) {
-		// Evaluate the value first
+		// Evaluate the value first. r.Value is wrapped in a Coerce by
+		// Reassignment.Infer (for `=` assignments), so materialization
+		// happens inside EvalNode.
 		value, err := EvalNode(ctx, env, r.Value)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
-		}
-
-		if r.Modifier == "=" {
-			targetType := r.Target.GetInferredType()
-			if targetType == nil {
-				targetType = r.GetInferredType()
-			}
-			value, err = materializeValue(ctx, env, value, targetType, materializePathForNode(r.Target))
-			if err != nil {
-				return nil, err
-			}
 		}
 
 		// Handle different assignment types based on target

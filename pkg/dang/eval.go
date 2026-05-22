@@ -1131,11 +1131,11 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 	val, err := EvalNode(fnCtx, fnEnv, f.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
-			return materializeValue(ctx, fnEnv, returnVal, f.FnType.Ret(false), "")
+			return returnVal, nil
 		}
 		return nil, err
 	}
-	return materializeValue(ctx, fnEnv, val, f.FnType.Ret(false), "")
+	return val, nil
 }
 
 func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
@@ -1515,11 +1515,11 @@ func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Valu
 	val, err := EvalNode(methodCtx, fnEnv, b.Method.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
-			return materializeValue(ctx, fnEnv, returnVal, b.Method.FnType.Ret(false), "")
+			return returnVal, nil
 		}
 		return nil, err
 	}
-	return materializeValue(ctx, fnEnv, val, b.Method.FnType.Ret(false), "")
+	return val, nil
 }
 
 func (b BoundMethod) ParameterNames() []string {

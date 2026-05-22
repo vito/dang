@@ -1,10 +1,10 @@
 [1m[31mError:[0m summary: expected object for Summary, got string
-  [2m[34m--> errors/from_json_wrong_type.dang:5:1[0m
+  [2m[34m--> errors/from_json_wrong_type.dang:5:25[0m
  [2m    |[0m
  [2m  3 | }[0m
  [2m  4 | [0m
  [2m[34m[1m  5 | [0mlet summary: Summary! = fromJSON("\"oops\"")
-[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[2m                               [31m^^^^^^^^^^^^^^^^^^^^[0m
  [2m  6 | [0m
  [2m    |[0m
 

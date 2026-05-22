@@ -9,6 +9,75 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
+// Coerce wraps an expression so that its value is materialized at the given
+// target type at runtime. Inference inserts Coerce nodes at boundaries where a
+// value flows into a typed context (slot init, reassignment, call arguments,
+// function returns, type hints), so the evaluator does not need to remember to
+// call materializeValue at each handoff site.
+type Coerce struct {
+	InferredTypeHolder
+	Expr   Node
+	Target hm.Type
+	Path   string
+}
+
+var _ Node = (*Coerce)(nil)
+var _ Evaluator = (*Coerce)(nil)
+
+func (c *Coerce) DeclaredSymbols() []string   { return nil }
+func (c *Coerce) ReferencedSymbols() []string { return c.Expr.ReferencedSymbols() }
+func (c *Coerce) Body() hm.Expression         { return c.Expr }
+func (c *Coerce) GetSourceLocation() *SourceLocation {
+	if sl, ok := c.Expr.(SourceLocatable); ok {
+		return sl.GetSourceLocation()
+	}
+	return nil
+}
+
+func (c *Coerce) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		if _, err := c.Expr.Infer(ctx, env, fresh); err != nil {
+			return nil, err
+		}
+		c.SetInferredType(c.Target)
+		return c.Target, nil
+	})
+}
+
+func (c *Coerce) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
+		val, err := EvalNode(ctx, env, c.Expr)
+		if err != nil {
+			return nil, err
+		}
+		return materializeValue(ctx, env, val, c.Target, c.Path)
+	})
+}
+
+func (c *Coerce) Walk(fn func(Node) bool) {
+	if !fn(c) {
+		return
+	}
+	c.Expr.Walk(fn)
+}
+
+// wrapCoerce inserts a Coerce wrapper around node so its value is materialized
+// against target at runtime. If node is already a Coerce, the target is
+// tightened to the new target.
+func wrapCoerce(node Node, target hm.Type, path string) Node {
+	if node == nil || target == nil {
+		return node
+	}
+	if c, ok := node.(*Coerce); ok {
+		c.Target = target
+		if path != "" {
+			c.Path = path
+		}
+		return c
+	}
+	return &Coerce{Expr: node, Target: target, Path: path}
+}
+
 // materializeValue resolves deferred decoded values at expected-type boundaries.
 //
 // This is intentionally not a general runtime type assertion. Normal Dang
@@ -320,26 +389,6 @@ func parameterTypes(val Value) map[string]hm.Type {
 		}
 	}
 	return result
-}
-
-func parameterType(val Value, name string) (hm.Type, bool) {
-	ft, ok := val.Type().(*hm.FunctionType)
-	if !ok {
-		return nil, false
-	}
-	rec, ok := ft.Arg().(*RecordType)
-	if !ok {
-		return nil, false
-	}
-	scheme, found := rec.SchemeOf(name)
-	if !found {
-		return nil, false
-	}
-	typ, mono := scheme.Type()
-	if !mono {
-		return nil, false
-	}
-	return typ, true
 }
 
 func listElementTarget(target hm.Type) (hm.Type, bool) {
