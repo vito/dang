@@ -13,6 +13,7 @@ type Summary {
 }
 
 pub echoStatus(status: Status!): Status! { status }
+
 pub parseSummary(data: String!): Summary! { fromYAML(data) }
 
 let status1 = fromYAML("PASSED") :: Status!
@@ -27,14 +28,14 @@ assert { status3 == Status.PASSED }
 let scalar: CustomScalar! = fromYAML("hello")
 assert { scalar == "hello" }
 
-let summary: Summary! = fromYAML("""
+let summary: Summary! = fromYAML(```yaml
 children:
   - name: one
     outcome: PASSED
     ignored: true
   - name: two
     outcome: FAILED
-""")
+```)
 
 assert { summary.children.length == 2 }
 assert { summary.children[0].name == "one" }
@@ -43,18 +44,18 @@ assert { summary.children[1].outcome == Status.FAILED }
 assert { summary.optional == null }
 assert { summary.withDefault == "default" }
 
-let parsed = parseSummary("""
+let parsed = parseSummary(```yaml
 children:
   - name: three
     outcome: PASSED
-""")
+```)
 assert { parsed.children[0].name == "three" }
 assert { parsed.children[0].outcome == Status.PASSED }
 
-let anon = fromYAML("""
+let anon = fromYAML(```yaml
 foo: 1
 bar: PASSED
 extra: 2
-""") :: {{foo: Int!, bar: Status!}}!
+```) :: {{foo: Int!, bar: Status!}}!
 assert { anon.foo == 1 }
 assert { anon.bar == Status.PASSED }
