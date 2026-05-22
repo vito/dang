@@ -1207,32 +1207,23 @@ var _ hm.Inferer = &ImportDecl{}
 
 func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		if i.inferred != nil {
-			// If we've already inferred, skip.
-			// (This is defensive.)
-			return NonNull(i.inferred), nil
+		// Build the schema module on first Infer; subsequent calls reuse the
+		// cached module but still install it into env. The LSP reuses parsed
+		// blocks (and thus their ImportDecls) across keystrokes against fresh
+		// per-file envs, so installation has to run every time even on cache
+		// hit.
+		if i.inferred == nil {
+			config, err := i.loadImportConfig(ctx)
+			if err != nil {
+				return nil, err
+			}
+			i.client = config.Client
+			i.schema = config.Schema
+			i.inferred = NewEnv(i.Name.Name, config.Schema)
 		}
 
-		// Perform actual schema introspection now during hoisting
-		config, err := i.loadImportConfig(ctx)
-		if err != nil {
-			return nil, err
-		}
-		client := config.Client
-		schema := config.Schema
-
-		// Add the import declaration to the environment for later resolution
 		if dangEnv, ok := env.(Env); ok {
-			// Create module with GraphQL schema types and functions
-			schemaModule := NewEnv(i.Name.Name, schema)
-
-			// Store client and schema information for runtime
-			i.client = client
-			i.schema = schema
-
-			installImportedTypeEnvironment(dangEnv, i.Name.Name, schemaModule)
-
-			i.inferred = schemaModule
+			installImportedTypeEnvironment(dangEnv, i.Name.Name, i.inferred)
 		}
 
 		return NonNull(i.inferred), nil

@@ -25,6 +25,7 @@ func NewHandler(rootCtx context.Context) *langHandler {
 		files:         make(map[DocumentURI]*File),
 		loadedEnvDirs: make(map[string]bool),
 		importCache:   make(map[string][]dang.ImportConfig),
+		parseCache:    make(map[string]parsedFile),
 		mu:            new(sync.Mutex),
 	}
 
@@ -51,8 +52,22 @@ type langHandler struct {
 	// a new dagger session on every keystroke.
 	importCache map[string][]dang.ImportConfig
 
+	// Cached file parses keyed by absolute file path. Sibling files in the
+	// same directory don't change on every keystroke, so reusing their parse
+	// trees turns directory analysis from O(files) into O(1) parses.
+	parseCache map[string]parsedFile
+
 	// TODO?: make per-file or something
 	mu *sync.Mutex
+}
+
+// parsedFile is a cache entry for a single .dang file's parse output. The
+// block is reused across analyzeDirectory calls when text is unchanged; its
+// ImportDecls' inferred schema modules are also cached on the nodes, so the
+// imports phase runs in O(1) on cache hit.
+type parsedFile struct {
+	text  string
+	block *dang.ModuleBlock
 }
 
 // File is
@@ -232,18 +247,12 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 			return nil, err
 		}
 
-		parsed, err := dang.ParseWithRecovery(path, []byte(fileText), dang.GlobalStore("filePath", path))
+		block, err := h.parseFileCached(path, fileText)
 		if err != nil {
 			slog.WarnContext(ctx, "failed to parse Dang code for LSP", "path", path, "error", err)
 			if sameFile(path, fp) {
 				analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnostics(err, uri)...)
 			}
-			continue
-		}
-
-		block, ok := parsed.(*dang.ModuleBlock)
-		if !ok {
-			slog.WarnContext(ctx, "parsed result is not a ModuleBlock", "path", path, "type", fmt.Sprintf("%T", parsed))
 			continue
 		}
 
@@ -359,6 +368,38 @@ func (h *langHandler) directoryDangFiles(dir string) ([]string, error) {
 
 	sort.Strings(dangFiles)
 	return dangFiles, nil
+}
+
+// parseFileCached parses the .dang file at path against the given text,
+// reusing the cached *ModuleBlock when text is unchanged from the previous
+// call. The cache is keyed by absolute path; siblings unchanged between
+// keystrokes return their previous parse immediately. ImportDecl nodes in
+// reused blocks keep their cached schema modules, so subsequent imports
+// phases skip schema introspection.
+//
+// Auto-imports prepended into block.Forms by InferDirectoryFiles persist
+// across calls; prependAutoImports is idempotent.
+func (h *langHandler) parseFileCached(path, text string) (*dang.ModuleBlock, error) {
+	h.mu.Lock()
+	cached, ok := h.parseCache[path]
+	h.mu.Unlock()
+	if ok && cached.text == text {
+		return cached.block, nil
+	}
+
+	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path))
+	if err != nil {
+		return nil, err
+	}
+	block, ok := parsed.(*dang.ModuleBlock)
+	if !ok {
+		return nil, fmt.Errorf("parsed result for %s is not a ModuleBlock", path)
+	}
+
+	h.mu.Lock()
+	h.parseCache[path] = parsedFile{text: text, block: block}
+	h.mu.Unlock()
+	return block, nil
 }
 
 func (h *langHandler) textForPath(path string) (string, error) {
