@@ -128,7 +128,7 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"```\n",
 		},
 		{
-			name: "multi-line indented content keeps one step indent",
+			name: "multi-line indented content keeps one step indent, closing flush",
 			input: "pub x = ```\n" +
 				"  indented\n" +
 				"  body\n" +
@@ -136,10 +136,10 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 			expected: "pub x = ```\n" +
 				"  indented\n" +
 				"  body\n" +
-				"  ```\n",
+				"```\n",
 		},
 		{
-			name: "multi-line content above outer scope gets one step indent",
+			name: "multi-line content above outer scope gets one step indent, closing at outer scope",
 			input: "type Foo {\n" +
 				"\tpub x = ```\n" +
 				"\t\tindented\n" +
@@ -150,7 +150,7 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  pub x = ```\n" +
 				"    indented\n" +
 				"    body\n" +
-				"    ```\n" +
+				"  ```\n" +
 				"}\n",
 		},
 		{
@@ -173,7 +173,7 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  ```",
 			expected: "pub x = ```go\n" +
 				"  func main() {}\n" +
-				"  ```\n",
+				"```\n",
 		},
 		{
 			name: "multi-line with interpolation",
@@ -184,7 +184,7 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 			expected: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
 				"  hello ${who}!\n" +
-				"  ```\n",
+				"```\n",
 		},
 		{
 			name: "multi-line interpolation comment is preserved",
@@ -199,7 +199,7 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  hello ${ # who to greet\n" +
 				"    who\n" +
 				"  }!\n" +
-				"  ```\n",
+				"```\n",
 		},
 		{
 			name: "multi-line fence bumping preserved",
@@ -325,15 +325,15 @@ world
 			expected: "pub x = \"\"\"\nhello\nworld\n\"\"\"\n",
 		},
 		{
-			name: "triple-quoted indented content keeps one step indent",
+			name: "triple-quoted indented content keeps one step indent, closing flush",
 			input: `pub x = """
   indented
   body
   """`,
-			expected: "pub x = \"\"\"\n  indented\n  body\n  \"\"\"\n",
+			expected: "pub x = \"\"\"\n  indented\n  body\n\"\"\"\n",
 		},
 		{
-			name: "triple-quoted content above outer scope gets one step indent",
+			name: "triple-quoted content above outer scope gets one step indent, closing at outer scope",
 			input: "type Foo {\n" +
 				"\tpub x = \"\"\"\n" +
 				"\t\tindented\n" +
@@ -344,7 +344,7 @@ world
 				"  pub x = \"\"\"\n" +
 				"    indented\n" +
 				"    body\n" +
-				"    \"\"\"\n" +
+				"  \"\"\"\n" +
 				"}\n",
 		},
 		{
@@ -1048,7 +1048,9 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			input: `pub x = ["sh", "-c", """
 	hello
 	"""]`,
-			expected: "pub x = [\"sh\", \"-c\", \"\"\"\n  hello\n  \"\"\"]\n",
+			// Body indented one step deeper than the opening fence's scope;
+			// closing fence sits at the scope of the opening fence.
+			expected: "pub x = [\"sh\", \"-c\", \"\"\"\n  hello\n\"\"\"]\n",
 		},
 		{
 			name: "list in chain call stays on one line even when chain splits",
@@ -1059,9 +1061,10 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			"""])
 		.directory(".")
 }`,
-			// Chain gets split, list elements stay together; content
-			// indented one step deeper than the opening fence's scope.
-			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n      \"\"\"])\n    .directory(\".\")\n}\n",
+			// Chain gets split, list elements stay together; body indented
+			// one step deeper than the opening fence's scope; closing fence
+			// sits at the scope of the opening fence.
+			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
 		},
 		{
 			name: "method args not split by multiline receiver",

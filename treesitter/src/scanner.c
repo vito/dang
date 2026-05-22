@@ -145,14 +145,23 @@ static bool scan_inline_space(TSLexer *lexer) {
 
 // Scan a multi-line backtick template opening fence: 3 or more backticks
 // not followed by another backtick. Records the fence length on the stack.
-static bool scan_template_open(Scanner *s, TSLexer *lexer) {
+//
+// `at_newline` tells whether the caller has already determined it's safe to
+// also skip leading newlines (in addition to spaces/tabs) — used so a fence
+// can open on a fresh line inside paren-arg contexts. Callers must only set
+// it when AUTOMATIC_NEWLINE isn't otherwise valid at this position: peeking
+// past a newline advances the shared lexer position for the rest of this
+// scanner dispatch, which would otherwise prevent the subsequent
+// automatic_newline check from emitting a statement separator (and derail
+// error recovery for things like unterminated strings).
+static bool scan_template_open(Scanner *s, TSLexer *lexer, bool at_newline) {
   if (s->depth >= TEMPLATE_MAX_DEPTH) {
     return false;
   }
   // The external scanner runs before extras are skipped, so consume any
-  // leading inline whitespace ourselves (as extras, via skip=true) so we
-  // see the actual fence start.
-  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+  // leading inline whitespace ourselves (as extras, via skip=true).
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         (at_newline && (lexer->lookahead == '\n' || lexer->lookahead == '\r'))) {
     lexer->advance(lexer, true);
   }
   if (lexer->lookahead != '`') {
@@ -276,7 +285,12 @@ bool tree_sitter_dang_external_scanner_scan(
   if (valid_symbols[TEMPLATE_MULTI_CLOSE] && scan_template_close(s, lexer)) {
     return true;
   }
-  if (valid_symbols[TEMPLATE_MULTI_OPEN] && scan_template_open(s, lexer)) {
+  // Skip leading newlines only when AUTOMATIC_NEWLINE isn't otherwise valid
+  // here — otherwise the newline-skip would steal a statement separator. In
+  // the contexts where the newline-skip matters (fences opening on a fresh
+  // line after `(` or `,` in arg lists), AUTOMATIC_NEWLINE isn't valid yet.
+  if (valid_symbols[TEMPLATE_MULTI_OPEN] &&
+      scan_template_open(s, lexer, !valid_symbols[AUTOMATIC_NEWLINE])) {
     return true;
   }
   if (valid_symbols[TEMPLATE_CONTENT_CHAR] && scan_template_content_char(s, lexer)) {
