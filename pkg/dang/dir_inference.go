@@ -130,27 +130,48 @@ var declarationPhases = inferencePhases[:6]
 // variable bodies, function bodies, and non-declarations.
 var bodyPhases = inferencePhases[6:]
 
+// variablePhase is the body-inference phase that publishes types for
+// unannotated computed variables. It must run even for sibling files in the
+// focused LSP path, because their declaration-phase signatures don't cover
+// `pub answer = expr` (no annotation) — without inferring the body, the
+// active file's references to such a sibling export show up as "not found".
+var variablePhase = []directoryPhase{inferencePhases[7]}
+
 // InferDirectoryFilesFocused runs phased inference with full body checks only
-// for the active file. Sibling files contribute their declarations (imports,
-// type names, signatures) to dirEnv so cross-file references in the active
-// file resolve, but their bodies are not inferred. Used by the LSP to keep
-// keystroke-driven analysis cheap without losing sibling visibility.
+// for the active file. Sibling files run the declaration phases plus the
+// variables phase (needed to publish types of unannotated exports) but skip
+// type-body, function-body, and non-declaration phases. Used by the LSP to
+// keep keystroke-driven analysis cheap without losing sibling visibility.
 //
 // active must be one of files (pointer equality). A nil active runs only the
-// declaration phases.
+// declaration phases (plus variables across all scopes).
 func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirEnv Env, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
 
 	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
 
+	// Identify the active scope (if any) so we can run variable inference for
+	// siblings only and run the rest of body inference for the active scope.
+	var activeIdx = -1
 	if active != nil {
 		for i, block := range files {
 			if block == active {
-				runDirectoryPhases(ctx, scopes[i:i+1], fresh, overall, bodyPhases)
+				activeIdx = i
 				break
 			}
 		}
+	}
+
+	for i, scope := range scopes {
+		if i == activeIdx {
+			continue
+		}
+		runDirectoryPhases(ctx, []fileScope{scope}, fresh, overall, variablePhase)
+	}
+
+	if activeIdx >= 0 {
+		runDirectoryPhases(ctx, scopes[activeIdx:activeIdx+1], fresh, overall, bodyPhases)
 	}
 
 	if overall.HasErrors() {
