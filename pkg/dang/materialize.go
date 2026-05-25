@@ -359,6 +359,13 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 		if isPrimitiveScalar(mod) {
 			return val, nil
 		}
+		if mod == RegexpType {
+			re, err := compileRegexp(val.Val)
+			if err != nil {
+				return nil, materializeError(path, "%s", err.Error())
+			}
+			return RegexpValue{Re: re, Source: val.Val}, nil
+		}
 		return ScalarValue{Val: val.Val, ScalarType: mod}, nil
 	default:
 		return val, nil

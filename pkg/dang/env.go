@@ -295,6 +295,10 @@ func init() {
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
+	// Install regex types so user code can refer to them by name.
+	Prelude.AddClass("Regexp", RegexpType)
+	Prelude.AddClass("Match", MatchType)
+
 	// Install Error interface with message field
 	Prelude.AddClass("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))

@@ -1,0 +1,2 @@
+# Invalid regexp surfaces a compile error at the call site, naming the pattern.
+"abc".containsMatch(`(`)

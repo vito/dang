@@ -31,16 +31,24 @@ func TestMembersOfBuiltinTypes(t *testing.T) {
 	})
 
 	t.Run("string methods filtered", func(t *testing.T) {
-		completions := MembersOf(hm.NonNullType{Type: StringType}, "sp")
-		if len(completions) != 1 || completions[0].Label != "split" {
-			t.Errorf("got %v, want [split]", completions)
+		completions := MembersOf(hm.NonNullType{Type: StringType}, "spl")
+		names := map[string]bool{}
+		for _, c := range completions {
+			names[c.Label] = true
+		}
+		if !names["split"] || !names["splitMatches"] {
+			t.Errorf("expected split and splitMatches in completions, got %v", completions)
 		}
 	})
 
 	t.Run("nullable string methods", func(t *testing.T) {
 		completions := MembersOf(StringType, "split")
-		if len(completions) != 1 || completions[0].Label != "split" {
-			t.Errorf("got %v, want [split]", completions)
+		names := map[string]bool{}
+		for _, c := range completions {
+			names[c.Label] = true
+		}
+		if !names["split"] || !names["splitMatches"] {
+			t.Errorf("expected split and splitMatches in completions, got %v", completions)
 		}
 	})
 
