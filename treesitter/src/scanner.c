@@ -214,7 +214,7 @@ static bool scan_lang_tag_terminator(Scanner *s, TSLexer *lexer) {
 }
 
 // Scan one piece of template content: one or more bytes that are neither a
-// $$ / ${...} marker nor part of a matching close fence. Shorter backtick
+// \# / #{...} marker nor part of a matching close fence. Shorter backtick
 // runs are content; longer runs are invalid and left for parser recovery.
 static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
   if (s->depth == 0 || lexer->eof(lexer)) {
@@ -233,7 +233,15 @@ static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
   }
   if (lexer->lookahead == '#') {
     lexer->advance(lexer, false);
-    if (lexer->lookahead == '#' || lexer->lookahead == '{') {
+    if (lexer->lookahead == '{') {
+      return false;
+    }
+    lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
+    return true;
+  }
+  if (lexer->lookahead == '\\') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead == '#') {
       return false;
     }
     lexer->result_symbol = TEMPLATE_CONTENT_CHAR;

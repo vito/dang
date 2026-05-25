@@ -19,8 +19,8 @@ pub b = "bar"
 pub multi = `#{a}-#{b}-#{a}`
 assert { multi == "foo-bar-foo" }
 
-# ## escapes to literal #
-pub literal_hash = `## is hash`
+# \# escapes to literal #
+pub literal_hash = `\# is hash`
 assert { literal_hash == "# is hash" }
 
 # Lone # not followed by { or # is literal

@@ -2168,7 +2168,7 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 func (f *Formatter) formatTemplate(t *Template) {
 	// Echo the original source when available. Templates carry layout
 	// the AST throws away — the dedent algorithm strips intentional
-	// indentation from multi-line content, and the `##` -> `#` collapse
+	// indentation from multi-line content, and the `\#` -> `#` collapse
 	// loses the escape the user wrote. Preserving source also keeps any
 	// comments living inside #{...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
@@ -2347,17 +2347,24 @@ func leadingWSLen(s string) int {
 }
 
 // escapeTemplateLit re-escapes a literal so it round-trips through the
-// template grammar. Only `#` immediately followed by `#` or `{` is
-// significant; a stray `#` followed by anything else (or end of input)
-// is already literal in the source, so leave it alone.
+// template grammar. The grammar's only escape is `\#` -> `#`, so the
+// formatter needs to introduce a backslash before any `#` that precedes
+// `{` (otherwise the parser would treat `#{` as interpolation start), and
+// it needs to double up any `\` that precedes `#` (otherwise that pair
+// would be eaten as the escape sequence).
 func escapeTemplateLit(s string) string {
 	var buf strings.Builder
 	for i := 0; i < len(s); i++ {
-		if s[i] == '#' && i+1 < len(s) && (s[i+1] == '#' || s[i+1] == '{') {
-			buf.WriteString("##")
+		c := s[i]
+		if c == '#' && i+1 < len(s) && s[i+1] == '{' {
+			buf.WriteString("\\#")
 			continue
 		}
-		buf.WriteByte(s[i])
+		if c == '\\' && i+1 < len(s) && s[i+1] == '#' {
+			buf.WriteString("\\\\")
+			continue
+		}
+		buf.WriteByte(c)
 	}
 	return buf.String()
 }
