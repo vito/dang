@@ -836,10 +836,7 @@ SingleTemplate <- '`' parts:SingleTemplatePart* '`' {
 }
 
 SingleTemplatePart <-
-    "\\#" {
-      return TemplatePart{Lit: "#"}, nil
-    }
-  / "#{" _ e:Expr _ "}" {
+    "#{" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
   / !"#{" [^`\n] {
@@ -884,10 +881,7 @@ LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
 LangTagTerminator <- '\n'
 
 MultiTemplatePart <-
-    "\\#" {
-      return TemplatePart{Lit: "#"}, nil
-    }
-  / "#{" _ e:Expr _ "}" {
+    "#{" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
   / ch:MultiTemplateContentChar {

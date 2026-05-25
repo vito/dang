@@ -43,11 +43,7 @@
           },
           "name": "string.quoted.multi.backtick.dang",
           "patterns": [
-            { "include": "#template-interpolation" },
-            {
-              "match": "\\\\#",
-              "name": "constant.character.escape.dang"
-            }
+            { "include": "#template-interpolation" }
           ]
         },
         {
@@ -61,11 +57,7 @@
           },
           "name": "string.quoted.backtick.dang",
           "patterns": [
-            { "include": "#template-interpolation" },
-            {
-              "match": "\\\\#",
-              "name": "constant.character.escape.dang"
-            }
+            { "include": "#template-interpolation" }
           ]
         }
       ]

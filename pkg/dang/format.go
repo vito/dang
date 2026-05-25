@@ -2168,9 +2168,8 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 func (f *Formatter) formatTemplate(t *Template) {
 	// Echo the original source when available. Templates carry layout
 	// the AST throws away — the dedent algorithm strips intentional
-	// indentation from multi-line content, and the `\#` -> `#` collapse
-	// loses the escape the user wrote. Preserving source also keeps any
-	// comments living inside #{...} interpolations intact.
+	// indentation from multi-line content. Preserving source also keeps
+	// any comments living inside #{...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
 		if t.Fence >= 3 {
 			f.write(f.normalizeMultilineLiteral(t, orig))
@@ -2221,7 +2220,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 				f.writeIndent()
 				needIndent = false
 			}
-			f.write(escapeTemplateLit(line))
+			f.write(line)
 		}
 	}
 	if !needIndent {
@@ -2238,7 +2237,13 @@ func (f *Formatter) formatTemplatePart(p TemplatePart) {
 		f.write("}")
 		return
 	}
-	f.write(escapeTemplateLit(p.Lit))
+	// Literal parts round-trip as-is: the parser cannot emit `#{` in a
+	// literal (it would consume that as interpolation), so anything reaching
+	// us here is already safe to write directly. Synthetic ASTs that bypass
+	// the parser are responsible for not stuffing `#{` into a literal part —
+	// the escape hatch for that is to wrap it in an interpolation:
+	// `#{"#{"}`.
+	f.write(p.Lit)
 }
 
 // normalizeMultilineLiteral takes the original source of a multi-line
@@ -2344,29 +2349,6 @@ func leadingWSLen(s string) int {
 		n++
 	}
 	return n
-}
-
-// escapeTemplateLit re-escapes a literal so it round-trips through the
-// template grammar. The grammar's only escape is `\#` -> `#`, so the
-// formatter needs to introduce a backslash before any `#` that precedes
-// `{` (otherwise the parser would treat `#{` as interpolation start), and
-// it needs to double up any `\` that precedes `#` (otherwise that pair
-// would be eaten as the escape sequence).
-func escapeTemplateLit(s string) string {
-	var buf strings.Builder
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '#' && i+1 < len(s) && s[i+1] == '{' {
-			buf.WriteString("\\#")
-			continue
-		}
-		if c == '\\' && i+1 < len(s) && s[i+1] == '#' {
-			buf.WriteString("\\\\")
-			continue
-		}
-		buf.WriteByte(c)
-	}
-	return buf.String()
 }
 
 func (f *Formatter) formatString(s *String) {

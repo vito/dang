@@ -109,14 +109,19 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  name\n}`\n",
 		},
 		{
-			name:     "hash escape is preserved",
-			input:    "pub x = `\\# is hash`",
-			expected: "pub x = `\\# is hash`\n",
-		},
-		{
-			name:     "lone hash is not re-escaped",
+			name:     "lone hash stays literal",
 			input:    "pub x = `issue #5`",
 			expected: "pub x = `issue #5`\n",
+		},
+		{
+			name:     "backslash stays literal",
+			input:    "pub x = `\\d+`",
+			expected: "pub x = `\\d+`\n",
+		},
+		{
+			name:     "literal hash-brace via interpolation",
+			input:    `pub x = ` + "`prefix #{\"#{\"}suffix`",
+			expected: `pub x = ` + "`prefix #{\"#{\"}suffix`\n",
 		},
 		{
 			name: "multi-line flush content stays flush",

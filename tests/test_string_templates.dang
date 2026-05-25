@@ -19,13 +19,18 @@ pub b = "bar"
 pub multi = `#{a}-#{b}-#{a}`
 assert { multi == "foo-bar-foo" }
 
-# \# escapes to literal #
-pub literal_hash = `\# is hash`
-assert { literal_hash == "# is hash" }
-
-# Lone # not followed by { or # is literal
+# Templates have no escape; only #{...} is special. A lone # stays literal.
 pub stray_hash = `issue #5`
 assert { stray_hash == "issue #5" }
+
+# A backslash is just a backslash — no escape interpretation. Useful for
+# regex patterns that flow into Regexp via scalar coercion.
+pub backslash = `\d+`
+assert { backslash == "\\d+" }
+
+# To produce a literal "#{" in a template, interpolate the literal string.
+pub literal_hash_brace = `prefix #{"#{"}suffix`
+assert { literal_hash_brace == "prefix #{suffix" }
 
 # Expression interpolation (not just symbols)
 pub x = 2
