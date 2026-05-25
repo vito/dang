@@ -4086,8 +4086,25 @@
               "value": "#"
             },
             {
-              "type": "PATTERN",
-              "value": "[^\\n]*"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "PATTERN",
+                      "value": "[^{\\n]"
+                    },
+                    {
+                      "type": "PATTERN",
+                      "value": "[^\\n]*"
+                    }
+                  ]
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
             }
           ]
         }
