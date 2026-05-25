@@ -894,7 +894,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
 					}
 				}
-				return nil, fmt.Errorf("Match value does not have method %q", d.Field.Name)
+				return nil, fmt.Errorf("match value does not have method %q", d.Field.Name)
 
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
