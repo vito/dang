@@ -839,9 +839,13 @@ SingleTemplatePart <-
     "#{" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
-  / !"#{" [^`\n] {
-      return TemplatePart{Lit: string(c.text)}, nil
+  / ch:SingleTemplateContentChar {
+      return TemplatePart{Lit: ch.(string)}, nil
     }
+
+SingleTemplateContentChar <- !"#{" [^`\n] {
+  return string(c.text), nil
+}
 
 MultiTemplate <- ticks:MultiTemplateOpenToken #{
   d, _ := c.state["fence_depth"].(int)
@@ -942,12 +946,7 @@ SelfKeyword <- SelfToken {
 }
 SelfToken <- "self" !WordChar
 
-// First char after `#` must not be `{` so that `#{` (template interpolation
-// start) is never absorbed into a comment. In tree-sitter, comment_token is
-// in `extras` and competes with the 2-char `#{` token via longest-match;
-// without this restriction the lexer eats the whole interpolation as a
-// comment inside single-line backtick templates.
-CommentToken <- '#' ([^{\n] [^\n]*)? {
+CommentToken <- '#' [^\n]* {
   comments, _ := c.globalStore["comments"].(map[int]string)
   if comments == nil {
     comments = make(map[int]string)

@@ -89,6 +89,24 @@ hello #{name}!
 )
 
 ===
+single-line template lone hash
+===
+
+pub label = `issue #5`
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "label")
+  " "
+  (@operator "=")
+  " "
+  (@string "`issue #5`")
+)
+
+===
 multi-line template lone hash
 ===
 
@@ -106,4 +124,31 @@ issue #5
   (@operator "=")
   " "
   (@string "```\nissue #5\n```")
+)
+
+===
+multi-line template markdown headers
+===
+
+pub doc = ```md
+# Title
+
+## Subtitle
+
+content
+```
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "doc")
+  " "
+  (@operator "=")
+  " "
+  (@string "```")
+  (@label "md")
+  "\n"
+  (@string "# Title\n\n## Subtitle\n\ncontent\n```")
 )
