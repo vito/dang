@@ -86,6 +86,11 @@ UnaryExpr <- '!' _ expr:Term {
     Expr: expr.(Node),
     Loc: c.Loc(),
   }, nil
+} / '-' _ expr:Term {
+  return &UnaryMinus{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
 }
 
 ParenForm <- '(' _ expr:Form _ ')' {

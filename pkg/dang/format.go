@@ -656,6 +656,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatBinaryOp(n.Left, n.Right, "==")
 	case *UnaryNegation:
 		f.formatUnaryNegation(n)
+	case *UnaryMinus:
+		f.formatUnaryMinus(n)
 	case *FunctionRef:
 		f.formatFunctionRef(n)
 	case *Addition:
@@ -2990,6 +2992,11 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 
 func (f *Formatter) formatUnaryNegation(u *UnaryNegation) {
 	f.write("!")
+	f.formatNode(u.Expr)
+}
+
+func (f *Formatter) formatUnaryMinus(u *UnaryMinus) {
+	f.write("-")
 	f.formatNode(u.Expr)
 }
 

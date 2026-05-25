@@ -1,0 +1,16 @@
+assert { -5 == 0 - 5 }
+assert { -3.5 == 0.0 - 3.5 }
+assert { -(1 + 2) == -3 }
+assert { 10 + -3 == 7 }
+assert { 10 - -3 == 13 }
+assert { -(-5) == 5 }
+
+let a = 7
+assert { -a == -7 }
+assert { -(-a) == 7 }
+
+let b = -4
+assert { -b == 4 }
+
+assert { [-1, -2, -3][0] == -1 }
+assert { [-1, -2, -3][2] == -3 }
