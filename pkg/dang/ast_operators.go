@@ -791,6 +791,70 @@ func (u *UnaryNegation) Walk(fn func(Node) bool) {
 	u.Expr.Walk(fn)
 }
 
+// UnaryMinus represents the -expr arithmetic negation operator.
+type UnaryMinus struct {
+	InferredTypeHolder
+	Expr Node
+	Loc  *SourceLocation
+}
+
+var _ Node = (*UnaryMinus)(nil)
+var _ Evaluator = (*UnaryMinus)(nil)
+
+func (u *UnaryMinus) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(u, func() (hm.Type, error) {
+		exprType, err := u.Expr.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		nonNull, ok := exprType.(hm.NonNullType)
+		if !ok {
+			return nil, fmt.Errorf("unary minus requires Int or Float, got %s", exprType)
+		}
+		if nonNull.Type != IntType && nonNull.Type != FloatType {
+			return nil, fmt.Errorf("unary minus requires Int or Float, got %s", exprType)
+		}
+		return exprType, nil
+	})
+}
+
+func (u *UnaryMinus) DeclaredSymbols() []string {
+	return nil
+}
+
+func (u *UnaryMinus) ReferencedSymbols() []string {
+	return u.Expr.ReferencedSymbols()
+}
+
+func (u *UnaryMinus) Body() hm.Expression { return u }
+
+func (u *UnaryMinus) GetSourceLocation() *SourceLocation { return u.Loc }
+
+func (u *UnaryMinus) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+	return WithEvalErrorHandling(ctx, u, func() (Value, error) {
+		val, err := EvalNode(ctx, env, u.Expr)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating expression: %w", err)
+		}
+
+		switch v := val.(type) {
+		case IntValue:
+			return IntValue{Val: -v.Val}, nil
+		case FloatValue:
+			return FloatValue{Val: -v.Val}, nil
+		}
+		return nil, fmt.Errorf("unary minus requires Int or Float value, got %T", val)
+	})
+}
+
+func (u *UnaryMinus) Walk(fn func(Node) bool) {
+	if !fn(u) {
+		return
+	}
+	u.Expr.Walk(fn)
+}
+
 // FunctionRef represents the &foo function-reference operator.
 type FunctionRef struct {
 	InferredTypeHolder

@@ -411,6 +411,53 @@ func (FormatSuite) TestFloatFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestUnaryMinusFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "negative int literal",
+			input:    `pub x = -5`,
+			expected: "pub x = -5\n",
+		},
+		{
+			name:     "negative float literal",
+			input:    `pub x = -3.14`,
+			expected: "pub x = -3.14\n",
+		},
+		{
+			name:     "negation of identifier",
+			input:    `pub x = -y`,
+			expected: "pub x = -y\n",
+		},
+		{
+			name:     "negation of parenthesized expression",
+			input:    `pub x = -(a + b)`,
+			expected: "pub x = -(a + b)\n",
+		},
+		{
+			name:     "subtraction of negative literal",
+			input:    `pub x = a - -1`,
+			expected: "pub x = a - -1\n",
+		},
+		{
+			name:     "list of negative literals",
+			input:    `pub x = [-1, -2, -3]`,
+			expected: "pub x = [-1, -2, -3]\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestBlockArgFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
