@@ -3799,14 +3799,14 @@
       "members": [
         {
           "type": "STRING",
-          "value": "$$"
+          "value": "##"
         },
         {
           "type": "SEQ",
           "members": [
             {
               "type": "STRING",
-              "value": "${"
+              "value": "#{"
             },
             {
               "type": "FIELD",
@@ -3907,14 +3907,14 @@
       "members": [
         {
           "type": "STRING",
-          "value": "$$"
+          "value": "##"
         },
         {
           "type": "SEQ",
           "members": [
             {
               "type": "STRING",
-              "value": "${"
+              "value": "#{"
             },
             {
               "type": "FIELD",

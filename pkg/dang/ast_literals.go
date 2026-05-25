@@ -248,7 +248,7 @@ type TemplatePart struct {
 }
 
 // Template represents a backtick-delimited template string literal with
-// optional ${...} interpolations. Fence is the count of backticks used as the
+// optional #{...} interpolations. Fence is the count of backticks used as the
 // delimiter (1 for single-line, >=3 for multi-line). Lang is the optional
 // language tag on multi-line templates (used for editor highlighting).
 type Template struct {

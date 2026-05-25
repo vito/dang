@@ -1,8 +1,8 @@
-[1m[31mError:[0m syntax error: unexpected '+'
-  [2m[34m--> errors/syntax_template_invalid_interpolation.dang:1:22[0m
+[1m[31mError:[0m syntax error: missing '`'
+  [2m[34m--> errors/syntax_template_invalid_interpolation.dang:1:25[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0mpub bad = `hello ${1 +}`
-[2m                            [31m^[0m
+ [2m[34m[1m  1 | [0mpub bad = `hello #{1 +}`
+[2m                               [31m^[0m
  [2m  2 | [0m
  [2m    |[0m
 

@@ -98,25 +98,25 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name:     "single-line with interpolation",
-			input:    "pub name = \"Ada\"\npub x = `hello ${name}!`",
-			expected: "pub name = \"Ada\"\npub x = `hello ${name}!`\n",
+			input:    "pub name = \"Ada\"\npub x = `hello #{name}!`",
+			expected: "pub name = \"Ada\"\npub x = `hello #{name}!`\n",
 		},
 		{
 			name: "single-line interpolation comment is preserved",
-			input: "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n" +
+			input: "pub name = \"Ada\"\npub greeting = `hello #{ # keep the explanation\n" +
 				"  name\n}`",
-			expected: "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n" +
+			expected: "pub name = \"Ada\"\npub greeting = `hello #{ # keep the explanation\n" +
 				"  name\n}`\n",
 		},
 		{
-			name:     "double dollar escape is preserved",
-			input:    "pub x = `$$ is dollar`",
-			expected: "pub x = `$$ is dollar`\n",
+			name:     "double hash escape is preserved",
+			input:    "pub x = `## is hash`",
+			expected: "pub x = `## is hash`\n",
 		},
 		{
-			name:     "lone dollar is not re-escaped",
-			input:    "pub x = `cost $5`",
-			expected: "pub x = `cost $5`\n",
+			name:     "lone hash is not re-escaped",
+			input:    "pub x = `issue #5`",
+			expected: "pub x = `issue #5`\n",
 		},
 		{
 			name: "multi-line flush content stays flush",
@@ -179,24 +179,24 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 			name: "multi-line with interpolation",
 			input: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello ${who}!\n" +
+				"  hello #{who}!\n" +
 				"  ```",
 			expected: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello ${who}!\n" +
+				"  hello #{who}!\n" +
 				"```\n",
 		},
 		{
 			name: "multi-line interpolation comment is preserved",
 			input: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello ${ # who to greet\n" +
+				"  hello #{ # who to greet\n" +
 				"    who\n" +
 				"  }!\n" +
 				"  ```",
 			expected: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello ${ # who to greet\n" +
+				"  hello #{ # who to greet\n" +
 				"    who\n" +
 				"  }!\n" +
 				"```\n",

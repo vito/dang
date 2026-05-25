@@ -1,4 +1,4 @@
-# Test backtick string templates with ${...} interpolation
+# Test backtick string templates with #{...} interpolation
 
 # Single-line, no interpolation
 pub plain = `hello world`
@@ -10,37 +10,37 @@ assert { empty == "" }
 
 # Single-line interpolation
 pub name = "Ada"
-pub greeting = `hello ${name}!`
+pub greeting = `hello #{name}!`
 assert { greeting == "hello Ada!" }
 
 # Multiple interpolations
 pub a = "foo"
 pub b = "bar"
-pub multi = `${a}-${b}-${a}`
+pub multi = `#{a}-#{b}-#{a}`
 assert { multi == "foo-bar-foo" }
 
-# $$ escapes to literal $
-pub literal_dollar = `$$ is dollar`
-assert { literal_dollar == "$ is dollar" }
+# ## escapes to literal #
+pub literal_hash = `## is hash`
+assert { literal_hash == "# is hash" }
 
-# Lone $ not followed by { or $ is literal
-pub stray_dollar = `cost $5`
-assert { stray_dollar == "cost $5" }
+# Lone # not followed by { or # is literal
+pub stray_hash = `issue #5`
+assert { stray_hash == "issue #5" }
 
 # Expression interpolation (not just symbols)
 pub x = 2
 pub y = 3
-pub sum = `${x} + ${y} = ${x + y}`
+pub sum = `#{x} + #{y} = #{x + y}`
 assert { sum == "2 + 3 = 5" }
 
 # Auto-stringification of non-string values
 pub n = 42
 pub b1 = true
-pub mixed = `n=${n}, b=${b1}`
+pub mixed = `n=#{n}, b=#{b1}`
 assert { mixed == "n=42, b=true" }
 
 # null interpolates as the literal string "null" (lenient)
-pub nullish = `x=${null}`
+pub nullish = `x=#{null}`
 assert { nullish == "x=null" }
 
 # ---------- Multi-line (triple backtick) ----------
@@ -73,7 +73,7 @@ assert { langged == "func main() {}" }
 # Interpolation inside multi-line
 pub who = "world"
 pub multi_block = ```
-hello ${who}!
+hello #{who}!
 ```
 assert { multi_block == "hello world!" }
 

@@ -1,2 +1,2 @@
 pub name = "Ada"
-pub bad = `hello ${name`
+pub bad = `hello #{name`

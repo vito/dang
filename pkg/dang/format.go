@@ -2168,9 +2168,9 @@ func (f *Formatter) formatSymbol(s *Symbol) {
 func (f *Formatter) formatTemplate(t *Template) {
 	// Echo the original source when available. Templates carry layout
 	// the AST throws away — the dedent algorithm strips intentional
-	// indentation from multi-line content, and the `$$` -> `$` collapse
+	// indentation from multi-line content, and the `##` -> `#` collapse
 	// loses the escape the user wrote. Preserving source also keeps any
-	// comments living inside ${...} interpolations intact.
+	// comments living inside #{...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
 		if t.Fence >= 3 {
 			f.write(f.normalizeMultilineLiteral(t, orig))
@@ -2203,7 +2203,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 				f.writeIndent()
 				needIndent = false
 			}
-			f.write("${")
+			f.write("#{")
 			f.formatNodeInline(p.Expr)
 			f.write("}")
 			continue
@@ -2233,7 +2233,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 
 func (f *Formatter) formatTemplatePart(p TemplatePart) {
 	if p.Expr != nil {
-		f.write("${")
+		f.write("#{")
 		f.formatNodeInline(p.Expr)
 		f.write("}")
 		return
@@ -2347,14 +2347,14 @@ func leadingWSLen(s string) int {
 }
 
 // escapeTemplateLit re-escapes a literal so it round-trips through the
-// template grammar. Only `$` immediately followed by `$` or `{` is
-// significant; a stray `$` followed by anything else (or end of input)
+// template grammar. Only `#` immediately followed by `#` or `{` is
+// significant; a stray `#` followed by anything else (or end of input)
 // is already literal in the source, so leave it alone.
 func escapeTemplateLit(s string) string {
 	var buf strings.Builder
 	for i := 0; i < len(s); i++ {
-		if s[i] == '$' && i+1 < len(s) && (s[i+1] == '$' || s[i+1] == '{') {
-			buf.WriteString("$$")
+		if s[i] == '#' && i+1 < len(s) && (s[i+1] == '#' || s[i+1] == '{') {
+			buf.WriteString("##")
 			continue
 		}
 		buf.WriteByte(s[i])

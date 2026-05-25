@@ -45,7 +45,7 @@
           "patterns": [
             { "include": "#template-interpolation" },
             {
-              "match": "\\$\\$",
+              "match": "##",
               "name": "constant.character.escape.dang"
             }
           ]
@@ -63,7 +63,7 @@
           "patterns": [
             { "include": "#template-interpolation" },
             {
-              "match": "\\$\\$",
+              "match": "##",
               "name": "constant.character.escape.dang"
             }
           ]
@@ -71,7 +71,7 @@
       ]
     },
     "template-interpolation": {
-      "begin": "\\$\\{",
+      "begin": "#\\{",
       "beginCaptures": {
         "0": { "name": "punctuation.section.interpolation.begin.dang" }
       },

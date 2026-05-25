@@ -2,7 +2,7 @@
 single-line template interpolation
 ===
 
-pub greeting = `hello ${name}!`
+pub greeting = `hello #{name}!`
 
 ---
 
@@ -14,7 +14,7 @@ pub greeting = `hello ${name}!`
   (@operator "=")
   " "
   (@string "`hello ")
-  (@punctuation.special "${")
+  (@punctuation.special "#{")
   "name"
   (@punctuation.bracket @punctuation.special "}")
   (@string "!`")
@@ -24,7 +24,7 @@ pub greeting = `hello ${name}!`
 no-space template interpolation
 ===
 
-pub greeting = `hello${name}!`
+pub greeting = `hello#{name}!`
 
 ---
 
@@ -36,7 +36,7 @@ pub greeting = `hello${name}!`
   (@operator "=")
   " "
   (@string "`hello")
-  (@punctuation.special "${")
+  (@punctuation.special "#{")
   "name"
   (@punctuation.bracket @punctuation.special "}")
   (@string "!`")
@@ -46,7 +46,7 @@ pub greeting = `hello${name}!`
 interpolation expression highlighting
 ===
 
-pub answer = `answer ${42}`
+pub answer = `answer #{42}`
 
 ---
 
@@ -58,7 +58,7 @@ pub answer = `answer ${42}`
   (@operator "=")
   " "
   (@string "`answer ")
-  (@punctuation.special "${")
+  (@punctuation.special "#{")
   (@number "42")
   (@punctuation.bracket @punctuation.special "}")
   (@string "`")
@@ -69,7 +69,7 @@ multi-line template interpolation
 ===
 
 pub greeting = ```
-hello ${name}!
+hello #{name}!
 ```
 
 ---
@@ -82,18 +82,18 @@ hello ${name}!
   (@operator "=")
   " "
   (@string "```\nhello ")
-  (@punctuation.special "${")
+  (@punctuation.special "#{")
   "name"
   (@punctuation.bracket @punctuation.special "}")
   (@string "!\n```")
 )
 
 ===
-multi-line template lone dollar
+multi-line template lone hash
 ===
 
 pub price = ```
-cost $5
+issue #5
 ```
 
 ---
@@ -105,5 +105,5 @@ cost $5
   " "
   (@operator "=")
   " "
-  (@string "```\ncost $5\n```")
+  (@string "```\nissue #5\n```")
 )

@@ -231,9 +231,9 @@ static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
       return false;
     }
   }
-  if (lexer->lookahead == '$') {
+  if (lexer->lookahead == '#') {
     lexer->advance(lexer, false);
-    if (lexer->lookahead == '$' || lexer->lookahead == '{') {
+    if (lexer->lookahead == '#' || lexer->lookahead == '{') {
       return false;
     }
     lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
