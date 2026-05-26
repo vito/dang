@@ -44,7 +44,10 @@ func (c *Case) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		exprType, err := c.Expr.Infer(ctx, env, fresh)
+		// The case operand is a non-tail expression: its type drives
+		// pattern selection but its value is not the case's result.
+		operandCtx := contextWithoutInferExpectedType(ctx)
+		exprType, err := c.Expr.Infer(operandCtx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -53,12 +56,22 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 			return nil, fmt.Errorf("Case.Infer: no case clauses")
 		}
 
+		// When an expected type is in scope, propagate it into each
+		// clause body so distinct union members (or other assignable
+		// types) can flow from different clauses without being merged
+		// against each other.
+		expected := currentInferExpectedType(ctx)
+		clauseCtx := ctx
+		if expected == nil {
+			clauseCtx = contextWithoutInferExpectedType(ctx)
+		}
+
 		var resultType hm.Type
 		for i, clause := range c.Clauses {
 			var caseType hm.Type
 			if clause.IsTypePattern() {
 				// Type pattern clause: binding: TypeName => expr
-				if err := c.inferTypePatternClause(ctx, env, fresh, clause, exprType); err != nil {
+				if err := c.inferTypePatternClause(operandCtx, env, fresh, clause, exprType); err != nil {
 					return nil, err
 				}
 
@@ -68,12 +81,12 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
 					clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, hm.NonNullType{Type: clause.resolvedMemberType}))
-					return clause.Expr.Infer(ctx, clauseEnv, fresh)
+					return clause.Expr.Infer(clauseCtx, clauseEnv, fresh)
 				})
 			} else if !clause.IsElse {
 				// Value match clause
 				var valueType hm.Type
-				valueType, err = clause.Value.Infer(ctx, env, fresh)
+				valueType, err = clause.Value.Infer(operandCtx, env, fresh)
 				if err != nil {
 					return nil, err
 				}
@@ -85,16 +98,24 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				}
 
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					return clause.Expr.Infer(ctx, env, fresh)
+					return clause.Expr.Infer(clauseCtx, env, fresh)
 				})
 			} else {
 				// Else clause
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					return clause.Expr.Infer(ctx, env, fresh)
+					return clause.Expr.Infer(clauseCtx, env, fresh)
 				})
 			}
 			if err != nil {
 				return nil, err
+			}
+
+			if expected != nil {
+				if _, err := hm.Assignable(caseType, expected); err != nil {
+					return nil, WrapInferError(fmt.Errorf("case clause %d type mismatch: cannot use %s as %s", i, caseType, expected), clause)
+				}
+				resultType = expected
+				continue
 			}
 
 			if i == 0 {

@@ -1,0 +1,43 @@
+# Bidirectional inference for case: each clause body is checked against
+# the case's expected type, so distinct union members can flow from
+# different clauses without being merged against each other.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+# Case as a function body whose result is a union with each clause
+# producing a distinct member.
+pub flip(r: Either[Int!, String!]!): Either[String!, Int!]! {
+  case (r) {
+    l: Lft[Int!] => Rgt(l.value)
+    rt: Rgt[String!] => Lft(rt.value)
+  }
+}
+
+pub describe(r: Either[String!, Int!]!): String! {
+  case (r) {
+    l: Lft[String!] => "left: " + l.value
+    rt: Rgt[Int!] => "right: " + toString(rt.value)
+  }
+}
+
+assert { describe(flip(Lft(5))) == "right: 5" }
+assert { describe(flip(Rgt("hi"))) == "left: hi" }
+
+# Case in slot-annotation context with branches that produce distinct
+# members.
+pub x: Either[Int!, String!]! = case (true) {
+  true => Lft(1)
+  else => Rgt("default")
+}
+
+assert { describe(flip(x)) == "right: 1" }
+
+print("Case union inference tests passed!")
