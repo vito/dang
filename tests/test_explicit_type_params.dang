@@ -1,0 +1,38 @@
+# Explicit `[a, b]` after a function name declares which type
+# variables belong to that function. Useful for documentation and
+# disambiguating method-local vars from class-bound ones.
+
+# Standalone function with explicit params
+pub identity[a](x: a): a { x }
+
+pub one = identity(7)
+pub two = identity("hi")
+assert { one == 7 }
+assert { two == "hi" }
+
+# Two type params, with a generic-element list arg
+pub mapList[a, b](xs: [a]!, &fn(value: a): b): [b]! {
+  xs.map { v => fn(v) }
+}
+
+pub doubled = mapList([1, 2, 3]) { n => n * 2 }
+assert { doubled[2] == 6 }
+
+# Class method with explicit method-local param. The class's `a`
+# is in scope from the enclosing type; only `b` is declared.
+type Box[a] {
+  pub value: a
+  pub mapTo[b](&fn(value: a): b): Box[b]! {
+    Box(fn(value))
+  }
+}
+
+pub mapped = Box(5).mapTo { n => toString(n) + "!" }
+assert { mapped.value == "5!" }
+
+# Without explicit params, auto-generalization still works as
+# before (existing behaviour preserved).
+pub legacy(x: a): a { x }
+assert { legacy(42) == 42 }
+
+print("Explicit type parameter tests passed!")

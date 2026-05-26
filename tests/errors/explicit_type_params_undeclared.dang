@@ -1,0 +1,4 @@
+# Explicit type parameter list means undeclared free type variables
+# in the signature are rejected.
+
+pub bad[a](x: a, y: c): a { x }

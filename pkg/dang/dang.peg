@@ -401,7 +401,7 @@ TypeOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil
   }, nil
 }
 
-TypeAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
+TypeAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol params:TypeParamList? _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
   allDirectives := append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...)
   return &SlotDecl{
     Name: name.(*Symbol),
@@ -415,6 +415,7 @@ TypeAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d,
       },
       Named: name.(*Symbol).Name,
       Ret: type_.(TypeNode),
+      TypeParams: sliceOf[hm.TypeVariable](params),
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),
@@ -423,7 +424,7 @@ TypeAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d,
   }, nil
 }
 
-TypeAndArgsAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
+TypeAndArgsAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol params:TypeParamList? _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
   // Separate block parameters from regular arguments
   allArgs := args.([]*SlotDecl)
   var regularArgs []*SlotDecl
@@ -455,6 +456,7 @@ TypeAndArgsAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { re
       },
       Named: name.(*Symbol).Name,
       Ret: type_.(TypeNode),
+      TypeParams: sliceOf[hm.TypeVariable](params),
       Visibility: vis.(Visibility),
     },
     Visibility: vis.(Visibility),

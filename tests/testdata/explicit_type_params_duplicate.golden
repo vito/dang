@@ -1,0 +1,10 @@
+[1m[31mError:[0m duplicate type parameter a in dup
+  [2m[34m--> errors/explicit_type_params_duplicate.dang:3:1[0m
+ [2m    |[0m
+ [2m  1 | # Duplicate type parameter names are an error.[0m
+ [2m  2 | [0m
+ [2m[34m[1m  3 | [0mpub dup[a, a](x: a): a { x }
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

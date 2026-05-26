@@ -1275,6 +1275,18 @@ func (f *Formatter) formatFunDecl(fn *FunDecl) {
 }
 
 func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
+	// Explicit type parameters
+	if len(fn.TypeParams) > 0 {
+		f.write("[")
+		for i, p := range fn.TypeParams {
+			if i > 0 {
+				f.write(", ")
+			}
+			f.write(string(p))
+		}
+		f.write("]")
+	}
+
 	// Arguments
 	if len(fn.Args) > 0 || fn.BlockParam != nil {
 		f.write("(")

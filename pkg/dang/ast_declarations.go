@@ -270,8 +270,12 @@ func (f *FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 type FunDecl struct {
 	InferredTypeHolder
 	FunctionBase
-	Named      string
-	Ret        TypeNode
+	Named string
+	Ret   TypeNode
+	// TypeParams is the explicit `[a, b]` quantifier list on the
+	// function name. Empty means the function relies on
+	// auto-generalization at hoist time.
+	TypeParams []hm.TypeVariable
 	Visibility Visibility
 }
 
@@ -292,6 +296,57 @@ func (f *FunDecl) Body() hm.Expression { return f.FunctionBase.Body }
 
 func (f *FunDecl) GetSourceLocation() *SourceLocation { return f.Loc }
 
+// buildScheme constructs the hm.Scheme stored for this function in the
+// enclosing env. When the user supplied explicit type parameters with
+// `pub foo[a, b](...)` syntax, the declared list is the truth: every
+// signature free type variable must be declared or already in scope,
+// and every declared parameter must actually appear in the signature.
+// Without explicit params, fall back to auto-generalization.
+func (f *FunDecl) buildScheme(env hm.Env, fnType *hm.FunctionType) (*hm.Scheme, error) {
+	if len(f.TypeParams) == 0 {
+		return hm.Generalize(env, fnType), nil
+	}
+
+	seen := make(map[hm.TypeVariable]bool, len(f.TypeParams))
+	for _, p := range f.TypeParams {
+		if seen[p] {
+			return nil, NewInferError(
+				fmt.Errorf("duplicate type parameter %q in %s", p, f.Named),
+				f,
+			)
+		}
+		seen[p] = true
+	}
+
+	envFree := hm.TypeVarSet{}
+	if env != nil {
+		envFree = env.FreeTypeVar()
+	}
+	sigFree := fnType.FreeTypeVar()
+
+	for tv := range sigFree {
+		if envFree.Contains(tv) {
+			continue
+		}
+		if !seen[tv] {
+			return nil, NewInferError(
+				fmt.Errorf("undeclared type variable %q in %s; add it to the parameter list `[%s, ...]`", tv, f.Named, tv),
+				f,
+			)
+		}
+	}
+	for _, p := range f.TypeParams {
+		if !sigFree.Contains(p) {
+			return nil, NewInferError(
+				fmt.Errorf("type parameter %q on %s is unused", p, f.Named),
+				f,
+			)
+		}
+	}
+
+	return hm.NewScheme(f.TypeParams, fnType), nil
+}
+
 var _ hm.Inferer = &FunDecl{}
 var _ Hoister = &FunDecl{}
 
@@ -303,13 +358,11 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		if err != nil {
 			return err
 		}
-		// Generalize over type variables that are free in the function
-		// type but not in the enclosing env. For a method on a generic
-		// class, class params show up as free in env and stay free in the
-		// scheme so AppliedType.SchemeOf can substitute them per receiver;
-		// method-local vars get quantified so each call site instantiates
-		// fresh.
-		env.Add(f.Named, hm.Generalize(env, fnType))
+		scheme, err := f.buildScheme(env, fnType)
+		if err != nil {
+			return err
+		}
+		env.Add(f.Named, scheme)
 		if e, ok := env.(Env); ok {
 			e.SetVisibility(f.Named, f.Visibility)
 			if len(f.Directives) > 0 {

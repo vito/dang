@@ -1,0 +1,10 @@
+[1m[31mError:[0m undeclared type variable c in bad; add it to the parameter list `[c, ...]`
+  [2m[34m--> errors/explicit_type_params_undeclared.dang:4:1[0m
+ [2m    |[0m
+ [2m  2 | # in the signature are rejected.[0m
+ [2m  3 | [0m
+ [2m[34m[1m  4 | [0mpub bad[a](x: a, y: c): a { x }
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+
