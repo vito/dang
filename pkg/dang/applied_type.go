@@ -181,11 +181,11 @@ func (t *AppliedType) Bindings(visibility Visibility) iter.Seq2[string, *hm.Sche
 // Add and Remove are not supported on an applied generic type.
 // Modifications must go through the Base module.
 func (t *AppliedType) Add(name string, s *hm.Scheme) hm.Env {
-	return t.Base.Add(name, s)
+	panic(fmt.Sprintf("AppliedType.Add(%q) — mutate the base Module, not an applied instance", name))
 }
 
 func (t *AppliedType) Remove(name string) hm.Env {
-	return t.Base.Remove(name)
+	panic(fmt.Sprintf("AppliedType.Remove(%q) — mutate the base Module, not an applied instance", name))
 }
 
 func (t *AppliedType) Clone() hm.Env {
@@ -207,48 +207,52 @@ func (t *AppliedType) NamedTypes() iter.Seq2[string, Env] {
 }
 
 func (t *AppliedType) AddClass(name string, c Env) {
-	t.Base.AddClass(name, c)
+	panic(fmt.Sprintf("AppliedType.AddClass(%q)", name))
 }
 
 func (t *AppliedType) SetTypeOrigin(name string, origin BindingOrigin) {
-	t.Base.SetTypeOrigin(name, origin)
+	panic(fmt.Sprintf("AppliedType.SetTypeOrigin(%q)", name))
 }
 
 func (t *AppliedType) LocalTypeOrigin(name string) (BindingOrigin, bool) {
 	return t.Base.LocalTypeOrigin(name)
 }
 
-func (t *AppliedType) SetDocString(name, s string) { t.Base.SetDocString(name, s) }
+func (t *AppliedType) SetDocString(name, s string) {
+	panic(fmt.Sprintf("AppliedType.SetDocString(%q)", name))
+}
 func (t *AppliedType) GetDocString(name string) (string, bool) {
 	return t.Base.GetDocString(name)
 }
 func (t *AppliedType) SetDirectives(name string, ds []*DirectiveApplication) {
-	t.Base.SetDirectives(name, ds)
+	panic(fmt.Sprintf("AppliedType.SetDirectives(%q)", name))
 }
 func (t *AppliedType) GetDirectives(name string) []*DirectiveApplication {
 	return t.Base.GetDirectives(name)
 }
-func (t *AppliedType) SetModuleDocString(s string) { t.Base.SetModuleDocString(s) }
-func (t *AppliedType) GetModuleDocString() string  { return t.Base.GetModuleDocString() }
+func (t *AppliedType) SetModuleDocString(s string) {
+	panic("AppliedType.SetModuleDocString")
+}
+func (t *AppliedType) GetModuleDocString() string { return t.Base.GetModuleDocString() }
 
 func (t *AppliedType) SetVisibility(name string, v Visibility) {
-	t.Base.SetVisibility(name, v)
+	panic(fmt.Sprintf("AppliedType.SetVisibility(%q)", name))
 }
 
 func (t *AppliedType) SetValueOrigin(name string, origin BindingOrigin) {
-	t.Base.SetValueOrigin(name, origin)
+	panic(fmt.Sprintf("AppliedType.SetValueOrigin(%q)", name))
 }
 func (t *AppliedType) LocalValueOrigin(name string) (BindingOrigin, bool) {
 	return t.Base.LocalValueOrigin(name)
 }
 func (t *AppliedType) AddDirective(name string, d *DirectiveDecl) {
-	t.Base.AddDirective(name, d)
+	panic(fmt.Sprintf("AppliedType.AddDirective(%q)", name))
 }
 func (t *AppliedType) GetDirective(name string) (*DirectiveDecl, bool) {
 	return t.Base.GetDirective(name)
 }
 func (t *AppliedType) SetDirectiveOrigin(name string, origin BindingOrigin) {
-	t.Base.SetDirectiveOrigin(name, origin)
+	panic(fmt.Sprintf("AppliedType.SetDirectiveOrigin(%q)", name))
 }
 func (t *AppliedType) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
 	return t.Base.LocalDirectiveOrigin(name)
@@ -267,5 +271,5 @@ func (t *AppliedType) GetDynamicScopeType() hm.Type {
 	return t.Base.GetDynamicScopeType()
 }
 func (t *AppliedType) SetDynamicScopeType(dt hm.Type) {
-	t.Base.SetDynamicScopeType(dt)
+	panic("AppliedType.SetDynamicScopeType")
 }
