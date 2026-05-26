@@ -1,0 +1,10 @@
+# A class type parameter cannot satisfy an interface that fixes the
+# argument concretely; the parameter is rigid at the declaration site.
+
+interface Container[a] {
+  pub item: a
+}
+
+type Weird[a] implements Container[Int!] {
+  pub item: a
+}

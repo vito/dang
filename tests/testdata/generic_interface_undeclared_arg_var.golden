@@ -1,0 +1,11 @@
+[1m[31mError:[0m type variable "c" at position 0 in `implements Container` is not declared as a type parameter of Bad
+  [2m[34m--> errors/generic_interface_undeclared_arg_var.dang:8:21[0m
+ [2m    |[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0mtype Bad implements Container[c] {
+[2m                           [31m^^^^^^^^^^^^[0m
+ [2m  9 |   pub item: String![0m
+ [2m 10 | }[0m
+ [2m    |[0m
+

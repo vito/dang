@@ -1178,7 +1178,12 @@ func (m *Module) CheckDirectiveConflict(directiveName string) []string {
 // - Argument types must be contravariant (implementation can be more general)
 // - All interface arguments must be present
 // - Additional arguments must be optional
-func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+//
+// `rigid` lists type variables that must NOT be bound during the
+// subtype/supertype checks — typically the implementing class's own type
+// parameters, which are chosen at construction time and cannot be
+// specialized by interface validation.
+func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string, rigid []hm.TypeVariable) error {
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
 	classFn, classIsFn := classFieldType.(*hm.FunctionType)
@@ -1187,7 +1192,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	if !ifaceIsFn {
 		if !classIsFn {
 			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
+			if !rigidSubtypeOf(classFieldType, ifaceFieldType, rigid) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, classFieldType, ifaceFieldType)
 			}
@@ -1210,7 +1215,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
 		// Compare the return type with the class field type
-		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
+		if !rigidSubtypeOf(classFieldType, ifaceRetType, rigid) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, classFieldType, ifaceRetType)
 		}
@@ -1226,7 +1231,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	classRetType := classFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
+	if !rigidSubtypeOf(classRetType, ifaceRetType, rigid) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
 			fieldName, classRetType, ifaceRetType)
 	}
@@ -1254,7 +1259,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// For contravariance: class arg type must be a supertype of interface arg type
 		// This means: if interface requires String!, class can accept String or String!
 		// But if interface requires String, class must accept String (can't require String!)
-		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
+		if !rigidSubtypeOf(ifaceArgType, classArgType, rigid) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
 		}
@@ -1275,4 +1280,21 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	}
 
 	return nil
+}
+
+// rigidSubtypeOf reports whether sub is assignable to super without binding
+// any of the listed rigid type variables. When rigid is empty it matches
+// hm.IsSubtypeOf exactly; otherwise it consults the substitution returned
+// by Assignable and rejects bindings that would touch a rigid variable.
+func rigidSubtypeOf(sub, super hm.Type, rigid []hm.TypeVariable) bool {
+	subs, err := hm.Assignable(sub, super)
+	if err != nil {
+		return false
+	}
+	for _, tv := range rigid {
+		if _, bound := subs.Get(tv); bound {
+			return false
+		}
+	}
+	return true
 }

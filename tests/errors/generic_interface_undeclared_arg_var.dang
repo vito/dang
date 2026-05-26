@@ -1,0 +1,10 @@
+# An `implements` clause cannot reference a type variable that is not
+# declared as a class type parameter.
+
+interface Container[a] {
+  pub item: a
+}
+
+type Bad implements Container[c] {
+  pub item: String!
+}

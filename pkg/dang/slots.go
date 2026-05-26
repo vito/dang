@@ -708,6 +708,25 @@ func (c *ClassDecl) validateInterfaceImplementations(ctx context.Context, classM
 		return nil
 	}
 
+	// Reject type variables in the implements clause that aren't declared
+	// as class type parameters. Without this check, `type Bad implements
+	// Container[c] { pub item: String! }` would silently bind `c` during
+	// validation and then surface Bad as a Container of any type.
+	if at, ok := ifaceType.(*AppliedType); ok {
+		for i, arg := range at.Args {
+			tv, isTV := arg.(hm.TypeVariable)
+			if !isTV {
+				continue
+			}
+			if !typeVarInList(tv, classMod.TypeParams) {
+				return WrapInferError(
+					fmt.Errorf("type variable %q at position %d in `implements %s` is not declared as a type parameter of %s", string(tv), i, ifaceRef.Name, classMod.Name()),
+					ifaceRef,
+				)
+			}
+		}
+	}
+
 	// ifaceEnv reads field schemes with class-level type arguments
 	// already substituted when the reference is to a generic interface.
 	var ifaceEnv Env
@@ -739,8 +758,10 @@ func (c *ClassDecl) validateInterfaceImplementations(ctx context.Context, classM
 		ifaceFieldType, _ := fieldScheme.Type()
 		classFieldType, _ := classFieldScheme.Type()
 
-		// Validate field type compatibility
-		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceMod.String(), classMod.String()); err != nil {
+		// Validate field type compatibility, treating the class's own type
+		// parameters as rigid so an implementation can't satisfy the
+		// interface only by binding a class param.
+		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceMod.String(), classMod.String(), classMod.TypeParams); err != nil {
 			return WrapInferError(err, ifaceRef)
 		}
 	}
@@ -770,6 +791,7 @@ func typeVarArgs(tvs []hm.TypeVariable) []hm.Type {
 	}
 	return args
 }
+
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots and private
 // required slots (no default) as constructor parameters and returns the filtered forms that

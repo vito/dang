@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "item": type a is not compatible with interface type Int!
+  [2m[34m--> errors/generic_interface_class_param_not_rigid.dang:8:26[0m
+ [2m    |[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0mtype Weird[a] implements Container[Int!] {
+[2m                                [31m^^^^^^^^^^^^^^^[0m
+ [2m  9 |   pub item: a[0m
+ [2m 10 | }[0m
+ [2m    |[0m
+
