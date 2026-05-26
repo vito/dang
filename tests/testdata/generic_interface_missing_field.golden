@@ -1,0 +1,11 @@
+[1m[31mError:[0m class Box is missing `size(): Int!`, required by interface Container[a]
+  [2m[34m--> errors/generic_interface_missing_field.dang:9:24[0m
+ [2m    |[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0mtype Box[a] implements Container[a] {
+[2m                              [31m^^^^^^^^^^^^[0m
+ [2m 10 |   pub item: a[0m
+ [2m 11 | }[0m
+ [2m    |[0m
+

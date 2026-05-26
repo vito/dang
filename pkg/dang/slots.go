@@ -335,7 +335,10 @@ type ClassDecl struct {
 	Name       *Symbol
 	Value      *Block
 	TypeParams []hm.TypeVariable
-	Implements []*Symbol
+	// Implements lists the interfaces this class declares. Each entry is
+	// a NamedTypeNode so it can carry type arguments for generic
+	// interfaces, e.g. `implements Container[a]`.
+	Implements []*NamedTypeNode
 	Visibility Visibility
 	Directives []*DirectiveApplication
 	DocString  string
@@ -504,12 +507,6 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		if err := c.validateTypeParams(); err != nil {
 			return err
 		}
-		if len(c.TypeParams) > 0 && len(c.Implements) > 0 {
-			return WrapInferError(
-				fmt.Errorf("generic type %s cannot declare `implements`; generic interfaces are not supported", c.Name.Name),
-				c.Name,
-			)
-		}
 		class.TypeParams = c.TypeParams
 		return nil
 	}
@@ -546,29 +543,29 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// registered by pass 0.
 	if len(c.Implements) > 0 {
 		classMod := class
-		for _, ifaceSym := range c.Implements {
-			ifaceType, found := mod.NamedType(ifaceSym.Name)
-			if !found {
+		for _, ifaceRef := range c.Implements {
+			ifaceType, err := ifaceRef.Infer(ctx, inferEnv, fresh)
+			if err != nil {
+				return err
+			}
+
+			ifaceMod := interfaceModuleOf(ifaceType)
+			if ifaceMod == nil || ifaceMod.Kind != InterfaceKind {
 				return WrapInferError(
-					fmt.Errorf("interface %s not found", ifaceSym.Name),
-					ifaceSym,
+					fmt.Errorf("%s is not an interface", ifaceRef.Name),
+					ifaceRef,
 				)
 			}
 
-			ifaceMod, ok := ifaceType.(*Module)
-			if !ok || ifaceMod.Kind != InterfaceKind {
-				return WrapInferError(
-					fmt.Errorf("%s is not an interface", ifaceSym.Name),
-					ifaceSym,
-				)
+			// Store the (possibly applied) interface type so substitution is
+			// preserved when validating fields and listing supertypes. The
+			// reverse implementer index is only maintained for locally owned
+			// interfaces; Prelude interfaces are shared process-wide and must
+			// not be mutated by per-module declarations.
+			if env, ok := ifaceType.(Env); ok {
+				classMod.AddInterface(env)
 			}
-
-			// Add "blindly" initially, we'll validate later. The reverse
-			// implementer index is only maintained for locally owned interfaces;
-			// Prelude interfaces are shared process-wide and must not be mutated
-			// by per-module declarations.
-			classMod.AddInterface(ifaceType)
-			if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
+			if localIface, found := mod.LocalNamedType(ifaceRef.Name); found && localIface == ifaceMod {
 				ifaceMod.AddImplementer(classMod)
 			}
 		}
@@ -663,8 +660,8 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	// Validate interface implementations after fields have been inferred
 	if len(c.Implements) > 0 {
 		classMod := c.Inferred
-		for _, ifaceSym := range c.Implements {
-			if err := c.validateInterfaceImplementations(classMod, mod, ifaceSym); err != nil {
+		for _, ifaceRef := range c.Implements {
+			if err := c.validateInterfaceImplementations(ctx, classMod, inferEnv, fresh, ifaceRef); err != nil {
 				return nil, err
 			}
 		}
@@ -673,24 +670,57 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	return c.ConstructorFnType, newBodyErr
 }
 
-// validateInterfaceImplementations checks that this type correctly implements all declared interfaces
-func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, ifaceSym *Symbol) error {
-	ifaceType, found := env.NamedType(ifaceSym.Name)
-	if !found {
-		// no error; this is raised in Hoist instead
+// interfaceModuleOf returns the underlying interface Module for an interface
+// reference, whether the type is a bare *Module or an *AppliedType wrapping
+// a generic interface.
+func interfaceModuleOf(t hm.Type) *Module {
+	switch tt := t.(type) {
+	case *Module:
+		return tt
+	case *AppliedType:
+		return tt.Base
+	}
+	return nil
+}
+
+// validateInterfaceImplementations checks that this type correctly implements
+// all declared interfaces. For a generic interface like `Container[a]` the
+// `ifaceRef` may carry type arguments; field schemes pulled from the applied
+// interface already have the substitution applied.
+func (c *ClassDecl) validateInterfaceImplementations(ctx context.Context, classMod *Module, env hm.Env, fresh hm.Fresher, ifaceRef *NamedTypeNode) error {
+	ifaceType, err := ifaceRef.Infer(ctx, env, fresh)
+	if err != nil {
+		// no error here; raised in Hoist instead
 		return nil
 	}
 
-	ifaceMod, ok := ifaceType.(*Module)
-	if !ok || ifaceMod.Kind != InterfaceKind {
-		// no error; this is raised in Hoist instead
+	ifaceMod := interfaceModuleOf(ifaceType)
+	if ifaceMod == nil || ifaceMod.Kind != InterfaceKind {
 		return nil
+	}
+
+	// ifaceEnv reads field schemes with class-level type arguments
+	// already substituted when the reference is to a generic interface.
+	var ifaceEnv Env
+	if e, ok := ifaceType.(Env); ok {
+		ifaceEnv = e
+	} else {
+		ifaceEnv = ifaceMod
+	}
+
+	// receiverEnv reads the implementing class's field schemes. For a
+	// generic class, methods reference its type parameters as free
+	// variables; the validator compares those against the substituted
+	// interface field types.
+	var receiverEnv Env = classMod
+	if len(classMod.TypeParams) > 0 {
+		receiverEnv = &AppliedType{Base: classMod, Args: typeVarArgs(classMod.TypeParams)}
 	}
 
 	var missingFields []string
 	// Check that all interface fields are present in the class
-	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
-		classFieldScheme, classHasField := classMod.SchemeOf(field)
+	for field, fieldScheme := range ifaceEnv.Bindings(PrivateVisibility) {
+		classFieldScheme, classHasField := receiverEnv.SchemeOf(field)
 		if !classHasField {
 			missingFields = append(missingFields, field)
 			continue
@@ -702,7 +732,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 
 		// Validate field type compatibility
 		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceMod.String(), classMod.String()); err != nil {
-			return WrapInferError(err, ifaceSym)
+			return WrapInferError(err, ifaceRef)
 		}
 	}
 
@@ -710,16 +740,26 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		errs := &InferenceErrors{}
 		sort.Strings(missingFields)
 		for _, field := range missingFields {
-			fieldScheme, _ := ifaceMod.SchemeOf(field)
+			fieldScheme, _ := ifaceEnv.SchemeOf(field)
 			errs.Add(WrapInferError(
-				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", classMod, field, fieldScheme, ifaceMod),
-				ifaceSym,
+				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", classMod, field, fieldScheme, ifaceType),
+				ifaceRef,
 			))
 		}
 		return errs
 	}
 
 	return nil
+}
+
+// typeVarArgs lifts a slice of TypeVariables to a slice of hm.Type, for use
+// in constructing an AppliedType that re-uses the class's own type params.
+func typeVarArgs(tvs []hm.TypeVariable) []hm.Type {
+	args := make([]hm.Type, len(tvs))
+	for i, tv := range tvs {
+		args[i] = tv
+	}
+	return args
 }
 
 // extractConstructorParametersAndCleanBody extracts public non-function slots and private
@@ -769,15 +809,23 @@ func classSelfType(class *Module) hm.Type {
 // validateTypeParams checks the class's declared type parameters for
 // duplicates. Names are limited to single lowercase letters by the parser.
 func (c *ClassDecl) validateTypeParams() error {
-	if len(c.TypeParams) == 0 {
+	return checkDuplicateTypeParams(c.TypeParams, "type", c.Name)
+}
+
+func (i *InterfaceDecl) validateTypeParams() error {
+	return checkDuplicateTypeParams(i.TypeParams, "interface", i.Name)
+}
+
+func checkDuplicateTypeParams(params []hm.TypeVariable, kind string, name *Symbol) error {
+	if len(params) == 0 {
 		return nil
 	}
-	seen := make(map[hm.TypeVariable]bool, len(c.TypeParams))
-	for _, p := range c.TypeParams {
+	seen := make(map[hm.TypeVariable]bool, len(params))
+	for _, p := range params {
 		if seen[p] {
 			return WrapInferError(
-				fmt.Errorf("duplicate type parameter %q in type %s", string(p), c.Name.Name),
-				c.Name,
+				fmt.Errorf("duplicate type parameter %q in %s %s", string(p), kind, name.Name),
+				name,
 			)
 		}
 		seen[p] = true
@@ -1166,6 +1214,7 @@ type InterfaceDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
 	Value      *Block
+	TypeParams []hm.TypeVariable
 	Visibility Visibility
 	Directives []*DirectiveApplication
 	DocString  string
@@ -1212,6 +1261,10 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 	// Pass 0: Register the interface type.
 	if pass == 0 {
+		if err := i.validateTypeParams(); err != nil {
+			return err
+		}
+		iface.TypeParams = i.TypeParams
 		// Add the interface type to the environment so it can be referenced.
 		interfaceScheme := hm.NewScheme(nil, iface)
 		env.Add(i.Name.Name, interfaceScheme)

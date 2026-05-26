@@ -264,10 +264,11 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   }
 }
 
-Interface <- InterfaceToken _ name:Symbol _ block:HeadersBlock {
+Interface <- InterfaceToken _ name:Symbol params:TypeParamList? _ block:HeadersBlock {
   return &InterfaceDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
+    TypeParams: sliceOf[hm.TypeVariable](params),
     Visibility: PublicVisibility,
     Loc: c.Loc(),
   }, nil
@@ -289,7 +290,7 @@ Class <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* Ty
     Name: name.(*Symbol),
     Value: block.(*Block),
     TypeParams: sliceOf[hm.TypeVariable](params),
-    Implements: sliceOf[*Symbol](implements),
+    Implements: sliceOf[*NamedTypeNode](implements),
     Visibility: PublicVisibility, // TODO
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
@@ -305,8 +306,8 @@ TypeParam <- name:TypeVarName {
 TypeVarName <- [a-z] [a-zA-Z0-9_]* {
   return string(c.text), nil
 }
-Implements <-  ImplementsToken _ first:Symbol rest:(_ AmpersandToken _ i:Symbol { return i, nil })* {
-  return sliceOfPrepend[*Symbol](first, rest), nil
+Implements <-  ImplementsToken _ first:NamedType rest:(_ AmpersandToken _ i:NamedType { return i, nil })* {
+  return sliceOfPrepend[*NamedTypeNode](first, rest), nil
 }
 ImplementsToken <- "implements" !WordChar
 

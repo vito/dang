@@ -1,0 +1,13 @@
+# Box[Int!] is a Container[Int!], not a Container[String!].
+# Invariance on the interface's type argument must be enforced.
+
+interface Container[a] {
+  pub item: a
+}
+
+type Box[a] implements Container[a] {
+  pub item: a
+}
+
+pub b = Box(42)
+pub bad: Container[String!]! = b

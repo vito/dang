@@ -1,0 +1,10 @@
+# Generic interface applied with the wrong number of arguments
+# in an implements clause.
+
+interface Container[a] {
+  pub item: a
+}
+
+type Box[a] implements Container[a, Int!] {
+  pub item: a
+}

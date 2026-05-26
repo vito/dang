@@ -1,0 +1,11 @@
+# Class declares it implements a generic interface but does not
+# supply every member required by the substituted interface.
+
+interface Container[a] {
+  pub item: a
+  pub size: Int!
+}
+
+type Box[a] implements Container[a] {
+  pub item: a
+}

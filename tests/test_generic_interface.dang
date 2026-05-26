@@ -1,0 +1,53 @@
+# Generic interface declarations and implementations.
+
+interface Container[a] {
+  pub item: a
+}
+
+# A generic type implementing a generic interface, substituting
+# its own type parameter for the interface's.
+type Box[a] implements Container[a] {
+  pub item: a
+}
+
+pub intBox = Box(1)
+pub strBox = Box("hello")
+
+assert { intBox.item == 1 }
+assert { strBox.item == "hello" }
+
+# A Box[Int!] is usable wherever a Container[Int!] is expected.
+pub viewInt: Container[Int!]! = intBox
+pub viewStr: Container[String!]! = strBox
+assert { viewInt.item == 1 }
+assert { viewStr.item == "hello" }
+
+# A concrete type can bind the interface's parameter directly.
+type IntBox implements Container[Int!] {
+  pub item: Int!
+}
+
+pub ib = IntBox(99)
+pub viewIb: Container[Int!]! = ib
+assert { viewIb.item == 99 }
+
+# Multiple type parameters in an interface.
+interface Mapping[k, v] {
+  pub key: k
+  pub value: v
+}
+
+type Entry[k, v] implements Mapping[k, v] {
+  pub key: k
+  pub value: v
+}
+
+pub e = Entry("name", 5)
+assert { e.key == "name" }
+assert { e.value == 5 }
+
+pub viewEntry: Mapping[String!, Int!]! = e
+assert { viewEntry.key == "name" }
+assert { viewEntry.value == 5 }
+
+print("Generic interface tests passed!")

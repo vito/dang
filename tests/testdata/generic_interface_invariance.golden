@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Box[Int!]! as Container[String!]!
+  [2m[34m--> errors/generic_interface_invariance.dang:13:32[0m
+ [2m    |[0m
+ [2m 11 | [0m
+ [2m 12 | pub b = Box(42)[0m
+ [2m[34m[1m 13 | [0mpub bad: Container[String!]! = b
+[2m                                      [31m^[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

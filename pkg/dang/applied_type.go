@@ -115,8 +115,19 @@ func (t *AppliedType) Eq(other Type) bool {
 }
 
 func (t *AppliedType) Supertypes() []Type {
-	// Generic interfaces/unions aren't supported yet, so no supertypes.
-	return nil
+	// Walk the base's interfaces and unions, applying this instance's
+	// argument substitution so a generic interface reference like
+	// `Container[a]` becomes `Container[Int!]` for a Box[Int!] receiver.
+	bases := t.Base.Supertypes()
+	if len(bases) == 0 {
+		return nil
+	}
+	subs := t.substitutions()
+	out := make([]Type, len(bases))
+	for i, s := range bases {
+		out[i] = s.Apply(subs).(Type)
+	}
+	return out
 }
 
 // SameTypeConstructor reports whether two AppliedTypes share the same base.

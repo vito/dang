@@ -949,7 +949,7 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 			if i > 0 {
 				f.write(" & ")
 			}
-			f.write(impl.Name)
+			f.formatTypeNode(impl)
 		}
 	}
 
@@ -1009,6 +1009,16 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 
 	f.write("interface ")
 	f.write(i.Name.Name)
+	if len(i.TypeParams) > 0 {
+		f.write("[")
+		for j, p := range i.TypeParams {
+			if j > 0 {
+				f.write(", ")
+			}
+			f.write(string(p))
+		}
+		f.write("]")
+	}
 	f.write(" {")
 	if i.Name.Loc != nil {
 		f.nl(i.Name.Loc.Line)
