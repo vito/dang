@@ -1344,7 +1344,11 @@ func (i *InterfaceDecl) Walk(fn func(Node) bool) {
 type UnionDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
-	Members    []*Symbol
+	TypeParams []hm.TypeVariable
+	// Members lists the union's constituent types. Each entry is a
+	// NamedTypeNode so it can carry type arguments for generic union
+	// memberships, e.g. `Lft[a]` in `union Either[a, b] = Lft[a] | Rgt[b]`.
+	Members    []*NamedTypeNode
 	Visibility Visibility
 	DocString  string
 	Loc        *SourceLocation
@@ -1361,9 +1365,9 @@ func (u *UnionDecl) DeclaredSymbols() []string {
 }
 
 func (u *UnionDecl) ReferencedSymbols() []string {
-	symbols := make([]string, len(u.Members))
-	for i, m := range u.Members {
-		symbols[i] = m.Name
+	var symbols []string
+	for _, m := range u.Members {
+		symbols = append(symbols, m.ReferencedSymbols()...)
 	}
 	return symbols
 }
@@ -1389,32 +1393,19 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	}
 
 	if pass == 0 {
+		if err := u.validateTypeParams(); err != nil {
+			return err
+		}
+		unionMod.TypeParams = u.TypeParams
 		// Pass 0: Register the union type so it can be referenced.
 		env.Add(u.Name.Name, hm.NewScheme(nil, unionMod))
 		return nil
 	}
 
-	// Pass 1: Link member names. This is still signature information; no
-	// expression bodies are inferred.
-	for _, memberSym := range u.Members {
-		memberType, found := mod.NamedType(memberSym.Name)
-		if !found {
-			continue
-		}
-
-		memberMod, ok := memberType.(*Module)
-		if !ok || memberMod.Kind != ObjectKind {
-			continue
-		}
-
-		if localMember, found := mod.LocalNamedType(memberSym.Name); found && localMember == memberType {
-			unionMod.LinkMember(memberType)
-		} else {
-			unionMod.AddMember(memberType)
-		}
-	}
-
-	return nil
+	// Pass 1: Resolve each member's type and link it to the union, recording
+	// the supertype template that lets Lft[Int!] surface Either[Int!, b] as
+	// a supertype.
+	return u.resolveMembers(ctx, mod, unionMod, fresh)
 }
 
 func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
@@ -1430,39 +1421,6 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		}
 
 		unionMod := unionType.(*Module)
-
-		// Resolve and link each member type
-		for _, memberSym := range u.Members {
-			memberType, found := mod.NamedType(memberSym.Name)
-			if !found {
-				return nil, NewInferError(
-					fmt.Errorf("union member %s not found", memberSym.Name),
-					memberSym,
-				)
-			}
-
-			memberMod, ok := memberType.(*Module)
-			if !ok {
-				return nil, NewInferError(
-					fmt.Errorf("union member %s is not a type", memberSym.Name),
-					memberSym,
-				)
-			}
-
-			if memberMod.Kind != ObjectKind {
-				return nil, NewInferError(
-					fmt.Errorf("union member %s must be an object type, got %s", memberSym.Name, memberMod.Kind),
-					memberSym,
-				)
-			}
-
-			if localMember, found := mod.LocalNamedType(memberSym.Name); found && localMember == memberType {
-				unionMod.LinkMember(memberType)
-			} else {
-				unionMod.AddMember(memberType)
-			}
-		}
-
 		u.Inferred = unionMod
 		u.SetInferredType(unionMod)
 
@@ -1475,6 +1433,143 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	})
 }
 
+func (u *UnionDecl) validateTypeParams() error {
+	return checkDuplicateTypeParams(u.TypeParams, "union", u.Name)
+}
+
+// resolveMembers resolves each member's type reference, validates it, and
+// links it to the union with a supertype template that bakes in any
+// member-level type substitutions.
+func (u *UnionDecl) resolveMembers(ctx context.Context, mod Env, unionMod *Module, fresh hm.Fresher) error {
+	seenBases := make(map[*Module]*NamedTypeNode, len(u.Members))
+	for _, memberRef := range u.Members {
+		memberType, err := memberRef.Infer(ctx, mod, fresh)
+		if err != nil {
+			return WrapInferError(err, memberRef)
+		}
+
+		memberMod := unionMemberModuleOf(memberType)
+		if memberMod == nil {
+			return NewInferError(
+				fmt.Errorf("union member %s is not a type", memberRef.Name),
+				memberRef,
+			)
+		}
+		if memberMod.Kind != ObjectKind {
+			return NewInferError(
+				fmt.Errorf("union member %s must be an object type, got %s", memberRef.Name, memberMod.Kind),
+				memberRef,
+			)
+		}
+
+		if prior, dup := seenBases[memberMod]; dup {
+			_ = prior
+			return NewInferError(
+				fmt.Errorf("union member %s appears more than once; case discrimination would be ambiguous", memberRef.Name),
+				memberRef,
+			)
+		}
+		seenBases[memberMod] = memberRef
+
+		if err := u.validateMemberArgs(memberRef, memberType, memberMod); err != nil {
+			return err
+		}
+
+		template := u.buildMemberTemplate(unionMod, memberMod, memberType, fresh)
+
+		localMember, foundLocal := mod.LocalNamedType(memberRef.Name)
+		if foundLocal && localMember == memberMod {
+			unionMod.LinkMemberAs(memberMod, template)
+		} else {
+			unionMod.AddMember(memberMod)
+		}
+	}
+	return nil
+}
+
+// validateMemberArgs checks that each type argument in the member reference
+// is either a type variable drawn from the union's TypeParams or a concrete
+// type. Reject a member referencing a type variable not in scope.
+func (u *UnionDecl) validateMemberArgs(memberRef *NamedTypeNode, memberType hm.Type, memberMod *Module) error {
+	at, ok := memberType.(*AppliedType)
+	if !ok {
+		return nil
+	}
+	for i, arg := range at.Args {
+		tv, isTV := arg.(hm.TypeVariable)
+		if !isTV {
+			continue
+		}
+		if !typeVarInList(tv, u.TypeParams) {
+			return NewInferError(
+				fmt.Errorf("union member %s references type variable %q at position %d not in union %s's type parameters", memberRef.Name, string(tv), i, u.Name.Name),
+				memberRef,
+			)
+		}
+	}
+	return nil
+}
+
+// buildMemberTemplate constructs the supertype template recorded on the
+// member. For a non-generic union the template is the union module itself.
+// For a generic union with member like `Lft[a]`, the template is
+// `Either[a_lft, β]` where `a_lft` is Lft's TypeParam corresponding to the
+// position bound by the member declaration, and `β` is a fresh TypeVariable
+// (kept free at the member's scope, to be bound at the call site).
+//
+// Fresh names guard against collisions between member TypeParams and union
+// TypeParams: e.g. for `union Triple[a, b, c] = Rgt[c]` with `type Rgt[b]`,
+// the member's `b` would clash with the union's `b` if we kept it as-is.
+func (u *UnionDecl) buildMemberTemplate(unionMod, memberMod *Module, memberType hm.Type, fresh hm.Fresher) Env {
+	if len(u.TypeParams) == 0 {
+		return unionMod
+	}
+	args := make([]hm.Type, len(u.TypeParams))
+	bound := make([]bool, len(u.TypeParams))
+	if at, ok := memberType.(*AppliedType); ok {
+		for memberPos, marg := range at.Args {
+			mtv, isTV := marg.(hm.TypeVariable)
+			if !isTV {
+				continue
+			}
+			for unionPos, utp := range u.TypeParams {
+				if utp == mtv && memberPos < len(memberMod.TypeParams) {
+					args[unionPos] = memberMod.TypeParams[memberPos]
+					bound[unionPos] = true
+				}
+			}
+		}
+	}
+	for i := range u.TypeParams {
+		if !bound[i] {
+			args[i] = fresh.Fresh()
+		}
+	}
+	return &AppliedType{Base: unionMod, Args: args}
+}
+
+// unionMemberModuleOf returns the underlying *Module for a union member
+// reference, which may be either a bare *Module (non-generic member) or an
+// *AppliedType (generic member with concrete or variable type args).
+func unionMemberModuleOf(t hm.Type) *Module {
+	switch tt := t.(type) {
+	case *Module:
+		return tt
+	case *AppliedType:
+		return tt.Base
+	}
+	return nil
+}
+
+func typeVarInList(tv hm.TypeVariable, params []hm.TypeVariable) bool {
+	for _, p := range params {
+		if p == tv {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	// Unions are pure type declarations - register the union module
 	unionModule := NewModuleValue(u.Inferred)
@@ -1485,8 +1580,5 @@ func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 func (u *UnionDecl) Walk(fn func(Node) bool) {
 	if !fn(u) {
 		return
-	}
-	for _, m := range u.Members {
-		fn(m)
 	}
 }

@@ -1,0 +1,7 @@
+# Generic union with duplicate type parameters
+
+type Lft[a] {
+  pub value: a
+}
+
+union Bad[a, a] = Lft[a]

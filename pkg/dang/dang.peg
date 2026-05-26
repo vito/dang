@@ -275,10 +275,11 @@ Interface <- InterfaceToken _ name:Symbol params:TypeParamList? _ block:HeadersB
 }
 InterfaceToken <- "interface" !WordChar
 
-Union <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
+Union <- UnionToken _ name:Symbol params:TypeParamList? _ '=' _ first:NamedType rest:(_ '|' _ m:NamedType { return m, nil })* {
   return &UnionDecl{
     Name:       name.(*Symbol),
-    Members:    sliceOfPrepend[*Symbol](first, rest),
+    TypeParams: sliceOf[hm.TypeVariable](params),
+    Members:    sliceOfPrepend[*NamedTypeNode](first, rest),
     Visibility: PublicVisibility,
     Loc:        c.Loc(),
   }, nil

@@ -1,0 +1,10 @@
+[1m[31mError:[0m union member Lft references type variable "c" at position 0 not in union Bad's type parameters
+  [2m[34m--> errors/generic_union_member_out_of_scope_var.dang:7:16[0m
+ [2m    |[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0munion Bad[a] = Lft[c]
+[2m                      [31m^^^^^^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

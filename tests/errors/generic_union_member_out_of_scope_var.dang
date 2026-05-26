@@ -1,0 +1,7 @@
+# A union member binds a type variable not in the union's params.
+
+type Lft[a] {
+  pub value: a
+}
+
+union Bad[a] = Lft[c]

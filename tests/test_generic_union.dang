@@ -1,0 +1,38 @@
+# Generic union declarations and instantiation.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+# A member can be assigned to a slot typed as the applied union.
+pub e: Either[Int!, String!]! = Lft(42)
+pub f: Either[Int!, String!]! = Rgt("ok")
+
+# A union with a non-generic member alongside a generic one.
+type Nothing {
+  pub label: String! = "nothing"
+}
+
+union Maybe[a] = Lft[a] | Nothing
+
+pub m1: Maybe[Int!]! = Lft(7)
+pub m2: Maybe[Int!]! = Nothing
+
+# Multi-parameter unions with members binding subsets.
+type Pair[a, b] {
+  pub fst: a
+  pub snd: b
+}
+
+union Triple[a, b, c] = Pair[a, b] | Rgt[c]
+
+pub t1: Triple[Int!, String!, Boolean!]! = Pair(1, "two")
+pub t2: Triple[Int!, String!, Boolean!]! = Rgt(true)
+
+print("Generic union tests passed!")

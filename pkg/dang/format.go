@@ -1045,12 +1045,22 @@ func (f *Formatter) formatUnionDecl(u *UnionDecl) {
 
 	f.write("union ")
 	f.write(u.Name.Name)
+	if len(u.TypeParams) > 0 {
+		f.write("[")
+		for i, p := range u.TypeParams {
+			if i > 0 {
+				f.write(", ")
+			}
+			f.write(string(p))
+		}
+		f.write("]")
+	}
 	f.write(" = ")
 	for i, member := range u.Members {
 		if i > 0 {
 			f.write(" | ")
 		}
-		f.write(member.Name)
+		f.formatTypeNode(member)
 	}
 }
 

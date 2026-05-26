@@ -1,0 +1,7 @@
+# Same base referenced twice in a union with different args.
+
+type Lft[a] {
+  pub value: a
+}
+
+union Bad[a, b] = Lft[a] | Lft[b]

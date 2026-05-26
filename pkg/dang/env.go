@@ -1082,13 +1082,43 @@ func (m *Module) AddMember(member Env) {
 // environment; Prelude modules are shared process-wide and must not record
 // per-module union declarations.
 func (m *Module) LinkMember(member Env) {
+	m.LinkMemberAs(member, m)
+}
+
+// LinkMemberAs is like LinkMember but lets the caller supply a custom
+// supertype "template" recorded on the member. For non-generic unions the
+// template is the union module itself. For a generic union like
+// `Either[a, b] = Lft[a] | Rgt[b]`, the template stored on Lft is
+// `Either[a, b]` (an *AppliedType whose `a` is Lft's own type variable and
+// whose `b` is Either's, still free at the member's scope). When the member
+// is later instantiated (e.g. as `Lft[Int!]`), AppliedType.Supertypes
+// substitutes the bound vars and leaves the union-level free variables for
+// the call site to bind.
+func (m *Module) LinkMemberAs(member Env, template Env) {
 	m.AddMember(member)
-	if memberMod, ok := member.(*Module); ok {
-		if slices.Contains(memberMod.unions, Env(m)) {
+	memberMod, ok := member.(*Module)
+	if !ok {
+		return
+	}
+	for _, existing := range memberMod.unions {
+		if unionModuleOf(existing) == m {
 			return
 		}
-		memberMod.unions = append(memberMod.unions, m)
 	}
+	memberMod.unions = append(memberMod.unions, template)
+}
+
+// unionModuleOf returns the underlying *Module for a union supertype entry,
+// which may be either a bare *Module (non-generic union) or an *AppliedType
+// (generic union with the member's args baked in).
+func unionModuleOf(t Env) *Module {
+	switch tt := t.(type) {
+	case *Module:
+		return tt
+	case *AppliedType:
+		return tt.Base
+	}
+	return nil
 }
 
 // GetMembers returns the member types of this union (for union modules)

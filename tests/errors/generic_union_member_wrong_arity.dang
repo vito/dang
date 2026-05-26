@@ -1,0 +1,7 @@
+# Generic union member with wrong arity.
+
+type Lft[a] {
+  pub value: a
+}
+
+union Bad[a] = Lft[a, b]
