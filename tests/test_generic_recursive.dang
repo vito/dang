@@ -1,0 +1,32 @@
+# Recursive generic types with nullable terminator. This exercises
+# the corner where a `null` argument means the inner generic type's
+# parameter must be inferred from a SIBLING argument, then matched
+# invariantly against an applied generic in a containing position.
+
+type Box[a] {
+  pub value: a
+}
+
+type Tree[a] {
+  pub value: a
+  pub child: Box[Tree[a]!]
+}
+
+pub leaf = Tree(3, null)
+pub mid = Tree(2, Box(leaf))
+pub root = Tree(1, Box(mid))
+
+assert { root.value == 1 }
+assert { root.child.value.value == 2 }
+assert { root.child.value.child.value.value == 3 }
+
+# A non-null Box around a generic is also assignable to a nullable
+# slot of the same applied type.
+type Cell[a] {
+  pub data: Box[a]
+}
+
+pub c1 = Cell(Box("hi"))
+assert { c1.data.value == "hi" }
+
+print("Recursive generic tests passed!")

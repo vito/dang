@@ -138,3 +138,17 @@ func TestAssignableRejectsConstructorAgainstNonConstructor(t *testing.T) {
 		t.Fatalf("NonNull(Int) should not unify with Box[Int]")
 	}
 }
+
+// NonNull(Box[T]) should remain assignable to Box[T] via the
+// supertype path. The constructor-aware branch previously short-
+// circuited and returned an error before supertype lookup, breaking
+// cases like passing a non-null generic to a nullable parameter.
+func TestAssignableNonNullGenericToNullableGeneric(t *testing.T) {
+	intT := simpleType("Int")
+	box := &genericType{base: "Box", args: []Type{intT}}
+	nnBox := NonNullType{Type: box}
+
+	if _, err := Assignable(nnBox, box); err != nil {
+		t.Fatalf("NonNull(Box[Int]) should be assignable to Box[Int]: %v", err)
+	}
+}

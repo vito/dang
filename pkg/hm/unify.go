@@ -65,22 +65,16 @@ func Assignable(have, want Type) (Subs, error) {
 	wantTypes := want.Types()
 
 	if haveTypes != nil && wantTypes != nil {
-		// Both have component types - but we must ensure they're the same
-		// type constructor before unifying components.
-		// For example, NonNullType{Int} and ListType{Int} both have component
-		// types, but they're different constructors and should not unify.
-		//
 		// Types that implement TypeConstructor (e.g. nominal generic
 		// applications) need an explicit base-equality check since their
-		// Go type alone does not distinguish constructors. Their arguments
-		// are also unified invariantly.
+		// Go type alone does not distinguish constructors. Arguments are
+		// also unified invariantly.
 		haveTC, haveHasTC := have.(TypeConstructor)
 		_, wantHasTC := want.(TypeConstructor)
 
-		if haveHasTC || wantHasTC {
-			if !haveHasTC || !wantHasTC || !haveTC.SameTypeConstructor(want) {
-				return nil, UnificationError{have, want}
-			}
+		switch {
+		case haveHasTC && wantHasTC && haveTC.SameTypeConstructor(want):
+			// Same nominal constructor: invariant unify arguments.
 			if len(haveTypes) != len(wantTypes) {
 				return nil, UnificationError{have, want}
 			}
@@ -98,11 +92,22 @@ func Assignable(have, want Type) (Subs, error) {
 				}
 			}
 			return subs, nil
-		}
 
-		// TODO: cleaner way to do this
-		if reflect.TypeOf(have) == reflect.TypeOf(want) {
-			// Check length and unify components
+		case haveHasTC || wantHasTC:
+			// At least one side is a constructed nominal type but they
+			// don't share a constructor (or only one side is). Skip the
+			// reflect.TypeOf composite branch — its component-wise
+			// unification would silently equate different constructors —
+			// and fall through to the supertype/coercion fallback so e.g.
+			// NonNull(Box[T]) → Box[T] resolves via NonNullType's
+			// Supertypes().
+
+		case reflect.TypeOf(have) == reflect.TypeOf(want):
+			// Same concrete Go composite type (e.g. NonNull vs NonNull,
+			// List vs List). For example, NonNullType{Int} and
+			// ListType{Int} both have component types but different
+			// constructors and so should not unify here — they don't
+			// share a Go type either.
 			if len(haveTypes) != len(wantTypes) {
 				return nil, UnificationError{have, want}
 			}
