@@ -694,7 +694,10 @@ func declareVariableSignaturesPhaseResilient(ctx context.Context, variables []No
 		}
 		t, err := slot.DeclareKnownSignature(ctx, env, fresh)
 		if err != nil {
-			errs.Add(err)
+			// Suppress: inferVariablesPhaseResilient will re-attempt the
+			// same inference and surface the error there. Install a
+			// fallback type so downstream references still resolve.
+			assignFallbackType(slot, env, fresh)
 			continue
 		}
 		if t != nil {
