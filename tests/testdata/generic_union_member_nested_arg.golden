@@ -1,0 +1,10 @@
+[1m[31mError:[0m union member Lft at position 0 uses union type parameter "a" inside a composite type [a]!; only direct references like `Lft[a]` are supported
+  [2m[34m--> errors/generic_union_member_nested_arg.dang:13:14[0m
+ [2m    |[0m
+ [2m 11 | }[0m
+ [2m 12 | [0m
+ [2m[34m[1m 13 | [0munion U[a] = Lft[[a]!] | Rgt[a]
+[2m                    [31m^^^^^^^^^[0m
+ [2m 14 | [0m
+ [2m    |[0m
+

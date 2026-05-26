@@ -1,0 +1,13 @@
+# A union member can't mention a union type parameter inside a composite
+# type — the supertype-template builder can't invert that binding, so the
+# union parameter would silently stay free at the call site.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union U[a] = Lft[[a]!] | Rgt[a]

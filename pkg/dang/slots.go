@@ -1519,21 +1519,39 @@ func (u *UnionDecl) resolveMembers(ctx context.Context, mod Env, unionMod *Modul
 }
 
 // validateMemberArgs checks that each type argument in the member reference
-// is either a type variable drawn from the union's TypeParams or a concrete
-// type. Reject a member referencing a type variable not in scope.
+// is either a type variable drawn directly from the union's TypeParams or
+// a fully concrete type. A composite arg that mentions a union type
+// parameter (e.g. `Lft[[a]!]`) is rejected: the template builder cannot
+// invert such bindings, so the resulting supertype would mistakenly treat
+// the union parameter as free at the call site.
 func (u *UnionDecl) validateMemberArgs(memberRef *NamedTypeNode, memberType hm.Type, memberMod *Module) error {
 	at, ok := memberType.(*AppliedType)
 	if !ok {
 		return nil
 	}
 	for i, arg := range at.Args {
-		tv, isTV := arg.(hm.TypeVariable)
-		if !isTV {
+		if tv, isTV := arg.(hm.TypeVariable); isTV {
+			if !typeVarInList(tv, u.TypeParams) {
+				return NewInferError(
+					fmt.Errorf("union member %s references type variable %q at position %d not in union %s's type parameters", memberRef.Name, string(tv), i, u.Name.Name),
+					memberRef,
+				)
+			}
 			continue
 		}
-		if !typeVarInList(tv, u.TypeParams) {
+		// Composite arg: ensure no free type variables remain. A union
+		// type param mentioned inside a list/non-null wrapper can't be
+		// inverted by the template builder; an undeclared variable is a
+		// scope error.
+		for tv := range arg.FreeTypeVar() {
+			if typeVarInList(tv, u.TypeParams) {
+				return NewInferError(
+					fmt.Errorf("union member %s at position %d uses union type parameter %q inside a composite type %s; only direct references like `%s[%s]` are supported", memberRef.Name, i, string(tv), arg, memberRef.Name, string(tv)),
+					memberRef,
+				)
+			}
 			return NewInferError(
-				fmt.Errorf("union member %s references type variable %q at position %d not in union %s's type parameters", memberRef.Name, string(tv), i, u.Name.Name),
+				fmt.Errorf("union member %s at position %d references type variable %q not declared on union %s", memberRef.Name, i, string(tv), u.Name.Name),
 				memberRef,
 			)
 		}
