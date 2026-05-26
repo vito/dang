@@ -316,6 +316,11 @@ func (f *FunDecl) buildScheme(env hm.Env, fnType *hm.FunctionType) (*hm.Scheme, 
 		return hm.Generalize(env, fnType), nil
 	}
 
+	envFree := hm.TypeVarSet{}
+	if env != nil {
+		envFree = env.FreeTypeVar()
+	}
+
 	seen := make(map[hm.TypeVariable]bool, len(f.TypeParams))
 	for _, p := range f.TypeParams {
 		if seen[p] {
@@ -324,13 +329,19 @@ func (f *FunDecl) buildScheme(env hm.Env, fnType *hm.FunctionType) (*hm.Scheme, 
 				f,
 			)
 		}
+		if envFree.Contains(p) {
+			// The enclosing scope (typically a generic class) already
+			// binds this name. Quantifying it again on the method would
+			// shadow the outer binding and make the receiver type
+			// effectively polymorphic at the call site.
+			return nil, NewInferError(
+				fmt.Errorf("type parameter %q on %s shadows a type parameter declared by the enclosing scope; pick a different name", p, f.Named),
+				f,
+			)
+		}
 		seen[p] = true
 	}
 
-	envFree := hm.TypeVarSet{}
-	if env != nil {
-		envFree = env.FreeTypeVar()
-	}
 	sigFree := fnType.FreeTypeVar()
 
 	for tv := range sigFree {

@@ -1,0 +1,12 @@
+# An explicit method type parameter cannot reuse a name already declared
+# by the enclosing class — quantifying it again would shadow the class
+# binding and make the receiver type effectively polymorphic at the
+# call site.
+
+type Box[a] {
+  pub value: a
+
+  pub id[a](): a {
+    value
+  }
+}

@@ -1,0 +1,27 @@
+2 inference errors:
+
+Error 1:
+[1m[31mError:[0m type parameter a on id shadows a type parameter declared by the enclosing scope; pick a different name
+  [2m[34m--> errors/method_type_param_shadows_class.dang:9:3[0m
+ [2m    |[0m
+ [2m  7 |   pub value: a[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0m  pub id[a](): a {
+[2m         [31m^^^^^^^^^^^^^^^^[0m
+ [2m 10 |     value[0m
+ [2m 11 |   }[0m
+ [2m    |[0m
+
+
+Error 2:
+[1m[31mError:[0m type parameter a on id shadows a type parameter declared by the enclosing scope; pick a different name
+  [2m[34m--> errors/method_type_param_shadows_class.dang:9:3[0m
+ [2m    |[0m
+ [2m  7 |   pub value: a[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0m  pub id[a](): a {
+[2m         [31m^^^^^^^^^^^^^^^^[0m
+ [2m 10 |     value[0m
+ [2m 11 |   }[0m
+ [2m    |[0m
+
