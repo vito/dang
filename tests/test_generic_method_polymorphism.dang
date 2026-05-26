@@ -1,0 +1,40 @@
+# Method-local type parameters must instantiate fresh per call site.
+# These tests exercise the cases that the first-cut implementation
+# does not formally quantify method-local vars; the goal is to prove
+# that ad-hoc polymorphism via free type variables still produces
+# correct results across multiple call sites.
+
+type Box[a] {
+  pub value: a
+  pub map(&fn(value: a): b): Box[b]! {
+    Box(fn(value))
+  }
+}
+
+# Same receiver, two different method-local return types
+pub box = Box(1)
+pub asString = box.map { n => toString(n) }
+pub asInt = box.map { n => n + 100 }
+
+assert { asString.value == "1" }
+assert { asInt.value == 101 }
+
+# Different receivers, each with their own method-local type
+pub strBox = Box("hello")
+pub strLen = strBox.map { s => 5 }
+
+pub intBox = Box(42)
+pub intSquared = intBox.map { n => n * n }
+
+assert { strLen.value == 5 }
+assert { intSquared.value == 1764 }
+
+# Chained calls, shifting the type at each link
+pub chained = Box(1).map { n => toString(n) }.map { s => s + "!" }
+assert { chained.value == "1!" }
+
+# Explicit annotations on intermediate and result
+pub annotated: Box[String!]! = Box(42).map { n => "n=" + toString(n) }
+assert { annotated.value == "n=42" }
+
+print("Generic method polymorphism tests passed!")
