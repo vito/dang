@@ -226,19 +226,24 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		definedType = fresh.Fresh()
 	}
 
+	var preservePolymorphic *hm.Scheme
 	if e, ok := env.(Env); ok {
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
 		if defined {
-			curT, curMono := cur.Type()
-			if !curMono {
-				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
-			}
-
+			curT, _ := cur.Type()
+			// The hoist pass may have stored a polymorphic scheme (e.g. for
+			// a generic-class method or a top-level function whose type
+			// has free type variables); we compare against the raw type
+			// body, which equals what Infer just re-computed when the body
+			// is identical.
 			if !definedType.Eq(curT) {
 				return nil, WrapInferError(
 					fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
 					s,
 				)
+			}
+			if len(cur.TypeVars()) > 0 {
+				preservePolymorphic = cur
 			}
 		}
 
@@ -260,6 +265,14 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if err != nil {
 			return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
 		}
+	}
+
+	if preservePolymorphic != nil {
+		// Keep the polymorphic scheme installed by Hoist so call sites
+		// can instantiate fresh per use; do not overwrite with a
+		// monomorphic NewScheme.
+		s.SetInferredType(definedType)
+		return definedType, nil
 	}
 
 	env.Add(s.Name.Name, hm.NewScheme(nil, definedType))

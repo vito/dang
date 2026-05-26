@@ -303,7 +303,13 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		if err != nil {
 			return err
 		}
-		env.Add(f.Named, hm.NewScheme(nil, fnType))
+		// Generalize over type variables that are free in the function
+		// type but not in the enclosing env. For a method on a generic
+		// class, class params show up as free in env and stay free in the
+		// scheme so AppliedType.SchemeOf can substitute them per receiver;
+		// method-local vars get quantified so each call site instantiates
+		// fresh.
+		env.Add(f.Named, hm.Generalize(env, fnType))
 		if e, ok := env.(Env); ok {
 			e.SetVisibility(f.Named, f.Visibility)
 			if len(f.Directives) > 0 {

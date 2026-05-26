@@ -693,11 +693,19 @@ func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
 }
 
 func (e *Module) FreeTypeVar() hm.TypeVarSet {
-	var retVal hm.TypeVarSet
-	// for _, v := range e.vars {
-	// 	retVal = v.FreeTypeVar().Union(retVal)
-	// }
-	return retVal
+	if len(e.TypeParams) == 0 {
+		return nil
+	}
+	// A generic class's type parameters are "in scope" while inferring
+	// the class body. Reporting them as free here means hm.Generalize
+	// will exclude them from quantification, so methods retain class
+	// params as free (to be substituted by AppliedType.SchemeOf) and
+	// quantify only their own method-local vars.
+	tvs := make(hm.TypeVarSet, len(e.TypeParams))
+	for _, tv := range e.TypeParams {
+		tvs.Add(tv)
+	}
+	return tvs
 }
 
 func (e *Module) Add(name string, s *hm.Scheme) hm.Env {

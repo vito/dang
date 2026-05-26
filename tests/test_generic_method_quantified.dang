@@ -1,0 +1,38 @@
+# Method-local type vars are quantified: the SCHEME stored for a
+# generic class's method has `forall b. ...` for method-locals,
+# while class params remain free for AppliedType to substitute.
+# Each call site instantiates fresh, so type vars no longer leak
+# across uses.
+
+type Box[a] {
+  pub value: a
+  pub map(&fn(value: a): b): Box[b]! {
+    Box(fn(value))
+  }
+  # A polymorphic method that ignores `value` and returns a fresh
+  # method-local type. Two calls on the same receiver with
+  # different expected result types must NOT cross-pollinate.
+  pub asConst(&supply(value: a): b): b {
+    supply(value)
+  }
+}
+
+# Two calls on the same receiver, expecting incompatible types.
+# With proper quantification each instantiates fresh `b`s.
+pub box = Box(1)
+pub asString: String! = box.asConst { _ => "fixed" }
+pub asInt: Int! = box.asConst { _ => 99 }
+
+assert { asString == "fixed" }
+assert { asInt == 99 }
+
+# Top-level polymorphic functions also get quantified at hoist.
+pub idA(x: a): a { x }
+
+pub idInt = idA(7)
+pub idStr = idA("hi")
+
+assert { idInt == 7 }
+assert { idStr == "hi" }
+
+print("Quantified scheme tests passed!")
