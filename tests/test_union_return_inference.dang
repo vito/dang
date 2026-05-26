@@ -1,0 +1,51 @@
+# Bidirectional inference: an if/else with a union return type can have
+# each branch return a different member.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+# An if/else returning distinct union members from each branch.
+pub safeDivide(x: Int!, y: Int!): Either[String!, Int!]! {
+  if (y == 0) {
+    Lft("divide by zero")
+  } else {
+    Rgt(x / y)
+  }
+}
+
+pub describe(r: Either[String!, Int!]!): String! {
+  case (r) {
+    l: Lft[String!] => "err: " + l.value
+    rt: Rgt[Int!] => "ok: " + toString(rt.value)
+  }
+}
+
+assert { describe(safeDivide(10, 2)) == "ok: 5" }
+assert { describe(safeDivide(10, 0)) == "err: divide by zero" }
+
+assert { describe(safeDivide(0, 1)) == "ok: 0" }
+
+# Slot annotation context also propagates the expected type.
+pub x: Either[Int!, String!]! = if (true) {
+  Lft(1)
+} else {
+  Rgt("two")
+}
+
+pub describeInt(r: Either[Int!, String!]!): String! {
+  case (r) {
+    l: Lft[Int!] => "int: " + toString(l.value)
+    rt: Rgt[String!] => "str: " + rt.value
+  }
+}
+
+assert { describeInt(x) == "int: 1" }
+
+print("Bidirectional union inference tests passed!")

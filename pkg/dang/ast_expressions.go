@@ -2227,7 +2227,10 @@ func (c *Conditional) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
-		condType, err := c.Condition.Infer(ctx, env, fresh)
+		// Clear the expected type before inferring the condition (a
+		// non-tail position) and re-apply it for each branch.
+		condCtx := contextWithoutInferExpectedType(ctx)
+		condType, err := c.Condition.Infer(condCtx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -2239,8 +2242,11 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		// Apply flow-sensitive narrowings to each branch based on the condition.
 		facts := analyzeCondition(c.Condition, env)
 
+		expected := currentInferExpectedType(ctx)
+		branchCtx := ctx
+
 		thenEnv := withNarrowings(env, facts.Truthy)
-		thenType, err := c.Then.Infer(ctx, thenEnv, fresh)
+		thenType, err := c.Then.Infer(branchCtx, thenEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -2249,9 +2255,30 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 			elseBlock := c.Else.(*Block)
 
 			elseEnv := withNarrowings(env, facts.Falsy)
-			elseType, err := elseBlock.Infer(ctx, elseEnv, fresh)
+			elseType, err := elseBlock.Infer(branchCtx, elseEnv, fresh)
 			if err != nil {
 				return nil, err
+			}
+
+			// With an expected type, each branch is checked independently
+			// against it so that distinct members of a union return type
+			// can flow from each arm.
+			if expected != nil {
+				if _, err := hm.Assignable(thenType, expected); err != nil {
+					var errorNode Node = c.Then
+					if len(c.Then.Forms) > 0 {
+						errorNode = c.Then.Forms[len(c.Then.Forms)-1]
+					}
+					return nil, NewInferError(fmt.Errorf("if branch type mismatch: cannot use %s as %s", thenType, expected), errorNode)
+				}
+				if _, err := hm.Assignable(elseType, expected); err != nil {
+					var errorNode Node = elseBlock
+					if len(elseBlock.Forms) > 0 {
+						errorNode = elseBlock.Forms[len(elseBlock.Forms)-1]
+					}
+					return nil, NewInferError(fmt.Errorf("else branch type mismatch: cannot use %s as %s", elseType, expected), errorNode)
+				}
+				return expected, nil
 			}
 
 			mergedType, subs, err := hm.MergeTypes(thenType, elseType)

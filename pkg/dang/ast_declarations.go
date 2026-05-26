@@ -229,6 +229,15 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	// block arguments may intentionally hand those effects to an enclosing call.
 	returnTarget := NewInferControlTarget(ReturnFrame)
 	bodyCtx := contextWithInferReturnTarget(functionCtx, returnTarget)
+	// Push the declared return type into the body inference so tail
+	// expressions (if/else branches, block returns) can accept any value
+	// assignable to it — e.g. each arm of an if/else returning a different
+	// member of a union return type.
+	if definedRet != nil {
+		bodyCtx = contextWithInferExpectedType(bodyCtx, definedRet)
+	} else {
+		bodyCtx = contextWithoutInferExpectedType(bodyCtx)
+	}
 	inferredRet, err := f.Body.Infer(bodyCtx, newEnv, fresh)
 	if err != nil {
 		return nil, fmt.Errorf("%s.Infer body: %w", contextName, err)

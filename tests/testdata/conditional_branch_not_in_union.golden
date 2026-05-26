@@ -1,0 +1,11 @@
+[1m[31mError:[0m else branch type mismatch: cannot use Int! as Either[String!, Int!]!
+  [2m[34m--> errors/conditional_branch_not_in_union.dang:18:5[0m
+ [2m    |[0m
+ [2m 16 |     Lft("zero")[0m
+ [2m 17 |   } else {[0m
+ [2m[34m[1m 18 | [0m    42
+[2m           [31m^^[0m
+ [2m 19 |   }[0m
+ [2m 20 | }[0m
+ [2m    |[0m
+

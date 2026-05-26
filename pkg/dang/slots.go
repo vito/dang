@@ -207,7 +207,16 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 	var inferredType hm.Type
 	if s.Value != nil {
-		inferredType, err = s.Value.Infer(ctx, env, fresh)
+		valueCtx := ctx
+		if definedType != nil {
+			// Push the declared slot type into the value's inference so
+			// tail expressions (conditionals, blocks) can accept any value
+			// assignable to it.
+			valueCtx = contextWithInferExpectedType(ctx, definedType)
+		} else {
+			valueCtx = contextWithoutInferExpectedType(ctx)
+		}
+		inferredType, err = s.Value.Infer(valueCtx, env, fresh)
 		if err != nil {
 			return nil, err
 		}

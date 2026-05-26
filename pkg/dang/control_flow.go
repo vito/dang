@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync/atomic"
+
+	"github.com/vito/dang/pkg/hm"
 )
 
 type ControlFrameKind int
@@ -100,7 +102,27 @@ const (
 	inferReturnTargetContextKey   contextKey = "inferReturnTarget"
 	inferBreakTargetContextKey    contextKey = "inferBreakTarget"
 	inferContinueTargetContextKey contextKey = "inferContinueTarget"
+	inferExpectedTypeContextKey   contextKey = "inferExpectedType"
 )
+
+// currentInferExpectedType returns the expected type for the current
+// inference position, set by an explicit annotation (e.g. function return
+// type, slot type). It is propagated only through tail positions: the final
+// expression of a block, both branches of a conditional. Non-tail
+// expressions (let bindings, function call args) consume the value and
+// should clear the expected type before recursing.
+func currentInferExpectedType(ctx context.Context) hm.Type {
+	t, _ := ctx.Value(inferExpectedTypeContextKey).(hm.Type)
+	return t
+}
+
+func contextWithInferExpectedType(ctx context.Context, t hm.Type) context.Context {
+	return context.WithValue(ctx, inferExpectedTypeContextKey, t)
+}
+
+func contextWithoutInferExpectedType(ctx context.Context) context.Context {
+	return context.WithValue(ctx, inferExpectedTypeContextKey, hm.Type(nil))
+}
 
 func NewInferControlTarget(kind ControlFrameKind) *InferControlTarget {
 	return &InferControlTarget{Kind: kind}

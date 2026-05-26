@@ -1,0 +1,20 @@
+# A conditional branch returning a value not in the declared union return
+# type should report a per-branch type mismatch.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+pub bad(x: Int!): Either[String!, Int!]! {
+  if (x == 0) {
+    Lft("zero")
+  } else {
+    42
+  }
+}

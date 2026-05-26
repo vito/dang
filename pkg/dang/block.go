@@ -501,9 +501,18 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		var typ hm.Type
 		var err error
-		for _, form := range forms {
+		// Only the block's trailing form sits in tail position; clear the
+		// expected type for the rest so that intermediate let/expression
+		// forms don't get coerced against it.
+		blockExpected := currentInferExpectedType(ctx)
+		childCtx := contextWithoutInferExpectedType(ctx)
+		for i, form := range forms {
+			formCtx := childCtx
+			if i == len(forms)-1 && blockExpected != nil {
+				formCtx = contextWithInferExpectedType(childCtx, blockExpected)
+			}
 			if inferer, ok := form.(hm.Inferer); ok {
-				typ, err = inferer.Infer(ctx, newEnv, fresh)
+				typ, err = inferer.Infer(formCtx, newEnv, fresh)
 				if err != nil {
 					errs.Add(err)
 				}
