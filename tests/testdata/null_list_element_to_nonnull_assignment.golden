@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use [a?]! as [Int!]!
+[1m[31mError:[0m cannot use [α?]! as [Int!]!
   [2m[34m--> errors/null_list_element_to_nonnull_assignment.dang:2:23[0m
  [2m    |[0m
  [2m  1 | # Null list elements cannot satisfy non-null element annotations[0m

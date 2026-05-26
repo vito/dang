@@ -54,23 +54,21 @@ func NewSimpleFresher() *SimpleFresher {
 	return &SimpleFresher{counter: 0}
 }
 
-// Fresh generates a fresh type variable
+// Fresh generates a fresh type variable. Uses Greek letters so freshly
+// generated variables cannot collide with source-level type variables,
+// which use lowercase Latin letters.
 func (f *SimpleFresher) Fresh() TypeVariable {
-	// Use lowercase letters for type variables
-	letters := "abcdefghijklmnopqrstuvwxyz"
+	greek := []rune("αβγδεζηθικλμνξοπρστυφχψω")
 
-	if f.counter < len(letters) {
-		tv := TypeVariable(letters[f.counter])
+	if f.counter < len(greek) {
+		tv := TypeVariable(greek[f.counter])
 		f.counter++
 		return tv
 	}
 
-	// If we run out of letters, use subscripts
-	base := f.counter - len(letters)
-	letter := letters[base%len(letters)]
-
-	// This is a simplified approach - in practice you'd want better naming
-	tv := TypeVariable(rune(letter))
+	// Fall back to using numbers when we exhaust Greek letters
+	base := f.counter - len(greek)
+	char := rune('0' + (base % 10))
 	f.counter++
-	return tv
+	return TypeVariable(char)
 }

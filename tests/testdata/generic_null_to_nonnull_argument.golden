@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use a? as Int!
+[1m[31mError:[0m cannot use α? as Int!
   [2m[34m--> errors/generic_null_to_nonnull_argument.dang:6:20[0m
  [2m    |[0m
  [2m  4 | pub takes(value: Int!): Int! { value }[0m

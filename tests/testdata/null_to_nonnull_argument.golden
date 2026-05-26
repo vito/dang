@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use a? as String!
+[1m[31mError:[0m cannot use α? as String!
   [2m[34m--> errors/null_to_nonnull_argument.dang:6:19[0m
  [2m    |[0m
  [2m  4 | }[0m

@@ -1,4 +1,4 @@
-[1m[31mError:[0m return type mismatch: declared [Int!]!, inferred [a?]!
+[1m[31mError:[0m return type mismatch: declared [Int!]!, inferred [α?]!
   [2m[34m--> errors/early_return_null_list_element_type_mismatch.dang:3:10[0m
  [2m    |[0m
  [2m  1 | # Early return values must preserve nested non-null requirements[0m
