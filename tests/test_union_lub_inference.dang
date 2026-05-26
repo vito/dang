@@ -1,0 +1,38 @@
+# Without an expected type, MergeTypes should still find a common
+# generic-union supertype for two members instantiated with different args.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+# 1. if/else with no annotation, branches yielding distinct members.
+pub x = if (true) { Lft(1) } else { Rgt("x") }
+
+# 2. List literal with no annotation.
+pub xs = [Lft(1), Rgt("two"), Lft(3)]
+
+# 3. Case clauses with no annotation.
+pub y = case (true) {
+  true => Lft(1)
+  else => Rgt("default")
+}
+
+# The inferred type is Either[Int!, String!], so the union's case
+# discrimination is usable on each.
+pub describe(r: Either[Int!, String!]!): String! {
+  case (r) {
+    l: Lft[Int!] => "L"
+    rt: Rgt[String!] => "R"
+  }
+}
+
+assert { describe(x) == "L" }
+assert { describe(y) == "L" }
+
+print("Union LCA inference tests passed!")

@@ -13,6 +13,11 @@ func IsSupertypeOf(super, sub Type) bool {
 
 // CommonSupertype finds the least common supertype of two types using the
 // Type.Supertypes lattice. It returns nil if no common supertype exists.
+//
+// Two supertypes match when either Eq reports them equal or Assignable
+// finds a substitution that unifies them — the latter lets us see two
+// applications of the same generic supertype (e.g. Either[Int!, β] and
+// Either[α, String!]) as a common Either[Int!, String!].
 func CommonSupertype(t1, t2 Type) Type {
 	if t1.Eq(t2) {
 		return t1
@@ -25,13 +30,19 @@ func CommonSupertype(t1, t2 Type) Type {
 		return t1
 	}
 
-	supers1 := buildSupertypeSet(t1)
-	supers2 := buildSupertypeSet(t2)
+	supers1 := buildSupertypeList(t1)
+	supers2 := buildSupertypeList(t2)
 
 	var common []Type
-	for super := range supers1 {
-		if supers2[super] {
-			common = append(common, super)
+	for _, s1 := range supers1 {
+		for _, s2 := range supers2 {
+			if s1.Eq(s2) {
+				common = append(common, s1)
+				continue
+			}
+			if subs, err := Assignable(s1, s2); err == nil {
+				common = append(common, s2.Apply(subs).(Type))
+			}
 		}
 	}
 	if len(common) == 0 {
@@ -96,12 +107,23 @@ func MergeTypes(current, next Type) (Type, Subs, error) {
 	return nil, nil, UnificationError{Have: next, Want: current}
 }
 
-func buildSupertypeSet(t Type) map[Type]bool {
-	result := map[Type]bool{t: true}
-	for _, super := range t.Supertypes() {
-		for s := range buildSupertypeSet(super) {
-			result[s] = true
+// buildSupertypeList collects the transitive supertypes of t into a slice,
+// deduplicating by Eq so structurally equal entries (e.g. two distinct
+// AppliedType values for the same instantiation) only appear once.
+func buildSupertypeList(t Type) []Type {
+	var result []Type
+	var visit func(Type)
+	visit = func(u Type) {
+		for _, e := range result {
+			if e.Eq(u) {
+				return
+			}
+		}
+		result = append(result, u)
+		for _, super := range u.Supertypes() {
+			visit(super)
 		}
 	}
+	visit(t)
 	return result
 }
