@@ -1,0 +1,28 @@
+# Bidirectional inference for list literals: a list annotated with a union
+# element type accepts elements that match the union via supertype lookup.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+# Each element is a distinct union member; the list literal accepts the
+# mix because the expected element type is Either[Int!, String!]!.
+pub xs: [Either[Int!, String!]!]! = [Lft(1), Rgt("two"), Lft(3)]
+
+# Map over the list, dispatching on the runtime member.
+pub labels: [String!]! = xs.map { x =>
+  case (x) {
+    l: Lft[Int!] => "L"
+    rt: Rgt[String!] => "R"
+  }
+}
+
+assert { labels == ["L", "R", "L"] }
+
+print("List union inference tests passed!")

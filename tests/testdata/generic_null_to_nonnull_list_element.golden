@@ -1,10 +1,10 @@
-[1m[31mError:[0m cannot use [β?]! as [Int!]!
-  [2m[34m--> errors/generic_null_to_nonnull_list_element.dang:4:23[0m
+[1m[31mError:[0m list element 0: cannot use β? as Int!
+  [2m[34m--> errors/generic_null_to_nonnull_list_element.dang:4:24[0m
  [2m    |[0m
  [2m  2 | pub id(x: a): a { x }[0m
  [2m  3 | [0m
  [2m[34m[1m  4 | [0mpub result: [Int!]! = [id(null)]
-[2m                             [31m^^^^^^^^^^[0m
+[2m                              [31m^^^^^^^^[0m
  [2m  5 | [0m
  [2m    |[0m
 

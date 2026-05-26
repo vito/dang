@@ -47,6 +47,15 @@ var _ Node = (*List)(nil)
 var _ Evaluator = (*List)(nil)
 
 func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
+	// If an expected list type is in scope (e.g. from a slot annotation),
+	// push its element type down into each element's inference so that
+	// elements of distinct union members can satisfy a union element type.
+	elemExpected := expectedListElementType(currentInferExpectedType(ctx))
+	elemCtx := contextWithoutInferExpectedType(ctx)
+	if elemExpected != nil {
+		elemCtx = contextWithInferExpectedType(elemCtx, elemExpected)
+	}
+
 	if len(l.Elements) == 0 {
 		tv := f.Fresh()
 		t := hm.NonNullType{Type: ListType{tv}}
@@ -56,9 +65,16 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 
 	var t hm.Type
 	for i, el := range l.Elements {
-		et, err := el.Infer(ctx, env, f)
+		et, err := el.Infer(elemCtx, env, f)
 		if err != nil {
 			return nil, err
+		}
+		if elemExpected != nil {
+			if _, err := hm.Assignable(et, elemExpected); err != nil {
+				return nil, NewInferError(fmt.Errorf("list element %d: cannot use %s as %s", i, et, elemExpected), l.Elements[i])
+			}
+			t = elemExpected
+			continue
 		}
 		if t == nil {
 			t = et
@@ -73,6 +89,25 @@ func (l *List) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, er
 	listType := hm.NonNullType{Type: ListType{t}}
 	l.SetInferredType(listType)
 	return listType, nil
+}
+
+// expectedListElementType peels NonNull/List wrappers off an expected list
+// type so it can be propagated to list element inference. Returns nil if
+// the expected type is not a list shape.
+func expectedListElementType(expected hm.Type) hm.Type {
+	if expected == nil {
+		return nil
+	}
+	if nn, ok := expected.(hm.NonNullType); ok {
+		expected = nn.Type
+	}
+	switch lt := expected.(type) {
+	case ListType:
+		return lt.Type
+	case GraphQLListType:
+		return lt.Type
+	}
+	return nil
 }
 
 func (l *List) DeclaredSymbols() []string {

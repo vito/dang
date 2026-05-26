@@ -93,6 +93,10 @@ func (c *FunCall) GetSourceLocation() *SourceLocation { return c.Loc }
 
 func (c *FunCall) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
+		// Function arguments are inputs whose types are determined by the
+		// function signature, not by the surrounding expected type. Clear
+		// it so nested list/conditional/block consumers don't pick it up.
+		ctx = contextWithoutInferExpectedType(ctx)
 		fun, err := c.Fun.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
