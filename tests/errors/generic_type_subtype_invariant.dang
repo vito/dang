@@ -1,0 +1,23 @@
+# Generic type arguments are invariant: Box[Cat] is not assignable to
+# Box[Animal] even though Cat is a subtype of Animal. Without this,
+# unsound writes through a Box[Animal] view of a Box[Cat] would be
+# possible once writes through generic fields become a feature.
+
+interface Animal {
+  pub name: String!
+}
+
+type Cat implements Animal {
+  pub name: String! = "cat"
+}
+
+type Box[a] {
+  pub value: a
+}
+
+# Bare subtyping works...
+pub asAnimal: Animal! = Cat()
+
+# ...but Box[Cat!] is not a Box[Animal!]
+pub catBox = Box(Cat())
+pub asAnimalBox: Box[Animal!]! = catBox

@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Box[Cat!]! as Box[Animal!]!
+  [2m[34m--> errors/generic_type_subtype_invariant.dang:23:34[0m
+ [2m    |[0m
+ [2m 21 | # ...but Box[Cat!] is not a Box[Animal!][0m
+ [2m 22 | pub catBox = Box(Cat())[0m
+ [2m[34m[1m 23 | [0mpub asAnimalBox: Box[Animal!]! = catBox
+[2m                                        [31m^^^^^^[0m
+ [2m 24 | [0m
+ [2m    |[0m
+
