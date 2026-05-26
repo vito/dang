@@ -1,0 +1,42 @@
+# List literal type inference for generic element types.
+
+type Box[a] {
+  pub value: a
+}
+
+type Either[a, b] {
+  pub left: a
+  pub right: b
+}
+
+# Inferred list of generic instances
+pub boxes = [Box(1), Box(2), Box(3)]
+assert { boxes[0].value == 1 }
+assert { boxes[2].value == 3 }
+
+# Explicit annotation matches inferred element type
+pub annotated: [Box[Int!]!]! = [Box(10), Box(20)]
+assert { annotated.length == 2 }
+
+# Methods over a list of generics
+pub doubled = boxes.map { b => b.value * 2 }
+assert { doubled[1] == 4 }
+
+# Nested generics in list literals
+pub nestedBoxes = [Box(Box(1)), Box(Box(2))]
+assert { nestedBoxes[0].value.value == 1 }
+
+# Two-param generic in list
+pub pairs = [Either(1, "one"), Either(2, "two")]
+assert { pairs[0].left == 1 }
+assert { pairs[1].right == "two" }
+
+# Lists of lists of generics
+pub matrix = [[Box(1), Box(2)], [Box(3)]]
+assert { matrix[1][0].value == 3 }
+
+# Empty list bound to a generic list type
+pub empty: [Box[String!]!]! = []
+assert { empty.length == 0 }
+
+print("Generic list inference tests passed!")
