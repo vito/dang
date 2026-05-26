@@ -57,11 +57,12 @@ func (infer *inferer) Fresh() hm.TypeVariable {
 		infer.varCount++
 		return hm.TypeVariable(retVal)
 	}
-	// Fall back to using numbers when we exhaust Greek letters
-	numStart := infer.varCount - len(greek)
-	char := rune('0' + (numStart % 10))
+	// Fall back to "τ0", "τ1", ... once the Greek letters are exhausted.
+	// Earlier this used `'0' + n % 10` which made fresh names collide
+	// after 34 allocations.
+	n := infer.varCount - len(greek)
 	infer.varCount++
-	return hm.TypeVariable(char)
+	return hm.TypeVariable(fmt.Sprintf("τ%d", n))
 }
 
 func (infer *inferer) consGen(ctx context.Context, expr hm.Expression) (err error) {

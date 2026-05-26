@@ -1,5 +1,7 @@
 package hm
 
+import "fmt"
+
 // Generalize creates a type scheme by quantifying over type variables
 // that are free in the type but not free in the environment
 func Generalize(env Env, t Type) *Scheme {
@@ -66,9 +68,9 @@ func (f *SimpleFresher) Fresh() TypeVariable {
 		return tv
 	}
 
-	// Fall back to using numbers when we exhaust Greek letters
-	base := f.counter - len(greek)
-	char := rune('0' + (base % 10))
+	// Fall back to "τ0", "τ1", ... once the Greek letters are exhausted.
+	// The earlier `'0' + n % 10` formulation collided after 34 calls.
+	n := f.counter - len(greek)
 	f.counter++
-	return TypeVariable(char)
+	return TypeVariable(fmt.Sprintf("τ%d", n))
 }
