@@ -299,8 +299,11 @@ TypeToken <- "type" !WordChar
 TypeParamList <- '[' _ first:TypeParam rest:(_ CommaToken _ p:TypeParam { return p, nil })* _ ']' {
   return sliceOfPrepend[hm.TypeVariable](first, rest), nil
 }
-TypeParam <- v:[a-z] {
-  return hm.TypeVariable(v.([]byte)[0]), nil
+TypeParam <- name:TypeVarName {
+  return hm.TypeVariable(name.(string)), nil
+}
+TypeVarName <- [a-z] [a-zA-Z0-9_]* {
+  return string(c.text), nil
 }
 Implements <-  ImplementsToken _ first:Symbol rest:(_ AmpersandToken _ i:Symbol { return i, nil })* {
   return sliceOfPrepend[*Symbol](first, rest), nil
@@ -638,8 +641,8 @@ ObjectTypeField <- key:Id _ ColonToken _ type_:Type {
 NonNull <- inner:PrimaryType BangToken {
   return NonNullTypeNode{inner.(TypeNode)}, nil
 }
-TypeVariable <- v:[a-z] {
-  return VariableTypeNode{v.([]byte)[0]}, nil
+TypeVariable <- name:TypeVarName {
+  return VariableTypeNode{Name: name.(string)}, nil
 }
 
 BangToken <- '!'

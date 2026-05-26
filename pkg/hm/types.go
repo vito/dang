@@ -34,8 +34,9 @@ type Substitutable interface {
 	FreeTypeVar() TypeVarSet
 }
 
-// TypeVariable represents a type variable
-type TypeVariable rune
+// TypeVariable represents a type variable. Stored as a string so source
+// code can use names like `elem` or `key` in addition to single letters.
+type TypeVariable string
 
 func (tv TypeVariable) Name() string {
 	return string(tv)

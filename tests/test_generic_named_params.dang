@@ -1,0 +1,39 @@
+# Type parameters can be multi-character names like `elem` or
+# `first`/`second`, not just single letters.
+
+type Box[elem] {
+  pub value: elem
+  pub map(&fn(value: elem): result): Box[result]! {
+    Box(fn(value))
+  }
+}
+
+pub intBox = Box(42)
+pub mapped = intBox.map { n => toString(n) + "!" }
+assert { mapped.value == "42!" }
+
+# Explicit type application with named params
+pub strBox: Box[String!]! = Box("hi")
+assert { strBox.value == "hi" }
+
+# Multiple multi-letter params
+type Pair[first, second] {
+  pub a: first
+  pub b: second
+}
+
+pub p = Pair(1, "two")
+assert { p.a == 1 }
+assert { p.b == "two" }
+
+# Mixed: single-letter params still work alongside multi-letter
+type Tagged[a, label] {
+  pub value: a
+  pub tag: label
+}
+
+pub t = Tagged(7, "lucky")
+assert { t.value == 7 }
+assert { t.tag == "lucky" }
+
+print("Named type parameter tests passed!")

@@ -3102,18 +3102,18 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 	// Build a record type for the method arguments, replacing TypeVar('a') with elemType
 	args := NewRecordType("")
 	for _, param := range def.ParamTypes {
-		paramType := substituteTypeVar(param.Type, 'a', elemType)
+		paramType := substituteTypeVar(param.Type, "a", elemType)
 		args.Add(param.Name, hm.NewScheme(nil, paramType))
 	}
 
 	// Similarly, handle the return type
-	returnType := substituteTypeVar(def.ReturnType, 'a', elemType)
+	returnType := substituteTypeVar(def.ReturnType, "a", elemType)
 
 	fnType := hm.NewFnType(args, returnType)
 
 	// Copy the block type if present, substituting type variables
 	if def.BlockType != nil {
-		blockType := substituteTypeVar(def.BlockType, 'a', elemType).(*hm.FunctionType)
+		blockType := substituteTypeVar(def.BlockType, "a", elemType).(*hm.FunctionType)
 		fnType.SetBlock(blockType)
 	}
 

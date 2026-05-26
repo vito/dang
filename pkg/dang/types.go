@@ -443,7 +443,7 @@ func (t NonNullTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 }
 
 type VariableTypeNode struct {
-	Name byte
+	Name string
 }
 
 var _ TypeNode = VariableTypeNode{}
