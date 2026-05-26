@@ -1,0 +1,37 @@
+# Nested applications of generic types: Box[Box[T]], mixed
+# Either[Box[a], Box[b]], deep nesting, and constructions that
+# arise from mapping into a generic result.
+
+type Box[a] {
+  pub value: a
+  pub map(&fn(value: a): b): Box[b]! {
+    Box(fn(value))
+  }
+}
+
+type Either[a, b] {
+  pub left: a
+  pub right: b
+}
+
+# Direct nesting
+pub nested = Box(Box(1))
+assert { nested.value.value == 1 }
+
+pub annotated: Box[Box[Int!]!]! = Box(Box(42))
+assert { annotated.value.value == 42 }
+
+# Three levels deep with explicit annotation
+pub deep: Box[Box[Box[Int!]!]!]! = Box(Box(Box(7)))
+assert { deep.value.value.value == 7 }
+
+# Mixing two generic types
+pub mixed: Either[Box[Int!]!, Box[String!]!]! = Either(Box(1), Box("two"))
+assert { mixed.left.value == 1 }
+assert { mixed.right.value == "two" }
+
+# Nesting introduced via a generic method
+pub mapped = Box(5).map { n => Box(n + 1) }
+assert { mapped.value.value == 6 }
+
+print("Nested generic tests passed!")
