@@ -210,13 +210,43 @@ func resolveTypePattern(env Env, operand hm.Type, patternType hm.Type, patternMo
 		_ = mod
 		return patternType, nil
 	case *AppliedType:
-		if op.Base.Kind != UnionKind {
+		switch op.Base.Kind {
+		case UnionKind:
+			if _, err := hm.Assignable(patternType, op); err != nil {
+				return nil, fmt.Errorf("type %s is not a member of union %s: %s", patternType, op, err)
+			}
+			return patternType, nil
+		case InterfaceKind:
+			// Allow the interface itself (`c: Container[Int!] => ...`).
+			if patternMod == op.Base {
+				if _, err := hm.Assignable(patternType, op); err != nil {
+					return nil, fmt.Errorf("type %s is not assignable to interface %s: %s", patternType, op, err)
+				}
+				return patternType, nil
+			}
+			// Otherwise the pattern type must implement the interface, and
+			// — once applied — must satisfy the operand's specific args.
+			implements := false
+			for _, super := range patternMod.Supertypes() {
+				if mod, ok := super.(*Module); ok && mod == op.Base {
+					implements = true
+					break
+				}
+				if at, ok := super.(*AppliedType); ok && at.Base == op.Base {
+					implements = true
+					break
+				}
+			}
+			if !implements {
+				return nil, fmt.Errorf("type %s does not implement interface %s", patternType, op)
+			}
+			if _, err := hm.Assignable(patternType, op); err != nil {
+				return nil, fmt.Errorf("type %s is not assignable to interface %s: %s", patternType, op, err)
+			}
+			return patternType, nil
+		default:
 			return nil, fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", op.Base.Kind, op)
 		}
-		if _, err := hm.Assignable(patternType, op); err != nil {
-			return nil, fmt.Errorf("type %s is not a member of union %s: %s", patternType, op, err)
-		}
-		return patternType, nil
 	}
 	if operandUnion, ok := operand.(*hm.UnionType); ok {
 		if _, err := resolveInlineUnionTypePattern(env, operandUnion, patternName); err != nil {

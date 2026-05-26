@@ -1,0 +1,34 @@
+# Case patterns over a generic interface operand: implementers can be
+# named with their own type arguments and the case body sees a value
+# typed to the pattern.
+
+interface Container[a] {
+  pub item: a
+}
+
+type Box[a] implements Container[a] {
+  pub item: a
+}
+
+type IntBox implements Container[Int!] {
+  pub item: Int!
+}
+
+pub describe(c: Container[Int!]!): String! {
+  case (c) {
+    b: Box[Int!] => "box: " + toString(b.item)
+    i: IntBox => "intbox: " + toString(i.item)
+    else => "unknown"
+  }
+}
+
+pub b = Box(42)
+pub bAsContainer: Container[Int!]! = b
+
+pub ib = IntBox(99)
+pub ibAsContainer: Container[Int!]! = ib
+
+assert { describe(bAsContainer) == "box: 42" }
+assert { describe(ibAsContainer) == "intbox: 99" }
+
+print("Generic interface case tests passed!")
