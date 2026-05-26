@@ -207,9 +207,6 @@ func (t *TryCatch) Walk(fn func(Node) bool) {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)
 		}
-		if clause.TypePattern != nil {
-			fn(clause.TypePattern)
-		}
 		clause.Expr.Walk(fn)
 	}
 }

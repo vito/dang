@@ -999,13 +999,13 @@ TryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:CatchClause Se
   }, nil
 }
 
-CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
+CatchClause <- binding:Symbol _ ColonToken _ pattern:NamedType _ ArrowToken _ expr:Form {
   // binding: TypeName => ... (typed pattern, same as case)
   return &CaseClause{
     Value: nil,
     Expr: expr.(Node),
     Binding: binding.(*Symbol).Name,
-    TypePattern: typeName.(*Symbol),
+    TypePattern: pattern.(*NamedTypeNode),
     Loc: c.Loc(),
   }, nil
 } / binding:Symbol _ ArrowToken _ expr:Form {
@@ -1140,13 +1140,13 @@ CaseClause <- ElseToken _ ArrowToken _ expr:Form {
     IsElse: true,
     Loc: c.Loc(),
   }, nil
-} / binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {
+} / binding:Symbol _ ColonToken _ pattern:NamedType _ ArrowToken _ expr:Form {
   // binding: TypeName => ... creates a type pattern clause
   return &CaseClause{
     Value: nil,
     Expr: expr.(Node),
     Binding: binding.(*Symbol).Name,
-    TypePattern: typeName.(*Symbol),
+    TypePattern: pattern.(*NamedTypeNode),
     Loc: c.Loc(),
   }, nil
 } / value:Form _ ArrowToken _ expr:Form {

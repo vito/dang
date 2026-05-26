@@ -1,0 +1,52 @@
+# Case discrimination over a generic union with applied type patterns.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+pub describe(r: Either[String!, Int!]!): String! {
+  case (r) {
+    l: Lft[String!] => "err: " + l.value
+    rt: Rgt[Int!] => "ok: " + toString(rt.value)
+  }
+}
+
+# Make sure runtime discrimination on the base works even when args differ.
+assert { describe(Lft("boom")) == "err: boom" }
+assert { describe(Rgt(42)) == "ok: 42" }
+
+# A non-generic member of a generic union, using a bare module pattern.
+type Nothing {
+  pub label: String! = "nothing"
+}
+
+union Maybe[a] = Lft[a] | Nothing
+
+pub explain(m: Maybe[Int!]!): String! {
+  case (m) {
+    l: Lft[Int!] => "got " + toString(l.value)
+    n: Nothing => n.label
+  }
+}
+
+assert { explain(Lft(7)) == "got 7" }
+assert { explain(Nothing) == "nothing" }
+
+# An else branch is still allowed.
+pub firstWord(m: Maybe[String!]!): String! {
+  case (m) {
+    l: Lft[String!] => l.value
+    else => "(none)"
+  }
+}
+
+assert { firstWord(Lft("hi")) == "hi" }
+assert { firstWord(Nothing) == "(none)" }
+
+print("Generic union case discrimination tests passed!")

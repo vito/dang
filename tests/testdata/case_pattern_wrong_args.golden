@@ -1,0 +1,11 @@
+[1m[31mError:[0m type Lft[Int!] is not a member of union Either[String!, Int!]: cannot use Lft[Int!] as Either[String!, Int!]
+  [2m[34m--> errors/case_pattern_wrong_args.dang:15:8[0m
+ [2m    |[0m
+ [2m 13 | pub bad(r: Either[String!, Int!]!): String! {[0m
+ [2m 14 |   case (r) {[0m
+ [2m[34m[1m 15 | [0m    l: Lft[Int!] => "wrong"
+[2m              [31m^^^^^^^^^[0m
+ [2m 16 |     rt: Rgt[Int!] => "ok"[0m
+ [2m 17 |   }[0m
+ [2m    |[0m
+

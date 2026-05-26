@@ -2714,7 +2714,7 @@ func (f *Formatter) formatCase(c *Case) {
 			} else if clause.IsTypePattern() {
 				f.write(clause.Binding)
 				f.write(": ")
-				f.write(clause.TypePattern.Name)
+				f.formatTypeNode(clause.TypePattern)
 			} else {
 				f.formatNode(clause.Value)
 			}
@@ -2753,7 +2753,7 @@ func (f *Formatter) formatTryCatch(t *TryCatch) {
 			if clause.IsTypePattern() {
 				f.write(clause.Binding)
 				f.write(": ")
-				f.write(clause.TypePattern.Name)
+				f.formatTypeNode(clause.TypePattern)
 			} else if clause.Binding != "" {
 				f.write(clause.Binding)
 			}

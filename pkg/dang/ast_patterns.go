@@ -126,44 +126,84 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 		unwrapped = nn.Type
 	}
 
-	// Resolve the type pattern from the operand's members first (handles
-	// narrowed unions from inline fragments), falling back to the environment.
-	var memberMod *Module
-	if operandMod, ok := unwrapped.(*Module); ok {
-		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
-			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod), c.Expr)
-		}
+	// Resolve the pattern type via NamedTypeNode.Infer so generic
+	// patterns like `Lft[Int!]` come through as AppliedType.
+	patternType, err := clause.TypePattern.Infer(ctx, env, fresh)
+	if err != nil {
+		return WrapInferError(err, clause.TypePattern)
+	}
+	patternMod := unionMemberModuleOf(patternType)
+	if patternMod == nil {
+		return NewInferError(fmt.Errorf("type pattern %s is not a named type", clause.TypePattern.Name), clause.TypePattern)
+	}
 
-		if operandMod.Kind == UnionKind {
-			for _, m := range operandMod.GetMembers() {
-				if mod, ok := m.(*Module); ok && mod.Name() == clause.TypePattern.Name {
-					memberMod = mod
-					break
-				}
-			}
-			if memberMod == nil {
-				return NewInferError(fmt.Errorf("type %s is not a member of union %s", clause.TypePattern.Name, operandMod), clause.TypePattern)
-			}
-		} else if operandMod.Kind == InterfaceKind {
-			var err error
-			memberMod, err = resolveInterfaceTypePattern(modEnv, operandMod, clause.TypePattern.Name)
-			if err != nil {
-				return NewInferError(err, clause.TypePattern)
-			}
-		}
-	} else if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
-		var err error
-		memberMod, err = resolveInlineUnionTypePattern(modEnv, operandUnion, clause.TypePattern.Name)
-		if err != nil {
-			return NewInferError(err, clause.TypePattern)
-		}
-	} else {
+	// Resolve the type pattern from the operand's members (handles narrowed
+	// unions from inline fragments and generic union applications).
+	resolved, err := resolveTypePattern(modEnv, unwrapped, patternType, patternMod, clause.TypePattern.Name)
+	if err != nil {
+		return NewInferError(err, clause.TypePattern)
+	}
+	if resolved == nil {
 		return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s", exprType), c.Expr)
 	}
 
 	// Store the resolved member type for use when inferring the clause body
-	clause.resolvedMemberType = memberMod
+	clause.resolvedMemberType = resolved
 	return nil
+}
+
+// resolveTypePattern checks that the pattern is a valid member of the
+// operand and returns the type to bind in the clause body.
+func resolveTypePattern(env Env, operand hm.Type, patternType hm.Type, patternMod *Module, patternName string) (hm.Type, error) {
+	switch op := operand.(type) {
+	case *Module:
+		if op.Kind != UnionKind && op.Kind != InterfaceKind {
+			return nil, fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", op.Kind, op)
+		}
+		if op.Kind == UnionKind {
+			for _, m := range op.GetMembers() {
+				mod, ok := m.(*Module)
+				if !ok {
+					continue
+				}
+				// Pointer identity is the common case. Match by canonical
+				// type so a narrowed projection (from inline fragments)
+				// matches the original pattern name, and fall back to a
+				// name match for prelude-shared modules.
+				if mod == patternMod || canonicalModule(mod) == canonicalModule(patternMod) {
+					// For narrowed unions, return the narrowed member so
+					// the clause body sees the selected field subset.
+					return mod, nil
+				}
+				if mod.Name() == patternName {
+					return mod, nil
+				}
+			}
+			return nil, fmt.Errorf("type %s is not a member of union %s", patternName, op)
+		}
+		// Interface
+		mod, err := resolveInterfaceTypePattern(env, op, patternName)
+		if err != nil {
+			return nil, err
+		}
+		_ = mod
+		return patternType, nil
+	case *AppliedType:
+		if op.Base.Kind != UnionKind {
+			return nil, fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", op.Base.Kind, op)
+		}
+		if _, err := hm.Assignable(patternType, op); err != nil {
+			return nil, fmt.Errorf("type %s is not a member of union %s: %s", patternType, op, err)
+		}
+		return patternType, nil
+	}
+	if operandUnion, ok := operand.(*hm.UnionType); ok {
+		if _, err := resolveInlineUnionTypePattern(env, operandUnion, patternName); err != nil {
+			return nil, err
+		}
+		return patternType, nil
+	}
+	return nil, nil
 }
 
 func resolveInterfaceTypePattern(env Env, iface *Module, patternName string) (*Module, error) {
@@ -239,9 +279,6 @@ func (c *Case) Walk(fn func(Node) bool) {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)
 		}
-		if clause.TypePattern != nil {
-			fn(clause.TypePattern)
-		}
 		clause.Expr.Walk(fn)
 	}
 }
@@ -289,10 +326,16 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-// matchesType checks if a value's concrete type matches the given pattern
-// module.  It uses pointer identity, following Canonical links on narrowed
-// projections, and ImplementsInterface for interface patterns.
-func matchesType(val Value, pattern *Module) bool {
+// matchesType checks if a value's concrete type matches the given pattern.
+// It uses pointer identity, following Canonical links on narrowed
+// projections, and ImplementsInterface for interface patterns. The
+// AppliedType args are checked statically and dropped at runtime — only
+// the Base module participates in the match.
+func matchesType(val Value, pattern hm.Type) bool {
+	patBase := unionMemberModuleOf(pattern)
+	if patBase == nil {
+		return false
+	}
 	valMod := valueModule(val)
 	if valMod == nil {
 		return false
@@ -300,7 +343,7 @@ func matchesType(val Value, pattern *Module) bool {
 	// Resolve both sides to their canonical type so that narrowed
 	// projections compare against the same identity.
 	valCanon := canonicalModule(valMod)
-	patCanon := canonicalModule(pattern)
+	patCanon := canonicalModule(patBase)
 	if valCanon == patCanon {
 		return true
 	}
@@ -359,17 +402,23 @@ func valueModule(val Value) *Module {
 // CaseClause represents a single clause in a case expression
 type CaseClause struct {
 	InferredTypeHolder
-	Value       Node
-	Expr        Node
-	IsElse      bool    // true if this is an else clause
-	Binding     string  // variable name for type pattern (e.g. "user" in "user: User => ...")
-	TypePattern *Symbol // type name for type pattern (e.g. "User" in "user: User => ...")
+	Value   Node
+	Expr    Node
+	IsElse  bool   // true if this is an else clause
+	Binding string // variable name for type pattern (e.g. "user" in "user: User => ...")
+	// TypePattern is the type reference for a type pattern clause. It is a
+	// NamedTypeNode so it can carry type arguments for generic members,
+	// e.g. `l: Lft[Int!] => ...`.
+	TypePattern *NamedTypeNode
 	Loc         *SourceLocation
 
 	// resolvedMemberType is set during inference to the concrete member type
 	// for this type pattern clause. For narrowed unions (from inline fragment
 	// selections), this is the narrowed type with only the selected fields.
-	resolvedMemberType *Module
+	// May be either a *Module (non-generic member, narrowed type, or
+	// interface pattern) or an *AppliedType (generic member with the
+	// pattern's type args applied).
+	resolvedMemberType hm.Type
 }
 
 var _ SourceLocatable = (*CaseClause)(nil)

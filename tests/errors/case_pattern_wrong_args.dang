@@ -1,0 +1,18 @@
+# Type pattern with wrong type arguments for the union application.
+
+type Lft[a] {
+  pub value: a
+}
+
+type Rgt[b] {
+  pub value: b
+}
+
+union Either[a, b] = Lft[a] | Rgt[b]
+
+pub bad(r: Either[String!, Int!]!): String! {
+  case (r) {
+    l: Lft[Int!] => "wrong"
+    rt: Rgt[Int!] => "ok"
+  }
+}
