@@ -589,7 +589,7 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		if !found {
 			return nil, fmt.Errorf("%q not found", s.Name)
 		}
-		t, _ := scheme.Type()
+		t := hm.Instantiate(fresh, scheme)
 		if s.AutoCall {
 			t, _ = autoCallFnType(t)
 		}
@@ -665,7 +665,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			if !found {
 				return nil, fmt.Errorf("%q not found in env", d.Field.Name)
 			}
-			t, _ := scheme.Type()
+			t := hm.Instantiate(fresh, scheme)
 			d.SetInferredType(t)
 			return t, nil
 		}
@@ -759,10 +759,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			d.SetInferredType(tv)
 			return tv, fmt.Errorf("field %q not found in %s", d.Field.Name, rec)
 		}
-		t, mono := scheme.Type()
-		if !mono {
-			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
-		}
+		t := hm.Instantiate(fresh, scheme)
 		if d.AutoCall {
 			t, _ = autoCallFnType(t)
 		}
@@ -938,7 +935,7 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		}
 
 		// Check that index is Int!
-		intType, err := NonNullTypeNode{&NamedTypeNode{nil, "Int", i.Index.GetSourceLocation()}}.Infer(ctx, env, fresh)
+		intType, err := NonNullTypeNode{&NamedTypeNode{Name: "Int", Loc: i.Index.GetSourceLocation()}}.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}

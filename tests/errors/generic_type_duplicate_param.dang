@@ -1,0 +1,5 @@
+# Generic type with duplicate type parameters
+
+type Bad[a, a] {
+  pub left: a
+}

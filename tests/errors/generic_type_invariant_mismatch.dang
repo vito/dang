@@ -1,0 +1,7 @@
+# Invariant mismatch: Box[Int!] cannot be initialized from Box(String!)
+
+type Box[a] {
+  pub value: a
+}
+
+pub b: Box[String!]! = Box(1)

@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use Box[Int!]! as Box[String!]!
+  [2m[34m--> errors/generic_type_invariant_mismatch.dang:7:24[0m
+ [2m    |[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0mpub b: Box[String!]! = Box(1)
+[2m                              [31m^^^^^^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

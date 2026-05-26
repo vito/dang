@@ -1,0 +1,13 @@
+# Generic method with both class and method-level type parameters
+
+type Box[a] {
+  pub value: a
+  pub map(&fn(value: a): b): Box[b]! {
+    Box(fn(value))
+  }
+}
+
+pub mapped = Box(1).map { n => toString(n) + "!" }
+assert { mapped.value == "1!" }
+
+print("Generic method tests passed!")

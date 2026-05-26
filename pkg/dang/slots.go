@@ -321,6 +321,7 @@ type ClassDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
 	Value      *Block
+	TypeParams []hm.TypeVariable
 	Implements []*Symbol
 	Visibility Visibility
 	Directives []*DirectiveApplication
@@ -487,6 +488,16 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// annotations, constructor params, or implemented interfaces has to wait
 	// until every type has had this registration pass.
 	if pass == 0 {
+		if err := c.validateTypeParams(); err != nil {
+			return err
+		}
+		if len(c.TypeParams) > 0 && len(c.Implements) > 0 {
+			return WrapInferError(
+				fmt.Errorf("generic type %s cannot declare `implements`; generic interfaces are not supported", c.Name.Name),
+				c.Name,
+			)
+		}
+		class.TypeParams = c.TypeParams
 		return nil
 	}
 
@@ -505,14 +516,17 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
-	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, class, fresh)
+	selfType := classSelfType(class)
+	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, selfType, fresh)
 	if err != nil {
 		return err
 	}
 	c.ConstructorFnType = constructorType
 
-	// Add the constructor function type to the environment
-	constructorScheme := hm.NewScheme(nil, constructorType)
+	// Add the constructor function type to the environment. For generic
+	// classes, quantify over the class type parameters so each call site
+	// instantiates fresh type variables.
+	constructorScheme := hm.NewScheme(c.TypeParams, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
 
 	// Link the implementation after all interface type names have been
@@ -547,9 +561,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		}
 	}
 
-	// Set dynamic scope type to the class type
-	selfType := hm.NonNullType{Type: class}
-	class.SetDynamicScopeType(selfType)
+	// Set dynamic scope type to the class type. For generic classes,
+	// use the applied self type so method bodies see fields with class
+	// type parameters substituted by their own free type variables.
+	class.SetDynamicScopeType(hm.NonNullType{Type: selfType})
 
 	// Hoist body forms directly (not via Block.Hoist which clones the env)
 	// to register method signatures on the class module. This enables
@@ -588,8 +603,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	c.Inferred = class
 
 	// Set dynamic scope type to the class type
-	selfType := hm.NonNullType{Type: class}
-	class.SetDynamicScopeType(selfType)
+	class.SetDynamicScopeType(hm.NonNullType{Type: classSelfType(class)})
 
 	// Validate directive applications
 	for _, directive := range c.Directives {
@@ -724,8 +738,42 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 	return params
 }
 
+// classSelfType returns the type a class declaration uses for self-references
+// (e.g. the constructor's return type and the dynamic-scope receiver). For a
+// non-generic class this is just the *Module; for a generic class it is the
+// AppliedType formed by reusing the class's declared type parameters as args.
+func classSelfType(class *Module) hm.Type {
+	if len(class.TypeParams) == 0 {
+		return class
+	}
+	args := make([]hm.Type, len(class.TypeParams))
+	for i, p := range class.TypeParams {
+		args[i] = p
+	}
+	return &AppliedType{Base: class, Args: args}
+}
+
+// validateTypeParams checks the class's declared type parameters for
+// duplicates. Names are limited to single lowercase letters by the parser.
+func (c *ClassDecl) validateTypeParams() error {
+	if len(c.TypeParams) == 0 {
+		return nil
+	}
+	seen := make(map[hm.TypeVariable]bool, len(c.TypeParams))
+	for _, p := range c.TypeParams {
+		if seen[p] {
+			return WrapInferError(
+				fmt.Errorf("duplicate type parameter %q in type %s", string(p), c.Name.Name),
+				c.Name,
+			)
+		}
+		seen[p] = true
+	}
+	return nil
+}
+
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, selfType hm.Type, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
@@ -734,21 +782,21 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 	argEnv := env.Clone()
 	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
+		return nil, fmt.Errorf("%s Constructor.Declare: %w", c.Name.Name, err)
 	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
 
-	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: classType})
+	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: selfType})
 	if blockParam != nil {
 		blockParamType, err := blockParam.Type_.Infer(signatureCtx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", classType.Named, err)
+			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", c.Name.Name, err)
 		}
 		blockType, ok := blockParamType.(*hm.FunctionType)
 		if !ok {
-			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", classType.Named, blockParamType)
+			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", c.Name.Name, blockParamType)
 		}
 		constructorType.SetBlock(blockType)
 	}
@@ -795,7 +843,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	}
 
 	// The new() body must return the class type
-	expectedType := hm.NonNullType{Type: c.Inferred}
+	expectedType := hm.NonNullType{Type: classSelfType(c.Inferred)}
 	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
 		errorNode := Node(newDecl.BodyBlock)
 		if len(newDecl.BodyBlock.Forms) > 0 {

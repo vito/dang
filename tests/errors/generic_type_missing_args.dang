@@ -1,0 +1,7 @@
+# Generic type used without type arguments in type position
+
+type Box[a] {
+  pub value: a
+}
+
+pub b: Box! = Box(1)

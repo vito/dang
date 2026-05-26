@@ -1,0 +1,13 @@
+# Generic Box type with single type parameter
+
+type Box[a] {
+  pub value: a
+}
+
+pub intBox = Box(1)
+pub strBox: Box[String!]! = Box("x")
+
+assert { intBox.value == 1 }
+assert { strBox.value == "x" }
+
+print("Generic Box tests passed!")

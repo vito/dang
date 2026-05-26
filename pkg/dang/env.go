@@ -143,6 +143,11 @@ type Module struct {
 	// Qualifier is the import/module alias used for display-only type names.
 	Qualifier string
 
+	// TypeParams are the type parameters declared on a generic class.
+	// Empty for non-generic types. Generic types must be applied with
+	// matching arity to be usable (see AppliedType).
+	TypeParams []hm.TypeVariable
+
 	Parent Env
 
 	classes          map[string]Env

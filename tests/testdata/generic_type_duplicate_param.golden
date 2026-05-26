@@ -1,0 +1,11 @@
+[1m[31mError:[0m duplicate type parameter "a" in type Bad
+  [2m[34m--> errors/generic_type_duplicate_param.dang:3:6[0m
+ [2m    |[0m
+ [2m  1 | # Generic type with duplicate type parameters[0m
+ [2m  2 | [0m
+ [2m[34m[1m  3 | [0mtype Bad[a, a] {
+[2m            [31m^^^[0m
+ [2m  4 |   pub left: a[0m
+ [2m  5 | }[0m
+ [2m    |[0m
+

@@ -1,0 +1,12 @@
+# Generic Either type with two type parameters
+
+type Either[a, b] {
+  pub left: a
+  pub right: b
+}
+
+pub e = Either(1, "one")
+assert { e.left == 1 }
+assert { e.right == "one" }
+
+print("Generic Either tests passed!")

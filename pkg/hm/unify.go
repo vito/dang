@@ -14,6 +14,16 @@ func (e UnificationError) Error() string {
 	return fmt.Sprintf("cannot use %s as %s", e.Have, e.Want)
 }
 
+// TypeConstructor is implemented by composite types whose unification cannot
+// be determined by reflect.TypeOf alone, such as nominal generic types where
+// every applied instance has the same Go type but different bases. Returning
+// true from SameTypeConstructor means the two values share a constructor and
+// can be unified by walking their component types. The unification of those
+// components is invariant.
+type TypeConstructor interface {
+	SameTypeConstructor(Type) bool
+}
+
 // Assignable attempts to unify two types, returning a substitution or error.
 // If unification fails, it checks subtyping: have can be assigned to want if
 // have is a subtype of want.
@@ -60,6 +70,36 @@ func Assignable(have, want Type) (Subs, error) {
 		// For example, NonNullType{Int} and ListType{Int} both have component
 		// types, but they're different constructors and should not unify.
 		//
+		// Types that implement TypeConstructor (e.g. nominal generic
+		// applications) need an explicit base-equality check since their
+		// Go type alone does not distinguish constructors. Their arguments
+		// are also unified invariantly.
+		haveTC, haveHasTC := have.(TypeConstructor)
+		_, wantHasTC := want.(TypeConstructor)
+
+		if haveHasTC || wantHasTC {
+			if !haveHasTC || !wantHasTC || !haveTC.SameTypeConstructor(want) {
+				return nil, UnificationError{have, want}
+			}
+			if len(haveTypes) != len(wantTypes) {
+				return nil, UnificationError{have, want}
+			}
+
+			var subs = NewSubs()
+			for i, comp1 := range haveTypes {
+				comp2 := wantTypes[i]
+				componentSubs, err := unifyInvariant(comp1, comp2)
+				if err != nil {
+					return nil, UnificationError{have, want}
+				}
+				subs, err = subs.Compose(componentSubs)
+				if err != nil {
+					return nil, UnificationError{have, want}
+				}
+			}
+			return subs, nil
+		}
+
 		// TODO: cleaner way to do this
 		if reflect.TypeOf(have) == reflect.TypeOf(want) {
 			// Check length and unify components
@@ -139,6 +179,22 @@ func assignableFromUnion(have *UnionType, want Type) (Subs, error) {
 		}
 	}
 	return subs, nil
+}
+
+// unifyInvariant unifies two types treating them as invariant: type variables
+// may still be bound, but the resulting types must be equal in both
+// directions. It is the symmetric counterpart to Assignable, used for
+// generic type arguments where subtyping would be unsound.
+func unifyInvariant(a, b Type) (Subs, error) {
+	subs, err := Assignable(a, b)
+	if err != nil {
+		return nil, err
+	}
+	reverse, err := Assignable(b.Apply(subs).(Type), a.Apply(subs).(Type))
+	if err != nil {
+		return nil, err
+	}
+	return subs.Compose(reverse)
 }
 
 // bindVar binds a type variable to a type

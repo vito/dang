@@ -1,0 +1,3 @@
+# Type arguments applied to a non-generic type
+
+pub b: String[Int!]! = "hello"

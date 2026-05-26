@@ -1,0 +1,7 @@
+# Generic type applied with wrong number of arguments
+
+type Box[a] {
+  pub value: a
+}
+
+pub b: Box[Int!, String!]! = Box(1)
