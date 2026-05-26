@@ -1,0 +1,25 @@
+type Box[a] {
+  pub value: a
+
+  pub map(&fn(value: a): b): Box[b]! {
+    Box(fn(value))
+  }
+}
+
+type Either[a, b] {
+  pub left: a
+  pub right: b
+}
+
+pub intBox = Box(1)
+pub strBox: Box[String!]! = Box("x")
+pub e = Either(1, "one")
+pub mapped = Box(1).map { n => toString(n) + "!" }
+pub mappedAgain = Box("x").map { _ => 2 }
+
+assert { intBox.value == 1 }
+assert { strBox.value == "x" }
+assert { e.left == 1 }
+assert { e.right == "one" }
+assert { mapped.value == "1!" }
+assert { mappedAgain.value == 2 }

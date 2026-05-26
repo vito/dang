@@ -303,7 +303,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 		if err != nil {
 			return err
 		}
-		env.Add(f.Named, hm.NewScheme(nil, fnType))
+		env.Add(f.Named, hm.Generalize(env, fnType))
 		if e, ok := env.(Env); ok {
 			e.SetVisibility(f.Named, f.Visibility)
 			if len(f.Directives) > 0 {
@@ -1092,4 +1092,3 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 	fn(i)
 	// ImportDecl has no child nodes to walk
 }
-

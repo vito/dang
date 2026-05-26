@@ -59,14 +59,13 @@ func Assignable(have, want Type) (Subs, error) {
 		// type constructor before unifying components.
 		// For example, NonNullType{Int} and ListType{Int} both have component
 		// types, but they're different constructors and should not unify.
-		//
-		// TODO: cleaner way to do this
-		if reflect.TypeOf(have) == reflect.TypeOf(want) {
+		if sameTypeConstructor(have, want) {
 			// Check length and unify components
 			if len(haveTypes) != len(wantTypes) {
 				return nil, UnificationError{have, want}
 			}
 
+			invariant := invariantTypeArgs(have) || invariantTypeArgs(want)
 			var subs = NewSubs()
 			for i, comp1 := range haveTypes {
 				comp2 := wantTypes[i]
@@ -76,7 +75,13 @@ func Assignable(have, want Type) (Subs, error) {
 				// makes repeated type variables order-dependent (e.g. (Int!, null)
 				// against (a, a)); checked composition widens those constraints once
 				// all component evidence is available.
-				componentSubs, err := Assignable(comp1, comp2)
+				var componentSubs Subs
+				var err error
+				if invariant {
+					componentSubs, err = assignableInvariant(comp1, comp2)
+				} else {
+					componentSubs, err = Assignable(comp1, comp2)
+				}
 				if err != nil {
 					return nil, UnificationError{have, want}
 				}
@@ -112,6 +117,38 @@ func Assignable(have, want Type) (Subs, error) {
 	}
 
 	return nil, UnificationError{have, want}
+}
+
+func sameTypeConstructor(have, want Type) bool {
+	if hc, ok := have.(TypeConstructor); ok {
+		return hc.SameTypeConstructor(want)
+	}
+	if wc, ok := want.(TypeConstructor); ok {
+		return wc.SameTypeConstructor(have)
+	}
+	return reflect.TypeOf(have) == reflect.TypeOf(want)
+}
+
+func invariantTypeArgs(t Type) bool {
+	if tc, ok := t.(InvariantTypeConstructor); ok {
+		return tc.InvariantTypeArgs()
+	}
+	return false
+}
+
+func assignableInvariant(have, want Type) (Subs, error) {
+	subs, err := Assignable(have, want)
+	if err != nil {
+		return nil, err
+	}
+
+	resolvedHave := have.Apply(subs).(Type)
+	resolvedWant := want.Apply(subs).(Type)
+	reverseSubs, err := Assignable(resolvedWant, resolvedHave)
+	if err != nil {
+		return nil, err
+	}
+	return subs.Compose(reverseSubs)
 }
 
 func assignableToUnion(have Type, want *UnionType) (Subs, error) {

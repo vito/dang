@@ -1,0 +1,5 @@
+type Box[a] {
+  pub value: a
+}
+
+Box(1) :: Box[Int!, String!]!

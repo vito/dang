@@ -54,23 +54,17 @@ func NewSimpleFresher() *SimpleFresher {
 	return &SimpleFresher{counter: 0}
 }
 
+var simpleFreshTypeVariables = []rune("αβγδεζηθικλμνξοπρστυφχψω")
+
 // Fresh generates a fresh type variable
 func (f *SimpleFresher) Fresh() TypeVariable {
-	// Use lowercase letters for type variables
-	letters := "abcdefghijklmnopqrstuvwxyz"
-
-	if f.counter < len(letters) {
-		tv := TypeVariable(letters[f.counter])
+	if f.counter < len(simpleFreshTypeVariables) {
+		tv := TypeVariable(simpleFreshTypeVariables[f.counter])
 		f.counter++
 		return tv
 	}
 
-	// If we run out of letters, use subscripts
-	base := f.counter - len(letters)
-	letter := letters[base%len(letters)]
-
-	// This is a simplified approach - in practice you'd want better naming
-	tv := TypeVariable(rune(letter))
+	tv := TypeVariable(rune(0xE000 + f.counter - len(simpleFreshTypeVariables)))
 	f.counter++
 	return tv
 }

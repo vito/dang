@@ -1,0 +1,8 @@
+[1m[31mError:[0m non-generic type String does not accept type arguments
+  [2m[34m--> errors/type_args_on_nongeneric.dang:1:8[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mpub x: String[Int!]! = "x"
+[2m              [31m^^^^^^^^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

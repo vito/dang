@@ -18,6 +18,7 @@ type TypeNode interface {
 type NamedTypeNode struct {
 	Base *NamedTypeNode
 	Name string
+	Args []TypeNode
 	Loc  *SourceLocation
 }
 
@@ -27,7 +28,14 @@ func (t *NamedTypeNode) ReferencedSymbols() []string {
 	if t.Name == "" {
 		return nil
 	}
-	return []string{t.Name}
+	symbols := []string{t.Name}
+	if t.Base != nil {
+		symbols = append(t.Base.ReferencedSymbols(), symbols...)
+	}
+	for _, arg := range t.Args {
+		symbols = append(symbols, arg.ReferencedSymbols()...)
+	}
+	return symbols
 }
 
 type UnresolvedTypeError struct {
@@ -36,6 +44,13 @@ type UnresolvedTypeError struct {
 
 func (e UnresolvedTypeError) Error() string {
 	return fmt.Sprintf("unresolved type: %s", e.Name)
+}
+
+func pluralSuffix(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 func (t *NamedTypeNode) GetSourceLocation() *SourceLocation {
@@ -61,7 +76,31 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		if !found {
 			return nil, UnresolvedTypeError{t.Name}
 		}
-		return s, nil
+
+		mod, isModule := s.(*Module)
+		if len(t.Args) == 0 {
+			if isModule && len(mod.TypeParams) > 0 {
+				return nil, fmt.Errorf("generic type %s requires %d type argument%s", mod.Name(), len(mod.TypeParams), pluralSuffix(len(mod.TypeParams)))
+			}
+			return s, nil
+		}
+
+		if !isModule || len(mod.TypeParams) == 0 {
+			return nil, fmt.Errorf("non-generic type %s does not accept type arguments", s.Name())
+		}
+		if len(t.Args) != len(mod.TypeParams) {
+			return nil, fmt.Errorf("generic type %s requires %d type argument%s, got %d", mod.Name(), len(mod.TypeParams), pluralSuffix(len(mod.TypeParams)), len(t.Args))
+		}
+
+		args := make([]hm.Type, len(t.Args))
+		for i, arg := range t.Args {
+			argType, err := arg.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, fmt.Errorf("NamedType.Infer: type argument %d: %w", i+1, err)
+			}
+			args[i] = argType
+		}
+		return NewAppliedType(mod, args), nil
 	})
 }
 

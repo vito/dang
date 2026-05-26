@@ -28,6 +28,20 @@ type Coercible interface {
 	AcceptsCoercionFrom(Type) bool
 }
 
+// TypeConstructor is implemented by constructed types whose component Types()
+// are only comparable when they share the same logical constructor. This avoids
+// accidentally unifying two distinct constructed types that happen to have the
+// same Go representation and arity.
+type TypeConstructor interface {
+	SameTypeConstructor(Type) bool
+}
+
+// InvariantTypeConstructor marks constructed types whose component arguments
+// must unify invariantly rather than by assignability/subtyping.
+type InvariantTypeConstructor interface {
+	InvariantTypeArgs() bool
+}
+
 // Substitutable is any type that can have substitutions applied and knows its free type variables
 type Substitutable interface {
 	Apply(Subs) Substitutable

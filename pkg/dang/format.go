@@ -929,6 +929,16 @@ func (f *Formatter) formatClassDecl(c *ClassDecl) {
 
 	f.write("type ")
 	f.write(c.Name.Name)
+	if len(c.TypeParams) > 0 {
+		f.write("[")
+		for i, param := range c.TypeParams {
+			if i > 0 {
+				f.write(", ")
+			}
+			f.write(param.String())
+		}
+		f.write("]")
+	}
 
 	// Implements clause
 	if len(c.Implements) > 0 {
@@ -3251,10 +3261,20 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 	switch tn := t.(type) {
 	case *NamedTypeNode:
 		if tn.Base != nil {
-			f.write(tn.Base.Name)
+			f.formatTypeNode(tn.Base)
 			f.write(".")
 		}
 		f.write(tn.Name)
+		if len(tn.Args) > 0 {
+			f.write("[")
+			for i, arg := range tn.Args {
+				if i > 0 {
+					f.write(", ")
+				}
+				f.formatTypeNode(arg)
+			}
+			f.write("]")
+		}
 	case NonNullTypeNode:
 		if _, ok := tn.Elem.(UnionTypeNode); ok {
 			f.write("(")

@@ -1,0 +1,9 @@
+[1m[31mError:[0m duplicate type parameter a
+  [2m[34m--> errors/duplicate_type_params.dang:1:6[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mtype Bad[a, a] {
+[2m            [31m^^^[0m
+ [2m  2 |   pub value: a[0m
+ [2m  3 | }[0m
+ [2m    |[0m
+

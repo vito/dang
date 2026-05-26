@@ -137,8 +137,9 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, err
 
 // TODO: is this just ClassType? are Classes just named Envs?
 type Module struct {
-	Named string
-	Kind  ModuleKind
+	Named      string
+	Kind       ModuleKind
+	TypeParams []hm.TypeVariable
 
 	// Qualifier is the import/module alias used for display-only type names.
 	Qualifier string
@@ -674,24 +675,233 @@ func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
 	}
 }
 
+// AppliedType is a nominal generic object type with concrete type arguments,
+// e.g. Box[Int!]. It is both an hm.Type and an Env view over the generic
+// template module with class parameters substituted in member schemes.
+type AppliedType struct {
+	Base *Module
+	Args []hm.Type
+}
+
+var _ Env = (*AppliedType)(nil)
+var _ hm.TypeConstructor = (*AppliedType)(nil)
+var _ hm.InvariantTypeConstructor = (*AppliedType)(nil)
+
+func NewAppliedType(base *Module, args []hm.Type) *AppliedType {
+	return &AppliedType{Base: base, Args: append([]hm.Type(nil), args...)}
+}
+
+func (t *AppliedType) typeParamSubs() hm.Subs {
+	subs := hm.NewSubs()
+	for i, param := range t.Base.TypeParams {
+		if i >= len(t.Args) {
+			break
+		}
+		subs.Add(param, t.Args[i])
+	}
+	return subs
+}
+
+func (t *AppliedType) applyScheme(s *hm.Scheme) *hm.Scheme {
+	if s == nil || len(t.Base.TypeParams) == 0 {
+		return s
+	}
+	return s.Apply(t.typeParamSubs()).(*hm.Scheme)
+}
+
+func (t *AppliedType) Name() string { return t.String() }
+
+func (t *AppliedType) String() string {
+	args := make([]string, len(t.Args))
+	for i, arg := range t.Args {
+		args[i] = arg.String()
+	}
+	return fmt.Sprintf("%s[%s]", t.Base.String(), strings.Join(args, ", "))
+}
+
+func (t *AppliedType) Apply(subs hm.Subs) hm.Substitutable {
+	if len(subs) == 0 {
+		return t
+	}
+	args := make([]hm.Type, len(t.Args))
+	changed := false
+	for i, arg := range t.Args {
+		applied := arg.Apply(subs).(hm.Type)
+		args[i] = applied
+		if !applied.Eq(arg) {
+			changed = true
+		}
+	}
+	if !changed {
+		return t
+	}
+	return &AppliedType{Base: t.Base, Args: args}
+}
+
+func (t *AppliedType) FreeTypeVar() hm.TypeVarSet {
+	ret := hm.NewTypeVarSet()
+	for _, arg := range t.Args {
+		ret = ret.Union(arg.FreeTypeVar())
+	}
+	return ret
+}
+
+func (t *AppliedType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+	args := make([]hm.Type, len(t.Args))
+	for i, arg := range t.Args {
+		normalized, err := arg.Normalize(k, v)
+		if err != nil {
+			return nil, err
+		}
+		args[i] = normalized
+	}
+	return &AppliedType{Base: t.Base, Args: args}, nil
+}
+
+func (t *AppliedType) Types() hm.Types {
+	args := hm.BorrowTypes(len(t.Args))
+	copy(args, t.Args)
+	return args
+}
+
+func (t *AppliedType) Eq(other Type) bool {
+	ot, ok := other.(*AppliedType)
+	if !ok || t.Base != ot.Base || len(t.Args) != len(ot.Args) {
+		return false
+	}
+	for i, arg := range t.Args {
+		if !arg.Eq(ot.Args[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *AppliedType) SameTypeConstructor(other hm.Type) bool {
+	ot, ok := other.(*AppliedType)
+	return ok && t.Base == ot.Base
+}
+
+func (t *AppliedType) InvariantTypeArgs() bool { return true }
+
+func (t *AppliedType) Supertypes() []Type {
+	// Generic implements/interfaces are intentionally out of scope for the MVP.
+	return nil
+}
+
+func (t *AppliedType) SchemeOf(name string) (*hm.Scheme, bool) {
+	s, ok := t.Base.SchemeOf(name)
+	if !ok {
+		return nil, false
+	}
+	return t.applyScheme(s), true
+}
+
+func (t *AppliedType) LocalSchemeOf(name string) (*hm.Scheme, bool) {
+	s, ok := t.Base.LocalSchemeOf(name)
+	if !ok {
+		return nil, false
+	}
+	return t.applyScheme(s), true
+}
+
+func (t *AppliedType) Clone() hm.Env {
+	return &AppliedType{Base: t.Base, Args: append([]hm.Type(nil), t.Args...)}
+}
+
+func (t *AppliedType) Add(name string, scheme *hm.Scheme) hm.Env {
+	t.Base.Add(name, scheme)
+	return t
+}
+
+func (t *AppliedType) Remove(name string) hm.Env {
+	t.Base.Remove(name)
+	return t
+}
+
+func (t *AppliedType) GetDynamicScopeType() hm.Type {
+	dyn := t.Base.GetDynamicScopeType()
+	if dyn == nil {
+		return nil
+	}
+	return dyn.Apply(t.typeParamSubs()).(hm.Type)
+}
+
+func (t *AppliedType) SetDynamicScopeType(typ hm.Type) { t.Base.SetDynamicScopeType(typ) }
+
+func (t *AppliedType) NamedType(name string) (Env, bool)      { return t.Base.NamedType(name) }
+func (t *AppliedType) LocalNamedType(name string) (Env, bool) { return t.Base.LocalNamedType(name) }
+func (t *AppliedType) AddClass(name string, class Env)        { t.Base.AddClass(name, class) }
+func (t *AppliedType) SetTypeOrigin(name string, origin BindingOrigin) {
+	t.Base.SetTypeOrigin(name, origin)
+}
+func (t *AppliedType) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+	return t.Base.LocalTypeOrigin(name)
+}
+func (t *AppliedType) SetDocString(name string, doc string) { t.Base.SetDocString(name, doc) }
+func (t *AppliedType) GetDocString(name string) (string, bool) {
+	return t.Base.GetDocString(name)
+}
+func (t *AppliedType) SetDirectives(name string, directives []*DirectiveApplication) {
+	t.Base.SetDirectives(name, directives)
+}
+func (t *AppliedType) GetDirectives(name string) []*DirectiveApplication {
+	return t.Base.GetDirectives(name)
+}
+func (t *AppliedType) SetModuleDocString(doc string) { t.Base.SetModuleDocString(doc) }
+func (t *AppliedType) GetModuleDocString() string    { return t.Base.GetModuleDocString() }
+func (t *AppliedType) SetVisibility(name string, visibility Visibility) {
+	t.Base.SetVisibility(name, visibility)
+}
+func (t *AppliedType) SetValueOrigin(name string, origin BindingOrigin) {
+	t.Base.SetValueOrigin(name, origin)
+}
+func (t *AppliedType) LocalValueOrigin(name string) (BindingOrigin, bool) {
+	return t.Base.LocalValueOrigin(name)
+}
+func (t *AppliedType) AddDirective(name string, directive *DirectiveDecl) {
+	t.Base.AddDirective(name, directive)
+}
+func (t *AppliedType) GetDirective(name string) (*DirectiveDecl, bool) {
+	return t.Base.GetDirective(name)
+}
+func (t *AppliedType) SetDirectiveOrigin(name string, origin BindingOrigin) {
+	t.Base.SetDirectiveOrigin(name, origin)
+}
+func (t *AppliedType) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+	return t.Base.LocalDirectiveOrigin(name)
+}
+func (t *AppliedType) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
+	return func(yield func(string, *hm.Scheme) bool) {
+		for name, scheme := range t.Base.Bindings(visibility) {
+			if !yield(name, t.applyScheme(scheme)) {
+				return
+			}
+		}
+	}
+}
+func (t *AppliedType) CheckTypeConflict(symbolName string) []string {
+	return t.Base.CheckTypeConflict(symbolName)
+}
+func (t *AppliedType) CheckValueConflict(symbolName string) []string {
+	return t.Base.CheckValueConflict(symbolName)
+}
+func (t *AppliedType) CheckDirectiveConflict(directiveName string) []string {
+	return t.Base.CheckDirectiveConflict(directiveName)
+}
+func (t *AppliedType) NamedTypes() iter.Seq2[string, Env] { return t.Base.NamedTypes() }
+
 var _ hm.Substitutable = (*Module)(nil)
 
 func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
-	if len(subs) == 0 || len(e.FreeTypeVar()) == 0 {
-		return e
-	}
-	retVal := e.Clone().(*Module)
-	for _, v := range retVal.vars {
-		v.Apply(subs)
-	}
-	return retVal
+	// A generic Module is the nominal template itself. Substituting its class
+	// parameters is represented by AppliedType, not by cloning the module (which
+	// would break nominal identity).
+	return e
 }
 
 func (e *Module) FreeTypeVar() hm.TypeVarSet {
-	var retVal hm.TypeVarSet
-	// for _, v := range e.vars {
-	// 	retVal = v.FreeTypeVar().Union(retVal)
-	// }
+	retVal := hm.NewTypeVarSet(e.TypeParams...)
 	return retVal
 }
 
@@ -735,6 +945,7 @@ func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 
 func (e *Module) Clone() hm.Env {
 	mod := NewModule(e.Named, e.Kind)
+	mod.TypeParams = append([]hm.TypeVariable(nil), e.TypeParams...)
 	mod.Qualifier = e.Qualifier
 	mod.Parent = e
 	mod.dynamicScopeType = e.dynamicScopeType

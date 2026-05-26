@@ -229,11 +229,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	if e, ok := env.(Env); ok {
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
 		if defined {
-			curT, curMono := cur.Type()
-			if !curMono {
-				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
-			}
-
+			curT, _ := cur.Type()
 			if !definedType.Eq(curT) {
 				return nil, WrapInferError(
 					fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
@@ -262,7 +258,11 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 	}
 
-	env.Add(s.Name.Name, hm.NewScheme(nil, definedType))
+	scheme := hm.NewScheme(nil, definedType)
+	if _, isFunDecl := s.Value.(*FunDecl); isFunDecl {
+		scheme = hm.Generalize(env, definedType)
+	}
+	env.Add(s.Name.Name, scheme)
 	s.SetInferredType(definedType)
 	return definedType, nil
 }
@@ -320,6 +320,7 @@ func (s *SlotDecl) Walk(fn func(Node) bool) {
 type ClassDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
+	TypeParams []hm.TypeVariable
 	Value      *Block
 	Implements []*Symbol
 	Visibility Visibility
@@ -329,6 +330,8 @@ type ClassDecl struct {
 
 	Inferred          *Module
 	ConstructorFnType *hm.FunctionType
+
+	typeParamsValidated bool
 }
 
 // NewConstructorDecl represents an explicit `new(...) { ... }` constructor
@@ -448,6 +451,53 @@ func declareLocalType(env Env, name string, kind ModuleKind) (*Module, error) {
 	return mod, nil
 }
 
+func validateTypeParams(params []hm.TypeVariable) error {
+	seen := map[hm.TypeVariable]bool{}
+	for _, param := range params {
+		if seen[param] {
+			return fmt.Errorf("duplicate type parameter %q", param)
+		}
+		seen[param] = true
+	}
+	return nil
+}
+
+func (c *ClassDecl) validateTypeParamsOnce() error {
+	if c.typeParamsValidated {
+		return nil
+	}
+	c.typeParamsValidated = true
+	return validateTypeParams(c.TypeParams)
+}
+
+func classSelfType(class *Module) hm.Type {
+	if len(class.TypeParams) == 0 {
+		return class
+	}
+	args := make([]hm.Type, len(class.TypeParams))
+	for i, param := range class.TypeParams {
+		args[i] = param
+	}
+	return NewAppliedType(class, args)
+}
+
+func typeVarAllowed(tv hm.TypeVariable, allowed []hm.TypeVariable) bool {
+	for _, param := range allowed {
+		if tv == param {
+			return true
+		}
+	}
+	return false
+}
+
+func isMethodSlot(slot *SlotDecl) bool {
+	if _, ok := slot.Value.(*FunDecl); ok {
+		return true
+	}
+	_, ok := slot.Type_.(FunTypeNode)
+	return ok
+}
+
 // findNewConstructor returns the NewConstructorDecl from the class body, if any
 func (c *ClassDecl) findNewConstructor() *NewConstructorDecl {
 	for _, form := range c.Value.Forms {
@@ -479,6 +529,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	if declareErr != nil {
 		return WrapInferError(declareErr, c.Name)
 	}
+	class.TypeParams = append([]hm.TypeVariable(nil), c.TypeParams...)
+	if err := c.validateTypeParamsOnce(); err != nil {
+		return WrapInferError(err, c.Name)
+	}
 	c.Inferred = class
 	c.SetInferredType(class)
 
@@ -489,6 +543,13 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	if pass == 0 {
 		return nil
 	}
+
+	if len(class.TypeParams) > 0 && len(c.Implements) > 0 {
+		return WrapInferError(fmt.Errorf("generic type %s cannot implement interfaces yet", class.Name()), c.Name)
+	}
+
+	selfType := classSelfType(class)
+	class.SetDynamicScopeType(hm.NonNullType{Type: selfType})
 
 	inferEnv := &CompositeModule{
 		primary: class,
@@ -505,14 +566,14 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
-	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, class, fresh)
+	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, selfType, class.Named, fresh)
 	if err != nil {
 		return err
 	}
 	c.ConstructorFnType = constructorType
 
 	// Add the constructor function type to the environment
-	constructorScheme := hm.NewScheme(nil, constructorType)
+	constructorScheme := hm.NewScheme(class.TypeParams, constructorType)
 	env.Add(c.Name.Name, constructorScheme)
 
 	// Link the implementation after all interface type names have been
@@ -547,10 +608,6 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		}
 	}
 
-	// Set dynamic scope type to the class type
-	selfType := hm.NonNullType{Type: class}
-	class.SetDynamicScopeType(selfType)
-
 	// Hoist body forms directly (not via Block.Hoist which clones the env)
 	// to register method signatures on the class module. This enables
 	// forward references between types defined in any order. We hoist at
@@ -578,6 +635,10 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, c.Name)
 	}
+	class.TypeParams = append([]hm.TypeVariable(nil), c.TypeParams...)
+	if err := c.validateTypeParamsOnce(); err != nil {
+		return nil, WrapInferError(err, c.Name)
+	}
 
 	// Store doc string for the class name in the environment
 	if c.DocString != "" {
@@ -587,9 +648,12 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	// Set this early so we can at least partially infer.
 	c.Inferred = class
 
-	// Set dynamic scope type to the class type
-	selfType := hm.NonNullType{Type: class}
-	class.SetDynamicScopeType(selfType)
+	if len(class.TypeParams) > 0 && len(c.Implements) > 0 {
+		return nil, WrapInferError(fmt.Errorf("generic type %s cannot implement interfaces yet", class.Name()), c.Name)
+	}
+
+	selfType := classSelfType(class)
+	class.SetDynamicScopeType(hm.NonNullType{Type: selfType})
 
 	// Validate directive applications
 	for _, directive := range c.Directives {
@@ -624,6 +688,10 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		return nil, err
 	}
 
+	if err := c.validateGenericFieldTypeVars(class); err != nil {
+		return nil, err
+	}
+
 	// If there's an explicit new(), infer its body with its args in scope.
 	// Errors here (e.g. wrong return type) are collected but don't prevent
 	// the class from being usable, avoiding cascading type errors.
@@ -644,6 +712,31 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	}
 
 	return c.ConstructorFnType, newBodyErr
+}
+
+func (c *ClassDecl) validateGenericFieldTypeVars(class *Module) error {
+	if len(class.TypeParams) == 0 {
+		return nil
+	}
+	for _, form := range c.bodyFormsWithoutNew() {
+		slot, ok := form.(*SlotDecl)
+		if !ok || isMethodSlot(slot) {
+			continue
+		}
+		scheme, found := class.LocalSchemeOf(slot.Name.Name)
+		if !found {
+			continue
+		}
+		for tv := range scheme.FreeTypeVar() {
+			if !typeVarAllowed(tv, class.TypeParams) {
+				return NewInferError(
+					fmt.Errorf("field %q uses unbound type variable %q; generic fields may only use type parameters declared on %s", slot.Name.Name, tv, class.Name()),
+					slot,
+				)
+			}
+		}
+	}
+	return nil
 }
 
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
@@ -725,7 +818,7 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, returnType hm.Type, className string, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
@@ -734,21 +827,21 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 	argEnv := env.Clone()
 	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
+		return nil, fmt.Errorf("%s Constructor.Declare: %w", className, err)
 	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
 
-	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: classType})
+	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: returnType})
 	if blockParam != nil {
 		blockParamType, err := blockParam.Type_.Infer(signatureCtx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", classType.Named, err)
+			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", className, err)
 		}
 		blockType, ok := blockParamType.(*hm.FunctionType)
 		if !ok {
-			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", classType.Named, blockParamType)
+			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", className, blockParamType)
 		}
 		constructorType.SetBlock(blockType)
 	}
@@ -794,8 +887,8 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		return fmt.Errorf("inferring new() body: %w", err)
 	}
 
-	// The new() body must return the class type
-	expectedType := hm.NonNullType{Type: c.Inferred}
+	// The new() body must return the class self type.
+	expectedType := hm.NonNullType{Type: classSelfType(c.Inferred)}
 	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
 		errorNode := Node(newDecl.BodyBlock)
 		if len(newDecl.BodyBlock.Forms) > 0 {

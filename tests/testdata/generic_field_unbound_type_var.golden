@@ -1,0 +1,10 @@
+[1m[31mError:[0m field "value" uses unbound type variable b; generic fields may only use type parameters declared on Bad
+  [2m[34m--> errors/generic_field_unbound_type_var.dang:2:3[0m
+ [2m    |[0m
+ [2m  1 | type Bad[a] {[0m
+ [2m[34m[1m  2 | [0m  pub value: b
+[2m         [31m^^^^^^^^^^^^[0m
+ [2m  3 | }[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

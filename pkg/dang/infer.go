@@ -43,29 +43,21 @@ func newInferer(env hm.Env) *inferer {
 	}
 }
 
-const letters = `abcdefghijklmnopqrstuvwxyz`
+var freshTypeVariables = []rune("αβγδεζηθικλμνξοπρστυφχψω")
 
 func (infer *inferer) Fresh() hm.TypeVariable {
-	if infer.varCount < len(letters) {
-		retVal := letters[infer.varCount]
+	if infer.varCount < len(freshTypeVariables) {
+		retVal := freshTypeVariables[infer.varCount]
 		infer.varCount++
 		return hm.TypeVariable(retVal)
-	} else {
-		// Use Greek letters and other Unicode characters when we run out of Latin letters
-		// Start with Greek lowercase letters (α, β, γ, etc.)
-		greekStart := infer.varCount - len(letters)
-		if greekStart < 24 { // 24 Greek letters
-			greek := rune('α' + greekStart)
-			infer.varCount++
-			return hm.TypeVariable(greek)
-		} else {
-			// Fall back to using numbers as characters
-			numStart := greekStart - 24
-			char := rune('0' + (numStart % 10))
-			infer.varCount++
-			return hm.TypeVariable(char)
-		}
 	}
+
+	// Source-level type variables are restricted to [a-z]. Use private-use
+	// Unicode code points after the readable Greek range so instantiated
+	// schemes can never collide with source variables like `a` or `b`.
+	retVal := rune(0xE000 + infer.varCount - len(freshTypeVariables))
+	infer.varCount++
+	return hm.TypeVariable(retVal)
 }
 
 func (infer *inferer) consGen(ctx context.Context, expr hm.Expression) (err error) {

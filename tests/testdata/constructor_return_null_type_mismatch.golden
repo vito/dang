@@ -1,4 +1,4 @@
-[1m[31mError:[0m new() must return BadNullConstructor!, got a?
+[1m[31mError:[0m new() must return BadNullConstructor!, got α?
   [2m[34m--> errors/constructor_return_null_type_mismatch.dang:4:12[0m
  [2m    |[0m
  [2m  2 | type BadNullConstructor {[0m

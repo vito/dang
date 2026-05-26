@@ -1,4 +1,4 @@
-[1m[31mError:[0m Reassignment.Infer: cannot assign a? to String!: cannot use a? as String!
+[1m[31mError:[0m Reassignment.Infer: cannot assign α? to String!: cannot use α? as String!
   [2m[34m--> errors/null_to_nonnull_reassignment.dang:3:1[0m
  [2m    |[0m
  [2m  1 | # Null cannot be assigned to an existing non-null slot[0m
