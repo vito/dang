@@ -5,6 +5,14 @@ pub empty_list = [] :: [String!]!
 pub number = 42 :: Int!
 pub text = "hello" :: String!
 
+# String literals coerce to the built-in ID scalar
+pub id_value = "foo" :: ID!
+pub nullable_id = "bar" :: ID
+
+# A String! value coerces to ID! via an explicit cast
+pub raw_string: String! = "baz"
+pub id_from_string = raw_string :: ID!
+
 # Casting to nullable types (subtyping: Int! <: Int)
 pub nullable_number = 42 :: Int
 pub nullable_empty_list = [] :: [String!]
@@ -40,6 +48,9 @@ pub complex_obj = {{user: {{name: "Alice", age: 30}}}} :: {{user: {{name: String
 assert { empty_list == [] }
 assert { number == 42 }
 assert { text == "hello" }
+assert { id_value == "foo" }
+assert { nullable_id == "bar" }
+assert { id_from_string == "baz" }
 assert { result == 100 }
 assert { sum == 3 }
 assert { concat == "hello world" }

@@ -1014,7 +1014,7 @@ func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
 	}
 	// Built-in scalars don't accept coercion from other types.
 	switch t {
-	case StringType, IntType, FloatType, BooleanType, IDType:
+	case StringType, IntType, FloatType, BooleanType:
 		return false
 	}
 	// Custom scalars accept coercion from any built-in scalar.
