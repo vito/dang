@@ -267,39 +267,52 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	return definedType, nil
 }
 
+// EvalValue computes the slot's value without binding it to the environment.
+// Callers must invoke Publish to make the value visible to siblings.
+func (s *SlotDecl) EvalValue(ctx context.Context, env EvalEnv) (Value, error) {
+	val, defined := env.LookupLocal(s.Name.Name)
+	if defined {
+		// Already defined (e.g. through constructor). The value reached us
+		// through a Coerce-wrapped argument so it is already materialized.
+		return val, nil
+	}
+
+	if s.Value == nil {
+		// Check if this is a required (non-null) type without a value
+		// This is a runtime error - required types must have values
+		if inferredType := s.GetInferredType(); inferredType != nil {
+			if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
+				return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType)
+			}
+		}
+
+		// If no value is provided, this is just a type declaration
+		// The caller will publish NullValue as a placeholder
+		return NullValue{}, nil
+	}
+
+	// Evaluate the value expression with proper error context. The Value
+	// node is wrapped in a Coerce by SlotDecl.Infer when the slot has an
+	// explicit type, so materialization happens during EvalNode.
+	val, err := EvalNode(ctx, env, s.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return val, nil
+}
+
+func (s *SlotDecl) Publish(env EvalEnv, val Value) {
+	env.Bind(s.Name.Name, val, s.Visibility)
+}
+
 func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.LookupLocal(s.Name.Name)
-		if defined {
-			// Already defined (e.g. through constructor). The value reached us
-			// through a Coerce-wrapped argument so it is already materialized.
-			return val, nil
-		}
-
-		if s.Value == nil {
-			// Check if this is a required (non-null) type without a value
-			// This is a runtime error - required types must have values
-			if inferredType := s.GetInferredType(); inferredType != nil {
-				if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
-					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType)
-				}
-			}
-
-			// If no value is provided, this is just a type declaration
-			// Add a null value to the environment as a placeholder
-			env.Bind(s.Name.Name, NullValue{}, s.Visibility)
-			return NullValue{}, nil
-		}
-
-		// Evaluate the value expression with proper error context. The Value
-		// node is wrapped in a Coerce by SlotDecl.Infer when the slot has an
-		// explicit type, so materialization happens during EvalNode.
-		val, err := EvalNode(ctx, env, s.Value)
+		val, err := s.EvalValue(ctx, env)
 		if err != nil {
 			return nil, err
 		}
-
-		env.Bind(s.Name.Name, val, s.Visibility)
+		s.Publish(env, val)
 		return val, nil
 	})
 }

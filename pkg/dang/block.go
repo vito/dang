@@ -65,40 +65,11 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 		return variables, nil
 	}
 
-	declared := make(map[string]int)
-	names := make([]string, len(variables))
-	dependencies := make(map[int][]int)
-
-	for i, variable := range variables {
-		decls := variable.DeclaredSymbols()
-		if len(decls) > 0 {
-			names[i] = decls[0]
-		}
-		for _, name := range decls {
-			declared[name] = i
-		}
-	}
-
-	for i, variable := range variables {
-		for _, ref := range variable.ReferencedSymbols() {
-			dep, ok := declared[ref]
-			if ok && dep != i {
-				dependencies[i] = append(dependencies[i], dep)
-			}
-		}
-	}
-
-	order, cycle := dfsTopologicalOrder(len(variables), dependencies)
+	graph := newSlotDepGraph(variables)
+	order, cycle := graph.LinearOrder()
 	if cycle != nil {
-		cycleNames := make([]string, len(cycle))
-		for i, idx := range cycle {
-			cycleNames[i] = names[idx]
-			if cycleNames[i] == "" {
-				cycleNames[i] = fmt.Sprintf("<variable %d>", idx)
-			}
-		}
-
-		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(cycleNames, " -> "))
+		names := graph.CycleNames(cycle)
+		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(names, " -> "))
 		node := variables[cycle[0]]
 		if slot, ok := node.(*SlotDecl); ok && slot.Value != nil {
 			return nil, NewInferError(err, slot.Value)
@@ -111,55 +82,6 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 		sorted[i] = variables[idx]
 	}
 	return sorted, nil
-}
-
-// dfsTopologicalOrder returns either a topological order (deps before
-// dependents) or, if one exists, a cycle path through the dependency graph.
-func dfsTopologicalOrder(n int, dependencies map[int][]int) (order []int, cycle []int) {
-	const (
-		unvisited = iota
-		visiting
-		done
-	)
-
-	state := make([]int, n)
-	var stack []int
-	positions := make(map[int]int)
-
-	var visit func(int) []int
-	visit = func(i int) []int {
-		state[i] = visiting
-		positions[i] = len(stack)
-		stack = append(stack, i)
-
-		for _, dep := range dependencies[i] {
-			switch state[dep] {
-			case unvisited:
-				if c := visit(dep); c != nil {
-					return c
-				}
-			case visiting:
-				c := append([]int(nil), stack[positions[dep]:]...)
-				return append(c, dep)
-			}
-		}
-
-		stack = stack[:len(stack)-1]
-		delete(positions, i)
-		state[i] = done
-		order = append(order, i)
-		return nil
-	}
-
-	for i := range n {
-		if state[i] == unvisited {
-			if c := visit(i); c != nil {
-				return nil, c
-			}
-		}
-	}
-
-	return order, nil
 }
 
 // ClassifiedForms holds forms categorized by their compilation phase
@@ -589,16 +511,57 @@ func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
 
 var _ hm.Inferer = &Object{}
 
+// objectSlotLayers validates the field list and returns layers of slot
+// indices that can be inferred or evaluated independently within a layer.
+// Errors are scoped to the object node so the source location points at
+// the literal.
+func objectSlotLayers(o *Object) ([][]int, error) {
+	localNames := make(map[string]int, len(o.Slots))
+	nodes := make([]Node, len(o.Slots))
+	for i, slot := range o.Slots {
+		declared := slot.DeclaredSymbols()
+		if len(declared) != 1 {
+			return nil, NewInferError(fmt.Errorf("object slot must declare exactly one name"), o)
+		}
+		name := declared[0]
+		if prev, ok := localNames[name]; ok {
+			return nil, NewInferError(
+				fmt.Errorf("object literal has duplicate field %q (previous declaration at field %d)", name, prev+1),
+				o,
+			)
+		}
+		localNames[name] = i
+		nodes[i] = slot
+	}
+
+	graph := newSlotDepGraph(nodes)
+	layers, cycle := graph.Layers()
+	if cycle != nil {
+		names := graph.CycleNames(cycle)
+		return nil, NewInferError(
+			fmt.Errorf("object literal has cyclic field dependencies: %s", strings.Join(names, " -> ")),
+			o,
+		)
+	}
+	return layers, nil
+}
+
 func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewModule("", ObjectKind)
 	inferEnv := &CompositeModule{
 		primary: mod,
 		lexical: env.(Env),
 	}
-	for _, slot := range o.Slots {
-		_, err := slot.Infer(ctx, inferEnv, fresh)
-		if err != nil {
-			return nil, err
+	layers, err := objectSlotLayers(o)
+	if err != nil {
+		return nil, err
+	}
+	for _, layer := range layers {
+		for _, slotIdx := range layer {
+			_, err := o.Slots[slotIdx].Infer(ctx, inferEnv, fresh)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	o.Mod = mod
@@ -613,10 +576,61 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 	newMod := NewModuleValue(o.Mod)
 	evalEnv := CreateCompositeEnv(newMod, env)
-	for _, slot := range o.Slots {
-		_, err := EvalNode(ctx, evalEnv, slot)
-		if err != nil {
-			return nil, err
+	layers, err := objectSlotLayers(o)
+	if err != nil {
+		return nil, err
+	}
+
+	evalCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	for _, layer := range layers {
+		type slotResult struct {
+			idx int
+			val Value
+			err error
+		}
+		results := make(chan slotResult, len(layer))
+		for _, slotIdx := range layer {
+			slot := o.Slots[slotIdx]
+			go func(idx int, slot *SlotDecl) {
+				// Evaluate each slot against a fork of the object environment. The
+				// fork can read already-published dependency fields through its
+				// parent, but any incidental local writes remain private to this
+				// slot. The object itself is only mutated below, after the whole
+				// layer has completed.
+				slotEnv := CreateCompositeEnv(newMod.Derive(true), env)
+				val, err := WithEvalErrorHandling(evalCtx, slot, func() (Value, error) {
+					return slot.EvalValue(evalCtx, slotEnv)
+				})
+				if err != nil {
+					err = fmt.Errorf("evaluating object field %q: %w", slot.Name.Name, err)
+				}
+				results <- slotResult{idx: idx, val: val, err: err}
+			}(slotIdx, slot)
+		}
+
+		values := make(map[int]Value, len(layer))
+		var firstErr error
+		firstErrIdx := len(o.Slots)
+		for range layer {
+			res := <-results
+			if res.err != nil {
+				cancel()
+				if firstErr == nil || res.idx < firstErrIdx {
+					firstErr = res.err
+					firstErrIdx = res.idx
+				}
+				continue
+			}
+			values[res.idx] = res.val
+		}
+		if firstErr != nil {
+			return nil, firstErr
+		}
+
+		// Publish completed fields in source order for deterministic object layout.
+		for _, slotIdx := range layer {
+			o.Slots[slotIdx].Publish(evalEnv, values[slotIdx])
 		}
 	}
 	return newMod, nil

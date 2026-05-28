@@ -1,0 +1,9 @@
+[1m[31mError:[0m object literal has cyclic field dependencies: a -> b -> a
+  [2m[34m--> errors/object_field_cycle.dang:1:11[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mpub bad = {{
+[2m                 [31m^^[0m
+ [2m  2 |   a: b[0m
+ [2m  3 |   b: a[0m
+ [2m    |[0m
+
