@@ -1,8 +1,0 @@
-enum Status { PASSED FAILED }
-
-pub echo(status: Status!): Status! {
-  status
-}
-
-# String! is not implicitly assignable to an enum argument.
-let bad = echo("PASSED")

@@ -1,9 +1,0 @@
-[1m[31mError:[0m cannot use String! as ID!
-  [2m[34m--> errors/scalar_slot_requires_cast.dang:2:15[0m
- [2m    |[0m
- [2m  1 | # String! is not implicitly assignable to ID! in a typed slot.[0m
- [2m[34m[1m  2 | [0mpub id: ID! = "abc"
-[2m                     [31m^^^^^[0m
- [2m  3 | [0m
- [2m    |[0m
-

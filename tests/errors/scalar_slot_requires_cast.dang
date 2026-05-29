@@ -1,2 +1,0 @@
-# String! is not implicitly assignable to ID! in a typed slot.
-pub id: ID! = "abc"

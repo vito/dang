@@ -61,6 +61,48 @@ func (c *Coerce) Walk(fn func(Node) bool) {
 	c.Expr.Walk(fn)
 }
 
+// isLiteralExpr reports whether n is a syntactic literal whose value is
+// statically known and may auto-coerce to a compatible scalar/enum at a
+// value-handoff boundary. List literals count when every element is itself
+// literal; a block counts when its tail expression is literal, so a function
+// body like `{ "abc" }` flows into a declared ID! return type.
+func isLiteralExpr(n Node) bool {
+	switch v := n.(type) {
+	case *String, *Int, *Float, *Boolean:
+		return true
+	case *Template:
+		return v.IsLiteralOnly()
+	case *List:
+		for _, el := range v.Elements {
+			if !isLiteralExpr(el) {
+				return false
+			}
+		}
+		return true
+	case *Block:
+		if len(v.Forms) == 0 {
+			return false
+		}
+		return isLiteralExpr(v.Forms[len(v.Forms)-1])
+	default:
+		return false
+	}
+}
+
+// assignableForValue is hm.Assignable, but when value is a syntactic literal
+// it falls back to AssignableWithCoercion. Use at value-handoff boundaries
+// where wrapCoerce will materialize the result.
+func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
+	subs, err := hm.Assignable(have, want)
+	if err == nil {
+		return subs, nil
+	}
+	if !isLiteralExpr(value) {
+		return nil, err
+	}
+	return hm.AssignableWithCoercion(have, want)
+}
+
 // wrapCoerce inserts a Coerce wrapper around node so its value is materialized
 // against target at runtime. If node is already a Coerce, the target is
 // tightened to the new target.

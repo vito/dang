@@ -290,7 +290,7 @@ func (c *FunCall) checkArgumentTypeWithSubs(ctx context.Context, env hm.Env, fre
 		return value, nil, fmt.Errorf("FunCall.Infer: %w", err)
 	}
 
-	subs, err := hm.Assignable(it, dt)
+	subs, err := assignableForValue(it, dt, value)
 	if err != nil {
 		return value, nil, NewInferError(err, value)
 	}

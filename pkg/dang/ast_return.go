@@ -149,21 +149,23 @@ func inferReturnTypeWithEarlyReturns(body Node, bodyType hm.Type, declaredType h
 	returns := collectReturnStatements(body, target)
 
 	if declaredType != nil {
-		subs, err := hm.Assignable(bodyType, declaredType)
+		subs, err := assignableForValue(bodyType, declaredType, body)
 		if err != nil {
 			return nil, NewInferError(
 				fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, bodyType),
 				body,
 			)
 		}
-		effectiveType := bodyType.Apply(subs).(hm.Type)
+		// The declared type wins: user asked for it, and a literal-coercion
+		// fallback produces an empty substitution against bodyType anyway.
+		effectiveType := declaredType.Apply(subs).(hm.Type)
 
 		for _, ret := range returns {
 			retType := returnValueType(ret)
 			if retType == nil {
 				continue
 			}
-			retSubs, err := hm.Assignable(retType, declaredType)
+			retSubs, err := assignableForValue(retType, declaredType, ret.Value)
 			if err != nil {
 				return nil, NewInferError(
 					fmt.Errorf("return type mismatch: declared %s, inferred %s", declaredType, retType),

@@ -1,4 +1,0 @@
-# Returning String! from a function declared ID! requires an explicit cast.
-pub makeID: ID! {
-  "abc"
-}

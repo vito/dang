@@ -1,9 +1,8 @@
 import Test
 
-# Test GraphQL scalar type as function input. Custom scalars require explicit
-# casts from String values.
+# String literals auto-coerce into custom GraphQL scalars at call boundaries.
 
-pub result = fetchURL(url: "https://example.com" :: URL!)
+pub result = fetchURL(url: "https://example.com")
 assert { result == "Fetched: https://example.com" }
 
 print("Scalar input tests passed!")

@@ -1,33 +1,30 @@
 import Test
 
-# Test explicit scalar casts. String values are not implicitly assignable to
-# custom GraphQL scalars; use :: at the value boundary where runtime
-# materialization can construct the scalar value.
+# Test scalar coercion. String literals (and other literal expressions)
+# auto-coerce into compatible custom GraphQL scalars at value-handoff
+# boundaries; non-literal Strings require an explicit :: cast.
 
 # =============================================================================
-# Test 1: Basic string to custom scalar casts
+# Test 1: Literal string -> custom scalar at call sites
 # =============================================================================
 
-pub urlResult = fetchURL(url: "https://example.com" :: URL!)
+pub urlResult = fetchURL(url: "https://example.com")
 assert { urlResult == "Fetched: https://example.com" }
 
-pub tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z" :: Timestamp!)
+pub tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z")
 assert { tsResult == "Formatted: 2024-01-15T10:30:00Z" }
 
-pub jsonResult = parseJSON(data: "{\"key\": \"value\"}" :: JSON!)
+pub jsonResult = parseJSON(data: "{\"key\": \"value\"}")
 assert { jsonResult == "Parsed JSON: {\"key\": \"value\"}" }
 
-pub bigIntResult = addBigInt(
-  a: "12345678901234567890" :: BigInt!,
-  b: "98765432109876543210" :: BigInt!
-)
+pub bigIntResult = addBigInt(a: "12345678901234567890", b: "98765432109876543210")
 assert { bigIntResult == "12345678901234567890+98765432109876543210" }
 
 # =============================================================================
 # Test 2: Nullable scalar parameters
 # =============================================================================
 
-pub nullableWithValue = fetchURLNullable(url: "https://nullable.com" :: URL!)
+pub nullableWithValue = fetchURLNullable(url: "https://nullable.com")
 assert { nullableWithValue == "Fetched nullable: https://nullable.com" }
 
 # Nullable URL with null - omitting the argument
@@ -35,18 +32,16 @@ pub nullableWithNull = fetchURLNullable
 assert { nullableWithNull == null }
 
 # =============================================================================
-# Test 3: List of scalars
+# Test 3: List literals -> [Scalar!]!
 # =============================================================================
 
-pub multiResult = fetchMultipleURLs(
-  urls: ["https://a.com", "https://b.com", "https://c.com"] :: [URL!]!
-)
+pub multiResult = fetchMultipleURLs(urls: ["https://a.com", "https://b.com", "https://c.com"])
 assert { multiResult[0] == "Fetched[0]: https://a.com" }
 assert { multiResult[1] == "Fetched[1]: https://b.com" }
 assert { multiResult[2] == "Fetched[2]: https://c.com" }
 
 # =============================================================================
-# Test 4: Scalar values from GraphQL can still be used directly
+# Test 4: Scalar values from GraphQL flow directly
 # =============================================================================
 
 pub urlValue = homepage
@@ -56,7 +51,7 @@ pub fetchedHomepage = fetchURL(url: urlValue)
 assert { fetchedHomepage == "Fetched: https://dang-lang.dev" }
 
 # =============================================================================
-# Test 5: Variables and expressions can be explicitly cast
+# Test 5: Non-literal Strings require an explicit cast
 # =============================================================================
 
 pub myUrl = "https://variable.com"
@@ -69,10 +64,24 @@ pub concatResult = fetchURL(url: (base + domain) :: URL!)
 assert { concatResult == "Fetched: https://concat.com" }
 
 # =============================================================================
-# Test 6: Mixed scalar and non-scalar arguments
+# Test 6: Literal in a typed slot, reassignment, and return
+# =============================================================================
+
+pub idSlot: ID! = "abc"
+assert { idSlot == "abc" }
+
+let currentID: ID! = "first"
+currentID = "second"
+assert { currentID == "second" }
+
+pub makeID: ID! { "abc" }
+assert { makeID == "abc" }
+
+# =============================================================================
+# Test 7: Mixed scalar and non-scalar arguments
 # =============================================================================
 
 pub greeting = hello(name: "World")
 assert { greeting == "Hello, World!" }
 
-print("All explicit scalar cast tests passed!")
+print("All scalar coercion tests passed!")

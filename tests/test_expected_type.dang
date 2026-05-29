@@ -11,15 +11,15 @@ pub jane = secondaryUser
 assert { userName(user: john) == "John Doe" }
 assert { userName(user: jane) == "Jane Smith" }
 
-# Raw scalar IDs still work when explicitly cast.
-assert { userName(user: "1" :: ID!) == "John Doe" }
+# Raw scalar ID literals also work — the String literal auto-coerces into ID!.
+assert { userName(user: "1") == "John Doe" }
 
 # Lists of ID arguments preserve the expected object type for each element.
 pub selectedNames = userNames(users: [john, jane])
 assert { selectedNames[0] == "John Doe" }
 assert { selectedNames[1] == "Jane Smith" }
 
-pub selectedNamesByID = userNames(users: ["1", "2"] :: [ID!]!)
+pub selectedNamesByID = userNames(users: ["1", "2"])
 assert { selectedNamesByID[0] == "John Doe" }
 assert { selectedNamesByID[1] == "Jane Smith" }
 

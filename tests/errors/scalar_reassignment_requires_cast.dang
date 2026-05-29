@@ -1,3 +1,0 @@
-# Reassignment to an ID! slot requires an explicit cast.
-let id = "abc" :: ID!
-id = "def"
