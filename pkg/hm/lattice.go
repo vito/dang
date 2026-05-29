@@ -6,9 +6,22 @@ func IsSubtypeOf(sub, super Type) bool {
 	return err == nil
 }
 
+// IsSubtypeOfNoCoercion checks whether sub is a true subtype of super,
+// ignoring value-level Coercible relationships.
+func IsSubtypeOfNoCoercion(sub, super Type) bool {
+	_, err := AssignableNoCoercion(sub, super)
+	return err == nil
+}
+
 // IsSupertypeOf checks whether super is a supertype of sub.
 func IsSupertypeOf(super, sub Type) bool {
 	return IsSubtypeOf(sub, super)
+}
+
+// IsSupertypeOfNoCoercion checks whether super is a true supertype of sub,
+// ignoring value-level Coercible relationships.
+func IsSupertypeOfNoCoercion(super, sub Type) bool {
+	return IsSubtypeOfNoCoercion(sub, super)
 }
 
 // CommonSupertype finds the least common supertype of two types using the

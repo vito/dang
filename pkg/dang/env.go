@@ -1170,6 +1170,8 @@ func (m *Module) CheckDirectiveConflict(directiveName string) []string {
 // - All interface arguments must be present
 // - Additional arguments must be optional
 func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+	// This is schema-level compatibility, not a value handoff, so ignore
+	// value-level scalar coercions (e.g. String -> ID) here.
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
 	classFn, classIsFn := classFieldType.(*hm.FunctionType)
@@ -1178,7 +1180,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	if !ifaceIsFn {
 		if !classIsFn {
 			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
+			if !hm.IsSubtypeOfNoCoercion(classFieldType, ifaceFieldType) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, classFieldType, ifaceFieldType)
 			}
@@ -1201,7 +1203,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
 		// Compare the return type with the class field type
-		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
+		if !hm.IsSubtypeOfNoCoercion(classFieldType, ifaceRetType) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, classFieldType, ifaceRetType)
 		}
@@ -1217,7 +1219,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	classRetType := classFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
+	if !hm.IsSubtypeOfNoCoercion(classRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
 			fieldName, classRetType, ifaceRetType)
 	}
@@ -1245,7 +1247,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// For contravariance: class arg type must be a supertype of interface arg type
 		// This means: if interface requires String!, class can accept String or String!
 		// But if interface requires String, class must accept String (can't require String!)
-		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
+		if !hm.IsSupertypeOfNoCoercion(classArgType, ifaceArgType) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
 		}

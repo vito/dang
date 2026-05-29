@@ -16,8 +16,20 @@ func (e UnificationError) Error() string {
 
 // Assignable attempts to unify two types, returning a substitution or error.
 // If unification fails, it checks subtyping: have can be assigned to want if
-// have is a subtype of want.
+// have is a subtype of want. As a final value-level convenience, it also
+// accepts explicit Coercible relationships such as String -> ID/custom scalar.
 func Assignable(have, want Type) (Subs, error) {
+	return assignable(have, want, true)
+}
+
+// AssignableNoCoercion is like Assignable, but skips Coercible relationships.
+// Use this for schema/type compatibility checks where only real subtyping
+// should count, not value materialization coercions.
+func AssignableNoCoercion(have, want Type) (Subs, error) {
+	return assignable(have, want, false)
+}
+
+func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 	// Handle nullable type variables first (before regular TypeVariable,
 	// since NullableTypeVariable embeds TypeVariable)
 	if haveNTV, ok := have.(NullableTypeVariable); ok {
@@ -47,7 +59,7 @@ func Assignable(have, want Type) (Subs, error) {
 	// possible option to be assignable to the target. If the target is also a
 	// union, each option may match any of the target union's options.
 	if haveUnion, ok := have.(*UnionType); ok {
-		return assignableFromUnion(haveUnion, want)
+		return assignableFromUnion(haveUnion, want, allowCoercion)
 	}
 
 	// Handle composite types using Types() method
@@ -76,7 +88,7 @@ func Assignable(have, want Type) (Subs, error) {
 				// makes repeated type variables order-dependent (e.g. (Int!, null)
 				// against (a, a)); checked composition widens those constraints once
 				// all component evidence is available.
-				componentSubs, err := Assignable(comp1, comp2)
+				componentSubs, err := assignable(comp1, comp2, allowCoercion)
 				if err != nil {
 					return nil, UnificationError{have, want}
 				}
@@ -92,43 +104,45 @@ func Assignable(have, want Type) (Subs, error) {
 
 	// Fall back on checking supertypes
 	for _, supertype := range have.Supertypes() {
-		if subs, err := Assignable(supertype, want); err == nil {
+		if subs, err := assignable(supertype, want, allowCoercion); err == nil {
 			return subs, nil
 		}
 	}
 
 	// Check if want type accepts coercion from have type
 	// This is used for custom scalar types that accept built-in scalar values
-	if coercible, ok := want.(Coercible); ok {
-		if coercible.AcceptsCoercionFrom(have) {
-			return NewSubs(), nil
+	if allowCoercion {
+		if coercible, ok := want.(Coercible); ok {
+			if coercible.AcceptsCoercionFrom(have) {
+				return NewSubs(), nil
+			}
 		}
 	}
 
 	// Assigning to a union succeeds if any option accepts the value. This runs
 	// after supertype checks so NonNull(T1 | T2) can still flow to T1 | T2.
 	if wantUnion, ok := want.(*UnionType); ok {
-		return assignableToUnion(have, wantUnion)
+		return assignableToUnion(have, wantUnion, allowCoercion)
 	}
 
 	return nil, UnificationError{have, want}
 }
 
-func assignableToUnion(have Type, want *UnionType) (Subs, error) {
+func assignableToUnion(have Type, want *UnionType, allowCoercion bool) (Subs, error) {
 	for _, option := range want.Options {
-		if subs, err := Assignable(have, option); err == nil {
+		if subs, err := assignable(have, option, allowCoercion); err == nil {
 			return subs, nil
 		}
 	}
 	return nil, UnificationError{have, want}
 }
 
-func assignableFromUnion(have *UnionType, want Type) (Subs, error) {
+func assignableFromUnion(have *UnionType, want Type, allowCoercion bool) (Subs, error) {
 	subs := NewSubs()
 	for _, option := range have.Options {
 		optionType := option.Apply(subs).(Type)
 		wantType := want.Apply(subs).(Type)
-		optionSubs, err := Assignable(optionType, wantType)
+		optionSubs, err := assignable(optionType, wantType, allowCoercion)
 		if err != nil {
 			return nil, UnificationError{have, want}
 		}

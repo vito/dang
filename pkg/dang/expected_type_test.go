@@ -8,6 +8,17 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
+func TestAssignableNoCoercionRejectsScalarCoercion(t *testing.T) {
+	stringType := hm.NonNullType{Type: StringType}
+	idType := hm.NonNullType{Type: IDType}
+
+	_, err := hm.Assignable(stringType, idType)
+	require.NoError(t, err)
+
+	_, err = hm.AssignableNoCoercion(stringType, idType)
+	require.Error(t, err)
+}
+
 func TestExpectedTypeDirectiveMapsIDArgumentToObjectOrID(t *testing.T) {
 	env := NewEnv("Dagger", expectedTypeTestSchema())
 
