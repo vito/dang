@@ -1,16 +1,16 @@
 package hm
 
-// IsSubtypeOf checks whether sub can be assigned to super.
+// IsSubtypeOf checks whether sub is a true subtype of super, ignoring
+// value-level Coercible relationships.
 func IsSubtypeOf(sub, super Type) bool {
 	_, err := Assignable(sub, super)
 	return err == nil
 }
 
-// IsSubtypeOfNoCoercion checks whether sub is a true subtype of super,
-// ignoring value-level Coercible relationships.
+// IsSubtypeOfNoCoercion is kept as a compatibility alias for IsSubtypeOf.
+// Deprecated: use IsSubtypeOf.
 func IsSubtypeOfNoCoercion(sub, super Type) bool {
-	_, err := AssignableNoCoercion(sub, super)
-	return err == nil
+	return IsSubtypeOf(sub, super)
 }
 
 // IsSupertypeOf checks whether super is a supertype of sub.
@@ -18,10 +18,10 @@ func IsSupertypeOf(super, sub Type) bool {
 	return IsSubtypeOf(sub, super)
 }
 
-// IsSupertypeOfNoCoercion checks whether super is a true supertype of sub,
-// ignoring value-level Coercible relationships.
+// IsSupertypeOfNoCoercion is kept as a compatibility alias for IsSupertypeOf.
+// Deprecated: use IsSupertypeOf.
 func IsSupertypeOfNoCoercion(super, sub Type) bool {
-	return IsSubtypeOfNoCoercion(sub, super)
+	return IsSupertypeOf(super, sub)
 }
 
 // CommonSupertype finds the least common supertype of two types using the

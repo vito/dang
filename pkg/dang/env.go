@@ -1033,30 +1033,28 @@ func (t *Module) Supertypes() []Type {
 	return result
 }
 
-// AcceptsCoercionFrom implements hm.Coercible for narrow scalar/enum coercions.
-// Custom scalars accept coercion from built-in scalar types, and enums accept
-// coercion from String so string values can be explicitly materialized as enum
-// members at expected-type boundaries.
+// AcceptsCoercionFrom implements hm.Coercible for explicit scalar/enum casts.
+// Enums and string-backed scalars (including ID and custom scalars) accept
+// coercion from String so runtime materialization can validate/construct the
+// target value. Primitive scalars do not accept value-level coercion.
 func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
 	if t.Kind == EnumKind {
 		return other == StringType
 	}
 
-	// Only custom scalar types accept scalar coercion.
 	if t.Kind != ScalarKind {
 		return false
 	}
-	// Built-in scalars don't accept coercion from other types.
+
+	// Primitive scalars are not coerced. ID is intentionally excluded here: Dang
+	// treats it as a distinct string-backed scalar that can be explicitly cast
+	// from String.
 	switch t {
 	case StringType, IntType, FloatType, BooleanType:
 		return false
 	}
-	// Custom scalars accept coercion from any built-in scalar.
-	switch other {
-	case StringType, IntType, FloatType, BooleanType:
-		return true
-	}
-	return false
+
+	return other == StringType
 }
 
 // AddInterface adds an interface that this type implements
@@ -1170,8 +1168,8 @@ func (m *Module) CheckDirectiveConflict(directiveName string) []string {
 // - All interface arguments must be present
 // - Additional arguments must be optional
 func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
-	// This is schema-level compatibility, not a value handoff, so ignore
-	// value-level scalar coercions (e.g. String -> ID) here.
+	// This is schema-level compatibility, not a value handoff, so use pure
+	// subtyping (no value-level scalar coercions such as String -> ID).
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
 	classFn, classIsFn := classFieldType.(*hm.FunctionType)
@@ -1180,7 +1178,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	if !ifaceIsFn {
 		if !classIsFn {
 			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOfNoCoercion(classFieldType, ifaceFieldType) {
+			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 					fieldName, classFieldType, ifaceFieldType)
 			}
@@ -1203,7 +1201,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
 		// Compare the return type with the class field type
-		if !hm.IsSubtypeOfNoCoercion(classFieldType, ifaceRetType) {
+		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
 				fieldName, classFieldType, ifaceRetType)
 		}
@@ -1219,7 +1217,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 	classRetType := classFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !hm.IsSubtypeOfNoCoercion(classRetType, ifaceRetType) {
+	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
 			fieldName, classRetType, ifaceRetType)
 	}
@@ -1247,7 +1245,7 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		// For contravariance: class arg type must be a supertype of interface arg type
 		// This means: if interface requires String!, class can accept String or String!
 		// But if interface requires String, class must accept String (can't require String!)
-		if !hm.IsSupertypeOfNoCoercion(classArgType, ifaceArgType) {
+		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
 				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
 		}

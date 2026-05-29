@@ -1,0 +1,4 @@
+enum Status { PASSED FAILED }
+
+# Explicit enum casts are checked at runtime.
+let bad = "NOPE" :: Status!

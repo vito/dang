@@ -1,0 +1,10 @@
+[1m[31mError:[0m null is not allowed for String!
+  [2m[34m--> errors/nonnull_cast_rejects_null.dang:3:11[0m
+ [2m    |[0m
+ [2m  1 | # Deferred values may be explicitly asserted non-null, but Coerce must reject[0m
+ [2m  2 | # null at runtime.[0m
+ [2m[34m[1m  3 | [0mlet bad = fromJSON("null") :: String!
+[2m                 [31m^^^^^^^^^^^^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

@@ -1,35 +1,33 @@
 import Test
 
-# Test scalar coercion - string literals can be used where custom scalars are expected
-# This is a core language mechanism that allows built-in scalar literals (String, Int, etc.)
-# to be used where custom GraphQL scalars are expected.
+# Test explicit scalar casts. String values are not implicitly assignable to
+# custom GraphQL scalars; use :: at the value boundary where runtime
+# materialization can construct the scalar value.
 
 # =============================================================================
-# Test 1: Basic string literal to custom scalar coercion
+# Test 1: Basic string to custom scalar casts
 # =============================================================================
 
-# URL scalar accepts string literal
-pub urlResult = fetchURL(url: "https://example.com")
+pub urlResult = fetchURL(url: "https://example.com" :: URL!)
 assert { urlResult == "Fetched: https://example.com" }
 
-# Timestamp scalar accepts string literal
-pub tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z")
+pub tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z" :: Timestamp!)
 assert { tsResult == "Formatted: 2024-01-15T10:30:00Z" }
 
-# JSON scalar accepts string literal
-pub jsonResult = parseJSON(data: "{\"key\": \"value\"}")
+pub jsonResult = parseJSON(data: "{\"key\": \"value\"}" :: JSON!)
 assert { jsonResult == "Parsed JSON: {\"key\": \"value\"}" }
 
-# BigInt scalar accepts string literal
-pub bigIntResult = addBigInt(a: "12345678901234567890", b: "98765432109876543210")
+pub bigIntResult = addBigInt(
+  a: "12345678901234567890" :: BigInt!,
+  b: "98765432109876543210" :: BigInt!
+)
 assert { bigIntResult == "12345678901234567890+98765432109876543210" }
 
 # =============================================================================
 # Test 2: Nullable scalar parameters
 # =============================================================================
 
-# Nullable URL with a value
-pub nullableWithValue = fetchURLNullable(url: "https://nullable.com")
+pub nullableWithValue = fetchURLNullable(url: "https://nullable.com" :: URL!)
 assert { nullableWithValue == "Fetched nullable: https://nullable.com" }
 
 # Nullable URL with null - omitting the argument
@@ -40,54 +38,41 @@ assert { nullableWithNull == null }
 # Test 3: List of scalars
 # =============================================================================
 
-# List of URL scalars from string literals
-pub multiResult = fetchMultipleURLs(urls: ["https://a.com", "https://b.com", "https://c.com"])
+pub multiResult = fetchMultipleURLs(
+  urls: ["https://a.com", "https://b.com", "https://c.com"] :: [URL!]!
+)
 assert { multiResult[0] == "Fetched[0]: https://a.com" }
 assert { multiResult[1] == "Fetched[1]: https://b.com" }
 assert { multiResult[2] == "Fetched[2]: https://c.com" }
 
 # =============================================================================
-# Test 4: Scalar values from GraphQL can still be used
+# Test 4: Scalar values from GraphQL can still be used directly
 # =============================================================================
 
-# Get a scalar value from GraphQL
 pub urlValue = homepage
 assert { urlValue == "https://dang-lang.dev" }
 
-# Use the scalar value where a scalar is expected
 pub fetchedHomepage = fetchURL(url: urlValue)
 assert { fetchedHomepage == "Fetched: https://dang-lang.dev" }
 
 # =============================================================================
-# Test 5: Variables holding string literals used as scalars
+# Test 5: Variables and expressions can be explicitly cast
 # =============================================================================
 
-# Store a string literal in a variable
 pub myUrl = "https://variable.com"
-
-# Use the variable where a URL scalar is expected
-pub varResult = fetchURL(url: myUrl)
+pub varResult = fetchURL(url: myUrl :: URL!)
 assert { varResult == "Fetched: https://variable.com" }
 
-# =============================================================================
-# Test 6: String expressions (not just literals) as scalars
-# =============================================================================
-
-# Concatenated string used as scalar
 pub base = "https://"
 pub domain = "concat.com"
-
-# Note: This tests that the coercion works with any String! value, not just literals
+pub concatResult = fetchURL(url: (base + domain) :: URL!)
+assert { concatResult == "Fetched: https://concat.com" }
 
 # =============================================================================
-# Test 7: Mixed scalar and non-scalar arguments
+# Test 6: Mixed scalar and non-scalar arguments
 # =============================================================================
 
-# hello takes a regular String!, not a custom scalar
 pub greeting = hello(name: "World")
 assert { greeting == "Hello, World!" }
 
-# Scalar coercion should not affect regular String parameters
-# (String -> String is not coercion, it's identity)
-
-print("All scalar coercion tests passed!")
+print("All explicit scalar cast tests passed!")

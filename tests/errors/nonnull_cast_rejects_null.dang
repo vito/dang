@@ -1,0 +1,3 @@
+# Deferred values may be explicitly asserted non-null, but Coerce must reject
+# null at runtime.
+let bad = fromJSON("null") :: String!

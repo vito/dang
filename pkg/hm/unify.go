@@ -15,18 +15,25 @@ func (e UnificationError) Error() string {
 }
 
 // Assignable attempts to unify two types, returning a substitution or error.
-// If unification fails, it checks subtyping: have can be assigned to want if
-// have is a subtype of want. As a final value-level convenience, it also
-// accepts explicit Coercible relationships such as String -> ID/custom scalar.
+// If unification fails, it checks pure subtyping: have can be assigned to want
+// if have is a subtype of want. It does not accept value-level coercions such
+// as String -> ID/custom scalar; use AssignableWithCoercion at explicit Coerce
+// boundaries instead.
 func Assignable(have, want Type) (Subs, error) {
+	return assignable(have, want, false)
+}
+
+// AssignableWithCoercion is like Assignable, but additionally accepts explicit
+// Coercible relationships such as String -> ID/custom scalar/enum. Use this
+// only when the expression is wrapped in a runtime Coerce node.
+func AssignableWithCoercion(have, want Type) (Subs, error) {
 	return assignable(have, want, true)
 }
 
-// AssignableNoCoercion is like Assignable, but skips Coercible relationships.
-// Use this for schema/type compatibility checks where only real subtyping
-// should count, not value materialization coercions.
+// AssignableNoCoercion is kept as a compatibility alias for Assignable.
+// Deprecated: use Assignable.
 func AssignableNoCoercion(have, want Type) (Subs, error) {
-	return assignable(have, want, false)
+	return Assignable(have, want)
 }
 
 func assignable(have, want Type, allowCoercion bool) (Subs, error) {

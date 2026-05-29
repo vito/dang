@@ -1,0 +1,4 @@
+import Test
+
+# String! is not implicitly assignable to a custom scalar argument.
+pub bad = fetchURL(url: "https://example.com")

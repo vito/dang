@@ -90,6 +90,11 @@ func materializeValue(ctx context.Context, env EvalEnv, val Value, target hm.Typ
 	}
 
 	switch v := val.(type) {
+	case NullValue:
+		if _, nonNull := target.(hm.NonNullType); nonNull {
+			return nil, materializeError(path, "null is not allowed for %s", target.Name())
+		}
+		return val, nil
 	case DeferredValue:
 		return materializeDecoded(ctx, env, v.Raw, target, path)
 	case StringValue:

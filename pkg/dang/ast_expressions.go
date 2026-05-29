@@ -2814,52 +2814,29 @@ func (t *TypeHint) GetSourceLocation() *SourceLocation { return t.Loc }
 
 func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
-		// Infer the type of the expression
 		exprType, err := t.Expr.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		// Infer the type of the type hint
 		hintType, err := t.Type.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
 
-		// For type hints, we want to bind type variables from the expression to concrete types in the hint
-		// while allowing the hint to override things like nullability
-
-		// Try to extract the "core" types for unification (removing nullability wrappers)
-		exprCore := exprType
-		hintCore := hintType
-
-		// If expression is NonNull, extract the inner type for unification
-		if exprNonNull, ok := exprType.(hm.NonNullType); ok {
-			exprCore = exprNonNull.Type
-		}
-
-		// If hint is NonNull, extract the inner type for unification
-		if hintNonNull, ok := hintType.(hm.NonNullType); ok {
-			hintCore = hintNonNull.Type
-		}
-
-		// Try to unify the core types to bind type variables
-		if subs, err := hm.Assignable(exprCore, hintCore); err == nil {
-			// Unification succeeded - apply substitutions to the hint and return it
-			// This allows the hint to override the expression's type (including nullability)
-			result := hintType.Apply(subs).(hm.Type)
-			t.SetInferredType(result)
-			t.Expr = wrapCoerce(t.Expr, result, "")
-			return result, nil
-		}
-
-		// Core unification failed, try the original approach with subtyping
+		// Type hints are explicit runtime assertion/materialization boundaries.
+		// First accept ordinary pure assignability (including type-variable binding
+		// and T! -> T). If that fails, allow explicit scalar/enum coercions. Do not
+		// strip non-null wrappers here: nullable-to-non-null casts must either be
+		// rejected statically or checked by Coerce for deferred values.
 		subs, err := hm.Assignable(exprType, hintType)
+		if err != nil {
+			subs, err = hm.AssignableWithCoercion(exprType, hintType)
+		}
 		if err != nil {
 			return nil, NewInferError(fmt.Errorf("type hint mismatch: expression has type %s, but hint expects %s", exprType, hintType), t.Expr)
 		}
 
-		// Apply substitutions to the hint type and return it
 		result := hintType.Apply(subs).(hm.Type)
 		t.SetInferredType(result)
 		t.Expr = wrapCoerce(t.Expr, result, "")

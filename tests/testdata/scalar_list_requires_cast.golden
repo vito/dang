@@ -1,0 +1,9 @@
+[1m[31mError:[0m unify index 1: no common type between String! and ID!
+  [2m[34m--> errors/scalar_list_requires_cast.dang:2:26[0m
+ [2m    |[0m
+ [2m  1 | # List merging is pure: String! does not implicitly become ID!.[0m
+ [2m[34m[1m  2 | [0mpub ids = ["abc" :: ID!, "def"]
+[2m                                [31m^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+
