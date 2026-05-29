@@ -481,6 +481,10 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	}
 	c.Inferred = class
 	c.SetInferredType(class)
+	if c.DocString != "" {
+		mod.SetDocString(c.Name.Name, c.DocString)
+		class.SetModuleDocString(c.DocString)
+	}
 
 	// Pass 0 must only register the type name. Other top-level types may refer
 	// to this class before its file is reached, so anything that resolves field
@@ -582,6 +586,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	// Store doc string for the class name in the environment
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
+		class.SetModuleDocString(c.DocString)
 	}
 
 	// Set this early so we can at least partially infer.
@@ -1147,6 +1152,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	i.SetInferredType(iface)
 	if i.DocString != "" {
 		mod.SetDocString(i.Name.Name, i.DocString)
+		iface.SetModuleDocString(i.DocString)
 	}
 
 	// Pass 0: Register the interface type.
@@ -1203,6 +1209,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		// Set doc string
 		if i.DocString != "" {
 			mod.SetDocString(i.Name.Name, i.DocString)
+			i.Inferred.SetModuleDocString(i.DocString)
 		}
 
 		return iface, nil

@@ -58,6 +58,18 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 		return nil, nil
 	}
 
+	// For type/interface definitions, show the full declaration body rather than
+	// just the inferred type name.
+	if codeBlock, docString := formatTypeDefinitionForHover(f, node, symbolName); codeBlock != "" {
+		return h.hoverResultWithDocBelow(docString, codeBlock)
+	}
+
+	// For named type references (including GraphQL-loaded types with no local AST
+	// definition), show the full type body rather than "Foo: Foo".
+	if codeBlock, docString := formatNamedTypeForHover(f, params.Position, symbolName); codeBlock != "" {
+		return h.hoverResultWithDocBelow(docString, codeBlock)
+	}
+
 	// Check if we're hovering over a field access (Select node)
 	if selectNode, ok := node.(*dang.Select); ok {
 		receiverType := selectNode.Receiver.GetInferredType()
@@ -163,12 +175,28 @@ func (h *langHandler) hoverResultWithDoc(docString string, codeBlock string) (an
 		content = fmt.Sprintf("```dang\n%s\n```", codeBlock)
 	}
 
+	return hoverWithMarkdown(content), nil
+}
+
+// hoverResultWithDocBelow builds a hover response with code first and docs below
+// a separator. This is useful for definition hovers where the declaration is the
+// primary content.
+func (h *langHandler) hoverResultWithDocBelow(docString string, codeBlock string) (any, error) {
+	content := fmt.Sprintf("```dang\n%s\n```", codeBlock)
+	if docString != "" {
+		content = fmt.Sprintf("%s\n\n---\n\n%s", content, docString)
+	}
+
+	return hoverWithMarkdown(content), nil
+}
+
+func hoverWithMarkdown(content string) *Hover {
 	return &Hover{
 		Contents: MarkupContent{
 			Kind:  Markdown,
 			Value: content,
 		},
-	}, nil
+	}
 }
 
 // typeDetailSuffix returns additional hover text for union and enum types,
@@ -234,6 +262,203 @@ func typeDetailSuffix(t hm.Type) string {
 // sortStrings sorts a slice of strings in place.
 func sortStrings(s []string) {
 	sort.Strings(s)
+}
+
+// formatTypeDefinitionForHover formats full type/interface declarations for
+// hover. The top-level doc string is returned separately so it can be displayed
+// below the declaration instead of duplicated inside the code block.
+func formatTypeDefinitionForHover(_ *File, node dang.Node, symbolName string) (codeBlock string, docString string) {
+	switch n := node.(type) {
+	case *dang.ClassDecl:
+		if n.Name == nil || n.Name.Name != symbolName {
+			return "", ""
+		}
+		return formatModuleForHover(n.Inferred, n.DocString)
+	case *dang.InterfaceDecl:
+		if n.Name == nil || n.Name.Name != symbolName {
+			return "", ""
+		}
+		return formatModuleForHover(n.Inferred, n.DocString)
+	default:
+		return "", ""
+	}
+}
+
+func formatNamedTypeForHover(f *File, pos Position, symbolName string) (codeBlock string, docString string) {
+	if f == nil || symbolName == "" {
+		return "", ""
+	}
+
+	mod, ok := resolveNamedTypeForHover(f, pos, symbolName).(*dang.Module)
+	if !ok {
+		return "", ""
+	}
+
+	codeBlock, docString = formatModuleForHover(mod, "")
+	if codeBlock == "" {
+		return "", ""
+	}
+	if docString == "" && len(qualifiedNameAtPosition(f, pos)) == 0 {
+		docString = docStringForHoverSymbol(f, pos, symbolName)
+	}
+	return codeBlock, docString
+}
+
+func resolveNamedTypeForHover(f *File, pos Position, symbolName string) dang.Env {
+	qualifiedName := qualifiedNameAtPosition(f, pos)
+	if len(qualifiedName) > 1 && qualifiedName[len(qualifiedName)-1] == symbolName {
+		if typ := resolveQualifiedNamedTypeForHover(f, pos, qualifiedName); typ != nil {
+			return typ
+		}
+	}
+
+	if f.AST != nil {
+		environments := findEnclosingEnvironments(f.AST, pos)
+		for i := len(environments) - 1; i >= 0; i-- {
+			if typ, found := environments[i].NamedType(symbolName); found {
+				return typ
+			}
+		}
+	}
+	if f.TypeEnv != nil {
+		if typ, found := f.TypeEnv.NamedType(symbolName); found {
+			return typ
+		}
+	}
+	return nil
+}
+
+func resolveQualifiedNamedTypeForHover(f *File, pos Position, parts []string) dang.Env {
+	if len(parts) == 0 {
+		return nil
+	}
+
+	if f.AST != nil {
+		environments := findEnclosingEnvironments(f.AST, pos)
+		for i := len(environments) - 1; i >= 0; i-- {
+			if typ := resolveQualifiedNamedType(environments[i], parts); typ != nil {
+				return typ
+			}
+		}
+	}
+	if f.TypeEnv != nil {
+		return resolveQualifiedNamedType(f.TypeEnv, parts)
+	}
+	return nil
+}
+
+func resolveQualifiedNamedType(env dang.Env, parts []string) dang.Env {
+	if env == nil || len(parts) == 0 {
+		return nil
+	}
+
+	current := env
+	for _, part := range parts[:len(parts)-1] {
+		next, found := current.NamedType(part)
+		if !found {
+			return nil
+		}
+		current = next
+	}
+
+	last, found := current.NamedType(parts[len(parts)-1])
+	if !found {
+		return nil
+	}
+	return last
+}
+
+func qualifiedNameAtPosition(f *File, pos Position) []string {
+	if f == nil {
+		return nil
+	}
+
+	lines := strings.Split(f.Text, "\n")
+	if pos.Line >= len(lines) {
+		return nil
+	}
+
+	line := lines[pos.Line]
+	if pos.Character >= len(line) {
+		return nil
+	}
+
+	start := pos.Character
+	for start > 0 && isIdentifierChar(rune(line[start-1])) {
+		start--
+	}
+
+	end := pos.Character
+	for end < len(line) && isIdentifierChar(rune(line[end])) {
+		end++
+	}
+
+	if start == end || (end < len(line) && line[end] == '.') {
+		return nil
+	}
+
+	parts := []string{line[start:end]}
+	left := start
+	for left > 0 && line[left-1] == '.' {
+		prevEnd := left - 1
+		prevStart := prevEnd
+		for prevStart > 0 && isIdentifierChar(rune(line[prevStart-1])) {
+			prevStart--
+		}
+		if prevStart == prevEnd {
+			return nil
+		}
+		parts = append([]string{line[prevStart:prevEnd]}, parts...)
+		left = prevStart
+	}
+
+	if len(parts) < 2 {
+		return nil
+	}
+	return parts
+}
+
+func formatModuleForHover(mod *dang.Module, fallbackDoc string) (codeBlock string, docString string) {
+	if mod == nil {
+		return "", ""
+	}
+	if mod.Canonical != nil {
+		mod = mod.Canonical
+	}
+
+	codeBlock = dang.FormatPublicTypeShape(mod)
+	if codeBlock == "" {
+		return "", ""
+	}
+
+	docString = mod.GetModuleDocString()
+	if docString == "" {
+		docString = fallbackDoc
+	}
+	return codeBlock, docString
+}
+
+func docStringForHoverSymbol(f *File, pos Position, symbolName string) string {
+	if f == nil || symbolName == "" {
+		return ""
+	}
+
+	if f.TypeEnv != nil {
+		if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
+			return doc
+		}
+	}
+
+	if f.AST != nil {
+		environments := findEnclosingEnvironments(f.AST, pos)
+		for i := len(environments) - 1; i >= 0; i-- {
+			if doc, ok := environments[i].GetDocString(symbolName); ok {
+				return doc
+			}
+		}
+	}
+
+	return ""
 }
 
 // formatDeclSignature formats a declaring node's signature without the body.

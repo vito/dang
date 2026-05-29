@@ -147,6 +147,7 @@ type Module struct {
 
 	classes          map[string]Env
 	vars             map[string]*hm.Scheme
+	varOrder         []string
 	visibility       map[string]Visibility
 	directives       map[string]*DirectiveDecl
 	typeOrigins      map[string]BindingOrigin
@@ -664,10 +665,34 @@ func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
 
 func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
 	return func(yield func(string, *hm.Scheme) bool) {
-		for name, v := range e.vars {
+		seen := map[string]bool{}
+		for _, name := range e.varOrder {
+			v, ok := e.vars[name]
+			if !ok {
+				continue
+			}
+			seen[name] = true
 			if e.visibility[name] >= visibility {
 				if !yield(name, v) {
-					break
+					return
+				}
+			}
+		}
+
+		// Be robust to modules constructed before varOrder existed or by tests
+		// that mutate vars directly in-package: yield any stragglers
+		// deterministically after the ordered entries.
+		var unordered []string
+		for name := range e.vars {
+			if !seen[name] {
+				unordered = append(unordered, name)
+			}
+		}
+		sort.Strings(unordered)
+		for _, name := range unordered {
+			if e.visibility[name] >= visibility {
+				if !yield(name, e.vars[name]) {
+					return
 				}
 			}
 		}
@@ -696,6 +721,9 @@ func (e *Module) FreeTypeVar() hm.TypeVarSet {
 }
 
 func (e *Module) Add(name string, s *hm.Scheme) hm.Env {
+	if _, exists := e.vars[name]; !exists {
+		e.varOrder = append(e.varOrder, name)
+	}
 	e.vars[name] = s
 	e.valueOrigins[name] = LocalBindingOrigin()
 	if _, ok := e.visibility[name]; !ok {
@@ -824,6 +852,12 @@ func (e *Module) Remove(name string) hm.Env {
 	// TODO: lol, tombstone???? idk if i ever use this method. maybe i don't need
 	// to conform to hm.Env?
 	delete(e.vars, name)
+	for i, orderedName := range e.varOrder {
+		if orderedName == name {
+			e.varOrder = append(e.varOrder[:i], e.varOrder[i+1:]...)
+			break
+		}
+	}
 	return e
 }
 
