@@ -1,7 +1,8 @@
 5 inference errors:
 
 Error 1:
-[1m[31mError:[0m cannot use Test.User! as User!
+[1m[31mError:[0m cannot use Test.User! as User!:
+  - missing field "origin"
   [2m[34m--> errors/import_shadowing_local_distinct.dang:30:29[0m
  [2m    |[0m
  [2m 28 | [0m
@@ -40,7 +41,8 @@ Error 3:
 
 
 Error 4:
-[1m[31mError:[0m cannot use Test.Node as Node
+[1m[31mError:[0m cannot use Test.Node as Node:
+  - missing field "label"
   [2m[34m--> errors/import_shadowing_local_distinct.dang:33:28[0m
  [2m    |[0m
  [2m 31 | let statusShouldFail: Status! = Test.status[0m
