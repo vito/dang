@@ -1,0 +1,11 @@
+[1m[31mError:[0m field "name": return type String is not compatible with interface return type String! (covariance required)
+  [2m[34m--> errors/interface_extension_wrong_field_type.dang:8:29[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | # Wrong: parent requires String!, child weakens to nullable String[0m
+ [2m[34m[1m  8 | [0minterface Person implements Named {
+[2m                                   [31m^^^^^[0m
+ [2m  9 |   pub name: String[0m
+ [2m 10 | }[0m
+ [2m    |[0m
+

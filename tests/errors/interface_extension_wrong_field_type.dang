@@ -1,0 +1,10 @@
+# A child interface's field type must be compatible with the parent's.
+
+interface Named {
+  pub name: String!
+}
+
+# Wrong: parent requires String!, child weakens to nullable String
+interface Person implements Named {
+  pub name: String
+}

@@ -1,0 +1,11 @@
+[1m[31mError:[0m interface Greeter is missing `greet(): String!`, required by interface Greetable
+  [2m[34m--> errors/interface_extension_missing_field.dang:12:38[0m
+ [2m    |[0m
+ [2m 10 | [0m
+ [2m 11 | # Missing: pub greet[0m
+ [2m[34m[1m 12 | [0minterface Greeter implements Named & Greetable {
+[2m                                            [31m^^^^^^^^^[0m
+ [2m 13 |   pub name: String![0m
+ [2m 14 | }[0m
+ [2m    |[0m
+

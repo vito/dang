@@ -1110,6 +1110,7 @@ type InterfaceDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
 	Value      *Block
+	Implements []*Symbol
 	Visibility Visibility
 	Directives []*DirectiveApplication
 	DocString  string
@@ -1127,6 +1128,9 @@ func (i *InterfaceDecl) DeclaredSymbols() []string {
 
 func (i *InterfaceDecl) ReferencedSymbols() []string {
 	var symbols []string
+	for _, parent := range i.Implements {
+		symbols = append(symbols, parent.Name)
+	}
 	// Interface declarations reference symbols from their body (the Block)
 	symbols = append(symbols, i.Value.ReferencedSymbols()...)
 	return symbols
@@ -1161,6 +1165,32 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 		interfaceScheme := hm.NewScheme(nil, iface)
 		env.Add(i.Name.Name, interfaceScheme)
 		return nil
+	}
+
+	// Link parent interfaces after all type names have been registered by
+	// pass 0. Reuse the implementers index used by classes so inline
+	// fragments and downstream subtyping see this interface as well.
+	if len(i.Implements) > 0 {
+		for _, parentSym := range i.Implements {
+			parentType, found := mod.NamedType(parentSym.Name)
+			if !found {
+				return WrapInferError(
+					fmt.Errorf("interface %s not found", parentSym.Name),
+					parentSym,
+				)
+			}
+			parentMod, ok := parentType.(*Module)
+			if !ok || parentMod.Kind != InterfaceKind {
+				return WrapInferError(
+					fmt.Errorf("%s is not an interface", parentSym.Name),
+					parentSym,
+				)
+			}
+			iface.AddInterface(parentType)
+			if localParent, found := mod.LocalNamedType(parentSym.Name); found && localParent == parentType {
+				parentMod.AddImplementer(iface)
+			}
+		}
 	}
 
 	// Pass 1: Declare interface field and method signatures without inferring
@@ -1206,6 +1236,16 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		i.Inferred = iface.(*Module)
 		i.SetInferredType(iface)
 
+		// Validate parent interface field compatibility once this interface's
+		// own field signatures have been inferred.
+		if len(i.Implements) > 0 {
+			for _, parentSym := range i.Implements {
+				if err := validateInterfaceExtension(i.Inferred, mod, parentSym); err != nil {
+					return nil, err
+				}
+			}
+		}
+
 		// Set doc string
 		if i.DocString != "" {
 			mod.SetDocString(i.Name.Name, i.DocString)
@@ -1214,6 +1254,48 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 		return iface, nil
 	})
+}
+
+// validateInterfaceExtension checks that a child interface satisfies every
+// field declared by a parent interface it claims to implement.
+func validateInterfaceExtension(child *Module, env Env, parentSym *Symbol) error {
+	parentType, found := env.NamedType(parentSym.Name)
+	if !found {
+		// Already raised in Hoist
+		return nil
+	}
+	parentMod, ok := parentType.(*Module)
+	if !ok || parentMod.Kind != InterfaceKind {
+		return nil
+	}
+
+	var missingFields []string
+	for field, fieldScheme := range parentMod.Bindings(PrivateVisibility) {
+		childScheme, has := child.SchemeOf(field)
+		if !has {
+			missingFields = append(missingFields, field)
+			continue
+		}
+		parentFieldType, _ := fieldScheme.Type()
+		childFieldType, _ := childScheme.Type()
+		if err := validateFieldImplementation(field, parentFieldType, childFieldType, parentMod.String(), child.String()); err != nil {
+			return WrapInferError(err, parentSym)
+		}
+	}
+
+	if len(missingFields) > 0 {
+		errs := &InferenceErrors{}
+		sort.Strings(missingFields)
+		for _, field := range missingFields {
+			fieldScheme, _ := parentMod.SchemeOf(field)
+			errs.Add(WrapInferError(
+				fmt.Errorf("interface %s is missing `%s%s`, required by interface %s", child, field, fieldScheme, parentMod),
+				parentSym,
+			))
+		}
+		return errs
+	}
+	return nil
 }
 
 func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {

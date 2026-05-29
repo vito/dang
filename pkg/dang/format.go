@@ -997,6 +997,17 @@ func (f *Formatter) formatInterfaceDecl(i *InterfaceDecl) {
 
 	f.write("interface ")
 	f.write(i.Name.Name)
+
+	if len(i.Implements) > 0 {
+		f.write(" implements ")
+		for idx, impl := range i.Implements {
+			if idx > 0 {
+				f.write(" & ")
+			}
+			f.write(impl.Name)
+		}
+	}
+
 	f.write(" {")
 	if i.Name.Loc != nil {
 		f.nl(i.Name.Loc.Line)
