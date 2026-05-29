@@ -389,7 +389,7 @@ func (r *Reassignment) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) 
 		// For simple assignment, check compatibility
 		switch r.Modifier {
 		case "=":
-			if _, err := hm.Assignable(valueType, targetType); err != nil {
+			if _, err := assignableForValue(valueType, targetType, r.Value); err != nil {
 				if refErr := r.functionRefAssignmentError(ctx, env, fresh, targetType, valueType); refErr != nil {
 					return nil, refErr
 				}

@@ -1,0 +1,10 @@
+[1m[31mError:[0m type hint mismatch: expression has type Int!, but hint expects URL!
+  [2m[34m--> errors/scalar_int_cast_rejected.dang:4:11[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | # Runtime materialization only supports String -> custom scalar casts.[0m
+ [2m[34m[1m  4 | [0mpub url = 42 :: URL!
+[2m                 [31m^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

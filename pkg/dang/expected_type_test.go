@@ -8,6 +8,18 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
+func TestAssignableRejectsImplicitScalarCoercion(t *testing.T) {
+	stringType := hm.NonNullType{Type: StringType}
+	idType := hm.NonNullType{Type: IDType}
+
+	_, err := hm.Assignable(stringType, idType)
+	require.Error(t, err)
+	require.False(t, hm.IsSubtypeOf(stringType, idType))
+
+	_, err = hm.AssignableWithCoercion(stringType, idType)
+	require.NoError(t, err)
+}
+
 func TestExpectedTypeDirectiveMapsIDArgumentToObjectOrID(t *testing.T) {
 	env := NewEnv("Dagger", expectedTypeTestSchema())
 
@@ -105,7 +117,7 @@ func TestCustomIDScalarInputAcceptsObjectOrScalarID(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = hm.Assignable(hm.NonNullType{Type: StringType}, idArgType)
-	require.NoError(t, err)
+	require.Error(t, err)
 }
 
 func TestCustomIDScalarListInputAcceptsObjectOrScalarIDLists(t *testing.T) {

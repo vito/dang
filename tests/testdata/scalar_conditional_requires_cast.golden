@@ -1,0 +1,11 @@
+[1m[31mError:[0m cannot use String! as ID!
+  [2m[34m--> errors/scalar_conditional_requires_cast.dang:5:3[0m
+ [2m    |[0m
+ [2m  3 |   "abc" :: ID![0m
+ [2m  4 | } else {[0m
+ [2m[34m[1m  5 | [0m  "def"
+[2m         [31m^^^^^[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

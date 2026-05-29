@@ -1,0 +1,10 @@
+[1m[31mError:[0m invalid enum value "NOPE" for Status
+  [2m[34m--> errors/invalid_enum_cast.dang:4:11[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | # Explicit enum casts are checked at runtime.[0m
+ [2m[34m[1m  4 | [0mlet bad = "NOPE" :: Status!
+[2m                 [31m^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

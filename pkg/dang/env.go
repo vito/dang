@@ -1033,30 +1033,28 @@ func (t *Module) Supertypes() []Type {
 	return result
 }
 
-// AcceptsCoercionFrom implements hm.Coercible for narrow scalar/enum coercions.
-// Custom scalars accept coercion from built-in scalar types, and enums accept
-// coercion from String so string values can be explicitly materialized as enum
-// members at expected-type boundaries.
+// AcceptsCoercionFrom implements hm.Coercible for explicit scalar/enum casts.
+// Enums and string-backed scalars (including ID and custom scalars) accept
+// coercion from String so runtime materialization can validate/construct the
+// target value. Primitive scalars do not accept value-level coercion.
 func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
 	if t.Kind == EnumKind {
 		return other == StringType
 	}
 
-	// Only custom scalar types accept scalar coercion.
 	if t.Kind != ScalarKind {
 		return false
 	}
-	// Built-in scalars don't accept coercion from other types.
+
+	// Primitive scalars are not coerced. ID is intentionally excluded here: Dang
+	// treats it as a distinct string-backed scalar that can be explicitly cast
+	// from String.
 	switch t {
 	case StringType, IntType, FloatType, BooleanType:
 		return false
 	}
-	// Custom scalars accept coercion from any built-in scalar.
-	switch other {
-	case StringType, IntType, FloatType, BooleanType:
-		return true
-	}
-	return false
+
+	return other == StringType
 }
 
 // AddInterface adds an interface that this type implements
@@ -1170,6 +1168,8 @@ func (m *Module) CheckDirectiveConflict(directiveName string) []string {
 // - All interface arguments must be present
 // - Additional arguments must be optional
 func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+	// This is schema-level compatibility, not a value handoff, so use pure
+	// subtyping (no value-level scalar coercions such as String -> ID).
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
 	classFn, classIsFn := classFieldType.(*hm.FunctionType)

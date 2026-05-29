@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use String! as Test.URL!
+  [2m[34m--> errors/scalar_variable_requires_cast.dang:6:25[0m
+ [2m    |[0m
+ [2m  4 | # (a variable) still requires an explicit :: cast at the call boundary.[0m
+ [2m  5 | pub myUrl = "https://example.com"[0m
+ [2m[34m[1m  6 | [0mpub bad = fetchURL(url: myUrl)
+[2m                               [31m^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

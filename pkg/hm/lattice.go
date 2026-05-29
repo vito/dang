@@ -1,6 +1,7 @@
 package hm
 
-// IsSubtypeOf checks whether sub can be assigned to super.
+// IsSubtypeOf checks whether sub is a true subtype of super, ignoring
+// value-level Coercible relationships.
 func IsSubtypeOf(sub, super Type) bool {
 	_, err := Assignable(sub, super)
 	return err == nil

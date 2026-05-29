@@ -213,7 +213,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		if definedType != nil {
-			if _, err := hm.Assignable(inferredType, definedType); err != nil {
+			if _, err := assignableForValue(inferredType, definedType, s.Value); err != nil {
 				return nil, NewInferError(err, s.Value)
 			}
 			s.Value = wrapCoerce(s.Value, definedType, s.Name.Name)

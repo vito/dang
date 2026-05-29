@@ -1,0 +1,4 @@
+scalar URL
+
+# Runtime materialization only supports String -> custom scalar casts.
+pub url = 42 :: URL!
