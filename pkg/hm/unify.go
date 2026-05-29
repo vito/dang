@@ -30,12 +30,6 @@ func AssignableWithCoercion(have, want Type) (Subs, error) {
 	return assignable(have, want, true)
 }
 
-// AssignableNoCoercion is kept as a compatibility alias for Assignable.
-// Deprecated: use Assignable.
-func AssignableNoCoercion(have, want Type) (Subs, error) {
-	return Assignable(have, want)
-}
-
 func assignable(have, want Type, allowCoercion bool) (Subs, error) {
 	// Handle nullable type variables first (before regular TypeVariable,
 	// since NullableTypeVariable embeds TypeVariable)

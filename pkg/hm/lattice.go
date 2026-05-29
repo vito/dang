@@ -7,21 +7,9 @@ func IsSubtypeOf(sub, super Type) bool {
 	return err == nil
 }
 
-// IsSubtypeOfNoCoercion is kept as a compatibility alias for IsSubtypeOf.
-// Deprecated: use IsSubtypeOf.
-func IsSubtypeOfNoCoercion(sub, super Type) bool {
-	return IsSubtypeOf(sub, super)
-}
-
 // IsSupertypeOf checks whether super is a supertype of sub.
 func IsSupertypeOf(super, sub Type) bool {
 	return IsSubtypeOf(sub, super)
-}
-
-// IsSupertypeOfNoCoercion is kept as a compatibility alias for IsSupertypeOf.
-// Deprecated: use IsSupertypeOf.
-func IsSupertypeOfNoCoercion(super, sub Type) bool {
-	return IsSupertypeOf(super, sub)
 }
 
 // CommonSupertype finds the least common supertype of two types using the
