@@ -51,7 +51,15 @@ pub fetchedHomepage = fetchURL(url: urlValue)
 assert { fetchedHomepage == "Fetched: https://dang-lang.dev" }
 
 # =============================================================================
-# Test 5: Non-literal Strings require an explicit cast
+# Test 5: Templates also auto-coerce, even with interpolations
+# =============================================================================
+
+pub host = "templated.com"
+pub templateResult = fetchURL(url: `https://${host}/path`)
+assert { templateResult == "Fetched: https://templated.com/path" }
+
+# =============================================================================
+# Test 6: Non-literal Strings require an explicit cast
 # =============================================================================
 
 pub myUrl = "https://variable.com"
@@ -64,7 +72,7 @@ pub concatResult = fetchURL(url: (base + domain) :: URL!)
 assert { concatResult == "Fetched: https://concat.com" }
 
 # =============================================================================
-# Test 6: Literal in a typed slot, reassignment, and return
+# Test 7: Literal in a typed slot, reassignment, and return
 # =============================================================================
 
 pub idSlot: ID! = "abc"
@@ -78,7 +86,7 @@ pub makeID: ID! { "abc" }
 assert { makeID == "abc" }
 
 # =============================================================================
-# Test 7: Mixed scalar and non-scalar arguments
+# Test 8: Mixed scalar and non-scalar arguments
 # =============================================================================
 
 pub greeting = hello(name: "World")

@@ -63,15 +63,15 @@ func (c *Coerce) Walk(fn func(Node) bool) {
 
 // isLiteralExpr reports whether n is a syntactic literal whose value is
 // statically known and may auto-coerce to a compatible scalar/enum at a
-// value-handoff boundary. List literals count when every element is itself
-// literal; a block counts when its tail expression is literal, so a function
-// body like `{ "abc" }` flows into a declared ID! return type.
+// value-handoff boundary. Templates count regardless of interpolations: the
+// runtime value is always a String, so materialization works the same way.
+// Lists count when every element is itself literal; a Block counts when its
+// tail expression is literal, so a function body like `{ "abc" }` flows into
+// a declared ID! return type.
 func isLiteralExpr(n Node) bool {
 	switch v := n.(type) {
-	case *String, *Int, *Float, *Boolean:
+	case *String, *Int, *Float, *Boolean, *Template:
 		return true
-	case *Template:
-		return v.IsLiteralOnly()
 	case *List:
 		for _, el := range v.Elements {
 			if !isLiteralExpr(el) {
