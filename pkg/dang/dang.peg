@@ -262,10 +262,11 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   }
 }
 
-Interface <- InterfaceToken _ name:Symbol _ block:HeadersBlock {
+Interface <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
   return &InterfaceDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
+    Implements: sliceOf[*Symbol](implements),
     Visibility: PublicVisibility,
     Loc: c.Loc(),
   }, nil

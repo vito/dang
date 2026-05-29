@@ -1,0 +1,57 @@
+# Test `interface Foo implements Bar` extension
+
+interface Named {
+  pub name: String!
+}
+
+interface Timestamped {
+  pub createdAt: String!
+}
+
+# A child interface extending one parent. Subclass field shape mirrors
+# the parent's slot-as-zero-arg-function representation, so the
+# extension validates field-by-field.
+interface User implements Named {
+  pub name: String!
+  pub email: String!
+}
+
+# A child interface extending multiple parents.
+interface Post implements Named & Timestamped {
+  pub name: String!
+  pub createdAt: String!
+  pub body: String!
+}
+
+# A concrete type implementing the child interface gets the parent
+# fields for free at the schema level - we only need to satisfy what
+# the child declares.
+type Account implements User {
+  pub name: String! = "Alice"
+  pub email: String! = "alice@example.com"
+}
+
+let account = Account
+assert { account.name == "Alice" }
+assert { account.email == "alice@example.com" }
+
+# A value of the child interface type should flow into a slot typed by
+# the parent interface, because the child declares it implements the
+# parent and the type system tracks that in the supertype lattice.
+type UserHolder {
+  pub user: User!
+}
+
+type NamedHolder {
+  pub named: Named!
+}
+
+let userHolder = UserHolder(user: account)
+let namedFromUser: Named! = userHolder.user
+assert { namedFromUser.name == "Alice" }
+
+# Lists of the child interface should likewise widen to lists of the
+# parent.
+let users: [User!]! = [account]
+let nameds: [Named!]! = users
+assert { nameds[0].name == "Alice" }

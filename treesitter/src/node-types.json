@@ -2242,6 +2242,16 @@
           }
         ]
       },
+      "i": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "implements",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,

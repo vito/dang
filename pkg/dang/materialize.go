@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/vito/dang/pkg/hm"
 )
@@ -97,10 +98,191 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 	if err == nil {
 		return subs, nil
 	}
-	if !isLiteralExpr(value) {
-		return nil, err
+	if isLiteralExpr(value) {
+		if coerceSubs, coerceErr := hm.AssignableWithCoercion(have, want); coerceErr == nil {
+			return coerceSubs, nil
+		}
 	}
-	return hm.AssignableWithCoercion(have, want)
+	if diag := diagnoseAssignment(have, want); diag != nil {
+		return nil, diag
+	}
+	return nil, err
+}
+
+// diagnoseAssignment expands an hm.Assignable failure into a detailed
+// message listing the field-level incompatibilities between two
+// object/interface types. Returns nil when no enrichment applies and the
+// caller should use the bare unification error.
+func diagnoseAssignment(have, want hm.Type) error {
+	haveMod, wantMod, issues, ok := walkAssignment(have, want)
+	if !ok {
+		return nil
+	}
+	if len(issues) == 0 {
+		return fmt.Errorf("cannot use %s as %s: %s is structurally compatible with %s but %s is not declared as an implementation",
+			have, want, haveMod.Named, wantMod.Named, haveMod.Named)
+	}
+	return fmt.Errorf("cannot use %s as %s:\n  - %s", have, want, strings.Join(issues, "\n  - "))
+}
+
+// walkAssignment unwraps matched NonNull/List wrappers and, when it
+// reaches a Module-vs-Module (or Module-vs-Union) pair, returns the
+// field-level incompatibilities that prevent assignment. ok is true when
+// the walk reached such a Module pair (regardless of whether issues were
+// found); have and want are the unwrapped Modules in that case.
+func walkAssignment(have, want hm.Type) (haveMod, wantMod *Module, issues []string, ok bool) {
+	if haveNN, haveOk := have.(hm.NonNullType); haveOk {
+		if wantNN, wantOk := want.(hm.NonNullType); wantOk {
+			return walkAssignment(haveNN.Type, wantNN.Type)
+		}
+	}
+	if haveLT, haveOk := have.(ListType); haveOk {
+		if wantLT, wantOk := want.(ListType); wantOk {
+			return walkAssignment(haveLT.Type, wantLT.Type)
+		}
+	}
+	if haveGLT, haveOk := have.(GraphQLListType); haveOk {
+		if wantGLT, wantOk := want.(GraphQLListType); wantOk {
+			return walkAssignment(haveGLT.Type, wantGLT.Type)
+		}
+	}
+	hMod, hOk := have.(*Module)
+	if !hOk {
+		return nil, nil, nil, false
+	}
+	if wMod, wOk := want.(*Module); wOk {
+		if !isStructuralKind(hMod.Kind) || !isStructuralKind(wMod.Kind) {
+			return nil, nil, nil, false
+		}
+		return hMod, wMod, diagnoseModule(hMod, wMod), true
+	}
+	if wantUnion, wOk := want.(*hm.UnionType); wOk {
+		return bestUnionMatch(hMod, wantUnion)
+	}
+	return nil, nil, nil, false
+}
+
+// bestUnionMatch picks the union option that yields the most informative
+// Module diagnosis: the structurally closest option (fewest field-level
+// issues). If multiple options reach a Module pair, the one with the
+// shortest issue list wins. ID-handle unions (Object | ID) usually pick
+// the Object half here.
+func bestUnionMatch(have *Module, want *hm.UnionType) (*Module, *Module, []string, bool) {
+	var (
+		bestHave   *Module
+		bestWant   *Module
+		bestIssues []string
+		bestN      = -1
+		found      bool
+	)
+	for _, option := range want.Options {
+		hMod, wMod, issues, ok := walkAssignment(have, option)
+		if !ok {
+			continue
+		}
+		found = true
+		if bestN == -1 || len(issues) < bestN {
+			bestN = len(issues)
+			bestHave = hMod
+			bestWant = wMod
+			bestIssues = issues
+		}
+	}
+	return bestHave, bestWant, bestIssues, found
+}
+
+// diagnoseModule lists field-level incompatibilities that prevent
+// assigning a value of have to want. It walks every public field of want
+// and reports each missing or shape-incompatible field with neutral
+// terminology (the comparison runs in both class-implements-interface
+// and interface-vs-interface contexts).
+func diagnoseModule(have, want *Module) []string {
+	var issues []string
+	for name, wantScheme := range want.Bindings(PublicVisibility) {
+		wantType, _ := wantScheme.Type()
+		haveScheme, found := have.LocalSchemeOf(name)
+		if !found {
+			issues = append(issues, fmt.Sprintf("missing field %q", name))
+			continue
+		}
+		haveType, _ := haveScheme.Type()
+		if err := diagnoseField(name, haveType, wantType); err != nil {
+			issues = append(issues, err.Error())
+		}
+	}
+	return issues
+}
+
+// diagnoseField compares a have-field against a want-field with the
+// variance rules expected for value handoffs: covariant returns and
+// contravariant arguments on function-typed fields, subtyping on plain
+// fields. Zero-argument function shape (used to represent argless
+// interface fields) is unwrapped on both sides so a slot field and a
+// zero-arg field of the same type are treated as compatible.
+func diagnoseField(name string, have, want hm.Type) error {
+	have = unwrapZeroArgFn(have)
+	want = unwrapZeroArgFn(want)
+	haveFn, haveIsFn := have.(*hm.FunctionType)
+	wantFn, wantIsFn := want.(*hm.FunctionType)
+	if !haveIsFn && !wantIsFn {
+		if _, err := hm.Assignable(have, want); err != nil {
+			return fmt.Errorf("field %q: type %s is not compatible with %s", name, have, want)
+		}
+		return nil
+	}
+	if haveIsFn != wantIsFn {
+		return fmt.Errorf("field %q: shape mismatch (%s vs %s)", name, have, want)
+	}
+	if _, err := hm.Assignable(haveFn.Ret(false), wantFn.Ret(false)); err != nil {
+		return fmt.Errorf("field %q: return type %s is not compatible with %s (covariance required)",
+			name, haveFn.Ret(false), wantFn.Ret(false))
+	}
+	wantArgs, wantArgsOk := wantFn.Arg().(*RecordType)
+	haveArgs, haveArgsOk := haveFn.Arg().(*RecordType)
+	if !wantArgsOk || !haveArgsOk {
+		return fmt.Errorf("field %q: arguments must be record types", name)
+	}
+	for _, wantArg := range wantArgs.Fields {
+		haveArgScheme, found := haveArgs.SchemeOf(wantArg.Key)
+		if !found {
+			return fmt.Errorf("field %q: missing argument %q", name, wantArg.Key)
+		}
+		haveArgType, _ := haveArgScheme.Type()
+		wantArgType, _ := wantArg.Value.Type()
+		if _, err := hm.Assignable(wantArgType, haveArgType); err != nil {
+			return fmt.Errorf("field %q, argument %q: type %s does not accept %s (contravariance required)",
+				name, wantArg.Key, haveArgType, wantArgType)
+		}
+	}
+	for _, haveArg := range haveArgs.Fields {
+		if _, found := wantArgs.SchemeOf(haveArg.Key); found {
+			continue
+		}
+		haveArgType, _ := haveArg.Value.Type()
+		if _, isNonNull := haveArgType.(hm.NonNullType); isNonNull {
+			return fmt.Errorf("field %q: extra required argument %q (must be optional)", name, haveArg.Key)
+		}
+	}
+	return nil
+}
+
+// unwrapZeroArgFn returns t with a zero-argument function shape stripped
+// off. Interfaces store argless fields as () -> T while classes store
+// them as plain T; the unwrap lets the two representations compare equal.
+func unwrapZeroArgFn(t hm.Type) hm.Type {
+	fn, ok := t.(*hm.FunctionType)
+	if !ok {
+		return t
+	}
+	rt, ok := fn.Arg().(*RecordType)
+	if !ok || len(rt.Fields) != 0 {
+		return t
+	}
+	return fn.Ret(false)
+}
+
+func isStructuralKind(k ModuleKind) bool {
+	return k == ObjectKind || k == InterfaceKind || k == InputKind
 }
 
 // wrapCoerce inserts a Coerce wrapper around node so its value is materialized

@@ -37,7 +37,7 @@ func FormatPublicTypeShape(mod *Module) string {
 	b.WriteString(" ")
 	b.WriteString(mod.Name())
 
-	if mod.Kind == ObjectKind {
+	if mod.Kind == ObjectKind || mod.Kind == InterfaceKind {
 		if interfaces := publicShapeInterfaceNames(mod); len(interfaces) > 0 {
 			b.WriteString(" implements ")
 			b.WriteString(strings.Join(interfaces, " & "))

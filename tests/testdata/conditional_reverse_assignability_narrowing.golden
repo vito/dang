@@ -1,4 +1,5 @@
-[1m[31mError:[0m cannot use ConditionalAnimal! as ConditionalCat!
+[1m[31mError:[0m cannot use ConditionalAnimal! as ConditionalCat!:
+  - missing field "lives"
   [2m[34m--> errors/conditional_reverse_assignability_narrowing.dang:19:34[0m
  [2m    |[0m
  [2m 17 | let dogAsAnimal: ConditionalAnimal! = ConditionalDog(name: "Fido", bark: "woof")[0m

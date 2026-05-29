@@ -1015,14 +1015,15 @@ func (t *Module) Eq(other Type) bool {
 }
 
 func (t *Module) Supertypes() []Type {
-	// Only object types have supertypes (their interfaces and unions)
-	if t.Kind != ObjectKind {
+	// Object types have their implemented interfaces and unions as
+	// supertypes. Interfaces have their parent interfaces (from
+	// `interface Foo implements Bar`) as supertypes too.
+	if t.Kind != ObjectKind && t.Kind != InterfaceKind {
 		return nil
 	}
 	if len(t.interfaces) == 0 && len(t.unions) == 0 {
 		return nil
 	}
-	// Convert []Env to []Type - include both interfaces and unions
 	result := make([]Type, 0, len(t.interfaces)+len(t.unions))
 	for _, iface := range t.interfaces {
 		result = append(result, iface.(Type))

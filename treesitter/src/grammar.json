@@ -879,6 +879,26 @@
         },
         {
           "type": "FIELD",
+          "name": "implements",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "i",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "implements"
+                }
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "block",
           "content": {
             "type": "SYMBOL",
