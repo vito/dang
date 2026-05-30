@@ -4,8 +4,8 @@
 assert { "abc123".containsMatch(`\d+`) }
 assert { !"abc".containsMatch(`\d+`) }
 
-# Regexp variable: same coercion path
-let digits = `\d+`
+# Regexp variable: typed slot materializes the scalar
+let digits: Regexp! = `\d+`
 assert { "x42y".containsMatch(digits) }
 
 # match: returns a Match with the whole match and positional captures
