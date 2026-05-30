@@ -1899,22 +1899,6 @@
     }
   },
   {
-    "type": "grouped_type",
-    "named": true,
-    "fields": {
-      "inner": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "header_slot",
     "named": true,
     "fields": {
@@ -2704,7 +2688,7 @@
         "required": true,
         "types": [
           {
-            "type": "primary_type",
+            "type": "type",
             "named": true
           }
         ]
@@ -2976,37 +2960,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "primary_type",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "grouped_type",
-          "named": true
-        },
-        {
-          "type": "list_type",
-          "named": true
-        },
-        {
-          "type": "named_type",
-          "named": true
-        },
-        {
-          "type": "object_type",
-          "named": true
-        },
-        {
-          "type": "type_variable",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -3573,11 +3526,23 @@
       "required": true,
       "types": [
         {
+          "type": "list_type",
+          "named": true
+        },
+        {
+          "type": "named_type",
+          "named": true
+        },
+        {
           "type": "non_null",
           "named": true
         },
         {
-          "type": "primary_type",
+          "type": "object_type",
+          "named": true
+        },
+        {
+          "type": "type_variable",
           "named": true
         }
       ]
