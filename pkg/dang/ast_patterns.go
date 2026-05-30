@@ -78,11 +78,14 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 					return nil, err
 				}
 
-				// Check that the value type is assignable to the expression type
-				_, err = hm.Assignable(valueType, exprType)
+				// Check that the value type is assignable to the expression type,
+				// permitting literal coercion (e.g. String! literal -> custom
+				// scalar or enum matching the operand's type).
+				_, err = assignableForValue(valueType, exprType, clause.Value)
 				if err != nil {
 					return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d value type mismatch: %s != %s", i, exprType, valueType), clause)
 				}
+				clause.Value = wrapCoerce(clause.Value, exprType, "")
 
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)

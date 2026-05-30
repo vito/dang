@@ -1,0 +1,10 @@
+import Test
+
+# Literal coercion only kicks in for syntactic literals. A non-literal value
+# (here, the identifier `s`) with a type that differs from the operand's
+# type must still fail with a type mismatch.
+let s: String! = "https://dang-lang.dev"
+
+pub result = case (homepage) {
+  s => "matched"
+}
