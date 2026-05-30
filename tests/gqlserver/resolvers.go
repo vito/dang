@@ -76,24 +76,6 @@ func (r *queryResolver) User(ctx context.Context, id string) (*User, error) {
 	return nil, fmt.Errorf("user not found")
 }
 
-// LoadUserFromID is the resolver for the loadUserFromID field.
-func (r *queryResolver) LoadUserFromID(ctx context.Context, id string) (*User, error) {
-	return findUserByID(id)
-}
-
-// LoadUsersFromIDs is the resolver for the loadUsersFromIDs field.
-func (r *queryResolver) LoadUsersFromIDs(ctx context.Context, ids []string) ([]*User, error) {
-	result := make([]*User, 0, len(ids))
-	for _, id := range ids {
-		user, err := findUserByID(id)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, user)
-	}
-	return result, nil
-}
-
 // PrimaryUser is the resolver for the primaryUser field.
 func (r *queryResolver) PrimaryUser(ctx context.Context) (*User, error) {
 	if len(users) == 0 {
@@ -423,12 +405,3 @@ type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type userResolver struct{ *Resolver }
 
-// !!! WARNING !!!
-// The code below was going to be deleted when updating resolvers. It has been copied here so you have
-// one last chance to move it out of harms way if you want. There are two reasons this happens:
-//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
-//    it when you're done.
-//  - You have helper methods in this file. Move them out to keep these resolver files clean.
-/*
-	type Resolver struct{}
-*/
