@@ -1,1 +1,1 @@
-pub bad = `hello #{1 +}`
+pub bad = `hello ${1 +}`

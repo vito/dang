@@ -98,14 +98,14 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name:     "single-line with interpolation",
-			input:    "pub name = \"Ada\"\npub x = `hello #{name}!`",
-			expected: "pub name = \"Ada\"\npub x = `hello #{name}!`\n",
+			input:    "pub name = \"Ada\"\npub x = `hello ${name}!`",
+			expected: "pub name = \"Ada\"\npub x = `hello ${name}!`\n",
 		},
 		{
 			name: "single-line interpolation comment is preserved",
-			input: "pub name = \"Ada\"\npub greeting = `hello #{ # keep the explanation\n" +
+			input: "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n" +
 				"  name\n}`",
-			expected: "pub name = \"Ada\"\npub greeting = `hello #{ # keep the explanation\n" +
+			expected: "pub name = \"Ada\"\npub greeting = `hello ${ # keep the explanation\n" +
 				"  name\n}`\n",
 		},
 		{
@@ -119,9 +119,9 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 			expected: "pub x = `\\d+`\n",
 		},
 		{
-			name:     "literal hash-brace via interpolation",
-			input:    `pub x = ` + "`prefix #{\"#{\"}suffix`",
-			expected: `pub x = ` + "`prefix #{\"#{\"}suffix`\n",
+			name:     "literal dollar-brace via escape",
+			input:    `pub x = ` + "`prefix \\${name} suffix`",
+			expected: `pub x = ` + "`prefix \\${name} suffix`\n",
 		},
 		{
 			name: "multi-line flush content stays flush",
@@ -184,24 +184,24 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 			name: "multi-line with interpolation",
 			input: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello #{who}!\n" +
+				"  hello ${who}!\n" +
 				"  ```",
 			expected: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello #{who}!\n" +
+				"  hello ${who}!\n" +
 				"```\n",
 		},
 		{
 			name: "multi-line interpolation comment is preserved",
 			input: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello #{ # who to greet\n" +
+				"  hello ${ # who to greet\n" +
 				"    who\n" +
 				"  }!\n" +
 				"  ```",
 			expected: "pub who = \"world\"\n" +
 				"pub x = ```\n" +
-				"  hello #{ # who to greet\n" +
+				"  hello ${ # who to greet\n" +
 				"    who\n" +
 				"  }!\n" +
 				"```\n",
@@ -364,8 +364,8 @@ world
 			expected: "type Foo {\n  pub x = \"\"\"\n  First paragraph.\n\n  Second paragraph.\n  \"\"\"\n}\n",
 		},
 		{
-			name: "triple-quoted inline stays inline",
-			input: `pub x = """hello"""`,
+			name:     "triple-quoted inline stays inline",
+			input:    `pub x = """hello"""`,
 			expected: "pub x = \"\"\"hello\"\"\"\n",
 		},
 	}

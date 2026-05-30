@@ -18,7 +18,7 @@ type LiteralTemplateDefaultUser {
 assert { LiteralTemplateDefaultUser.name == "Ada" }
 
 pub who = "Grace"
-pub templatedDefault = `hello #{who}`
+pub templatedDefault = `hello ${who}`
 
 type TemplateDefaultUser {
   pub message: String! = templatedDefault
@@ -32,7 +32,7 @@ assert { TemplateDefaultUser.message == "hello Grace" }
 pub runtimeUser = RuntimeTemplateDefaultUser
 
 pub runtimeWho = "Katherine"
-pub runtimeTemplatedDefault = `hello #{runtimeWho}`
+pub runtimeTemplatedDefault = `hello ${runtimeWho}`
 
 type RuntimeTemplateDefaultUser {
   pub message: String! = runtimeTemplatedDefault

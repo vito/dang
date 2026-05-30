@@ -827,7 +827,7 @@ ImmediateEscape <- '\\' (
   / [0-7] [0-7] [0-7]
 )
 
-// Backtick-delimited template strings with optional #{...} interpolations.
+// Backtick-delimited template strings with optional ${...} interpolations.
 // Single-line uses one backtick; multi-line uses three or more.
 Template <- MultiTemplate / SingleTemplate
 
@@ -836,14 +836,17 @@ SingleTemplate <- '`' parts:SingleTemplatePart* '`' {
 }
 
 SingleTemplatePart <-
-    "#{" _ e:Expr _ "}" {
+    "\\${" {
+      return TemplatePart{Lit: "${"}, nil
+    }
+  / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
   / ch:SingleTemplateContentChar {
       return TemplatePart{Lit: ch.(string)}, nil
     }
 
-SingleTemplateContentChar <- !"#{" [^`\n] {
+SingleTemplateContentChar <- !"${" [^`\n] {
   return string(c.text), nil
 }
 
@@ -885,7 +888,10 @@ LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
 LangTagTerminator <- '\n'
 
 MultiTemplatePart <-
-    "#{" _ e:Expr _ "}" {
+    "\\${" {
+      return TemplatePart{Lit: "${"}, nil
+    }
+  / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
   / ch:MultiTemplateContentChar {
@@ -898,7 +904,7 @@ MultiTemplateLongerBackticks <- ticks:('`'+) !'`' &{
   return len(ticks.([]interface{})) > expected, nil
 }
 
-MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBackticks !"#{" . {
+MultiTemplateContentChar <- !MultiTemplateCloseToken !MultiTemplateLongerBackticks !"${" . {
   return string(c.text), nil
 }
 

@@ -51,7 +51,7 @@ assert {
 }
 assert {
   "x1 y22 z333".rewriteMatches(`(\D)(\d+)`) { m =>
-    `#{m.captures[0]}:#{m.captures[1]}`
+    `${m.captures[0]}:${m.captures[1]}`
   } == "x:1 y:22 z:333"
 }
 

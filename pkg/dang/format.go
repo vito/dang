@@ -2169,7 +2169,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 	// Echo the original source when available. Templates carry layout
 	// the AST throws away — the dedent algorithm strips intentional
 	// indentation from multi-line content. Preserving source also keeps
-	// any comments living inside #{...} interpolations intact.
+	// any comments living inside ${...} interpolations intact.
 	if orig := f.getOriginalSource(t); orig != "" {
 		if t.Fence >= 3 {
 			f.write(f.normalizeMultilineLiteral(t, orig))
@@ -2202,7 +2202,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 				f.writeIndent()
 				needIndent = false
 			}
-			f.write("#{")
+			f.write("${")
 			f.formatNodeInline(p.Expr)
 			f.write("}")
 			continue
@@ -2220,7 +2220,7 @@ func (f *Formatter) formatTemplate(t *Template) {
 				f.writeIndent()
 				needIndent = false
 			}
-			f.write(line)
+			f.write(strings.ReplaceAll(line, "${", "\\${"))
 		}
 	}
 	if !needIndent {
@@ -2232,18 +2232,15 @@ func (f *Formatter) formatTemplate(t *Template) {
 
 func (f *Formatter) formatTemplatePart(p TemplatePart) {
 	if p.Expr != nil {
-		f.write("#{")
+		f.write("${")
 		f.formatNodeInline(p.Expr)
 		f.write("}")
 		return
 	}
-	// Literal parts round-trip as-is: the parser cannot emit `#{` in a
-	// literal (it would consume that as interpolation), so anything reaching
-	// us here is already safe to write directly. Synthetic ASTs that bypass
-	// the parser are responsible for not stuffing `#{` into a literal part —
-	// the escape hatch for that is to wrap it in an interpolation:
-	// `#{"#{"}`.
-	f.write(p.Lit)
+	// Escape literal interpolation openers so source-less/synthetic templates
+	// round-trip with the same value. Parsed templates with original source are
+	// handled by formatTemplate's source-preserving path above.
+	f.write(strings.ReplaceAll(p.Lit, "${", "\\${"))
 }
 
 // normalizeMultilineLiteral takes the original source of a multi-line

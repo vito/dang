@@ -63,7 +63,7 @@
       ]
     },
     "template-interpolation": {
-      "begin": "#\\{",
+      "begin": "(?<!\\\\)\\$\\{",
       "beginCaptures": {
         "0": { "name": "punctuation.section.interpolation.begin.dang" }
       },
