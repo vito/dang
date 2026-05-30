@@ -83,32 +83,6 @@ func (t ListTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	return ListType{e}, nil
 }
 
-type UnionTypeNode struct {
-	Options []TypeNode
-}
-
-var _ TypeNode = UnionTypeNode{}
-
-func (t UnionTypeNode) ReferencedSymbols() []string {
-	var symbols []string
-	for _, option := range t.Options {
-		symbols = append(symbols, option.ReferencedSymbols()...)
-	}
-	return symbols
-}
-
-func (t UnionTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	options := make([]hm.Type, len(t.Options))
-	for i, option := range t.Options {
-		optionType, err := option.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, fmt.Errorf("UnionType.Infer: option %d: %w", i, err)
-		}
-		options[i] = optionType
-	}
-	return hm.NewUnionType(options...), nil
-}
-
 type ListType struct {
 	Type
 }

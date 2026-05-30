@@ -201,7 +201,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 172,
+      "value": 170,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -446,7 +446,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 165,
+      "value": 163,
       "content": {
         "type": "SEQ",
         "members": [
@@ -529,7 +529,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 164,
+      "value": 162,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2347,64 +2347,6 @@
       }
     },
     "type": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "union_type"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "simple_type"
-        }
-      ]
-    },
-    "union_type": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "types",
-          "content": {
-            "type": "REPEAT1",
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "t",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "simple_type"
-                  }
-                },
-                {
-                  "type": "STRING",
-                  "value": "|"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "last",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "simple_type"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
-          }
-        }
-      ]
-    },
-    "simple_type": {
       "type": "CHOICE",
       "members": [
         {
@@ -5326,8 +5268,7 @@
   "supertypes": [
     "expr",
     "form",
-    "term",
-    "simple_type"
+    "term"
   ],
   "conflicts": [
     [

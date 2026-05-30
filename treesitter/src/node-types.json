@@ -72,20 +72,6 @@
     ]
   },
   {
-    "type": "simple_type",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "non_null",
-        "named": true
-      },
-      {
-        "type": "primary_type",
-        "named": true
-      }
-    ]
-  },
-  {
     "type": "term",
     "named": true,
     "subtypes": [
@@ -3587,11 +3573,11 @@
       "required": true,
       "types": [
         {
-          "type": "simple_type",
+          "type": "non_null",
           "named": true
         },
         {
-          "type": "union_type",
+          "type": "primary_type",
           "named": true
         }
       ]
@@ -4232,46 +4218,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "union_type",
-    "named": true,
-    "fields": {
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "simple_type",
-            "named": true
-          }
-        ]
-      },
-      "t": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "simple_type",
-            "named": true
-          }
-        ]
-      },
-      "types": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "simple_type",
-            "named": true
-          },
-          {
-            "type": "|",
-            "named": false
-          }
-        ]
-      }
     }
   },
   {
