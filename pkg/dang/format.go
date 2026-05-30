@@ -3267,13 +3267,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 		}
 		f.write(tn.Name)
 	case NonNullTypeNode:
-		if _, ok := tn.Elem.(UnionTypeNode); ok {
-			f.write("(")
-			f.formatTypeNode(tn.Elem)
-			f.write(")")
-		} else {
-			f.formatTypeNode(tn.Elem)
-		}
+		f.formatTypeNode(tn.Elem)
 		f.write("!")
 	case ListTypeNode:
 		f.write("[")
@@ -3290,13 +3284,6 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 			f.formatTypeNode(field.Type)
 		}
 		f.write("}}")
-	case UnionTypeNode:
-		for i, option := range tn.Options {
-			if i > 0 {
-				f.write(" | ")
-			}
-			f.formatTypeNode(option)
-		}
 	case FunTypeNode:
 		// Function type: (args): returnType
 		// If no args, just output the return type directly (for interface slot types)

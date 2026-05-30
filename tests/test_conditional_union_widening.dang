@@ -1,0 +1,33 @@
+# When if-then-else branches return divergent types, the conditional infers
+# as a union. Discarding the result is fine; using it forces narrowing.
+
+type Cat {
+  pub name: String!
+}
+
+type Dog {
+  pub name: String!
+}
+
+# Discarded divergent conditional: no error.
+if (true) {
+  42
+} else {
+  "hello"
+}
+
+# Bound union: type-pattern narrowing recovers a concrete value.
+pub pet = if (true) {
+  Cat(name: "Whiskers")
+} else {
+  Dog(name: "Rex")
+}
+
+pub petName = case (pet) {
+  c: Cat => c.name
+  d: Dog => d.name
+}
+
+assert { petName == "Whiskers" }
+
+print("Conditional union widening tests passed!")

@@ -2259,18 +2259,16 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 
 			mergedType, subs, err := hm.MergeTypes(thenType, elseType)
 			if err != nil {
-				// Point to the specific else block for better error targeting.
-				var errorNode Node = elseBlock
-				if len(elseBlock.Forms) > 0 {
-					errorNode = elseBlock.Forms[len(elseBlock.Forms)-1] // Use the last form (the return value)
-				}
-				return nil, NewInferError(err, errorNode)
+				// Branches diverge: widen to a union and let downstream usage
+				// (or a tail-position type annotation) decide whether that's
+				// actually a problem.
+				thenType = hm.NewUnionType(thenType, elseType)
+			} else {
+				// Propagate substitutions backwards to the 'then' branch without
+				// widening the branch itself to the merged conditional result.
+				c.Then.SetInferredType(thenType.Apply(subs).(hm.Type))
+				thenType = mergedType
 			}
-
-			// Propagate substitutions backwards to the 'then' branch without
-			// widening the branch itself to the merged conditional result.
-			c.Then.SetInferredType(thenType.Apply(subs).(hm.Type))
-			thenType = mergedType
 		}
 
 		if c.Else == nil {

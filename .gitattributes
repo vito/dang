@@ -1,1 +1,4 @@
 *.dang linguist-language=GraphQL
+treesitter/src/grammar.json linguist-generated=true
+treesitter/src/parser.c linguist-generated=true
+treesitter/src/node-types.json linguist-generated=true

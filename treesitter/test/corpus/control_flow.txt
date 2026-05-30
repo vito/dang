@@ -20,7 +20,7 @@ pub f: Int! {
         (colon_token)
         type_: (type
           (non_null
-            inner: (primary_type
+            inner: (type
               (named_type
                 name: (upper_id
                   (upper_token))))
@@ -56,7 +56,7 @@ pub f: Int! {
         (colon_token)
         type_: (type
           (non_null
-            inner: (primary_type
+            inner: (type
               (named_type
                 name: (upper_id
                   (upper_token))))

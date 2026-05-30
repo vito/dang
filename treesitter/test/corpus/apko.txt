@@ -173,7 +173,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (colon_token)
                     (type
                       (non_null
-                        (primary_type
+                        (type
                           (named_type
                             (upper_id
                               (upper_token))))
@@ -186,7 +186,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
               (colon_token)
               (type
                 (non_null
-                  (primary_type
+                  (type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -277,11 +277,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (colon_token)
                     (type
                       (non_null
-                        (primary_type
+                        (type
                           (list_type
                             (type
                               (non_null
-                                (primary_type
+                                (type
                                   (named_type
                                     (upper_id
                                       (upper_token))))
@@ -290,7 +290,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
               (colon_token)
               (type
                 (non_null
-                  (primary_type
+                  (type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -335,11 +335,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (colon_token)
                     (type
                       (non_null
-                        (primary_type
+                        (type
                           (list_type
                             (type
                               (non_null
-                                (primary_type
+                                (type
                                   (named_type
                                     (upper_id
                                       (upper_token))))
@@ -348,7 +348,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
               (colon_token)
               (type
                 (non_null
-                  (primary_type
+                  (type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -383,7 +383,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
               (colon_token)
               (type
                 (non_null
-                  (primary_type
+                  (type
                     (named_type
                       (upper_id
                         (upper_token))))
@@ -553,11 +553,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (colon_token)
                     (type
                       (non_null
-                        (primary_type
+                        (type
                           (list_type
                             (type
                               (non_null
-                                (primary_type
+                                (type
                                   (named_type
                                     (upper_id
                                       (upper_token))))
@@ -573,7 +573,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (colon_token)
                     (type
                       (non_null
-                        (primary_type
+                        (type
                           (named_type
                             (upper_id
                               (upper_token))))
@@ -586,7 +586,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
               (colon_token)
               (type
                 (non_null
-                  (primary_type
+                  (type
                     (named_type
                       (upper_id
                         (upper_token))))

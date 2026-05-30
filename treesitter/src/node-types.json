@@ -72,20 +72,6 @@
     ]
   },
   {
-    "type": "simple_type",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "non_null",
-        "named": true
-      },
-      {
-        "type": "primary_type",
-        "named": true
-      }
-    ]
-  },
-  {
     "type": "term",
     "named": true,
     "subtypes": [
@@ -1913,22 +1899,6 @@
     }
   },
   {
-    "type": "grouped_type",
-    "named": true,
-    "fields": {
-      "inner": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "header_slot",
     "named": true,
     "fields": {
@@ -2718,7 +2688,7 @@
         "required": true,
         "types": [
           {
-            "type": "primary_type",
+            "type": "type",
             "named": true
           }
         ]
@@ -2990,37 +2960,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "primary_type",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "grouped_type",
-          "named": true
-        },
-        {
-          "type": "list_type",
-          "named": true
-        },
-        {
-          "type": "named_type",
-          "named": true
-        },
-        {
-          "type": "object_type",
-          "named": true
-        },
-        {
-          "type": "type_variable",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -3587,11 +3526,23 @@
       "required": true,
       "types": [
         {
-          "type": "simple_type",
+          "type": "list_type",
           "named": true
         },
         {
-          "type": "union_type",
+          "type": "named_type",
+          "named": true
+        },
+        {
+          "type": "non_null",
+          "named": true
+        },
+        {
+          "type": "object_type",
+          "named": true
+        },
+        {
+          "type": "type_variable",
           "named": true
         }
       ]
@@ -4232,46 +4183,6 @@
           "named": true
         }
       ]
-    }
-  },
-  {
-    "type": "union_type",
-    "named": true,
-    "fields": {
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "simple_type",
-            "named": true
-          }
-        ]
-      },
-      "t": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "simple_type",
-            "named": true
-          }
-        ]
-      },
-      "types": {
-        "multiple": true,
-        "required": true,
-        "types": [
-          {
-            "type": "simple_type",
-            "named": true
-          },
-          {
-            "type": "|",
-            "named": false
-          }
-        ]
-      }
     }
   },
   {
