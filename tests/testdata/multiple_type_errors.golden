@@ -1,6 +1,18 @@
 3 inference errors:
 
 Error 1:
+[1m[31mError:[0m cannot use String! as Int!
+  [2m[34m--> errors/multiple_type_errors.dang:4:21[0m
+ [2m    |[0m
+ [2m  2 | pub bad_addition = "hello" + 42[0m
+ [2m  3 | pub missing_var = undefined_symbol[0m
+ [2m[34m[1m  4 | [0mpub bad_arg: Int! = "string"
+[2m                           [31m^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+
+
+Error 2:
 [1m[31mError:[0m cannot use Int! as String!
   [2m[34m--> errors/multiple_type_errors.dang:2:20[0m
  [2m    |[0m
@@ -8,11 +20,11 @@ Error 1:
  [2m[34m[1m  2 | [0mpub bad_addition = "hello" + 42
 [2m                          [31m^^^^^^^^^^^^[0m
  [2m  3 | pub missing_var = undefined_symbol[0m
- [2m  4 | pub bad_conditional = if (true) { "string" } else { 123 }[0m
+ [2m  4 | pub bad_arg: Int! = "string"[0m
  [2m    |[0m
 
 
-Error 2:
+Error 3:
 [1m[31mError:[0m "undefined_symbol" not found
   [2m[34m--> errors/multiple_type_errors.dang:3:19[0m
  [2m    |[0m
@@ -20,19 +32,7 @@ Error 2:
  [2m  2 | pub bad_addition = "hello" + 42[0m
  [2m[34m[1m  3 | [0mpub missing_var = undefined_symbol
 [2m                         [31m^^^^^^^^^^^^^^^^[0m
- [2m  4 | pub bad_conditional = if (true) { "string" } else { 123 }[0m
- [2m  5 | [0m
- [2m    |[0m
-
-
-Error 3:
-[1m[31mError:[0m cannot use Int! as String!
-  [2m[34m--> errors/multiple_type_errors.dang:4:53[0m
- [2m    |[0m
- [2m  2 | pub bad_addition = "hello" + 42[0m
- [2m  3 | pub missing_var = undefined_symbol[0m
- [2m[34m[1m  4 | [0mpub bad_conditional = if (true) { "string" } else { 123 }
-[2m                                                           [31m^^^[0m
+ [2m  4 | pub bad_arg: Int! = "string"[0m
  [2m  5 | [0m
  [2m    |[0m
 

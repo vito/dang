@@ -1,6 +1,0 @@
-# Conditional result merging is pure: String! does not implicitly become ID!.
-pub id = if (true) {
-  "abc" :: ID!
-} else {
-  "def"
-}
