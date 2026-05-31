@@ -25,6 +25,18 @@ type contextKey string
 
 const blockArgContextKey contextKey = "blockArg"
 
+// ContextWithBlock attaches val as the block argument for the next
+// Callable invocation that consumes ctx. The wrapped value must
+// implement Callable so the body of a function declaring &body can
+// invoke it.
+//
+// Embedders (e.g. Booklit) use this when programmatically calling a
+// Dang function that declares a block parameter — the surface syntax
+// `Foo(...) { ... }` sets the same key during parsing.
+func ContextWithBlock(ctx context.Context, val Value) context.Context {
+	return context.WithValue(ctx, blockArgContextKey, val)
+}
+
 // Value represents a runtime value in the Dang language
 type Value interface {
 	Type() hm.Type
