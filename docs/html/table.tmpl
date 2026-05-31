@@ -1,0 +1,9 @@
+<table>
+  {{range $i, $row := .Rows}}
+  <tr>
+    {{range $row}}
+    {{if eq $i 0}}<th>{{. | render}}</th>{{else}}<td>{{. | render}}</td>{{end}}
+    {{end}}
+  </tr>
+  {{end}}
+</table>
