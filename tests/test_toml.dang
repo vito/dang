@@ -1,0 +1,55 @@
+enum Status { PASSED FAILED }
+
+type Child {
+  pub name: String!
+  pub outcome: Status!
+}
+
+type Summary {
+  pub children: [Child!]!
+  pub optional: String
+  pub withDefault: String! = "default"
+  pub ratio: Float! = 1.5
+}
+
+let summary = Summary([
+  Child("one", Status.PASSED),
+  Child("two", Status.FAILED),
+], "note", "custom", 0.75)
+
+let encoded = toTOML(summary)
+assert { encoded.contains("optional = 'note'") }
+assert { encoded.contains("[[children]]") }
+
+let roundTrip: Summary! = fromTOML(encoded)
+assert { roundTrip.children.length == 2 }
+assert { roundTrip.children[0].name == "one" }
+assert { roundTrip.children[0].outcome == Status.PASSED }
+assert { roundTrip.children[1].outcome == Status.FAILED }
+assert { roundTrip.optional == "note" }
+assert { roundTrip.withDefault == "custom" }
+assert { roundTrip.ratio == 0.75 }
+
+let parsed: Summary! = fromTOML(```toml
+ratio = 2.5
+
+[[children]]
+name = "three"
+outcome = "PASSED"
+ignored = true
+```)
+
+assert { parsed.children.length == 1 }
+assert { parsed.children[0].name == "three" }
+assert { parsed.children[0].outcome == Status.PASSED }
+assert { parsed.optional == null }
+assert { parsed.withDefault == "default" }
+assert { parsed.ratio == 2.5 }
+
+let anon = fromTOML(```toml
+foo = 1
+bar = "FAILED"
+extra = 2
+```) :: {{foo: Int!, bar: Status!}}!
+assert { anon.foo == 1 }
+assert { anon.bar == Status.FAILED }

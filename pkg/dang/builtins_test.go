@@ -15,7 +15,7 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 		}
 		functionNames[def.Name] = true
 	})
-	for _, name := range []string{"print", "toJSON", "fromJSON", "fromYAML", "toString"} {
+	for _, name := range []string{"print", "toJSON", "toTOML", "fromJSON", "fromTOML", "fromYAML", "toString"} {
 		if !functionNames[name] {
 			t.Fatalf("function %q was not registered", name)
 		}
