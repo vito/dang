@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title.String}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d0f14;--bg2:#13161d;--bg3:#1a1e28;
+  --fg:#c9d1d9;--fg2:#8b949e;--fg3:#6e7681;
+  --accent:#7c6aef;--accent2:#a78bfa;
+  --green:#34d399;--cyan:#22d3ee;--pink:#f472b6;--orange:#ffa657;--yellow:#fbbf24;
+  --code-bg:#0d1117;--code-border:#30363d;
+}
+html{font-size:16px}
+body{background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,sans-serif;line-height:1.6;margin:0;display:flex;min-height:100vh}
+code,pre,.mono{font-family:'JetBrains Mono',monospace}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+p code{background:var(--bg3);padding:.15em .4em;border-radius:4px;font-size:.85em}
+
+nav.sidebar{
+  position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;
+  width:240px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--code-border);
+  padding:1.5rem 1rem;font-size:.85rem;
+}
+nav.sidebar h2{font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin:1.25rem 0 .35rem;border:none;padding:0}
+nav.sidebar h2:first-child{margin-top:0}
+nav.sidebar ul{list-style:none;padding:0;margin:0}
+nav.sidebar li{margin:.15rem 0}
+nav.sidebar a{color:var(--fg2);display:block;padding:.2rem .4rem;border-radius:4px}
+nav.sidebar a:hover{color:var(--fg);background:var(--bg3);text-decoration:none}
+nav.sidebar a.current{color:var(--accent2);background:var(--bg3)}
+nav.sidebar .brand{font-weight:600;color:var(--fg);font-size:1rem;margin-bottom:1rem;display:block}
+
+main{flex:1;max-width:820px;margin:0 auto;padding:2.5rem 2rem 4rem;min-width:0}
+
+h1{font-size:1.8rem;font-weight:600;margin-bottom:.25rem}
+h2{font-size:1.2rem;font-weight:600;margin:2.5rem 0 .75rem;padding-bottom:.4rem;border-bottom:1px solid var(--code-border)}
+h3{font-size:1rem;font-weight:600;margin:1.5rem 0 .5rem}
+p{color:var(--fg2);font-size:.92rem;margin-bottom:.75rem}
+li{color:var(--fg2);font-size:.92rem;margin-bottom:.25rem}
+ul{padding-left:1.25rem;margin-bottom:.75rem}
+
+blockquote, .inset{
+  border-left:3px solid var(--accent);background:var(--bg2);
+  padding:.6rem .9rem !important;margin:.75rem 0 !important;border-radius:0 4px 4px 0;font-size:.85rem;
+}
+blockquote p, .inset p{color:var(--fg2);margin:0}
+blockquote strong, .inset strong{color:var(--accent2)}
+
+pre{
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
+  padding:1rem 1.25rem !important;font-size:.8rem;line-height:1.65;overflow-x:auto;margin:.75rem 0;
+}
+pre code{display:block}
+
+table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
+th{text-align:left;padding:.5rem .6rem;color:var(--fg3);font-weight:500;border-bottom:1px solid var(--code-border)}
+td{padding:.4rem .6rem;border-bottom:1px solid rgba(48,54,61,.3)}
+
+.links p{margin:0}
+
+.screenshot{margin:.75rem 0}
+.screenshot img{width:100%;border-radius:6px;border:1px solid var(--code-border)}
+
+footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border);font-size:.8rem;color:var(--fg3)}
+
+@media (max-width:760px){
+  body{flex-direction:column}
+  nav.sidebar{position:static;height:auto;width:auto;border-right:none;border-bottom:1px solid var(--code-border)}
+  main{padding:1.5rem 1rem 3rem}
+}
+</style>
+</head>
+<body>
+{{ $current := . }}
+{{ $top := .Top }}
+<nav class="sidebar">
+  <a class="brand" href="{{url $top.PrimaryTag}}">dang</a>
+  {{ template "sidebar.tmpl" walkContext $current $top }}
+</nav>
+<main>
+{{. | render}}
+<footer>
+  <a href="https://github.com/vito/dang">github.com/vito/dang</a> · Apache-2.0
+</footer>
+</main>
+</body>
+</html>

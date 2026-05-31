@@ -1,0 +1,11 @@
+{{ $current := .Current }}
+<ul>
+  {{ range .Section.Children }}
+    {{ $isCurrent := .IsOrHasChild $current }}
+    <li>
+      <a href="{{url .PrimaryTag}}"{{if $isCurrent}} class="current"{{end}}>
+        {{- .Title | render -}}
+      </a>
+    </li>
+  {{ end }}
+</ul>

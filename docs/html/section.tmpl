@@ -1,0 +1,11 @@
+<h{{headerDepth .}} class="section-header"><a id="{{.PrimaryTag.Name}}"></a>
+  {{.Title | render -}}
+</h{{headerDepth .}}>
+
+{{.Body | render}}
+
+{{if not .SplitSections}}
+  {{range .Children}}
+    {{. | render}}
+  {{end}}
+{{end}}

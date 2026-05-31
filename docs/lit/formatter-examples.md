@@ -1,4 +1,6 @@
-# Dang Formatter Examples
+\use-plugin{dang}
+
+# Dang Formatter Examples {#formatter-examples}
 
 This document shows before/after examples for `dang fmt`, an opinionated code formatter for Dang.
 
