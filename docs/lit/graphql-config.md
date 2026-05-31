@@ -1,4 +1,6 @@
-# GraphQL Configuration
+\use-plugin{dang}
+
+# GraphQL Configuration {#graphql-config}
 
 Dang now supports connecting to any GraphQL API, not just Dagger. This makes it possible to use Dang with custom GraphQL APIs while maintaining the same type-safe, functional programming experience.
 
