@@ -21,7 +21,7 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"map", "filter", "reduce"} {
+	for _, name := range []string{"map", "filter", "reduce", "uniq"} {
 		if _, ok := LookupMethod(ListTypeModule, name); !ok {
 			t.Fatalf("list method %q was not indexed", name)
 		}
@@ -142,7 +142,7 @@ func TestConcurrentLookupMethod(t *testing.T) {
 			defer wg.Done()
 			<-start
 
-			for _, name := range []string{"map", "filter", "reduce"} {
+			for _, name := range []string{"map", "filter", "reduce", "uniq"} {
 				if _, ok := LookupMethod(ListTypeModule, name); !ok {
 					misses <- name
 				}
