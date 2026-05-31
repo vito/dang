@@ -6,3 +6,4 @@ Session.vim
 CLAUDE.local.md
 *.log
 /treesitter/parser.so
+/docs/*.html
