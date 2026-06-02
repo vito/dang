@@ -43,5 +43,3 @@ GraphQL schema.
 \include-section{./reference/stdlib.md}
 \include-section{./reference/grammar.md}
 \include-section{./reference/cli.md}
-\include-section{./formatter-examples.md}
-\include-section{./graphql-config.md}
