@@ -4,6 +4,8 @@
 
 > Meta: this is also the right place to introduce the *slot* concept, since `pub` and `let` declare slots whether they hold a value or a function. The class-context behavior is covered in [classes](./classes.md) — link there, don't duplicate.
 
+Dang scopes contain _fields_ which are either values or functions.
+
 ## Two visibilities
 
 - `pub name = value` — exported; visible to importers and outside the type
@@ -24,16 +26,14 @@ pub maybe: String = null  # nullable
 let secret = "shhh"
 ```
 
-## Hoisting and declaration order
-
-- declarations are **hoisted** within a file
-- mutual references between top-level declarations are fine
-- defaults are evaluated lazily on first use
-
 ## Forward references
 
-- a `pub` slot's default may reference a later-declared slot
-- circular initializer chains are detected at type-check time (see `errors/module_variable_initializer_cycle.dang`)
+tl;dr: they work.
+
+`.dang` files within a directory share a common scope, like in Go
+* slot declarations may forward-reference slots later the same file
+* slot declarations may cross-reference slots in sibling files
+* circular slot assignments fail typechecking
 
 ## Docstrings
 
@@ -44,10 +44,10 @@ let secret = "shhh"
 """
 Greets the named user.
 """
-pub greet(name: String!): String! { "hi, " + name }
+pub greet(name: String!): String! {
+  `hi, ${name}`
+}
 ```
-
-> Meta: note that docstrings are stored on the AST but introspection isn't fully wired yet — flag as "subject to change."
 
 ## Reassignment
 
