@@ -1071,7 +1071,8 @@ func (i *ImportDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return moduleEnv, nil
 }
 
-// createSchemaProvider creates a GraphQLClientProvider for the import source
+// loadImportConfig resolves the ImportConfig for this import from context,
+// introspecting the schema on demand if it hasn't been loaded yet.
 func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error) {
 	for _, config := range importConfigsFromContext(ctx) {
 		if config.Name == i.Name.Name {
