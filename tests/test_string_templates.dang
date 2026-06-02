@@ -19,13 +19,17 @@ pub b = "bar"
 pub multi = `${a}-${b}-${a}`
 assert { multi == "foo-bar-foo" }
 
-# Only ${...} is special. Lone # and $ characters stay literal.
-pub stray_hash = `issue #5`
-assert { stray_hash == "issue #5" }
-pub hash_brace = `#{name}`
-assert { hash_brace == "#{name}" }
-pub stray_dollar = `price $5`
-assert { stray_dollar == "price $5" }
+# \$ is just literal \$
+pub escaped_dollar = `\$ is dollar`
+assert { escaped_dollar == "\\$ is dollar" }
+
+# \${} escapes to literal ${}
+pub escaped_interp = `\${foo} is not interpolated`
+assert { escaped_interp == "${foo} is not interpolated" }
+
+# Lone $ not followed by { is literal
+pub stray_dollar = `cost $5`
+assert { stray_dollar == "cost $5" }
 
 # A backslash is just a backslash — no escape interpretation except for
 # \${, which emits a literal ${ opener instead of starting interpolation.
@@ -68,7 +72,7 @@ assert { block2 == "hello\nworld" }
 pub block3 = ```
   indented
   body
-  ```
+```
 assert { block3 == "indented\nbody" }
 
 # Language tag is parsed but doesn't affect the value

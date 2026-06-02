@@ -109,9 +109,14 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  name\n}`\n",
 		},
 		{
-			name:     "lone hash stays literal",
-			input:    "pub x = `issue #5`",
-			expected: "pub x = `issue #5`\n",
+			name:     "lone dollar stays literal",
+			input:    "pub x = `issue $5`",
+			expected: "pub x = `issue $5`\n",
+		},
+		{
+			name:     "escaped dollar braces stays literal",
+			input:    "pub x = `issue \\${foo}`",
+			expected: "pub x = `issue \\${foo}`\n",
 		},
 		{
 			name:     "backslash stays literal",
