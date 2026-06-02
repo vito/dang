@@ -28,7 +28,7 @@ type Person @deprecated(reason: "use NewPerson") {
 }
 ```
 
-- suffix form attaches to the slot or type
+- suffix form attaches to the field or type
 - prefix form: `@deprecated @cache(ttl: 60) pub field: String!`
 
 ## Arguments
@@ -43,7 +43,7 @@ type Person @deprecated(reason: "use NewPerson") {
 
 ## Common built-ins
 
-- `@defaultPath(path: ...)` — provides a default for a `Directory!` slot
+- `@defaultPath(path: ...)` — provides a default for a `Directory!` field
 - `@ignorePatterns(patterns: [...])` — filtering metadata
 - (plus everything imported from connected schemas)
 

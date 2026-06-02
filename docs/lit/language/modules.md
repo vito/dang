@@ -65,5 +65,5 @@ import MyApi
 
 ## What a module exports
 
-- every `pub` slot, type, interface, union, enum, scalar, directive
+- every `pub` field, type, interface, union, enum, scalar, directive
 - nothing `let`

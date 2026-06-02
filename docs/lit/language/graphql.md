@@ -62,7 +62,7 @@ users.{ name, email }
 - the result is whatever the schema declares
 - side effects happen when the call executes, which is when its value is **forced**
 
-> Meta: laziness vs. eagerness deserves a short paragraph. GraphQL queries in Dang are lazy — selections build up, the network call fires on materialization (assertion, print, assignment to typed slot, etc.). Confirm exact rules with the implementation.
+> Meta: laziness vs. eagerness deserves a short paragraph. GraphQL queries in Dang are lazy — selections build up, the network call fires on materialization (assertion, print, assignment to typed field, etc.). Confirm exact rules with the implementation.
 
 ## Errors from the server
 
