@@ -269,7 +269,7 @@ func sortStrings(s []string) {
 // below the declaration instead of duplicated inside the code block.
 func formatTypeDefinitionForHover(_ *File, node dang.Node, symbolName string) (codeBlock string, docString string) {
 	switch n := node.(type) {
-	case *dang.ClassDecl:
+	case *dang.ObjectDecl:
 		if n.Name == nil || n.Name.Name != symbolName {
 			return "", ""
 		}
@@ -484,7 +484,7 @@ func formatDeclSignature(node dang.Node) string {
 		fieldCopy.Value = nil
 		return dang.Format(&fieldCopy)
 
-	case *dang.ClassDecl:
+	case *dang.ObjectDecl:
 		return fmt.Sprintf("type %s", n.Name.Name)
 
 	default:

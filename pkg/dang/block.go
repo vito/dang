@@ -167,7 +167,7 @@ type ClassifiedForms struct {
 	Imports         []Node // ImportDecl (must be processed before anything else)
 	Directives      []Node // DirectiveDecl (must be processed first after imports)
 	Constants       []Node // FieldDecl with constant values (literals, no function calls)
-	Types           []Node // ClassDecl
+	Types           []Node // ObjectDecl
 	Variables       []Node // FieldDecl with computed values (function calls, references)
 	Functions       []Node // FunDecl and FieldDecl with function bodies
 	NonDeclarations []Node // Everything else (assignments, expressions, etc.)
@@ -187,7 +187,7 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Types = append(classified.Types, f)
 		case *UnionDecl:
 			classified.Types = append(classified.Types, f)
-		case *ClassDecl:
+		case *ObjectDecl:
 			classified.Types = append(classified.Types, f)
 		case *EnumDecl:
 			classified.Types = append(classified.Types, f)
@@ -384,7 +384,7 @@ func isConstantValue(value Node) bool {
 // EvaluateFormsWithPhases evaluates forms using the same phased approach as
 // inference. Computed variables are installed as lazy fields, forced on first
 // read, and then forced in source order before non-declarations run. This is
-// used for both module top-levels and class bodies.
+// used for both module top-levels and object bodies.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
 	var result Value = NullValue{}
 	var err error
@@ -416,7 +416,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 4: Evaluate types (classes)
+	// Phase 4: Evaluate types (objects)
 	for _, form := range classified.Types {
 		_, err = EvalNode(ctx, env, form)
 		if err != nil {

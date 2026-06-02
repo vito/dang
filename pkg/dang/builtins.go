@@ -552,8 +552,8 @@ func DefineEnum(parent *Module, name string, values ...string) *Module {
 	enum.Add("values", valuesScheme)
 	enum.SetVisibility("values", PublicVisibility)
 
-	// Register on parent as both a class and a value
-	parent.AddClass(name, enum)
+	// Register on parent as both a object and a value
+	parent.AddObject(name, enum)
 	parent.Add(name, hm.NewScheme(nil, NonNull(enum)))
 	parent.SetVisibility(name, PublicVisibility)
 

@@ -61,7 +61,7 @@ type Env interface {
 	hm.Type
 	NamedType(string) (Env, bool)
 	LocalNamedType(string) (Env, bool)
-	AddClass(string, Env)
+	AddObject(string, Env)
 	SetTypeOrigin(string, BindingOrigin)
 	LocalTypeOrigin(string) (BindingOrigin, bool)
 	SetDocString(string, string)
@@ -135,7 +135,7 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, err
 	}
 }
 
-// TODO: is this just ClassType? are Classes just named Envs?
+// TODO: is this just ObjectType? are Objects just named Envs?
 type Module struct {
 	Named string
 	Kind  ModuleKind
@@ -145,7 +145,7 @@ type Module struct {
 
 	Parent Env
 
-	classes          map[string]Env
+	objects          map[string]Env
 	vars             map[string]*hm.Scheme
 	varOrder         []string
 	visibility       map[string]Visibility
@@ -179,7 +179,7 @@ func NewModule(name string, kind ModuleKind) *Module {
 	env := &Module{
 		Named:            name,
 		Kind:             kind,
-		classes:          make(map[string]Env),
+		objects:          make(map[string]Env),
 		vars:             make(map[string]*hm.Scheme),
 		visibility:       make(map[string]Visibility),
 		directives:       make(map[string]*DirectiveDecl),
@@ -282,30 +282,30 @@ func init() {
 	Prelude = NewModule("Prelude", ObjectKind)
 
 	// Install built-in types
-	Prelude.AddClass("ID", IDType)
-	Prelude.AddClass("String", StringType)
-	Prelude.AddClass("Int", IntType)
-	Prelude.AddClass("Float", FloatType)
-	Prelude.AddClass("Boolean", BooleanType)
-	Prelude.AddClass("List", ListTypeModule)
+	Prelude.AddObject("ID", IDType)
+	Prelude.AddObject("String", StringType)
+	Prelude.AddObject("Int", IntType)
+	Prelude.AddObject("Float", FloatType)
+	Prelude.AddObject("Boolean", BooleanType)
+	Prelude.AddObject("List", ListTypeModule)
 
-	// Install built-in modules (as both classes and values)
-	Prelude.AddClass("Random", RandomModule)
-	Prelude.AddClass("UUID", UUIDModule)
+	// Install built-in modules (as both objects and values)
+	Prelude.AddObject("Random", RandomModule)
+	Prelude.AddObject("UUID", UUIDModule)
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
 	// Install regex types so user code can refer to them by name.
-	Prelude.AddClass("Regexp", RegexpType)
-	RegexpType.AddClass("Match", MatchType)
+	Prelude.AddObject("Regexp", RegexpType)
+	RegexpType.AddObject("Match", MatchType)
 
 	// Install Error interface with message field
-	Prelude.AddClass("Error", ErrorType)
+	Prelude.AddObject("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	ErrorType.SetVisibility("message", PublicVisibility)
 
 	// Install BasicError — the concrete type behind raise "msg"
-	Prelude.AddClass("BasicError", BasicErrorType)
+	Prelude.AddObject("BasicError", BasicErrorType)
 	BasicErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	BasicErrorType.SetVisibility("message", PublicVisibility)
 	BasicErrorType.AddInterface(ErrorType)
@@ -395,7 +395,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 					sub.SetModuleDocString(t.Description)
 				}
 				schemaTypes[t.Name] = sub
-				env.AddClass(t.Name, sub)
+				env.AddObject(t.Name, sub)
 			}
 		}
 		if t.Name == schema.QueryType.Name {
@@ -777,7 +777,7 @@ func (e *Module) SetDynamicScopeType(t hm.Type) {
 
 func (e *Module) NamedTypes() iter.Seq2[string, Env] {
 	return func(yield func(string, Env) bool) {
-		for name, env := range e.classes {
+		for name, env := range e.objects {
 			if !yield(name, env) {
 				break
 			}
@@ -785,8 +785,8 @@ func (e *Module) NamedTypes() iter.Seq2[string, Env] {
 	}
 }
 
-func (e *Module) AddClass(name string, c Env) {
-	e.classes[name] = c
+func (e *Module) AddObject(name string, c Env) {
+	e.objects[name] = c
 	e.typeOrigins[name] = LocalBindingOrigin()
 }
 
@@ -836,7 +836,7 @@ func (e *Module) NamedType(name string) (Env, bool) {
 }
 
 func (e *Module) LocalNamedType(name string) (Env, bool) {
-	t, ok := e.classes[name]
+	t, ok := e.objects[name]
 	return t, ok
 }
 
@@ -1154,30 +1154,30 @@ func (m *Module) CheckDirectiveConflict(directiveName string) []string {
 	return nil
 }
 
-// validateFieldImplementation validates that a class field correctly implements an interface field
+// validateFieldImplementation validates that a object field correctly implements an interface field
 // according to GraphQL interface implementation rules:
 // - Return types must be covariant (implementation can be more specific)
 // - Argument types must be contravariant (implementation can be more general)
 // - All interface arguments must be present
 // - Additional arguments must be optional
-func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldType hm.Type, ifaceName, objectName string) error {
 	// This is schema-level compatibility, not a value handoff, so use pure
 	// subtyping (no value-level scalar coercions such as String -> ID).
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
-	classFn, classIsFn := classFieldType.(*hm.FunctionType)
+	objectFn, objectIsFn := objectFieldType.(*hm.FunctionType)
 
-	// If interface field is not a function, class field must match exactly
+	// If interface field is not a function, object field must match exactly
 	if !ifaceIsFn {
-		if !classIsFn {
+		if !objectIsFn {
 			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
+			if !hm.IsSubtypeOf(objectFieldType, ifaceFieldType) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
-					fieldName, classFieldType, ifaceFieldType)
+					fieldName, objectFieldType, ifaceFieldType)
 			}
 			return nil
 		}
-		return fmt.Errorf("field %q: class has function type but interface does not", fieldName)
+		return fmt.Errorf("field %q: object has function type but interface does not", fieldName)
 	}
 
 	// Interface field is a function
@@ -1189,71 +1189,71 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		}
 	}
 
-	// If interface has a zero-arg function and class has a simple field, unwrap and compare
-	if isZeroArgFn && !classIsFn {
+	// If interface has a zero-arg function and object has a simple field, unwrap and compare
+	if isZeroArgFn && !objectIsFn {
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
-		// Compare the return type with the class field type
-		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
+		// Compare the return type with the object field type
+		if !hm.IsSubtypeOf(objectFieldType, ifaceRetType) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
-				fieldName, classFieldType, ifaceRetType)
+				fieldName, objectFieldType, ifaceRetType)
 		}
 		return nil
 	}
 
-	// Interface field is a function - class field must also be a function
-	if !classIsFn {
-		return fmt.Errorf("field %q: interface has function type but class does not", fieldName)
+	// Interface field is a function - object field must also be a function
+	if !objectIsFn {
+		return fmt.Errorf("field %q: interface has function type but object does not", fieldName)
 	}
 
-	// Validate return type (covariant - class can return more specific type)
-	classRetType := classFn.Ret(false)
+	// Validate return type (covariant - object can return more specific type)
+	objectRetType := objectFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
+	if !hm.IsSubtypeOf(objectRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
-			fieldName, classRetType, ifaceRetType)
+			fieldName, objectRetType, ifaceRetType)
 	}
 
-	// Validate arguments (contravariant - class can accept more general types)
+	// Validate arguments (contravariant - object can accept more general types)
 	ifaceArgs, ifaceArgsOk := ifaceFn.Arg().(*RecordType)
-	classArgs, classArgsOk := classFn.Arg().(*RecordType)
+	objectArgs, objectArgsOk := objectFn.Arg().(*RecordType)
 
-	if !ifaceArgsOk || !classArgsOk {
+	if !ifaceArgsOk || !objectArgsOk {
 		// Arguments must be records
 		return fmt.Errorf("field %q: arguments must be record types", fieldName)
 	}
 
-	// Check that all interface arguments are present in class
+	// Check that all interface arguments are present in object
 	for _, ifaceArg := range ifaceArgs.Fields {
-		classArgScheme, found := classArgs.SchemeOf(ifaceArg.Key)
+		objectArgScheme, found := objectArgs.SchemeOf(ifaceArg.Key)
 		if !found {
 			return fmt.Errorf("field %q: missing argument %q required by interface", fieldName, ifaceArg.Key)
 		}
 
 		// Validate argument type compatibility (contravariant)
-		classArgType, _ := classArgScheme.Type()
+		objectArgType, _ := objectArgScheme.Type()
 		ifaceArgType, _ := ifaceArg.Value.Type()
 
-		// For contravariance: class arg type must be a supertype of interface arg type
-		// This means: if interface requires String!, class can accept String or String!
-		// But if interface requires String, class must accept String (can't require String!)
-		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
+		// For contravariance: object arg type must be a supertype of interface arg type
+		// This means: if interface requires String!, object can accept String or String!
+		// But if interface requires String, object must accept String (can't require String!)
+		if !hm.IsSupertypeOf(objectArgType, ifaceArgType) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
-				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
+				fieldName, ifaceArg.Key, objectArgType, ifaceArgType)
 		}
 	}
 
-	// Check that any additional arguments in class are optional
-	for _, classArg := range classArgs.Fields {
+	// Check that any additional arguments in object are optional
+	for _, objectArg := range objectArgs.Fields {
 		// Check if this argument exists in the interface
-		_, found := ifaceArgs.SchemeOf(classArg.Key)
+		_, found := ifaceArgs.SchemeOf(objectArg.Key)
 		if !found {
 			// Additional argument - must be optional (nullable or has default)
-			classArgType, _ := classArg.Value.Type()
-			if _, isNonNull := classArgType.(hm.NonNullType); isNonNull {
+			objectArgType, _ := objectArg.Value.Type()
+			if _, isNonNull := objectArgType.(hm.NonNullType); isNonNull {
 				return fmt.Errorf("field %q, argument %q: additional arguments not in interface must be optional (nullable or have default)",
-					fieldName, classArg.Key)
+					fieldName, objectArg.Key)
 			}
 		}
 	}

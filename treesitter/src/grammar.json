@@ -131,7 +131,7 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "class"
+                "name": "object_decl"
               },
               {
                 "type": "SYMBOL",
@@ -974,7 +974,7 @@
         "value": "union"
       }
     },
-    "class": {
+    "object_decl": {
       "type": "SEQ",
       "members": [
         {

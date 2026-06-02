@@ -630,16 +630,16 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 				Kind: h.symbolKind(node),
 				Node: node,
 			}
-		} else if classDecl, ok := node.(*dang.ClassDecl); ok && classDecl.Name != nil && classDecl.Name.Loc != nil {
-			// For ClassDecl, use the precise location from the Symbol itself
-			loc := classDecl.Name.Loc
-			st.Definitions[classDecl.Name.Name] = &SymbolInfo{
-				Name: classDecl.Name.Name,
+		} else if objectDecl, ok := node.(*dang.ObjectDecl); ok && objectDecl.Name != nil && objectDecl.Name.Loc != nil {
+			// For ObjectDecl, use the precise location from the Symbol itself
+			loc := objectDecl.Name.Loc
+			st.Definitions[objectDecl.Name.Name] = &SymbolInfo{
+				Name: objectDecl.Name.Name,
 				Location: &Location{
 					URI: uri,
 					Range: Range{
 						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(classDecl.Name.Name)},
+						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(objectDecl.Name.Name)},
 					},
 				},
 				Kind: h.symbolKind(node),
@@ -680,8 +680,8 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 		h.collectSymbols(uri, n.Forms, st)
 	case *dang.ModuleBlock:
 		h.collectSymbols(uri, n.Forms, st)
-	case *dang.ClassDecl:
-		// Collect symbols from class body
+	case *dang.ObjectDecl:
+		// Collect symbols from object body
 		h.collectSymbols(uri, n.Value.Forms, st)
 	case *dang.FieldDecl:
 		// If the field value is a block, collect from it
@@ -708,8 +708,8 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 // symbolKind determines the LSP completion item kind for a node
 func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	switch node.(type) {
-	case *dang.ClassDecl:
-		return ClassCompletion
+	case *dang.ObjectDecl:
+		return ObjectCompletion
 	case *dang.FieldDecl:
 		// Check if the field value is a function
 		if field, ok := node.(*dang.FieldDecl); ok {

@@ -11,7 +11,7 @@ import (
 // Type variables for literal types
 var (
 	// Null does not have a type. Its type is always inferred as a free variable.
-	// NullType    = NewClass("Null")
+	// NullType    = NewObject("Null")
 
 	IDType         = NewModule("ID", ScalarKind)
 	BooleanType    = NewModule("Boolean", ScalarKind)

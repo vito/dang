@@ -1083,82 +1083,6 @@
     }
   },
   {
-    "type": "class",
-    "named": true,
-    "fields": {
-      "block": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "d": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "prefix_directive_application",
-            "named": true
-          }
-        ]
-      },
-      "i": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "implements",
-            "named": true
-          }
-        ]
-      },
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "symbol",
-            "named": true
-          }
-        ]
-      },
-      "prefix_directives": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "prefix_directive_application",
-            "named": true
-          }
-        ]
-      },
-      "suffix_directives": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "directive_application",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "type_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "conditional",
     "named": true,
     "fields": {
@@ -1280,10 +1204,6 @@
         "required": true,
         "types": [
           {
-            "type": "class",
-            "named": true
-          },
-          {
             "type": "directive_decl",
             "named": true
           },
@@ -1301,6 +1221,10 @@
           },
           {
             "type": "new_constructor",
+            "named": true
+          },
+          {
+            "type": "object_decl",
             "named": true
           },
           {
@@ -2789,6 +2713,82 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "object_decl",
+    "named": true,
+    "fields": {
+      "block": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "d": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "i": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "implements",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "prefix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "prefix_directive_application",
+            "named": true
+          }
+        ]
+      },
+      "suffix_directives": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "directive_application",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "type_token",
+          "named": true
+        }
+      ]
     }
   },
   {

@@ -7,7 +7,7 @@ const importedBindingVisibility = PrivateVisibility
 func installImportedTypeEnvironment(parentEnv Env, importName string, schemaModule Env) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
-	parentEnv.AddClass(importName, schemaModule)
+	parentEnv.AddObject(importName, schemaModule)
 	parentEnv.SetTypeOrigin(importName, qualifiedOrigin)
 	parentEnv.Add(importName, hm.NewScheme(nil, NonNull(schemaModule)))
 	parentEnv.SetVisibility(importName, importedBindingVisibility)
@@ -54,7 +54,7 @@ func installUnqualifiedImportValuesForInference(parentEnv Env, schemaModule Env,
 
 func installUnqualifiedImportTypesFromModule(parentEnv Env, mod *Module, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
-	for name, class := range mod.classes {
+	for name, object := range mod.objects {
 		if name == importName {
 			continue
 		}
@@ -66,10 +66,10 @@ func installUnqualifiedImportTypesFromModule(parentEnv Env, mod *Module, importN
 			continue
 		}
 
-		parentEnv.AddClass(name, class)
+		parentEnv.AddObject(name, object)
 		parentEnv.SetTypeOrigin(name, origin)
 
-		if enumMod, ok := class.(*Module); ok && enumMod.Kind == EnumKind {
+		if enumMod, ok := object.(*Module); ok && enumMod.Kind == EnumKind {
 			installUnqualifiedImportEnumValuesForInference(parentEnv, enumMod, importName)
 		}
 	}

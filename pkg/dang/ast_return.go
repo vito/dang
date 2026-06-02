@@ -115,7 +115,7 @@ func collectReturnStatements(root Node, target *InferControlTarget) []*Return {
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ObjectDecl:
 				return false
 			}
 		}

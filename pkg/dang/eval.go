@@ -1610,16 +1610,16 @@ func (b BuiltinFunction) IsAutoCallable() bool {
 	return false
 }
 
-// ConstructorFunction represents a class constructor that evaluates the class body when called
+// ConstructorFunction represents a object constructor that evaluates the object body when called
 type ConstructorFunction struct {
-	Closure        EvalEnv
-	ClassName      string
-	Parameters     []*FieldDecl
-	BlockParamName string
-	ClassType      *Module
-	FnType         *hm.FunctionType
-	ClassBodyForms []Node // Field declarations to evaluate (excluding NewConstructorDecl)
-	NewBody        *Block // Explicit new() body, if present
+	Closure         EvalEnv
+	ObjectName      string
+	Parameters      []*FieldDecl
+	BlockParamName  string
+	ObjectType      *Module
+	FnType          *hm.FunctionType
+	ObjectBodyForms []Node // Field declarations to evaluate (excluding NewConstructorDecl)
+	NewBody         *Block // Explicit new() body, if present
 }
 
 func (c *ConstructorFunction) Type() hm.Type {
@@ -1627,14 +1627,14 @@ func (c *ConstructorFunction) Type() hm.Type {
 }
 
 func (c *ConstructorFunction) String() string {
-	return fmt.Sprintf("constructor:%s", c.ClassName)
+	return fmt.Sprintf("constructor:%s", c.ObjectName)
 }
 
 func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
 	ctx = contextWithFunctionControlBoundary(ctx)
 
-	// Create a new instance of the class
-	instance := NewModuleValue(c.ClassType)
+	// Create a new instance of the object
+	instance := NewModuleValue(c.ObjectType)
 
 	instanceEnv := CreateCompositeEnv(instance, c.Closure)
 
@@ -1647,7 +1647,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 		// Filter to only include FieldDecls with defaults and methods
 		var formsWithDefaults []Node
-		for _, form := range c.ClassBodyForms {
+		for _, form := range c.ObjectBodyForms {
 			if field, ok := form.(*FieldDecl); ok {
 				// Skip required fields without defaults — new() will set them
 				if field.Value == nil {
@@ -1659,7 +1659,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 
 		_, err := EvaluateFormsWithPhases(ctx, formsWithDefaults, instanceEnv)
 		if err != nil {
-			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
+			return nil, fmt.Errorf("evaluating object body for %s: %w", c.ObjectName, err)
 		}
 
 		// Bind constructor args so they shadow both instance fields and
@@ -1687,11 +1687,11 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		if c.BlockParamName != "" {
 			blockRaw := ctx.Value(blockArgContextKey)
 			if blockRaw == nil {
-				return nil, fmt.Errorf("missing block argument for constructor %s", c.ClassName)
+				return nil, fmt.Errorf("missing block argument for constructor %s", c.ObjectName)
 			}
 			blockVal, ok := blockRaw.(Value)
 			if !ok {
-				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ClassName)
+				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ObjectName)
 			}
 			argEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 			defaultEvalEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
@@ -1715,7 +1715,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 					lastVal = returnVal
 					returned = true
 				} else {
-					return nil, fmt.Errorf("evaluating new() for %s: %w", c.ClassName, err)
+					return nil, fmt.Errorf("evaluating new() for %s: %w", c.ObjectName, err)
 				}
 			}
 			// After each form, update the instance from the dynamic scope
@@ -1752,9 +1752,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			}
 		}
 
-		_, err := EvaluateFormsWithPhases(ctx, c.ClassBodyForms, instanceEnv)
+		_, err := EvaluateFormsWithPhases(ctx, c.ObjectBodyForms, instanceEnv)
 		if err != nil {
-			return nil, fmt.Errorf("evaluating class body for %s: %w", c.ClassName, err)
+			return nil, fmt.Errorf("evaluating object body for %s: %w", c.ObjectName, err)
 		}
 	}
 
@@ -1762,11 +1762,11 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 }
 
 // checkRequiredFields verifies that all non-null fields have been assigned.
-// By the time this runs, the class body's pending initializers have all been
+// By the time this runs, the object body's pending initializers have all been
 // forced; Get walks the instance's parent chain to cover fields placed on
 // earlier copy-on-write generations (each `self.f = ...` clones the instance).
 func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance *ModuleValue) error {
-	for name, scheme := range c.ClassType.Bindings(PrivateVisibility) {
+	for name, scheme := range c.ObjectType.Bindings(PrivateVisibility) {
 		fieldType, _ := scheme.Type()
 		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
 			val, found, err := instance.Lookup(ctx, name)
@@ -1774,10 +1774,10 @@ func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance 
 				return err
 			}
 			if !found {
-				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
+				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ObjectName, name)
 			}
 			if _, isNull := val.(NullValue); isNull {
-				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ClassName, name)
+				return fmt.Errorf("new() for %s: required field %q was not assigned", c.ObjectName, name)
 			}
 		}
 	}

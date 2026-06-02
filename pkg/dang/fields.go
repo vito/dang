@@ -317,7 +317,7 @@ func (s *FieldDecl) Walk(fn func(Node) bool) {
 	}
 }
 
-type ClassDecl struct {
+type ObjectDecl struct {
 	InferredTypeHolder
 	Name       *Symbol
 	Value      *Block
@@ -347,7 +347,7 @@ var _ Node = &NewConstructorDecl{}
 var _ Evaluator = &NewConstructorDecl{}
 
 func (n *NewConstructorDecl) DeclaredSymbols() []string {
-	return nil // new doesn't declare a symbol, it's handled specially by ClassDecl
+	return nil // new doesn't declare a symbol, it's handled specially by ObjectDecl
 }
 
 func (n *NewConstructorDecl) ReferencedSymbols() []string {
@@ -379,8 +379,8 @@ func (n *NewConstructorDecl) Walk(fn func(Node) bool) {
 	n.BodyBlock.Walk(fn)
 }
 
-// Infer returns an error since new() is only valid inside a class body.
-// When used inside a class, it is inferred by ClassDecl.inferNewConstructor instead.
+// Infer returns an error since new() is only valid inside a object body.
+// When used inside a object, it is inferred by ObjectDecl.inferNewConstructor instead.
 func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return nil, NewInferError(fmt.Errorf("new() constructor can only be defined inside a type body"), n)
 }
@@ -391,16 +391,16 @@ func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, erro
 	return NullValue{}, nil
 }
 
-var _ Node = &ClassDecl{}
-var _ Evaluator = &ClassDecl{}
+var _ Node = &ObjectDecl{}
+var _ Evaluator = &ObjectDecl{}
 
-func (c *ClassDecl) DeclaredSymbols() []string {
-	return []string{c.Name.Name} // Class declarations declare their name
+func (c *ObjectDecl) DeclaredSymbols() []string {
+	return []string{c.Name.Name} // Object declarations declare their name
 }
 
-func (c *ClassDecl) ReferencedSymbols() []string {
+func (c *ObjectDecl) ReferencedSymbols() []string {
 	var symbols []string
-	// Class declarations reference symbols from their body (the Block)
+	// Object declarations reference symbols from their body (the Block)
 	symbols = append(symbols, c.Value.ReferencedSymbols()...)
 	// And from directive applications
 	for _, directive := range c.Directives {
@@ -409,11 +409,11 @@ func (c *ClassDecl) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (c *ClassDecl) Body() hm.Expression { return c.Value }
+func (c *ObjectDecl) Body() hm.Expression { return c.Value }
 
-func (c *ClassDecl) GetSourceLocation() *SourceLocation { return c.Loc }
+func (c *ObjectDecl) GetSourceLocation() *SourceLocation { return c.Loc }
 
-var _ Hoister = &ClassDecl{}
+var _ Hoister = &ObjectDecl{}
 
 // Imported schema types are installed into the local type map so they can be
 // referenced unqualified. A real type declaration with the same name must
@@ -444,12 +444,12 @@ func declareLocalType(env Env, name string, kind ModuleKind) (*Module, error) {
 	}
 
 	mod := NewModule(name, kind)
-	env.AddClass(name, mod)
+	env.AddObject(name, mod)
 	return mod, nil
 }
 
-// findNewConstructor returns the NewConstructorDecl from the class body, if any
-func (c *ClassDecl) findNewConstructor() *NewConstructorDecl {
+// findNewConstructor returns the NewConstructorDecl from the object body, if any
+func (c *ObjectDecl) findNewConstructor() *NewConstructorDecl {
 	for _, form := range c.Value.Forms {
 		if newDecl, ok := form.(*NewConstructorDecl); ok {
 			return newDecl
@@ -458,8 +458,8 @@ func (c *ClassDecl) findNewConstructor() *NewConstructorDecl {
 	return nil
 }
 
-// bodyFormsWithoutNew returns the class body forms excluding the NewConstructorDecl
-func (c *ClassDecl) bodyFormsWithoutNew() []Node {
+// bodyFormsWithoutNew returns the object body forms excluding the NewConstructorDecl
+func (c *ObjectDecl) bodyFormsWithoutNew() []Node {
 	var forms []Node
 	for _, form := range c.Value.Forms {
 		if _, ok := form.(*NewConstructorDecl); !ok {
@@ -469,25 +469,25 @@ func (c *ClassDecl) bodyFormsWithoutNew() []Node {
 	return forms
 }
 
-func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	mod, ok := env.(Env)
 	if !ok {
-		return fmt.Errorf("ClassDecl.Hoist: environment does not support module operations")
+		return fmt.Errorf("ObjectDecl.Hoist: environment does not support module operations")
 	}
 
-	class, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return WrapInferError(declareErr, c.Name)
 	}
-	c.Inferred = class
-	c.SetInferredType(class)
+	c.Inferred = object
+	c.SetInferredType(object)
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
-		class.SetModuleDocString(c.DocString)
+		object.SetModuleDocString(c.DocString)
 	}
 
 	// Pass 0 must only register the type name. Other top-level types may refer
-	// to this class before its file is reached, so anything that resolves field
+	// to this object before its file is reached, so anything that resolves field
 	// annotations, constructor params, or implemented interfaces has to wait
 	// until every type has had this registration pass.
 	if pass == 0 {
@@ -495,7 +495,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	}
 
 	inferEnv := &CompositeModule{
-		primary: class,
+		primary: object,
 		lexical: env.(Env),
 	}
 
@@ -509,7 +509,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
-	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, class, fresh)
+	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, object, fresh)
 	if err != nil {
 		return err
 	}
@@ -522,7 +522,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// Link the implementation after all interface type names have been
 	// registered by pass 0.
 	if len(c.Implements) > 0 {
-		classMod := class
+		objectMod := object
 		for _, ifaceSym := range c.Implements {
 			ifaceType, found := mod.NamedType(ifaceSym.Name)
 			if !found {
@@ -544,19 +544,19 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 			// implementer index is only maintained for locally owned interfaces;
 			// Prelude interfaces are shared process-wide and must not be mutated
 			// by per-module declarations.
-			classMod.AddInterface(ifaceType)
+			objectMod.AddInterface(ifaceType)
 			if localIface, found := mod.LocalNamedType(ifaceSym.Name); found && localIface == ifaceType {
-				ifaceMod.AddImplementer(classMod)
+				ifaceMod.AddImplementer(objectMod)
 			}
 		}
 	}
 
-	// Set dynamic scope type to the class type
-	selfType := hm.NonNullType{Type: class}
-	class.SetDynamicScopeType(selfType)
+	// Set dynamic scope type to the object type
+	selfType := hm.NonNullType{Type: object}
+	object.SetDynamicScopeType(selfType)
 
 	// Hoist body forms directly (not via Block.Hoist which clones the env)
-	// to register method signatures on the class module. This enables
+	// to register method signatures on the object module. This enables
 	// forward references between types defined in any order. We hoist at
 	// pass 0 so that FunDecl.Hoist registers signatures and
 	// FieldDecl.Hoist registers typed field declarations.
@@ -572,40 +572,40 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	return nil
 }
 
-func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod, ok := env.(Env)
 	if !ok {
-		return nil, fmt.Errorf("ClassDecl.Infer: environment does not support module operations")
+		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
 
-	class, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
+	object, declareErr := declareLocalType(mod, c.Name.Name, ObjectKind)
 	if declareErr != nil {
 		return nil, WrapInferError(declareErr, c.Name)
 	}
 
-	// Store doc string for the class name in the environment
+	// Store doc string for the object name in the environment
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
-		class.SetModuleDocString(c.DocString)
+		object.SetModuleDocString(c.DocString)
 	}
 
 	// Set this early so we can at least partially infer.
-	c.Inferred = class
+	c.Inferred = object
 
-	// Set dynamic scope type to the class type
-	selfType := hm.NonNullType{Type: class}
-	class.SetDynamicScopeType(selfType)
+	// Set dynamic scope type to the object type
+	selfType := hm.NonNullType{Type: object}
+	object.SetDynamicScopeType(selfType)
 
 	// Validate directive applications
 	for _, directive := range c.Directives {
 		_, err := directive.Infer(ctx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("ClassDecl.Infer: directive validation: %w", err)
+			return nil, fmt.Errorf("ObjectDecl.Infer: directive validation: %w", err)
 		}
 	}
 
 	inferEnv := &CompositeModule{
-		primary: class,
+		primary: object,
 		lexical: env.(Env),
 	}
 
@@ -631,7 +631,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	// If there's an explicit new(), infer its body with its args in scope.
 	// Errors here (e.g. wrong return type) are collected but don't prevent
-	// the class from being usable, avoiding cascading type errors.
+	// the object from being usable, avoiding cascading type errors.
 	newDecl := c.findNewConstructor()
 	var newBodyErr error
 	if newDecl != nil {
@@ -640,9 +640,9 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 
 	// Validate interface implementations after fields have been inferred
 	if len(c.Implements) > 0 {
-		classMod := c.Inferred
+		objectMod := c.Inferred
 		for _, ifaceSym := range c.Implements {
-			if err := c.validateInterfaceImplementations(classMod, mod, ifaceSym); err != nil {
+			if err := c.validateInterfaceImplementations(objectMod, mod, ifaceSym); err != nil {
 				return nil, err
 			}
 		}
@@ -652,7 +652,7 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 }
 
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
-func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, ifaceSym *Symbol) error {
+func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Module, env Env, ifaceSym *Symbol) error {
 	ifaceType, found := env.NamedType(ifaceSym.Name)
 	if !found {
 		// no error; this is raised in Hoist instead
@@ -666,20 +666,20 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 	}
 
 	var missingFields []string
-	// Check that all interface fields are present in the class
+	// Check that all interface fields are present in the object
 	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
-		classFieldScheme, classHasField := classMod.SchemeOf(field)
-		if !classHasField {
+		objectFieldScheme, objectHasField := objectMod.SchemeOf(field)
+		if !objectHasField {
 			missingFields = append(missingFields, field)
 			continue
 		}
 
 		// Get the types from the schemes
 		ifaceFieldType, _ := fieldScheme.Type()
-		classFieldType, _ := classFieldScheme.Type()
+		objectFieldType, _ := objectFieldScheme.Type()
 
 		// Validate field type compatibility
-		if err := validateFieldImplementation(field, ifaceFieldType, classFieldType, ifaceMod.String(), classMod.String()); err != nil {
+		if err := validateFieldImplementation(field, ifaceFieldType, objectFieldType, ifaceMod.String(), objectMod.String()); err != nil {
 			return WrapInferError(err, ifaceSym)
 		}
 	}
@@ -690,7 +690,7 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 		for _, field := range missingFields {
 			fieldScheme, _ := ifaceMod.SchemeOf(field)
 			errs.Add(WrapInferError(
-				fmt.Errorf("class %s is missing `%s%s`, required by interface %s", classMod, field, fieldScheme, ifaceMod),
+				fmt.Errorf("object %s is missing `%s%s`, required by interface %s", objectMod, field, fieldScheme, ifaceMod),
 				ifaceSym,
 			))
 		}
@@ -702,8 +702,8 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 
 // extractConstructorParametersAndCleanBody extracts public non-function fields and private
 // required fields (no default) as constructor parameters and returns the filtered forms that
-// should be evaluated in the class body
-func (c *ClassDecl) extractConstructorParameters() []*FieldDecl {
+// should be evaluated in the object body
+func (c *ObjectDecl) extractConstructorParameters() []*FieldDecl {
 	var params []*FieldDecl
 
 	for _, form := range c.Value.Forms {
@@ -730,7 +730,7 @@ func (c *ClassDecl) extractConstructorParameters() []*FieldDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, objectType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
@@ -739,21 +739,21 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 	argEnv := env.Clone()
 	args, directives, docStrings, err := fnDecl.declareFunctionSignatureArguments(signatureCtx, argEnv, fresh)
 	if err != nil {
-		return nil, fmt.Errorf("%s Constructor.Declare: %w", classType.Named, err)
+		return nil, fmt.Errorf("%s Constructor.Declare: %w", objectType.Named, err)
 	}
 	argsRec := NewRecordType("", args...)
 	argsRec.Directives = directives
 	argsRec.DocStrings = docStrings
 
-	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: classType})
+	constructorType := hm.NewFnType(argsRec, hm.NonNullType{Type: objectType})
 	if blockParam != nil {
 		blockParamType, err := blockParam.Type_.Infer(signatureCtx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", classType.Named, err)
+			return nil, fmt.Errorf("%s Constructor.Declare block parameter: %w", objectType.Named, err)
 		}
 		blockType, ok := blockParamType.(*hm.FunctionType)
 		if !ok {
-			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", classType.Named, blockParamType)
+			return nil, fmt.Errorf("%s Constructor.Declare: block parameter must be a function type, got %T", objectType.Named, blockParamType)
 		}
 		constructorType.SetBlock(blockType)
 	}
@@ -761,7 +761,7 @@ func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
-func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
+func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
 	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Create an environment with the constructor args in scope
@@ -799,7 +799,7 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 		return fmt.Errorf("inferring new() body: %w", err)
 	}
 
-	// The new() body must return the class type
+	// The new() body must return the object type
 	expectedType := hm.NonNullType{Type: c.Inferred}
 	if _, err := hm.Assignable(bodyType, expectedType); err != nil {
 		errorNode := Node(newDecl.BodyBlock)
@@ -828,13 +828,13 @@ func (c *ClassDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstru
 	return nil
 }
 
-func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *ObjectDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
-			panic(fmt.Errorf("ClassDecl.Eval: class %q has not been inferred", c.Name.Name))
+			panic(fmt.Errorf("ObjectDecl.Eval: object %q has not been inferred", c.Name.Name))
 		}
 
-		// Set doc string for the class/module itself
+		// Set doc string for the object/module itself
 		if c.DocString != "" {
 			c.Inferred.SetModuleDocString(c.DocString)
 		}
@@ -857,16 +857,16 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			blockParamName = constructorBlockParam.Name.Name
 		}
 
-		// Create a constructor function that evaluates the class body when called
+		// Create a constructor function that evaluates the object body when called
 		constructor := &ConstructorFunction{
-			Closure:        env,
-			ClassName:      c.Name.Name,
-			Parameters:     constructorParams,
-			BlockParamName: blockParamName,
-			ClassType:      c.Inferred,
-			ClassBodyForms: c.bodyFormsWithoutNew(),
-			FnType:         c.ConstructorFnType,
-			NewBody:        newBody,
+			Closure:         env,
+			ObjectName:      c.Name.Name,
+			Parameters:      constructorParams,
+			BlockParamName:  blockParamName,
+			ObjectType:      c.Inferred,
+			ObjectBodyForms: c.bodyFormsWithoutNew(),
+			FnType:          c.ConstructorFnType,
+			NewBody:         newBody,
 		}
 
 		// Add the constructor to the evaluation environment
@@ -876,7 +876,7 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (c *ClassDecl) Walk(fn func(Node) bool) {
+func (c *ObjectDecl) Walk(fn func(Node) bool) {
 	if !fn(c) {
 		return
 	}
@@ -1168,7 +1168,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	}
 
 	// Link parent interfaces after all type names have been registered by
-	// pass 0. Reuse the implementers index used by classes so inline
+	// pass 0. Reuse the implementers index used by objects so inline
 	// fragments and downstream subtyping see this interface as well.
 	if len(i.Implements) > 0 {
 		for _, parentSym := range i.Implements {
@@ -1228,7 +1228,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			lexical: env.(Env),
 		}
 
-		// Use phased inference approach (like ClassDecl) to avoid environment cloning
+		// Use phased inference approach (like ObjectDecl) to avoid environment cloning
 		if _, err := InferFormsWithPhases(ctx, i.Value.Forms, inferEnv, fresh); err != nil {
 			return nil, err
 		}

@@ -376,7 +376,7 @@ func nodeHasDocString(node Node) bool {
 	switch n := node.(type) {
 	case *FieldDecl:
 		return n.DocString != ""
-	case *ClassDecl:
+	case *ObjectDecl:
 		return n.DocString != ""
 	case *InterfaceDecl:
 		return n.DocString != ""
@@ -531,7 +531,7 @@ func (f *Formatter) handleNoFmtForm(form Node) bool {
 }
 
 // formatDeclForms formats a list of declaration forms with blank-line
-// separation and comment handling. It is used for module, class, and
+// separation and comment handling. It is used for module, object, and
 // interface bodies.
 func (f *Formatter) formatDeclForms(forms []Node) {
 	f.resetLastLineForForms(forms)
@@ -574,8 +574,8 @@ func (f *Formatter) formatNode(node Node) {
 	switch n := node.(type) {
 	case *ModuleBlock:
 		f.formatModuleBlock(n)
-	case *ClassDecl:
-		f.formatClassDecl(n)
+	case *ObjectDecl:
+		f.formatObjectDecl(n)
 	case *InterfaceDecl:
 		f.formatInterfaceDecl(n)
 	case *UnionDecl:
@@ -839,7 +839,7 @@ func nodeEndLine(node Node) int {
 }
 
 func isTypeDecl(node Node) bool {
-	_, ok := node.(*ClassDecl)
+	_, ok := node.(*ObjectDecl)
 	return ok
 }
 
@@ -911,7 +911,7 @@ func isSimpleAssignment(node Node) bool {
 	return true
 }
 
-func (f *Formatter) formatClassDecl(c *ClassDecl) {
+func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 	// Doc string
 	if c.DocString != "" {
 		f.formatDocString(c.DocString)

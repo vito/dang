@@ -114,7 +114,7 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 	iface.SetVisibility("id", dang.PublicVisibility)
 
 	env := dang.NewPreludeEnv("")
-	env.AddClass("Thing", iface)
+	env.AddObject("Thing", iface)
 	f := &File{TypeEnv: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, Position{}, "Thing")
@@ -140,11 +140,11 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	local.SetVisibility("localOnly", dang.PublicVisibility)
 
 	schemaEnv := dang.NewPreludeEnv("Test")
-	schemaEnv.AddClass("ServerInfo", imported)
+	schemaEnv.AddObject("ServerInfo", imported)
 
 	env := dang.NewPreludeEnv("")
-	env.AddClass("Test", schemaEnv)
-	env.AddClass("ServerInfo", local)
+	env.AddObject("Test", schemaEnv)
+	env.AddObject("ServerInfo", local)
 
 	text := "let info: Test.ServerInfo! = null"
 	pos := Position{Line: 0, Character: strings.Index(text, "ServerInfo")}

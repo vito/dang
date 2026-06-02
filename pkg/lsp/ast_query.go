@@ -48,7 +48,7 @@ func findEnclosingEnvironments(root dang.Node, pos Position) []dang.Env {
 
 		// Check if this node has a stored environment
 		switch typed := n.(type) {
-		case *dang.ClassDecl:
+		case *dang.ObjectDecl:
 			if typed.Inferred != nil {
 				environments = append(environments, typed.Inferred)
 			}

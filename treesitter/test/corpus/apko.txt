@@ -89,7 +89,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
             (immediate_quote_token))))))
   (sep)
   (decl
-    (class
+    (object_decl
       (type_token)
       (symbol
         (id

@@ -423,7 +423,7 @@ func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
 // Reads check constructor args first (shadowing fields and outer scope),
 // while writes go to the instance so bare assignments like `x = val` work.
 type ConstructorEnv struct {
-	instance EvalEnv // Class instance (target for writes)
+	instance EvalEnv // Object instance (target for writes)
 	args     EvalEnv // Constructor arguments (shadow everything on reads)
 	closure  EvalEnv // Lexical closure (outer scope)
 
@@ -554,8 +554,8 @@ type CompositeModule struct {
 }
 
 func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
-	// First check the primary environment (reopened module/class fields)
-	// This allows class fields to have precedence over outer scope variables
+	// First check the primary environment (reopened module/object fields)
+	// This allows object fields to have precedence over outer scope variables
 	if scheme, found := c.primary.SchemeOf(name); found {
 		return scheme, true
 	}
@@ -642,7 +642,7 @@ func (c *CompositeModule) FreeTypeVar() hm.TypeVarSet {
 }
 
 func (c *CompositeModule) GetDynamicScopeType() hm.Type {
-	// First check primary (class/module being inferred)
+	// First check primary (object/module being inferred)
 	if t := c.primary.GetDynamicScopeType(); t != nil {
 		return t
 	}
@@ -663,7 +663,7 @@ func (t *CompositeModule) Types() hm.Types                            { return n
 func (t *CompositeModule) Supertypes() []Type                         { return t.primary.Supertypes() }
 func (t *CompositeModule) String() string                             { return t.primary.String() }
 
-// NamedType looks up class types, needed for NamedTypeNode.Infer compatibility
+// NamedType looks up object types, needed for NamedTypeNode.Infer compatibility
 func (c *CompositeModule) NamedType(name string) (Env, bool) {
 	// First check the primary environment (reopened module)
 	if t, found := c.primary.NamedType(name); found {
@@ -696,9 +696,9 @@ func (c *CompositeModule) NamedTypes() iter.Seq2[string, Env] {
 	}
 }
 
-// AddClass adds a class type to the primary environment
-func (c *CompositeModule) AddClass(name string, class Env) {
-	c.primary.AddClass(name, class)
+// AddObject adds a object type to the primary environment
+func (c *CompositeModule) AddObject(name string, object Env) {
+	c.primary.AddObject(name, object)
 }
 
 func (c *CompositeModule) SetTypeOrigin(name string, origin BindingOrigin) {

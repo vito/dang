@@ -2712,7 +2712,7 @@ func collectBreakStatements(root Node, target *InferControlTarget) []*Break {
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ObjectDecl:
 				return false
 			}
 		}
@@ -2741,7 +2741,7 @@ func collectContinueStatements(root Node, target *InferControlTarget) []*Continu
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ObjectDecl:
 				return false
 			}
 		}

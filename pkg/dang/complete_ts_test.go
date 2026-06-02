@@ -37,7 +37,7 @@ func testCompletionEnv() Env {
 
 	env.Add("container", hm.NewScheme(nil, hm.NonNullType{Type: containerMod}))
 	env.SetVisibility("container", PublicVisibility)
-	env.AddClass("Container", containerMod)
+	env.AddObject("Container", containerMod)
 
 	// Add a top-level "directory" binding.
 	dirMod := NewModule("Directory", ObjectKind)
@@ -46,7 +46,7 @@ func testCompletionEnv() Env {
 
 	env.Add("directory", hm.NewScheme(nil, hm.NonNullType{Type: dirMod}))
 	env.SetVisibility("directory", PublicVisibility)
-	env.AddClass("Directory", dirMod)
+	env.AddObject("Directory", dirMod)
 
 	return env
 }

@@ -112,11 +112,11 @@ type Error {
 }
 assert { Error.id == "x" }
 `)
-	classVal, found := requireEvalGet(t, env, "Error")
+	objectVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
-	classFn, ok := classVal.(*ConstructorFunction)
+	objectFn, ok := objectVal.(*ConstructorFunction)
 	require.True(t, ok)
-	require.NotSame(t, ErrorType, classFn.ClassType)
+	require.NotSame(t, ErrorType, objectFn.ObjectType)
 	_, found = ErrorType.LocalSchemeOf("id")
 	require.False(t, found)
 
@@ -305,7 +305,7 @@ type Directory {
 	require.True(t, found)
 	containerCtor, ok := containerVal.(*ConstructorFunction)
 	require.True(t, ok)
-	require.NotSame(t, importedContainer, containerCtor.ClassType)
+	require.NotSame(t, importedContainer, containerCtor.ObjectType)
 
 	moduleVal, ok := env.(*ModuleValue)
 	require.True(t, ok)
@@ -313,25 +313,25 @@ type Directory {
 	require.True(t, found)
 	maybeType, mono := maybeScheme.Type()
 	require.True(t, mono)
-	require.Same(t, containerCtor.ClassType, maybeType)
+	require.Same(t, containerCtor.ObjectType, maybeType)
 	require.NotSame(t, importedContainer, maybeType)
 
 	directoryVal, found := requireEvalGet(t, env, "Directory")
 	require.True(t, found)
 	directoryCtor, ok := directoryVal.(*ConstructorFunction)
 	require.True(t, ok)
-	require.NotSame(t, importedDirectory, directoryCtor.ClassType)
+	require.NotSame(t, importedDirectory, directoryCtor.ObjectType)
 
 	testVal, found := requireEvalGet(t, env, "TestShadowing")
 	require.True(t, found)
 	testCtor, ok := testVal.(*ConstructorFunction)
 	require.True(t, ok)
 
-	localScheme, found := testCtor.ClassType.LocalSchemeOf("makeLocal")
+	localScheme, found := testCtor.ObjectType.LocalSchemeOf("makeLocal")
 	require.True(t, found)
-	require.Same(t, containerCtor.ClassType, functionReturnType(t, localScheme))
+	require.Same(t, containerCtor.ObjectType, functionReturnType(t, localScheme))
 
-	coreScheme, found := testCtor.ClassType.LocalSchemeOf("makeCore")
+	coreScheme, found := testCtor.ObjectType.LocalSchemeOf("makeCore")
 	require.True(t, found)
 	require.Same(t, importedContainer, functionReturnType(t, coreScheme))
 }
@@ -373,11 +373,11 @@ type Test {
 	testCtor, ok := testVal.(*ConstructorFunction)
 	require.True(t, ok)
 
-	containerEcho, found := testCtor.ClassType.LocalSchemeOf("containerEcho")
+	containerEcho, found := testCtor.ObjectType.LocalSchemeOf("containerEcho")
 	require.True(t, found)
 	require.Same(t, importedContainer, functionReturnType(t, containerEcho))
 
-	print, found := testCtor.ClassType.LocalSchemeOf("print")
+	print, found := testCtor.ObjectType.LocalSchemeOf("print")
 	require.True(t, found)
 	require.Same(t, StringType, functionReturnType(t, print))
 }

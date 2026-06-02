@@ -194,7 +194,7 @@ func bestUnionMatch(have *Module, want *hm.UnionType) (*Module, *Module, []strin
 // diagnoseModule lists field-level incompatibilities that prevent
 // assigning a value of have to want. It walks every public field of want
 // and reports each missing or shape-incompatible field with neutral
-// terminology (the comparison runs in both class-implements-interface
+// terminology (the comparison runs in both object-implements-interface
 // and interface-vs-interface contexts).
 func diagnoseModule(have, want *Module) []string {
 	var issues []string
@@ -267,7 +267,7 @@ func diagnoseField(name string, have, want hm.Type) error {
 }
 
 // unwrapZeroArgFn returns t with a zero-argument function shape stripped
-// off. Interfaces store argless fields as () -> T while classes store
+// off. Interfaces store argless fields as () -> T while objects store
 // them as plain T; the unwrap lets the two representations compare equal.
 func unwrapZeroArgFn(t hm.Type) hm.Type {
 	fn, ok := t.(*hm.FunctionType)
