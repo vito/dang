@@ -628,12 +628,12 @@ func (c *OverlayTypeScope) GetDirectives(name string) []*DirectiveApplication {
 	return append(c.primary.GetDirectives(name), c.lexical.GetDirectives(name)...)
 }
 
-func (c *OverlayTypeScope) SetModuleDocString(doc string) {
-	c.primary.SetModuleDocString(doc)
+func (c *OverlayTypeScope) SetTypeDocString(doc string) {
+	c.primary.SetTypeDocString(doc)
 }
 
-func (c *OverlayTypeScope) GetModuleDocString() string {
-	return c.primary.GetModuleDocString()
+func (c *OverlayTypeScope) GetTypeDocString() string {
+	return c.primary.GetTypeDocString()
 }
 
 func (c *OverlayTypeScope) Remove(name string) hm.Env {

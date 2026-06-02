@@ -483,7 +483,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	c.SetInferredType(object)
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
-		object.SetModuleDocString(c.DocString)
+		object.SetTypeDocString(c.DocString)
 	}
 
 	// Pass 0 must only register the type name. Other top-level types may refer
@@ -586,7 +586,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	// Store doc string for the object name in the environment
 	if c.DocString != "" {
 		mod.SetDocString(c.Name.Name, c.DocString)
-		object.SetModuleDocString(c.DocString)
+		object.SetTypeDocString(c.DocString)
 	}
 
 	// Set this early so we can at least partially infer.
@@ -836,7 +836,7 @@ func (c *ObjectDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 		// Set doc string for the object/module itself
 		if c.DocString != "" {
-			c.Inferred.SetModuleDocString(c.DocString)
+			c.Inferred.SetTypeDocString(c.DocString)
 		}
 
 		// Find explicit new() or derive constructor from fields
@@ -1156,7 +1156,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	i.SetInferredType(iface)
 	if i.DocString != "" {
 		mod.SetDocString(i.Name.Name, i.DocString)
-		iface.SetModuleDocString(i.DocString)
+		iface.SetTypeDocString(i.DocString)
 	}
 
 	// Pass 0: Register the interface type.
@@ -1249,7 +1249,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		// Set doc string
 		if i.DocString != "" {
 			mod.SetDocString(i.Name.Name, i.DocString)
-			i.Inferred.SetModuleDocString(i.DocString)
+			i.Inferred.SetTypeDocString(i.DocString)
 		}
 
 		return iface, nil

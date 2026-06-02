@@ -69,7 +69,7 @@ interface Thing {
 
 func TestFormatPublicTypeShape(t *testing.T) {
 	iface := dang.NewTypeDef("Thing", dang.InterfaceKind)
-	iface.SetModuleDocString("A GraphQL-loaded interface.")
+	iface.SetTypeDocString("A GraphQL-loaded interface.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
 		hm.NonNullType{Type: dang.StringType},
@@ -88,7 +88,7 @@ func TestFormatPublicTypeShape(t *testing.T) {
 	iface.SetVisibility("items", dang.PublicVisibility)
 
 	codeBlock := dang.FormatPublicTypeShape(iface)
-	docString := iface.GetModuleDocString()
+	docString := iface.GetTypeDocString()
 	want := `interface Thing {
   """
   The stable ID.
@@ -106,7 +106,7 @@ func TestFormatPublicTypeShape(t *testing.T) {
 
 func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 	iface := dang.NewTypeDef("Thing", dang.InterfaceKind)
-	iface.SetModuleDocString("Loaded from GraphQL.")
+	iface.SetTypeDocString("Loaded from GraphQL.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
 		hm.NonNullType{Type: dang.StringType},
@@ -128,7 +128,7 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 
 func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	imported := dang.NewTypeDef("ServerInfo", dang.ObjectKind)
-	imported.SetModuleDocString("Imported GraphQL type.")
+	imported.SetTypeDocString("Imported GraphQL type.")
 	imported.Add("version", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
 		hm.NonNullType{Type: dang.StringType},

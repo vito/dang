@@ -162,7 +162,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			RetEnv:  namedEnv,
 			Kind:    ClassifyEnv(namedEnv),
 		}
-		if d := namedEnv.GetModuleDocString(); d != "" {
+		if d := namedEnv.GetTypeDocString(); d != "" {
 			item.Doc = d
 		}
 		col.Items = append(col.Items, item)

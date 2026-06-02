@@ -368,7 +368,7 @@ func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
 				TypeStr: namedEnv.Name(),
 				Kind:    ClassifyEnv(namedEnv),
 			}
-			if d := namedEnv.GetModuleDocString(); d != "" {
+			if d := namedEnv.GetTypeDocString(); d != "" {
 				item.Doc = d
 			}
 			return item, true

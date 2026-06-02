@@ -431,7 +431,7 @@ func formatModuleForHover(mod *dang.TypeDef, fallbackDoc string) (codeBlock stri
 		return "", ""
 	}
 
-	docString = mod.GetModuleDocString()
+	docString = mod.GetTypeDocString()
 	if docString == "" {
 		docString = fallbackDoc
 	}

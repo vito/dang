@@ -68,8 +68,8 @@ type TypeScope interface {
 	GetDocString(string) (string, bool)
 	SetDirectives(string, []*DirectiveApplication)
 	GetDirectives(string) []*DirectiveApplication
-	SetModuleDocString(string)
-	GetModuleDocString() string
+	SetTypeDocString(string)
+	GetTypeDocString() string
 	SetVisibility(string, Visibility)
 	LocalSchemeOf(string) (*hm.Scheme, bool)
 	SetValueOrigin(string, BindingOrigin)
@@ -155,7 +155,7 @@ type TypeDef struct {
 	directiveOrigins map[string]BindingOrigin
 	fieldDirectives  map[string][]*DirectiveApplication
 	docStrings       map[string]string
-	moduleDocString  string
+	typeDocString    string
 
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
@@ -188,7 +188,7 @@ func NewTypeDef(name string, kind Kind) *TypeDef {
 		directiveOrigins: make(map[string]BindingOrigin),
 		fieldDirectives:  make(map[string][]*DirectiveApplication),
 		docStrings:       make(map[string]string),
-		moduleDocString:  "",
+		typeDocString:    "",
 	}
 	return env
 }
@@ -392,7 +392,7 @@ func NewEnv(name string, schema *introspection.Schema) TypeScope {
 				}
 				// Store type description as module documentation
 				if t.Description != "" {
-					sub.SetModuleDocString(t.Description)
+					sub.SetTypeDocString(t.Description)
 				}
 				schemaTypes[t.Name] = sub
 				env.AddObject(t.Name, sub)
@@ -943,14 +943,15 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	return fnType
 }
 
-// SetModuleDocString sets the documentation string for the module itself
-func (e *TypeDef) SetModuleDocString(docString string) {
-	e.moduleDocString = docString
+// SetTypeDocString sets the documentation string for the type itself
+// (as opposed to its members, which use SetDocString).
+func (e *TypeDef) SetTypeDocString(docString string) {
+	e.typeDocString = docString
 }
 
-// GetModuleDocString gets the documentation string for the module itself
-func (e *TypeDef) GetModuleDocString() string {
-	return e.moduleDocString
+// GetTypeDocString gets the documentation string for the type itself
+func (e *TypeDef) GetTypeDocString() string {
+	return e.typeDocString
 }
 
 func (e *TypeDef) AsRecord() *RecordType {

@@ -90,8 +90,8 @@ func compileRegexp(pat string) (*regexp.Regexp, error) {
 }
 
 func registerRegexp() {
-	RegexpType.SetModuleDocString("a compiled regular expression (Go regexp/syntax)")
-	MatchType.SetModuleDocString("the result of a successful regex match")
+	RegexpType.SetTypeDocString("a compiled regular expression (Go regexp/syntax)")
+	MatchType.SetTypeDocString("the result of a successful regex match")
 
 	registerRegexpStringMethods()
 	registerRegexpMatchMethods()
