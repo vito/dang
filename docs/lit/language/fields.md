@@ -2,9 +2,16 @@
 
 # Fields: `pub` and `let` {#fields}
 
-> Meta: this is also the right place to introduce the *field* concept, since `pub` and `let` declare fields whether they hold a value or a function. The class-context behavior is covered in [classes](./classes.md) — link there, don't duplicate.
+> Meta: this is also the right place to introduce the *field* concept, since `pub` and `let` declare fields whether they hold a value or a function. The object-context behavior is covered in [objects](./objects.md) — link there, don't duplicate.
 
-Dang scopes contain _fields_ which are either values or functions.
+The `pub` and `let` keywords declare fields in the current scope:
+
+* Top-level fields, declared across `.dang` files in the same directory
+* Type-level fields declared within an [#objects] or [#interfaces-unions]
+* Block-level fields declared within the nearest enclosing `{` and `}`
+
+These keywords distinguish the expression from [#mutation], which updates an
+already-declared field.
 
 ## Two visibilities
 
@@ -15,7 +22,7 @@ Dang scopes contain _fields_ which are either values or functions.
 
 - a field is a named, typed thing — value, function, or computed expression
 - fields can carry an explicit type annotation
-- fields without a value act as required parameters (in classes) or unresolved declarations
+- fields without a value act as required parameters (in objects) or unresolved declarations
 
 ## Forms
 
