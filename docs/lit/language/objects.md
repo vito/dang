@@ -1,6 +1,6 @@
 \use-plugin{dang}
 
-# Classes (`type`) {#classes}
+# Objects (`type`) {#objects}
 
 > Meta: lead with "a `type` declares both a type and its prototype constructor." That's the unusual thing. Cross-link to [mutation](./mutation.md) — don't try to explain CoW here.
 

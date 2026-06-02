@@ -14,7 +14,7 @@
 ```
 Module    := (Decl | Form)*
 Decl      := Import | Interface | Union | Enum | Scalar
-           | Class | NewConstructor | Field | DirectiveDecl
+           | ObjectDecl | NewConstructor | Field | DirectiveDecl
 Form      := Return | TryCatch | Raise | Conditional | ForLoop
            | Case | Break | Continue | DefaultExpr | TypeHint | Term
 ```
