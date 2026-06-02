@@ -669,12 +669,12 @@ func (c *OverlayTypeScope) SetDynamicScopeType(t hm.Type) {
 
 var _ TypeScope = &OverlayTypeScope{}
 
-func (t *OverlayTypeScope) Eq(other Type) bool                         { return other == t }
-func (t *OverlayTypeScope) Name() string                               { return t.primary.Name() }
-func (t *OverlayTypeScope) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
-func (t *OverlayTypeScope) Types() hm.Types                            { return nil }
-func (t *OverlayTypeScope) Supertypes() []Type                         { return t.primary.Supertypes() }
-func (t *OverlayTypeScope) String() string                             { return t.primary.String() }
+func (t *OverlayTypeScope) Eq(other hm.Type) bool                         { return other == t }
+func (t *OverlayTypeScope) Name() string                                  { return t.primary.Name() }
+func (t *OverlayTypeScope) Normalize(k, v hm.TypeVarSet) (hm.Type, error) { return t, nil }
+func (t *OverlayTypeScope) Types() hm.Types                               { return nil }
+func (t *OverlayTypeScope) Supertypes() []hm.Type                         { return t.primary.Supertypes() }
+func (t *OverlayTypeScope) String() string                                { return t.primary.String() }
 
 // NamedType looks up object types, needed for NamedTypeNode.Infer compatibility
 func (c *OverlayTypeScope) NamedType(name string) (TypeScope, bool) {

@@ -167,15 +167,6 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (Kind, error) {
 // type are all the same machinery -- members attach to any named type, the way
 // Ruby attaches methods to any object.
 //
-// This answers the question this type's old TODO posed: no, it is not just an
-// "ObjectType" (that name would be wrong for the five non-object kinds), and
-// yes, objects really are just named scopes -- as is every other kind.
-// Splitting the leaf kinds (scalar/enum/union) into their own non-scope structs
-// was tried and abandoned: it turns the uniform "any named type is a scope"
-// capability into special-case plumbing. List is the one member resolution that
-// already works that way (its methods come from the builtin registry, not a
-// scheme store), and it is the clunkier for it.
-//
 // The Kind tag also mirrors GraphQL introspection's __Type, which is itself one
 // type with a kind enum; that keeps schema import a near 1:1 mapping (see
 // ModuleKindFromGraphQLKind). The cost is that kind-specific behavior is gated
@@ -1014,9 +1005,9 @@ func (e *TypeDef) AsRecord() *RecordType {
 
 var _ hm.Type = (*TypeDef)(nil)
 
-func (t *TypeDef) Name() string                               { return t.Named }
-func (t *TypeDef) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
-func (t *TypeDef) Types() hm.Types                            { return nil }
+func (t *TypeDef) Name() string                                  { return t.Named }
+func (t *TypeDef) Normalize(k, v hm.TypeVarSet) (hm.Type, error) { return t, nil }
+func (t *TypeDef) Types() hm.Types                               { return nil }
 
 func (t *TypeDef) String() string {
 	if t.Named != "" {
@@ -1038,7 +1029,7 @@ func (t *TypeDef) String() string {
 //			fmt.Fprintf(s, "%#v", t)
 //		}
 //	}
-func (t *TypeDef) Eq(other Type) bool {
+func (t *TypeDef) Eq(other hm.Type) bool {
 	otherMod, ok := other.(*TypeDef)
 	if !ok {
 		return false
@@ -1051,7 +1042,7 @@ func (t *TypeDef) Eq(other Type) bool {
 	return t.AsRecord().Eq(otherMod.AsRecord())
 }
 
-func (t *TypeDef) Supertypes() []Type {
+func (t *TypeDef) Supertypes() []hm.Type {
 	// Object types have their implemented interfaces and unions as
 	// supertypes. Interfaces have their parent interfaces (from
 	// `interface Foo implements Bar`) as supertypes too.
@@ -1061,12 +1052,12 @@ func (t *TypeDef) Supertypes() []Type {
 	if len(t.interfaces) == 0 && len(t.unions) == 0 {
 		return nil
 	}
-	result := make([]Type, 0, len(t.interfaces)+len(t.unions))
+	result := make([]hm.Type, 0, len(t.interfaces)+len(t.unions))
 	for _, iface := range t.interfaces {
-		result = append(result, iface.(Type))
+		result = append(result, iface.(hm.Type))
 	}
 	for _, union := range t.unions {
-		result = append(result, union.(Type))
+		result = append(result, union.(hm.Type))
 	}
 	return result
 }

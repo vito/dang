@@ -32,7 +32,7 @@ func Infer(ctx context.Context, env hm.Env, expr hm.Expression, hoist bool) (*hm
 
 type inferer struct {
 	env hm.Env
-	t   Type
+	t   hm.Type
 
 	varCount int
 }
@@ -120,7 +120,7 @@ func (ie *InferenceErrors) Error() string {
 	return fmt.Sprintf("%d inference errors:\n\n%s", len(ie.Errors), strings.Join(msgs, "\n\n"))
 }
 
-func closeOver(t Type) (sch *hm.Scheme, err error) {
+func closeOver(t hm.Type) (sch *hm.Scheme, err error) {
 	sch = hm.Generalize(nil, t)
 	err = sch.Normalize()
 	return
