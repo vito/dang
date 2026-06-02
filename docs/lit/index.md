@@ -24,7 +24,7 @@ GraphQL schema.
 \include-section{./language/literals.md}
 \include-section{./language/types.md}
 \include-section{./language/operators.md}
-\include-section{./language/bindings.md}
+\include-section{./language/fields.md}
 \include-section{./language/functions.md}
 \include-section{./language/blocks.md}
 \include-section{./language/control-flow.md}

@@ -69,7 +69,7 @@ type Greeter {
 
 ## Computed fields
 
-- a slot with a body and no arg list is a computed field on `self`:
+- a field with a body and no arg list is computed on `self`:
 
 ```dang
 pub fullName: String! { firstName + " " + lastName }
