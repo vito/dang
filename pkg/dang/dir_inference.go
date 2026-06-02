@@ -24,7 +24,7 @@ import (
 // Auto-imports declared in ctx are injected into each block's Forms in place,
 // so subsequent evaluation reuses the same *ImportDecl nodes whose Infer state
 // (cached schema/client) was populated here.
-func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv Env, fresh hm.Fresher) error {
+func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, inferencePhases)
@@ -39,7 +39,7 @@ func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv Env, 
 // composite env that scopes its imports file-locally.
 type fileScope struct {
 	classified ClassifiedForms
-	fileEnv    Env
+	fileEnv    TypeScope
 }
 
 // prepareFileScopes per-file: prepends auto-imports, splits imports from the
@@ -53,18 +53,18 @@ type fileScope struct {
 // name-keyed cache on the import context, so every ImportDecl with the same
 // name — whether at file top level or nested inside a block — installs the
 // same *Module and types like Dagger.Workspace unify across file boundaries.
-func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv Env, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
+func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
 	scopes := make([]fileScope, 0, len(files))
 	for _, block := range files {
 		block.Forms = prependAutoImports(ctx, block.Forms)
 		imports, rest := partitionImports(block.Forms)
 
-		importsEnv := NewModule("", ObjectKind)
+		importsEnv := NewTypeDef("", ObjectKind)
 		if _, err := inferImportsPhaseResilient(ctx, imports, importsEnv, fresh, errs); err != nil {
 			errs.Add(err)
 		}
 
-		fileEnv := &CompositeModule{primary: dirEnv, lexical: importsEnv}
+		fileEnv := &CompositeTypeDef{primary: dirEnv, lexical: importsEnv}
 		block.Env = fileEnv
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),
@@ -79,7 +79,7 @@ func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv Env, fr
 // (e.g. types, variables) so all phases share one signature.
 type directoryPhase struct {
 	name string
-	fn   func(ctx context.Context, classified ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error)
+	fn   func(ctx context.Context, classified ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error)
 }
 
 func runDirectoryPhases(ctx context.Context, scopes []fileScope, fresh hm.Fresher, errs *InferenceErrors, phases []directoryPhase) {
@@ -96,22 +96,22 @@ func runDirectoryPhases(ctx context.Context, scopes []fileScope, fresh hm.Freshe
 // API. Body inference is skipped, matching DeclareFormsWithPhases. Phase order
 // is critical: type names → signatures.
 var declarationPhases = []directoryPhase{
-	{"type names", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"type names", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return inferTypeNamesPhaseResilient(ctx, c.Types, env, fresh, errs)
 	}},
-	{"directives", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"directives", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return inferDirectivesPhaseResilient(ctx, c.Directives, env, fresh, errs)
 	}},
-	{"constants", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"constants", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return inferConstantsPhaseResilient(ctx, c.Constants, env, fresh, errs)
 	}},
-	{"variable signatures", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"variable signatures", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return declareVariableSignaturesPhaseResilient(ctx, c.Variables, env, fresh, errs)
 	}},
-	{"type signatures", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"type signatures", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return declareTypeSignaturesPhaseResilient(ctx, c.Types, env, fresh, errs)
 	}},
-	{"function signatures", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"function signatures", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return declareFunctionSignaturesPhaseResilient(ctx, c.Functions, env, fresh, errs)
 	}},
 }
@@ -123,7 +123,7 @@ var declarationPhases = []directoryPhase{
 // variables phase, the active file's references to such a sibling export
 // show up as "not found".
 var variablePhase = []directoryPhase{
-	{"variables", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+	{"variables", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 		return inferVariablesPhaseResilient(ctx, c.Variables, env, fresh, errs)
 	}},
 }
@@ -134,16 +134,16 @@ var variablePhase = []directoryPhase{
 // non-declarations.
 var bodyPhases = slices.Concat(
 	[]directoryPhase{
-		{"type bodies", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+		{"type bodies", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 			return inferTypeBodiesPhaseResilient(ctx, c.Types, env, fresh, errs)
 		}},
 	},
 	variablePhase,
 	[]directoryPhase{
-		{"function bodies", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+		{"function bodies", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 			return inferFunctionBodiesPhaseResilient(ctx, c.Functions, env, fresh, errs)
 		}},
-		{"non-declarations", func(ctx context.Context, c ClassifiedForms, env Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
+		{"non-declarations", func(ctx context.Context, c ClassifiedForms, env TypeScope, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 			return inferNonDeclarationsPhaseResilient(ctx, c.NonDeclarations, env, fresh, errs)
 		}},
 	},
@@ -161,7 +161,7 @@ var inferencePhases = slices.Concat(declarationPhases, bodyPhases)
 //
 // active must be one of files (pointer equality). A nil active runs only the
 // declaration phases (plus variables across all scopes).
-func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirEnv Env, fresh hm.Fresher) error {
+func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirEnv TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
 
@@ -239,4 +239,3 @@ func prependAutoImports(ctx context.Context, forms []Node) []Node {
 	}
 	return append(injected, forms...)
 }
-

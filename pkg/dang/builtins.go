@@ -313,7 +313,7 @@ type MethodBuilder struct {
 }
 
 // Method creates a new method builder
-func Method(receiverType *Module, name string) *MethodBuilder {
+func Method(receiverType *TypeDef, name string) *MethodBuilder {
 	return &MethodBuilder{
 		def: BuiltinDef{
 			Name:         name,
@@ -360,7 +360,7 @@ type StaticMethodBuilder struct {
 }
 
 // StaticMethod creates a new static method builder for a module
-func StaticMethod(hostModule *Module, name string) *StaticMethodBuilder {
+func StaticMethod(hostModule *TypeDef, name string) *StaticMethodBuilder {
 	return &StaticMethodBuilder{
 		def: BuiltinDef{
 			Name:       name,
@@ -401,9 +401,9 @@ func (b *StaticMethodBuilder) Impl(fn func(context.Context, Args) (Value, error)
 type BuiltinDef struct {
 	Name         string
 	IsMethod     bool
-	IsStatic     bool    // true for static methods on a module (e.g. Random.int)
-	ReceiverType *Module // nil for functions
-	HostModule   *Module // the module this static method belongs to
+	IsStatic     bool     // true for static methods on a module (e.g. Random.int)
+	ReceiverType *TypeDef // nil for functions
+	HostModule   *TypeDef // the module this static method belongs to
 	ParamTypes   []ParamDef
 	BlockType    *hm.FunctionType // nil if no block arg expected
 	ReturnType   hm.Type
@@ -421,23 +421,23 @@ type ParamDef struct {
 type builtinRegistry struct {
 	functions []BuiltinDef
 
-	methods            map[*Module][]BuiltinDef
-	methodByName       map[*Module]map[string]BuiltinDef
-	methodReceivers    []*Module
-	methodReceiverSeen map[*Module]bool
+	methods            map[*TypeDef][]BuiltinDef
+	methodByName       map[*TypeDef]map[string]BuiltinDef
+	methodReceivers    []*TypeDef
+	methodReceiverSeen map[*TypeDef]bool
 
-	staticMethods    map[*Module][]BuiltinDef
-	staticModules    []*Module
-	staticModuleSeen map[*Module]bool
+	staticMethods    map[*TypeDef][]BuiltinDef
+	staticModules    []*TypeDef
+	staticModuleSeen map[*TypeDef]bool
 }
 
 func newBuiltinRegistry() *builtinRegistry {
 	return &builtinRegistry{
-		methods:            make(map[*Module][]BuiltinDef),
-		methodByName:       make(map[*Module]map[string]BuiltinDef),
-		methodReceiverSeen: make(map[*Module]bool),
-		staticMethods:      make(map[*Module][]BuiltinDef),
-		staticModuleSeen:   make(map[*Module]bool),
+		methods:            make(map[*TypeDef][]BuiltinDef),
+		methodByName:       make(map[*TypeDef]map[string]BuiltinDef),
+		methodReceiverSeen: make(map[*TypeDef]bool),
+		staticMethods:      make(map[*TypeDef][]BuiltinDef),
+		staticModuleSeen:   make(map[*TypeDef]bool),
 	}
 }
 
@@ -484,7 +484,7 @@ func (r *builtinRegistry) register(def BuiltinDef) {
 }
 
 // LookupMethod finds a method for a given receiver type.
-func LookupMethod(receiverType *Module, methodName string) (BuiltinDef, bool) {
+func LookupMethod(receiverType *TypeDef, methodName string) (BuiltinDef, bool) {
 	methods, ok := builtins.methodByName[receiverType]
 	if !ok {
 		return BuiltinDef{}, false
@@ -494,7 +494,7 @@ func LookupMethod(receiverType *Module, methodName string) (BuiltinDef, bool) {
 }
 
 // GetMethodKey returns the environment key for a method.
-func GetMethodKey(receiverType *Module, methodName string) string {
+func GetMethodKey(receiverType *TypeDef, methodName string) string {
 	return fmt.Sprintf("_%s_%s_builtin",
 		strings.ToLower(receiverType.Named), methodName)
 }
@@ -507,27 +507,27 @@ func ForEachFunction(fn func(BuiltinDef)) {
 }
 
 // ForEachMethod iterates over methods for a specific receiver type.
-func ForEachMethod(receiverType *Module, fn func(BuiltinDef)) {
+func ForEachMethod(receiverType *TypeDef, fn func(BuiltinDef)) {
 	for _, def := range builtins.methods[receiverType] {
 		fn(def)
 	}
 }
 
 // MethodReceivers returns all modules that have builtin methods registered.
-func MethodReceivers() []*Module {
-	return append([]*Module(nil), builtins.methodReceivers...)
+func MethodReceivers() []*TypeDef {
+	return append([]*TypeDef(nil), builtins.methodReceivers...)
 }
 
 // ForEachStaticMethod iterates over static methods for a specific host module.
-func ForEachStaticMethod(hostModule *Module, fn func(BuiltinDef)) {
+func ForEachStaticMethod(hostModule *TypeDef, fn func(BuiltinDef)) {
 	for _, def := range builtins.staticMethods[hostModule] {
 		fn(def)
 	}
 }
 
 // StaticModules returns all modules that have static methods registered.
-func StaticModules() []*Module {
-	return append([]*Module(nil), builtins.staticModules...)
+func StaticModules() []*TypeDef {
+	return append([]*TypeDef(nil), builtins.staticModules...)
 }
 
 // DefineEnum creates an enum type with the given values and registers it
@@ -540,8 +540,8 @@ func StaticModules() []*Module {
 //	var CharsetEnum = DefineEnum(RandomModule, "Charset",
 //		"ALPHANUMERIC", "ALPHA", "NUMERIC", "HEX",
 //	)
-func DefineEnum(parent *Module, name string, values ...string) *Module {
-	enum := NewModule(name, EnumKind)
+func DefineEnum(parent *TypeDef, name string, values ...string) *TypeDef {
+	enum := NewTypeDef(name, EnumKind)
 
 	// Type-level: register each value and a values() accessor
 	for _, v := range values {

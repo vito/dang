@@ -95,7 +95,7 @@ type File struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock // Parsed and type-annotated AST
-	TypeEnv     dang.Env          // Type environment after inference
+	TypeEnv     dang.TypeScope    // Type environment after inference
 
 	// Synchronization for async file processing
 	mu         sync.Mutex
@@ -241,7 +241,7 @@ type fileAnalysis struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock
-	TypeEnv     dang.Env
+	TypeEnv     dang.TypeScope
 }
 
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {

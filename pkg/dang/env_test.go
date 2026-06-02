@@ -12,7 +12,7 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
-func requireEvalGet(t *testing.T, env EvalEnv, name string) (Value, bool) {
+func requireEvalGet(t *testing.T, env ValueScope, name string) (Value, bool) {
 	t.Helper()
 	val, found, err := env.Lookup(context.Background(), name)
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestNewEnvSchemaTypeShadowsPreludeType(t *testing.T) {
 	require.True(t, found)
 	require.NotSame(t, ErrorType, schemaError)
 
-	schemaErrorMod, ok := schemaError.(*Module)
+	schemaErrorMod, ok := schemaError.(*TypeDef)
 	require.True(t, ok)
 	require.Equal(t, ObjectKind, schemaErrorMod.Kind)
 
@@ -74,8 +74,8 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 }
 
 func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
-	mod := NewModule("runtime", ObjectKind)
-	val := NewModuleValue(mod)
+	mod := NewTypeDef("runtime", ObjectKind)
+	val := NewObject(mod)
 
 	val.Bind("plain", StringValue{Val: "a"}, PrivateVisibility)
 	val.Bind("visible", StringValue{Val: "b"}, PublicVisibility)
@@ -126,7 +126,7 @@ assert { Error.FOO == Error.FOO }
 `)
 	enumVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
-	enumMod, ok := enumVal.(*ModuleValue)
+	enumMod, ok := enumVal.(*Object)
 	require.True(t, ok)
 	require.NotSame(t, ErrorType, enumMod.Mod)
 	_, found = ErrorType.LocalSchemeOf("FOO")
@@ -137,10 +137,10 @@ scalar Error
 `)
 	scalarVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
-	scalarMod, ok := scalarVal.(*ModuleValue)
+	scalarMod, ok := scalarVal.(*Object)
 	require.True(t, ok)
 	require.NotSame(t, ErrorType, scalarMod.Mod)
-	require.Equal(t, ScalarKind, scalarMod.Mod.(*Module).Kind)
+	require.Equal(t, ScalarKind, scalarMod.Mod.(*TypeDef).Kind)
 }
 
 func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
@@ -150,7 +150,7 @@ func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "Container", container.Name())
 	require.Equal(t, "Dagger.Container", container.String())
-	require.Equal(t, "Dagger.Container", container.Clone().(Env).String())
+	require.Equal(t, "Dagger.Container", container.Clone().(TypeScope).String())
 
 	nonNullContainer := hm.NonNullType{Type: container}
 	require.Equal(t, "Dagger.Container!", nonNullContainer.String())
@@ -294,7 +294,7 @@ type Directory {
 
 	daggerVal, found := requireEvalGet(t, env, "Dagger")
 	require.True(t, found)
-	daggerMod, ok := daggerVal.(*ModuleValue)
+	daggerMod, ok := daggerVal.(*Object)
 	require.True(t, ok)
 	importedContainer, found := daggerMod.Mod.NamedType("Container")
 	require.True(t, found)
@@ -307,7 +307,7 @@ type Directory {
 	require.True(t, ok)
 	require.NotSame(t, importedContainer, containerCtor.ObjectType)
 
-	moduleVal, ok := env.(*ModuleValue)
+	moduleVal, ok := env.(*Object)
 	require.True(t, ok)
 	maybeScheme, found := moduleVal.Mod.SchemeOf("maybe")
 	require.True(t, found)
@@ -363,7 +363,7 @@ type Test {
 
 	daggerVal, found := requireEvalGet(t, env, "Dagger")
 	require.True(t, found)
-	daggerMod, ok := daggerVal.(*ModuleValue)
+	daggerMod, ok := daggerVal.(*Object)
 	require.True(t, ok)
 	importedContainer, found := daggerMod.Mod.NamedType("Container")
 	require.True(t, found)
@@ -572,12 +572,12 @@ assert { MyUnion != null }
 	require.Len(t, BasicErrorType.GetUnions(), before)
 }
 
-func runDangSnippet(t *testing.T, source string) EvalEnv {
+func runDangSnippet(t *testing.T, source string) ValueScope {
 	t.Helper()
 	return runDangSnippetContext(t, context.Background(), source)
 }
 
-func runDangSnippetContext(t *testing.T, ctx context.Context, source string) EvalEnv {
+func runDangSnippetContext(t *testing.T, ctx context.Context, source string) ValueScope {
 	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(source), 0o600))

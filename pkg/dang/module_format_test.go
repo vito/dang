@@ -9,7 +9,7 @@ import (
 )
 
 func TestFormatPublicTypeShapePreservesModuleFieldOrder(t *testing.T) {
-	mod := NewModule("Thing", ObjectKind)
+	mod := NewTypeDef("Thing", ObjectKind)
 	mod.Add("zeta", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	mod.SetVisibility("zeta", PublicVisibility)
 	mod.Add("alpha", hm.NewScheme(nil, hm.NonNullType{Type: IntType}))
@@ -62,7 +62,7 @@ func TestFormatPublicTypeShapePreservesGraphQLFieldOrder(t *testing.T) {
 	env := NewEnv("Test", schema)
 	thing, found := env.NamedType("Thing")
 	require.True(t, found)
-	thingMod, ok := thing.(*Module)
+	thingMod, ok := thing.(*TypeDef)
 	require.True(t, ok)
 
 	require.Equal(t, "type Thing {\n  pub second: String!\n  pub first: String!\n}", FormatPublicTypeShape(thingMod))

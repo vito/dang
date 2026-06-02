@@ -19,7 +19,7 @@ type ModuleBlock struct {
 	Loc    *SourceLocation
 
 	// Filled in during inference phase
-	Env Env
+	Env TypeScope
 }
 
 var _ hm.Expression = (*ModuleBlock)(nil)
@@ -82,7 +82,7 @@ func (m *ModuleBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	})
 }
 
-func (m *ModuleBlock) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (m *ModuleBlock) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	newEnv := env
 	if !m.Inline {
 		newEnv = env.Derive(false)

@@ -868,5 +868,5 @@ func callFunc(ctx context.Context, fn Value, args ...Value) (Value, error) {
 		callArgs[paramNames[i]] = arg
 	}
 
-	return callable.Call(ctx, NewModuleValue(NewModule("_temp_", ObjectKind)), callArgs)
+	return callable.Call(ctx, NewObject(NewTypeDef("_temp_", ObjectKind)), callArgs)
 }

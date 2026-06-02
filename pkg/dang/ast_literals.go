@@ -13,14 +13,14 @@ var (
 	// Null does not have a type. Its type is always inferred as a free variable.
 	// NullType    = NewObject("Null")
 
-	IDType         = NewModule("ID", ScalarKind)
-	BooleanType    = NewModule("Boolean", ScalarKind)
-	StringType     = NewModule("String", ScalarKind)
-	IntType        = NewModule("Int", ScalarKind)
-	FloatType      = NewModule("Float", ScalarKind)
-	ListTypeModule = NewModule("List", ScalarKind)
-	ErrorType      = NewModule("Error", InterfaceKind)
-	BasicErrorType = NewModule("BasicError", ObjectKind)
+	IDType         = NewTypeDef("ID", ScalarKind)
+	BooleanType    = NewTypeDef("Boolean", ScalarKind)
+	StringType     = NewTypeDef("String", ScalarKind)
+	IntType        = NewTypeDef("Int", ScalarKind)
+	FloatType      = NewTypeDef("Float", ScalarKind)
+	ListTypeModule = NewTypeDef("List", ScalarKind)
+	ErrorType      = NewTypeDef("Error", InterfaceKind)
+	BasicErrorType = NewTypeDef("BasicError", ObjectKind)
 )
 
 // Constant is implemented by nodes whose type can be determined without
@@ -94,7 +94,7 @@ func (l *List) Body() hm.Expression { return l }
 
 func (l *List) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l *List) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (l *List) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	if len(l.Elements) == 0 {
 		return ListValue{Elements: []Value{}, ElemType: hm.TypeVariable('a')}, nil
 	}
@@ -152,7 +152,7 @@ func (n *Null) ReferencedSymbols() []string {
 	return nil // Null literals don't reference anything
 }
 
-func (n *Null) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (n *Null) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return NullValue{}, nil
 }
 
@@ -190,7 +190,7 @@ func (s *SelfKeyword) ReferencedSymbols() []string {
 	return nil // self doesn't reference a lexical symbol
 }
 
-func (s *SelfKeyword) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *SelfKeyword) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	if dynScope, ok := env.Self(); ok {
 		return dynScope, nil
 	}
@@ -232,7 +232,7 @@ func (s *String) ReferencedSymbols() []string {
 	return nil // String literals don't reference anything
 }
 
-func (s *String) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *String) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return StringValue{Val: s.Value}, nil
 }
 
@@ -303,7 +303,7 @@ func (t *Template) ReferencedSymbols() []string {
 	return syms
 }
 
-func (t *Template) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (t *Template) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	var buf bytes.Buffer
 	for i, p := range t.Parts {
 		if p.Expr == nil {
@@ -371,7 +371,7 @@ func (b *Boolean) ReferencedSymbols() []string {
 	return nil // Boolean literals don't reference anything
 }
 
-func (b *Boolean) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *Boolean) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return BoolValue{Val: b.Value}, nil
 }
 
@@ -409,7 +409,7 @@ func (i *Int) ReferencedSymbols() []string {
 	return nil // Int literals don't reference anything
 }
 
-func (i *Int) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (i *Int) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return IntValue{Val: int(i.Value)}, nil
 }
 
@@ -446,7 +446,7 @@ func (f *Float) ReferencedSymbols() []string {
 	return nil // Float literals don't reference anything
 }
 
-func (f *Float) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (f *Float) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return FloatValue{Val: f.Value}, nil
 }
 

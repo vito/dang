@@ -11,7 +11,7 @@ import (
 // It is intentionally not source-preserving: method bodies, private fields, and
 // non-semantic layout are omitted. Field order follows the module's definition
 // order.
-func FormatPublicTypeShape(mod *Module) string {
+func FormatPublicTypeShape(mod *TypeDef) string {
 	if mod == nil {
 		return ""
 	}
@@ -70,7 +70,7 @@ type publicShapeField struct {
 	docString string
 }
 
-func publicShapeFields(mod *Module) []publicShapeField {
+func publicShapeFields(mod *TypeDef) []publicShapeField {
 	var fields []publicShapeField
 	for name, scheme := range mod.Bindings(PublicVisibility) {
 		docString, _ := mod.GetDocString(name)
@@ -82,7 +82,7 @@ func publicShapeFields(mod *Module) []publicShapeField {
 	return fields
 }
 
-func publicShapeInterfaceNames(mod *Module) []string {
+func publicShapeInterfaceNames(mod *TypeDef) []string {
 	interfaces := mod.GetInterfaces()
 	if len(interfaces) == 0 {
 		return nil
@@ -169,7 +169,7 @@ func formatPublicShapeType(t hm.Type) string {
 		return strings.Join(parts, " | ")
 	case *hm.FunctionType:
 		return formatPublicShapeFunctionType(typ)
-	case *Module:
+	case *TypeDef:
 		if typ.Name() != "" {
 			return typ.Name()
 		}

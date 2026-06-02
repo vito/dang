@@ -10,10 +10,10 @@ import (
 )
 
 // RandomModule is the "Random" namespace for random value generation
-var RandomModule = NewModule("Random", ObjectKind)
+var RandomModule = NewTypeDef("Random", ObjectKind)
 
 // UUIDModule is the "UUID" namespace for UUID generation
-var UUIDModule = NewModule("UUID", ObjectKind)
+var UUIDModule = NewTypeDef("UUID", ObjectKind)
 
 // registerRandomAndUUID is called from registerStdlib to ensure correct init ordering
 func registerRandomAndUUID() {

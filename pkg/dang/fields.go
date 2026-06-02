@@ -65,7 +65,7 @@ func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		}
 		if pass == 0 {
 			s.SetInferredType(funDecl.Inferred)
-			if e, ok := env.(Env); ok {
+			if e, ok := env.(TypeScope); ok {
 				e.SetVisibility(s.Name.Name, s.Visibility)
 				if s.DocString != "" {
 					e.SetDocString(s.Name.Name, s.DocString)
@@ -102,7 +102,7 @@ func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 		if fieldType != nil {
 			env.Add(s.Name.Name, hm.NewScheme(nil, fieldType))
 			s.SetInferredType(fieldType)
-			if e, ok := env.(Env); ok {
+			if e, ok := env.(TypeScope); ok {
 				e.SetVisibility(s.Name.Name, s.Visibility)
 				if s.DocString != "" {
 					e.SetDocString(s.Name.Name, s.DocString)
@@ -150,7 +150,7 @@ func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh
 	}
 	env.Add(s.Name.Name, hm.NewScheme(nil, fieldType))
 	s.SetInferredType(fieldType)
-	if e, ok := env.(Env); ok {
+	if e, ok := env.(TypeScope); ok {
 		e.SetVisibility(s.Name.Name, s.Visibility)
 		if s.DocString != "" {
 			e.SetDocString(s.Name.Name, s.DocString)
@@ -172,7 +172,7 @@ func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.F
 	}
 	env.Add(s.Name.Name, hm.NewScheme(nil, fieldType))
 	s.SetInferredType(fieldType)
-	if e, ok := env.(Env); ok {
+	if e, ok := env.(TypeScope); ok {
 		e.SetVisibility(s.Name.Name, s.Visibility)
 		if s.DocString != "" {
 			e.SetDocString(s.Name.Name, s.DocString)
@@ -226,7 +226,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		definedType = fresh.Fresh()
 	}
 
-	if e, ok := env.(Env); ok {
+	if e, ok := env.(TypeScope); ok {
 		cur, defined := e.LocalSchemeOf(s.Name.Name)
 		if defined {
 			curT, curMono := cur.Type()
@@ -267,7 +267,7 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	return definedType, nil
 }
 
-func (s *FieldDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *FieldDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, defined := env.LookupLocal(s.Name.Name)
 		if defined {
@@ -327,7 +327,7 @@ type ObjectDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred          *Module
+	Inferred          *TypeDef
 	ConstructorFnType *hm.FunctionType
 }
 
@@ -386,7 +386,7 @@ func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fre
 }
 
 // Eval is a no-op since NewConstructorDecl is evaluated as part of ConstructorFunction.Call
-func (n *NewConstructorDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (n *NewConstructorDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// The new() constructor body is evaluated by ConstructorFunction.Call
 	return NullValue{}, nil
 }
@@ -420,30 +420,30 @@ var _ Hoister = &ObjectDecl{}
 // replace an unqualified imported alias, not mutate the imported schema type.
 // Qualified import aliases like Dagger are protected so Dagger.Container keeps
 // resolving through the imported module.
-func localTypeShadowsImport(env Env, name string) bool {
+func localTypeShadowsImport(env TypeScope, name string) bool {
 	origin, found := env.LocalTypeOrigin(name)
 	return found && origin.IsUnqualifiedImport()
 }
 
-func localTypeIsQualifiedImport(env Env, name string) bool {
+func localTypeIsQualifiedImport(env TypeScope, name string) bool {
 	origin, found := env.LocalTypeOrigin(name)
 	return found && origin.Kind == BindingOriginImport && origin.Qualified
 }
 
-func declareLocalType(env Env, name string, kind ModuleKind) (*Module, error) {
+func declareLocalType(env TypeScope, name string, kind Kind) (*TypeDef, error) {
 	if existing, found := env.LocalNamedType(name); found {
 		if localTypeShadowsImport(env, name) {
 			// Local declarations intentionally shadow unqualified imports.
 		} else if localTypeIsQualifiedImport(env, name) {
 			return nil, fmt.Errorf("type %q conflicts with import alias", name)
-		} else if mod, ok := existing.(*Module); ok {
+		} else if mod, ok := existing.(*TypeDef); ok {
 			return mod, nil
 		} else {
 			return nil, fmt.Errorf("type %q conflicts with existing type", name)
 		}
 	}
 
-	mod := NewModule(name, kind)
+	mod := NewTypeDef(name, kind)
 	env.AddObject(name, mod)
 	return mod, nil
 }
@@ -470,7 +470,7 @@ func (c *ObjectDecl) bodyFormsWithoutNew() []Node {
 }
 
 func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return fmt.Errorf("ObjectDecl.Hoist: environment does not support module operations")
 	}
@@ -494,9 +494,9 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return nil
 	}
 
-	inferEnv := &CompositeModule{
+	inferEnv := &CompositeTypeDef{
 		primary: object,
-		lexical: env.(Env),
+		lexical: env.(TypeScope),
 	}
 
 	// Build constructor type: use explicit new() if present, otherwise derive from fields
@@ -532,7 +532,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 				)
 			}
 
-			ifaceMod, ok := ifaceType.(*Module)
+			ifaceMod, ok := ifaceType.(*TypeDef)
 			if !ok || ifaceMod.Kind != InterfaceKind {
 				return WrapInferError(
 					fmt.Errorf("%s is not an interface", ifaceSym.Name),
@@ -573,7 +573,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 }
 
 func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ObjectDecl.Infer: environment does not support module operations")
 	}
@@ -604,9 +604,9 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	inferEnv := &CompositeModule{
+	inferEnv := &CompositeTypeDef{
 		primary: object,
-		lexical: env.(Env),
+		lexical: env.(TypeScope),
 	}
 
 	// Check for fields named "new" — the user likely intended a constructor
@@ -652,14 +652,14 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 }
 
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
-func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Module, env Env, ifaceSym *Symbol) error {
+func (c *ObjectDecl) validateInterfaceImplementations(objectMod *TypeDef, env TypeScope, ifaceSym *Symbol) error {
 	ifaceType, found := env.NamedType(ifaceSym.Name)
 	if !found {
 		// no error; this is raised in Hoist instead
 		return nil
 	}
 
-	ifaceMod, ok := ifaceType.(*Module)
+	ifaceMod, ok := ifaceType.(*TypeDef)
 	if !ok || ifaceMod.Kind != InterfaceKind {
 		// no error; this is raised in Hoist instead
 		return nil
@@ -730,7 +730,7 @@ func (c *ObjectDecl) extractConstructorParameters() []*FieldDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, objectType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, objectType *TypeDef, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
@@ -761,11 +761,11 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
-func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeModule, fresh hm.Fresher) error {
+func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeTypeDef, fresh hm.Fresher) error {
 	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Create an environment with the constructor args in scope
-	newEnv := inferEnv.Clone().(*CompositeModule)
+	newEnv := inferEnv.Clone().(*CompositeTypeDef)
 	for _, arg := range newDecl.Args {
 		// Fully infer constructor arguments here so default expressions are
 		// validated during normal inference. Declaration may have recorded the
@@ -828,7 +828,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 	return nil
 }
 
-func (c *ObjectDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *ObjectDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
 			panic(fmt.Errorf("ObjectDecl.Eval: object %q has not been inferred", c.Name.Name))
@@ -895,7 +895,7 @@ type EnumDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred *Module
+	Inferred *TypeDef
 }
 
 var _ Node = &EnumDecl{}
@@ -916,7 +916,7 @@ func (e *EnumDecl) GetSourceLocation() *SourceLocation { return e.Loc }
 var _ Hoister = &EnumDecl{}
 
 func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return fmt.Errorf("EnumDecl.Hoist: environment does not support module operations")
 	}
@@ -957,7 +957,7 @@ func (e *EnumDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 }
 
 func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("EnumDecl.Infer: environment does not support module operations")
 	}
@@ -976,9 +976,9 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	return enumType, nil
 }
 
-func (e *EnumDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (e *EnumDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Create a module value for the enum
-	enumModule := NewModuleValue(e.Inferred)
+	enumModule := NewObject(e.Inferred)
 
 	// Add each enum value to the module
 	enumValues := make([]Value, len(e.Values))
@@ -1021,7 +1021,7 @@ type ScalarDecl struct {
 	Directives []*DirectiveApplication
 	Loc        *SourceLocation
 
-	Inferred *Module
+	Inferred *TypeDef
 }
 
 var _ Node = &ScalarDecl{}
@@ -1042,7 +1042,7 @@ func (s *ScalarDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 var _ Hoister = &ScalarDecl{}
 
 func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return fmt.Errorf("ScalarDecl.Hoist: environment does not support module operations")
 	}
@@ -1067,7 +1067,7 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 }
 
 func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("ScalarDecl.Infer: environment does not support module operations")
 	}
@@ -1086,10 +1086,10 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	return scalarType, nil
 }
 
-func (s *ScalarDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *ScalarDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Scalars are just type placeholders, similar to enums but with no values
 	// The actual scalar values come from GraphQL or are just strings
-	scalarModule := NewModuleValue(s.Inferred)
+	scalarModule := NewObject(s.Inferred)
 
 	// Register the scalar type in the environment
 	env.Bind(s.Name.Name, scalarModule, s.Visibility)
@@ -1116,7 +1116,7 @@ type InterfaceDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred *Module
+	Inferred *TypeDef
 }
 
 var _ Node = &InterfaceDecl{}
@@ -1143,7 +1143,7 @@ func (i *InterfaceDecl) GetSourceLocation() *SourceLocation { return i.Loc }
 var _ Hoister = &InterfaceDecl{}
 
 func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return fmt.Errorf("InterfaceDecl.Hoist: environment does not support module operations")
 	}
@@ -1179,7 +1179,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 					parentSym,
 				)
 			}
-			parentMod, ok := parentType.(*Module)
+			parentMod, ok := parentType.(*TypeDef)
 			if !ok || parentMod.Kind != InterfaceKind {
 				return WrapInferError(
 					fmt.Errorf("%s is not an interface", parentSym.Name),
@@ -1195,7 +1195,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 	// Pass 1: Declare interface field and method signatures without inferring
 	// implementation bodies. Interface bodies only describe the public shape.
-	inferEnv := &CompositeModule{
+	inferEnv := &CompositeTypeDef{
 		primary: iface,
 		lexical: mod,
 	}
@@ -1212,7 +1212,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(i, func() (hm.Type, error) {
-		mod, ok := env.(Env)
+		mod, ok := env.(TypeScope)
 		if !ok {
 			return nil, fmt.Errorf("InterfaceDecl.Infer: environment does not support module operations")
 		}
@@ -1223,9 +1223,9 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		}
 
 		// Infer the interface fields using composite environment
-		inferEnv := &CompositeModule{
+		inferEnv := &CompositeTypeDef{
 			primary: iface,
-			lexical: env.(Env),
+			lexical: env.(TypeScope),
 		}
 
 		// Use phased inference approach (like ObjectDecl) to avoid environment cloning
@@ -1233,7 +1233,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 
-		i.Inferred = iface.(*Module)
+		i.Inferred = iface.(*TypeDef)
 		i.SetInferredType(iface)
 
 		// Validate parent interface field compatibility once this interface's
@@ -1258,13 +1258,13 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 // validateInterfaceExtension checks that a child interface satisfies every
 // field declared by a parent interface it claims to implement.
-func validateInterfaceExtension(child *Module, env Env, parentSym *Symbol) error {
+func validateInterfaceExtension(child *TypeDef, env TypeScope, parentSym *Symbol) error {
 	parentType, found := env.NamedType(parentSym.Name)
 	if !found {
 		// Already raised in Hoist
 		return nil
 	}
-	parentMod, ok := parentType.(*Module)
+	parentMod, ok := parentType.(*TypeDef)
 	if !ok || parentMod.Kind != InterfaceKind {
 		return nil
 	}
@@ -1298,10 +1298,10 @@ func validateInterfaceExtension(child *Module, env Env, parentSym *Symbol) error
 	return nil
 }
 
-func (i *InterfaceDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (i *InterfaceDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
 	// Just register the interface module in the environment
-	interfaceModule := NewModuleValue(i.Inferred)
+	interfaceModule := NewObject(i.Inferred)
 	env.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
@@ -1324,7 +1324,7 @@ type UnionDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred *Module
+	Inferred *TypeDef
 }
 
 var _ Node = &UnionDecl{}
@@ -1348,7 +1348,7 @@ func (u *UnionDecl) Body() hm.Expression { return nil }
 func (u *UnionDecl) GetSourceLocation() *SourceLocation { return u.Loc }
 
 func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	mod, ok := env.(Env)
+	mod, ok := env.(TypeScope)
 	if !ok {
 		return fmt.Errorf("UnionDecl.Hoist: environment does not support module operations")
 	}
@@ -1377,7 +1377,7 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 			continue
 		}
 
-		memberMod, ok := memberType.(*Module)
+		memberMod, ok := memberType.(*TypeDef)
 		if !ok || memberMod.Kind != ObjectKind {
 			continue
 		}
@@ -1394,7 +1394,7 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 
 func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(u, func() (hm.Type, error) {
-		mod, ok := env.(Env)
+		mod, ok := env.(TypeScope)
 		if !ok {
 			return nil, fmt.Errorf("UnionDecl.Infer: environment does not support module operations")
 		}
@@ -1404,7 +1404,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			return nil, fmt.Errorf("union %s not found", u.Name.Name)
 		}
 
-		unionMod := unionType.(*Module)
+		unionMod := unionType.(*TypeDef)
 
 		// Resolve and link each member type
 		for _, memberSym := range u.Members {
@@ -1416,7 +1416,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 				)
 			}
 
-			memberMod, ok := memberType.(*Module)
+			memberMod, ok := memberType.(*TypeDef)
 			if !ok {
 				return nil, NewInferError(
 					fmt.Errorf("union member %s is not a type", memberSym.Name),
@@ -1450,9 +1450,9 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	})
 }
 
-func (u *UnionDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (u *UnionDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Unions are pure type declarations - register the union module
-	unionModule := NewModuleValue(u.Inferred)
+	unionModule := NewObject(u.Inferred)
 	env.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }

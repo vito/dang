@@ -126,7 +126,7 @@ type RaisedError struct {
 }
 
 func (r *RaisedError) Error() string {
-	if mv, ok := r.Value.(*ModuleValue); ok {
+	if mv, ok := r.Value.(*Object); ok {
 		if msg, found := mv.lookupValue("message"); found {
 			return msg.String()
 		}
@@ -134,7 +134,7 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
-func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (t *TryCatch) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
 		val, err := EvalNode(ctx, env, t.TryBody)
 		if err == nil {
@@ -192,8 +192,8 @@ func extractErrorValue(err error) Value {
 
 // newBasicError creates a *ModuleValue of type BasicError with the given
 // message.
-func newBasicError(message string) *ModuleValue {
-	mv := NewModuleValue(BasicErrorType)
+func newBasicError(message string) *Object {
+	mv := NewObject(BasicErrorType)
 	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
 	return mv
 }
@@ -259,7 +259,7 @@ func (r *Raise) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (r *Raise) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	val, err := EvalNode(ctx, env, r.Value)
 	if err != nil {
 		return nil, err
@@ -271,7 +271,7 @@ func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			Value:    newBasicError(v.Val),
 			Location: r.Loc,
 		}
-	case *ModuleValue:
+	case *Object:
 		return nil, &RaisedError{Value: v, Location: r.Loc}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)

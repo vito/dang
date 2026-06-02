@@ -4,7 +4,7 @@ import "github.com/vito/dang/pkg/hm"
 
 const importedBindingVisibility = PrivateVisibility
 
-func installImportedTypeEnvironment(parentEnv Env, importName string, schemaModule Env) {
+func installImportedTypeEnvironment(parentEnv TypeScope, importName string, schemaModule TypeScope) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
 	parentEnv.AddObject(importName, schemaModule)
@@ -16,23 +16,23 @@ func installImportedTypeEnvironment(parentEnv Env, importName string, schemaModu
 	installUnqualifiedImportSymbols(parentEnv, schemaModule, importName)
 }
 
-func installUnqualifiedImportSymbols(parentEnv Env, schemaModule Env, importName string) {
+func installUnqualifiedImportSymbols(parentEnv TypeScope, schemaModule TypeScope, importName string) {
 	installUnqualifiedImportValuesForInference(parentEnv, schemaModule, importName)
 
-	if mod, ok := schemaModule.(*CompositeModule); ok {
-		if primaryMod, ok := mod.primary.(*Module); ok {
+	if mod, ok := schemaModule.(*CompositeTypeDef); ok {
+		if primaryMod, ok := mod.primary.(*TypeDef); ok {
 			installUnqualifiedImportTypesFromModule(parentEnv, primaryMod, importName)
 			installUnqualifiedImportDirectivesFromModule(parentEnv, primaryMod, importName)
 		}
 		return
 	}
-	if mod, ok := schemaModule.(*Module); ok {
+	if mod, ok := schemaModule.(*TypeDef); ok {
 		installUnqualifiedImportTypesFromModule(parentEnv, mod, importName)
 		installUnqualifiedImportDirectivesFromModule(parentEnv, mod, importName)
 	}
 }
 
-func installUnqualifiedImportValuesForInference(parentEnv Env, schemaModule Env, importName string) {
+func installUnqualifiedImportValuesForInference(parentEnv TypeScope, schemaModule TypeScope, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for name, scheme := range schemaModule.Bindings(PublicVisibility) {
 		if name == importName {
@@ -52,7 +52,7 @@ func installUnqualifiedImportValuesForInference(parentEnv Env, schemaModule Env,
 	}
 }
 
-func installUnqualifiedImportTypesFromModule(parentEnv Env, mod *Module, importName string) {
+func installUnqualifiedImportTypesFromModule(parentEnv TypeScope, mod *TypeDef, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for name, object := range mod.objects {
 		if name == importName {
@@ -69,13 +69,13 @@ func installUnqualifiedImportTypesFromModule(parentEnv Env, mod *Module, importN
 		parentEnv.AddObject(name, object)
 		parentEnv.SetTypeOrigin(name, origin)
 
-		if enumMod, ok := object.(*Module); ok && enumMod.Kind == EnumKind {
+		if enumMod, ok := object.(*TypeDef); ok && enumMod.Kind == EnumKind {
 			installUnqualifiedImportEnumValuesForInference(parentEnv, enumMod, importName)
 		}
 	}
 }
 
-func installUnqualifiedImportEnumValuesForInference(parentEnv Env, enumMod *Module, importName string) {
+func installUnqualifiedImportEnumValuesForInference(parentEnv TypeScope, enumMod *TypeDef, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
 		if _, exists := parentEnv.LocalSchemeOf(enumValName); exists {
@@ -91,7 +91,7 @@ func installUnqualifiedImportEnumValuesForInference(parentEnv Env, enumMod *Modu
 	}
 }
 
-func installUnqualifiedImportDirectivesFromModule(parentEnv Env, mod *Module, importName string) {
+func installUnqualifiedImportDirectivesFromModule(parentEnv TypeScope, mod *TypeDef, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for directiveName, directive := range mod.directives {
 		if _, exists := parentEnv.GetDirective(directiveName); exists {
@@ -106,7 +106,7 @@ func installUnqualifiedImportDirectivesFromModule(parentEnv Env, mod *Module, im
 	}
 }
 
-func installImportedEvalEnvironment(parentEnv EvalEnv, importName string, moduleEnv EvalEnv) {
+func installImportedEvalEnvironment(parentEnv ValueScope, importName string, moduleEnv ValueScope) {
 	// Binding origins live on the type environment and are established during
 	// inference. Evaluation only populates runtime values; mutating origins here
 	// can clobber local declarations and races with shared/static type modules.
@@ -115,7 +115,7 @@ func installImportedEvalEnvironment(parentEnv EvalEnv, importName string, module
 	installUnqualifiedImportValues(parentEnv, moduleEnv, importName)
 }
 
-func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, importName string) {
+func installUnqualifiedImportValues(parentEnv ValueScope, moduleEnv ValueScope, importName string) {
 	for _, binding := range moduleEnv.Bindings(PublicVisibility) {
 		name := binding.Key
 		value := binding.Value
@@ -129,15 +129,15 @@ func installUnqualifiedImportValues(parentEnv EvalEnv, moduleEnv EvalEnv, import
 
 		parentEnv.Bind(name, value, importedBindingVisibility)
 
-		if enumModuleVal, ok := value.(*ModuleValue); ok {
-			if mod, ok := enumModuleVal.Mod.(*Module); ok && mod.Kind == EnumKind {
+		if enumModuleVal, ok := value.(*Object); ok {
+			if mod, ok := enumModuleVal.Mod.(*TypeDef); ok && mod.Kind == EnumKind {
 				installUnqualifiedImportEnumValues(parentEnv, enumModuleVal)
 			}
 		}
 	}
 }
 
-func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *ModuleValue) {
+func installUnqualifiedImportEnumValues(parentEnv ValueScope, enumModuleVal *Object) {
 	for _, enumBinding := range enumModuleVal.Bindings(PublicVisibility) {
 		enumValName := enumBinding.Key
 		enumVal := enumBinding.Value
@@ -150,34 +150,34 @@ func installUnqualifiedImportEnumValues(parentEnv EvalEnv, enumModuleVal *Module
 	}
 }
 
-func localTypeBindingIsUnqualifiedImport(env Env, name string) bool {
+func localTypeBindingIsUnqualifiedImport(env TypeScope, name string) bool {
 	origin, found := env.LocalTypeOrigin(name)
 	return found && origin.IsUnqualifiedImport()
 }
 
-func localValueBindingIsUnqualifiedImport(env Env, name string) bool {
+func localValueBindingIsUnqualifiedImport(env TypeScope, name string) bool {
 	origin, found := env.LocalValueOrigin(name)
 	return found && origin.IsUnqualifiedImport()
 }
 
-func localDirectiveBindingIsUnqualifiedImport(env Env, name string) bool {
+func localDirectiveBindingIsUnqualifiedImport(env TypeScope, name string) bool {
 	origin, found := env.LocalDirectiveOrigin(name)
 	return found && origin.IsUnqualifiedImport()
 }
 
-func addTypeImportProvider(env Env, name, importName string) {
+func addTypeImportProvider(env TypeScope, name, importName string) {
 	if origin, found := env.LocalTypeOrigin(name); found {
 		env.SetTypeOrigin(name, origin.AddImportProvider(importName))
 	}
 }
 
-func addValueImportProvider(env Env, name, importName string) {
+func addValueImportProvider(env TypeScope, name, importName string) {
 	if origin, found := env.LocalValueOrigin(name); found {
 		env.SetValueOrigin(name, origin.AddImportProvider(importName))
 	}
 }
 
-func addDirectiveImportProvider(env Env, name, importName string) {
+func addDirectiveImportProvider(env TypeScope, name, importName string) {
 	if origin, found := env.LocalDirectiveOrigin(name); found {
 		env.SetDirectiveOrigin(name, origin.AddImportProvider(importName))
 	}

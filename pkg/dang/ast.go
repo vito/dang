@@ -122,7 +122,7 @@ func hasZeroRequiredArgs(field *introspection.Field) bool {
 }
 
 // autoCallFn calls a zero-arity function with empty arguments
-func autoCallFn(ctx context.Context, env EvalEnv, val Value) (Value, error) {
+func autoCallFn(ctx context.Context, env ValueScope, val Value) (Value, error) {
 	// Create a FunCall with empty arguments and delegate to FunCall.Eval
 	emptyRecord := Record{}
 	funCall := FunCall{
@@ -161,7 +161,7 @@ func inferNodeWithoutAutoCall(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	}
 }
 
-func evalNodeWithoutAutoCall(ctx context.Context, env EvalEnv, node Node) (Value, error) {
+func evalNodeWithoutAutoCall(ctx context.Context, env ValueScope, node Node) (Value, error) {
 	switch n := node.(type) {
 	case *Symbol:
 		prev := n.AutoCall
@@ -205,7 +205,7 @@ func (v *ValueNode) GetSourceLocation() *SourceLocation { return v.Loc }
 func (v *ValueNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return v.Val.Type(), nil
 }
-func (v *ValueNode) Eval(ctx context.Context, env EvalEnv) (Value, error) { return v.Val, nil }
+func (v *ValueNode) Eval(ctx context.Context, env ValueScope) (Value, error) { return v.Val, nil }
 
 func (v *ValueNode) Walk(fn func(Node) bool) {
 	fn(v)
@@ -311,13 +311,13 @@ func isTruthy(val Value) bool {
 	}
 }
 
-// CompositeEnv combines two evaluation environments for variable resolution
-type CompositeEnv struct {
-	primary EvalEnv // Where new bindings go (the reopened module)
-	lexical EvalEnv // Where to look for external variables (current environment)
+// ReopenScope combines two evaluation environments for variable resolution
+type ReopenScope struct {
+	primary ValueScope // Where new bindings go (the reopened module)
+	lexical ValueScope // Where to look for external variables (current environment)
 }
 
-func (c CompositeEnv) Lookup(ctx context.Context, name string) (Value, bool, error) {
+func (c ReopenScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	// First check the primary environment (receiver/parameters)
 	// This allows parameters and receiver fields to shadow lexical scope
 	if val, found, err := c.primary.Lookup(ctx, name); err != nil {
@@ -329,19 +329,19 @@ func (c CompositeEnv) Lookup(ctx context.Context, name string) (Value, bool, err
 	return c.lexical.Lookup(ctx, name)
 }
 
-func (c CompositeEnv) Has(name string) bool {
+func (c ReopenScope) Has(name string) bool {
 	return c.primary.Has(name) || c.lexical.Has(name)
 }
 
-func (c CompositeEnv) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+func (c ReopenScope) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
 	c.primary.BindLazy(name, init, visibility)
 }
 
-func (c CompositeEnv) LookupLocal(name string) (Value, bool) {
+func (c ReopenScope) LookupLocal(name string) (Value, bool) {
 	return c.primary.LookupLocal(name)
 }
 
-func (c CompositeEnv) Bindings(vis Visibility) []Keyed[Value] {
+func (c ReopenScope) Bindings(vis Visibility) []Keyed[Value] {
 	var bs []Keyed[Value]
 	seen := map[string]bool{}
 	for _, kv := range c.primary.Bindings(vis) {
@@ -359,86 +359,86 @@ func (c CompositeEnv) Bindings(vis Visibility) []Keyed[Value] {
 
 // MarshalJSON implements json.Marshaler for ModuleValue
 // Includes private fields, so that state can be retained
-func (m CompositeEnv) MarshalJSON() ([]byte, error) {
+func (m ReopenScope) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.primary)
 }
 
-var _ Value = CompositeEnv{}
+var _ Value = ReopenScope{}
 
-func (c CompositeEnv) String() string {
+func (c ReopenScope) String() string {
 	return fmt.Sprintf("CompositeEnv{primary: %v, lexical: %v}", c.primary, c.lexical)
 }
 
-func (c CompositeEnv) Type() hm.Type {
+func (c ReopenScope) Type() hm.Type {
 	return c.primary.Type()
 }
 
-func (c CompositeEnv) Bind(name string, value Value, visibility Visibility) {
+func (c ReopenScope) Bind(name string, value Value, visibility Visibility) {
 	// All new bindings go to the primary environment (copy-on-write semantics)
 	c.primary.Bind(name, value, visibility)
 }
 
-func (c CompositeEnv) Update(name string, value Value) {
+func (c ReopenScope) Update(name string, value Value) {
 	// Delegate to the primary environment for scoping logic
 	c.primary.Update(name, value)
 }
 
-func (c CompositeEnv) Visibility(name string) Visibility {
+func (c ReopenScope) Visibility(name string) Visibility {
 	// Speculative: don't fall back to lexical, we should consider that always private?
 	return c.primary.Visibility(name)
 }
 
-func (c CompositeEnv) Derive(sealed bool) EvalEnv {
+func (c ReopenScope) Derive(sealed bool) ValueScope {
 	// Derive the primary environment and keep the same lexical environment
-	return CompositeEnv{
+	return ReopenScope{
 		primary: c.primary.Derive(sealed),
 		lexical: c.lexical,
 	}
 }
 
 // Self returns the dynamic scope from the primary environment
-func (c CompositeEnv) Self() (Value, bool) {
+func (c ReopenScope) Self() (Value, bool) {
 	return c.primary.Self()
 }
 
 // MutateSelf sets the dynamic scope in the primary environment
-func (c CompositeEnv) MutateSelf(value Value) {
+func (c ReopenScope) MutateSelf(value Value) {
 	c.primary.MutateSelf(value)
 }
 
 // EnterSelf creates a fresh dynamic scope cell in the primary environment
-func (c CompositeEnv) EnterSelf(value Value) {
+func (c ReopenScope) EnterSelf(value Value) {
 	c.primary.EnterSelf(value)
 }
 
-// CreateCompositeEnv creates a composite environment for reopening
-func CreateCompositeEnv(reopenedEnv EvalEnv, currentEnv EvalEnv) CompositeEnv {
-	return CompositeEnv{
+// CreateReopenScope creates a composite environment for reopening
+func CreateReopenScope(reopenedEnv ValueScope, currentEnv ValueScope) ReopenScope {
+	return ReopenScope{
 		primary: reopenedEnv,
 		lexical: currentEnv,
 	}
 }
 
-// ConstructorEnv is a specialized environment for new() constructor bodies.
+// ConstructorScope is a specialized environment for new() constructor bodies.
 // Reads check constructor args first (shadowing fields and outer scope),
 // while writes go to the instance so bare assignments like `x = val` work.
-type ConstructorEnv struct {
-	instance EvalEnv // Object instance (target for writes)
-	args     EvalEnv // Constructor arguments (shadow everything on reads)
-	closure  EvalEnv // Lexical closure (outer scope)
+type ConstructorScope struct {
+	instance ValueScope // Object instance (target for writes)
+	args     ValueScope // Constructor arguments (shadow everything on reads)
+	closure  ValueScope // Lexical closure (outer scope)
 
 	dynamicScope *DynamicScope
 }
 
-func CreateConstructorEnv(instance EvalEnv, args EvalEnv, closure EvalEnv) *ConstructorEnv {
-	return &ConstructorEnv{
+func CreateConstructorScope(instance ValueScope, args ValueScope, closure ValueScope) *ConstructorScope {
+	return &ConstructorScope{
 		instance: instance,
 		args:     args,
 		closure:  closure,
 	}
 }
 
-func (e *ConstructorEnv) Lookup(ctx context.Context, name string) (Value, bool, error) {
+func (e *ConstructorScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	// Constructor args shadow everything
 	if val, found, err := e.args.Lookup(ctx, name); err != nil {
 		return nil, found, err
@@ -455,19 +455,19 @@ func (e *ConstructorEnv) Lookup(ctx context.Context, name string) (Value, bool, 
 	return e.closure.Lookup(ctx, name)
 }
 
-func (e *ConstructorEnv) Has(name string) bool {
+func (e *ConstructorScope) Has(name string) bool {
 	return e.args.Has(name) || e.instance.Has(name) || e.closure.Has(name)
 }
 
-func (e *ConstructorEnv) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+func (e *ConstructorScope) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
 	e.instance.BindLazy(name, init, visibility)
 }
 
-func (e *ConstructorEnv) LookupLocal(name string) (Value, bool) {
+func (e *ConstructorScope) LookupLocal(name string) (Value, bool) {
 	return e.instance.LookupLocal(name)
 }
 
-func (e *ConstructorEnv) Bindings(vis Visibility) []Keyed[Value] {
+func (e *ConstructorScope) Bindings(vis Visibility) []Keyed[Value] {
 	var bs []Keyed[Value]
 	seen := map[string]bool{}
 	for _, kv := range e.args.Bindings(vis) {
@@ -488,15 +488,15 @@ func (e *ConstructorEnv) Bindings(vis Visibility) []Keyed[Value] {
 	return bs
 }
 
-func (e *ConstructorEnv) MarshalJSON() ([]byte, error) {
+func (e *ConstructorScope) MarshalJSON() ([]byte, error) {
 	return json.Marshal(e.instance)
 }
 
-func (e *ConstructorEnv) Bind(name string, value Value, visibility Visibility) {
+func (e *ConstructorScope) Bind(name string, value Value, visibility Visibility) {
 	e.instance.Bind(name, value, visibility)
 }
 
-func (e *ConstructorEnv) Update(name string, value Value) {
+func (e *ConstructorScope) Update(name string, value Value) {
 	// If the name is a constructor arg, reassign there so that
 	// subsequent reads (which check args first) see the new value.
 	if e.args.Has(name) {
@@ -507,12 +507,12 @@ func (e *ConstructorEnv) Update(name string, value Value) {
 	e.instance.Update(name, value)
 }
 
-func (e *ConstructorEnv) Visibility(name string) Visibility {
+func (e *ConstructorScope) Visibility(name string) Visibility {
 	return e.instance.Visibility(name)
 }
 
-func (e *ConstructorEnv) Derive(sealed bool) EvalEnv {
-	return &ConstructorEnv{
+func (e *ConstructorScope) Derive(sealed bool) ValueScope {
+	return &ConstructorScope{
 		instance:     e.instance.Derive(sealed),
 		args:         e.args,
 		closure:      e.closure,
@@ -520,14 +520,14 @@ func (e *ConstructorEnv) Derive(sealed bool) EvalEnv {
 	}
 }
 
-func (e *ConstructorEnv) Self() (Value, bool) {
+func (e *ConstructorScope) Self() (Value, bool) {
 	if e.dynamicScope != nil && e.dynamicScope.Value != nil {
 		return e.dynamicScope.Value, true
 	}
 	return nil, false
 }
 
-func (e *ConstructorEnv) MutateSelf(value Value) {
+func (e *ConstructorScope) MutateSelf(value Value) {
 	if e.dynamicScope != nil {
 		e.dynamicScope.Value = value
 	} else {
@@ -535,25 +535,25 @@ func (e *ConstructorEnv) MutateSelf(value Value) {
 	}
 }
 
-func (e *ConstructorEnv) EnterSelf(value Value) {
+func (e *ConstructorScope) EnterSelf(value Value) {
 	e.dynamicScope = &DynamicScope{Value: value}
 }
 
-func (e *ConstructorEnv) Type() hm.Type {
+func (e *ConstructorScope) Type() hm.Type {
 	return e.instance.Type()
 }
 
-func (e *ConstructorEnv) String() string {
+func (e *ConstructorScope) String() string {
 	return fmt.Sprintf("ConstructorEnv(%s)", e.instance)
 }
 
-// CompositeModule combines two type environments for Reopen type inference
-type CompositeModule struct {
-	primary Env // The reopened module (where new bindings go)
-	lexical Env // Current lexical scope (for variable lookups)
+// CompositeTypeDef combines two type environments for Reopen type inference
+type CompositeTypeDef struct {
+	primary TypeScope // The reopened module (where new bindings go)
+	lexical TypeScope // Current lexical scope (for variable lookups)
 }
 
-func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
+func (c *CompositeTypeDef) SchemeOf(name string) (*hm.Scheme, bool) {
 	// First check the primary environment (reopened module/object fields)
 	// This allows object fields to have precedence over outer scope variables
 	if scheme, found := c.primary.SchemeOf(name); found {
@@ -563,40 +563,40 @@ func (c *CompositeModule) SchemeOf(name string) (*hm.Scheme, bool) {
 	return c.lexical.SchemeOf(name)
 }
 
-func (c *CompositeModule) LocalSchemeOf(name string) (*hm.Scheme, bool) {
+func (c *CompositeTypeDef) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 	// For CompositeModule, local scope is the primary environment (the reopened module)
 	return c.primary.LocalSchemeOf(name)
 }
 
-func (c *CompositeModule) Clone() hm.Env {
-	return &CompositeModule{
-		primary: c.primary.Clone().(Env),
+func (c *CompositeTypeDef) Clone() hm.Env {
+	return &CompositeTypeDef{
+		primary: c.primary.Clone().(TypeScope),
 		lexical: c.lexical, // Keep same lexical environment
 	}
 }
 
-func (c *CompositeModule) Add(name string, scheme *hm.Scheme) hm.Env {
+func (c *CompositeTypeDef) Add(name string, scheme *hm.Scheme) hm.Env {
 	c.primary.Add(name, scheme)
 	return c
 }
 
-func (c *CompositeModule) SetValueOrigin(name string, origin BindingOrigin) {
+func (c *CompositeTypeDef) SetValueOrigin(name string, origin BindingOrigin) {
 	c.primary.SetValueOrigin(name, origin)
 }
 
-func (c *CompositeModule) LocalValueOrigin(name string) (BindingOrigin, bool) {
+func (c *CompositeTypeDef) LocalValueOrigin(name string) (BindingOrigin, bool) {
 	return c.primary.LocalValueOrigin(name)
 }
 
-func (c *CompositeModule) SetVisibility(name string, visibility Visibility) {
+func (c *CompositeTypeDef) SetVisibility(name string, visibility Visibility) {
 	c.primary.SetVisibility(name, visibility)
 }
 
-func (c *CompositeModule) SetDocString(name string, doc string) {
+func (c *CompositeTypeDef) SetDocString(name string, doc string) {
 	c.primary.SetDocString(name, doc)
 }
 
-func (c *CompositeModule) GetDocString(name string) (string, bool) {
+func (c *CompositeTypeDef) GetDocString(name string) (string, bool) {
 	// First check the primary environment (reopened module)
 	if doc, found := c.primary.GetDocString(name); found {
 		return doc, true
@@ -605,43 +605,43 @@ func (c *CompositeModule) GetDocString(name string) (string, bool) {
 	return c.lexical.GetDocString(name)
 }
 
-func (c *CompositeModule) SetDirectives(name string, directives []*DirectiveApplication) {
+func (c *CompositeTypeDef) SetDirectives(name string, directives []*DirectiveApplication) {
 	c.primary.SetDirectives(name, directives)
 }
 
-func (c *CompositeModule) GetDirectives(name string) []*DirectiveApplication {
+func (c *CompositeTypeDef) GetDirectives(name string) []*DirectiveApplication {
 	// This is a bit naive, but I'd rather wait until it becomes a problem so I
 	// can understand the use case
 	return append(c.primary.GetDirectives(name), c.lexical.GetDirectives(name)...)
 }
 
-func (c *CompositeModule) SetModuleDocString(doc string) {
+func (c *CompositeTypeDef) SetModuleDocString(doc string) {
 	c.primary.SetModuleDocString(doc)
 }
 
-func (c *CompositeModule) GetModuleDocString() string {
+func (c *CompositeTypeDef) GetModuleDocString() string {
 	return c.primary.GetModuleDocString()
 }
 
-func (c *CompositeModule) Remove(name string) hm.Env {
+func (c *CompositeTypeDef) Remove(name string) hm.Env {
 	c.primary.Remove(name)
 	return c
 }
 
-func (c *CompositeModule) Apply(subs hm.Subs) hm.Substitutable {
-	return &CompositeModule{
-		primary: c.primary.Apply(subs).(Env),
-		lexical: c.lexical.Apply(subs).(Env),
+func (c *CompositeTypeDef) Apply(subs hm.Subs) hm.Substitutable {
+	return &CompositeTypeDef{
+		primary: c.primary.Apply(subs).(TypeScope),
+		lexical: c.lexical.Apply(subs).(TypeScope),
 	}
 }
 
-func (c *CompositeModule) FreeTypeVar() hm.TypeVarSet {
+func (c *CompositeTypeDef) FreeTypeVar() hm.TypeVarSet {
 	primaryVars := c.primary.FreeTypeVar()
 	lexicalVars := c.lexical.FreeTypeVar()
 	return primaryVars.Union(lexicalVars)
 }
 
-func (c *CompositeModule) GetDynamicScopeType() hm.Type {
+func (c *CompositeTypeDef) GetDynamicScopeType() hm.Type {
 	// First check primary (object/module being inferred)
 	if t := c.primary.GetDynamicScopeType(); t != nil {
 		return t
@@ -650,21 +650,21 @@ func (c *CompositeModule) GetDynamicScopeType() hm.Type {
 	return c.lexical.GetDynamicScopeType()
 }
 
-func (c *CompositeModule) SetDynamicScopeType(t hm.Type) {
+func (c *CompositeTypeDef) SetDynamicScopeType(t hm.Type) {
 	c.primary.SetDynamicScopeType(t)
 }
 
-var _ Env = &CompositeModule{}
+var _ TypeScope = &CompositeTypeDef{}
 
-func (t *CompositeModule) Eq(other Type) bool                         { return other == t }
-func (t *CompositeModule) Name() string                               { return t.primary.Name() }
-func (t *CompositeModule) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
-func (t *CompositeModule) Types() hm.Types                            { return nil }
-func (t *CompositeModule) Supertypes() []Type                         { return t.primary.Supertypes() }
-func (t *CompositeModule) String() string                             { return t.primary.String() }
+func (t *CompositeTypeDef) Eq(other Type) bool                         { return other == t }
+func (t *CompositeTypeDef) Name() string                               { return t.primary.Name() }
+func (t *CompositeTypeDef) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
+func (t *CompositeTypeDef) Types() hm.Types                            { return nil }
+func (t *CompositeTypeDef) Supertypes() []Type                         { return t.primary.Supertypes() }
+func (t *CompositeTypeDef) String() string                             { return t.primary.String() }
 
 // NamedType looks up object types, needed for NamedTypeNode.Infer compatibility
-func (c *CompositeModule) NamedType(name string) (Env, bool) {
+func (c *CompositeTypeDef) NamedType(name string) (TypeScope, bool) {
 	// First check the primary environment (reopened module)
 	if t, found := c.primary.NamedType(name); found {
 		return t, true
@@ -673,12 +673,12 @@ func (c *CompositeModule) NamedType(name string) (Env, bool) {
 	return c.lexical.NamedType(name)
 }
 
-func (c *CompositeModule) LocalNamedType(name string) (Env, bool) {
+func (c *CompositeTypeDef) LocalNamedType(name string) (TypeScope, bool) {
 	return c.primary.LocalNamedType(name)
 }
 
-func (c *CompositeModule) NamedTypes() iter.Seq2[string, Env] {
-	return func(yield func(string, Env) bool) {
+func (c *CompositeTypeDef) NamedTypes() iter.Seq2[string, TypeScope] {
+	return func(yield func(string, TypeScope) bool) {
 		seen := map[string]bool{}
 		for name, env := range c.primary.NamedTypes() {
 			seen[name] = true
@@ -697,20 +697,20 @@ func (c *CompositeModule) NamedTypes() iter.Seq2[string, Env] {
 }
 
 // AddObject adds a object type to the primary environment
-func (c *CompositeModule) AddObject(name string, object Env) {
+func (c *CompositeTypeDef) AddObject(name string, object TypeScope) {
 	c.primary.AddObject(name, object)
 }
 
-func (c *CompositeModule) SetTypeOrigin(name string, origin BindingOrigin) {
+func (c *CompositeTypeDef) SetTypeOrigin(name string, origin BindingOrigin) {
 	c.primary.SetTypeOrigin(name, origin)
 }
 
-func (c *CompositeModule) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+func (c *CompositeTypeDef) LocalTypeOrigin(name string) (BindingOrigin, bool) {
 	return c.primary.LocalTypeOrigin(name)
 }
 
 // CheckTypeConflict delegates to the primary module
-func (c *CompositeModule) CheckTypeConflict(symbolName string) []string {
+func (c *CompositeTypeDef) CheckTypeConflict(symbolName string) []string {
 	imports := c.primary.CheckTypeConflict(symbolName)
 	// Fall back to lexical scope if primary isn't a Module
 	for _, importer := range c.lexical.CheckTypeConflict(symbolName) {
@@ -722,7 +722,7 @@ func (c *CompositeModule) CheckTypeConflict(symbolName string) []string {
 }
 
 // CheckValueConflict delegates to the primary module
-func (c *CompositeModule) CheckValueConflict(symbolName string) []string {
+func (c *CompositeTypeDef) CheckValueConflict(symbolName string) []string {
 	imports := c.primary.CheckValueConflict(symbolName)
 	// Fall back to lexical scope if primary isn't a Module
 	for _, importer := range c.lexical.CheckValueConflict(symbolName) {
@@ -734,7 +734,7 @@ func (c *CompositeModule) CheckValueConflict(symbolName string) []string {
 }
 
 // CheckDirectiveConflict delegates to the primary module
-func (c *CompositeModule) CheckDirectiveConflict(directiveName string) []string {
+func (c *CompositeTypeDef) CheckDirectiveConflict(directiveName string) []string {
 	imports := c.primary.CheckDirectiveConflict(directiveName)
 	// Fall back to lexical scope if primary isn't a Module
 	for _, importer := range c.lexical.CheckDirectiveConflict(directiveName) {
@@ -746,20 +746,20 @@ func (c *CompositeModule) CheckDirectiveConflict(directiveName string) []string 
 }
 
 // AddDirective adds a directive to the primary environment
-func (c *CompositeModule) AddDirective(name string, directive *DirectiveDecl) {
+func (c *CompositeTypeDef) AddDirective(name string, directive *DirectiveDecl) {
 	c.primary.AddDirective(name, directive)
 }
 
-func (c *CompositeModule) SetDirectiveOrigin(name string, origin BindingOrigin) {
+func (c *CompositeTypeDef) SetDirectiveOrigin(name string, origin BindingOrigin) {
 	c.primary.SetDirectiveOrigin(name, origin)
 }
 
-func (c *CompositeModule) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+func (c *CompositeTypeDef) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
 	return c.primary.LocalDirectiveOrigin(name)
 }
 
 // GetDirective gets a directive from either environment
-func (c *CompositeModule) GetDirective(name string) (*DirectiveDecl, bool) {
+func (c *CompositeTypeDef) GetDirective(name string) (*DirectiveDecl, bool) {
 	// First check the primary environment (reopened module)
 	if directive, found := c.primary.GetDirective(name); found {
 		return directive, true
@@ -770,7 +770,7 @@ func (c *CompositeModule) GetDirective(name string) (*DirectiveDecl, bool) {
 
 // Bindings iterates over the primary and lexical bindings, with the primary
 // bindings shadowing the lexical ones
-func (c *CompositeModule) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
+func (c *CompositeTypeDef) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
 	return func(yield func(key string, val *hm.Scheme) bool) {
 		seen := map[string]bool{}
 		for k, v := range c.primary.Bindings(visibility) {

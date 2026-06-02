@@ -68,7 +68,7 @@ interface Thing {
 }
 
 func TestFormatPublicTypeShape(t *testing.T) {
-	iface := dang.NewModule("Thing", dang.InterfaceKind)
+	iface := dang.NewTypeDef("Thing", dang.InterfaceKind)
 	iface.SetModuleDocString("A GraphQL-loaded interface.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
@@ -105,7 +105,7 @@ func TestFormatPublicTypeShape(t *testing.T) {
 }
 
 func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
-	iface := dang.NewModule("Thing", dang.InterfaceKind)
+	iface := dang.NewTypeDef("Thing", dang.InterfaceKind)
 	iface.SetModuleDocString("Loaded from GraphQL.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
@@ -127,7 +127,7 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 }
 
 func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
-	imported := dang.NewModule("ServerInfo", dang.ObjectKind)
+	imported := dang.NewTypeDef("ServerInfo", dang.ObjectKind)
 	imported.SetModuleDocString("Imported GraphQL type.")
 	imported.Add("version", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
@@ -135,7 +135,7 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	)))
 	imported.SetVisibility("version", dang.PublicVisibility)
 
-	local := dang.NewModule("ServerInfo", dang.ObjectKind)
+	local := dang.NewTypeDef("ServerInfo", dang.ObjectKind)
 	local.Add("localOnly", hm.NewScheme(nil, hm.NonNullType{Type: dang.IntType}))
 	local.SetVisibility("localOnly", dang.PublicVisibility)
 

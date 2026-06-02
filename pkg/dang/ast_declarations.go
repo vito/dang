@@ -21,7 +21,7 @@ type FunctionBase struct {
 
 	Inferred *hm.FunctionType
 
-	InferredScope Env
+	InferredScope TypeScope
 
 	// ExpectedReturnType is set by checkArgumentType for bidirectional type inference
 	ExpectedReturnType hm.Type
@@ -95,7 +95,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	newEnv := env.Clone()
 	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 
-	if dangEnv, ok := newEnv.(Env); ok {
+	if dangEnv, ok := newEnv.(TypeScope); ok {
 		f.InferredScope = dangEnv
 	}
 
@@ -140,7 +140,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 }
 
 // createFunctionValue creates a FunctionValue from processed arguments
-func (f *FunctionBase) createFunctionValue(env EvalEnv, fnType *hm.FunctionType) FunctionValue {
+func (f *FunctionBase) createFunctionValue(env ValueScope, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
 	defaults := make(map[string]Node)
 
@@ -179,7 +179,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	functionCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Assign early so we can still use partial inference results.
-	f.InferredScope = newEnv.(Env)
+	f.InferredScope = newEnv.(TypeScope)
 
 	// Process arguments using shared logic. Defaults are evaluated at function
 	// call time, so they must not inherit the caller's return/break/continue targets.
@@ -260,7 +260,7 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 }
 
 // Eval provides shared evaluation logic for functions
-func (f *FunctionBase) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (f *FunctionBase) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	if f.Inferred == nil {
 		return nil, fmt.Errorf("%v.Eval: function type not inferred", f)
 	}
@@ -304,7 +304,7 @@ func (f *FunDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass 
 			return err
 		}
 		env.Add(f.Named, hm.NewScheme(nil, fnType))
-		if e, ok := env.(Env); ok {
+		if e, ok := env.(TypeScope); ok {
 			e.SetVisibility(f.Named, f.Visibility)
 			if len(f.Directives) > 0 {
 				e.SetDirectives(f.Named, f.Directives)
@@ -438,7 +438,7 @@ func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.En
 	)
 }
 
-func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (r *Reassignment) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, r, func() (Value, error) {
 		// Evaluate the value first. r.Value is wrapped in a Coerce by
 		// Reassignment.Infer (for `=` assignments), so materialization
@@ -464,7 +464,7 @@ func (r *Reassignment) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, varName string, value Value) (Value, error) {
+func (r *Reassignment) evalVariableAssignment(ctx context.Context, env ValueScope, varName string, value Value) (Value, error) {
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: x = value
@@ -496,7 +496,7 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env EvalEnv, 
 	}
 }
 
-func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, selectNode *Select, value Value) (Value, error) {
+func (r *Reassignment) evalFieldAssignment(ctx context.Context, env ValueScope, selectNode *Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
 	rootNode, path, err := r.getPath(selectNode)
 	if err != nil {
@@ -527,7 +527,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 	}
 
 	// Clone the root object to begin the copy-on-write process
-	newRoot := rootObj.(EvalEnv).Derive(false)
+	newRoot := rootObj.(ValueScope).Derive(false)
 
 	// Traverse the path, cloning objects as we go
 	currentObj := newRoot
@@ -540,7 +540,7 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env EvalEnv, sel
 		if !found {
 			return nil, fmt.Errorf("field %q not found in object", fieldName)
 		}
-		clonedVal := val.(EvalEnv).Derive(false)
+		clonedVal := val.(ValueScope).Derive(false)
 		currentObj.Bind(fieldName, clonedVal.(Value), currentObj.Visibility(fieldName))
 		currentObj = clonedVal
 	}
@@ -710,7 +710,7 @@ func (d *DirectiveDecl) GetSourceLocation() *SourceLocation { return d.Loc }
 func (d *DirectiveDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
 	if pass == 0 {
 		// Add directive to environment during hoisting so it's available for later use
-		if e, ok := env.(Env); ok {
+		if e, ok := env.(TypeScope); ok {
 			e.AddDirective(d.Name, d)
 		}
 	}
@@ -738,7 +738,7 @@ func (d *DirectiveDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 	return hm.TypeVariable('d'), nil
 }
 
-func (d *DirectiveDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *DirectiveDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Directives are compile-time constructs, they don't evaluate to runtime values
 	return NullValue{}, nil
 }
@@ -786,14 +786,14 @@ func (d *DirectiveApplication) GetSourceLocation() *SourceLocation { return d.Lo
 
 func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(d, func() (hm.Type, error) {
-		env := env.(Env)
+		env := env.(TypeScope)
 		if d.Scope != nil {
 			// If the directive is scoped, resolve the scope type
 			scopeType, err := d.Scope.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("DirectiveApplication.Infer: scope type: %w", err)
 			}
-			env = scopeType.(Env)
+			env = scopeType.(TypeScope)
 		}
 
 		// Check for import conflicts before resolving
@@ -818,7 +818,7 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 	})
 }
 
-func (d *DirectiveApplication) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *DirectiveApplication) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Directive applications are compile-time annotations, no runtime evaluation
 	return NullValue{}, nil
 }
@@ -931,7 +931,7 @@ type ImportDecl struct {
 
 	client   graphql.Client
 	schema   *introspection.Schema
-	inferred Env
+	inferred TypeScope
 }
 
 type ImportConfig struct {
@@ -982,7 +982,7 @@ func importConfigsFromContext(ctx context.Context) []ImportConfig {
 // sharedImportModule looks up the cached schema module for name in ctx. The
 // cache is populated lazily by ImportDecl.Infer the first time a given import
 // name is resolved, so subsequent inferences reuse the same module.
-func sharedImportModule(ctx context.Context, name string) Env {
+func sharedImportModule(ctx context.Context, name string) TypeScope {
 	cache, _ := ctx.Value(schemaModuleCacheKey{}).(*sync.Map)
 	if cache == nil {
 		return nil
@@ -991,10 +991,10 @@ func sharedImportModule(ctx context.Context, name string) Env {
 	if !ok {
 		return nil
 	}
-	return v.(Env)
+	return v.(TypeScope)
 }
 
-func cacheImportModule(ctx context.Context, name string, mod Env) {
+func cacheImportModule(ctx context.Context, name string, mod TypeScope) {
 	if cache, ok := ctx.Value(schemaModuleCacheKey{}).(*sync.Map); ok {
 		cache.Store(name, mod)
 	}
@@ -1050,7 +1050,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			}
 		}
 
-		if dangEnv, ok := env.(Env); ok {
+		if dangEnv, ok := env.(TypeScope); ok {
 			installImportedTypeEnvironment(dangEnv, i.Name.Name, i.inferred)
 		}
 
@@ -1058,7 +1058,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	})
 }
 
-func (i *ImportDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (i *ImportDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	if i.inferred == nil {
 		return nil, fmt.Errorf("ImportDecl.Eval: import not properly inferred")
 	}

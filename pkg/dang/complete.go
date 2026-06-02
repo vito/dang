@@ -47,7 +47,7 @@ func isIdentByte(c byte) bool {
 
 // completeMember tries to parse and type-check the receiver expression, then
 // returns completions for its members filtered by the partial name.
-func completeMember(ctx context.Context, typeEnv Env, receiverText, partial string) []Completion {
+func completeMember(ctx context.Context, typeEnv TypeScope, receiverText, partial string) []Completion {
 	receiverType := InferReceiverType(ctx, typeEnv, receiverText)
 	if receiverType == nil {
 		return nil
@@ -59,7 +59,7 @@ func completeMember(ctx context.Context, typeEnv Env, receiverText, partial stri
 // completeArgs returns completions for function arguments given the function
 // expression text, the partial argument name being typed, and the set of
 // argument names already provided in the call.
-func completeArgs(ctx context.Context, typeEnv Env, funcExpr, partial string, alreadyProvided []string) []Completion {
+func completeArgs(ctx context.Context, typeEnv TypeScope, funcExpr, partial string, alreadyProvided []string) []Completion {
 	t := InferReceiverType(ctx, typeEnv, funcExpr)
 	if t == nil {
 		return nil
@@ -135,7 +135,7 @@ func ArgsOf(t hm.Type, partial string, alreadyProvided []string) []Completion {
 
 // InferReceiverType parses and type-checks a receiver expression, returning
 // its inferred type. Returns nil if parsing or inference fails.
-func InferReceiverType(ctx context.Context, typeEnv Env, expr string) hm.Type {
+func InferReceiverType(ctx context.Context, typeEnv TypeScope, expr string) hm.Type {
 	parsed, err := Parse("completion", []byte(expr))
 	if err != nil {
 		return nil
@@ -174,7 +174,7 @@ func MembersOf(t hm.Type, partial string) []Completion {
 
 	// Map built-in scalar and list types to their method module so that
 	// completions show e.g. split for strings and reduce for lists.
-	module, ok := t.(Env)
+	module, ok := t.(TypeScope)
 	if !ok {
 		if mod := builtinModuleFor(t); mod != nil {
 			module = mod
@@ -212,12 +212,12 @@ func MembersOf(t hm.Type, partial string) []Completion {
 
 // builtinModuleFor returns the builtin method module for a primitive or list
 // type, or nil if the type has no builtin methods.
-func builtinModuleFor(t hm.Type) *Module {
+func builtinModuleFor(t hm.Type) *TypeDef {
 	switch t.(type) {
 	case ListType:
 		return ListTypeModule
 	}
-	if mod, ok := t.(*Module); ok {
+	if mod, ok := t.(*TypeDef); ok {
 		switch mod {
 		case StringType, IntType, FloatType, BooleanType:
 			return mod
@@ -229,7 +229,7 @@ func builtinModuleFor(t hm.Type) *Module {
 // completeLexical returns completions from the type environment matching a prefix.
 // It filters out type definitions (scalars, enums, etc.) and ID types, which
 // are not useful as standalone expressions.
-func completeLexical(typeEnv Env, prefix string) []Completion {
+func completeLexical(typeEnv TypeScope, prefix string) []Completion {
 	if prefix == "" {
 		return nil
 	}
@@ -271,7 +271,7 @@ func IsTypeDefBinding(scheme *hm.Scheme) bool {
 	if nn, ok := t.(hm.NonNullType); ok {
 		t = nn.Type
 	}
-	mod, ok := t.(*Module)
+	mod, ok := t.(*TypeDef)
 	if !ok {
 		return false
 	}

@@ -618,7 +618,7 @@ func (f *Formatter) formatNode(node Node) {
 		f.write("self")
 	case *List:
 		f.formatList(n)
-	case *Object:
+	case *ObjectLiteral:
 		f.formatObject(n)
 	case *TryCatch:
 		f.formatTryCatch(n)
@@ -697,7 +697,7 @@ func (f *Formatter) formatNodeInline(node Node) {
 		f.formatSelectInline(n)
 	case *List:
 		f.formatListInline(n)
-	case *Object:
+	case *ObjectLiteral:
 		f.formatObjectInline(n)
 	default:
 		f.formatNode(node)
@@ -2525,7 +2525,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 	f.write("]")
 }
 
-func (f *Formatter) formatObject(o *Object) {
+func (f *Formatter) formatObject(o *ObjectLiteral) {
 	if len(o.Fields) == 0 {
 		f.write("{{}}")
 		return
@@ -2550,7 +2550,7 @@ func (f *Formatter) formatObject(o *Object) {
 	}
 }
 
-func (f *Formatter) formatObjectInline(o *Object) {
+func (f *Formatter) formatObjectInline(o *ObjectLiteral) {
 	f.write("{{")
 	for i, field := range o.Fields {
 		if i > 0 {
@@ -2563,7 +2563,7 @@ func (f *Formatter) formatObjectInline(o *Object) {
 	f.write("}}")
 }
 
-func (f *Formatter) formatObjectMultiline(o *Object) {
+func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 	f.write("{{")
 	// Emit trailing comment on the opening {{ line
 	if o.Loc != nil {

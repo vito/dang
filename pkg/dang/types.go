@@ -48,13 +48,13 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, fmt.Errorf("NamedType.Infer: empty name")
 		}
 
-		fromEnv := env.(Env)
+		fromEnv := env.(TypeScope)
 		if t.Base != nil {
 			base, err := t.Base.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("NamedType.Infer: base type: %w", err)
 			}
-			fromEnv = base.(Env)
+			fromEnv = base.(TypeScope)
 		}
 
 		s, found := fromEnv.NamedType(t.Name)
@@ -416,7 +416,7 @@ func (t ObjectTypeNode) ReferencedSymbols() []string {
 }
 
 func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("", ObjectKind)
+	mod := NewTypeDef("", ObjectKind)
 	for _, field := range t.Fields {
 		fieldType, err := field.Type.Infer(ctx, env, fresh)
 		if err != nil {

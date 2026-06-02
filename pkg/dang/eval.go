@@ -33,19 +33,19 @@ type Value interface {
 
 // Evaluator defines the interface for evaluating AST nodes
 type Evaluator interface {
-	Eval(ctx context.Context, env EvalEnv) (Value, error)
+	Eval(ctx context.Context, env ValueScope) (Value, error)
 }
 
 // Callable defines the interface for all function-like values that can be called
 type Callable interface {
 	Value
-	Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+	Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error)
 	ParameterNames() []string
 	IsAutoCallable() bool
 }
 
-// EvalEnv represents the evaluation environment
-type EvalEnv interface {
+// ValueScope represents the evaluation environment
+type ValueScope interface {
 	Value
 	// Lookup resolves a binding, forcing pending initializers on first read.
 	Lookup(ctx context.Context, name string) (Value, bool, error)
@@ -62,7 +62,7 @@ type EvalEnv interface {
 	Visibility(name string) Visibility
 	// Derive returns a fresh child scope. Local bindings shadow this scope.
 	// If sealed, Update stays in the child rather than walking into parents.
-	Derive(sealed bool) EvalEnv
+	Derive(sealed bool) ValueScope
 	// Dynamic scope support for 'self'.
 	// Derive shares the DynamicScope cell so that closures (e.g. block
 	// args passed to .each) see mutations to self from prior iterations.
@@ -77,7 +77,7 @@ type EvalEnv interface {
 // used for GraphQL input types like UserSort(field: ..., direction: ...).
 type InputObjectConstructor struct {
 	TypeName string
-	TypeEnv  *Module
+	TypeEnv  *TypeDef
 	FnType   *hm.FunctionType
 }
 
@@ -94,8 +94,8 @@ func (c InputObjectConstructor) ParameterNames() []string {
 	return names
 }
 
-func (c InputObjectConstructor) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
-	instance := NewModuleValue(c.TypeEnv)
+func (c InputObjectConstructor) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+	instance := NewObject(c.TypeEnv)
 	for name, val := range args {
 		instance.Bind(name, val, PublicVisibility)
 	}
@@ -110,7 +110,7 @@ type GraphQLFunction struct {
 	FnType     *hm.FunctionType
 	Client     graphql.Client
 	Schema     *introspection.Schema
-	TypeEnv    Env                     // Type environment for looking up enum types
+	TypeEnv    TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
 }
@@ -123,7 +123,7 @@ func (g GraphQLFunction) String() string {
 	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
 }
 
-func (g GraphQLFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+func (g GraphQLFunction) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	// Build the GraphQL query using querybuilder
 	var query *querybuilder.Selection
 
@@ -247,7 +247,7 @@ type GraphQLValue struct {
 	ValType    hm.Type
 	Client     graphql.Client
 	Schema     *introspection.Schema
-	TypeEnv    Env                     // Type environment for looking up enum types
+	TypeEnv    TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this value came from a mutation
 }
@@ -328,9 +328,9 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 }
 
 // NewEvalEnv creates an evaluation environment with built-in functions
-func NewEvalEnv(typeEnv Env) EvalEnv {
+func NewEvalEnv(typeEnv TypeScope) ValueScope {
 	// Create a ModuleValue from the type environment
-	env := NewModuleValue(typeEnv)
+	env := NewObject(typeEnv)
 
 	// Add builtin functions
 	addBuiltinFunctions(env)
@@ -339,9 +339,9 @@ func NewEvalEnv(typeEnv Env) EvalEnv {
 }
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
-func NewEvalEnvWithSchema(typeEnv Env, client graphql.Client, schema *introspection.Schema) EvalEnv {
+func NewEvalEnvWithSchema(typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
 	// Create a ModuleValue from the type environment
-	env := NewModuleValue(typeEnv)
+	env := NewObject(typeEnv)
 
 	// Populate with GraphQL functions from the schema
 	populateSchemaFunctions(env, typeEnv, client, schema)
@@ -355,7 +355,7 @@ func NewEvalEnvWithSchema(typeEnv Env, client graphql.Client, schema *introspect
 // BuildEnvFromImports creates type and eval environments from a set of import
 // configurations. Each import's schema types and values are merged into the
 // environments, with the first import taking precedence on name collisions.
-func BuildEnvFromImports(name string, configs []ImportConfig) (Env, EvalEnv) {
+func BuildEnvFromImports(name string, configs []ImportConfig) (TypeScope, ValueScope) {
 	typeEnv := NewPreludeEnv(name)
 
 	for _, config := range configs {
@@ -384,7 +384,7 @@ func BuildEnvFromImports(name string, configs []ImportConfig) (Env, EvalEnv) {
 }
 
 // populateSchemaFunctions adds GraphQL functions from a schema to an environment
-func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Client, schema *introspection.Schema) {
+func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) {
 	for _, t := range schema.Types {
 		// Add enum values as enum constants for enum types
 		if t.Kind == introspection.TypeKindEnum && len(t.EnumValues) > 0 {
@@ -395,7 +395,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			}
 
 			// Create a module for the enum type
-			enumModuleVal := NewModuleValue(enumTypeEnv)
+			enumModuleVal := NewObject(enumTypeEnv)
 
 			// Set each enum value as an EnumValue constant
 			enumValues := make([]Value, len(t.EnumValues))
@@ -432,7 +432,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			}
 
 			// Create a module for the scalar type (just a type placeholder)
-			scalarModuleVal := NewModuleValue(scalarTypeEnv)
+			scalarModuleVal := NewObject(scalarTypeEnv)
 
 			// Add the scalar module to the environment
 			env.Bind(t.Name, scalarModuleVal, PublicVisibility)
@@ -447,7 +447,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			}
 
 			// Create a module for the interface type (just a type placeholder)
-			interfaceModuleVal := NewModuleValue(interfaceTypeEnv)
+			interfaceModuleVal := NewObject(interfaceTypeEnv)
 
 			// Add the interface module to the environment
 			env.Bind(t.Name, interfaceModuleVal, PublicVisibility)
@@ -460,7 +460,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 				continue
 			}
 
-			unionModuleVal := NewModuleValue(unionTypeEnv)
+			unionModuleVal := NewObject(unionTypeEnv)
 			env.Bind(t.Name, unionModuleVal, PublicVisibility)
 		}
 
@@ -483,7 +483,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 
 			constructor := InputObjectConstructor{
 				TypeName: t.Name,
-				TypeEnv:  inputTypeEnv.(*Module),
+				TypeEnv:  inputTypeEnv.(*TypeDef),
 				FnType:   fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
@@ -529,7 +529,7 @@ func populateSchemaFunctions(env *ModuleValue, typeEnv Env, client graphql.Clien
 			if !found {
 				continue
 			}
-			mutModule := NewModuleValue(mutTypeEnv)
+			mutModule := NewObject(mutTypeEnv)
 			for _, f := range t.Fields {
 				ret, err := gqlFieldToTypeNode(typeEnv, f)
 				if err != nil {
@@ -576,7 +576,7 @@ func allParamsDefaulted(def BuiltinDef) bool {
 	return true
 }
 
-func addBuiltinFunctions(env EvalEnv) {
+func addBuiltinFunctions(env ValueScope) {
 	// Register all builtin functions
 	ForEachFunction(func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
@@ -584,7 +584,7 @@ func addBuiltinFunctions(env EvalEnv) {
 			Name:         def.Name,
 			FnType:       fnType,
 			AllDefaulted: allParamsDefaulted(def),
-			CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+			CallFn: func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 				// Apply defaults for missing arguments
 				argsWithDefaults := applyDefaults(args, def)
 
@@ -610,7 +610,7 @@ func addBuiltinFunctions(env EvalEnv) {
 				Name:         def.Name,
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
-				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+				CallFn: func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 					selfVal, _ := env.Self()
 					// Apply defaults for missing arguments
 					argsWithDefaults := applyDefaults(args, def)
@@ -633,14 +633,14 @@ func addBuiltinFunctions(env EvalEnv) {
 
 	// Register static methods on their host modules
 	for _, hostModule := range StaticModules() {
-		modValue := NewModuleValue(hostModule)
+		modValue := NewObject(hostModule)
 		ForEachStaticMethod(hostModule, func(def BuiltinDef) {
 			fnType := createFunctionTypeFromDef(def)
 			builtinFn := BuiltinFunction{
 				Name:         def.Name,
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
-				CallFn: func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+				CallFn: func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 					argsWithDefaults := applyDefaults(args, def)
 					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
 				},
@@ -650,11 +650,11 @@ func addBuiltinFunctions(env EvalEnv) {
 
 		// Populate nested enum types with their values
 		for name, subEnv := range hostModule.NamedTypes() {
-			subMod, ok := subEnv.(*Module)
+			subMod, ok := subEnv.(*TypeDef)
 			if !ok || subMod.Kind != EnumKind {
 				continue
 			}
-			enumModValue := NewModuleValue(subMod)
+			enumModValue := NewObject(subMod)
 			var enumValues []Value
 			for varName, scheme := range subMod.Bindings(PublicVisibility) {
 				// Only include actual enum members (whose type is the
@@ -808,7 +808,7 @@ func dangValueToGo(val Value) (any, error) {
 			result[i] = goVal
 		}
 		return result, nil
-	case *ModuleValue:
+	case *Object:
 		// Convert module value to map (used for input objects)
 		result := make(map[string]any)
 		for name, fieldVal := range v.Values {
@@ -1054,7 +1054,7 @@ func (l ListValue) MarshalJSON() ([]byte, error) {
 type FunctionValue struct {
 	Args           []string
 	Body           Node
-	Closure        EvalEnv
+	Closure        ValueScope
 	FnType         *hm.FunctionType
 	Defaults       map[string]Node // Map of argument name to default value expression
 	ArgDecls       []*FieldDecl    // Original argument declarations with directives
@@ -1079,7 +1079,7 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal function value")
 }
 
-func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+func (f FunctionValue) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	fnEnv := f.Closure.Derive(false)
 
 	if f.IsDynamic {
@@ -1138,7 +1138,7 @@ func (f FunctionValue) Call(ctx context.Context, env EvalEnv, args map[string]Va
 	return val, nil
 }
 
-func (f FunctionValue) BindArgs(ctx context.Context, fnEnv EvalEnv, args map[string]Value) error {
+func (f FunctionValue) BindArgs(ctx context.Context, fnEnv ValueScope, args map[string]Value) error {
 	// Bind arguments to the function environment
 	for _, argName := range f.Args {
 		if val, exists := args[argName]; exists {
@@ -1244,20 +1244,20 @@ type DynamicScope struct {
 	Value Value
 }
 
-// ModuleValue represents a module value that implements EvalEnv
-type ModuleValue struct {
-	Mod          Env
+// Object represents a module value that implements EvalEnv
+type Object struct {
+	Mod          TypeScope
 	Values       map[string]Value
 	Visibilities map[string]Visibility   // Track visibility of each field
 	Pending      map[string]*pendingInit // Deferred initializers; entries move to Values on force
-	Parent       *ModuleValue            // For hierarchical scoping
+	Parent       *Object                 // For hierarchical scoping
 	IsForked     bool                    // Sealed scopes keep Update local (no walk into Parent)
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 }
 
-// NewModuleValue creates a new ModuleValue with an empty values map
-func NewModuleValue(mod Env) *ModuleValue {
-	return &ModuleValue{
+// NewObject creates a new ModuleValue with an empty values map
+func NewObject(mod TypeScope) *Object {
+	return &Object{
 		Mod:          mod,
 		Values:       make(map[string]Value),
 		Visibilities: make(map[string]Visibility),
@@ -1265,15 +1265,15 @@ func NewModuleValue(mod Env) *ModuleValue {
 	}
 }
 
-func (m *ModuleValue) Type() hm.Type {
+func (m *Object) Type() hm.Type {
 	return hm.NonNullType{Type: m.Mod}
 }
 
-func (m *ModuleValue) String() string {
+func (m *Object) String() string {
 	return fmt.Sprintf("module %s", m.Mod)
 }
 
-func (m *ModuleValue) Lookup(ctx context.Context, name string) (Value, bool, error) {
+func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	if p, ok := m.Pending[name]; ok {
 		return m.force(ctx, name, p)
 	}
@@ -1286,7 +1286,7 @@ func (m *ModuleValue) Lookup(ctx context.Context, name string) (Value, bool, err
 	return nil, false, nil
 }
 
-func (m *ModuleValue) Has(name string) bool {
+func (m *Object) Has(name string) bool {
 	if _, ok := m.Pending[name]; ok {
 		return true
 	}
@@ -1303,7 +1303,7 @@ func (m *ModuleValue) Has(name string) bool {
 // init and replace the pending entry with the resulting value. BindLazy is a
 // no-op if name is already bound locally — letting earlier bindings
 // (constructor args, prior installs) shadow the placeholder.
-func (m *ModuleValue) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+func (m *Object) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
 	if _, alreadyReal := m.Values[name]; alreadyReal {
 		return
 	}
@@ -1320,7 +1320,7 @@ func (m *ModuleValue) BindLazy(name string, init func(ctx context.Context) (Valu
 	m.Visibilities[name] = visibility
 }
 
-func (m *ModuleValue) force(ctx context.Context, name string, p *pendingInit) (Value, bool, error) {
+func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value, bool, error) {
 	if p.State == pendingEvaluating {
 		return nil, true, fmt.Errorf("initialization cycle while evaluating variable %q", name)
 	}
@@ -1339,7 +1339,7 @@ func (m *ModuleValue) force(ctx context.Context, name string, p *pendingInit) (V
 	return val, true, nil
 }
 
-func (m *ModuleValue) LookupLocal(name string) (Value, bool) {
+func (m *Object) LookupLocal(name string) (Value, bool) {
 	val, ok := m.Values[name]
 	return val, ok
 }
@@ -1347,7 +1347,7 @@ func (m *ModuleValue) LookupLocal(name string) (Value, bool) {
 // lookupValue walks Values + the parent chain (without forcing pending
 // initializers). Use this only when pending has already been forced —
 // otherwise Lookup is the right call.
-func (m *ModuleValue) lookupValue(name string) (Value, bool) {
+func (m *Object) lookupValue(name string) (Value, bool) {
 	if val, ok := m.Values[name]; ok {
 		return val, true
 	}
@@ -1357,12 +1357,12 @@ func (m *ModuleValue) lookupValue(name string) (Value, bool) {
 	return nil, false
 }
 
-func (m *ModuleValue) Bind(name string, value Value, visibility Visibility) {
+func (m *Object) Bind(name string, value Value, visibility Visibility) {
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
 }
 
-func (m *ModuleValue) Visibility(name string) Visibility {
+func (m *Object) Visibility(name string) Visibility {
 	if vis, ok := m.Visibilities[name]; ok {
 		return vis
 	}
@@ -1372,7 +1372,7 @@ func (m *ModuleValue) Visibility(name string) Visibility {
 	return PrivateVisibility
 }
 
-func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
+func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 	var bindings []Keyed[Value]
 
 	// Collect bindings from this module
@@ -1399,8 +1399,8 @@ func (m *ModuleValue) Bindings(vis Visibility) []Keyed[Value] {
 	return bindings
 }
 
-func (m *ModuleValue) Derive(sealed bool) EvalEnv {
-	return &ModuleValue{
+func (m *Object) Derive(sealed bool) ValueScope {
+	return &Object{
 		Mod:          m.Mod,
 		Values:       make(map[string]Value),
 		Visibilities: make(map[string]Visibility),
@@ -1414,7 +1414,7 @@ func (m *ModuleValue) Derive(sealed bool) EvalEnv {
 // - If the variable exists locally, update it locally
 // - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
 // - If the variable doesn't exist anywhere, set it locally
-func (m *ModuleValue) Update(name string, value Value) {
+func (m *Object) Update(name string, value Value) {
 	if _, existsLocally := m.Values[name]; existsLocally {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
@@ -1436,7 +1436,7 @@ func (m *ModuleValue) Update(name string, value Value) {
 }
 
 // Self returns the dynamic scope value ('self')
-func (m *ModuleValue) Self() (Value, bool) {
+func (m *Object) Self() (Value, bool) {
 	if m.dynamicScope != nil && m.dynamicScope.Value != nil {
 		return m.dynamicScope.Value, true
 	}
@@ -1448,7 +1448,7 @@ func (m *ModuleValue) Self() (Value, bool) {
 
 // MutateSelf updates the dynamic scope value ('self') in the
 // existing shared cell, or creates a new cell if none exists.
-func (m *ModuleValue) MutateSelf(value Value) {
+func (m *Object) MutateSelf(value Value) {
 	if m.dynamicScope != nil {
 		m.dynamicScope.Value = value
 	} else {
@@ -1459,13 +1459,13 @@ func (m *ModuleValue) MutateSelf(value Value) {
 // EnterSelf creates a fresh, unshared dynamic scope cell.
 // Use this when establishing a new self (e.g. entering a method body)
 // rather than updating self within the current scope.
-func (m *ModuleValue) EnterSelf(value Value) {
+func (m *Object) EnterSelf(value Value) {
 	m.dynamicScope = &DynamicScope{Value: value}
 }
 
 // MarshalJSON implements json.Marshaler for ModuleValue
 // Includes private fields, so that state can be retained
-func (m *ModuleValue) MarshalJSON() ([]byte, error) {
+func (m *Object) MarshalJSON() ([]byte, error) {
 	result := make(map[string]Value)
 	for _, kv := range m.Bindings(PrivateVisibility) {
 		if _, isFn := kv.Value.(FunctionValue); isFn {
@@ -1479,7 +1479,7 @@ func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 // BoundMethod represents a method bound to a specific receiver
 type BoundMethod struct {
 	Method   FunctionValue
-	Receiver EvalEnv
+	Receiver ValueScope
 }
 
 func (b BoundMethod) Type() hm.Type {
@@ -1494,14 +1494,14 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound method value")
 }
 
-func (b BoundMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+func (b BoundMethod) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	if b.Method.IsBlockArg {
 		return b.Method.Call(ctx, env, args)
 	}
 
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Derive(true)
-	fnEnv := CreateCompositeEnv(recv.Derive(false), b.Method.Closure)
+	fnEnv := CreateReopenScope(recv.Derive(false), b.Method.Closure)
 	fnEnv.EnterSelf(recv)
 
 	returnFrame := NewControlFrame(ReturnFrame)
@@ -1548,10 +1548,10 @@ func (b BoundBuiltinMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound builtin method value")
 }
 
-func (b BoundBuiltinMethod) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+func (b BoundBuiltinMethod) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	// Create a temporary environment with the receiver as dynamic scope
-	tempMod := NewModule("_temp_", ObjectKind)
-	tempEnv := NewModuleValue(tempMod)
+	tempMod := NewTypeDef("_temp_", ObjectKind)
+	tempEnv := NewObject(tempMod)
 	tempEnv.EnterSelf(b.Receiver)
 
 	// Call the builtin function with the receiver context
@@ -1570,7 +1570,7 @@ func (b BoundBuiltinMethod) IsAutoCallable() bool {
 type BuiltinFunction struct {
 	Name         string
 	FnType       *hm.FunctionType
-	CallFn       func(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error)
+	CallFn       func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error)
 	AllDefaulted bool // true when every parameter has a default value
 }
 
@@ -1582,7 +1582,7 @@ func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
 }
 
-func (b BuiltinFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+func (b BuiltinFunction) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	return b.CallFn(ctx, env, args)
 }
 
@@ -1612,11 +1612,11 @@ func (b BuiltinFunction) IsAutoCallable() bool {
 
 // ConstructorFunction represents a object constructor that evaluates the object body when called
 type ConstructorFunction struct {
-	Closure         EvalEnv
+	Closure         ValueScope
 	ObjectName      string
 	Parameters      []*FieldDecl
 	BlockParamName  string
-	ObjectType      *Module
+	ObjectType      *TypeDef
 	FnType          *hm.FunctionType
 	ObjectBodyForms []Node // Field declarations to evaluate (excluding NewConstructorDecl)
 	NewBody         *Block // Explicit new() body, if present
@@ -1630,13 +1630,13 @@ func (c *ConstructorFunction) String() string {
 	return fmt.Sprintf("constructor:%s", c.ObjectName)
 }
 
-func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[string]Value) (Value, error) {
+func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	ctx = contextWithFunctionControlBoundary(ctx)
 
 	// Create a new instance of the object
-	instance := NewModuleValue(c.ObjectType)
+	instance := NewObject(c.ObjectType)
 
-	instanceEnv := CreateCompositeEnv(instance, c.Closure)
+	instanceEnv := CreateReopenScope(instance, c.Closure)
 
 	// Set dynamic scope to the instance so self is available
 	instanceEnv.EnterSelf(instance)
@@ -1666,7 +1666,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// the outer closure (see #23). Args go in a separate env that is
 		// only consulted for reads (Lookup), while writes (Bind/Update) go
 		// to the instance as before.
-		argEnv := NewModuleValue(NewModule("_constructor_args_", ObjectKind))
+		argEnv := NewObject(NewTypeDef("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
 		// expressions for later parameters can see earlier parameters.
 		defaultEvalEnv := c.Closure.Derive(false)
@@ -1700,7 +1700,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// Execute the new() body with access to self and constructor args.
 		// We evaluate forms directly (not via Block.Eval) to avoid cloning
 		// the env, which would lose dynamic scope updates for self assignments.
-		newBodyEnv := CreateConstructorEnv(instance, argEnv, c.Closure)
+		newBodyEnv := CreateConstructorScope(instance, argEnv, c.Closure)
 		newBodyEnv.EnterSelf(instance)
 		returnFrame := NewControlFrame(ReturnFrame)
 		defer returnFrame.Deactivate()
@@ -1721,9 +1721,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 			// After each form, update the instance from the dynamic scope
 			// (copy-on-write may have replaced it via self.field = value)
 			if updatedInstance, found := newBodyEnv.Self(); found {
-				instance = updatedInstance.(*ModuleValue)
+				instance = updatedInstance.(*Object)
 				// Update newBodyEnv to use the new instance
-				newBodyEnv = CreateConstructorEnv(instance, argEnv, c.Closure)
+				newBodyEnv = CreateConstructorScope(instance, argEnv, c.Closure)
 				newBodyEnv.EnterSelf(instance)
 			}
 			if returned {
@@ -1735,7 +1735,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// normal function. This is enforced at inference time. Using the
 		// last value (rather than the tracked instance) ensures method
 		// chains like self.withFoo() propagate their changes (see #24).
-		if mv, ok := lastVal.(*ModuleValue); ok {
+		if mv, ok := lastVal.(*Object); ok {
 			instance = mv
 		}
 
@@ -1765,7 +1765,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 // By the time this runs, the object body's pending initializers have all been
 // forced; Get walks the instance's parent chain to cover fields placed on
 // earlier copy-on-write generations (each `self.f = ...` clones the instance).
-func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance *ModuleValue) error {
+func (c *ConstructorFunction) checkRequiredFields(ctx context.Context, instance *Object) error {
 	for name, scheme := range c.ObjectType.Bindings(PrivateVisibility) {
 		fieldType, _ := scheme.Type()
 		if _, isNonNull := fieldType.(hm.NonNullType); isNonNull {
@@ -2067,7 +2067,7 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Mo
 // function bodies, computed variables, or non-declaration expressions. Each
 // file's imports are file-local: a sibling file's `import X` does not make X
 // visible here.
-func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
+func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, error) {
 	// Ensure service registry exists for cleanup.
 	ctx, services := ensureServiceRegistry(ctx)
 	if services != nil {
@@ -2111,7 +2111,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, err
 // inference). It is the DeclareDir counterpart to InferDirectoryFiles. Mutates
 // block.Forms to prepend auto-imports so later evaluation reuses the same
 // *ImportDecl nodes inferred here.
-func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv Env, fresh hm.Fresher) error {
+func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
@@ -2125,7 +2125,7 @@ func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv Env
 // RunDir evaluates all .dang files in a directory as a single module. Each
 // file's imports are file-local during type inference: a sibling file's
 // `import X` does not make X visible here.
-func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) {
+func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, error) {
 	// Ensure service registry exists for cleanup
 	ctx, services := ensureServiceRegistry(ctx)
 	if services != nil {
@@ -2194,7 +2194,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (EvalEnv, error) 
 // A single-file directory has no sibling to leak imports to, so its forms are
 // evaluated directly against evalEnv — the imports end up reachable from the
 // returned env, which is what callers like RunDir's single-file tests rely on.
-func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv EvalEnv) error {
+func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv ValueScope) error {
 	if len(blocks) == 1 {
 		_, err := EvaluateFormsWithPhases(ctx, blocks[0].Forms, evalEnv)
 		return err
@@ -2202,7 +2202,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 
 	type fileEvalScope struct {
 		classified ClassifiedForms
-		env        EvalEnv
+		env        ValueScope
 	}
 
 	scopes := make([]fileEvalScope, 0, len(blocks))
@@ -2219,7 +2219,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 			}
 		}
 
-		fileEnv := &CompositeEvalEnv{primary: evalEnv, lexical: importsEnv}
+		fileEnv := &CompositeValueScope{primary: evalEnv, lexical: importsEnv}
 		scopes = append(scopes, fileEvalScope{
 			classified: classifyForms(rest),
 			env:        fileEnv,
@@ -2295,7 +2295,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 	return nil
 }
 
-// CompositeEvalEnv overlays a file-local evaluation env onto a shared
+// CompositeValueScope overlays a file-local evaluation env onto a shared
 // directory env. Writes (Bind/BindLazy/Update) go to primary so cross-file
 // declarations are visible to siblings; reads check primary first so local
 // declarations correctly shadow imported names, then fall through to lexical
@@ -2304,17 +2304,17 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 // This is the runtime analogue of dang.CompositeModule: it preserves the
 // file-scoped semantics of imports during evaluation, so a file's `import X`
 // doesn't bleed `X.foo` into siblings' runtime scope.
-type CompositeEvalEnv struct {
-	primary EvalEnv
-	lexical EvalEnv
+type CompositeValueScope struct {
+	primary ValueScope
+	lexical ValueScope
 }
 
-var _ EvalEnv = (*CompositeEvalEnv)(nil)
+var _ ValueScope = (*CompositeValueScope)(nil)
 
-func (c *CompositeEvalEnv) Type() hm.Type  { return c.primary.Type() }
-func (c *CompositeEvalEnv) String() string { return c.primary.String() }
+func (c *CompositeValueScope) Type() hm.Type  { return c.primary.Type() }
+func (c *CompositeValueScope) String() string { return c.primary.String() }
 
-func (c *CompositeEvalEnv) Lookup(ctx context.Context, name string) (Value, bool, error) {
+func (c *CompositeValueScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	if val, found, err := c.primary.Lookup(ctx, name); err != nil {
 		return nil, false, err
 	} else if found {
@@ -2323,18 +2323,18 @@ func (c *CompositeEvalEnv) Lookup(ctx context.Context, name string) (Value, bool
 	return c.lexical.Lookup(ctx, name)
 }
 
-func (c *CompositeEvalEnv) Has(name string) bool {
+func (c *CompositeValueScope) Has(name string) bool {
 	return c.primary.Has(name) || c.lexical.Has(name)
 }
 
-func (c *CompositeEvalEnv) LookupLocal(name string) (Value, bool) {
+func (c *CompositeValueScope) LookupLocal(name string) (Value, bool) {
 	// Only consult primary: lexical holds file-scoped imports, which must not
 	// be treated as already-defined "local" bindings by FieldDecl.Eval — that
 	// would silently swallow declarations that share a name with an import.
 	return c.primary.LookupLocal(name)
 }
 
-func (c *CompositeEvalEnv) Bindings(vis Visibility) []Keyed[Value] {
+func (c *CompositeValueScope) Bindings(vis Visibility) []Keyed[Value] {
 	primary := c.primary.Bindings(vis)
 	seen := make(map[string]struct{}, len(primary))
 	for _, b := range primary {
@@ -2349,36 +2349,36 @@ func (c *CompositeEvalEnv) Bindings(vis Visibility) []Keyed[Value] {
 	return primary
 }
 
-func (c *CompositeEvalEnv) Bind(name string, value Value, vis Visibility) {
+func (c *CompositeValueScope) Bind(name string, value Value, vis Visibility) {
 	c.primary.Bind(name, value, vis)
 }
 
-func (c *CompositeEvalEnv) BindLazy(name string, init func(ctx context.Context) (Value, error), vis Visibility) {
+func (c *CompositeValueScope) BindLazy(name string, init func(ctx context.Context) (Value, error), vis Visibility) {
 	c.primary.BindLazy(name, init, vis)
 }
 
-func (c *CompositeEvalEnv) Update(name string, value Value) { c.primary.Update(name, value) }
+func (c *CompositeValueScope) Update(name string, value Value) { c.primary.Update(name, value) }
 
-func (c *CompositeEvalEnv) Visibility(name string) Visibility { return c.primary.Visibility(name) }
+func (c *CompositeValueScope) Visibility(name string) Visibility { return c.primary.Visibility(name) }
 
-func (c *CompositeEvalEnv) Derive(sealed bool) EvalEnv {
-	return &CompositeEvalEnv{
+func (c *CompositeValueScope) Derive(sealed bool) ValueScope {
+	return &CompositeValueScope{
 		primary: c.primary.Derive(sealed),
 		lexical: c.lexical,
 	}
 }
 
-func (c *CompositeEvalEnv) Self() (Value, bool)    { return c.primary.Self() }
-func (c *CompositeEvalEnv) MutateSelf(value Value) { c.primary.MutateSelf(value) }
-func (c *CompositeEvalEnv) EnterSelf(value Value)  { c.primary.EnterSelf(value) }
+func (c *CompositeValueScope) Self() (Value, bool)    { return c.primary.Self() }
+func (c *CompositeValueScope) MutateSelf(value Value) { c.primary.MutateSelf(value) }
+func (c *CompositeValueScope) EnterSelf(value Value)  { c.primary.EnterSelf(value) }
 
 // EvalNode evaluates any AST node (legacy interface)
-func EvalNode(ctx context.Context, env EvalEnv, node Node) (Value, error) {
+func EvalNode(ctx context.Context, env ValueScope, node Node) (Value, error) {
 	return EvalNodeWithContext(ctx, env, node, GetEvalContext(ctx))
 }
 
 // EvalNodeWithContext evaluates any AST node with enhanced error reporting
-func EvalNodeWithContext(ctx context.Context, env EvalEnv, node Node, evalCtx *EvalContext) (Value, error) {
+func EvalNodeWithContext(ctx context.Context, env ValueScope, node Node, evalCtx *EvalContext) (Value, error) {
 	// Store the eval context in the Go context for evaluators to access
 	if evalCtx != nil {
 		ctx = WithEvalContext(ctx, evalCtx)

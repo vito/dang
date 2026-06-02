@@ -163,8 +163,8 @@ type replComponent struct {
 	// Dang state
 	importConfigs []dang.ImportConfig
 	debug         bool
-	typeEnv       dang.Env
-	evalEnv       dang.EvalEnv
+	typeEnv       dang.TypeScope
+	evalEnv       dang.ValueScope
 	ctx           context.Context
 
 	// UI state

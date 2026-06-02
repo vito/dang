@@ -10,13 +10,13 @@ import (
 )
 
 // testCompletionEnv builds a simple env with some bindings for testing.
-func testCompletionEnv() Env {
+func testCompletionEnv() TypeScope {
 	registerBuiltinTypes()
 
 	env := NewPreludeEnv("")
 
 	// Add a "container" module with from and withExec methods.
-	containerMod := NewModule("Container", ObjectKind)
+	containerMod := NewTypeDef("Container", ObjectKind)
 
 	// from(address: String!) -> Container
 	fromArgs := NewRecordType("")
@@ -40,7 +40,7 @@ func testCompletionEnv() Env {
 	env.AddObject("Container", containerMod)
 
 	// Add a top-level "directory" binding.
-	dirMod := NewModule("Directory", ObjectKind)
+	dirMod := NewTypeDef("Directory", ObjectKind)
 	dirMod.Add("entries", hm.NewScheme(nil, hm.NewFnType(NewRecordType(""), ListType{Type: hm.NonNullType{Type: StringType}})))
 	dirMod.SetVisibility("entries", PublicVisibility)
 

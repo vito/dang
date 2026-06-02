@@ -33,8 +33,8 @@ func positionWithinNode(node dang.Node, pos Position) bool {
 
 // findEnclosingEnvironments walks the AST and collects all environments that enclose the given position.
 // Returns environments from outermost to innermost.
-func findEnclosingEnvironments(root dang.Node, pos Position) []dang.Env {
-	var environments []dang.Env
+func findEnclosingEnvironments(root dang.Node, pos Position) []dang.TypeScope {
+	var environments []dang.TypeScope
 
 	root.Walk(func(n dang.Node) bool {
 		if n == nil {
@@ -64,7 +64,7 @@ func findEnclosingEnvironments(root dang.Node, pos Position) []dang.Env {
 			if typed.Env != nil {
 				environments = append(environments, typed.Env)
 			}
-		case *dang.Object:
+		case *dang.ObjectLiteral:
 			if typed.Mod != nil {
 				environments = append(environments, typed.Mod)
 			}

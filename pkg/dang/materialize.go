@@ -45,7 +45,7 @@ func (c *Coerce) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	})
 }
 
-func (c *Coerce) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *Coerce) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		val, err := EvalNode(ctx, env, c.Expr)
 		if err != nil {
@@ -130,7 +130,7 @@ func diagnoseAssignment(have, want hm.Type) error {
 // field-level incompatibilities that prevent assignment. ok is true when
 // the walk reached such a Module pair (regardless of whether issues were
 // found); have and want are the unwrapped Modules in that case.
-func walkAssignment(have, want hm.Type) (haveMod, wantMod *Module, issues []string, ok bool) {
+func walkAssignment(have, want hm.Type) (haveMod, wantMod *TypeDef, issues []string, ok bool) {
 	if haveNN, haveOk := have.(hm.NonNullType); haveOk {
 		if wantNN, wantOk := want.(hm.NonNullType); wantOk {
 			return walkAssignment(haveNN.Type, wantNN.Type)
@@ -146,11 +146,11 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *Module, issues []stri
 			return walkAssignment(haveGLT.Type, wantGLT.Type)
 		}
 	}
-	hMod, hOk := have.(*Module)
+	hMod, hOk := have.(*TypeDef)
 	if !hOk {
 		return nil, nil, nil, false
 	}
-	if wMod, wOk := want.(*Module); wOk {
+	if wMod, wOk := want.(*TypeDef); wOk {
 		if !isStructuralKind(hMod.Kind) || !isStructuralKind(wMod.Kind) {
 			return nil, nil, nil, false
 		}
@@ -167,10 +167,10 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *Module, issues []stri
 // issues). If multiple options reach a Module pair, the one with the
 // shortest issue list wins. ID-handle unions (Object | ID) usually pick
 // the Object half here.
-func bestUnionMatch(have *Module, want *hm.UnionType) (*Module, *Module, []string, bool) {
+func bestUnionMatch(have *TypeDef, want *hm.UnionType) (*TypeDef, *TypeDef, []string, bool) {
 	var (
-		bestHave   *Module
-		bestWant   *Module
+		bestHave   *TypeDef
+		bestWant   *TypeDef
 		bestIssues []string
 		bestN      = -1
 		found      bool
@@ -196,7 +196,7 @@ func bestUnionMatch(have *Module, want *hm.UnionType) (*Module, *Module, []strin
 // and reports each missing or shape-incompatible field with neutral
 // terminology (the comparison runs in both object-implements-interface
 // and interface-vs-interface contexts).
-func diagnoseModule(have, want *Module) []string {
+func diagnoseModule(have, want *TypeDef) []string {
 	var issues []string
 	for name, wantScheme := range want.Bindings(PublicVisibility) {
 		wantType, _ := wantScheme.Type()
@@ -281,7 +281,7 @@ func unwrapZeroArgFn(t hm.Type) hm.Type {
 	return fn.Ret(false)
 }
 
-func isStructuralKind(k ModuleKind) bool {
+func isStructuralKind(k Kind) bool {
 	return k == ObjectKind || k == InterfaceKind || k == InputKind
 }
 
@@ -308,7 +308,7 @@ func wrapCoerce(node Node, target hm.Type, path string) Node {
 // values are trusted to match their inferred type and are returned unchanged,
 // except for narrow explicit coercions (string-to-enum/custom-scalar and list
 // elements that may themselves need materialization).
-func materializeValue(ctx context.Context, env EvalEnv, val Value, target hm.Type, path string) (Value, error) {
+func materializeValue(ctx context.Context, env ValueScope, val Value, target hm.Type, path string) (Value, error) {
 	if target == nil {
 		return val, nil
 	}
@@ -344,7 +344,7 @@ func materializeValue(ctx context.Context, env EvalEnv, val Value, target hm.Typ
 
 func materializeStringValue(val StringValue, target hm.Type, path string) (Value, error) {
 	inner := unwrapNonNull(target)
-	mod, ok := inner.(*Module)
+	mod, ok := inner.(*TypeDef)
 	if !ok {
 		return val, nil
 	}
@@ -372,7 +372,7 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 	}
 }
 
-func materializeDecoded(ctx context.Context, env EvalEnv, raw any, target hm.Type, path string) (Value, error) {
+func materializeDecoded(ctx context.Context, env ValueScope, raw any, target hm.Type, path string) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
 			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
@@ -449,7 +449,7 @@ func materializeDecoded(ctx context.Context, env EvalEnv, raw any, target hm.Typ
 		return ListValue{Elements: elements, ElemType: elemTarget}, nil
 	}
 
-	if mod, ok := target.(*Module); ok {
+	if mod, ok := target.(*TypeDef); ok {
 		switch mod.Kind {
 		case EnumKind:
 			s, ok := raw.(string)
@@ -482,7 +482,7 @@ func materializeDecoded(ctx context.Context, env EvalEnv, raw any, target hm.Typ
 	return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", target.Name())
 }
 
-func materializeDecodedUnion(ctx context.Context, env EvalEnv, raw any, union *hm.UnionType, path string) (Value, error) {
+func materializeDecodedUnion(ctx context.Context, env ValueScope, raw any, union *hm.UnionType, path string) (Value, error) {
 	var lastErr error
 	for _, option := range union.Options {
 		val, err := materializeDecoded(ctx, env, raw, option, path)
@@ -497,7 +497,7 @@ func materializeDecodedUnion(ctx context.Context, env EvalEnv, raw any, union *h
 	return DeferredValue{Raw: raw}, nil
 }
 
-func materializeNamedObject(ctx context.Context, env EvalEnv, raw any, mod *Module, path string) (Value, error) {
+func materializeNamedObject(ctx context.Context, env ValueScope, raw any, mod *TypeDef, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
@@ -523,7 +523,7 @@ func materializeNamedObject(ctx context.Context, env EvalEnv, raw any, mod *Modu
 	return callable.Call(ctx, env, args)
 }
 
-func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string]any, callable Callable, path string) (map[string]Value, error) {
+func materializeConstructorArgs(ctx context.Context, env ValueScope, obj map[string]any, callable Callable, path string) (map[string]Value, error) {
 	args := map[string]Value{}
 
 	if constructor, ok := callable.(*ConstructorFunction); ok {
@@ -578,13 +578,13 @@ func materializeConstructorArgs(ctx context.Context, env EvalEnv, obj map[string
 	return args, nil
 }
 
-func materializeAnonymousObject(ctx context.Context, env EvalEnv, raw any, mod *Module, path string) (Value, error) {
+func materializeAnonymousObject(ctx context.Context, env ValueScope, raw any, mod *TypeDef, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
 	}
 
-	value := NewModuleValue(mod)
+	value := NewObject(mod)
 	for _, field := range mod.AsRecord().Fields {
 		name := field.Key
 		fieldType, mono := field.Value.Type()
@@ -654,7 +654,7 @@ func isNullableType(target hm.Type) bool {
 	return !nonNull
 }
 
-func enumHasValue(enum *Module, value string) bool {
+func enumHasValue(enum *TypeDef, value string) bool {
 	scheme, found := enum.SchemeOf(value)
 	if !found {
 		return false
@@ -667,7 +667,7 @@ func enumHasValue(enum *Module, value string) bool {
 	return err == nil
 }
 
-func isPrimitiveScalar(mod *Module) bool {
+func isPrimitiveScalar(mod *TypeDef) bool {
 	switch mod {
 	case StringType, IntType, FloatType, BooleanType:
 		return true
