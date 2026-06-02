@@ -8,7 +8,7 @@ let x = a and b
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -39,7 +39,7 @@ let x = a or b
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -70,7 +70,7 @@ let x = a
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -102,7 +102,7 @@ let x = a
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -134,7 +134,7 @@ let x = a
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -173,7 +173,7 @@ let x = a
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -210,7 +210,7 @@ let x = foo == 1
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -253,7 +253,7 @@ android
 
 (dang
   e: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))
@@ -282,7 +282,7 @@ order
 
 (dang
   e: (decl
-    decl: (field
+    decl: (field_decl
       (value_only_field
         vis: (visibility
           (let_token))

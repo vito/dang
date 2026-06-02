@@ -25,7 +25,7 @@ CommaToken <- ','
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / ObjectDecl / NewConstructor / Field / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / ScalarDecl / ObjectDecl / NewConstructorDecl / FieldDecl / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
     if docstring != nil {
@@ -262,7 +262,7 @@ FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
   }
 }
 
-Interface <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
+InterfaceDecl <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
   return &InterfaceDecl{
     Name: name.(*Symbol),
     Value: block.(*Block),
@@ -273,7 +273,7 @@ Interface <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i,
 }
 InterfaceToken <- "interface" !WordChar
 
-Union <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
+UnionDecl <- UnionToken _ name:Symbol _ '=' _ first:Symbol rest:(_ '|' _ s:Symbol { return s, nil })* {
   return &UnionDecl{
     Name:       name.(*Symbol),
     Members:    sliceOfPrepend[*Symbol](first, rest),
@@ -301,7 +301,7 @@ ImplementsToken <- "implements" !WordChar
 
 AmpersandToken <- '&'
 
-Enum <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
+EnumDecl <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsSymbol { return v, nil })* { return sliceOfPrepend[*Symbol](first, rest), nil }) _ '}' {
   return &EnumDecl{
     Name: name.(*Symbol),
     Values: values.([]*Symbol),
@@ -311,7 +311,7 @@ Enum <- EnumToken _ name:Symbol _ '{' _ values:(first:CapsSymbol rest:(_ v:CapsS
 }
 EnumToken <- "enum" !WordChar
 
-Scalar <- ScalarToken _ name:Symbol {
+ScalarDecl <- ScalarToken _ name:Symbol {
   return &ScalarDecl{
     Name: name.(*Symbol),
     Visibility: PublicVisibility,
@@ -320,7 +320,7 @@ Scalar <- ScalarToken _ name:Symbol {
 }
 ScalarToken <- "scalar" !WordChar
 
-NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
+NewConstructorDecl <- NewToken _ args:ArgTypes _ block:Block {
   // Separate block parameters from regular constructor arguments.
   allArgs := args.([]*FieldDecl)
   var regularArgs []*FieldDecl
@@ -352,7 +352,7 @@ NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
 }
 NewToken <- "new" !WordChar
 
-Field <- TypeAndArgsAndBlockField  // pub a(foo: Boolean!): Int! { 1 }
+FieldDecl <- TypeAndArgsAndBlockField  // pub a(foo: Boolean!): Int! { 1 }
       / TypeAndBlockField         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
       / TypeAndValueField         // pub a: Int! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
       / ValueOnlyField            // pub a = 1              <- as above, type inferred as Int!

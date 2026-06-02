@@ -1208,19 +1208,19 @@
             "named": true
           },
           {
-            "type": "enum",
+            "type": "enum_decl",
             "named": true
           },
           {
-            "type": "field",
+            "type": "field_decl",
             "named": true
           },
           {
-            "type": "interface",
+            "type": "interface_decl",
             "named": true
           },
           {
-            "type": "new_constructor",
+            "type": "new_constructor_decl",
             "named": true
           },
           {
@@ -1228,11 +1228,11 @@
             "named": true
           },
           {
-            "type": "scalar",
+            "type": "scalar_decl",
             "named": true
           },
           {
-            "type": "union",
+            "type": "union_decl",
             "named": true
           }
         ]
@@ -1533,7 +1533,7 @@
     }
   },
   {
-    "type": "enum",
+    "type": "enum_decl",
     "named": true,
     "fields": {
       "first": {
@@ -1668,7 +1668,7 @@
     }
   },
   {
-    "type": "field",
+    "type": "field_decl",
     "named": true,
     "fields": {},
     "children": {
@@ -2154,7 +2154,7 @@
     }
   },
   {
-    "type": "interface",
+    "type": "interface_decl",
     "named": true,
     "fields": {
       "block": {
@@ -2599,7 +2599,7 @@
     }
   },
   {
-    "type": "new_constructor",
+    "type": "new_constructor_decl",
     "named": true,
     "fields": {
       "args": {
@@ -3167,7 +3167,7 @@
     }
   },
   {
-    "type": "scalar",
+    "type": "scalar_decl",
     "named": true,
     "fields": {
       "name": {
@@ -4126,7 +4126,7 @@
     }
   },
   {
-    "type": "union",
+    "type": "union_decl",
     "named": true,
     "fields": {
       "first": {

@@ -39,7 +39,7 @@ print(test(bin(src)))
 (dang
   (comment_token)
   (decl
-    (field
+    (field_decl
       (value_only_field
         (visibility
           (let_token))
@@ -91,7 +91,7 @@ print(test(bin(src)))
             (sep))))))
   (sep)
   (decl
-    (field
+    (field_decl
       (type_and_args_and_block_field
         (visibility
           (let_token))
@@ -236,7 +236,7 @@ print(test(bin(src)))
           (sep)))))
   (sep)
   (decl
-    (field
+    (field_decl
       (type_and_args_and_block_field
         (visibility
           (let_token))

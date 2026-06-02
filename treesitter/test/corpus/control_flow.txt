@@ -10,7 +10,7 @@ pub f: Int! {
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (type_and_block_field
         vis: (visibility
           (pub_token))
@@ -46,7 +46,7 @@ pub f: Int! {
 
 (dang
   last: (decl
-    decl: (field
+    decl: (field_decl
       (type_and_block_field
         vis: (visibility
           (pub_token))
