@@ -153,7 +153,7 @@ type Module struct {
 	typeOrigins      map[string]BindingOrigin
 	valueOrigins     map[string]BindingOrigin
 	directiveOrigins map[string]BindingOrigin
-	slotDirectives   map[string][]*DirectiveApplication
+	fieldDirectives  map[string][]*DirectiveApplication
 	docStrings       map[string]string
 	moduleDocString  string
 
@@ -186,7 +186,7 @@ func NewModule(name string, kind ModuleKind) *Module {
 		typeOrigins:      make(map[string]BindingOrigin),
 		valueOrigins:     make(map[string]BindingOrigin),
 		directiveOrigins: make(map[string]BindingOrigin),
-		slotDirectives:   make(map[string][]*DirectiveApplication),
+		fieldDirectives:  make(map[string][]*DirectiveApplication),
 		docStrings:       make(map[string]string),
 		moduleDocString:  "",
 	}
@@ -339,9 +339,9 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	}
 
 	for _, t := range schema.Directives {
-		var args []*SlotDecl
+		var args []*FieldDecl
 		for _, arg := range t.Args {
-			args = append(args, &SlotDecl{
+			args = append(args, &FieldDecl{
 				Name: &Symbol{
 					Name: arg.Name,
 				},
@@ -873,13 +873,13 @@ func (e *Module) GetDocString(name string) (string, bool) {
 
 // SetDirectives sets the documentation string for a symbol
 func (e *Module) SetDirectives(name string, directives []*DirectiveApplication) {
-	e.slotDirectives[name] = directives
+	e.fieldDirectives[name] = directives
 }
 
 // GetDirectives gets the documentation string for a symbol
 func (e *Module) GetDirectives(name string) []*DirectiveApplication {
-	if slotDirectives, ok := e.slotDirectives[name]; ok {
-		return slotDirectives
+	if fieldDirectives, ok := e.fieldDirectives[name]; ok {
+		return fieldDirectives
 	}
 	if e.Parent != nil {
 		if parent, ok := e.Parent.(*Module); ok {

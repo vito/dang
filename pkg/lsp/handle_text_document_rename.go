@@ -101,9 +101,9 @@ func (h *langHandler) findDeclarations(node dang.Node, symbolName string) []Rang
 		for _, declSym := range declaredSyms {
 			if declSym == symbolName {
 				var loc *dang.SourceLocation
-				// Special handling for SlotDecl: use the Name symbol's location
-				if slotDecl, ok := n.(*dang.SlotDecl); ok {
-					loc = slotDecl.Name.GetSourceLocation()
+				// Special handling for FieldDecl: use the Name symbol's location
+				if fieldDecl, ok := n.(*dang.FieldDecl); ok {
+					loc = fieldDecl.Name.GetSourceLocation()
 				} else {
 					loc = n.GetSourceLocation()
 				}

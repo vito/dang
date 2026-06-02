@@ -429,7 +429,7 @@ func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 }
 
 type FunTypeNode struct {
-	Args []*SlotDecl
+	Args []*FieldDecl
 	Ret  TypeNode
 }
 
@@ -525,7 +525,7 @@ func (t FunTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 //
 // type RecordTypeNode struct {
 // 	Named  string
-// 	Fields []SlotDecl
+// 	Fields []FieldDecl
 // }
 
 // var _ TypeNode = RecordTypeNode{}

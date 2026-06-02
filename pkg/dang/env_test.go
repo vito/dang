@@ -416,7 +416,7 @@ func TestRunDirImportedValueDoesNotShadowLocalDeclaration(t *testing.T) {
 	// File-local imports must hold at runtime too: file A's `import Dagger`
 	// brings in an unqualified `container` value, but file B's `pub container`
 	// declaration owns that name in B's scope. With a global eval env the
-	// import would be installed first and SlotDecl.Eval would skip B's
+	// import would be installed first and FieldDecl.Eval would skip B's
 	// declaration as "already defined".
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:   "Dagger",

@@ -13,8 +13,8 @@ import (
 
 type FunctionBase struct {
 	InferredTypeHolder
-	Args       []*SlotDecl
-	BlockParam *SlotDecl // Optional block parameter (prefixed with &)
+	Args       []*FieldDecl
+	BlockParam *FieldDecl // Optional block parameter (prefixed with &)
 	Body       Node
 	Directives []*DirectiveApplication
 	Loc        *SourceLocation
@@ -27,16 +27,16 @@ type FunctionBase struct {
 	ExpectedReturnType hm.Type
 }
 
-// inferFunctionArguments processes SlotDecl arguments into function type arguments
+// inferFunctionArguments processes FieldDecl arguments into function type arguments
 func (f *FunctionBase) inferFunctionArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
-	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).Infer)
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*FieldDecl).Infer)
 }
 
 func (f *FunctionBase) declareFunctionSignatureArguments(ctx context.Context, env hm.Env, fresh hm.Fresher) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
-	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*SlotDecl).DeclareSignature)
+	return f.inferFunctionArgumentsWith(ctx, env, fresh, (*FieldDecl).DeclareSignature)
 }
 
-func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.Env, fresh hm.Fresher, inferArg func(*SlotDecl, context.Context, hm.Env, hm.Fresher) (hm.Type, error)) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
+func (f *FunctionBase) inferFunctionArgumentsWith(ctx context.Context, env hm.Env, fresh hm.Fresher, inferArg func(*FieldDecl, context.Context, hm.Env, hm.Fresher) (hm.Type, error)) ([]Keyed[*hm.Scheme], []Keyed[[]*DirectiveApplication], map[string]string, error) {
 	args := []Keyed[*hm.Scheme]{}
 	directives := []Keyed[[]*DirectiveApplication]{}
 	docStrings := make(map[string]string)
@@ -279,7 +279,7 @@ var _ hm.Expression = &FunDecl{}
 var _ Evaluator = &FunDecl{}
 
 func (f *FunDecl) DeclaredSymbols() []string {
-	// FunDecl doesn't declare symbols - the parent SlotDecl does
+	// FunDecl doesn't declare symbols - the parent FieldDecl does
 	return nil
 }
 
@@ -675,7 +675,7 @@ type DirectiveLocation struct {
 type DirectiveDecl struct {
 	InferredTypeHolder
 	Name       string
-	Args       []*SlotDecl
+	Args       []*FieldDecl
 	Locations  []DirectiveLocation
 	Directives []*DirectiveApplication
 	DocString  string
@@ -1092,4 +1092,3 @@ func (i *ImportDecl) Walk(fn func(Node) bool) {
 	fn(i)
 	// ImportDecl has no child nodes to walk
 }
-

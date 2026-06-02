@@ -464,11 +464,11 @@ func docStringForHoverSymbol(f *File, pos Position, symbolName string) string {
 // formatDeclSignature formats a declaring node's signature without the body.
 func formatDeclSignature(node dang.Node) string {
 	switch n := node.(type) {
-	case *dang.SlotDecl:
+	case *dang.FieldDecl:
 		// Format a shallow copy so concurrent hover/completion requests don't
 		// mutate the shared, inferred AST.
-		slotCopy := *n
-		slotCopy.DocString = ""
+		fieldCopy := *n
+		fieldCopy.DocString = ""
 
 		if funDecl, ok := n.Value.(*dang.FunDecl); ok {
 			// For functions, keep the FunDecl but strip its body.
@@ -476,13 +476,13 @@ func formatDeclSignature(node dang.Node) string {
 			baseCopy := funDecl.FunctionBase
 			baseCopy.Body = nil
 			funCopy.FunctionBase = baseCopy
-			slotCopy.Value = &funCopy
-			return dang.Format(&slotCopy)
+			fieldCopy.Value = &funCopy
+			return dang.Format(&fieldCopy)
 		}
 
-		// For non-function slots, strip the value so we get just the type annotation.
-		slotCopy.Value = nil
-		return dang.Format(&slotCopy)
+		// For non-function fields, strip the value so we get just the type annotation.
+		fieldCopy.Value = nil
+		return dang.Format(&fieldCopy)
 
 	case *dang.ClassDecl:
 		return fmt.Sprintf("type %s", n.Name.Name)

@@ -8,7 +8,7 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-type SlotDecl struct {
+type FieldDecl struct {
 	InferredTypeHolder
 	Name         *Symbol
 	Type_        TypeNode
@@ -23,15 +23,15 @@ type SlotDecl struct {
 	ContextInferredType hm.Type
 }
 
-var _ Node = (*SlotDecl)(nil)
-var _ Evaluator = (*SlotDecl)(nil)
-var _ Hoister = (*SlotDecl)(nil)
+var _ Node = (*FieldDecl)(nil)
+var _ Evaluator = (*FieldDecl)(nil)
+var _ Hoister = (*FieldDecl)(nil)
 
-func (s *SlotDecl) DeclaredSymbols() []string {
-	return []string{s.Name.Name} // Slot declarations declare their name
+func (s *FieldDecl) DeclaredSymbols() []string {
+	return []string{s.Name.Name} // Field declarations declare their name
 }
 
-func (s *SlotDecl) ReferencedSymbols() []string {
+func (s *FieldDecl) ReferencedSymbols() []string {
 	var symbols []string
 	if s.Value != nil {
 		symbols = append(symbols, s.Value.ReferencedSymbols()...)
@@ -45,16 +45,16 @@ func (s *SlotDecl) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (s *SlotDecl) Body() hm.Expression {
+func (s *FieldDecl) Body() hm.Expression {
 	// TODO(vito): return Value? unclear how Body is used
 	return s
 }
 
-func (s *SlotDecl) GetSourceLocation() *SourceLocation { return s.Loc }
+func (s *FieldDecl) GetSourceLocation() *SourceLocation { return s.Loc }
 
-func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
-	// If the slot value is a hoister (e.g. wraps a FunDecl), delegate while
-	// preserving the slot's name and metadata. This is the signature boundary:
+func (s *FieldDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass int) error {
+	// If the field value is a hoister (e.g. wraps a FunDecl), delegate while
+	// preserving the field's name and metadata. This is the signature boundary:
 	// function bodies are not inferred, but callers can see the function type.
 	if funDecl, ok := s.Value.(*FunDecl); ok {
 		if funDecl.Named == "" {
@@ -85,7 +85,7 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 		return hoister.Hoist(ctx, env, fresh, pass)
 	}
 
-	// For non-function slots, register the type during pass 0 so that
+	// For non-function fields, register the type during pass 0 so that
 	// sibling declarations (e.g. method default-value expressions) can
 	// reference it before full inference runs. This mirrors the declaration
 	// pass for function signatures.
@@ -95,13 +95,13 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	// type is known without consulting the environment). Computed values are
 	// intentionally not inferred at the hoist boundary.
 	if pass == 0 {
-		slotType, err := s.signatureType(ctx, env, fresh, false)
+		fieldType, err := s.signatureType(ctx, env, fresh, false)
 		if err != nil {
 			return err
 		}
-		if slotType != nil {
-			env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
-			s.SetInferredType(slotType)
+		if fieldType != nil {
+			env.Add(s.Name.Name, hm.NewScheme(nil, fieldType))
+			s.SetInferredType(fieldType)
 			if e, ok := env.(Env); ok {
 				e.SetVisibility(s.Name.Name, s.Visibility)
 				if s.DocString != "" {
@@ -117,13 +117,13 @@ func (s *SlotDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pass
 	return nil
 }
 
-func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
+func (s *FieldDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresher, allowComputed bool) (hm.Type, error) {
 	if s.Type_ != nil {
-		slotType, err := s.Type_.Infer(ctx, env, fresh)
+		fieldType, err := s.Type_.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
 		}
-		return slotType, nil
+		return fieldType, nil
 	}
 	if constant, ok := s.Value.(Constant); ok {
 		return constant.ConstantType(), nil
@@ -140,16 +140,16 @@ func (s *SlotDecl) signatureType(ctx context.Context, env hm.Env, fresh hm.Fresh
 	return nil, nil
 }
 
-func (s *SlotDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	slotType, err := s.signatureType(ctx, env, fresh, false)
+func (s *FieldDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	fieldType, err := s.signatureType(ctx, env, fresh, false)
 	if err != nil {
 		return nil, err
 	}
-	if slotType == nil {
+	if fieldType == nil {
 		return nil, nil
 	}
-	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
-	s.SetInferredType(slotType)
+	env.Add(s.Name.Name, hm.NewScheme(nil, fieldType))
+	s.SetInferredType(fieldType)
 	if e, ok := env.(Env); ok {
 		e.SetVisibility(s.Name.Name, s.Visibility)
 		if s.DocString != "" {
@@ -159,19 +159,19 @@ func (s *SlotDecl) DeclareKnownSignature(ctx context.Context, env hm.Env, fresh 
 			e.SetDirectives(s.Name.Name, s.Directives)
 		}
 	}
-	return slotType, nil
+	return fieldType, nil
 }
 
-func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	slotType, err := s.signatureType(ctx, env, fresh, true)
+func (s *FieldDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	fieldType, err := s.signatureType(ctx, env, fresh, true)
 	if err != nil {
 		return nil, err
 	}
-	if slotType == nil {
-		slotType = fresh.Fresh()
+	if fieldType == nil {
+		fieldType = fresh.Fresh()
 	}
-	env.Add(s.Name.Name, hm.NewScheme(nil, slotType))
-	s.SetInferredType(slotType)
+	env.Add(s.Name.Name, hm.NewScheme(nil, fieldType))
+	s.SetInferredType(fieldType)
 	if e, ok := env.(Env); ok {
 		e.SetVisibility(s.Name.Name, s.Visibility)
 		if s.DocString != "" {
@@ -181,10 +181,10 @@ func (s *SlotDecl) DeclareSignature(ctx context.Context, env hm.Env, fresh hm.Fr
 			e.SetDirectives(s.Name.Name, s.Directives)
 		}
 	}
-	return slotType, nil
+	return fieldType, nil
 }
 
-func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var err error
 
 	var definedType hm.Type
@@ -231,12 +231,12 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		if defined {
 			curT, curMono := cur.Type()
 			if !curMono {
-				return nil, fmt.Errorf("SlotDecl.Infer: TODO: type is not monomorphic")
+				return nil, fmt.Errorf("FieldDecl.Infer: TODO: type is not monomorphic")
 			}
 
 			if !definedType.Eq(curT) {
 				return nil, WrapInferError(
-					fmt.Errorf("SlotDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
+					fmt.Errorf("FieldDecl.Infer: %q already defined as %s, trying to redefine as %s", s.Name.Name, curT, definedType),
 					s,
 				)
 			}
@@ -258,7 +258,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	for _, directive := range s.Directives {
 		_, err := directive.Infer(ctx, env, fresh)
 		if err != nil {
-			return nil, fmt.Errorf("SlotDecl.Infer: directive validation: %w", err)
+			return nil, fmt.Errorf("FieldDecl.Infer: directive validation: %w", err)
 		}
 	}
 
@@ -267,7 +267,7 @@ func (s *SlotDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	return definedType, nil
 }
 
-func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *FieldDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		val, defined := env.LookupLocal(s.Name.Name)
 		if defined {
@@ -281,7 +281,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			// This is a runtime error - required types must have values
 			if inferredType := s.GetInferredType(); inferredType != nil {
 				if _, isNonNull := inferredType.(hm.NonNullType); isNonNull {
-					return nil, fmt.Errorf("required slot %q (type %s) has no value", s.Name.Name, inferredType)
+					return nil, fmt.Errorf("required field %q (type %s) has no value", s.Name.Name, inferredType)
 				}
 			}
 
@@ -292,7 +292,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 		}
 
 		// Evaluate the value expression with proper error context. The Value
-		// node is wrapped in a Coerce by SlotDecl.Infer when the slot has an
+		// node is wrapped in a Coerce by FieldDecl.Infer when the field has an
 		// explicit type, so materialization happens during EvalNode.
 		val, err := EvalNode(ctx, env, s.Value)
 		if err != nil {
@@ -304,7 +304,7 @@ func (s *SlotDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-func (s *SlotDecl) Walk(fn func(Node) bool) {
+func (s *FieldDecl) Walk(fn func(Node) bool) {
 	if !fn(s) {
 		return
 	}
@@ -334,8 +334,8 @@ type ClassDecl struct {
 // NewConstructorDecl represents an explicit `new(...) { ... }` constructor
 type NewConstructorDecl struct {
 	InferredTypeHolder
-	Args       []*SlotDecl
-	BlockParam *SlotDecl
+	Args       []*FieldDecl
+	BlockParam *FieldDecl
 	BodyBlock  *Block
 	DocString  string
 	Loc        *SourceLocation
@@ -501,8 +501,8 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 
 	// Build constructor type: use explicit new() if present, otherwise derive from fields
 	newDecl := c.findNewConstructor()
-	var constructorParams []*SlotDecl
-	var constructorBlockParam *SlotDecl
+	var constructorParams []*FieldDecl
+	var constructorBlockParam *FieldDecl
 	if newDecl != nil {
 		constructorParams = newDecl.Args
 		constructorBlockParam = newDecl.BlockParam
@@ -559,7 +559,7 @@ func (c *ClassDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 	// to register method signatures on the class module. This enables
 	// forward references between types defined in any order. We hoist at
 	// pass 0 so that FunDecl.Hoist registers signatures and
-	// SlotDecl.Hoist registers typed field declarations.
+	// FieldDecl.Hoist registers typed field declarations.
 	bodyForms := c.bodyFormsWithoutNew()
 	for _, form := range bodyForms {
 		if hoister, ok := form.(Hoister); ok {
@@ -609,16 +609,16 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 		lexical: env.(Env),
 	}
 
-	// Check for slots named "new" — the user likely intended a constructor
+	// Check for fields named "new" — the user likely intended a constructor
 	for _, form := range c.Value.Forms {
-		if slot, ok := form.(*SlotDecl); ok && slot.Name.Name == "new" {
+		if field, ok := form.(*FieldDecl); ok && field.Name.Name == "new" {
 			vis := "pub"
-			if slot.Visibility == PrivateVisibility {
+			if field.Visibility == PrivateVisibility {
 				vis = "let"
 			}
 			return nil, NewInferError(
 				fmt.Errorf("'new' is a constructor, not a method; use `new(...) { ... }` without `%s` or a return type", vis),
-				slot,
+				field,
 			)
 		}
 	}
@@ -700,28 +700,28 @@ func (c *ClassDecl) validateInterfaceImplementations(classMod *Module, env Env, 
 	return nil
 }
 
-// extractConstructorParametersAndCleanBody extracts public non-function slots and private
-// required slots (no default) as constructor parameters and returns the filtered forms that
+// extractConstructorParametersAndCleanBody extracts public non-function fields and private
+// required fields (no default) as constructor parameters and returns the filtered forms that
 // should be evaluated in the class body
-func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
-	var params []*SlotDecl
+func (c *ClassDecl) extractConstructorParameters() []*FieldDecl {
+	var params []*FieldDecl
 
 	for _, form := range c.Value.Forms {
-		if slot, ok := form.(*SlotDecl); ok {
-			// Skip function slots
-			if _, isFun := slot.Value.(*FunDecl); isFun {
+		if field, ok := form.(*FieldDecl); ok {
+			// Skip function fields
+			if _, isFun := field.Value.(*FunDecl); isFun {
 				continue
 			}
 
-			// Include public non-function slots as constructor parameters
-			if slot.Visibility == PublicVisibility {
-				params = append(params, slot)
+			// Include public non-function fields as constructor parameters
+			if field.Visibility == PublicVisibility {
+				params = append(params, field)
 				continue
 			}
 
-			// Include private slots that are required (no default value)
-			if slot.Visibility == PrivateVisibility && slot.Value == nil {
-				params = append(params, slot)
+			// Include private fields that are required (no default value)
+			if field.Visibility == PrivateVisibility && field.Value == nil {
+				params = append(params, field)
 			}
 		}
 	}
@@ -730,7 +730,7 @@ func (c *ClassDecl) extractConstructorParameters() []*SlotDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*SlotDecl, blockParam *SlotDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ClassDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, classType *Module, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
@@ -841,8 +841,8 @@ func (c *ClassDecl) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 
 		// Find explicit new() or derive constructor from fields
 		newDecl := c.findNewConstructor()
-		var constructorParams []*SlotDecl
-		var constructorBlockParam *SlotDecl
+		var constructorParams []*FieldDecl
+		var constructorBlockParam *FieldDecl
 		var newBody *Block
 		if newDecl != nil {
 			constructorParams = newDecl.Args

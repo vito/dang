@@ -1057,7 +1057,7 @@ type FunctionValue struct {
 	Closure        EvalEnv
 	FnType         *hm.FunctionType
 	Defaults       map[string]Node // Map of argument name to default value expression
-	ArgDecls       []*SlotDecl     // Original argument declarations with directives
+	ArgDecls       []*FieldDecl    // Original argument declarations with directives
 	BlockParamName string          // Name of the block parameter, if any
 	Directives     []*DirectiveApplication
 	IsDynamic      bool // True if this function has access to dynamic scope
@@ -1614,7 +1614,7 @@ func (b BuiltinFunction) IsAutoCallable() bool {
 type ConstructorFunction struct {
 	Closure        EvalEnv
 	ClassName      string
-	Parameters     []*SlotDecl
+	Parameters     []*FieldDecl
 	BlockParamName string
 	ClassType      *Module
 	FnType         *hm.FunctionType
@@ -1645,12 +1645,12 @@ func (c *ConstructorFunction) Call(ctx context.Context, env EvalEnv, args map[st
 		// Explicit new() constructor: evaluate field declarations that have
 		// defaults, then execute the new() body (which must assign required fields).
 
-		// Filter to only include SlotDecls with defaults and methods
+		// Filter to only include FieldDecls with defaults and methods
 		var formsWithDefaults []Node
 		for _, form := range c.ClassBodyForms {
-			if slot, ok := form.(*SlotDecl); ok {
+			if field, ok := form.(*FieldDecl); ok {
 				// Skip required fields without defaults — new() will set them
-				if slot.Value == nil {
+				if field.Value == nil {
 					continue
 				}
 			}
@@ -2228,7 +2228,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 
 	// Phase order matches EvaluateFormsWithPhases (minus imports, which we
 	// already ran per file above): directives, constants, types, functions,
-	// variables (as lazy slots), then non-declarations.
+	// variables (as lazy fields), then non-declarations.
 	for _, scope := range scopes {
 		for _, form := range scope.classified.Directives {
 			if _, err := EvalNode(ctx, scope.env, form); err != nil {
@@ -2257,29 +2257,29 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 			}
 		}
 	}
-	// Variables phase across files: install all lazy slots first, then force.
+	// Variables phase across files: install all lazy fields first, then force.
 	// Without the split, file order would dictate eval order — a consumer file
 	// would force its body before a producer's `pub make = ...` had even been
 	// bound, so cross-file `make` lookups would fail.
 	for _, scope := range scopes {
 		scopeEnv := scope.env
 		for _, form := range scope.classified.Variables {
-			slot, ok := form.(*SlotDecl)
+			field, ok := form.(*FieldDecl)
 			if !ok {
 				continue
 			}
-			scopeEnv.BindLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
-				return EvalNode(ctx, scopeEnv, slot.Value)
-			}, slot.Visibility)
+			scopeEnv.BindLazy(field.Name.Name, func(ctx context.Context) (Value, error) {
+				return EvalNode(ctx, scopeEnv, field.Value)
+			}, field.Visibility)
 		}
 	}
 	for _, scope := range scopes {
 		for _, form := range scope.classified.Variables {
-			slot, ok := form.(*SlotDecl)
+			field, ok := form.(*FieldDecl)
 			if !ok {
 				continue
 			}
-			if _, _, err := scope.env.Lookup(ctx, slot.Name.Name); err != nil {
+			if _, _, err := scope.env.Lookup(ctx, field.Name.Name); err != nil {
 				return fmt.Errorf("variable evaluation failed: %w", err)
 			}
 		}
@@ -2329,7 +2329,7 @@ func (c *CompositeEvalEnv) Has(name string) bool {
 
 func (c *CompositeEvalEnv) LookupLocal(name string) (Value, bool) {
 	// Only consult primary: lexical holds file-scoped imports, which must not
-	// be treated as already-defined "local" bindings by SlotDecl.Eval — that
+	// be treated as already-defined "local" bindings by FieldDecl.Eval — that
 	// would silently swallow declarations that share a name with an import.
 	return c.primary.LookupLocal(name)
 }
