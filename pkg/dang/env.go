@@ -56,33 +56,56 @@ func (o BindingOrigin) ConflictingImports() []string {
 	return o.ImportNames
 }
 
+// TypeScope is both a typing environment (hm.Env: name->scheme value bindings)
+// and a type in its own right (hm.Type), so a declared type can appear in type
+// positions while also carrying a namespace of members. On top of hm.Env it
+// tracks three kinds of named symbol -- types, values, and directives -- each
+// with parallel origin and conflict bookkeeping, plus docs and visibility.
+//
+// Throughout, the Local* variants consult only this scope; their non-Local
+// counterparts fall back to Parent.
 type TypeScope interface {
 	hm.Env
 	hm.Type
+
+	// Named types declared or imported into this scope.
 	NamedType(string) (TypeScope, bool)
 	LocalNamedType(string) (TypeScope, bool)
 	AddObject(string, TypeScope)
-	SetTypeOrigin(string, BindingOrigin)
-	LocalTypeOrigin(string) (BindingOrigin, bool)
-	SetDocString(string, string)
-	GetDocString(string) (string, bool)
-	SetDirectives(string, []*DirectiveApplication)
-	GetDirectives(string) []*DirectiveApplication
-	SetTypeDocString(string)
-	GetTypeDocString() string
-	SetVisibility(string, Visibility)
+	NamedTypes() iter.Seq2[string, TypeScope]
+
+	// Value/field bindings. hm.Env supplies SchemeOf/Add; these extend it.
 	LocalSchemeOf(string) (*hm.Scheme, bool)
-	SetValueOrigin(string, BindingOrigin)
-	LocalValueOrigin(string) (BindingOrigin, bool)
+	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
+	SetVisibility(string, Visibility)
+
+	// Directives: declarations (Add/GetDirective) and the applications
+	// attached to a named member (Set/GetDirectives).
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
+	SetDirectives(string, []*DirectiveApplication)
+	GetDirectives(string) []*DirectiveApplication
+
+	// Documentation, for individual members and for the scope itself.
+	SetDocString(string, string)
+	GetDocString(string) (string, bool)
+	SetTypeDocString(string)
+	GetTypeDocString() string
+
+	// Binding origins: where each symbol came from (local vs which import),
+	// tracked separately for types, values, and directives.
+	SetTypeOrigin(string, BindingOrigin)
+	LocalTypeOrigin(string) (BindingOrigin, bool)
+	SetValueOrigin(string, BindingOrigin)
+	LocalValueOrigin(string) (BindingOrigin, bool)
 	SetDirectiveOrigin(string, BindingOrigin)
 	LocalDirectiveOrigin(string) (BindingOrigin, bool)
-	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
+
+	// Import-conflict detection: returns the imports that provide a name when
+	// more than one does (nil if there is no conflict).
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
 	CheckDirectiveConflict(directiveName string) []string
-	NamedTypes() iter.Seq2[string, TypeScope]
 }
 
 // Kind represents the kind of a type.
