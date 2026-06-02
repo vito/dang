@@ -1,0 +1,7 @@
+# JSON field names must not contain control characters.
+
+type InvalidJSONName {
+  pub field: String! @json(name: "bad\nname")
+}
+
+print("Should not reach here!")

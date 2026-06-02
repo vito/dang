@@ -628,6 +628,9 @@ func (c *ClassDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	if _, err := InferFormsWithPhases(ctx, bodyForms, inferEnv, fresh); err != nil {
 		return nil, err
 	}
+	if err := validateJSONFieldNames(class); err != nil {
+		return nil, err
+	}
 
 	// If there's an explicit new(), infer its body with its args in scope.
 	// Errors here (e.g. wrong return type) are collected but don't prevent

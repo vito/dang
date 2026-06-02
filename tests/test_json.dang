@@ -37,4 +37,14 @@ pub emptyMapped = emptyFiltered.map { x => x + 1 }
 pub json5 = toJSON(value: emptyMapped)
 assert { json5 == "[]" }
 
+# Type fields can opt into a different JSON key.
+type JsonRenamedFields {
+  pub fooBar: String! @json(name: "foo-bar")
+  pub bazQux: String! @json("baz-qux")
+  pub regularField: Int!
+}
+
+pub json6 = toJSON(value: JsonRenamedFields("foo", "baz", 7))
+assert { json6 == "{\"baz-qux\":\"baz\",\"foo-bar\":\"foo\",\"regularField\":7}" }
+
 print("JSON marshaling tests passed!")

@@ -311,6 +311,19 @@ func init() {
 	BasicErrorType.AddInterface(ErrorType)
 	ErrorType.AddImplementer(BasicErrorType)
 
+	// Built-in field directive used by JSON marshaling.
+	Prelude.AddDirective("json", &DirectiveDecl{
+		Name: "json",
+		Args: []*SlotDecl{
+			{
+				Name:  &Symbol{Name: "name"},
+				Type_: NonNullTypeNode{Elem: &NamedTypeNode{Name: "String"}},
+			},
+		},
+		Locations: []DirectiveLocation{{Name: "FIELD_DEFINITION"}},
+		DocString: "Controls JSON serialization of a field.",
+	})
+
 	// Register standard library builtins
 	registerStdlib()
 

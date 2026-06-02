@@ -1,0 +1,8 @@
+# Two fields cannot marshal to the same JSON object key.
+
+type DuplicateJSONNames {
+  pub firstName: String! @json(name: "name")
+  pub displayName: String! @json(name: "name")
+}
+
+print("Should not reach here!")

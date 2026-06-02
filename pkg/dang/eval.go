@@ -1471,7 +1471,7 @@ func (m *ModuleValue) MarshalJSON() ([]byte, error) {
 		if _, isFn := kv.Value.(FunctionValue); isFn {
 			continue
 		}
-		result[kv.Key] = kv.Value
+		result[jsonFieldName(kv.Key, m.Mod.GetDirectives(kv.Key))] = kv.Value
 	}
 	return json.Marshal(result)
 }

@@ -1,0 +1,9 @@
+# JSON field names must be known at compile time.
+
+pub configuredName = "configured"
+
+type DynamicJSONName {
+  pub field: String! @json(name: configuredName)
+}
+
+print("Should not reach here!")
