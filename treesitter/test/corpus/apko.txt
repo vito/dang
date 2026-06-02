@@ -104,11 +104,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (id
                   (word_token)))
               (equal_token)
-              (object
+              (object_literal
                 (key_value
                   (word_token)
                   (colon_token)
-                  (object
+                  (object_literal
                     (key_value
                       (word_token)
                       (colon_token)
@@ -135,7 +135,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (key_value
                   (word_token)
                   (colon_token)
-                  (object
+                  (object_literal
                     (key_value
                       (word_token)
                       (colon_token)

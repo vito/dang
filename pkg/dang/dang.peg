@@ -74,7 +74,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
 
 Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
-Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / Object / Block / ParenForm / SymbolOrCall
+Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
 
 UnaryExpr <- '!' _ expr:Term {
   return &UnaryNegation{
@@ -718,7 +718,7 @@ List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
   }, nil
 }
 
-Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {
+ObjectLiteral <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {
   var fields []*FieldDecl
   for _, kv := range sliceOfAppend[Keyed[Node]](vals, last) {
     fields = append(fields, &FieldDecl{

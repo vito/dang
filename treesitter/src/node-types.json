@@ -92,7 +92,7 @@
         "named": true
       },
       {
-        "type": "object",
+        "type": "object_literal",
         "named": true
       },
       {
@@ -2676,46 +2676,6 @@
     }
   },
   {
-    "type": "object",
-    "named": true,
-    "fields": {
-      "last": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "key_value",
-            "named": true
-          }
-        ]
-      },
-      "v": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "key_value",
-            "named": true
-          }
-        ]
-      },
-      "vals": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "key_value",
-            "named": true
-          },
-          {
-            "type": "sep",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "object_decl",
     "named": true,
     "fields": {
@@ -2789,6 +2749,46 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "object_literal",
+    "named": true,
+    "fields": {
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          }
+        ]
+      },
+      "v": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          }
+        ]
+      },
+      "vals": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "key_value",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
