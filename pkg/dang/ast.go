@@ -311,13 +311,19 @@ func isTruthy(val Value) bool {
 	}
 }
 
-// ReopenScope combines two evaluation environments for variable resolution
-type ReopenScope struct {
-	primary ValueScope // Where new bindings go (the reopened module)
-	lexical ValueScope // Where to look for external variables (current environment)
+// OverlayValueScope overlays a primary evaluation scope on a lexical one.
+// Reads check primary first, then fall through to lexical; writes
+// (Bind/BindLazy/Update) and self all go to primary. It backs every situation
+// where one value scope shadows another: an object body / method / constructor
+// instance (primary = the object/self, lexical = the closure), and a file's
+// scope (primary = the directory env so sibling declarations stay visible,
+// lexical = the file's own imports).
+type OverlayValueScope struct {
+	primary ValueScope // First lookup + target for all writes
+	lexical ValueScope // Fallback lookup (closure / file imports)
 }
 
-func (c ReopenScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
+func (c OverlayValueScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
 	// First check the primary environment (receiver/parameters)
 	// This allows parameters and receiver fields to shadow lexical scope
 	if val, found, err := c.primary.Lookup(ctx, name); err != nil {
@@ -329,19 +335,22 @@ func (c ReopenScope) Lookup(ctx context.Context, name string) (Value, bool, erro
 	return c.lexical.Lookup(ctx, name)
 }
 
-func (c ReopenScope) Has(name string) bool {
+func (c OverlayValueScope) Has(name string) bool {
 	return c.primary.Has(name) || c.lexical.Has(name)
 }
 
-func (c ReopenScope) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+func (c OverlayValueScope) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
 	c.primary.BindLazy(name, init, visibility)
 }
 
-func (c ReopenScope) LookupLocal(name string) (Value, bool) {
+func (c OverlayValueScope) LookupLocal(name string) (Value, bool) {
+	// Only consult primary: when lexical holds file-scoped imports, they must
+	// not be treated as already-defined "local" bindings by FieldDecl.Eval —
+	// that would silently swallow declarations sharing a name with an import.
 	return c.primary.LookupLocal(name)
 }
 
-func (c ReopenScope) Bindings(vis Visibility) []Keyed[Value] {
+func (c OverlayValueScope) Bindings(vis Visibility) []Keyed[Value] {
 	var bs []Keyed[Value]
 	seen := map[string]bool{}
 	for _, kv := range c.primary.Bindings(vis) {
@@ -357,65 +366,65 @@ func (c ReopenScope) Bindings(vis Visibility) []Keyed[Value] {
 	return bs
 }
 
-// MarshalJSON implements json.Marshaler for ModuleValue
-// Includes private fields, so that state can be retained
-func (m ReopenScope) MarshalJSON() ([]byte, error) {
+// MarshalJSON serializes the primary scope, including private fields so that
+// state can be retained.
+func (m OverlayValueScope) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.primary)
 }
 
-var _ Value = ReopenScope{}
+var _ ValueScope = OverlayValueScope{}
 
-func (c ReopenScope) String() string {
-	return fmt.Sprintf("CompositeEnv{primary: %v, lexical: %v}", c.primary, c.lexical)
+func (c OverlayValueScope) String() string {
+	return fmt.Sprintf("OverlayValueScope{primary: %v, lexical: %v}", c.primary, c.lexical)
 }
 
-func (c ReopenScope) Type() hm.Type {
+func (c OverlayValueScope) Type() hm.Type {
 	return c.primary.Type()
 }
 
-func (c ReopenScope) Bind(name string, value Value, visibility Visibility) {
+func (c OverlayValueScope) Bind(name string, value Value, visibility Visibility) {
 	// All new bindings go to the primary environment (copy-on-write semantics)
 	c.primary.Bind(name, value, visibility)
 }
 
-func (c ReopenScope) Update(name string, value Value) {
+func (c OverlayValueScope) Update(name string, value Value) {
 	// Delegate to the primary environment for scoping logic
 	c.primary.Update(name, value)
 }
 
-func (c ReopenScope) Visibility(name string) Visibility {
+func (c OverlayValueScope) Visibility(name string) Visibility {
 	// Speculative: don't fall back to lexical, we should consider that always private?
 	return c.primary.Visibility(name)
 }
 
-func (c ReopenScope) Derive(sealed bool) ValueScope {
+func (c OverlayValueScope) Derive(sealed bool) ValueScope {
 	// Derive the primary environment and keep the same lexical environment
-	return ReopenScope{
+	return OverlayValueScope{
 		primary: c.primary.Derive(sealed),
 		lexical: c.lexical,
 	}
 }
 
 // Self returns the dynamic scope from the primary environment
-func (c ReopenScope) Self() (Value, bool) {
+func (c OverlayValueScope) Self() (Value, bool) {
 	return c.primary.Self()
 }
 
 // MutateSelf sets the dynamic scope in the primary environment
-func (c ReopenScope) MutateSelf(value Value) {
+func (c OverlayValueScope) MutateSelf(value Value) {
 	c.primary.MutateSelf(value)
 }
 
 // EnterSelf creates a fresh dynamic scope cell in the primary environment
-func (c ReopenScope) EnterSelf(value Value) {
+func (c OverlayValueScope) EnterSelf(value Value) {
 	c.primary.EnterSelf(value)
 }
 
-// CreateReopenScope creates a composite environment for reopening
-func CreateReopenScope(reopenedEnv ValueScope, currentEnv ValueScope) ReopenScope {
-	return ReopenScope{
-		primary: reopenedEnv,
-		lexical: currentEnv,
+// CreateOverlayValueScope overlays primary on lexical (see OverlayValueScope).
+func CreateOverlayValueScope(primary ValueScope, lexical ValueScope) OverlayValueScope {
+	return OverlayValueScope{
+		primary: primary,
+		lexical: lexical,
 	}
 }
 
@@ -544,16 +553,20 @@ func (e *ConstructorScope) Type() hm.Type {
 }
 
 func (e *ConstructorScope) String() string {
-	return fmt.Sprintf("ConstructorEnv(%s)", e.instance)
+	return fmt.Sprintf("ConstructorScope(%s)", e.instance)
 }
 
-// CompositeTypeDef combines two type environments for Reopen type inference
-type CompositeTypeDef struct {
-	primary TypeScope // The reopened module (where new bindings go)
-	lexical TypeScope // Current lexical scope (for variable lookups)
+// OverlayTypeScope is the inference-time analogue of OverlayValueScope: it
+// overlays a primary type scope on a lexical one. Reads check primary first,
+// then fall through to lexical; new schemes are added to primary. It backs
+// object-body inference (primary = the object type), file scope (primary = the
+// directory env, lexical = the file's imports), and module-over-prelude.
+type OverlayTypeScope struct {
+	primary TypeScope // First lookup + where new schemes are added
+	lexical TypeScope // Fallback lookup (closure / file imports / prelude)
 }
 
-func (c *CompositeTypeDef) SchemeOf(name string) (*hm.Scheme, bool) {
+func (c *OverlayTypeScope) SchemeOf(name string) (*hm.Scheme, bool) {
 	// First check the primary environment (reopened module/object fields)
 	// This allows object fields to have precedence over outer scope variables
 	if scheme, found := c.primary.SchemeOf(name); found {
@@ -563,40 +576,40 @@ func (c *CompositeTypeDef) SchemeOf(name string) (*hm.Scheme, bool) {
 	return c.lexical.SchemeOf(name)
 }
 
-func (c *CompositeTypeDef) LocalSchemeOf(name string) (*hm.Scheme, bool) {
-	// For CompositeModule, local scope is the primary environment (the reopened module)
+func (c *OverlayTypeScope) LocalSchemeOf(name string) (*hm.Scheme, bool) {
+	// Local scope is the primary environment.
 	return c.primary.LocalSchemeOf(name)
 }
 
-func (c *CompositeTypeDef) Clone() hm.Env {
-	return &CompositeTypeDef{
+func (c *OverlayTypeScope) Clone() hm.Env {
+	return &OverlayTypeScope{
 		primary: c.primary.Clone().(TypeScope),
 		lexical: c.lexical, // Keep same lexical environment
 	}
 }
 
-func (c *CompositeTypeDef) Add(name string, scheme *hm.Scheme) hm.Env {
+func (c *OverlayTypeScope) Add(name string, scheme *hm.Scheme) hm.Env {
 	c.primary.Add(name, scheme)
 	return c
 }
 
-func (c *CompositeTypeDef) SetValueOrigin(name string, origin BindingOrigin) {
+func (c *OverlayTypeScope) SetValueOrigin(name string, origin BindingOrigin) {
 	c.primary.SetValueOrigin(name, origin)
 }
 
-func (c *CompositeTypeDef) LocalValueOrigin(name string) (BindingOrigin, bool) {
+func (c *OverlayTypeScope) LocalValueOrigin(name string) (BindingOrigin, bool) {
 	return c.primary.LocalValueOrigin(name)
 }
 
-func (c *CompositeTypeDef) SetVisibility(name string, visibility Visibility) {
+func (c *OverlayTypeScope) SetVisibility(name string, visibility Visibility) {
 	c.primary.SetVisibility(name, visibility)
 }
 
-func (c *CompositeTypeDef) SetDocString(name string, doc string) {
+func (c *OverlayTypeScope) SetDocString(name string, doc string) {
 	c.primary.SetDocString(name, doc)
 }
 
-func (c *CompositeTypeDef) GetDocString(name string) (string, bool) {
+func (c *OverlayTypeScope) GetDocString(name string) (string, bool) {
 	// First check the primary environment (reopened module)
 	if doc, found := c.primary.GetDocString(name); found {
 		return doc, true
@@ -605,43 +618,43 @@ func (c *CompositeTypeDef) GetDocString(name string) (string, bool) {
 	return c.lexical.GetDocString(name)
 }
 
-func (c *CompositeTypeDef) SetDirectives(name string, directives []*DirectiveApplication) {
+func (c *OverlayTypeScope) SetDirectives(name string, directives []*DirectiveApplication) {
 	c.primary.SetDirectives(name, directives)
 }
 
-func (c *CompositeTypeDef) GetDirectives(name string) []*DirectiveApplication {
+func (c *OverlayTypeScope) GetDirectives(name string) []*DirectiveApplication {
 	// This is a bit naive, but I'd rather wait until it becomes a problem so I
 	// can understand the use case
 	return append(c.primary.GetDirectives(name), c.lexical.GetDirectives(name)...)
 }
 
-func (c *CompositeTypeDef) SetModuleDocString(doc string) {
+func (c *OverlayTypeScope) SetModuleDocString(doc string) {
 	c.primary.SetModuleDocString(doc)
 }
 
-func (c *CompositeTypeDef) GetModuleDocString() string {
+func (c *OverlayTypeScope) GetModuleDocString() string {
 	return c.primary.GetModuleDocString()
 }
 
-func (c *CompositeTypeDef) Remove(name string) hm.Env {
+func (c *OverlayTypeScope) Remove(name string) hm.Env {
 	c.primary.Remove(name)
 	return c
 }
 
-func (c *CompositeTypeDef) Apply(subs hm.Subs) hm.Substitutable {
-	return &CompositeTypeDef{
+func (c *OverlayTypeScope) Apply(subs hm.Subs) hm.Substitutable {
+	return &OverlayTypeScope{
 		primary: c.primary.Apply(subs).(TypeScope),
 		lexical: c.lexical.Apply(subs).(TypeScope),
 	}
 }
 
-func (c *CompositeTypeDef) FreeTypeVar() hm.TypeVarSet {
+func (c *OverlayTypeScope) FreeTypeVar() hm.TypeVarSet {
 	primaryVars := c.primary.FreeTypeVar()
 	lexicalVars := c.lexical.FreeTypeVar()
 	return primaryVars.Union(lexicalVars)
 }
 
-func (c *CompositeTypeDef) GetDynamicScopeType() hm.Type {
+func (c *OverlayTypeScope) GetDynamicScopeType() hm.Type {
 	// First check primary (object/module being inferred)
 	if t := c.primary.GetDynamicScopeType(); t != nil {
 		return t
@@ -650,21 +663,21 @@ func (c *CompositeTypeDef) GetDynamicScopeType() hm.Type {
 	return c.lexical.GetDynamicScopeType()
 }
 
-func (c *CompositeTypeDef) SetDynamicScopeType(t hm.Type) {
+func (c *OverlayTypeScope) SetDynamicScopeType(t hm.Type) {
 	c.primary.SetDynamicScopeType(t)
 }
 
-var _ TypeScope = &CompositeTypeDef{}
+var _ TypeScope = &OverlayTypeScope{}
 
-func (t *CompositeTypeDef) Eq(other Type) bool                         { return other == t }
-func (t *CompositeTypeDef) Name() string                               { return t.primary.Name() }
-func (t *CompositeTypeDef) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
-func (t *CompositeTypeDef) Types() hm.Types                            { return nil }
-func (t *CompositeTypeDef) Supertypes() []Type                         { return t.primary.Supertypes() }
-func (t *CompositeTypeDef) String() string                             { return t.primary.String() }
+func (t *OverlayTypeScope) Eq(other Type) bool                         { return other == t }
+func (t *OverlayTypeScope) Name() string                               { return t.primary.Name() }
+func (t *OverlayTypeScope) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
+func (t *OverlayTypeScope) Types() hm.Types                            { return nil }
+func (t *OverlayTypeScope) Supertypes() []Type                         { return t.primary.Supertypes() }
+func (t *OverlayTypeScope) String() string                             { return t.primary.String() }
 
 // NamedType looks up object types, needed for NamedTypeNode.Infer compatibility
-func (c *CompositeTypeDef) NamedType(name string) (TypeScope, bool) {
+func (c *OverlayTypeScope) NamedType(name string) (TypeScope, bool) {
 	// First check the primary environment (reopened module)
 	if t, found := c.primary.NamedType(name); found {
 		return t, true
@@ -673,11 +686,11 @@ func (c *CompositeTypeDef) NamedType(name string) (TypeScope, bool) {
 	return c.lexical.NamedType(name)
 }
 
-func (c *CompositeTypeDef) LocalNamedType(name string) (TypeScope, bool) {
+func (c *OverlayTypeScope) LocalNamedType(name string) (TypeScope, bool) {
 	return c.primary.LocalNamedType(name)
 }
 
-func (c *CompositeTypeDef) NamedTypes() iter.Seq2[string, TypeScope] {
+func (c *OverlayTypeScope) NamedTypes() iter.Seq2[string, TypeScope] {
 	return func(yield func(string, TypeScope) bool) {
 		seen := map[string]bool{}
 		for name, env := range c.primary.NamedTypes() {
@@ -697,20 +710,20 @@ func (c *CompositeTypeDef) NamedTypes() iter.Seq2[string, TypeScope] {
 }
 
 // AddObject adds a object type to the primary environment
-func (c *CompositeTypeDef) AddObject(name string, object TypeScope) {
+func (c *OverlayTypeScope) AddObject(name string, object TypeScope) {
 	c.primary.AddObject(name, object)
 }
 
-func (c *CompositeTypeDef) SetTypeOrigin(name string, origin BindingOrigin) {
+func (c *OverlayTypeScope) SetTypeOrigin(name string, origin BindingOrigin) {
 	c.primary.SetTypeOrigin(name, origin)
 }
 
-func (c *CompositeTypeDef) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+func (c *OverlayTypeScope) LocalTypeOrigin(name string) (BindingOrigin, bool) {
 	return c.primary.LocalTypeOrigin(name)
 }
 
 // CheckTypeConflict delegates to the primary module
-func (c *CompositeTypeDef) CheckTypeConflict(symbolName string) []string {
+func (c *OverlayTypeScope) CheckTypeConflict(symbolName string) []string {
 	imports := c.primary.CheckTypeConflict(symbolName)
 	// Fall back to lexical scope if primary isn't a Module
 	for _, importer := range c.lexical.CheckTypeConflict(symbolName) {
@@ -722,7 +735,7 @@ func (c *CompositeTypeDef) CheckTypeConflict(symbolName string) []string {
 }
 
 // CheckValueConflict delegates to the primary module
-func (c *CompositeTypeDef) CheckValueConflict(symbolName string) []string {
+func (c *OverlayTypeScope) CheckValueConflict(symbolName string) []string {
 	imports := c.primary.CheckValueConflict(symbolName)
 	// Fall back to lexical scope if primary isn't a Module
 	for _, importer := range c.lexical.CheckValueConflict(symbolName) {
@@ -734,7 +747,7 @@ func (c *CompositeTypeDef) CheckValueConflict(symbolName string) []string {
 }
 
 // CheckDirectiveConflict delegates to the primary module
-func (c *CompositeTypeDef) CheckDirectiveConflict(directiveName string) []string {
+func (c *OverlayTypeScope) CheckDirectiveConflict(directiveName string) []string {
 	imports := c.primary.CheckDirectiveConflict(directiveName)
 	// Fall back to lexical scope if primary isn't a Module
 	for _, importer := range c.lexical.CheckDirectiveConflict(directiveName) {
@@ -746,20 +759,20 @@ func (c *CompositeTypeDef) CheckDirectiveConflict(directiveName string) []string
 }
 
 // AddDirective adds a directive to the primary environment
-func (c *CompositeTypeDef) AddDirective(name string, directive *DirectiveDecl) {
+func (c *OverlayTypeScope) AddDirective(name string, directive *DirectiveDecl) {
 	c.primary.AddDirective(name, directive)
 }
 
-func (c *CompositeTypeDef) SetDirectiveOrigin(name string, origin BindingOrigin) {
+func (c *OverlayTypeScope) SetDirectiveOrigin(name string, origin BindingOrigin) {
 	c.primary.SetDirectiveOrigin(name, origin)
 }
 
-func (c *CompositeTypeDef) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+func (c *OverlayTypeScope) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
 	return c.primary.LocalDirectiveOrigin(name)
 }
 
 // GetDirective gets a directive from either environment
-func (c *CompositeTypeDef) GetDirective(name string) (*DirectiveDecl, bool) {
+func (c *OverlayTypeScope) GetDirective(name string) (*DirectiveDecl, bool) {
 	// First check the primary environment (reopened module)
 	if directive, found := c.primary.GetDirective(name); found {
 		return directive, true
@@ -770,7 +783,7 @@ func (c *CompositeTypeDef) GetDirective(name string) (*DirectiveDecl, bool) {
 
 // Bindings iterates over the primary and lexical bindings, with the primary
 // bindings shadowing the lexical ones
-func (c *CompositeTypeDef) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
+func (c *OverlayTypeScope) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
 	return func(yield func(key string, val *hm.Scheme) bool) {
 		seen := map[string]bool{}
 		for k, v := range c.primary.Bindings(visibility) {

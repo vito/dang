@@ -318,9 +318,9 @@ func init() {
 	registerBuiltinTypes()
 }
 
-func NewPreludeEnv(name string) *CompositeTypeDef {
+func NewPreludeEnv(name string) *OverlayTypeScope {
 	mod := NewTypeDef(name, ObjectKind)
-	return &CompositeTypeDef{mod, Prelude}
+	return &OverlayTypeScope{mod, Prelude}
 }
 
 func NewEnv(name string, schema *introspection.Schema) TypeScope {
@@ -400,7 +400,7 @@ func NewEnv(name string, schema *introspection.Schema) TypeScope {
 		}
 		if t.Name == schema.QueryType.Name {
 			// TODO: "lexical" is maybe not the right word anymore
-			env.lexical = &CompositeTypeDef{sub, env.lexical}
+			env.lexical = &OverlayTypeScope{sub, env.lexical}
 		}
 		// Expose the Mutation type as a named value (not lexical) so fields
 		// are accessed via Mutation.fieldName rather than bare names.

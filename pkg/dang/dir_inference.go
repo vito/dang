@@ -64,7 +64,7 @@ func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv TypeSco
 			errs.Add(err)
 		}
 
-		fileEnv := &CompositeTypeDef{primary: dirEnv, lexical: importsEnv}
+		fileEnv := &OverlayTypeScope{primary: dirEnv, lexical: importsEnv}
 		block.Env = fileEnv
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),

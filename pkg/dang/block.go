@@ -591,7 +591,7 @@ var _ hm.Inferer = &ObjectLiteral{}
 
 func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewTypeDef("", ObjectKind)
-	inferEnv := &CompositeTypeDef{
+	inferEnv := &OverlayTypeScope{
 		primary: mod,
 		lexical: env.(TypeScope),
 	}
@@ -612,7 +612,7 @@ func (o *ObjectLiteral) Eval(ctx context.Context, env ValueScope) (Value, error)
 		return nil, errors.New("object has no module inferred")
 	}
 	newMod := NewObject(o.Mod)
-	evalEnv := CreateReopenScope(newMod, env)
+	evalEnv := CreateOverlayValueScope(newMod, env)
 	for _, field := range o.Fields {
 		_, err := EvalNode(ctx, evalEnv, field)
 		if err != nil {

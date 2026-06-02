@@ -19,7 +19,7 @@ func installImportedTypeEnvironment(parentEnv TypeScope, importName string, sche
 func installUnqualifiedImportSymbols(parentEnv TypeScope, schemaModule TypeScope, importName string) {
 	installUnqualifiedImportValuesForInference(parentEnv, schemaModule, importName)
 
-	if mod, ok := schemaModule.(*CompositeTypeDef); ok {
+	if mod, ok := schemaModule.(*OverlayTypeScope); ok {
 		if primaryMod, ok := mod.primary.(*TypeDef); ok {
 			installUnqualifiedImportTypesFromModule(parentEnv, primaryMod, importName)
 			installUnqualifiedImportDirectivesFromModule(parentEnv, primaryMod, importName)

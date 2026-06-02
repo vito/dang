@@ -1420,7 +1420,7 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 
 		// Create a synthetic environment that combines rec and env
 		// Use rec for symbol lookup, env for argument evaluation
-		synthEnv := &CompositeTypeDef{
+		synthEnv := &OverlayTypeScope{
 			primary: rec,
 			lexical: env.(TypeScope),
 		}

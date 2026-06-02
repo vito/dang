@@ -494,7 +494,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return nil
 	}
 
-	inferEnv := &CompositeTypeDef{
+	inferEnv := &OverlayTypeScope{
 		primary: object,
 		lexical: env.(TypeScope),
 	}
@@ -604,7 +604,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	inferEnv := &CompositeTypeDef{
+	inferEnv := &OverlayTypeScope{
 		primary: object,
 		lexical: env.(TypeScope),
 	}
@@ -761,11 +761,11 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
-func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *CompositeTypeDef, fresh hm.Fresher) error {
+func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *OverlayTypeScope, fresh hm.Fresher) error {
 	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Create an environment with the constructor args in scope
-	newEnv := inferEnv.Clone().(*CompositeTypeDef)
+	newEnv := inferEnv.Clone().(*OverlayTypeScope)
 	for _, arg := range newDecl.Args {
 		// Fully infer constructor arguments here so default expressions are
 		// validated during normal inference. Declaration may have recorded the
@@ -1195,7 +1195,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 	// Pass 1: Declare interface field and method signatures without inferring
 	// implementation bodies. Interface bodies only describe the public shape.
-	inferEnv := &CompositeTypeDef{
+	inferEnv := &OverlayTypeScope{
 		primary: iface,
 		lexical: mod,
 	}
@@ -1223,7 +1223,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		}
 
 		// Infer the interface fields using composite environment
-		inferEnv := &CompositeTypeDef{
+		inferEnv := &OverlayTypeScope{
 			primary: iface,
 			lexical: env.(TypeScope),
 		}

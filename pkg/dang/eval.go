@@ -1501,7 +1501,7 @@ func (b BoundMethod) Call(ctx context.Context, env ValueScope, args map[string]V
 
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Derive(true)
-	fnEnv := CreateReopenScope(recv.Derive(false), b.Method.Closure)
+	fnEnv := CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
 	fnEnv.EnterSelf(recv)
 
 	returnFrame := NewControlFrame(ReturnFrame)
@@ -1636,7 +1636,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 	// Create a new instance of the object
 	instance := NewObject(c.ObjectType)
 
-	instanceEnv := CreateReopenScope(instance, c.Closure)
+	instanceEnv := CreateOverlayValueScope(instance, c.Closure)
 
 	// Set dynamic scope to the instance so self is available
 	instanceEnv.EnterSelf(instance)
@@ -2219,7 +2219,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 			}
 		}
 
-		fileEnv := &CompositeValueScope{primary: evalEnv, lexical: importsEnv}
+		fileEnv := CreateOverlayValueScope(evalEnv, importsEnv)
 		scopes = append(scopes, fileEvalScope{
 			classified: classifyForms(rest),
 			env:        fileEnv,
@@ -2294,83 +2294,6 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 
 	return nil
 }
-
-// CompositeValueScope overlays a file-local evaluation env onto a shared
-// directory env. Writes (Bind/BindLazy/Update) go to primary so cross-file
-// declarations are visible to siblings; reads check primary first so local
-// declarations correctly shadow imported names, then fall through to lexical
-// (where the file's imports live).
-//
-// This is the runtime analogue of dang.CompositeModule: it preserves the
-// file-scoped semantics of imports during evaluation, so a file's `import X`
-// doesn't bleed `X.foo` into siblings' runtime scope.
-type CompositeValueScope struct {
-	primary ValueScope
-	lexical ValueScope
-}
-
-var _ ValueScope = (*CompositeValueScope)(nil)
-
-func (c *CompositeValueScope) Type() hm.Type  { return c.primary.Type() }
-func (c *CompositeValueScope) String() string { return c.primary.String() }
-
-func (c *CompositeValueScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
-	if val, found, err := c.primary.Lookup(ctx, name); err != nil {
-		return nil, false, err
-	} else if found {
-		return val, true, nil
-	}
-	return c.lexical.Lookup(ctx, name)
-}
-
-func (c *CompositeValueScope) Has(name string) bool {
-	return c.primary.Has(name) || c.lexical.Has(name)
-}
-
-func (c *CompositeValueScope) LookupLocal(name string) (Value, bool) {
-	// Only consult primary: lexical holds file-scoped imports, which must not
-	// be treated as already-defined "local" bindings by FieldDecl.Eval — that
-	// would silently swallow declarations that share a name with an import.
-	return c.primary.LookupLocal(name)
-}
-
-func (c *CompositeValueScope) Bindings(vis Visibility) []Keyed[Value] {
-	primary := c.primary.Bindings(vis)
-	seen := make(map[string]struct{}, len(primary))
-	for _, b := range primary {
-		seen[b.Key] = struct{}{}
-	}
-	for _, b := range c.lexical.Bindings(vis) {
-		if _, dup := seen[b.Key]; dup {
-			continue
-		}
-		primary = append(primary, b)
-	}
-	return primary
-}
-
-func (c *CompositeValueScope) Bind(name string, value Value, vis Visibility) {
-	c.primary.Bind(name, value, vis)
-}
-
-func (c *CompositeValueScope) BindLazy(name string, init func(ctx context.Context) (Value, error), vis Visibility) {
-	c.primary.BindLazy(name, init, vis)
-}
-
-func (c *CompositeValueScope) Update(name string, value Value) { c.primary.Update(name, value) }
-
-func (c *CompositeValueScope) Visibility(name string) Visibility { return c.primary.Visibility(name) }
-
-func (c *CompositeValueScope) Derive(sealed bool) ValueScope {
-	return &CompositeValueScope{
-		primary: c.primary.Derive(sealed),
-		lexical: c.lexical,
-	}
-}
-
-func (c *CompositeValueScope) Self() (Value, bool)    { return c.primary.Self() }
-func (c *CompositeValueScope) MutateSelf(value Value) { c.primary.MutateSelf(value) }
-func (c *CompositeValueScope) EnterSelf(value Value)  { c.primary.EnterSelf(value) }
 
 // EvalNode evaluates any AST node (legacy interface)
 func EvalNode(ctx context.Context, env ValueScope, node Node) (Value, error) {
