@@ -354,6 +354,33 @@ func registerStdlib() {
 			return BoolValue{Val: false}, nil
 		})
 
+	// List.uniq method: uniq -> [a]!
+	Method(ListTypeModule, "uniq").
+		Doc("returns a new list with duplicate elements removed, preserving first occurrence order").
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+			result := make([]Value, 0, len(list.Elements))
+
+			for _, item := range list.Elements {
+				seen := false
+				for _, existing := range result {
+					if valuesEqual(existing, item) {
+						seen = true
+						break
+					}
+				}
+				if !seen {
+					result = append(result, item)
+				}
+			}
+
+			return ListValue{
+				Elements: result,
+				ElemType: list.ElemType,
+			}, nil
+		})
+
 	// List.reject method: reject(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "reject").
 		Doc("returns a new list excluding elements for which the predicate returns true").
