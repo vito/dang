@@ -18,7 +18,7 @@ type Person {
 ```
 
 - declares a type `Person` and a constructor function `Person`
-- members (slots) are fields or methods, indistinguishable in syntax
+- members are fields or methods, indistinguishable in syntax
 
 ## Public vs. private members
 
@@ -29,7 +29,7 @@ type Person {
 ## Implicit constructor
 
 - positional parameters in declaration order
-- required slots first, defaults after
+- required fields first, defaults after
 - can also be called with named arguments
 
 ```dang
@@ -63,7 +63,7 @@ type Greeter {
 ## `self`
 
 - bound during constructor and method execution
-- bare names inside a method resolve to slots on `self` first
+- bare names inside a method resolve to fields on `self` first
 - assigning `self.field = ...` forks the receiver (see [mutation](./mutation.md))
 - `self` is the value returned by chainable methods
 
@@ -85,7 +85,7 @@ type Person implements Named & Identifiable { ... }
 
 ## Forward references
 
-- methods can reference types and slots defined later in the file/directory
+- methods can reference types and fields defined later in the file/directory
 - defaults can reference siblings
 
 > Meta: mention that user-defined `type`s can be used as GraphQL inputs to imported APIs once the schema allows it; that's a frequent question.
