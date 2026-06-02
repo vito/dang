@@ -126,11 +126,11 @@ func diagnoseAssignment(have, want hm.Type) error {
 }
 
 // walkAssignment unwraps matched NonNull/List wrappers and, when it
-// reaches a TypeDef-vs-TypeDef (or TypeDef-vs-Union) pair, returns the
+// reaches a Type-vs-Type (or Type-vs-Union) pair, returns the
 // field-level incompatibilities that prevent assignment. ok is true when
-// the walk reached such a TypeDef pair (regardless of whether issues were
+// the walk reached such a Type pair (regardless of whether issues were
 // found); have and want are the unwrapped Modules in that case.
-func walkAssignment(have, want hm.Type) (haveMod, wantMod *TypeDef, issues []string, ok bool) {
+func walkAssignment(have, want hm.Type) (haveMod, wantMod *Type, issues []string, ok bool) {
 	if haveNN, haveOk := have.(hm.NonNullType); haveOk {
 		if wantNN, wantOk := want.(hm.NonNullType); wantOk {
 			return walkAssignment(haveNN.Type, wantNN.Type)
@@ -146,11 +146,11 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *TypeDef, issues []str
 			return walkAssignment(haveGLT.Type, wantGLT.Type)
 		}
 	}
-	hMod, hOk := have.(*TypeDef)
+	hMod, hOk := have.(*Type)
 	if !hOk {
 		return nil, nil, nil, false
 	}
-	if wMod, wOk := want.(*TypeDef); wOk {
+	if wMod, wOk := want.(*Type); wOk {
 		if !isStructuralKind(hMod.Kind) || !isStructuralKind(wMod.Kind) {
 			return nil, nil, nil, false
 		}
@@ -163,14 +163,14 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *TypeDef, issues []str
 }
 
 // bestUnionMatch picks the union option that yields the most informative
-// TypeDef diagnosis: the structurally closest option (fewest field-level
-// issues). If multiple options reach a TypeDef pair, the one with the
+// Type diagnosis: the structurally closest option (fewest field-level
+// issues). If multiple options reach a Type pair, the one with the
 // shortest issue list wins. ID-handle unions (Object | ID) usually pick
 // the Object half here.
-func bestUnionMatch(have *TypeDef, want *hm.UnionType) (*TypeDef, *TypeDef, []string, bool) {
+func bestUnionMatch(have *Type, want *hm.UnionType) (*Type, *Type, []string, bool) {
 	var (
-		bestHave   *TypeDef
-		bestWant   *TypeDef
+		bestHave   *Type
+		bestWant   *Type
 		bestIssues []string
 		bestN      = -1
 		found      bool
@@ -196,7 +196,7 @@ func bestUnionMatch(have *TypeDef, want *hm.UnionType) (*TypeDef, *TypeDef, []st
 // and reports each missing or shape-incompatible field with neutral
 // terminology (the comparison runs in both object-implements-interface
 // and interface-vs-interface contexts).
-func diagnoseModule(have, want *TypeDef) []string {
+func diagnoseModule(have, want *Type) []string {
 	var issues []string
 	for name, wantScheme := range want.Bindings(PublicVisibility) {
 		wantType, _ := wantScheme.Type()
@@ -344,7 +344,7 @@ func materializeValue(ctx context.Context, env ValueScope, val Value, target hm.
 
 func materializeStringValue(val StringValue, target hm.Type, path string) (Value, error) {
 	inner := unwrapNonNull(target)
-	mod, ok := inner.(*TypeDef)
+	mod, ok := inner.(*Type)
 	if !ok {
 		return val, nil
 	}
@@ -449,7 +449,7 @@ func materializeDecoded(ctx context.Context, env ValueScope, raw any, target hm.
 		return ListValue{Elements: elements, ElemType: elemTarget}, nil
 	}
 
-	if mod, ok := target.(*TypeDef); ok {
+	if mod, ok := target.(*Type); ok {
 		switch mod.Kind {
 		case EnumKind:
 			s, ok := raw.(string)
@@ -497,7 +497,7 @@ func materializeDecodedUnion(ctx context.Context, env ValueScope, raw any, union
 	return DeferredValue{Raw: raw}, nil
 }
 
-func materializeNamedObject(ctx context.Context, env ValueScope, raw any, mod *TypeDef, path string) (Value, error) {
+func materializeNamedObject(ctx context.Context, env ValueScope, raw any, mod *Type, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
@@ -578,7 +578,7 @@ func materializeConstructorArgs(ctx context.Context, env ValueScope, obj map[str
 	return args, nil
 }
 
-func materializeAnonymousObject(ctx context.Context, env ValueScope, raw any, mod *TypeDef, path string) (Value, error) {
+func materializeAnonymousObject(ctx context.Context, env ValueScope, raw any, mod *Type, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
@@ -654,7 +654,7 @@ func isNullableType(target hm.Type) bool {
 	return !nonNull
 }
 
-func enumHasValue(enum *TypeDef, value string) bool {
+func enumHasValue(enum *Type, value string) bool {
 	scheme, found := enum.SchemeOf(value)
 	if !found {
 		return false
@@ -667,7 +667,7 @@ func enumHasValue(enum *TypeDef, value string) bool {
 	return err == nil
 }
 
-func isPrimitiveScalar(mod *TypeDef) bool {
+func isPrimitiveScalar(mod *Type) bool {
 	switch mod {
 	case StringType, IntType, FloatType, BooleanType:
 		return true

@@ -565,7 +565,7 @@ type ObjectLiteral struct {
 	// Filled in during inference phase
 	// This is a little weird but has come up twice, maybe OK pattern?
 	// Requires mutating node in-place.
-	Mod *TypeDef
+	Mod *Type
 }
 
 var _ Node = &ObjectLiteral{}
@@ -590,7 +590,7 @@ func (f *ObjectLiteral) GetSourceLocation() *SourceLocation { return f.Loc }
 var _ hm.Inferer = &ObjectLiteral{}
 
 func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewTypeDef("", ObjectKind)
+	mod := NewType("", ObjectKind)
 	inferEnv := &OverlayTypeScope{
 		primary: mod,
 		lexical: env.(TypeScope),

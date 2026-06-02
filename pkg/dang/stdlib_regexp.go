@@ -12,12 +12,12 @@ import (
 
 // RegexpType is the "Regexp" scalar — backtick template strings auto-coerce
 // to it via the scalar coercion path in materializeStringValue.
-var RegexpType = NewTypeDef("Regexp", ScalarKind)
+var RegexpType = NewType("Regexp", ScalarKind)
 
 // MatchType is the "Match" object returned by String regex methods. Fields
 // like .string and .captures are zero-arg methods that auto-call when
 // accessed via dot notation.
-var MatchType = NewTypeDef("Match", ObjectKind)
+var MatchType = NewType("Match", ObjectKind)
 
 // RegexpValue is the runtime value for a compiled Regexp.
 type RegexpValue struct {

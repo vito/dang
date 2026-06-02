@@ -207,7 +207,7 @@ func typeDetailSuffix(t hm.Type) string {
 		t = nn.Type
 	}
 
-	mod, ok := t.(*dang.TypeDef)
+	mod, ok := t.(*dang.Type)
 	if !ok {
 		return ""
 	}
@@ -224,7 +224,7 @@ func typeDetailSuffix(t hm.Type) string {
 			if i > 0 {
 				result.WriteString("\n")
 			}
-			if m, ok := member.(*dang.TypeDef); ok {
+			if m, ok := member.(*dang.Type); ok {
 				result.WriteString("//   " + m.Name())
 			}
 		}
@@ -289,7 +289,7 @@ func formatNamedTypeForHover(f *File, pos Position, symbolName string) (codeBloc
 		return "", ""
 	}
 
-	mod, ok := resolveNamedTypeForHover(f, pos, symbolName).(*dang.TypeDef)
+	mod, ok := resolveNamedTypeForHover(f, pos, symbolName).(*dang.Type)
 	if !ok {
 		return "", ""
 	}
@@ -418,7 +418,7 @@ func qualifiedNameAtPosition(f *File, pos Position) []string {
 	return parts
 }
 
-func formatModuleForHover(mod *dang.TypeDef, fallbackDoc string) (codeBlock string, docString string) {
+func formatModuleForHover(mod *dang.Type, fallbackDoc string) (codeBlock string, docString string) {
 	if mod == nil {
 		return "", ""
 	}

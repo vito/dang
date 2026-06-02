@@ -13,14 +13,14 @@ var (
 	// Null does not have a type. Its type is always inferred as a free variable.
 	// NullType    = NewObject("Null")
 
-	IDType         = NewTypeDef("ID", ScalarKind)
-	BooleanType    = NewTypeDef("Boolean", ScalarKind)
-	StringType     = NewTypeDef("String", ScalarKind)
-	IntType        = NewTypeDef("Int", ScalarKind)
-	FloatType      = NewTypeDef("Float", ScalarKind)
-	ListTypeModule = NewTypeDef("List", ScalarKind)
-	ErrorType      = NewTypeDef("Error", InterfaceKind)
-	BasicErrorType = NewTypeDef("BasicError", ObjectKind)
+	IDType         = NewType("ID", ScalarKind)
+	BooleanType    = NewType("Boolean", ScalarKind)
+	StringType     = NewType("String", ScalarKind)
+	IntType        = NewType("Int", ScalarKind)
+	FloatType      = NewType("Float", ScalarKind)
+	ListTypeModule = NewType("List", ScalarKind)
+	ErrorType      = NewType("Error", InterfaceKind)
+	BasicErrorType = NewType("BasicError", ObjectKind)
 )
 
 // Constant is implemented by nodes whose type can be determined without

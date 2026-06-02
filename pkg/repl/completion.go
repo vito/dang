@@ -275,7 +275,7 @@ type DocArg struct {
 
 // ClassifyEnv determines the ItemKind for a module/env based on its Kind.
 func ClassifyEnv(env dang.TypeScope) ItemKind {
-	if mod, ok := env.(*dang.TypeDef); ok {
+	if mod, ok := env.(*dang.Type); ok {
 		switch mod.Kind {
 		case dang.EnumKind:
 			return KindEnum
@@ -329,7 +329,7 @@ func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
 		return item, true
 	}
 
-	if mod, ok := env.(*dang.TypeDef); ok {
+	if mod, ok := env.(*dang.Type); ok {
 		var found DocItem
 		var matched bool
 		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {

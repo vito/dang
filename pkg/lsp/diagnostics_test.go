@@ -171,7 +171,7 @@ func (LSPSuite) TestDiagnosticsImportedTypesUnifyAcrossFiles(ctx context.Context
 	// constructs the first one and passes that imported value through.
 	//
 	// Without shared schema modules across the directory, each file's
-	// `import Test` builds its own *TypeDef and unification fails with
+	// `import Test` builds its own *Type and unification fails with
 	// "cannot use Test.ServerInfo as Test.ServerInfo".
 	root := t.TempDir()
 
@@ -202,9 +202,9 @@ type Owner {
 	h := newLSPHarness(ctx, t, root)
 
 	// Mirror the editor sequence: open holder.dang first (its analyzeDirectory
-	// builds and caches a *TypeDef), then open owner.dang. If the cache isn't
+	// builds and caches a *Type), then open owner.dang. If the cache isn't
 	// shared across the two analysis passes, owner.dang's ImportDecl builds a
-	// distinct *TypeDef and Test.ServerInfo fails to unify across the
+	// distinct *Type and Test.ServerInfo fails to unify across the
 	// Holder(info: info) call boundary.
 	_ = h.open(ctx, t, holderPath)
 	_ = h.waitForDiagnostics(ctx, t, fileURI(t, holderPath))

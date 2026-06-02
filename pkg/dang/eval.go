@@ -77,7 +77,7 @@ type ValueScope interface {
 // used for GraphQL input types like UserSort(field: ..., direction: ...).
 type InputObjectConstructor struct {
 	TypeName string
-	TypeEnv  *TypeDef
+	TypeEnv  *Type
 	FnType   *hm.FunctionType
 }
 
@@ -483,7 +483,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 
 			constructor := InputObjectConstructor{
 				TypeName: t.Name,
-				TypeEnv:  inputTypeEnv.(*TypeDef),
+				TypeEnv:  inputTypeEnv.(*Type),
 				FnType:   fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
@@ -650,7 +650,7 @@ func addBuiltinFunctions(env ValueScope) {
 
 		// Populate nested enum types with their values
 		for name, subEnv := range hostModule.NamedTypes() {
-			subMod, ok := subEnv.(*TypeDef)
+			subMod, ok := subEnv.(*Type)
 			if !ok || subMod.Kind != EnumKind {
 				continue
 			}
@@ -1244,7 +1244,7 @@ type DynamicScope struct {
 	Value Value
 }
 
-// Object represents an instance of a TypeDef; it implements ValueScope
+// Object represents an instance of a Type; it implements ValueScope
 type Object struct {
 	Mod          TypeScope
 	Values       map[string]Value
@@ -1381,7 +1381,7 @@ func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 			bindings = append(bindings, Keyed[Value]{
 				Key:        name,
 				Value:      value,
-				Positional: false, // TypeDef bindings are never positional
+				Positional: false, // Type bindings are never positional
 			})
 		}
 	}
@@ -1550,7 +1550,7 @@ func (b BoundBuiltinMethod) MarshalJSON() ([]byte, error) {
 
 func (b BoundBuiltinMethod) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
 	// Create a temporary environment with the receiver as dynamic scope
-	tempMod := NewTypeDef("_temp_", ObjectKind)
+	tempMod := NewType("_temp_", ObjectKind)
 	tempEnv := NewObject(tempMod)
 	tempEnv.EnterSelf(b.Receiver)
 
@@ -1616,7 +1616,7 @@ type ConstructorFunction struct {
 	ObjectName      string
 	Parameters      []*FieldDecl
 	BlockParamName  string
-	ObjectType      *TypeDef
+	ObjectType      *Type
 	FnType          *hm.FunctionType
 	ObjectBodyForms []Node // Field declarations to evaluate (excluding NewConstructorDecl)
 	NewBody         *Block // Explicit new() body, if present
@@ -1666,7 +1666,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 		// the outer closure (see #23). Args go in a separate env that is
 		// only consulted for reads (Lookup), while writes (Bind/Update) go
 		// to the instance as before.
-		argEnv := NewObject(NewTypeDef("_constructor_args_", ObjectKind))
+		argEnv := NewObject(NewType("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
 		// expressions for later parameters can see earlier parameters.
 		defaultEvalEnv := c.Closure.Derive(false)

@@ -117,7 +117,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 	for _, item := range col.Items {
 		seen[item.Name] = true
 	}
-	if mod, ok := env.(*dang.TypeDef); ok {
+	if mod, ok := env.(*dang.Type); ok {
 		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
 			if seen[def.Name] {
 				return

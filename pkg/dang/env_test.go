@@ -33,7 +33,7 @@ func TestNewEnvSchemaTypeShadowsPreludeType(t *testing.T) {
 	require.True(t, found)
 	require.NotSame(t, ErrorType, schemaError)
 
-	schemaErrorMod, ok := schemaError.(*TypeDef)
+	schemaErrorMod, ok := schemaError.(*Type)
 	require.True(t, ok)
 	require.Equal(t, ObjectKind, schemaErrorMod.Kind)
 
@@ -74,7 +74,7 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 }
 
 func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
-	mod := NewTypeDef("runtime", ObjectKind)
+	mod := NewType("runtime", ObjectKind)
 	val := NewObject(mod)
 
 	val.Bind("plain", StringValue{Val: "a"}, PrivateVisibility)
@@ -140,7 +140,7 @@ scalar Error
 	scalarMod, ok := scalarVal.(*Object)
 	require.True(t, ok)
 	require.NotSame(t, ErrorType, scalarMod.Mod)
-	require.Equal(t, ScalarKind, scalarMod.Mod.(*TypeDef).Kind)
+	require.Equal(t, ScalarKind, scalarMod.Mod.(*Type).Kind)
 }
 
 func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
@@ -491,7 +491,7 @@ pub fromB: Dagger.Container! = Dagger.container
 func TestRunDirImportedTypesUnifyAcrossFiles(t *testing.T) {
 	// Two files that import the same schema and exchange one of its types
 	// must agree on type identity. Without shared schema modules, each file
-	// would build its own *TypeDef via NewEnv and unification would fail with
+	// would build its own *Type via NewEnv and unification would fail with
 	// "cannot use Dagger.Container as Dagger.Container".
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",
@@ -514,7 +514,7 @@ pub piped: Container! = take(c: make)
 func TestRunDirNestedBlockImportResolves(t *testing.T) {
 	// An import inside a nested block (here a function body) should make the
 	// imported names available within that block. The shared schema-module
-	// cache on the context resolves Dagger to the same *TypeDef a file-level
+	// cache on the context resolves Dagger to the same *Type a file-level
 	// import would, so Dagger.container etc. work fine inside the block.
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:   "Dagger",

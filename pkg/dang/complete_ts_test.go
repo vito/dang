@@ -16,7 +16,7 @@ func testCompletionEnv() TypeScope {
 	env := NewPreludeEnv("")
 
 	// Add a "container" module with from and withExec methods.
-	containerMod := NewTypeDef("Container", ObjectKind)
+	containerMod := NewType("Container", ObjectKind)
 
 	// from(address: String!) -> Container
 	fromArgs := NewRecordType("")
@@ -40,7 +40,7 @@ func testCompletionEnv() TypeScope {
 	env.AddObject("Container", containerMod)
 
 	// Add a top-level "directory" binding.
-	dirMod := NewTypeDef("Directory", ObjectKind)
+	dirMod := NewType("Directory", ObjectKind)
 	dirMod.Add("entries", hm.NewScheme(nil, hm.NewFnType(NewRecordType(""), ListType{Type: hm.NonNullType{Type: StringType}})))
 	dirMod.SetVisibility("entries", PublicVisibility)
 

@@ -1096,7 +1096,7 @@ type InlineFragment struct {
 	NonNull  bool // Whether the type assertion is non-null (... on Container!)
 	Loc      *SourceLocation
 
-	Inferred *TypeDef // The concrete type module for this fragment
+	Inferred *Type // The concrete type module for this fragment
 }
 
 func (f *InlineFragment) GetSourceLocation() *SourceLocation { return f.Loc }
@@ -1110,7 +1110,7 @@ type ObjectSelection struct {
 	InlineFragments []*InlineFragment // For union/interface inline fragments
 	Loc             *SourceLocation
 
-	Inferred         *TypeDef
+	Inferred         *Type
 	IsList           bool // TODO respect
 	ElementIsNonNull bool // Whether list elements are non-null (only used when IsList is true)
 }
@@ -1221,7 +1221,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	}
 
 	// The element type must be a union or interface
-	unionOrIface, ok := unwrapped.(*TypeDef)
+	unionOrIface, ok := unwrapped.(*Type)
 	if !ok {
 		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s", unwrapped), o.Receiver)
 	}
@@ -1232,7 +1232,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	// Create a narrowed union whose members only have the selected fields.
 	// This ensures downstream code (e.g. case type patterns) can only access
 	// fields that were actually selected in the inline fragment.
-	narrowedUnion := NewTypeDef(unionOrIface.Name(), UnionKind)
+	narrowedUnion := NewType(unionOrIface.Name(), UnionKind)
 	narrowedUnion.Qualifier = unionOrIface.Qualifier
 
 	// Validate each fragment
@@ -1250,7 +1250,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		} else {
 			// Create a narrowed module with only the selected fields.
 			// Link back to the canonical type for runtime matching.
-			narrowedMember := NewTypeDef(memberMod.Name(), ObjectKind)
+			narrowedMember := NewType(memberMod.Name(), ObjectKind)
 			narrowedMember.Qualifier = memberMod.Qualifier
 			narrowedMember.Canonical = memberMod
 
@@ -1306,7 +1306,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	return resultType, nil
 }
 
-func resolveInlineFragmentMemberType(receiver *TypeDef, typeName string) (*TypeDef, error) {
+func resolveInlineFragmentMemberType(receiver *Type, typeName string) (*Type, error) {
 	switch receiver.Kind {
 	case UnionKind:
 		if member, found := findMemberModuleByName(receiver.GetMembers(), typeName); found {
@@ -1323,12 +1323,12 @@ func resolveInlineFragmentMemberType(receiver *TypeDef, typeName string) (*TypeD
 	}
 }
 
-func findMemberModuleByName(members []TypeScope, typeName string) (*TypeDef, bool) {
+func findMemberModuleByName(members []TypeScope, typeName string) (*Type, bool) {
 	for _, member := range members {
 		if member.Name() != typeName {
 			continue
 		}
-		memberMod, ok := member.(*TypeDef)
+		memberMod, ok := member.(*Type)
 		if !ok {
 			return nil, false
 		}
@@ -1337,7 +1337,7 @@ func findMemberModuleByName(members []TypeScope, typeName string) (*TypeDef, boo
 	return nil, false
 }
 
-func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*TypeDef, error) {
+func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Type, error) {
 	// Check if receiver is nullable or non-null
 	var rec TypeScope
 
@@ -1386,7 +1386,7 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
 	}
 
-	mod := NewTypeDef("", ObjectKind)
+	mod := NewType("", ObjectKind)
 	for _, field := range o.Fields {
 		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
 		if err != nil {
@@ -1533,7 +1533,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 	}
 
 	// Find the matching fragment based on the concrete type name
-	mod, ok := modVal.Mod.(*TypeDef)
+	mod, ok := modVal.Mod.(*Type)
 	if !ok {
 		return nil, fmt.Errorf("inline fragment selection: expected Module, got %T", modVal.Mod)
 	}

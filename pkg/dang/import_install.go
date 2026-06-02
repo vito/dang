@@ -20,13 +20,13 @@ func installUnqualifiedImportSymbols(parentEnv TypeScope, schemaModule TypeScope
 	installUnqualifiedImportValuesForInference(parentEnv, schemaModule, importName)
 
 	if mod, ok := schemaModule.(*OverlayTypeScope); ok {
-		if primaryMod, ok := mod.primary.(*TypeDef); ok {
+		if primaryMod, ok := mod.primary.(*Type); ok {
 			installUnqualifiedImportTypesFromModule(parentEnv, primaryMod, importName)
 			installUnqualifiedImportDirectivesFromModule(parentEnv, primaryMod, importName)
 		}
 		return
 	}
-	if mod, ok := schemaModule.(*TypeDef); ok {
+	if mod, ok := schemaModule.(*Type); ok {
 		installUnqualifiedImportTypesFromModule(parentEnv, mod, importName)
 		installUnqualifiedImportDirectivesFromModule(parentEnv, mod, importName)
 	}
@@ -52,7 +52,7 @@ func installUnqualifiedImportValuesForInference(parentEnv TypeScope, schemaModul
 	}
 }
 
-func installUnqualifiedImportTypesFromModule(parentEnv TypeScope, mod *TypeDef, importName string) {
+func installUnqualifiedImportTypesFromModule(parentEnv TypeScope, mod *Type, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for name, object := range mod.objects {
 		if name == importName {
@@ -69,13 +69,13 @@ func installUnqualifiedImportTypesFromModule(parentEnv TypeScope, mod *TypeDef, 
 		parentEnv.AddObject(name, object)
 		parentEnv.SetTypeOrigin(name, origin)
 
-		if enumMod, ok := object.(*TypeDef); ok && enumMod.Kind == EnumKind {
+		if enumMod, ok := object.(*Type); ok && enumMod.Kind == EnumKind {
 			installUnqualifiedImportEnumValuesForInference(parentEnv, enumMod, importName)
 		}
 	}
 }
 
-func installUnqualifiedImportEnumValuesForInference(parentEnv TypeScope, enumMod *TypeDef, importName string) {
+func installUnqualifiedImportEnumValuesForInference(parentEnv TypeScope, enumMod *Type, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for enumValName, enumValScheme := range enumMod.Bindings(PublicVisibility) {
 		if _, exists := parentEnv.LocalSchemeOf(enumValName); exists {
@@ -91,7 +91,7 @@ func installUnqualifiedImportEnumValuesForInference(parentEnv TypeScope, enumMod
 	}
 }
 
-func installUnqualifiedImportDirectivesFromModule(parentEnv TypeScope, mod *TypeDef, importName string) {
+func installUnqualifiedImportDirectivesFromModule(parentEnv TypeScope, mod *Type, importName string) {
 	origin := ImportedBindingOrigin(importName, false)
 	for directiveName, directive := range mod.directives {
 		if _, exists := parentEnv.GetDirective(directiveName); exists {
@@ -130,7 +130,7 @@ func installUnqualifiedImportValues(parentEnv ValueScope, moduleEnv ValueScope, 
 		parentEnv.Bind(name, value, importedBindingVisibility)
 
 		if enumModuleVal, ok := value.(*Object); ok {
-			if mod, ok := enumModuleVal.Mod.(*TypeDef); ok && mod.Kind == EnumKind {
+			if mod, ok := enumModuleVal.Mod.(*Type); ok && mod.Kind == EnumKind {
 				installUnqualifiedImportEnumValues(parentEnv, enumModuleVal)
 			}
 		}

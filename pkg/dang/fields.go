@@ -327,7 +327,7 @@ type ObjectDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred          *TypeDef
+	Inferred          *Type
 	ConstructorFnType *hm.FunctionType
 }
 
@@ -430,20 +430,20 @@ func localTypeIsQualifiedImport(env TypeScope, name string) bool {
 	return found && origin.Kind == BindingOriginImport && origin.Qualified
 }
 
-func declareLocalType(env TypeScope, name string, kind Kind) (*TypeDef, error) {
+func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
 	if existing, found := env.LocalNamedType(name); found {
 		if localTypeShadowsImport(env, name) {
 			// Local declarations intentionally shadow unqualified imports.
 		} else if localTypeIsQualifiedImport(env, name) {
 			return nil, fmt.Errorf("type %q conflicts with import alias", name)
-		} else if mod, ok := existing.(*TypeDef); ok {
+		} else if mod, ok := existing.(*Type); ok {
 			return mod, nil
 		} else {
 			return nil, fmt.Errorf("type %q conflicts with existing type", name)
 		}
 	}
 
-	mod := NewTypeDef(name, kind)
+	mod := NewType(name, kind)
 	env.AddObject(name, mod)
 	return mod, nil
 }
@@ -532,7 +532,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 				)
 			}
 
-			ifaceMod, ok := ifaceType.(*TypeDef)
+			ifaceMod, ok := ifaceType.(*Type)
 			if !ok || ifaceMod.Kind != InterfaceKind {
 				return WrapInferError(
 					fmt.Errorf("%s is not an interface", ifaceSym.Name),
@@ -652,14 +652,14 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 }
 
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
-func (c *ObjectDecl) validateInterfaceImplementations(objectMod *TypeDef, env TypeScope, ifaceSym *Symbol) error {
+func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeScope, ifaceSym *Symbol) error {
 	ifaceType, found := env.NamedType(ifaceSym.Name)
 	if !found {
 		// no error; this is raised in Hoist instead
 		return nil
 	}
 
-	ifaceMod, ok := ifaceType.(*TypeDef)
+	ifaceMod, ok := ifaceType.(*Type)
 	if !ok || ifaceMod.Kind != InterfaceKind {
 		// no error; this is raised in Hoist instead
 		return nil
@@ -730,7 +730,7 @@ func (c *ObjectDecl) extractConstructorParameters() []*FieldDecl {
 }
 
 // buildConstructorType creates a function type for the constructor based on the parameters
-func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, objectType *TypeDef, fresh hm.Fresher) (*hm.FunctionType, error) {
+func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, params []*FieldDecl, blockParam *FieldDecl, objectType *Type, fresh hm.Fresher) (*hm.FunctionType, error) {
 	fnDecl := FunctionBase{
 		Args:       params,
 		BlockParam: blockParam,
@@ -895,7 +895,7 @@ type EnumDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred *TypeDef
+	Inferred *Type
 }
 
 var _ Node = &EnumDecl{}
@@ -1021,7 +1021,7 @@ type ScalarDecl struct {
 	Directives []*DirectiveApplication
 	Loc        *SourceLocation
 
-	Inferred *TypeDef
+	Inferred *Type
 }
 
 var _ Node = &ScalarDecl{}
@@ -1116,7 +1116,7 @@ type InterfaceDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred *TypeDef
+	Inferred *Type
 }
 
 var _ Node = &InterfaceDecl{}
@@ -1179,7 +1179,7 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 					parentSym,
 				)
 			}
-			parentMod, ok := parentType.(*TypeDef)
+			parentMod, ok := parentType.(*Type)
 			if !ok || parentMod.Kind != InterfaceKind {
 				return WrapInferError(
 					fmt.Errorf("%s is not an interface", parentSym.Name),
@@ -1233,7 +1233,7 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, err
 		}
 
-		i.Inferred = iface.(*TypeDef)
+		i.Inferred = iface.(*Type)
 		i.SetInferredType(iface)
 
 		// Validate parent interface field compatibility once this interface's
@@ -1258,13 +1258,13 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 // validateInterfaceExtension checks that a child interface satisfies every
 // field declared by a parent interface it claims to implement.
-func validateInterfaceExtension(child *TypeDef, env TypeScope, parentSym *Symbol) error {
+func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) error {
 	parentType, found := env.NamedType(parentSym.Name)
 	if !found {
 		// Already raised in Hoist
 		return nil
 	}
-	parentMod, ok := parentType.(*TypeDef)
+	parentMod, ok := parentType.(*Type)
 	if !ok || parentMod.Kind != InterfaceKind {
 		return nil
 	}
@@ -1324,7 +1324,7 @@ type UnionDecl struct {
 	DocString  string
 	Loc        *SourceLocation
 
-	Inferred *TypeDef
+	Inferred *Type
 }
 
 var _ Node = &UnionDecl{}
@@ -1377,7 +1377,7 @@ func (u *UnionDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pas
 			continue
 		}
 
-		memberMod, ok := memberType.(*TypeDef)
+		memberMod, ok := memberType.(*Type)
 		if !ok || memberMod.Kind != ObjectKind {
 			continue
 		}
@@ -1404,7 +1404,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 			return nil, fmt.Errorf("union %s not found", u.Name.Name)
 		}
 
-		unionMod := unionType.(*TypeDef)
+		unionMod := unionType.(*Type)
 
 		// Resolve and link each member type
 		for _, memberSym := range u.Members {
@@ -1416,7 +1416,7 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 				)
 			}
 
-			memberMod, ok := memberType.(*TypeDef)
+			memberMod, ok := memberType.(*Type)
 			if !ok {
 				return nil, NewInferError(
 					fmt.Errorf("union member %s is not a type", memberSym.Name),

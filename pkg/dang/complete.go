@@ -212,12 +212,12 @@ func MembersOf(t hm.Type, partial string) []Completion {
 
 // builtinModuleFor returns the builtin method module for a primitive or list
 // type, or nil if the type has no builtin methods.
-func builtinModuleFor(t hm.Type) *TypeDef {
+func builtinModuleFor(t hm.Type) *Type {
 	switch t.(type) {
 	case ListType:
 		return ListTypeModule
 	}
-	if mod, ok := t.(*TypeDef); ok {
+	if mod, ok := t.(*Type); ok {
 		switch mod {
 		case StringType, IntType, FloatType, BooleanType:
 			return mod
@@ -271,7 +271,7 @@ func IsTypeDefBinding(scheme *hm.Scheme) bool {
 	if nn, ok := t.(hm.NonNullType); ok {
 		t = nn.Type
 	}
-	mod, ok := t.(*TypeDef)
+	mod, ok := t.(*Type)
 	if !ok {
 		return false
 	}
