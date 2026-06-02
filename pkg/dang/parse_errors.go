@@ -202,6 +202,13 @@ func describeError(node *tree_sitter.Node, source []byte) string {
 
 	// Pattern: ERROR with visibility + symbol + equal_token → bad value expression
 	if containsAll(childKinds, "visibility", "symbol", "equal_token") {
+		// A `${` token appearing as a direct ERROR child (rather than nested
+		// inside a single_template_part subtree, which is what a properly
+		// closed interpolation produces) means the parser tokenized an
+		// interpolation start it could never finish. Surface that case.
+		if contains(childKinds, "${") {
+			return "unclosed '${' interpolation in template"
+		}
 		return "invalid expression after '='"
 	}
 

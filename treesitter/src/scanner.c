@@ -10,6 +10,7 @@ enum {
   TEMPLATE_MULTI_CLOSE,
   TEMPLATE_CONTENT_CHAR,
   LANG_TAG_TERMINATOR,
+  COMMENT_TOKEN,
 };
 
 // Maximum nesting depth for backtick templates. Each level stores the open
@@ -214,49 +215,95 @@ static bool scan_lang_tag_terminator(Scanner *s, TSLexer *lexer) {
 }
 
 // Scan one piece of template content: one or more bytes that are neither a
-// $$ / ${...} marker nor part of a matching close fence. Shorter backtick
-// runs are content; longer runs are invalid and left for parser recovery.
+// ${...} interpolation marker nor part of a matching close fence. Shorter
+// backtick runs are content; longer runs are invalid and left for parser
+// recovery.
+//
+// The grammar marks TEMPLATE_CONTENT_CHAR valid inside both single-line
+// (single backtick) and multi-line (triple+ backtick) templates. In the
+// multi case, depth > 0 and the fence stack tracks the matching close
+// length. In the single case, depth is 0 and any `\`` is the close.
 static bool scan_template_content_char(Scanner *s, TSLexer *lexer) {
-  if (s->depth == 0 || lexer->eof(lexer)) {
+  if (lexer->eof(lexer)) {
     return false;
   }
-  // Right after an open fence, defer letters to the internal lexer so it can
-  // try the optional language tag (`[A-Za-z][A-Za-z0-9_-]*` followed by \n).
-  // After one refusal we hand control back; if no lang tag matched, the
-  // letter will be picked up as content on the next scan.
-  if (s->just_opened) {
-    s->just_opened = 0;
-    if ((lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
-        (lexer->lookahead >= 'a' && lexer->lookahead <= 'z')) {
-      return false;
-    }
+  // In single-line templates, a newline is a parse error (no closing
+  // backtick on this line). Refuse so the parser can recover.
+  if (s->depth == 0 && lexer->lookahead == '\n') {
+    return false;
   }
-  if (lexer->lookahead == '$') {
+  if (s->depth > 0) {
+    // Right after a multi-line open fence, defer letters to the internal
+    // lexer so it can try the optional language tag. After one refusal we
+    // hand control back; if no lang tag matched, the letter will be picked
+    // up as content on the next scan.
+    if (s->just_opened) {
+      s->just_opened = 0;
+      if ((lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
+          (lexer->lookahead >= 'a' && lexer->lookahead <= 'z')) {
+        return false;
+      }
+    }
+    if (lexer->lookahead == '`') {
+      unsigned expected = s->fence_stack[s->depth - 1];
+      unsigned count = 0;
+      while (lexer->lookahead == '`') {
+        count++;
+        lexer->advance(lexer, false);
+      }
+      if (count >= expected) {
+        // Matching close fence or invalid longer run; not content.
+        return false;
+      }
+      // Shorter backtick runs are content; we've already advanced past them.
+      lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
+      return true;
+    }
+  } else if (lexer->lookahead == '`') {
+    // Single-line template: any backtick closes; let the parser take it.
+    return false;
+  }
+  if (lexer->lookahead == '\\') {
     lexer->advance(lexer, false);
-    if (lexer->lookahead == '$' || lexer->lookahead == '{') {
-      return false;
+    if (lexer->lookahead == '$') {
+      lexer->advance(lexer, false);
+      if (lexer->lookahead == '{') {
+        lexer->advance(lexer, false);
+      }
     }
     lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
     return true;
   }
-  if (lexer->lookahead == '`') {
-    unsigned expected = s->fence_stack[s->depth - 1];
-    unsigned count = 0;
-    while (lexer->lookahead == '`') {
-      count++;
-      lexer->advance(lexer, false);
-    }
-    if (count >= expected) {
-      // This is either the matching close fence or an invalid longer run; do
-      // not treat it as content.
+  if (lexer->lookahead == '$') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead == '{') {
       return false;
     }
-    // Shorter backtick runs are content; we've already advanced past them.
     lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
     return true;
   }
   lexer->advance(lexer, false);
   lexer->result_symbol = TEMPLATE_CONTENT_CHAR;
+  return true;
+}
+
+// Scan a `# ...` comment. Refuses whenever the parser would also accept a
+// template content char (i.e., inside any single- or multi-line backtick
+// template), so `#` in template content (Markdown headers, `issue #5`,
+// etc.) is treated as string content rather than absorbed into a comment by
+// the extras lexer.
+static bool scan_comment_token(TSLexer *lexer, const bool *valid_symbols) {
+  if (valid_symbols[TEMPLATE_CONTENT_CHAR]) {
+    return false;
+  }
+  if (lexer->lookahead != '#') {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+    lexer->advance(lexer, false);
+  }
+  lexer->result_symbol = COMMENT_TOKEN;
   return true;
 }
 
@@ -294,6 +341,10 @@ bool tree_sitter_dang_external_scanner_scan(
     return true;
   }
   if (valid_symbols[TEMPLATE_CONTENT_CHAR] && scan_template_content_char(s, lexer)) {
+    return true;
+  }
+
+  if (valid_symbols[COMMENT_TOKEN] && scan_comment_token(lexer, valid_symbols)) {
     return true;
   }
 

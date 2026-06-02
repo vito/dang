@@ -89,11 +89,29 @@ hello ${name}!
 )
 
 ===
-multi-line template lone dollar
+single-line template lone hash
+===
+
+pub label = `issue #5`
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "label")
+  " "
+  (@operator "=")
+  " "
+  (@string "`issue #5`")
+)
+
+===
+multi-line template lone hash
 ===
 
 pub price = ```
-cost $5
+issue #5
 ```
 
 ---
@@ -105,5 +123,50 @@ cost $5
   " "
   (@operator "=")
   " "
-  (@string "```\ncost $5\n```")
+  (@string "```\nissue #5\n```")
+)
+
+===
+multi-line template markdown headers
+===
+
+pub doc = ```md
+# Title
+
+## Subtitle
+
+content
+```
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "doc")
+  " "
+  (@operator "=")
+  " "
+  (@string "```")
+  (@label "md")
+  "\n"
+  (@string "# Title\n\n## Subtitle\n\ncontent\n```")
+)
+
+===
+single-line template escaped interpolation opener
+===
+
+pub label = `literal \${name}`
+
+---
+
+(highlights
+  (@keyword "pub")
+  " "
+  (@variable @function.method "label")
+  " "
+  (@operator "=")
+  " "
+  (@string "`literal \\${name}`")
 )

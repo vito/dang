@@ -109,14 +109,24 @@ func (FormatSuite) TestTemplateFormatting(ctx context.Context, t *testctx.T) {
 				"  name\n}`\n",
 		},
 		{
-			name:     "double dollar escape is preserved",
-			input:    "pub x = `$$ is dollar`",
-			expected: "pub x = `$$ is dollar`\n",
+			name:     "lone dollar stays literal",
+			input:    "pub x = `issue $5`",
+			expected: "pub x = `issue $5`\n",
 		},
 		{
-			name:     "lone dollar is not re-escaped",
-			input:    "pub x = `cost $5`",
-			expected: "pub x = `cost $5`\n",
+			name:     "escaped dollar braces stays literal",
+			input:    "pub x = `issue \\${foo}`",
+			expected: "pub x = `issue \\${foo}`\n",
+		},
+		{
+			name:     "backslash stays literal",
+			input:    "pub x = `\\d+`",
+			expected: "pub x = `\\d+`\n",
+		},
+		{
+			name:     "literal dollar-brace via escape",
+			input:    `pub x = ` + "`prefix \\${name} suffix`",
+			expected: `pub x = ` + "`prefix \\${name} suffix`\n",
 		},
 		{
 			name: "multi-line flush content stays flush",
@@ -359,8 +369,8 @@ world
 			expected: "type Foo {\n  pub x = \"\"\"\n  First paragraph.\n\n  Second paragraph.\n  \"\"\"\n}\n",
 		},
 		{
-			name: "triple-quoted inline stays inline",
-			input: `pub x = """hello"""`,
+			name:     "triple-quoted inline stays inline",
+			input:    `pub x = """hello"""`,
 			expected: "pub x = \"\"\"hello\"\"\"\n",
 		},
 	}

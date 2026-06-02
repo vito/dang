@@ -1,4 +1,4 @@
-[1m[31mError:[0m syntax error: invalid expression after '='
+[1m[31mError:[0m syntax error: unclosed '${' interpolation in template
   [2m[34m--> errors/syntax_template_unclosed_interpolation.dang:2:1[0m
  [2m    |[0m
  [2m  1 | pub name = "Ada"[0m

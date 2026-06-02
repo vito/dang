@@ -190,6 +190,34 @@ A type implementing an interface must provide all interface fields; method
 return types are covariant, argument types contravariant, and any extra
 arguments must be optional.
 
+## Regex
+
+Backtick templates auto-coerce to the `Regexp` scalar at call sites. A
+`Match` is a first-class object with positional and named captures.
+
+```dang
+"call 555-1212".containsMatch(`\d+`)              # Boolean!
+"call 555-1212".match(`(\d+)`)                    # Match (nullable)
+"a1 b22 c333".matchAll(`\d+`)                     # [Match!]!
+"a, b ,  c".splitMatches(`\s*,\s*`)               # ["a", "b", "c"]
+
+# replaceMatches uses Go-style $0 / $1 / $name / ${name} backref expansion
+"555-1212".replaceMatches(
+  `(?P<area>\d{3})-(?P<num>\d{4})`,
+  with: "$area.$num",
+)                                                 # "555.1212"
+
+# rewriteMatches takes a block and receives a Match for each occurrence
+"hello world".rewriteMatches(`\w+`) { m =>
+  m.string.toUpper
+}                                                 # "HELLO WORLD"
+```
+
+`Match` fields: `string` (whole match), `captures` (positional; index 0 is
+`$1`), `capture(name)` (named; null if absent), `start`, `end` (byte
+offsets). Unmatched optional groups surface as `""`. Pattern syntax is Go
+RE2 — named groups use `(?P<name>...)`.
+
 ## GraphQL integration
 
 - **Enums** load from the schema: `Status.ACTIVE`, `Status.PENDING`. Enum

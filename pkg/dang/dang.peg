@@ -836,15 +836,19 @@ SingleTemplate <- '`' parts:SingleTemplatePart* '`' {
 }
 
 SingleTemplatePart <-
-    "$$" {
-      return TemplatePart{Lit: "$"}, nil
+    "\\${" {
+      return TemplatePart{Lit: "${"}, nil
     }
   / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil
     }
-  / !"${" [^`\n] {
-      return TemplatePart{Lit: string(c.text)}, nil
+  / ch:SingleTemplateContentChar {
+      return TemplatePart{Lit: ch.(string)}, nil
     }
+
+SingleTemplateContentChar <- !"${" [^`\n] {
+  return string(c.text), nil
+}
 
 MultiTemplate <- ticks:MultiTemplateOpenToken #{
   d, _ := c.state["fence_depth"].(int)
@@ -884,8 +888,8 @@ LangTagName <- [A-Za-z] [A-Za-z0-9_-]* {
 LangTagTerminator <- '\n'
 
 MultiTemplatePart <-
-    "$$" {
-      return TemplatePart{Lit: "$"}, nil
+    "\\${" {
+      return TemplatePart{Lit: "${"}, nil
     }
   / "${" _ e:Expr _ "}" {
       return TemplatePart{Expr: e.(Node)}, nil

@@ -1,0 +1,9 @@
+[1m[31mError:[0m pattern: invalid regexp "(": error parsing regexp: missing closing ): `(`
+  [2m[34m--> errors/regexp_invalid_pattern.dang:2:21[0m
+ [2m    |[0m
+ [2m  1 | # Invalid regexp surfaces a compile error at the call site, naming the pattern.[0m
+ [2m[34m[1m  2 | [0m"abc".containsMatch(`(`)
+[2m                           [31m^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

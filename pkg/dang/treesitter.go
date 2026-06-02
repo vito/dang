@@ -12,10 +12,12 @@ import (
 // tree-sitter grammar because they are produced by the external scanner
 // instead. References to these rules are redirected via tsRuleRefAliases.
 var tsSkippedRules = map[string]bool{
-	"MultiTemplateOpenToken":   true,
-	"MultiTemplateCloseToken":  true,
-	"MultiTemplateContentChar": true,
-	"LangTagTerminator":        true,
+	"MultiTemplateOpenToken":    true,
+	"MultiTemplateCloseToken":   true,
+	"MultiTemplateContentChar":  true,
+	"SingleTemplateContentChar": true,
+	"LangTagTerminator":         true,
+	"CommentToken":              true,
 }
 
 func skipTS(name string) bool {
@@ -39,14 +41,20 @@ var tsExternalRuleNames = []treesitter.RuleName{
 	// the newline after a lang tag, the next content letter is safe to treat
 	// as content rather than the start of another lang tag attempt.
 	"_lang_tag_terminator",
+	// Line comment. External so the scanner can refuse it inside a backtick
+	// template, where `#` is content (Markdown headers, `issue #5`, etc.)
+	// rather than a comment start.
+	"comment_token",
 }
 
 var tsRuleRefAliases = map[string]treesitter.RuleName{
-	"_inlineSpace":             "_inline_space",
-	"MultiTemplateOpenToken":   "multi_template_open_token",
-	"MultiTemplateCloseToken":  "multi_template_close_token",
-	"MultiTemplateContentChar": "_template_content_char",
-	"LangTagTerminator":        "_lang_tag_terminator",
+	"_inlineSpace":              "_inline_space",
+	"MultiTemplateOpenToken":    "multi_template_open_token",
+	"MultiTemplateCloseToken":   "multi_template_close_token",
+	"MultiTemplateContentChar":  "_template_content_char",
+	"SingleTemplateContentChar": "_template_content_char",
+	"LangTagTerminator":         "_lang_tag_terminator",
+	"CommentToken":              "comment_token",
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{

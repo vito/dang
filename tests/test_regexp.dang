@@ -1,0 +1,69 @@
+# Test Regexp scalar + Match object + String regex methods
+
+# coercion: backtick-template strings auto-coerce to Regexp at call sites
+assert { "abc123".containsMatch(`\d+`) }
+assert { !"abc".containsMatch(`\d+`) }
+
+# Regexp variable: typed slot materializes the scalar
+let digits: Regexp! = `\d+`
+assert { "x42y".containsMatch(digits) }
+
+# match: returns a Match with the whole match and positional captures
+let m = "x42y".match(`(\d+)`)
+assert { m.string == "42" }
+assert { m.captures[0] == "42" }
+assert { m.start == 1 }
+assert { m.end == 3 }
+
+# no match → null
+assert { "abc".match(`\d+`) == null }
+
+# named captures
+let phone = "555-1212".match(`(?P<area>\d{3})-(?P<num>\d{4})`)
+assert { phone.capture("area") == "555" }
+assert { phone.capture("num") == "1212" }
+assert { phone.capture("nope") == null }
+
+# matchAll
+let nums = "a1 b22 c333".matchAll(`\d+`)
+assert { nums.length == 3 }
+assert { nums[0].string == "1" }
+assert { nums[2].string == "333" }
+
+# replaceMatches with literal `with`
+assert { "hello world".replaceMatches(`\w+`, with: "X") == "X X" }
+assert { "hello world".replaceMatches(`\w+`, with: "X", count: 1) == "X world" }
+
+# replaceMatches with backref expansion (Go-style $name)
+assert {
+  "555-1212".replaceMatches(
+    `(?P<area>\d{3})-(?P<num>\d{4})`,
+    with: "$area.$num",
+  ) == "555.1212"
+}
+assert { "abc".replaceMatches(`(.)`, with: "[$1]") == "[a][b][c]" }
+
+# rewriteMatches block form: block receives a Match, returns String!
+assert {
+  "hello world".rewriteMatches(`\w+`) { m =>
+    m.string.toUpper
+  } == "HELLO WORLD"
+}
+assert {
+  "x1 y22 z333".rewriteMatches(`(\D)(\d+)`) { m =>
+    `${m.captures[0]}:${m.captures[1]}`
+  } == "x:1 y:22 z:333"
+}
+
+# splitMatches
+let parts = "a, b ,  c".splitMatches(`\s*,\s*`)
+assert { parts.length == 3 }
+assert { parts[0] == "a" }
+assert { parts[2] == "c" }
+
+# unmatched optional group → ""
+let opt = "bar".match(`(foo)?(bar)`)
+assert { opt.captures[0] == "" }
+assert { opt.captures[1] == "bar" }
+
+print("Regexp tests passed!")

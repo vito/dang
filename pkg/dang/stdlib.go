@@ -16,6 +16,7 @@ import (
 func registerStdlib() {
 	registerRandomAndUUID()
 	registerAssert()
+	registerRegexp()
 
 	// print function: print(value: a) -> Null
 	Builtin("print").
