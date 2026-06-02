@@ -57,8 +57,8 @@ type Dev {
             (triple_quote)))
         (sep)
         (decl
-          (slot
-            (type_only_slot
+          (field
+            (type_only_field
               (visibility
                 (pub_token))
               (symbol
@@ -80,8 +80,8 @@ type Dev {
             (triple_quote)))
         (sep)
         (decl
-          (slot
-            (type_and_block_slot
+          (field
+            (type_and_block_field
               (visibility
                 (pub_token))
               (symbol
@@ -97,8 +97,8 @@ type Dev {
                   (bang_token)))
               (block
                 (decl
-                  (slot
-                    (value_only_slot
+                  (field
+                    (value_only_field
                       (visibility
                         (let_token))
                       (symbol
@@ -141,8 +141,8 @@ type Dev {
             (triple_quote)))
         (sep)
         (decl
-          (slot
-            (type_and_args_and_block_slot
+          (field
+            (type_and_args_and_block_field
               (visibility
                 (pub_token))
               (symbol
@@ -202,8 +202,8 @@ type Dev {
             (triple_quote)))
         (sep)
         (decl
-          (slot
-            (type_and_block_slot
+          (field
+            (type_and_block_field
               (visibility
                 (let_token))
               (symbol
