@@ -297,7 +297,7 @@ func init() {
 
 	// Install regex types so user code can refer to them by name.
 	Prelude.AddClass("Regexp", RegexpType)
-	Prelude.AddClass("Match", MatchType)
+	RegexpType.AddClass("Match", MatchType)
 
 	// Install Error interface with message field
 	Prelude.AddClass("Error", ErrorType)
