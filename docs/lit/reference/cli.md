@@ -31,9 +31,9 @@ dang <directory>          # run a directory module
 
 > Meta: add `dang init`, `dang doc`, completion subcommand, etc., once stable.
 
-## Environment variables
+## Configuration
 
-- `DANG_GRAPHQL_ENDPOINT`, `DANG_GRAPHQL_AUTHORIZATION`, `DANG_GRAPHQL_HEADER_*` — see [GraphQL configuration](../graphql-config.md)
+- GraphQL connections (endpoint, authorization, headers) are configured per-import in `dang.toml`; values support `${VAR}` expansion for pulling URLs/secrets from the environment. See [GraphQL configuration](../graphql-config.md).
 
 ## Exit codes
 

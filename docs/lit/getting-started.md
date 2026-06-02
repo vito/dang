@@ -23,7 +23,7 @@ print("hello, world")
 - a one-liner that queries it
 - show both *qualified* (`Test.User`) and *unqualified* (`User`) access
 
-> Meta: mention `DANG_GRAPHQL_ENDPOINT` here only as a forward reference; full table lives in [GraphQL configuration](./graphql-config.md).
+> Meta: mention the `dang.toml` `endpoint` setting here only as a forward reference; full details live in [GraphQL configuration](./graphql-config.md).
 
 ## A Dagger module in 10 lines
 
