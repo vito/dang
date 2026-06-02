@@ -12,45 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoadGraphQLConfig(t *testing.T) {
-	// Save original env vars
-	originalEndpoint := os.Getenv("DANG_GRAPHQL_ENDPOINT")
-	originalAuth := os.Getenv("DANG_GRAPHQL_AUTHORIZATION")
-	originalHeader := os.Getenv("DANG_GRAPHQL_HEADER_X_API_KEY")
-
-	defer func() {
-		// Restore original env vars
-		_ = os.Setenv("DANG_GRAPHQL_ENDPOINT", originalEndpoint)
-		_ = os.Setenv("DANG_GRAPHQL_AUTHORIZATION", originalAuth)
-		_ = os.Setenv("DANG_GRAPHQL_HEADER_X_API_KEY", originalHeader)
-	}()
-
-	t.Run("default config", func(t *testing.T) {
-		// Clear env vars
-		_ = os.Unsetenv("DANG_GRAPHQL_ENDPOINT")
-		_ = os.Unsetenv("DANG_GRAPHQL_AUTHORIZATION")
-		_ = os.Unsetenv("DANG_GRAPHQL_HEADER_X_API_KEY")
-
-		config := LoadGraphQLConfig()
-
-		assert.Empty(t, config.Endpoint)
-		assert.Empty(t, config.Authorization)
-		assert.Empty(t, config.Headers)
-	})
-
-	t.Run("config from env vars", func(t *testing.T) {
-		_ = os.Setenv("DANG_GRAPHQL_ENDPOINT", "https://api.example.com/graphql")
-		_ = os.Setenv("DANG_GRAPHQL_AUTHORIZATION", "Bearer token123")
-		_ = os.Setenv("DANG_GRAPHQL_HEADER_X_API_KEY", "secret-key")
-
-		config := LoadGraphQLConfig()
-
-		assert.Equal(t, "https://api.example.com/graphql", config.Endpoint)
-		assert.Equal(t, "Bearer token123", config.Authorization)
-		assert.Equal(t, "secret-key", config.Headers["X-API-KEY"])
-	})
-}
-
 func TestCustomTransport(t *testing.T) {
 	// Create a test server that records headers
 	var receivedHeaders http.Header
@@ -86,89 +47,6 @@ func TestCustomTransport(t *testing.T) {
 	assert.Equal(t, "Bearer test-token", receivedHeaders.Get("Authorization"))
 	assert.Equal(t, "secret-key", receivedHeaders.Get("X-API-Key"))
 	assert.Equal(t, "custom-value", receivedHeaders.Get("X-Custom-Header"))
-}
-
-func TestGraphQLClientProvider(t *testing.T) {
-	t.Run("empty config returns error", func(t *testing.T) {
-		provider := NewGraphQLClientProvider(GraphQLConfig{})
-
-		ctx := context.Background()
-		_, _, err := provider.GetClientAndSchema(ctx)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no endpoint configured")
-	})
-
-	t.Run("custom GraphQL endpoint", func(t *testing.T) {
-		// Create a mock GraphQL server
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Simple mock introspection response
-			mockResponse := `{
-				"data": {
-					"__schema": {
-						"queryType": {"name": "Query"},
-						"mutationType": null,
-						"subscriptionType": null,
-						"types": [
-							{
-								"kind": "OBJECT",
-								"name": "Query",
-								"fields": [
-									{
-										"name": "hello",
-										"type": {"kind": "SCALAR", "name": "String"},
-										"args": []
-									}
-								]
-							}
-						],
-						"directives": []
-					}
-				}
-			}`
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(mockResponse))
-		}))
-		defer server.Close()
-
-		config := GraphQLConfig{
-			Endpoint:      server.URL,
-			Authorization: "Bearer test-token",
-			Headers: map[string]string{
-				"X-API-Key": "secret-key",
-			},
-		}
-
-		provider := NewGraphQLClientProvider(config)
-
-		ctx := context.Background()
-		client, schema, err := provider.GetClientAndSchema(ctx)
-
-		require.NoError(t, err)
-		require.NotNil(t, client)
-		require.NotNil(t, schema)
-		require.Equal(t, "Query", schema.QueryType.Name)
-		require.Len(t, schema.Types, 1)
-
-		// Cleanup
-		_ = provider.Close()
-	})
-}
-
-func TestNewGraphQLClientProvider(t *testing.T) {
-	config := GraphQLConfig{
-		Endpoint:      "https://api.example.com/graphql",
-		Authorization: "Bearer token123",
-		Headers: map[string]string{
-			"X-API-Key": "secret-key",
-		},
-	}
-
-	provider := NewGraphQLClientProvider(config)
-
-	assert.Equal(t, config.Endpoint, provider.config.Endpoint)
-	assert.Equal(t, config.Authorization, provider.config.Authorization)
-	assert.Equal(t, config.Headers, provider.config.Headers)
 }
 
 func TestSchemaCaching(t *testing.T) {
@@ -218,21 +96,20 @@ func TestSchemaCaching(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := GraphQLConfig{
-		Endpoint: server.URL,
-	}
-
 	ctx := context.Background()
 
+	client, err := makeClient(server.URL, "", nil)
+	require.NoError(t, err)
+
 	t.Run("first call should introspect and cache", func(t *testing.T) {
-		provider := NewGraphQLClientProvider(config)
-		defer provider.Close() //nolint:errcheck
+		// Cache miss: introspect and persist.
+		_, err := loadCachedSchema(server.URL)
+		require.Error(t, err, "schema should not be cached yet")
 
-		client, schema, err := provider.GetClientAndSchema(ctx)
-
+		schema, err := introspectSchema(ctx, client)
 		require.NoError(t, err)
-		require.NotNil(t, client)
 		require.NotNil(t, schema)
+		require.NoError(t, saveCachedSchema(server.URL, schema))
 		assert.Equal(t, 1, introspectionCalls, "should have made 1 introspection call")
 
 		// Verify cache file was created
@@ -242,23 +119,11 @@ func TestSchemaCaching(t *testing.T) {
 	})
 
 	t.Run("second call should use cache", func(t *testing.T) {
-		provider := NewGraphQLClientProvider(config)
-		defer provider.Close() //nolint:errcheck
-
-		client, schema, err := provider.GetClientAndSchema(ctx)
+		schema, err := loadCachedSchema(server.URL)
 
 		require.NoError(t, err)
-		require.NotNil(t, client)
 		require.NotNil(t, schema)
 		assert.Equal(t, 1, introspectionCalls, "should still have made only 1 introspection call")
-	})
-
-	t.Run("dagger imports use service process not GraphQLClientProvider", func(t *testing.T) {
-		// Dagger imports are handled via the service process mechanism
-		// in project.go, not through GraphQLClientProvider.
-		// GraphQLClientProvider now only handles custom HTTP endpoints.
-		provider := NewGraphQLClientProvider(GraphQLConfig{})
-		assert.NotNil(t, provider)
 	})
 }
 
