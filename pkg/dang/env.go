@@ -158,7 +158,28 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (Kind, error) {
 	}
 }
 
-// TODO: is this just ObjectType? are Objects just named Envs?
+// TypeDef is a declared named type -- object, interface, scalar, enum, union,
+// or input, distinguished by Kind. It is deliberately one Kind-tagged struct
+// rather than a struct per kind, because every named type is uniformly a scope
+// (it implements TypeScope): it can carry value bindings and nested named
+// types. That uniformity is the point. A scalar like String having methods, an
+// object like Container having fields, and Regexp exposing a nested Regexp.Match
+// type are all the same machinery -- members attach to any named type, the way
+// Ruby attaches methods to any object.
+//
+// This answers the question this type's old TODO posed: no, it is not just an
+// "ObjectType" (that name would be wrong for the five non-object kinds), and
+// yes, objects really are just named scopes -- as is every other kind.
+// Splitting the leaf kinds (scalar/enum/union) into their own non-scope structs
+// was tried and abandoned: it turns the uniform "any named type is a scope"
+// capability into special-case plumbing. List is the one member resolution that
+// already works that way (its methods come from the builtin registry, not a
+// scheme store), and it is the clunkier for it.
+//
+// The Kind tag also mirrors GraphQL introspection's __Type, which is itself one
+// type with a kind enum; that keeps schema import a near 1:1 mapping (see
+// ModuleKindFromGraphQLKind). The cost is that kind-specific behavior is gated
+// by Kind checks rather than enforced by the type system.
 type TypeDef struct {
 	Named string
 	Kind  Kind
