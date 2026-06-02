@@ -100,8 +100,8 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 
 		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(cycleNames, " -> "))
 		node := variables[cycle[0]]
-		if slot, ok := node.(*SlotDecl); ok && slot.Value != nil {
-			return nil, NewInferError(err, slot.Value)
+		if field, ok := node.(*FieldDecl); ok && field.Value != nil {
+			return nil, NewInferError(err, field.Value)
 		}
 		return nil, NewInferError(err, node)
 	}
@@ -166,10 +166,10 @@ func dfsTopologicalOrder(n int, dependencies map[int][]int) (order []int, cycle 
 type ClassifiedForms struct {
 	Imports         []Node // ImportDecl (must be processed before anything else)
 	Directives      []Node // DirectiveDecl (must be processed first after imports)
-	Constants       []Node // SlotDecl with constant values (literals, no function calls)
+	Constants       []Node // FieldDecl with constant values (literals, no function calls)
 	Types           []Node // ClassDecl
-	Variables       []Node // SlotDecl with computed values (function calls, references)
-	Functions       []Node // FunDecl and SlotDecl with function bodies
+	Variables       []Node // FieldDecl with computed values (function calls, references)
+	Functions       []Node // FunDecl and FieldDecl with function bodies
 	NonDeclarations []Node // Everything else (assignments, expressions, etc.)
 }
 
@@ -193,11 +193,11 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Types = append(classified.Types, f)
 		case *ScalarDecl:
 			classified.Types = append(classified.Types, f)
-		case *SlotDecl:
+		case *FieldDecl:
 			if isConstantValue(f.Value) {
 				classified.Constants = append(classified.Constants, f)
 			} else if _, isFunDecl := f.Value.(*FunDecl); isFunDecl {
-				// Treat SlotDecl with function bodies as functions for proper hoisting
+				// Treat FieldDecl with function bodies as functions for proper hoisting
 				classified.Functions = append(classified.Functions, f)
 			} else {
 				classified.Variables = append(classified.Variables, f)
@@ -382,7 +382,7 @@ func isConstantValue(value Node) bool {
 }
 
 // EvaluateFormsWithPhases evaluates forms using the same phased approach as
-// inference. Computed variables are installed as lazy slots, forced on first
+// inference. Computed variables are installed as lazy fields, forced on first
 // read, and then forced in source order before non-declarations run. This is
 // used for both module top-levels and class bodies.
 func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
@@ -432,7 +432,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 6: Install lazy slots for computed variables, then force them in
+	// Phase 6: Install lazy fields for computed variables, then force them in
 	// source order. Forward references hidden behind constructors or function
 	// calls are resolved by the force-on-read mechanism; the source-order pass
 	// guarantees side effects still happen.
@@ -455,23 +455,23 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 
 func installAndForceLazyVariables(ctx context.Context, variables []Node, env EvalEnv) error {
 	for _, form := range variables {
-		slot, ok := form.(*SlotDecl)
+		field, ok := form.(*FieldDecl)
 		if !ok {
 			continue
 		}
-		env.BindLazy(slot.Name.Name, func(ctx context.Context) (Value, error) {
-			return WithEvalErrorHandling(ctx, slot, func() (Value, error) {
-				return EvalNode(ctx, env, slot.Value)
+		env.BindLazy(field.Name.Name, func(ctx context.Context) (Value, error) {
+			return WithEvalErrorHandling(ctx, field, func() (Value, error) {
+				return EvalNode(ctx, env, field.Value)
 			})
-		}, slot.Visibility)
+		}, field.Visibility)
 	}
 
 	for _, form := range variables {
-		slot, ok := form.(*SlotDecl)
+		field, ok := form.(*FieldDecl)
 		if !ok {
 			continue
 		}
-		if _, _, err := env.Lookup(ctx, slot.Name.Name); err != nil {
+		if _, _, err := env.Lookup(ctx, field.Name.Name); err != nil {
 			return err
 		}
 	}
@@ -559,8 +559,8 @@ func (b *Block) Walk(fn func(Node) bool) {
 
 type Object struct {
 	InferredTypeHolder
-	Slots []*SlotDecl
-	Loc   *SourceLocation
+	Fields []*FieldDecl
+	Loc    *SourceLocation
 
 	// Filled in during inference phase
 	// This is a little weird but has come up twice, maybe OK pattern?
@@ -576,9 +576,9 @@ func (o *Object) DeclaredSymbols() []string {
 
 func (o *Object) ReferencedSymbols() []string {
 	var symbols []string
-	// Objects reference symbols from their slots
-	for _, slot := range o.Slots {
-		symbols = append(symbols, slot.ReferencedSymbols()...)
+	// Objects reference symbols from their fields
+	for _, field := range o.Fields {
+		symbols = append(symbols, field.ReferencedSymbols()...)
 	}
 	return symbols
 }
@@ -595,8 +595,8 @@ func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		primary: mod,
 		lexical: env.(Env),
 	}
-	for _, slot := range o.Slots {
-		_, err := slot.Infer(ctx, inferEnv, fresh)
+	for _, field := range o.Fields {
+		_, err := field.Infer(ctx, inferEnv, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -613,8 +613,8 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	}
 	newMod := NewModuleValue(o.Mod)
 	evalEnv := CreateCompositeEnv(newMod, env)
-	for _, slot := range o.Slots {
-		_, err := EvalNode(ctx, evalEnv, slot)
+	for _, field := range o.Fields {
+		_, err := EvalNode(ctx, evalEnv, field)
 		if err != nil {
 			return nil, err
 		}
@@ -626,8 +626,8 @@ func (o *Object) Walk(fn func(Node) bool) {
 	if !fn(o) {
 		return
 	}
-	for _, slot := range o.Slots {
-		slot.Walk(fn)
+	for _, field := range o.Fields {
+		field.Walk(fn)
 	}
 }
 
@@ -688,11 +688,11 @@ func inferConstantsPhaseResilient(ctx context.Context, constants []Node, env hm.
 func declareVariableSignaturesPhaseResilient(ctx context.Context, variables []Node, env hm.Env, fresh hm.Fresher, errs *InferenceErrors) (hm.Type, error) {
 	var lastT hm.Type
 	for _, form := range variables {
-		slot, ok := form.(*SlotDecl)
+		field, ok := form.(*FieldDecl)
 		if !ok {
 			continue
 		}
-		t, err := slot.DeclareKnownSignature(ctx, env, fresh)
+		t, err := field.DeclareKnownSignature(ctx, env, fresh)
 		if err != nil {
 			errs.Add(err)
 			continue

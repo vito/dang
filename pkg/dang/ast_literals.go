@@ -25,7 +25,7 @@ var (
 
 // Constant is implemented by nodes whose type can be determined without
 // inspecting the surrounding environment (e.g. string, int, and boolean
-// literals).  SlotDecl.Hoist uses this to register field types early so
+// literals).  FieldDecl.Hoist uses this to register field types early so
 // that sibling method default-value expressions can reference them.
 type Constant interface {
 	ConstantType() hm.Type

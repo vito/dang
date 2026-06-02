@@ -615,16 +615,16 @@ func (h *langHandler) buildSymbolTable(uri DocumentURI, forms []dang.Node) *Symb
 // collectSymbols walks the AST and collects symbol definitions and references
 func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *SymbolTable) {
 	for _, node := range nodes {
-		// For SlotDecl, use the precise location from the Symbol itself
-		if slotDecl, ok := node.(*dang.SlotDecl); ok && slotDecl.Name != nil && slotDecl.Name.Loc != nil {
-			loc := slotDecl.Name.Loc
-			st.Definitions[slotDecl.Name.Name] = &SymbolInfo{
-				Name: slotDecl.Name.Name,
+		// For FieldDecl, use the precise location from the Symbol itself
+		if fieldDecl, ok := node.(*dang.FieldDecl); ok && fieldDecl.Name != nil && fieldDecl.Name.Loc != nil {
+			loc := fieldDecl.Name.Loc
+			st.Definitions[fieldDecl.Name.Name] = &SymbolInfo{
+				Name: fieldDecl.Name.Name,
 				Location: &Location{
 					URI: uri,
 					Range: Range{
 						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(slotDecl.Name.Name)},
+						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(fieldDecl.Name.Name)},
 					},
 				},
 				Kind: h.symbolKind(node),
@@ -683,8 +683,8 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 	case *dang.ClassDecl:
 		// Collect symbols from class body
 		h.collectSymbols(uri, n.Value.Forms, st)
-	case *dang.SlotDecl:
-		// If the slot value is a block, collect from it
+	case *dang.FieldDecl:
+		// If the field value is a block, collect from it
 		if n.Value != nil {
 			h.collectNestedSymbols(uri, n.Value, st)
 		}
@@ -710,10 +710,10 @@ func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	switch node.(type) {
 	case *dang.ClassDecl:
 		return ClassCompletion
-	case *dang.SlotDecl:
-		// Check if the slot value is a function
-		if slot, ok := node.(*dang.SlotDecl); ok {
-			if _, isFunDecl := slot.Value.(*dang.FunDecl); isFunDecl {
+	case *dang.FieldDecl:
+		// Check if the field value is a function
+		if field, ok := node.(*dang.FieldDecl); ok {
+			if _, isFunDecl := field.Value.(*dang.FunDecl); isFunDecl {
 				return FunctionCompletion
 			}
 		}

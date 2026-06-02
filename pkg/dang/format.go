@@ -357,8 +357,8 @@ func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
 // nodeEffectiveStartLine returns the first line where a node's content would appear,
 // accounting for docstrings that precede the actual code
 func nodeEffectiveStartLine(node Node) int {
-	// For slots with prefix directives, the effective start is the first directive
-	if s, ok := node.(*SlotDecl); ok {
+	// For fields with prefix directives, the effective start is the first directive
+	if s, ok := node.(*FieldDecl); ok {
 		for _, d := range s.Directives {
 			if d.IsPrefix && d.Loc != nil {
 				return d.Loc.Line
@@ -374,7 +374,7 @@ func nodeEffectiveStartLine(node Node) int {
 // nodeHasDocString returns true if the node has a docstring that would be formatted before it
 func nodeHasDocString(node Node) bool {
 	switch n := node.(type) {
-	case *SlotDecl:
+	case *FieldDecl:
 		return n.DocString != ""
 	case *ClassDecl:
 		return n.DocString != ""
@@ -584,7 +584,7 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatEnumDecl(n)
 	case *ScalarDecl:
 		f.formatScalarDecl(n)
-	case *SlotDecl:
+	case *FieldDecl:
 		f.formatSlotDecl(n)
 	case *FunDecl:
 		f.formatFunDecl(n)
@@ -825,7 +825,7 @@ func (f *Formatter) hadBlankLineBetween(prev, next Node) bool {
 
 // nodeEndLine returns the last line of a node (using End if available, otherwise start line)
 func nodeEndLine(node Node) int {
-	// Use nodeFullLocation first to get the full span (e.g., SlotDecl.Loc includes the
+	// Use nodeFullLocation first to get the full span (e.g., FieldDecl.Loc includes the
 	// value block, whereas nodeLocation returns just the name location). This prevents
 	// hadBlankLineBetween from seeing a false gap when a form expands to multiline.
 	loc := node.GetSourceLocation()
@@ -879,33 +879,33 @@ func isFunctionDef(node Node) bool {
 	if _, ok := node.(*NewConstructorDecl); ok {
 		return true
 	}
-	slot, ok := node.(*SlotDecl)
+	field, ok := node.(*FieldDecl)
 	if !ok {
 		return false
 	}
 	// Check if the value is a FunDecl (function with args/body)
-	if _, ok := slot.Value.(*FunDecl); ok {
+	if _, ok := field.Value.(*FunDecl); ok {
 		return true
 	}
-	// Check if it's a slot with a block body and type annotation (parameterless function)
-	if _, ok := slot.Value.(*Block); ok {
-		return slot.Type_ != nil
+	// Check if it's a field with a block body and type annotation (parameterless function)
+	if _, ok := field.Value.(*Block); ok {
+		return field.Type_ != nil
 	}
 	return false
 }
 
 func isSimpleAssignment(node Node) bool {
-	slot, ok := node.(*SlotDecl)
+	field, ok := node.(*FieldDecl)
 	if !ok {
 		return false
 	}
 	// Simple assignment: has a value that's not a block, or no type annotation with a block
-	if slot.Value == nil {
+	if field.Value == nil {
 		return false
 	}
-	if _, ok := slot.Value.(*Block); ok {
+	if _, ok := field.Value.(*Block); ok {
 		// Block with type annotation is a function, not a simple assignment
-		return slot.Type_ == nil
+		return field.Type_ == nil
 	}
 	// Non-block value is a simple assignment
 	return true
@@ -1143,7 +1143,7 @@ func (f *Formatter) formatSuffixDirectives(directives []*DirectiveApplication, p
 	}
 }
 
-func (f *Formatter) formatSlotDecl(s *SlotDecl) {
+func (f *Formatter) formatSlotDecl(s *FieldDecl) {
 	// Doc string
 	if s.DocString != "" {
 		f.formatDocString(s.DocString)
@@ -1255,7 +1255,7 @@ func (f *Formatter) formatSlotDecl(s *SlotDecl) {
 }
 
 func (f *Formatter) formatFunDecl(fn *FunDecl) {
-	// This is typically called via SlotDecl, but handle standalone case
+	// This is typically called via FieldDecl, but handle standalone case
 	nameLine := 0
 	if fn.Loc != nil {
 		nameLine = fn.Loc.Line
@@ -1263,7 +1263,7 @@ func (f *Formatter) formatFunDecl(fn *FunDecl) {
 	f.formatFunDeclSignature(fn, nameLine)
 }
 
-func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
+func (f *Formatter) formatFunDeclSignature(fn *FunDecl, fieldNameLine int) {
 	// Arguments
 	if len(fn.Args) > 0 || fn.BlockParam != nil {
 		f.write("(")
@@ -1279,15 +1279,15 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
 
 	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
 	// When args are multiline, the closing "): Type @directive" is on a later
-	// line than slotNameLine. Compute the line of the closing paren / return
+	// line than fieldNameLine. Compute the line of the closing paren / return
 	// type so that directives on the same line aren't forced onto a new line.
-	directivePrecedingLine := slotNameLine
+	directivePrecedingLine := fieldNameLine
 	if fn.Ret != nil {
 		if retLine := typeNodeLine(fn.Ret); retLine > directivePrecedingLine {
 			directivePrecedingLine = retLine
 		}
 	}
-	if directivePrecedingLine == slotNameLine {
+	if directivePrecedingLine == fieldNameLine {
 		// No return type or return type on same line as name — check last arg
 		lastArg := fn.BlockParam
 		if lastArg == nil && len(fn.Args) > 0 {
@@ -1326,7 +1326,7 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl, slotNameLine int) {
 	}
 }
 
-func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, parentLoc *SourceLocation) {
+func (f *Formatter) formatFunctionArgs(args []*FieldDecl, blockParam *FieldDecl, parentLoc *SourceLocation) {
 	// Check if any arg has a docstring - if so, force multiline
 	hasDocString := false
 	for _, arg := range args {
@@ -1420,7 +1420,7 @@ func (f *Formatter) formatFunctionArgs(args []*SlotDecl, blockParam *SlotDecl, p
 	}
 }
 
-func (f *Formatter) estimateArgLength(arg *SlotDecl) int {
+func (f *Formatter) estimateArgLength(arg *FieldDecl) int {
 	length := len(arg.Name.Name)
 	if arg.Type_ != nil {
 		length += 2 + f.estimateTypeLength(arg.Type_)
@@ -1431,7 +1431,7 @@ func (f *Formatter) estimateArgLength(arg *SlotDecl) int {
 	return length
 }
 
-func (f *Formatter) formatArgDecl(arg *SlotDecl) {
+func (f *Formatter) formatArgDecl(arg *FieldDecl) {
 	// Doc string for arg (only in multiline mode)
 	if arg.DocString != "" {
 		f.formatDocString(arg.DocString)
@@ -2526,7 +2526,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 }
 
 func (f *Formatter) formatObject(o *Object) {
-	if len(o.Slots) == 0 {
+	if len(o.Fields) == 0 {
 		f.write("{{}}")
 		return
 	}
@@ -2536,11 +2536,11 @@ func (f *Formatter) formatObject(o *Object) {
 
 	// Estimate inline length
 	length := 4 // {{}}
-	for i, slot := range o.Slots {
+	for i, field := range o.Fields {
 		if i > 0 {
 			length += 2
 		}
-		length += len(slot.Name.Name) + 2 + f.estimateLength(slot.Value)
+		length += len(field.Name.Name) + 2 + f.estimateLength(field.Value)
 	}
 
 	if !wasMultiline && f.col+length <= maxLineLength {
@@ -2552,13 +2552,13 @@ func (f *Formatter) formatObject(o *Object) {
 
 func (f *Formatter) formatObjectInline(o *Object) {
 	f.write("{{")
-	for i, slot := range o.Slots {
+	for i, field := range o.Fields {
 		if i > 0 {
 			f.write(", ")
 		}
-		f.write(slot.Name.Name)
+		f.write(field.Name.Name)
 		f.write(": ")
-		f.formatNodeInline(slot.Value)
+		f.formatNodeInline(field.Value)
 	}
 	f.write("}}")
 }
@@ -2572,22 +2572,22 @@ func (f *Formatter) formatObjectMultiline(o *Object) {
 	f.newline()
 	f.indented(func() {
 		// Reset lastLine to prevent spurious blank line at start
-		if len(o.Slots) > 0 {
-			if loc := o.Slots[0].GetSourceLocation(); loc != nil && loc.Line > 0 {
+		if len(o.Fields) > 0 {
+			if loc := o.Fields[0].GetSourceLocation(); loc != nil && loc.Line > 0 {
 				f.lastLine = loc.Line - 1
 			}
 		}
-		for i, slot := range o.Slots {
-			f.emitCommentsForNode(slot)
+		for i, field := range o.Fields {
+			f.emitCommentsForNode(field)
 			f.writeIndent()
-			f.write(slot.Name.Name)
+			f.write(field.Name.Name)
 			f.write(": ")
-			f.formatNode(slot.Value)
-			// Add trailing comma (except for last slot)
-			if i < len(o.Slots)-1 {
+			f.formatNode(field.Value)
+			// Add trailing comma (except for last field)
+			if i < len(o.Fields)-1 {
 				f.write(",")
 			}
-			if loc := slot.GetSourceLocation(); loc != nil {
+			if loc := field.GetSourceLocation(); loc != nil {
 				f.emitTrailingComment(loc.Line)
 			}
 			f.newline()
@@ -3272,7 +3272,7 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 		f.write("}}")
 	case FunTypeNode:
 		// Function type: (args): returnType
-		// If no args, just output the return type directly (for interface slot types)
+		// If no args, just output the return type directly (for interface field types)
 		if len(tn.Args) == 0 {
 			f.formatTypeNode(tn.Ret)
 		} else {

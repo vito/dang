@@ -186,7 +186,7 @@
           }
         ]
       },
-      "slot": {
+      "field": {
         "multiple": false,
         "required": true,
         "types": [
@@ -1292,6 +1292,10 @@
             "named": true
           },
           {
+            "type": "field",
+            "named": true
+          },
+          {
             "type": "interface",
             "named": true
           },
@@ -1301,10 +1305,6 @@
           },
           {
             "type": "scalar",
-            "named": true
-          },
-          {
-            "type": "slot",
             "named": true
           },
           {
@@ -1744,6 +1744,37 @@
     }
   },
   {
+    "type": "field",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "type_and_args_and_block_field",
+          "named": true
+        },
+        {
+          "type": "type_and_block_field",
+          "named": true
+        },
+        {
+          "type": "type_and_value_field",
+          "named": true
+        },
+        {
+          "type": "type_only_field",
+          "named": true
+        },
+        {
+          "type": "value_only_field",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "field_id",
     "named": true,
     "fields": {}
@@ -1899,7 +1930,7 @@
     }
   },
   {
-    "type": "header_slot",
+    "type": "header_field",
     "named": true,
     "fields": {
       "docstring": {
@@ -1912,16 +1943,16 @@
           }
         ]
       },
-      "slot": {
+      "field": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "type_and_args_slot",
+            "type": "type_and_args_field",
             "named": true
           },
           {
-            "type": "type_only_fun_slot",
+            "type": "type_only_fun_field",
             "named": true
           }
         ]
@@ -1937,7 +1968,7 @@
         "required": false,
         "types": [
           {
-            "type": "header_slot",
+            "type": "header_field",
             "named": true
           }
         ]
@@ -1947,7 +1978,7 @@
         "required": false,
         "types": [
           {
-            "type": "header_slot",
+            "type": "header_field",
             "named": true
           },
           {
@@ -1961,7 +1992,7 @@
         "required": false,
         "types": [
           {
-            "type": "header_slot",
+            "type": "header_field",
             "named": true
           }
         ]
@@ -3290,37 +3321,6 @@
     }
   },
   {
-    "type": "slot",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "type_and_args_and_block_slot",
-          "named": true
-        },
-        {
-          "type": "type_and_block_slot",
-          "named": true
-        },
-        {
-          "type": "type_and_value_slot",
-          "named": true
-        },
-        {
-          "type": "type_only_slot",
-          "named": true
-        },
-        {
-          "type": "value_only_slot",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "string",
     "named": true,
     "fields": {},
@@ -3549,7 +3549,7 @@
     }
   },
   {
-    "type": "type_and_args_and_block_slot",
+    "type": "type_and_args_and_block_field",
     "named": true,
     "fields": {
       "args": {
@@ -3645,7 +3645,7 @@
     }
   },
   {
-    "type": "type_and_args_slot",
+    "type": "type_and_args_field",
     "named": true,
     "fields": {
       "args": {
@@ -3731,7 +3731,7 @@
     }
   },
   {
-    "type": "type_and_block_slot",
+    "type": "type_and_block_field",
     "named": true,
     "fields": {
       "block": {
@@ -3817,7 +3817,7 @@
     }
   },
   {
-    "type": "type_and_value_slot",
+    "type": "type_and_value_field",
     "named": true,
     "fields": {
       "d": {
@@ -3943,7 +3943,7 @@
     }
   },
   {
-    "type": "type_only_fun_slot",
+    "type": "type_only_field",
     "named": true,
     "fields": {
       "d": {
@@ -4019,7 +4019,7 @@
     }
   },
   {
-    "type": "type_only_slot",
+    "type": "type_only_fun_field",
     "named": true,
     "fields": {
       "d": {
@@ -4201,7 +4201,7 @@
     }
   },
   {
-    "type": "value_only_slot",
+    "type": "value_only_field",
     "named": true,
     "fields": {
       "d": {

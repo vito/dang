@@ -8,8 +8,8 @@ let x = a and b
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -39,8 +39,8 @@ let x = a or b
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -70,8 +70,8 @@ let x = a
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -102,8 +102,8 @@ let x = a
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -134,8 +134,8 @@ let x = a
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -173,8 +173,8 @@ let x = a
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -210,8 +210,8 @@ let x = foo == 1
 
 (dang
   last: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -253,8 +253,8 @@ android
 
 (dang
   e: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol
@@ -282,8 +282,8 @@ order
 
 (dang
   e: (decl
-    decl: (slot
-      (value_only_slot
+    decl: (field
+      (value_only_field
         vis: (visibility
           (let_token))
         name: (symbol

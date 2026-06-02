@@ -12,7 +12,7 @@ import (
 
 // Coerce wraps an expression so that its value is materialized at the given
 // target type at runtime. Inference inserts Coerce nodes at boundaries where a
-// value flows into a typed context (slot init, reassignment, call arguments,
+// value flows into a typed context (field init, reassignment, call arguments,
 // function returns, type hints), so the evaluator does not need to remember to
 // call materializeValue at each handoff site.
 type Coerce struct {
@@ -217,7 +217,7 @@ func diagnoseModule(have, want *Module) []string {
 // variance rules expected for value handoffs: covariant returns and
 // contravariant arguments on function-typed fields, subtyping on plain
 // fields. Zero-argument function shape (used to represent argless
-// interface fields) is unwrapped on both sides so a slot field and a
+// interface fields) is unwrapped on both sides so a field field and a
 // zero-arg field of the same type are treated as compatible.
 func diagnoseField(name string, have, want hm.Type) error {
 	have = unwrapZeroArgFn(have)

@@ -2874,7 +2874,7 @@ func (t *TypeHint) Walk(fn func(Node) bool) {
 // expected return type from the function signature they're passed to.
 type BlockArg struct {
 	InferredTypeHolder
-	Args     []*SlotDecl
+	Args     []*FieldDecl
 	BodyNode Node
 	Loc      *SourceLocation
 

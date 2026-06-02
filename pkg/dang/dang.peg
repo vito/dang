@@ -25,7 +25,7 @@ CommaToken <- ','
 
 Expr <- Import / Decl / Reassignment / Form
 
-Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / NewConstructor / Slot / DirectiveDecl) {
+Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / NewConstructor / Field / DirectiveDecl) {
   switch node := decl.(type) {
   case *InterfaceDecl:
     if docstring != nil {
@@ -52,7 +52,7 @@ Decl <- docstring:DocString? decl:(Interface / Union / Enum / Scalar / Class / N
       node.DocString = docstring.(string)
     }
     return node, nil
-  case *SlotDecl:
+  case *FieldDecl:
     if docstring != nil {
       node.DocString = docstring.(string)
     }
@@ -322,9 +322,9 @@ ScalarToken <- "scalar" !WordChar
 
 NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
   // Separate block parameters from regular constructor arguments.
-  allArgs := args.([]*SlotDecl)
-  var regularArgs []*SlotDecl
-  var blockParam *SlotDecl
+  allArgs := args.([]*FieldDecl)
+  var regularArgs []*FieldDecl
+  var blockParam *FieldDecl
 
   for _, arg := range allArgs {
     if arg.IsBlockParam {
@@ -352,14 +352,14 @@ NewConstructor <- NewToken _ args:ArgTypes _ block:Block {
 }
 NewToken <- "new" !WordChar
 
-Slot <- TypeAndArgsAndBlockSlot  // pub a(foo: Boolean!): Int! { 1 }
-      / TypeAndBlockSlot         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
-      / TypeAndValueSlot         // pub a: Int! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
-      / ValueOnlySlot            // pub a = 1              <- as above, type inferred as Int!
-      / TypeOnlySlot             // pub a: Int              <- as above, type inferred as Int!
+Field <- TypeAndArgsAndBlockField  // pub a(foo: Boolean!): Int! { 1 }
+      / TypeAndBlockField         // pub a: Int! { 1 }  <- becomes a function that takes an empty record of args, can use other fields
+      / TypeAndValueField         // pub a: Int! = 1    <- no longer required, default pre-initialized (don't need to worry about mutation)
+      / ValueOnlyField            // pub a = 1              <- as above, type inferred as Int!
+      / TypeOnlyField             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ EqualToken _ value:Form {
-  return &SlotDecl{
+TypeAndValueField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ EqualToken _ value:Form {
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Value: value.(Node),
@@ -369,8 +369,8 @@ TypeAndValueSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d,
   }, nil
 }
 
-ValueOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol suffixDirectives:DirectiveApplication* _ EqualToken _ val:Form {
-  return &SlotDecl{
+ValueOnlyField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol suffixDirectives:DirectiveApplication* _ EqualToken _ val:Form {
+  return &FieldDecl{
     Name: name.(*Symbol),
     Value: val.(Node),
     Visibility: vis.(Visibility),
@@ -379,8 +379,8 @@ ValueOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, ni
   }, nil
 }
 
-TypeOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
-  return &SlotDecl{
+TypeOnlyField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Visibility: vis.(Visibility),
@@ -389,9 +389,9 @@ TypeOnlySlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil
   }, nil
 }
 
-TypeAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
+TypeAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
   allDirectives := append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...)
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
     Value: &FunDecl{
@@ -411,11 +411,11 @@ TypeAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d,
   }, nil
 }
 
-TypeAndArgsAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
+TypeAndArgsAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
   // Separate block parameters from regular arguments
-  allArgs := args.([]*SlotDecl)
-  var regularArgs []*SlotDecl
-  var blockParam *SlotDecl
+  allArgs := args.([]*FieldDecl)
+  var regularArgs []*FieldDecl
+  var blockParam *FieldDecl
 
   for _, arg := range allArgs {
     if arg.IsBlockParam {
@@ -430,7 +430,7 @@ TypeAndArgsAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { re
 
   allDirectives := append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...)
 
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{allArgs, type_.(TypeNode)},
     Value: &FunDecl{
@@ -451,25 +451,25 @@ TypeAndArgsAndBlockSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { re
   }, nil
 }
 
-HeaderSlot <- docstring:DocString? slot:(TypeAndArgsSlot / TypeOnlyFunSlot) {
+HeaderField <- docstring:DocString? field:(TypeAndArgsField / TypeOnlyFunField) {
   if docstring != nil {
-    slot.(*SlotDecl).DocString = docstring.(string)
+    field.(*FieldDecl).DocString = docstring.(string)
   }
-  return slot, nil
+  return field, nil
 }
 
-TypeAndArgsSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
-  return &SlotDecl{
+TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+  return &FieldDecl{
     Name: name.(*Symbol),
-    Type_: FunTypeNode{args.([]*SlotDecl), type_.(TypeNode)},
+    Type_: FunTypeNode{args.([]*FieldDecl), type_.(TypeNode)},
     Visibility: vis.(Visibility),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeOnlyFunSlot <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
-  return &SlotDecl{
+TypeOnlyFunField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
     Visibility: vis.(Visibility),
@@ -519,24 +519,24 @@ ArgValues <- ImmediateParen _ args:(a:Argument Sep { return a, nil })* last:Argu
   return sliceOfAppend[Keyed[Node]](args, last), nil
 }
 ArgTypes <- ImmediateParen _ args:(a:ArgType Sep { return a, nil })* last:ArgType? _ ')' {
-  return sliceOfAppend[*SlotDecl](args, last), nil
+  return sliceOfAppend[*FieldDecl](args, last), nil
 }
-ArgType <- docstring:DocString _ slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
-  slotDecl := slot.(*SlotDecl)
-  return &SlotDecl{
-    Name: slotDecl.Name,
-    Type_: slotDecl.Type_,
-    Value: slotDecl.Value,
-    Directives: slotDecl.Directives,
+ArgType <- docstring:DocString _ field:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
+  fieldDecl := field.(*FieldDecl)
+  return &FieldDecl{
+    Name: fieldDecl.Name,
+    Type_: fieldDecl.Type_,
+    Value: fieldDecl.Value,
+    Directives: fieldDecl.Directives,
     DocString: docstring.(string),
-    IsBlockParam: slotDecl.IsBlockParam,
-    Loc: slotDecl.Loc,
+    IsBlockParam: fieldDecl.IsBlockParam,
+    Loc: fieldDecl.Loc,
   }, nil
-} / slot:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
-  return slot.(*SlotDecl), nil
+} / field:(ArgWithDefault / ArgWithBlockDefault / ArgWithType / BlockParamDecl) {
+  return field.(*FieldDecl), nil
 }
 ArgWithDefault <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ EqualToken _ value:Form {
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
@@ -545,7 +545,7 @@ ArgWithDefault <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, n
   }, nil
 }
 ArgWithBlockDefault <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
@@ -554,7 +554,7 @@ ArgWithBlockDefault <- prefixDirectives:(d:PrefixDirectiveApplication _ { return
   }, nil
 }
 ArgWithType <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
@@ -562,11 +562,11 @@ ArgWithType <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil 
   }, nil
 }
 BlockParamDecl <- AmpersandToken name:Symbol _ args:ArgTypes? _ ColonToken _ ret:Type {
-  var argTypes []*SlotDecl
+  var argTypes []*FieldDecl
   if args != nil {
-    argTypes = args.([]*SlotDecl)
+    argTypes = args.([]*FieldDecl)
   }
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{argTypes, ret.(TypeNode)},
     IsBlockParam: true,
@@ -719,9 +719,9 @@ List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
 }
 
 Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {
-  var slots []*SlotDecl
+  var fields []*FieldDecl
   for _, kv := range sliceOfAppend[Keyed[Node]](vals, last) {
-    slots = append(slots, &SlotDecl{
+    fields = append(fields, &FieldDecl{
       Name: &Symbol{
         Name: kv.Key,
         Loc: kv.Value.GetSourceLocation(),
@@ -731,7 +731,7 @@ Object <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" 
     })
   }
   return &Object{
-    Slots: slots,
+    Fields: fields,
     Loc: c.Loc(),
   }, nil
 }
@@ -744,7 +744,7 @@ Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
 }
 
 
-HeadersBlock <- '{' _ eles:(e:HeaderSlot Sep { return e, nil })* last:HeaderSlot? _ '}' {
+HeadersBlock <- '{' _ eles:(e:HeaderField Sep { return e, nil })* last:HeaderField? _ '}' {
   return &Block{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
@@ -1059,9 +1059,9 @@ ForToken <- "for" !WordChar
 ArrowToken <- "=>"
 
 BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
-  var args []*SlotDecl
+  var args []*FieldDecl
   if paramsAndArrow != nil {
-    args = paramsAndArrow.([]*SlotDecl)
+    args = paramsAndArrow.([]*FieldDecl)
   }
   return &BlockArg{
     Args: args,
@@ -1074,11 +1074,11 @@ BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return param
 }
 
 BlockParams <- params:(p:BlockParam Sep { return p, nil })* last:BlockParam {
-  return sliceOfAppend[*SlotDecl](params, last), nil
+  return sliceOfAppend[*FieldDecl](params, last), nil
 }
 
 BlockParam <- name:Symbol {
-  return &SlotDecl{
+  return &FieldDecl{
     Name: name.(*Symbol),
     Loc: c.Loc(),
   }, nil
@@ -1183,9 +1183,9 @@ TypeHint <- expr:Term _ DoubleColonToken _ type_:Type {
 DoubleColonToken <- "::"
 
 DirectiveDecl <- DirectiveToken _ name:DirectiveName _ args:ArgTypes? _ OnToken _ locations:DirectiveLocations {
-  var argTypes []*SlotDecl
+  var argTypes []*FieldDecl
   if args != nil {
-    argTypes = args.([]*SlotDecl)
+    argTypes = args.([]*FieldDecl)
   }
   return &DirectiveDecl{
     Name: name.(string),

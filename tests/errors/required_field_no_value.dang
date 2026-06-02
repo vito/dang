@@ -1,4 +1,4 @@
-# Test that required slots without values are runtime errors
+# Test that required fields without values are runtime errors
 
 # This should fail at runtime - can't have a required type without a value
 let foo: String!

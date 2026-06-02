@@ -10,8 +10,8 @@ pub f: Int! {
 
 (dang
   last: (decl
-    decl: (slot
-      (type_and_block_slot
+    decl: (field
+      (type_and_block_field
         vis: (visibility
           (pub_token))
         name: (symbol
@@ -46,8 +46,8 @@ pub f: Int! {
 
 (dang
   last: (decl
-    decl: (slot
-      (type_and_block_slot
+    decl: (field
+      (type_and_block_field
         vis: (visibility
           (pub_token))
         name: (symbol
