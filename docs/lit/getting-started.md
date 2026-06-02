@@ -12,20 +12,75 @@
 ## Hello, world
 
 ```dang
-print("hello, world")
+pub message(who: String!): String! {
+  `hello, ${who}`
+}
+
+print(message("world"))
 ```
 
 - `dang hello.dang` to run
 
 ## A first GraphQL call
 
-- minimal `dang.toml` pointing at a schema
-- a one-liner that queries it
-- show both *qualified* (`Test.User`) and *unqualified* (`User`) access
+Dang is designed for GraphQL APIs. To configure them, add a `dang.toml`:
 
-> Meta: mention the `dang.toml` `endpoint` setting here only as a forward reference; full details live in [GraphQL configuration](./graphql-config.md).
+```toml
+[imports.GitHub]
+endpoint = "https://api.github.com/graphql"
+authorization = "Bearer ${GITHUB_TOKEN}"
+```
+
+This file should be committed to your repo, so be careful not to include
+credentials. Above we reference a `${GITHUB_TOKEN}` environment variable, which
+you can configure in an `.envrc` like below:
+
+```sh
+export GITHUB_TOKEN="$(gh auth token)"
+```
+
+Now you can run `dang` in REPL mode and explore the GitHub API:
+
+```sh
+$ dang
+Welcome to Dang REPL v0.1.0
+Imports: GitHub, Dagger
+
+Type :help for commands, Tab for completion, Alt+Enter for multiline, Ctrl+D to exit
+
+dang> GitHub.user("vito").databaseId
+=> 1880
+```
+
+> Tip: To start an interactive schema browser, try `:doc`.
+
+For a more elaborate GitHub demo, check out [`demos/github/main.dang`][github-demo].
+
+[github-demo]: https://github.com/vito/dang/blob/main/demos/github/main.dang
 
 ## A Dagger module in 10 lines
+
+Dang is a natural fit for writing and consuming [Dagger](https://dagger.io)
+modules.
+
+> TODO: update this for Dagger 1.0
+
+```sh
+$ dagger init --sdk=dang
+```
+
+```dang
+type Greeter {
+  pub message(target: String!): String! {
+    container
+      .from("ubuntu")
+      .withExec(["apt-get", "update", "-y"])
+      .withExec(["apt-get", "install", "-y", "cowsay"])
+      .withExec(["/usr/games/cowsay", `Hello, ${target}!`])
+      .stdout
+  }
+}
+```
 
 - show the README's `Dang { source, build, test }` example
 - explain what each line is doing in a sentence
