@@ -28,7 +28,7 @@ GraphQL schema.
 \include-section{./language/functions.md}
 \include-section{./language/blocks.md}
 \include-section{./language/control-flow.md}
-\include-section{./language/classes.md}
+\include-section{./language/objects.md}
 \include-section{./language/mutation.md}
 \include-section{./language/interfaces-unions.md}
 \include-section{./language/enums-scalars.md}
