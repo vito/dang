@@ -15,7 +15,7 @@
 - placed on their own line or trailing; both are idiomatic
 - formatter keeps them attached to the following or preceding code
 
-> Meta: `///` doc comments don't exist — docstrings are real triple-quoted strings attached to declarations (covered in [bindings](./bindings.md) and [functions](./functions.md)).
+> Meta: `///` doc comments don't exist — docstrings are real triple-quoted strings attached to declarations (covered in [fields](./fields.md) and [functions](./functions.md)).
 
 ## Identifiers
 

@@ -43,7 +43,7 @@
 ## Compound assignment
 
 - `+=` on numeric, string, and list slots
-- requires the LHS to be a mutable slot (`pub`/`let`)
+- requires the LHS to be a mutable field (`pub`/`let`)
 
 ## Cast / type hint: `::`
 

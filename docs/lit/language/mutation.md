@@ -70,5 +70,5 @@ pub addAll(items: [String!]!): Self! {
 ## When not to think in CoW
 
 - pure functions (`fn(x): T { ... }`) — no `self`, no forking
-- top-level `pub`/`let` bindings — they're plain slots
+- top-level `pub`/`let` fields — plain bindings, no `self` to fork
 - the *values themselves* are immutable regardless

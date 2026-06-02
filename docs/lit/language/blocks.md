@@ -45,7 +45,7 @@ shouldRun { true }    # block has signature (x: Boolean!): Boolean!
 ## Scoping
 
 - a block is a lexical scope; `let` is local
-- reassignment without `let` mutates the enclosing slot
+- reassignment without `let` mutates the enclosing field
 - hoisting: mutations inside `for` propagate to subsequent code in the same scope
 
 ## Control-flow handoff

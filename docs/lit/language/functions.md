@@ -20,7 +20,7 @@ pub add(a: Int!, b: Int!): Int! { a + b }
 pub motd: String! { "hello" }
 ```
 
-- omit the parentheses; the function is a *slot* with a function body
+- omit the parentheses; the function is a *field* with a function body
 - callers also omit the parens: `motd`, not `motd()`
 
 ## Auto-calling
@@ -57,7 +57,7 @@ greet("Alice")
 ## Function references: `&fn`
 
 - `&greet` — yields the function itself without calling it
-- needed for assignment to a function-typed slot, passing as an arg, etc.
+- needed for assignment to a function-typed field, passing as an arg, etc.
 - combined with `.method` selection: `&user.greet`
 
 ## Nested functions
