@@ -126,9 +126,9 @@ func diagnoseAssignment(have, want hm.Type) error {
 }
 
 // walkAssignment unwraps matched NonNull/List wrappers and, when it
-// reaches a Module-vs-Module (or Module-vs-Union) pair, returns the
+// reaches a TypeDef-vs-TypeDef (or TypeDef-vs-Union) pair, returns the
 // field-level incompatibilities that prevent assignment. ok is true when
-// the walk reached such a Module pair (regardless of whether issues were
+// the walk reached such a TypeDef pair (regardless of whether issues were
 // found); have and want are the unwrapped Modules in that case.
 func walkAssignment(have, want hm.Type) (haveMod, wantMod *TypeDef, issues []string, ok bool) {
 	if haveNN, haveOk := have.(hm.NonNullType); haveOk {
@@ -163,8 +163,8 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *TypeDef, issues []str
 }
 
 // bestUnionMatch picks the union option that yields the most informative
-// Module diagnosis: the structurally closest option (fewest field-level
-// issues). If multiple options reach a Module pair, the one with the
+// TypeDef diagnosis: the structurally closest option (fewest field-level
+// issues). If multiple options reach a TypeDef pair, the one with the
 // shortest issue list wins. ID-handle unions (Object | ID) usually pick
 // the Object half here.
 func bestUnionMatch(have *TypeDef, want *hm.UnionType) (*TypeDef, *TypeDef, []string, bool) {

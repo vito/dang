@@ -63,7 +63,7 @@ func (c *DocColumn) ApplyFilter() {
 	c.Offset = 0
 }
 
-// BuildColumn creates a column listing public members of an Env.
+// BuildColumn creates a column listing public members of a TypeScope.
 func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 	col := DocColumn{
 		Title:   title,

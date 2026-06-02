@@ -1573,7 +1573,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 
 // isLazyInlineFragments returns true when all inline fragments have no field
 // sub-selections, meaning the result should be a lazy GraphQLValue rather than
-// an eagerly-fetched ModuleValue.
+// an eagerly-fetched Object.
 func (o *ObjectSelection) isLazyInlineFragments() bool {
 	for _, frag := range o.InlineFragments {
 		if len(frag.Fields) > 0 {
@@ -1867,7 +1867,7 @@ func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, e
 	case GraphQLValue:
 		return o.evalGraphQLSelection(v, ctx, env)
 	default:
-		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *ModuleValue or GraphQLValue, got %T", val)
+		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *Object or GraphQLValue, got %T", val)
 	}
 }
 
@@ -1945,7 +1945,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err)
 	}
 
-	// Convert GraphQL result to ModuleValue
+	// Convert GraphQL result to Object
 	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeEnv)
 }
 

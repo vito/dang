@@ -322,7 +322,7 @@ func canonicalModule(m *TypeDef) *TypeDef {
 	return m
 }
 
-// valueModule extracts the *Module backing a runtime value.
+// valueModule extracts the *TypeDef backing a runtime value.
 func valueModule(val Value) *TypeDef {
 	switch v := val.(type) {
 	case *Object:

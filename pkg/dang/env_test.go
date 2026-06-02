@@ -491,7 +491,7 @@ pub fromB: Dagger.Container! = Dagger.container
 func TestRunDirImportedTypesUnifyAcrossFiles(t *testing.T) {
 	// Two files that import the same schema and exchange one of its types
 	// must agree on type identity. Without shared schema modules, each file
-	// would build its own *Module via NewEnv and unification would fail with
+	// would build its own *TypeDef via NewEnv and unification would fail with
 	// "cannot use Dagger.Container as Dagger.Container".
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",
@@ -514,7 +514,7 @@ pub piped: Container! = take(c: make)
 func TestRunDirNestedBlockImportResolves(t *testing.T) {
 	// An import inside a nested block (here a function body) should make the
 	// imported names available within that block. The shared schema-module
-	// cache on the context resolves Dagger to the same *Module a file-level
+	// cache on the context resolves Dagger to the same *TypeDef a file-level
 	// import would, so Dagger.container etc. work fine inside the block.
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:   "Dagger",

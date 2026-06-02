@@ -73,7 +73,7 @@ type ValueScope interface {
 	EnterSelf(value Value)
 }
 
-// InputObjectConstructor creates a ModuleValue from named arguments,
+// InputObjectConstructor creates an Object from named arguments,
 // used for GraphQL input types like UserSort(field: ..., direction: ...).
 type InputObjectConstructor struct {
 	TypeName string
@@ -329,7 +329,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 
 // NewEvalEnv creates an evaluation environment with built-in functions
 func NewEvalEnv(typeEnv TypeScope) ValueScope {
-	// Create a ModuleValue from the type environment
+	// Create an Object from the type environment
 	env := NewObject(typeEnv)
 
 	// Add builtin functions
@@ -340,7 +340,7 @@ func NewEvalEnv(typeEnv TypeScope) ValueScope {
 
 // NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
 func NewEvalEnvWithSchema(typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
-	// Create a ModuleValue from the type environment
+	// Create an Object from the type environment
 	env := NewObject(typeEnv)
 
 	// Populate with GraphQL functions from the schema
@@ -1244,7 +1244,7 @@ type DynamicScope struct {
 	Value Value
 }
 
-// Object represents a module value that implements EvalEnv
+// Object represents an instance of a TypeDef; it implements ValueScope
 type Object struct {
 	Mod          TypeScope
 	Values       map[string]Value
@@ -1255,7 +1255,7 @@ type Object struct {
 	dynamicScope *DynamicScope           // Shared cell for 'self' in this scope
 }
 
-// NewObject creates a new ModuleValue with an empty values map
+// NewObject creates a new Object with an empty values map
 func NewObject(mod TypeScope) *Object {
 	return &Object{
 		Mod:          mod,
@@ -1381,7 +1381,7 @@ func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 			bindings = append(bindings, Keyed[Value]{
 				Key:        name,
 				Value:      value,
-				Positional: false, // Module bindings are never positional
+				Positional: false, // TypeDef bindings are never positional
 			})
 		}
 	}
@@ -1463,7 +1463,7 @@ func (m *Object) EnterSelf(value Value) {
 	m.dynamicScope = &DynamicScope{Value: value}
 }
 
-// MarshalJSON implements json.Marshaler for ModuleValue
+// MarshalJSON implements json.Marshaler for Object
 // Includes private fields, so that state can be retained
 func (m *Object) MarshalJSON() ([]byte, error) {
 	result := make(map[string]Value)
@@ -2210,7 +2210,7 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 		imports, rest := partitionImports(block.Forms)
 
 		// Install imports into a fresh per-file env. Using Derive (rather than
-		// a sibling ModuleValue) keeps the prelude reachable for any lookups
+		// a sibling Object) keeps the prelude reachable for any lookups
 		// the imports phase performs during installation.
 		importsEnv := evalEnv.Derive(true)
 		for _, imp := range imports {

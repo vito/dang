@@ -52,7 +52,7 @@ type fileScope struct {
 // Schema modules dedupe automatically: ImportDecl.Infer consults a
 // name-keyed cache on the import context, so every ImportDecl with the same
 // name — whether at file top level or nested inside a block — installs the
-// same *Module and types like Dagger.Workspace unify across file boundaries.
+// same *TypeDef and types like Dagger.Workspace unify across file boundaries.
 func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
 	scopes := make([]fileScope, 0, len(files))
 	for _, block := range files {

@@ -55,7 +55,7 @@ type langHandler struct {
 	// a new dagger session on every keystroke.
 	importCache map[string][]dang.ImportConfig
 
-	// Per-directory cache of *Module pointers for imported schemas. A long-
+	// Per-directory cache of *TypeDef pointers for imported schemas. A long-
 	// lived cache is essential here: each analyzeDirectory call otherwise
 	// gets a fresh ContextWithImportConfigs cache, so a sibling file whose
 	// parse gets invalidated (e.g. open-buffer transition) re-builds its
@@ -305,7 +305,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	// installing the import configs, so the configs' helpers find an existing
 	// cache and reuse it. Without this, each analyzeDirectory call gets a
 	// fresh cache and ImportDecls in re-parsed sibling files build divergent
-	// *Module instances — types like Test.ServerInfo fail to unify.
+	// *TypeDef instances — types like Test.ServerInfo fail to unify.
 	ctx = dang.WithSchemaModuleCache(ctx, h.schemaModuleCacheFor(fileDir))
 	if len(importConfigs) > 0 {
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)

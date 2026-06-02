@@ -725,7 +725,7 @@ func (c *OverlayTypeScope) LocalTypeOrigin(name string) (BindingOrigin, bool) {
 // CheckTypeConflict delegates to the primary module
 func (c *OverlayTypeScope) CheckTypeConflict(symbolName string) []string {
 	imports := c.primary.CheckTypeConflict(symbolName)
-	// Fall back to lexical scope if primary isn't a Module
+	// Fall back to lexical scope if primary isn't a TypeDef
 	for _, importer := range c.lexical.CheckTypeConflict(symbolName) {
 		if !slices.Contains(imports, importer) {
 			imports = append(imports, importer)
@@ -737,7 +737,7 @@ func (c *OverlayTypeScope) CheckTypeConflict(symbolName string) []string {
 // CheckValueConflict delegates to the primary module
 func (c *OverlayTypeScope) CheckValueConflict(symbolName string) []string {
 	imports := c.primary.CheckValueConflict(symbolName)
-	// Fall back to lexical scope if primary isn't a Module
+	// Fall back to lexical scope if primary isn't a TypeDef
 	for _, importer := range c.lexical.CheckValueConflict(symbolName) {
 		if !slices.Contains(imports, importer) {
 			imports = append(imports, importer)
@@ -749,7 +749,7 @@ func (c *OverlayTypeScope) CheckValueConflict(symbolName string) []string {
 // CheckDirectiveConflict delegates to the primary module
 func (c *OverlayTypeScope) CheckDirectiveConflict(directiveName string) []string {
 	imports := c.primary.CheckDirectiveConflict(directiveName)
-	// Fall back to lexical scope if primary isn't a Module
+	// Fall back to lexical scope if primary isn't a TypeDef
 	for _, importer := range c.lexical.CheckDirectiveConflict(directiveName) {
 		if !slices.Contains(imports, importer) {
 			imports = append(imports, importer)

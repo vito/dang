@@ -983,7 +983,7 @@ func (t *TypeDef) String() string {
 	return t.AsRecord().String()
 }
 
-//	func (t *Module) Format(s fmt.State, c rune) {
+//	func (t *TypeDef) Format(s fmt.State, c rune) {
 //		switch c {
 //		case 'v':
 //			fmt.Fprintf(s, "%+v", t.)

@@ -955,7 +955,7 @@ type schemaModuleCacheKey struct{}
 // WithSchemaModuleCache attaches a name-keyed schema-module cache to ctx. The
 // cache is consulted by ImportDecl.Infer so every ImportDecl with the same
 // name — whether at file top level, in a sibling file, or nested inside a
-// block — gets the same *Module identity. Without a shared cache, each
+// block — gets the same *TypeDef identity. Without a shared cache, each
 // NewEnv call produces a distinct module and types fail to unify.
 //
 // Callers that want the cache to persist across multiple inference passes
@@ -1021,7 +1021,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		// Resolve i.inferred to the shared schema module for this import name
 		// in ctx. The context-scoped cache ensures every ImportDecl referring to
 		// the same name — whether at file top level, in a sibling file, or
-		// nested inside a block — gets the same *Module identity. Without it,
+		// nested inside a block — gets the same *TypeDef identity. Without it,
 		// each NewEnv produces a distinct module and types fail to unify.
 		//
 		// Subsequent calls (e.g. LSP reusing cached blocks) reuse the

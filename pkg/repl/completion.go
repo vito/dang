@@ -273,7 +273,7 @@ type DocArg struct {
 	Doc     string
 }
 
-// ClassifyEnv determines the ItemKind for a module/env based on its ModuleKind.
+// ClassifyEnv determines the ItemKind for a module/env based on its Kind.
 func ClassifyEnv(env dang.TypeScope) ItemKind {
 	if mod, ok := env.(*dang.TypeDef); ok {
 		switch mod.Kind {
