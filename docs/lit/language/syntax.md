@@ -15,14 +15,16 @@
 - placed on their own line or trailing; both are idiomatic
 - formatter keeps them attached to the following or preceding code
 
-> Meta: `///` doc comments don't exist — docstrings are real triple-quoted strings attached to declarations (covered in [fields](./fields.md) and [functions](./functions.md)).
+> Meta: `///` doc comments don't exist — docstrings are real triple-quoted strings attached to declarations (covered in [#fields] and [#functions]).
+
+- a docstring is a triple-quoted string placed immediately before a declaration (module-level, field, function, or `let`)
 
 ## Identifiers
 
 - lowercase: `foo_bar`, `userName` — values and methods
 - capitalized: `User`, `String` — types
 - single lowercase letters in type positions (`a`, `b`) — type variables
-- `_` is **not** a special "ignore" pattern (TBD?)
+- `_` is a normal identifier character, not a special "ignore"/discard pattern
 
 ## Reserved words
 
@@ -41,9 +43,8 @@
 
 ## Backticks and string-template lexer mode
 
-- backtick strings are templates with `#{expr}` interpolation
-- inside backticks, `#` is part of interpolation syntax (not a comment)
-- multi-line backtick fences (3, 4, 5+) for nested code blocks
-- see [literals](./literals.md)
-
-> Meta: flag the `${` → `#{` migration if/when it lands (see `regexp.md`).
+- backtick strings are templates with `${expr}` interpolation
+- inside backticks, `#` is NOT special — it's a literal character, not a comment
+- the only escape recognized inside a template is `\${`, which emits a literal `${` (no other backslash escapes; `\d+` stays `\d+`)
+- multi-line backtick fences (3, 4, 5+ backticks) for nested code blocks; the close fence must match the open fence length
+- see [#literals]

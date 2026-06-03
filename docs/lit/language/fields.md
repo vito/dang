@@ -2,7 +2,7 @@
 
 # Fields: `pub` and `let` {#fields}
 
-> Meta: this is also the right place to introduce the *field* concept, since `pub` and `let` declare fields whether they hold a value or a function. The object-context behavior is covered in [objects](./objects.md) — link there, don't duplicate.
+> Meta: this is also the right place to introduce the *field* concept, since `pub` and `let` declare fields whether they hold a value or a function. The object-context behavior is covered in [#objects] — link there, don't duplicate.
 
 The `pub` and `let` keywords declare fields in the current scope:
 
@@ -18,11 +18,13 @@ already-declared field.
 - `pub name = value` — exported; visible to importers and outside the type
 - `let name = value` — private to the file/type
 
-## Fields
+## What a field is
 
 - a field is a named, typed thing — value, function, or computed expression
 - fields can carry an explicit type annotation
-- fields without a value act as required parameters (in objects) or unresolved declarations
+- fields without a value (`pub name: Type`) act as required constructor parameters (in objects) or unresolved declarations
+- a `let` (private) required field with no default still becomes a required constructor parameter; a `let` field *with* a default does not
+- private fields with defaults are preferred over outer-scope bindings of the same name inside the type
 
 ## Forms
 
@@ -38,9 +40,12 @@ let secret = "shhh"
 tl;dr: they work.
 
 `.dang` files within a directory share a common scope, like in Go
-* field declarations may forward-reference fields later the same file
+* field declarations may forward-reference fields later in the same file
 * field declarations may cross-reference fields in sibling files
-* circular field assignments fail typechecking
+* types may forward-reference types declared later in the file
+* forward reads hidden behind function calls / computed defaults resolve via lazy module slots
+* a *direct* initializer cycle (`pub a = b`, `pub b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`
+* a cycle hidden behind an auto-called function or constructor default is caught at runtime when the variable is forced: `initialization cycle while evaluating variable "..."`
 
 ## Docstrings
 
@@ -58,7 +63,9 @@ pub greet(name: String!): String! {
 
 ## Reassignment
 
-- `name = newValue` mutates an existing field
-- `+=` for compound update
+- `name = newValue` mutates an existing field (or local/arg of that name)
+- `+=` for compound update (Int add, String/List concatenation)
 - type must remain assignable to the field's declared type
-- inside a `type`, bare `name = ...` rebinds a local/arg (a value *binding*, not a field); **field** mutation requires `self.name = ...` (see [mutation](./mutation.md))
+- assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself — see [#functions]
+- nested-path mutation is copy-on-write: copying an object then writing `m.a.b.c = 2` leaves the original unchanged
+- inside a `type`, bare `name = ...` resolves to the field when nothing shadows it; if a parameter (or local) shadows the field name, **field** mutation requires `self.name = ...` — see [#mutation]
