@@ -121,12 +121,12 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 // Go's error interface so that Eval methods propagate it up the call
 // stack until a TryCatch catches it.
 type RaisedError struct {
-	Value    Value // always a *ModuleValue implementing Error
+	Value    Value // always an *Object implementing Error
 	Location *SourceLocation
 }
 
 func (r *RaisedError) Error() string {
-	if mv, ok := r.Value.(*ModuleValue); ok {
+	if mv, ok := r.Value.(*Object); ok {
 		if msg, found := mv.lookupValue("message"); found {
 			return msg.String()
 		}
@@ -134,7 +134,7 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
-func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (t *TryCatch) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
 		val, err := EvalNode(ctx, env, t.TryBody)
 		if err == nil {
@@ -173,7 +173,7 @@ func (t *TryCatch) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	})
 }
 
-// extractErrorValue turns any caught error into a *ModuleValue.  User-
+// extractErrorValue turns any caught error into an *Object.  User-
 // level raises already carry one; runtime errors are wrapped in a
 // BasicError.
 func extractErrorValue(err error) Value {
@@ -190,10 +190,10 @@ func extractErrorValue(err error) Value {
 	return newBasicError(msg)
 }
 
-// newBasicError creates a *ModuleValue of type BasicError with the given
+// newBasicError creates an *Object of type BasicError with the given
 // message.
-func newBasicError(message string) *ModuleValue {
-	mv := NewModuleValue(BasicErrorType)
+func newBasicError(message string) *Object {
+	mv := NewObject(BasicErrorType)
 	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
 	return mv
 }
@@ -259,7 +259,7 @@ func (r *Raise) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (r *Raise) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	val, err := EvalNode(ctx, env, r.Value)
 	if err != nil {
 		return nil, err
@@ -271,7 +271,7 @@ func (r *Raise) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 			Value:    newBasicError(v.Val),
 			Location: r.Loc,
 		}
-	case *ModuleValue:
+	case *Object:
 		return nil, &RaisedError{Value: v, Location: r.Loc}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)

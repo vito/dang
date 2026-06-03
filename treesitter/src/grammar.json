@@ -115,31 +115,31 @@
             "members": [
               {
                 "type": "SYMBOL",
-                "name": "interface"
+                "name": "interface_decl"
               },
               {
                 "type": "SYMBOL",
-                "name": "union"
+                "name": "union_decl"
               },
               {
                 "type": "SYMBOL",
-                "name": "enum"
+                "name": "enum_decl"
               },
               {
                 "type": "SYMBOL",
-                "name": "scalar"
+                "name": "scalar_decl"
               },
               {
                 "type": "SYMBOL",
-                "name": "class"
+                "name": "object_decl"
               },
               {
                 "type": "SYMBOL",
-                "name": "new_constructor"
+                "name": "new_constructor_decl"
               },
               {
                 "type": "SYMBOL",
-                "name": "field"
+                "name": "field_decl"
               },
               {
                 "type": "SYMBOL",
@@ -250,7 +250,7 @@
             "value": 4,
             "content": {
               "type": "SYMBOL",
-              "name": "object"
+              "name": "object_literal"
             }
           },
           {
@@ -862,7 +862,7 @@
         }
       ]
     },
-    "interface": {
+    "interface_decl": {
       "type": "SEQ",
       "members": [
         {
@@ -914,7 +914,7 @@
         "value": "interface"
       }
     },
-    "union": {
+    "union_decl": {
       "type": "SEQ",
       "members": [
         {
@@ -974,7 +974,7 @@
         "value": "union"
       }
     },
-    "class": {
+    "object_decl": {
       "type": "SEQ",
       "members": [
         {
@@ -1107,7 +1107,7 @@
         "value": "\u0026"
       }
     },
-    "enum": {
+    "enum_decl": {
       "type": "SEQ",
       "members": [
         {
@@ -1171,7 +1171,7 @@
         "value": "enum"
       }
     },
-    "scalar": {
+    "scalar_decl": {
       "type": "SEQ",
       "members": [
         {
@@ -1195,7 +1195,7 @@
         "value": "scalar"
       }
     },
-    "new_constructor": {
+    "new_constructor_decl": {
       "type": "CHOICE",
       "members": [
         {
@@ -1249,7 +1249,7 @@
         "value": "new"
       }
     },
-    "field": {
+    "field_decl": {
       "type": "CHOICE",
       "members": [
         {
@@ -3133,7 +3133,7 @@
         }
       ]
     },
-    "object": {
+    "object_literal": {
       "type": "SEQ",
       "members": [
         {

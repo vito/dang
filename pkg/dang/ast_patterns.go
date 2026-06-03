@@ -118,7 +118,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 // inferTypePatternClause validates a type pattern clause against the operand type.
 // The operand must be a union (or interface), and the type pattern must name one of its members.
 func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, exprType hm.Type) error {
-	modEnv, ok := env.(Env)
+	modEnv, ok := env.(TypeScope)
 	if !ok {
 		return NewInferError(fmt.Errorf("type patterns require a module environment"), clause)
 	}
@@ -131,15 +131,15 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 
 	// Resolve the type pattern from the operand's members first (handles
 	// narrowed unions from inline fragments), falling back to the environment.
-	var memberMod *Module
-	if operandMod, ok := unwrapped.(*Module); ok {
+	var memberMod *Type
+	if operandMod, ok := unwrapped.(*Type); ok {
 		if operandMod.Kind != UnionKind && operandMod.Kind != InterfaceKind {
 			return NewInferError(fmt.Errorf("type pattern requires a union or interface operand, got %s type %s", operandMod.Kind, operandMod), c.Expr)
 		}
 
 		if operandMod.Kind == UnionKind {
 			for _, m := range operandMod.GetMembers() {
-				if mod, ok := m.(*Module); ok && mod.Name() == clause.TypePattern.Name {
+				if mod, ok := m.(*Type); ok && mod.Name() == clause.TypePattern.Name {
 					memberMod = mod
 					break
 				}
@@ -169,12 +169,12 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 	return nil
 }
 
-func resolveInterfaceTypePattern(env Env, iface *Module, patternName string) (*Module, error) {
+func resolveInterfaceTypePattern(env TypeScope, iface *Type, patternName string) (*Type, error) {
 	memberType, found := env.NamedType(patternName)
 	if !found {
 		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
 	}
-	memberMod, ok := memberType.(*Module)
+	memberMod, ok := memberType.(*Type)
 	if !ok {
 		return nil, fmt.Errorf("type pattern %s is not an object type", patternName)
 	}
@@ -194,12 +194,12 @@ func resolveInterfaceTypePattern(env Env, iface *Module, patternName string) (*M
 	return nil, fmt.Errorf("type %s does not implement interface %s", patternName, iface)
 }
 
-func resolveInlineUnionTypePattern(env Env, union *hm.UnionType, patternName string) (*Module, error) {
+func resolveInlineUnionTypePattern(env TypeScope, union *hm.UnionType, patternName string) (*Type, error) {
 	patternType, found := env.NamedType(patternName)
 	if !found {
 		return nil, fmt.Errorf("unknown type %s in type pattern", patternName)
 	}
-	patternMod, ok := patternType.(*Module)
+	patternMod, ok := patternType.(*Type)
 	if !ok {
 		return nil, fmt.Errorf("type pattern %s is not a named type", patternName)
 	}
@@ -225,11 +225,11 @@ func resolveInlineUnionTypePattern(env Env, union *hm.UnionType, patternName str
 	return nil, fmt.Errorf("type %s is not a member of union %s", patternName, union)
 }
 
-func moduleType(t hm.Type) (*Module, bool) {
+func moduleType(t hm.Type) (*Type, bool) {
 	if nn, ok := t.(hm.NonNullType); ok {
 		t = nn.Type
 	}
-	mod, ok := t.(*Module)
+	mod, ok := t.(*Type)
 	return mod, ok
 }
 
@@ -249,7 +249,7 @@ func (c *Case) Walk(fn func(Node) bool) {
 	}
 }
 
-func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *Case) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		// Evaluate the expression we're matching against
 		exprVal, err := EvalNode(ctx, env, c.Expr)
@@ -295,7 +295,7 @@ func (c *Case) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 // matchesType checks if a value's concrete type matches the given pattern
 // module.  It uses pointer identity, following Canonical links on narrowed
 // projections, and ImplementsInterface for interface patterns.
-func matchesType(val Value, pattern *Module) bool {
+func matchesType(val Value, pattern *Type) bool {
 	valMod := valueModule(val)
 	if valMod == nil {
 		return false
@@ -315,26 +315,26 @@ func matchesType(val Value, pattern *Module) bool {
 }
 
 // canonicalModule follows the Canonical link to the full type module.
-func canonicalModule(m *Module) *Module {
+func canonicalModule(m *Type) *Type {
 	if m.Canonical != nil {
 		return m.Canonical
 	}
 	return m
 }
 
-// valueModule extracts the *Module backing a runtime value.
-func valueModule(val Value) *Module {
+// valueModule extracts the *Type backing a runtime value.
+func valueModule(val Value) *Type {
 	switch v := val.(type) {
-	case *ModuleValue:
+	case *Object:
 		if v.Mod != nil {
-			if mod, ok := v.Mod.(*Module); ok {
+			if mod, ok := v.Mod.(*Type); ok {
 				return mod
 			}
 		}
 	case GraphQLValue:
 		if v.TypeEnv != nil {
 			if typeEnv, found := v.TypeEnv.NamedType(v.TypeName); found {
-				if mod, ok := typeEnv.(*Module); ok {
+				if mod, ok := typeEnv.(*Type); ok {
 					return mod
 				}
 			}
@@ -348,11 +348,11 @@ func valueModule(val Value) *Module {
 	case BoolValue:
 		return BooleanType
 	case ScalarValue:
-		if mod, ok := v.ScalarType.(*Module); ok {
+		if mod, ok := v.ScalarType.(*Type); ok {
 			return mod
 		}
 	case EnumValue:
-		if mod, ok := v.EnumType.(*Module); ok {
+		if mod, ok := v.EnumType.(*Type); ok {
 			return mod
 		}
 	}
@@ -372,7 +372,7 @@ type CaseClause struct {
 	// resolvedMemberType is set during inference to the concrete member type
 	// for this type pattern clause. For narrowed unions (from inline fragment
 	// selections), this is the narrowed type with only the selected fields.
-	resolvedMemberType *Module
+	resolvedMemberType *Type
 }
 
 var _ SourceLocatable = (*CaseClause)(nil)

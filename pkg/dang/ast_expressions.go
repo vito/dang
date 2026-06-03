@@ -42,7 +42,7 @@ func (g *Grouped) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	return t, nil
 }
 
-func (g *Grouped) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (g *Grouped) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return EvalNode(ctx, env, g.Expr)
 }
 
@@ -301,7 +301,7 @@ var _ hm.Apply = (*FunCall)(nil)
 
 func (c *FunCall) Fn() hm.Expression { return c.Fun }
 
-func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *FunCall) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		funVal, err := EvalNode(ctx, env, c.Fun)
 		if err != nil {
@@ -355,7 +355,7 @@ func (c *FunCall) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 }
 
 // callFunction dispatches function calls to appropriate handlers
-func (c *FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, argValues map[string]Value) (Value, error) {
+func (c *FunCall) callFunction(ctx context.Context, env ValueScope, funVal Value, argValues map[string]Value) (Value, error) {
 	callable, ok := funVal.(Callable)
 	if !ok {
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
@@ -364,7 +364,7 @@ func (c *FunCall) callFunction(ctx context.Context, env EvalEnv, funVal Value, a
 }
 
 // evaluateArguments handles both positional and named arguments
-func (c *FunCall) evaluateArguments(ctx context.Context, env EvalEnv, funVal Value) (map[string]Value, error) {
+func (c *FunCall) evaluateArguments(ctx context.Context, env ValueScope, funVal Value) (map[string]Value, error) {
 	// Validate argument order first
 	if err := c.validateArgumentOrder(); err != nil {
 		return nil, err
@@ -576,7 +576,7 @@ var _ Evaluator = (*Symbol)(nil)
 func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		// Check for import conflicts before resolving
-		if dangEnv, ok := env.(Env); ok {
+		if dangEnv, ok := env.(TypeScope); ok {
 			if conflicts := dangEnv.CheckValueConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
@@ -610,10 +610,10 @@ func (s *Symbol) ReferencedSymbols() []string {
 	return []string{s.Name} // Symbols reference themselves
 }
 
-func (s *Symbol) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (s *Symbol) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		// Check for import conflicts before resolving
-		if modVal, ok := env.(*ModuleValue); ok {
+		if modVal, ok := env.(*Object); ok {
 			if conflicts := modVal.Mod.CheckValueConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
@@ -732,18 +732,18 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 
 		// Check if receiver is nullable or non-null
-		var rec Env
+		var rec TypeScope
 		var isNullable bool
 
 		if nn, ok := lt.(hm.NonNullType); ok {
 			// Non-null receiver
-			envType, ok := nn.Type.(Env)
+			envType, ok := nn.Type.(TypeScope)
 			if !ok {
 				return nil, fmt.Errorf("Select.Infer: expected %T, got %T", envType, nn.Type)
 			}
 			rec = envType
 			isNullable = false
-		} else if envType, ok := lt.(Env); ok {
+		} else if envType, ok := lt.(TypeScope); ok {
 			// Nullable receiver - inherit nullability
 			rec = envType
 			isNullable = true
@@ -805,7 +805,7 @@ func (d *Select) Body() hm.Expression { return d }
 
 func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		var receiverVal Value
 		var err error
@@ -826,7 +826,7 @@ func (d *Select) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 				// Null propagation: if receiver is null, result is null
 				return NullValue{}, nil
 
-			case EvalEnv:
+			case ValueScope:
 				if val, found, err := rec.Lookup(ctx, d.Field.Name); err != nil {
 					return nil, err
 				} else if found {
@@ -1020,7 +1020,7 @@ func (i *Index) Body() hm.Expression { return i }
 
 func (i *Index) GetSourceLocation() *SourceLocation { return i.Loc }
 
-func (i *Index) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (i *Index) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, i, func() (Value, error) {
 		// Evaluate the receiver
 		receiverVal, err := EvalNode(ctx, env, i.Receiver)
@@ -1096,7 +1096,7 @@ type InlineFragment struct {
 	NonNull  bool // Whether the type assertion is non-null (... on Container!)
 	Loc      *SourceLocation
 
-	Inferred *Module // The concrete type module for this fragment
+	Inferred *Type // The concrete type module for this fragment
 }
 
 func (f *InlineFragment) GetSourceLocation() *SourceLocation { return f.Loc }
@@ -1110,7 +1110,7 @@ type ObjectSelection struct {
 	InlineFragments []*InlineFragment // For union/interface inline fragments
 	Loc             *SourceLocation
 
-	Inferred         *Module
+	Inferred         *Type
 	IsList           bool // TODO respect
 	ElementIsNonNull bool // Whether list elements are non-null (only used when IsList is true)
 }
@@ -1190,7 +1190,7 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 // inferInlineFragments validates inline fragment selections on a union or interface type.
 // The result type preserves the union/interface type and list wrapping from the receiver.
 func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	modEnv, ok := env.(Env)
+	modEnv, ok := env.(TypeScope)
 	if !ok {
 		return nil, fmt.Errorf("inline fragments require a module environment")
 	}
@@ -1221,7 +1221,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	}
 
 	// The element type must be a union or interface
-	unionOrIface, ok := unwrapped.(*Module)
+	unionOrIface, ok := unwrapped.(*Type)
 	if !ok {
 		return nil, NewInferError(fmt.Errorf("inline fragments require a union or interface type, got %s", unwrapped), o.Receiver)
 	}
@@ -1232,7 +1232,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	// Create a narrowed union whose members only have the selected fields.
 	// This ensures downstream code (e.g. case type patterns) can only access
 	// fields that were actually selected in the inline fragment.
-	narrowedUnion := NewModule(unionOrIface.Name(), UnionKind)
+	narrowedUnion := NewType(unionOrIface.Name(), UnionKind)
 	narrowedUnion.Qualifier = unionOrIface.Qualifier
 
 	// Validate each fragment
@@ -1250,7 +1250,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 		} else {
 			// Create a narrowed module with only the selected fields.
 			// Link back to the canonical type for runtime matching.
-			narrowedMember := NewModule(memberMod.Name(), ObjectKind)
+			narrowedMember := NewType(memberMod.Name(), ObjectKind)
 			narrowedMember.Qualifier = memberMod.Qualifier
 			narrowedMember.Canonical = memberMod
 
@@ -1306,7 +1306,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 	return resultType, nil
 }
 
-func resolveInlineFragmentMemberType(receiver *Module, typeName string) (*Module, error) {
+func resolveInlineFragmentMemberType(receiver *Type, typeName string) (*Type, error) {
 	switch receiver.Kind {
 	case UnionKind:
 		if member, found := findMemberModuleByName(receiver.GetMembers(), typeName); found {
@@ -1323,12 +1323,12 @@ func resolveInlineFragmentMemberType(receiver *Module, typeName string) (*Module
 	}
 }
 
-func findMemberModuleByName(members []Env, typeName string) (*Module, bool) {
+func findMemberModuleByName(members []TypeScope, typeName string) (*Type, bool) {
 	for _, member := range members {
 		if member.Name() != typeName {
 			continue
 		}
-		memberMod, ok := member.(*Module)
+		memberMod, ok := member.(*Type)
 		if !ok {
 			return nil, false
 		}
@@ -1337,9 +1337,9 @@ func findMemberModuleByName(members []Env, typeName string) (*Module, bool) {
 	return nil, false
 }
 
-func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Module, error) {
+func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (*Type, error) {
 	// Check if receiver is nullable or non-null
-	var rec Env
+	var rec TypeScope
 
 	// Handle list types - apply selection to each element
 	var innerType hm.Type
@@ -1374,19 +1374,19 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 
 	if nn, ok := receiverType.(hm.NonNullType); ok {
 		// Non-null receiver
-		envType, ok := nn.Type.(Env)
+		envType, ok := nn.Type.(TypeScope)
 		if !ok {
 			return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected Env, got %T", nn.Type)
 		}
 		rec = envType
-	} else if envType, ok := receiverType.(Env); ok {
+	} else if envType, ok := receiverType.(TypeScope); ok {
 		// Nullable receiver - we can still infer the selection type from the underlying type
 		rec = envType
 	} else {
 		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
 	}
 
-	mod := NewModule("", ObjectKind)
+	mod := NewType("", ObjectKind)
 	for _, field := range o.Fields {
 		fieldType, err := o.inferFieldType(ctx, field, rec, env, fresh)
 		if err != nil {
@@ -1398,7 +1398,7 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 	return mod, nil
 }
 
-func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelection, rec Env, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelection, rec TypeScope, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	var fieldType hm.Type
 	var err error
 
@@ -1420,9 +1420,9 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 
 		// Create a synthetic environment that combines rec and env
 		// Use rec for symbol lookup, env for argument evaluation
-		synthEnv := &CompositeModule{
+		synthEnv := &OverlayTypeScope{
 			primary: rec,
-			lexical: env.(Env),
+			lexical: env.(TypeScope),
 		}
 		fieldType, err = funCall.Infer(ctx, synthEnv, fresh)
 		if err != nil {
@@ -1473,7 +1473,7 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 	return ret, nil
 }
 
-func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, o, func() (Value, error) {
 		receiverVal, err := EvalNode(ctx, env, o.Receiver)
 		if err != nil {
@@ -1526,14 +1526,14 @@ func (o *ObjectSelection) Eval(ctx context.Context, env EvalEnv) (Value, error) 
 
 // evalInlineFragmentOnValue handles inline fragment selection on a Dang-native value.
 // The value passes through with its original type identity — fragments just validate at compile time.
-func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
-	modVal, ok := val.(*ModuleValue)
+func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Context, env ValueScope) (Value, error) {
+	modVal, ok := val.(*Object)
 	if !ok {
 		return nil, fmt.Errorf("inline fragment selection requires an object value, got %T", val)
 	}
 
 	// Find the matching fragment based on the concrete type name
-	mod, ok := modVal.Mod.(*Module)
+	mod, ok := modVal.Mod.(*Type)
 	if !ok {
 		return nil, fmt.Errorf("inline fragment selection: expected Module, got %T", modVal.Mod)
 	}
@@ -1545,7 +1545,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 				return val, nil
 			}
 			// Build a result with the selected fields, preserving the concrete type
-			resultModuleValue := NewModuleValue(frag.Inferred)
+			resultModuleValue := NewObject(frag.Inferred)
 			for _, field := range frag.Fields {
 				fieldVal, exists, err := modVal.Lookup(ctx, field.Name)
 				if err != nil {
@@ -1573,7 +1573,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 
 // isLazyInlineFragments returns true when all inline fragments have no field
 // sub-selections, meaning the result should be a lazy GraphQLValue rather than
-// an eagerly-fetched ModuleValue.
+// an eagerly-fetched Object.
 func (o *ObjectSelection) isLazyInlineFragments() bool {
 	for _, frag := range o.InlineFragments {
 		if len(frag.Fields) > 0 {
@@ -1585,7 +1585,7 @@ func (o *ObjectSelection) isLazyInlineFragments() bool {
 
 // evalGraphQLInlineFragments builds a GraphQL query with __typename and inline fragments,
 // executes it, and returns properly-typed results.
-func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
 	if o.isLazyInlineFragments() {
 		return o.evalGraphQLLazyInlineFragments(gqlVal, ctx, env)
 	}
@@ -1630,7 +1630,7 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 // It queries only __typename to determine the concrete type, then returns a GraphQLValue
 // that can be chained further. If the runtime type doesn't match any fragment, returns
 // null (for nullable receivers) or an error (for non-null receivers).
-func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
 	query := gqlVal.QueryChain
 	if query == nil {
 		return nil, fmt.Errorf("GraphQL lazy inline fragments: no query chain")
@@ -1653,7 +1653,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 
 // evalGraphQLLazyInlineFragmentsList handles lazy inline fragments on a list-typed GraphQL value.
 // It queries __typename for all elements, then returns a list of GraphQLValues.
-func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
 	query := gqlVal.QueryChain
 
 	// Query __typename for all elements in the list
@@ -1738,7 +1738,7 @@ func (o *ObjectSelection) inlineFragmentTypeNames() string {
 }
 
 // convertInlineFragmentResult converts a GraphQL response with __typename into typed ModuleValues.
-func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *introspection.Schema, typeEnv Env) (Value, error) {
+func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *introspection.Schema, typeEnv TypeScope) (Value, error) {
 	// Handle list results
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
@@ -1775,7 +1775,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 				return nil, fmt.Errorf("type %s not found in type environment", typeName)
 			}
 
-			resultModuleValue := NewModuleValue(concreteType)
+			resultModuleValue := NewObject(concreteType)
 			for _, field := range frag.Fields {
 				if fieldValue, exists := resultMap[field.Name]; exists {
 					// Handle nested selections recursively
@@ -1825,7 +1825,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 
 // convertNestedSelectionResult converts a nested JSON value using the
 // inferred type from a nested ObjectSelection inside an inline fragment.
-func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSelection, schema *introspection.Schema, parentTypeName string, fieldName string, typeEnv Env) (Value, error) {
+func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSelection, schema *introspection.Schema, parentTypeName string, fieldName string, typeEnv TypeScope) (Value, error) {
 	if value == nil {
 		return NullValue{}, nil
 	}
@@ -1836,7 +1836,7 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 	if sel.Inferred == nil {
 		return ToValue(value)
 	}
-	mod := NewModuleValue(sel.Inferred)
+	mod := NewObject(sel.Inferred)
 	for _, f := range sel.Fields {
 		if fv, exists := resultMap[f.Name]; exists {
 			if f.Selection != nil {
@@ -1857,26 +1857,26 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 	return mod, nil
 }
 
-func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env ValueScope) (Value, error) {
 	switch v := val.(type) {
 	case NullValue:
 		// Null propagation for individual values in lists
 		return NullValue{}, nil
-	case *ModuleValue:
+	case *Object:
 		return o.evalModuleSelection(v, ctx, env)
 	case GraphQLValue:
 		return o.evalGraphQLSelection(v, ctx, env)
 	default:
-		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *ModuleValue or GraphQLValue, got %T", val)
+		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *Object or GraphQLValue, got %T", val)
 	}
 }
 
-func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Context, env ValueScope) (Value, error) {
 	if o.Inferred == nil {
 		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
 	}
 
-	resultModuleValue := NewModuleValue(o.Inferred)
+	resultModuleValue := NewObject(o.Inferred)
 
 	// Build result object with selected fields
 	for _, field := range o.Fields {
@@ -1927,7 +1927,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *ModuleValue, ctx context.C
 	return resultModuleValue, nil
 }
 
-func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
 	if o.Inferred == nil {
 		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
 	}
@@ -1945,11 +1945,11 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err)
 	}
 
-	// Convert GraphQL result to ModuleValue
+	// Convert GraphQL result to Object
 	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeEnv)
 }
 
-func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env EvalEnv, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
+func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env ValueScope, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
 	// Start with the base query (which contains the context like "serverInfo")
 	builder := baseQuery
 	if builder == nil {
@@ -2077,7 +2077,7 @@ func buildSelectionString(sel *ObjectSelection) string {
 	return "{ " + strings.Join(parts, " ") + " }"
 }
 
-func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeEnv Env) (Value, error) {
+func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeEnv TypeScope) (Value, error) {
 	// Check if the result is a list/slice
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
@@ -2091,7 +2091,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 		return ListValue{Elements: elements}, nil
 	}
 
-	resultModuleValue := NewModuleValue(o.Inferred)
+	resultModuleValue := NewObject(o.Inferred)
 
 	// Convert GraphQL result to Dang values
 	if resultMap, ok := result.(map[string]any); ok {
@@ -2293,7 +2293,7 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	})
 }
 
-func (c *Conditional) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *Conditional) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		condVal, err := EvalNode(ctx, env, c.Condition)
 		if err != nil {
@@ -2412,7 +2412,7 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
-func (f *ForLoop) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (f *ForLoop) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
 		var lastVal Value = NullValue{}
 		loopFrame := NewControlFrame(LoopFrame)
@@ -2527,7 +2527,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (b *Break) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *Break) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	target := currentBreakFrame(ctx)
 	if target == nil || !target.Active {
 		return nil, &BreakException{Target: target, Location: b.Loc}
@@ -2610,7 +2610,7 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-func (c *Continue) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (c *Continue) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	target := currentContinueFrame(ctx)
 	if target == nil || !target.Active {
 		return nil, &ContinueException{Target: target, Location: c.Loc}
@@ -2712,7 +2712,7 @@ func collectBreakStatements(root Node, target *InferControlTarget) []*Break {
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ObjectDecl:
 				return false
 			}
 		}
@@ -2741,7 +2741,7 @@ func collectContinueStatements(root Node, target *InferControlTarget) []*Continu
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ObjectDecl:
 				return false
 			}
 		}
@@ -2853,7 +2853,7 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-func (t *TypeHint) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (t *TypeHint) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
 		// t.Expr is wrapped in a Coerce by TypeHint.Infer, so materialization
 		// happens inside EvalNode.
@@ -2890,7 +2890,7 @@ type BlockArg struct {
 	Inferred *hm.FunctionType
 
 	// InferredScope is the environment with parameters in scope
-	InferredScope Env
+	InferredScope TypeScope
 }
 
 var _ Node = &BlockArg{}
@@ -2937,7 +2937,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		// Clone environment for closure semantics
 		newEnv := env.Clone()
-		b.InferredScope = newEnv.(Env)
+		b.InferredScope = newEnv.(TypeScope)
 
 		// Add user-provided parameters to environment with expected types
 		argSchemes := []Keyed[*hm.Scheme]{}
@@ -3041,7 +3041,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-func (b *BlockArg) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *BlockArg) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, b, func() (Value, error) {
 		if b.Inferred == nil {
 			return nil, fmt.Errorf("BlockArg.Eval: function type not inferred")

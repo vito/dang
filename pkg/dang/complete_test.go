@@ -84,7 +84,7 @@ func TestMembersOfBuiltinTypes(t *testing.T) {
 	})
 
 	t.Run("object type still works", func(t *testing.T) {
-		mod := NewModule("TestObj", ObjectKind)
+		mod := NewType("TestObj", ObjectKind)
 		mod.Add("myField", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 		mod.SetVisibility("myField", PublicVisibility)
 		completions := MembersOf(hm.NonNullType{Type: mod}, "")
@@ -103,7 +103,7 @@ func TestArgsOf(t *testing.T) {
 		"address":  "Image's address from its registry.",
 		"platform": "Platform to resolve.",
 	}
-	containerType := NewModule("Container", ObjectKind)
+	containerType := NewType("Container", ObjectKind)
 	fnType := hm.NewFnType(args, containerType)
 
 	t.Run("all args", func(t *testing.T) {

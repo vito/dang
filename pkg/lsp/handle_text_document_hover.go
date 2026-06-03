@@ -77,7 +77,7 @@ func (h *langHandler) handleTextDocumentHover(ctx context.Context, req *jrpc2.Re
 			if nn, ok := receiverType.(hm.NonNullType); ok {
 				receiverType = nn.Type
 			}
-			if env, ok := receiverType.(dang.Env); ok {
+			if env, ok := receiverType.(dang.TypeScope); ok {
 				var docString string
 				if doc, found := env.GetDocString(selectNode.Field.Name); found {
 					docString = doc
@@ -207,7 +207,7 @@ func typeDetailSuffix(t hm.Type) string {
 		t = nn.Type
 	}
 
-	mod, ok := t.(*dang.Module)
+	mod, ok := t.(*dang.Type)
 	if !ok {
 		return ""
 	}
@@ -224,7 +224,7 @@ func typeDetailSuffix(t hm.Type) string {
 			if i > 0 {
 				result.WriteString("\n")
 			}
-			if m, ok := member.(*dang.Module); ok {
+			if m, ok := member.(*dang.Type); ok {
 				result.WriteString("//   " + m.Name())
 			}
 		}
@@ -269,7 +269,7 @@ func sortStrings(s []string) {
 // below the declaration instead of duplicated inside the code block.
 func formatTypeDefinitionForHover(_ *File, node dang.Node, symbolName string) (codeBlock string, docString string) {
 	switch n := node.(type) {
-	case *dang.ClassDecl:
+	case *dang.ObjectDecl:
 		if n.Name == nil || n.Name.Name != symbolName {
 			return "", ""
 		}
@@ -289,7 +289,7 @@ func formatNamedTypeForHover(f *File, pos Position, symbolName string) (codeBloc
 		return "", ""
 	}
 
-	mod, ok := resolveNamedTypeForHover(f, pos, symbolName).(*dang.Module)
+	mod, ok := resolveNamedTypeForHover(f, pos, symbolName).(*dang.Type)
 	if !ok {
 		return "", ""
 	}
@@ -304,7 +304,7 @@ func formatNamedTypeForHover(f *File, pos Position, symbolName string) (codeBloc
 	return codeBlock, docString
 }
 
-func resolveNamedTypeForHover(f *File, pos Position, symbolName string) dang.Env {
+func resolveNamedTypeForHover(f *File, pos Position, symbolName string) dang.TypeScope {
 	qualifiedName := qualifiedNameAtPosition(f, pos)
 	if len(qualifiedName) > 1 && qualifiedName[len(qualifiedName)-1] == symbolName {
 		if typ := resolveQualifiedNamedTypeForHover(f, pos, qualifiedName); typ != nil {
@@ -328,7 +328,7 @@ func resolveNamedTypeForHover(f *File, pos Position, symbolName string) dang.Env
 	return nil
 }
 
-func resolveQualifiedNamedTypeForHover(f *File, pos Position, parts []string) dang.Env {
+func resolveQualifiedNamedTypeForHover(f *File, pos Position, parts []string) dang.TypeScope {
 	if len(parts) == 0 {
 		return nil
 	}
@@ -347,7 +347,7 @@ func resolveQualifiedNamedTypeForHover(f *File, pos Position, parts []string) da
 	return nil
 }
 
-func resolveQualifiedNamedType(env dang.Env, parts []string) dang.Env {
+func resolveQualifiedNamedType(env dang.TypeScope, parts []string) dang.TypeScope {
 	if env == nil || len(parts) == 0 {
 		return nil
 	}
@@ -418,7 +418,7 @@ func qualifiedNameAtPosition(f *File, pos Position) []string {
 	return parts
 }
 
-func formatModuleForHover(mod *dang.Module, fallbackDoc string) (codeBlock string, docString string) {
+func formatModuleForHover(mod *dang.Type, fallbackDoc string) (codeBlock string, docString string) {
 	if mod == nil {
 		return "", ""
 	}
@@ -431,7 +431,7 @@ func formatModuleForHover(mod *dang.Module, fallbackDoc string) (codeBlock strin
 		return "", ""
 	}
 
-	docString = mod.GetModuleDocString()
+	docString = mod.GetTypeDocString()
 	if docString == "" {
 		docString = fallbackDoc
 	}
@@ -484,7 +484,7 @@ func formatDeclSignature(node dang.Node) string {
 		fieldCopy.Value = nil
 		return dang.Format(&fieldCopy)
 
-	case *dang.ClassDecl:
+	case *dang.ObjectDecl:
 		return fmt.Sprintf("type %s", n.Name.Name)
 
 	default:

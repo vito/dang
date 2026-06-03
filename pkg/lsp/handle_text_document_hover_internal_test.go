@@ -68,8 +68,8 @@ interface Thing {
 }
 
 func TestFormatPublicTypeShape(t *testing.T) {
-	iface := dang.NewModule("Thing", dang.InterfaceKind)
-	iface.SetModuleDocString("A GraphQL-loaded interface.")
+	iface := dang.NewType("Thing", dang.InterfaceKind)
+	iface.SetTypeDocString("A GraphQL-loaded interface.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
 		hm.NonNullType{Type: dang.StringType},
@@ -88,7 +88,7 @@ func TestFormatPublicTypeShape(t *testing.T) {
 	iface.SetVisibility("items", dang.PublicVisibility)
 
 	codeBlock := dang.FormatPublicTypeShape(iface)
-	docString := iface.GetModuleDocString()
+	docString := iface.GetTypeDocString()
 	want := `interface Thing {
   """
   The stable ID.
@@ -105,8 +105,8 @@ func TestFormatPublicTypeShape(t *testing.T) {
 }
 
 func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
-	iface := dang.NewModule("Thing", dang.InterfaceKind)
-	iface.SetModuleDocString("Loaded from GraphQL.")
+	iface := dang.NewType("Thing", dang.InterfaceKind)
+	iface.SetTypeDocString("Loaded from GraphQL.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
 		hm.NonNullType{Type: dang.StringType},
@@ -114,7 +114,7 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 	iface.SetVisibility("id", dang.PublicVisibility)
 
 	env := dang.NewPreludeEnv("")
-	env.AddClass("Thing", iface)
+	env.AddObject("Thing", iface)
 	f := &File{TypeEnv: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, Position{}, "Thing")
@@ -127,24 +127,24 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 }
 
 func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
-	imported := dang.NewModule("ServerInfo", dang.ObjectKind)
-	imported.SetModuleDocString("Imported GraphQL type.")
+	imported := dang.NewType("ServerInfo", dang.ObjectKind)
+	imported.SetTypeDocString("Imported GraphQL type.")
 	imported.Add("version", hm.NewScheme(nil, hm.NewFnType(
 		dang.NewRecordType(""),
 		hm.NonNullType{Type: dang.StringType},
 	)))
 	imported.SetVisibility("version", dang.PublicVisibility)
 
-	local := dang.NewModule("ServerInfo", dang.ObjectKind)
+	local := dang.NewType("ServerInfo", dang.ObjectKind)
 	local.Add("localOnly", hm.NewScheme(nil, hm.NonNullType{Type: dang.IntType}))
 	local.SetVisibility("localOnly", dang.PublicVisibility)
 
 	schemaEnv := dang.NewPreludeEnv("Test")
-	schemaEnv.AddClass("ServerInfo", imported)
+	schemaEnv.AddObject("ServerInfo", imported)
 
 	env := dang.NewPreludeEnv("")
-	env.AddClass("Test", schemaEnv)
-	env.AddClass("ServerInfo", local)
+	env.AddObject("Test", schemaEnv)
+	env.AddObject("ServerInfo", local)
 
 	text := "let info: Test.ServerInfo! = null"
 	pos := Position{Line: 0, Character: strings.Index(text, "ServerInfo")}

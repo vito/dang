@@ -60,7 +60,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
 
 (dang
   (decl
-    (field
+    (field_decl
       (value_only_field
         (visibility
           (pub_token))
@@ -75,7 +75,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
   (sep)
   (comment_token)
   (decl
-    (field
+    (field_decl
       (value_only_field
         (visibility
           (let_token))
@@ -89,14 +89,14 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
             (immediate_quote_token))))))
   (sep)
   (decl
-    (class
+    (object_decl
       (type_token)
       (symbol
         (id
           (word_token)))
       (block
         (decl
-          (field
+          (field_decl
             (value_only_field
               (visibility
                 (pub_token))
@@ -104,11 +104,11 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (id
                   (word_token)))
               (equal_token)
-              (object
+              (object_literal
                 (key_value
                   (word_token)
                   (colon_token)
-                  (object
+                  (object_literal
                     (key_value
                       (word_token)
                       (colon_token)
@@ -135,7 +135,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (key_value
                   (word_token)
                   (colon_token)
-                  (object
+                  (object_literal
                     (key_value
                       (word_token)
                       (colon_token)
@@ -156,7 +156,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (sep)))))
         (sep)
         (decl
-          (field
+          (field_decl
             (type_and_args_and_block_field
               (visibility
                 (pub_token))
@@ -260,7 +260,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (sep)))))
         (sep)
         (decl
-          (field
+          (field_decl
             (type_and_args_and_block_field
               (visibility
                 (pub_token))
@@ -318,7 +318,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (sep)))))
         (sep)
         (decl
-          (field
+          (field_decl
             (type_and_args_and_block_field
               (visibility
                 (pub_token))
@@ -373,7 +373,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (sep)))))
         (sep)
         (decl
-          (field
+          (field_decl
             (type_and_block_field
               (visibility
                 (pub_token))
@@ -536,7 +536,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                 (sep)))))
         (sep)
         (decl
-          (field
+          (field_decl
             (type_and_args_and_block_field
               (visibility
                 (pub_token))

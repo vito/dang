@@ -15,7 +15,7 @@ import (
 // NewCompletionProvider returns a tuist.CompletionProvider that uses
 // tree-sitter-based type-aware completions, falling back to static
 // keyword/name completions.
-func NewCompletionProvider(ctx context.Context, typeEnv dang.Env, staticCompletions []string) tuist.CompletionProvider {
+func NewCompletionProvider(ctx context.Context, typeEnv dang.TypeScope, staticCompletions []string) tuist.CompletionProvider {
 	return func(input string, cursorPos int) tuist.CompletionResult {
 		if input == "" {
 			return tuist.CompletionResult{}
@@ -35,7 +35,7 @@ func NewCompletionProvider(ctx context.Context, typeEnv dang.Env, staticCompleti
 // NewDetailRenderer returns a tuist.DetailRenderer that resolves rich
 // documentation from the type environment. getInput returns the current
 // editor contents, used to infer receiver types for member completions.
-func NewDetailRenderer(ctx context.Context, typeEnv dang.Env, getInput func() string) tuist.DetailRenderer {
+func NewDetailRenderer(ctx context.Context, typeEnv dang.TypeScope, getInput func() string) tuist.DetailRenderer {
 	return func(c tuist.Completion, width int) []string {
 		item, found := DocItemFromEnv(typeEnv, c.Label)
 		if !found {
@@ -57,7 +57,7 @@ func NewDetailRenderer(ctx context.Context, typeEnv dang.Env, getInput func() st
 
 // BuildStaticCompletions builds a sorted list of completion strings from
 // a type environment, including keywords.
-func BuildStaticCompletions(typeEnv dang.Env) []string {
+func BuildStaticCompletions(typeEnv dang.TypeScope) []string {
 	seen := map[string]bool{}
 	var completions []string
 
@@ -263,7 +263,7 @@ type DocItem struct {
 	Args      []DocArg
 	BlockArgs []DocArg
 	BlockRet  string
-	RetEnv    dang.Env
+	RetEnv    dang.TypeScope
 }
 
 // DocArg represents an argument to a function.
@@ -273,9 +273,9 @@ type DocArg struct {
 	Doc     string
 }
 
-// ClassifyEnv determines the ItemKind for a module/env based on its ModuleKind.
-func ClassifyEnv(env dang.Env) ItemKind {
-	if mod, ok := env.(*dang.Module); ok {
+// ClassifyEnv determines the ItemKind for a module/env based on its Kind.
+func ClassifyEnv(env dang.TypeScope) ItemKind {
+	if mod, ok := env.(*dang.Type); ok {
 		switch mod.Kind {
 		case dang.EnumKind:
 			return KindEnum
@@ -293,7 +293,7 @@ func ClassifyEnv(env dang.Env) ItemKind {
 }
 
 // DocItemFromEnv builds a DocItem for a named binding in env.
-func DocItemFromEnv(env dang.Env, name string) (DocItem, bool) {
+func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
 	if env == nil {
 		return DocItem{}, false
 	}
@@ -320,7 +320,7 @@ func DocItemFromEnv(env dang.Env, name string) (DocItem, bool) {
 			ExtractBlockInfo(fn, &item)
 		} else {
 			inner := UnwrapType(t)
-			if mod, ok := inner.(dang.Env); ok {
+			if mod, ok := inner.(dang.TypeScope); ok {
 				item.Kind = ClassifyEnv(mod)
 			} else {
 				item.Kind = KindField
@@ -329,7 +329,7 @@ func DocItemFromEnv(env dang.Env, name string) (DocItem, bool) {
 		return item, true
 	}
 
-	if mod, ok := env.(*dang.Module); ok {
+	if mod, ok := env.(*dang.Type); ok {
 		var found DocItem
 		var matched bool
 		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
@@ -368,7 +368,7 @@ func DocItemFromEnv(env dang.Env, name string) (DocItem, bool) {
 				TypeStr: namedEnv.Name(),
 				Kind:    ClassifyEnv(namedEnv),
 			}
-			if d := namedEnv.GetModuleDocString(); d != "" {
+			if d := namedEnv.GetTypeDocString(); d != "" {
 				item.Doc = d
 			}
 			return item, true
@@ -378,7 +378,7 @@ func DocItemFromEnv(env dang.Env, name string) (DocItem, bool) {
 	return DocItem{}, false
 }
 
-func resolveCompletionDocItem(ctx context.Context, typeEnv dang.Env, input string, c tuist.Completion) (DocItem, bool) {
+func resolveCompletionDocItem(ctx context.Context, typeEnv dang.TypeScope, input string, c tuist.Completion) (DocItem, bool) {
 	dotIdx := -1
 	for i := len(input) - 1; i >= 0; i-- {
 		if input[i] == '.' {
@@ -395,7 +395,7 @@ func resolveCompletionDocItem(ctx context.Context, typeEnv dang.Env, input strin
 		return DocItem{}, false
 	}
 	unwrapped := UnwrapType(receiverType)
-	env, ok := unwrapped.(dang.Env)
+	env, ok := unwrapped.(dang.TypeScope)
 	if !ok {
 		return DocItem{}, false
 	}

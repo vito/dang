@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tree-sitter/go-tree-sitter"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	"github.com/vito/dang/pkg/dang/danglang"
 )
 
@@ -30,7 +30,7 @@ func init() {
 // This is the single entry point for both LSP and REPL completion. It uses
 // tree-sitter to parse the text and classify the cursor context, then resolves
 // types from the provided environment.
-func Complete(ctx context.Context, env Env, text string, line, col int) CompletionResult {
+func Complete(ctx context.Context, env TypeScope, text string, line, col int) CompletionResult {
 	source := []byte(text)
 
 	// tree-sitter parsers are not thread-safe; serialize access.

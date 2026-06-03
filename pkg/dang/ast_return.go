@@ -55,7 +55,7 @@ func (r *Return) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	})
 }
 
-func (r *Return) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (r *Return) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	target := currentReturnFrame(ctx)
 	if target == nil || !target.Active {
 		return nil, &ReturnException{Target: target, Location: r.Loc}
@@ -115,7 +115,7 @@ func collectReturnStatements(root Node, target *InferControlTarget) []*Return {
 	root.Walk(func(node Node) bool {
 		if node != root {
 			switch node.(type) {
-			case *FunDecl, *NewConstructorDecl, *ClassDecl:
+			case *FunDecl, *NewConstructorDecl, *ObjectDecl:
 				return false
 			}
 		}

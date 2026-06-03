@@ -42,7 +42,7 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 // buildCompletionEnv creates a type environment that includes the file-level
 // env plus all enclosing scope bindings at the given position. This allows
 // resolving local variables (e.g. "ctr") that are not in the top-level env.
-func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.Env {
+func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.TypeScope {
 	if f.TypeEnv == nil {
 		return nil
 	}
@@ -59,7 +59,7 @@ func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.Env {
 
 	// Build a layered env: start from the file-level env (cloned),
 	// then merge all enclosing scope bindings into it.
-	env := f.TypeEnv.Clone().(dang.Env)
+	env := f.TypeEnv.Clone().(dang.TypeScope)
 	for _, scopeEnv := range enclosing {
 		for name, scheme := range scopeEnv.Bindings(dang.PrivateVisibility) {
 			env.Add(name, scheme)
@@ -70,8 +70,8 @@ func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.Env {
 }
 
 // getLexicalCompletions returns completion items for symbols in enclosing lexical scopes
-func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node, pos Position, fileEnv dang.Env) []CompletionItem {
-	var environments []dang.Env
+func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node, pos Position, fileEnv dang.TypeScope) []CompletionItem {
+	var environments []dang.TypeScope
 
 	// First add the file-level environment if available
 	if fileEnv != nil {

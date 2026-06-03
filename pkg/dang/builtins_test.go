@@ -73,7 +73,7 @@ func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
 		builtins = savedBuiltins
 	})
 
-	host := NewModule("TestStatic", ObjectKind)
+	host := NewType("TestStatic", ObjectKind)
 	StaticMethod(host, "value").
 		Returns(NonNull(StringType)).
 		Impl(func(context.Context, Args) (Value, error) {
@@ -103,7 +103,7 @@ func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
 					misses <- "module"
 					return
 				}
-				modVal, ok := hostVal.(*ModuleValue)
+				modVal, ok := hostVal.(*Object)
 				if !ok {
 					misses <- "module type"
 					return

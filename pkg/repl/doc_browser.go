@@ -11,14 +11,14 @@ import (
 // DocColumn represents one column in the Miller-column browser.
 type DocColumn struct {
 	Title        string
-	Doc          string    // doc string for the column header
-	Items        []DocItem // all items (unfiltered)
-	Filtered     []int     // indices into Items matching filter (nil = show all)
-	Filter       string    // current filter text
-	Index        int       // selected index within Visible() items
-	Offset       int       // scroll offset (for item lists)
-	DetailOffset int       // scroll offset (for detail panes)
-	TypeEnv      dang.Env  // the env this column lists members of (nil for detail)
+	Doc          string         // doc string for the column header
+	Items        []DocItem      // all items (unfiltered)
+	Filtered     []int          // indices into Items matching filter (nil = show all)
+	Filter       string         // current filter text
+	Index        int            // selected index within Visible() items
+	Offset       int            // scroll offset (for item lists)
+	DetailOffset int            // scroll offset (for detail panes)
+	TypeEnv      dang.TypeScope // the env this column lists members of (nil for detail)
 }
 
 // Visible returns the items to display, respecting the filter.
@@ -63,8 +63,8 @@ func (c *DocColumn) ApplyFilter() {
 	c.Offset = 0
 }
 
-// BuildColumn creates a column listing public members of an Env.
-func BuildColumn(title, doc string, env dang.Env) DocColumn {
+// BuildColumn creates a column listing public members of a TypeScope.
+func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 	col := DocColumn{
 		Title:   title,
 		Doc:     doc,
@@ -97,12 +97,12 @@ func BuildColumn(title, doc string, env dang.Env) DocColumn {
 			ExtractBlockInfo(fn, &item)
 
 			ret := UnwrapType(fn.Ret(true))
-			if mod, ok := ret.(dang.Env); ok {
+			if mod, ok := ret.(dang.TypeScope); ok {
 				item.RetEnv = mod
 			}
 		} else {
 			inner := UnwrapType(t)
-			if mod, ok := inner.(dang.Env); ok {
+			if mod, ok := inner.(dang.TypeScope); ok {
 				item.RetEnv = mod
 				item.Kind = ClassifyEnv(mod)
 			} else {
@@ -117,7 +117,7 @@ func BuildColumn(title, doc string, env dang.Env) DocColumn {
 	for _, item := range col.Items {
 		seen[item.Name] = true
 	}
-	if mod, ok := env.(*dang.Module); ok {
+	if mod, ok := env.(*dang.Type); ok {
 		dang.ForEachMethod(mod, func(def dang.BuiltinDef) {
 			if seen[def.Name] {
 				return
@@ -144,7 +144,7 @@ func BuildColumn(title, doc string, env dang.Env) DocColumn {
 			}
 			if def.ReturnType != nil {
 				ret := UnwrapType(def.ReturnType)
-				if retEnv, ok := ret.(dang.Env); ok {
+				if retEnv, ok := ret.(dang.TypeScope); ok {
 					item.RetEnv = retEnv
 				}
 			}
@@ -162,7 +162,7 @@ func BuildColumn(title, doc string, env dang.Env) DocColumn {
 			RetEnv:  namedEnv,
 			Kind:    ClassifyEnv(namedEnv),
 		}
-		if d := namedEnv.GetModuleDocString(); d != "" {
+		if d := namedEnv.GetTypeDocString(); d != "" {
 			item.Doc = d
 		}
 		col.Items = append(col.Items, item)

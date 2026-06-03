@@ -267,7 +267,7 @@ func (r *replComponent) findCommand(e *replEntry, args []string) {
 	}
 	for name, env := range r.typeEnv.NamedTypes() {
 		if strings.Contains(strings.ToLower(name), pattern) {
-			doc := env.GetModuleDocString()
+			doc := env.GetTypeDocString()
 			if doc != "" {
 				if len(doc) > 60 {
 					doc = doc[:57] + "..."

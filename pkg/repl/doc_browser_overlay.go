@@ -282,7 +282,7 @@ type DocBrowserOverlay struct {
 }
 
 // NewDocBrowserOverlay creates a new doc browser for the given type environment.
-func NewDocBrowserOverlay(typeEnv dang.Env) *DocBrowserOverlay {
+func NewDocBrowserOverlay(typeEnv dang.TypeScope) *DocBrowserOverlay {
 	root := BuildColumn("(root)", "Top-level scope", typeEnv)
 	db := &DocBrowserOverlay{
 		Columns: []DocColumn{root},
@@ -528,7 +528,7 @@ func (d *DocBrowserOverlay) ExpandSelection() {
 	d.Columns = append(d.Columns, detail)
 
 	if item.RetEnv != nil {
-		members := BuildColumn(item.Name+" -> "+item.RetEnv.Name(), item.RetEnv.GetModuleDocString(), item.RetEnv)
+		members := BuildColumn(item.Name+" -> "+item.RetEnv.Name(), item.RetEnv.GetTypeDocString(), item.RetEnv)
 		if len(members.Items) > 0 {
 			d.Columns = append(d.Columns, members)
 		}

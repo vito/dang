@@ -8,8 +8,6 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-type Type = hm.Type
-
 type TypeNode interface {
 	hm.Inferer
 	ReferencedSymbols() []string
@@ -48,13 +46,13 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, fmt.Errorf("NamedType.Infer: empty name")
 		}
 
-		fromEnv := env.(Env)
+		fromEnv := env.(TypeScope)
 		if t.Base != nil {
 			base, err := t.Base.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("NamedType.Infer: base type: %w", err)
 			}
-			fromEnv = base.(Env)
+			fromEnv = base.(TypeScope)
 		}
 
 		s, found := fromEnv.NamedType(t.Name)
@@ -84,7 +82,7 @@ func (t ListTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 }
 
 type ListType struct {
-	Type
+	hm.Type
 }
 
 var _ hm.Type = ListType{}
@@ -97,7 +95,7 @@ func (t ListType) Apply(subs hm.Subs) hm.Substitutable {
 	return ListType{t.Type.Apply(subs).(hm.Type)}
 }
 
-func (t ListType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+func (t ListType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
 	normalized, err := t.Type.Normalize(k, v)
 	if err != nil {
 		return nil, err
@@ -119,14 +117,14 @@ func (t ListType) Format(s fmt.State, c rune) {
 	_, _ = fmt.Fprintf(s, "[%"+string(c)+"]", t.Type)
 }
 
-func (t ListType) Eq(other Type) bool {
+func (t ListType) Eq(other hm.Type) bool {
 	if ot, ok := other.(ListType); ok {
 		return t.Type.Eq(ot.Type)
 	}
 	return false
 }
 
-func (t ListType) Supertypes() []Type {
+func (t ListType) Supertypes() []hm.Type {
 	innerSupers := t.Type.Supertypes()
 	for i, t := range innerSupers {
 		// Generalize into list type for each supertype
@@ -139,7 +137,7 @@ func (t ListType) Supertypes() []Type {
 // Unlike ListType, it cannot be directly iterated - it must first be converted
 // to a ListType via object selection (.{fields}) to avoid N+1 query problems.
 type GraphQLListType struct {
-	Type
+	hm.Type
 }
 
 var _ hm.Type = GraphQLListType{}
@@ -152,7 +150,7 @@ func (t GraphQLListType) Apply(subs hm.Subs) hm.Substitutable {
 	return GraphQLListType{t.Type.Apply(subs).(hm.Type)}
 }
 
-func (t GraphQLListType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+func (t GraphQLListType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
 	normalized, err := t.Type.Normalize(k, v)
 	if err != nil {
 		return nil, err
@@ -174,14 +172,14 @@ func (t GraphQLListType) Format(s fmt.State, c rune) {
 	_, _ = fmt.Fprintf(s, "GraphQL[%"+string(c)+"]", t.Type)
 }
 
-func (t GraphQLListType) Eq(other Type) bool {
+func (t GraphQLListType) Eq(other hm.Type) bool {
 	if ot, ok := other.(GraphQLListType); ok {
 		return t.Type.Eq(ot.Type)
 	}
 	return false
 }
 
-func (t GraphQLListType) Supertypes() []Type {
+func (t GraphQLListType) Supertypes() []hm.Type {
 	return nil
 }
 
@@ -279,7 +277,7 @@ func (t *RecordType) Name() string {
 	return t.String()
 }
 
-func (t *RecordType) Normalize(k, v hm.TypeVarSet) (Type, error) {
+func (t *RecordType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
 	cp := t.Clone().(*RecordType)
 	for _, f := range cp.Fields {
 		if err := f.Value.Normalize(); err != nil {
@@ -313,7 +311,7 @@ func (t *RecordType) Types() hm.Types {
 	return ts
 }
 
-func (t *RecordType) Eq(other Type) bool {
+func (t *RecordType) Eq(other hm.Type) bool {
 	if ot, ok := other.(*RecordType); ok {
 		if len(ot.Fields) != len(t.Fields) {
 			return false
@@ -344,7 +342,7 @@ func (t *RecordType) Eq(other Type) bool {
 	return false
 }
 
-func (t *RecordType) Supertypes() []Type {
+func (t *RecordType) Supertypes() []hm.Type {
 	return nil
 }
 
@@ -416,7 +414,7 @@ func (t ObjectTypeNode) ReferencedSymbols() []string {
 }
 
 func (t ObjectTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("", ObjectKind)
+	mod := NewType("", ObjectKind)
 	for _, field := range t.Fields {
 		fieldType, err := field.Type.Infer(ctx, env, fresh)
 		if err != nil {

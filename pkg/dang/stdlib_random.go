@@ -10,10 +10,10 @@ import (
 )
 
 // RandomModule is the "Random" namespace for random value generation
-var RandomModule = NewModule("Random", ObjectKind)
+var RandomModule = NewType("Random", ObjectKind)
 
 // UUIDModule is the "UUID" namespace for UUID generation
-var UUIDModule = NewModule("UUID", ObjectKind)
+var UUIDModule = NewType("UUID", ObjectKind)
 
 // registerRandomAndUUID is called from registerStdlib to ensure correct init ordering
 func registerRandomAndUUID() {
@@ -22,7 +22,7 @@ func registerRandomAndUUID() {
 }
 
 func registerRandom() {
-	RandomModule.SetModuleDocString("functions for generating random values")
+	RandomModule.SetTypeDocString("functions for generating random values")
 
 	// Random.int(min: Int!, max: Int!) -> Int!
 	StaticMethod(RandomModule, "int").
@@ -56,7 +56,7 @@ func registerRandom() {
 }
 
 func registerUUID() {
-	UUIDModule.SetModuleDocString("functions for generating UUIDs")
+	UUIDModule.SetTypeDocString("functions for generating UUIDs")
 
 	// UUID.v4() -> String!
 	StaticMethod(UUIDModule, "v4").

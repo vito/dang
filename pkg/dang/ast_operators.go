@@ -75,7 +75,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 }
 
 // Common evaluation logic
-func (b *BinaryOperator) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *BinaryOperator) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, b, func() (Value, error) {
 		leftVal, err := EvalNode(ctx, env, b.Left)
 		if err != nil {
@@ -352,7 +352,7 @@ func (d *Default) Body() hm.Expression { return d }
 
 func (d *Default) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d *Default) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (d *Default) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		leftVal, err := EvalNode(ctx, env, d.Left)
 		if err != nil {
@@ -419,7 +419,7 @@ func (e *Equality) Body() hm.Expression { return e }
 
 func (e *Equality) GetSourceLocation() *SourceLocation { return e.Loc }
 
-func (e *Equality) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (e *Equality) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, e, func() (Value, error) {
 		leftVal, err := EvalNode(ctx, env, e.Left)
 		if err != nil {
@@ -769,7 +769,7 @@ func (u *UnaryNegation) Body() hm.Expression { return u }
 
 func (u *UnaryNegation) GetSourceLocation() *SourceLocation { return u.Loc }
 
-func (u *UnaryNegation) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (u *UnaryNegation) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, u, func() (Value, error) {
 		val, err := EvalNode(ctx, env, u.Expr)
 		if err != nil {
@@ -831,7 +831,7 @@ func (u *UnaryMinus) Body() hm.Expression { return u }
 
 func (u *UnaryMinus) GetSourceLocation() *SourceLocation { return u.Loc }
 
-func (u *UnaryMinus) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (u *UnaryMinus) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, u, func() (Value, error) {
 		val, err := EvalNode(ctx, env, u.Expr)
 		if err != nil {
@@ -893,7 +893,7 @@ func (f *FunctionRef) Body() hm.Expression { return f }
 
 func (f *FunctionRef) GetSourceLocation() *SourceLocation { return f.Loc }
 
-func (f *FunctionRef) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (f *FunctionRef) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
 		val, err := evalNodeWithoutAutoCall(ctx, env, f.Expr)
 		if err != nil {
@@ -974,7 +974,7 @@ func (l *LogicalAnd) Body() hm.Expression { return l }
 
 func (l *LogicalAnd) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l *LogicalAnd) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (l *LogicalAnd) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
 		// Evaluate left side first
 		leftVal, err := EvalNode(ctx, env, l.Left)
@@ -1074,7 +1074,7 @@ func (l *LogicalOr) Body() hm.Expression { return l }
 
 func (l *LogicalOr) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l *LogicalOr) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (l *LogicalOr) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, l, func() (Value, error) {
 		// Evaluate left side first
 		leftVal, err := EvalNode(ctx, env, l.Left)

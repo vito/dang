@@ -56,40 +56,63 @@ func (o BindingOrigin) ConflictingImports() []string {
 	return o.ImportNames
 }
 
-type Env interface {
+// TypeScope is both a typing environment (hm.Env: name->scheme value bindings)
+// and a type in its own right (hm.Type), so a declared type can appear in type
+// positions while also carrying a namespace of members. On top of hm.Env it
+// tracks three kinds of named symbol -- types, values, and directives -- each
+// with parallel origin and conflict bookkeeping, plus docs and visibility.
+//
+// Throughout, the Local* variants consult only this scope; their non-Local
+// counterparts fall back to Parent.
+type TypeScope interface {
 	hm.Env
 	hm.Type
-	NamedType(string) (Env, bool)
-	LocalNamedType(string) (Env, bool)
-	AddClass(string, Env)
-	SetTypeOrigin(string, BindingOrigin)
-	LocalTypeOrigin(string) (BindingOrigin, bool)
-	SetDocString(string, string)
-	GetDocString(string) (string, bool)
-	SetDirectives(string, []*DirectiveApplication)
-	GetDirectives(string) []*DirectiveApplication
-	SetModuleDocString(string)
-	GetModuleDocString() string
-	SetVisibility(string, Visibility)
+
+	// Named types declared or imported into this scope.
+	NamedType(string) (TypeScope, bool)
+	LocalNamedType(string) (TypeScope, bool)
+	AddObject(string, TypeScope)
+	NamedTypes() iter.Seq2[string, TypeScope]
+
+	// Value/field bindings. hm.Env supplies SchemeOf/Add; these extend it.
 	LocalSchemeOf(string) (*hm.Scheme, bool)
-	SetValueOrigin(string, BindingOrigin)
-	LocalValueOrigin(string) (BindingOrigin, bool)
+	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
+	SetVisibility(string, Visibility)
+
+	// Directives: declarations (Add/GetDirective) and the applications
+	// attached to a named member (Set/GetDirectives).
 	AddDirective(string, *DirectiveDecl)
 	GetDirective(string) (*DirectiveDecl, bool)
+	SetDirectives(string, []*DirectiveApplication)
+	GetDirectives(string) []*DirectiveApplication
+
+	// Documentation, for individual members and for the scope itself.
+	SetDocString(string, string)
+	GetDocString(string) (string, bool)
+	SetTypeDocString(string)
+	GetTypeDocString() string
+
+	// Binding origins: where each symbol came from (local vs which import),
+	// tracked separately for types, values, and directives.
+	SetTypeOrigin(string, BindingOrigin)
+	LocalTypeOrigin(string) (BindingOrigin, bool)
+	SetValueOrigin(string, BindingOrigin)
+	LocalValueOrigin(string) (BindingOrigin, bool)
 	SetDirectiveOrigin(string, BindingOrigin)
 	LocalDirectiveOrigin(string) (BindingOrigin, bool)
-	Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme]
+
+	// Import-conflict detection: returns the imports that provide a name when
+	// more than one does (nil if there is no conflict).
 	CheckTypeConflict(symbolName string) []string
 	CheckValueConflict(symbolName string) []string
 	CheckDirectiveConflict(directiveName string) []string
-	NamedTypes() iter.Seq2[string, Env]
 }
 
-// ModuleKind represents the kind of module
-type ModuleKind int
+// Kind represents the kind of a type.
+type Kind int
 
 const (
-	ObjectKind ModuleKind = iota
+	ObjectKind Kind = iota
 	EnumKind
 	ScalarKind
 	InterfaceKind
@@ -97,7 +120,7 @@ const (
 	InputKind
 )
 
-func (k ModuleKind) String() string {
+func (k Kind) String() string {
 	switch k {
 	case ObjectKind:
 		return "object"
@@ -116,7 +139,7 @@ func (k ModuleKind) String() string {
 	}
 }
 
-func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, error) {
+func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (Kind, error) {
 	switch typeKind {
 	case introspection.TypeKindScalar:
 		return ScalarKind, nil
@@ -135,17 +158,29 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (ModuleKind, err
 	}
 }
 
-// TODO: is this just ClassType? are Classes just named Envs?
-type Module struct {
+// Type is a declared named type -- object, interface, scalar, enum, union,
+// or input, distinguished by Kind. It is deliberately one Kind-tagged struct
+// rather than a struct per kind, because every named type is uniformly a scope
+// (it implements TypeScope): it can carry value bindings and nested named
+// types. That uniformity is the point. A scalar like String having methods, an
+// object like Container having fields, and Regexp exposing a nested Regexp.Match
+// type are all the same machinery -- members attach to any named type, the way
+// Ruby attaches methods to any object.
+//
+// The Kind tag also mirrors GraphQL introspection's __Type, which is itself one
+// type with a kind enum; that keeps schema import a near 1:1 mapping (see
+// ModuleKindFromGraphQLKind). The cost is that kind-specific behavior is gated
+// by Kind checks rather than enforced by the type system.
+type Type struct {
 	Named string
-	Kind  ModuleKind
+	Kind  Kind
 
 	// Qualifier is the import/module alias used for display-only type names.
 	Qualifier string
 
-	Parent Env
+	Parent TypeScope
 
-	classes          map[string]Env
+	objects          map[string]TypeScope
 	vars             map[string]*hm.Scheme
 	varOrder         []string
 	visibility       map[string]Visibility
@@ -155,31 +190,31 @@ type Module struct {
 	directiveOrigins map[string]BindingOrigin
 	fieldDirectives  map[string][]*DirectiveApplication
 	docStrings       map[string]string
-	moduleDocString  string
+	typeDocString    string
 
 	// Type-level dynamic scope type
 	dynamicScopeType hm.Type
 
 	// Interface tracking
-	interfaces   []Env // Interfaces this type implements
-	implementers []Env // Types that implement this interface (for interface modules)
+	interfaces   []TypeScope // Interfaces this type implements
+	implementers []TypeScope // Types that implement this interface (for interface modules)
 
 	// Narrowed projections (inline fragment selections) create modules
 	// with a subset of fields.  Canonical points back to the full type
 	// so that runtime type matching can use identity instead of names.
-	Canonical *Module
+	Canonical *Type
 
 	// Union tracking
-	members []Env // Member types of this union (for union modules)
-	unions  []Env // Unions this type is a member of
+	members []TypeScope // Member types of this union (for union modules)
+	unions  []TypeScope // Unions this type is a member of
 
 }
 
-func NewModule(name string, kind ModuleKind) *Module {
-	env := &Module{
+func NewType(name string, kind Kind) *Type {
+	env := &Type{
 		Named:            name,
 		Kind:             kind,
-		classes:          make(map[string]Env),
+		objects:          make(map[string]TypeScope),
 		vars:             make(map[string]*hm.Scheme),
 		visibility:       make(map[string]Visibility),
 		directives:       make(map[string]*DirectiveDecl),
@@ -188,16 +223,16 @@ func NewModule(name string, kind ModuleKind) *Module {
 		directiveOrigins: make(map[string]BindingOrigin),
 		fieldDirectives:  make(map[string][]*DirectiveApplication),
 		docStrings:       make(map[string]string),
-		moduleDocString:  "",
+		typeDocString:    "",
 	}
 	return env
 }
 
-func gqlFieldToTypeNode(mod Env, field *introspection.Field) (hm.Type, error) {
+func gqlFieldToTypeNode(mod TypeScope, field *introspection.Field) (hm.Type, error) {
 	return gqlOutputTypeRefToTypeNode(mod, field.TypeRef, field.Directives.ExpectedType())
 }
 
-func gqlOutputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedType string) (hm.Type, error) {
+func gqlOutputTypeRefToTypeNode(mod TypeScope, ref *introspection.TypeRef, expectedType string) (hm.Type, error) {
 	switch ref.Kind {
 	case introspection.TypeKindList:
 		inner, err := gqlOutputTypeRefToTypeNode(mod, ref.OfType, expectedType)
@@ -240,11 +275,11 @@ func gqlOutputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedTyp
 	}
 }
 
-func gqlInputToTypeNode(mod Env, input introspection.InputValue) (hm.Type, error) {
+func gqlInputToTypeNode(mod TypeScope, input introspection.InputValue) (hm.Type, error) {
 	return gqlInputTypeRefToTypeNode(mod, input.TypeRef, input.Directives.ExpectedType())
 }
 
-func gqlInputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedType string) (hm.Type, error) {
+func gqlInputTypeRefToTypeNode(mod TypeScope, ref *introspection.TypeRef, expectedType string) (hm.Type, error) {
 	switch ref.Kind {
 	case introspection.TypeKindList:
 		inner, err := gqlInputTypeRefToTypeNode(mod, ref.OfType, expectedType)
@@ -276,36 +311,36 @@ func gqlInputTypeRefToTypeNode(mod Env, ref *introspection.TypeRef, expectedType
 	}
 }
 
-var Prelude *Module
+var Prelude *Type
 
 func init() {
-	Prelude = NewModule("Prelude", ObjectKind)
+	Prelude = NewType("Prelude", ObjectKind)
 
 	// Install built-in types
-	Prelude.AddClass("ID", IDType)
-	Prelude.AddClass("String", StringType)
-	Prelude.AddClass("Int", IntType)
-	Prelude.AddClass("Float", FloatType)
-	Prelude.AddClass("Boolean", BooleanType)
-	Prelude.AddClass("List", ListTypeModule)
+	Prelude.AddObject("ID", IDType)
+	Prelude.AddObject("String", StringType)
+	Prelude.AddObject("Int", IntType)
+	Prelude.AddObject("Float", FloatType)
+	Prelude.AddObject("Boolean", BooleanType)
+	Prelude.AddObject("List", ListTypeModule)
 
-	// Install built-in modules (as both classes and values)
-	Prelude.AddClass("Random", RandomModule)
-	Prelude.AddClass("UUID", UUIDModule)
+	// Install built-in modules (as both objects and values)
+	Prelude.AddObject("Random", RandomModule)
+	Prelude.AddObject("UUID", UUIDModule)
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
 	// Install regex types so user code can refer to them by name.
-	Prelude.AddClass("Regexp", RegexpType)
-	RegexpType.AddClass("Match", MatchType)
+	Prelude.AddObject("Regexp", RegexpType)
+	RegexpType.AddObject("Match", MatchType)
 
 	// Install Error interface with message field
-	Prelude.AddClass("Error", ErrorType)
+	Prelude.AddObject("Error", ErrorType)
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	ErrorType.SetVisibility("message", PublicVisibility)
 
 	// Install BasicError — the concrete type behind raise "msg"
-	Prelude.AddClass("BasicError", BasicErrorType)
+	Prelude.AddObject("BasicError", BasicErrorType)
 	BasicErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	BasicErrorType.SetVisibility("message", PublicVisibility)
 	BasicErrorType.AddInterface(ErrorType)
@@ -318,12 +353,12 @@ func init() {
 	registerBuiltinTypes()
 }
 
-func NewPreludeEnv(name string) *CompositeModule {
-	mod := NewModule(name, ObjectKind)
-	return &CompositeModule{mod, Prelude}
+func NewPreludeEnv(name string) *OverlayTypeScope {
+	mod := NewType(name, ObjectKind)
+	return &OverlayTypeScope{mod, Prelude}
 }
 
-func NewEnv(name string, schema *introspection.Schema) Env {
+func NewEnv(name string, schema *introspection.Schema) TypeScope {
 	env := NewPreludeEnv(name)
 
 	isBuiltinScalar := func(t *introspection.Type) bool {
@@ -366,10 +401,10 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 	// a lexical fallback, which is useful for resolving built-in scalars but must
 	// not participate in schema declaration ownership. A schema type named Error,
 	// Random, etc. is a new GraphQL type that shadows the Dang Prelude type.
-	schemaTypes := map[string]Env{}
+	schemaTypes := map[string]TypeScope{}
 
 	for _, t := range schema.Types {
-		var sub Env
+		var sub TypeScope
 		if isBuiltinScalar(t) {
 			var found bool
 			sub, found = env.lexical.NamedType(t.Name)
@@ -386,21 +421,21 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 					slog.Warn("skipping unsupported type", "type", t.Name, "kind", t.Kind, "error", err)
 					continue
 				}
-				sub = NewModule(t.Name, kind)
-				if subMod, ok := sub.(*Module); ok {
+				sub = NewType(t.Name, kind)
+				if subMod, ok := sub.(*Type); ok {
 					subMod.Qualifier = name
 				}
 				// Store type description as module documentation
 				if t.Description != "" {
-					sub.SetModuleDocString(t.Description)
+					sub.SetTypeDocString(t.Description)
 				}
 				schemaTypes[t.Name] = sub
-				env.AddClass(t.Name, sub)
+				env.AddObject(t.Name, sub)
 			}
 		}
 		if t.Name == schema.QueryType.Name {
 			// TODO: "lexical" is maybe not the right word anymore
-			env.lexical = &CompositeModule{sub, env.lexical}
+			env.lexical = &OverlayTypeScope{sub, env.lexical}
 		}
 		// Expose the Mutation type as a named value (not lexical) so fields
 		// are accessed via Mutation.fieldName rather than bare names.
@@ -595,10 +630,10 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			}
 
 			// Link them together
-			if implMod, ok := implType.(*Module); ok {
+			if implMod, ok := implType.(*Type); ok {
 				implMod.AddInterface(ifaceModule)
 			}
-			if ifaceMod, ok := ifaceModule.(*Module); ok {
+			if ifaceMod, ok := ifaceModule.(*Type); ok {
 				ifaceMod.AddImplementer(implType)
 			}
 		}
@@ -615,7 +650,7 @@ func NewEnv(name string, schema *introspection.Schema) Env {
 			continue
 		}
 
-		unionMod, ok := unionType.(*Module)
+		unionMod, ok := unionType.(*Type)
 		if !ok {
 			continue
 		}
@@ -655,7 +690,7 @@ func introspectionTypeRefToTypeNode(ref *introspection.TypeRef) TypeNode {
 	}
 }
 
-func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
+func (e *Type) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
 	return func(yield func(string, *hm.Scheme) bool) {
 		seen := map[string]bool{}
 		for _, name := range e.varOrder {
@@ -691,20 +726,20 @@ func (e *Module) Bindings(visibility Visibility) iter.Seq2[string, *hm.Scheme] {
 	}
 }
 
-var _ hm.Substitutable = (*Module)(nil)
+var _ hm.Substitutable = (*Type)(nil)
 
-func (e *Module) Apply(subs hm.Subs) hm.Substitutable {
+func (e *Type) Apply(subs hm.Subs) hm.Substitutable {
 	if len(subs) == 0 || len(e.FreeTypeVar()) == 0 {
 		return e
 	}
-	retVal := e.Clone().(*Module)
+	retVal := e.Clone().(*Type)
 	for _, v := range retVal.vars {
 		v.Apply(subs)
 	}
 	return retVal
 }
 
-func (e *Module) FreeTypeVar() hm.TypeVarSet {
+func (e *Type) FreeTypeVar() hm.TypeVarSet {
 	var retVal hm.TypeVarSet
 	// for _, v := range e.vars {
 	// 	retVal = v.FreeTypeVar().Union(retVal)
@@ -712,7 +747,7 @@ func (e *Module) FreeTypeVar() hm.TypeVarSet {
 	return retVal
 }
 
-func (e *Module) Add(name string, s *hm.Scheme) hm.Env {
+func (e *Type) Add(name string, s *hm.Scheme) hm.Env {
 	if _, exists := e.vars[name]; !exists {
 		e.varOrder = append(e.varOrder, name)
 	}
@@ -724,20 +759,20 @@ func (e *Module) Add(name string, s *hm.Scheme) hm.Env {
 	return e
 }
 
-func (e *Module) SetValueOrigin(name string, origin BindingOrigin) {
+func (e *Type) SetValueOrigin(name string, origin BindingOrigin) {
 	e.valueOrigins[name] = origin
 }
 
-func (e *Module) LocalValueOrigin(name string) (BindingOrigin, bool) {
+func (e *Type) LocalValueOrigin(name string) (BindingOrigin, bool) {
 	origin, ok := e.valueOrigins[name]
 	return origin, ok
 }
 
-func (e *Module) SetVisibility(name string, visibility Visibility) {
+func (e *Type) SetVisibility(name string, visibility Visibility) {
 	e.visibility[name] = visibility
 }
 
-func (e *Module) SchemeOf(name string) (*hm.Scheme, bool) {
+func (e *Type) SchemeOf(name string) (*hm.Scheme, bool) {
 	s, ok := e.vars[name]
 	if ok {
 		return s, ok
@@ -748,20 +783,20 @@ func (e *Module) SchemeOf(name string) (*hm.Scheme, bool) {
 	return nil, false
 }
 
-func (e *Module) LocalSchemeOf(name string) (*hm.Scheme, bool) {
+func (e *Type) LocalSchemeOf(name string) (*hm.Scheme, bool) {
 	s, ok := e.vars[name]
 	return s, ok
 }
 
-func (e *Module) Clone() hm.Env {
-	mod := NewModule(e.Named, e.Kind)
+func (e *Type) Clone() hm.Env {
+	mod := NewType(e.Named, e.Kind)
 	mod.Qualifier = e.Qualifier
 	mod.Parent = e
 	mod.dynamicScopeType = e.dynamicScopeType
 	return mod
 }
 
-func (e *Module) GetDynamicScopeType() hm.Type {
+func (e *Type) GetDynamicScopeType() hm.Type {
 	if e.dynamicScopeType != nil {
 		return e.dynamicScopeType
 	}
@@ -771,13 +806,13 @@ func (e *Module) GetDynamicScopeType() hm.Type {
 	return nil
 }
 
-func (e *Module) SetDynamicScopeType(t hm.Type) {
+func (e *Type) SetDynamicScopeType(t hm.Type) {
 	e.dynamicScopeType = t
 }
 
-func (e *Module) NamedTypes() iter.Seq2[string, Env] {
-	return func(yield func(string, Env) bool) {
-		for name, env := range e.classes {
+func (e *Type) NamedTypes() iter.Seq2[string, TypeScope] {
+	return func(yield func(string, TypeScope) bool) {
+		for name, env := range e.objects {
 			if !yield(name, env) {
 				break
 			}
@@ -785,35 +820,35 @@ func (e *Module) NamedTypes() iter.Seq2[string, Env] {
 	}
 }
 
-func (e *Module) AddClass(name string, c Env) {
-	e.classes[name] = c
+func (e *Type) AddObject(name string, c TypeScope) {
+	e.objects[name] = c
 	e.typeOrigins[name] = LocalBindingOrigin()
 }
 
-func (e *Module) SetTypeOrigin(name string, origin BindingOrigin) {
+func (e *Type) SetTypeOrigin(name string, origin BindingOrigin) {
 	e.typeOrigins[name] = origin
 }
 
-func (e *Module) LocalTypeOrigin(name string) (BindingOrigin, bool) {
+func (e *Type) LocalTypeOrigin(name string) (BindingOrigin, bool) {
 	origin, ok := e.typeOrigins[name]
 	return origin, ok
 }
 
-func (e *Module) AddDirective(name string, directive *DirectiveDecl) {
+func (e *Type) AddDirective(name string, directive *DirectiveDecl) {
 	e.directives[name] = directive
 	e.directiveOrigins[name] = LocalBindingOrigin()
 }
 
-func (e *Module) SetDirectiveOrigin(name string, origin BindingOrigin) {
+func (e *Type) SetDirectiveOrigin(name string, origin BindingOrigin) {
 	e.directiveOrigins[name] = origin
 }
 
-func (e *Module) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
+func (e *Type) LocalDirectiveOrigin(name string) (BindingOrigin, bool) {
 	origin, ok := e.directiveOrigins[name]
 	return origin, ok
 }
 
-func (e *Module) GetDirective(name string) (*DirectiveDecl, bool) {
+func (e *Type) GetDirective(name string) (*DirectiveDecl, bool) {
 	directive, ok := e.directives[name]
 	if ok {
 		return directive, ok
@@ -824,7 +859,7 @@ func (e *Module) GetDirective(name string) (*DirectiveDecl, bool) {
 	return nil, false
 }
 
-func (e *Module) NamedType(name string) (Env, bool) {
+func (e *Type) NamedType(name string) (TypeScope, bool) {
 	t, ok := e.LocalNamedType(name)
 	if ok {
 		return t, ok
@@ -835,12 +870,12 @@ func (e *Module) NamedType(name string) (Env, bool) {
 	return nil, false
 }
 
-func (e *Module) LocalNamedType(name string) (Env, bool) {
-	t, ok := e.classes[name]
+func (e *Type) LocalNamedType(name string) (TypeScope, bool) {
+	t, ok := e.objects[name]
 	return t, ok
 }
 
-func (e *Module) Remove(name string) hm.Env {
+func (e *Type) Remove(name string) hm.Env {
 	// TODO: lol, tombstone???? idk if i ever use this method. maybe i don't need
 	// to conform to hm.Env?
 	delete(e.vars, name)
@@ -854,17 +889,17 @@ func (e *Module) Remove(name string) hm.Env {
 }
 
 // SetDocString sets the documentation string for a symbol
-func (e *Module) SetDocString(name string, docString string) {
+func (e *Type) SetDocString(name string, docString string) {
 	e.docStrings[name] = docString
 }
 
 // GetDocString gets the documentation string for a symbol
-func (e *Module) GetDocString(name string) (string, bool) {
+func (e *Type) GetDocString(name string) (string, bool) {
 	if docString, ok := e.docStrings[name]; ok {
 		return docString, true
 	}
 	if e.Parent != nil {
-		if parent, ok := e.Parent.(*Module); ok {
+		if parent, ok := e.Parent.(*Type); ok {
 			return parent.GetDocString(name)
 		}
 	}
@@ -872,17 +907,17 @@ func (e *Module) GetDocString(name string) (string, bool) {
 }
 
 // SetDirectives sets the documentation string for a symbol
-func (e *Module) SetDirectives(name string, directives []*DirectiveApplication) {
+func (e *Type) SetDirectives(name string, directives []*DirectiveApplication) {
 	e.fieldDirectives[name] = directives
 }
 
 // GetDirectives gets the documentation string for a symbol
-func (e *Module) GetDirectives(name string) []*DirectiveApplication {
+func (e *Type) GetDirectives(name string) []*DirectiveApplication {
 	if fieldDirectives, ok := e.fieldDirectives[name]; ok {
 		return fieldDirectives
 	}
 	if e.Parent != nil {
-		if parent, ok := e.Parent.(*Module); ok {
+		if parent, ok := e.Parent.(*Type); ok {
 			return parent.GetDirectives(name)
 		}
 	}
@@ -943,17 +978,18 @@ func createFunctionTypeFromDef(def BuiltinDef) *hm.FunctionType {
 	return fnType
 }
 
-// SetModuleDocString sets the documentation string for the module itself
-func (e *Module) SetModuleDocString(docString string) {
-	e.moduleDocString = docString
+// SetTypeDocString sets the documentation string for the type itself
+// (as opposed to its members, which use SetDocString).
+func (e *Type) SetTypeDocString(docString string) {
+	e.typeDocString = docString
 }
 
-// GetModuleDocString gets the documentation string for the module itself
-func (e *Module) GetModuleDocString() string {
-	return e.moduleDocString
+// GetTypeDocString gets the documentation string for the type itself
+func (e *Type) GetTypeDocString() string {
+	return e.typeDocString
 }
 
-func (e *Module) AsRecord() *RecordType {
+func (e *Type) AsRecord() *RecordType {
 	var rec RecordType
 	for name, scheme := range e.vars {
 		rec.Fields = append(rec.Fields, Keyed[*hm.Scheme]{
@@ -967,13 +1003,13 @@ func (e *Module) AsRecord() *RecordType {
 	return &rec
 }
 
-var _ hm.Type = (*Module)(nil)
+var _ hm.Type = (*Type)(nil)
 
-func (t *Module) Name() string                               { return t.Named }
-func (t *Module) Normalize(k, v hm.TypeVarSet) (Type, error) { return t, nil }
-func (t *Module) Types() hm.Types                            { return nil }
+func (t *Type) Name() string                                  { return t.Named }
+func (t *Type) Normalize(k, v hm.TypeVarSet) (hm.Type, error) { return t, nil }
+func (t *Type) Types() hm.Types                               { return nil }
 
-func (t *Module) String() string {
+func (t *Type) String() string {
 	if t.Named != "" {
 		if t.Qualifier != "" {
 			return t.Qualifier + "." + t.Named
@@ -983,7 +1019,7 @@ func (t *Module) String() string {
 	return t.AsRecord().String()
 }
 
-//	func (t *Module) Format(s fmt.State, c rune) {
+//	func (t *Type) Format(s fmt.State, c rune) {
 //		switch c {
 //		case 'v':
 //			fmt.Fprintf(s, "%+v", t.)
@@ -993,8 +1029,8 @@ func (t *Module) String() string {
 //			fmt.Fprintf(s, "%#v", t)
 //		}
 //	}
-func (t *Module) Eq(other Type) bool {
-	otherMod, ok := other.(*Module)
+func (t *Type) Eq(other hm.Type) bool {
+	otherMod, ok := other.(*Type)
 	if !ok {
 		return false
 	}
@@ -1006,7 +1042,7 @@ func (t *Module) Eq(other Type) bool {
 	return t.AsRecord().Eq(otherMod.AsRecord())
 }
 
-func (t *Module) Supertypes() []Type {
+func (t *Type) Supertypes() []hm.Type {
 	// Object types have their implemented interfaces and unions as
 	// supertypes. Interfaces have their parent interfaces (from
 	// `interface Foo implements Bar`) as supertypes too.
@@ -1016,12 +1052,12 @@ func (t *Module) Supertypes() []Type {
 	if len(t.interfaces) == 0 && len(t.unions) == 0 {
 		return nil
 	}
-	result := make([]Type, 0, len(t.interfaces)+len(t.unions))
+	result := make([]hm.Type, 0, len(t.interfaces)+len(t.unions))
 	for _, iface := range t.interfaces {
-		result = append(result, iface.(Type))
+		result = append(result, iface.(hm.Type))
 	}
 	for _, union := range t.unions {
-		result = append(result, union.(Type))
+		result = append(result, union.(hm.Type))
 	}
 	return result
 }
@@ -1030,7 +1066,7 @@ func (t *Module) Supertypes() []Type {
 // Enums and string-backed scalars (including ID and custom scalars) accept
 // coercion from String so runtime materialization can validate/construct the
 // target value. Primitive scalars do not accept value-level coercion.
-func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
+func (t *Type) AcceptsCoercionFrom(other hm.Type) bool {
 	if t.Kind == EnumKind {
 		return other == StringType
 	}
@@ -1051,7 +1087,7 @@ func (t *Module) AcceptsCoercionFrom(other hm.Type) bool {
 }
 
 // AddInterface adds an interface that this type implements
-func (m *Module) AddInterface(iface Env) {
+func (m *Type) AddInterface(iface TypeScope) {
 	if slices.Contains(m.interfaces, iface) {
 		return
 	}
@@ -1059,12 +1095,12 @@ func (m *Module) AddInterface(iface Env) {
 }
 
 // GetInterfaces returns the interfaces this type implements
-func (m *Module) GetInterfaces() []Env {
+func (m *Type) GetInterfaces() []TypeScope {
 	return m.interfaces
 }
 
 // AddImplementer adds a type that implements this interface (for interface modules)
-func (m *Module) AddImplementer(impl Env) {
+func (m *Type) AddImplementer(impl TypeScope) {
 	if slices.Contains(m.implementers, impl) {
 		return
 	}
@@ -1072,17 +1108,17 @@ func (m *Module) AddImplementer(impl Env) {
 }
 
 // GetImplementers returns the types that implement this interface (for interface modules)
-func (m *Module) GetImplementers() []Env {
+func (m *Type) GetImplementers() []TypeScope {
 	return m.implementers
 }
 
 // ImplementsInterface checks if this type implements the given interface
-func (m *Module) ImplementsInterface(iface Env) bool {
+func (m *Type) ImplementsInterface(iface TypeScope) bool {
 	return slices.Contains(m.interfaces, iface)
 }
 
 // AddMember adds a member type to this union (for union modules).
-func (m *Module) AddMember(member Env) {
+func (m *Type) AddMember(member TypeScope) {
 	if slices.Contains(m.members, member) {
 		return
 	}
@@ -1093,10 +1129,10 @@ func (m *Module) AddMember(member Env) {
 // member. Only call this when the member module is owned by the same local
 // environment; Prelude modules are shared process-wide and must not record
 // per-module union declarations.
-func (m *Module) LinkMember(member Env) {
+func (m *Type) LinkMember(member TypeScope) {
 	m.AddMember(member)
-	if memberMod, ok := member.(*Module); ok {
-		if slices.Contains(memberMod.unions, Env(m)) {
+	if memberMod, ok := member.(*Type); ok {
+		if slices.Contains(memberMod.unions, TypeScope(m)) {
 			return
 		}
 		memberMod.unions = append(memberMod.unions, m)
@@ -1104,23 +1140,23 @@ func (m *Module) LinkMember(member Env) {
 }
 
 // GetMembers returns the member types of this union (for union modules)
-func (m *Module) GetMembers() []Env {
+func (m *Type) GetMembers() []TypeScope {
 	return m.members
 }
 
 // HasMember checks if this union contains the given type as a member
-func (m *Module) HasMember(t Env) bool {
+func (m *Type) HasMember(t TypeScope) bool {
 	return slices.Contains(m.members, t)
 }
 
 // GetUnions returns the unions this type is a member of
-func (m *Module) GetUnions() []Env {
+func (m *Type) GetUnions() []TypeScope {
 	return m.unions
 }
 
 // CheckTypeConflict checks if a type-level symbol has import conflicts.
 // Returns the list of imports that provide it (empty if no conflict or not tracked).
-func (m *Module) CheckTypeConflict(symbolName string) []string {
+func (m *Type) CheckTypeConflict(symbolName string) []string {
 	if origin, found := m.LocalTypeOrigin(symbolName); found {
 		return origin.ConflictingImports()
 	}
@@ -1132,7 +1168,7 @@ func (m *Module) CheckTypeConflict(symbolName string) []string {
 
 // CheckValueConflict checks if a value-level symbol has import conflicts.
 // Returns the list of imports that provide it (empty if no conflict or not tracked).
-func (m *Module) CheckValueConflict(symbolName string) []string {
+func (m *Type) CheckValueConflict(symbolName string) []string {
 	if origin, found := m.LocalValueOrigin(symbolName); found {
 		return origin.ConflictingImports()
 	}
@@ -1144,7 +1180,7 @@ func (m *Module) CheckValueConflict(symbolName string) []string {
 
 // CheckDirectiveConflict checks if a directive has import conflicts.
 // Returns the list of imports that provide it (empty if no conflict or not tracked).
-func (m *Module) CheckDirectiveConflict(directiveName string) []string {
+func (m *Type) CheckDirectiveConflict(directiveName string) []string {
 	if origin, found := m.LocalDirectiveOrigin(directiveName); found {
 		return origin.ConflictingImports()
 	}
@@ -1154,30 +1190,30 @@ func (m *Module) CheckDirectiveConflict(directiveName string) []string {
 	return nil
 }
 
-// validateFieldImplementation validates that a class field correctly implements an interface field
+// validateFieldImplementation validates that a object field correctly implements an interface field
 // according to GraphQL interface implementation rules:
 // - Return types must be covariant (implementation can be more specific)
 // - Argument types must be contravariant (implementation can be more general)
 // - All interface arguments must be present
 // - Additional arguments must be optional
-func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldType hm.Type, ifaceName, className string) error {
+func validateFieldImplementation(fieldName string, ifaceFieldType, objectFieldType hm.Type, ifaceName, objectName string) error {
 	// This is schema-level compatibility, not a value handoff, so use pure
 	// subtyping (no value-level scalar coercions such as String -> ID).
 	// Both must be function types (fields in GraphQL are represented as functions)
 	ifaceFn, ifaceIsFn := ifaceFieldType.(*hm.FunctionType)
-	classFn, classIsFn := classFieldType.(*hm.FunctionType)
+	objectFn, objectIsFn := objectFieldType.(*hm.FunctionType)
 
-	// If interface field is not a function, class field must match exactly
+	// If interface field is not a function, object field must match exactly
 	if !ifaceIsFn {
-		if !classIsFn {
+		if !objectIsFn {
 			// Both are non-function types - check covariance
-			if !hm.IsSubtypeOf(classFieldType, ifaceFieldType) {
+			if !hm.IsSubtypeOf(objectFieldType, ifaceFieldType) {
 				return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
-					fieldName, classFieldType, ifaceFieldType)
+					fieldName, objectFieldType, ifaceFieldType)
 			}
 			return nil
 		}
-		return fmt.Errorf("field %q: class has function type but interface does not", fieldName)
+		return fmt.Errorf("field %q: object has function type but interface does not", fieldName)
 	}
 
 	// Interface field is a function
@@ -1189,71 +1225,71 @@ func validateFieldImplementation(fieldName string, ifaceFieldType, classFieldTyp
 		}
 	}
 
-	// If interface has a zero-arg function and class has a simple field, unwrap and compare
-	if isZeroArgFn && !classIsFn {
+	// If interface has a zero-arg function and object has a simple field, unwrap and compare
+	if isZeroArgFn && !objectIsFn {
 		// Unwrap the function to get the return type
 		ifaceRetType := ifaceFn.Ret(false)
-		// Compare the return type with the class field type
-		if !hm.IsSubtypeOf(classFieldType, ifaceRetType) {
+		// Compare the return type with the object field type
+		if !hm.IsSubtypeOf(objectFieldType, ifaceRetType) {
 			return fmt.Errorf("field %q: type %s is not compatible with interface type %s",
-				fieldName, classFieldType, ifaceRetType)
+				fieldName, objectFieldType, ifaceRetType)
 		}
 		return nil
 	}
 
-	// Interface field is a function - class field must also be a function
-	if !classIsFn {
-		return fmt.Errorf("field %q: interface has function type but class does not", fieldName)
+	// Interface field is a function - object field must also be a function
+	if !objectIsFn {
+		return fmt.Errorf("field %q: interface has function type but object does not", fieldName)
 	}
 
-	// Validate return type (covariant - class can return more specific type)
-	classRetType := classFn.Ret(false)
+	// Validate return type (covariant - object can return more specific type)
+	objectRetType := objectFn.Ret(false)
 	ifaceRetType := ifaceFn.Ret(false)
 
-	if !hm.IsSubtypeOf(classRetType, ifaceRetType) {
+	if !hm.IsSubtypeOf(objectRetType, ifaceRetType) {
 		return fmt.Errorf("field %q: return type %s is not compatible with interface return type %s (covariance required)",
-			fieldName, classRetType, ifaceRetType)
+			fieldName, objectRetType, ifaceRetType)
 	}
 
-	// Validate arguments (contravariant - class can accept more general types)
+	// Validate arguments (contravariant - object can accept more general types)
 	ifaceArgs, ifaceArgsOk := ifaceFn.Arg().(*RecordType)
-	classArgs, classArgsOk := classFn.Arg().(*RecordType)
+	objectArgs, objectArgsOk := objectFn.Arg().(*RecordType)
 
-	if !ifaceArgsOk || !classArgsOk {
+	if !ifaceArgsOk || !objectArgsOk {
 		// Arguments must be records
 		return fmt.Errorf("field %q: arguments must be record types", fieldName)
 	}
 
-	// Check that all interface arguments are present in class
+	// Check that all interface arguments are present in object
 	for _, ifaceArg := range ifaceArgs.Fields {
-		classArgScheme, found := classArgs.SchemeOf(ifaceArg.Key)
+		objectArgScheme, found := objectArgs.SchemeOf(ifaceArg.Key)
 		if !found {
 			return fmt.Errorf("field %q: missing argument %q required by interface", fieldName, ifaceArg.Key)
 		}
 
 		// Validate argument type compatibility (contravariant)
-		classArgType, _ := classArgScheme.Type()
+		objectArgType, _ := objectArgScheme.Type()
 		ifaceArgType, _ := ifaceArg.Value.Type()
 
-		// For contravariance: class arg type must be a supertype of interface arg type
-		// This means: if interface requires String!, class can accept String or String!
-		// But if interface requires String, class must accept String (can't require String!)
-		if !hm.IsSupertypeOf(classArgType, ifaceArgType) {
+		// For contravariance: object arg type must be a supertype of interface arg type
+		// This means: if interface requires String!, object can accept String or String!
+		// But if interface requires String, object must accept String (can't require String!)
+		if !hm.IsSupertypeOf(objectArgType, ifaceArgType) {
 			return fmt.Errorf("field %q, argument %q: type %s is not compatible with interface type %s (contravariance required)",
-				fieldName, ifaceArg.Key, classArgType, ifaceArgType)
+				fieldName, ifaceArg.Key, objectArgType, ifaceArgType)
 		}
 	}
 
-	// Check that any additional arguments in class are optional
-	for _, classArg := range classArgs.Fields {
+	// Check that any additional arguments in object are optional
+	for _, objectArg := range objectArgs.Fields {
 		// Check if this argument exists in the interface
-		_, found := ifaceArgs.SchemeOf(classArg.Key)
+		_, found := ifaceArgs.SchemeOf(objectArg.Key)
 		if !found {
 			// Additional argument - must be optional (nullable or has default)
-			classArgType, _ := classArg.Value.Type()
-			if _, isNonNull := classArgType.(hm.NonNullType); isNonNull {
+			objectArgType, _ := objectArg.Value.Type()
+			if _, isNonNull := objectArgType.(hm.NonNullType); isNonNull {
 				return fmt.Errorf("field %q, argument %q: additional arguments not in interface must be optional (nullable or have default)",
-					fieldName, classArg.Key)
+					fieldName, objectArg.Key)
 			}
 		}
 	}

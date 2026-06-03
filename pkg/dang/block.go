@@ -15,7 +15,7 @@ type Block struct {
 	Loc   *SourceLocation
 
 	// Filled in during inference phase for non-inline blocks
-	Env Env
+	Env TypeScope
 }
 
 var _ hm.Expression = (*Block)(nil)
@@ -167,7 +167,7 @@ type ClassifiedForms struct {
 	Imports         []Node // ImportDecl (must be processed before anything else)
 	Directives      []Node // DirectiveDecl (must be processed first after imports)
 	Constants       []Node // FieldDecl with constant values (literals, no function calls)
-	Types           []Node // ClassDecl
+	Types           []Node // ObjectDecl
 	Variables       []Node // FieldDecl with computed values (function calls, references)
 	Functions       []Node // FunDecl and FieldDecl with function bodies
 	NonDeclarations []Node // Everything else (assignments, expressions, etc.)
@@ -187,7 +187,7 @@ func classifyForms(forms []Node) ClassifiedForms {
 			classified.Types = append(classified.Types, f)
 		case *UnionDecl:
 			classified.Types = append(classified.Types, f)
-		case *ClassDecl:
+		case *ObjectDecl:
 			classified.Types = append(classified.Types, f)
 		case *EnumDecl:
 			classified.Types = append(classified.Types, f)
@@ -272,7 +272,7 @@ func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh
 // EvaluateDeclaredFormsWithPhases evaluates only the declaration forms made
 // safe by DeclareFormsWithPhases. Function and method bodies are captured as
 // closures but not executed; variables and non-declarations are skipped.
-func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) (Value, error) {
 	var result Value = NullValue{}
 	classified := classifyForms(forms)
 
@@ -384,8 +384,8 @@ func isConstantValue(value Node) bool {
 // EvaluateFormsWithPhases evaluates forms using the same phased approach as
 // inference. Computed variables are installed as lazy fields, forced on first
 // read, and then forced in source order before non-declarations run. This is
-// used for both module top-levels and class bodies.
-func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Value, error) {
+// used for both module top-levels and object bodies.
+func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) (Value, error) {
 	var result Value = NullValue{}
 	var err error
 
@@ -416,7 +416,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 		}
 	}
 
-	// Phase 4: Evaluate types (classes)
+	// Phase 4: Evaluate types (objects)
 	for _, form := range classified.Types {
 		_, err = EvalNode(ctx, env, form)
 		if err != nil {
@@ -453,7 +453,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env EvalEnv) (Va
 	return result, nil
 }
 
-func installAndForceLazyVariables(ctx context.Context, variables []Node, env EvalEnv) error {
+func installAndForceLazyVariables(ctx context.Context, variables []Node, env ValueScope) error {
 	for _, form := range variables {
 		field, ok := form.(*FieldDecl)
 		if !ok {
@@ -486,7 +486,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		newEnv := env.Clone()
 
 		// Store the environment, even if inference fails
-		if dangEnv, ok := newEnv.(Env); ok {
+		if dangEnv, ok := newEnv.(TypeScope); ok {
 			b.Env = dangEnv
 		}
 
@@ -528,7 +528,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (b *Block) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (b *Block) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	forms := b.Forms
 	if len(forms) == 0 {
 		return NullValue{}, nil
@@ -557,7 +557,7 @@ func (b *Block) Walk(fn func(Node) bool) {
 	}
 }
 
-type Object struct {
+type ObjectLiteral struct {
 	InferredTypeHolder
 	Fields []*FieldDecl
 	Loc    *SourceLocation
@@ -565,16 +565,16 @@ type Object struct {
 	// Filled in during inference phase
 	// This is a little weird but has come up twice, maybe OK pattern?
 	// Requires mutating node in-place.
-	Mod *Module
+	Mod *Type
 }
 
-var _ Node = &Object{}
+var _ Node = &ObjectLiteral{}
 
-func (o *Object) DeclaredSymbols() []string {
+func (o *ObjectLiteral) DeclaredSymbols() []string {
 	return nil // Objects don't declare symbols in the global scope
 }
 
-func (o *Object) ReferencedSymbols() []string {
+func (o *ObjectLiteral) ReferencedSymbols() []string {
 	var symbols []string
 	// Objects reference symbols from their fields
 	for _, field := range o.Fields {
@@ -583,17 +583,17 @@ func (o *Object) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (f *Object) Body() hm.Expression { return f }
+func (f *ObjectLiteral) Body() hm.Expression { return f }
 
-func (f *Object) GetSourceLocation() *SourceLocation { return f.Loc }
+func (f *ObjectLiteral) GetSourceLocation() *SourceLocation { return f.Loc }
 
-var _ hm.Inferer = &Object{}
+var _ hm.Inferer = &ObjectLiteral{}
 
-func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	mod := NewModule("", ObjectKind)
-	inferEnv := &CompositeModule{
+func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	mod := NewType("", ObjectKind)
+	inferEnv := &OverlayTypeScope{
 		primary: mod,
-		lexical: env.(Env),
+		lexical: env.(TypeScope),
 	}
 	for _, field := range o.Fields {
 		_, err := field.Infer(ctx, inferEnv, fresh)
@@ -605,14 +605,14 @@ func (o *Object) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	return hm.NonNullType{Type: mod}, nil
 }
 
-var _ Evaluator = &Object{}
+var _ Evaluator = &ObjectLiteral{}
 
-func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
+func (o *ObjectLiteral) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	if o.Mod == nil {
 		return nil, errors.New("object has no module inferred")
 	}
-	newMod := NewModuleValue(o.Mod)
-	evalEnv := CreateCompositeEnv(newMod, env)
+	newMod := NewObject(o.Mod)
+	evalEnv := CreateOverlayValueScope(newMod, env)
 	for _, field := range o.Fields {
 		_, err := EvalNode(ctx, evalEnv, field)
 		if err != nil {
@@ -622,7 +622,7 @@ func (o *Object) Eval(ctx context.Context, env EvalEnv) (Value, error) {
 	return newMod, nil
 }
 
-func (o *Object) Walk(fn func(Node) bool) {
+func (o *ObjectLiteral) Walk(fn func(Node) bool) {
 	if !fn(o) {
 		return
 	}

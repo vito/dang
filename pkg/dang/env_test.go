@@ -12,7 +12,7 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
-func requireEvalGet(t *testing.T, env EvalEnv, name string) (Value, bool) {
+func requireEvalGet(t *testing.T, env ValueScope, name string) (Value, bool) {
 	t.Helper()
 	val, found, err := env.Lookup(context.Background(), name)
 	require.NoError(t, err)
@@ -33,7 +33,7 @@ func TestNewEnvSchemaTypeShadowsPreludeType(t *testing.T) {
 	require.True(t, found)
 	require.NotSame(t, ErrorType, schemaError)
 
-	schemaErrorMod, ok := schemaError.(*Module)
+	schemaErrorMod, ok := schemaError.(*Type)
 	require.True(t, ok)
 	require.Equal(t, ObjectKind, schemaErrorMod.Kind)
 
@@ -74,8 +74,8 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 }
 
 func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
-	mod := NewModule("runtime", ObjectKind)
-	val := NewModuleValue(mod)
+	mod := NewType("runtime", ObjectKind)
+	val := NewObject(mod)
 
 	val.Bind("plain", StringValue{Val: "a"}, PrivateVisibility)
 	val.Bind("visible", StringValue{Val: "b"}, PublicVisibility)
@@ -112,11 +112,11 @@ type Error {
 }
 assert { Error.id == "x" }
 `)
-	classVal, found := requireEvalGet(t, env, "Error")
+	objectVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
-	classFn, ok := classVal.(*ConstructorFunction)
+	objectFn, ok := objectVal.(*ConstructorFunction)
 	require.True(t, ok)
-	require.NotSame(t, ErrorType, classFn.ClassType)
+	require.NotSame(t, ErrorType, objectFn.ObjectType)
 	_, found = ErrorType.LocalSchemeOf("id")
 	require.False(t, found)
 
@@ -126,7 +126,7 @@ assert { Error.FOO == Error.FOO }
 `)
 	enumVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
-	enumMod, ok := enumVal.(*ModuleValue)
+	enumMod, ok := enumVal.(*Object)
 	require.True(t, ok)
 	require.NotSame(t, ErrorType, enumMod.Mod)
 	_, found = ErrorType.LocalSchemeOf("FOO")
@@ -137,10 +137,10 @@ scalar Error
 `)
 	scalarVal, found := requireEvalGet(t, env, "Error")
 	require.True(t, found)
-	scalarMod, ok := scalarVal.(*ModuleValue)
+	scalarMod, ok := scalarVal.(*Object)
 	require.True(t, ok)
 	require.NotSame(t, ErrorType, scalarMod.Mod)
-	require.Equal(t, ScalarKind, scalarMod.Mod.(*Module).Kind)
+	require.Equal(t, ScalarKind, scalarMod.Mod.(*Type).Kind)
 }
 
 func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
@@ -150,7 +150,7 @@ func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
 	require.True(t, found)
 	require.Equal(t, "Container", container.Name())
 	require.Equal(t, "Dagger.Container", container.String())
-	require.Equal(t, "Dagger.Container", container.Clone().(Env).String())
+	require.Equal(t, "Dagger.Container", container.Clone().(TypeScope).String())
 
 	nonNullContainer := hm.NonNullType{Type: container}
 	require.Equal(t, "Dagger.Container!", nonNullContainer.String())
@@ -294,7 +294,7 @@ type Directory {
 
 	daggerVal, found := requireEvalGet(t, env, "Dagger")
 	require.True(t, found)
-	daggerMod, ok := daggerVal.(*ModuleValue)
+	daggerMod, ok := daggerVal.(*Object)
 	require.True(t, ok)
 	importedContainer, found := daggerMod.Mod.NamedType("Container")
 	require.True(t, found)
@@ -305,33 +305,33 @@ type Directory {
 	require.True(t, found)
 	containerCtor, ok := containerVal.(*ConstructorFunction)
 	require.True(t, ok)
-	require.NotSame(t, importedContainer, containerCtor.ClassType)
+	require.NotSame(t, importedContainer, containerCtor.ObjectType)
 
-	moduleVal, ok := env.(*ModuleValue)
+	moduleVal, ok := env.(*Object)
 	require.True(t, ok)
 	maybeScheme, found := moduleVal.Mod.SchemeOf("maybe")
 	require.True(t, found)
 	maybeType, mono := maybeScheme.Type()
 	require.True(t, mono)
-	require.Same(t, containerCtor.ClassType, maybeType)
+	require.Same(t, containerCtor.ObjectType, maybeType)
 	require.NotSame(t, importedContainer, maybeType)
 
 	directoryVal, found := requireEvalGet(t, env, "Directory")
 	require.True(t, found)
 	directoryCtor, ok := directoryVal.(*ConstructorFunction)
 	require.True(t, ok)
-	require.NotSame(t, importedDirectory, directoryCtor.ClassType)
+	require.NotSame(t, importedDirectory, directoryCtor.ObjectType)
 
 	testVal, found := requireEvalGet(t, env, "TestShadowing")
 	require.True(t, found)
 	testCtor, ok := testVal.(*ConstructorFunction)
 	require.True(t, ok)
 
-	localScheme, found := testCtor.ClassType.LocalSchemeOf("makeLocal")
+	localScheme, found := testCtor.ObjectType.LocalSchemeOf("makeLocal")
 	require.True(t, found)
-	require.Same(t, containerCtor.ClassType, functionReturnType(t, localScheme))
+	require.Same(t, containerCtor.ObjectType, functionReturnType(t, localScheme))
 
-	coreScheme, found := testCtor.ClassType.LocalSchemeOf("makeCore")
+	coreScheme, found := testCtor.ObjectType.LocalSchemeOf("makeCore")
 	require.True(t, found)
 	require.Same(t, importedContainer, functionReturnType(t, coreScheme))
 }
@@ -363,7 +363,7 @@ type Test {
 
 	daggerVal, found := requireEvalGet(t, env, "Dagger")
 	require.True(t, found)
-	daggerMod, ok := daggerVal.(*ModuleValue)
+	daggerMod, ok := daggerVal.(*Object)
 	require.True(t, ok)
 	importedContainer, found := daggerMod.Mod.NamedType("Container")
 	require.True(t, found)
@@ -373,11 +373,11 @@ type Test {
 	testCtor, ok := testVal.(*ConstructorFunction)
 	require.True(t, ok)
 
-	containerEcho, found := testCtor.ClassType.LocalSchemeOf("containerEcho")
+	containerEcho, found := testCtor.ObjectType.LocalSchemeOf("containerEcho")
 	require.True(t, found)
 	require.Same(t, importedContainer, functionReturnType(t, containerEcho))
 
-	print, found := testCtor.ClassType.LocalSchemeOf("print")
+	print, found := testCtor.ObjectType.LocalSchemeOf("print")
 	require.True(t, found)
 	require.Same(t, StringType, functionReturnType(t, print))
 }
@@ -491,7 +491,7 @@ pub fromB: Dagger.Container! = Dagger.container
 func TestRunDirImportedTypesUnifyAcrossFiles(t *testing.T) {
 	// Two files that import the same schema and exchange one of its types
 	// must agree on type identity. Without shared schema modules, each file
-	// would build its own *Module via NewEnv and unification would fail with
+	// would build its own *Type via NewEnv and unification would fail with
 	// "cannot use Dagger.Container as Dagger.Container".
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",
@@ -514,7 +514,7 @@ pub piped: Container! = take(c: make)
 func TestRunDirNestedBlockImportResolves(t *testing.T) {
 	// An import inside a nested block (here a function body) should make the
 	// imported names available within that block. The shared schema-module
-	// cache on the context resolves Dagger to the same *Module a file-level
+	// cache on the context resolves Dagger to the same *Type a file-level
 	// import would, so Dagger.container etc. work fine inside the block.
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:   "Dagger",
@@ -572,12 +572,12 @@ assert { MyUnion != null }
 	require.Len(t, BasicErrorType.GetUnions(), before)
 }
 
-func runDangSnippet(t *testing.T, source string) EvalEnv {
+func runDangSnippet(t *testing.T, source string) ValueScope {
 	t.Helper()
 	return runDangSnippetContext(t, context.Background(), source)
 }
 
-func runDangSnippetContext(t *testing.T, ctx context.Context, source string) EvalEnv {
+func runDangSnippetContext(t *testing.T, ctx context.Context, source string) ValueScope {
 	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(source), 0o600))

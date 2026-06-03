@@ -239,7 +239,7 @@ const (
 	ConstructorCompletion   CompletionItemKind = 4
 	FieldCompletion         CompletionItemKind = 5
 	VariableCompletion      CompletionItemKind = 6
-	ClassCompletion         CompletionItemKind = 7
+	ObjectCompletion        CompletionItemKind = 7
 	InterfaceCompletion     CompletionItemKind = 8
 	ModuleCompletion        CompletionItemKind = 9
 	PropertyCompletion      CompletionItemKind = 10
@@ -282,7 +282,7 @@ type Command struct {
 
 // WorkspaceEdit is
 type WorkspaceEdit struct {
-	Changes         any `json:"changes"`         // { [uri: DocumentUri]: TextEdit[]; };
+	Changes         any `json:"changes"`                   // { [uri: DocumentUri]: TextEdit[]; };
 	DocumentChanges any `json:"documentChanges,omitempty"` // (TextDocumentEdit[] | (TextDocumentEdit | CreateFile | RenameFile | DeleteFile)[]);
 }
 

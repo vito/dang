@@ -55,7 +55,7 @@ type langHandler struct {
 	// a new dagger session on every keystroke.
 	importCache map[string][]dang.ImportConfig
 
-	// Per-directory cache of *Module pointers for imported schemas. A long-
+	// Per-directory cache of *Type pointers for imported schemas. A long-
 	// lived cache is essential here: each analyzeDirectory call otherwise
 	// gets a fresh ContextWithImportConfigs cache, so a sibling file whose
 	// parse gets invalidated (e.g. open-buffer transition) re-builds its
@@ -95,7 +95,7 @@ type File struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock // Parsed and type-annotated AST
-	TypeEnv     dang.Env          // Type environment after inference
+	TypeEnv     dang.TypeScope    // Type environment after inference
 
 	// Synchronization for async file processing
 	mu         sync.Mutex
@@ -241,7 +241,7 @@ type fileAnalysis struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock
-	TypeEnv     dang.Env
+	TypeEnv     dang.TypeScope
 }
 
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
@@ -305,7 +305,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	// installing the import configs, so the configs' helpers find an existing
 	// cache and reuse it. Without this, each analyzeDirectory call gets a
 	// fresh cache and ImportDecls in re-parsed sibling files build divergent
-	// *Module instances — types like Test.ServerInfo fail to unify.
+	// *Type instances — types like Test.ServerInfo fail to unify.
 	ctx = dang.WithSchemaModuleCache(ctx, h.schemaModuleCacheFor(fileDir))
 	if len(importConfigs) > 0 {
 		ctx = dang.ContextWithImportConfigs(ctx, importConfigs...)
@@ -630,16 +630,16 @@ func (h *langHandler) collectSymbols(uri DocumentURI, nodes []dang.Node, st *Sym
 				Kind: h.symbolKind(node),
 				Node: node,
 			}
-		} else if classDecl, ok := node.(*dang.ClassDecl); ok && classDecl.Name != nil && classDecl.Name.Loc != nil {
-			// For ClassDecl, use the precise location from the Symbol itself
-			loc := classDecl.Name.Loc
-			st.Definitions[classDecl.Name.Name] = &SymbolInfo{
-				Name: classDecl.Name.Name,
+		} else if objectDecl, ok := node.(*dang.ObjectDecl); ok && objectDecl.Name != nil && objectDecl.Name.Loc != nil {
+			// For ObjectDecl, use the precise location from the Symbol itself
+			loc := objectDecl.Name.Loc
+			st.Definitions[objectDecl.Name.Name] = &SymbolInfo{
+				Name: objectDecl.Name.Name,
 				Location: &Location{
 					URI: uri,
 					Range: Range{
 						Start: Position{Line: loc.Line - 1, Character: loc.Column - 1},
-						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(classDecl.Name.Name)},
+						End:   Position{Line: loc.Line - 1, Character: loc.Column - 1 + len(objectDecl.Name.Name)},
 					},
 				},
 				Kind: h.symbolKind(node),
@@ -680,8 +680,8 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 		h.collectSymbols(uri, n.Forms, st)
 	case *dang.ModuleBlock:
 		h.collectSymbols(uri, n.Forms, st)
-	case *dang.ClassDecl:
-		// Collect symbols from class body
+	case *dang.ObjectDecl:
+		// Collect symbols from object body
 		h.collectSymbols(uri, n.Value.Forms, st)
 	case *dang.FieldDecl:
 		// If the field value is a block, collect from it
@@ -708,8 +708,8 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 // symbolKind determines the LSP completion item kind for a node
 func (h *langHandler) symbolKind(node dang.Node) CompletionItemKind {
 	switch node.(type) {
-	case *dang.ClassDecl:
-		return ClassCompletion
+	case *dang.ObjectDecl:
+		return ObjectCompletion
 	case *dang.FieldDecl:
 		// Check if the field value is a function
 		if field, ok := node.(*dang.FieldDecl); ok {

@@ -86,7 +86,7 @@ func TestExpectedTypeDirectiveMapsIDListArgumentToPlainList(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func requireFunctionArgType(t *testing.T, env Env, funcName, argName string) hm.Type {
+func requireFunctionArgType(t *testing.T, env TypeScope, funcName, argName string) hm.Type {
 	t.Helper()
 
 	scheme, found := env.SchemeOf(funcName)
@@ -103,7 +103,7 @@ func requireFunctionArgType(t *testing.T, env Env, funcName, argName string) hm.
 	return argType
 }
 
-func requireFunctionReturnType(t *testing.T, env Env, funcName string) hm.Type {
+func requireFunctionReturnType(t *testing.T, env TypeScope, funcName string) hm.Type {
 	t.Helper()
 
 	scheme, found := env.SchemeOf(funcName)
