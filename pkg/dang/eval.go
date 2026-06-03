@@ -328,9 +328,9 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 }
 
 // NewValueScope creates an evaluation environment with built-in functions
-func NewValueScope(typeEnv TypeScope) ValueScope {
+func NewValueScope(typeScope TypeScope) ValueScope {
 	// Create an Object from the type environment
-	env := NewObject(typeEnv)
+	env := NewObject(typeScope)
 
 	// Add builtin functions
 	addBuiltinFunctions(env)
@@ -339,12 +339,12 @@ func NewValueScope(typeEnv TypeScope) ValueScope {
 }
 
 // ValueScopeFromSchema creates an evaluation environment populated with GraphQL API values
-func ValueScopeFromSchema(typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
+func ValueScopeFromSchema(typeScope TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
 	// Create an Object from the type environment
-	env := NewObject(typeEnv)
+	env := NewObject(typeScope)
 
 	// Populate with GraphQL functions from the schema
-	populateSchemaFunctions(env, typeEnv, client, schema)
+	populateSchemaFunctions(env, typeScope, client, schema)
 
 	// Add builtin functions
 	addBuiltinFunctions(env)
@@ -356,23 +356,23 @@ func ValueScopeFromSchema(typeEnv TypeScope, client graphql.Client, schema *intr
 // configurations. Each import's schema types and values are merged into the
 // environments, with the first import taking precedence on name collisions.
 func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, ValueScope) {
-	typeEnv := NewPreludeTypeScope(name)
+	typeScope := NewPreludeTypeScope(name)
 
 	for _, config := range configs {
 		if config.Schema == nil {
 			continue
 		}
 		schemaModule := TypeScopeFromSchema(config.Name, config.Schema)
-		installImportedTypeScope(typeEnv, config.Name, schemaModule)
+		installImportedTypeScope(typeScope, config.Name, schemaModule)
 	}
 
-	valueScope := NewValueScope(typeEnv)
+	valueScope := NewValueScope(typeScope)
 
 	for _, config := range configs {
 		if config.Schema == nil {
 			continue
 		}
-		schemaModule, found := typeEnv.NamedType(config.Name)
+		schemaModule, found := typeScope.NamedType(config.Name)
 		if !found {
 			continue
 		}
@@ -380,16 +380,16 @@ func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, Val
 		installImportedValueScope(valueScope, config.Name, importValueScope)
 	}
 
-	return typeEnv, valueScope
+	return typeScope, valueScope
 }
 
 // populateSchemaFunctions adds GraphQL functions from a schema to an environment
-func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) {
+func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Client, schema *introspection.Schema) {
 	for _, t := range schema.Types {
 		// Add enum values as enum constants for enum types
 		if t.Kind == introspection.TypeKindEnum && len(t.EnumValues) > 0 {
 			// Get the enum type environment
-			enumTypeEnv, found := typeEnv.NamedType(t.Name)
+			enumTypeEnv, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
@@ -426,7 +426,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 			}
 
 			// Get the scalar type environment
-			scalarTypeEnv, found := typeEnv.NamedType(t.Name)
+			scalarTypeEnv, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
@@ -441,7 +441,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 		// Add interface types as available values
 		if t.Kind == introspection.TypeKindInterface {
 			// Get the interface type environment
-			interfaceTypeEnv, found := typeEnv.NamedType(t.Name)
+			interfaceTypeEnv, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
@@ -455,7 +455,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 
 		// Add union types as available values
 		if t.Kind == introspection.TypeKindUnion {
-			unionTypeEnv, found := typeEnv.NamedType(t.Name)
+			unionTypeEnv, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
@@ -466,14 +466,14 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 
 		// Add input object constructors: UserSort(field: ..., direction: ...)
 		if t.Kind == introspection.TypeKindInputObject {
-			inputTypeEnv, found := typeEnv.NamedType(t.Name)
+			inputTypeEnv, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
 
 			args := NewRecordType("")
 			for _, f := range t.InputFields {
-				argType, err := gqlInputToTypeNode(typeEnv, f)
+				argType, err := gqlInputToTypeNode(typeScope, f)
 				if err != nil {
 					continue
 				}
@@ -490,7 +490,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 		}
 
 		for _, f := range t.Fields {
-			ret, err := gqlFieldToTypeNode(typeEnv, f)
+			ret, err := gqlFieldToTypeNode(typeScope, f)
 			if err != nil {
 				continue
 			}
@@ -498,7 +498,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 			// This is a function - create a GraphQLFunction value
 			args := NewRecordType("")
 			for _, arg := range f.Args {
-				argType, err := gqlInputToTypeNode(typeEnv, arg)
+				argType, err := gqlInputToTypeNode(typeScope, arg)
 				if err != nil {
 					continue
 				}
@@ -513,7 +513,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 				FnType:     fnType,
 				Client:     client,
 				Schema:     schema,
-				TypeEnv:    typeEnv, // Pass the type environment
+				TypeEnv:    typeScope, // Pass the type environment
 				QueryChain: nil,     // Top-level functions start with no query chain
 			}
 
@@ -525,19 +525,19 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 
 		// Collect mutation fields into a Mutation module
 		if schema.MutationType != nil && t.Name == schema.MutationType.Name {
-			mutTypeEnv, found := typeEnv.NamedType(t.Name)
+			mutTypeEnv, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
 			mutModule := NewObject(mutTypeEnv)
 			for _, f := range t.Fields {
-				ret, err := gqlFieldToTypeNode(typeEnv, f)
+				ret, err := gqlFieldToTypeNode(typeScope, f)
 				if err != nil {
 					continue
 				}
 				args := NewRecordType("")
 				for _, arg := range f.Args {
-					argType, err := gqlInputToTypeNode(typeEnv, arg)
+					argType, err := gqlInputToTypeNode(typeScope, arg)
 					if err != nil {
 						continue
 					}
@@ -551,7 +551,7 @@ func populateSchemaFunctions(env *Object, typeEnv TypeScope, client graphql.Clie
 					FnType:     fnType,
 					Client:     client,
 					Schema:     schema,
-					TypeEnv:    typeEnv,
+					TypeEnv:    typeScope,
 					QueryChain: nil,
 					IsMutation: true,
 				}
@@ -1849,9 +1849,9 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		_, _ = pretty.Println(node)
 	}
 
-	typeEnv := NewPreludeTypeScope("")
+	typeScope := NewPreludeTypeScope("")
 
-	inferred, err := Infer(ctx, typeEnv, node, true)
+	inferred, err := Infer(ctx, typeScope, node, true)
 	if err != nil {
 		// Convert InferError to SourceError with full context
 		return ConvertInferError(err)
@@ -1860,7 +1860,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	slog.Debug("type inference completed", "type", inferred)
 
 	// Now evaluate the program
-	valueScope := NewValueScope(typeEnv)
+	valueScope := NewValueScope(typeScope)
 
 	result, err := EvalNodeWithContext(ctx, valueScope, node, evalCtx)
 	if err != nil {
@@ -2091,13 +2091,13 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		fmt.Printf("Found %d .dang files with %d total forms\n", len(blocks), totalForms)
 	}
 
-	typeEnv := NewPreludeTypeScope("")
+	typeScope := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
-	if err := declareDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
+	if err := declareDirectoryFiles(ctx, blocks, typeScope, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
-	valueScope := NewValueScope(typeEnv)
+	valueScope := NewValueScope(typeScope)
 	for _, block := range blocks {
 		if _, err := EvaluateDeclaredFormsWithPhases(ctx, block.Forms, valueScope); err != nil {
 			return nil, err
@@ -2149,20 +2149,20 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 		fmt.Printf("Found %d .dang files with %d total forms\n", len(blocks), totalForms)
 	}
 
-	typeEnv := NewPreludeTypeScope("")
+	typeScope := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
 
 	if isDebug {
 		fmt.Println("Running phased inference...")
 	}
 
-	if err := InferDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
+	if err := InferDirectoryFiles(ctx, blocks, typeScope, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
 	slog.Debug("directory type inference completed", "dir", dirPath)
 
-	valueScope := NewValueScope(typeEnv)
+	valueScope := NewValueScope(typeScope)
 
 	if isDebug {
 		fmt.Println("Running phased evaluation...")

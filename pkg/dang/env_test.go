@@ -168,19 +168,19 @@ func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
 }
 
 func TestBuildScopesFromImportsTracksImportedTypeOrigins(t *testing.T) {
-	typeEnv, _ := BuildScopesFromImports("", []ImportConfig{{
+	typeScope, _ := BuildScopesFromImports("", []ImportConfig{{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
 	}})
 
-	importedContainer, found := typeEnv.NamedType("Container")
+	importedContainer, found := typeScope.NamedType("Container")
 	require.True(t, found)
 
-	localContainer, err := declareLocalType(typeEnv, "Container", ObjectKind)
+	localContainer, err := declareLocalType(typeScope, "Container", ObjectKind)
 	require.NoError(t, err)
 	require.NotSame(t, importedContainer, localContainer)
 
-	daggerType, found := typeEnv.NamedType("Dagger")
+	daggerType, found := typeScope.NamedType("Dagger")
 	require.True(t, found)
 	qualifiedContainer, found := daggerType.NamedType("Container")
 	require.True(t, found)
@@ -188,21 +188,21 @@ func TestBuildScopesFromImportsTracksImportedTypeOrigins(t *testing.T) {
 }
 
 func TestBuildScopesFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
-	typeEnv, valueScope := BuildScopesFromImports("", []ImportConfig{{
+	typeScope, valueScope := BuildScopesFromImports("", []ImportConfig{{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
 	}})
 
 	publicTypeBindings := map[string]bool{}
-	for name := range typeEnv.Bindings(PublicVisibility) {
+	for name := range typeScope.Bindings(PublicVisibility) {
 		publicTypeBindings[name] = true
 	}
 	require.NotContains(t, publicTypeBindings, "Dagger")
 	require.NotContains(t, publicTypeBindings, "container")
 
-	_, found := typeEnv.SchemeOf("Dagger")
+	_, found := typeScope.SchemeOf("Dagger")
 	require.True(t, found)
-	_, found = typeEnv.SchemeOf("container")
+	_, found = typeScope.SchemeOf("container")
 	require.True(t, found)
 
 	publicEvalBindings := map[string]bool{}
@@ -219,21 +219,21 @@ func TestBuildScopesFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
 }
 
 func TestDeclareLocalTypeRejectsQualifiedImportAlias(t *testing.T) {
-	typeEnv, _ := BuildScopesFromImports("", []ImportConfig{{
+	typeScope, _ := BuildScopesFromImports("", []ImportConfig{{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
 	}})
 
-	importAlias, found := typeEnv.NamedType("Dagger")
+	importAlias, found := typeScope.NamedType("Dagger")
 	require.True(t, found)
 	importedContainer, found := importAlias.NamedType("Container")
 	require.True(t, found)
 
-	localDagger, err := declareLocalType(typeEnv, "Dagger", ObjectKind)
+	localDagger, err := declareLocalType(typeScope, "Dagger", ObjectKind)
 	require.ErrorContains(t, err, `type "Dagger" conflicts with import alias`)
 	require.Nil(t, localDagger)
 
-	aliasAfter, found := typeEnv.NamedType("Dagger")
+	aliasAfter, found := typeScope.NamedType("Dagger")
 	require.True(t, found)
 	require.Same(t, importAlias, aliasAfter)
 	qualifiedContainer, found := aliasAfter.NamedType("Container")

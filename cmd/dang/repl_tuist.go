@@ -163,7 +163,7 @@ type replComponent struct {
 	// Dang state
 	importConfigs []dang.ImportConfig
 	debug         bool
-	typeEnv       dang.TypeScope
+	typeScope       dang.TypeScope
 	valueScope       dang.ValueScope
 	ctx           context.Context
 
@@ -199,7 +199,7 @@ type replComponent struct {
 }
 
 func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
-	typeEnv, valueScope := dang.BuildScopesFromImports("", importConfigs)
+	typeScope, valueScope := dang.BuildScopesFromImports("", importConfigs)
 
 	ti := tuist.NewTextInput(promptStyle.Render("dang> "))
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
@@ -207,7 +207,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	r := &replComponent{
 		importConfigs:  importConfigs,
 		debug:          debug,
-		typeEnv:        typeEnv,
+		typeScope:        typeScope,
 		valueScope:        valueScope,
 		ctx:            ctx,
 		textInput:      ti,
@@ -424,7 +424,7 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	}
 
 	fresh := hm.NewSimpleFresher()
-	_, err = dang.InferFormsWithPhases(r.ctx, forms, r.typeEnv, fresh)
+	_, err = dang.InferFormsWithPhases(r.ctx, forms, r.typeScope, fresh)
 	if err != nil {
 		ev.entry.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		ev.Update()
@@ -517,7 +517,7 @@ func (r *replComponent) finishEval(ctx tuist.Context, ev *entryView, logs, resul
 // ── doc browser ─────────────────────────────────────────────────────────────
 
 func (r *replComponent) showDocBrowser(ctx tuist.Context) {
-	db := repl.NewDocBrowserOverlay(r.typeEnv)
+	db := repl.NewDocBrowserOverlay(r.typeScope)
 	db.OnExit = func() {
 		if r.docBrowser != nil {
 			r.entryContainer.RemoveChild(r.docBrowser)

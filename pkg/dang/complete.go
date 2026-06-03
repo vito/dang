@@ -47,8 +47,8 @@ func isIdentByte(c byte) bool {
 
 // completeMember tries to parse and type-check the receiver expression, then
 // returns completions for its members filtered by the partial name.
-func completeMember(ctx context.Context, typeEnv TypeScope, receiverText, partial string) []Completion {
-	receiverType := InferReceiverType(ctx, typeEnv, receiverText)
+func completeMember(ctx context.Context, typeScope TypeScope, receiverText, partial string) []Completion {
+	receiverType := InferReceiverType(ctx, typeScope, receiverText)
 	if receiverType == nil {
 		return nil
 	}
@@ -59,8 +59,8 @@ func completeMember(ctx context.Context, typeEnv TypeScope, receiverText, partia
 // completeArgs returns completions for function arguments given the function
 // expression text, the partial argument name being typed, and the set of
 // argument names already provided in the call.
-func completeArgs(ctx context.Context, typeEnv TypeScope, funcExpr, partial string, alreadyProvided []string) []Completion {
-	t := InferReceiverType(ctx, typeEnv, funcExpr)
+func completeArgs(ctx context.Context, typeScope TypeScope, funcExpr, partial string, alreadyProvided []string) []Completion {
+	t := InferReceiverType(ctx, typeScope, funcExpr)
 	if t == nil {
 		return nil
 	}
@@ -135,7 +135,7 @@ func ArgsOf(t hm.Type, partial string, alreadyProvided []string) []Completion {
 
 // InferReceiverType parses and type-checks a receiver expression, returning
 // its inferred type. Returns nil if parsing or inference fails.
-func InferReceiverType(ctx context.Context, typeEnv TypeScope, expr string) hm.Type {
+func InferReceiverType(ctx context.Context, typeScope TypeScope, expr string) hm.Type {
 	parsed, err := Parse("completion", []byte(expr))
 	if err != nil {
 		return nil
@@ -148,7 +148,7 @@ func InferReceiverType(ctx context.Context, typeEnv TypeScope, expr string) hm.T
 
 	// Type-check the expression in a cloned env to avoid mutating the original
 	fresh := hm.NewSimpleFresher()
-	_, err = InferFormsWithPhases(ctx, block.Forms, typeEnv.Clone(), fresh)
+	_, err = InferFormsWithPhases(ctx, block.Forms, typeScope.Clone(), fresh)
 	if err != nil {
 		return nil
 	}
@@ -229,7 +229,7 @@ func builtinModuleFor(t hm.Type) *Type {
 // completeLexical returns completions from the type environment matching a prefix.
 // It filters out type definitions (scalars, enums, etc.) and ID types, which
 // are not useful as standalone expressions.
-func completeLexical(typeEnv TypeScope, prefix string) []Completion {
+func completeLexical(typeScope TypeScope, prefix string) []Completion {
 	if prefix == "" {
 		return nil
 	}
@@ -237,7 +237,7 @@ func completeLexical(typeEnv TypeScope, prefix string) []Completion {
 	prefixLower := strings.ToLower(prefix)
 	var completions []Completion
 
-	for name, scheme := range typeEnv.Bindings(PublicVisibility) {
+	for name, scheme := range typeScope.Bindings(PublicVisibility) {
 		if !strings.HasPrefix(strings.ToLower(name), prefixLower) {
 			continue
 		}
@@ -249,7 +249,7 @@ func completeLexical(typeEnv TypeScope, prefix string) []Completion {
 		_, isFn := memberType.(*hm.FunctionType)
 
 		var doc string
-		if d, found := typeEnv.GetDocString(name); found {
+		if d, found := typeScope.GetDocString(name); found {
 			doc = d
 		}
 

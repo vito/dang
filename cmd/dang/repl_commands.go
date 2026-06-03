@@ -91,7 +91,7 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			name: "reset",
 			desc: "Reset the environment",
 			handler: func(_ tuist.Context, r *replComponent, e *replEntry, _ []string) {
-				r.typeEnv, r.valueScope = dang.BuildScopesFromImports("", r.importConfigs)
+				r.typeScope, r.valueScope = dang.BuildScopesFromImports("", r.importConfigs)
 				r.refreshCompletions()
 				e.writeLogLine(resultStyle.Render("Environment reset."))
 			},
@@ -193,7 +193,7 @@ func (r *replComponent) envCommand(e *replEntry, args []string) {
 	e.writeLogLine("Current environment bindings:")
 	e.writeLogLine("")
 	count := 0
-	for name, scheme := range r.typeEnv.Bindings(dang.PublicVisibility) {
+	for name, scheme := range r.typeScope.Bindings(dang.PublicVisibility) {
 		if filter != "" && !strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
 			continue
 		}
@@ -229,7 +229,7 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 		e.writeLogLine(errorStyle.Render("unexpected parse result"))
 		return
 	}
-	inferredType, err := dang.Infer(r.ctx, r.typeEnv, node, false)
+	inferredType, err := dang.Infer(r.ctx, r.typeScope, node, false)
 	if err != nil {
 		e.writeLogLine(errorStyle.Render(fmt.Sprintf("type error: %v", err)))
 		return
@@ -238,7 +238,7 @@ func (r *replComponent) typeCommand(e *replEntry, args []string) {
 	e.writeLogLine(resultStyle.Render(fmt.Sprintf("Type: %s", inferredType)))
 	trimmed := strings.TrimSpace(expr)
 	if !strings.Contains(trimmed, " ") {
-		if scheme, found := r.typeEnv.SchemeOf(trimmed); found {
+		if scheme, found := r.typeScope.SchemeOf(trimmed); found {
 			if t, _ := scheme.Type(); t != nil {
 				e.writeLogLine(dimStyle.Render(fmt.Sprintf("Scheme: %s", scheme)))
 			}
@@ -254,7 +254,7 @@ func (r *replComponent) findCommand(e *replEntry, args []string) {
 	pattern := strings.ToLower(args[0])
 	e.writeLogLine(fmt.Sprintf("Searching for '%s'...", pattern))
 	found := false
-	for name, scheme := range r.typeEnv.Bindings(dang.PublicVisibility) {
+	for name, scheme := range r.typeScope.Bindings(dang.PublicVisibility) {
 		if strings.Contains(strings.ToLower(name), pattern) {
 			t, _ := scheme.Type()
 			if t != nil {
@@ -265,7 +265,7 @@ func (r *replComponent) findCommand(e *replEntry, args []string) {
 			found = true
 		}
 	}
-	for name, env := range r.typeEnv.NamedTypes() {
+	for name, env := range r.typeScope.NamedTypes() {
 		if strings.Contains(strings.ToLower(name), pattern) {
 			doc := env.GetTypeDocString()
 			if doc != "" {
