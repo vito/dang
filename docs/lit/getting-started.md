@@ -6,7 +6,7 @@
 
 ## Install
 
-- `go install ./cmd/dang` (or whatever the eventual release channel is)
+- `go install github.com/vito/dang/cmd/dang@latest` (or `go install ./cmd/dang` from a checkout)
 - editor support: VS Code, Zed, Neovim (see `editors/`)
 
 ## Hello, world
@@ -30,6 +30,11 @@ Dang is designed for GraphQL APIs. To configure them, add a `dang.toml`:
 endpoint = "https://api.github.com/graphql"
 authorization = "Bearer ${GITHUB_TOKEN}"
 ```
+
+`dang.toml` is discovered by walking up from the working directory (stopping at
+a `.git` boundary). The `endpoint`, `authorization`, and `headers` values
+support `${VAR}` environment expansion; `$(...)` command substitution is not
+supported. See [#cli] for the full key list and [#graphql] for interop details.
 
 This file should be committed to your repo, so be careful not to include
 credentials. Above we reference a `${GITHUB_TOKEN}` environment variable, which
@@ -87,5 +92,7 @@ type Greeter {
 
 ## Where next
 
-- [Language overview](./language/overview.md) for the mental model
-- [GraphQL interop](./language/graphql.md) once you want to do real work
+- [#overview] for the mental model
+- [#graphql] once you want to do real work
+- [#objects] for `type` declarations and methods (like the Dagger module above)
+- [#modules] for splitting a program across files / directory modules

@@ -11,12 +11,19 @@
 
 ## Top-level structure
 
+> The start rule is `Dang`, not `Module`. `Import` and `Reassignment` are siblings of `Decl`/`Form`, not members of `Decl`.
+
 ```
-Module    := (Decl | Form)*
-Decl      := ImportDecl | InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
-           | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl
-Form      := Return | TryCatch | Raise | Conditional | ForLoop
-           | Case | Break | Continue | DefaultExpr | TypeHint | Term
+Dang         := (Expr Sep)* Expr?         # Sep = newline or comma
+Expr         := Import | Decl | Reassignment | Form
+Import       := 'import' Symbol
+Reassignment := Term AssignOp Form
+Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
+                           | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
+Form         := Return | TryCatch | Raise | Conditional | ForLoop
+              | Case | Break | Continue | DefaultExpr | TypeHint | Term
+Term         := UnaryExpr | IndexOrCall | SelectOrCall | Literal | List
+              | ObjectLiteral | Block | ParenForm | SymbolOrCall
 ```
 
 ## Separators
@@ -26,32 +33,40 @@ Form      := Return | TryCatch | Raise | Conditional | ForLoop
 
 ## Expression form (precedence)
 
-> Meta: keep this in sync with [operators](../language/operators.md) precedence table — duplicating it isn't ideal but it's the kind of thing readers expect on a grammar page.
+> Meta: keep this in sync with [#operators] precedence table — duplicating it isn't ideal but it's the kind of thing readers expect on a grammar page.
 
 ## Type syntax
 
+> `Type` dispatches to one of these; non-null is a suffix `!` wrapping any inner type. See [#types].
+
 ```
-Type      := NamedType ('!')?
-NamedType := (Type '.')? UpperIdent
-           | '[' Type ']'
-           | TypeVar
-TypeVar   := [a-z]   # single lowercase letter
+Type         := NonNull | NamedType | ListType | ObjectType | TypeVariable
+NonNull      := Type '!'
+NamedType    := (NamedType '.')? UpperIdent     # qualifier is itself a NamedType
+ListType     := '[' Type ']'
+ObjectType   := '{{' (ObjectTypeField Sep)* ObjectTypeField? '}}'
+TypeVariable := [a-z]                           # single lowercase letter
 ```
 
 ## Lexical
 
 - identifiers: `[a-zA-Z_][a-zA-Z0-9_]*` (lowercase-leading = value, uppercase-leading = type)
 - comments: `#` to end of line
-- strings: `"..."`, `"""..."""`, `` `...` ``, ` ```...``` `
-- numbers: standard decimal, scientific notation for floats
+- strings:
+  - `"..."` (with escapes), `"""..."""` triple-quoted (docstrings reuse this)
+  - `` `...` `` backtick templates with `${expr}` interpolation; `\${` escapes a literal `${`. Longer backtick fences (` ``` `) nest. See [#strings].
+  - `%word{...}` quoted/raw form
+- numbers: `Int` decimal; `Float` requires a fraction (`1.0`) or exponent (scientific notation)
 
 ## Reserved words
 
-- see [syntax](../language/syntax.md#reserved-words)
+- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `catch`, `continue`, `directive`, `else`, `enum`, `false`, `for`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `return`, `scalar`, `self`, `true`, `try`, `type`, `union`
+- see [#syntax]
 
 ## Notable productions
 
-- `SelectOrCall`: `term '.' (selection | identifier args? block?)` — auto-call when zero-arg
-- `BlockArg`: trailing `{ params => body }` attached to a call
-- `ObjectSelection`: `term '.' '{' fieldList '}'` — multi-field GraphQL selection
-- `InlineFragment`: `'...' 'on' Type ('{' fieldList '}')?`
+- `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — the field path; zero-arg fields auto-call. See [#fields].
+- `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block attached to a call; params are optional. See [#blocks].
+- `ObjectSelection`: `'{' ... '}'` after a `.` — two forms: a `FieldSelection` list (`user.{name, posts.{title}}`), or a list of `InlineFragment`s for unions/interfaces. See [#objects].
+- `FieldSelection`: `Id ArgValues? ('.' ObjectSelection)?` — a field in a selection, optionally with args and a nested selection.
+- `InlineFragment`: `'...' 'on' Symbol ('{' FieldSelection* '}' | '!'?)` — type-narrowing in a selection. See [#interfaces-unions].
