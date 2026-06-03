@@ -1,4 +1,4 @@
-# Test class constructors with various parameter configurations
+# Test object constructors with various parameter configurations
 
 # Basic constructor with no parameters
 type Empty {

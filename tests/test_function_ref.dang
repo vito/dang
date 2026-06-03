@@ -11,7 +11,7 @@ assert { currentGetter == 1 }
 dynamicValue += 1
 assert { currentGetter == 2 }
 
-# Function references can be assigned to existing function-valued slots.
+# Function references can be assigned to existing function-valued fields.
 let storedGetter: Int! { 0 }
 storedGetter = &currentValue
 assert { storedGetter == 2 }

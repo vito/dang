@@ -129,7 +129,7 @@ func diagnoseAssignment(have, want hm.Type) error {
 // reaches a Type-vs-Type (or Type-vs-Union) pair, returns the
 // field-level incompatibilities that prevent assignment. ok is true when
 // the walk reached such a Type pair (regardless of whether issues were
-// found); have and want are the unwrapped Modules in that case.
+// found); have and want are the unwrapped Types in that case.
 func walkAssignment(have, want hm.Type) (haveMod, wantMod *Type, issues []string, ok bool) {
 	if haveNN, haveOk := have.(hm.NonNullType); haveOk {
 		if wantNN, wantOk := want.(hm.NonNullType); wantOk {

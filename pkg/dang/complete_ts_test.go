@@ -13,7 +13,7 @@ import (
 func testCompletionEnv() TypeScope {
 	registerBuiltinTypes()
 
-	env := NewPreludeEnv("")
+	env := NewPreludeTypeScope("")
 
 	// Add a "container" module with from and withExec methods.
 	containerMod := NewType("Container", ObjectKind)

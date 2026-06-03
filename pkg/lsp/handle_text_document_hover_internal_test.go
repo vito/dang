@@ -49,7 +49,7 @@ interface Thing {
 			}
 
 			mod := parsed.(*dang.ModuleBlock)
-			if _, err := mod.Infer(context.Background(), dang.NewPreludeEnv(""), hm.NewSimpleFresher()); err != nil {
+			if _, err := mod.Infer(context.Background(), dang.NewPreludeTypeScope(""), hm.NewSimpleFresher()); err != nil {
 				t.Fatalf("infer: %v", err)
 			}
 			codeBlock, docString := formatTypeDefinitionForHover(nil, mod.Forms[0], strings.Fields(tt.want)[1])
@@ -104,7 +104,7 @@ func TestFormatPublicTypeShape(t *testing.T) {
 	}
 }
 
-func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
+func TestFormatNamedTypeForHoverUsesTypeScope(t *testing.T) {
 	iface := dang.NewType("Thing", dang.InterfaceKind)
 	iface.SetTypeDocString("Loaded from GraphQL.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
@@ -113,9 +113,9 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 	)))
 	iface.SetVisibility("id", dang.PublicVisibility)
 
-	env := dang.NewPreludeEnv("")
+	env := dang.NewPreludeTypeScope("")
 	env.AddObject("Thing", iface)
-	f := &File{TypeEnv: env}
+	f := &File{TypeScope: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, Position{}, "Thing")
 	if !strings.Contains(codeBlock, "interface Thing {") || !strings.Contains(codeBlock, "pub id: String!") {
@@ -139,16 +139,16 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	local.Add("localOnly", hm.NewScheme(nil, hm.NonNullType{Type: dang.IntType}))
 	local.SetVisibility("localOnly", dang.PublicVisibility)
 
-	schemaEnv := dang.NewPreludeEnv("Test")
+	schemaEnv := dang.NewPreludeTypeScope("Test")
 	schemaEnv.AddObject("ServerInfo", imported)
 
-	env := dang.NewPreludeEnv("")
+	env := dang.NewPreludeTypeScope("")
 	env.AddObject("Test", schemaEnv)
 	env.AddObject("ServerInfo", local)
 
 	text := "let info: Test.ServerInfo! = null"
 	pos := Position{Line: 0, Character: strings.Index(text, "ServerInfo")}
-	f := &File{Text: text, TypeEnv: env}
+	f := &File{Text: text, TypeScope: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, pos, "ServerInfo")
 	if !strings.Contains(codeBlock, "pub version: String!") {

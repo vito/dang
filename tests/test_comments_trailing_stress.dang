@@ -152,7 +152,7 @@ let counter = 0 # trailing on counter init
 counter = counter + 1 # trailing on reassignment
 counter += 1 # trailing on compound reassignment
 
-# self keyword in class
+# self keyword in object
 type Counter { # trailing on Counter type
   pub value: Int! # trailing on Counter field
 

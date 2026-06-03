@@ -1,0 +1,4 @@
+# new() is only valid inside object bodies
+new(x: Int!) {
+  print(value: x)
+}

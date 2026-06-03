@@ -1,4 +1,4 @@
-# Test that class slots have precedence over outer scope
+# Test that object fields have precedence over outer scope
 
 pub shadowed = "outer"
 
@@ -21,4 +21,4 @@ let modified = original.bump
 assert("original should be unchanged") { original.shadowed == 42 }
 assert("modified should be updated") { modified.shadowed == 45 }
 
-print("Class shadowed inference test completed!")
+print("Object shadowed inference test completed!")

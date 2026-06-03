@@ -15,7 +15,7 @@ import (
 // NewCompletionProvider returns a tuist.CompletionProvider that uses
 // tree-sitter-based type-aware completions, falling back to static
 // keyword/name completions.
-func NewCompletionProvider(ctx context.Context, typeEnv dang.TypeScope, staticCompletions []string) tuist.CompletionProvider {
+func NewCompletionProvider(ctx context.Context, typeScope dang.TypeScope, staticCompletions []string) tuist.CompletionProvider {
 	return func(input string, cursorPos int) tuist.CompletionResult {
 		if input == "" {
 			return tuist.CompletionResult{}
@@ -23,7 +23,7 @@ func NewCompletionProvider(ctx context.Context, typeEnv dang.TypeScope, staticCo
 
 		line, col := byteOffsetToLineCol(input, cursorPos)
 
-		result := dang.Complete(ctx, typeEnv, input, line, col)
+		result := dang.Complete(ctx, typeScope, input, line, col)
 		if len(result.Items) > 0 {
 			return dangCompletionResult(result)
 		}
@@ -35,11 +35,11 @@ func NewCompletionProvider(ctx context.Context, typeEnv dang.TypeScope, staticCo
 // NewDetailRenderer returns a tuist.DetailRenderer that resolves rich
 // documentation from the type environment. getInput returns the current
 // editor contents, used to infer receiver types for member completions.
-func NewDetailRenderer(ctx context.Context, typeEnv dang.TypeScope, getInput func() string) tuist.DetailRenderer {
+func NewDetailRenderer(ctx context.Context, typeScope dang.TypeScope, getInput func() string) tuist.DetailRenderer {
 	return func(c tuist.Completion, width int) []string {
-		item, found := DocItemFromEnv(typeEnv, c.Label)
+		item, found := DocItemFromEnv(typeScope, c.Label)
 		if !found {
-			item, found = resolveCompletionDocItem(ctx, typeEnv, getInput(), c)
+			item, found = resolveCompletionDocItem(ctx, typeScope, getInput(), c)
 		}
 		if !found {
 			if c.Detail == "" && c.Documentation == "" {
@@ -57,7 +57,7 @@ func NewDetailRenderer(ctx context.Context, typeEnv dang.TypeScope, getInput fun
 
 // BuildStaticCompletions builds a sorted list of completion strings from
 // a type environment, including keywords.
-func BuildStaticCompletions(typeEnv dang.TypeScope) []string {
+func BuildStaticCompletions(typeScope dang.TypeScope) []string {
 	seen := map[string]bool{}
 	var completions []string
 
@@ -77,7 +77,7 @@ func BuildStaticCompletions(typeEnv dang.TypeScope) []string {
 		add(kw)
 	}
 
-	for name, scheme := range typeEnv.Bindings(dang.PublicVisibility) {
+	for name, scheme := range typeScope.Bindings(dang.PublicVisibility) {
 		if dang.IsTypeDefBinding(scheme) || dang.IsIDTypeName(name) {
 			continue
 		}
@@ -256,14 +256,14 @@ func (k ItemKind) Color() string {
 
 // DocItem is a single entry in the doc browser or completion detail.
 type DocItem struct {
-	Name      string
-	Kind      ItemKind
-	TypeStr   string
-	Doc       string
-	Args      []DocArg
-	BlockArgs []DocArg
-	BlockRet  string
-	RetEnv    dang.TypeScope
+	Name         string
+	Kind         ItemKind
+	TypeStr      string
+	Doc          string
+	Args         []DocArg
+	BlockArgs    []DocArg
+	BlockRet     string
+	RetTypeScope dang.TypeScope
 }
 
 // DocArg represents an argument to a function.
@@ -378,7 +378,7 @@ func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
 	return DocItem{}, false
 }
 
-func resolveCompletionDocItem(ctx context.Context, typeEnv dang.TypeScope, input string, c tuist.Completion) (DocItem, bool) {
+func resolveCompletionDocItem(ctx context.Context, typeScope dang.TypeScope, input string, c tuist.Completion) (DocItem, bool) {
 	dotIdx := -1
 	for i := len(input) - 1; i >= 0; i-- {
 		if input[i] == '.' {
@@ -390,7 +390,7 @@ func resolveCompletionDocItem(ctx context.Context, typeEnv dang.TypeScope, input
 		return DocItem{}, false
 	}
 	receiverText := input[:dotIdx]
-	receiverType := dang.InferReceiverType(ctx, typeEnv, receiverText)
+	receiverType := dang.InferReceiverType(ctx, typeScope, receiverText)
 	if receiverType == nil {
 		return DocItem{}, false
 	}

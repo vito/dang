@@ -1,4 +1,4 @@
-# Test error cases for class constructors
+# Test error cases for object constructors
 
 # This file tests various error conditions that should be caught
 # by the type checker or runtime

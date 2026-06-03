@@ -1,6 +1,6 @@
-# Test edge cases for class constructors
+# Test edge cases for object constructors
 
-# Class with no constructor parameters (only functions)
+# Object with no constructor parameters (only functions)
 type FunctionOnly {
   pub getValue: Int! {
     42
@@ -23,7 +23,7 @@ type UsingGlobals {
 
 assert { UsingGlobals.local == "global_local" }
 
-# Class with nested object default values
+# Object with nested object default values
 type NestedDefaults {
   pub person = {{
     name: "John",
@@ -47,7 +47,7 @@ type ListDefaults {
 assert { ListDefaults.numbers == [1, 2, 3] }
 assert { ListDefaults.names == ["a", "b"] }
 
-# Class with constructor parameters that have complex types
+# Object with constructor parameters that have complex types
 type ComplexTypes {
   pub config = {{
     items: ["default"],

@@ -8,7 +8,7 @@ import (
 )
 
 func (r *replComponent) buildCompletionProvider() tuist.CompletionProvider {
-	base := repl.NewCompletionProvider(r.ctx, r.typeEnv, r.completions)
+	base := repl.NewCompletionProvider(r.ctx, r.typeScope, r.completions)
 	return func(input string, cursorPos int) tuist.CompletionResult {
 		if input == "" {
 			return tuist.CompletionResult{}
@@ -42,13 +42,13 @@ func (r *replComponent) commandCompletions(input string) tuist.CompletionResult 
 }
 
 func (r *replComponent) buildDetailRenderer() tuist.DetailRenderer {
-	return repl.NewDetailRenderer(r.ctx, r.typeEnv, func() string {
+	return repl.NewDetailRenderer(r.ctx, r.typeScope, func() string {
 		return r.textInput.Value()
 	})
 }
 
 func (r *replComponent) buildCompletions() []string {
-	completions := repl.BuildStaticCompletions(r.typeEnv)
+	completions := repl.BuildStaticCompletions(r.typeScope)
 	for _, cmd := range r.commands {
 		completions = append(completions, ":"+cmd.name)
 	}

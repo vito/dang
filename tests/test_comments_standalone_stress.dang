@@ -47,13 +47,13 @@ type Dog implements Greeter {
   }
 }
 
-# comment before simple slot
+# comment before simple field
 pub simple = 42
 
 # comment before let
 let local = "hello"
 
-# comment before typed slot
+# comment before typed field
 pub typed: Int! = 100
 
 # comment before function

@@ -146,8 +146,8 @@ func (h *langHandler) hoverResult(f *File, pos Position, symbolName string, code
 	var docString string
 
 	// Try the file's type environment
-	if f.TypeEnv != nil {
-		if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
+	if f.TypeScope != nil {
+		if doc, ok := f.TypeScope.GetDocString(symbolName); ok {
 			docString = doc
 		}
 	}
@@ -320,8 +320,8 @@ func resolveNamedTypeForHover(f *File, pos Position, symbolName string) dang.Typ
 			}
 		}
 	}
-	if f.TypeEnv != nil {
-		if typ, found := f.TypeEnv.NamedType(symbolName); found {
+	if f.TypeScope != nil {
+		if typ, found := f.TypeScope.NamedType(symbolName); found {
 			return typ
 		}
 	}
@@ -341,8 +341,8 @@ func resolveQualifiedNamedTypeForHover(f *File, pos Position, parts []string) da
 			}
 		}
 	}
-	if f.TypeEnv != nil {
-		return resolveQualifiedNamedType(f.TypeEnv, parts)
+	if f.TypeScope != nil {
+		return resolveQualifiedNamedType(f.TypeScope, parts)
 	}
 	return nil
 }
@@ -443,8 +443,8 @@ func docStringForHoverSymbol(f *File, pos Position, symbolName string) string {
 		return ""
 	}
 
-	if f.TypeEnv != nil {
-		if doc, ok := f.TypeEnv.GetDocString(symbolName); ok {
+	if f.TypeScope != nil {
+		if doc, ok := f.TypeScope.GetDocString(symbolName); ok {
 			return doc
 		}
 	}
@@ -504,8 +504,8 @@ func (h *langHandler) hoverDirectiveApplication(ctx context.Context, f *File, ap
 		}
 	}
 	// Also check the file-level type env
-	if decl == nil && f.TypeEnv != nil {
-		if d, ok := f.TypeEnv.GetDirective(app.Name); ok {
+	if decl == nil && f.TypeScope != nil {
+		if d, ok := f.TypeScope.GetDirective(app.Name); ok {
 			decl = d
 		}
 	}

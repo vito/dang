@@ -21,7 +21,7 @@ func TestAssignableRejectsImplicitScalarCoercion(t *testing.T) {
 }
 
 func TestExpectedTypeDirectiveMapsIDArgumentToObject(t *testing.T) {
-	env := NewEnv("Dagger", expectedTypeTestSchema())
+	env := TypeScopeFromSchema("Dagger", expectedTypeTestSchema())
 
 	cacheArgType := requireFunctionArgType(t, env, "useCache", "cache")
 	cacheArgNonNull, ok := cacheArgType.(hm.NonNullType)
@@ -34,7 +34,7 @@ func TestExpectedTypeDirectiveMapsIDArgumentToObject(t *testing.T) {
 }
 
 func TestExpectedTypeDirectiveMapsIDReturnToObject(t *testing.T) {
-	env := NewEnv("Dagger", expectedTypeTestSchema())
+	env := TypeScopeFromSchema("Dagger", expectedTypeTestSchema())
 
 	syncCacheScheme, found := env.SchemeOf("syncCache")
 	require.True(t, found)
@@ -65,7 +65,7 @@ func TestExpectedTypeDirectiveMapsIDReturnToObject(t *testing.T) {
 }
 
 func TestExpectedTypeDirectiveMapsIDListArgumentToPlainList(t *testing.T) {
-	env := NewEnv("Dagger", expectedTypeTestSchema())
+	env := TypeScopeFromSchema("Dagger", expectedTypeTestSchema())
 
 	cachesArgType := requireFunctionArgType(t, env, "useCaches", "caches")
 	cachesArgNonNull, ok := cachesArgType.(hm.NonNullType)

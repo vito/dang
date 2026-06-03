@@ -956,7 +956,7 @@ type schemaModuleCacheKey struct{}
 // cache is consulted by ImportDecl.Infer so every ImportDecl with the same
 // name — whether at file top level, in a sibling file, or nested inside a
 // block — gets the same *Type identity. Without a shared cache, each
-// NewEnv call produces a distinct module and types fail to unify.
+// TypeScopeFromSchema call produces a distinct module and types fail to unify.
 //
 // Callers that want the cache to persist across multiple inference passes
 // (the LSP, for instance, where each keystroke is a fresh pass over the same
@@ -1022,7 +1022,7 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		// in ctx. The context-scoped cache ensures every ImportDecl referring to
 		// the same name — whether at file top level, in a sibling file, or
 		// nested inside a block — gets the same *Type identity. Without it,
-		// each NewEnv produces a distinct module and types fail to unify.
+		// each TypeScopeFromSchema produces a distinct module and types fail to unify.
 		//
 		// Subsequent calls (e.g. LSP reusing cached blocks) reuse the
 		// per-node i.inferred but still install into the current env, since
@@ -1045,13 +1045,13 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				}
 				i.client = config.Client
 				i.schema = config.Schema
-				i.inferred = NewEnv(i.Name.Name, config.Schema)
+				i.inferred = TypeScopeFromSchema(i.Name.Name, config.Schema)
 				cacheImportModule(ctx, i.Name.Name, i.inferred)
 			}
 		}
 
 		if dangEnv, ok := env.(TypeScope); ok {
-			installImportedTypeEnvironment(dangEnv, i.Name.Name, i.inferred)
+			installImportedTypeScope(dangEnv, i.Name.Name, i.inferred)
 		}
 
 		return NonNull(i.inferred), nil
@@ -1064,11 +1064,11 @@ func (i *ImportDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	}
 
 	// Create evaluation environment for the imported schema
-	moduleEnv := NewEvalEnvWithSchema(i.inferred, i.client, i.schema)
+	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
 
-	installImportedEvalEnvironment(env, i.Name.Name, moduleEnv)
+	installImportedValueScope(env, i.Name.Name, importValueScope)
 
-	return moduleEnv, nil
+	return importValueScope, nil
 }
 
 // createSchemaProvider creates a GraphQLClientProvider for the import source

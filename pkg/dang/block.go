@@ -15,7 +15,7 @@ type Block struct {
 	Loc   *SourceLocation
 
 	// Filled in during inference phase for non-inline blocks
-	Env TypeScope
+	TypeScope TypeScope
 }
 
 var _ hm.Expression = (*Block)(nil)
@@ -487,7 +487,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Store the environment, even if inference fails
 		if dangEnv, ok := newEnv.(TypeScope); ok {
-			b.Env = dangEnv
+			b.TypeScope = dangEnv
 		}
 
 		forms := b.Forms
@@ -612,9 +612,9 @@ func (o *ObjectLiteral) Eval(ctx context.Context, env ValueScope) (Value, error)
 		return nil, errors.New("object has no module inferred")
 	}
 	newMod := NewObject(o.Mod)
-	evalEnv := CreateOverlayValueScope(newMod, env)
+	valueScope := CreateOverlayValueScope(newMod, env)
 	for _, field := range o.Fields {
-		_, err := EvalNode(ctx, evalEnv, field)
+		_, err := EvalNode(ctx, valueScope, field)
 		if err != nil {
 			return nil, err
 		}

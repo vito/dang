@@ -8,8 +8,8 @@ interface Timestamped {
   pub createdAt: String!
 }
 
-# A child interface extending one parent. Subclass field shape mirrors
-# the parent's slot-as-zero-arg-function representation, so the
+# A child interface extending one parent. Subtype field shape mirrors
+# the parent's field-as-zero-arg-function representation, so the
 # extension validates field-by-field.
 interface User implements Named {
   pub name: String!
@@ -35,7 +35,7 @@ let account = Account
 assert { account.name == "Alice" }
 assert { account.email == "alice@example.com" }
 
-# A value of the child interface type should flow into a slot typed by
+# A value of the child interface type should flow into a field typed by
 # the parent interface, because the child declares it implements the
 # parent and the type system tracks that in the supertype lattice.
 type UserHolder {

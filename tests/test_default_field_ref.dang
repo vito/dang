@@ -1,5 +1,5 @@
-# Test that default value expressions in class methods can reference
-# fields of the same class, and that regular functions can reference
+# Test that default value expressions in object methods can reference
+# fields of the same object, and that regular functions can reference
 # outer-scope bindings.
 
 # --- Regular functions referencing outer scope ---
@@ -13,7 +13,7 @@ pub withPrefix(tag: String! = prefix + ":latest"): String! {
 assert("fn: default refs outer scope") { withPrefix == "img:latest" }
 assert("fn: explicit arg") { withPrefix("custom") == "custom" }
 
-# --- Class methods referencing typed fields ---
+# --- Object methods referencing typed fields ---
 
 type Builder {
   pub defaultVersion: String! = "20.18.1"
@@ -26,7 +26,7 @@ type Builder {
 assert("method: default refs field") { Builder.container == "node:20.18.1" }
 assert("method: explicit arg") { Builder.container("22.0.0") == "node:22.0.0" }
 
-# --- Class methods referencing untyped constant fields ---
+# --- Object methods referencing untyped constant fields ---
 
 type Defaults {
   pub strVal = "hello"

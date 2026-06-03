@@ -1,6 +1,6 @@
 # Local type declarations shadow unqualified imported types before constant
 # annotations are resolved. The Test schema also exports User; this nullable
-# slot must use the local User declared below, not Test.User.
+# field must use the local User declared below, not Test.User.
 
 import Test
 

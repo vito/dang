@@ -1,6 +1,6 @@
-# Test simple edge cases for class constructors
+# Test simple edge cases for object constructors
 
-# Class with no constructor parameters (only functions)
+# Object with no constructor parameters (only functions)
 type FunctionOnly {
   pub getValue: Int! {
     42

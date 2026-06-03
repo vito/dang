@@ -66,7 +66,7 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 	}
 }
 
-func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
+func TestConcurrentNewValueScopeDoesNotMutateStaticModuleOrigins(t *testing.T) {
 	savedBuiltins := builtins
 	builtins = newBuiltinRegistry()
 	t.Cleanup(func() {
@@ -93,7 +93,7 @@ func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
 			go func() {
 				<-start
 
-				env := NewEvalEnv(NewPreludeEnv("test"))
+				env := NewValueScope(NewPreludeTypeScope("test"))
 				hostVal, found, err := env.Lookup(context.Background(), "TestStatic")
 				if err != nil {
 					misses <- err.Error()
@@ -121,12 +121,12 @@ func TestConcurrentNewEvalEnvDoesNotMutateStaticModuleOrigins(t *testing.T) {
 		close(misses)
 
 		if len(misses) > 0 {
-			t.Fatalf("missing static module runtime values during concurrent NewEvalEnv: %d", len(misses))
+			t.Fatalf("missing static module runtime values during concurrent NewValueScope: %d", len(misses))
 		}
 	})
 
 	if _, found := host.LocalValueOrigin("value"); found {
-		t.Fatalf("concurrent NewEvalEnv mutated static module value origins")
+		t.Fatalf("concurrent NewValueScope mutated static module value origins")
 	}
 }
 

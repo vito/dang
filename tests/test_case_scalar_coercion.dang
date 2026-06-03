@@ -1,7 +1,7 @@
 import Test
 
 # String literals in case clauses coerce to the operand's scalar type, the
-# same way they do at slot/return/arg boundaries. Without coercion, this
+# same way they do at field/return/arg boundaries. Without coercion, this
 # would fail with a String! != URL! mismatch.
 pub urlClass = case (homepage) {
   "https://dang-lang.dev" => "official"

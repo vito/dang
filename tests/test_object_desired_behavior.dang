@@ -1,4 +1,4 @@
-# Test the desired class method behavior without self prefix
+# Test the desired object method behavior without self prefix
 
 type Foo {
   pub a: Int!

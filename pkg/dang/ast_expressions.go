@@ -749,7 +749,7 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			isNullable = true
 			d.NullableReceiver = true
 		} else {
-			return nil, fmt.Errorf("Select.Infer: expected NonNullType or Env, got %T", lt)
+			return nil, fmt.Errorf("Select.Infer: expected NonNullType or TypeScope, got %T", lt)
 		}
 
 		scheme, found := rec.SchemeOf(d.Field.Name)
@@ -1376,14 +1376,14 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 		// Non-null receiver
 		envType, ok := nn.Type.(TypeScope)
 		if !ok {
-			return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected Env, got %T", nn.Type)
+			return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected TypeScope, got %T", nn.Type)
 		}
 		rec = envType
 	} else if envType, ok := receiverType.(TypeScope); ok {
 		// Nullable receiver - we can still infer the selection type from the underlying type
 		rec = envType
 	} else {
-		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or Env, got %T", receiverType)
+		return nil, fmt.Errorf("ObjectSelection.inferSelectionType: expected NonNullType or TypeScope, got %T", receiverType)
 	}
 
 	mod := NewType("", ObjectKind)
@@ -1535,7 +1535,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 	// Find the matching fragment based on the concrete type name
 	mod, ok := modVal.Mod.(*Type)
 	if !ok {
-		return nil, fmt.Errorf("inline fragment selection: expected Module, got %T", modVal.Mod)
+		return nil, fmt.Errorf("inline fragment selection: expected Type, got %T", modVal.Mod)
 	}
 
 	for _, frag := range o.InlineFragments {
@@ -1545,7 +1545,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 				return val, nil
 			}
 			// Build a result with the selected fields, preserving the concrete type
-			resultModuleValue := NewObject(frag.Inferred)
+			resultObject := NewObject(frag.Inferred)
 			for _, field := range frag.Fields {
 				fieldVal, exists, err := modVal.Lookup(ctx, field.Name)
 				if err != nil {
@@ -1554,9 +1554,9 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 				if !exists {
 					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod)
 				}
-				resultModuleValue.Bind(field.Name, fieldVal, PublicVisibility)
+				resultObject.Bind(field.Name, fieldVal, PublicVisibility)
 			}
-			return resultModuleValue, nil
+			return resultObject, nil
 		}
 	}
 
@@ -1622,8 +1622,8 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 		return nil, fmt.Errorf("GraphQL inline fragments: executing query: %w", err)
 	}
 
-	// Convert results to properly-typed ModuleValues
-	return o.convertInlineFragmentResult(result, gqlVal.Schema, gqlVal.TypeEnv)
+	// Convert results to properly-typed Objects
+	return o.convertInlineFragmentResult(result, gqlVal.Schema, gqlVal.TypeScope)
 }
 
 // evalGraphQLLazyInlineFragments handles inline fragments with no field sub-selections.
@@ -1710,7 +1710,7 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 				ValType:    frag.Inferred,
 				Client:     gqlVal.Client,
 				Schema:     gqlVal.Schema,
-				TypeEnv:    gqlVal.TypeEnv,
+				TypeScope:  gqlVal.TypeScope,
 				QueryChain: query.InlineFragment(typeName),
 				IsMutation: gqlVal.IsMutation,
 			}, nil
@@ -1737,13 +1737,13 @@ func (o *ObjectSelection) inlineFragmentTypeNames() string {
 	return strings.Join(names, ", ")
 }
 
-// convertInlineFragmentResult converts a GraphQL response with __typename into typed ModuleValues.
-func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *introspection.Schema, typeEnv TypeScope) (Value, error) {
+// convertInlineFragmentResult converts a GraphQL response with __typename into typed Objects.
+func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *introspection.Schema, typeScope TypeScope) (Value, error) {
 	// Handle list results
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
 		for _, item := range resultSlice {
-			elem, err := o.convertInlineFragmentResult(item, schema, typeEnv)
+			elem, err := o.convertInlineFragmentResult(item, schema, typeScope)
 			if err != nil {
 				return nil, err
 			}
@@ -1770,21 +1770,21 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 	for _, frag := range o.InlineFragments {
 		if frag.TypeName.Name == typeName {
 			// Look up the concrete type module
-			concreteType, found := typeEnv.NamedType(typeName)
+			concreteType, found := typeScope.NamedType(typeName)
 			if !found {
 				return nil, fmt.Errorf("type %s not found in type environment", typeName)
 			}
 
-			resultModuleValue := NewObject(concreteType)
+			resultObject := NewObject(concreteType)
 			for _, field := range frag.Fields {
 				if fieldValue, exists := resultMap[field.Name]; exists {
 					// Handle nested selections recursively
 					if field.Selection != nil {
-						nestedVal, err := o.convertNestedSelectionResult(fieldValue, field.Selection, schema, typeName, field.Name, typeEnv)
+						nestedVal, err := o.convertNestedSelectionResult(fieldValue, field.Selection, schema, typeName, field.Name, typeScope)
 						if err != nil {
 							return nil, fmt.Errorf("converting nested field %s: %w", field.Name, err)
 						}
-						resultModuleValue.Bind(field.Name, nestedVal, PublicVisibility)
+						resultObject.Bind(field.Name, nestedVal, PublicVisibility)
 						continue
 					}
 
@@ -1796,9 +1796,9 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 								fieldType := schema.Types.Get(o.unwrapType(schemaField.TypeRef).Name)
 								if fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
 									if strVal, ok := fieldValue.(string); ok {
-										enumType, found := typeEnv.NamedType(fieldType.Name)
+										enumType, found := typeScope.NamedType(fieldType.Name)
 										if found {
-											resultModuleValue.Bind(field.Name, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
+											resultObject.Bind(field.Name, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
 											continue
 										}
 									}
@@ -1812,11 +1812,11 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 					if err != nil {
 						return nil, fmt.Errorf("converting field %s: %w", field.Name, err)
 					}
-					resultModuleValue.Bind(field.Name, dangVal, PublicVisibility)
+					resultObject.Bind(field.Name, dangVal, PublicVisibility)
 				}
 			}
 
-			return resultModuleValue, nil
+			return resultObject, nil
 		}
 	}
 
@@ -1825,7 +1825,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 
 // convertNestedSelectionResult converts a nested JSON value using the
 // inferred type from a nested ObjectSelection inside an inline fragment.
-func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSelection, schema *introspection.Schema, parentTypeName string, fieldName string, typeEnv TypeScope) (Value, error) {
+func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSelection, schema *introspection.Schema, parentTypeName string, fieldName string, typeScope TypeScope) (Value, error) {
 	if value == nil {
 		return NullValue{}, nil
 	}
@@ -1840,7 +1840,7 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 	for _, f := range sel.Fields {
 		if fv, exists := resultMap[f.Name]; exists {
 			if f.Selection != nil {
-				nested, err := o.convertNestedSelectionResult(fv, f.Selection, schema, "", f.Name, typeEnv)
+				nested, err := o.convertNestedSelectionResult(fv, f.Selection, schema, "", f.Name, typeScope)
 				if err != nil {
 					return nil, err
 				}
@@ -1876,7 +1876,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Contex
 		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
 	}
 
-	resultModuleValue := NewObject(o.Inferred)
+	resultObject := NewObject(o.Inferred)
 
 	// Build result object with selected fields
 	for _, field := range o.Fields {
@@ -1921,10 +1921,10 @@ func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Contex
 			}
 		}
 
-		resultModuleValue.Bind(field.Name, fieldVal, PublicVisibility)
+		resultObject.Bind(field.Name, fieldVal, PublicVisibility)
 	}
 
-	return resultModuleValue, nil
+	return resultObject, nil
 }
 
 func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
@@ -1946,7 +1946,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	}
 
 	// Convert GraphQL result to Object
-	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeEnv)
+	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeScope)
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env ValueScope, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
@@ -2077,12 +2077,12 @@ func buildSelectionString(sel *ObjectSelection) string {
 	return "{ " + strings.Join(parts, " ") + " }"
 }
 
-func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeEnv TypeScope) (Value, error) {
+func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*FieldSelection, schema *introspection.Schema, parentField *introspection.Field, typeScope TypeScope) (Value, error) {
 	// Check if the result is a list/slice
 	if resultSlice, ok := result.([]any); ok {
 		var elements []Value
 		for _, item := range resultSlice {
-			itemValue, err := o.convertGraphQLResultToModule(item, fields, schema, parentField, typeEnv)
+			itemValue, err := o.convertGraphQLResultToModule(item, fields, schema, parentField, typeScope)
 			if err != nil {
 				return nil, err
 			}
@@ -2091,7 +2091,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 		return ListValue{Elements: elements}, nil
 	}
 
-	resultModuleValue := NewObject(o.Inferred)
+	resultObject := NewObject(o.Inferred)
 
 	// Convert GraphQL result to Dang values
 	if resultMap, ok := result.(map[string]any); ok {
@@ -2105,29 +2105,29 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 				if field.Selection != nil {
 					if len(field.Selection.InlineFragments) > 0 {
 						// Nested inline fragments: dispatch to inline fragment result converter
-						nestedResult, err := field.Selection.convertInlineFragmentResult(fieldValue, schema, typeEnv)
+						nestedResult, err := field.Selection.convertInlineFragmentResult(fieldValue, schema, typeScope)
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q inline fragments: %w", field.Name, err)
 						}
-						resultModuleValue.Bind(field.Name, nestedResult, PublicVisibility)
+						resultObject.Bind(field.Name, nestedResult, PublicVisibility)
 					} else if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
 						// Sub-selecting arrays
 						var elements []Value
 						for _, item := range fieldSlice {
-							itemResult, err := field.Selection.convertGraphQLResultToModule(item, field.Selection.Fields, schema, nestedField, typeEnv)
+							itemResult, err := field.Selection.convertGraphQLResultToModule(item, field.Selection.Fields, schema, nestedField, typeScope)
 							if err != nil {
 								return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q item: %w", field.Name, err)
 							}
 							elements = append(elements, itemResult)
 						}
-						resultModuleValue.Bind(field.Name, ListValue{Elements: elements}, PublicVisibility)
+						resultObject.Bind(field.Name, ListValue{Elements: elements}, PublicVisibility)
 					} else {
 						// Sub-selecting objects
-						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeEnv)
+						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeScope)
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
 						}
-						resultModuleValue.Bind(field.Name, nestedResult, PublicVisibility)
+						resultObject.Bind(field.Name, nestedResult, PublicVisibility)
 					}
 				} else if fieldType := schema.Types.Get(o.unwrapType(nestedField.TypeRef).Name); fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
 					// Convert enums
@@ -2136,11 +2136,11 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting enum field %q: expected string value, got %T", field.Name, fieldValue)
 					}
 					// Get the enum type from the type environment
-					enumType, found := typeEnv.NamedType(fieldType.Name)
+					enumType, found := typeScope.NamedType(fieldType.Name)
 					if !found {
 						return nil, fmt.Errorf("type not defined for enum: %q", fieldType.Name)
 					}
-					resultModuleValue.Bind(field.Name, EnumValue{
+					resultObject.Bind(field.Name, EnumValue{
 						Val:      strVal,
 						EnumType: enumType,
 					}, PublicVisibility)
@@ -2150,13 +2150,13 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
-					resultModuleValue.Bind(field.Name, dangVal, PublicVisibility)
+					resultObject.Bind(field.Name, dangVal, PublicVisibility)
 				}
 			}
 		}
 	}
 
-	return resultModuleValue, nil
+	return resultObject, nil
 }
 
 // getFieldFromParent finds a field by name in the parent field's return type
