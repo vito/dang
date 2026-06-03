@@ -139,7 +139,7 @@ func (k Kind) String() string {
 	}
 }
 
-func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (Kind, error) {
+func KindFromGraphQLKind(typeKind introspection.TypeKind) (Kind, error) {
 	switch typeKind {
 	case introspection.TypeKindScalar:
 		return ScalarKind, nil
@@ -169,7 +169,7 @@ func ModuleKindFromGraphQLKind(typeKind introspection.TypeKind) (Kind, error) {
 //
 // The Kind tag also mirrors GraphQL introspection's __Type, which is itself one
 // type with a kind enum; that keeps schema import a near 1:1 mapping (see
-// ModuleKindFromGraphQLKind). The cost is that kind-specific behavior is gated
+// KindFromGraphQLKind). The cost is that kind-specific behavior is gated
 // by Kind checks rather than enforced by the type system.
 type Type struct {
 	Named string
@@ -353,13 +353,13 @@ func init() {
 	registerBuiltinTypes()
 }
 
-func NewPreludeEnv(name string) *OverlayTypeScope {
+func NewPreludeTypeScope(name string) *OverlayTypeScope {
 	mod := NewType(name, ObjectKind)
 	return &OverlayTypeScope{mod, Prelude}
 }
 
-func NewEnv(name string, schema *introspection.Schema) TypeScope {
-	env := NewPreludeEnv(name)
+func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
+	env := NewPreludeTypeScope(name)
 
 	isBuiltinScalar := func(t *introspection.Type) bool {
 		if t.Kind != introspection.TypeKindScalar {
@@ -416,7 +416,7 @@ func NewEnv(name string, schema *introspection.Schema) TypeScope {
 			var found bool
 			sub, found = schemaTypes[t.Name]
 			if !found {
-				kind, err := ModuleKindFromGraphQLKind(t.Kind)
+				kind, err := KindFromGraphQLKind(t.Kind)
 				if err != nil {
 					slog.Warn("skipping unsupported type", "type", t.Name, "kind", t.Kind, "error", err)
 					continue

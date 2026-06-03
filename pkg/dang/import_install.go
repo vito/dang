@@ -4,7 +4,7 @@ import "github.com/vito/dang/pkg/hm"
 
 const importedBindingVisibility = PrivateVisibility
 
-func installImportedTypeEnvironment(parentEnv TypeScope, importName string, schemaModule TypeScope) {
+func installImportedTypeScope(parentEnv TypeScope, importName string, schemaModule TypeScope) {
 	qualifiedOrigin := ImportedBindingOrigin(importName, true)
 
 	parentEnv.AddObject(importName, schemaModule)
@@ -106,17 +106,17 @@ func installUnqualifiedImportDirectivesFromModule(parentEnv TypeScope, mod *Type
 	}
 }
 
-func installImportedEvalEnvironment(parentEnv ValueScope, importName string, moduleEnv ValueScope) {
+func installImportedValueScope(parentEnv ValueScope, importName string, importValueScope ValueScope) {
 	// Binding origins live on the type environment and are established during
 	// inference. Evaluation only populates runtime values; mutating origins here
 	// can clobber local declarations and races with shared/static type modules.
-	parentEnv.Bind(importName, moduleEnv, importedBindingVisibility)
+	parentEnv.Bind(importName, importValueScope, importedBindingVisibility)
 
-	installUnqualifiedImportValues(parentEnv, moduleEnv, importName)
+	installUnqualifiedImportValues(parentEnv, importValueScope, importName)
 }
 
-func installUnqualifiedImportValues(parentEnv ValueScope, moduleEnv ValueScope, importName string) {
-	for _, binding := range moduleEnv.Bindings(PublicVisibility) {
+func installUnqualifiedImportValues(parentEnv ValueScope, importValueScope ValueScope, importName string) {
+	for _, binding := range importValueScope.Bindings(PublicVisibility) {
 		name := binding.Key
 		value := binding.Value
 		if name == importName {

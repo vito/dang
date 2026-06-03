@@ -164,7 +164,7 @@ type replComponent struct {
 	importConfigs []dang.ImportConfig
 	debug         bool
 	typeEnv       dang.TypeScope
-	evalEnv       dang.ValueScope
+	valueScope       dang.ValueScope
 	ctx           context.Context
 
 	// UI state
@@ -199,7 +199,7 @@ type replComponent struct {
 }
 
 func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, debug bool) *replComponent {
-	typeEnv, evalEnv := dang.BuildEnvFromImports("", importConfigs)
+	typeEnv, valueScope := dang.BuildScopesFromImports("", importConfigs)
 
 	ti := tuist.NewTextInput(promptStyle.Render("dang> "))
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
@@ -208,7 +208,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 		importConfigs:  importConfigs,
 		debug:          debug,
 		typeEnv:        typeEnv,
-		evalEnv:        evalEnv,
+		valueScope:        valueScope,
 		ctx:            ctx,
 		textInput:      ti,
 		entryContainer: &tuist.Container{},
@@ -434,7 +434,7 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 	evalCtx, cancel := context.WithCancel(r.ctx)
 	r.evaluating = true
 	r.cancelEval = cancel
-	evalEnv := r.evalEnv
+	valueScope := r.valueScope
 	debug := r.debug
 	// Direct Dagger log output to this entry for the duration of eval.
 	if r.daggerLog != nil {
@@ -458,7 +458,7 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 		ctx = ioctx.StderrToContext(ctx, &stdoutBuf)
 
 		for _, node := range forms {
-			val, err := dang.EvalNode(ctx, evalEnv, node)
+			val, err := dang.EvalNode(ctx, valueScope, node)
 
 			if evalCtx.Err() != nil {
 				r.finishEval(ectx, ev, nil, nil, true)

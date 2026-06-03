@@ -8,7 +8,7 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
-func TestFormatPublicTypeShapePreservesModuleFieldOrder(t *testing.T) {
+func TestFormatPublicTypeShapePreservesTypeFieldOrder(t *testing.T) {
 	mod := NewType("Thing", ObjectKind)
 	mod.Add("zeta", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
 	mod.SetVisibility("zeta", PublicVisibility)
@@ -59,7 +59,7 @@ func TestFormatPublicTypeShapePreservesGraphQLFieldOrder(t *testing.T) {
 	}
 	schema.QueryType.Name = "Query"
 
-	env := NewEnv("Test", schema)
+	env := TypeScopeFromSchema("Test", schema)
 	thing, found := env.NamedType("Thing")
 	require.True(t, found)
 	thingMod, ok := thing.(*Type)

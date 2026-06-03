@@ -585,7 +585,7 @@ func (f *Formatter) formatNode(node Node) {
 	case *ScalarDecl:
 		f.formatScalarDecl(n)
 	case *FieldDecl:
-		f.formatSlotDecl(n)
+		f.formatFieldDecl(n)
 	case *FunDecl:
 		f.formatFunDecl(n)
 	case *DirectiveDecl:
@@ -1143,7 +1143,7 @@ func (f *Formatter) formatSuffixDirectives(directives []*DirectiveApplication, p
 	}
 }
 
-func (f *Formatter) formatSlotDecl(s *FieldDecl) {
+func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 	// Doc string
 	if s.DocString != "" {
 		f.formatDocString(s.DocString)
@@ -1277,7 +1277,7 @@ func (f *Formatter) formatFunDeclSignature(fn *FunDecl, fieldNameLine int) {
 		f.formatTypeNode(fn.Ret)
 	}
 
-	// Directives (only suffix; prefix directives are emitted by formatSlotDecl)
+	// Directives (only suffix; prefix directives are emitted by formatFieldDecl)
 	// When args are multiline, the closing "): Type @directive" is on a later
 	// line than fieldNameLine. Compute the line of the closing paren / return
 	// type so that directives on the same line aren't forced onto a new line.

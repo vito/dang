@@ -23,7 +23,7 @@ func TestNewEnvSchemaTypeShadowsPreludeType(t *testing.T) {
 	_, found := ErrorType.LocalSchemeOf("id")
 	require.False(t, found)
 
-	env := NewEnv("Dagger", schemaWithErrorObject())
+	env := TypeScopeFromSchema("Dagger", schemaWithErrorObject())
 
 	schemaString, found := env.NamedType("String")
 	require.True(t, found)
@@ -57,7 +57,7 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			env := NewEnv("Dagger", schema)
+			env := TypeScopeFromSchema("Dagger", schema)
 			schemaError, found := env.NamedType("Error")
 			errs <- found && schemaError != ErrorType
 		}()
@@ -73,7 +73,7 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 	require.False(t, found)
 }
 
-func TestModuleValueSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
+func TestObjectSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
 	mod := NewType("runtime", ObjectKind)
 	val := NewObject(mod)
 
@@ -144,7 +144,7 @@ scalar Error
 }
 
 func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
-	env := NewEnv("Dagger", schemaWithCoreShadowTypes())
+	env := TypeScopeFromSchema("Dagger", schemaWithCoreShadowTypes())
 
 	container, found := env.NamedType("Container")
 	require.True(t, found)
@@ -167,8 +167,8 @@ func TestImportedTypeDisplayNamesAreQualified(t *testing.T) {
 	require.Equal(t, "(input: Dagger.Container!): Dagger.Container!", fn.String())
 }
 
-func TestBuildEnvFromImportsTracksImportedTypeOrigins(t *testing.T) {
-	typeEnv, _ := BuildEnvFromImports("", []ImportConfig{{
+func TestBuildScopesFromImportsTracksImportedTypeOrigins(t *testing.T) {
+	typeEnv, _ := BuildScopesFromImports("", []ImportConfig{{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
 	}})
@@ -187,8 +187,8 @@ func TestBuildEnvFromImportsTracksImportedTypeOrigins(t *testing.T) {
 	require.Same(t, importedContainer, qualifiedContainer)
 }
 
-func TestBuildEnvFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
-	typeEnv, evalEnv := BuildEnvFromImports("", []ImportConfig{{
+func TestBuildScopesFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
+	typeEnv, valueScope := BuildScopesFromImports("", []ImportConfig{{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
 	}})
@@ -206,20 +206,20 @@ func TestBuildEnvFromImportsKeepsImportedBindingsPrivate(t *testing.T) {
 	require.True(t, found)
 
 	publicEvalBindings := map[string]bool{}
-	for _, binding := range evalEnv.Bindings(PublicVisibility) {
+	for _, binding := range valueScope.Bindings(PublicVisibility) {
 		publicEvalBindings[binding.Key] = true
 	}
 	require.NotContains(t, publicEvalBindings, "Dagger")
 	require.NotContains(t, publicEvalBindings, "container")
 
-	_, found = requireEvalGet(t, evalEnv, "Dagger")
+	_, found = requireEvalGet(t, valueScope, "Dagger")
 	require.True(t, found)
-	_, found = requireEvalGet(t, evalEnv, "container")
+	_, found = requireEvalGet(t, valueScope, "container")
 	require.True(t, found)
 }
 
 func TestDeclareLocalTypeRejectsQualifiedImportAlias(t *testing.T) {
-	typeEnv, _ := BuildEnvFromImports("", []ImportConfig{{
+	typeEnv, _ := BuildScopesFromImports("", []ImportConfig{{
 		Name:   "Dagger",
 		Schema: schemaWithCoreShadowTypes(),
 	}})
@@ -491,7 +491,7 @@ pub fromB: Dagger.Container! = Dagger.container
 func TestRunDirImportedTypesUnifyAcrossFiles(t *testing.T) {
 	// Two files that import the same schema and exchange one of its types
 	// must agree on type identity. Without shared schema modules, each file
-	// would build its own *Type via NewEnv and unification would fail with
+	// would build its own *Type via TypeScopeFromSchema and unification would fail with
 	// "cannot use Dagger.Container as Dagger.Container".
 	ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
 		Name:       "Dagger",

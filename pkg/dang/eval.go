@@ -327,8 +327,8 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	}, nil
 }
 
-// NewEvalEnv creates an evaluation environment with built-in functions
-func NewEvalEnv(typeEnv TypeScope) ValueScope {
+// NewValueScope creates an evaluation environment with built-in functions
+func NewValueScope(typeEnv TypeScope) ValueScope {
 	// Create an Object from the type environment
 	env := NewObject(typeEnv)
 
@@ -338,8 +338,8 @@ func NewEvalEnv(typeEnv TypeScope) ValueScope {
 	return env
 }
 
-// NewEvalEnvWithSchema creates an evaluation environment populated with GraphQL API values
-func NewEvalEnvWithSchema(typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
+// ValueScopeFromSchema creates an evaluation environment populated with GraphQL API values
+func ValueScopeFromSchema(typeEnv TypeScope, client graphql.Client, schema *introspection.Schema) ValueScope {
 	// Create an Object from the type environment
 	env := NewObject(typeEnv)
 
@@ -352,21 +352,21 @@ func NewEvalEnvWithSchema(typeEnv TypeScope, client graphql.Client, schema *intr
 	return env
 }
 
-// BuildEnvFromImports creates type and eval environments from a set of import
+// BuildScopesFromImports creates type and eval environments from a set of import
 // configurations. Each import's schema types and values are merged into the
 // environments, with the first import taking precedence on name collisions.
-func BuildEnvFromImports(name string, configs []ImportConfig) (TypeScope, ValueScope) {
-	typeEnv := NewPreludeEnv(name)
+func BuildScopesFromImports(name string, configs []ImportConfig) (TypeScope, ValueScope) {
+	typeEnv := NewPreludeTypeScope(name)
 
 	for _, config := range configs {
 		if config.Schema == nil {
 			continue
 		}
-		schemaModule := NewEnv(config.Name, config.Schema)
-		installImportedTypeEnvironment(typeEnv, config.Name, schemaModule)
+		schemaModule := TypeScopeFromSchema(config.Name, config.Schema)
+		installImportedTypeScope(typeEnv, config.Name, schemaModule)
 	}
 
-	evalEnv := NewEvalEnv(typeEnv)
+	valueScope := NewValueScope(typeEnv)
 
 	for _, config := range configs {
 		if config.Schema == nil {
@@ -376,11 +376,11 @@ func BuildEnvFromImports(name string, configs []ImportConfig) (TypeScope, ValueS
 		if !found {
 			continue
 		}
-		moduleEnv := NewEvalEnvWithSchema(schemaModule, config.Client, config.Schema)
-		installImportedEvalEnvironment(evalEnv, config.Name, moduleEnv)
+		importValueScope := ValueScopeFromSchema(schemaModule, config.Client, config.Schema)
+		installImportedValueScope(valueScope, config.Name, importValueScope)
 	}
 
-	return typeEnv, evalEnv
+	return typeEnv, valueScope
 }
 
 // populateSchemaFunctions adds GraphQL functions from a schema to an environment
@@ -1669,19 +1669,19 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 		argEnv := NewObject(NewType("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
 		// expressions for later parameters can see earlier parameters.
-		defaultEvalEnv := c.Closure.Derive(false)
+		defaultScope := c.Closure.Derive(false)
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
 				argEnv.Bind(param.Name.Name, arg, PrivateVisibility)
-				defaultEvalEnv.Bind(param.Name.Name, arg, PrivateVisibility)
+				defaultScope.Bind(param.Name.Name, arg, PrivateVisibility)
 			} else if param.Value != nil {
-				// Evaluate in defaultEvalEnv so earlier args are visible.
-				defaultVal, err := EvalNode(ctx, defaultEvalEnv, param.Value)
+				// Evaluate in defaultScope so earlier args are visible.
+				defaultVal, err := EvalNode(ctx, defaultScope, param.Value)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
 				argEnv.Bind(param.Name.Name, defaultVal, PrivateVisibility)
-				defaultEvalEnv.Bind(param.Name.Name, defaultVal, PrivateVisibility)
+				defaultScope.Bind(param.Name.Name, defaultVal, PrivateVisibility)
 			}
 		}
 		if c.BlockParamName != "" {
@@ -1694,7 +1694,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ObjectName)
 			}
 			argEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
-			defaultEvalEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
+			defaultScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 		}
 
 		// Execute the new() body with access to self and constructor args.
@@ -1849,7 +1849,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		_, _ = pretty.Println(node)
 	}
 
-	typeEnv := NewPreludeEnv("")
+	typeEnv := NewPreludeTypeScope("")
 
 	inferred, err := Infer(ctx, typeEnv, node, true)
 	if err != nil {
@@ -1860,9 +1860,9 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 	slog.Debug("type inference completed", "type", inferred)
 
 	// Now evaluate the program
-	evalEnv := NewEvalEnv(typeEnv)
+	valueScope := NewValueScope(typeEnv)
 
-	result, err := EvalNodeWithContext(ctx, evalEnv, node, evalCtx)
+	result, err := EvalNodeWithContext(ctx, valueScope, node, evalCtx)
 	if err != nil {
 		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
 			return translated
@@ -2079,7 +2079,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		return nil, err
 	}
 	if len(blocks) == 0 {
-		return NewEvalEnv(NewPreludeEnv("")), nil
+		return NewValueScope(NewPreludeTypeScope("")), nil
 	}
 
 	if isDebug {
@@ -2091,20 +2091,20 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 		fmt.Printf("Found %d .dang files with %d total forms\n", len(blocks), totalForms)
 	}
 
-	typeEnv := NewPreludeEnv("")
+	typeEnv := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
 	if err := declareDirectoryFiles(ctx, blocks, typeEnv, fresh); err != nil {
 		return nil, ConvertInferError(err)
 	}
 
-	evalEnv := NewEvalEnv(typeEnv)
+	valueScope := NewValueScope(typeEnv)
 	for _, block := range blocks {
-		if _, err := EvaluateDeclaredFormsWithPhases(ctx, block.Forms, evalEnv); err != nil {
+		if _, err := EvaluateDeclaredFormsWithPhases(ctx, block.Forms, valueScope); err != nil {
 			return nil, err
 		}
 	}
 
-	return evalEnv, nil
+	return valueScope, nil
 }
 
 // declareDirectoryFiles runs only the declaration phases across files (no body
@@ -2149,7 +2149,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 		fmt.Printf("Found %d .dang files with %d total forms\n", len(blocks), totalForms)
 	}
 
-	typeEnv := NewPreludeEnv("")
+	typeEnv := NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
 
 	if isDebug {
@@ -2162,7 +2162,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 
 	slog.Debug("directory type inference completed", "dir", dirPath)
 
-	evalEnv := NewEvalEnv(typeEnv)
+	valueScope := NewValueScope(typeEnv)
 
 	if isDebug {
 		fmt.Println("Running phased evaluation...")
@@ -2172,9 +2172,9 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 	ctx = WithEvalContext(ctx, evalCtx)
 
 	// Per-file evaluation matches type inference: each file's imports populate
-	// a fresh per-file env, composed with the shared evalEnv so cross-file
+	// a fresh per-file env, composed with the shared valueScope so cross-file
 	// declarations stay visible to siblings while imported names don't leak.
-	if err := evaluateDirectoryFiles(ctx, blocks, evalEnv); err != nil {
+	if err := evaluateDirectoryFiles(ctx, blocks, valueScope); err != nil {
 		if translated, ok := translateBoundaryEvalError(err, evalCtx); ok {
 			return nil, translated
 		}
@@ -2183,20 +2183,20 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 
 	slog.Debug("directory evaluation completed", "dir", dirPath)
 
-	return evalEnv, nil
+	return valueScope, nil
 }
 
 // evaluateDirectoryFiles evaluates each file's forms with file-local imports
-// composed over the shared evalEnv, mirroring InferDirectoryFiles' per-file
+// composed over the shared valueScope, mirroring InferDirectoryFiles' per-file
 // scoping. Phases run in lockstep across files so cross-file references resolve
 // regardless of file order.
 //
 // A single-file directory has no sibling to leak imports to, so its forms are
-// evaluated directly against evalEnv — the imports end up reachable from the
+// evaluated directly against valueScope — the imports end up reachable from the
 // returned env, which is what callers like RunDir's single-file tests rely on.
-func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv ValueScope) error {
+func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueScope ValueScope) error {
 	if len(blocks) == 1 {
-		_, err := EvaluateFormsWithPhases(ctx, blocks[0].Forms, evalEnv)
+		_, err := EvaluateFormsWithPhases(ctx, blocks[0].Forms, valueScope)
 		return err
 	}
 
@@ -2212,14 +2212,14 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, evalEnv 
 		// Install imports into a fresh per-file env. Using Derive (rather than
 		// a sibling Object) keeps the prelude reachable for any lookups
 		// the imports phase performs during installation.
-		importsEnv := evalEnv.Derive(true)
+		importsEnv := valueScope.Derive(true)
 		for _, imp := range imports {
 			if _, err := EvalNode(ctx, importsEnv, imp); err != nil {
 				return err
 			}
 		}
 
-		fileEnv := CreateOverlayValueScope(evalEnv, importsEnv)
+		fileEnv := CreateOverlayValueScope(valueScope, importsEnv)
 		scopes = append(scopes, fileEvalScope{
 			classified: classifyForms(rest),
 			env:        fileEnv,

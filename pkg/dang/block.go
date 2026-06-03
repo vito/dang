@@ -612,9 +612,9 @@ func (o *ObjectLiteral) Eval(ctx context.Context, env ValueScope) (Value, error)
 		return nil, errors.New("object has no module inferred")
 	}
 	newMod := NewObject(o.Mod)
-	evalEnv := CreateOverlayValueScope(newMod, env)
+	valueScope := CreateOverlayValueScope(newMod, env)
 	for _, field := range o.Fields {
-		_, err := EvalNode(ctx, evalEnv, field)
+		_, err := EvalNode(ctx, valueScope, field)
 		if err != nil {
 			return nil, err
 		}

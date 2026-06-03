@@ -315,7 +315,7 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	// the open file, declarations only for siblings. Cross-file declarations
 	// still resolve through the shared dirEnv; sibling body errors do not run
 	// on every keystroke.
-	typeEnv := dang.NewPreludeEnv("")
+	typeEnv := dang.NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
 	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeEnv, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)

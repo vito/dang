@@ -49,7 +49,7 @@ interface Thing {
 			}
 
 			mod := parsed.(*dang.ModuleBlock)
-			if _, err := mod.Infer(context.Background(), dang.NewPreludeEnv(""), hm.NewSimpleFresher()); err != nil {
+			if _, err := mod.Infer(context.Background(), dang.NewPreludeTypeScope(""), hm.NewSimpleFresher()); err != nil {
 				t.Fatalf("infer: %v", err)
 			}
 			codeBlock, docString := formatTypeDefinitionForHover(nil, mod.Forms[0], strings.Fields(tt.want)[1])
@@ -113,7 +113,7 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 	)))
 	iface.SetVisibility("id", dang.PublicVisibility)
 
-	env := dang.NewPreludeEnv("")
+	env := dang.NewPreludeTypeScope("")
 	env.AddObject("Thing", iface)
 	f := &File{TypeEnv: env}
 
@@ -139,10 +139,10 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	local.Add("localOnly", hm.NewScheme(nil, hm.NonNullType{Type: dang.IntType}))
 	local.SetVisibility("localOnly", dang.PublicVisibility)
 
-	schemaEnv := dang.NewPreludeEnv("Test")
+	schemaEnv := dang.NewPreludeTypeScope("Test")
 	schemaEnv.AddObject("ServerInfo", imported)
 
-	env := dang.NewPreludeEnv("")
+	env := dang.NewPreludeTypeScope("")
 	env.AddObject("Test", schemaEnv)
 	env.AddObject("ServerInfo", local)
 

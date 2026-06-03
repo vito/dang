@@ -185,7 +185,7 @@ let x = hello(name: "world")
 	parsed, err := Parse("test", source)
 	require.NoError(t, err)
 
-	typeEnv := NewPreludeEnv("")
+	typeEnv := NewPreludeTypeScope("")
 	_, err = Infer(ctx, typeEnv, parsed.(*ModuleBlock), true)
 	require.NoError(t, err)
 }
