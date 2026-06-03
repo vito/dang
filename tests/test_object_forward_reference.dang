@@ -1,4 +1,4 @@
-# Test that classes can reference other classes defined later in the file.
+# Test that objects can reference other objects defined later in the file.
 # See: https://github.com/vito/dang/issues/22
 
 type App {
@@ -15,7 +15,7 @@ type Greeter {
   }
 }
 
-assert("forward-referenced class") { App.greet == "Hello, world!" }
+assert("forward-referenced object") { App.greet == "Hello, world!" }
 assert("direct usage still works") { Greeter("dang").hello == "Hello, dang!" }
 
-print("Class forward reference test passed!")
+print("Object forward reference test passed!")

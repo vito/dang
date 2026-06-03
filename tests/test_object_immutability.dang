@@ -1,4 +1,4 @@
-# Test class method immutability
+# Test object method immutability
 
 type Counter {
   pub value: Int!
@@ -24,4 +24,4 @@ print(modified.value)
 assert("stored instance should be unchanged") { stored.value == 42 }
 assert("modified instance should be updated") { modified.value == 43 }
 
-print("Class immutability test completed!")
+print("Object immutability test completed!")

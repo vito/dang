@@ -14,7 +14,7 @@ Error 1:
 
 
 Error 2:
-[1m[31mError:[0m Select.Infer: expected NonNullType or Env, got hm.TypeVariable
+[1m[31mError:[0m Select.Infer: expected NonNullType or TypeScope, got hm.TypeVariable
   [2m[34m--> errors/flow_sensitive_null_else_branch.dang:18:7[0m
  [2m    |[0m
  [2m 16 | [0m

@@ -1,4 +1,0 @@
-# new() is only valid inside class bodies
-new(x: Int!) {
-  print(value: x)
-}

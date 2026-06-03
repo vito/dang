@@ -1,4 +1,4 @@
-# Test nested field assignment in class methods with Fork() semantics
+# Test nested field assignment in object methods with Fork() semantics
 
 type Container {
   pub data = {{a: {{b: {{c: 42}}}}}} # Let type be inferred

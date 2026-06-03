@@ -40,7 +40,7 @@ type RuntimeTemplateDefaultUser {
 
 assert { runtimeUser.message == "hello Katherine" }
 
-# Forward reads hidden behind function calls are handled by lazy module slots.
+# Forward reads hidden behind function calls are handled by lazy module fields.
 pub lazyFunctionValue = lazyFunction
 pub lazyFunctionLater = "ok"
 pub lazyFunction: String! { lazyFunctionLater }

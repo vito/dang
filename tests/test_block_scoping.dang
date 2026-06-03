@@ -1,6 +1,6 @@
 # Test block scoping behavior for reassignment
 
-# Test 1: Basic outer slot reassignment (no local declaration)
+# Test 1: Basic outer field reassignment (no local declaration)
 pub outer_var = 100
 {
   assert { outer_var == 100 }
@@ -23,7 +23,7 @@ assert("outer variable should be unchanged when block declares local") {
   shadowed_var == 300
 }
 
-# Test 3: Nested blocks with outer slot reassignment
+# Test 3: Nested blocks with outer field reassignment
 pub nested_var = 10
 {
   assert { nested_var == 10 }
@@ -64,7 +64,7 @@ assert("outer variable should reflect only non-shadowed updates") {
   mixed_var == 2
 }
 
-# Test 5: Compound assignment with outer slot reassignment
+# Test 5: Compound assignment with outer field reassignment
 pub compound_var = 5
 {
   assert { compound_var == 5 }

@@ -1,11 +1,11 @@
 # Test contravariant argument types in interface implementations
-# A class can accept more general (nullable) arguments when the interface requires specific types
+# An object can accept more general (nullable) arguments when the interface requires specific types
 
 interface Processor {
   pub process(input: String!): String!
 }
 
-# Test: Class accepts nullable where interface requires non-null (contravariance)
+# Test: Object accepts nullable where interface requires non-null (contravariance)
 type FlexibleProcessor implements Processor {
   pub process(input: String): String! {
     input ?? "default"

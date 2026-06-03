@@ -72,7 +72,7 @@ pub concatResult = fetchURL(url: (base + domain) :: URL!)
 assert { concatResult == "Fetched: https://concat.com" }
 
 # =============================================================================
-# Test 7: Literal in a typed slot, reassignment, and return
+# Test 7: Literal in a typed field, reassignment, and return
 # =============================================================================
 
 pub idSlot: ID! = "abc"

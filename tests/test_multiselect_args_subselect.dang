@@ -1,5 +1,5 @@
 # Test the actual multi-select with arguments feature
-# This tests foo.{bar(arg: 123).{deeper}} pattern with class methods
+# This tests foo.{bar(arg: 123).{deeper}} pattern with object methods
 
 type TestService {
   pub name = "TestService"

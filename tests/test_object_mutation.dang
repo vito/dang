@@ -1,4 +1,4 @@
-# Test class method mutation behavior
+# Test object method mutation behavior
 
 type Counter {
   pub value: Int!
@@ -49,4 +49,4 @@ type Foo {
 let foo_result = Foo(42).incr.a
 assert("Foo(42).incr.a should return 43") { foo_result == 43 }
 
-print("Class mutation tests completed!")
+print("Object mutation tests completed!")

@@ -1,4 +1,4 @@
-# Test parameter shadowing in class methods
+# Test parameter shadowing in object methods
 
 type Person {
   pub name: String! = "Default"
