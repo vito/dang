@@ -3,12 +3,43 @@
 // On hover, each paragraph, list item, heading and code block grows a small
 // "feedback" link. Clicking it opens a message bubble; submitting POSTs the
 // page, the quoted text and the reader's message to the /feedback endpoint
-// (see serve/), which appends an anonymized record to a log. Nothing
-// identifying is collected or sent.
+// (a Cloudflare Pages Function that forwards to Discord). Nothing identifying
+// is collected or sent.
+//
+// Submission is gated by a Cloudflare Turnstile challenge so bots can't spam
+// the endpoint. The Turnstile script is loaded lazily — only when a reader
+// first opens a feedback bubble — so browsing the docs is completely
+// unaffected.
 (function () {
   "use strict";
 
   var ENDPOINT = "feedback"; // relative to the page; resolves to /feedback
+
+  // Public Turnstile site key for danglang.org. Safe to embed; the matching
+  // secret lives only in the Pages Function (TURNSTILE_SECRET).
+  var TURNSTILE_SITEKEY = "0x4AAAAAADeX0HJWPHsuYMp1";
+
+  // Lazily load the Turnstile API the first time a bubble opens. Resolves with
+  // window.turnstile; cached so the script is fetched at most once.
+  var turnstileReady = null;
+  function ensureTurnstile() {
+    if (turnstileReady) return turnstileReady;
+    turnstileReady = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.async = true;
+      s.defer = true;
+      s.onload = function () {
+        resolve(window.turnstile);
+      };
+      s.onerror = function () {
+        turnstileReady = null; // allow a retry on the next open
+        reject(new Error("turnstile failed to load"));
+      };
+      document.head.appendChild(s);
+    });
+    return turnstileReady;
+  }
 
   // Elements that can be commented on. Code blocks get a corner-pinned link
   // since their content can scroll horizontally.
@@ -61,6 +92,7 @@
     "}",
     ".dang-fb-send:disabled { opacity: .5; cursor: default; }",
     ".dang-fb-status { font-size: .78rem; color: var(--fg2); padding: .25rem 0; }",
+    ".dang-fb-captcha { margin-top: .5rem; min-height: 0; }",
   ].join("\n");
   document.head.appendChild(style);
 
@@ -75,9 +107,18 @@
 
   var openBubble = null;
   var openTarget = null;
+  var openWidgetId = null;
 
   function closeBubble() {
     if (openBubble) {
+      if (openWidgetId !== null && window.turnstile) {
+        try {
+          window.turnstile.remove(openWidgetId);
+        } catch (e) {
+          /* widget already gone */
+        }
+      }
+      openWidgetId = null;
       openBubble.remove();
       openBubble = null;
       openTarget = null;
@@ -142,16 +183,45 @@
     send.className = "dang-fb-send";
     send.textContent = "Send";
 
+    // The Turnstile widget renders here; its token is required to submit. This
+    // is the only place a reader ever encounters a challenge.
+    var captcha = document.createElement("div");
+    captcha.className = "dang-fb-captcha";
+
+    var err = document.createElement("div");
+    err.className = "dang-fb-status";
+
     row.appendChild(note);
     row.appendChild(send);
     bubble.appendChild(quote);
     bubble.appendChild(textarea);
+    bubble.appendChild(captcha);
+    bubble.appendChild(err);
     bubble.appendChild(row);
     document.body.appendChild(bubble);
     openBubble = bubble;
     openTarget = target;
     positionBubble(bubble, target);
     textarea.focus();
+
+    ensureTurnstile()
+      .then(function (turnstile) {
+        if (openTarget !== target) return; // bubble was closed before it loaded
+        openWidgetId = turnstile.render(captcha, {
+          sitekey: TURNSTILE_SITEKEY,
+          theme: "auto",
+          callback: function () {
+            err.textContent = "";
+            positionBubble(bubble, target);
+          },
+        });
+        positionBubble(bubble, target);
+      })
+      .catch(function () {
+        if (openTarget === target) {
+          err.textContent = "Couldn't load verification. Reload and try again.";
+        }
+      });
 
     function showStatus(msg) {
       bubble.innerHTML = "";
@@ -168,6 +238,15 @@
         textarea.focus();
         return;
       }
+      var token =
+        window.turnstile && openWidgetId !== null
+          ? window.turnstile.getResponse(openWidgetId)
+          : "";
+      if (!token) {
+        err.textContent = "Please complete the verification, then Send.";
+        return;
+      }
+      err.textContent = "";
       send.disabled = true;
       send.textContent = "Sending…";
       fetch(ENDPOINT, {
@@ -177,17 +256,22 @@
           page: location.pathname,
           excerpt: excerpt,
           message: message,
+          turnstileToken: token,
         }),
       })
         .then(function (res) {
           if (!res.ok) throw new Error("HTTP " + res.status);
-          showStatus("Thanks! Your feedback was recorded.");
+          showStatus("Thanks! Your feedback was sent.");
           setTimeout(closeBubble, 1600);
         })
         .catch(function () {
           send.disabled = false;
           send.textContent = "Send";
-          showStatus("Couldn't send feedback. Please try again later.");
+          // Turnstile tokens are single-use; get a fresh one for the retry.
+          if (window.turnstile && openWidgetId !== null) {
+            window.turnstile.reset(openWidgetId);
+          }
+          err.textContent = "Couldn't send feedback. Please try again.";
         });
     }
 

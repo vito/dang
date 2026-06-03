@@ -4,12 +4,19 @@
 // anonymous submission to a Discord channel via an incoming webhook. There is
 // no server to run and no storage to manage — Discord holds the messages.
 //
-// Configure the webhook URL as the DISCORD_WEBHOOK_URL environment variable
-// (set it as an encrypted secret, not plaintext). Nothing identifying is
-// forwarded: only the page, the quoted excerpt and the reader's message.
+// Submissions are gated by a Cloudflare Turnstile challenge: the client sends
+// a one-time token that this function verifies server-side before forwarding,
+// so a bare script (no token) can't spam the channel.
+//
+// Configure two encrypted secrets (not plaintext): DISCORD_WEBHOOK_URL and
+// TURNSTILE_SECRET. Nothing identifying is forwarded — only the page, the
+// quoted excerpt and the reader's message. (The visitor IP is sent to
+// Cloudflare's verify API only, as Turnstile recommends; it is not stored or
+// forwarded to Discord.)
 //
 // Local dev: `npx wrangler pages dev docs` with a docs/.dev.vars file
-// containing DISCORD_WEBHOOK_URL=...
+// containing DISCORD_WEBHOOK_URL=... and TURNSTILE_SECRET=... (Cloudflare's
+// always-passes test secret 1x0000000000000000000000000000000AA works).
 
 export async function onRequestPost({ request, env }) {
   if (!env.DISCORD_WEBHOOK_URL) {
@@ -27,6 +34,30 @@ export async function onRequestPost({ request, env }) {
   if (!message) {
     return new Response("message is required", { status: 400 });
   }
+
+  // Verify the Turnstile token before doing anything else. Enforced whenever a
+  // secret is configured; skipped only if TURNSTILE_SECRET is unset (e.g. a
+  // dev environment without it), never silently in production.
+  if (env.TURNSTILE_SECRET) {
+    const token = typeof sub.turnstileToken === "string" ? sub.turnstileToken : "";
+    if (!token) {
+      return new Response("verification required", { status: 403 });
+    }
+    let ok;
+    try {
+      ok = await verifyTurnstile(
+        env.TURNSTILE_SECRET,
+        token,
+        request.headers.get("CF-Connecting-IP"),
+      );
+    } catch {
+      return new Response("could not verify request", { status: 502 });
+    }
+    if (!ok) {
+      return new Response("verification failed", { status: 403 });
+    }
+  }
+
   const page = oneLine(sub.page);
   const excerpt = oneLine(sub.excerpt);
 
@@ -60,6 +91,24 @@ export async function onRequestPost({ request, env }) {
     return new Response("could not deliver feedback", { status: 502 });
   }
   return new Response(null, { status: 204 });
+}
+
+// verifyTurnstile checks a Turnstile token with Cloudflare's siteverify API.
+async function verifyTurnstile(secret, token, ip) {
+  const form = new URLSearchParams();
+  form.append("secret", secret);
+  form.append("response", token);
+  if (ip) form.append("remoteip", ip);
+
+  const res = await fetch(
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    { method: "POST", body: form },
+  );
+  if (!res.ok) {
+    throw new Error("siteverify HTTP " + res.status);
+  }
+  const data = await res.json();
+  return data.success === true;
 }
 
 // oneLine collapses whitespace so a value stays on a single line.
