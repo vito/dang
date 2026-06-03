@@ -18,7 +18,7 @@ type DocColumn struct {
 	Index        int            // selected index within Visible() items
 	Offset       int            // scroll offset (for item lists)
 	DetailOffset int            // scroll offset (for detail panes)
-	TypeScope      dang.TypeScope // the env this column lists members of (nil for detail)
+	TypeScope    dang.TypeScope // the env this column lists members of (nil for detail)
 }
 
 // Visible returns the items to display, respecting the filter.
@@ -66,8 +66,8 @@ func (c *DocColumn) ApplyFilter() {
 // BuildColumn creates a column listing public members of a TypeScope.
 func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 	col := DocColumn{
-		Title:   title,
-		Doc:     doc,
+		Title:     title,
+		Doc:       doc,
 		TypeScope: env,
 	}
 
@@ -157,10 +157,10 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			continue
 		}
 		item := DocItem{
-			Name:    name,
-			TypeStr: namedEnv.Name(),
-			RetTypeScope:  namedEnv,
-			Kind:    ClassifyEnv(namedEnv),
+			Name:         name,
+			TypeStr:      namedEnv.Name(),
+			RetTypeScope: namedEnv,
+			Kind:         ClassifyEnv(namedEnv),
 		}
 		if d := namedEnv.GetTypeDocString(); d != "" {
 			item.Doc = d

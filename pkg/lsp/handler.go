@@ -95,7 +95,7 @@ type File struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock // Parsed and type-annotated AST
-	TypeScope     dang.TypeScope    // Type environment after inference
+	TypeScope   dang.TypeScope    // Type environment after inference
 
 	// Synchronization for async file processing
 	mu         sync.Mutex
@@ -241,7 +241,7 @@ type fileAnalysis struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock
-	TypeScope     dang.TypeScope
+	TypeScope   dang.TypeScope
 }
 
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
@@ -538,7 +538,7 @@ func (f *File) waitForSnapshot() *File {
 		Diagnostics: append([]Diagnostic(nil), f.Diagnostics...),
 		Symbols:     f.Symbols,
 		AST:         f.AST,
-		TypeScope:     f.TypeScope,
+		TypeScope:   f.TypeScope,
 	}
 }
 

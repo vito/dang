@@ -76,9 +76,9 @@ type ValueScope interface {
 // InputObjectConstructor creates an Object from named arguments,
 // used for GraphQL input types like UserSort(field: ..., direction: ...).
 type InputObjectConstructor struct {
-	TypeName string
-	TypeScope  *Type
-	FnType   *hm.FunctionType
+	TypeName  string
+	TypeScope *Type
+	FnType    *hm.FunctionType
 }
 
 func (c InputObjectConstructor) Type() hm.Type        { return c.FnType }
@@ -110,7 +110,7 @@ type GraphQLFunction struct {
 	FnType     *hm.FunctionType
 	Client     graphql.Client
 	Schema     *introspection.Schema
-	TypeScope    TypeScope               // Type environment for looking up enum types
+	TypeScope  TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
 }
@@ -218,7 +218,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env ValueScope, args map[stri
 		ValType:    g.FnType.Ret(false),
 		Client:     g.Client,
 		Schema:     g.Schema,
-		TypeScope:    g.TypeScope,    // Pass along the type environment
+		TypeScope:  g.TypeScope,  // Pass along the type environment
 		QueryChain: query,        // Pass the query chain for further building
 		IsMutation: g.IsMutation, // Propagate mutation flag
 	}, nil
@@ -247,7 +247,7 @@ type GraphQLValue struct {
 	ValType    hm.Type
 	Client     graphql.Client
 	Schema     *introspection.Schema
-	TypeScope    TypeScope               // Type environment for looking up enum types
+	TypeScope  TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this value came from a mutation
 }
@@ -321,7 +321,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		FnType:     fnType,
 		Client:     g.Client,
 		Schema:     g.Schema,
-		TypeScope:    g.TypeScope,    // Pass along the type environment
+		TypeScope:  g.TypeScope,  // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
 		IsMutation: g.IsMutation, // Propagate mutation flag
 	}, nil
@@ -482,9 +482,9 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 			fnType := hm.NewFnType(args, NonNull(inputTypeScope))
 
 			constructor := InputObjectConstructor{
-				TypeName: t.Name,
-				TypeScope:  inputTypeScope.(*Type),
-				FnType:   fnType,
+				TypeName:  t.Name,
+				TypeScope: inputTypeScope.(*Type),
+				FnType:    fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
 		}
@@ -513,8 +513,8 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				FnType:     fnType,
 				Client:     client,
 				Schema:     schema,
-				TypeScope:    typeScope, // Pass the type environment
-				QueryChain: nil,     // Top-level functions start with no query chain
+				TypeScope:  typeScope, // Pass the type environment
+				QueryChain: nil,       // Top-level functions start with no query chain
 			}
 
 			// Add to environment if it's from the Query type
@@ -551,7 +551,7 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 					FnType:     fnType,
 					Client:     client,
 					Schema:     schema,
-					TypeScope:    typeScope,
+					TypeScope:  typeScope,
 					QueryChain: nil,
 					IsMutation: true,
 				}

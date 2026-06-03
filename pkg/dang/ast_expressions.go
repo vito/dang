@@ -1710,7 +1710,7 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 				ValType:    frag.Inferred,
 				Client:     gqlVal.Client,
 				Schema:     gqlVal.Schema,
-				TypeScope:    gqlVal.TypeScope,
+				TypeScope:  gqlVal.TypeScope,
 				QueryChain: query.InlineFragment(typeName),
 				IsMutation: gqlVal.IsMutation,
 			}, nil

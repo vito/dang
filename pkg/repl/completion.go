@@ -256,14 +256,14 @@ func (k ItemKind) Color() string {
 
 // DocItem is a single entry in the doc browser or completion detail.
 type DocItem struct {
-	Name      string
-	Kind      ItemKind
-	TypeStr   string
-	Doc       string
-	Args      []DocArg
-	BlockArgs []DocArg
-	BlockRet  string
-	RetTypeScope    dang.TypeScope
+	Name         string
+	Kind         ItemKind
+	TypeStr      string
+	Doc          string
+	Args         []DocArg
+	BlockArgs    []DocArg
+	BlockRet     string
+	RetTypeScope dang.TypeScope
 }
 
 // DocArg represents an argument to a function.

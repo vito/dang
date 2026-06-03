@@ -163,8 +163,8 @@ type replComponent struct {
 	// Dang state
 	importConfigs []dang.ImportConfig
 	debug         bool
-	typeScope       dang.TypeScope
-	valueScope       dang.ValueScope
+	typeScope     dang.TypeScope
+	valueScope    dang.ValueScope
 	ctx           context.Context
 
 	// UI state
@@ -207,8 +207,8 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	r := &replComponent{
 		importConfigs:  importConfigs,
 		debug:          debug,
-		typeScope:        typeScope,
-		valueScope:        valueScope,
+		typeScope:      typeScope,
+		valueScope:     valueScope,
 		ctx:            ctx,
 		textInput:      ti,
 		entryContainer: &tuist.Container{},
