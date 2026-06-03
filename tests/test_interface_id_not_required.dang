@@ -1,0 +1,15 @@
+# A type implementing an interface is NOT required to provide the synthesized
+# `id: ID!` field. Dagger reserves `id` and supplies it for every interface
+# implementer, so requiring the user to declare it would be wrong. Other
+# interface fields (like `name`) are still required.
+
+interface Identifiable {
+  pub id: ID!
+  pub name: String!
+}
+
+type User implements Identifiable {
+  pub name: String!
+}
+
+assert { User("alice").name == "alice" }

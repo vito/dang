@@ -651,6 +651,30 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	return c.ConstructorFnType, newBodyErr
 }
 
+// isReservedInterfaceField reports whether an interface field is provided by
+// the Dagger runtime rather than the implementer. Dagger synthesizes `id: ID!`
+// on every object and interface in a module's schema, so an imported interface
+// carries an `id` field that no user-defined type declares (and shouldn't have
+// to: Dagger supplies it for implementers too). Locally-declared interfaces
+// never have one. Skip it during conformance checks.
+func isReservedInterfaceField(field string, scheme *hm.Scheme) bool {
+	if field != "id" {
+		return false
+	}
+	t, ok := scheme.Type()
+	if !ok {
+		return false
+	}
+	// Interface fields are stored as `() -> T`; unwrap to the return type.
+	if fn, ok := t.(*hm.FunctionType); ok {
+		t = fn.Ret(false)
+	}
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	return t.Name() == "ID"
+}
+
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
 func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeScope, ifaceSym *Symbol) error {
 	ifaceType, found := env.NamedType(ifaceSym.Name)
@@ -668,6 +692,9 @@ func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeS
 	var missingFields []string
 	// Check that all interface fields are present in the object
 	for field, fieldScheme := range ifaceMod.Bindings(PrivateVisibility) {
+		if isReservedInterfaceField(field, fieldScheme) {
+			continue
+		}
 		objectFieldScheme, objectHasField := objectMod.SchemeOf(field)
 		if !objectHasField {
 			missingFields = append(missingFields, field)
@@ -1271,6 +1298,9 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 
 	var missingFields []string
 	for field, fieldScheme := range parentMod.Bindings(PrivateVisibility) {
+		if isReservedInterfaceField(field, fieldScheme) {
+			continue
+		}
 		childScheme, has := child.SchemeOf(field)
 		if !has {
 			missingFields = append(missingFields, field)
