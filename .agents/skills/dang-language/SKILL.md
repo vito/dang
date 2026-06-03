@@ -1,243 +1,96 @@
 ---
 name: dang-language
-description: Dang surface-language reference — syntax for types, methods, mutation, blocks, errors, and GraphQL polymorphism. Use when writing or reviewing `.dang` code.
+description: Dang language reference for writing, editing, and reviewing `.dang` code — syntax, types/nullability, prototype objects, copy-on-write mutation, control flow, errors, GraphQL interop, stdlib, and CLI. Use when authoring or reviewing `.dang` files or Dang modules, or any time precise Dang language behavior matters.
 ---
 
 # Dang Language Reference
 
-Dang is a strongly-typed scripting language with Hindley-Milner inference and
-GraphQL-derived types. Type annotations are usually optional; `T` is nullable,
-`T!` is non-null.
+**Audience: people writing Dang.** This skill is for *using* the language —
+authoring `.dang` scripts and modules and calling GraphQL APIs (including
+Dagger) with it. It is not about developing the Dang compiler itself; for that,
+see the contributor skills (`builtin-dsl`, `dang-internals`, `editor-syntaxes`,
+`testing`).
 
-## Declarations
+Dang is a statically typed scripting language whose types and root functions
+come from a **GraphQL schema**. Hindley-Milner inference; type annotations are
+usually optional. `T` is nullable, `T!` is non-null.
 
-```dang
-pub x = 42              # public, type inferred
-let secret = "hidden"   # private (only visible in enclosing scope)
-pub y: String! = "hi"   # explicit type
-pub z: Int              # declaration without value
-```
+## Mental model (read this first)
 
-Inside a `type`, `pub` fields are externally visible; `let` fields are
-accessible only to the type's own methods.
+Four ideas the rest of the language hangs on:
 
-## Functions and methods
+- **Schema-driven types** — `import`ing a schema makes every type and root
+  `Query`/`Mutation` field part of the language. The "standard library" is
+  whatever schema you connect (Dagger, GitHub, your own API).
+- **Prototype objects** — `type Foo` declares both a type *and* its constructor
+  function. Methods and fields are indistinguishable in syntax.
+- **Immutability + copy-on-write** — values never change. Methods that look
+  mutating return a **forked copy** of the receiver; mutating methods must
+  `return self` to surface it. `Foo(42).incr.a == 43`, original untouched.
+- **Null tracking** — `String` ≠ `String!` in the type system, with
+  flow-sensitive narrowing so you rarely write casts.
 
-```dang
-pub add(a: Int!, b: Int!): Int! { a + b }
+## Distinctive features (what surprises newcomers)
 
-type Person {
-  pub name: String!
-  pub greet: String! { "Hello, I'm " + name }   # zero-arg method
-}
-```
+- **Optional parens** for zero-arg calls — a field and a zero-arg method read
+  the same (`obj.greet`, not `obj.greet()`); zero-arg functions/constructors
+  *auto-call* on bare reference. Use `&name` to get the function without calling.
+- **No `return` for the normal result** — the last expression is the value.
+  `return` is for *early* exit only.
+- **No truthiness** — `if`/`for` conditions must be `Boolean!`.
+- **Everything is an expression** — `if`, `case`, `for`, `try` all yield values.
+- **Multi-field selection** — `user.{name, posts.{title}}` becomes one GraphQL
+  query (lazy; sent when forced).
+- **`#` comments, no `//`**; docstrings are real `"""..."""` strings before a
+  declaration. Record literals use **double braces** `{{ ... }}`.
+- **No `for (x in xs)`** — iterate with `xs.each { x => ... }`.
+- **Directives** (`@deprecated`) are typed declarations, not comment pragmas.
+- **Errors are for errors**, not control flow or expected absence (use `null`).
 
-**Auto-calling**: zero-argument functions and all-default-args constructors are
-called automatically when referenced by name. `Person.greet` invokes `greet`;
-`Defaults` (a type with all-default fields) constructs an instance.
-
-## Constructors
-
-Two forms — implicit (field-derived) and explicit (`new()`).
-
-```dang
-# Field-derived: public fields become positional args in declaration order
-type Config {
-  pub host: String!
-  pub port: Int! = 8080
-}
-let c = Config("localhost", 9090)
-let c2 = Config(host: "localhost")   # named args
-
-# Explicit new() — must return self
-type Greeter {
-  pub greeting: String!
-  new(name: String!) {
-    self.greeting = "Hello, " + name
-    self
-  }
-}
-```
-
-In constructors, bare field assignment works when names don't shadow:
+## Quick syntax
 
 ```dang
-type Vector {
-  pub x: Int! = 0
-  new(vx: Int!) { x = vx; self }   # bare ok, no shadow
-}
+pub x = 42                       # public binding, inferred Int!
+let secret = "hidden"            # private to file/type
+pub add(a: Int!, b: Int!): Int! { a + b }   # function; last expr is result
+pub motd: String! { "hi" }       # zero-arg method/computed field (no parens)
 
-type Point {
-  pub x: Int!
-  new(x: Int!) { self.x = x; self }   # self. required, parameter shadows
-}
-```
-
-## Mutation and copy-on-write
-
-`=` reassigns, `+=` adds-and-reassigns (Int, String, List). Field assignment
-clones the root and replaces the binding — originals are never mutated.
-
-```dang
-let a = {{x: 1}}
-let b = a
-b.x = 2
-assert { a.x == 1 }   # original unchanged
-```
-
-Methods that mutate `self` must return `self` to surface the updated copy.
-Each method call operates on an isolated copy of the receiver, so chaining is
-the natural pattern:
-
-```dang
 type Counter {
-  pub value: Int!
-  pub incr: Counter! { value += 1; self }
+  pub value: Int!                # no default -> required constructor param
+  pub incr: Counter! { value += 1; self }   # forks self, returns the copy
 }
-assert { Counter(0).incr.incr.incr.value == 3 }
+assert { Counter(0).incr.incr.value == 2 }
+
+[1, 2, 3].map { x => x * 2 }     # block arg (Ruby-style), trailing braces
+if (v != null) { v } else { "?" }   # v narrowed to T! in the then-branch
 ```
 
-Block scoping: a bare `x = ...` inside `{ ... }` updates the outer slot. A
-`let x` inside the block shadows.
+## Where to look (routing)
 
-## Block arguments
+Load the reference file that matches the question:
 
-Functions can take a block (Ruby-style). Declare with `&name(...): T`; call
-with `{ ... }`:
+| File | Covers |
+|---|---|
+| `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
+| `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
+| `reference/objects.md` | `pub`/`let` **fields**, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write**, **interfaces** & **unions** + variance |
+| `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `for`, `break`/`continue`/`return`, **errors** (`try`/`catch`/`raise`, the `Error` interface, when to raise vs. return null) |
+| `reference/stdlib.md` | top-level builtins (`assert`/`print`/`toString`/`toJSON`/`fromJSON`/`fromYAML`), **`String!` methods** (incl. regex/`Match`), **list `[T]!` methods**, **JSON/YAML**, `Random`, `UUID`, error types |
+| `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |
+| `reference/cli.md` | the `dang` CLI, `dang fmt`, the REPL and its `:` commands, exit codes, LSP/editor integration |
+
+When writing non-trivial `.dang` code, the most load-bearing files are
+`objects.md` (CoW mutation is the #1 source of confusion) and `types.md`
+(nullability + coercion). For Dagger-module specifics, see the separate
+`dang-dagger-modules` skill.
+
+## Testing your code
+
+`assert { expr }` is built in — no framework needed. It runs the block and
+raises an `AssertionError` (with the source expression and sub-values in the
+message) if the result isn't truthy. Drop assertions straight into a script:
 
 ```dang
-pub twice(&block(x: Int!): Int!): Int! { block(1) + block(2) }
-pub r = twice() { x -> x * 10 }   # 30
-
-# Standard library uses these heavily
-pub doubled = [1, 2, 3].map { x -> x * 2 }
+assert { Counter(0).incr.value == 1 }
+assert(message: "must be positive") { x > 0 }
 ```
-
-Block arg must come last in the signature. Only one per function. Blocks can
-omit unused parameters: `{ "constant" }`.
-
-Closures inside a method/constructor share `self` across iterations, so
-patterns like `source.each { item => self.items += [item] }` accumulate as
-expected.
-
-## Errors
-
-```dang
-raise "something went wrong"             # sugar for Error(message: "...")
-raise ValidationError(message: "...", field: "name")
-
-try {
-  doSomething()
-} catch {
-  v: ValidationError => "invalid " + v.field
-  n: NotFoundError   => "missing " + n.resource
-  err                => "other: " + err.message
-}
-```
-
-Custom error types implement the built-in `Error` interface (one field:
-`message: String!`). `try`/`catch` catches both `raise` and runtime errors
-(null access, division by zero, GraphQL failures). All clauses and the body
-must return the same type. Unmatched errors re-raise.
-
-## Flow-sensitive null checking
-
-```dang
-if (maybeValue != null) {
-  maybeValue + " ok"   # narrowed from String to String! here
-} else {
-  "no value"
-}
-```
-
-Works for `x != null`, `x == null`, and reversed forms. **Does not** handle
-`&&`, `||`, `!`, or compound expressions — keep the check immediate.
-
-## Type discrimination — `case`
-
-For union and interface types, discriminate with a typed binding:
-
-```dang
-case (value) {
-  v: ValidationError => "field " + v.field
-  n: NotFoundError   => "missing " + n.resource
-  else               => "other"
-}
-```
-
-Inside the clause, `v` has the narrowed concrete type, so member-specific
-fields are accessible.
-
-## Polymorphism
-
-```dang
-interface Named { pub name: String! }
-
-type Person implements Named {
-  pub name: String!
-  pub age: Int!
-}
-
-type Book implements Named & Serializable {
-  pub name: String!
-  pub data: String!
-}
-
-union Pet = Cat | Dog   # flat unions only; members must be object types
-```
-
-A type implementing an interface must provide all interface fields; method
-return types are covariant, argument types contravariant, and any extra
-arguments must be optional.
-
-## Regex
-
-Backtick templates auto-coerce to the `Regexp` scalar at call sites. A
-`Match` is a first-class object with positional and named captures.
-
-```dang
-"call 555-1212".containsMatch(`\d+`)              # Boolean!
-"call 555-1212".match(`(\d+)`)                    # Match (nullable)
-"a1 b22 c333".matchAll(`\d+`)                     # [Match!]!
-"a, b ,  c".splitMatches(`\s*,\s*`)               # ["a", "b", "c"]
-
-# replaceMatches uses Go-style $0 / $1 / $name / ${name} backref expansion
-"555-1212".replaceMatches(
-  `(?P<area>\d{3})-(?P<num>\d{4})`,
-  with: "$area.$num",
-)                                                 # "555.1212"
-
-# rewriteMatches takes a block and receives a Match for each occurrence
-"hello world".rewriteMatches(`\w+`) { m =>
-  m.string.toUpper
-}                                                 # "HELLO WORLD"
-```
-
-`Match` fields: `string` (whole match), `captures` (positional; index 0 is
-`$1`), `capture(name)` (named; null if absent), `start`, `end` (byte
-offsets). Unmatched optional groups surface as `""`. Pattern syntax is Go
-RE2 — named groups use `(?P<name>...)`.
-
-## GraphQL integration
-
-- **Enums** load from the schema: `Status.ACTIVE`, `Status.PENDING`. Enum
-  values are only comparable to other values of the same enum type.
-- **Scalars** (`scalar Timestamp`) are opaque string-backed distinct types —
-  not interchangeable with `String`.
-- **Object selection** `obj.{field1, field2}` projects a GraphQL object.
-- **Inline fragments** discriminate union/interface query results:
-
-  ```dang
-  search(query: "foo").{
-    ... on User { name, email }
-    ... on Post { title, content }
-  }
-  ```
-
-## Testing
-
-Place `assert { expr }` directly in `.dang` files under `tests/`. Files
-matching `tests/test_*.dang` run as language tests; files under
-`tests/errors/` expect an error and compare against
-`tests/testdata/<name>.golden`. See the `testing` skill for the runner
-commands and golden-update flow.
