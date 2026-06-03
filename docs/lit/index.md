@@ -3,6 +3,15 @@
 
 # dang {#index}
 
+> NOTE FROM A HUMAN: these docs are a rough AI-assisted draft. For this first
+> phase I'm just establishing the concepts, framing, and facts. I'm publishing
+> this ASAP to unblock users and LLMs on learning the language, and I'll
+> gradually humanize and de-slop them over time. This notice will go away when
+> it's in a state I'm proud of.
+>
+> Apologies in advance for any nonsense. Every paragraph has a 'feedback'
+> button so you can yell at me about it anonymously.
+
 A statically typed scripting language whose types and root functions come from a
 GraphQL schema.
 
