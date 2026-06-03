@@ -7,4 +7,5 @@ CLAUDE.local.md
 *.log
 /treesitter/parser.so
 /docs/*.html
+/docs/search_index.json
 .dev.vars
