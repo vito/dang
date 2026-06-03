@@ -14,28 +14,28 @@
 
 ## What's distinctive
 
-- types and root functions come from a **GraphQL schema**, not handwritten declarations
-- **prototype-based** objects (`type Foo` declares both a type and its constructor)
-- **multi-field selection**: `user.{name, posts.{title}}` becomes one query
-- **null tracking** in the type system (`String` ≠ `String!`)
-- **optional parens** for zero-arg calls — fields and methods feel the same
-- **directives** instead of comment pragmas
-- **directory-level modules** — split files however
+- types and root functions come from a **GraphQL schema**, not handwritten declarations ([#graphql])
+- **prototype-based** objects (`type Foo` declares both a type and its constructor) ([#objects])
+- **multi-field selection**: `user.{name, posts.{title}}` becomes one query ([#objects])
+- **null tracking** in the type system (`String` ≠ `String!`) ([#types], [#flow-typing])
+- **optional parens** for zero-arg calls — fields and methods feel the same ([#fields])
+- **directives** instead of comment pragmas ([#directives])
+- **directory-level modules** — split files however ([#modules])
 
 ## How a Dang program is shaped
 
-- a file is a sequence of declarations and forms
+- a file is a sequence of declarations and forms (the start rule is `Dang`; see [#grammar])
 - declarations are hoisted and order-independent within a file/directory
-- `pub` exposes a name; `let` keeps it private
-- `assert { ... }` is built in — high-level testing without a framework
+- `pub` exposes a name; `let` keeps it private (both are visibility keywords on field declarations)
+- `assert { ... }` is built in — high-level testing without a framework ([#stdlib], [#errors])
 
 ## Runtime model in one paragraph
 
-> Meta: pitch this as "values are immutable; methods on `type`s look mutating but return a forked copy." That single line saves a lot of confusion later in [mutation](./mutation.md).
+> Meta: pitch this as "values are immutable; methods on `type`s look mutating but return a forked copy." That single line saves a lot of confusion later in [#mutation].
 
 ## What's *not* in the language
 
-- no inheritance (only `implements` for interfaces)
-- no exceptions for control flow (use `try`/`catch` deliberately)
+- no inheritance (only `implements` for interfaces — see [#interfaces-unions])
+- no exceptions for control flow — `raise`/`try`/`catch` exist but are deliberate, not flow control ([#errors])
 - no metaprogramming / macros
-- no implicit scalar coercion outside `::` casts (TBD — see `soundness.md`)
+- no implicit scalar coercion outside `::` type ascription (the `TypeHint` form; also drives `fromJSON`/`fromYAML` materialization — see [#json-yaml])
