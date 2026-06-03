@@ -59,12 +59,12 @@ func buildAssertionError(ctx context.Context, fn FunctionValue, msgVal Value) er
 
 	fmt.Fprintf(&message, "  Expression: %s\n", assertNodeToString(lastExpr))
 
-	closureEnv := fn.Closure
+	closureScope := fn.Closure
 	children := assertImmediateChildren(lastExpr)
 	if len(children) > 0 {
 		message.WriteString("  Values:\n")
 		for _, child := range children {
-			if val, err := EvalNode(ctx, closureEnv, child.Node); err == nil {
+			if val, err := EvalNode(ctx, closureScope, child.Node); err == nil {
 				fmt.Fprintf(&message, "    %s: %s\n", child.Name, val.String())
 			}
 		}

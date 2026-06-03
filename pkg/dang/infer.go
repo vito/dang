@@ -141,9 +141,9 @@ func assignFallbackType(decl Node, env hm.Env, fresh hm.Fresher) {
 		scheme := hm.NewScheme(nil, tv)
 
 		// Add to environment so downstream references can resolve
-		if dangEnv, ok := env.(TypeScope); ok {
-			dangEnv.Add(name, scheme)
-			dangEnv.SetVisibility(name, PublicVisibility)
+		if typeScope, ok := env.(TypeScope); ok {
+			typeScope.Add(name, scheme)
+			typeScope.SetVisibility(name, PublicVisibility)
 		}
 	}
 }

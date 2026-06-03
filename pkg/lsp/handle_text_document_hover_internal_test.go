@@ -139,16 +139,16 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	local.Add("localOnly", hm.NewScheme(nil, hm.NonNullType{Type: dang.IntType}))
 	local.SetVisibility("localOnly", dang.PublicVisibility)
 
-	schemaEnv := dang.NewPreludeTypeScope("Test")
-	schemaEnv.AddObject("ServerInfo", imported)
+	testTypeScope := dang.NewPreludeTypeScope("Test")
+	testTypeScope.AddObject("ServerInfo", imported)
 
-	env := dang.NewPreludeTypeScope("")
-	env.AddObject("Test", schemaEnv)
-	env.AddObject("ServerInfo", local)
+	preludeTypeScope := dang.NewPreludeTypeScope("")
+	preludeTypeScope.AddObject("Test", testTypeScope)
+	preludeTypeScope.AddObject("ServerInfo", local)
 
 	text := "let info: Test.ServerInfo! = null"
 	pos := Position{Line: 0, Character: strings.Index(text, "ServerInfo")}
-	f := &File{Text: text, TypeScope: env}
+	f := &File{Text: text, TypeScope: preludeTypeScope}
 
 	codeBlock, docString := formatNamedTypeForHover(f, pos, "ServerInfo")
 	if !strings.Contains(codeBlock, "pub version: String!") {

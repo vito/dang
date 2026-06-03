@@ -94,7 +94,7 @@ func (l *List) Body() hm.Expression { return l }
 
 func (l *List) GetSourceLocation() *SourceLocation { return l.Loc }
 
-func (l *List) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (l *List) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	if len(l.Elements) == 0 {
 		return ListValue{Elements: []Value{}, ElemType: hm.TypeVariable('a')}, nil
 	}
@@ -103,7 +103,7 @@ func (l *List) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	var elemType hm.Type
 
 	for i, elem := range l.Elements {
-		val, err := EvalNode(ctx, env, elem)
+		val, err := EvalNode(ctx, scope, elem)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating list element %d: %w", i, err)
 		}
@@ -152,7 +152,7 @@ func (n *Null) ReferencedSymbols() []string {
 	return nil // Null literals don't reference anything
 }
 
-func (n *Null) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (n *Null) Eval(ctx context.Context, _ ValueScope) (Value, error) {
 	return NullValue{}, nil
 }
 
@@ -190,8 +190,8 @@ func (s *SelfKeyword) ReferencedSymbols() []string {
 	return nil // self doesn't reference a lexical symbol
 }
 
-func (s *SelfKeyword) Eval(ctx context.Context, env ValueScope) (Value, error) {
-	if dynScope, ok := env.Self(); ok {
+func (s *SelfKeyword) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	if dynScope, ok := scope.Self(); ok {
 		return dynScope, nil
 	}
 	return nil, fmt.Errorf("'self' is not available in this context")
@@ -232,7 +232,7 @@ func (s *String) ReferencedSymbols() []string {
 	return nil // String literals don't reference anything
 }
 
-func (s *String) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (s *String) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return StringValue{Val: s.Value}, nil
 }
 
@@ -303,14 +303,14 @@ func (t *Template) ReferencedSymbols() []string {
 	return syms
 }
 
-func (t *Template) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (t *Template) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	var buf bytes.Buffer
 	for i, p := range t.Parts {
 		if p.Expr == nil {
 			buf.WriteString(p.Lit)
 			continue
 		}
-		val, err := EvalNode(ctx, env, p.Expr)
+		val, err := EvalNode(ctx, scope, p.Expr)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating template part %d: %w", i, err)
 		}
@@ -371,7 +371,7 @@ func (b *Boolean) ReferencedSymbols() []string {
 	return nil // Boolean literals don't reference anything
 }
 
-func (b *Boolean) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (b *Boolean) Eval(ctx context.Context, _ ValueScope) (Value, error) {
 	return BoolValue{Val: b.Value}, nil
 }
 
@@ -409,7 +409,7 @@ func (i *Int) ReferencedSymbols() []string {
 	return nil // Int literals don't reference anything
 }
 
-func (i *Int) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (i *Int) Eval(ctx context.Context, _ ValueScope) (Value, error) {
 	return IntValue{Val: int(i.Value)}, nil
 }
 
@@ -446,7 +446,7 @@ func (f *Float) ReferencedSymbols() []string {
 	return nil // Float literals don't reference anything
 }
 
-func (f *Float) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (f *Float) Eval(ctx context.Context, _ ValueScope) (Value, error) {
 	return FloatValue{Val: f.Value}, nil
 }
 

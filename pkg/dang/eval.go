@@ -33,13 +33,13 @@ type Value interface {
 
 // Evaluator defines the interface for evaluating AST nodes
 type Evaluator interface {
-	Eval(ctx context.Context, env ValueScope) (Value, error)
+	Eval(ctx context.Context, scope ValueScope) (Value, error)
 }
 
 // Callable defines the interface for all function-like values that can be called
 type Callable interface {
 	Value
-	Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error)
+	Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error)
 	ParameterNames() []string
 	IsAutoCallable() bool
 }
@@ -94,7 +94,7 @@ func (c InputObjectConstructor) ParameterNames() []string {
 	return names
 }
 
-func (c InputObjectConstructor) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+func (c InputObjectConstructor) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	instance := NewObject(c.TypeScope)
 	for name, val := range args {
 		instance.Bind(name, val, PublicVisibility)
@@ -123,7 +123,7 @@ func (g GraphQLFunction) String() string {
 	return fmt.Sprintf("gql:%s.%s", g.TypeName, g.Name)
 }
 
-func (g GraphQLFunction) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	// Build the GraphQL query using querybuilder
 	var query *querybuilder.Selection
 
@@ -576,7 +576,7 @@ func allParamsDefaulted(def BuiltinDef) bool {
 	return true
 }
 
-func addBuiltinFunctions(env ValueScope) {
+func addBuiltinFunctions(scope ValueScope) {
 	// Register all builtin functions
 	ForEachFunction(func(def BuiltinDef) {
 		fnType := createFunctionTypeFromDef(def)
@@ -584,7 +584,7 @@ func addBuiltinFunctions(env ValueScope) {
 			Name:         def.Name,
 			FnType:       fnType,
 			AllDefaulted: allParamsDefaulted(def),
-			CallFn: func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 				// Apply defaults for missing arguments
 				argsWithDefaults := applyDefaults(args, def)
 
@@ -599,7 +599,7 @@ func addBuiltinFunctions(env ValueScope) {
 				return def.Impl(ctx, nil, Args{Values: argsWithDefaults, Block: blockArg})
 			},
 		}
-		env.Bind(def.Name, builtinFn, PublicVisibility)
+		scope.Bind(def.Name, builtinFn, PublicVisibility)
 	})
 
 	// Register all builtin methods with naming convention
@@ -610,8 +610,8 @@ func addBuiltinFunctions(env ValueScope) {
 				Name:         def.Name,
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
-				CallFn: func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
-					selfVal, _ := env.Self()
+				CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+					selfVal, _ := scope.Self()
 					// Apply defaults for missing arguments
 					argsWithDefaults := applyDefaults(args, def)
 
@@ -627,7 +627,7 @@ func addBuiltinFunctions(env ValueScope) {
 				},
 			}
 			methodKey := GetMethodKey(receiverType, def.Name)
-			env.Bind(methodKey, builtinFn, PrivateVisibility)
+			scope.Bind(methodKey, builtinFn, PrivateVisibility)
 		})
 	}
 
@@ -640,7 +640,7 @@ func addBuiltinFunctions(env ValueScope) {
 				Name:         def.Name,
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
-				CallFn: func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+				CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 					argsWithDefaults := applyDefaults(args, def)
 					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
 				},
@@ -649,32 +649,32 @@ func addBuiltinFunctions(env ValueScope) {
 		})
 
 		// Populate nested enum types with their values
-		for name, subEnv := range hostModule.NamedTypes() {
-			subMod, ok := subEnv.(*Type)
-			if !ok || subMod.Kind != EnumKind {
+		for name, subScope := range hostModule.NamedTypes() {
+			subType, ok := subScope.(*Type)
+			if !ok || subType.Kind != EnumKind {
 				continue
 			}
-			enumModValue := NewObject(subMod)
+			enumModValue := NewObject(subType)
 			var enumValues []Value
-			for varName, scheme := range subMod.Bindings(PublicVisibility) {
+			for varName, scheme := range subType.Bindings(PublicVisibility) {
 				// Only include actual enum members (whose type is the
 				// enum itself), not accessors like values().
 				t, _ := scheme.Type()
-				if nn, ok := t.(hm.NonNullType); !ok || nn.Type != hm.Type(subMod) {
+				if nn, ok := t.(hm.NonNullType); !ok || nn.Type != hm.Type(subType) {
 					continue
 				}
-				ev := EnumValue{Val: varName, EnumType: subMod}
+				ev := EnumValue{Val: varName, EnumType: subType}
 				enumModValue.Bind(varName, ev, PublicVisibility)
 				enumValues = append(enumValues, ev)
 			}
 			enumModValue.Bind("values", ListValue{
 				Elements: enumValues,
-				ElemType: NonNull(subMod),
+				ElemType: NonNull(subType),
 			}, PublicVisibility)
 			modValue.Bind(name, enumModValue, PublicVisibility)
 		}
 
-		env.Bind(hostModule.Named, modValue, PublicVisibility)
+		scope.Bind(hostModule.Named, modValue, PublicVisibility)
 	}
 }
 
@@ -1079,8 +1079,8 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal function value")
 }
 
-func (f FunctionValue) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
-	fnEnv := f.Closure.Derive(false)
+func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	fnScope := f.Closure.Derive(false)
 
 	if f.IsDynamic {
 		// Propagate dynamic scope from calling environment
@@ -1088,8 +1088,8 @@ func (f FunctionValue) Call(ctx context.Context, env ValueScope, args map[string
 		// A dynamic FunctionValue being called will ALWAYS mean we're coming from a
 		// 'naked' self-call (foo() instead of self.foo()) from a sibling method, so
 		// we can inherit the caller's `self`.
-		if dynScope, hasDynScope := env.Self(); hasDynScope {
-			fnEnv.MutateSelf(dynScope)
+		if dynScope, hasDynScope := scope.Self(); hasDynScope {
+			fnScope.MutateSelf(dynScope)
 		}
 	}
 
@@ -1101,11 +1101,11 @@ func (f FunctionValue) Call(ctx context.Context, env ValueScope, args map[string
 		blockCtx = contextWithBreakFrame(blockCtx, f.CapturedBreakFrame)
 		blockCtx = contextWithContinueFrame(blockCtx, invocationFrame)
 
-		if err := f.BindArgs(blockCtx, fnEnv, args); err != nil {
+		if err := f.BindArgs(blockCtx, fnScope, args); err != nil {
 			return nil, err
 		}
 
-		val, err := EvalNode(blockCtx, fnEnv, f.Body)
+		val, err := EvalNode(blockCtx, fnScope, f.Body)
 		if err != nil {
 			var continueEx *ContinueException
 			if errors.As(err, &continueEx) && controlFrameMatches(continueEx.Target, invocationFrame) {
@@ -1124,11 +1124,11 @@ func (f FunctionValue) Call(ctx context.Context, env ValueScope, args map[string
 	fnCtx := contextWithFunctionControlBoundary(ctx)
 	fnCtx = contextWithReturnFrame(fnCtx, returnFrame)
 
-	if err := f.BindArgs(fnCtx, fnEnv, args); err != nil {
+	if err := f.BindArgs(fnCtx, fnScope, args); err != nil {
 		return nil, err
 	}
 
-	val, err := EvalNode(fnCtx, fnEnv, f.Body)
+	val, err := EvalNode(fnCtx, fnScope, f.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 			return returnVal, nil
@@ -1138,35 +1138,35 @@ func (f FunctionValue) Call(ctx context.Context, env ValueScope, args map[string
 	return val, nil
 }
 
-func (f FunctionValue) BindArgs(ctx context.Context, fnEnv ValueScope, args map[string]Value) error {
+func (f FunctionValue) BindArgs(ctx context.Context, fnScope ValueScope, args map[string]Value) error {
 	// Bind arguments to the function environment
 	for _, argName := range f.Args {
 		if val, exists := args[argName]; exists {
 			// Handle null values with defaults
 			if _, isNull := val.(NullValue); isNull {
 				if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
-					// Evaluate in fnEnv so earlier args are visible to the default expression
-					defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
+					// Evaluate in fnScope so earlier args are visible to the default expression
+					defaultVal, err := EvalNode(ctx, fnScope, defaultExpr)
 					if err != nil {
 						return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 					}
-					fnEnv.Bind(argName, defaultVal, PrivateVisibility)
+					fnScope.Bind(argName, defaultVal, PrivateVisibility)
 				} else {
-					fnEnv.Bind(argName, val, PrivateVisibility)
+					fnScope.Bind(argName, val, PrivateVisibility)
 				}
 			} else {
-				fnEnv.Bind(argName, val, PrivateVisibility)
+				fnScope.Bind(argName, val, PrivateVisibility)
 			}
 		} else if defaultExpr, hasDefault := f.Defaults[argName]; hasDefault {
 			// Use default value when argument not provided.
-			// Evaluate in fnEnv so earlier args are visible to the default expression.
-			defaultVal, err := EvalNode(ctx, fnEnv, defaultExpr)
+			// Evaluate in fnScope so earlier args are visible to the default expression.
+			defaultVal, err := EvalNode(ctx, fnScope, defaultExpr)
 			if err != nil {
 				return fmt.Errorf("evaluating default value for argument %q: %w", argName, err)
 			}
-			fnEnv.Bind(argName, defaultVal, PrivateVisibility)
+			fnScope.Bind(argName, defaultVal, PrivateVisibility)
 		} else {
-			fnEnv.Bind(argName, NullValue{}, PrivateVisibility)
+			fnScope.Bind(argName, NullValue{}, PrivateVisibility)
 		}
 	}
 
@@ -1178,7 +1178,7 @@ func (f FunctionValue) BindArgs(ctx context.Context, fnEnv ValueScope, args map[
 		if blockParamName != "" {
 			// Extract block arg from context
 			if blockVal := ctx.Value(blockArgContextKey); blockVal != nil {
-				fnEnv.Bind(blockParamName, blockVal.(Value), PrivateVisibility)
+				fnScope.Bind(blockParamName, blockVal.(Value), PrivateVisibility)
 			}
 		}
 	}
@@ -1494,25 +1494,25 @@ func (b BoundMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound method value")
 }
 
-func (b BoundMethod) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+func (b BoundMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	if b.Method.IsBlockArg {
-		return b.Method.Call(ctx, env, args)
+		return b.Method.Call(ctx, scope, args)
 	}
 
 	// Create a composite environment that includes both the receiver and the method's closure
 	recv := b.Receiver.Derive(true)
-	fnEnv := CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
-	fnEnv.EnterSelf(recv)
+	fnScope := CreateOverlayValueScope(recv.Derive(false), b.Method.Closure)
+	fnScope.EnterSelf(recv)
 
 	returnFrame := NewControlFrame(ReturnFrame)
 	defer returnFrame.Deactivate()
 	methodCtx := contextWithReturnFrame(ctx, returnFrame)
 
-	if err := b.Method.BindArgs(methodCtx, fnEnv, args); err != nil {
+	if err := b.Method.BindArgs(methodCtx, fnScope, args); err != nil {
 		return nil, err
 	}
 
-	val, err := EvalNode(methodCtx, fnEnv, b.Method.Body)
+	val, err := EvalNode(methodCtx, fnScope, b.Method.Body)
 	if err != nil {
 		if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 			return returnVal, nil
@@ -1548,14 +1548,14 @@ func (b BoundBuiltinMethod) MarshalJSON() ([]byte, error) {
 	return nil, fmt.Errorf("cannot marshal bound builtin method value")
 }
 
-func (b BoundBuiltinMethod) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+func (b BoundBuiltinMethod) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	// Create a temporary environment with the receiver as dynamic scope
-	tempMod := NewType("_temp_", ObjectKind)
-	tempEnv := NewObject(tempMod)
-	tempEnv.EnterSelf(b.Receiver)
+	tempType := NewType("_temp_", ObjectKind)
+	tempScope := NewObject(tempType)
+	tempScope.EnterSelf(b.Receiver)
 
 	// Call the builtin function with the receiver context
-	return b.Method.Call(ctx, tempEnv, args)
+	return b.Method.Call(ctx, tempScope, args)
 }
 
 func (b BoundBuiltinMethod) ParameterNames() []string {
@@ -1570,7 +1570,7 @@ func (b BoundBuiltinMethod) IsAutoCallable() bool {
 type BuiltinFunction struct {
 	Name         string
 	FnType       *hm.FunctionType
-	CallFn       func(ctx context.Context, env ValueScope, args map[string]Value) (Value, error)
+	CallFn       func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error)
 	AllDefaulted bool // true when every parameter has a default value
 }
 
@@ -1582,8 +1582,8 @@ func (b BuiltinFunction) String() string {
 	return fmt.Sprintf("builtin:%s", b.Name)
 }
 
-func (b BuiltinFunction) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
-	return b.CallFn(ctx, env, args)
+func (b BuiltinFunction) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	return b.CallFn(ctx, scope, args)
 }
 
 func (b BuiltinFunction) ParameterNames() []string {
@@ -1630,16 +1630,16 @@ func (c *ConstructorFunction) String() string {
 	return fmt.Sprintf("constructor:%s", c.ObjectName)
 }
 
-func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
+func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 	ctx = contextWithFunctionControlBoundary(ctx)
 
 	// Create a new instance of the object
 	instance := NewObject(c.ObjectType)
 
-	instanceEnv := CreateOverlayValueScope(instance, c.Closure)
+	instanceScope := CreateOverlayValueScope(instance, c.Closure)
 
 	// Set dynamic scope to the instance so self is available
-	instanceEnv.EnterSelf(instance)
+	instanceScope.EnterSelf(instance)
 
 	if c.NewBody != nil {
 		// Explicit new() constructor: evaluate field declarations that have
@@ -1657,7 +1657,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 			formsWithDefaults = append(formsWithDefaults, form)
 		}
 
-		_, err := EvaluateFormsWithPhases(ctx, formsWithDefaults, instanceEnv)
+		_, err := EvaluateFormsWithPhases(ctx, formsWithDefaults, instanceScope)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating object body for %s: %w", c.ObjectName, err)
 		}
@@ -1666,13 +1666,13 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 		// the outer closure (see #23). Args go in a separate env that is
 		// only consulted for reads (Lookup), while writes (Bind/Update) go
 		// to the instance as before.
-		argEnv := NewObject(NewType("_constructor_args_", ObjectKind))
+		argScope := NewObject(NewType("_constructor_args_", ObjectKind))
 		// Build a temporary env layered on the closure so that default
 		// expressions for later parameters can see earlier parameters.
 		defaultScope := c.Closure.Derive(false)
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
-				argEnv.Bind(param.Name.Name, arg, PrivateVisibility)
+				argScope.Bind(param.Name.Name, arg, PrivateVisibility)
 				defaultScope.Bind(param.Name.Name, arg, PrivateVisibility)
 			} else if param.Value != nil {
 				// Evaluate in defaultScope so earlier args are visible.
@@ -1680,7 +1680,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
-				argEnv.Bind(param.Name.Name, defaultVal, PrivateVisibility)
+				argScope.Bind(param.Name.Name, defaultVal, PrivateVisibility)
 				defaultScope.Bind(param.Name.Name, defaultVal, PrivateVisibility)
 			}
 		}
@@ -1693,15 +1693,15 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 			if !ok {
 				return nil, fmt.Errorf("constructor block argument for %s is not a value", c.ObjectName)
 			}
-			argEnv.Bind(c.BlockParamName, blockVal, PrivateVisibility)
+			argScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 			defaultScope.Bind(c.BlockParamName, blockVal, PrivateVisibility)
 		}
 
 		// Execute the new() body with access to self and constructor args.
 		// We evaluate forms directly (not via Block.Eval) to avoid cloning
 		// the env, which would lose dynamic scope updates for self assignments.
-		newBodyEnv := CreateConstructorScope(instance, argEnv, c.Closure)
-		newBodyEnv.EnterSelf(instance)
+		newBodyScope := CreateConstructorScope(instance, argScope, c.Closure)
+		newBodyScope.EnterSelf(instance)
 		returnFrame := NewControlFrame(ReturnFrame)
 		defer returnFrame.Deactivate()
 		newBodyCtx := contextWithReturnFrame(ctx, returnFrame)
@@ -1709,7 +1709,7 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 		var lastVal Value
 		for _, form := range c.NewBody.Forms {
 			returned := false
-			lastVal, err = EvalNode(newBodyCtx, newBodyEnv, form)
+			lastVal, err = EvalNode(newBodyCtx, newBodyScope, form)
 			if err != nil {
 				if returnVal, ok := returnValueFromError(err, returnFrame); ok {
 					lastVal = returnVal
@@ -1720,11 +1720,11 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 			}
 			// After each form, update the instance from the dynamic scope
 			// (copy-on-write may have replaced it via self.field = value)
-			if updatedInstance, found := newBodyEnv.Self(); found {
+			if updatedInstance, found := newBodyScope.Self(); found {
 				instance = updatedInstance.(*Object)
-				// Update newBodyEnv to use the new instance
-				newBodyEnv = CreateConstructorScope(instance, argEnv, c.Closure)
-				newBodyEnv.EnterSelf(instance)
+				// Update newBodyScope to use the new instance
+				newBodyScope = CreateConstructorScope(instance, argScope, c.Closure)
+				newBodyScope.EnterSelf(instance)
 			}
 			if returned {
 				break
@@ -1748,11 +1748,11 @@ func (c *ConstructorFunction) Call(ctx context.Context, env ValueScope, args map
 		// then evaluate field declarations.
 		for _, param := range c.Parameters {
 			if arg, found := args[param.Name.Name]; found {
-				instanceEnv.Bind(param.Name.Name, arg, param.Visibility)
+				instanceScope.Bind(param.Name.Name, arg, param.Visibility)
 			}
 		}
 
-		_, err := EvaluateFormsWithPhases(ctx, c.ObjectBodyForms, instanceEnv)
+		_, err := EvaluateFormsWithPhases(ctx, c.ObjectBodyForms, instanceScope)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating object body for %s: %w", c.ObjectName, err)
 		}
@@ -2202,10 +2202,10 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueSco
 
 	type fileEvalScope struct {
 		classified ClassifiedForms
-		env        ValueScope
+		scope      ValueScope
 	}
 
-	scopes := make([]fileEvalScope, 0, len(blocks))
+	fileScopes := make([]fileEvalScope, 0, len(blocks))
 	for _, block := range blocks {
 		imports, rest := partitionImports(block.Forms)
 
@@ -2220,39 +2220,39 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueSco
 		}
 
 		composite := CreateOverlayValueScope(valueScope, importsScope)
-		scopes = append(scopes, fileEvalScope{
+		fileScopes = append(fileScopes, fileEvalScope{
 			classified: classifyForms(rest),
-			env:        composite,
+			scope:      composite,
 		})
 	}
 
 	// Phase order matches EvaluateFormsWithPhases (minus imports, which we
 	// already ran per file above): directives, constants, types, functions,
 	// variables (as lazy fields), then non-declarations.
-	for _, scope := range scopes {
-		for _, form := range scope.classified.Directives {
-			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+	for _, fs := range fileScopes {
+		for _, form := range fs.classified.Directives {
+			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
 				return fmt.Errorf("directive evaluation failed: %w", err)
 			}
 		}
 	}
-	for _, scope := range scopes {
-		for _, form := range scope.classified.Constants {
-			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+	for _, fs := range fileScopes {
+		for _, form := range fs.classified.Constants {
+			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
 				return fmt.Errorf("constant evaluation failed: %w", err)
 			}
 		}
 	}
-	for _, scope := range scopes {
-		for _, form := range scope.classified.Types {
-			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+	for _, fs := range fileScopes {
+		for _, form := range fs.classified.Types {
+			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
 				return fmt.Errorf("type evaluation failed: %w", err)
 			}
 		}
 	}
-	for _, scope := range scopes {
-		for _, form := range scope.classified.Functions {
-			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+	for _, fs := range fileScopes {
+		for _, form := range fs.classified.Functions {
+			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
 				return fmt.Errorf("function evaluation failed: %w", err)
 			}
 		}
@@ -2261,32 +2261,32 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueSco
 	// Without the split, file order would dictate eval order — a consumer file
 	// would force its body before a producer's `pub make = ...` had even been
 	// bound, so cross-file `make` lookups would fail.
-	for _, scope := range scopes {
-		scopeEnv := scope.env
-		for _, form := range scope.classified.Variables {
+	for _, fs := range fileScopes {
+		scope := fs.scope
+		for _, form := range fs.classified.Variables {
 			field, ok := form.(*FieldDecl)
 			if !ok {
 				continue
 			}
-			scopeEnv.BindLazy(field.Name.Name, func(ctx context.Context) (Value, error) {
-				return EvalNode(ctx, scopeEnv, field.Value)
+			scope.BindLazy(field.Name.Name, func(ctx context.Context) (Value, error) {
+				return EvalNode(ctx, scope, field.Value)
 			}, field.Visibility)
 		}
 	}
-	for _, scope := range scopes {
-		for _, form := range scope.classified.Variables {
+	for _, fs := range fileScopes {
+		for _, form := range fs.classified.Variables {
 			field, ok := form.(*FieldDecl)
 			if !ok {
 				continue
 			}
-			if _, _, err := scope.env.Lookup(ctx, field.Name.Name); err != nil {
+			if _, _, err := fs.scope.Lookup(ctx, field.Name.Name); err != nil {
 				return fmt.Errorf("variable evaluation failed: %w", err)
 			}
 		}
 	}
-	for _, scope := range scopes {
-		for _, form := range scope.classified.NonDeclarations {
-			if _, err := EvalNode(ctx, scope.env, form); err != nil {
+	for _, fs := range fileScopes {
+		for _, form := range fs.classified.NonDeclarations {
+			if _, err := EvalNode(ctx, fs.scope, form); err != nil {
 				return fmt.Errorf("non-declaration evaluation failed: %w", err)
 			}
 		}
@@ -2296,19 +2296,19 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueSco
 }
 
 // EvalNode evaluates any AST node (legacy interface)
-func EvalNode(ctx context.Context, env ValueScope, node Node) (Value, error) {
-	return EvalNodeWithContext(ctx, env, node, GetEvalContext(ctx))
+func EvalNode(ctx context.Context, scope ValueScope, node Node) (Value, error) {
+	return EvalNodeWithContext(ctx, scope, node, GetEvalContext(ctx))
 }
 
 // EvalNodeWithContext evaluates any AST node with enhanced error reporting
-func EvalNodeWithContext(ctx context.Context, env ValueScope, node Node, evalCtx *EvalContext) (Value, error) {
+func EvalNodeWithContext(ctx context.Context, scope ValueScope, node Node, evalCtx *EvalContext) (Value, error) {
 	// Store the eval context in the Go context for evaluators to access
 	if evalCtx != nil {
 		ctx = WithEvalContext(ctx, evalCtx)
 	}
 
 	if evaluator, ok := node.(Evaluator); ok {
-		val, err := evaluator.Eval(ctx, env)
+		val, err := evaluator.Eval(ctx, scope)
 		if err != nil {
 			// Let control-flow sentinel errors propagate unwrapped so their
 			// nearest runtime boundary can intercept them cleanly.

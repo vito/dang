@@ -45,13 +45,13 @@ func (c *Coerce) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 	})
 }
 
-func (c *Coerce) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (c *Coerce) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
-		val, err := EvalNode(ctx, env, c.Expr)
+		val, err := EvalNode(ctx, scope, c.Expr)
 		if err != nil {
 			return nil, err
 		}
-		return materializeValue(ctx, env, val, c.Target, c.Path)
+		return materializeValue(ctx, scope, val, c.Target, c.Path)
 	})
 }
 
@@ -308,7 +308,7 @@ func wrapCoerce(node Node, target hm.Type, path string) Node {
 // values are trusted to match their inferred type and are returned unchanged,
 // except for narrow explicit coercions (string-to-enum/custom-scalar and list
 // elements that may themselves need materialization).
-func materializeValue(ctx context.Context, env ValueScope, val Value, target hm.Type, path string) (Value, error) {
+func materializeValue(ctx context.Context, scope ValueScope, val Value, target hm.Type, path string) (Value, error) {
 	if target == nil {
 		return val, nil
 	}
@@ -320,7 +320,7 @@ func materializeValue(ctx context.Context, env ValueScope, val Value, target hm.
 		}
 		return val, nil
 	case DeferredValue:
-		return materializeDecoded(ctx, env, v.Raw, target, path)
+		return materializeDecoded(ctx, scope, v.Raw, target, path)
 	case StringValue:
 		return materializeStringValue(v, target, path)
 	case ListValue:
@@ -330,7 +330,7 @@ func materializeValue(ctx context.Context, env ValueScope, val Value, target hm.
 		}
 		elements := make([]Value, len(v.Elements))
 		for i, elem := range v.Elements {
-			materialized, err := materializeValue(ctx, env, elem, elemTarget, joinIndexPath(path, i))
+			materialized, err := materializeValue(ctx, scope, elem, elemTarget, joinIndexPath(path, i))
 			if err != nil {
 				return nil, err
 			}
@@ -372,12 +372,12 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 	}
 }
 
-func materializeDecoded(ctx context.Context, env ValueScope, raw any, target hm.Type, path string) (Value, error) {
+func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target hm.Type, path string) (Value, error) {
 	if nn, ok := target.(hm.NonNullType); ok {
 		if raw == nil {
 			return nil, materializeDeferredError(path, "null is not allowed for %s", target.Name())
 		}
-		return materializeDecoded(ctx, env, raw, nn.Type, path)
+		return materializeDecoded(ctx, scope, raw, nn.Type, path)
 	}
 
 	if raw == nil {
@@ -390,7 +390,7 @@ func materializeDecoded(ctx context.Context, env ValueScope, raw any, target hm.
 	}
 
 	if union, ok := target.(*hm.UnionType); ok {
-		return materializeDecodedUnion(ctx, env, raw, union, path)
+		return materializeDecodedUnion(ctx, scope, raw, union, path)
 	}
 
 	if target == StringType {
@@ -440,7 +440,7 @@ func materializeDecoded(ctx context.Context, env ValueScope, raw any, target hm.
 		}
 		elements := make([]Value, len(arr))
 		for i, elem := range arr {
-			materialized, err := materializeDecoded(ctx, env, elem, elemTarget, joinIndexPath(path, i))
+			materialized, err := materializeDecoded(ctx, scope, elem, elemTarget, joinIndexPath(path, i))
 			if err != nil {
 				return nil, err
 			}
@@ -471,21 +471,21 @@ func materializeDecoded(ctx context.Context, env ValueScope, raw any, target hm.
 			return ScalarValue{Val: s, ScalarType: mod}, nil
 		case ObjectKind:
 			if mod.Named == "" {
-				return materializeAnonymousObject(ctx, env, raw, mod, path)
+				return materializeAnonymousObject(ctx, scope, raw, mod, path)
 			}
-			return materializeNamedObject(ctx, env, raw, mod, path)
+			return materializeNamedObject(ctx, scope, raw, mod, path)
 		case InputKind:
-			return materializeNamedObject(ctx, env, raw, mod, path)
+			return materializeNamedObject(ctx, scope, raw, mod, path)
 		}
 	}
 
 	return nil, materializeDeferredError(path, "cannot materialize decoded data as %s", target.Name())
 }
 
-func materializeDecodedUnion(ctx context.Context, env ValueScope, raw any, union *hm.UnionType, path string) (Value, error) {
+func materializeDecodedUnion(ctx context.Context, scope ValueScope, raw any, union *hm.UnionType, path string) (Value, error) {
 	var lastErr error
 	for _, option := range union.Options {
-		val, err := materializeDecoded(ctx, env, raw, option, path)
+		val, err := materializeDecoded(ctx, scope, raw, option, path)
 		if err == nil {
 			return val, nil
 		}
@@ -497,13 +497,13 @@ func materializeDecodedUnion(ctx context.Context, env ValueScope, raw any, union
 	return DeferredValue{Raw: raw}, nil
 }
 
-func materializeNamedObject(ctx context.Context, env ValueScope, raw any, mod *Type, path string) (Value, error) {
+func materializeNamedObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object for %s, got %s", mod.Name(), decodedKind(raw))
 	}
 
-	constructorVal, found, err := env.Lookup(ctx, mod.Named)
+	constructorVal, found, err := scope.Lookup(ctx, mod.Named)
 	if err != nil {
 		return nil, err
 	}
@@ -515,15 +515,15 @@ func materializeNamedObject(ctx context.Context, env ValueScope, raw any, mod *T
 		return nil, materializeDeferredError(path, "%s is not callable", mod.Name())
 	}
 
-	args, err := materializeConstructorArgs(ctx, env, obj, callable, path)
+	args, err := materializeConstructorArgs(ctx, scope, obj, callable, path)
 	if err != nil {
 		return nil, err
 	}
 
-	return callable.Call(ctx, env, args)
+	return callable.Call(ctx, scope, args)
 }
 
-func materializeConstructorArgs(ctx context.Context, env ValueScope, obj map[string]any, callable Callable, path string) (map[string]Value, error) {
+func materializeConstructorArgs(ctx context.Context, scope ValueScope, obj map[string]any, callable Callable, path string) (map[string]Value, error) {
 	args := map[string]Value{}
 
 	if constructor, ok := callable.(*ConstructorFunction); ok {
@@ -536,7 +536,7 @@ func materializeConstructorArgs(ctx context.Context, env ValueScope, obj map[str
 			}
 			fieldPath := joinFieldPath(path, name)
 			if rawVal, found := obj[name]; found {
-				materialized, err := materializeDecoded(ctx, env, rawVal, paramType, fieldPath)
+				materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath)
 				if err != nil {
 					return nil, err
 				}
@@ -562,7 +562,7 @@ func materializeConstructorArgs(ctx context.Context, env ValueScope, obj map[str
 		paramType := paramTypes[name]
 		fieldPath := joinFieldPath(path, name)
 		if rawVal, found := obj[name]; found {
-			materialized, err := materializeDecoded(ctx, env, rawVal, paramType, fieldPath)
+			materialized, err := materializeDecoded(ctx, scope, rawVal, paramType, fieldPath)
 			if err != nil {
 				return nil, err
 			}
@@ -578,7 +578,7 @@ func materializeConstructorArgs(ctx context.Context, env ValueScope, obj map[str
 	return args, nil
 }
 
-func materializeAnonymousObject(ctx context.Context, env ValueScope, raw any, mod *Type, path string) (Value, error) {
+func materializeAnonymousObject(ctx context.Context, scope ValueScope, raw any, mod *Type, path string) (Value, error) {
 	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, materializeDeferredError(path, "expected object, got %s", decodedKind(raw))
@@ -593,7 +593,7 @@ func materializeAnonymousObject(ctx context.Context, env ValueScope, raw any, mo
 		}
 		fieldPath := joinFieldPath(path, name)
 		if rawVal, found := obj[name]; found {
-			materialized, err := materializeDecoded(ctx, env, rawVal, fieldType, fieldPath)
+			materialized, err := materializeDecoded(ctx, scope, rawVal, fieldType, fieldPath)
 			if err != nil {
 				return nil, err
 			}

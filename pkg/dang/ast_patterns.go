@@ -117,8 +117,8 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 
 // inferTypePatternClause validates a type pattern clause against the operand type.
 // The operand must be a union (or interface), and the type pattern must name one of its members.
-func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.Fresher, clause *CaseClause, exprType hm.Type) error {
-	modEnv, ok := env.(TypeScope)
+func (c *Case) inferTypePatternClause(_ context.Context, env hm.Env, _ hm.Fresher, clause *CaseClause, exprType hm.Type) error {
+	typeScope, ok := env.(TypeScope)
 	if !ok {
 		return NewInferError(fmt.Errorf("type patterns require a module environment"), clause)
 	}
@@ -149,14 +149,14 @@ func (c *Case) inferTypePatternClause(ctx context.Context, env hm.Env, fresh hm.
 			}
 		} else if operandMod.Kind == InterfaceKind {
 			var err error
-			memberMod, err = resolveInterfaceTypePattern(modEnv, operandMod, clause.TypePattern.Name)
+			memberMod, err = resolveInterfaceTypePattern(typeScope, operandMod, clause.TypePattern.Name)
 			if err != nil {
 				return NewInferError(err, clause.TypePattern)
 			}
 		}
 	} else if operandUnion, ok := unwrapped.(*hm.UnionType); ok {
 		var err error
-		memberMod, err = resolveInlineUnionTypePattern(modEnv, operandUnion, clause.TypePattern.Name)
+		memberMod, err = resolveInlineUnionTypePattern(typeScope, operandUnion, clause.TypePattern.Name)
 		if err != nil {
 			return NewInferError(err, clause.TypePattern)
 		}
@@ -249,10 +249,10 @@ func (c *Case) Walk(fn func(Node) bool) {
 	}
 }
 
-func (c *Case) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		// Evaluate the expression we're matching against
-		exprVal, err := EvalNode(ctx, env, c.Expr)
+		exprVal, err := EvalNode(ctx, scope, c.Expr)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating case expression: %w", err)
 		}
@@ -261,22 +261,22 @@ func (c *Case) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		for i, clause := range c.Clauses {
 			// Else clauses always match
 			if clause.IsElse {
-				return EvalNode(ctx, env, clause.Expr)
+				return EvalNode(ctx, scope, clause.Expr)
 			}
 
 			// Type pattern clauses: check against the resolved type
 			if clause.IsTypePattern() {
 				if matchesType(exprVal, clause.resolvedMemberType) {
 					// Create a child scope with the binding
-					childEnv := env.Derive(true)
-					childEnv.Bind(clause.Binding, exprVal, PrivateVisibility)
-					return EvalNode(ctx, childEnv, clause.Expr)
+					childScope := scope.Derive(true)
+					childScope.Bind(clause.Binding, exprVal, PrivateVisibility)
+					return EvalNode(ctx, childScope, clause.Expr)
 				}
 				continue
 			}
 
 			// Evaluate the clause value
-			clauseVal, err := EvalNode(ctx, env, clause.Value)
+			clauseVal, err := EvalNode(ctx, scope, clause.Value)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating clause %d value: %w", i, err)
 			}
@@ -284,7 +284,7 @@ func (c *Case) Eval(ctx context.Context, env ValueScope) (Value, error) {
 			// Check for equality
 			if valuesEqual(clauseVal, exprVal) {
 				// Evaluate and return the clause expression
-				return EvalNode(ctx, env, clause.Expr)
+				return EvalNode(ctx, scope, clause.Expr)
 			}
 		}
 

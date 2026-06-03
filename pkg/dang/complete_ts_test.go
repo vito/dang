@@ -9,8 +9,8 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-// testCompletionEnv builds a simple env with some bindings for testing.
-func testCompletionEnv() TypeScope {
+// testCompletionTypeScope builds a simple env with some bindings for testing.
+func testCompletionTypeScope() TypeScope {
 	registerBuiltinTypes()
 
 	env := NewPreludeTypeScope("")
@@ -52,7 +52,7 @@ func testCompletionEnv() TypeScope {
 }
 
 func TestComplete_DotMember(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	tests := []struct {
@@ -122,7 +122,7 @@ func TestComplete_DotMember(t *testing.T) {
 }
 
 func TestComplete_BareIdent(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	tests := []struct {
@@ -168,7 +168,7 @@ func TestComplete_BareIdent(t *testing.T) {
 }
 
 func TestComplete_ArgCompletion(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	tests := []struct {
@@ -290,7 +290,7 @@ func TestComplete_ArgCompletion(t *testing.T) {
 }
 
 func TestComplete_ReplaceFrom(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	tests := []struct {
@@ -336,7 +336,7 @@ func TestComplete_ReplaceFrom(t *testing.T) {
 }
 
 func TestComplete_MultiLine(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	// Multi-line input: second line has "container.fr"
@@ -366,7 +366,7 @@ func TestComplete_MultiLine(t *testing.T) {
 }
 
 func TestComplete_DotMemberAfterParensOnEarlierLines(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	// Regression: earlier lines with parens (e.g. function calls) must not
@@ -391,7 +391,7 @@ func TestComplete_DotMemberAfterParensOnEarlierLines(t *testing.T) {
 }
 
 func TestComplete_NoResults(t *testing.T) {
-	env := testCompletionEnv()
+	env := testCompletionTypeScope()
 	ctx := context.Background()
 
 	tests := []struct {

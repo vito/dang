@@ -144,25 +144,25 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			}
 			if def.ReturnType != nil {
 				ret := UnwrapType(def.ReturnType)
-				if retEnv, ok := ret.(dang.TypeScope); ok {
-					item.RetTypeScope = retEnv
+				if scope, ok := ret.(dang.TypeScope); ok {
+					item.RetTypeScope = scope
 				}
 			}
 			col.Items = append(col.Items, item)
 		})
 	}
 
-	for name, namedEnv := range env.NamedTypes() {
+	for name, namedTypeScope := range env.NamedTypes() {
 		if seen[name] {
 			continue
 		}
 		item := DocItem{
 			Name:         name,
-			TypeStr:      namedEnv.Name(),
-			RetTypeScope: namedEnv,
-			Kind:         ClassifyTypeScope(namedEnv),
+			TypeStr:      namedTypeScope.Name(),
+			RetTypeScope: namedTypeScope,
+			Kind:         ClassifyTypeScope(namedTypeScope),
 		}
-		if d := namedEnv.GetTypeDocString(); d != "" {
+		if d := namedTypeScope.GetTypeDocString(); d != "" {
 			item.Doc = d
 		}
 		col.Items = append(col.Items, item)

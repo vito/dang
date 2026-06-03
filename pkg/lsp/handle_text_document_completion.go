@@ -23,7 +23,7 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 		return []CompletionItem{}, nil
 	}
 
-	env := h.buildCompletionEnv(f, params.Position)
+	env := h.buildCompletionTypeScope(f, params.Position)
 	if env != nil {
 		result := dang.Complete(ctx, env, f.Text, params.Position.Line, params.Position.Character)
 		if len(result.Items) > 0 {
@@ -39,10 +39,10 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 	return nil, nil
 }
 
-// buildCompletionEnv creates a type environment that includes the file-level
+// buildCompletionTypeScope creates a type environment that includes the file-level
 // env plus all enclosing scope bindings at the given position. This allows
 // resolving local variables (e.g. "ctr") that are not in the top-level env.
-func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.TypeScope {
+func (h *langHandler) buildCompletionTypeScope(f *File, pos Position) dang.TypeScope {
 	if f.TypeScope == nil {
 		return nil
 	}
@@ -60,8 +60,8 @@ func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.TypeScope {
 	// Build a layered env: start from the file-level env (cloned),
 	// then merge all enclosing scope bindings into it.
 	env := f.TypeScope.Clone().(dang.TypeScope)
-	for _, scopeEnv := range enclosing {
-		for name, scheme := range scopeEnv.Bindings(dang.PrivateVisibility) {
+	for _, enclosingScope := range enclosing {
+		for name, scheme := range enclosingScope.Bindings(dang.PrivateVisibility) {
 			env.Add(name, scheme)
 		}
 	}

@@ -361,14 +361,14 @@ func DocItemFromTypeScope(env dang.TypeScope, name string) (DocItem, bool) {
 		}
 	}
 
-	for tName, namedEnv := range env.NamedTypes() {
+	for tName, namedTypeScope := range env.NamedTypes() {
 		if tName == name {
 			item := DocItem{
 				Name:    name,
-				TypeStr: namedEnv.Name(),
-				Kind:    ClassifyTypeScope(namedEnv),
+				TypeStr: namedTypeScope.Name(),
+				Kind:    ClassifyTypeScope(namedTypeScope),
 			}
-			if d := namedEnv.GetTypeDocString(); d != "" {
+			if d := namedTypeScope.GetTypeDocString(); d != "" {
 				item.Doc = d
 			}
 			return item, true

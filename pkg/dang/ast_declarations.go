@@ -95,8 +95,8 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 	newEnv := env.Clone()
 	signatureCtx := contextWithInferFunctionControlBoundary(ctx)
 
-	if dangEnv, ok := newEnv.(TypeScope); ok {
-		f.InferredScope = dangEnv
+	if typeScope, ok := newEnv.(TypeScope); ok {
+		f.InferredScope = typeScope
 	}
 
 	args, directives, docStrings, err := f.declareFunctionSignatureArguments(signatureCtx, newEnv, fresh)
@@ -140,7 +140,7 @@ func (f *FunctionBase) declareFunctionSignature(ctx context.Context, env hm.Env,
 }
 
 // createFunctionValue creates a FunctionValue from processed arguments
-func (f *FunctionBase) createFunctionValue(env ValueScope, fnType *hm.FunctionType) FunctionValue {
+func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.FunctionType) FunctionValue {
 	argNames := make([]string, len(f.Args))
 	defaults := make(map[string]Node)
 
@@ -157,12 +157,12 @@ func (f *FunctionBase) createFunctionValue(env ValueScope, fnType *hm.FunctionTy
 	}
 
 	// Check if this function has access to dynamic scope
-	_, hasDynamicScope := env.Self()
+	_, hasDynamicScope := scope.Self()
 
 	return FunctionValue{
 		Args:           argNames,
 		Body:           f.Body,
-		Closure:        env,
+		Closure:        scope,
 		FnType:         fnType,
 		Defaults:       defaults,
 		ArgDecls:       f.Args, // Preserve original argument declarations with directives
@@ -260,11 +260,11 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 }
 
 // Eval provides shared evaluation logic for functions
-func (f *FunctionBase) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (f *FunctionBase) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	if f.Inferred == nil {
 		return nil, fmt.Errorf("%v.Eval: function type not inferred", f)
 	}
-	return f.createFunctionValue(env, f.Inferred), nil
+	return f.createFunctionValue(scope, f.Inferred), nil
 }
 
 type FunDecl struct {
@@ -438,12 +438,12 @@ func (r *Reassignment) functionRefAssignmentError(ctx context.Context, env hm.En
 	)
 }
 
-func (r *Reassignment) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (r *Reassignment) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, r, func() (Value, error) {
 		// Evaluate the value first. r.Value is wrapped in a Coerce by
 		// Reassignment.Infer (for `=` assignments), so materialization
 		// happens inside EvalNode.
-		value, err := EvalNode(ctx, env, r.Value)
+		value, err := EvalNode(ctx, scope, r.Value)
 		if err != nil {
 			return nil, fmt.Errorf("Reassignment.Eval: evaluating value: %w", err)
 		}
@@ -452,11 +452,11 @@ func (r *Reassignment) Eval(ctx context.Context, env ValueScope) (Value, error) 
 		switch target := r.Target.(type) {
 		case *Symbol:
 			// Simple variable assignment: x = value or x += value
-			return r.evalVariableAssignment(ctx, env, target.Name, value)
+			return r.evalVariableAssignment(ctx, scope, target.Name, value)
 
 		case *Select:
 			// Field assignment: obj.field = value or obj.field += value
-			return r.evalFieldAssignment(ctx, env, target, value)
+			return r.evalFieldAssignment(ctx, scope, target, value)
 
 		default:
 			return nil, fmt.Errorf("Reassignment.Eval: unsupported assignment target type %T", r.Target)
@@ -464,18 +464,18 @@ func (r *Reassignment) Eval(ctx context.Context, env ValueScope) (Value, error) 
 	})
 }
 
-func (r *Reassignment) evalVariableAssignment(ctx context.Context, env ValueScope, varName string, value Value) (Value, error) {
+func (r *Reassignment) evalVariableAssignment(ctx context.Context, scope ValueScope, varName string, value Value) (Value, error) {
 	switch r.Modifier {
 	case "=":
 		// Simple assignment: x = value
-		if !env.Has(varName) {
+		if !scope.Has(varName) {
 			return nil, fmt.Errorf("Reassignment.Eval: variable %q not found", varName)
 		}
-		env.Update(varName, value)
+		scope.Update(varName, value)
 		return value, nil
 	case "+":
 		// Compound assignment: x += value
-		currentValue, found, err := env.Lookup(ctx, varName)
+		currentValue, found, err := scope.Lookup(ctx, varName)
 		if err != nil {
 			return nil, err
 		}
@@ -489,14 +489,14 @@ func (r *Reassignment) evalVariableAssignment(ctx context.Context, env ValueScop
 			return nil, err
 		}
 
-		env.Update(varName, newValue)
+		scope.Update(varName, newValue)
 		return newValue, nil
 	default:
 		return nil, fmt.Errorf("Reassignment.Eval: unsupported modifier %q", r.Modifier)
 	}
 }
 
-func (r *Reassignment) evalFieldAssignment(ctx context.Context, env ValueScope, selectNode *Select, value Value) (Value, error) {
+func (r *Reassignment) evalFieldAssignment(ctx context.Context, scope ValueScope, selectNode *Select, value Value) (Value, error) {
 	// Traverse the nested Select nodes to find the final receiver and the field to modify
 	rootNode, path, err := r.getPath(selectNode)
 	if err != nil {
@@ -509,13 +509,13 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env ValueScope, 
 	var rootSymbolName string
 
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
-		rootObj, found = env.Self()
+		rootObj, found = scope.Self()
 		if !found {
 			return nil, fmt.Errorf("'self' is not available in this context")
 		}
 	} else if rootSymbol, ok := rootNode.(*Symbol); ok {
 		rootSymbolName = rootSymbol.Name
-		rootObj, found, err = env.Lookup(ctx, rootSymbolName)
+		rootObj, found, err = scope.Lookup(ctx, rootSymbolName)
 		if err != nil {
 			return nil, err
 		}
@@ -577,9 +577,9 @@ func (r *Reassignment) evalFieldAssignment(ctx context.Context, env ValueScope, 
 	// Update the root object in the environment (respects sealed scope boundaries)
 	// For self, update the dynamic scope so subsequent references see the change
 	if _, isSelf := rootNode.(*SelfKeyword); isSelf {
-		env.MutateSelf(newRoot.(Value))
+		scope.MutateSelf(newRoot.(Value))
 	} else {
-		env.Update(rootSymbolName, newRoot.(Value))
+		scope.Update(rootSymbolName, newRoot.(Value))
 	}
 
 	return newRoot.(Value), nil
@@ -738,7 +738,7 @@ func (d *DirectiveDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 	return hm.TypeVariable('d'), nil
 }
 
-func (d *DirectiveDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (d *DirectiveDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Directives are compile-time constructs, they don't evaluate to runtime values
 	return NullValue{}, nil
 }
@@ -818,7 +818,7 @@ func (d *DirectiveApplication) Infer(ctx context.Context, env hm.Env, fresh hm.F
 	})
 }
 
-func (d *DirectiveApplication) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (d *DirectiveApplication) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Directive applications are compile-time annotations, no runtime evaluation
 	return NullValue{}, nil
 }
@@ -1050,15 +1050,15 @@ func (i *ImportDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			}
 		}
 
-		if dangEnv, ok := env.(TypeScope); ok {
-			installImportedTypeScope(dangEnv, i.Name.Name, i.inferred)
+		if typeScope, ok := env.(TypeScope); ok {
+			installImportedTypeScope(typeScope, i.Name.Name, i.inferred)
 		}
 
 		return NonNull(i.inferred), nil
 	})
 }
 
-func (i *ImportDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (i *ImportDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	if i.inferred == nil {
 		return nil, fmt.Errorf("ImportDecl.Eval: import not properly inferred")
 	}
@@ -1066,7 +1066,7 @@ func (i *ImportDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	// Create evaluation environment for the imported schema
 	importValueScope := ValueScopeFromSchema(i.inferred, i.client, i.schema)
 
-	installImportedValueScope(env, i.Name.Name, importValueScope)
+	installImportedValueScope(scope, i.Name.Name, importValueScope)
 
 	return importValueScope, nil
 }

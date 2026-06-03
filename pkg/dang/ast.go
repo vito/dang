@@ -122,7 +122,7 @@ func hasZeroRequiredArgs(field *introspection.Field) bool {
 }
 
 // autoCallFn calls a zero-arity function with empty arguments
-func autoCallFn(ctx context.Context, env ValueScope, val Value) (Value, error) {
+func autoCallFn(ctx context.Context, scope ValueScope, val Value) (Value, error) {
 	// Create a FunCall with empty arguments and delegate to FunCall.Eval
 	emptyRecord := Record{}
 	funCall := FunCall{
@@ -130,7 +130,7 @@ func autoCallFn(ctx context.Context, env ValueScope, val Value) (Value, error) {
 		Args: emptyRecord,
 		Loc:  nil,
 	}
-	return funCall.Eval(ctx, env)
+	return funCall.Eval(ctx, scope)
 }
 
 func inferNodeWithoutAutoCall(ctx context.Context, env hm.Env, fresh hm.Fresher, node Node) (hm.Type, error) {
@@ -161,27 +161,27 @@ func inferNodeWithoutAutoCall(ctx context.Context, env hm.Env, fresh hm.Fresher,
 	}
 }
 
-func evalNodeWithoutAutoCall(ctx context.Context, env ValueScope, node Node) (Value, error) {
+func evalNodeWithoutAutoCall(ctx context.Context, scope ValueScope, node Node) (Value, error) {
 	switch n := node.(type) {
 	case *Symbol:
 		prev := n.AutoCall
 		n.AutoCall = false
 		defer func() { n.AutoCall = prev }()
-		return EvalNode(ctx, env, n)
+		return EvalNode(ctx, scope, n)
 	case *Select:
 		prev := n.AutoCall
 		n.AutoCall = false
 		defer func() { n.AutoCall = prev }()
-		return EvalNode(ctx, env, n)
+		return EvalNode(ctx, scope, n)
 	case *Index:
 		prev := n.AutoCall
 		n.AutoCall = false
 		defer func() { n.AutoCall = prev }()
-		return EvalNode(ctx, env, n)
+		return EvalNode(ctx, scope, n)
 	case *Grouped:
-		return evalNodeWithoutAutoCall(ctx, env, n.Expr)
+		return evalNodeWithoutAutoCall(ctx, scope, n.Expr)
 	default:
-		return EvalNode(ctx, env, node)
+		return EvalNode(ctx, scope, node)
 	}
 }
 
@@ -205,7 +205,7 @@ func (v *ValueNode) GetSourceLocation() *SourceLocation { return v.Loc }
 func (v *ValueNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return v.Val.Type(), nil
 }
-func (v *ValueNode) Eval(ctx context.Context, env ValueScope) (Value, error) { return v.Val, nil }
+func (v *ValueNode) Eval(ctx context.Context, scope ValueScope) (Value, error) { return v.Val, nil }
 
 func (v *ValueNode) Walk(fn func(Node) bool) {
 	fn(v)

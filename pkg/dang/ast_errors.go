@@ -134,9 +134,9 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
-func (t *TryCatch) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
-		val, err := EvalNode(ctx, env, t.TryBody)
+		val, err := EvalNode(ctx, scope, t.TryBody)
 		if err == nil {
 			return val, nil
 		}
@@ -151,18 +151,18 @@ func (t *TryCatch) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
 			if clause.IsElse {
-				childEnv := env.Derive(true)
+				childScope := scope.Derive(true)
 				if clause.Binding != "" {
-					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
+					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
-				return EvalNode(ctx, childEnv, clause.Expr)
+				return EvalNode(ctx, childScope, clause.Expr)
 			}
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
-					childEnv := env.Derive(true)
-					childEnv.Bind(clause.Binding, errVal, PrivateVisibility)
-					return EvalNode(ctx, childEnv, clause.Expr)
+					childScope := scope.Derive(true)
+					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
+					return EvalNode(ctx, childScope, clause.Expr)
 				}
 				continue
 			}
@@ -259,8 +259,8 @@ func (r *Raise) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (r *Raise) Eval(ctx context.Context, env ValueScope) (Value, error) {
-	val, err := EvalNode(ctx, env, r.Value)
+func (r *Raise) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	val, err := EvalNode(ctx, scope, r.Value)
 	if err != nil {
 		return nil, err
 	}

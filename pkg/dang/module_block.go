@@ -82,10 +82,10 @@ func (m *ModuleBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	})
 }
 
-func (m *ModuleBlock) Eval(ctx context.Context, env ValueScope) (Value, error) {
-	newEnv := env
+func (m *ModuleBlock) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	newScope := scope
 	if !m.Inline {
-		newEnv = env.Derive(false)
+		newScope = scope.Derive(false)
 	}
 
 	forms := m.Forms
@@ -94,7 +94,7 @@ func (m *ModuleBlock) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	}
 
 	// Use phased evaluation to match the inference order
-	return EvaluateFormsWithPhases(ctx, forms, newEnv)
+	return EvaluateFormsWithPhases(ctx, forms, newScope)
 }
 
 func (m *ModuleBlock) Walk(fn func(Node) bool) {

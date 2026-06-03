@@ -267,9 +267,9 @@ func (s *FieldDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	return definedType, nil
 }
 
-func (s *FieldDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (s *FieldDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
-		val, defined := env.LookupLocal(s.Name.Name)
+		val, defined := scope.LookupLocal(s.Name.Name)
 		if defined {
 			// Already defined (e.g. through constructor). The value reached us
 			// through a Coerce-wrapped argument so it is already materialized.
@@ -287,19 +287,19 @@ func (s *FieldDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 			// If no value is provided, this is just a type declaration
 			// Add a null value to the environment as a placeholder
-			env.Bind(s.Name.Name, NullValue{}, s.Visibility)
+			scope.Bind(s.Name.Name, NullValue{}, s.Visibility)
 			return NullValue{}, nil
 		}
 
 		// Evaluate the value expression with proper error context. The Value
 		// node is wrapped in a Coerce by FieldDecl.Infer when the field has an
 		// explicit type, so materialization happens during EvalNode.
-		val, err := EvalNode(ctx, env, s.Value)
+		val, err := EvalNode(ctx, scope, s.Value)
 		if err != nil {
 			return nil, err
 		}
 
-		env.Bind(s.Name.Name, val, s.Visibility)
+		scope.Bind(s.Name.Name, val, s.Visibility)
 		return val, nil
 	})
 }
@@ -386,7 +386,7 @@ func (n *NewConstructorDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fre
 }
 
 // Eval is a no-op since NewConstructorDecl is evaluated as part of ConstructorFunction.Call
-func (n *NewConstructorDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (n *NewConstructorDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// The new() constructor body is evaluated by ConstructorFunction.Call
 	return NullValue{}, nil
 }
@@ -494,7 +494,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 		return nil
 	}
 
-	inferEnv := &OverlayTypeScope{
+	inferTypeScope := &OverlayTypeScope{
 		primary: object,
 		lexical: env.(TypeScope),
 	}
@@ -509,7 +509,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	} else {
 		constructorParams = c.extractConstructorParameters()
 	}
-	constructorType, err := c.buildConstructorType(ctx, inferEnv, constructorParams, constructorBlockParam, object, fresh)
+	constructorType, err := c.buildConstructorType(ctx, inferTypeScope, constructorParams, constructorBlockParam, object, fresh)
 	if err != nil {
 		return err
 	}
@@ -563,7 +563,7 @@ func (c *ObjectDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	bodyForms := c.bodyFormsWithoutNew()
 	for _, form := range bodyForms {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+			if err := hoister.Hoist(ctx, inferTypeScope, fresh, 0); err != nil {
 				return err
 			}
 		}
@@ -604,7 +604,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 	}
 
-	inferEnv := &OverlayTypeScope{
+	inferTypeScope := &OverlayTypeScope{
 		primary: object,
 		lexical: env.(TypeScope),
 	}
@@ -625,7 +625,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 	// Infer body forms (excluding new() which is handled separately)
 	bodyForms := c.bodyFormsWithoutNew()
-	if _, err := InferFormsWithPhases(ctx, bodyForms, inferEnv, fresh); err != nil {
+	if _, err := InferFormsWithPhases(ctx, bodyForms, inferTypeScope, fresh); err != nil {
 		return nil, err
 	}
 
@@ -635,7 +635,7 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	newDecl := c.findNewConstructor()
 	var newBodyErr error
 	if newDecl != nil {
-		newBodyErr = c.inferNewConstructor(ctx, newDecl, inferEnv, fresh)
+		newBodyErr = c.inferNewConstructor(ctx, newDecl, inferTypeScope, fresh)
 	}
 
 	// Validate interface implementations after fields have been inferred
@@ -788,11 +788,11 @@ func (c *ObjectDecl) buildConstructorType(ctx context.Context, env hm.Env, param
 }
 
 // inferNewConstructor infers the body of an explicit new() constructor
-func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, inferEnv *OverlayTypeScope, fresh hm.Fresher) error {
+func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstructorDecl, env hm.Env, fresh hm.Fresher) error {
 	constructorCtx := contextWithInferFunctionControlBoundary(ctx)
 
 	// Create an environment with the constructor args in scope
-	newEnv := inferEnv.Clone().(*OverlayTypeScope)
+	newEnv := env.Clone().(*OverlayTypeScope)
 	for _, arg := range newDecl.Args {
 		// Fully infer constructor arguments here so default expressions are
 		// validated during normal inference. Declaration may have recorded the
@@ -809,7 +809,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 			blockType = c.ConstructorFnType.Block()
 		} else {
 			var err error
-			blockType, err = newDecl.BlockParam.Type_.Infer(constructorCtx, inferEnv, fresh)
+			blockType, err = newDecl.BlockParam.Type_.Infer(constructorCtx, env, fresh)
 			if err != nil {
 				return fmt.Errorf("inferring new() block parameter %s: %w", newDecl.BlockParam.Name.Name, err)
 			}
@@ -855,7 +855,7 @@ func (c *ObjectDecl) inferNewConstructor(ctx context.Context, newDecl *NewConstr
 	return nil
 }
 
-func (c *ObjectDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (c *ObjectDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
 		if c.Inferred == nil {
 			panic(fmt.Errorf("ObjectDecl.Eval: object %q has not been inferred", c.Name.Name))
@@ -886,7 +886,7 @@ func (c *ObjectDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 		// Create a constructor function that evaluates the object body when called
 		constructor := &ConstructorFunction{
-			Closure:         env,
+			Closure:         scope,
 			ObjectName:      c.Name.Name,
 			Parameters:      constructorParams,
 			BlockParamName:  blockParamName,
@@ -897,7 +897,7 @@ func (c *ObjectDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		}
 
 		// Add the constructor to the evaluation environment
-		env.Bind(c.Name.Name, constructor, c.Visibility)
+		scope.Bind(c.Name.Name, constructor, c.Visibility)
 
 		return constructor, nil
 	})
@@ -1003,7 +1003,7 @@ func (e *EnumDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	return enumType, nil
 }
 
-func (e *EnumDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (e *EnumDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Create a module value for the enum
 	enumModule := NewObject(e.Inferred)
 
@@ -1025,7 +1025,7 @@ func (e *EnumDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	}
 
 	// Register the enum module in the environment
-	env.Bind(e.Name.Name, enumModule, e.Visibility)
+	scope.Bind(e.Name.Name, enumModule, e.Visibility)
 
 	return enumModule, nil
 }
@@ -1113,13 +1113,13 @@ func (s *ScalarDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 	return scalarType, nil
 }
 
-func (s *ScalarDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Scalars are just type placeholders, similar to enums but with no values
 	// The actual scalar values come from GraphQL or are just strings
 	scalarModule := NewObject(s.Inferred)
 
 	// Register the scalar type in the environment
-	env.Bind(s.Name.Name, scalarModule, s.Visibility)
+	scope.Bind(s.Name.Name, scalarModule, s.Visibility)
 
 	return scalarModule, nil
 }
@@ -1222,13 +1222,13 @@ func (i *InterfaceDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher,
 
 	// Pass 1: Declare interface field and method signatures without inferring
 	// implementation bodies. Interface bodies only describe the public shape.
-	inferEnv := &OverlayTypeScope{
+	inferTypeScope := &OverlayTypeScope{
 		primary: iface,
 		lexical: mod,
 	}
 	for _, form := range i.Value.Forms {
 		if hoister, ok := form.(Hoister); ok {
-			if err := hoister.Hoist(ctx, inferEnv, fresh, 0); err != nil {
+			if err := hoister.Hoist(ctx, inferTypeScope, fresh, 0); err != nil {
 				return err
 			}
 		}
@@ -1250,13 +1250,13 @@ func (i *InterfaceDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		}
 
 		// Infer the interface fields using composite environment
-		inferEnv := &OverlayTypeScope{
+		inferTypeScope := &OverlayTypeScope{
 			primary: iface,
 			lexical: env.(TypeScope),
 		}
 
 		// Use phased inference approach (like ObjectDecl) to avoid environment cloning
-		if _, err := InferFormsWithPhases(ctx, i.Value.Forms, inferEnv, fresh); err != nil {
+		if _, err := InferFormsWithPhases(ctx, i.Value.Forms, inferTypeScope, fresh); err != nil {
 			return nil, err
 		}
 
@@ -1328,11 +1328,11 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 	return nil
 }
 
-func (i *InterfaceDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (i *InterfaceDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Interfaces are pure type declarations - they don't have runtime values
 	// Just register the interface module in the environment
 	interfaceModule := NewObject(i.Inferred)
-	env.Bind(i.Name.Name, interfaceModule, i.Visibility)
+	scope.Bind(i.Name.Name, interfaceModule, i.Visibility)
 	return interfaceModule, nil
 }
 
@@ -1480,10 +1480,10 @@ func (u *UnionDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm
 	})
 }
 
-func (u *UnionDecl) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (u *UnionDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	// Unions are pure type declarations - register the union module
 	unionModule := NewObject(u.Inferred)
-	env.Bind(u.Name.Name, unionModule, u.Visibility)
+	scope.Bind(u.Name.Name, unionModule, u.Visibility)
 	return unionModule, nil
 }
 

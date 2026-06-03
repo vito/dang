@@ -12,9 +12,9 @@ import (
 	"github.com/vito/dang/pkg/introspection"
 )
 
-func requireEvalGet(t *testing.T, env ValueScope, name string) (Value, bool) {
+func requireEvalGet(t *testing.T, scope ValueScope, name string) (Value, bool) {
 	t.Helper()
-	val, found, err := env.Lookup(context.Background(), name)
+	val, found, err := scope.Lookup(context.Background(), name)
 	require.NoError(t, err)
 	return val, found
 }

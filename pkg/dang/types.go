@@ -46,16 +46,16 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 			return nil, fmt.Errorf("NamedType.Infer: empty name")
 		}
 
-		fromEnv := env.(TypeScope)
+		typeScope := env.(TypeScope)
 		if t.Base != nil {
 			base, err := t.Base.Infer(ctx, env, fresh)
 			if err != nil {
 				return nil, fmt.Errorf("NamedType.Infer: base type: %w", err)
 			}
-			fromEnv = base.(TypeScope)
+			typeScope = base.(TypeScope)
 		}
 
-		s, found := fromEnv.NamedType(t.Name)
+		s, found := typeScope.NamedType(t.Name)
 		if !found {
 			return nil, UnresolvedTypeError{t.Name}
 		}

@@ -272,7 +272,7 @@ func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh
 // EvaluateDeclaredFormsWithPhases evaluates only the declaration forms made
 // safe by DeclareFormsWithPhases. Function and method bodies are captured as
 // closures but not executed; variables and non-declarations are skipped.
-func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) (Value, error) {
+func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
 	var result Value = NullValue{}
 	classified := classifyForms(forms)
 
@@ -284,7 +284,7 @@ func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, env Valu
 		classified.Functions,
 	} {
 		for _, form := range group {
-			val, err := EvalNode(ctx, env, form)
+			val, err := EvalNode(ctx, scope, form)
 			if err != nil {
 				return nil, err
 			}
@@ -385,7 +385,7 @@ func isConstantValue(value Node) bool {
 // inference. Computed variables are installed as lazy fields, forced on first
 // read, and then forced in source order before non-declarations run. This is
 // used for both module top-levels and object bodies.
-func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) (Value, error) {
+func EvaluateFormsWithPhases(ctx context.Context, forms []Node, scope ValueScope) (Value, error) {
 	var result Value = NullValue{}
 	var err error
 
@@ -394,7 +394,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 
 	// Phase 1: Evaluate imports
 	for _, form := range classified.Imports {
-		result, err = EvalNode(ctx, env, form)
+		result, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("import evaluation failed: %w", err)
 		}
@@ -402,7 +402,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 
 	// Phase 2: Evaluate directives (must be available before any usage)
 	for _, form := range classified.Directives {
-		_, err = EvalNode(ctx, env, form)
+		_, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("directive evaluation failed: %w", err)
 		}
@@ -410,7 +410,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 
 	// Phase 3: Evaluate constants (can be in any order, no dependencies)
 	for _, form := range classified.Constants {
-		_, err = EvalNode(ctx, env, form)
+		_, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("constant evaluation failed: %w", err)
 		}
@@ -418,7 +418,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 
 	// Phase 4: Evaluate types (objects)
 	for _, form := range classified.Types {
-		_, err = EvalNode(ctx, env, form)
+		_, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("type evaluation failed: %w", err)
 		}
@@ -426,7 +426,7 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 
 	// Phase 5: Evaluate functions (establish function values in environment)
 	for _, form := range classified.Functions {
-		_, err = EvalNode(ctx, env, form)
+		_, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("function evaluation failed: %w", err)
 		}
@@ -437,14 +437,14 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 	// calls are resolved by the force-on-read mechanism; the source-order pass
 	// guarantees side effects still happen.
 	if len(classified.Variables) > 0 {
-		if err := installAndForceLazyVariables(ctx, classified.Variables, env); err != nil {
+		if err := installAndForceLazyVariables(ctx, classified.Variables, scope); err != nil {
 			return nil, fmt.Errorf("variable evaluation failed: %w", err)
 		}
 	}
 
 	// Phase 7: Evaluate non-declarations in original order (assignments, expressions, etc.)
 	for _, form := range classified.NonDeclarations {
-		result, err = EvalNode(ctx, env, form)
+		result, err = EvalNode(ctx, scope, form)
 		if err != nil {
 			return nil, fmt.Errorf("non-declaration evaluation failed: %w", err)
 		}
@@ -453,15 +453,15 @@ func EvaluateFormsWithPhases(ctx context.Context, forms []Node, env ValueScope) 
 	return result, nil
 }
 
-func installAndForceLazyVariables(ctx context.Context, variables []Node, env ValueScope) error {
+func installAndForceLazyVariables(ctx context.Context, variables []Node, scope ValueScope) error {
 	for _, form := range variables {
 		field, ok := form.(*FieldDecl)
 		if !ok {
 			continue
 		}
-		env.BindLazy(field.Name.Name, func(ctx context.Context) (Value, error) {
+		scope.BindLazy(field.Name.Name, func(ctx context.Context) (Value, error) {
 			return WithEvalErrorHandling(ctx, field, func() (Value, error) {
-				return EvalNode(ctx, env, field.Value)
+				return EvalNode(ctx, scope, field.Value)
 			})
 		}, field.Visibility)
 	}
@@ -471,7 +471,7 @@ func installAndForceLazyVariables(ctx context.Context, variables []Node, env Val
 		if !ok {
 			continue
 		}
-		if _, _, err := env.Lookup(ctx, field.Name.Name); err != nil {
+		if _, _, err := scope.Lookup(ctx, field.Name.Name); err != nil {
 			return err
 		}
 	}
@@ -486,8 +486,8 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 		newEnv := env.Clone()
 
 		// Store the environment, even if inference fails
-		if dangEnv, ok := newEnv.(TypeScope); ok {
-			b.TypeScope = dangEnv
+		if typeScope, ok := newEnv.(TypeScope); ok {
+			b.TypeScope = typeScope
 		}
 
 		forms := b.Forms
@@ -528,18 +528,18 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (b *Block) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (b *Block) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	forms := b.Forms
 	if len(forms) == 0 {
 		return NullValue{}, nil
 	}
 
-	newEnv := env.Derive(false)
+	newScope := scope.Derive(false)
 
 	// Blocks evaluate forms in textual order
 	var result Value = NullValue{}
 	for _, form := range forms {
-		val, err := EvalNode(ctx, newEnv, form)
+		val, err := EvalNode(ctx, newScope, form)
 		if err != nil {
 			return nil, err
 		}
@@ -591,12 +591,12 @@ var _ hm.Inferer = &ObjectLiteral{}
 
 func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewType("", ObjectKind)
-	inferEnv := &OverlayTypeScope{
+	inferTypeScope := &OverlayTypeScope{
 		primary: mod,
 		lexical: env.(TypeScope),
 	}
 	for _, field := range o.Fields {
-		_, err := field.Infer(ctx, inferEnv, fresh)
+		_, err := field.Infer(ctx, inferTypeScope, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -607,12 +607,12 @@ func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 
 var _ Evaluator = &ObjectLiteral{}
 
-func (o *ObjectLiteral) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	if o.Mod == nil {
 		return nil, errors.New("object has no module inferred")
 	}
 	newMod := NewObject(o.Mod)
-	valueScope := CreateOverlayValueScope(newMod, env)
+	valueScope := CreateOverlayValueScope(newMod, scope)
 	for _, field := range o.Fields {
 		_, err := EvalNode(ctx, valueScope, field)
 		if err != nil {

@@ -42,8 +42,8 @@ func (g *Grouped) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	return t, nil
 }
 
-func (g *Grouped) Eval(ctx context.Context, env ValueScope) (Value, error) {
-	return EvalNode(ctx, env, g.Expr)
+func (g *Grouped) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return EvalNode(ctx, scope, g.Expr)
 }
 
 func (g *Grouped) Walk(fn func(Node) bool) {
@@ -301,9 +301,9 @@ var _ hm.Apply = (*FunCall)(nil)
 
 func (c *FunCall) Fn() hm.Expression { return c.Fun }
 
-func (c *FunCall) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
-		funVal, err := EvalNode(ctx, env, c.Fun)
+		funVal, err := EvalNode(ctx, scope, c.Fun)
 		if err != nil {
 			// Don't wrap errors - let the specific node error bubble up
 			return nil, err
@@ -318,7 +318,7 @@ func (c *FunCall) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		}
 
 		// Evaluate arguments and handle positional/named argument mapping
-		argValues, err := c.evaluateArguments(ctx, env, funVal)
+		argValues, err := c.evaluateArguments(ctx, scope, funVal)
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +331,7 @@ func (c *FunCall) Eval(ctx context.Context, env ValueScope) (Value, error) {
 			defer blockCallFrame.Deactivate()
 
 			blockCtx := contextWithBlockCallFrame(ctx, blockCallFrame)
-			blockVal, err := c.BlockArg.Eval(blockCtx, env)
+			blockVal, err := c.BlockArg.Eval(blockCtx, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -340,7 +340,7 @@ func (c *FunCall) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		}
 
 		// Dispatch to appropriate function call handler
-		val, err := c.callFunction(ctx, env, funVal, argValues)
+		val, err := c.callFunction(ctx, scope, funVal, argValues)
 		if err != nil && blockCallFrame != nil {
 			var breakEx *BreakException
 			if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, blockCallFrame) {
@@ -355,16 +355,16 @@ func (c *FunCall) Eval(ctx context.Context, env ValueScope) (Value, error) {
 }
 
 // callFunction dispatches function calls to appropriate handlers
-func (c *FunCall) callFunction(ctx context.Context, env ValueScope, funVal Value, argValues map[string]Value) (Value, error) {
+func (c *FunCall) callFunction(ctx context.Context, scope ValueScope, funVal Value, argValues map[string]Value) (Value, error) {
 	callable, ok := funVal.(Callable)
 	if !ok {
 		return nil, fmt.Errorf("FunCall.Eval: %T is not callable", funVal)
 	}
-	return callable.Call(ctx, env, argValues)
+	return callable.Call(ctx, scope, argValues)
 }
 
 // evaluateArguments handles both positional and named arguments
-func (c *FunCall) evaluateArguments(ctx context.Context, env ValueScope, funVal Value) (map[string]Value, error) {
+func (c *FunCall) evaluateArguments(ctx context.Context, scope ValueScope, funVal Value) (map[string]Value, error) {
 	// Validate argument order first
 	if err := c.validateArgumentOrder(); err != nil {
 		return nil, err
@@ -379,7 +379,7 @@ func (c *FunCall) evaluateArguments(ctx context.Context, env ValueScope, funVal 
 	// materialization happens during EvalNode.
 	positionalIndex := 0
 	for _, arg := range c.Args {
-		val, err := EvalNode(ctx, env, arg.Value)
+		val, err := EvalNode(ctx, scope, arg.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -576,11 +576,11 @@ var _ Evaluator = (*Symbol)(nil)
 func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(s, func() (hm.Type, error) {
 		// Check for import conflicts before resolving
-		if dangEnv, ok := env.(TypeScope); ok {
-			if conflicts := dangEnv.CheckValueConflict(s.Name); len(conflicts) > 0 {
+		if typeScope, ok := env.(TypeScope); ok {
+			if conflicts := typeScope.CheckValueConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
-			if conflicts := dangEnv.CheckTypeConflict(s.Name); len(conflicts) > 0 {
+			if conflicts := typeScope.CheckTypeConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
 		}
@@ -610,21 +610,21 @@ func (s *Symbol) ReferencedSymbols() []string {
 	return []string{s.Name} // Symbols reference themselves
 }
 
-func (s *Symbol) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (s *Symbol) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, s, func() (Value, error) {
 		// Check for import conflicts before resolving
-		if modVal, ok := env.(*Object); ok {
+		if modVal, ok := scope.(*Object); ok {
 			if conflicts := modVal.Mod.CheckValueConflict(s.Name); len(conflicts) > 0 {
 				return nil, fmt.Errorf("ambiguous reference to %q: provided by imports %v", s.Name, conflicts)
 			}
 		}
 
-		val, found, err := env.Lookup(ctx, s.Name)
+		val, found, err := scope.Lookup(ctx, s.Name)
 		if err != nil {
 			return nil, err
 		}
 		if !found {
-			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, env)
+			return nil, fmt.Errorf("Symbol.Eval: %q not found in env: %+v", s.Name, scope)
 		}
 
 		if val == nil {
@@ -633,7 +633,7 @@ func (s *Symbol) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed as symbols
 		if s.AutoCall && isAutoCallableFn(val) {
-			return autoCallFn(ctx, env, val)
+			return autoCallFn(ctx, scope, val)
 		}
 
 		return val, nil
@@ -805,19 +805,19 @@ func (d *Select) Body() hm.Expression { return d }
 
 func (d *Select) GetSourceLocation() *SourceLocation { return d.Loc }
 
-func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
 		var receiverVal Value
 		var err error
 
 		// Handle normal receiver evaluation
 		if d.Receiver != nil {
-			receiverVal, err = EvalNode(ctx, env, d.Receiver)
+			receiverVal, err = EvalNode(ctx, scope, d.Receiver)
 			if err != nil {
 				return nil, fmt.Errorf("evaluating receiver: %w", err)
 			}
 		} else {
-			receiverVal = env
+			receiverVal = scope
 		}
 
 		val, err := (func() (Value, error) {
@@ -847,7 +847,7 @@ func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
 				// Handle methods on string values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_string_%s_builtin", d.Field.Name)
-				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -861,7 +861,7 @@ func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
 				// Handle methods on float values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_float_%s_builtin", d.Field.Name)
-				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -875,7 +875,7 @@ func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
 				// Handle methods on list values by looking them up in the evaluation environment
 				// The builtin is registered with a special name
 				methodKey := fmt.Sprintf("_list_%s_builtin", d.Field.Name)
-				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -887,7 +887,7 @@ func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 			case MatchValue:
 				methodKey := fmt.Sprintf("_match_%s_builtin", d.Field.Name)
-				if method, found, err := env.Lookup(ctx, methodKey); err != nil {
+				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
 					return nil, err
 				} else if found {
 					if builtinFn, ok := method.(BuiltinFunction); ok {
@@ -906,7 +906,7 @@ func (d *Select) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed as symbols
 		if d.AutoCall && isAutoCallableFn(val) {
-			return autoCallFn(ctx, env, val)
+			return autoCallFn(ctx, scope, val)
 		}
 
 		return val, nil
@@ -1020,10 +1020,10 @@ func (i *Index) Body() hm.Expression { return i }
 
 func (i *Index) GetSourceLocation() *SourceLocation { return i.Loc }
 
-func (i *Index) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (i *Index) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, i, func() (Value, error) {
 		// Evaluate the receiver
-		receiverVal, err := EvalNode(ctx, env, i.Receiver)
+		receiverVal, err := EvalNode(ctx, scope, i.Receiver)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating receiver: %w", err)
 		}
@@ -1034,7 +1034,7 @@ func (i *Index) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		}
 
 		// Evaluate the index
-		indexVal, err := EvalNode(ctx, env, i.Index)
+		indexVal, err := EvalNode(ctx, scope, i.Index)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating index: %w", err)
 		}
@@ -1063,7 +1063,7 @@ func (i *Index) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 		// Auto-call zero-arity functions when accessed
 		if i.AutoCall && isAutoCallableFn(element) {
-			return autoCallFn(ctx, env, element)
+			return autoCallFn(ctx, scope, element)
 		}
 
 		return element, nil
@@ -1190,11 +1190,6 @@ func (o *ObjectSelection) Infer(ctx context.Context, env hm.Env, fresh hm.Freshe
 // inferInlineFragments validates inline fragment selections on a union or interface type.
 // The result type preserves the union/interface type and list wrapping from the receiver.
 func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType hm.Type, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	modEnv, ok := env.(TypeScope)
-	if !ok {
-		return nil, fmt.Errorf("inline fragments require a module environment")
-	}
-
 	// Unwrap list and non-null to find the element type
 	unwrapped := receiverType
 	isList := false
@@ -1257,7 +1252,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 			// Validate each field in the fragment exists on the concrete type
 			// and add it to the narrowed module (including nested selections)
 			for _, field := range frag.Fields {
-				fieldType, err := o.inferFieldType(ctx, field, memberMod, modEnv, fresh)
+				fieldType, err := o.inferFieldType(ctx, field, memberMod, env, fresh)
 				if err != nil {
 					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
 				}
@@ -1420,11 +1415,11 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 
 		// Create a synthetic environment that combines rec and env
 		// Use rec for symbol lookup, env for argument evaluation
-		synthEnv := &OverlayTypeScope{
+		synthTypeScope := &OverlayTypeScope{
 			primary: rec,
 			lexical: env.(TypeScope),
 		}
-		fieldType, err = funCall.Infer(ctx, synthEnv, fresh)
+		fieldType, err = funCall.Infer(ctx, synthTypeScope, fresh)
 		if err != nil {
 			return nil, err
 		}
@@ -1473,9 +1468,9 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 	return ret, nil
 }
 
-func (o *ObjectSelection) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, o, func() (Value, error) {
-		receiverVal, err := EvalNode(ctx, env, o.Receiver)
+		receiverVal, err := EvalNode(ctx, scope, o.Receiver)
 		if err != nil {
 			return nil, fmt.Errorf("ObjectSelection.Eval: %w", err)
 		}
@@ -1488,14 +1483,14 @@ func (o *ObjectSelection) Eval(ctx context.Context, env ValueScope) (Value, erro
 		// Handle inline fragments on GraphQL values
 		if len(o.InlineFragments) > 0 {
 			if gqlVal, ok := receiverVal.(GraphQLValue); ok {
-				return o.evalGraphQLInlineFragments(gqlVal, ctx, env)
+				return o.evalGraphQLInlineFragments(gqlVal, ctx, scope)
 			}
 			// For Dang-native values, inline fragments work like regular selection
 			// but we need to handle lists
 			if listVal, ok := receiverVal.(ListValue); ok {
 				var results []Value
 				for _, elem := range listVal.Elements {
-					result, err := o.evalInlineFragmentOnValue(elem, ctx, env)
+					result, err := o.evalInlineFragmentOnValue(elem, ctx, scope)
 					if err != nil {
 						return nil, err
 					}
@@ -1503,14 +1498,14 @@ func (o *ObjectSelection) Eval(ctx context.Context, env ValueScope) (Value, erro
 				}
 				return ListValue{Elements: results, ElemType: o.GetInferredType()}, nil
 			}
-			return o.evalInlineFragmentOnValue(receiverVal, ctx, env)
+			return o.evalInlineFragmentOnValue(receiverVal, ctx, scope)
 		}
 
 		// Handle list types - apply selection to each element
 		if listVal, ok := receiverVal.(ListValue); ok {
 			var results []Value
 			for _, elem := range listVal.Elements {
-				result, err := o.evalSelectionOnValue(elem, ctx, env)
+				result, err := o.evalSelectionOnValue(elem, ctx, scope)
 				if err != nil {
 					return nil, err
 				}
@@ -1520,13 +1515,13 @@ func (o *ObjectSelection) Eval(ctx context.Context, env ValueScope) (Value, erro
 		}
 
 		// Handle regular object types
-		return o.evalSelectionOnValue(receiverVal, ctx, env)
+		return o.evalSelectionOnValue(receiverVal, ctx, scope)
 	})
 }
 
 // evalInlineFragmentOnValue handles inline fragment selection on a Dang-native value.
 // The value passes through with its original type identity — fragments just validate at compile time.
-func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Context, _ ValueScope) (Value, error) {
 	modVal, ok := val.(*Object)
 	if !ok {
 		return nil, fmt.Errorf("inline fragment selection requires an object value, got %T", val)
@@ -1585,9 +1580,9 @@ func (o *ObjectSelection) isLazyInlineFragments() bool {
 
 // evalGraphQLInlineFragments builds a GraphQL query with __typename and inline fragments,
 // executes it, and returns properly-typed results.
-func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx context.Context, scope ValueScope) (Value, error) {
 	if o.isLazyInlineFragments() {
-		return o.evalGraphQLLazyInlineFragments(gqlVal, ctx, env)
+		return o.evalGraphQLLazyInlineFragments(gqlVal, ctx, scope)
 	}
 
 	// Build the query with __typename and inline fragments
@@ -1630,7 +1625,7 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 // It queries only __typename to determine the concrete type, then returns a GraphQLValue
 // that can be chained further. If the runtime type doesn't match any fragment, returns
 // null (for nullable receivers) or an error (for non-null receivers).
-func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ctx context.Context, scope ValueScope) (Value, error) {
 	query := gqlVal.QueryChain
 	if query == nil {
 		return nil, fmt.Errorf("GraphQL lazy inline fragments: no query chain")
@@ -1638,7 +1633,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 
 	// Handle list types: query __typename for each element, return a list of GraphQLValues
 	if o.IsList {
-		return o.evalGraphQLLazyInlineFragmentsList(gqlVal, ctx, env)
+		return o.evalGraphQLLazyInlineFragmentsList(gqlVal, ctx, scope)
 	}
 
 	// Query __typename to discover the concrete type
@@ -1653,7 +1648,7 @@ func (o *ObjectSelection) evalGraphQLLazyInlineFragments(gqlVal GraphQLValue, ct
 
 // evalGraphQLLazyInlineFragmentsList handles lazy inline fragments on a list-typed GraphQL value.
 // It queries __typename for all elements, then returns a list of GraphQLValues.
-func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalGraphQLLazyInlineFragmentsList(gqlVal GraphQLValue, ctx context.Context, _ ValueScope) (Value, error) {
 	query := gqlVal.QueryChain
 
 	// Query __typename for all elements in the list
@@ -1857,21 +1852,21 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 	return mod, nil
 }
 
-func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, scope ValueScope) (Value, error) {
 	switch v := val.(type) {
 	case NullValue:
 		// Null propagation for individual values in lists
 		return NullValue{}, nil
 	case *Object:
-		return o.evalModuleSelection(v, ctx, env)
+		return o.evalModuleSelection(v, ctx, scope)
 	case GraphQLValue:
-		return o.evalGraphQLSelection(v, ctx, env)
+		return o.evalGraphQLSelection(v, ctx, scope)
 	default:
 		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *Object or GraphQLValue, got %T", val)
 	}
 }
 
-func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Context, scope ValueScope) (Value, error) {
 	if o.Inferred == nil {
 		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
 	}
@@ -1897,7 +1892,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Contex
 				Args: field.Args,
 				Loc:  field.Loc,
 			}
-			fieldVal, err = funCall.Eval(ctx, env)
+			fieldVal, err = funCall.Eval(ctx, scope)
 			if err != nil {
 				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: evaluating field %q with args: %w", field.Name, err)
 			}
@@ -1915,7 +1910,7 @@ func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Contex
 
 		// Handle nested selections
 		if field.Selection != nil {
-			fieldVal, err = field.Selection.evalSelectionOnValue(fieldVal, ctx, env)
+			fieldVal, err = field.Selection.evalSelectionOnValue(fieldVal, ctx, scope)
 			if err != nil {
 				return nil, err
 			}
@@ -1927,13 +1922,13 @@ func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Contex
 	return resultObject, nil
 }
 
-func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, env ValueScope) (Value, error) {
+func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, scope ValueScope) (Value, error) {
 	if o.Inferred == nil {
 		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
 	}
 
 	// Build optimized GraphQL query for all selected fields
-	query, err := o.buildGraphQLQuery(ctx, env, gqlVal.QueryChain, o.Fields)
+	query, err := o.buildGraphQLQuery(ctx, scope, gqlVal.QueryChain, o.Fields)
 	if err != nil {
 		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: %w", err)
 	}
@@ -1949,7 +1944,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeScope)
 }
 
-func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env ValueScope, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
+func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, scope ValueScope, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {
 	// Start with the base query (which contains the context like "serverInfo")
 	builder := baseQuery
 	if builder == nil {
@@ -1992,7 +1987,7 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env ValueScope,
 			// Add arguments if present
 			if len(field.Args) > 0 {
 				for _, arg := range field.Args {
-					val, err := EvalNode(ctx, env, arg.Value)
+					val, err := EvalNode(ctx, scope, arg.Value)
 					if err != nil {
 						return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
 					}
@@ -2015,7 +2010,7 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env ValueScope,
 					}
 					fieldBuilder = nestedResult
 				} else {
-					nestedResult, err := field.Selection.buildGraphQLQuery(ctx, env, querybuilder.Query(), field.Selection.Fields)
+					nestedResult, err := field.Selection.buildGraphQLQuery(ctx, scope, querybuilder.Query(), field.Selection.Fields)
 					if err != nil {
 						return nil, err
 					}
@@ -2293,9 +2288,9 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	})
 }
 
-func (c *Conditional) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (c *Conditional) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, c, func() (Value, error) {
-		condVal, err := EvalNode(ctx, env, c.Condition)
+		condVal, err := EvalNode(ctx, scope, c.Condition)
 		if err != nil {
 			return nil, fmt.Errorf("evaluating condition: %w", err)
 		}
@@ -2306,10 +2301,10 @@ func (c *Conditional) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		}
 
 		if boolVal.Val {
-			return EvalNode(ctx, env, c.Then)
+			return EvalNode(ctx, scope, c.Then)
 		} else if c.Else != nil {
 			elseBlock := c.Else.(*Block)
-			return EvalNode(ctx, env, elseBlock)
+			return EvalNode(ctx, scope, elseBlock)
 		} else {
 			return NullValue{}, nil
 		}
@@ -2412,7 +2407,7 @@ func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.T
 	})
 }
 
-func (f *ForLoop) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (f *ForLoop) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
 		var lastVal Value = NullValue{}
 		loopFrame := NewControlFrame(LoopFrame)
@@ -2422,7 +2417,7 @@ func (f *ForLoop) Eval(ctx context.Context, env ValueScope) (Value, error) {
 
 		for {
 			if f.Condition != nil {
-				condVal, err := EvalNode(ctx, env, f.Condition)
+				condVal, err := EvalNode(ctx, scope, f.Condition)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating condition: %w", err)
 				}
@@ -2437,7 +2432,7 @@ func (f *ForLoop) Eval(ctx context.Context, env ValueScope) (Value, error) {
 				}
 			}
 
-			val, err := EvalNode(bodyCtx, env, f.LoopBody)
+			val, err := EvalNode(bodyCtx, scope, f.LoopBody)
 			if err != nil {
 				var breakEx *BreakException
 				if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, loopFrame) {
@@ -2527,7 +2522,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	})
 }
 
-func (b *Break) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (b *Break) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentBreakFrame(ctx)
 	if target == nil || !target.Active {
 		return nil, &BreakException{Target: target, Location: b.Loc}
@@ -2536,7 +2531,7 @@ func (b *Break) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	var val Value
 	if b.Value != nil {
 		var err error
-		val, err = EvalNode(ctx, env, b.Value)
+		val, err = EvalNode(ctx, scope, b.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -2610,7 +2605,7 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-func (c *Continue) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (c *Continue) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	target := currentContinueFrame(ctx)
 	if target == nil || !target.Active {
 		return nil, &ContinueException{Target: target, Location: c.Loc}
@@ -2619,7 +2614,7 @@ func (c *Continue) Eval(ctx context.Context, env ValueScope) (Value, error) {
 	var val Value
 	if c.Value != nil {
 		var err error
-		val, err = EvalNode(ctx, env, c.Value)
+		val, err = EvalNode(ctx, scope, c.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -2853,11 +2848,11 @@ func (t *TypeHint) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-func (t *TypeHint) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (t *TypeHint) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
 		// t.Expr is wrapped in a Coerce by TypeHint.Infer, so materialization
 		// happens inside EvalNode.
-		return EvalNode(ctx, env, t.Expr)
+		return EvalNode(ctx, scope, t.Expr)
 	})
 }
 
@@ -3041,7 +3036,7 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	})
 }
 
-func (b *BlockArg) Eval(ctx context.Context, env ValueScope) (Value, error) {
+func (b *BlockArg) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, b, func() (Value, error) {
 		if b.Inferred == nil {
 			return nil, fmt.Errorf("BlockArg.Eval: function type not inferred")
@@ -3062,7 +3057,7 @@ func (b *BlockArg) Eval(ctx context.Context, env ValueScope) (Value, error) {
 		return FunctionValue{
 			Args:                argNames,
 			Body:                b.BodyNode,
-			Closure:             env,
+			Closure:             scope,
 			FnType:              b.Inferred,
 			Defaults:            make(map[string]Node), // Block args don't support defaults
 			ArgDecls:            b.Args,
