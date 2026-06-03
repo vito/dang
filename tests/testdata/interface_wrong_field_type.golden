@@ -1,11 +1,11 @@
-[1m[31mError:[0m field "id": type String! is not compatible with interface type ID!
+[1m[31mError:[0m field "ref": type String! is not compatible with interface type ID!
   [2m[34m--> errors/interface_wrong_field_type.dang:7:22[0m
  [2m    |[0m
  [2m  5 | }[0m
  [2m  6 | [0m
  [2m[34m[1m  7 | [0mtype User implements Identifiable {
 [2m                            [31m^^^^^^^^^^^^[0m
- [2m  8 |   pub id: String! # Wrong: should be ID![0m
+ [2m  8 |   pub ref: String! # Wrong: should be ID![0m
  [2m  9 |   pub name: String![0m
  [2m    |[0m
 
