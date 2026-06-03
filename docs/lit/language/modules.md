@@ -25,7 +25,10 @@ mymod/
 
 - a type defined in `types.dang` can be constructed/extended from `utils.dang` or `main.dang` with no import
 
-## `dang.toml`
+## `dang.toml` {#dang.toml}
+
+`dang.toml` is discovered by walking up from the working directory (stopping at
+a `.git` boundary).
 
 ```toml
 [imports.Dagger]
@@ -39,6 +42,9 @@ service = ["go", "run", "./server"]
 endpoint = "https://api.example.com/graphql"
 authorization = "Bearer ${API_TOKEN}"
 ```
+
+The `endpoint`, `authorization`, and `headers` values support `${VAR}`
+environment expansion; `$(...)` command substitution is not supported.
 
 - one `[imports.<Name>]` per imported GraphQL source; `<Name>` is the qualifier (`MyApi.User`)
 - must specify at least one of `dagger`, `schema`, `endpoint`, or `service`

@@ -23,7 +23,7 @@ print(message("world"))
 
 ## A first GraphQL call
 
-Dang is designed for GraphQL APIs. To configure them, add a `dang.toml`:
+Dang is designed for GraphQL APIs. To configure them, add a [#dang.toml]:
 
 ```toml
 [imports.GitHub]
@@ -31,24 +31,10 @@ endpoint = "https://api.github.com/graphql"
 authorization = "Bearer ${GITHUB_TOKEN}"
 ```
 
-TODO trim this
-
-`dang.toml` is discovered by walking up from the working directory (stopping at
-a `.git` boundary). The `endpoint`, `authorization`, and `headers` values
-support `${VAR}` environment expansion; `$(...)` command substitution is not
-supported. See [#cli] for the full key list and [#graphql] for interop details.
-
-This file should be committed to your repo, so be careful not to include
-credentials. Above we reference a `${GITHUB_TOKEN}` environment variable, which
-you can configure in an `.envrc` like below:
-
-```sh
-export GITHUB_TOKEN="$(gh auth token)"
-```
-
 Now you can run `dang` in REPL mode and explore the GitHub API:
 
 ```sh
+$ export GITHUB_TOKEN="$(gh auth token)"
 $ dang
 Welcome to Dang REPL v0.1.0
 Imports: GitHub, Dagger
