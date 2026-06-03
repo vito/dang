@@ -49,6 +49,7 @@ pub motd: String! { "hello" }   # omit parens; it's a field with a function body
 - Named: `greet(name: "Alice")`. Positional: `greet("Alice")`.
 - **Mixed**: positional first, then named. `add(10, b: 20)` ✓; `add(a: 10, 20)` ✗ → `positional arguments must come before named arguments` (same rule for directive applications).
 - **Defaults**: `name: String! = "world"`. A default may reference *earlier parameters* in the same list (the param shadows any outer binding). In a free function it may reference enclosing scope; in a method it may reference fields of the same type. A nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`. Same rules for `new(...)`.
+- **Non-null with a default is nullable to the caller, non-null in the body.** A `T! = default` param is *optional* to callers — they may omit it, pass `null`, or pass a nullable `T` — and every such case falls back to the default; meanwhile the body sees a plain `T!`, so no null checks/assertions are needed. This is the idiomatic way to "excise null at the boundary": prefer `path: String! = ""` (or any sentinel default) over `path: String` + downstream null handling. (Verified: `greet(name: String! = "world")` accepts `greet`, `greet(null)`, and `greet(someNullableString)`, all yielding `"world"`.)
 
 ### Function references: `&fn`
 - `&` yields the function itself without calling it: `&greet`, `&user.greet`.

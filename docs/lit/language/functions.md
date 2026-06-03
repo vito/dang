@@ -60,6 +60,21 @@ greet("Alice")
 - a nullable arg passed `null` falls back to its default; a nullable arg with no default stays `null`
 - same default rules apply to `new(...)` constructor params
 
+A non-null parameter *with* a default (`name: String! = "world"`) is **nullable on the
+caller's side but non-null on the receiver's side**. Callers may omit it, pass `null`, or
+pass a nullable `String`; every such case falls back to the default. Inside the body the
+parameter is a plain `String!`, so no null checks or assertions are needed. This lets an API
+excise null at the boundary — prefer a non-null-with-default parameter over a nullable one
+whenever a sensible default (including a sentinel like `""`) exists, keeping both the caller
+(who can omit the argument) and the body (which never sees null) happy.
+
+```dang
+pub greet(name: String! = "world"): String! { "hi " + name }
+greet                      # "hi world"  (omitted)
+greet(null)                # "hi world"  (explicit null falls back)
+greet(someNullableString)  # falls back to "world" when the value is null
+```
+
 ## Function references: `&fn`
 
 - the `&` prefix operator (see [#operators]) yields the function itself without calling it
