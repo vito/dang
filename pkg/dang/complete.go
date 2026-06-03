@@ -141,7 +141,7 @@ func InferReceiverType(ctx context.Context, typeScope TypeScope, expr string) hm
 		return nil
 	}
 
-	block, ok := parsed.(*ModuleBlock)
+	block, ok := parsed.(*FileBlock)
 	if !ok || len(block.Forms) == 0 {
 		return nil
 	}

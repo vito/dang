@@ -414,7 +414,7 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 		return
 	}
 
-	forms := result.(*dang.ModuleBlock).Forms
+	forms := result.(*dang.FileBlock).Forms
 
 	if r.debug {
 		for _, node := range forms {

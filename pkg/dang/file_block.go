@@ -8,10 +8,10 @@ import (
 	"github.com/vito/dang/pkg/hm"
 )
 
-// ModuleBlock represents a top-level file that supports forward references
+// FileBlock represents a top-level file that supports forward references
 // and phased evaluation. Unlike Block, which evaluates forms in textual order,
-// ModuleBlock hoists declarations to enable forward references across the module.
-type ModuleBlock struct {
+// FileBlock hoists declarations to enable forward references across the file.
+type FileBlock struct {
 	InferredTypeHolder
 	Forms []Node
 	// Evaluate forms in the current scope, not a nested one.
@@ -22,19 +22,19 @@ type ModuleBlock struct {
 	TypeScope TypeScope
 }
 
-var _ hm.Expression = (*ModuleBlock)(nil)
-var _ Evaluator = (*ModuleBlock)(nil)
-var _ Node = (*ModuleBlock)(nil)
-var _ Hoister = (*ModuleBlock)(nil)
+var _ hm.Expression = (*FileBlock)(nil)
+var _ Evaluator = (*FileBlock)(nil)
+var _ Node = (*FileBlock)(nil)
+var _ Hoister = (*FileBlock)(nil)
 
-func (m *ModuleBlock) DeclaredSymbols() []string {
-	return nil // ModuleBlocks don't declare symbols directly (their forms do)
+func (m *FileBlock) DeclaredSymbols() []string {
+	return nil // FileBlocks don't declare symbols directly (their forms do)
 }
 
-func (m *ModuleBlock) ReferencedSymbols() []string {
+func (m *FileBlock) ReferencedSymbols() []string {
 	var symbols []string
 
-	// Add symbols from all forms in the module
+	// Add symbols from all forms in the file
 	for _, form := range m.Forms {
 		symbols = append(symbols, form.ReferencedSymbols()...)
 	}
@@ -42,11 +42,11 @@ func (m *ModuleBlock) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (m *ModuleBlock) Body() hm.Expression { return m }
+func (m *FileBlock) Body() hm.Expression { return m }
 
-func (m *ModuleBlock) GetSourceLocation() *SourceLocation { return m.Loc }
+func (m *FileBlock) GetSourceLocation() *SourceLocation { return m.Loc }
 
-func (m *ModuleBlock) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
+func (m *FileBlock) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, depth int) error {
 	newEnv := env
 	if !m.Inline {
 		newEnv = env.Clone()
@@ -56,16 +56,16 @@ func (m *ModuleBlock) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, d
 	for _, form := range m.Forms {
 		if hoister, ok := form.(Hoister); ok {
 			if err := hoister.Hoist(ctx, newEnv, fresh, depth); err != nil {
-				errs = append(errs, fmt.Errorf("ModuleBlock.Hoist: %w", err))
+				errs = append(errs, fmt.Errorf("FileBlock.Hoist: %w", err))
 			}
 		}
 	}
 	return errors.Join(errs...)
 }
 
-var _ hm.Inferer = (*ModuleBlock)(nil)
+var _ hm.Inferer = (*FileBlock)(nil)
 
-func (m *ModuleBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (m *FileBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(m, func() (hm.Type, error) {
 		newEnv := env
 		if !m.Inline {
@@ -82,7 +82,7 @@ func (m *ModuleBlock) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 	})
 }
 
-func (m *ModuleBlock) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+func (m *FileBlock) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	newScope := scope
 	if !m.Inline {
 		newScope = scope.Derive(false)
@@ -97,7 +97,7 @@ func (m *ModuleBlock) Eval(ctx context.Context, scope ValueScope) (Value, error)
 	return EvaluateFormsWithPhases(ctx, forms, newScope)
 }
 
-func (m *ModuleBlock) Walk(fn func(Node) bool) {
+func (m *FileBlock) Walk(fn func(Node) bool) {
 	if !fn(m) {
 		return
 	}

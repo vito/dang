@@ -48,7 +48,7 @@ interface Thing {
 				t.Fatalf("parse: %v", err)
 			}
 
-			mod := parsed.(*dang.ModuleBlock)
+			mod := parsed.(*dang.FileBlock)
 			if _, err := mod.Infer(context.Background(), dang.NewPreludeTypeScope(""), hm.NewSimpleFresher()); err != nil {
 				t.Fatalf("infer: %v", err)
 			}

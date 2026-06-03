@@ -60,7 +60,7 @@ func FormatFile(source []byte) (string, error) {
 		commentMap:      commentMap,
 		emittedComments: make(map[int]bool),
 	}
-	f.formatNode(result.(*ModuleBlock))
+	f.formatNode(result.(*FileBlock))
 
 	// Emit any trailing comments
 	f.emitRemainingComments()
@@ -88,7 +88,7 @@ func isNoFmtText(commentText string) bool {
 func (f *Formatter) hasNoFmtComment(node Node) bool {
 	// Don't check container nodes - the comment should apply to their contents
 	switch node.(type) {
-	case *ModuleBlock, *Block:
+	case *FileBlock, *Block:
 		return false
 	}
 
@@ -572,8 +572,8 @@ func (f *Formatter) formatNode(node Node) {
 	}
 
 	switch n := node.(type) {
-	case *ModuleBlock:
-		f.formatModuleBlock(n)
+	case *FileBlock:
+		f.formatFileBlock(n)
 	case *ObjectDecl:
 		f.formatObjectDecl(n)
 	case *InterfaceDecl:
@@ -707,7 +707,7 @@ func (f *Formatter) formatNodeInline(node Node) {
 // sortImports sorts import declarations in-place within a module block.
 // Imports are sorted alphabetically by their source/name while preserving
 // their position relative to non-import forms.
-func (f *Formatter) sortImports(m *ModuleBlock) {
+func (f *Formatter) sortImports(m *FileBlock) {
 	// Find the range of consecutive imports at the start (after any leading non-imports)
 	// Actually, collect all imports and their indices, then sort and put back
 	var importIndices []int
@@ -739,7 +739,7 @@ func importSortKey(imp *ImportDecl) string {
 	return ""
 }
 
-func (f *Formatter) formatModuleBlock(m *ModuleBlock) {
+func (f *Formatter) formatFileBlock(m *FileBlock) {
 	// Sort imports: collect them, sort, and reorder in the forms slice
 	f.sortImports(m)
 	f.formatDeclForms(m.Forms)

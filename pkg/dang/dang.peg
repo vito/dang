@@ -10,7 +10,7 @@
 }
 
 Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
-  return &ModuleBlock{
+  return &FileBlock{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
   }, nil

@@ -24,7 +24,7 @@ import (
 // Auto-imports declared in ctx are injected into each block's Forms in place,
 // so subsequent evaluation reuses the same *ImportDecl nodes whose Infer state
 // (cached schema/client) was populated here.
-func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirScope TypeScope, fresh hm.Fresher) error {
+func InferDirectoryFiles(ctx context.Context, files []*FileBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, inferencePhases)
@@ -53,7 +53,7 @@ type fileScope struct {
 // name-keyed cache on the import context, so every ImportDecl with the same
 // name — whether at file top level or nested inside a block — installs the
 // same *Type and types like Dagger.Workspace unify across file boundaries.
-func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirScope TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
+func prepareFileScopes(ctx context.Context, files []*FileBlock, dirScope TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
 	scopes := make([]fileScope, 0, len(files))
 	for _, block := range files {
 		block.Forms = prependAutoImports(ctx, block.Forms)
@@ -161,7 +161,7 @@ var inferencePhases = slices.Concat(declarationPhases, bodyPhases)
 //
 // active must be one of files (pointer equality). A nil active runs only the
 // declaration phases (plus variables across all scopes).
-func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirScope TypeScope, fresh hm.Fresher) error {
+func InferDirectoryFilesFocused(ctx context.Context, files []*FileBlock, active *FileBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 

@@ -186,7 +186,7 @@ let x = hello(name: "world")
 	require.NoError(t, err)
 
 	typeScope := NewPreludeTypeScope("")
-	_, err = Infer(ctx, typeScope, parsed.(*ModuleBlock), true)
+	_, err = Infer(ctx, typeScope, parsed.(*FileBlock), true)
 	require.NoError(t, err)
 }
 

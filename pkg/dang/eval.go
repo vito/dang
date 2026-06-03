@@ -1840,7 +1840,7 @@ func RunFile(ctx context.Context, filePath string, debug bool) error {
 		return err
 	}
 
-	node := parsed.(*ModuleBlock)
+	node := parsed.(*FileBlock)
 
 	// Inject auto-imports for any import configs in context
 	node.Forms = InjectAutoImports(ctx, node.Forms)
@@ -2025,10 +2025,10 @@ func InjectAutoImports(ctx context.Context, forms []Node) []Node {
 	return append(injected, forms...)
 }
 
-// parseDirBlocks parses every .dang file in dirPath into a *ModuleBlock and
+// parseDirBlocks parses every .dang file in dirPath into a *FileBlock and
 // returns them in deterministic order. Files keep their own forms so that
 // downstream callers can apply file-scoped policy (e.g. file-local imports).
-func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*ModuleBlock, error) {
+func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*FileBlock, error) {
 	ctx, err := ensureProjectImports(ctx, dirPath)
 	if err != nil {
 		return ctx, nil, fmt.Errorf("loading project config: %w", err)
@@ -2045,15 +2045,15 @@ func parseDirBlocks(ctx context.Context, dirPath string) (context.Context, []*Mo
 
 	sort.Strings(dangFiles)
 
-	blocks := make([]*ModuleBlock, 0, len(dangFiles))
+	blocks := make([]*FileBlock, 0, len(dangFiles))
 	for _, filePath := range dangFiles {
 		parsed, err := ParseFileWithRecovery(filePath, GlobalStore("filePath", filePath))
 		if err != nil {
 			return ctx, nil, fmt.Errorf("failed to parse file %s: %w", filePath, err)
 		}
-		block, ok := parsed.(*ModuleBlock)
+		block, ok := parsed.(*FileBlock)
 		if !ok {
-			return ctx, nil, fmt.Errorf("parsed result for %s is not a ModuleBlock", filePath)
+			return ctx, nil, fmt.Errorf("parsed result for %s is not a FileBlock", filePath)
 		}
 		blocks = append(blocks, block)
 	}
@@ -2111,7 +2111,7 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 // inference). It is the DeclareDir counterpart to InferDirectoryFiles. Mutates
 // block.Forms to prepend auto-imports so later evaluation reuses the same
 // *ImportDecl nodes inferred here.
-func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirScope TypeScope, fresh hm.Fresher) error {
+func declareDirectoryFiles(ctx context.Context, files []*FileBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
 	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
@@ -2194,7 +2194,7 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 // A single-file directory has no sibling to leak imports to, so its forms are
 // evaluated directly against valueScope — the imports end up reachable from the
 // returned env, which is what callers like RunDir's single-file tests rely on.
-func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueScope ValueScope) error {
+func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope ValueScope) error {
 	if len(blocks) == 1 {
 		_, err := EvaluateFormsWithPhases(ctx, blocks[0].Forms, valueScope)
 		return err

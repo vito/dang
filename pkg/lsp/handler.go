@@ -80,7 +80,7 @@ type langHandler struct {
 // the disk read entirely. For open buffers (no mtime), text is the
 // fingerprint.
 type parsedFile struct {
-	block *dang.ModuleBlock
+	block *dang.FileBlock
 	text  string // populated only when sourced from an open buffer
 	mtime time.Time
 	size  int64
@@ -94,7 +94,7 @@ type File struct {
 	Version     int
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
-	AST         *dang.ModuleBlock // Parsed and type-annotated AST
+	AST         *dang.FileBlock // Parsed and type-annotated AST
 	TypeScope   dang.TypeScope    // Type environment after inference
 
 	// Synchronization for async file processing
@@ -234,13 +234,13 @@ func (h *langHandler) updateFile(ctx context.Context, uri DocumentURI, text stri
 
 type directoryFile struct {
 	URI   DocumentURI
-	Block *dang.ModuleBlock
+	Block *dang.FileBlock
 }
 
 type fileAnalysis struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
-	AST         *dang.ModuleBlock
+	AST         *dang.FileBlock
 	TypeScope   dang.TypeScope
 }
 
@@ -254,8 +254,8 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	}
 
 	var parsedFiles []directoryFile
-	var blocks []*dang.ModuleBlock
-	var currentBlock *dang.ModuleBlock
+	var blocks []*dang.FileBlock
+	var currentBlock *dang.FileBlock
 
 	for _, path := range files {
 		fileURI := toURI(path)
@@ -412,7 +412,7 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 	return cache
 }
 
-// parseFileCached returns the parsed *ModuleBlock for path. When the file is
+// parseFileCached returns the parsed *FileBlock for path. When the file is
 // unchanged from the cached entry, the cached block is returned without
 // re-parsing. For files on disk, the fingerprint is mtime+size — a stat call
 // is enough to know if the cache is still good, avoiding even the file read.
@@ -422,7 +422,7 @@ func (h *langHandler) schemaModuleCacheFor(dirPath string) *sync.Map {
 // across calls; prependAutoImports is idempotent. ImportDecl nodes in cached
 // blocks keep their inferred schema modules, so the imports phase doesn't
 // re-introspect on cache hit.
-func (h *langHandler) parseFileCached(path string) (*dang.ModuleBlock, error) {
+func (h *langHandler) parseFileCached(path string) (*dang.FileBlock, error) {
 	uri := toURI(path)
 
 	h.mu.Lock()
@@ -455,14 +455,14 @@ func (h *langHandler) parseFileCached(path string) (*dang.ModuleBlock, error) {
 	return h.parseAndStore(path, string(contents), parsedFile{mtime: info.ModTime(), size: info.Size()})
 }
 
-func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.ModuleBlock, error) {
+func (h *langHandler) parseAndStore(path, text string, entry parsedFile) (*dang.FileBlock, error) {
 	parsed, err := dang.ParseWithRecovery(path, []byte(text), dang.GlobalStore("filePath", path))
 	if err != nil {
 		return nil, err
 	}
-	block, ok := parsed.(*dang.ModuleBlock)
+	block, ok := parsed.(*dang.FileBlock)
 	if !ok {
-		return nil, fmt.Errorf("parsed result for %s is not a ModuleBlock", path)
+		return nil, fmt.Errorf("parsed result for %s is not a FileBlock", path)
 	}
 	entry.block = block
 	h.mu.Lock()
@@ -678,7 +678,7 @@ func (h *langHandler) collectNestedSymbols(uri DocumentURI, node dang.Node, st *
 	switch n := node.(type) {
 	case *dang.Block:
 		h.collectSymbols(uri, n.Forms, st)
-	case *dang.ModuleBlock:
+	case *dang.FileBlock:
 		h.collectSymbols(uri, n.Forms, st)
 	case *dang.ObjectDecl:
 		// Collect symbols from object body

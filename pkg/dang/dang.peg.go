@@ -8343,7 +8343,7 @@ func (p *parser) callonDang6() (any, error) {
 }
 
 func (c *current) onDang1(eles, last any) (any, error) {
-	return &ModuleBlock{
+	return &FileBlock{
 		Forms: sliceOfAppend[Node](eles, last),
 		Loc:   c.Loc(),
 	}, nil
