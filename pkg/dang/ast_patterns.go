@@ -332,8 +332,8 @@ func valueModule(val Value) *Type {
 			}
 		}
 	case GraphQLValue:
-		if v.TypeEnv != nil {
-			if typeScope, found := v.TypeEnv.NamedType(v.TypeName); found {
+		if v.TypeScope != nil {
+			if typeScope, found := v.TypeScope.NamedType(v.TypeName); found {
 				if mod, ok := typeScope.(*Type); ok {
 					return mod
 				}

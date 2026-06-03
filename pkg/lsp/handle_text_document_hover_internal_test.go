@@ -104,7 +104,7 @@ func TestFormatPublicTypeShape(t *testing.T) {
 	}
 }
 
-func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
+func TestFormatNamedTypeForHoverUsesTypeScope(t *testing.T) {
 	iface := dang.NewType("Thing", dang.InterfaceKind)
 	iface.SetTypeDocString("Loaded from GraphQL.")
 	iface.Add("id", hm.NewScheme(nil, hm.NewFnType(
@@ -115,7 +115,7 @@ func TestFormatNamedTypeForHoverUsesTypeEnv(t *testing.T) {
 
 	env := dang.NewPreludeTypeScope("")
 	env.AddObject("Thing", iface)
-	f := &File{TypeEnv: env}
+	f := &File{TypeScope: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, Position{}, "Thing")
 	if !strings.Contains(codeBlock, "interface Thing {") || !strings.Contains(codeBlock, "pub id: String!") {
@@ -148,7 +148,7 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 
 	text := "let info: Test.ServerInfo! = null"
 	pos := Position{Line: 0, Character: strings.Index(text, "ServerInfo")}
-	f := &File{Text: text, TypeEnv: env}
+	f := &File{Text: text, TypeScope: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, pos, "ServerInfo")
 	if !strings.Contains(codeBlock, "pub version: String!") {

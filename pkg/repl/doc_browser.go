@@ -18,7 +18,7 @@ type DocColumn struct {
 	Index        int            // selected index within Visible() items
 	Offset       int            // scroll offset (for item lists)
 	DetailOffset int            // scroll offset (for detail panes)
-	TypeEnv      dang.TypeScope // the env this column lists members of (nil for detail)
+	TypeScope      dang.TypeScope // the env this column lists members of (nil for detail)
 }
 
 // Visible returns the items to display, respecting the filter.
@@ -68,7 +68,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 	col := DocColumn{
 		Title:   title,
 		Doc:     doc,
-		TypeEnv: env,
+		TypeScope: env,
 	}
 
 	if env == nil {
@@ -98,12 +98,12 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 
 			ret := UnwrapType(fn.Ret(true))
 			if mod, ok := ret.(dang.TypeScope); ok {
-				item.RetEnv = mod
+				item.RetTypeScope = mod
 			}
 		} else {
 			inner := UnwrapType(t)
 			if mod, ok := inner.(dang.TypeScope); ok {
-				item.RetEnv = mod
+				item.RetTypeScope = mod
 				item.Kind = ClassifyEnv(mod)
 			} else {
 				item.Kind = KindField
@@ -145,7 +145,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			if def.ReturnType != nil {
 				ret := UnwrapType(def.ReturnType)
 				if retEnv, ok := ret.(dang.TypeScope); ok {
-					item.RetEnv = retEnv
+					item.RetTypeScope = retEnv
 				}
 			}
 			col.Items = append(col.Items, item)
@@ -159,7 +159,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 		item := DocItem{
 			Name:    name,
 			TypeStr: namedEnv.Name(),
-			RetEnv:  namedEnv,
+			RetTypeScope:  namedEnv,
 			Kind:    ClassifyEnv(namedEnv),
 		}
 		if d := namedEnv.GetTypeDocString(); d != "" {

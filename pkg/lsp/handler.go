@@ -95,7 +95,7 @@ type File struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock // Parsed and type-annotated AST
-	TypeEnv     dang.TypeScope    // Type environment after inference
+	TypeScope     dang.TypeScope    // Type environment after inference
 
 	// Synchronization for async file processing
 	mu         sync.Mutex
@@ -241,7 +241,7 @@ type fileAnalysis struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.ModuleBlock
-	TypeEnv     dang.TypeScope
+	TypeScope     dang.TypeScope
 }
 
 func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp string) (*fileAnalysis, error) {
@@ -320,13 +320,13 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeScope, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
-	// The block's Env composes the shared dirEnv with the file's own imports,
-	// so editor features see exactly what inference saw — including the file's
-	// unqualified imported symbols, which only live in the file-local env.
-	if currentBlock.Env != nil {
-		analysis.TypeEnv = currentBlock.Env
+	// The block's TypeScope composes the shared dirEnv with the file's own
+	// imports, so editor features see exactly what inference saw — including the
+	// file's unqualified imported symbols, which only live in the file-local env.
+	if currentBlock.TypeScope != nil {
+		analysis.TypeScope = currentBlock.TypeScope
 	} else {
-		analysis.TypeEnv = typeScope
+		analysis.TypeScope = typeScope
 	}
 
 	return analysis, nil
@@ -340,7 +340,7 @@ func (h *langHandler) finishFileUpdate(f *File, analysis *fileAnalysis) (int, []
 		f.Diagnostics = analysis.Diagnostics
 		f.Symbols = analysis.Symbols
 		f.AST = analysis.AST
-		f.TypeEnv = analysis.TypeEnv
+		f.TypeScope = analysis.TypeScope
 	}
 
 	f.processing = false
@@ -538,7 +538,7 @@ func (f *File) waitForSnapshot() *File {
 		Diagnostics: append([]Diagnostic(nil), f.Diagnostics...),
 		Symbols:     f.Symbols,
 		AST:         f.AST,
-		TypeEnv:     f.TypeEnv,
+		TypeScope:     f.TypeScope,
 	}
 }
 

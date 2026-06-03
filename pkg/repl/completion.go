@@ -263,7 +263,7 @@ type DocItem struct {
 	Args      []DocArg
 	BlockArgs []DocArg
 	BlockRet  string
-	RetEnv    dang.TypeScope
+	RetTypeScope    dang.TypeScope
 }
 
 // DocArg represents an argument to a function.

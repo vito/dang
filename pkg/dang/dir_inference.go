@@ -46,8 +46,8 @@ type fileScope struct {
 // rest, runs the imports phase against a fresh per-file env, and builds the
 // file's composite env. The file-local imports are installed once up front so
 // that all subsequent phases can refer to them through fileEnv. The composite
-// is also stashed on block.Env so editor features can look up symbols (e.g.
-// unqualified imported names) against the same env inference saw.
+// is also stashed on block.TypeScope so editor features can look up symbols
+// (e.g. unqualified imported names) against the same env inference saw.
 //
 // Schema modules dedupe automatically: ImportDecl.Infer consults a
 // name-keyed cache on the import context, so every ImportDecl with the same
@@ -65,7 +65,7 @@ func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv TypeSco
 		}
 
 		fileEnv := &OverlayTypeScope{primary: dirEnv, lexical: importsEnv}
-		block.Env = fileEnv
+		block.TypeScope = fileEnv
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),
 			fileEnv:    fileEnv,

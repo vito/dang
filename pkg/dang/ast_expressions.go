@@ -1623,7 +1623,7 @@ func (o *ObjectSelection) evalGraphQLInlineFragments(gqlVal GraphQLValue, ctx co
 	}
 
 	// Convert results to properly-typed Objects
-	return o.convertInlineFragmentResult(result, gqlVal.Schema, gqlVal.TypeEnv)
+	return o.convertInlineFragmentResult(result, gqlVal.Schema, gqlVal.TypeScope)
 }
 
 // evalGraphQLLazyInlineFragments handles inline fragments with no field sub-selections.
@@ -1710,7 +1710,7 @@ func (o *ObjectSelection) matchLazyInlineFragment(gqlVal GraphQLValue, typeName 
 				ValType:    frag.Inferred,
 				Client:     gqlVal.Client,
 				Schema:     gqlVal.Schema,
-				TypeEnv:    gqlVal.TypeEnv,
+				TypeScope:    gqlVal.TypeScope,
 				QueryChain: query.InlineFragment(typeName),
 				IsMutation: gqlVal.IsMutation,
 			}, nil
@@ -1946,7 +1946,7 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	}
 
 	// Convert GraphQL result to Object
-	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeEnv)
+	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeScope)
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, env ValueScope, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {

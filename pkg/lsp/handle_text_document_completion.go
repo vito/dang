@@ -33,7 +33,7 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 
 	// Fallback: lexical completions from all enclosing scopes.
 	if f.AST != nil {
-		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeEnv), nil
+		return h.getLexicalCompletions(ctx, f.AST, params.Position, f.TypeScope), nil
 	}
 
 	return nil, nil
@@ -43,23 +43,23 @@ func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrp
 // env plus all enclosing scope bindings at the given position. This allows
 // resolving local variables (e.g. "ctr") that are not in the top-level env.
 func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.TypeScope {
-	if f.TypeEnv == nil {
+	if f.TypeScope == nil {
 		return nil
 	}
 
 	if f.AST == nil {
-		return f.TypeEnv
+		return f.TypeScope
 	}
 
 	// Collect enclosing scope environments from the Dang AST
 	enclosing := findEnclosingEnvironments(f.AST, pos)
 	if len(enclosing) == 0 {
-		return f.TypeEnv
+		return f.TypeScope
 	}
 
 	// Build a layered env: start from the file-level env (cloned),
 	// then merge all enclosing scope bindings into it.
-	env := f.TypeEnv.Clone().(dang.TypeScope)
+	env := f.TypeScope.Clone().(dang.TypeScope)
 	for _, scopeEnv := range enclosing {
 		for name, scheme := range scopeEnv.Bindings(dang.PrivateVisibility) {
 			env.Add(name, scheme)

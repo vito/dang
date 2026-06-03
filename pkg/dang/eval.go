@@ -77,7 +77,7 @@ type ValueScope interface {
 // used for GraphQL input types like UserSort(field: ..., direction: ...).
 type InputObjectConstructor struct {
 	TypeName string
-	TypeEnv  *Type
+	TypeScope  *Type
 	FnType   *hm.FunctionType
 }
 
@@ -95,7 +95,7 @@ func (c InputObjectConstructor) ParameterNames() []string {
 }
 
 func (c InputObjectConstructor) Call(ctx context.Context, env ValueScope, args map[string]Value) (Value, error) {
-	instance := NewObject(c.TypeEnv)
+	instance := NewObject(c.TypeScope)
 	for name, val := range args {
 		instance.Bind(name, val, PublicVisibility)
 	}
@@ -110,7 +110,7 @@ type GraphQLFunction struct {
 	FnType     *hm.FunctionType
 	Client     graphql.Client
 	Schema     *introspection.Schema
-	TypeEnv    TypeScope               // Type environment for looking up enum types
+	TypeScope    TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this is a mutation field
 }
@@ -179,7 +179,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env ValueScope, args map[stri
 			if strVal, ok := result.(string); ok {
 				enumTypeName := getTypeName(g.Field.TypeRef)
 				// Get the enum type from the type environment
-				enumType, found := g.TypeEnv.NamedType(enumTypeName)
+				enumType, found := g.TypeScope.NamedType(enumTypeName)
 				if !found {
 					return nil, fmt.Errorf("enum type %s not found", enumTypeName)
 				}
@@ -196,7 +196,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env ValueScope, args map[stri
 			if strVal, ok := result.(string); ok {
 				scalarTypeName := getTypeName(g.Field.TypeRef)
 				// Get the scalar type from the type environment
-				scalarType, found := g.TypeEnv.NamedType(scalarTypeName)
+				scalarType, found := g.TypeScope.NamedType(scalarTypeName)
 				if !found {
 					return nil, fmt.Errorf("scalar type %s not found", scalarTypeName)
 				}
@@ -218,7 +218,7 @@ func (g GraphQLFunction) Call(ctx context.Context, env ValueScope, args map[stri
 		ValType:    g.FnType.Ret(false),
 		Client:     g.Client,
 		Schema:     g.Schema,
-		TypeEnv:    g.TypeEnv,    // Pass along the type environment
+		TypeScope:    g.TypeScope,    // Pass along the type environment
 		QueryChain: query,        // Pass the query chain for further building
 		IsMutation: g.IsMutation, // Propagate mutation flag
 	}, nil
@@ -247,7 +247,7 @@ type GraphQLValue struct {
 	ValType    hm.Type
 	Client     graphql.Client
 	Schema     *introspection.Schema
-	TypeEnv    TypeScope               // Type environment for looking up enum types
+	TypeScope    TypeScope               // Type environment for looking up enum types
 	QueryChain *querybuilder.Selection // Keep track of the query chain built so far
 	IsMutation bool                    // True if this value came from a mutation
 }
@@ -300,14 +300,14 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 	// Create a function type for this method call
 	args := NewRecordType("")
 	for _, arg := range field.Args {
-		argType, err := gqlInputToTypeNode(g.TypeEnv, arg)
+		argType, err := gqlInputToTypeNode(g.TypeScope, arg)
 		if err != nil {
 			continue
 		}
 		args.Add(arg.Name, hm.NewScheme(nil, argType))
 	}
 
-	retType, err := gqlFieldToTypeNode(g.TypeEnv, field)
+	retType, err := gqlFieldToTypeNode(g.TypeScope, field)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert return type: %w", err)
 	}
@@ -321,7 +321,7 @@ func (g GraphQLValue) SelectField(ctx context.Context, fieldName string) (Value,
 		FnType:     fnType,
 		Client:     g.Client,
 		Schema:     g.Schema,
-		TypeEnv:    g.TypeEnv,    // Pass along the type environment
+		TypeScope:    g.TypeScope,    // Pass along the type environment
 		QueryChain: g.QueryChain, // Pass the current query chain
 		IsMutation: g.IsMutation, // Propagate mutation flag
 	}, nil
@@ -389,20 +389,20 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 		// Add enum values as enum constants for enum types
 		if t.Kind == introspection.TypeKindEnum && len(t.EnumValues) > 0 {
 			// Get the enum type environment
-			enumTypeEnv, found := typeScope.NamedType(t.Name)
+			enumTypeScope, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
 
 			// Create a module for the enum type
-			enumModuleVal := NewObject(enumTypeEnv)
+			enumModuleVal := NewObject(enumTypeScope)
 
 			// Set each enum value as an EnumValue constant
 			enumValues := make([]Value, len(t.EnumValues))
 			for i, enumVal := range t.EnumValues {
 				ev := EnumValue{
 					Val:      enumVal.Name,
-					EnumType: enumTypeEnv,
+					EnumType: enumTypeScope,
 				}
 				enumModuleVal.Bind(enumVal.Name, ev, PublicVisibility)
 				enumValues[i] = ev
@@ -411,7 +411,7 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 			// Add the values() method that returns all enum values as a list
 			enumModuleVal.Bind("values", ListValue{
 				Elements: enumValues,
-				ElemType: NonNull(enumTypeEnv),
+				ElemType: NonNull(enumTypeScope),
 			}, PublicVisibility)
 
 			// Add the enum module to the environment
@@ -426,13 +426,13 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 			}
 
 			// Get the scalar type environment
-			scalarTypeEnv, found := typeScope.NamedType(t.Name)
+			scalarTypeScope, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
 
 			// Create a module for the scalar type (just a type placeholder)
-			scalarModuleVal := NewObject(scalarTypeEnv)
+			scalarModuleVal := NewObject(scalarTypeScope)
 
 			// Add the scalar module to the environment
 			env.Bind(t.Name, scalarModuleVal, PublicVisibility)
@@ -441,13 +441,13 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 		// Add interface types as available values
 		if t.Kind == introspection.TypeKindInterface {
 			// Get the interface type environment
-			interfaceTypeEnv, found := typeScope.NamedType(t.Name)
+			interfaceTypeScope, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
 
 			// Create a module for the interface type (just a type placeholder)
-			interfaceModuleVal := NewObject(interfaceTypeEnv)
+			interfaceModuleVal := NewObject(interfaceTypeScope)
 
 			// Add the interface module to the environment
 			env.Bind(t.Name, interfaceModuleVal, PublicVisibility)
@@ -455,18 +455,18 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 
 		// Add union types as available values
 		if t.Kind == introspection.TypeKindUnion {
-			unionTypeEnv, found := typeScope.NamedType(t.Name)
+			unionTypeScope, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
 
-			unionModuleVal := NewObject(unionTypeEnv)
+			unionModuleVal := NewObject(unionTypeScope)
 			env.Bind(t.Name, unionModuleVal, PublicVisibility)
 		}
 
 		// Add input object constructors: UserSort(field: ..., direction: ...)
 		if t.Kind == introspection.TypeKindInputObject {
-			inputTypeEnv, found := typeScope.NamedType(t.Name)
+			inputTypeScope, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
@@ -479,11 +479,11 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				}
 				args.Add(f.Name, hm.NewScheme(nil, argType))
 			}
-			fnType := hm.NewFnType(args, NonNull(inputTypeEnv))
+			fnType := hm.NewFnType(args, NonNull(inputTypeScope))
 
 			constructor := InputObjectConstructor{
 				TypeName: t.Name,
-				TypeEnv:  inputTypeEnv.(*Type),
+				TypeScope:  inputTypeScope.(*Type),
 				FnType:   fnType,
 			}
 			env.Bind(t.Name, constructor, PublicVisibility)
@@ -513,7 +513,7 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 				FnType:     fnType,
 				Client:     client,
 				Schema:     schema,
-				TypeEnv:    typeScope, // Pass the type environment
+				TypeScope:    typeScope, // Pass the type environment
 				QueryChain: nil,     // Top-level functions start with no query chain
 			}
 
@@ -525,11 +525,11 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 
 		// Collect mutation fields into a Mutation module
 		if schema.MutationType != nil && t.Name == schema.MutationType.Name {
-			mutTypeEnv, found := typeScope.NamedType(t.Name)
+			mutTypeScope, found := typeScope.NamedType(t.Name)
 			if !found {
 				continue
 			}
-			mutModule := NewObject(mutTypeEnv)
+			mutModule := NewObject(mutTypeScope)
 			for _, f := range t.Fields {
 				ret, err := gqlFieldToTypeNode(typeScope, f)
 				if err != nil {
@@ -551,7 +551,7 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 					FnType:     fnType,
 					Client:     client,
 					Schema:     schema,
-					TypeEnv:    typeScope,
+					TypeScope:    typeScope,
 					QueryChain: nil,
 					IsMutation: true,
 				}

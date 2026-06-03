@@ -57,12 +57,12 @@ func findEnclosingEnvironments(root dang.Node, pos Position) []dang.TypeScope {
 				environments = append(environments, typed.InferredScope)
 			}
 		case *dang.ModuleBlock:
-			if typed.Env != nil {
-				environments = append(environments, typed.Env)
+			if typed.TypeScope != nil {
+				environments = append(environments, typed.TypeScope)
 			}
 		case *dang.Block:
-			if typed.Env != nil {
-				environments = append(environments, typed.Env)
+			if typed.TypeScope != nil {
+				environments = append(environments, typed.TypeScope)
 			}
 		case *dang.ObjectLiteral:
 			if typed.Mod != nil {

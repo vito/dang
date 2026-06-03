@@ -73,7 +73,7 @@ func TestConcurrentNewEnvWithPreludeTypeCollision(t *testing.T) {
 	require.False(t, found)
 }
 
-func TestObjectSetDoesNotMutateTypeEnvOrigins(t *testing.T) {
+func TestObjectSetDoesNotMutateTypeScopeOrigins(t *testing.T) {
 	mod := NewType("runtime", ObjectKind)
 	val := NewObject(mod)
 

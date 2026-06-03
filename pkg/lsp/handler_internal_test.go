@@ -33,7 +33,7 @@ func TestFailedUpdateClearsAnalysis(t *testing.T) {
 	if snapshot.Symbols == nil || len(snapshot.Symbols.Definitions) == 0 {
 		t.Fatalf("initial update did not produce symbols")
 	}
-	if snapshot.TypeEnv == nil {
+	if snapshot.TypeScope == nil {
 		t.Fatalf("initial update did not produce a type env")
 	}
 
@@ -61,7 +61,7 @@ func TestFailedUpdateClearsAnalysis(t *testing.T) {
 	if snapshot.AST != nil {
 		t.Fatalf("failed update kept stale AST")
 	}
-	if snapshot.TypeEnv != nil {
+	if snapshot.TypeScope != nil {
 		t.Fatalf("failed update kept stale type env")
 	}
 	if len(snapshot.Diagnostics) != 0 {

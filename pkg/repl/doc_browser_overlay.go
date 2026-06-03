@@ -527,8 +527,8 @@ func (d *DocBrowserOverlay) ExpandSelection() {
 	detail := BuildDetailColumn(item)
 	d.Columns = append(d.Columns, detail)
 
-	if item.RetEnv != nil {
-		members := BuildColumn(item.Name+" -> "+item.RetEnv.Name(), item.RetEnv.GetTypeDocString(), item.RetEnv)
+	if item.RetTypeScope != nil {
+		members := BuildColumn(item.Name+" -> "+item.RetTypeScope.Name(), item.RetTypeScope.GetTypeDocString(), item.RetTypeScope)
 		if len(members.Items) > 0 {
 			d.Columns = append(d.Columns, members)
 		}

@@ -15,7 +15,7 @@ type Block struct {
 	Loc   *SourceLocation
 
 	// Filled in during inference phase for non-inline blocks
-	Env TypeScope
+	TypeScope TypeScope
 }
 
 var _ hm.Expression = (*Block)(nil)
@@ -487,7 +487,7 @@ func (b *Block) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Store the environment, even if inference fails
 		if dangEnv, ok := newEnv.(TypeScope); ok {
-			b.Env = dangEnv
+			b.TypeScope = dangEnv
 		}
 
 		forms := b.Forms

@@ -19,7 +19,7 @@ type ModuleBlock struct {
 	Loc    *SourceLocation
 
 	// Filled in during inference phase
-	Env TypeScope
+	TypeScope TypeScope
 }
 
 var _ hm.Expression = (*ModuleBlock)(nil)
