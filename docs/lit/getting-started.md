@@ -31,6 +31,8 @@ endpoint = "https://api.github.com/graphql"
 authorization = "Bearer ${GITHUB_TOKEN}"
 ```
 
+TODO trim this
+
 `dang.toml` is discovered by walking up from the working directory (stopping at
 a `.git` boundary). The `endpoint`, `authorization`, and `headers` values
 support `${VAR}` environment expansion; `$(...)` command substitution is not
