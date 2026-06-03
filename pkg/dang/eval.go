@@ -2111,9 +2111,9 @@ func DeclareDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, 
 // inference). It is the DeclareDir counterpart to InferDirectoryFiles. Mutates
 // block.Forms to prepend auto-imports so later evaluation reuses the same
 // *ImportDecl nodes inferred here.
-func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher) error {
+func declareDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
-	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
+	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
 
 	if overall.HasErrors() {
@@ -2212,17 +2212,17 @@ func evaluateDirectoryFiles(ctx context.Context, blocks []*ModuleBlock, valueSco
 		// Install imports into a fresh per-file env. Using Derive (rather than
 		// a sibling Object) keeps the prelude reachable for any lookups
 		// the imports phase performs during installation.
-		importsEnv := valueScope.Derive(true)
+		importsScope := valueScope.Derive(true)
 		for _, imp := range imports {
-			if _, err := EvalNode(ctx, importsEnv, imp); err != nil {
+			if _, err := EvalNode(ctx, importsScope, imp); err != nil {
 				return err
 			}
 		}
 
-		fileEnv := CreateOverlayValueScope(valueScope, importsEnv)
+		composite := CreateOverlayValueScope(valueScope, importsScope)
 		scopes = append(scopes, fileEvalScope{
 			classified: classifyForms(rest),
-			env:        fileEnv,
+			env:        composite,
 		})
 	}
 

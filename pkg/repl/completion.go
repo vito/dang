@@ -37,7 +37,7 @@ func NewCompletionProvider(ctx context.Context, typeScope dang.TypeScope, static
 // editor contents, used to infer receiver types for member completions.
 func NewDetailRenderer(ctx context.Context, typeScope dang.TypeScope, getInput func() string) tuist.DetailRenderer {
 	return func(c tuist.Completion, width int) []string {
-		item, found := DocItemFromEnv(typeScope, c.Label)
+		item, found := DocItemFromTypeScope(typeScope, c.Label)
 		if !found {
 			item, found = resolveCompletionDocItem(ctx, typeScope, getInput(), c)
 		}
@@ -273,8 +273,8 @@ type DocArg struct {
 	Doc     string
 }
 
-// ClassifyEnv determines the ItemKind for a module/env based on its Kind.
-func ClassifyEnv(env dang.TypeScope) ItemKind {
+// ClassifyTypeScope determines the ItemKind for a module/env based on its Kind.
+func ClassifyTypeScope(env dang.TypeScope) ItemKind {
 	if mod, ok := env.(*dang.Type); ok {
 		switch mod.Kind {
 		case dang.EnumKind:
@@ -292,8 +292,8 @@ func ClassifyEnv(env dang.TypeScope) ItemKind {
 	return KindType
 }
 
-// DocItemFromEnv builds a DocItem for a named binding in env.
-func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
+// DocItemFromTypeScope builds a DocItem for a named binding in env.
+func DocItemFromTypeScope(env dang.TypeScope, name string) (DocItem, bool) {
 	if env == nil {
 		return DocItem{}, false
 	}
@@ -321,7 +321,7 @@ func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
 		} else {
 			inner := UnwrapType(t)
 			if mod, ok := inner.(dang.TypeScope); ok {
-				item.Kind = ClassifyEnv(mod)
+				item.Kind = ClassifyTypeScope(mod)
 			} else {
 				item.Kind = KindField
 			}
@@ -366,7 +366,7 @@ func DocItemFromEnv(env dang.TypeScope, name string) (DocItem, bool) {
 			item := DocItem{
 				Name:    name,
 				TypeStr: namedEnv.Name(),
-				Kind:    ClassifyEnv(namedEnv),
+				Kind:    ClassifyTypeScope(namedEnv),
 			}
 			if d := namedEnv.GetTypeDocString(); d != "" {
 				item.Doc = d
@@ -399,7 +399,7 @@ func resolveCompletionDocItem(ctx context.Context, typeScope dang.TypeScope, inp
 	if !ok {
 		return DocItem{}, false
 	}
-	return DocItemFromEnv(env, c.Label)
+	return DocItemFromTypeScope(env, c.Label)
 }
 
 // ExtractArgs extracts function arguments as DocArgs.

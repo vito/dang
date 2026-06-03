@@ -70,12 +70,12 @@ func (h *langHandler) buildCompletionEnv(f *File, pos Position) dang.TypeScope {
 }
 
 // getLexicalCompletions returns completion items for symbols in enclosing lexical scopes
-func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node, pos Position, fileEnv dang.TypeScope) []CompletionItem {
+func (h *langHandler) getLexicalCompletions(ctx context.Context, root dang.Node, pos Position, fileScope dang.TypeScope) []CompletionItem {
 	var environments []dang.TypeScope
 
 	// First add the file-level environment if available
-	if fileEnv != nil {
-		environments = append(environments, fileEnv)
+	if fileScope != nil {
+		environments = append(environments, fileScope)
 	}
 
 	// Collect all enclosing environments

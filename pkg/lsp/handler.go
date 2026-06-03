@@ -313,14 +313,14 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 
 	// Run type inference focused on the active buffer: full body inference for
 	// the open file, declarations only for siblings. Cross-file declarations
-	// still resolve through the shared dirEnv; sibling body errors do not run
+	// still resolve through the shared dirScope; sibling body errors do not run
 	// on every keystroke.
 	typeScope := dang.NewPreludeTypeScope("")
 	fresh := hm.NewSimpleFresher()
 	if err := dang.InferDirectoryFilesFocused(ctx, blocks, currentBlock, typeScope, fresh); err != nil {
 		analysis.Diagnostics = append(analysis.Diagnostics, h.errorToDiagnosticsForPath(err, uri, fp)...)
 	}
-	// The block's TypeScope composes the shared dirEnv with the file's own
+	// The block's TypeScope composes the shared dirScope with the file's own
 	// imports, so editor features see exactly what inference saw — including the
 	// file's unqualified imported symbols, which only live in the file-local env.
 	if currentBlock.TypeScope != nil {

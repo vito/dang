@@ -10,9 +10,9 @@ import (
 
 // InferDirectoryFiles runs phased type inference across multiple file blocks of
 // a directory module with file-local import scopes. Each file's imports populate
-// a fresh per-file env, which is then composed with the shared dirEnv: lookups
-// fall through dirEnv → file imports, so local declarations correctly shadow
-// imported names. Adds go to dirEnv so cross-file declarations are visible to
+// a fresh per-file env, which is then composed with the shared dirScope: lookups
+// fall through dirScope → file imports, so local declarations correctly shadow
+// imported names. Adds go to dirScope so cross-file declarations are visible to
 // siblings.
 //
 // Phases run in lockstep across files (one phase across all files before the
@@ -24,9 +24,9 @@ import (
 // Auto-imports declared in ctx are injected into each block's Forms in place,
 // so subsequent evaluation reuses the same *ImportDecl nodes whose Infer state
 // (cached schema/client) was populated here.
-func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher) error {
+func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
-	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
+	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 	runDirectoryPhases(ctx, scopes, fresh, overall, inferencePhases)
 
 	if overall.HasErrors() {
@@ -39,13 +39,13 @@ func InferDirectoryFiles(ctx context.Context, files []*ModuleBlock, dirEnv TypeS
 // composite env that scopes its imports file-locally.
 type fileScope struct {
 	classified ClassifiedForms
-	fileEnv    TypeScope
+	typeScope  TypeScope
 }
 
 // prepareFileScopes per-file: prepends auto-imports, splits imports from the
 // rest, runs the imports phase against a fresh per-file env, and builds the
 // file's composite env. The file-local imports are installed once up front so
-// that all subsequent phases can refer to them through fileEnv. The composite
+// that all subsequent phases can refer to them through the file scope. The composite
 // is also stashed on block.TypeScope so editor features can look up symbols
 // (e.g. unqualified imported names) against the same env inference saw.
 //
@@ -53,22 +53,22 @@ type fileScope struct {
 // name-keyed cache on the import context, so every ImportDecl with the same
 // name — whether at file top level or nested inside a block — installs the
 // same *Type and types like Dagger.Workspace unify across file boundaries.
-func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirEnv TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
+func prepareFileScopes(ctx context.Context, files []*ModuleBlock, dirScope TypeScope, fresh hm.Fresher, errs *InferenceErrors) []fileScope {
 	scopes := make([]fileScope, 0, len(files))
 	for _, block := range files {
 		block.Forms = prependAutoImports(ctx, block.Forms)
 		imports, rest := partitionImports(block.Forms)
 
-		importsEnv := NewType("", ObjectKind)
-		if _, err := inferImportsPhaseResilient(ctx, imports, importsEnv, fresh, errs); err != nil {
+		importsScope := NewType("", ObjectKind)
+		if _, err := inferImportsPhaseResilient(ctx, imports, importsScope, fresh, errs); err != nil {
 			errs.Add(err)
 		}
 
-		fileEnv := &OverlayTypeScope{primary: dirEnv, lexical: importsEnv}
-		block.TypeScope = fileEnv
+		composite := &OverlayTypeScope{primary: dirScope, lexical: importsScope}
+		block.TypeScope = composite
 		scopes = append(scopes, fileScope{
 			classified: classifyForms(rest),
-			fileEnv:    fileEnv,
+			typeScope:  composite,
 		})
 	}
 	return scopes
@@ -85,7 +85,7 @@ type directoryPhase struct {
 func runDirectoryPhases(ctx context.Context, scopes []fileScope, fresh hm.Fresher, errs *InferenceErrors, phases []directoryPhase) {
 	for _, phase := range phases {
 		for _, scope := range scopes {
-			if _, err := phase.fn(ctx, scope.classified, scope.fileEnv, fresh, errs); err != nil {
+			if _, err := phase.fn(ctx, scope.classified, scope.typeScope, fresh, errs); err != nil {
 				errs.Add(fmt.Errorf("%s phase failed: %w", phase.name, err))
 			}
 		}
@@ -161,9 +161,9 @@ var inferencePhases = slices.Concat(declarationPhases, bodyPhases)
 //
 // active must be one of files (pointer equality). A nil active runs only the
 // declaration phases (plus variables across all scopes).
-func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirEnv TypeScope, fresh hm.Fresher) error {
+func InferDirectoryFilesFocused(ctx context.Context, files []*ModuleBlock, active *ModuleBlock, dirScope TypeScope, fresh hm.Fresher) error {
 	overall := &InferenceErrors{}
-	scopes := prepareFileScopes(ctx, files, dirEnv, fresh, overall)
+	scopes := prepareFileScopes(ctx, files, dirScope, fresh, overall)
 
 	runDirectoryPhases(ctx, scopes, fresh, overall, declarationPhases)
 

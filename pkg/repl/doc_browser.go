@@ -104,7 +104,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			inner := UnwrapType(t)
 			if mod, ok := inner.(dang.TypeScope); ok {
 				item.RetTypeScope = mod
-				item.Kind = ClassifyEnv(mod)
+				item.Kind = ClassifyTypeScope(mod)
 			} else {
 				item.Kind = KindField
 			}
@@ -160,7 +160,7 @@ func BuildColumn(title, doc string, env dang.TypeScope) DocColumn {
 			Name:         name,
 			TypeStr:      namedEnv.Name(),
 			RetTypeScope: namedEnv,
-			Kind:         ClassifyEnv(namedEnv),
+			Kind:         ClassifyTypeScope(namedEnv),
 		}
 		if d := namedEnv.GetTypeDocString(); d != "" {
 			item.Doc = d
