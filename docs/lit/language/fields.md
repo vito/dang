@@ -16,7 +16,7 @@ already-declared field.
 ## Two visibilities
 
 - `pub name = value` — exported; visible to importers and outside the type
-- `let name = value` — private to the file/type
+- `let name = value` — unexported. A *top-level* `let` is module-scoped: since a directory is one module, it is visible from every `.dang` file in that directory (just not exported). A *type-level* `let` is readable only inside that type's own methods/defaults. (So a top-level `let` in its own file is the way to share private helpers across a directory module — see [#modules].)
 
 ## What a field is
 

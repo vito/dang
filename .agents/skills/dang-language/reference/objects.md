@@ -13,7 +13,7 @@ pub z: Int                # declaration without value
 ```
 
 - `pub` — exported (visible to importers and outside the type). Default visibility for a `type`.
-- `let` — private to the file/type.
+- `let` — unexported. At **top level** it is *module*-scoped, not file-scoped: a directory is one module/scope, so a top-level `let` in one `.dang` file is visible (callable, referenceable) from every other file in the same directory — it just isn't part of the module's exported surface. At **type level** it is readable only inside that type's own methods/defaults. (Use a top-level `let` helper in its own file to share private logic across a directory module without exporting it.)
 - A field **without a value** (`pub name: Type`) acts as a required constructor parameter (in objects) or an unresolved declaration. A `let` required field with no default is *also* a required constructor param; a `let` field *with* a default is not.
 - Private fields with defaults are preferred over outer-scope bindings of the same name inside the type.
 
