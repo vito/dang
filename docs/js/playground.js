@@ -188,7 +188,11 @@
   function enhance(container) {
     var fallback = container.querySelector(".dang-playground-fallback");
     if (!fallback) return;
-    var source = fallback.textContent.replace(/\s+$/, "");
+    // Read the source without any controls another script may have injected
+    // (e.g. the feedback link), so they don't leak into the editable code.
+    var seed = fallback.cloneNode(true);
+    seed.querySelectorAll(".dang-fb").forEach(function (n) { n.remove(); });
+    var source = seed.textContent.replace(/\s+$/, "");
     container.innerHTML = "";
 
     // Toolbar.
