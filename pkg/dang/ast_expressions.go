@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/vito/dang/pkg/hm"
 	"github.com/vito/dang/pkg/introspection"
 	"github.com/vito/dang/pkg/querybuilder"
@@ -1937,11 +1939,84 @@ func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.
 	var result any
 	err = query.Client(gqlVal.Client).Bind(&result).Execute(ctx)
 	if err != nil {
+		// If the server reports which field failed, highlight that specific
+		// field in the source rather than the whole selection.
+		if field := o.locateErrorField(graphqlErrorFieldPath(err)); field != nil {
+			return nil, CreateEvalError(ctx, fmt.Errorf("executing GraphQL query: %w", err), field)
+		}
 		return nil, fmt.Errorf("ObjectSelection.evalGraphQLSelection: executing GraphQL query: %w", err)
 	}
 
 	// Convert GraphQL result to Object
 	return o.convertGraphQLResultToModule(result, o.Fields, gqlVal.Schema, gqlVal.Field, gqlVal.TypeScope)
+}
+
+// graphqlErrorFieldPath extracts the field path from a GraphQL execution error
+// (e.g. ["viewer", "repositories"]). List indices are ignored since they don't
+// correspond to selected fields. Returns nil if the error carries no path.
+func graphqlErrorFieldPath(err error) []string {
+	var list gqlerror.List
+	if !errors.As(err, &list) {
+		return nil
+	}
+	for _, e := range list {
+		if e == nil || len(e.Path) == 0 {
+			continue
+		}
+		var names []string
+		for _, seg := range e.Path {
+			if name, ok := seg.(ast.PathName); ok {
+				names = append(names, string(name))
+			}
+		}
+		if len(names) > 0 {
+			return names
+		}
+	}
+	return nil
+}
+
+// locateErrorField walks the selection tree to find the deepest field matching
+// the given GraphQL error path, so its source location can be highlighted. The
+// path is absolute from the query root, so any leading segments that don't
+// match a selected field (such as the receiver) are skipped. Returns nil if no
+// field matches.
+func (o *ObjectSelection) locateErrorField(path []string) *FieldSelection {
+	if len(path) == 0 {
+		return nil
+	}
+
+	findField := func(fields []*FieldSelection, name string) *FieldSelection {
+		for _, f := range fields {
+			if f.Name == name {
+				return f
+			}
+		}
+		return nil
+	}
+
+	fields := o.Fields
+
+	// Skip leading path segments (e.g. the receiver) until one matches a
+	// selected field at this level.
+	start := 0
+	for start < len(path) && findField(fields, path[start]) == nil {
+		start++
+	}
+
+	var deepest *FieldSelection
+	for i := start; i < len(path); i++ {
+		f := findField(fields, path[i])
+		if f == nil {
+			break
+		}
+		deepest = f
+		if f.Selection == nil {
+			break
+		}
+		fields = f.Selection.Fields
+	}
+	return deepest
 }
 
 func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, scope ValueScope, baseQuery *querybuilder.Selection, fields []*FieldSelection) (*querybuilder.Selection, error) {

@@ -392,6 +392,11 @@ func (r *userResolver) Sync(ctx context.Context, obj *User) (string, error) {
 	return obj.ID, nil
 }
 
+// AlwaysFails is the resolver for the alwaysFails field.
+func (r *userResolver) AlwaysFails(ctx context.Context, obj *User) (string, error) {
+	return "", fmt.Errorf("this field always fails")
+}
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
