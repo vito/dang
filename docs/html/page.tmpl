@@ -46,7 +46,10 @@ nav.sidebar li{margin:.15rem 0}
 nav.sidebar a{color:var(--fg2);display:block;padding:.2rem .4rem;border-radius:4px}
 nav.sidebar a:hover{color:var(--fg);background:var(--bg3);text-decoration:none}
 nav.sidebar a.current{color:var(--accent2);background:var(--bg3)}
-nav.sidebar .brand{font-weight:600;color:var(--fg);font-size:1rem;margin-bottom:1rem;display:block}
+nav.sidebar .brand{font-weight:600;color:var(--fg);font-size:1rem;display:block}
+.sidebar-head{margin-bottom:1rem}
+.nav-toggle{display:none}
+.nav-toggle-btn{display:none}
 
 main{flex:1;max-width:820px;margin:0 auto;padding:2.5rem 2rem 4rem;min-width:0}
 
@@ -83,7 +86,15 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
 
 @media (max-width:760px){
   body{flex-direction:column}
-  nav.sidebar{position:static;height:auto;width:auto;border-right:none;border-bottom:1px solid var(--code-border)}
+  nav.sidebar{position:sticky;top:0;z-index:10;align-self:stretch;height:auto;width:auto;overflow-y:visible;border-right:none;border-bottom:1px solid var(--code-border);padding:.75rem 1rem}
+  .sidebar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:0}
+  .nav-toggle-btn{display:flex;flex-direction:column;gap:5px;cursor:pointer;padding:.4rem;margin:-.4rem}
+  .nav-toggle-btn span{display:block;width:22px;height:2px;background:var(--fg2);border-radius:2px;transition:transform .2s,opacity .2s}
+  .nav-toggle:checked ~ nav.sidebar .nav-toggle-btn span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+  .nav-toggle:checked ~ nav.sidebar .nav-toggle-btn span:nth-child(2){opacity:0}
+  .nav-toggle:checked ~ nav.sidebar .nav-toggle-btn span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+  .sidebar-nav{display:none;max-height:70vh;overflow-y:auto;margin-top:.75rem}
+  .nav-toggle:checked ~ nav.sidebar .sidebar-nav{display:block}
   main{padding:1.5rem 1rem 3rem}
 }
 </style>
@@ -91,9 +102,17 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
 <body>
 {{ $current := . }}
 {{ $top := .Top }}
+<input type="checkbox" id="nav-toggle" class="nav-toggle">
 <nav class="sidebar">
-  <a class="brand" href="{{url $top.PrimaryTag}}">dang</a>
-  {{ template "sidebar.tmpl" walkContext $current $top }}
+  <div class="sidebar-head">
+    <a class="brand" href="{{url $top.PrimaryTag}}">dang</a>
+    <label for="nav-toggle" class="nav-toggle-btn" aria-label="Toggle navigation">
+      <span></span><span></span><span></span>
+    </label>
+  </div>
+  <div class="sidebar-nav">
+    {{ template "sidebar.tmpl" walkContext $current $top }}
+  </div>
 </nav>
 <main>
 {{. | render}}
