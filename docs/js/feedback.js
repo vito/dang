@@ -298,10 +298,31 @@
     target.appendChild(link);
   }
 
+  // Only prose-bearing elements are worth commenting on. Skip navigational
+  // chrome that happens to match the selectors above:
+  //
+  //   - the table of contents, rendered as <nav>, so every TOC entry is a
+  //     <li> inside it;
+  //   - any element whose entire text is a single link (the GitHub /
+  //     pkg.go.dev header links, a bare "see [Page]" cross-ref, etc.) —
+  //     there's no prose to give feedback on, just a destination.
+  //
+  // A list item like "see <a>Functions</a> for the full set" keeps its link:
+  // its text is more than the link's, so it reads as prose.
+  function isProse(el) {
+    if (el.closest("nav")) return false;
+    var links = el.querySelectorAll("a");
+    if (links.length === 1) {
+      var linkText = links[0].textContent.trim().replace(/\s+/g, " ");
+      if (linkText && excerptOf(el) === linkText) return false;
+    }
+    return true;
+  }
+
   document.querySelectorAll(INLINE).forEach(function (el) {
-    attach(el, false);
+    if (isProse(el)) attach(el, false);
   });
   document.querySelectorAll(BLOCK).forEach(function (el) {
-    attach(el, true);
+    if (isProse(el)) attach(el, true);
   });
 })();
