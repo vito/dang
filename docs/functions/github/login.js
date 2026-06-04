@@ -26,8 +26,18 @@
 const STATE_COOKIE = "gh_oauth";
 
 export async function onRequestGet({ request, env }) {
-  if (!env.GITHUB_CLIENT_ID) {
-    return new Response("github auth is not configured", { status: 503 });
+  const missing = [];
+  if (!env.GITHUB_CLIENT_ID) missing.push("GITHUB_CLIENT_ID");
+  if (!env.GITHUB_CLIENT_SECRET) missing.push("GITHUB_CLIENT_SECRET");
+  if (missing.length) {
+    // Name the unset vars so misconfiguration is obvious. Remember Cloudflare
+    // scopes vars per environment: a branch deploy reads the Preview set, not
+    // Production.
+    return new Response(
+      "github auth is not configured; missing in this environment: " +
+        missing.join(", "),
+      { status: 503 },
+    );
   }
 
   const url = new URL(request.url);

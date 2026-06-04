@@ -17,8 +17,11 @@ const CLEAR_COOKIE =
   STATE_COOKIE + "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax";
 
 export async function onRequestGet({ request, env }) {
-  if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
-    return fail("github auth is not configured", 503);
+  const missing = [];
+  if (!env.GITHUB_CLIENT_ID) missing.push("GITHUB_CLIENT_ID");
+  if (!env.GITHUB_CLIENT_SECRET) missing.push("GITHUB_CLIENT_SECRET");
+  if (missing.length) {
+    return fail("github auth is not configured; missing in this environment: " + missing.join(", "), 503);
   }
 
   const url = new URL(request.url);
