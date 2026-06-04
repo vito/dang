@@ -88,7 +88,7 @@
     ".dang-fb-send {",
     "  font: inherit; font-size: .8rem; cursor: pointer; padding: .3rem .8rem;",
     "  border-radius: 6px; border: 1px solid var(--accent);",
-    "  background: var(--accent); color: #fff;",
+    "  background: var(--accent); color: var(--on-accent);",
     "}",
     ".dang-fb-send:disabled { opacity: .5; cursor: default; }",
     ".dang-fb-status { font-size: .78rem; color: var(--fg2); padding: .25rem 0; }",
