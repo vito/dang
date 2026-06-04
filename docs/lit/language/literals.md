@@ -36,7 +36,7 @@
 ### Backtick templates
 
 - `` `hello ${name}!` `` — single-line, `${...}` interpolation
-- ``` ```...``` ``` — multi-line; same minimum-indent dedent as triple-quoted; fences grow (4+ backticks) to wrap shorter backtick blocks, and the close fence must match the open fence length
+- ```` ```...``` ```` — multi-line; same minimum-indent dedent as triple-quoted; fences grow (4+ backticks) to wrap shorter backtick blocks, and the close fence must match the open fence length
 - only escape is `\${` → literal `${`; every other backslash is literal (`` `\d+` `` stays `\d+`). A lone `$` not followed by `{` is literal.
 - interpolated expressions are auto-stringified like [#strings] `toString` (non-strings JSON-encode; `null` → `"null"`)
 - optional language tag (parsed but does not affect the value): ` ```go ... ``` `
