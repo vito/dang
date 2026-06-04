@@ -4,7 +4,7 @@ type TestClass {
   pub config = "receiver_config"
   pub field = "original_field"
 
-  pub method(config: String!): TestClass! {
+  method(config: String!): TestClass! {
     # Using new deep assignment syntax
     # self.field should refer to receiver field
     # config should refer to parameter (lexical scope)

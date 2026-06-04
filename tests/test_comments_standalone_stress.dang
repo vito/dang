@@ -17,15 +17,15 @@ enum Color {
 # comment before interface
 interface Greeter {
   # comment inside interface
-  pub greet(name: String!): String!
+  greet(name: String!): String!
 }
 
 # comment before type
 type Dog implements Greeter {
   # comment before field
-  pub name: String!
+  name: String!
   # comment between fields
-  pub age: Int!
+  age: Int!
 
   # comment before constructor
   new(
@@ -41,7 +41,7 @@ type Dog implements Greeter {
   }
 
   # comment before method
-  pub greet(name: String!): String! {
+  greet(name: String!): String! {
     # comment inside method body
     "woof " + name
   }
@@ -54,10 +54,10 @@ pub simple = 42
 let local = "hello"
 
 # comment before typed field
-pub typed: Int! = 100
+typed: Int! = 100
 
 # comment before function
-pub add(a: Int!, b: Int!): Int! {
+add(a: Int!, b: Int!): Int! {
   # comment inside function
   a + b
 }
@@ -143,11 +143,11 @@ assert { counter == 10 }
 
 # comment before nested type
 type Pair {
-  pub left: Int!
-  pub right: Int!
+  left: Int!
+  right: Int!
 
   # comment before pair method
-  pub sum: Int! {
+  sum: Int! {
     # comment inside pair method
     left + right
   }
@@ -158,7 +158,7 @@ pub pair = Pair(3, 7)
 assert { pair.sum == 10 }
 
 # comment before default operator
-pub maybe: Int = null
+maybe: Int = null
 pub safe = maybe ?? 99
 # comment after default
 assert { safe == 99 }

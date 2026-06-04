@@ -20,7 +20,7 @@ pub var_result = case (x) {
 assert { var_result == "five" }
 
 # Case in a function
-pub caseInClassify(x: Int!): String! {
+caseInClassify(x: Int!): String! {
   case (x) {
     0 => "zero"
     1 => "one"

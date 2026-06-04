@@ -1,22 +1,22 @@
 # Conditional branches should infer the common interface/supertype.
 
 interface ConditionalPet {
-  pub name: String!
+  name: String!
 }
 
 type ConditionalCat implements ConditionalPet {
-  pub name: String!
-  pub lives: Int!
+  name: String!
+  lives: Int!
 }
 
 type ConditionalDog implements ConditionalPet {
-  pub name: String!
-  pub bark: String!
+  name: String!
+  bark: String!
 }
 
 let dogAsPet: ConditionalPet! = ConditionalDog(name: "Fido", bark: "woof")
 
-pub selectedPet: ConditionalPet! = if (false) {
+selectedPet: ConditionalPet! = if (false) {
   ConditionalCat(name: "Mog", lives: 9)
 } else {
   dogAsPet

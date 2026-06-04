@@ -32,7 +32,7 @@ matrix.each { row =>
 assert { total == 10 }
 
 # Test empty list
-pub empty: [Int!]! = []
+empty: [Int!]! = []
 pub count = 0
 
 empty.each { item => count += 1 }

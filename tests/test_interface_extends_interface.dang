@@ -1,34 +1,34 @@
 # Test `interface Foo implements Bar` extension
 
 interface Named {
-  pub name: String!
+  name: String!
 }
 
 interface Timestamped {
-  pub createdAt: String!
+  createdAt: String!
 }
 
 # A child interface extending one parent. Subtype field shape mirrors
 # the parent's field-as-zero-arg-function representation, so the
 # extension validates field-by-field.
 interface User implements Named {
-  pub name: String!
-  pub email: String!
+  name: String!
+  email: String!
 }
 
 # A child interface extending multiple parents.
 interface Post implements Named & Timestamped {
-  pub name: String!
-  pub createdAt: String!
-  pub body: String!
+  name: String!
+  createdAt: String!
+  body: String!
 }
 
 # A concrete type implementing the child interface gets the parent
 # fields for free at the schema level - we only need to satisfy what
 # the child declares.
 type Account implements User {
-  pub name: String! = "Alice"
-  pub email: String! = "alice@example.com"
+  name: String! = "Alice"
+  email: String! = "alice@example.com"
 }
 
 let account = Account
@@ -39,11 +39,11 @@ assert { account.email == "alice@example.com" }
 # the parent interface, because the child declares it implements the
 # parent and the type system tracks that in the supertype lattice.
 type UserHolder {
-  pub user: User!
+  user: User!
 }
 
 type NamedHolder {
-  pub named: Named!
+  named: Named!
 }
 
 let userHolder = UserHolder(user: account)

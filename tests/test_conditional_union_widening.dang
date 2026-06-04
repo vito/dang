@@ -2,11 +2,11 @@
 # as a union. Discarding the result is fine; using it forces narrowing.
 
 type Cat {
-  pub name: String!
+  name: String!
 }
 
 type Dog {
-  pub name: String!
+  name: String!
 }
 
 # Discarded divergent conditional: no error.

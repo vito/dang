@@ -1,7 +1,7 @@
 # Test functions with nullable return types returning null
 
 # Function that can return null
-pub maybeGetString(shouldReturnNull: Boolean!): String {
+maybeGetString(shouldReturnNull: Boolean!): String {
   if (shouldReturnNull) {
     null
   } else {
@@ -10,12 +10,12 @@ pub maybeGetString(shouldReturnNull: Boolean!): String {
 }
 
 # Function that always returns null
-pub alwaysNull: String {
+alwaysNull: String {
   null
 }
 
 # Function with nullable Int return type
-pub maybeGetNumber(value: Int!): Int {
+maybeGetNumber(value: Int!): Int {
   if (value < 0) {
     null
   } else {

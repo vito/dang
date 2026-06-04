@@ -52,7 +52,7 @@ pub first_wins = case (1) {
 assert { first_wins == "first" }
 
 # Case in function
-pub caseInFunction(x: Int!): String! {
+caseInFunction(x: Int!): String! {
   case (x) {
     0 => "zero"
     1 => "one"

@@ -2,11 +2,11 @@ type MyClass {
   pub val = 1
   pub name = "initial"
 
-  pub incr: MyClass! {
+  incr: MyClass! {
     incrBy(1) # Using foo instead of self.goo
   }
 
-  pub incrBy(amount: Int!): MyClass! {
+  incrBy(amount: Int!): MyClass! {
     print("BEFORE:")
     print(self.val)
     self.val += amount # self. still required for re-assignment
@@ -15,16 +15,16 @@ type MyClass {
     self # TODO: make not required?
   }
 
-  pub withName(branch: String! = "edge"): MyClass! {
+  withName(branch: String! = "edge"): MyClass! {
     self.name = branch # self. still required for re-assignment
     self # TODO: make not required?
   }
 
-  pub complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
+  complex(prefix: String! = "pre", suffix: String! = "suf"): MyClass! {
     withName((prefix + "-") + suffix) # Using foo instead of self.goo
   }
 
-  pub dynamicAccess: String! {
+  dynamicAccess: String! {
     name # Should resolve to current receiver's name, not static "initial"
   }
 }

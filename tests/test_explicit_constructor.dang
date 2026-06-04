@@ -2,7 +2,7 @@
 
 # Basic: explicit constructor that initializes a field
 type Greeter {
-  pub greeting: String!
+  greeting: String!
 
   new(name: String!) {
     self.greeting = "Hello, " + name + "!"
@@ -15,9 +15,9 @@ assert { Greeter("Alice").greeting == "Hello, Alice!" }
 
 # Multiple fields initialized in constructor
 type Point {
-  pub x: Int!
-  pub y: Int!
-  pub label: String!
+  x: Int!
+  y: Int!
+  label: String!
 
   new(x: Int!, y: Int!) {
     self.x = x
@@ -33,7 +33,7 @@ assert { Point(3, 4).label == "3,4" }
 
 # Constructor args with defaults
 type Logger {
-  pub prefix: String!
+  prefix: String!
 
   new(name: String!, level: String! = "INFO") {
     self.prefix = "[" + level + "] " + name
@@ -46,7 +46,7 @@ assert { Logger("app", "DEBUG").prefix == "[DEBUG] app" }
 
 # All-default constructor args still support auto-calling
 type Config {
-  pub mode: String!
+  mode: String!
 
   new(mode: String! = "production") {
     self.mode = mode
@@ -59,7 +59,7 @@ assert { Config("staging").mode == "staging" }
 
 # Private field initialized in constructor
 type Counter {
-  pub label: String!
+  label: String!
   let count: Int!
 
   new(label: String!, initial: Int! = 0) {
@@ -68,7 +68,7 @@ type Counter {
     self
   }
 
-  pub getCount: Int! {
+  getCount: Int! {
     self.count
   }
 }
@@ -82,8 +82,8 @@ assert { counterDefault.getCount == 0 }
 
 # Fields with defaults can be overwritten by new()
 type Pair {
-  pub first: String! = "default"
-  pub second: String! = "default"
+  first: String! = "default"
+  second: String! = "default"
 
   new(a: String!, b: String!) {
     self.first = a
@@ -105,7 +105,7 @@ type PrivateState {
     self
   }
 
-  pub display: String! {
+  display: String! {
     toString(self.value)
   }
 }
@@ -115,8 +115,8 @@ assert { PrivateState(100).display == "200" }
 
 # Bare assignment (no self.) works when args don't shadow fields
 type Vector {
-  pub x: Int! = 0
-  pub y: Int! = 0
+  x: Int! = 0
+  y: Int! = 0
 
   new(vx: Int!, vy: Int!) {
     x = vx

@@ -2,7 +2,7 @@
 type TestClass {
   pub field = "original"
 
-  pub test: TestClass! {
+  test: TestClass! {
     self.field = "updated"
     self
   }

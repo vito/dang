@@ -1,7 +1,7 @@
 type Test {
   pub field = "original"
 
-  pub test: Test! {
+  test: Test! {
     field = "new"
     self
   }

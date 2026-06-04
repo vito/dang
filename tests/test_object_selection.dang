@@ -2,21 +2,21 @@
 
 # Basic object types for testing
 type TestUser {
-  pub name: String! = "Anonymous"
-  pub email: String! = "user@example.com"
-  pub age: Int! = 0
-  pub active: Boolean! = true
+  name: String! = "Anonymous"
+  email: String! = "user@example.com"
+  age: Int! = 0
+  active: Boolean! = true
 }
 
 type Profile {
-  pub bio: String! = "No bio"
-  pub avatar: String! = "default.jpg"
+  bio: String! = "No bio"
+  avatar: String! = "default.jpg"
 }
 
 type TestUserWithProfile {
-  pub name: String! = "Anonymous"
-  pub email: String! = "user@example.com"
-  pub profile: Profile! = Profile("Default bio", "default.jpg")
+  name: String! = "Anonymous"
+  email: String! = "user@example.com"
+  profile: Profile! = Profile("Default bio", "default.jpg")
 }
 
 # Test basic object selection

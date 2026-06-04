@@ -3,11 +3,11 @@
 type UsesLater {
   let later: Later!
 
-  pub label: String! {
+  label: String! {
     later.name
   }
 }
 
 type ImplementsLater implements LaterInterface {
-  pub name: String!
+  name: String!
 }

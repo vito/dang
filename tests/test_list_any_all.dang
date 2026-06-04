@@ -7,7 +7,7 @@ assert { [1, 2, 3].any { x => x > 2 } == true }
 assert { [1, 2, 3].any { x => x > 5 } == false }
 
 # any: empty list
-pub empty: [Int!]! = []
+empty: [Int!]! = []
 assert { empty.any { x => x > 0 } == false }
 
 # any: first element matches (short-circuits)

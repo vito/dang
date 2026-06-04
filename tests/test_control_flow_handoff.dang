@@ -1,6 +1,6 @@
 # Test Ruby-like block control-flow handoff
 
-pub firstEven: Int! {
+firstEven: Int! {
   [1, 2, 3, 4].each { x =>
     if (x % 2 == 0) {
       return x
@@ -11,13 +11,13 @@ pub firstEven: Int! {
 
 assert { firstEven == 2 }
 
-pub yieldTwice(&block(x: Int!): Int!): Int! {
+yieldTwice(&block(x: Int!): Int!): Int! {
   block(1)
   block(2)
   99
 }
 
-pub returnFromUserBlock: Int! {
+returnFromUserBlock: Int! {
   yieldTwice { x =>
     if (x == 2) {
       return x
@@ -124,12 +124,12 @@ assert { nestedBlockCount == 3 }
 type StoredBlockHandler {
   let saved(x: Int!): Int! { x }
 
-  pub store(&block(x: Int!): Int!): StoredBlockHandler! {
+  store(&block(x: Int!): Int!): StoredBlockHandler! {
     self.saved = block
     self
   }
 
-  pub callSaved(n: Int!): Int! {
+  callSaved(n: Int!): Int! {
     self.saved(n)
   }
 }

@@ -1,7 +1,7 @@
 # Test positional and named function arguments
 
 # Function that takes multiple parameters
-pub add(x: Int!, y: Int!): Int! { x }
+add(x: Int!, y: Int!): Int! { x }
 
 # Test named arguments
 pub result1 = add(x: 10, y: 20)
@@ -12,7 +12,7 @@ pub result2 = add(15, y: 25)
 assert { result2 == 15 }
 
 # Function with three parameters for more complex testing
-pub combine(a: Int!, b: Int!, c: Int!): Int! { a }
+combine(a: Int!, b: Int!, c: Int!): Int! { a }
 
 # All named
 pub result3 = combine(a: 1, b: 2, c: 3)

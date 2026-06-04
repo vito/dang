@@ -2,14 +2,14 @@
 # An object can return a more specific (non-null) type when the interface returns a nullable type
 
 interface DataProvider {
-  pub getData: String
+  getData: String
 }
 
 # Test: Object returns non-null where interface allows null (covariance)
 type StrictDataProvider implements DataProvider {
-  pub data: String!
+  data: String!
 
-  pub getData: String! {
+  getData: String! {
     data
   }
 }
@@ -20,11 +20,11 @@ assert { result == "test data" }
 
 # Test: Multiple levels of covariance
 interface OptionalResult {
-  pub value: String
+  value: String
 }
 
 type RequiredResult implements OptionalResult {
-  pub value: String!
+  value: String!
 }
 
 pub required = RequiredResult(value: "required")
@@ -32,11 +32,11 @@ assert { required.value == "required" }
 
 # Test: List covariance - [String!] is subtype of [String]
 interface ItemProvider {
-  pub items: [String]
+  items: [String]
 }
 
 type StrictItemProvider implements ItemProvider {
-  pub items: [String!]
+  items: [String!]
 }
 
 pub strictItems = StrictItemProvider(items: ["a", "b", "c"])

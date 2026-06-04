@@ -25,11 +25,11 @@ assert { min_result == "true branch" }
 assert { no_else_result == "has value" }
 
 # =================== FUNCTIONS ===================
-pub square(n: Int!): Int! { n }
+square(n: Int!): Int! { n }
 
-pub greet(name: String!): String! { name }
+greet(name: String!): String! { name }
 
-pub zero_arity_func: String! { "constant_value" }
+zero_arity_func: String! { "constant_value" }
 
 pub squared = square(n: 8)
 pub greeting = greet(name: "Alice")
@@ -40,7 +40,7 @@ assert { greeting == "Alice" }
 assert { constant == "constant_value" }
 
 # =================== POSITIONAL ARGUMENTS ===================
-pub add_nums(a: Int!, b: Int!): Int! { a }
+add_nums(a: Int!, b: Int!): Int! { a }
 
 pub mixed_result = add_nums(10, b: 20)
 pub named_result = add_nums(a: 30, b: 40)
@@ -49,8 +49,8 @@ assert { mixed_result == 10 }
 assert { named_result == 30 }
 
 # =================== DECLARATIONS WITH TYPES ===================
-pub typed_int: Int! = 999
-pub typed_string: String! = "typed"
+typed_int: Int! = 999
+typed_string: String! = "typed"
 let private_value = 123
 
 assert { typed_int == 999 }

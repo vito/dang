@@ -6,7 +6,7 @@ let version = "outer"
 
 # --- Regular functions ---
 
-pub withDefault(version: String! = "latest", tag: String! = "img:" + version): String! {
+withDefault(version: String! = "latest", tag: String! = "img:" + version): String! {
   tag
 }
 
@@ -23,7 +23,7 @@ assert("fn: both supplied") { withDefault("nightly", "custom") == "custom" }
 # --- Constructors ---
 
 type MyObj {
-  pub tag: String!
+  tag: String!
 
   new(version: String! = "latest", tag: String! = "img:" + version) {
     self.tag = tag

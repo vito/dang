@@ -4,15 +4,15 @@
 
 import Test
 
-pub maybe: User = null
+maybe: User = null
 
 # This assignment is inferred after local types are declared. If `maybe` was
 # incorrectly inferred as Test.User during the constants phase, assigning it to
 # local User would fail with "cannot use Test.User as User".
-pub echoed: User = maybe
+echoed: User = maybe
 
 type User {
-  pub name: String!
+  name: String!
 }
 
 assert { echoed == null }

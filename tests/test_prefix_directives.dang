@@ -6,28 +6,28 @@ directive @cache(ttl: Int!) on FIELD_DEFINITION
 
 type Person {
   # Prefix directive on field with body
-  @check pub validated: String! {
+  @check validated: String! {
     "validated value"
   }
 
   # Prefix directive on field with value
-  @cache(ttl: 300) pub cachedField: String! = "cached"
+  @cache(ttl: 300) cachedField: String! = "cached"
 
   # Multiple prefix directives (on separate lines)
   @check
   @cache(ttl: 60)
-  pub multiDirective: String! {
+  multiDirective: String! {
     "multi"
   }
 
   # Mix prefix and suffix directives (both should be collected)
   @check
-  pub mixedField: String! @cache(ttl: 120) {
+  mixedField: String! @cache(ttl: 120) {
     "mixed"
   }
 
   # Traditional suffix directive still works
-  pub suffixOnly: String! @check {
+  suffixOnly: String! @check {
     "suffix"
   }
 }

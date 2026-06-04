@@ -1,6 +1,6 @@
 # Test that function argument doc strings are preserved in the type system
 
-pub greet(
+greet(
   """
   The name to greet
   """

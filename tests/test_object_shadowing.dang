@@ -5,7 +5,7 @@ pub shadowed = "outer"
 type Foo {
   let shadowed = 42
 
-  pub bump: Foo! {
+  bump: Foo! {
     shadowed += 3
     self
   }

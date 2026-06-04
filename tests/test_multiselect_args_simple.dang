@@ -3,11 +3,11 @@
 type Calculator {
   pub value = 0
 
-  pub add(amount: Int!): Int! {
+  add(amount: Int!): Int! {
     self.value + amount
   }
 
-  pub multiply(factor: Int!): Int! {
+  multiply(factor: Int!): Int! {
     self.value * factor
   }
 }

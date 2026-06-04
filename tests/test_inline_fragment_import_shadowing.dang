@@ -4,11 +4,11 @@
 import Test
 
 type User {
-  pub name: String!
-  pub origin: String! = "local"
+  name: String!
+  origin: String! = "local"
 }
 
-pub localUser: User! = User("Local User")
+localUser: User! = User("Local User")
 assert { localUser.origin == "local" }
 
 # search returns [Test.SearchResult!]!, whose User member is Test.User.

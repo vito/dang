@@ -75,14 +75,15 @@ assert { concatResult == "Fetched: https://concat.com" }
 # Test 7: Literal in a typed field, reassignment, and return
 # =============================================================================
 
-pub idSlot: ID! = "abc"
+idSlot: ID! = "abc"
 assert { idSlot == "abc" }
 
 let currentID: ID! = "first"
 currentID = "second"
 assert { currentID == "second" }
 
-pub makeID: ID! { "abc" }
+makeID: ID! { "abc" }
+
 assert { makeID == "abc" }
 
 # =============================================================================

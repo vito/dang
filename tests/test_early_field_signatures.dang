@@ -1,10 +1,10 @@
 # Variables with explicit or statically-known types are declared before type
 # bodies are checked, even when their values are evaluated later.
 
-pub computedDefault: String! = "A" + "da"
+computedDefault: String! = "A" + "da"
 
 type ComputedDefaultUser {
-  pub name: String! = computedDefault
+  name: String! = computedDefault
 }
 
 assert { ComputedDefaultUser.name == "Ada" }
@@ -12,7 +12,7 @@ assert { ComputedDefaultUser.name == "Ada" }
 pub literalTemplateDefault = `Ada`
 
 type LiteralTemplateDefaultUser {
-  pub name: String! = literalTemplateDefault
+  name: String! = literalTemplateDefault
 }
 
 assert { LiteralTemplateDefaultUser.name == "Ada" }
@@ -21,7 +21,7 @@ pub who = "Grace"
 pub templatedDefault = `hello ${who}`
 
 type TemplateDefaultUser {
-  pub message: String! = templatedDefault
+  message: String! = templatedDefault
 }
 
 assert { TemplateDefaultUser.message == "hello Grace" }
@@ -35,7 +35,7 @@ pub runtimeWho = "Katherine"
 pub runtimeTemplatedDefault = `hello ${runtimeWho}`
 
 type RuntimeTemplateDefaultUser {
-  pub message: String! = runtimeTemplatedDefault
+  message: String! = runtimeTemplatedDefault
 }
 
 assert { runtimeUser.message == "hello Katherine" }
@@ -43,20 +43,23 @@ assert { runtimeUser.message == "hello Katherine" }
 # Forward reads hidden behind function calls are handled by lazy module fields.
 pub lazyFunctionValue = lazyFunction
 pub lazyFunctionLater = "ok"
-pub lazyFunction: String! { lazyFunctionLater }
+
+lazyFunction: String! { lazyFunctionLater }
 
 assert { lazyFunctionValue == "ok" }
 
 pub lazyExplicitCallValue = lazyExplicitCallFunction("called")
 pub lazyExplicitCallLater = "ok"
-pub lazyExplicitCallFunction(prefix: String!): String! { prefix + lazyExplicitCallLater }
+
+lazyExplicitCallFunction(prefix: String!): String! { prefix + lazyExplicitCallLater }
 
 assert { lazyExplicitCallValue == "calledok" }
 
 # Local bindings inside functions should not create false top-level cycles.
 pub lazyLocalValue = lazyLocalFunction
 pub lazyLocalLater = lazyLocalValue
-pub lazyLocalFunction: String! {
+
+lazyLocalFunction: String! {
   let lazyLocalLater = "x"
   lazyLocalLater
 }

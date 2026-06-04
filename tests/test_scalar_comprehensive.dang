@@ -34,7 +34,7 @@ assert { tsList[0] == ts }
 assert { tsList[1] == ts }
 
 # Test 8: Scalars with functions
-pub getTimestamp: String! {
+getTimestamp: String! {
   toJSON(ts)
 }
 

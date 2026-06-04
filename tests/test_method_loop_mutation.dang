@@ -2,9 +2,9 @@
 
 # List accumulation via .each in a method
 type Builder {
-  pub items: [String!]! = []
+  items: [String!]! = []
 
-  pub addAll(source: [String!]!): Builder! {
+  addAll(source: [String!]!): Builder! {
     source.each { item =>
       self.items += [item]
     }
@@ -27,9 +27,9 @@ assert("chained addAll") { chained.items == ["a", "b", "c"] }
 
 # Integer accumulation via .each in a method
 type Summer {
-  pub total: Int! = 0
+  total: Int! = 0
 
-  pub sumAll(nums: [Int!]!): Summer! {
+  sumAll(nums: [Int!]!): Summer! {
     nums.each { n =>
       self.total += n
     }

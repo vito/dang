@@ -2,19 +2,21 @@ enum Status { PASSED FAILED }
 scalar CustomScalar
 
 type Child {
-  pub name: String!
-  pub outcome: Status!
+  name: String!
+  outcome: Status!
 }
 
 type Summary {
-  pub children: [Child!]!
-  pub optional: String
-  pub withDefault: String! = "default"
+  children: [Child!]!
+  optional: String
+  withDefault: String! = "default"
 }
 
-pub echoStatus(status: Status!): Status! { status }
-pub parseSummary(data: String!): Summary! { fromJSON(data) }
-pub parseSummaryReturn(data: String!): Summary! {
+echoStatus(status: Status!): Status! { status }
+
+parseSummary(data: String!): Summary! { fromJSON(data) }
+
+parseSummaryReturn(data: String!): Summary! {
   return fromJSON(data)
 }
 

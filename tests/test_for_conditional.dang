@@ -1,4 +1,4 @@
-pub simpleFor: String! {
+simpleFor: String! {
   let counter = 0
   let result = ""
 
@@ -10,7 +10,7 @@ pub simpleFor: String! {
   result
 }
 
-pub forAccumulate: Int! {
+forAccumulate: Int! {
   let sum = 0
   let i = 1
 

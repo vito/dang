@@ -10,7 +10,7 @@ pub id_value = "foo" :: ID!
 pub nullable_id = "bar" :: ID
 
 # A String! value coerces to ID! via an explicit cast
-pub raw_string: String! = "baz"
+raw_string: String! = "baz"
 pub id_from_string = raw_string :: ID!
 
 # Casting to nullable types (subtyping: Int! <: Int)
@@ -22,7 +22,7 @@ pub nullable_empty_list = [] :: [String!]
 pub empty_list_nullable_strings = [] :: [String]
 
 # Type hints on function calls
-pub getValue: Int! { 100 }
+getValue: Int! { 100 }
 
 pub result = getValue :: Int!
 

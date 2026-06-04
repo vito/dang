@@ -6,7 +6,7 @@
 # infers a non-null type in some branches.
 
 type NullableReturn {
-  pub maybeString(flag: Boolean!): String {
+  maybeString(flag: Boolean!): String {
     if (flag) {
       "hello"
     } else {
@@ -14,7 +14,7 @@ type NullableReturn {
     }
   }
 
-  pub alwaysString(flag: Boolean!): String! {
+  alwaysString(flag: Boolean!): String! {
     if (flag) {
       "hello"
     } else {
@@ -34,7 +34,7 @@ assert("non-null return with true") { obj.alwaysString(true) == "hello" }
 assert("non-null return with false") { obj.alwaysString(false) == "world" }
 
 # Test standalone function with nullable return
-pub maybePrefixed(value: String, prefix: String! = "pre"): String {
+maybePrefixed(value: String, prefix: String! = "pre"): String {
   if (value != null) {
     prefix + "_" + value
   } else {

@@ -1,13 +1,13 @@
 # Test custom error types implementing the Error interface
 
 type NotFoundError implements Error {
-  pub message: String!
-  pub resource: String!
+  message: String!
+  resource: String!
 }
 
 type ValidationError implements Error {
-  pub message: String!
-  pub field: String!
+  message: String!
+  field: String!
 }
 
 # raise a custom error type, catch-all
@@ -50,7 +50,7 @@ pub withFallback = try {
 assert { withFallback == "other: plain error" }
 
 # custom errors propagate through function calls
-pub validate(name: String!): String! {
+validate(name: String!): String! {
   if (name == "") {
     raise ValidationError(message: "must not be empty", field: "name")
   } else {

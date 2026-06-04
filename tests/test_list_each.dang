@@ -22,7 +22,7 @@ assert { result == "applebananacherry" }
 assert { indices == [0, 1, 2] }
 
 # Each on empty list
-pub empty: [Int!]! = []
+empty: [Int!]! = []
 pub count = 0
 
 empty.each { x => count += 1 }

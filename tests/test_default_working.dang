@@ -1,11 +1,11 @@
 # Test default operator that works
 
 # Basic null coalescing in function
-pub get_fallback: String! {
+get_fallback: String! {
   null ?? "fallback_value"
 }
 
-pub get_existing: String! {
+get_existing: String! {
   "existing" ?? "fallback_value"
 }
 
@@ -17,7 +17,7 @@ assert { result1 == "fallback_value" }
 assert { result2 == "existing" }
 
 # Test with numbers
-pub get_number: Int! {
+get_number: Int! {
   null ?? 42
 }
 

@@ -1,7 +1,8 @@
 # Generic argument inference should not depend on argument order.
 
-pub chooseFirst(x: a, y: a): a { x }
-pub chooseSecond(x: a, y: a): a { y }
+chooseFirst(x: a, y: a): a { x }
+
+chooseSecond(x: a, y: a): a { y }
 
 pub nullThenInt = chooseFirst(null, 1)
 pub intThenNull = chooseFirst(1, null)
@@ -14,7 +15,7 @@ assert { secondNullThenInt == 1 }
 assert { secondIntThenNull == null }
 
 # The inferred result type is nullable regardless of which argument supplied null.
-pub acceptNullable(value: Int): Int { value }
+acceptNullable(value: Int): Int { value }
 
 assert { acceptNullable(nullThenInt) == null }
 assert { acceptNullable(intThenNull) == 1 }

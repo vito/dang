@@ -5,7 +5,7 @@
 # NOT a non-null type.
 
 # With explicit nullable return type
-pub maybeName(flag: Boolean!): String {
+maybeName(flag: Boolean!): String {
   if (flag) {
     "hello"
   } else {

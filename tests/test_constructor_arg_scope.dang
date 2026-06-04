@@ -4,7 +4,7 @@ pub version = "outer"
 
 # Constructor arg shadows outer variable
 type ShadowOuter {
-  pub result: String!
+  result: String!
 
   new(version: String = null) {
     self.result = version ?? "default"
@@ -17,8 +17,8 @@ assert { ShadowOuter("custom").result == "custom" }
 
 # Constructor arg shadows field of the same name
 type ShadowField {
-  pub version: String!
-  pub result: String!
+  version: String!
+  result: String!
 
   new(version: String = null) {
     self.version = version ?? "default_version"
@@ -35,8 +35,8 @@ assert { ShadowField("v1").result == "v1" }
 
 # Constructor arg with same name as field, used after assignment
 type MultiUse {
-  pub name: String!
-  pub greeting: String!
+  name: String!
+  greeting: String!
 
   new(name: String!) {
     self.name = name

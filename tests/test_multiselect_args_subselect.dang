@@ -4,20 +4,20 @@
 type TestService {
   pub name = "TestService"
 
-  pub getData(limit: Int!): TestData! {
+  getData(limit: Int!): TestData! {
     TestData(name: "Data", count: limit)
   }
 
-  pub getInfo(prefix: String!): String! {
+  getInfo(prefix: String!): String! {
     prefix + ": " + self.name
   }
 }
 
 type TestData {
-  pub name: String!
-  pub count: Int!
+  name: String!
+  count: Int!
 
-  pub getDetails(suffix: String!): String! {
+  getDetails(suffix: String!): String! {
     self.name + " - " + suffix
   }
 }

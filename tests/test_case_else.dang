@@ -38,7 +38,7 @@ pub result4 = case (5) {
 assert { result4 == "default" }
 
 # Test that else works in function
-pub classify(x: Int!): String! {
+classify(x: Int!): String! {
   case (x) {
     0 => "zero"
     1 => "one"

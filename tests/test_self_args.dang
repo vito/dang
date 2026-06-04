@@ -1,10 +1,10 @@
 type Calculator {
-  pub x: Int!
+  x: Int!
 
   """
   Start a coding agent with the provided module.
   """
-  pub addY(y: Int!): Calculator! {
+  addY(y: Int!): Calculator! {
     self.x += y
     self
   }

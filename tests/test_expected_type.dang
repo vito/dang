@@ -21,19 +21,19 @@ assert { nodeLabel(node: john) == "User:John Doe" }
 
 # ID return values annotated with @expectedType(name: "User") infer as the
 # expected object type and can flow into arguments expecting that object type.
-pub returnedUser: User! = favoriteUserID
-pub syncedUser: User! = john.sync
+returnedUser: User! = favoriteUserID
+syncedUser: User! = john.sync
 assert { userName(user: returnedUser) == "John Doe" }
 assert { userName(user: syncedUser) == "John Doe" }
 
 # Lists of ID return values preserve the expected object type for downstream args.
-pub returnedUsers: [User!]! = favoriteUserIDs
+returnedUsers: [User!]! = favoriteUserIDs
 pub favoriteNames = userNames(users: returnedUsers)
 assert { favoriteNames[0] == "John Doe" }
 assert { favoriteNames[1] == "Jane Smith" }
 
 # Return values can also carry interface expectations.
-pub returnedNode: Node! = favoriteNodeID
+returnedNode: Node! = favoriteNodeID
 assert { nodeLabel(node: returnedNode) == "User:John Doe" }
 
 print("expectedType directive tests passed!")

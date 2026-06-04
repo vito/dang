@@ -7,7 +7,7 @@ let greeting = try {
   err => "fallback"
 }
 
-pub safeDivide(a: Int!, b: Int!): Int! {
+safeDivide(a: Int!, b: Int!): Int! {
   try {
     a / b
   } catch {

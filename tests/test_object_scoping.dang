@@ -8,12 +8,12 @@ type MyClass {
     self
   }
 
-  pub add(value: Int!): MyClass! {
+  add(value: Int!): MyClass! {
     self.value += value
     self
   }
 
-  pub currentValue: Int! {
+  currentValue: Int! {
     serverInfo.totalPosts + self.value
   }
 }

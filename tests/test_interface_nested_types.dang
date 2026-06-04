@@ -1,27 +1,27 @@
 # Test nested interface types
 
 interface Validator {
-  pub validate(input: String!): Boolean!
+  validate(input: String!): Boolean!
 }
 
 interface Container {
-  pub validator: Validator!
-  pub isValid(input: String!): Boolean!
+  validator: Validator!
+  isValid(input: String!): Boolean!
 }
 
 # Concrete validator implementation
 type EmailValidator implements Validator {
-  pub validate(input: String!): Boolean! {
+  validate(input: String!): Boolean! {
     input.contains("@")
   }
 }
 
 # Concrete container implementation
 type Form implements Container {
-  pub validator: Validator! = EmailValidator
-  pub name: String! = "Email Form"
+  validator: Validator! = EmailValidator
+  name: String! = "Email Form"
 
-  pub isValid(input: String!): Boolean! {
+  isValid(input: String!): Boolean! {
     validator.validate(input)
   }
 }
@@ -35,14 +35,14 @@ assert { form.isValid("user@domain.com") == true }
 
 # Test: Interface containing interface-typed lists
 interface Registry {
-  pub validators: [Validator!]!
-  pub validateAll(input: String!): Boolean!
+  validators: [Validator!]!
+  validateAll(input: String!): Boolean!
 }
 
 type ValidationRegistry implements Registry {
-  pub validators: [Validator!]! = [EmailValidator, EmailValidator]
+  validators: [Validator!]! = [EmailValidator, EmailValidator]
 
-  pub validateAll(input: String!): Boolean! {
+  validateAll(input: String!): Boolean! {
     pub res = true
     validators.each { v =>
       if (!v.validate(input)) {
@@ -64,14 +64,14 @@ assert { registry.validateAll("invalid") == false }
 
 # Test: Deeply nested interfaces
 interface Processor {
-  pub container: Container!
+  container: Container!
 }
 
 type DataProcessor implements Processor {
-  pub container: Container! = Form
-  pub status: String! = "Ready"
+  container: Container! = Form
+  status: String! = "Ready"
 
-  pub process(data: String!): String! {
+  process(data: String!): String! {
     if (container.isValid(data)) {
       "Valid: " + data
     } else {

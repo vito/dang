@@ -1,7 +1,7 @@
 # Test default empty array parameter type inference
 # This tests that `[]` as a default value can unify with `[String!]!`
 
-pub joinNames(names: [String!]! = []): [String!]! {
+joinNames(names: [String!]! = []): [String!]! {
   names
 }
 

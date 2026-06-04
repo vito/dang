@@ -5,9 +5,9 @@
 # =============================================================================
 
 type Counter {
-  pub val: Int = 0
+  val: Int = 0
 
-  pub incr: Counter! {
+  incr: Counter! {
     # Define a helper function inside the method
     let helper: Counter! {
       # This helper has 'self' in its closure, so IsMethod=true
@@ -18,7 +18,7 @@ type Counter {
     helper
   }
 
-  pub incrBy(n: Int!): Counter! {
+  incrBy(n: Int!): Counter! {
     self.val = self.val + n
     self
   }
@@ -39,9 +39,9 @@ assert { obj2.val == 2 }
 # =============================================================================
 
 type NestedLevels {
-  pub val: Int = 0
+  val: Int = 0
 
-  pub outer: NestedLevels! {
+  outer: NestedLevels! {
     let middle: NestedLevels! {
       let inner: NestedLevels! {
         incrBy(1)
@@ -51,7 +51,7 @@ type NestedLevels {
     middle
   }
 
-  pub incrBy(n: Int!): NestedLevels! {
+  incrBy(n: Int!): NestedLevels! {
     self.val = self.val + n
     self
   }
@@ -66,9 +66,9 @@ assert { nested1.val == 1 }
 # =============================================================================
 
 type Accumulator {
-  pub val: Int = 0
+  val: Int = 0
 
-  pub addMultiple(a: Int!, b: Int!, c: Int!): Accumulator! {
+  addMultiple(a: Int!, b: Int!, c: Int!): Accumulator! {
     let addFirst: Accumulator! {
       incrBy(a)
     }
@@ -81,7 +81,7 @@ type Accumulator {
     addThird
   }
 
-  pub incrBy(n: Int!): Accumulator! {
+  incrBy(n: Int!): Accumulator! {
     self.val = self.val + n
     self
   }

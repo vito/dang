@@ -7,14 +7,14 @@
 # fail with "expected NonNullType or Env, got hm.TypeVariable".
 
 type Bag {
-  pub items: [String!]! = []
+  items: [String!]! = []
 
-  pub add(item: String!): Bag! {
+  add(item: String!): Bag! {
     self.items += [item]
     self
   }
 
-  pub merge(other: Bag!): Bag! {
+  merge(other: Bag!): Bag! {
     self.items += other.items
     self
   }
@@ -22,22 +22,22 @@ type Bag {
 
 # Reduce with an object accumulator — the block must know 'combined' is Bag!
 # so it can call .add() on it.
-pub names: [String!]! = ["alice", "bob", "carol"]
-pub collected: Bag! = names.reduce(Bag) { combined, name =>
+names: [String!]! = ["alice", "bob", "carol"]
+collected: Bag! = names.reduce(Bag) { combined, name =>
   combined.add(name)
 }
 assert { collected.items == ["alice", "bob", "carol"] }
 
 # Reduce where both accumulator and elements are object types — the block must
 # know the types of both parameters to call methods on them.
-pub bags: [Bag!]! = [Bag.add("a"), Bag.add("b").add("c")]
-pub merged: Bag! = bags.reduce(Bag) { combined, bag =>
+bags: [Bag!]! = [Bag.add("a"), Bag.add("b").add("c")]
+merged: Bag! = bags.reduce(Bag) { combined, bag =>
   combined.merge(bag)
 }
 assert { merged.items == ["a", "b", "c"] }
 
 # Chained method calls on the accumulator inside reduce.
-pub chained: Bag! = ["x", "y", "z"].reduce(Bag) { bag, item =>
+chained: Bag! = ["x", "y", "z"].reduce(Bag) { bag, item =>
   bag.add(item).add(item)
 }
 assert { chained.items == ["x", "x", "y", "y", "z", "z"] }

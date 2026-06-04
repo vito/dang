@@ -1,7 +1,7 @@
 # Test that constructor parameters can be reassigned (issue #27)
 
 type Foo {
-  pub bar: String!
+  bar: String!
 
   new(bar: String!) {
     bar = "foo"
@@ -14,7 +14,7 @@ assert("reassigned param") { Foo("bar").bar == "foo" }
 
 # Also test with multiple reassignments and non-shadowing names
 type Baz {
-  pub result: String!
+  result: String!
 
   new(x: String!) {
     x = x + "!"
