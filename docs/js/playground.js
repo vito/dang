@@ -14,6 +14,17 @@
 (function () {
   "use strict";
 
+  // Resolve sibling assets relative to this script's own URL, so paths work
+  // regardless of the page's location or base URL.
+  var SELF = (document.currentScript && document.currentScript.src) || "";
+  function asset(name) {
+    try {
+      return new URL(name, SELF || document.baseURI).href;
+    } catch (e) {
+      return "js/" + name;
+    }
+  }
+
   // ── lazy WASM loader (shared across all playgrounds) ──────────────────────
 
   let dangPromise = null;
@@ -29,7 +40,7 @@
         return;
       }
       var s = document.createElement("script");
-      s.src = "js/wasm_exec.js";
+      s.src = asset("wasm_exec.js");
       s.onload = function () { resolve(); };
       s.onerror = function () { reject(new Error("failed to load wasm_exec.js")); };
       document.head.appendChild(s);
@@ -46,7 +57,7 @@
       window.onDangReady = function () {
         resolve(window.dangEval);
       };
-      fetch("js/dang.wasm")
+      fetch(asset("dang.wasm"))
         .then(function (resp) {
           if (!resp.ok) throw new Error("failed to fetch dang.wasm (" + resp.status + ")");
           return resp.arrayBuffer();
@@ -61,6 +72,87 @@
       });
     });
     return dangPromise;
+  }
+
+  // ── syntax highlighting (tree-sitter) ─────────────────────────────────────
+  //
+  // Reuses the in-repo grammar (tree-sitter-dang.wasm) and highlight query
+  // (dang-highlights.scm) — the same ones the editors use — via web-tree-sitter.
+  // Small (~140KB gzipped) and loaded eagerly, separate from the heavy eval
+  // module, so editing feels instant.
+
+  var tsPromise = null;
+  var ts = null; // { parser, query } once ready
+
+  function loadTreeSitter() {
+    if (tsPromise) return tsPromise;
+    tsPromise = (async function () {
+      var mod = await import(asset("tree-sitter.js"));
+      await mod.Parser.init({ locateFile: function (name) { return asset(name); } });
+      var lang = await mod.Language.load(asset("tree-sitter-dang.wasm"));
+      var parser = new mod.Parser();
+      parser.setLanguage(lang);
+      var scm = await fetch(asset("dang-highlights.scm")).then(function (r) { return r.text(); });
+      var query = new mod.Query(lang, scm);
+      ts = { parser: parser, query: query };
+      return ts;
+    })().catch(function (err) {
+      // Highlighting is best-effort; fall back to plain text on failure.
+      if (window.console) console.warn("dang playground: highlighting unavailable:", err);
+      return null;
+    });
+    return tsPromise;
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>]/g, function (c) {
+      return c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;";
+    });
+  }
+
+  // Map a tree-sitter capture name (e.g. "constant.numeric") to a token class.
+  function tokenClass(name) {
+    var base = name.split(".")[0];
+    switch (base) {
+      case "keyword": return "tok-keyword";
+      case "type": return "tok-type";
+      case "string": return "tok-string";
+      case "constant": return "tok-number";
+      case "function": return "tok-function";
+      case "comment": return "tok-comment";
+      case "operator": return "tok-operator";
+      case "label": return "tok-label";
+      case "variable": return name === "variable.special" ? "tok-keyword" : "tok-variable";
+      default: return "tok-punct";
+    }
+  }
+
+  // Build highlighted HTML for source using the tree-sitter query captures.
+  function highlightHtml(src) {
+    if (!ts) return escapeHtml(src);
+    var tree = ts.parser.parse(src);
+    var caps = ts.query.captures(tree.rootNode);
+    // Assign a class per character: wider captures first, narrower override.
+    var names = new Array(src.length).fill(null);
+    caps.sort(function (a, b) {
+      var d = a.node.startIndex - b.node.startIndex;
+      if (d) return d;
+      return (b.node.endIndex - b.node.startIndex) - (a.node.endIndex - a.node.startIndex);
+    });
+    for (var i = 0; i < caps.length; i++) {
+      var c = caps[i], cls = tokenClass(c.name);
+      for (var j = c.node.startIndex; j < c.node.endIndex; j++) names[j] = cls;
+    }
+    tree.delete();
+    // Coalesce runs of equal class into spans.
+    var out = "", k = 0;
+    while (k < src.length) {
+      var cls2 = names[k], start = k;
+      while (k < src.length && names[k] === cls2) k++;
+      var chunk = escapeHtml(src.slice(start, k));
+      out += cls2 ? '<span class="' + cls2 + '">' + chunk + "</span>" : chunk;
+    }
+    return out;
   }
 
   // ── output rendering ──────────────────────────────────────────────────────
@@ -120,7 +212,15 @@
     bar.appendChild(resetBtn);
     bar.appendChild(runBtn);
 
-    // Editor.
+    // Editor: a transparent textarea layered over a highlighted <pre>. Both
+    // share identical metrics so the caret lines up with the colored text.
+    var editorWrap = document.createElement("div");
+    editorWrap.className = "dang-playground-editor";
+
+    var highlight = document.createElement("pre");
+    highlight.className = "dang-playground-highlight";
+    highlight.setAttribute("aria-hidden", "true");
+
     var editor = document.createElement("textarea");
     editor.className = "dang-playground-input";
     editor.spellcheck = false;
@@ -129,21 +229,33 @@
     editor.setAttribute("autocorrect", "off");
     editor.value = source;
 
+    editorWrap.appendChild(highlight);
+    editorWrap.appendChild(editor);
+
     // Output.
     var output = document.createElement("div");
     output.className = "dang-playground-output is-empty";
     output.textContent = "";
 
     container.appendChild(bar);
-    container.appendChild(editor);
+    container.appendChild(editorWrap);
     container.appendChild(output);
 
+    function rehighlight() {
+      highlight.innerHTML = highlightHtml(editor.value);
+    }
     function autosize() {
       editor.style.height = "auto";
       editor.style.height = editor.scrollHeight + "px";
     }
+    rehighlight();
     autosize();
-    editor.addEventListener("input", autosize);
+    editor.addEventListener("input", function () {
+      rehighlight();
+      autosize();
+    });
+    // Highlight as soon as the (small) grammar finishes loading.
+    loadTreeSitter().then(function () { rehighlight(); });
 
     // Tab inserts two spaces instead of moving focus.
     editor.addEventListener("keydown", function (e) {
@@ -152,6 +264,7 @@
         var s = editor.selectionStart, en = editor.selectionEnd;
         editor.value = editor.value.slice(0, s) + "  " + editor.value.slice(en);
         editor.selectionStart = editor.selectionEnd = s + 2;
+        rehighlight();
         autosize();
       }
       // Cmd/Ctrl+Enter runs.
@@ -163,6 +276,7 @@
 
     resetBtn.addEventListener("click", function () {
       editor.value = source;
+      rehighlight();
       autosize();
       output.className = "dang-playground-output is-empty";
       output.innerHTML = "";

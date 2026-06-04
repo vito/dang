@@ -92,12 +92,37 @@ pre code{display:block}
 .dang-playground-run{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .dang-playground-run:hover{background:var(--accent2);border-color:var(--accent2);color:var(--on-accent)}
 .dang-playground-run:disabled{opacity:.6;cursor:default}
+/* Overlay editor: a transparent textarea over a highlighted layer. Both
+   share identical metrics so the caret lines up with the colored text. The
+   code area is fixed-dark to match the site's (always dark) code blocks. */
+.dang-playground-editor{position:relative;background:#0d1117}
+.dang-playground-highlight,
 .dang-playground-input{
-  display:block;width:100%;box-sizing:border-box;resize:none;overflow:hidden;
+  margin:0;border:0;box-sizing:border-box;
   font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
-  color:var(--fg);background:transparent;border:none;outline:none;
-  padding:1rem 1.25rem;tab-size:2;white-space:pre;
+  padding:1rem 1.25rem;tab-size:2;
+  white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
 }
+.dang-playground-highlight{
+  position:absolute;inset:0;pointer-events:none;overflow:hidden;
+  color:#c9d1d9;background:transparent;z-index:0;
+}
+.dang-playground-input{
+  position:relative;z-index:1;display:block;width:100%;resize:none;overflow:hidden;
+  color:transparent;caret-color:#c9d1d9;background:transparent;outline:none;
+}
+.dang-playground-input::selection{background:rgba(110,140,220,.35)}
+/* token colors — mirror the chroma "dang" palette used elsewhere on the site */
+.dang-playground-highlight .tok-keyword{color:#ff7b72}
+.dang-playground-highlight .tok-type{color:#79c0ff}
+.dang-playground-highlight .tok-string{color:#a5d6ff}
+.dang-playground-highlight .tok-number{color:#79c0ff}
+.dang-playground-highlight .tok-function{color:#d2a8ff}
+.dang-playground-highlight .tok-operator{color:#ff7b72}
+.dang-playground-highlight .tok-label{color:#7ee787}
+.dang-playground-highlight .tok-comment{color:#6e7681;font-style:italic}
+.dang-playground-highlight .tok-variable,
+.dang-playground-highlight .tok-punct{color:#c9d1d9}
 .dang-playground-output{
   border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
   font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
