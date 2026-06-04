@@ -233,7 +233,7 @@ func DaggerServeModule(ctx context.Context, client graphql.Client, moduleDir str
 	}
 
 	// Now introspect the live session schema (which includes the served module)
-	schema, err := introspectSchema(ctx, client)
+	schema, err := introspectSchema(ctx, client, true)
 	if err != nil {
 		return nil, fmt.Errorf("introspecting served module schema: %w", err)
 	}

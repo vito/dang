@@ -106,7 +106,7 @@ func TestSchemaCaching(t *testing.T) {
 		_, err := loadCachedSchema(server.URL)
 		require.Error(t, err, "schema should not be cached yet")
 
-		schema, err := introspectSchema(ctx, client)
+		schema, err := introspectSchema(ctx, client, false)
 		require.NoError(t, err)
 		require.NotNil(t, schema)
 		require.NoError(t, saveCachedSchema(server.URL, schema))

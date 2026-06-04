@@ -1078,7 +1078,7 @@ func (i *ImportDecl) loadImportConfig(ctx context.Context) (ImportConfig, error)
 		if config.Name == i.Name.Name {
 			if config.Schema == nil {
 				var err error
-				config.Schema, err = introspectSchema(ctx, config.Client)
+				config.Schema, err = introspectSchema(ctx, config.Client, config.Dagger)
 				if err != nil {
 					return ImportConfig{}, fmt.Errorf("failed to introspect schema for import %q: %w", i.Name.Name, err)
 				}
