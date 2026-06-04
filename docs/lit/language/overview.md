@@ -36,6 +36,4 @@
 ## What's *not* in the language
 
 - no inheritance (only `implements` for interfaces — see [#interfaces-unions])
-- errors aren't control flow — `raise`/`try`/`catch` are for genuine failures, not branching ([#errors])
 - no metaprogramming / macros
-- no implicit scalar coercion outside `::` type ascription ([#types])
