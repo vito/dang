@@ -66,13 +66,62 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name: "nested multiline block args stay on one line",
-			input: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
+			input: `doubled_nested: [[Int!]!]! = nested.map { inner =>
   inner.map { x => x * 2 }
 }`,
-			expected: `pub doubled_nested: [[Int!]!]! = nested.map { inner =>
+			expected: `doubled_nested: [[Int!]!]! = nested.map { inner =>
   inner.map { x => x * 2 }
 }
 `,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func (FormatSuite) TestVisibilityFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "pub stripped from typed field",
+			input:    "pub x: Int! = 1",
+			expected: "x: Int! = 1\n",
+		},
+		{
+			name:     "pub stripped from type-only field",
+			input:    "type T {\n  pub x: Int!\n}",
+			expected: "type T {\n  x: Int!\n}\n",
+		},
+		{
+			name:     "pub stripped from method",
+			input:    "type T {\n  pub greet: String! { \"hi\" }\n}",
+			expected: "type T {\n  greet: String! { \"hi\" }\n}\n",
+		},
+		{
+			name:     "pub stripped from method with args",
+			input:    "type T {\n  pub add(x: Int!): Int! { x }\n}",
+			expected: "type T {\n  add(x: Int!): Int! { x }\n}\n",
+		},
+		{
+			// The bare name = value form has no type annotation, so dropping the
+			// keyword would re-parse as a reassignment. pub must be preserved.
+			name:     "pub kept on value-only field",
+			input:    "pub x = 1",
+			expected: "pub x = 1\n",
+		},
+		{
+			name:     "let preserved as private marker",
+			input:    "type T {\n  let secret: String! = \"x\"\n}",
+			expected: "type T {\n  let secret: String! = \"x\"\n}\n",
 		},
 	}
 
@@ -262,11 +311,11 @@ assert { y == 2 }
 		{
 			name: "blank lines around function definitions",
 			input: `pub x = 1
-pub foo: Int! { 42 }
+foo: Int! { 42 }
 pub y = 2`,
 			expected: `pub x = 1
 
-pub foo: Int! { 42 }
+foo: Int! { 42 }
 
 pub y = 2
 `,
@@ -578,7 +627,7 @@ func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 	}{
 		{
 			name: "parameter docstrings force multiline and stay with params",
-			input: `pub readFile(
+			input: `readFile(
 	"""
 	Relative path within the workspace
 	"""
@@ -590,7 +639,7 @@ func (FormatSuite) TestParameterDocstrings(ctx context.Context, t *testctx.T) {
 ): String! {
 	filePath
 }`,
-			expected: `pub readFile(
+			expected: `readFile(
   """
   Relative path within the workspace
   """
@@ -624,22 +673,22 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
 		{
 			name: "uses two spaces for indentation",
 			input: `type Foo {
-  pub x: Int!
+  x: Int!
 }`,
 			expected: `type Foo {
-  pub x: Int!
+  x: Int!
 }
 `,
 		},
 		{
 			name: "nested indentation",
 			input: `type Foo {
-  pub bar: Int! {
+  bar: Int! {
     42
   }
 }`,
 			expected: `type Foo {
-  pub bar: Int! {
+  bar: Int! {
     42
   }
 }
@@ -647,14 +696,14 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name: "nested enum closing brace stays indented",
-			input: `pub check: Void {
+			input: `check: Void {
   enum Outcome {
     PASSED
     FAILED
   }
   null
 }`,
-			expected: `pub check: Void {
+			expected: `check: Void {
   enum Outcome {
     PASSED
     FAILED
@@ -665,21 +714,21 @@ func (FormatSuite) TestIndentation(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name: "nested type declarations keep source order",
-			input: `pub check: Void {
+			input: `check: Void {
   type ParseResultChild {
-    pub name: String!
+    name: String!
   }
   type ParseResult {
-    pub children: [ParseResultChild!]
+    children: [ParseResultChild!]
   }
   null
 }`,
-			expected: `pub check: Void {
+			expected: `check: Void {
   type ParseResultChild {
-    pub name: String!
+    name: String!
   }
   type ParseResult {
-    pub children: [ParseResultChild!]
+    children: [ParseResultChild!]
   }
   null
 }
@@ -730,12 +779,12 @@ func (FormatSuite) TestCommentsInLists(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name: "comment in directive list arg",
-			input: `pub source: Directory! @ignorePatterns(patterns: [
+			input: `source: Directory! @ignorePatterns(patterns: [
 	# TODO: respecting .gitignore would be nice
 	"Session.vim"
 	"dang"
 ])`,
-			expected: `pub source: Directory! @ignorePatterns(patterns: [
+			expected: `source: Directory! @ignorePatterns(patterns: [
   # TODO: respecting .gitignore would be nice
   "Session.vim",
   "dang",
@@ -1003,11 +1052,11 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 
 	Doc line 2
 	"""
-	pub x: Int!
+	x: Int!
 }`,
 			// Empty line in docstring should have no trailing whitespace
 			// No extra blank line after opening brace when docstring follows
-			expected: "type Foo {\n  \"\"\"\n  Doc line 1\n\n  Doc line 2\n  \"\"\"\n  pub x: Int!\n}\n",
+			expected: "type Foo {\n  \"\"\"\n  Doc line 1\n\n  Doc line 2\n  \"\"\"\n  x: Int!\n}\n",
 		},
 		{
 			name: "single blank line between functions with docstrings",
@@ -1015,12 +1064,12 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
 	"""
 	Doc for a
 	"""
-	pub a: Int! { 1 }
+	a: Int! { 1 }
 
 	"""
 	Doc for b
 	"""
-	pub b: Int! { 2 }
+	b: Int! { 2 }
 }`,
 			// No extra blank line after opening brace when docstring follows
 			// Blank line between function definitions is preserved
@@ -1028,12 +1077,12 @@ func (FormatSuite) TestDocstringFormatting(ctx context.Context, t *testctx.T) {
   """
   Doc for a
   """
-  pub a: Int! { 1 }
+  a: Int! { 1 }
 
   """
   Doc for b
   """
-  pub b: Int! { 2 }
+  b: Int! { 2 }
 }
 `,
 		},
@@ -1056,7 +1105,7 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 	}{
 		{
 			name: "no blank line after opening brace with multiline args",
-			input: `pub dev(
+			input: `dev(
 	source: Directory!,
 	module: Module
 ): LLM! {
@@ -1064,7 +1113,7 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 	e
 }`,
 			// Multiline args are preserved, with trailing comma
-			expected: `pub dev(
+			expected: `dev(
   source: Directory!,
   module: Module,
 ): LLM! {
@@ -1075,10 +1124,10 @@ func (FormatSuite) TestNoExtraBlankLinesAtBlockStart(ctx context.Context, t *tes
 		},
 		{
 			name: "no blank line at start of simple function body",
-			input: `pub foo: Int! {
+			input: `foo: Int! {
 	42
 }`,
-			expected: `pub foo: Int! {
+			expected: `foo: Int! {
   42
 }
 `,
@@ -1111,7 +1160,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 		},
 		{
 			name: "list in chain call stays on one line even when chain splits",
-			input: `pub x: String! {
+			input: `x: String! {
 	base
 		.withExec(["sh", "-c", """
 			echo hello
@@ -1121,7 +1170,7 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 			// Chain gets split, list elements stay together; body indented
 			// one step deeper than the opening fence's scope; closing fence
 			// sits at the scope of the opening fence.
-			expected: "pub x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
+			expected: "x: String! {\n  base\n    .withExec([\"sh\", \"-c\", \"\"\"\n      echo hello\n    \"\"\"])\n    .directory(\".\")\n}\n",
 		},
 		{
 			name: "method args not split by multiline receiver",
@@ -1145,10 +1194,10 @@ func (FormatSuite) TestPreserveSameLineElements(ctx context.Context, t *testctx.
 		},
 		{
 			name: "multiple args past column 80 are split",
-			input: `pub testBase: Void @check {
+			input: `testBase: Void @check {
   testSkip(skip: ["TestProvision", "TestTelemetry", "TestModule"], pkg: "./...", race: true)
 }`,
-			expected: `pub testBase: Void @check {
+			expected: `testBase: Void @check {
   testSkip(
     skip: ["TestProvision", "TestTelemetry", "TestModule"],
     pkg: "./...",
@@ -1535,13 +1584,13 @@ func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
 	}{
 		{
 			name: "multiline suffix directives are preserved",
-			input: `pub workspace: Directory!
+			input: `workspace: Directory!
   @defaultPath(path: "/")
   @ignorePatterns(patterns: [
     "*",
     "!sdk/elixir"
   ])`,
-			expected: `pub workspace: Directory!
+			expected: `workspace: Directory!
   @defaultPath(path: "/")
   @ignorePatterns(patterns: [
     "*",
@@ -1551,20 +1600,20 @@ func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
 		},
 		{
 			name:  "single-line suffix directives stay on one line",
-			input: `pub workspace: Directory! @defaultPath(path: "/")`,
-			expected: `pub workspace: Directory! @defaultPath(path: "/")
+			input: `workspace: Directory! @defaultPath(path: "/")`,
+			expected: `workspace: Directory! @defaultPath(path: "/")
 `,
 		},
 		{
 			name:  "multiple suffix directives on same line stay on one line",
-			input: `pub x: Int! @foo @bar`,
-			expected: `pub x: Int! @foo @bar
+			input: `x: Int! @foo @bar`,
+			expected: `x: Int! @foo @bar
 `,
 		},
 		{
 			name: "multiline directives inside type body",
 			input: `type Foo {
-  pub workspace: Directory!
+  workspace: Directory!
     @defaultPath(path: "/")
     @ignorePatterns(patterns: [
       "*",
@@ -1572,7 +1621,7 @@ func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
     ])
 }`,
 			expected: `type Foo {
-  pub workspace: Directory!
+  workspace: Directory!
     @defaultPath(path: "/")
     @ignorePatterns(patterns: [
       "*",

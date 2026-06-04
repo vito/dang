@@ -1183,10 +1183,14 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 		}
 	}
 
-	// Visibility
+	// Visibility. Public is the default and is left implicit, except on the
+	// bare `name = value` form (no type annotation), which would re-parse as a
+	// reassignment without an explicit keyword. `let` always marks private.
 	switch s.Visibility {
 	case PublicVisibility:
-		f.write("pub ")
+		if s.Type_ == nil {
+			f.write("pub ")
+		}
 	case PrivateVisibility:
 		f.write("let ")
 	}
