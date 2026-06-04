@@ -38,4 +38,4 @@
 - no inheritance (only `implements` for interfaces — see [#interfaces-unions])
 - errors aren't control flow — `raise`/`try`/`catch` are for genuine failures, not branching ([#errors])
 - no metaprogramming / macros
-- no implicit scalar coercion outside `::` type ascription (the `TypeHint` form; also drives `fromJSON`/`fromYAML` materialization — see [#json-yaml])
+- no implicit scalar coercion outside `::` type ascription ([#types])
