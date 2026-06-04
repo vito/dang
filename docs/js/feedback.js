@@ -311,6 +311,9 @@
   // its text is more than the link's, so it reads as prose.
   function isProse(el) {
     if (el.closest("nav")) return false;
+    // The interactive playground is an editor, not prose — and a feedback link
+    // appended to its code would leak into the editable source.
+    if (el.closest(".dang-playground")) return false;
     var links = el.querySelectorAll("a");
     if (links.length === 1) {
       var linkText = links[0].textContent.trim().replace(/\s+/g, " ");

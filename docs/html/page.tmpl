@@ -73,6 +73,70 @@ pre{
 }
 pre code{display:block}
 
+/* ── interactive playground ──────────────────────────────────────────── */
+.dang-playground{
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
+  margin:1rem 0;overflow:hidden;
+}
+.dang-playground-bar{
+  display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem .45rem .9rem;
+  background:var(--bg2);border-bottom:1px solid var(--code-border);
+}
+.dang-playground-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
+.dang-playground-btn{
+  font-family:'Inter',system-ui,sans-serif;font-size:.74rem;font-weight:500;cursor:pointer;
+  border:1px solid var(--code-border);background:var(--bg3);color:var(--fg2);
+  padding:.22rem .6rem;border-radius:5px;line-height:1.2;transition:background .12s,color .12s,border-color .12s;
+}
+.dang-playground-btn:hover{color:var(--fg);border-color:var(--fg3)}
+.dang-playground-run{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.dang-playground-run:hover{background:var(--accent2);border-color:var(--accent2);color:var(--on-accent)}
+.dang-playground-run:disabled{opacity:.6;cursor:default}
+/* Overlay editor: a transparent textarea over a highlighted layer. Both
+   share identical metrics so the caret lines up with the colored text. The
+   code area is fixed-dark to match the site's (always dark) code blocks. */
+.dang-playground-editor{position:relative;background:#0d1117}
+.dang-playground-highlight,
+.dang-playground-input{
+  margin:0;border:0;box-sizing:border-box;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  padding:1rem 1.25rem;tab-size:2;
+  white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
+}
+.dang-playground-highlight{
+  position:absolute;inset:0;pointer-events:none;overflow:hidden;
+  color:#c9d1d9;background:transparent;z-index:0;
+}
+.dang-playground-input{
+  position:relative;z-index:1;display:block;width:100%;resize:none;overflow:hidden;
+  color:transparent;caret-color:#c9d1d9;background:transparent;outline:none;
+}
+.dang-playground-input::selection{background:rgba(110,140,220,.35)}
+/* token colors — mirror the chroma "dang" palette used elsewhere on the site */
+.dang-playground-highlight .tok-keyword{color:#ff7b72}
+.dang-playground-highlight .tok-type{color:#79c0ff}
+.dang-playground-highlight .tok-string{color:#a5d6ff}
+.dang-playground-highlight .tok-number{color:#79c0ff}
+.dang-playground-highlight .tok-function{color:#d2a8ff}
+.dang-playground-highlight .tok-operator{color:#ff7b72}
+.dang-playground-highlight .tok-label{color:#7ee787}
+.dang-playground-highlight .tok-comment{color:#6e7681;font-style:italic}
+.dang-playground-highlight .tok-variable,
+.dang-playground-highlight .tok-punct{color:#c9d1d9}
+.dang-playground-output{
+  border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  color:var(--fg2);white-space:pre-wrap;word-break:break-word;
+}
+.dang-playground-output.is-empty{display:none}
+.dang-playground-stdout{color:var(--fg2);margin-bottom:.3rem;white-space:pre-wrap}
+.dang-playground-result{color:var(--green);white-space:pre-wrap}
+.dang-playground-error{color:var(--pink);white-space:pre-wrap}
+.dang-playground-fallback{
+  background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+}
+
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
 th{text-align:left;padding:.5rem .6rem;color:var(--fg3);font-weight:500;border-bottom:1px solid var(--code-border)}
 td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
@@ -122,5 +186,6 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
 </main>
 <script src="js/search.js" defer></script>
 <script src="js/feedback.js" defer></script>
+<script src="js/playground.js" defer></script>
 </body>
 </html>

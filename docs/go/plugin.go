@@ -81,6 +81,23 @@ func (p Plugin) ThematicBreak() booklit.Content {
 	}
 }
 
+// DangPlayground renders an interactive, editable Dang snippet that runs
+// client-side via the WebAssembly module (see cmd/dang-playground). The code
+// is passed verbatim so braces and quotes survive:
+//
+//	\dang-playground{{{
+//	[1, 2, 3].map { x => x * 2 }
+//	}}}
+//
+// Without JavaScript it degrades to a plain (non-highlighted) code block.
+func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
+	return booklit.Styled{
+		Style:   "dang-playground",
+		Content: code,
+		Block:   true,
+	}
+}
+
 // HeaderLinks renders a horizontal row of navigation links.
 //
 //	\header-links{

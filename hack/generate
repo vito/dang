@@ -7,3 +7,9 @@ go generate ./...
 pushd treesitter
   go generate ./...
 popd
+
+# The docs playground ships the grammar compiled to wasm; regenerate it from
+# the freshly generated parser so it tracks grammar changes.
+pushd docs
+  ./build-highlight-assets.sh --grammar-only
+popd
