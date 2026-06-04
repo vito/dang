@@ -36,6 +36,6 @@
 ## What's *not* in the language
 
 - no inheritance (only `implements` for interfaces — see [#interfaces-unions])
-- errors aren't control flow — `raise`/`try`/`catch` exist, but `return` covers early exit and null-tracking covers expected absence, so exceptions stay reserved for genuine failures ([#errors])
+- errors aren't control flow — `raise`/`try`/`catch` are for genuine failures, not branching ([#errors])
 - no metaprogramming / macros
 - no implicit scalar coercion outside `::` type ascription (the `TypeHint` form; also drives `fromJSON`/`fromYAML` materialization — see [#json-yaml])
