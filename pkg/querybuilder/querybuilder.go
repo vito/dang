@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -326,10 +327,13 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 		opName = "Mutation"
 	}
 
+	payload := opType + " " + opName + " " + query
+	slog.DebugContext(ctx, "executing GraphQL request", "query", payload)
+
 	var response any
 	err = q.client.MakeRequest(ctx,
 		&graphql.Request{
-			Query:  opType + " " + opName + " " + query,
+			Query:  payload,
 			OpName: opName,
 		},
 		&graphql.Response{Data: &response},
