@@ -10,6 +10,12 @@
 // editable, runnable widget backed by the Dang WebAssembly module
 // (js/dang.wasm, built from cmd/dang-playground). The wasm is fetched lazily
 // on the first Run so the page stays light.
+//
+// A block additionally marked data-dang-github gains a "Sign in with GitHub"
+// control. After the OAuth web flow (see docs/functions/github/*), the access
+// token is handed back in the URL fragment, stashed in sessionStorage, and
+// passed to dangEval so an `import GitHub` in the snippet resolves against the
+// live GitHub schema — introspection and queries run straight from the browser.
 
 (function () {
   "use strict";
@@ -22,6 +28,52 @@
       return new URL(name, SELF || document.baseURI).href;
     } catch (e) {
       return "js/" + name;
+    }
+  }
+
+  // ── GitHub auth (for data-dang-github playgrounds) ────────────────────────
+  //
+  // The token only ever lives in sessionStorage — cleared when the tab closes,
+  // never sent anywhere but GitHub's own API. The OAuth code↔token exchange
+  // (which needs the client secret) happens in the /github/* Cloudflare
+  // Functions; everything here is just plumbing the resulting token around.
+
+  var GH_TOKEN_KEY = "dang.gh_token";
+
+  function ghToken() {
+    try {
+      return sessionStorage.getItem(GH_TOKEN_KEY) || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function ghSetToken(t) {
+    try {
+      if (t) sessionStorage.setItem(GH_TOKEN_KEY, t);
+      else sessionStorage.removeItem(GH_TOKEN_KEY);
+    } catch (e) { /* sessionStorage unavailable; sign-in just won't persist */ }
+  }
+
+  // Kick off the OAuth web flow, returning to this page afterwards.
+  function ghSignIn() {
+    window.location.href =
+      "/github/login?return=" + encodeURIComponent(window.location.pathname);
+  }
+
+  // On load, capture a token handed back in the URL fragment (#gh_token=…),
+  // persist it, then strip the fragment so it doesn't linger in the URL/history.
+  function ghCaptureToken() {
+    var hash = window.location.hash || "";
+    if (hash.indexOf("gh_token=") === -1) return;
+    var params = new URLSearchParams(hash.replace(/^#/, ""));
+    var t = params.get("gh_token");
+    if (t) ghSetToken(t);
+    var clean = window.location.pathname + window.location.search;
+    try {
+      window.history.replaceState(null, "", clean);
+    } catch (e) {
+      window.location.hash = "";
     }
   }
 
@@ -157,7 +209,7 @@
 
   // ── output rendering ──────────────────────────────────────────────────────
 
-  var STAGE_LABEL = { parse: "Parse error", type: "Type error", eval: "Runtime error" };
+  var STAGE_LABEL = { parse: "Parse error", type: "Type error", eval: "Runtime error", auth: "GitHub error" };
 
   function renderOutput(out, res) {
     out.innerHTML = "";
@@ -193,6 +245,7 @@
     var seed = fallback.cloneNode(true);
     seed.querySelectorAll(".dang-fb").forEach(function (n) { n.remove(); });
     var source = seed.textContent.replace(/\s+$/, "");
+    var isGitHub = container.hasAttribute("data-dang-github");
     container.innerHTML = "";
 
     // Toolbar.
@@ -203,6 +256,33 @@
     label.textContent = "Dang · runs in your browser";
     var spacer = document.createElement("span");
     spacer.style.flex = "1";
+    // GitHub auth control (only on data-dang-github blocks). updateAuth()
+    // reflects the current sign-in state; it's re-run after sign-in/out.
+    var authBtn = null;
+    function updateAuth() {
+      if (!authBtn) return;
+      if (ghToken()) {
+        authBtn.textContent = "Sign out of GitHub";
+        authBtn.title = "Signed in. Click to forget the token.";
+      } else {
+        authBtn.textContent = "Sign in with GitHub";
+        authBtn.title = "Authorize so `import GitHub` can reach the API.";
+      }
+    }
+    if (isGitHub) {
+      authBtn = document.createElement("button");
+      authBtn.className = "dang-playground-btn dang-playground-github";
+      authBtn.type = "button";
+      authBtn.addEventListener("click", function () {
+        if (ghToken()) {
+          ghSetToken("");
+          updateAuth();
+        } else {
+          ghSignIn();
+        }
+      });
+      updateAuth();
+    }
     var resetBtn = document.createElement("button");
     resetBtn.className = "dang-playground-btn dang-playground-reset";
     resetBtn.type = "button";
@@ -213,6 +293,7 @@
     runBtn.textContent = "Run ▶";
     bar.appendChild(label);
     bar.appendChild(spacer);
+    if (authBtn) bar.appendChild(authBtn);
     bar.appendChild(resetBtn);
     bar.appendChild(runBtn);
 
@@ -289,15 +370,29 @@
     var running = false;
     function run() {
       if (running) return;
+      var token = isGitHub ? ghToken() : "";
+      if (isGitHub && !token) {
+        // Don't bother compiling: `import GitHub` can't resolve without a token.
+        output.className = "dang-playground-output is-error";
+        output.innerHTML = "";
+        var hint = document.createElement("div");
+        hint.className = "dang-playground-error";
+        hint.textContent = "Sign in with GitHub first — `import GitHub` needs an authorized token.";
+        output.appendChild(hint);
+        return;
+      }
       running = true;
       runBtn.disabled = true;
       runBtn.textContent = "Running…";
       output.className = "dang-playground-output";
-      output.textContent = "Compiling…";
+      output.textContent = isGitHub ? "Querying GitHub…" : "Compiling…";
       loadDang()
         .then(function (dangEval) {
+          // dangEval returns a Promise (it may hit the network for GitHub).
+          return dangEval(editor.value, token);
+        })
+        .then(function (res) {
           output.textContent = "";
-          var res = dangEval(editor.value);
           renderOutput(output, res);
         })
         .catch(function (err) {
@@ -317,6 +412,10 @@
     var blocks = document.querySelectorAll("[data-dang-playground]");
     for (var i = 0; i < blocks.length; i++) enhance(blocks[i]);
   }
+
+  // Capture any OAuth token handed back in the fragment before enhancing, so
+  // the first paint of a GitHub block already reflects the signed-in state.
+  ghCaptureToken();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
