@@ -12,4 +12,9 @@ if [ ! -f "$wasm_exec" ]; then
 fi
 cp "$wasm_exec" js/wasm_exec.js
 
+# Generate the editor's syntax-highlighting assets. Best-effort: if the
+# tooling is unavailable the playground editor simply renders uncolored text.
+chmod +x build-highlight-assets.sh
+./build-highlight-assets.sh || echo "warning: highlight assets unavailable; playground editor will not be colored" >&2
+
 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"

@@ -10,4 +10,8 @@ CLAUDE.local.md
 /docs/search_index.json
 /docs/js/dang.wasm
 /docs/js/wasm_exec.js
+/docs/js/tree-sitter.js
+/docs/js/tree-sitter.wasm
+/docs/js/tree-sitter-dang.wasm
+/docs/js/dang-highlights.scm
 .dev.vars
