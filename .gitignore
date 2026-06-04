@@ -12,6 +12,8 @@ CLAUDE.local.md
 /docs/js/wasm_exec.js
 /docs/js/tree-sitter.js
 /docs/js/tree-sitter.wasm
-/docs/js/tree-sitter-dang.wasm
 /docs/js/dang-highlights.scm
+# tree-sitter-dang.wasm (the compiled grammar) is committed: the Cloudflare
+# build image can't run the tree-sitter CLI to regenerate it. See
+# docs/build-highlight-assets.sh.
 .dev.vars
