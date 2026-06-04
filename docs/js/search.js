@@ -85,9 +85,12 @@
     trigger.innerHTML =
       "<span>Search</span><span class=\"kbd\">" + (isMac ? "⌘K" : "Ctrl K") + "</span>";
     trigger.addEventListener("click", open);
-    var brand = sidebar.querySelector(".brand");
-    if (brand && brand.nextSibling) {
-      sidebar.insertBefore(trigger, brand.nextSibling);
+    // Place the trigger just above the nav list. `.brand` is nested inside
+    // `.sidebar-head`, so inserting relative to it on `sidebar` would throw
+    // ("Child to insert before is not a child of this node").
+    var nav = sidebar.querySelector(".sidebar-nav");
+    if (nav) {
+      sidebar.insertBefore(trigger, nav);
     } else {
       sidebar.appendChild(trigger);
     }
