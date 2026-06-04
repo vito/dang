@@ -130,16 +130,26 @@ func (t *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(req)
 }
 
-// IntrospectSchema performs GraphQL introspection on the given client.
-func IntrospectSchema(ctx context.Context, client graphql.Client) (*introspection.Schema, error) {
-	return introspectSchema(ctx, client)
+// IntrospectSchema performs GraphQL introspection on the given client. When
+// dagger is true, it uses Dagger's extended introspection query, which exposes
+// directive applications on fields, enum values, and input values. Plain
+// GraphQL endpoints (such as GitHub's) should pass false.
+func IntrospectSchema(ctx context.Context, client graphql.Client, dagger bool) (*introspection.Schema, error) {
+	return introspectSchema(ctx, client, dagger)
 }
 
-// introspectSchema performs GraphQL introspection on the given client
-func introspectSchema(ctx context.Context, client graphql.Client) (*introspection.Schema, error) {
+// introspectSchema performs GraphQL introspection on the given client. When
+// dagger is true, it uses Dagger's extended introspection query; otherwise it
+// uses a spec-compliant query that works against plain GraphQL endpoints.
+func introspectSchema(ctx context.Context, client graphql.Client, dagger bool) (*introspection.Schema, error) {
+	query := introspection.Query
+	if dagger {
+		query = introspection.DaggerQuery
+	}
+
 	var introspectionResp introspection.Response
 	err := client.MakeRequest(ctx, &graphql.Request{
-		Query:  introspection.Query,
+		Query:  query,
 		OpName: "IntrospectionQuery",
 	}, &graphql.Response{
 		Data: &introspectionResp,

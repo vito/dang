@@ -184,7 +184,7 @@ func ResolveDaggerImport(ctx context.Context, configs []ImportConfig, dir string
 		if moduleDir != "" {
 			schema, err = DaggerModuleSchema(ctx, ic.Client, moduleDir)
 		} else {
-			schema, err = IntrospectSchema(ctx, ic.Client)
+			schema, err = IntrospectSchema(ctx, ic.Client, true)
 		}
 		if err != nil {
 			slog.Warn("failed to introspect Dagger schema", "error", err)
@@ -272,7 +272,7 @@ func resolveImportSource(ctx context.Context, name string, source *ImportSource,
 			if err == nil && cachedSchema != nil {
 				ic.Schema = cachedSchema
 			} else {
-				schema, err := introspectSchema(ctx, ic.Client)
+				schema, err := introspectSchema(ctx, ic.Client, source.Dagger)
 				if err != nil {
 					return ic, fmt.Errorf("introspecting %s: %w", endpoint, err)
 				}

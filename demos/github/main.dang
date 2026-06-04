@@ -24,9 +24,9 @@ pub issues = repository(owner: "golang", name: "go")
 }
 
 issues.each { edge =>
-  let node = edge.node
-  if (node != null) {
-    print("  #" + toString(node.number) + "  " + node.title)
+  let issue = edge.node
+  if (issue != null) {
+    print("  #" + toString(issue.number) + "  " + issue.title)
   }
 }
 
