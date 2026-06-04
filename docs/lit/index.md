@@ -23,6 +23,16 @@ GraphQL schema.
 
 \shell{go install github.com/vito/dang/cmd/dang@latest}
 
+\dang-playground{{{
+# Edit me, then hit Run — this evaluates in your browser.
+type Greeter {
+  pub name: String!
+  pub greet: String! { `Hello, ${name}!` }
+}
+
+["world", "Dang", "you"].map { who => Greeter(who).greet }
+}}}
+
 > Meta: this is the landing page — pitch, install, first-look code. Skim-friendly. Real navigation lives in the sidebar; don't try to build a full TOC here.
 
 \table-of-contents

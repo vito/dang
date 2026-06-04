@@ -73,6 +73,45 @@ pre{
 }
 pre code{display:block}
 
+/* ── interactive playground ──────────────────────────────────────────── */
+.dang-playground{
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
+  margin:1rem 0;overflow:hidden;
+}
+.dang-playground-bar{
+  display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem .45rem .9rem;
+  background:var(--bg2);border-bottom:1px solid var(--code-border);
+}
+.dang-playground-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
+.dang-playground-btn{
+  font-family:'Inter',system-ui,sans-serif;font-size:.74rem;font-weight:500;cursor:pointer;
+  border:1px solid var(--code-border);background:var(--bg3);color:var(--fg2);
+  padding:.22rem .6rem;border-radius:5px;line-height:1.2;transition:background .12s,color .12s,border-color .12s;
+}
+.dang-playground-btn:hover{color:var(--fg);border-color:var(--fg3)}
+.dang-playground-run{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.dang-playground-run:hover{background:var(--accent2);border-color:var(--accent2);color:var(--on-accent)}
+.dang-playground-run:disabled{opacity:.6;cursor:default}
+.dang-playground-input{
+  display:block;width:100%;box-sizing:border-box;resize:none;overflow:hidden;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  color:var(--fg);background:transparent;border:none;outline:none;
+  padding:1rem 1.25rem;tab-size:2;white-space:pre;
+}
+.dang-playground-output{
+  border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  color:var(--fg2);white-space:pre-wrap;word-break:break-word;
+}
+.dang-playground-output.is-empty{display:none}
+.dang-playground-stdout{color:var(--fg2);margin-bottom:.3rem;white-space:pre-wrap}
+.dang-playground-result{color:var(--green);white-space:pre-wrap}
+.dang-playground-error{color:var(--pink);white-space:pre-wrap}
+.dang-playground-fallback{
+  background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+}
+
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
 th{text-align:left;padding:.5rem .6rem;color:var(--fg3);font-weight:500;border-bottom:1px solid var(--code-border)}
 td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
@@ -122,5 +161,6 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
 </main>
 <script src="js/search.js" defer></script>
 <script src="js/feedback.js" defer></script>
+<script src="js/playground.js" defer></script>
 </body>
 </html>
