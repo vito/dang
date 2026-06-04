@@ -1,0 +1,10 @@
+# When the server reports an error for a specific field, the error should
+# highlight that field in the source, not the whole object selection. Here
+# `alwaysFails` errors server-side while sibling `name` is fine, so the error
+# must point at `alwaysFails`.
+import Test
+
+user(id: "1").{
+  name,
+  alwaysFails
+}

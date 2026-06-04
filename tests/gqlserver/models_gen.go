@@ -87,13 +87,14 @@ type UpdateUserInput struct {
 }
 
 type User struct {
-	ID     string          `json:"id"`
-	Name   string          `json:"name"`
-	Emails []string        `json:"emails"`
-	Age    *int            `json:"age,omitempty"`
-	Status Status          `json:"status"`
-	Posts  *PostConnection `json:"posts"`
-	Sync   string          `json:"sync"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Emails      []string        `json:"emails"`
+	Age         *int            `json:"age,omitempty"`
+	Status      Status          `json:"status"`
+	Posts       *PostConnection `json:"posts"`
+	Sync        string          `json:"sync"`
+	AlwaysFails string          `json:"alwaysFails"`
 }
 
 func (User) IsNode()            {}
