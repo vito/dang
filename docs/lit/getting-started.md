@@ -21,6 +21,17 @@ print(message("world"))
 
 - `dang hello.dang` to run
 
+No install needed to get a feel for it — this REPL runs Dang in your browser.
+State carries across entries, so define something and use it on the next line:
+
+\dang-repl{{{
+let greeting = "world"
+}}}
+
+> Note: the browser REPL runs the core language only — no GraphQL imports, so
+> `GitHub`, `Dagger`, and friends aren't available here. Install the CLI for
+> those.
+
 ## A first GraphQL call
 
 Dang is designed for GraphQL APIs. To configure them, add a [#dang.toml]:

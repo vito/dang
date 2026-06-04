@@ -2,25 +2,39 @@
 
 // Command dang-playground is a WebAssembly module that evaluates Dang source
 // entirely client-side in the browser. It backs the interactive code snippets
-// on the documentation site.
+// and REPL on the documentation site.
 //
-// It exposes a single global function, dangEval(source, token), which parses,
-// type-checks, and evaluates a Dang program with the standard library in
-// scope, returning a Promise that resolves to a result object.
+// It exposes these global functions:
 //
-// When token is a non-empty string, a live `import GitHub` is wired into the
-// program: a GraphQL client pointed at https://api.github.com/graphql with the
-// token as a bearer credential. The schema is introspected on first use (and
-// cached for the life of the module) so `import GitHub` resolves to GitHub's
-// real types and root fields — `viewer`, `repository`, and so on. Introspection
-// and queries are ordinary cross-origin fetches; GitHub's GraphQL endpoint
-// permits CORS, so no proxy is involved.
+//   - dangEval(source, token) parses, type-checks, and evaluates a Dang program
+//     with the standard library in scope, returning a Promise that resolves to
+//     a result object. When token is a non-empty string, a live `import GitHub`
+//     is wired into the program: a GraphQL client pointed at
+//     https://api.github.com/graphql with the token as a bearer credential. The
+//     schema is introspected on first use (and cached for the life of the
+//     module) so `import GitHub` resolves to GitHub's real types and root fields
+//     — `viewer`, `repository`, and so on. Introspection and queries are
+//     ordinary cross-origin fetches; GitHub's GraphQL endpoint permits CORS, so
+//     no proxy is involved.
 //
-// dangEval returns a Promise (not a plain value) because that GitHub traffic is
-// network I/O: a synchronous js.Func cannot block on a fetch without deadlocking
-// the single-threaded wasm event loop, so the work runs in a goroutine that
-// resolves the Promise when it finishes. Snippets with no token never touch the
-// network but still resolve through the same Promise for a single call shape.
+//     dangEval returns a Promise (not a plain value) because that GitHub traffic
+//     is network I/O: a synchronous js.Func cannot block on a fetch without
+//     deadlocking the single-threaded wasm event loop, so the work runs in a
+//     goroutine that resolves the Promise when it finishes. Snippets with no
+//     token never touch the network but still resolve through the same Promise
+//     for a single call shape.
+//
+//   - dangReplEval(sessionID, source) evaluates one REPL entry against a
+//     persistent, long-running session identified by sessionID. The session's
+//     scopes are kept alive between calls and mutated in place, so each entry is
+//     type-checked and evaluated incrementally against accumulated state —
+//     nothing is re-parsed or re-run. This mirrors the native CLI REPL
+//     (cmd/dang/repl_tuist.go), which reuses one scope pair for the whole
+//     session rather than replaying history. The browser REPL runs the core
+//     language only (no GraphQL imports), so it stays synchronous.
+//
+//   - dangReplReset(sessionID) discards a session's accumulated state, so the
+//     next dangReplEval starts from fresh standard-library scopes.
 //
 // Build with:
 //
@@ -49,12 +63,14 @@ const githubEndpoint = "https://api.github.com/graphql"
 
 func main() {
 	js.Global().Set("dangEval", js.FuncOf(dangEval))
+	js.Global().Set("dangReplEval", js.FuncOf(dangReplEval))
+	js.Global().Set("dangReplReset", js.FuncOf(dangReplReset))
 	// dangReady lets the page know the module has finished initializing.
 	js.Global().Set("dangReady", js.ValueOf(true))
 	if cb := js.Global().Get("onDangReady"); cb.Type() == js.TypeFunction {
 		cb.Invoke()
 	}
-	// Block forever so the exported function stays callable.
+	// Block forever so the exported functions stay callable.
 	select {}
 }
 
@@ -166,6 +182,113 @@ func evalSource(source, token string) map[string]any {
 		value = fmt.Sprint(last.String())
 	}
 	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
+}
+
+// ── REPL sessions ───────────────────────────────────────────────────────────
+
+// replSession is one long-running REPL: a scope pair kept alive across entries.
+type replSession struct {
+	typeScope  dang.TypeScope
+	valueScope dang.ValueScope
+}
+
+// replSessions holds the live sessions keyed by the handle the frontend assigns
+// to each REPL component on the page (a different REPL gets a different handle,
+// so their state never bleeds together). The WASM module is single-threaded —
+// one goroutine services every JS call — so a plain map needs no locking.
+var replSessions = map[int]*replSession{}
+
+// session returns the session for id, lazily creating it from fresh scopes on
+// first use (or after a reset). This is the persistent state the REPL
+// accumulates into; subsequent entries mutate these scopes in place.
+func session(id int) *replSession {
+	s := replSessions[id]
+	if s == nil {
+		typeScope, valueScope := dang.BuildScopesFromImports("", nil)
+		s = &replSession{typeScope: typeScope, valueScope: valueScope}
+		replSessions[id] = s
+	}
+	return s
+}
+
+// evalForms parses, type-checks, and evaluates source against the given scopes,
+// writing any stdout/stderr through ctx. It returns the stringified value of
+// the last form, or a non-nil error and the failing stage ("parse" | "type" |
+// "eval"). The scopes are mutated in place, so passing the same scopes to
+// successive calls accumulates session state.
+func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, valueScope dang.ValueScope, fresh hm.Fresher) (string, error, string) {
+	parsed, err := dang.ParseWithRecovery("playground", []byte(source))
+	if err != nil {
+		return "", err, "parse"
+	}
+	file, ok := parsed.(*dang.FileBlock)
+	if !ok {
+		return "", fmt.Errorf("unexpected parse result"), "parse"
+	}
+	forms := file.Forms
+
+	if _, err := dang.InferFormsWithPhases(ctx, forms, typeScope, fresh); err != nil {
+		return "", err, "type"
+	}
+
+	var last dang.Value
+	for _, node := range forms {
+		val, err := dang.EvalNode(ctx, valueScope, node)
+		if err != nil {
+			return "", err, "eval"
+		}
+		last = val
+	}
+
+	value := ""
+	if last != nil {
+		value = fmt.Sprint(last.String())
+	}
+	return value, nil, ""
+}
+
+// dangReplEval evaluates one REPL entry: dangReplEval(sessionID, source).
+//
+// The entry is type-checked and evaluated against the session's persistent
+// scopes, which are mutated in place so definitions accumulate (`let greeting =
+// "world"` then `` `hello, ${greeting}!` `` works) without re-parsing or
+// re-running any earlier entry. Only this entry's output and result are
+// returned. The browser REPL is core-language only (no GraphQL imports), so
+// unlike dangEval it never touches the network and stays synchronous.
+//
+// Like the native CLI REPL, a single scope pair lives for the whole session.
+// The tradeoff is that an entry which fails partway (a type error, or a runtime
+// error after some forms have already bound) can leave partial state behind;
+// dangReplReset clears it. A fresh Fresher is required per call — its type-
+// variable counter is monotonic — but that's unrelated to the session state.
+func dangReplEval(_ js.Value, args []js.Value) any {
+	if len(args) < 2 || args[0].Type() != js.TypeNumber || args[1].Type() != js.TypeString {
+		return result("", "", "dangReplEval expects (sessionID, source)", "parse")
+	}
+	sess := session(args[0].Int())
+	source := args[1].String()
+
+	fresh := hm.NewSimpleFresher()
+
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx = ioctx.StderrToContext(ctx, &out)
+
+	value, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
+	if err != nil {
+		return result("", strings.TrimRight(out.String(), "\n"), err.Error(), stage)
+	}
+	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
+}
+
+// dangReplReset(sessionID) discards a session so the next dangReplEval starts
+// from fresh scopes. It's a no-op for an unknown id (session() recreates lazily).
+func dangReplReset(_ js.Value, args []js.Value) any {
+	if len(args) < 1 || args[0].Type() != js.TypeNumber {
+		return false
+	}
+	delete(replSessions, args[0].Int())
+	return true
 }
 
 // GitHub schema cache, keyed by the token it was introspected with. The wasm

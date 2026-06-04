@@ -105,9 +105,13 @@
     dangPromise = loadWasmExec().then(function () {
       return new Promise(function (resolve, reject) {
       var go = new Go();
-      // main() calls window.onDangReady once dangEval is registered.
+      // main() calls window.onDangReady once the exports are registered.
       window.onDangReady = function () {
-        resolve(window.dangEval);
+        resolve({
+          eval: window.dangEval,
+          replEval: window.dangReplEval,
+          replReset: window.dangReplReset,
+        });
       };
       fetch(asset("dang.wasm"))
         .then(function (resp) {
@@ -387,9 +391,9 @@
       output.className = "dang-playground-output";
       output.textContent = isGitHub ? "Querying GitHub…" : "Compiling…";
       loadDang()
-        .then(function (dangEval) {
-          // dangEval returns a Promise (it may hit the network for GitHub).
-          return dangEval(editor.value, token);
+        .then(function (dang) {
+          // dang.eval returns a Promise (it may hit the network for GitHub).
+          return dang.eval(editor.value, token);
         })
         .then(function (res) {
           output.textContent = "";
@@ -408,9 +412,264 @@
     runBtn.addEventListener("click", run);
   }
 
+  // ── REPL ──────────────────────────────────────────────────────────────────
+  //
+  // A read-eval-print loop layered on the same wasm + highlighting stack as the
+  // playground. Each accepted entry is appended to a transcript and evaluated
+  // against a persistent, long-running session held in the wasm module (see
+  // dangReplEval in cmd/dang-playground) — definitions accumulate without
+  // re-running earlier entries. The prompt and "=>" result match the CLI REPL
+  // so the two feel like the same tool.
+
+  // Each REPL component gets a distinct session id so multiple REPLs on one
+  // page keep independent state. The wasm side creates the session lazily.
+  var nextReplSession = 0;
+
+  // Heuristic: is the bracket nesting of src balanced? Used to decide whether a
+  // bare Enter should evaluate (balanced) or insert a continuation newline. We
+  // skip over string and comment contents so their brackets don't count. It's
+  // best-effort — Shift+Enter always inserts a newline and Ctrl/Cmd+Enter (and
+  // the Run button) always evaluate, so a wrong guess is never a dead end.
+  function bracketsBalanced(src) {
+    var depth = 0, i = 0, n = src.length;
+    while (i < n) {
+      var c = src[i];
+      if (c === "#") { // line comment
+        while (i < n && src[i] !== "\n") i++;
+        continue;
+      }
+      if (c === '"' || c === "`") { // string literal (opaque, incl. interpolation)
+        var q = c;
+        i++;
+        while (i < n && src[i] !== q) { if (src[i] === "\\") i++; i++; }
+        i++;
+        continue;
+      }
+      if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") depth--;
+      i++;
+    }
+    return depth <= 0;
+  }
+
+  // Render one REPL entry's result into its output element. Like renderOutput,
+  // but a successful entry with no value and no output shows nothing (so plain
+  // declarations don't leave a bare "=>").
+  function renderReplOutput(out, res) {
+    out.innerHTML = "";
+    out.classList.remove("is-error", "is-empty");
+    if (res.output) {
+      var pre = document.createElement("div");
+      pre.className = "dang-playground-stdout";
+      pre.textContent = res.output;
+      out.appendChild(pre);
+    }
+    if (res.ok) {
+      if (res.value !== "") {
+        var line = document.createElement("div");
+        line.className = "dang-playground-result";
+        line.textContent = "=> " + res.value;
+        out.appendChild(line);
+      }
+    } else {
+      out.classList.add("is-error");
+      var err = document.createElement("div");
+      err.className = "dang-playground-error";
+      var label = STAGE_LABEL[res.stage] || "Error";
+      err.textContent = label + ": " + res.error;
+      out.appendChild(err);
+    }
+    if (!out.firstChild) out.classList.add("is-empty");
+  }
+
+  function enhanceRepl(container) {
+    var fallback = container.querySelector(".dang-repl-fallback");
+    if (!fallback) return;
+    var seed = fallback.cloneNode(true);
+    seed.querySelectorAll(".dang-fb").forEach(function (n) { n.remove(); });
+    var seedSource = seed.textContent.replace(/\s+$/, "");
+    container.innerHTML = "";
+
+    // Toolbar.
+    var bar = document.createElement("div");
+    bar.className = "dang-repl-bar";
+    var label = document.createElement("span");
+    label.className = "dang-repl-label";
+    label.textContent = "Dang REPL · Enter to run · Shift+Enter for newline";
+    var spacer = document.createElement("span");
+    spacer.style.flex = "1";
+    var resetBtn = document.createElement("button");
+    resetBtn.className = "dang-playground-btn dang-repl-reset";
+    resetBtn.type = "button";
+    resetBtn.textContent = "Reset";
+    var runBtn = document.createElement("button");
+    runBtn.className = "dang-playground-btn dang-playground-run dang-repl-run";
+    runBtn.type = "button";
+    runBtn.textContent = "Run ▶";
+    bar.appendChild(label);
+    bar.appendChild(spacer);
+    bar.appendChild(resetBtn);
+    bar.appendChild(runBtn);
+
+    // Body: a scrolling transcript followed by the live input row.
+    var body = document.createElement("div");
+    body.className = "dang-repl-body";
+
+    var transcript = document.createElement("div");
+    transcript.className = "dang-repl-transcript";
+
+    var inputRow = document.createElement("div");
+    inputRow.className = "dang-repl-inputrow";
+    var prompt = document.createElement("span");
+    prompt.className = "dang-repl-prompt";
+    prompt.textContent = "dang>";
+    var editorWrap = document.createElement("div");
+    editorWrap.className = "dang-repl-editor";
+    var highlight = document.createElement("pre");
+    highlight.className = "dang-repl-highlight";
+    highlight.setAttribute("aria-hidden", "true");
+    var input = document.createElement("textarea");
+    input.className = "dang-repl-input";
+    input.spellcheck = false;
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("autocapitalize", "off");
+    input.setAttribute("autocorrect", "off");
+    input.setAttribute("rows", "1");
+    input.value = seedSource;
+    editorWrap.appendChild(highlight);
+    editorWrap.appendChild(input);
+    inputRow.appendChild(prompt);
+    inputRow.appendChild(editorWrap);
+
+    body.appendChild(transcript);
+    body.appendChild(inputRow);
+    container.appendChild(bar);
+    container.appendChild(body);
+
+    // Handle for this REPL's persistent wasm-side session.
+    var sessionId = nextReplSession++;
+
+    function rehighlight() {
+      highlight.innerHTML = highlightHtml(input.value);
+    }
+    function autosize() {
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    }
+    rehighlight();
+    autosize();
+    input.addEventListener("input", function () {
+      rehighlight();
+      autosize();
+    });
+    loadTreeSitter().then(function () { rehighlight(); });
+
+    // Append a finished entry (highlighted source + its result) to the
+    // transcript. Returns the result element so callers can fill it in.
+    function appendEntry(src, res) {
+      var entry = document.createElement("div");
+      entry.className = "dang-repl-entry";
+
+      var code = document.createElement("div");
+      code.className = "dang-repl-code";
+      var p = document.createElement("span");
+      p.className = "dang-repl-prompt";
+      p.textContent = "dang>";
+      var hl = document.createElement("pre");
+      hl.className = "dang-repl-codehl";
+      hl.innerHTML = highlightHtml(src);
+      code.appendChild(p);
+      code.appendChild(hl);
+
+      var out = document.createElement("div");
+      out.className = "dang-repl-out";
+      renderReplOutput(out, res);
+
+      entry.appendChild(code);
+      entry.appendChild(out);
+      transcript.appendChild(entry);
+      // Keep the live input in view as the transcript grows.
+      input.scrollIntoView({ block: "nearest" });
+      return entry;
+    }
+
+    var running = false;
+    function evalEntry() {
+      if (running) return;
+      var src = input.value.replace(/\s+$/, "");
+      if (!src) return;
+      running = true;
+      runBtn.disabled = true;
+      input.disabled = true;
+      var pending = appendEntry(src, { ok: true, value: "", output: "" });
+      var pendingOut = pending.querySelector(".dang-repl-out");
+      pendingOut.classList.remove("is-empty");
+      pendingOut.textContent = "Running…";
+      loadDang()
+        .then(function (dang) {
+          var res = dang.replEval(sessionId, src);
+          renderReplOutput(pendingOut, res);
+          input.value = "";
+          rehighlight();
+          autosize();
+        })
+        .catch(function (err) {
+          renderReplOutput(pendingOut, {
+            ok: false, stage: "", value: "", output: "",
+            error: "Failed to load REPL: " + (err && err.message ? err.message : err),
+          });
+        })
+        .then(function () {
+          running = false;
+          runBtn.disabled = false;
+          input.disabled = false;
+          input.focus();
+        });
+    }
+
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        var s = input.selectionStart, en = input.selectionEnd;
+        input.value = input.value.slice(0, s) + "  " + input.value.slice(en);
+        input.selectionStart = input.selectionEnd = s + 2;
+        rehighlight();
+        autosize();
+        return;
+      }
+      if (e.key === "Enter") {
+        // Shift+Enter: force a newline (continuation). Ctrl/Cmd+Enter: force
+        // run. Bare Enter: run when the input looks complete, else newline.
+        if (e.shiftKey) return; // default inserts the newline
+        if (e.metaKey || e.ctrlKey || bracketsBalanced(input.value)) {
+          e.preventDefault();
+          evalEntry();
+        }
+      }
+    });
+
+    runBtn.addEventListener("click", evalEntry);
+    resetBtn.addEventListener("click", function () {
+      // Drop the persistent session's state. Only touch the module if it's
+      // already loaded — a reset before the first Run has nothing to clear and
+      // shouldn't pull the wasm down early.
+      if (window.dangReady) {
+        loadDang().then(function (dang) { dang.replReset(sessionId); });
+      }
+      transcript.innerHTML = "";
+      input.value = seedSource;
+      input.disabled = false;
+      rehighlight();
+      autosize();
+      input.focus();
+    });
+  }
+
   function init() {
     var blocks = document.querySelectorAll("[data-dang-playground]");
     for (var i = 0; i < blocks.length; i++) enhance(blocks[i]);
+    var repls = document.querySelectorAll("[data-dang-repl]");
+    for (var j = 0; j < repls.length; j++) enhanceRepl(repls[j]);
   }
 
   // Capture any OAuth token handed back in the fragment before enhancing, so
