@@ -1,0 +1,23 @@
+# Regression test: arguments on a field nested inside an object selection must
+# be sent to the server, not dropped. The `first` argument limits how many
+# posts come back, so the result length proves the argument was transmitted.
+#
+# Previously buildGraphQLQuery overwrote the field builder (with its args) with
+# the nested selection builder, dropping the args. The bug was masked by the
+# test server's optional pagination args, but a real connection like GitHub's
+# rejects the query when `first` is missing.
+import Test
+
+# user "1" (John Doe) authored four posts, so each `first` value must come
+# back with exactly that many.
+pub one_post = user(id: "1").{
+  posts(first: 1).{posts.{title}}
+}
+assert { one_post.posts.posts.length == 1 }
+
+pub two_posts = user(id: "1").{
+  posts(first: 2).{posts.{title}}
+}
+assert { two_posts.posts.posts.length == 2 }
+
+print("Nested field arguments are sent to the server!")
