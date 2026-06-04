@@ -98,6 +98,24 @@ func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
 	}
 }
 
+// DangGitHubPlayground renders a playground that can `import GitHub`. It behaves
+// like \dang-playground but adds a "Sign in with GitHub" control; once the
+// reader authorizes (OAuth web flow, see docs/functions/github), the snippet's
+// `import GitHub` resolves against the live GitHub GraphQL schema, queried
+// straight from the browser.
+//
+//	\dang-github-playground{{{
+//	import GitHub
+//	viewer.{ login, name }
+//	}}}
+func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
+	return booklit.Styled{
+		Style:   "dang-github-playground",
+		Content: code,
+		Block:   true,
+	}
+}
+
 // HeaderLinks renders a horizontal row of navigation links.
 //
 //	\header-links{

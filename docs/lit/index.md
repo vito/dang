@@ -56,6 +56,7 @@ type Greeter {
 \include-section{./language/modules.md}
 \include-section{./language/directives.md}
 \include-section{./language/graphql.md}
+\include-section{./github-playground.md}
 \include-section{./language/collections.md}
 \include-section{./language/strings.md}
 \include-section{./language/json-yaml.md}
