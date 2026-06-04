@@ -369,12 +369,12 @@ FieldDecl <- TypeAndArgsAndBlockField  // pub a(foo: Boolean!): Int! { 1 }
       / ValueOnlyField            // pub a = 1              <- as above, type inferred as Int!
       / TypeOnlyField             // pub a: Int              <- as above, type inferred as Int!
 
-TypeAndValueField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ EqualToken _ value:Form {
+TypeAndValueField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ EqualToken _ value:Form {
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
     Value: value.(Node),
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
@@ -384,23 +384,23 @@ ValueOnlyField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, n
   return &FieldDecl{
     Name: name.(*Symbol),
     Value: val.(Node),
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeOnlyField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+TypeOnlyField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: type_.(TypeNode),
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
+TypeAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
   allDirectives := append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...)
   return &FieldDecl{
     Name: name.(*Symbol),
@@ -414,15 +414,15 @@ TypeAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d
       },
       Named: name.(*Symbol).Name,
       Ret: type_.(TypeNode),
-      Visibility: vis.(Visibility),
+      Visibility: visOrPublic(vis),
     },
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: allDirectives,
     Loc: c.Loc(),
   }, nil
 }
 
-TypeAndArgsAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
+TypeAndArgsAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* _ block:Block {
   // Separate block parameters from regular arguments
   allArgs := args.([]*FieldDecl)
   var regularArgs []*FieldDecl
@@ -454,9 +454,9 @@ TypeAndArgsAndBlockField <- prefixDirectives:(d:PrefixDirectiveApplication _ { r
       },
       Named: name.(*Symbol).Name,
       Ret: type_.(TypeNode),
-      Visibility: vis.(Visibility),
+      Visibility: visOrPublic(vis),
     },
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: allDirectives,
     Loc: c.Loc(),
   }, nil
@@ -469,21 +469,21 @@ HeaderField <- docstring:DocString? field:(TypeAndArgsField / TypeOnlyFunField) 
   return field, nil
 }
 
-TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+TypeAndArgsField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ args:ArgTypes _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{args.([]*FieldDecl), type_.(TypeNode)},
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
 }
 
-TypeOnlyFunField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
+TypeOnlyFunField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d, nil })* vis:Visibility? _ name:Symbol _ ColonToken _ type_:Type suffixDirectives:DirectiveApplication* {
   return &FieldDecl{
     Name: name.(*Symbol),
     Type_: FunTypeNode{nil, type_.(TypeNode)},
-    Visibility: vis.(Visibility),
+    Visibility: visOrPublic(vis),
     Directives: append(sliceOf[*DirectiveApplication](prefixDirectives), sliceOf[*DirectiveApplication](suffixDirectives)...),
     Loc: c.Loc(),
   }, nil
@@ -491,6 +491,12 @@ TypeOnlyFunField <- prefixDirectives:(d:PrefixDirectiveApplication _ { return d,
 
 Visibility <- PubToken { return PublicVisibility, nil }
             / LetToken { return PrivateVisibility, nil }
+// The visibility keyword is optional on field forms that have a disambiguating
+// token (a `:` type annotation, `(args)`, or a `{ block }`), defaulting to
+// public via visOrPublic. It is inlined as `vis:Visibility? _` rather than
+// factored into a named rule because tree-sitter forbids a named rule that can
+// match the empty string. The bare `name = value` form keeps visibility
+// required to avoid colliding with reassignment.
 PubToken <- "pub" !WordChar
 LetToken <- "let" !WordChar
 

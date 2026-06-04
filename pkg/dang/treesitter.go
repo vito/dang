@@ -110,6 +110,12 @@ func TreesitterGrammar() treesitter.Grammar {
 	ts.Supertypes = []string{"expr", "form", "term"}
 	ts.Conflicts = [][]treesitter.RuleName{
 		{treesitter.Name("Float"), treesitter.Name("Int")},
+		// With the `pub`/`let` keyword optional, a bare `name(arg: ...)` is
+		// ambiguous between a method-with-args declaration (arg is an `Id` with
+		// a type) and a function call with a named argument (`KeyValue`). GLR
+		// explores both; the trailing `: Type` (declaration) vs its absence
+		// (call) disambiguates.
+		{treesitter.Name("Id"), treesitter.Name("KeyValue")},
 	}
 	ts.Precedences = [][]treesitter.Rule{
 		{

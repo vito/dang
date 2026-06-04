@@ -3654,7 +3654,7 @@
       },
       "vis": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "visibility",
@@ -3740,7 +3740,7 @@
       },
       "vis": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "visibility",
@@ -3826,7 +3826,7 @@
       },
       "vis": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "visibility",
@@ -3912,7 +3912,7 @@
       },
       "vis": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "visibility",
@@ -4028,7 +4028,7 @@
       },
       "vis": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "visibility",
@@ -4104,7 +4104,7 @@
       },
       "vis": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "visibility",

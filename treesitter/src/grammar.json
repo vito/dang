@@ -1325,8 +1325,16 @@
           "type": "FIELD",
           "name": "vis",
           "content": {
-            "type": "SYMBOL",
-            "name": "visibility"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "visibility"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -1455,8 +1463,16 @@
           "type": "FIELD",
           "name": "vis",
           "content": {
-            "type": "SYMBOL",
-            "name": "visibility"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "visibility"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -1514,8 +1530,16 @@
           "type": "FIELD",
           "name": "vis",
           "content": {
-            "type": "SYMBOL",
-            "name": "visibility"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "visibility"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -1581,8 +1605,16 @@
           "type": "FIELD",
           "name": "vis",
           "content": {
-            "type": "SYMBOL",
-            "name": "visibility"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "visibility"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -1694,8 +1726,16 @@
           "type": "FIELD",
           "name": "vis",
           "content": {
-            "type": "SYMBOL",
-            "name": "visibility"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "visibility"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -1761,8 +1801,16 @@
           "type": "FIELD",
           "name": "vis",
           "content": {
-            "type": "SYMBOL",
-            "name": "visibility"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "visibility"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           }
         },
         {
@@ -5286,6 +5334,10 @@
     [
       "float",
       "int"
+    ],
+    [
+      "id",
+      "key_value"
     ]
   ],
   "precedences": [

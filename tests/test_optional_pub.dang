@@ -1,0 +1,44 @@
+# Test that the `pub` keyword is optional, defaulting to public visibility.
+
+# The user's motivating example: a type with no `pub` keywords.
+type Greeter {
+  name: String!
+  greet: String! { `Hello, ${name}!` }
+}
+
+pub greetings: [String!]! = ["world", "Dang", "you"].map { who => Greeter(who).greet }
+assert { greetings[0] == "Hello, world!" }
+assert { greetings[1] == "Hello, Dang!" }
+assert { greetings[2] == "Hello, you!" }
+
+# Bare typed field with default value (TypeAndValueField, no keyword).
+type Counter {
+  count: Int! = 0
+  bump: Int! { count + 1 }
+}
+assert { Counter.count == 0 }
+assert { Counter.bump == 1 }
+assert { Counter(41).bump == 42 }
+
+# Bare method with arguments (TypeAndArgsAndBlockField, no keyword).
+type Adder {
+  add(x: Int!, y: Int!): Int! { x + y }
+}
+assert { Adder.add(2, 3) == 5 }
+
+# `let` still marks a field private; bare default stays public.
+type Mixed {
+  let secret = "hidden"
+  shown: String! { secret }
+}
+assert { Mixed.shown == "hidden" }
+
+# Explicit `pub` still works and is equivalent to bare.
+type Explicit {
+  pub a: Int! = 1
+  b: Int! = 2
+}
+assert { Explicit.a == 1 }
+assert { Explicit.b == 2 }
+
+print("Optional pub tests passed!")
