@@ -24,6 +24,9 @@ func (DangSuite) TestExpectedTypeDirectivesFromIntrospection(ctx context.Context
 	ctx = dang.ContextWithImportConfigs(ctx, dang.ImportConfig{
 		Name:   "Test",
 		Client: client,
+		// The test server implements Dagger's extended introspection, which
+		// exposes applied directives such as @expectedType.
+		Dagger: true,
 	})
 
 	require.NoError(t, dang.RunFile(ctx, "test_expected_type.dang", false))
