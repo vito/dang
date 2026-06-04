@@ -36,6 +36,4 @@
 ## What's *not* in the language
 
 - no inheritance (only `implements` for interfaces — see [#interfaces-unions])
-- no exceptions for control flow — `raise`/`try`/`catch` exist but are deliberate, not flow control ([#errors])
 - no metaprogramming / macros
-- no implicit scalar coercion outside `::` type ascription (the `TypeHint` form; also drives `fromJSON`/`fromYAML` materialization — see [#json-yaml])
