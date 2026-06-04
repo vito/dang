@@ -2055,80 +2055,48 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, scope ValueScop
 		if field.Selection == nil && len(field.Args) == 0 {
 			// Simple field - no arguments, no nested selection
 			simpleFields = append(simpleFields, field.Name)
-		} else {
-			// Field has arguments and/or a nested selection. Fold any
-			// arguments into the field-name string (e.g.
-			// "repositories(first: 3)") since SelectMixed renders
-			// subselection field names verbatim and has no separate slot for
-			// arguments on nested fields.
-			fieldName := field.Name
-			if len(field.Args) > 0 {
-				argStr, err := buildFieldArguments(ctx, scope, field.Args)
-				if err != nil {
-					return nil, err
-				}
-				fieldName += argStr
-			}
-
-			if field.Selection == nil {
-				// Field with arguments but no nested selection (e.g. a scalar
-				// field like avatarUrl(size: 200)).
-				simpleFields = append(simpleFields, fieldName)
-				continue
-			}
-
-			var nestedResult *querybuilder.Selection
-			var err error
-			if len(field.Selection.InlineFragments) > 0 {
-				// Nested inline fragments: build __typename + ... on Type { fields }
-				nestedResult, err = field.Selection.buildInlineFragmentQuery(querybuilder.Query())
-			} else {
-				nestedResult, err = field.Selection.buildGraphQLQuery(ctx, scope, querybuilder.Query(), field.Selection.Fields)
-			}
-			if err != nil {
-				return nil, err
-			}
-
-			fieldsWithSelections[fieldName] = nestedResult
+			continue
 		}
+
+		// Field has arguments and/or a nested selection. Build the
+		// sub-selection (if any) and attach arguments through the query
+		// builder, which owns argument marshalling and formatting.
+		var value *querybuilder.Selection
+		var err error
+		switch {
+		case field.Selection == nil:
+			// Scalar field that only takes arguments (e.g. avatarUrl(size:
+			// 200)); no sub-selection. An empty selection carries the args.
+			value = querybuilder.Query().SelectFields()
+		case len(field.Selection.InlineFragments) > 0:
+			// Nested inline fragments: build __typename + ... on Type { fields }
+			value, err = field.Selection.buildInlineFragmentQuery(querybuilder.Query())
+		default:
+			value, err = field.Selection.buildGraphQLQuery(ctx, scope, querybuilder.Query(), field.Selection.Fields)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		for _, arg := range field.Args {
+			argVal, err := EvalNode(ctx, scope, arg.Value)
+			if err != nil {
+				return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
+			}
+			// Convert Dang value to Go value for GraphQL; the builder marshals it.
+			goVal, err := dangValueToGo(argVal)
+			if err != nil {
+				return nil, fmt.Errorf("converting argument %s: %w", arg.Key, err)
+			}
+			value = value.Arg(arg.Key, goVal)
+		}
+
+		fieldsWithSelections[field.Name] = value
 	}
 
 	builder = builder.SelectMixed(simpleFields, fieldsWithSelections)
 
 	return builder, nil
-}
-
-// buildFieldArguments renders a field's arguments as a GraphQL argument list
-// such as "(first: 3, after: \"x\")". It is used to fold arguments into a
-// nested field's name, since the mixed-selection query builder renders
-// subselection field names verbatim and has no slot for their arguments.
-func buildFieldArguments(ctx context.Context, scope ValueScope, args Record) (string, error) {
-	var b strings.Builder
-	b.WriteByte('(')
-	for i, arg := range args {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		val, err := EvalNode(ctx, scope, arg.Value)
-		if err != nil {
-			return "", fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
-		}
-		// Convert Dang value to Go value for GraphQL, then marshal to a
-		// GraphQL literal.
-		goVal, err := dangValueToGo(val)
-		if err != nil {
-			return "", fmt.Errorf("converting argument %s: %w", arg.Key, err)
-		}
-		marshalled, err := querybuilder.MarshalGQL(ctx, goVal)
-		if err != nil {
-			return "", fmt.Errorf("marshalling argument %s: %w", arg.Key, err)
-		}
-		b.WriteString(arg.Key)
-		b.WriteString(": ")
-		b.WriteString(marshalled)
-	}
-	b.WriteByte(')')
-	return b.String(), nil
 }
 
 // buildInlineFragmentQuery builds a query with __typename and inline fragments

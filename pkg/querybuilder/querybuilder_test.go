@@ -246,6 +246,64 @@ func TestSelectMixed(t *testing.T) {
 	require.Contains(t, q, `pageInfo{hasNextPage endCursor}`)
 }
 
+func TestSelectMixedNestedArgs(t *testing.T) {
+	// A nested field within a mixed selection carries its own arguments, which
+	// must be rendered on the field, not dropped: e.g.
+	// viewer.{ login, repositories(first: 3).{ name } }.
+	repositories := Query().SelectFields("name", "stargazerCount").Arg("first", 3)
+
+	q, err := Query().
+		Select("viewer").
+		SelectMixed(
+			[]string{"login"},
+			map[string]*QueryBuilder{
+				"repositories": repositories,
+			},
+		).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `{viewer{login repositories(first:3){name stargazerCount}}}`, q)
+}
+
+func TestSelectMixedScalarArgs(t *testing.T) {
+	// A scalar field that only takes arguments and selects no sub-fields must
+	// render as name(args) with no selection set: e.g. avatarUrl(size: 200).
+	avatar := Query().SelectFields().Arg("size", 200)
+
+	q, err := Query().
+		Select("viewer").
+		SelectMixed(
+			[]string{"login"},
+			map[string]*QueryBuilder{
+				"avatarUrl": avatar,
+			},
+		).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `{viewer{login avatarUrl(size:200)}}`, q)
+}
+
+func TestSelectMixedInlineFragmentArgs(t *testing.T) {
+	// A nested field with both arguments and an inline-fragment selection must
+	// render the args once, on the field, and not inside the fragment.
+	node := Query().SelectMultiple("__typename", "... on User { name }").Arg("first", 1)
+
+	q, err := Query().
+		Select("search").
+		SelectMixed(
+			nil,
+			map[string]*QueryBuilder{
+				"node": node,
+			},
+		).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `{search{node(first:1){__typename ... on User { name }}}}`, q)
+}
+
 func TestUnpackMixedFieldsAndSubselections(t *testing.T) {
 	type Post struct {
 		Title   string `json:"title"`

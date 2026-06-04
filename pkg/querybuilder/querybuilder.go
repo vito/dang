@@ -164,15 +164,48 @@ func (q *QueryBuilder) Client(c graphql.Client) *QueryBuilder {
 
 func (q *QueryBuilder) marshalArguments(ctx context.Context) error {
 	eg, gctx := errgroup.WithContext(ctx)
+	q.scheduleArgMarshalling(eg, gctx)
+	return eg.Wait()
+}
+
+// scheduleArgMarshalling queues marshalling for every argument reachable from
+// this selection. Arguments on nested fields live in subSelections, which are
+// not part of the linear path(), so they are visited recursively.
+func (q *QueryBuilder) scheduleArgMarshalling(eg *errgroup.Group, ctx context.Context) {
 	for _, sel := range q.path() {
 		for _, arg := range sel.args {
 			eg.Go(func() error {
-				return arg.marshal(gctx)
+				return arg.marshal(ctx)
 			})
 		}
+		for _, sub := range sel.subSelections {
+			sub.scheduleArgMarshalling(eg, ctx)
+		}
 	}
+}
 
-	return eg.Wait()
+// writeArgs renders a GraphQL argument list, e.g. (first:3, after:"x").
+func writeArgs(b *strings.Builder, args map[string]*argument) {
+	b.WriteRune('(')
+	i := 0
+	for name, arg := range args {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(name)
+		b.WriteRune(':')
+		b.WriteString(arg.marshalled)
+		i++
+	}
+	b.WriteRune(')')
+}
+
+// rendersSelectionSet reports whether Build emits a non-empty selection set
+// ("{...}") for this selection. A bare argument carrier — a field that takes
+// arguments but selects no sub-fields — emits nothing.
+func (q *QueryBuilder) rendersSelectionSet() bool {
+	return len(q.fields) > 0 || len(q.subSelections) > 0 ||
+		q.inlineFragment != "" || q.multiple || q.name != ""
 }
 
 func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
@@ -208,13 +241,28 @@ func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
 					b.WriteRune(' ')
 				}
 				b.WriteString(field)
-				// Build sub-selection
 				if subSel != nil {
-					subQuery, err := subSel.Build(ctx)
-					if err != nil {
-						return "", err
+					// Arguments on a nested field are rendered here: Build
+					// ignores them for multi-field nodes and would misplace
+					// them for others.
+					if len(subSel.args) > 0 {
+						writeArgs(&b, subSel.args)
 					}
-					b.WriteString(subQuery)
+					if subSel.rendersSelectionSet() {
+						// Render the selection set without the field's own
+						// arguments, already emitted above.
+						inner := subSel
+						if len(subSel.args) > 0 {
+							stripped := *subSel
+							stripped.args = nil
+							inner = &stripped
+						}
+						subQuery, err := inner.Build(ctx)
+						if err != nil {
+							return "", err
+						}
+						b.WriteString(subQuery)
+					}
 				}
 				needSpace = true
 			}
@@ -231,18 +279,7 @@ func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
 			b.WriteString(sel.name)
 
 			if len(sel.args) > 0 {
-				b.WriteRune('(')
-				i := 0
-				for name, arg := range sel.args {
-					if i > 0 {
-						b.WriteString(", ")
-					}
-					b.WriteString(name)
-					b.WriteRune(':')
-					b.WriteString(arg.marshalled)
-					i++
-				}
-				b.WriteRune(')')
+				writeArgs(&b, sel.args)
 			}
 		}
 	}
