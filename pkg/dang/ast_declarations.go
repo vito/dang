@@ -172,7 +172,6 @@ func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.Function
 	}
 }
 
-// inferFunctionType provides shared type inference logic for functions
 // skolemSubs builds a pair of substitutions over the free (flexible) type
 // variables appearing in a function's signature: skolem maps each to its rigid
 // counterpart (for checking the body), and unskolem maps back (for restoring
@@ -200,6 +199,7 @@ func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
 	return skolem, unskolem
 }
 
+// inferFunctionType provides shared type inference logic for functions
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
