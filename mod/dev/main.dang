@@ -1,5 +1,5 @@
 type Dev {
-  source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
+  pub source: Directory! @defaultPath(path: "/") @ignorePatterns(patterns: [
     # TODO: respecting .gitignore would be nice
     "Session.vim",
     "dang",
@@ -12,24 +12,24 @@ type Dev {
   """
   GitHub token to use for fetching issue/PR comments
   """
-  githubToken: Secret
+  pub githubToken: Secret
 
   """
   Kagi API token for doing research.
   """
-  kagiToken: Secret
+  pub kagiToken: Secret
 
   """
   Start a coding agent with the provided module.
   """
-  withTools(tools: Module!): LLM! {
+  pub withTools(tools: Module!): LLM! {
     agent(llm.withEnv(env.withModule(tools)))
   }
 
   """
   Start a coding agent.
   """
-  agent(base: LLM!): LLM! {
+  pub agent(base: LLM!): LLM! {
     let env = base.env.withWorkspace(source).withCurrentModule
 
     let gopls = apko
@@ -89,7 +89,7 @@ type Dev {
   """
   Run a git command and return its output.
   """
-  git(args: [String!]!): String! {
+  pub git(args: [String!]!): String! {
     sandbox
       .withExec(["git"] + args)
       .combinedOutput
@@ -98,7 +98,7 @@ type Dev {
   """
   Run a gh command and return its output.
   """
-  github(args: [String!]!): String! {
+  pub github(args: [String!]!): String! {
     let ctr = if (githubToken != null) {
       sandbox.withSecretVariable(name: "GITHUB_TOKEN", secret: githubToken)
     } else {

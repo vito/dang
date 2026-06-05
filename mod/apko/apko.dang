@@ -22,7 +22,7 @@ type Apko {
     archs: [arch]
   }}
 
-  withAlpine(branch: String! = "edge"): Apko! {
+  pub withAlpine(branch: String! = "edge"): Apko! {
     self.config.contents.packages += ["apk-tools"]
     self.config.contents.repositories += [
       "https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main",
@@ -30,7 +30,7 @@ type Apko {
     self
   }
 
-  withWolfi: Apko! {
+  pub withWolfi: Apko! {
     self.config.contents.packages += ["wolfi-base"]
     self.config.contents.keyring += [
       "https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
@@ -41,17 +41,17 @@ type Apko {
     self
   }
 
-  withPackages(packages: [String!]!): Apko! {
+  pub withPackages(packages: [String!]!): Apko! {
     self.config.contents.packages += packages
     self
   }
 
-  withArchs(archs: [String!]!): Apko! {
+  pub withArchs(archs: [String!]!): Apko! {
     self.config.archs += archs
     self
   }
 
-  asContainer: Container! {
+  pub asContainer: Container! {
     pub apko = container.from("cgr.dev/chainguard/apko")
     container
       .import(
@@ -63,11 +63,11 @@ type Apko {
       )
   }
 
-  alpine(packages: [String!]!, branch: String! = "edge"): Container! {
+  pub alpine(packages: [String!]!, branch: String! = "edge"): Container! {
     withAlpine(branch).withPackages(packages).asContainer
   }
 
-  wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
+  pub wolfi(packages: [String!]!, branch: String! = "edge"): Container! {
     withWolfi.withPackages(packages).asContainer
   }
 }

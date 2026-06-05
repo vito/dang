@@ -2,7 +2,7 @@ type Dang {
   """
   The source directory for the Dang project.
   """
-  source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
+  pub source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
     # TODO: respecting .gitignore would be nice
     "Session.vim",
     "dang",
@@ -18,7 +18,7 @@ type Dang {
   """
   Return a compiled Dang binary.
   """
-  binary(race: Boolean! = false): File! {
+  pub binary(race: Boolean! = false): File! {
     let args = ["go", "build"]
     if (race) {
       args += ["-race"]
@@ -31,7 +31,7 @@ type Dang {
   """
   Build the Dang binary to ./bin/dang.
   """
-  build: Changeset! {
+  pub build: Changeset! {
     source.withFile("bin/dang", binary).changes(source)
   }
 
@@ -57,14 +57,14 @@ type Dang {
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   @generate
-  generate: Changeset! {
+  pub generate: Changeset! {
     generated.directory(".").changes(base.directory("/src"))
   }
 
   """
   Run `go mod tidy` for each Go module in the repo.
   """
-  tidy: Changeset! {
+  pub tidy: Changeset! {
     base
       .withExec([
         "sh", "-c",
@@ -96,7 +96,7 @@ type Dang {
     dang --debug script.dang
     dang -d ./my-module
   """
-  dang(args: [String!]!): Void {
+  pub dang(args: [String!]!): Void {
     base
       .withFile("/usr/bin/dang", binary)
       .withExec(
@@ -111,7 +111,7 @@ type Dang {
   """
   Start a Dang coding agent.
   """
-  coder: LLM! {
+  pub coder: LLM! {
     dev(source).agent(llm.withEnv(env.withCurrentModule))
   }
 
@@ -119,7 +119,7 @@ type Dang {
   Update the Golden-style test specimens, treating the current output as
   correct.
   """
-  testUpdate: Changeset! {
+  pub testUpdate: Changeset! {
     generated
       .withExec(
         ["otelgotest", "-v", "./tests", "-update"],
@@ -133,7 +133,7 @@ type Dang {
   """
   Update the tree-sitter test corpus.
   """
-  treesitterUpdate: Changeset! {
+  pub treesitterUpdate: Changeset! {
     generated
       .withDirectory(
         "./treesitter",
@@ -149,7 +149,7 @@ type Dang {
   """
   Run the linter.
   """
-  lint: Void @check {
+  pub lint: Void @check {
     base
       .withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint")
       .withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache"))
@@ -162,7 +162,7 @@ type Dang {
   """
   Bump the pinned Dang version in each editor plugin.
   """
-  bumpEditors(repo: GitRepository! @defaultPath(path: "/.git")): Changeset! {
+  pub bumpEditors(repo: GitRepository! @defaultPath(path: "/.git")): Changeset! {
     let commit = repo.head.commit
     base
       .withExec([
@@ -177,7 +177,7 @@ type Dang {
   """
   Enter a terminal for debugging the Neovim LSP setup.
   """
-  nvimDebug: Container! {
+  pub nvimDebug: Container! {
     base
       .withFile("/usr/bin/dang", binary)
       .withFile(
@@ -214,11 +214,11 @@ type Dang {
   """
   Base with ./hack/generate ran.
   """
-  generated: Container! {
+  pub generated: Container! {
     base.withExec(["./hack/generate"])
   }
 
-  test: Test! {
+  pub test: Test! {
     Test(self)
   }
 }
@@ -231,7 +231,7 @@ type Test {
   """
   @check
   @cache(policy: FunctionCachePolicy.Never)
-  go(
+  pub go(
     """
     Arguments to pass along to go test.
     """
@@ -250,7 +250,7 @@ type Test {
   """
   List available tests.
   """
-  list(source: Workspace!): String! {
+  pub list(source: Workspace!): String! {
     let out = "Tests from go test -list . ./...:\n"
     out += go(["-list", ".", "./..."]).stdout
     out += "\n\n"
@@ -269,7 +269,7 @@ type Test {
   """
   Run the tree-sitter tests.
   """
-  treesitter: Void @check {
+  pub treesitter: Void @check {
     dang
       .generated
       .withWorkdir("./treesitter")
