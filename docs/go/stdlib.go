@@ -1,0 +1,283 @@
+package dangdocs
+
+import (
+	"bytes"
+	"fmt"
+	"sort"
+	"strings"
+
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/vito/booklit"
+	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/pkg/hm"
+)
+
+// The standard library reference is generated straight from the builtin
+// registry in pkg/dang (see stdlib.go, stdlib_random.go, stdlib_regexp.go,
+// assert.go). Each entry's signature comes from the registered parameter,
+// block, and return types; its description comes from the builtin's .Doc(...).
+// Editing a builtin updates this page — there is nothing to hand-maintain.
+//
+// The layout mirrors vito/bass's stdlib page: every definition becomes an
+// anchored card titled by its signature, and a long group is preceded by a
+// quick-scan index. We deliberately leave out bass-isms that don't apply to
+// Dang (per-line source links, type predicates).
+//
+// Signatures are highlighted at build time with chroma (the same "dang" lexer
+// and style as the site's code blocks). chroma's regex lexer tolerates these
+// declaration-style signatures — which aren't always complete Dang programs —
+// far more gracefully than the tree-sitter parser would.
+
+// indexThreshold is the group size above which a quick-scan index is rendered
+// before the cards. Small groups read fine as bare cards.
+const indexThreshold = 8
+
+// StdlibFunctions renders the top-level builtin functions (alphabetical).
+//
+//	\stdlib-functions
+func (p Plugin) StdlibFunctions() booklit.Content {
+	var defs []dang.BuiltinDef
+	dang.ForEachFunction(func(d dang.BuiltinDef) {
+		defs = append(defs, d)
+	})
+	return p.stdlibModule(defs, "", "fn", "")
+}
+
+// StdlibMethods renders the builtin methods of a receiver type, named by its
+// Dang type name (e.g. String, List, Match). Entries are alphabetical and
+// prefixed with a leading dot to read as method calls.
+//
+//	\stdlib-methods{String}
+func (p Plugin) StdlibMethods(name booklit.Content) (booklit.Content, error) {
+	typeName := name.String()
+	recv := receiverByName(typeName)
+	if recv == nil {
+		return nil, fmt.Errorf("stdlib-methods: no builtin method receiver named %q", typeName)
+	}
+	var defs []dang.BuiltinDef
+	dang.ForEachMethod(recv, func(d dang.BuiltinDef) {
+		defs = append(defs, d)
+	})
+	return p.stdlibModule(defs, ".", typeName, typeName), nil
+}
+
+// StdlibStatics renders the static methods of a module, named by its Dang type
+// name (e.g. Random, UUID). Entries are alphabetical and prefixed with the
+// module name to read as qualified calls.
+//
+//	\stdlib-statics{Random}
+func (p Plugin) StdlibStatics(name booklit.Content) (booklit.Content, error) {
+	moduleName := name.String()
+	mod := moduleByName(moduleName)
+	if mod == nil {
+		return nil, fmt.Errorf("stdlib-statics: no builtin module named %q", moduleName)
+	}
+	var defs []dang.BuiltinDef
+	dang.ForEachStaticMethod(mod, func(d dang.BuiltinDef) {
+		defs = append(defs, d)
+	})
+	return p.stdlibModule(defs, moduleName+".", moduleName, moduleName), nil
+}
+
+func receiverByName(name string) *dang.Type {
+	for _, t := range dang.MethodReceivers() {
+		if t.Named == name {
+			return t
+		}
+	}
+	return nil
+}
+
+func moduleByName(name string) *dang.Type {
+	for _, t := range dang.StaticModules() {
+		if t.Named == name {
+			return t
+		}
+	}
+	return nil
+}
+
+// stdlibModule renders a group of builtin definitions, sorted alphabetically,
+// as anchored signature cards. prefix is prepended to each name to form its
+// displayed callable form (e.g. "." for methods, "Random." for statics); key
+// namespaces the anchors so identically-named entries across groups stay
+// unique. qualifier is the receiver/module type name ("" for free functions);
+// it is used to fully qualify the search-index title so a result reads
+// "List.uniq: [a]!" rather than the bare ".uniq: [a]!".
+//
+// Each card carries a booklit.Target so its signature and description land in
+// the search index and become a linkable anchor; the index and the card's own
+// title link to it via booklit.Reference.
+func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier string) booklit.Content {
+	sort.SliceStable(defs, func(i, j int) bool {
+		return defs[i].Name < defs[j].Name
+	})
+
+	titlePrefix := ""
+	if qualifier != "" {
+		titlePrefix = qualifier + "."
+	}
+
+	cards := make(booklit.Sequence, 0, len(defs))
+	rows := make(booklit.Sequence, 0, len(defs))
+	for _, d := range defs {
+		tag := stdlibTag(key, d.Name)
+		sig := signature(d, prefix)
+
+		// Target.Content (and the card/row Description) feed the search index's
+		// text; Title feeds its title. StripAux dereferences these, so they must
+		// be non-nil — use Empty when a builtin has no doc.
+		var desc booklit.Content = booklit.Empty
+		if d.Doc != "" {
+			desc = booklit.String(d.Doc)
+		}
+
+		cardPartials := booklit.Partials{
+			"Target": booklit.Target{
+				TagName:  tag,
+				Location: p.section.InvokeLocation,
+				Title:    booklit.String(signature(d, titlePrefix)),
+				Content:  desc,
+			},
+			"Reference": &booklit.Reference{Section: p.section, TagName: tag},
+		}
+		rowPartials := booklit.Partials{}
+		if d.Doc != "" {
+			cardPartials["Description"] = desc
+			rowPartials["Description"] = desc
+		}
+
+		cards = append(cards, booklit.Styled{
+			Style:    "stdlib-entry",
+			Block:    true,
+			Content:  highlightSignature(sig),
+			Partials: cardPartials,
+		})
+		rows = append(rows, booklit.Styled{
+			Style: "stdlib-index-entry",
+			Block: true,
+			Content: &booklit.Reference{
+				Section: p.section,
+				TagName: tag,
+				Content: booklit.Styled{
+					Style:   booklit.StyleVerbatim,
+					Content: booklit.String(prefix + d.Name),
+				},
+			},
+			Partials: rowPartials,
+		})
+	}
+
+	partials := booklit.Partials{}
+	if len(defs) > indexThreshold {
+		partials["Index"] = booklit.Styled{
+			Style:   "stdlib-index",
+			Block:   true,
+			Content: rows,
+		}
+	}
+
+	return booklit.Styled{
+		Style:    "stdlib-module",
+		Block:    true,
+		Content:  cards,
+		Partials: partials,
+	}
+}
+
+func stdlibTag(key, name string) string {
+	return "stdlib-" + key + "-" + name
+}
+
+// highlightSignature renders a signature as inline, syntax-highlighted HTML
+// using the same chroma "dang" lexer and style (styles.Fallback) as the site's
+// code blocks. The result is self-contained — chroma inlines the colors and the
+// dark code background onto the <code> element — so it needs no extra CSS.
+func highlightSignature(sig string) booklit.Content {
+	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(sig)}
+
+	lexer := lexers.Get("dang")
+	if lexer == nil {
+		return plain
+	}
+	iterator, err := lexer.Tokenise(nil, sig)
+	if err != nil {
+		return plain
+	}
+	var buf bytes.Buffer
+	if err := chromahtml.New(chromahtml.InlineCode(true)).Format(&buf, styles.Fallback, iterator); err != nil {
+		return plain
+	}
+	return booklit.Styled{Style: "raw-html", Content: booklit.String(buf.String())}
+}
+
+// signature renders a builtin's call signature in Dang declaration form, e.g.
+// ".split(separator: String!, limit: Int = 0): [String!]!".
+func signature(d dang.BuiltinDef, prefix string) string {
+	var b strings.Builder
+	b.WriteString(prefix)
+	b.WriteString(d.Name)
+
+	if len(d.ParamTypes) > 0 {
+		b.WriteString("(")
+		for i, param := range d.ParamTypes {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(param.Name)
+			b.WriteString(": ")
+			b.WriteString(renderType(param.Type))
+			if param.DefaultValue != nil {
+				b.WriteString(" = ")
+				b.WriteString(renderDefault(param.DefaultValue))
+			}
+		}
+		b.WriteString(")")
+	}
+
+	if d.BlockType != nil {
+		b.WriteString(" ")
+		b.WriteString(renderBlock(d.BlockType))
+	}
+
+	if d.ReturnType != nil {
+		b.WriteString(": ")
+		b.WriteString(renderType(d.ReturnType))
+	}
+
+	return b.String()
+}
+
+// renderBlock renders a block parameter, e.g. "{ item, index => b }". A block
+// with no parameters renders as just its body type, e.g. "{ Boolean! }".
+func renderBlock(ft *hm.FunctionType) string {
+	var params []string
+	if rec, ok := ft.Arg().(*dang.RecordType); ok {
+		for _, f := range rec.Fields {
+			params = append(params, f.Key)
+		}
+	}
+	body := renderType(ft.ReturnType())
+	if len(params) == 0 {
+		return "{ " + body + " }"
+	}
+	return "{ " + strings.Join(params, ", ") + " => " + body + " }"
+}
+
+// renderType formats a type for a signature. The null-returning builtins are
+// typed with a fresh type variable (NullValue.Type()); surface that as Null.
+func renderType(t hm.Type) string {
+	if tv, ok := t.(hm.TypeVariable); ok && tv == hm.TypeVariable('n') {
+		return "Null"
+	}
+	return fmt.Sprintf("%s", t)
+}
+
+func renderDefault(v dang.Value) string {
+	if s, ok := v.(dang.StringValue); ok {
+		return fmt.Sprintf("%q", s.Val)
+	}
+	return v.String()
+}

@@ -1,0 +1,5 @@
+<div class="stdlib-entry">
+  {{- .Partial "Target" | render -}}
+  <a class="stdlib-sig" href="{{(.Partial "Reference").Tag | url}}">{{.Content | render}}</a>
+  {{with .Partial "Description"}}<p class="stdlib-desc">{{. | render}}</p>{{end}}
+</div>
