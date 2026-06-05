@@ -212,7 +212,10 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-index-name a:hover code{color:var(--accent2)}
 .stdlib-index-name code{font-size:.82rem;color:var(--fg)}
 .stdlib-index-desc{color:var(--fg2)}
-.stdlib-entry{margin:1.25rem 0;scroll-margin-top:1.5rem}
+.stdlib-entry{margin:1.25rem 0}
+/* booklit.Target renders an empty <a id> anchor; give it scroll offset and use
+   it to highlight the signature it precedes when linked. */
+.stdlib-entry>a[id]{display:block;scroll-margin-top:1.5rem}
 .stdlib-sig{
   display:block;text-decoration:none;
   background:var(--bg2);border:1px solid var(--code-border);border-left:3px solid var(--accent);
@@ -220,7 +223,7 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 }
 .stdlib-sig:hover{background:var(--bg3)}
 .stdlib-sig code{color:var(--fg);font-size:.82rem;white-space:pre-wrap;word-break:break-word}
-.stdlib-entry:target .stdlib-sig{border-left-color:var(--accent2);background:var(--bg3)}
+.stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);background:var(--bg3)}
 .stdlib-desc{color:var(--fg2);font-size:.9rem;margin:.4rem 0 0 .85rem}
 
 .links p{margin:0}

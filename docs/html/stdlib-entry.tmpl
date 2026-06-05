@@ -1,4 +1,5 @@
-<div class="stdlib-entry" id="{{.Partial "Tag" | render}}">
-  <a class="stdlib-sig" href="#{{.Partial "Tag" | render}}"><code>{{.Content | render}}</code></a>
+<div class="stdlib-entry">
+  {{- .Partial "Target" | render -}}
+  <a class="stdlib-sig" href="{{(.Partial "Reference").Tag | url}}"><code class="dang-sig">{{.Content | render}}</code></a>
   {{with .Partial "Description"}}<p class="stdlib-desc">{{. | render}}</p>{{end}}
 </div>

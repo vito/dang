@@ -211,6 +211,20 @@
     return out;
   }
 
+  // Highlight static, server-rendered signatures (the stdlib reference) with
+  // the same tree-sitter stack the playground uses, so they match the editor's
+  // coloring. Progressive enhancement: without JS they stay plain monospace.
+  function highlightSignatures() {
+    var els = document.querySelectorAll("code.dang-sig");
+    if (!els.length) return;
+    loadTreeSitter().then(function () {
+      if (!ts) return; // grammar unavailable; leave the plain text in place
+      for (var i = 0; i < els.length; i++) {
+        els[i].innerHTML = highlightHtml(els[i].textContent);
+      }
+    });
+  }
+
   // ── output rendering ──────────────────────────────────────────────────────
 
   var STAGE_LABEL = { parse: "Parse error", type: "Type error", eval: "Runtime error", auth: "GitHub error" };
@@ -670,6 +684,7 @@
     for (var i = 0; i < blocks.length; i++) enhance(blocks[i]);
     var repls = document.querySelectorAll("[data-dang-repl]");
     for (var j = 0; j < repls.length; j++) enhanceRepl(repls[j]);
+    highlightSignatures();
   }
 
   // Capture any OAuth token handed back in the fragment before enhancing, so

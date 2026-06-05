@@ -33,7 +33,7 @@ func (p Plugin) StdlibFunctions() booklit.Content {
 	dang.ForEachFunction(func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return stdlibModule(defs, "", "fn")
+	return p.stdlibModule(defs, "", "fn")
 }
 
 // StdlibMethods renders the builtin methods of a receiver type, named by its
@@ -51,7 +51,7 @@ func (p Plugin) StdlibMethods(name booklit.Content) (booklit.Content, error) {
 	dang.ForEachMethod(recv, func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return stdlibModule(defs, ".", typeName), nil
+	return p.stdlibModule(defs, ".", typeName), nil
 }
 
 // StdlibStatics renders the static methods of a module, named by its Dang type
@@ -69,7 +69,7 @@ func (p Plugin) StdlibStatics(name booklit.Content) (booklit.Content, error) {
 	dang.ForEachStaticMethod(mod, func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return stdlibModule(defs, moduleName+".", moduleName), nil
+	return p.stdlibModule(defs, moduleName+".", moduleName), nil
 }
 
 func receiverByName(name string) *dang.Type {
@@ -94,7 +94,11 @@ func moduleByName(name string) *dang.Type {
 // as anchored signature cards. prefix is prepended to each name to form its
 // callable form (e.g. "." for methods, "Random." for statics); key namespaces
 // the anchors so identically-named entries across groups stay unique.
-func stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit.Content {
+//
+// Each card carries a booklit.Target so its signature and description land in
+// the search index and become a linkable anchor; the index and the card's own
+// title link to it via booklit.Reference.
+func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit.Content {
 	sort.SliceStable(defs, func(i, j int) bool {
 		return defs[i].Name < defs[j].Name
 	})
@@ -103,24 +107,48 @@ func stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit.Content {
 	rows := make(booklit.Sequence, 0, len(defs))
 	for _, d := range defs {
 		tag := stdlibTag(key, d.Name)
+		sig := signature(d, prefix)
 
-		cardPartials := booklit.Partials{"Tag": booklit.String(tag)}
-		rowPartials := booklit.Partials{"Tag": booklit.String(tag)}
+		// Target.Content (and the card/row Description) feed the search index's
+		// text; Title feeds its title. StripAux dereferences these, so they must
+		// be non-nil — use Empty when a builtin has no doc.
+		var desc booklit.Content = booklit.Empty
 		if d.Doc != "" {
-			cardPartials["Description"] = booklit.String(d.Doc)
-			rowPartials["Description"] = booklit.String(d.Doc)
+			desc = booklit.String(d.Doc)
+		}
+
+		cardPartials := booklit.Partials{
+			"Target": booklit.Target{
+				TagName:  tag,
+				Location: p.section.InvokeLocation,
+				Title:    booklit.String(sig),
+				Content:  desc,
+			},
+			"Reference": &booklit.Reference{Section: p.section, TagName: tag},
+		}
+		rowPartials := booklit.Partials{}
+		if d.Doc != "" {
+			cardPartials["Description"] = desc
+			rowPartials["Description"] = desc
 		}
 
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  booklit.String(signature(d, prefix)),
+			Content:  booklit.String(sig),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
-			Style:    "stdlib-index-entry",
-			Block:    true,
-			Content:  booklit.String(prefix + d.Name),
+			Style: "stdlib-index-entry",
+			Block: true,
+			Content: &booklit.Reference{
+				Section: p.section,
+				TagName: tag,
+				Content: booklit.Styled{
+					Style:   booklit.StyleVerbatim,
+					Content: booklit.String(prefix + d.Name),
+				},
+			},
 			Partials: rowPartials,
 		})
 	}
@@ -146,8 +174,8 @@ func stdlibTag(key, name string) string {
 	return "stdlib-" + key + "-" + name
 }
 
-// signature renders a builtin's call signature, e.g.
-// ".split(separator: String!, limit: Int = 0) -> [String!]!".
+// signature renders a builtin's call signature in Dang declaration form, e.g.
+// ".split(separator: String!, limit: Int = 0): [String!]!".
 func signature(d dang.BuiltinDef, prefix string) string {
 	var b strings.Builder
 	b.WriteString(prefix)
@@ -176,7 +204,7 @@ func signature(d dang.BuiltinDef, prefix string) string {
 	}
 
 	if d.ReturnType != nil {
-		b.WriteString(" -> ")
+		b.WriteString(": ")
 		b.WriteString(renderType(d.ReturnType))
 	}
 
