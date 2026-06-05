@@ -665,11 +665,47 @@
     });
   }
 
+  // A lazy REPL — used by the stdlib reference, one per builtin — stays a
+  // static, highlighted snippet (its fallback) until the reader clicks Run.
+  // Only then does it become a live REPL (enhanceRepl) seeded with the example,
+  // which it evaluates once. Deferring keeps a page full of examples cheap: no
+  // textareas or wasm until something is actually run.
+  function enhanceLazyRepl(container) {
+    var fallback = container.querySelector(".dang-repl-fallback");
+    if (!fallback) return;
+
+    var bar = document.createElement("div");
+    bar.className = "stdlib-example-bar";
+    var label = document.createElement("span");
+    label.className = "stdlib-example-label";
+    label.textContent = "Example";
+    var spacer = document.createElement("span");
+    spacer.style.flex = "1";
+    var runBtn = document.createElement("button");
+    runBtn.className = "dang-playground-btn dang-playground-run";
+    runBtn.type = "button";
+    runBtn.textContent = "Run ▶";
+    bar.appendChild(label);
+    bar.appendChild(spacer);
+    bar.appendChild(runBtn);
+    container.appendChild(bar);
+
+    runBtn.addEventListener("click", function () {
+      // enhanceRepl reads the fallback for its seed, wipes the container, and
+      // builds the live REPL; then we trigger its Run to show the result.
+      enhanceRepl(container);
+      var liveRun = container.querySelector(".dang-repl-run");
+      if (liveRun) liveRun.click();
+    });
+  }
+
   function init() {
     var blocks = document.querySelectorAll("[data-dang-playground]");
     for (var i = 0; i < blocks.length; i++) enhance(blocks[i]);
     var repls = document.querySelectorAll("[data-dang-repl]");
     for (var j = 0; j < repls.length; j++) enhanceRepl(repls[j]);
+    var lazies = document.querySelectorAll("[data-dang-repl-lazy]");
+    for (var k = 0; k < lazies.length; k++) enhanceLazyRepl(lazies[k]);
   }
 
   // Capture any OAuth token handed back in the fragment before enhancing, so
