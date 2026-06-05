@@ -891,6 +891,7 @@ func registerStdlib() {
 	// Map.get method: get(key: String!) -> a
 	Method(MapTypeModule, "get").
 		Doc("returns the value for the given key, or null if the key is absent").
+		Example(`["a": 1, "b": 2].get("a")`).
 		Params("key", NonNull(StringType)).
 		Returns(TypeVar('a')).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -905,6 +906,7 @@ func registerStdlib() {
 	// Map.has method: has(key: String!) -> Boolean!
 	Method(MapTypeModule, "has").
 		Doc("returns true if the map contains the given key").
+		Example(`["a": 1, "b": 2].has("a")`).
 		Params("key", NonNull(StringType)).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -916,6 +918,7 @@ func registerStdlib() {
 	// Map.with method: with(key: String!, value: a) -> Map[a]!
 	Method(MapTypeModule, "with").
 		Doc("returns a new map with the given key set to the given value").
+		Example(`["a": 1].with("b", 2)`).
 		Params("key", NonNull(StringType), "value", TypeVar('a')).
 		Returns(NonNull(MapOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -927,6 +930,7 @@ func registerStdlib() {
 	// Map.without method: without(key: String!) -> Map[a]!
 	Method(MapTypeModule, "without").
 		Doc("returns a new map with the given key removed").
+		Example(`["a": 1, "b": 2].without("a")`).
 		Params("key", NonNull(StringType)).
 		Returns(NonNull(MapOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -937,6 +941,7 @@ func registerStdlib() {
 	// Map.merge method: merge(other: Map[a]!) -> Map[a]!
 	Method(MapTypeModule, "merge").
 		Doc("returns a new map combining this map with another; values from the other map win on key conflicts").
+		Example(`["a": 1, "b": 2].merge(["b": 20, "c": 3])`).
 		Params("other", NonNull(MapOf(TypeVar('a')))).
 		Returns(NonNull(MapOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -956,6 +961,7 @@ func registerStdlib() {
 	// Map.keys method: keys -> [String!]!
 	Method(MapTypeModule, "keys").
 		Doc("returns the map's keys in insertion order").
+		Example(`["a": 1, "b": 2].keys`).
 		Returns(NonNull(ListOf(NonNull(StringType)))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MapValue)
@@ -969,6 +975,7 @@ func registerStdlib() {
 	// Map.values method: values -> [a]!
 	Method(MapTypeModule, "values").
 		Doc("returns the map's values in insertion order").
+		Example(`["a": 1, "b": 2].values`).
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MapValue)
@@ -982,6 +989,7 @@ func registerStdlib() {
 	// Map.length method: length -> Int!
 	Method(MapTypeModule, "length").
 		Doc("returns the number of entries in the map").
+		Example(`["a": 1, "b": 2].length`).
 		Returns(NonNull(IntType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MapValue)
@@ -991,6 +999,7 @@ func registerStdlib() {
 	// Map.isEmpty method: isEmpty -> Boolean!
 	Method(MapTypeModule, "isEmpty").
 		Doc("returns true if the map contains no entries").
+		Example(`[:].isEmpty`).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MapValue)
@@ -1000,6 +1009,7 @@ func registerStdlib() {
 	// Map.each method: each(fn: \(String!, a) -> b) -> Map[a]!
 	Method(MapTypeModule, "each").
 		Doc("iterates over each entry in insertion order, calling the block with the key and value").
+		Example(`["a": 1, "b": 2].each { key, value => print(`+"`${key}=${value}`"+`) }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "key",
@@ -1029,6 +1039,7 @@ func registerStdlib() {
 	// Map.map method: map(fn: \(String!, a) -> b) -> Map[b]!
 	Method(MapTypeModule, "map").
 		Doc("returns a new map with each value transformed by the block; keys are preserved").
+		Example(`["a": 1, "b": 2].map { key, value => value * 2 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "key",
