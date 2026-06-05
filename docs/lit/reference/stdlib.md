@@ -32,6 +32,12 @@
 
 \stdlib-methods{List}
 
+## `Map[a]!` methods
+
+> See [#collections]. Map methods are registered on the `Map` module. Keys are always `String!`; the value type shows as the type variable `a` (and block result types as `b`). Block params are named `key`/`value`.
+
+\stdlib-methods{Map}
+
 ## `Random` module
 
 \stdlib-statics{Random}

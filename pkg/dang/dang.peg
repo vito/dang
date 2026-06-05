@@ -74,7 +74,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
 
 Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
-Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
+Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
 
 // Postfix `!` asserts that the operand is non-null, narrowing its type from
 // `T` to `T!` and raising at runtime if the value turns out to be null. The
@@ -602,7 +602,14 @@ PositionalValue <- value:Form {
 }
 ColonToken <- ':'
 
-Type <- NonNull / NamedType / ListType / ObjectType / TypeVariable
+Type <- NonNull / AppliedType / NamedType / ListType / ObjectType / TypeVariable
+AppliedType <- base:NamedType ImmediateBracket _ args:(a:Type Sep { return a, nil })* last:Type? _ ']' {
+  return &AppliedTypeNode{
+    Base: base.(*NamedTypeNode),
+    Args: sliceOfAppend[TypeNode](args, last),
+    Loc: c.Loc(),
+  }, nil
+}
 NamedType <- qual:(n:NamedType DotToken { return n, nil })? name:UpperId {
   var base *NamedTypeNode
   if qual != nil {
@@ -733,6 +740,19 @@ List <- '[' _ eles:(e:Form Sep { return e, nil })* last:Form? _ ']' {
     Elements: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
   }, nil
+}
+
+MapLiteral <- '[' _ ColonToken _ ']' {
+  return &MapLiteral{Loc: c.Loc()}, nil
+} / '[' _ first:MapEntry rest:(Sep e:MapEntry { return e, nil })* Sep? _ ']' {
+  return &MapLiteral{
+    Entries: sliceOfPrepend[MapEntry](first, rest),
+    Loc: c.Loc(),
+  }, nil
+}
+
+MapEntry <- key:Form _ ColonToken _ value:Form {
+  return MapEntry{Key: key.(Node), Value: value.(Node)}, nil
 }
 
 ObjectLiteral <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {

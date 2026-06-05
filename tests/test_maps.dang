@@ -1,0 +1,84 @@
+# Test map literals and operations
+
+# Map literal with string values
+pub roles = ["alice": "admin", "bob": "user"]
+assert { roles["alice"] == "admin" }
+assert { roles["bob"] == "user" }
+
+# Missing key indexes to null
+assert { roles["carol"] == null }
+
+# Map literal with int values
+pub counts = ["a": 1, "b": 2, "c": 3]
+assert { counts["b"] == 2 }
+
+# Empty map
+pub empty: Map[Int!] = [:]
+assert { empty.isEmpty }
+assert { empty.length == 0 }
+
+# Map equality is order-independent
+assert { ["a": 1, "b": 2] == ["b": 2, "a": 1] }
+assert { ["a": 1] != ["a": 2] }
+assert { ["a": 1] != ["a": 1, "b": 2] }
+
+# Map[a] is the explicit form
+pub annotated: Map[String!] = ["x": "y"]
+assert { annotated["x"] == "y" }
+
+# get / has
+assert { counts.get("a") == 1 }
+assert { counts.get("missing") == null }
+assert { counts.has("a") }
+assert { !counts.has("missing") }
+
+# length / isEmpty
+assert { counts.length == 3 }
+assert { !counts.isEmpty }
+
+# keys / values preserve insertion order
+assert { counts.keys == ["a", "b", "c"] }
+assert { counts.values == [1, 2, 3] }
+
+# with returns a new map; original is unchanged (immutability)
+pub extended = counts.with("d", 4)
+assert { extended.length == 4 }
+assert { extended["d"] == 4 }
+assert { counts.length == 3 }
+assert { counts.get("d") == null }
+
+# with replaces an existing key in place (keeps position)
+pub replaced = counts.with("b", 20)
+assert { replaced["b"] == 20 }
+assert { replaced.keys == ["a", "b", "c"] }
+
+# without returns a new map; original is unchanged
+pub removed = counts.without("a")
+assert { removed == ["b": 2, "c": 3] }
+assert { counts.length == 3 }
+
+# without a missing key is a no-op
+assert { counts.without("zzz") == counts }
+
+# merge: other wins on conflicts
+pub merged = counts.merge(["c": 30, "e": 5])
+assert { merged == ["a": 1, "b": 2, "c": 30, "e": 5] }
+assert { counts["c"] == 3 }
+
+# map transforms values, preserves keys
+pub doubled = counts.map { key, value => value * 2 }
+assert { doubled == ["a": 2, "b": 4, "c": 6] }
+
+# map can change the value type
+pub labeled = counts.map { key, value => `${key}=${value}` }
+assert { labeled["a"] == "a=1" }
+
+# each iterates in insertion order and returns the original map
+pub seen: List[String!] = []
+counts.each { key, value => seen = seen + [key] }
+assert { seen == ["a", "b", "c"] }
+
+# dynamic (non-literal) keys
+pub k = "dynamic"
+pub dyn = [k: 42]
+assert { dyn["dynamic"] == 42 }

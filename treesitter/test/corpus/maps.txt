@@ -1,0 +1,85 @@
+===
+Map literal
+===
+
+["a": 1, "b": 2]
+
+---
+
+(dang
+  (map_literal
+    (map_entry
+      (literal
+        (string
+          (immediate_string_content)
+          (immediate_quote_token)))
+      (colon_token)
+      (literal
+        (int
+          (non_zero_decimal_digit))))
+    (sep
+      (comma_token))
+    (map_entry
+      (literal
+        (string
+          (immediate_string_content)
+          (immediate_quote_token)))
+      (colon_token)
+      (literal
+        (int
+          (non_zero_decimal_digit))))))
+
+===
+Empty map literal
+===
+
+[:]
+
+---
+
+(dang
+  (map_literal
+    (colon_token)))
+
+===
+Map type annotation
+===
+
+pub m: Map[Int!] = ["x": 1]
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (type_and_value_field
+        (visibility
+          (pub_token))
+        (symbol
+          (id
+            (word_token)))
+        (colon_token)
+        (type
+          (applied_type
+            (named_type
+              (upper_id
+                (upper_token)))
+            (immediate_bracket)
+            (type
+              (non_null
+                (type
+                  (named_type
+                    (upper_id
+                      (upper_token))))
+                (bang_token)))))
+        (equal_token)
+        (map_literal
+          (map_entry
+            (literal
+              (string
+                (immediate_string_content)
+                (immediate_quote_token)))
+            (colon_token)
+            (literal
+              (int
+                (non_zero_decimal_digit)))))))))

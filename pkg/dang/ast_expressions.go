@@ -716,6 +716,41 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return methodType, nil
 		}
 
+		// Check if receiver is a map type - handle methods on maps specially.
+		// Supports both non-null maps (Map[T!]!) and nullable maps (Map[T!]).
+		var mapValType hm.Type
+		var nullableMap bool
+		if nn, ok := lt.(hm.NonNullType); ok {
+			if mapType, ok := nn.Type.(MapType); ok {
+				mapValType = mapType.Type
+			}
+		} else if mapType, ok := lt.(MapType); ok {
+			mapValType = mapType.Type
+			nullableMap = true
+		}
+		if mapValType != nil {
+			def, found := LookupMethod(MapTypeModule, d.Field.Name)
+			if !found {
+				tv := fresh.Fresh()
+				d.SetInferredType(tv)
+				return tv, fmt.Errorf("map does not have method %q", d.Field.Name)
+			}
+
+			// Build method type with the value type substituted for 'a'.
+			methodType := instantiateListMethod(def, mapValType)
+
+			if d.AutoCall {
+				methodType, _ = autoCallFnType(methodType)
+			}
+
+			if nullableMap {
+				d.NullableReceiver = true
+			}
+
+			d.SetInferredType(methodType)
+			return methodType, nil
+		}
+
 		// GraphQL object lists are not directly iterable: callers must first
 		// select fields on the elements (e.g. value.{id}) to convert them
 		// into a regular list. Detect this case before falling through to
@@ -887,6 +922,20 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				}
 				return nil, fmt.Errorf("list value does not have method %q", d.Field.Name)
 
+			case MapValue:
+				// Handle methods on map values by looking them up in the evaluation environment
+				// The builtin is registered with a special name
+				methodKey := fmt.Sprintf("_map_%s_builtin", d.Field.Name)
+				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
+					return nil, err
+				} else if found {
+					if builtinFn, ok := method.(BuiltinFunction); ok {
+						// Create a bound method that will pass the map as self
+						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+					}
+				}
+				return nil, fmt.Errorf("map value does not have method %q", d.Field.Name)
+
 			case MatchValue:
 				methodKey := fmt.Sprintf("_match_%s_builtin", d.Field.Name)
 				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
@@ -944,39 +993,45 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 			return nil, fmt.Errorf("Index.Infer receiver: %w", err)
 		}
 
-		// Infer the type of the index (should be Int!)
+		// Infer the type of the index
 		indexType, err := i.Index.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, fmt.Errorf("Index.Infer index: %w", err)
 		}
 
-		// Check that index is Int!
-		intType, err := NonNullTypeNode{&NamedTypeNode{nil, "Int", i.Index.GetSourceLocation()}}.Infer(ctx, env, fresh)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := hm.Assignable(indexType, intType); err != nil {
-			return nil, fmt.Errorf("index must be Int!, got %s", indexType)
-		}
-
-		// Extract element type from list type
+		// Extract element/value type from the receiver. Maps are indexed by
+		// String!, lists by Int!.
 		var elementType hm.Type
 		var isNullable bool
 
+		unwrapped := receiverType
 		if nonNull, ok := receiverType.(hm.NonNullType); ok {
-			// Non-null list
-			if listType, ok := nonNull.Type.(ListType); ok {
-				elementType = listType.Type
-				isNullable = false // Non-null list, but indexing could be out of bounds
-			} else {
-				return nil, fmt.Errorf("cannot index non-list type %s", receiverType)
-			}
-		} else if listType, ok := receiverType.(ListType); ok {
-			// Nullable list
-			elementType = listType.Type
-			isNullable = true
+			unwrapped = nonNull.Type
 		} else {
-			return nil, fmt.Errorf("cannot index non-list type %s", receiverType)
+			isNullable = true
+		}
+
+		switch recv := unwrapped.(type) {
+		case ListType:
+			intType, err := NonNullTypeNode{&NamedTypeNode{nil, "Int", i.Index.GetSourceLocation()}}.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := hm.Assignable(indexType, intType); err != nil {
+				return nil, fmt.Errorf("list index must be Int!, got %s", indexType)
+			}
+			elementType = recv.Type
+		case MapType:
+			strType, err := NonNullTypeNode{&NamedTypeNode{nil, "String", i.Index.GetSourceLocation()}}.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := hm.Assignable(indexType, strType); err != nil {
+				return nil, fmt.Errorf("map key must be String!, got %s", indexType)
+			}
+			elementType = recv.Type
+		default:
+			return nil, fmt.Errorf("cannot index non-collection type %s", receiverType)
 		}
 
 		// Apply auto-call if needed
@@ -1041,10 +1096,26 @@ func (i *Index) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, fmt.Errorf("evaluating index: %w", err)
 		}
 
+		// Map indexing: look up by string key, null if absent.
+		if mapVal, ok := receiverVal.(MapValue); ok {
+			keyVal, ok := indexVal.(StringValue)
+			if !ok {
+				return nil, fmt.Errorf("map key must be a string, got %T", indexVal)
+			}
+			element, found := mapVal.Get(keyVal.Val)
+			if !found {
+				return NullValue{}, nil
+			}
+			if i.AutoCall && isAutoCallableFn(element) {
+				return autoCallFn(ctx, scope, element)
+			}
+			return element, nil
+		}
+
 		// Check that receiver is a list
 		listVal, ok := receiverVal.(ListValue)
 		if !ok {
-			return nil, fmt.Errorf("cannot index non-list value of type %T", receiverVal)
+			return nil, fmt.Errorf("cannot index non-collection value of type %T", receiverVal)
 		}
 
 		// Check that index is an integer
@@ -3188,6 +3259,8 @@ func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Ty
 		return hm.NonNullType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case ListType:
 		return ListType{Type: substituteTypeVar(typ.Type, tv, replacement)}
+	case MapType:
+		return MapType{Type: substituteTypeVar(typ.Type, tv, replacement)}
 	case *hm.FunctionType:
 		newFnType := hm.NewFnType(
 			substituteTypeVar(typ.Arg(), tv, replacement),

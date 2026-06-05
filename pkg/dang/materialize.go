@@ -141,6 +141,11 @@ func walkAssignment(have, want hm.Type) (haveMod, wantMod *Type, issues []string
 			return walkAssignment(haveLT.Type, wantLT.Type)
 		}
 	}
+	if haveMT, haveOk := have.(MapType); haveOk {
+		if wantMT, wantOk := want.(MapType); wantOk {
+			return walkAssignment(haveMT.Type, wantMT.Type)
+		}
+	}
 	if haveGLT, haveOk := have.(GraphQLListType); haveOk {
 		if wantGLT, wantOk := want.(GraphQLListType); wantOk {
 			return walkAssignment(haveGLT.Type, wantGLT.Type)

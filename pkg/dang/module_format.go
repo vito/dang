@@ -159,6 +159,8 @@ func formatPublicShapeType(t hm.Type) string {
 		return inner + "!"
 	case ListType:
 		return fmt.Sprintf("[%s]", formatPublicShapeType(typ.Type))
+	case MapType:
+		return fmt.Sprintf("Map[%s]", formatPublicShapeType(typ.Type))
 	case GraphQLListType:
 		return fmt.Sprintf("[%s]", formatPublicShapeType(typ.Type))
 	case *hm.UnionType:

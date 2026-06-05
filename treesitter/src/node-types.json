@@ -92,6 +92,10 @@
         "named": true
       },
       {
+        "type": "map_literal",
+        "named": true
+      },
+      {
         "type": "non_null_assert",
         "named": true
       },
@@ -175,6 +179,66 @@
     "type": "additive_op",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "applied_type",
+    "named": true,
+    "fields": {
+      "a": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "args": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "sep",
+            "named": true
+          },
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "base": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "named_type",
+            "named": true
+          }
+        ]
+      },
+      "last": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "immediate_bracket",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "arg_type",
@@ -2460,6 +2524,96 @@
     }
   },
   {
+    "type": "map_entry",
+    "named": true,
+    "fields": {
+      "key": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "map_literal",
+    "named": true,
+    "fields": {
+      "e": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "map_entry",
+            "named": true
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "map_entry",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "map_entry",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "colon_token",
+          "named": true
+        },
+        {
+          "type": "sep",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "multi_template",
     "named": true,
     "fields": {
@@ -3555,6 +3709,10 @@
       "multiple": false,
       "required": true,
       "types": [
+        {
+          "type": "applied_type",
+          "named": true
+        },
         {
           "type": "list_type",
           "named": true

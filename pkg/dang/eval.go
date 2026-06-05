@@ -1,6 +1,7 @@
 package dang
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
@@ -1060,6 +1062,98 @@ func (l ListValue) MarshalJSON() ([]byte, error) {
 		return []byte("[]"), nil
 	}
 	return json.Marshal(l.Elements)
+}
+
+// MapValue is an immutable string-keyed map. Keys are tracked in insertion
+// order so iteration, printing, and JSON marshalling are deterministic.
+type MapValue struct {
+	Keys    []string
+	Entries map[string]Value
+	ValType hm.Type
+}
+
+func (m MapValue) Type() hm.Type {
+	return hm.NonNullType{Type: MapType{m.ValType}}
+}
+
+// Get returns the value for a key, and whether it was present.
+func (m MapValue) Get(key string) (Value, bool) {
+	v, ok := m.Entries[key]
+	return v, ok
+}
+
+// With returns a copy of the map with key set to value (insertion order
+// preserved; existing keys keep their position).
+func (m MapValue) With(key string, value Value) MapValue {
+	entries := make(map[string]Value, len(m.Entries)+1)
+	for k, v := range m.Entries {
+		entries[k] = v
+	}
+	keys := m.Keys
+	if _, exists := entries[key]; !exists {
+		keys = append(append([]string{}, m.Keys...), key)
+	} else {
+		keys = append([]string{}, m.Keys...)
+	}
+	entries[key] = value
+	return MapValue{Keys: keys, Entries: entries, ValType: m.ValType}
+}
+
+// Without returns a copy of the map with key removed.
+func (m MapValue) Without(key string) MapValue {
+	if _, exists := m.Entries[key]; !exists {
+		return m
+	}
+	entries := make(map[string]Value, len(m.Entries))
+	keys := make([]string, 0, len(m.Keys))
+	for _, k := range m.Keys {
+		if k == key {
+			continue
+		}
+		keys = append(keys, k)
+		entries[k] = m.Entries[k]
+	}
+	return MapValue{Keys: keys, Entries: entries, ValType: m.ValType}
+}
+
+func (m MapValue) String() string {
+	if len(m.Keys) == 0 {
+		return "[:]"
+	}
+	var result strings.Builder
+	result.WriteString("[")
+	for i, k := range m.Keys {
+		if i > 0 {
+			result.WriteString(", ")
+		}
+		result.WriteString(strconv.Quote(k))
+		result.WriteString(": ")
+		result.WriteString(m.Entries[k].String())
+	}
+	return result.String() + "]"
+}
+
+func (m MapValue) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range m.Keys {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		key, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(key)
+		buf.WriteByte(':')
+		val, err := json.Marshal(m.Entries[k])
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(val)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }
 
 // FunctionValue represents a function value
