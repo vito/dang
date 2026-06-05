@@ -18,8 +18,9 @@ import (
 // The standard library reference is generated straight from the builtin
 // registry in pkg/dang (see stdlib.go, stdlib_random.go, stdlib_regexp.go,
 // assert.go). Each entry's signature comes from the registered parameter,
-// block, and return types; its description comes from the builtin's .Doc(...).
-// Editing a builtin updates this page — there is nothing to hand-maintain.
+// block, and return types; its description comes from the builtin's .Doc(...),
+// and its pre-seeded REPL from the builtin's .Example(...). Editing a builtin
+// updates this page — there is nothing to hand-maintain.
 //
 // The layout mirrors vito/bass's stdlib page: every definition becomes an
 // anchored card titled by its signature, and a long group is preceded by a
@@ -150,10 +151,16 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 			rowPartials["Description"] = desc
 		}
 
+		// A builtin's example becomes a pre-seeded, runnable REPL on the card
+		// (see exampleRepl). The index rows stay terse — signature + one-liner.
+		if d.Example != "" {
+			cardPartials["Example"] = exampleRepl(d.Example)
+		}
+
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  highlightSignature(sig),
+			Content:  highlightDang(sig),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
@@ -192,19 +199,34 @@ func stdlibTag(key, name string) string {
 	return "stdlib-" + key + "-" + name
 }
 
-// highlightSignature renders a signature as syntax-highlighted HTML using the
-// same chroma "dang" lexer and style as the site's code blocks. It mirrors the
-// site's class/inline choice (baselit.HighlightWithClasses): in class mode the
-// colors and code background come from chroma.css, so the signature themes with
-// the rest of the page.
-func highlightSignature(sig string) booklit.Content {
-	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(sig)}
+// exampleRepl renders a builtin's example as a pre-seeded, runnable REPL. The
+// snippet is chroma-highlighted at build time so it reads as a normal code
+// block (and stays useful without JavaScript); docs/js/playground.js upgrades
+// it into a live REPL — seeded with this code — on first Run. See the
+// "stdlib-example" template and \dang-repl.
+func exampleRepl(code string) booklit.Content {
+	return booklit.Styled{
+		Style:   "stdlib-example",
+		Block:   true,
+		Content: highlightDang(code),
+	}
+}
+
+// highlightDang renders a snippet of Dang as inline, syntax-highlighted HTML
+// using the same chroma "dang" lexer and style (styles.Fallback) as the site's
+// code blocks. It mirrors the site's class/inline choice
+// (baselit.HighlightWithClasses): in class mode the colors and code background
+// come from chroma.css, so the snippet themes with the rest of the page. It
+// backs both the signature cards and the example REPLs; the chroma regex lexer
+// tolerates partial declarations and whole expressions alike.
+func highlightDang(src string) booklit.Content {
+	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(src)}
 
 	lexer := lexers.Get("dang")
 	if lexer == nil {
 		return plain
 	}
-	iterator, err := lexer.Tokenise(nil, sig)
+	iterator, err := lexer.Tokenise(nil, src)
 	if err != nil {
 		return plain
 	}

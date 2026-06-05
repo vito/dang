@@ -27,6 +27,7 @@ func registerRandom() {
 	// Random.int(min: Int!, max: Int!) -> Int!
 	StaticMethod(RandomModule, "int").
 		Doc("generates a random integer between min (inclusive) and max (exclusive)").
+		Example(`Random.int(1, 7)`).
 		Params("min", NonNull(IntType), "max", NonNull(IntType)).
 		Returns(NonNull(IntType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -41,6 +42,7 @@ func registerRandom() {
 	// Random.float() -> Float!
 	StaticMethod(RandomModule, "float").
 		Doc("generates a random float between 0.0 (inclusive) and 1.0 (exclusive)").
+		Example(`Random.float`).
 		Returns(NonNull(FloatType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			return ToValue(mrand.Float64())
@@ -49,6 +51,7 @@ func registerRandom() {
 	// Random.string() -> String!
 	StaticMethod(RandomModule, "string").
 		Doc("generates a cryptographically random base32 string with at least 128 bits of entropy").
+		Example(`Random.string`).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			return ToValue(rand.Text())
@@ -61,6 +64,7 @@ func registerUUID() {
 	// UUID.v4() -> String!
 	StaticMethod(UUIDModule, "v4").
 		Doc("generates a random UUID v4 string").
+		Example(`UUID.v4`).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			return ToValue(uuid.New().String())
@@ -69,6 +73,7 @@ func registerUUID() {
 	// UUID.v7() -> String!
 	StaticMethod(UUIDModule, "v7").
 		Doc("generates a time-ordered UUID v7 string").
+		Example(`UUID.v7`).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			id, err := uuid.NewV7()

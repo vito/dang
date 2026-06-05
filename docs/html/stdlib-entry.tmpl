@@ -2,4 +2,5 @@
   {{- .Partial "Target" | render -}}
   <a class="stdlib-sig" href="{{(.Partial "Reference").Tag | url}}">{{.Content | render}}</a>
   {{with .Partial "Description"}}<p class="stdlib-desc">{{. | render}}</p>{{end}}
+  {{with .Partial "Example"}}{{. | render}}{{end}}
 </div>

@@ -552,6 +552,18 @@
     function rehighlight() {
       highlight.innerHTML = highlightHtml(input.value);
     }
+    // Re-highlight the live input plus any transcript entries rendered before
+    // tree-sitter finished loading. The lazy stdlib REPLs evaluate their seed
+    // synchronously on Run — before loadTreeSitter() resolves — so that first
+    // entry comes out as plain text and must be repainted once highlighting is
+    // ready. (Each codehl's textContent is exactly its source.)
+    function rehighlightAll() {
+      rehighlight();
+      var hls = transcript.querySelectorAll(".dang-repl-codehl");
+      for (var i = 0; i < hls.length; i++) {
+        hls[i].innerHTML = highlightHtml(hls[i].textContent);
+      }
+    }
     function autosize() {
       input.style.height = "auto";
       input.style.height = input.scrollHeight + "px";
@@ -562,7 +574,7 @@
       rehighlight();
       autosize();
     });
-    loadTreeSitter().then(function () { rehighlight(); });
+    loadTreeSitter().then(rehighlightAll);
 
     // Append a finished entry (highlighted source + its result) to the
     // transcript. Returns the result element so callers can fill it in.
@@ -593,11 +605,26 @@
       return entry;
     }
 
+    // Command history: submitted sources, newest last. historyIndex points at
+    // the recalled entry; history.length means the live draft being typed.
+    var history = [];
+    var historyIndex = 0;
+    var draft = "";
+    function recall(val) {
+      input.value = val;
+      rehighlight();
+      autosize();
+      input.selectionStart = input.selectionEnd = val.length;
+    }
+
     var running = false;
     function evalEntry() {
       if (running) return;
       var src = input.value.replace(/\s+$/, "");
       if (!src) return;
+      if (history[history.length - 1] !== src) history.push(src);
+      historyIndex = history.length;
+      draft = "";
       running = true;
       runBtn.disabled = true;
       input.disabled = true;
@@ -605,13 +632,16 @@
       var pendingOut = pending.querySelector(".dang-repl-out");
       pendingOut.classList.remove("is-empty");
       pendingOut.textContent = "Running…";
+      // Clear the input now that the source is captured and shown in the
+      // transcript, rather than waiting for the (possibly slow) eval to finish —
+      // the prompt shouldn't keep showing what's already running.
+      input.value = "";
+      rehighlight();
+      autosize();
       loadDang()
         .then(function (dang) {
           var res = dang.replEval(sessionId, src);
           renderReplOutput(pendingOut, res);
-          input.value = "";
-          rehighlight();
-          autosize();
         })
         .catch(function (err) {
           renderReplOutput(pendingOut, {
@@ -637,6 +667,28 @@
         autosize();
         return;
       }
+      if (e.key === "ArrowUp" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Recall older history — but only from the first line, so multi-line
+        // editing still moves the caret up a line as usual.
+        if (input.value.slice(0, input.selectionStart).indexOf("\n") !== -1) return;
+        if (historyIndex > 0) {
+          if (historyIndex === history.length) draft = input.value;
+          historyIndex--;
+          e.preventDefault();
+          recall(history[historyIndex]);
+        }
+        return;
+      }
+      if (e.key === "ArrowDown" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Walk back toward the live draft, only from the last line.
+        if (input.value.slice(input.selectionEnd).indexOf("\n") !== -1) return;
+        if (historyIndex < history.length) {
+          historyIndex++;
+          e.preventDefault();
+          recall(historyIndex === history.length ? draft : history[historyIndex]);
+        }
+        return;
+      }
       if (e.key === "Enter") {
         // Shift+Enter: force a newline (continuation). Ctrl/Cmd+Enter: force
         // run. Bare Enter: run when the input looks complete, else newline.
@@ -657,6 +709,9 @@
         loadDang().then(function (dang) { dang.replReset(sessionId); });
       }
       transcript.innerHTML = "";
+      history = [];
+      historyIndex = 0;
+      draft = "";
       input.value = seedSource;
       input.disabled = false;
       rehighlight();
@@ -665,11 +720,62 @@
     });
   }
 
+  // A lazy REPL — used by the stdlib reference, one per builtin — stays a
+  // static, highlighted snippet (its fallback) until the reader clicks Run.
+  // Only then does it become a live REPL (enhanceRepl) seeded with the example,
+  // which it evaluates once. Deferring keeps a page full of examples cheap: no
+  // textareas or wasm until something is actually run.
+  function enhanceLazyRepl(container) {
+    var fallback = container.querySelector(".dang-repl-fallback");
+    if (!fallback) return;
+
+    var bar = document.createElement("div");
+    bar.className = "stdlib-example-bar";
+    var label = document.createElement("span");
+    label.className = "stdlib-example-label";
+    label.textContent = "Example";
+    var spacer = document.createElement("span");
+    spacer.style.flex = "1";
+    var runBtn = document.createElement("button");
+    runBtn.className = "dang-playground-btn dang-playground-run";
+    runBtn.type = "button";
+    runBtn.textContent = "Run ▶";
+    bar.appendChild(label);
+    bar.appendChild(spacer);
+    bar.appendChild(runBtn);
+    container.appendChild(bar);
+
+    // Warm the (shared, cached) tree-sitter highlighter on intent, so it's
+    // ready by the time the click lands. Without this the lazy example is the
+    // first thing on a stdlib page to load tree-sitter, and enhanceRepl below
+    // builds *and* runs the seed synchronously — before highlighting is ready —
+    // so the first transcript entry would paint plain. Still lazy: nothing
+    // loads on mere page load, only once the reader reaches for Run.
+    var warmed = false;
+    function warm() {
+      if (warmed) return;
+      warmed = true;
+      loadTreeSitter();
+    }
+    runBtn.addEventListener("pointerenter", warm);
+    runBtn.addEventListener("focus", warm);
+
+    runBtn.addEventListener("click", function () {
+      // enhanceRepl reads the fallback for its seed, wipes the container, and
+      // builds the live REPL; then we trigger its Run to show the result.
+      enhanceRepl(container);
+      var liveRun = container.querySelector(".dang-repl-run");
+      if (liveRun) liveRun.click();
+    });
+  }
+
   function init() {
     var blocks = document.querySelectorAll("[data-dang-playground]");
     for (var i = 0; i < blocks.length; i++) enhance(blocks[i]);
     var repls = document.querySelectorAll("[data-dang-repl]");
     for (var j = 0; j < repls.length; j++) enhanceRepl(repls[j]);
+    var lazies = document.querySelectorAll("[data-dang-repl-lazy]");
+    for (var k = 0; k < lazies.length; k++) enhanceLazyRepl(lazies[k]);
   }
 
   // Capture any OAuth token handed back in the fragment before enhancing, so

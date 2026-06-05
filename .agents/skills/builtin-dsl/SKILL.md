@@ -26,6 +26,7 @@ Only add a global function when it doesn't naturally belong to one type
 ```go
 Builtin("print").
     Doc("prints a value to stdout").
+    Example(`print("hello, world")`).
     Params("value", TypeVar('a')).
     Returns(TypeVar('n')).
     Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -41,6 +42,7 @@ Builtin("print").
 ```go
 Method(StringType, "toUpper").
     Doc("converts a string to uppercase").
+    Example(`"hello".toUpper`).
     Returns(NonNull(StringType)).
     Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
         str := self.(StringValue).Val
@@ -49,6 +51,19 @@ Method(StringType, "toUpper").
 ```
 
 Receiver types currently available: `StringType`, `IntType`, `BooleanType`.
+
+## Examples are required
+
+Every builtin must declare `.Example(...)`: a tiny, self-contained snippet of
+Dang that evaluates to something illustrative. The stdlib reference renders it
+as a pre-seeded, runnable REPL, and two tests enforce it
+(`pkg/dang/stdlib_examples_test.go`): one fails if any builtin lacks an example,
+the other parses + type-checks + evaluates every example so it can't drift from
+the implementation. Keep examples runnable in the core language only (no GraphQL
+imports), and write them as a reader would call the builtin — e.g.
+`` `"a,b,c".split(",")` ``, `` `[1, 2, 3].map { x => x * 2 }` ``,
+`` `Random.int(1, 7)` ``. A regex example needs a Go double-quoted string since
+Dang regex literals use backticks: `` Example("\"abc123\".containsMatch(`\\d+`)") ``.
 
 ## Optional parameters with defaults
 
