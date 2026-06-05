@@ -1,10 +1,14 @@
 package dangdocs
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
 
+	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/vito/booklit"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
@@ -20,6 +24,11 @@ import (
 // anchored card titled by its signature, and a long group is preceded by a
 // quick-scan index. We deliberately leave out bass-isms that don't apply to
 // Dang (per-line source links, type predicates).
+//
+// Signatures are highlighted at build time with chroma (the same "dang" lexer
+// and style as the site's code blocks). chroma's regex lexer tolerates these
+// declaration-style signatures — which aren't always complete Dang programs —
+// far more gracefully than the tree-sitter parser would.
 
 // indexThreshold is the group size above which a quick-scan index is rendered
 // before the cards. Small groups read fine as bare cards.
@@ -33,7 +42,7 @@ func (p Plugin) StdlibFunctions() booklit.Content {
 	dang.ForEachFunction(func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return p.stdlibModule(defs, "", "fn")
+	return p.stdlibModule(defs, "", "fn", "")
 }
 
 // StdlibMethods renders the builtin methods of a receiver type, named by its
@@ -51,7 +60,7 @@ func (p Plugin) StdlibMethods(name booklit.Content) (booklit.Content, error) {
 	dang.ForEachMethod(recv, func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return p.stdlibModule(defs, ".", typeName), nil
+	return p.stdlibModule(defs, ".", typeName, typeName), nil
 }
 
 // StdlibStatics renders the static methods of a module, named by its Dang type
@@ -69,7 +78,7 @@ func (p Plugin) StdlibStatics(name booklit.Content) (booklit.Content, error) {
 	dang.ForEachStaticMethod(mod, func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return p.stdlibModule(defs, moduleName+".", moduleName), nil
+	return p.stdlibModule(defs, moduleName+".", moduleName, moduleName), nil
 }
 
 func receiverByName(name string) *dang.Type {
@@ -92,16 +101,24 @@ func moduleByName(name string) *dang.Type {
 
 // stdlibModule renders a group of builtin definitions, sorted alphabetically,
 // as anchored signature cards. prefix is prepended to each name to form its
-// callable form (e.g. "." for methods, "Random." for statics); key namespaces
-// the anchors so identically-named entries across groups stay unique.
+// displayed callable form (e.g. "." for methods, "Random." for statics); key
+// namespaces the anchors so identically-named entries across groups stay
+// unique. qualifier is the receiver/module type name ("" for free functions);
+// it is used to fully qualify the search-index title so a result reads
+// "List.uniq: [a]!" rather than the bare ".uniq: [a]!".
 //
 // Each card carries a booklit.Target so its signature and description land in
 // the search index and become a linkable anchor; the index and the card's own
 // title link to it via booklit.Reference.
-func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit.Content {
+func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier string) booklit.Content {
 	sort.SliceStable(defs, func(i, j int) bool {
 		return defs[i].Name < defs[j].Name
 	})
+
+	titlePrefix := ""
+	if qualifier != "" {
+		titlePrefix = qualifier + "."
+	}
 
 	cards := make(booklit.Sequence, 0, len(defs))
 	rows := make(booklit.Sequence, 0, len(defs))
@@ -121,7 +138,7 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit
 			"Target": booklit.Target{
 				TagName:  tag,
 				Location: p.section.InvokeLocation,
-				Title:    booklit.String(sig),
+				Title:    booklit.String(signature(d, titlePrefix)),
 				Content:  desc,
 			},
 			"Reference": &booklit.Reference{Section: p.section, TagName: tag},
@@ -135,7 +152,7 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  booklit.String(sig),
+			Content:  highlightSignature(sig),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
@@ -172,6 +189,28 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit
 
 func stdlibTag(key, name string) string {
 	return "stdlib-" + key + "-" + name
+}
+
+// highlightSignature renders a signature as inline, syntax-highlighted HTML
+// using the same chroma "dang" lexer and style (styles.Fallback) as the site's
+// code blocks. The result is self-contained — chroma inlines the colors and the
+// dark code background onto the <code> element — so it needs no extra CSS.
+func highlightSignature(sig string) booklit.Content {
+	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(sig)}
+
+	lexer := lexers.Get("dang")
+	if lexer == nil {
+		return plain
+	}
+	iterator, err := lexer.Tokenise(nil, sig)
+	if err != nil {
+		return plain
+	}
+	var buf bytes.Buffer
+	if err := chromahtml.New(chromahtml.InlineCode(true)).Format(&buf, styles.Fallback, iterator); err != nil {
+		return plain
+	}
+	return booklit.Styled{Style: "raw-html", Content: booklit.String(buf.String())}
 }
 
 // signature renders a builtin's call signature in Dang declaration form, e.g.

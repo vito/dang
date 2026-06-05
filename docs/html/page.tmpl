@@ -216,14 +216,12 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 /* booklit.Target renders an empty <a id> anchor; give it scroll offset and use
    it to highlight the signature it precedes when linked. */
 .stdlib-entry>a[id]{display:block;scroll-margin-top:1.5rem}
-.stdlib-sig{
-  display:block;text-decoration:none;
-  background:var(--bg2);border:1px solid var(--code-border);border-left:3px solid var(--accent);
-  border-radius:0 6px 6px 0;padding:.5rem .8rem;
-}
-.stdlib-sig:hover{background:var(--bg3)}
-.stdlib-sig code{color:var(--fg);font-size:.82rem;white-space:pre-wrap;word-break:break-word}
-.stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);background:var(--bg3)}
+/* The signature is chroma-highlighted: its <code> carries the dark code
+   background and base color inline, so the bar just adds layout + accent edge. */
+.stdlib-sig{display:block;text-decoration:none;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;overflow:hidden}
+.stdlib-sig code{display:block;padding:.5rem .8rem;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+.stdlib-sig:hover{border-left-color:var(--accent2)}
+.stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
 .stdlib-desc{color:var(--fg2);font-size:.9rem;margin:.4rem 0 0 .85rem}
 
 .links p{margin:0}
