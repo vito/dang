@@ -1089,11 +1089,9 @@ func (m MapValue) With(key string, value Value) MapValue {
 	for k, v := range m.Entries {
 		entries[k] = v
 	}
-	keys := m.Keys
+	keys := append([]string{}, m.Keys...)
 	if _, exists := entries[key]; !exists {
-		keys = append(append([]string{}, m.Keys...), key)
-	} else {
-		keys = append([]string{}, m.Keys...)
+		keys = append(keys, key)
 	}
 	entries[key] = value
 	return MapValue{Keys: keys, Entries: entries, ValType: m.ValType}
