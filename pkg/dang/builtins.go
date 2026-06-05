@@ -277,6 +277,12 @@ func (b *BuiltinBuilder) Doc(doc string) *BuiltinBuilder {
 	return b
 }
 
+// Example sets a runnable snippet of Dang demonstrating the function.
+func (b *BuiltinBuilder) Example(code string) *BuiltinBuilder {
+	b.def.Example = code
+	return b
+}
+
 // Params adds parameters to the function.
 //
 // Usage: Params("name", type) or
@@ -330,6 +336,12 @@ func (b *MethodBuilder) Doc(doc string) *MethodBuilder {
 	return b
 }
 
+// Example sets a runnable snippet of Dang demonstrating the method.
+func (b *MethodBuilder) Example(code string) *MethodBuilder {
+	b.def.Example = code
+	return b
+}
+
 // Params adds parameters to the method.
 func (b *MethodBuilder) Params(pairs ...any) *MethodBuilder {
 	b.def.ParamTypes = append(b.def.ParamTypes, parseParamDefs(pairs...)...)
@@ -377,6 +389,12 @@ func (b *StaticMethodBuilder) Doc(doc string) *StaticMethodBuilder {
 	return b
 }
 
+// Example sets a runnable snippet of Dang demonstrating the static method.
+func (b *StaticMethodBuilder) Example(code string) *StaticMethodBuilder {
+	b.def.Example = code
+	return b
+}
+
 // Params adds parameters to the static method.
 func (b *StaticMethodBuilder) Params(pairs ...any) *StaticMethodBuilder {
 	b.def.ParamTypes = append(b.def.ParamTypes, parseParamDefs(pairs...)...)
@@ -409,6 +427,10 @@ type BuiltinDef struct {
 	ReturnType   hm.Type
 	Impl         func(ctx context.Context, self Value, args Args) (Value, error)
 	Doc          string
+	// Example is a tiny, self-contained snippet of Dang that exercises the
+	// builtin. The docs reference renders it as a pre-seeded, runnable REPL,
+	// and a test evaluates every example to keep them honest.
+	Example string
 }
 
 // ParamDef defines a parameter with optional default value.
