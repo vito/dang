@@ -70,7 +70,7 @@ blockquote strong, .inset strong{color:var(--accent2)}
 
 pre{
   background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
-  padding:1rem 1.25rem !important;font-size:.8rem;line-height:1.65;overflow-x:auto;margin:.75rem 0;
+  padding:1rem 1.25rem;font-size:.8rem;line-height:1.65;overflow-x:auto;margin:.75rem 0;
 }
 pre code{display:block}
 
@@ -114,17 +114,18 @@ pre code{display:block}
   color:transparent;caret-color:#c9d1d9;background:transparent;outline:none;
 }
 .dang-playground-input::selection{background:rgba(110,140,220,.35)}
-/* token colors — mirror the chroma "dang" palette used elsewhere on the site */
-.dang-playground-highlight .tok-keyword{color:#ff7b72}
-.dang-playground-highlight .tok-type{color:#79c0ff}
-.dang-playground-highlight .tok-string{color:#a5d6ff}
-.dang-playground-highlight .tok-number{color:#79c0ff}
-.dang-playground-highlight .tok-function{color:#d2a8ff}
-.dang-playground-highlight .tok-operator{color:#ff7b72}
-.dang-playground-highlight .tok-label{color:#7ee787}
-.dang-playground-highlight .tok-comment{color:#6e7681;font-style:italic}
-.dang-playground-highlight .tok-variable,
-.dang-playground-highlight .tok-punct{color:#c9d1d9}
+/* token colors — mirror the chroma "dang" palette used elsewhere on the site.
+   Shared by the playground and the REPL (both highlight on a dark code area). */
+.tok-keyword{color:#ff7b72}
+.tok-type{color:#79c0ff}
+.tok-string{color:#a5d6ff}
+.tok-number{color:#79c0ff}
+.tok-function{color:#d2a8ff}
+.tok-operator{color:#ff7b72}
+.tok-label{color:#7ee787}
+.tok-comment{color:#6e7681;font-style:italic}
+.tok-variable,
+.tok-punct{color:#c9d1d9}
 .dang-playground-output{
   border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
   font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
@@ -135,6 +136,64 @@ pre code{display:block}
 .dang-playground-result{color:var(--green);white-space:pre-wrap}
 .dang-playground-error{color:var(--pink);white-space:pre-wrap}
 .dang-playground-fallback{
+  background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+}
+
+/* ── interactive REPL ────────────────────────────────────────────────── */
+.dang-repl{
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
+  margin:1rem 0;overflow:hidden;
+}
+.dang-repl-bar{
+  display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem .45rem .9rem;
+  background:var(--bg2);border-bottom:1px solid var(--code-border);
+}
+.dang-repl-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
+/* The code area is fixed-dark to match the site's (always dark) code blocks. */
+.dang-repl-body{background:#0d1117}
+.dang-repl-entry{border-bottom:1px solid rgba(48,54,61,.4)}
+/* prompt + highlighted source, and prompt + input, share these metrics so the
+   transcript and the live line align into one column. */
+.dang-repl-code,
+.dang-repl-inputrow{display:flex;gap:.5rem;align-items:flex-start;padding:.5rem 1.25rem}
+.dang-repl-code{padding-bottom:.2rem}
+.dang-repl-prompt{
+  flex-shrink:0;user-select:none;color:var(--accent);
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+}
+.dang-repl-codehl{
+  flex:1;margin:0;padding:0;border:0;background:transparent;color:#c9d1d9;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
+}
+/* Result/output sits flush under the prompt, matching the CLI REPL's "=>". */
+.dang-repl-out{
+  padding:.1rem 1.25rem .5rem;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  color:var(--fg2);white-space:pre-wrap;word-break:break-word;
+}
+.dang-repl-out.is-empty{display:none}
+/* Live input row: a transparent textarea over a highlighted layer, like the
+   playground's editor, but seamless with the transcript above it. */
+.dang-repl-editor{position:relative;flex:1}
+.dang-repl-highlight,
+.dang-repl-input{
+  margin:0;border:0;box-sizing:border-box;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  padding:0;tab-size:2;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
+}
+.dang-repl-highlight{
+  position:absolute;inset:0;pointer-events:none;overflow:hidden;
+  color:#c9d1d9;background:transparent;
+}
+.dang-repl-input{
+  position:relative;z-index:1;display:block;width:100%;resize:none;overflow:hidden;
+  color:transparent;caret-color:#c9d1d9;background:transparent;outline:none;
+}
+.dang-repl-input::selection{background:rgba(110,140,220,.35)}
+.dang-repl-input:disabled{cursor:default}
+.dang-repl-fallback{
   background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
   font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
 }

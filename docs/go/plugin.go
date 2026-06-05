@@ -116,6 +116,25 @@ func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
 	}
 }
 
+// DangRepl renders an interactive Dang REPL that evaluates entries
+// client-side via the WebAssembly module (see cmd/dang-playground). State
+// accumulates across entries within a session, just like the CLI REPL. The
+// code is the seed for the first input, passed verbatim so braces and quotes
+// survive:
+//
+//	\dang-repl{{{
+//	[1, 2, 3].map { x => x * 2 }
+//	}}}
+//
+// Without JavaScript it degrades to a plain (non-highlighted) code block.
+func (p Plugin) DangRepl(code booklit.Content) booklit.Content {
+	return booklit.Styled{
+		Style:   "dang-repl",
+		Content: code,
+		Block:   true,
+	}
+}
+
 // HeaderLinks renders a horizontal row of navigation links.
 //
 //	\header-links{
