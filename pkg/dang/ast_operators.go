@@ -18,6 +18,20 @@ const (
 // BinaryOperatorEvaluator defines the evaluation function for specific operators
 type BinaryOperatorEvaluator func(leftVal, rightVal Value) (Value, error)
 
+// operandClass is the set of value categories an arithmetic operator accepts.
+// It is the static shadow of what each EvalFunc supports at runtime, letting
+// the type checker reject e.g. `"a" * "b"` at definition time rather than
+// failing mid-evaluation.
+type operandClass uint8
+
+const (
+	numericOperand operandClass = 1 << iota // Int and Float (which may mix)
+	stringOperand                           // String, e.g. concatenation with +
+	listOperand                             // [a], e.g. concatenation with +
+)
+
+func (c operandClass) has(x operandClass) bool { return c&x != 0 }
+
 // BinaryOperator provides common functionality for binary operators
 type BinaryOperator struct {
 	InferredTypeHolder
@@ -26,6 +40,7 @@ type BinaryOperator struct {
 	Loc      *SourceLocation
 	OpType   OperatorType
 	OpName   string
+	Operands operandClass // accepted operand categories (ArithmeticOp only)
 	EvalFunc BinaryOperatorEvaluator
 }
 
@@ -94,12 +109,7 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 			if tv, ok := unconstrainedVar(rt); ok {
 				return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
 			}
-			// Unify types and return the unified type
-			subs, err := hm.Assignable(rt, lt)
-			if err != nil {
-				return nil, err
-			}
-			return lt.Apply(subs).(hm.Type), nil
+			return b.arithmeticType(lt, rt)
 		case ComparisonOp:
 			// Validate types but always return Boolean
 			return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", b.Loc}}.Infer(ctx, env, fresh)
@@ -108,6 +118,79 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 		}
 	})
 }
+
+// arithmeticType resolves the result type of an arithmetic operator and rejects
+// operands outside the operator's declared domain (e.g. `"a" * "b"`). It also
+// allows Int and Float to mix, widening the result to Float when either side is
+// Float — something the old "assign right to left" check rejected.
+func (b *BinaryOperator) arithmeticType(lt, rt hm.Type) (hm.Type, error) {
+	// If either side is still an open inference variable, we cannot domain-check
+	// yet; fall back to plain unification and let later constraints decide.
+	// (Rigid signature variables were already rejected by the caller.)
+	if hasFreeVar(lt) || hasFreeVar(rt) {
+		subs, err := hm.Assignable(rt, lt)
+		if err != nil {
+			return nil, err
+		}
+		return lt.Apply(subs).(hm.Type), nil
+	}
+
+	lb, lNonNull := stripNonNull(lt)
+	rb, rNonNull := stripNonNull(rt)
+	nonNull := lNonNull && rNonNull
+
+	switch {
+	case b.Operands.has(numericOperand) && isNumeric(lb) && isNumeric(rb):
+		result := IntType
+		if lb == FloatType || rb == FloatType {
+			result = FloatType
+		}
+		return withNonNull(result, nonNull), nil
+	case b.Operands.has(stringOperand) && lb == StringType && rb == StringType:
+		return withNonNull(StringType, nonNull), nil
+	case b.Operands.has(listOperand) && isList(lb) && isList(rb):
+		// Both sides are lists; unify their element types.
+		subs, err := hm.Assignable(rt, lt)
+		if err != nil {
+			return nil, err
+		}
+		return lt.Apply(subs).(hm.Type), nil
+	}
+
+	if !lt.Eq(rt) {
+		return nil, fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt)
+	}
+	return nil, fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt)
+}
+
+// stripNonNull unwraps a NonNullType, reporting whether the wrapper was present.
+func stripNonNull(t hm.Type) (hm.Type, bool) {
+	if nn, ok := t.(hm.NonNullType); ok {
+		return nn.Type, true
+	}
+	return t, false
+}
+
+// withNonNull re-applies a NonNull wrapper when nonNull is true.
+func withNonNull(t hm.Type, nonNull bool) hm.Type {
+	if nonNull {
+		return hm.NonNullType{Type: t}
+	}
+	return t
+}
+
+func isNumeric(t hm.Type) bool { return t == IntType || t == FloatType }
+
+func isList(t hm.Type) bool {
+	switch t.(type) {
+	case ListType, GraphQLListType:
+		return true
+	default:
+		return false
+	}
+}
+
+func hasFreeVar(t hm.Type) bool { return len(t.FreeTypeVar()) > 0 }
 
 // Common evaluation logic
 func (b *BinaryOperator) Eval(ctx context.Context, scope ValueScope) (Value, error) {
@@ -495,6 +578,7 @@ func NewAddition(left, right Node, loc *SourceLocation) *Addition {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "addition",
+			Operands: numericOperand | stringOperand | listOperand,
 			EvalFunc: additionEval,
 		},
 	}
@@ -523,6 +607,7 @@ func NewSubtraction(left, right Node, loc *SourceLocation) *Subtraction {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "subtraction",
+			Operands: numericOperand,
 			EvalFunc: subtractionEval,
 		},
 	}
@@ -551,6 +636,7 @@ func NewMultiplication(left, right Node, loc *SourceLocation) *Multiplication {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "multiplication",
+			Operands: numericOperand,
 			EvalFunc: multiplicationEval,
 		},
 	}
@@ -579,6 +665,7 @@ func NewDivision(left, right Node, loc *SourceLocation) *Division {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "division",
+			Operands: numericOperand,
 			EvalFunc: divisionEval,
 		},
 	}
@@ -607,6 +694,7 @@ func NewModulo(left, right Node, loc *SourceLocation) *Modulo {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "modulo",
+			Operands: numericOperand,
 			EvalFunc: moduloEval,
 		},
 	}

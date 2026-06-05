@@ -1,0 +1,6 @@
+# Test: an operator is rejected when its operands, though matching each other,
+# are outside the operator's domain. `*` is numeric-only, so multiplying two
+# strings is a type error rather than a runtime failure.
+
+# ERROR: multiplication is not defined for String
+pub result = "a" * "b"

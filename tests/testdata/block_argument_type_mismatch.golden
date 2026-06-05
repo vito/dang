@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use Int! as String!
+[1m[31mError:[0m operator addition is not defined between types String! and Int!
   [2m[34m--> errors/block_argument_type_mismatch.dang:2:22[0m
  [2m    |[0m
  [2m  1 | # Test lambda argument type mismatch[0m

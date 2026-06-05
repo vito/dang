@@ -13,7 +13,7 @@ Error 1:
 
 
 Error 2:
-[1m[31mError:[0m cannot use Int! as String!
+[1m[31mError:[0m operator addition is not defined between types String! and Int!
   [2m[34m--> errors/multiple_type_errors.dang:2:20[0m
  [2m    |[0m
  [2m  1 | # Test multiple type errors in one file[0m

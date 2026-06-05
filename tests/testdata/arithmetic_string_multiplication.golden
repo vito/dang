@@ -1,0 +1,10 @@
+[1m[31mError:[0m operator multiplication is not defined for type String!
+  [2m[34m--> errors/arithmetic_string_multiplication.dang:6:14[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | # ERROR: multiplication is not defined for String[0m
+ [2m[34m[1m  6 | [0mpub result = "a" * "b"
+[2m                    [31m^^^^^^^^^[0m
+ [2m  7 | [0m
+ [2m    |[0m
+
