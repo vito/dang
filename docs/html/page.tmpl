@@ -202,6 +202,27 @@ table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
 th{text-align:left;padding:.5rem .6rem;color:var(--fg3);font-weight:500;border-bottom:1px solid var(--code-border)}
 td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 
+/* ── stdlib reference ────────────────────────────────────────────────── */
+/* A quick-scan index (name → one-liner) precedes long groups; each entry
+   below is an anchored card titled by its signature. */
+.stdlib-index{width:auto;margin:.5rem 0 2rem}
+.stdlib-index td{border-bottom:1px solid var(--td-border);vertical-align:baseline;padding:.25rem .6rem}
+.stdlib-index-name{white-space:nowrap;text-align:right;padding-right:1rem}
+.stdlib-index-name a{text-decoration:none}
+.stdlib-index-name a:hover code{color:var(--accent2)}
+.stdlib-index-name code{font-size:.82rem;color:var(--fg)}
+.stdlib-index-desc{color:var(--fg2)}
+.stdlib-entry{margin:1.25rem 0;scroll-margin-top:1.5rem}
+.stdlib-sig{
+  display:block;text-decoration:none;
+  background:var(--bg2);border:1px solid var(--code-border);border-left:3px solid var(--accent);
+  border-radius:0 6px 6px 0;padding:.5rem .8rem;
+}
+.stdlib-sig:hover{background:var(--bg3)}
+.stdlib-sig code{color:var(--fg);font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+.stdlib-entry:target .stdlib-sig{border-left-color:var(--accent2);background:var(--bg3)}
+.stdlib-desc{color:var(--fg2);font-size:.9rem;margin:.4rem 0 0 .85rem}
+
 .links p{margin:0}
 
 .screenshot{margin:.75rem 0}

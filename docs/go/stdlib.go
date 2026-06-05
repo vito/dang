@@ -15,6 +15,15 @@ import (
 // assert.go). Each entry's signature comes from the registered parameter,
 // block, and return types; its description comes from the builtin's .Doc(...).
 // Editing a builtin updates this page — there is nothing to hand-maintain.
+//
+// The layout mirrors vito/bass's stdlib page: every definition becomes an
+// anchored card titled by its signature, and a long group is preceded by a
+// quick-scan index. We deliberately leave out bass-isms that don't apply to
+// Dang (per-line source links, type predicates).
+
+// indexThreshold is the group size above which a quick-scan index is rendered
+// before the cards. Small groups read fine as bare cards.
+const indexThreshold = 8
 
 // StdlibFunctions renders the top-level builtin functions (alphabetical).
 //
@@ -24,7 +33,7 @@ func (p Plugin) StdlibFunctions() booklit.Content {
 	dang.ForEachFunction(func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return stdlibList(defs, "")
+	return stdlibModule(defs, "", "fn")
 }
 
 // StdlibMethods renders the builtin methods of a receiver type, named by its
@@ -42,7 +51,7 @@ func (p Plugin) StdlibMethods(name booklit.Content) (booklit.Content, error) {
 	dang.ForEachMethod(recv, func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return stdlibList(defs, "."), nil
+	return stdlibModule(defs, ".", typeName), nil
 }
 
 // StdlibStatics renders the static methods of a module, named by its Dang type
@@ -60,7 +69,7 @@ func (p Plugin) StdlibStatics(name booklit.Content) (booklit.Content, error) {
 	dang.ForEachStaticMethod(mod, func(d dang.BuiltinDef) {
 		defs = append(defs, d)
 	})
-	return stdlibList(defs, moduleName+"."), nil
+	return stdlibModule(defs, moduleName+".", moduleName), nil
 }
 
 func receiverByName(name string) *dang.Type {
@@ -81,28 +90,60 @@ func moduleByName(name string) *dang.Type {
 	return nil
 }
 
-// stdlibList renders builtin definitions as a bullet list of
-// "`signature` — description" entries, sorted alphabetically by name.
-func stdlibList(defs []dang.BuiltinDef, prefix string) booklit.Content {
+// stdlibModule renders a group of builtin definitions, sorted alphabetically,
+// as anchored signature cards. prefix is prepended to each name to form its
+// callable form (e.g. "." for methods, "Random." for statics); key namespaces
+// the anchors so identically-named entries across groups stay unique.
+func stdlibModule(defs []dang.BuiltinDef, prefix, key string) booklit.Content {
 	sort.SliceStable(defs, func(i, j int) bool {
 		return defs[i].Name < defs[j].Name
 	})
 
-	items := make([]booklit.Content, 0, len(defs))
+	cards := make(booklit.Sequence, 0, len(defs))
+	rows := make(booklit.Sequence, 0, len(defs))
 	for _, d := range defs {
-		entry := booklit.Sequence{
-			booklit.Styled{
-				Style:   booklit.StyleVerbatim,
-				Content: booklit.String(signature(d, prefix)),
-			},
-		}
+		tag := stdlibTag(key, d.Name)
+
+		cardPartials := booklit.Partials{"Tag": booklit.String(tag)}
+		rowPartials := booklit.Partials{"Tag": booklit.String(tag)}
 		if d.Doc != "" {
-			entry = append(entry, booklit.String(" — "+d.Doc))
+			cardPartials["Description"] = booklit.String(d.Doc)
+			rowPartials["Description"] = booklit.String(d.Doc)
 		}
-		items = append(items, entry)
+
+		cards = append(cards, booklit.Styled{
+			Style:    "stdlib-entry",
+			Block:    true,
+			Content:  booklit.String(signature(d, prefix)),
+			Partials: cardPartials,
+		})
+		rows = append(rows, booklit.Styled{
+			Style:    "stdlib-index-entry",
+			Block:    true,
+			Content:  booklit.String(prefix + d.Name),
+			Partials: rowPartials,
+		})
 	}
 
-	return booklit.List{Items: items}
+	partials := booklit.Partials{}
+	if len(defs) > indexThreshold {
+		partials["Index"] = booklit.Styled{
+			Style:   "stdlib-index",
+			Block:   true,
+			Content: rows,
+		}
+	}
+
+	return booklit.Styled{
+		Style:    "stdlib-module",
+		Block:    true,
+		Content:  cards,
+		Partials: partials,
+	}
+}
+
+func stdlibTag(key, name string) string {
+	return "stdlib-" + key + "-" + name
 }
 
 // signature renders a builtin's call signature, e.g.
