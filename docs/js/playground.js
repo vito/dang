@@ -702,6 +702,21 @@
     bar.appendChild(runBtn);
     container.appendChild(bar);
 
+    // Warm the (shared, cached) tree-sitter highlighter on intent, so it's
+    // ready by the time the click lands. Without this the lazy example is the
+    // first thing on a stdlib page to load tree-sitter, and enhanceRepl below
+    // builds *and* runs the seed synchronously — before highlighting is ready —
+    // so the first transcript entry would paint plain. Still lazy: nothing
+    // loads on mere page load, only once the reader reaches for Run.
+    var warmed = false;
+    function warm() {
+      if (warmed) return;
+      warmed = true;
+      loadTreeSitter();
+    }
+    runBtn.addEventListener("pointerenter", warm);
+    runBtn.addEventListener("focus", warm);
+
     runBtn.addEventListener("click", function () {
       // enhanceRepl reads the fallback for its seed, wipes the container, and
       // builds the live REPL; then we trigger its Run to show the result.
