@@ -7,7 +7,7 @@
 ## A single file is a module
 
 - top-level declarations are the module's surface
-- `pub` is exported, `let` is private (see [#fields])
+- public (the default) is exported, `let` is private (see [#fields])
 - order doesn't matter — declarations are hoisted; forward references work
 
 ## A directory is also a module
@@ -85,7 +85,7 @@ import MyApi
 
 ## What a module exports
 
-- every `pub` field, type, interface, union, enum, scalar, directive
+- every public (non-`let`) field, type, interface, union, enum, scalar, directive
 - nothing `let`
 
 > Meta: `dang.toml` discovery walks up from the file's directory to the nearest `.git` boundary; the `dang` CLI runs the resolved module (see [#cli]).

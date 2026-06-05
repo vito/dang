@@ -12,7 +12,7 @@ let status: Status! = fromJSON("\"PASSED\"")
 let cfg = fromYAML("name: foo\ncount: 1")
 ```
 
-- parsing is type-driven: the expected type guides decoding. The type comes from a `::` cast ([#types]), an annotation, or the parameter/return type at the call site (`fromJSON(...) :: Status!`, `let x: Summary! = fromJSON(...)`, `pub f(d: String!): Summary! { fromJSON(d) }`)
+- parsing is type-driven: the expected type guides decoding. The type comes from a `::` cast ([#types]), an annotation, or the parameter/return type at the call site (`fromJSON(...) :: Status!`, `let x: Summary! = fromJSON(...)`, `f(d: String!): Summary! { fromJSON(d) }`)
 - works for primitives, lists, records, custom types ([#objects]), enums ([#enums-scalars])
 - unknown/extra fields in the input are ignored, not errors
 - `fromJSON` rejects trailing data after the first value

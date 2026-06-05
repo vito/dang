@@ -26,7 +26,7 @@
 
 - a file is a sequence of declarations and forms (the start rule is `Dang`; see [#grammar])
 - declarations are hoisted and order-independent within a file/directory
-- `pub` exposes a name; `let` keeps it private (both are visibility keywords on field declarations)
+- names are public by default; `let` keeps a name private/local (`pub` is an accepted, legacy marker that `dang fmt` removes — see [#fields])
 - `assert { ... }` is built in — high-level testing without a framework ([#stdlib], [#errors])
 
 ## Runtime model in one paragraph

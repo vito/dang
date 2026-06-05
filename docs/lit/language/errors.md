@@ -22,12 +22,12 @@ raise NotFoundError(message: "user gone", resource: "User")
 
 ```dang
 interface Error {
-  pub message: String!
+  message: String!
 }
 ```
 
 - `Error` is a real prelude interface; `BasicError` is the built-in implementer for string raises
-- user error types must `implements Error`, which forces a `pub message: String!` field (see [#interfaces-unions])
+- user error types must `implements Error`, which forces a `message: String!` field (see [#interfaces-unions])
 - additional fields are preserved on the raised value and matchable in `catch` (e.g. `resource`, `field`, `code`)
 - `Error!` is usable like any interface type — as a fn param, in a type pattern, etc.
 

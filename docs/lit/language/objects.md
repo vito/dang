@@ -8,27 +8,28 @@
 
 ```dang
 type Person {
-  pub name: String!
-  pub age: Int! = 0
+  name: String!
+  age: Int! = 0
 
-  pub greet: String! {
+  greet: String! {
     "hi, I'm " + name
   }
 }
 ```
 
 - declares a type `Person` and a constructor function `Person`
-- members are fields or methods, indistinguishable in syntax (`pub`/`let` + `name` + optional `: Type`, `= default`, or `{ body }`)
+- members are fields or methods, indistinguishable in syntax (`name` + optional `: Type`, `= default`, or `{ body }`); `let` makes a member private
 
 ## Public vs. private members
 
-- `pub` — readable from outside the type; default visibility for a `type`
+- a bare member is **public** — readable from outside the type; public is the default for a `type`
 - `let` — readable only inside the type's own methods/defaults (private)
+- `pub` is still accepted as an explicit public marker, but it is redundant and `dang fmt` removes it (see [#fields])
 - whether a member is a **constructor parameter** depends on having NO default, NOT on visibility:
-  - `pub x: T!` (no default) → required positional param
-  - `pub x: T! = d` / `pub x = d` → optional param (default `d`)
+  - `x: T!` (no default) → required positional param
+  - `x: T! = d` → optional param (default `d`)
   - `let x: T!` (no default) → required positional param too, e.g. `Foo("public_value", "private_value")`
-  - `let x: T! = d` / `let x = d` → NOT a param; the default is used
+  - `let x: T! = d` → NOT a param; the default is used
   - method/computed members (have a `{ body }`) are never constructor params
 
 ## Implicit constructor
@@ -47,13 +48,13 @@ Person(name: "Alice")
 
 - a type whose constructor needs nothing (all fields have defaults / no required params) constructs on bare reference:
   `let p = Person` ≡ `let p = Person()`
-- exception: a constructor that requires a **block argument** is NOT auto-called by a bare reference (`pub loop: Loop! = Loop` is an error)
+- exception: a constructor that requires a **block argument** is NOT auto-called by a bare reference (`loop: Loop! = Loop` is an error)
 
 ## Explicit constructor: `new`
 
 ```dang
 type Greeter {
-  pub greeting: String!
+  greeting: String!
 
   new(name: String!) {
     self.greeting = "hello, " + name
@@ -93,7 +94,7 @@ type Greeter {
 - a member with a type and a body but no arg list is a computed field — a zero-arg function evaluated on `self` each access:
 
 ```dang
-pub fullName: String! { firstName + " " + lastName }
+fullName: String! { firstName + " " + lastName }
 ```
 
 - accessed like a plain field (`obj.fullName`, no call parens); recomputes against the current receiver

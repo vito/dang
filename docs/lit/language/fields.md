@@ -1,38 +1,77 @@
 \use-plugin{dang}
 
-# Fields: `pub` and `let` {#fields}
+# Fields {#fields}
 
-> Meta: this is also the right place to introduce the *field* concept, since `pub` and `let` declare fields whether they hold a value or a function. The object-context behavior is covered in [#objects] — link there, don't duplicate.
+> Meta: this is the right place to introduce the *field* concept. A field is declared by its shape, not by a keyword — lead with that, then visibility, then the declaration-vs-reassignment rule. The object-context behavior is covered in [#objects] — link there, don't duplicate.
 
-The `pub` and `let` keywords declare fields in the current scope:
+A **field** is a named, typed thing — a value, a function, or a computed
+expression — declared in the current scope:
 
 * Top-level fields, declared across `.dang` files in the same directory
 * Type-level fields declared within an [#objects] or [#interfaces-unions]
 * Block-level fields declared within the nearest enclosing `{` and `}`
 
-These keywords distinguish the expression from [#mutation], which updates an
-already-declared field.
+A field is recognized by its **shape**, not by a keyword: a name followed by a
+type annotation, a value, an argument list, or a block body.
 
-## Two visibilities
+```dang
+name: String!             # typed field
+greet: String! { ... }    # computed field / method
+add(x: Int!): Int! { x }  # method with args
+y: Int! = 100             # typed field with default
+```
 
-- `pub name = value` — exported; visible to importers and outside the type
-- `let name = value` — unexported. A *top-level* `let` is module-scoped: since a directory is one module, it is visible from every `.dang` file in that directory (just not exported). A *type-level* `let` is readable only inside that type's own methods/defaults. (So a top-level `let` in its own file is the way to share private helpers across a directory module — see [#modules].)
+## Visibility
+
+Fields are **public by default** — just write the declaration. The `let`
+keyword marks the non-default case:
+
+- a bare declaration is **public** — visible to importers and outside the type
+- `let name = value` is **private/local**. A *type-level* `let` is readable only
+  inside that type's own methods/defaults. A *block-level* `let` declares a
+  fresh local. A *top-level* `let` is module-scoped: since a directory is one
+  module, it is visible from every `.dang` file in that directory, just not
+  exported — the way to share private helpers across a directory module (see
+  [#modules]).
+
+`pub name = value` is still accepted as an explicit public marker, but it is
+redundant with the default. `dang fmt` and the LSP remove it, and it will
+eventually be retired — leaving bare declarations for public fields and `let`
+for local/private ones.
+
+## Declaration vs. reassignment
+
+A field declaration and a [#mutation] (`name = newValue`, which updates an
+already-declared field) can look alike. The shape decides which one it is:
+
+- a type annotation, argument list, or block body makes a declaration
+  unambiguous — **no keyword needed**
+- the bare, *untyped* `name = value` is the one exception: on its own it is a
+  **reassignment** of an existing field. To *declare* an untyped value field,
+  give it a keyword (`let x = 42`, or legacy `pub x = 42`) — or just annotate it
+  (`x: Int! = 42`)
+
+Rule of thumb: **if it has a `:`, you never need a keyword.**
 
 ## What a field is
 
 - a field is a named, typed thing — value, function, or computed expression
 - fields can carry an explicit type annotation
-- fields without a value (`pub name: Type`) act as required constructor parameters (in objects) or unresolved declarations
-- a `let` (private) required field with no default still becomes a required constructor parameter; a `let` field *with* a default does not
-- private fields with defaults are preferred over outer-scope bindings of the same name inside the type
+- fields without a value (`name: Type`) act as required constructor parameters
+  (in objects) or unresolved declarations
+- a `let` (private) required field with no default still becomes a required
+  constructor parameter; a `let` field *with* a default does not
+- private fields with defaults are preferred over outer-scope bindings of the
+  same name inside the type
 
 ## Forms
 
 ```dang
-pub x = 42                # inferred Int!
-pub y: Int! = 100         # explicit type
-pub maybe: String = null  # nullable
-let secret = "shhh"
+x: Int! = 42              # explicit type with default
+y: Int! = 100             # explicit type
+maybe: String = null      # nullable
+let secret = "shhh"       # private (untyped is fine for let)
+pub count = 0             # keyword required: untyped value field, else reassignment
 ```
 
 ## Forward references
@@ -44,7 +83,7 @@ tl;dr: they work.
 * field declarations may cross-reference fields in sibling files
 * types may forward-reference types declared later in the file
 * forward reads hidden behind function calls / computed defaults resolve via lazy module slots
-* a *direct* initializer cycle (`pub a = b`, `pub b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`
+* a *direct* initializer cycle (`a = b`, `b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`
 * a cycle hidden behind an auto-called function or constructor default is caught at runtime when the variable is forced: `initialization cycle while evaluating variable "..."`
 
 ## Docstrings
@@ -56,7 +95,7 @@ tl;dr: they work.
 """
 Greets the named user.
 """
-pub greet(name: String!): String! {
+greet(name: String!): String! {
   `hi, ${name}`
 }
 ```

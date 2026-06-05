@@ -13,7 +13,7 @@
 ## `if` / `else`
 
 ```dang
-pub status = if (active) { "on" } else { "off" }
+status: String! = if (active) { "on" } else { "off" }
 ```
 
 - condition must be `Boolean!` — no truthiness; a non-`Boolean` condition is a compile error (`condition must be Boolean, got Int!`)

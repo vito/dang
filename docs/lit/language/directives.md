@@ -29,19 +29,19 @@ directive @cache(ttl: Int! = 300, key: String) on FIELD_DEFINITION
 
 ```dang
 type Person @deprecated(reason: "use NewPerson") {
-  pub name: String! @deprecated
-  pub email: String! @cache(ttl: 60)
+  name: String! @deprecated
+  email: String! @cache(ttl: 60)
 }
 ```
 
-- suffix form attaches to the field or type: `pub name: String! @deprecated`
-- prefix form on its own, before the declaration: `@check pub validated: String! { ... }`
+- suffix form attaches to the field or type: `name: String! @deprecated`
+- prefix form on its own, before the declaration: `@check validated: String! { ... }`
 - both forms apply to types, fields, and function/field arguments (`process(user: Person! @experimental)`)
 - multiple prefix directives go on separate lines; prefix and suffix on the same declaration are both collected:
 
 ```dang
 @check
-pub mixedField: String! @cache(ttl: 120) { "mixed" }
+mixedField: String! @cache(ttl: 120) { "mixed" }
 ```
 
 ## Arguments
@@ -55,7 +55,7 @@ pub mixedField: String! @cache(ttl: 120) { "mixed" }
 
 - `@MyApi.experimental` disambiguates when an import shadows a name
 - if two imports both provide an unqualified directive, using it bare → `ambiguous reference to directive @experimental: provided by imports [...]`; qualify to resolve
-- qualified access is **suffix-only** — the prefix form does not accept a `Module.` scope (`@MyApi.experimental pub ...` is a syntax error)
+- qualified access is **suffix-only** — the prefix form does not accept a `Module.` scope (`@MyApi.experimental ...` is a syntax error)
 
 ## Common built-ins
 
