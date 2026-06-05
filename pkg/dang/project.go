@@ -138,7 +138,7 @@ func ResolveImportConfigs(ctx context.Context, config *ProjectConfig, configDir 
 
 // ResolveDaggerImport finds or creates a Dagger import for the given
 // directory. It searches the provided import configs for an existing Dagger
-// import; if none is found and a dagger.json exists, a default one is
+// import; if none is found and a Dagger module config file exists, a default one is
 // created. The import's schema is eagerly introspected (module-aware if
 // in a Dagger module directory).
 //
@@ -157,9 +157,9 @@ func ResolveDaggerImport(ctx context.Context, configs []ImportConfig, dir string
 	}
 
 	if daggerIdx == -1 {
-		// No explicit Dagger import — auto-create one if dagger.json exists
+		// No explicit Dagger import — auto-create one if Dagger module found
 		if moduleDir == "" {
-			slog.Debug("no Dagger import and no dagger.json found", "dir", dir)
+			slog.Debug("no Dagger import and no Dagger module found", "dir", dir)
 			return configs // no Dagger module, nothing to do
 		}
 		slog.Debug("auto-creating Dagger import", "moduleDir", moduleDir)

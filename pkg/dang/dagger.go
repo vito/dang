@@ -16,8 +16,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 )
 
-// FindDaggerModule searches for a dagger.json starting from dir, walking
-// up parent directories. Returns the directory containing dagger.json, or
+// FindDaggerModule searches for a Dagger module starting from dir, walking
+// up parent directories. Returns the directory containing a Dagger module config, or
 // empty string if not found. Stops at .git boundaries.
 func FindDaggerModule(startPath string) string {
 	dir, err := filepath.Abs(startPath)
@@ -25,7 +25,10 @@ func FindDaggerModule(startPath string) string {
 		return ""
 	}
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "dagger.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, "dagger-module.toml")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, "dagger.json")); err == nil { // Backward compatibility with pre 1.0
 			return dir
 		}
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
