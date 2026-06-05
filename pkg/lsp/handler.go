@@ -95,7 +95,7 @@ type File struct {
 	Diagnostics []Diagnostic
 	Symbols     *SymbolTable
 	AST         *dang.FileBlock // Parsed and type-annotated AST
-	TypeScope   dang.TypeScope    // Type environment after inference
+	TypeScope   dang.TypeScope  // Type environment after inference
 
 	// Synchronization for async file processing
 	mu         sync.Mutex
@@ -590,7 +590,7 @@ func (h *langHandler) resolveImports(ctx context.Context, fileDir string) ([]dan
 	}
 
 	// Resolve the Dagger import: use an explicit one from
-	// dang.toml or auto-detect from dagger.json. The schema
+	// dang.toml or auto-detect from Dagger module config. The schema
 	// is eagerly introspected (module-aware).
 	importConfigs = dang.ResolveDaggerImport(ctx, importConfigs, fileDir)
 
