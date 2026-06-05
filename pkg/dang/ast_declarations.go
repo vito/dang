@@ -173,6 +173,33 @@ func (f *FunctionBase) createFunctionValue(scope ValueScope, fnType *hm.Function
 }
 
 // inferFunctionType provides shared type inference logic for functions
+// skolemSubs builds a pair of substitutions over the free (flexible) type
+// variables appearing in a function's signature: skolem maps each to its rigid
+// counterpart (for checking the body), and unskolem maps back (for restoring
+// the stored, caller-facing type). Variables that are already rigid are left
+// untouched.
+func skolemSubs(types ...hm.Type) (skolem, unskolem hm.Subs) {
+	skolem = hm.NewSubs()
+	unskolem = hm.NewSubs()
+	for _, t := range types {
+		if t == nil {
+			continue
+		}
+		for tv := range t.FreeTypeVar() {
+			if tv.IsRigid() {
+				continue
+			}
+			if _, seen := skolem.Get(tv); seen {
+				continue
+			}
+			r := hm.Rigid(rune(tv))
+			skolem.Add(tv, r)
+			unskolem.Add(r, tv)
+		}
+	}
+	return skolem, unskolem
+}
+
 func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh hm.Fresher, explicitRetType TypeNode, contextName string) (*hm.FunctionType, error) {
 	// Clone environment for closure semantics
 	newEnv := env.Clone()
@@ -222,6 +249,35 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 		}
 	}
 
+	// Skolemize the function's own signature type variables for the duration of
+	// the body check. Within the body these parameters are rigid: each stands
+	// for "some caller-chosen type" and so supports no operations — you cannot
+	// multiply, add, or otherwise constrain a value whose type is universally
+	// quantified. This is what turns `do(&yield: b): b { yield * 2 }` into a
+	// definition-time error instead of a runtime failure at the call site. The
+	// stored function type keeps the flexible variables so callers stay generic.
+	sigTypes := []hm.Type{argsRec}
+	if blockType != nil {
+		sigTypes = append(sigTypes, blockType)
+	}
+	if definedRet != nil {
+		sigTypes = append(sigTypes, definedRet)
+	}
+	skolem, unskolem := skolemSubs(sigTypes...)
+	if len(skolem) > 0 {
+		for _, arg := range args {
+			if t, ok := arg.Value.Type(); ok {
+				newEnv.Add(arg.Key, hm.NewScheme(nil, t.Apply(skolem).(hm.Type)))
+			}
+		}
+		if blockType != nil {
+			newEnv.Add(f.BlockParam.Name.Name, hm.NewScheme(nil, blockType.Apply(skolem).(hm.Type)))
+		}
+		if definedRet != nil {
+			definedRet = definedRet.Apply(skolem).(hm.Type)
+		}
+	}
+
 	// Infer return type from function body. A fresh return target lets
 	// returns inside block args created in this body contribute to this
 	// function, while nested functions/constructors get their own targets.
@@ -237,6 +293,12 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	inferredRet, err = inferReturnTypeWithEarlyReturns(f.Body, inferredRet, definedRet, returnTarget)
 	if err != nil {
 		return nil, err
+	}
+
+	// Return to flexible variables for the stored signature so callers remain
+	// fully generic; rigidity is confined to the body check above.
+	if len(unskolem) > 0 {
+		inferredRet = inferredRet.Apply(unskolem).(hm.Type)
 	}
 
 	// When the function has an explicit return type, wrap the body and any

@@ -1,0 +1,5 @@
+# Test: arithmetic on an unconstrained generic type variable is rejected at
+# definition time, not deferred to a runtime failure at the call site.
+
+# ERROR: `*` is not defined for the generic type b
+pub do(&yield: b): b { yield * 2 }

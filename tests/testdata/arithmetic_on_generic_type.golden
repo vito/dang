@@ -1,0 +1,10 @@
+[1m[31mError:[0m operator multiplication is not defined for the generic type b: a type variable supports no operations
+  [2m[34m--> errors/arithmetic_on_generic_type.dang:5:24[0m
+ [2m    |[0m
+ [2m  3 | [0m
+ [2m  4 | # ERROR: `*` is not defined for the generic type b[0m
+ [2m[34m[1m  5 | [0mpub do(&yield: b): b { yield * 2 }
+[2m                              [31m^^^^^^^^^[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

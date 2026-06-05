@@ -1,4 +1,4 @@
-pub do(&yield: b): b {
+pub do(&yield: Int): Int {
   yield * 2
 }
 

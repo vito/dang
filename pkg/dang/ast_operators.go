@@ -45,6 +45,28 @@ func (b *BinaryOperator) Body() hm.Expression { return b }
 
 func (b *BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
 
+// unconstrainedVar reports whether t is a rigid (skolem) type variable
+// (optionally wrapped in NonNull) — i.e. an author-written, universally
+// quantified type parameter such as the `b` in `do(&yield: b): b`. Such a type
+// must work for every possible type, so it supports no operations and operators
+// that require a concrete type must reject it at definition time.
+//
+// A flexible inference variable (e.g. the element type of an empty list literal)
+// is deliberately NOT rejected: unification is still free to resolve it.
+func unconstrainedVar(t hm.Type) (hm.Type, bool) {
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	switch tv := t.(type) {
+	case hm.TypeVariable:
+		return tv, tv.IsRigid()
+	case hm.NullableTypeVariable:
+		return tv, tv.TypeVariable.IsRigid()
+	default:
+		return nil, false
+	}
+}
+
 // Common type inference based on operator type
 func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
@@ -59,6 +81,19 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 
 		switch b.OpType {
 		case ArithmeticOp:
+			// Arithmetic operators are not defined for unconstrained generic
+			// type variables. A universally-quantified type (e.g. the `b` in
+			// `do(&yield: b): b { yield * 2 }`) must work for every possible
+			// type, so we cannot assume it is numeric/string. Reject at
+			// definition time instead of failing at the call site. Without
+			// typeclasses, a generic value can only be passed around, not
+			// operated on.
+			if tv, ok := unconstrainedVar(lt); ok {
+				return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+			}
+			if tv, ok := unconstrainedVar(rt); ok {
+				return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+			}
 			// Unify types and return the unified type
 			subs, err := hm.Assignable(rt, lt)
 			if err != nil {
