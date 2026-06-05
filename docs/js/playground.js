@@ -605,11 +605,26 @@
       return entry;
     }
 
+    // Command history: submitted sources, newest last. historyIndex points at
+    // the recalled entry; history.length means the live draft being typed.
+    var history = [];
+    var historyIndex = 0;
+    var draft = "";
+    function recall(val) {
+      input.value = val;
+      rehighlight();
+      autosize();
+      input.selectionStart = input.selectionEnd = val.length;
+    }
+
     var running = false;
     function evalEntry() {
       if (running) return;
       var src = input.value.replace(/\s+$/, "");
       if (!src) return;
+      if (history[history.length - 1] !== src) history.push(src);
+      historyIndex = history.length;
+      draft = "";
       running = true;
       runBtn.disabled = true;
       input.disabled = true;
@@ -652,6 +667,28 @@
         autosize();
         return;
       }
+      if (e.key === "ArrowUp" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Recall older history — but only from the first line, so multi-line
+        // editing still moves the caret up a line as usual.
+        if (input.value.slice(0, input.selectionStart).indexOf("\n") !== -1) return;
+        if (historyIndex > 0) {
+          if (historyIndex === history.length) draft = input.value;
+          historyIndex--;
+          e.preventDefault();
+          recall(history[historyIndex]);
+        }
+        return;
+      }
+      if (e.key === "ArrowDown" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Walk back toward the live draft, only from the last line.
+        if (input.value.slice(input.selectionEnd).indexOf("\n") !== -1) return;
+        if (historyIndex < history.length) {
+          historyIndex++;
+          e.preventDefault();
+          recall(historyIndex === history.length ? draft : history[historyIndex]);
+        }
+        return;
+      }
       if (e.key === "Enter") {
         // Shift+Enter: force a newline (continuation). Ctrl/Cmd+Enter: force
         // run. Bare Enter: run when the input looks complete, else newline.
@@ -672,6 +709,9 @@
         loadDang().then(function (dang) { dang.replReset(sessionId); });
       }
       transcript.innerHTML = "";
+      history = [];
+      historyIndex = 0;
+      draft = "";
       input.value = seedSource;
       input.disabled = false;
       rehighlight();
