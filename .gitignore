@@ -7,6 +7,7 @@ CLAUDE.local.md
 *.log
 /treesitter/parser.so
 /docs/*.html
+/docs/chroma.css
 /docs/search_index.json
 /docs/js/dang.wasm
 /docs/js/wasm_exec.js

@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	github.com/alecthomas/chroma/v2 v2.23.1
-	github.com/vito/booklit v0.12.2-0.20260311034822-b83471f64386
+	github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73
 	github.com/vito/dang v0.0.0
 )
 

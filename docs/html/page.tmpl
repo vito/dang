@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="chroma.css">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -96,7 +97,8 @@ pre code{display:block}
 .dang-playground-github{border-color:var(--fg3)}
 /* Overlay editor: a transparent textarea over a highlighted layer. Both
    share identical metrics so the caret lines up with the colored text. The
-   code area is fixed-dark to match the site's (always dark) code blocks. */
+   code area is dark by default; the light-mode media query below recolors it
+   in step with the static code blocks. */
 .dang-playground-editor{position:relative;background:#0d1117}
 .dang-playground-highlight,
 .dang-playground-input{
@@ -150,7 +152,8 @@ pre code{display:block}
   background:var(--bg2);border-bottom:1px solid var(--code-border);
 }
 .dang-repl-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
-/* The code area is fixed-dark to match the site's (always dark) code blocks. */
+/* The code area is dark by default; the light-mode media query below recolors
+   it in step with the static code blocks. */
 .dang-repl-body{background:#0d1117}
 .dang-repl-entry{border-bottom:1px solid rgba(48,54,61,.4)}
 /* prompt + highlighted source, and prompt + input, share these metrics so the
@@ -196,6 +199,26 @@ pre code{display:block}
 .dang-repl-fallback{
   background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
   font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+}
+
+/* ── light mode: recolor the (otherwise dark) code palette ───────────────
+   Static code blocks are themed by chroma.css (generated from the dark/light
+   palettes in docs/go/plugin.go). The playground and REPL highlight client-
+   side with the .tok-* classes, so light mode flips their dark editor surfaces
+   and recolors those classes to match — keeping every code surface in sync. */
+@media (prefers-color-scheme:light){
+  .dang-playground-editor,.dang-repl-body{background:var(--code-bg)}
+  .dang-playground-highlight,.dang-repl-highlight,.dang-repl-codehl{color:var(--fg)}
+  .dang-playground-input,.dang-repl-input{caret-color:var(--fg)}
+  .dang-playground-input::selection,.dang-repl-input::selection{background:rgba(25,93,255,.18)}
+
+  .tok-keyword,.tok-operator{color:#cf222e}
+  .tok-type,.tok-number{color:#0550ae}
+  .tok-string{color:#0a3069}
+  .tok-function{color:#8250df}
+  .tok-label{color:#116329}
+  .tok-comment{color:#6e7781}
+  .tok-variable,.tok-punct{color:var(--fg)}
 }
 
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
