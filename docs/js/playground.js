@@ -617,13 +617,16 @@
       var pendingOut = pending.querySelector(".dang-repl-out");
       pendingOut.classList.remove("is-empty");
       pendingOut.textContent = "Running…";
+      // Clear the input now that the source is captured and shown in the
+      // transcript, rather than waiting for the (possibly slow) eval to finish —
+      // the prompt shouldn't keep showing what's already running.
+      input.value = "";
+      rehighlight();
+      autosize();
       loadDang()
         .then(function (dang) {
           var res = dang.replEval(sessionId, src);
           renderReplOutput(pendingOut, res);
-          input.value = "";
-          rehighlight();
-          autosize();
         })
         .catch(function (err) {
           renderReplOutput(pendingOut, {
