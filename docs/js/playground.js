@@ -552,6 +552,18 @@
     function rehighlight() {
       highlight.innerHTML = highlightHtml(input.value);
     }
+    // Re-highlight the live input plus any transcript entries rendered before
+    // tree-sitter finished loading. The lazy stdlib REPLs evaluate their seed
+    // synchronously on Run — before loadTreeSitter() resolves — so that first
+    // entry comes out as plain text and must be repainted once highlighting is
+    // ready. (Each codehl's textContent is exactly its source.)
+    function rehighlightAll() {
+      rehighlight();
+      var hls = transcript.querySelectorAll(".dang-repl-codehl");
+      for (var i = 0; i < hls.length; i++) {
+        hls[i].innerHTML = highlightHtml(hls[i].textContent);
+      }
+    }
     function autosize() {
       input.style.height = "auto";
       input.style.height = input.scrollHeight + "px";
@@ -562,7 +574,7 @@
       rehighlight();
       autosize();
     });
-    loadTreeSitter().then(function () { rehighlight(); });
+    loadTreeSitter().then(rehighlightAll);
 
     // Append a finished entry (highlighted source + its result) to the
     // transcript. Returns the result element so callers can fill it in.
