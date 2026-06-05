@@ -96,22 +96,17 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 
 		switch b.OpType {
 		case ArithmeticOp:
-			// Arithmetic operators are not defined for unconstrained generic
-			// type variables. A universally-quantified type (e.g. the `b` in
-			// `do(&yield: b): b { yield * 2 }`) must work for every possible
-			// type, so we cannot assume it is numeric/string. Reject at
-			// definition time instead of failing at the call site. Without
-			// typeclasses, a generic value can only be passed around, not
-			// operated on.
-			if tv, ok := unconstrainedVar(lt); ok {
-				return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
-			}
-			if tv, ok := unconstrainedVar(rt); ok {
-				return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
-			}
-			return b.arithmeticType(lt, rt)
+			return b.resolveOperands(lt, rt)
 		case ComparisonOp:
-			// Validate types but always return Boolean
+			// Ordering comparisons (< > <= >=) carry a domain just like
+			// arithmetic and must reject non-orderable operands (e.g.
+			// `"a" < "b"`). Equality (== !=) carries no domain — it is
+			// deliberately defined across all types — so it skips the check.
+			if b.Operands != 0 {
+				if _, err := b.resolveOperands(lt, rt); err != nil {
+					return nil, err
+				}
+			}
 			return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", b.Loc}}.Infer(ctx, env, fresh)
 		default:
 			return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
@@ -119,14 +114,28 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 	})
 }
 
-// arithmeticType resolves the result type of an arithmetic operator and rejects
-// operands outside the operator's declared domain (e.g. `"a" * "b"`). It also
-// allows Int and Float to mix, widening the result to Float when either side is
-// Float — something the old "assign right to left" check rejected.
-func (b *BinaryOperator) arithmeticType(lt, rt hm.Type) (hm.Type, error) {
+// resolveOperands validates a binary operator's operands against its declared
+// domain and returns the result type. Arithmetic callers use that type
+// directly; ordering-comparison callers discard it and return Boolean. It
+// rejects operands outside the domain (e.g. `"a" * "b"` or `"a" < "b"`) and
+// allows Int and Float to mix, widening to Float when either side is Float —
+// something the old "assign right to left" check rejected.
+func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
+	// An operator is not defined for an unconstrained generic type variable: a
+	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work
+	// for every possible type, so we cannot assume it is numeric/string/etc.
+	// Reject at definition time rather than failing at the call site — without
+	// typeclasses, a generic value can only be passed around, not operated on.
+	if tv, ok := unconstrainedVar(lt); ok {
+		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+	}
+	if tv, ok := unconstrainedVar(rt); ok {
+		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+	}
+
 	// If either side is still an open inference variable, we cannot domain-check
 	// yet; fall back to plain unification and let later constraints decide.
-	// (Rigid signature variables were already rejected by the caller.)
+	// (Rigid signature variables were already rejected above.)
 	if hasFreeVar(lt) || hasFreeVar(rt) {
 		subs, err := hm.Assignable(rt, lt)
 		if err != nil {
@@ -751,6 +760,7 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than",
+			Operands: numericOperand,
 			EvalFunc: lessThanEval,
 		},
 	}
@@ -779,6 +789,7 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than",
+			Operands: numericOperand,
 			EvalFunc: greaterThanEval,
 		},
 	}
@@ -807,6 +818,7 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than_equal",
+			Operands: numericOperand,
 			EvalFunc: lessThanEqualEval,
 		},
 	}
@@ -835,6 +847,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than_equal",
+			Operands: numericOperand,
 			EvalFunc: greaterThanEqualEval,
 		},
 	}

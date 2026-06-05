@@ -1,0 +1,12 @@
+# Ordering comparisons are numeric and may mix Int and Float.
+assert { 1 < 2 }
+assert { 2.0 > 1 }
+assert { 3 <= 3 }
+assert { 2.5 >= 2 }
+
+# Equality is defined across all types, including mismatched ones, and simply
+# reports inequality rather than failing to type-check.
+assert { (1 == 1) }
+assert { ("a" == "a") }
+assert { (1 == "a") == false }
+assert { 1 != "a" }

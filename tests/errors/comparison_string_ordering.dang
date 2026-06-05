@@ -1,0 +1,6 @@
+# Test: ordering comparisons (< > <= >=) are numeric-only, so comparing two
+# strings is a type error rather than a runtime failure. Equality (== !=) is
+# unaffected — it is deliberately defined across all types.
+
+# ERROR: less_than is not defined for String
+pub result = "a" < "b"
