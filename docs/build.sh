@@ -18,6 +18,11 @@ cp "$wasm_exec" js/wasm_exec.js
 chmod +x build-highlight-assets.sh
 ./build-highlight-assets.sh --runtime-only || echo "warning: highlight assets unavailable; playground editor will not be colored" >&2
 
+# Render the syntax-highlight palettes to chroma.css. Highlighting emits chroma
+# CSS classes (not inline styles), so this stylesheet supplies their colors and
+# the light/dark theming. Build artifact, ignored by git.
+CGO_ENABLED=0 go run ./gen-chroma-css chroma.css
+
 # CGO_ENABLED=0 keeps this build pure-Go: the stdlib reference page imports
 # pkg/dang to introspect the builtin registry, and pkg/dang only pulls in
 # tree-sitter (cgo) when CGO is enabled. The registry itself is pure Go.

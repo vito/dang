@@ -10,6 +10,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/vito/booklit"
+	"github.com/vito/booklit/baselit"
 	"github.com/vito/dang/pkg/dang"
 	"github.com/vito/dang/pkg/hm"
 )
@@ -191,10 +192,11 @@ func stdlibTag(key, name string) string {
 	return "stdlib-" + key + "-" + name
 }
 
-// highlightSignature renders a signature as inline, syntax-highlighted HTML
-// using the same chroma "dang" lexer and style (styles.Fallback) as the site's
-// code blocks. The result is self-contained — chroma inlines the colors and the
-// dark code background onto the <code> element — so it needs no extra CSS.
+// highlightSignature renders a signature as syntax-highlighted HTML using the
+// same chroma "dang" lexer and style as the site's code blocks. It mirrors the
+// site's class/inline choice (baselit.HighlightWithClasses): in class mode the
+// colors and code background come from chroma.css, so the signature themes with
+// the rest of the page.
 func highlightSignature(sig string) booklit.Content {
 	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(sig)}
 
@@ -206,8 +208,12 @@ func highlightSignature(sig string) booklit.Content {
 	if err != nil {
 		return plain
 	}
+	opts := []chromahtml.Option{chromahtml.InlineCode(true)}
+	if baselit.HighlightWithClasses {
+		opts = append(opts, chromahtml.WithClasses(true))
+	}
 	var buf bytes.Buffer
-	if err := chromahtml.New(chromahtml.InlineCode(true)).Format(&buf, styles.Fallback, iterator); err != nil {
+	if err := chromahtml.New(opts...).Format(&buf, styles.Fallback, iterator); err != nil {
 		return plain
 	}
 	return booklit.Styled{Style: "raw-html", Content: booklit.String(buf.String())}
