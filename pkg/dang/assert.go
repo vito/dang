@@ -11,6 +11,7 @@ import (
 func registerAssert() {
 	Builtin("assert").
 		Doc("asserts that the block evaluates to a truthy value, raising an AssertionError otherwise").
+		Example(`assert { 1 + 1 == 2 }`).
 		Params("message", StringType, NullValue{}).
 		Block(hm.NewFnType(NewRecordType(""), TypeVar('a'))).
 		Returns(TypeVar('n')).

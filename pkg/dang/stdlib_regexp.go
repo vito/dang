@@ -100,6 +100,7 @@ func registerRegexp() {
 func registerRegexpStringMethods() {
 	Method(StringType, "containsMatch").
 		Doc("reports whether the string contains a match for the regexp").
+		Example("\"abc123\".containsMatch(`\\d+`)").
 		Params("pattern", NonNull(RegexpType)).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -110,6 +111,7 @@ func registerRegexpStringMethods() {
 
 	Method(StringType, "match").
 		Doc("returns the first match for the pattern, or null").
+		Example("\"x42y\".match(`\\d+`)").
 		Params("pattern", NonNull(RegexpType)).
 		Returns(MatchType).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -124,6 +126,7 @@ func registerRegexpStringMethods() {
 
 	Method(StringType, "matchAll").
 		Doc("returns all non-overlapping matches for the pattern").
+		Example("\"a1 b22 c333\".matchAll(`\\d+`)").
 		Params("pattern", NonNull(RegexpType)).
 		Returns(NonNull(ListOf(NonNull(MatchType)))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -139,6 +142,7 @@ func registerRegexpStringMethods() {
 
 	Method(StringType, "replaceMatches").
 		Doc("replaces matches of pattern with `with`; supports $0/$1/$name backref expansion").
+		Example("\"a1b2\".replaceMatches(`\\d`, \"#\")").
 		Params(
 			"pattern", NonNull(RegexpType),
 			"with", NonNull(StringType),
@@ -159,6 +163,7 @@ func registerRegexpStringMethods() {
 
 	Method(StringType, "rewriteMatches").
 		Doc("replaces matches of pattern using the block to compute each replacement").
+		Example("\"hello world\".rewriteMatches(`\\w+`) { m => m.string.toUpper }").
 		Params(
 			"pattern", NonNull(RegexpType),
 			"count", IntType, IntValue{Val: -1},
@@ -205,6 +210,7 @@ func registerRegexpStringMethods() {
 
 	Method(StringType, "splitMatches").
 		Doc("splits the string by matches of pattern").
+		Example("\"a1b22c\".splitMatches(`\\d+`)").
 		Params(
 			"pattern", NonNull(RegexpType),
 			"limit", IntType, IntValue{Val: 0},
@@ -225,6 +231,7 @@ func registerRegexpStringMethods() {
 func registerRegexpMatchMethods() {
 	Method(MatchType, "string").
 		Doc("the whole matched substring").
+		Example("\"x42y\".match(`\\d+`).string").
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MatchValue)
@@ -233,6 +240,7 @@ func registerRegexpMatchMethods() {
 
 	Method(MatchType, "start").
 		Doc("byte offset of the match start in the source string").
+		Example("\"x42y\".match(`\\d+`).start").
 		Returns(NonNull(IntType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			return IntValue{Val: self.(MatchValue).Indices[0]}, nil
@@ -240,6 +248,7 @@ func registerRegexpMatchMethods() {
 
 	Method(MatchType, "end").
 		Doc("byte offset just past the end of the match").
+		Example("\"x42y\".match(`\\d+`).end").
 		Returns(NonNull(IntType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			return IntValue{Val: self.(MatchValue).Indices[1]}, nil
@@ -247,6 +256,7 @@ func registerRegexpMatchMethods() {
 
 	Method(MatchType, "captures").
 		Doc("positional captures, with `captures[0]` corresponding to $1").
+		Example("\"42-99\".match(`(\\d+)-(\\d+)`).captures").
 		Returns(NonNull(ListOf(NonNull(StringType)))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			m := self.(MatchValue)
@@ -268,6 +278,7 @@ func registerRegexpMatchMethods() {
 
 	Method(MatchType, "capture").
 		Doc("named capture; null if no such group or the group did not match").
+		Example("\"555-1212\".match(`(?P<area>\\d{3})-(\\d{4})`).capture(\"area\")").
 		Params("name", NonNull(StringType)).
 		Returns(StringType).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {

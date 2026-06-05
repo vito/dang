@@ -21,6 +21,7 @@ func registerStdlib() {
 	// print function: print(value: a) -> Null
 	Builtin("print").
 		Doc("prints a value to stdout").
+		Example(`print("hello, world")`).
 		Params("value", TypeVar('a')).
 		Returns(TypeVar('n')).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -33,6 +34,7 @@ func registerStdlib() {
 	// toJSON function: toJSON(value: b) -> String!
 	Builtin("toJSON").
 		Doc("serializes a value to JSON").
+		Example(`toJSON([1, 2, 3])`).
 		Params("value", TypeVar('b')).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -47,6 +49,7 @@ func registerStdlib() {
 	// fromJSON function: fromJSON(data: String!) -> a
 	Builtin("fromJSON").
 		Doc("parses JSON into an opaque value that is materialized by an expected type").
+		Example(`fromJSON("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
 		Returns(TypeVar('a')).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -73,6 +76,7 @@ func registerStdlib() {
 	// fromYAML function: fromYAML(data: String!) -> a
 	Builtin("fromYAML").
 		Doc("parses YAML into an opaque value that is materialized by an expected type").
+		Example(`fromYAML("[a, b, c]") :: [String!]!`).
 		Params("data", NonNull(StringType)).
 		Returns(TypeVar('a')).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -87,6 +91,7 @@ func registerStdlib() {
 	// toString function: toString(value: b) -> String!
 	Builtin("toString").
 		Doc("converts a value to a string, returning strings as-is and serializing other values to JSON").
+		Example(`toString(42)`).
 		Params("value", TypeVar('b')).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
@@ -108,6 +113,7 @@ func registerStdlib() {
 	// String.split method: split(separator: String!, limit: Int = 0) -> [String!]!
 	Method(StringType, "split").
 		Doc("splits a string by separator").
+		Example(`"a,b,c".split(",")`).
 		Params(
 			"separator", NonNull(StringType),
 			"limit", IntType, IntValue{Val: 0},
@@ -144,6 +150,7 @@ func registerStdlib() {
 	// String.toUpper method: toUpper() -> String!
 	Method(StringType, "toUpper").
 		Doc("converts a string to uppercase").
+		Example(`"hello".toUpper`).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
@@ -153,6 +160,7 @@ func registerStdlib() {
 	// String.toLower method: toLower() -> String!
 	Method(StringType, "toLower").
 		Doc("converts a string to lowercase").
+		Example(`"HELLO".toLower`).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
@@ -162,6 +170,7 @@ func registerStdlib() {
 	// String.trimPrefix method: trimPrefix(prefix: String!) -> String!
 	Method(StringType, "trimPrefix").
 		Doc("removes the specified prefix from the string if present").
+		Example(`"v1.2.3".trimPrefix("v")`).
 		Params("prefix", NonNull(StringType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -173,6 +182,7 @@ func registerStdlib() {
 	// String.trimSuffix method: trimSuffix(suffix: String!) -> String!
 	Method(StringType, "trimSuffix").
 		Doc("removes the specified suffix from the string if present").
+		Example(`"report.txt".trimSuffix(".txt")`).
 		Params("suffix", NonNull(StringType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -184,6 +194,7 @@ func registerStdlib() {
 	// String.trimSpace method: trimSpace() -> String!
 	Method(StringType, "trimSpace").
 		Doc("removes all leading and trailing whitespace from the string").
+		Example(`"  hi  ".trimSpace`).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
@@ -193,6 +204,7 @@ func registerStdlib() {
 	// String.trim method: trim(cutset: String!) -> String!
 	Method(StringType, "trim").
 		Doc("removes all leading and trailing characters in cutset from the string").
+		Example(`"__hi__".trim("_")`).
 		Params("cutset", NonNull(StringType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -204,6 +216,7 @@ func registerStdlib() {
 	// String.trimLeft method: trimLeft(cutset: String!) -> String!
 	Method(StringType, "trimLeft").
 		Doc("removes all leading characters in cutset from the string").
+		Example(`"__hi__".trimLeft("_")`).
 		Params("cutset", NonNull(StringType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -215,6 +228,7 @@ func registerStdlib() {
 	// String.trimRight method: trimRight(cutset: String!) -> String!
 	Method(StringType, "trimRight").
 		Doc("removes all trailing characters in cutset from the string").
+		Example(`"__hi__".trimRight("_")`).
 		Params("cutset", NonNull(StringType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -226,6 +240,7 @@ func registerStdlib() {
 	// String.hasPrefix method: hasPrefix(prefix: String!) -> Boolean!
 	Method(StringType, "hasPrefix").
 		Doc("checks if the string starts with the specified prefix").
+		Example(`"dang".hasPrefix("da")`).
 		Params("prefix", NonNull(StringType)).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -237,6 +252,7 @@ func registerStdlib() {
 	// String.hasSuffix method: hasSuffix(suffix: String!) -> Boolean!
 	Method(StringType, "hasSuffix").
 		Doc("checks if the string ends with the specified suffix").
+		Example(`"dang".hasSuffix("ng")`).
 		Params("suffix", NonNull(StringType)).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -248,6 +264,7 @@ func registerStdlib() {
 	// String.contains method: contains(substring: String!) -> Boolean!
 	Method(StringType, "contains").
 		Doc("checks if the string contains the specified substring").
+		Example(`"dang".contains("an")`).
 		Params("substring", NonNull(StringType)).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -259,6 +276,7 @@ func registerStdlib() {
 	// String.replace method: replace(old: String!, new: String!, count: Int = -1) -> String!
 	Method(StringType, "replace").
 		Doc("replaces occurrences of old with new in the string. The count parameter controls how many replacements to make: -1 (default) replaces all occurrences, 1 replaces only the first, etc.").
+		Example(`"a-b-c".replace("-", "_")`).
 		Params(
 			"old", NonNull(StringType),
 			"new", NonNull(StringType),
@@ -278,6 +296,7 @@ func registerStdlib() {
 	// String.padRight method: padRight(width: Int!) -> String!
 	Method(StringType, "padRight").
 		Doc("pads the string with spaces on the right to reach the specified width").
+		Example(`"hi".padRight(5) + "|"`).
 		Params("width", NonNull(IntType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -297,6 +316,7 @@ func registerStdlib() {
 	// String.padLeft method: padLeft(width: Int!) -> String!
 	Method(StringType, "padLeft").
 		Doc("pads the string with spaces on the left to reach the specified width").
+		Example(`"hi".padLeft(5) + "|"`).
 		Params("width", NonNull(IntType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -316,6 +336,7 @@ func registerStdlib() {
 	// String.center method: center(width: Int!) -> String!
 	Method(StringType, "center").
 		Doc("centers the string within the specified width by padding with spaces on both sides").
+		Example(`"hi".center(6) + "|"`).
 		Params("width", NonNull(IntType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -340,6 +361,7 @@ func registerStdlib() {
 	// List.contains method: contains(element: a) -> Boolean!
 	Method(ListTypeModule, "contains").
 		Doc("checks if the list contains the specified element").
+		Example(`[1, 2, 3].contains(2)`).
 		Params("element", TypeVar('a')).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -357,6 +379,7 @@ func registerStdlib() {
 	// List.uniq method: uniq -> [a]!
 	Method(ListTypeModule, "uniq").
 		Doc("returns a new list with duplicate elements removed, preserving first occurrence order").
+		Example(`[1, 1, 2, 3, 3].uniq`).
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
@@ -384,6 +407,7 @@ func registerStdlib() {
 	// List.reject method: reject(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "reject").
 		Doc("returns a new list excluding elements for which the predicate returns true").
+		Example(`[1, 2, 3, 4].reject { x => x > 2 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -426,6 +450,7 @@ func registerStdlib() {
 	// List.each method: each(fn: \(a, Int!) -> b) -> [a]!
 	Method(ListTypeModule, "each").
 		Doc("iterates over each element in the list, calling the block for each element").
+		Example(`[1, 2, 3].each { x => print(x) }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -458,6 +483,7 @@ func registerStdlib() {
 	// List.any method: any(fn: \(a) -> Boolean!) -> Boolean!
 	Method(ListTypeModule, "any").
 		Doc("returns true if at least one element satisfies the predicate").
+		Example(`[1, 2, 3].any { x => x > 2 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -496,6 +522,7 @@ func registerStdlib() {
 	// List.all method: all(fn: \(a) -> Boolean!) -> Boolean!
 	Method(ListTypeModule, "all").
 		Doc("returns true if all elements satisfy the predicate").
+		Example(`[1, 2, 3].all { x => x > 0 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -534,6 +561,7 @@ func registerStdlib() {
 	// List.map method: map(fn: \(a) -> b) -> [b]!
 	Method(ListTypeModule, "map").
 		Doc("returns a new list with each element transformed by the given function").
+		Example(`[1, 2, 3].map { x => x * 2 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -579,6 +607,7 @@ func registerStdlib() {
 	// List.filter method: filter(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "filter").
 		Doc("returns a new list containing only elements for which the predicate returns true").
+		Example(`[1, 2, 3, 4].filter { x => x > 2 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -621,6 +650,7 @@ func registerStdlib() {
 	// List.length method: length -> Int!
 	Method(ListTypeModule, "length").
 		Doc("returns the number of elements in the list").
+		Example(`[1, 2, 3].length`).
 		Returns(NonNull(IntType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
@@ -630,6 +660,7 @@ func registerStdlib() {
 	// List.isEmpty method: isEmpty -> Boolean!
 	Method(ListTypeModule, "isEmpty").
 		Doc("returns true if the list contains no elements").
+		Example(`[1, 2, 3].isEmpty`).
 		Returns(NonNull(BooleanType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			list := self.(ListValue)
@@ -639,6 +670,7 @@ func registerStdlib() {
 	// List.reduce method: reduce(fn: \(acc: b, item: a) -> b, initial: b) -> b
 	Method(ListTypeModule, "reduce").
 		Doc("reduces the list to a single value using an accumulator function").
+		Example(`[1, 2, 3, 4].reduce(0) { acc, x => acc + x }`).
 		Params("initial", TypeVar('b')).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
@@ -674,6 +706,7 @@ func registerStdlib() {
 	// List.dropLast method: dropLast(count: Int = 1) -> [a]!
 	Method(ListTypeModule, "dropLast").
 		Doc("returns a new list with the last count elements removed (default 1)").
+		Example(`[1, 2, 3, 4].dropLast(2)`).
 		Params("count", IntType, IntValue{Val: 1}).
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -689,6 +722,7 @@ func registerStdlib() {
 	// List.dropFirst method: dropFirst(count: Int = 1) -> [a]!
 	Method(ListTypeModule, "dropFirst").
 		Doc("returns a new list with the first count elements removed (default 1)").
+		Example(`[1, 2, 3, 4].dropFirst(2)`).
 		Params("count", IntType, IntValue{Val: 1}).
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -704,6 +738,7 @@ func registerStdlib() {
 	// List.takeFirst method: takeFirst(count: Int = 1) -> [a]!
 	Method(ListTypeModule, "takeFirst").
 		Doc("returns a new list containing only the first count elements (default 1)").
+		Example(`[1, 2, 3, 4].takeFirst(2)`).
 		Params("count", IntType, IntValue{Val: 1}).
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -719,6 +754,7 @@ func registerStdlib() {
 	// List.takeLast method: takeLast(count: Int = 1) -> [a]!
 	Method(ListTypeModule, "takeLast").
 		Doc("returns a new list containing only the last count elements (default 1)").
+		Example(`[1, 2, 3, 4].takeLast(2)`).
 		Params("count", IntType, IntValue{Val: 1}).
 		Returns(NonNull(ListOf(TypeVar('a')))).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -734,6 +770,7 @@ func registerStdlib() {
 	// List.takeWhile method: takeWhile(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "takeWhile").
 		Doc("returns a new list containing leading elements for which the predicate returns true, stopping at the first false").
+		Example(`[1, 2, 3, 1].takeWhile { x => x < 3 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -777,6 +814,7 @@ func registerStdlib() {
 	// List.dropWhile method: dropWhile(fn: \(a) -> Boolean!) -> [a]!
 	Method(ListTypeModule, "dropWhile").
 		Doc("returns a new list with leading elements removed for which the predicate returns true, stopping at the first false").
+		Example(`[1, 2, 3, 1].dropWhile { x => x < 3 }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "item",
@@ -824,6 +862,7 @@ func registerStdlib() {
 	// List.join method: join(separator: String!) -> String!
 	Method(ListTypeModule, "join").
 		Doc("joins the list elements into a string, converting each element to string and separating them with the given delimiter").
+		Example(`["a", "b", "c"].join("-")`).
 		Params("separator", NonNull(StringType)).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
