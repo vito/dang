@@ -2,7 +2,7 @@
 
 # Fields {#fields}
 
-> Meta: this is the right place to introduce the *field* concept. A field is declared by its shape, not by a keyword — lead with that, then visibility, then the declaration-vs-reassignment rule. Frame the keyword as a *binding introducer* (needed only when a line would otherwise read as reassignment), not as a visibility annotation that's "usually optional" — the untyped value field isn't an exception, it's just the one shape that doesn't self-announce. The object-context behavior is covered in [#objects] — link there, don't duplicate.
+> Meta: this is the right place to introduce the *field* concept. A field is declared by its shape, not by a keyword — lead with that, then visibility, then the declaration-vs-reassignment rule. Frame the keyword as a *binding introducer* (needed only when a line would otherwise read as reassignment), not as a visibility annotation that's "usually optional" — the untyped value field isn't an exception, it's just the one declaration shape that names no type. The tell for "declaration, no keyword needed" is a type in type position (a field annotation or method return type), never args or a block alone — those without a return type are calls. The object-context behavior is covered in [#objects] — link there, don't duplicate.
 
 A **field** is a named, typed thing — a value, a function, or a computed
 expression — declared in the current scope:
@@ -42,22 +42,27 @@ for local/private ones.
 ## Declaration vs. reassignment
 
 A keyword here isn't really a visibility marker — it **introduces a binding**.
-You reach for one exactly when a line would otherwise read as a [#mutation]
-(`name = newValue`, which updates an already-declared field):
+You reach for one only when a line would otherwise read as a [#mutation]
+(`name = newValue`, which updates an already-declared field). What sets a
+declaration apart is a **type in type position** — a field's `name: Type`
+annotation, or a method's `): Type` return type:
 
-- a type annotation, argument list, or block body already announces "new field"
-  by its **shape** — the declaration is unambiguous, so no keyword is needed
-  (public by default; `let` to opt out)
-- a bare, *untyped* `name = value` is plain assignment syntax: on its own it
-  **reassigns** an existing field. To *introduce* a new one, give it an
-  introducer (`let x = 42`, or legacy `pub x = 42`) — or just add a `:`
-  (`x: Int! = 42`), which announces the declaration by shape like everything else
+- anything that names a type is a declaration, so no keyword is needed (public
+  by default; `let` to opt out). Arguments or a block are *not* enough on their
+  own — `add(x)` or `foo { ... }` without a return type read as **calls**, not
+  declarations; the return type is the tell
+- a bare, *untyped* `name = value` names no type, so on its own it is plain
+  assignment syntax — a **reassignment** of an existing field. To *introduce* a
+  new one, give it a keyword (`let x = 42`, or legacy `pub x = 42`) — or annotate
+  it (`x: Int! = 42`), which makes it a declaration like the rest
 
 This is the same rule that governs locals: you never bring a local into being
 without `let` either. A value field is no different — bare `name = value` always
 means "assign to what's already there," so declaring a fresh one always takes an
-introducer. Nothing about the untyped form is special-cased; it's the one shape
-that doesn't self-announce, so it's the one shape that still needs a word.
+introducer. Nothing about the untyped form is special-cased; it's simply the one
+declaration shape that carries no type, so it's the one that still needs a word.
+
+Rule of thumb: **if it names a type, you never need a keyword.**
 
 ## What a field is
 
