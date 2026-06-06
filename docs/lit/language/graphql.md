@@ -39,7 +39,7 @@ user.{{ posts(first: 5).{{ title }} }}
 - positional args work in nested selections too: `users.{{ posts(1).{{ ... }} }}`
 - selection on a nullable receiver **short-circuits**: if `user` is `null`, `user.{{ name }}` is `null` (not an error), and the result type is nullable
 - the result is a record (`{{ ... }}`); access fields by name; see [#objects]
-- don't confuse `.{{ }}` selection with the single-brace dot-block `.{ }` (block application) — they share the `.`-brace surface but differ on null handling; see [#blocks]'s [#dot-block]
+- `.{{ }}` selection is navigation (it reads fields), so it short-circuits on null; the single-brace dot-block `.{ }` is block *application*, so it passes the receiver — null included — into the block. Same `.`-brace surface, different jobs; see [#blocks]'s [#dot-block]
 
 ## Inline fragments
 

@@ -105,7 +105,7 @@ foo.{ bar(_) }                  # dot-block; see [#dot-block]
 
 ## Dot-block application (piping) {#dot-block}
 
-> Meta: this is Dang's piping primitive — there is no `|>` operator. Lead with the equivalence, then the interleaving, then the null gotcha.
+> Meta: this is Dang's piping primitive — there is no `|>` operator. Lead with the equivalence, then the interleaving, then the null behaviour as a consequence of "application, not navigation."
 
 - `receiver.{ block }` calls the block with the receiver as its single argument — Dang's piping mechanism
 - `foo.{ bar(_) }` ≡ `bar(foo)`, and `foo.{ x => bar(x) }` ≡ `bar(foo)` (the implicit `_` from [#implicit-param] is the idiomatic form)
@@ -120,12 +120,13 @@ c.{ mountCache(_, path, cache) }
 - the block must take **0 or 1 parameters**; 2+ is an error: `dot-block takes a single value`
 - a 0-param block ignores the receiver and just returns its body
 
-### Selection vs. dot-block: null semantics
+### Null: dot-block is application, not navigation
 
-> Meta: same `.`-brace surface, opposite null behaviour. Call it out wherever both appear (see also [#graphql]).
+> Meta: the null behaviour follows from what dot-block *is*. Frame it that way rather than as a gotcha vs. selection.
 
-- `.{{ }}` selection ([#graphql]) **short-circuits**: a null receiver propagates null (`user.{{name}}` is `null` when `user` is null), and the result type is nullable
-- `.{ }` dot-block does **NOT** short-circuit: it binds the receiver — null or not — to the parameter and runs the block, letting the block decide. The receiver type (nullable or non-null) passes straight through to the parameter
+- because `foo.{ bar(_) }` ≡ `bar(foo)`, a null receiver is simply *passed in*: the block runs with `_` bound to null, exactly as `bar(null)` would. Dot-block applies a block — it does not navigate into the receiver, so it has nothing to short-circuit
+- this is what lets a block *handle* null: `x.{ _ ?? 0 }`, `x.{ if (_ == null) { … } else { … } }`. Want null-safety instead? Express it in the block (`x.{ _?.field }`)
+- contrast `.{{ }}` selection ([#graphql]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
 
 ## Common methods that take blocks
 
