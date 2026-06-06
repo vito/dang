@@ -2,7 +2,7 @@
 
 # Fields {#fields}
 
-> Meta: this is the right place to introduce the *field* concept. A field is declared by its shape, not by a keyword — lead with that, then visibility, then the declaration-vs-reassignment rule. The object-context behavior is covered in [#objects] — link there, don't duplicate.
+> Meta: this is the right place to introduce the *field* concept. A field is declared by its shape, not by a keyword — lead with that, then visibility, then the declaration-vs-reassignment rule. Frame the keyword as a *binding introducer* (needed only when a line would otherwise read as reassignment), not as a visibility annotation that's "usually optional" — the untyped value field isn't an exception, it's just the one shape that doesn't self-announce. The object-context behavior is covered in [#objects] — link there, don't duplicate.
 
 A **field** is a named, typed thing — a value, a function, or a computed
 expression — declared in the current scope:
@@ -41,15 +41,23 @@ for local/private ones.
 
 ## Declaration vs. reassignment
 
-A field declaration and a [#mutation] (`name = newValue`, which updates an
-already-declared field) can look alike. The shape decides which one it is:
+A keyword here isn't really a visibility marker — it **introduces a binding**.
+You reach for one exactly when a line would otherwise read as a [#mutation]
+(`name = newValue`, which updates an already-declared field):
 
-- a type annotation, argument list, or block body makes a declaration
-  unambiguous — **no keyword needed**
-- the bare, *untyped* `name = value` is the one exception: on its own it is a
-  **reassignment** of an existing field. To *declare* an untyped value field,
-  give it a keyword (`let x = 42`, or legacy `pub x = 42`) — or just annotate it
-  (`x: Int! = 42`)
+- a type annotation, argument list, or block body already announces "new field"
+  by its **shape** — the declaration is unambiguous, so no keyword is needed
+  (public by default; `let` to opt out)
+- a bare, *untyped* `name = value` is plain assignment syntax: on its own it
+  **reassigns** an existing field. To *introduce* a new one, give it an
+  introducer (`let x = 42`, or legacy `pub x = 42`) — or just add a `:`
+  (`x: Int! = 42`), which announces the declaration by shape like everything else
+
+This is the same rule that governs locals: you never bring a local into being
+without `let` either. A value field is no different — bare `name = value` always
+means "assign to what's already there," so declaring a fresh one always takes an
+introducer. Nothing about the untyped form is special-cased; it's the one shape
+that doesn't self-announce, so it's the one shape that still needs a word.
 
 Rule of thumb: **if it has a `:`, you never need a keyword.**
 
@@ -71,7 +79,7 @@ x: Int! = 42              # explicit type with default
 y: Int! = 100             # explicit type
 maybe: String = null      # nullable
 let secret = "shhh"       # private (untyped is fine for let)
-pub count = 0             # keyword required: untyped value field, else reassignment
+pub count = 0             # introducer required: untyped value field, else reassignment
 ```
 
 ## Forward references
