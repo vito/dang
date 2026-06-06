@@ -24,7 +24,7 @@ Form         := Return | TryCatch | Raise | Conditional | ForLoop
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
               | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
-NonNullAssert := Term '!'                          # postfix non-null assertion
+NonNullAssert := Term '!'
 ```
 
 ## Separators
