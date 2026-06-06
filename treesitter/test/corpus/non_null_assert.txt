@@ -1,0 +1,59 @@
+===
+Non-null assertion on identifier
+===
+
+x!
+
+---
+
+(dang
+  last: (non_null_assert
+    expr: (symbol_or_call
+      (auto_call_symbol
+        name: (id
+          (word_token))))
+    (bang_token)))
+
+===
+Non-null assertion chains with select
+===
+
+a.b!
+
+---
+
+(dang
+  last: (non_null_assert
+    expr: (select_or_call
+      left: (symbol_or_call
+        (auto_call_symbol
+          name: (id
+            (word_token))))
+      (dot_token)
+      name: (field_id))
+    (bang_token)))
+
+===
+Non-null assertion before inequality
+===
+
+a! != b
+
+---
+
+(dang
+  last: (default_expr
+    (logical_or_expr
+      (logical_and_expr
+        (equality_expr
+          left: (non_null_assert
+            expr: (symbol_or_call
+              (auto_call_symbol
+                name: (id
+                  (word_token))))
+            (bang_token))
+          op: (equality_op)
+          right: (symbol_or_call
+            (auto_call_symbol
+              name: (id
+                (word_token)))))))))

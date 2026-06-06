@@ -92,6 +92,8 @@ if (maybe != null and other != null) {
 - in an `else` branch where the guard checked `== null`, the variable is known *null* (not narrowed to `T!`) — using it as non-null there errors
 - narrowing applies to bare symbols (locals, and bare `self`-field references inside methods, which parse as plain `Symbol`s)
 
+When narrowing can't reach the value — a field or call result, or a spot where the checker just can't follow your reasoning — the postfix `!` operator is the explicit escape hatch: `expr!` narrows `T` to `T!` and raises at runtime if the value turns out to be null. See [#operators].
+
 See also [#errors] (`raise`/`try`/`catch` divergence) and [#control-flow] (guards, loops, `case`).
 
 > Meta: field-narrowing and the `and`-guard non-narrowing are the two most surprising gaps in practice. Both are now documented with the re-bind-to-a-local workaround.

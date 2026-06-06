@@ -22,8 +22,9 @@ Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
                            | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
 Form         := Return | TryCatch | Raise | Conditional | ForLoop
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
-Term         := UnaryExpr | IndexOrCall | SelectOrCall | Literal | List
-              | ObjectLiteral | Block | ParenForm | SymbolOrCall
+Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
+              | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
+NonNullAssert := Term '!'
 ```
 
 ## Separators

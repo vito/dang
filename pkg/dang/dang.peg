@@ -74,7 +74,18 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
 
 Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
-Term <- UnaryExpr / IndexOrCall / SelectOrCall / Literal / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
+Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
+
+// Postfix `!` asserts that the operand is non-null, narrowing its type from
+// `T` to `T!` and raising at runtime if the value turns out to be null. The
+// `!'='` lookahead keeps `a != b` and `a!=b` parsing as inequality rather
+// than `(a!) ...`.
+NonNullAssert <- expr:Term BangToken !'=' {
+  return &NonNullAssert{
+    Expr: expr.(Node),
+    Loc: c.Loc(),
+  }, nil
+}
 
 UnaryExpr <- '!' _ expr:Term {
   return &UnaryNegation{

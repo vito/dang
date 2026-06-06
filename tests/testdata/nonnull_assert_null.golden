@@ -1,0 +1,10 @@
+[1m[31mError:[0m non-null assertion failed: value is null
+  [2m[34m--> errors/nonnull_assert_null.dang:7:7[0m
+ [2m    |[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m[34m[1m  7 | [0mprint(maybe(false)!)
+[2m             [31m^^^^^^^^^^^^^[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

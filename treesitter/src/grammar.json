@@ -201,16 +201,24 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 169,
+      "value": 170,
       "content": {
         "type": "CHOICE",
         "members": [
           {
             "type": "PREC_LEFT",
-            "value": 9,
+            "value": 10,
             "content": {
               "type": "SYMBOL",
               "name": "unary_expr"
+            }
+          },
+          {
+            "type": "PREC_LEFT",
+            "value": 9,
+            "content": {
+              "type": "SYMBOL",
+              "name": "non_null_assert"
             }
           },
           {
@@ -276,6 +284,27 @@
               "type": "SYMBOL",
               "name": "symbol_or_call"
             }
+          }
+        ]
+      }
+    },
+    "non_null_assert": {
+      "type": "PREC_LEFT",
+      "value": 169,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "expr",
+            "content": {
+              "type": "SYMBOL",
+              "name": "term"
+            }
+          },
+          {
+            "type": "SYMBOL",
+            "name": "bang_token"
           }
         ]
       }
