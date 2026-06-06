@@ -59,8 +59,6 @@ means "assign to what's already there," so declaring a fresh one always takes an
 introducer. Nothing about the untyped form is special-cased; it's the one shape
 that doesn't self-announce, so it's the one shape that still needs a word.
 
-Rule of thumb: **if it has a `:`, you never need a keyword.**
-
 ## What a field is
 
 - a field is a named, typed thing — value, function, or computed expression
