@@ -3029,6 +3029,36 @@ type BlockArg struct {
 
 	// InferredScope is the environment with parameters in scope
 	InferredScope TypeScope
+
+	// ImplicitUnderscore is set during Infer when the block declares no explicit
+	// parameters but references `_`, giving it a single implicit parameter `_`.
+	ImplicitUnderscore bool
+}
+
+// blockArgUsesImplicitUnderscore reports whether the body references the
+// implicit `_` parameter. References inside a nested param-less block belong to
+// that inner block (it shadows), so descent stops there; blocks with explicit
+// parameters are descended into, since `_` inside them refers outward.
+func blockArgUsesImplicitUnderscore(body Node) bool {
+	found := false
+	body.Walk(func(node Node) bool {
+		if found {
+			return false
+		}
+		switch n := node.(type) {
+		case *Symbol:
+			if n.Name == "_" {
+				found = true
+			}
+		case *BlockArg:
+			if len(n.Args) == 0 {
+				// Nested param-less block captures its own `_`; don't descend.
+				return false
+			}
+		}
+		return true
+	})
+	return found
 }
 
 var _ Node = &BlockArg{}
@@ -3073,6 +3103,12 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			)
 		}
 
+		// A block with no explicit parameters that references `_` in its body
+		// takes a single implicit parameter named `_` (Kotlin `it`-style). Every
+		// `_` in the block refers to that same single argument; a nested
+		// param-less block shadows it.
+		b.ImplicitUnderscore = len(b.Args) == 0 && blockArgUsesImplicitUnderscore(b.BodyNode)
+
 		// Clone environment for closure semantics
 		newEnv := env.Clone()
 		b.InferredScope = newEnv.(TypeScope)
@@ -3097,9 +3133,26 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			})
 		}
 
+		// The implicit `_` parameter consumes the first expected parameter slot.
+		consumed := len(b.Args)
+		if b.ImplicitUnderscore {
+			var paramType hm.Type
+			if len(b.ExpectedParamTypes) > 0 && b.ExpectedParamTypes[0] != nil {
+				paramType = b.ExpectedParamTypes[0]
+			} else {
+				paramType = fresh.Fresh()
+			}
+			newEnv.Add("_", hm.NewScheme(nil, paramType))
+			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
+				Key:   "_",
+				Value: hm.NewScheme(nil, paramType),
+			})
+			consumed = 1
+		}
+
 		// Add any remaining expected parameters to the function type signature
 		// but NOT to the environment (they will be ignored by the block)
-		for i := len(b.Args); i < len(b.ExpectedParamTypes); i++ {
+		for i := consumed; i < len(b.ExpectedParamTypes); i++ {
 			paramType := b.ExpectedParamTypes[i]
 			// Generate a parameter name for the type signature
 			paramName := fmt.Sprintf("_unused%d", i)
