@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use Int! as String!
+[1m[31mError:[0m operator addition is not defined between types String! and Int!
   [2m[34m--> errors/block_parameter_wrong_type_usage.dang:6:45[0m
  [2m    |[0m
  [2m  4 | [0m

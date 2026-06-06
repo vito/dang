@@ -1,0 +1,7 @@
+# Int and Float may be mixed in arithmetic; the result widens to Float when
+# either operand is a Float. (Previously the checker rejected `1 * 2.0`.)
+assert { (1 * 2.0) == 2.0 }
+assert { (3.0 - 1) == 2.0 }
+assert { (1 + 2) == 3 }
+assert { (10 / 4) == 2 }
+assert { (10.0 / 4) == 2.5 }

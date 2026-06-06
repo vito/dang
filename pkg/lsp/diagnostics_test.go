@@ -138,7 +138,7 @@ func (LSPSuite) TestDiagnosticsReportsFileErrors(ctx context.Context, t *testctx
 
 	require.Len(t, diagnostics, 2)
 	requireDiagnosticMessages(t, diagnostics,
-		`cannot use Int! as String!`,
+		`operator addition is not defined between types String! and Int!`,
 		`"undefined_var" not found`,
 	)
 }

@@ -25,15 +25,16 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 
 ## Arithmetic
 
-- `+ - * /` on `Int` and `Float` (mixed `Int`/`Float` operands promote to `Float`)
+- `+ - * /` on `Int` and `Float` (mixed `Int`/`Float` operands widen to `Float`, e.g. `1 * 2.0` ⇒ `2.0`)
 - `%` is `Int`-only
 - `/` and `%` on zero → runtime error (`division by zero` / `modulo by zero`)
-- `+` overloads on `String!` (concat) and lists (concat)
+- `+` overloads on `String!` (concat) and lists (concat); `- * / %` are numeric-only
 - result type unifies the operands
+- operands outside an operator's domain are a **static** type error, not a runtime failure: `"a" * "b"` ("operator multiplication is not defined for type String!"), `1 + "foo"` ("… not defined between types Int! and String!")
 
 ## Comparison
 
-- `<` `<=` `>` `>=` on numbers only (`Int`/`Float`, mixed allowed) — **not** on strings
+- `<` `<=` `>` `>=` on numbers (`Int`/`Float`, mixed allowed) or strings (compared lexicographically) — operands must match (`"a" < 1` is a static type error)
 - `==` `!=` are type-safe — mismatched types compare `false`, no coercion (`num == str` is `false`)
 - `==`/`!=` work on numbers, strings, bools, null, lists, records; both return `Boolean!`
 

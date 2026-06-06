@@ -18,6 +18,20 @@ const (
 // BinaryOperatorEvaluator defines the evaluation function for specific operators
 type BinaryOperatorEvaluator func(leftVal, rightVal Value) (Value, error)
 
+// operandClass is the set of value categories an arithmetic operator accepts.
+// It is the static shadow of what each EvalFunc supports at runtime, letting
+// the type checker reject e.g. `"a" * "b"` at definition time rather than
+// failing mid-evaluation.
+type operandClass uint8
+
+const (
+	numericOperand operandClass = 1 << iota // Int and Float (which may mix)
+	stringOperand                           // String, e.g. concatenation with +
+	listOperand                             // [a], e.g. concatenation with +
+)
+
+func (c operandClass) has(x operandClass) bool { return c&x != 0 }
+
 // BinaryOperator provides common functionality for binary operators
 type BinaryOperator struct {
 	InferredTypeHolder
@@ -26,6 +40,7 @@ type BinaryOperator struct {
 	Loc      *SourceLocation
 	OpType   OperatorType
 	OpName   string
+	Operands operandClass // accepted operand categories (arithmetic + ordering comparisons)
 	EvalFunc BinaryOperatorEvaluator
 }
 
@@ -45,6 +60,28 @@ func (b *BinaryOperator) Body() hm.Expression { return b }
 
 func (b *BinaryOperator) GetSourceLocation() *SourceLocation { return b.Loc }
 
+// unconstrainedVar reports whether t is a rigid (skolem) type variable
+// (optionally wrapped in NonNull) — i.e. an author-written, universally
+// quantified type parameter such as the `b` in `do(&yield: b): b`. Such a type
+// must work for every possible type, so it supports no operations and operators
+// that require a concrete type must reject it at definition time.
+//
+// A flexible inference variable (e.g. the element type of an empty list literal)
+// is deliberately NOT rejected: unification is still free to resolve it.
+func unconstrainedVar(t hm.Type) (hm.Type, bool) {
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	switch tv := t.(type) {
+	case hm.TypeVariable:
+		return tv, tv.IsRigid()
+	case hm.NullableTypeVariable:
+		return tv, tv.IsRigid()
+	default:
+		return nil, false
+	}
+}
+
 // Common type inference based on operator type
 func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
@@ -59,20 +96,110 @@ func (b *BinaryOperator) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher
 
 		switch b.OpType {
 		case ArithmeticOp:
-			// Unify types and return the unified type
-			subs, err := hm.Assignable(rt, lt)
-			if err != nil {
-				return nil, err
-			}
-			return lt.Apply(subs).(hm.Type), nil
+			return b.resolveOperands(lt, rt)
 		case ComparisonOp:
-			// Validate types but always return Boolean
+			// Ordering comparisons (< > <= >=) carry a domain just like
+			// arithmetic and must reject non-orderable operands (e.g.
+			// `"a" < "b"`). Equality (== !=) carries no domain — it is
+			// deliberately defined across all types — so it skips the check.
+			if b.Operands != 0 {
+				if _, err := b.resolveOperands(lt, rt); err != nil {
+					return nil, err
+				}
+			}
 			return NonNullTypeNode{&NamedTypeNode{nil, "Boolean", b.Loc}}.Infer(ctx, env, fresh)
 		default:
 			return nil, fmt.Errorf("unknown operator type: %d", b.OpType)
 		}
 	})
 }
+
+// resolveOperands validates a binary operator's operands against its declared
+// domain and returns the result type. Arithmetic callers use that type
+// directly; ordering-comparison callers discard it and return Boolean. It
+// rejects operands outside the domain (e.g. `"a" * "b"` or `"a" < "b"`) and
+// allows Int and Float to mix, widening to Float when either side is Float —
+// something the old "assign right to left" check rejected.
+func (b *BinaryOperator) resolveOperands(lt, rt hm.Type) (hm.Type, error) {
+	// An operator is not defined for an unconstrained generic type variable: a
+	// universally-quantified type (e.g. the `b` in `do(&yield: b): b`) must work
+	// for every possible type, so we cannot assume it is numeric/string/etc.
+	// Reject at definition time rather than failing at the call site — without
+	// typeclasses, a generic value can only be passed around, not operated on.
+	if tv, ok := unconstrainedVar(lt); ok {
+		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+	}
+	if tv, ok := unconstrainedVar(rt); ok {
+		return nil, fmt.Errorf("operator %s is not defined for the generic type %s: a type variable supports no operations", b.OpName, tv)
+	}
+
+	// If either side is still an open inference variable, we cannot domain-check
+	// yet; fall back to plain unification and let later constraints decide.
+	// (Rigid signature variables were already rejected above.)
+	if hasFreeVar(lt) || hasFreeVar(rt) {
+		subs, err := hm.Assignable(rt, lt)
+		if err != nil {
+			return nil, err
+		}
+		return lt.Apply(subs).(hm.Type), nil
+	}
+
+	lb, lNonNull := stripNonNull(lt)
+	rb, rNonNull := stripNonNull(rt)
+	nonNull := lNonNull && rNonNull
+
+	switch {
+	case b.Operands.has(numericOperand) && isNumeric(lb) && isNumeric(rb):
+		result := IntType
+		if lb == FloatType || rb == FloatType {
+			result = FloatType
+		}
+		return withNonNull(result, nonNull), nil
+	case b.Operands.has(stringOperand) && lb == StringType && rb == StringType:
+		return withNonNull(StringType, nonNull), nil
+	case b.Operands.has(listOperand) && isList(lb) && isList(rb):
+		// Both sides are lists; unify their element types.
+		subs, err := hm.Assignable(rt, lt)
+		if err != nil {
+			return nil, err
+		}
+		return lt.Apply(subs).(hm.Type), nil
+	}
+
+	if !lt.Eq(rt) {
+		return nil, fmt.Errorf("operator %s is not defined between types %s and %s", b.OpName, lt, rt)
+	}
+	return nil, fmt.Errorf("operator %s is not defined for type %s", b.OpName, lt)
+}
+
+// stripNonNull unwraps a NonNullType, reporting whether the wrapper was present.
+func stripNonNull(t hm.Type) (hm.Type, bool) {
+	if nn, ok := t.(hm.NonNullType); ok {
+		return nn.Type, true
+	}
+	return t, false
+}
+
+// withNonNull re-applies a NonNull wrapper when nonNull is true.
+func withNonNull(t hm.Type, nonNull bool) hm.Type {
+	if nonNull {
+		return hm.NonNullType{Type: t}
+	}
+	return t
+}
+
+func isNumeric(t hm.Type) bool { return t == IntType || t == FloatType }
+
+func isList(t hm.Type) bool {
+	switch t.(type) {
+	case ListType, GraphQLListType:
+		return true
+	default:
+		return false
+	}
+}
+
+func hasFreeVar(t hm.Type) bool { return len(t.FreeTypeVar()) > 0 }
 
 // Common evaluation logic
 func (b *BinaryOperator) Eval(ctx context.Context, scope ValueScope) (Value, error) {
@@ -237,6 +364,10 @@ func lessThanEval(leftVal, rightVal Value) (Value, error) {
 		case FloatValue:
 			return BoolValue{Val: lv.Val < rv.Val}, nil
 		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
+			return BoolValue{Val: lv.Val < rv.Val}, nil
+		}
 	}
 	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
 }
@@ -255,6 +386,10 @@ func greaterThanEval(leftVal, rightVal Value) (Value, error) {
 		case IntValue:
 			return BoolValue{Val: lv.Val > float64(rv.Val)}, nil
 		case FloatValue:
+			return BoolValue{Val: lv.Val > rv.Val}, nil
+		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
 			return BoolValue{Val: lv.Val > rv.Val}, nil
 		}
 	}
@@ -277,6 +412,10 @@ func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
 		case FloatValue:
 			return BoolValue{Val: lv.Val <= rv.Val}, nil
 		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
+			return BoolValue{Val: lv.Val <= rv.Val}, nil
+		}
 	}
 	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
 }
@@ -295,6 +434,10 @@ func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
 		case IntValue:
 			return BoolValue{Val: lv.Val >= float64(rv.Val)}, nil
 		case FloatValue:
+			return BoolValue{Val: lv.Val >= rv.Val}, nil
+		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
 			return BoolValue{Val: lv.Val >= rv.Val}, nil
 		}
 	}
@@ -460,6 +603,7 @@ func NewAddition(left, right Node, loc *SourceLocation) *Addition {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "addition",
+			Operands: numericOperand | stringOperand | listOperand,
 			EvalFunc: additionEval,
 		},
 	}
@@ -488,6 +632,7 @@ func NewSubtraction(left, right Node, loc *SourceLocation) *Subtraction {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "subtraction",
+			Operands: numericOperand,
 			EvalFunc: subtractionEval,
 		},
 	}
@@ -516,6 +661,7 @@ func NewMultiplication(left, right Node, loc *SourceLocation) *Multiplication {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "multiplication",
+			Operands: numericOperand,
 			EvalFunc: multiplicationEval,
 		},
 	}
@@ -544,6 +690,7 @@ func NewDivision(left, right Node, loc *SourceLocation) *Division {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "division",
+			Operands: numericOperand,
 			EvalFunc: divisionEval,
 		},
 	}
@@ -572,6 +719,7 @@ func NewModulo(left, right Node, loc *SourceLocation) *Modulo {
 			Loc:      loc,
 			OpType:   ArithmeticOp,
 			OpName:   "modulo",
+			Operands: numericOperand,
 			EvalFunc: moduloEval,
 		},
 	}
@@ -628,6 +776,7 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than",
+			Operands: numericOperand | stringOperand,
 			EvalFunc: lessThanEval,
 		},
 	}
@@ -656,6 +805,7 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than",
+			Operands: numericOperand | stringOperand,
 			EvalFunc: greaterThanEval,
 		},
 	}
@@ -684,6 +834,7 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than_equal",
+			Operands: numericOperand | stringOperand,
 			EvalFunc: lessThanEqualEval,
 		},
 	}
@@ -712,6 +863,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than_equal",
+			Operands: numericOperand | stringOperand,
 			EvalFunc: greaterThanEqualEval,
 		},
 	}

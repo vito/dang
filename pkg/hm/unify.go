@@ -163,6 +163,19 @@ func bindVar(tv TypeVariable, t Type) (Subs, error) {
 		return NewSubs(), nil
 	}
 
+	// A rigid (skolem) variable stands for "some unknown type" and must not be
+	// pinned to anything else while checking the body it was declared in. The
+	// sole exception is a flexible variable on the other side, which may absorb
+	// the rigid one — bind the flexible var to the rigid, not the reverse.
+	if tv.IsRigid() {
+		if tv2, ok := t.(TypeVariable); ok && !tv2.IsRigid() {
+			subs := NewSubs()
+			subs.Add(tv2, tv)
+			return subs, nil
+		}
+		return nil, UnificationError{tv, t}
+	}
+
 	// Occurs check
 	if occursCheck(tv, t) {
 		return nil, fmt.Errorf("occurs check failed: %s occurs in %s", tv, t)

@@ -27,7 +27,7 @@ pub myFun(&block(x: Int!): String!): String! {
 }
 ```
 
-- the block param's arg types may also be a type variable: `pub do(&yield: b): b { yield * 2 }`
+- the block param's arg types may also be a type variable: `pub id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#types])
 - a function/constructor may have at most one block parameter
 - regular args and a block param can mix; the block param comes last
 - callers pass a trailing brace block:

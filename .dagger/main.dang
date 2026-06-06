@@ -36,6 +36,24 @@ type Dang {
   }
 
   """
+  Build the documentation site, returning the changeset it produces under
+  docs/ (static HTML rendered from lit/, the playground wasm, the chroma
+  palette, the search index).
+
+  Mirrors docs/build.sh. The output is gitignored, so this is a check (it
+  verifies the build succeeds) rather than a generator — a generator's
+  changeset would always look unapplied in CI, where the gitignored artifacts
+  are absent.
+  """
+  pub docs: Changeset! @check {
+    let built = base
+      .withWorkdir("/src/docs")
+      .withExec(["bash", "./build.sh"])
+      .directory("/src/docs")
+    source.withDirectory("docs", built).changes(source)
+  }
+
+  """
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   @generate

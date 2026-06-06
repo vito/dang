@@ -37,8 +37,40 @@ type Substitutable interface {
 // TypeVariable represents a type variable
 type TypeVariable rune
 
+// rigidBase offsets rigid (skolem) type variables into the Unicode Private Use
+// Area so they never collide with the fresh flexible variables minted from
+// 'a'..'z' and the Greek letters. A rigid variable stands for an
+// author-written, universally-quantified type parameter (e.g. the `b` in
+// `do(&yield: b): b`). Unlike a flexible variable, it must NOT unify with a
+// concrete type while checking the body it was declared in — that is what makes
+// `yield * 2` a definition-time error rather than a runtime surprise.
+const rigidBase = 0xE000
+
+// Rigid mints the rigid (skolem) counterpart of an author-written type-variable
+// letter such as 'b'.
+func Rigid(letter rune) TypeVariable { return TypeVariable(rigidBase + letter) }
+
+// rigidSpan bounds the rigid range within the Private Use Area. It is wide
+// enough to cover every flexible variable letter (ASCII 'a'..'z' and the Greek
+// letters near U+03B1) once offset by rigidBase, while staying inside the PUA.
+const rigidSpan = 0x1000
+
+// IsRigid reports whether tv is a rigid (skolem) type variable.
+func (tv TypeVariable) IsRigid() bool {
+	return tv >= rigidBase && tv < rigidBase+rigidSpan
+}
+
+// letter returns the original letter a rigid variable was minted from, or the
+// variable itself when it is already flexible.
+func (tv TypeVariable) letter() rune {
+	if tv.IsRigid() {
+		return rune(tv) - rigidBase
+	}
+	return rune(tv)
+}
+
 func (tv TypeVariable) Name() string {
-	return string(tv)
+	return string(tv.letter())
 }
 
 func (tv TypeVariable) Apply(subs Subs) Substitutable {
@@ -72,11 +104,11 @@ func (tv TypeVariable) Supertypes() []Type {
 }
 
 func (tv TypeVariable) String() string {
-	return string(tv)
+	return string(tv.letter())
 }
 
 func (tv TypeVariable) Format(s fmt.State, c rune) {
-	_, _ = fmt.Fprintf(s, "%s", string(tv))
+	_, _ = fmt.Fprintf(s, "%s", string(tv.letter()))
 }
 
 // NullableTypeVariable is a type variable that carries a nullability taint.
