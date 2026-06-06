@@ -36,20 +36,19 @@ type Dang {
   }
 
   """
-  Build the documentation site into docs/: the static HTML rendered from
-  lit/, the playground wasm, the chroma palette, and the search index.
+  Build the documentation site and return the rendered output directory.
 
-  Mirrors docs/build.sh. The outputs are gitignored build artifacts; this
-  generator produces them as a changeset so `dagger generate` can populate
-  docs/ for local preview or deploy.
+  Mirrors docs/build.sh: compiles the playground to wasm, renders the
+  syntax-highlight palette, and generates the static HTML from lit/. The
+  output is gitignored, so this is a check (it verifies the build succeeds)
+  rather than a generator — a generator's changeset would always look unapplied
+  in CI, where the gitignored artifacts are absent.
   """
-  @generate
-  pub docs: Changeset! {
-    let built = base
+  pub docs: Directory! @check {
+    base
       .withWorkdir("/src/docs")
       .withExec(["bash", "./build.sh"])
       .directory("/src/docs")
-    source.withDirectory("docs", built).changes(source)
   }
 
   """
