@@ -76,7 +76,7 @@ func unconstrainedVar(t hm.Type) (hm.Type, bool) {
 	case hm.TypeVariable:
 		return tv, tv.IsRigid()
 	case hm.NullableTypeVariable:
-		return tv, tv.TypeVariable.IsRigid()
+		return tv, tv.IsRigid()
 	default:
 		return nil, false
 	}
