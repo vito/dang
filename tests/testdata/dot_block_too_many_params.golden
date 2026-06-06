@@ -1,0 +1,9 @@
+[1m[31mError:[0m dot-block takes a single value, but the block declares 2 parameters
+  [2m[34m--> errors/dot_block_too_many_params.dang:2:11[0m
+ [2m    |[0m
+ [2m  1 | # Dot-block supplies exactly one value, so a block with 2+ params is rejected.[0m
+ [2m[34m[1m  2 | [0mlet r = 5.{ a, b => a + b }
+[2m                 [31m^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

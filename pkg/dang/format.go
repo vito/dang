@@ -646,6 +646,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatIndex(n)
 	case *ObjectSelection:
 		f.formatObjectSelection(n)
+	case *DotApply:
+		f.formatDotApply(n)
 	case *BlockArg:
 		f.formatBlockArg(n)
 	case *Default:
@@ -2927,6 +2929,12 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 		}
 	}
 	f.write("}}")
+}
+
+func (f *Formatter) formatDotApply(d *DotApply) {
+	f.formatNode(d.Receiver)
+	f.write(".")
+	f.formatBlockArg(d.Block)
 }
 
 func (f *Formatter) formatInlineFragment(frag *InlineFragment) {

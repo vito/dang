@@ -1151,6 +1151,99 @@ func (i *Index) Walk(fn func(Node) bool) {
 	i.Index.Walk(fn)
 }
 
+// DotApply is dot-block application: `receiver.{ block }`. It calls the block
+// with the receiver as its single argument, so `foo.{ x => bar(x) }` and
+// `foo.{ bar(_) }` both mean `bar(foo)`. It sits at `.`'s precedence (a sibling
+// of selection and method calls in SelectOrCall), so it interleaves with real
+// method calls in a single chain.
+type DotApply struct {
+	InferredTypeHolder
+	Receiver Node
+	Block    *BlockArg
+	Loc      *SourceLocation
+}
+
+var _ Node = (*DotApply)(nil)
+var _ Evaluator = (*DotApply)(nil)
+
+func (d *DotApply) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(d, func() (hm.Type, error) {
+		receiverType, err := d.Receiver.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Dot-block supplies exactly one value, so the block must take 0 or 1
+		// parameters; 2+ is an error.
+		if len(d.Block.Args) > 1 {
+			return nil, NewInferError(
+				fmt.Errorf("dot-block takes a single value, but the block declares %d parameters",
+					len(d.Block.Args)),
+				d.Block,
+			)
+		}
+
+		// The receiver is the block's single argument. Unlike selection,
+		// dot-block does not short-circuit on null: the receiver type (nullable
+		// or not) passes straight through to the parameter, letting the block
+		// decide what to do with null.
+		d.Block.ExpectedParamTypes = []hm.Type{receiverType}
+		if _, err := d.Block.Infer(ctx, env, fresh); err != nil {
+			return nil, err
+		}
+
+		result := d.Block.Inferred.Ret(false)
+		d.SetInferredType(result)
+		return result, nil
+	})
+}
+
+func (d *DotApply) DeclaredSymbols() []string {
+	return nil
+}
+
+func (d *DotApply) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
+	symbols = append(symbols, d.Block.ReferencedSymbols()...)
+	return symbols
+}
+
+func (d *DotApply) Body() hm.Expression { return d }
+
+func (d *DotApply) GetSourceLocation() *SourceLocation { return d.Loc }
+
+func (d *DotApply) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
+		receiverVal, err := EvalNode(ctx, scope, d.Receiver)
+		if err != nil {
+			return nil, err
+		}
+
+		blockVal, err := d.Block.Eval(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+
+		fn, ok := blockVal.(Callable)
+		if !ok {
+			return nil, fmt.Errorf("dot-block did not evaluate to a callable, got %T", blockVal)
+		}
+
+		// Apply the block to the receiver as its single argument. The receiver
+		// is bound even when null (no short-circuit).
+		return callFunc(ctx, fn, receiverVal)
+	})
+}
+
+func (d *DotApply) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
+	d.Receiver.Walk(fn)
+	d.Block.Walk(fn)
+}
+
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
 	InferredTypeHolder

@@ -1,0 +1,2 @@
+# Dot-block supplies exactly one value, so a block with 2+ params is rejected.
+let r = 5.{ a, b => a + b }
