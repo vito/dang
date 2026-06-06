@@ -125,7 +125,7 @@ c.{ mountCache(_, path, cache) }
 > Meta: the null behaviour follows from what dot-block *is*. Frame it that way rather than as a gotcha vs. selection.
 
 - because `foo.{ bar(_) }` ≡ `bar(foo)`, a null receiver is simply *passed in*: the block runs with `_` bound to null, exactly as `bar(null)` would. Dot-block applies a block — it does not navigate into the receiver, so it has nothing to short-circuit
-- this is what lets a block *handle* null: `x.{ _ ?? 0 }`, `x.{ if (_ == null) { … } else { … } }`. Want null-safety instead? Express it in the block (`x.{ _?.field }`)
+- this is what lets a block *handle* null: `x.{ _ ?? 0 }`, `x.{ if (_ == null) { … } else { … } }`
 - contrast `.{{ }}` selection ([#graphql]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
 
 ## Common methods that take blocks
