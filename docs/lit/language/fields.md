@@ -2,7 +2,7 @@
 
 # Fields {#fields}
 
-> Meta: this is the right place to introduce the *field* concept. A field is declared by its shape, not by a keyword — lead with that, then visibility, then the declaration-vs-reassignment rule. Frame the keyword as a *binding introducer* (needed only when a line would otherwise read as reassignment), not as a visibility annotation that's "usually optional" — the untyped value field isn't an exception, it's just the one declaration shape that names no type. The tell for "declaration, no keyword needed" is a type in type position (a field annotation or method return type), never args or a block alone — those without a return type are calls. The object-context behavior is covered in [#objects] — link there, don't duplicate.
+> Meta: introduce the *field* concept here. Lead with the shape and let the examples carry it — the whole rule is just: `let` makes a field local, a type makes it public, and a bare `name = value` reassigns. Don't mention `pub` (it's legacy and formatted away). Object-context behavior lives in [#objects] — link, don't duplicate.
 
 A **field** is a named, typed thing — a value, a function, or a computed
 expression — declared in the current scope:
@@ -11,58 +11,45 @@ expression — declared in the current scope:
 * Type-level fields declared within an [#objects] or [#interfaces-unions]
 * Block-level fields declared within the nearest enclosing `{` and `}`
 
-A field is recognized by its **shape**, not by a keyword: a name followed by a
-type annotation, a value, an argument list, or a block body.
+A field is recognized by its **shape** — a name followed by a type, an argument
+list, or a block body:
 
 ```dang
 name: String!             # typed field
 greet: String! { ... }    # computed field / method
 add(x: Int!): Int! { x }  # method with args
 y: Int! = 100             # typed field with default
+let secret = "shhh"       # local field
 ```
 
 ## Visibility
 
-Fields are **public by default** — just write the declaration. The `let`
-keyword marks the non-default case:
+A field is **public** when it declares a type, and **local** when it starts with
+`let`:
 
-- a bare declaration is **public** — visible to importers and outside the type
-- `let name = value` is **private/local**. A *type-level* `let` is readable only
-  inside that type's own methods/defaults. A *block-level* `let` declares a
-  fresh local. A *top-level* `let` is module-scoped: since a directory is one
-  module, it is visible from every `.dang` file in that directory, just not
-  exported — the way to share private helpers across a directory module (see
-  [#modules]).
+```dang
+name: String!              # public field
+greet: String! { ... }     # public method
+count: Int! = 0            # public field with a default
+let secret = "shhh"        # local field
+```
 
-`pub name = value` is still accepted as an explicit public marker, but it is
-redundant with the default. `dang fmt` and the LSP remove it, and it will
-eventually be retired — leaving bare declarations for public fields and `let`
-for local/private ones.
+`let` introduces a local field. A *type-level* `let` is readable only inside that
+type's own methods and defaults; a *block-level* `let` is a fresh local; a
+*top-level* `let` is module-scoped — visible to every `.dang` file in the
+directory but not exported, which is how you share helpers across a module (see
+[#modules]).
 
 ## Declaration vs. reassignment
 
-A keyword here isn't really a visibility marker — it **introduces a binding**.
-You reach for one only when a line would otherwise read as a [#mutation]
-(`name = newValue`, which updates an already-declared field). What sets a
-declaration apart is a **type in type position** — a field's `name: Type`
-annotation, or a method's `): Type` return type:
+A bare `name = value` reassigns an existing field — see [#mutation]. To declare a
+new field instead, give it a type or introduce it with `let`:
 
-- anything that names a type is a declaration, so no keyword is needed (public
-  by default; `let` to opt out). Arguments or a block are *not* enough on their
-  own — `add(x)` or `foo { ... }` without a return type read as **calls**, not
-  declarations; the return type is the tell
-- a bare, *untyped* `name = value` names no type, so on its own it is plain
-  assignment syntax — a **reassignment** of an existing field. To *introduce* a
-  new one, give it a keyword (`let x = 42`, or legacy `pub x = 42`) — or annotate
-  it (`x: Int! = 42`), which makes it a declaration like the rest
-
-This is the same rule that governs locals: you never bring a local into being
-without `let` either. A value field is no different — bare `name = value` always
-means "assign to what's already there," so declaring a fresh one always takes an
-introducer. Nothing about the untyped form is special-cased; it's simply the one
-declaration shape that carries no type, so it's the one that still needs a word.
-
-Rule of thumb: **if it names a type, you never need a keyword.**
+```dang
+total: Int! = 0   # declares a public field
+let total = 0     # declares a local field
+total = 5         # reassigns the existing field
+```
 
 ## What a field is
 
@@ -81,8 +68,7 @@ Rule of thumb: **if it names a type, you never need a keyword.**
 x: Int! = 42              # explicit type with default
 y: Int! = 100             # explicit type
 maybe: String = null      # nullable
-let secret = "shhh"       # private (untyped is fine for let)
-pub count = 0             # introducer required: untyped value field, else reassignment
+let secret = "shhh"       # local field (untyped is fine)
 ```
 
 ## Forward references
