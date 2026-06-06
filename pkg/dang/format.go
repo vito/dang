@@ -658,6 +658,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatUnaryNegation(n)
 	case *UnaryMinus:
 		f.formatUnaryMinus(n)
+	case *NonNullAssert:
+		f.formatNonNullAssert(n)
 	case *FunctionRef:
 		f.formatFunctionRef(n)
 	case *Addition:
@@ -3000,6 +3002,11 @@ func (f *Formatter) formatUnaryMinus(u *UnaryMinus) {
 func (f *Formatter) formatFunctionRef(r *FunctionRef) {
 	f.write("&")
 	f.formatNode(r.Expr)
+}
+
+func (f *Formatter) formatNonNullAssert(n *NonNullAssert) {
+	f.formatNode(n.Expr)
+	f.write("!")
 }
 
 func (f *Formatter) formatGrouped(g *Grouped) {

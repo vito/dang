@@ -1,0 +1,38 @@
+# Postfix `!` asserts that a nullable value is non-null, narrowing its type
+# from `T` to `T!` and raising at runtime if the value is actually null.
+
+pub maybe(b: Boolean!): String {
+  if (b) { "hi" } else { null }
+}
+
+# The result of `!` is non-null, so it can be bound to a `T!`.
+let s: String! = maybe(true)!
+assert("asserts non-null value") { s == "hi" }
+
+# Works inline, binding tighter than binary operators.
+assert("binds tighter than +") { maybe(true)! + " there" == "hi there" }
+
+# Chains with field selection: `(box.val)!`.
+type Box {
+  pub val: String = "x"
+}
+
+let b = Box
+assert("chains with select") { b.val! == "x" }
+
+# Chains with indexing: `(xs[0])!`.
+let xs: [String]! = ["a", "b"]
+assert("chains with index") { xs[0]! == "a" }
+
+# Asserting an already non-null value is a harmless no-op.
+let n: Int! = 42
+assert("non-null operand is a no-op") { n! == 42 }
+
+# Applies to a parenthesized expression: assert the result of `??`.
+assert("applies to grouped expression") { (maybe(false) ?? "fallback")! == "fallback" }
+
+# `!=` is unaffected, with or without surrounding whitespace.
+assert("inequality still parses") { 1 != 2 }
+assert("inequality without spaces") { 1!=1 == false }
+
+print("non-null assertion tests passed!")

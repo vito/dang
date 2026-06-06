@@ -92,6 +92,10 @@
         "named": true
       },
       {
+        "type": "non_null_assert",
+        "named": true
+      },
+      {
         "type": "object_literal",
         "named": true
       },
@@ -2644,6 +2648,32 @@
         "types": [
           {
             "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "bang_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "non_null_assert",
+    "named": true,
+    "fields": {
+      "expr": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "term",
             "named": true
           }
         ]

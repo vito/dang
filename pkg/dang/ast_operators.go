@@ -855,6 +855,72 @@ func (u *UnaryMinus) Walk(fn func(Node) bool) {
 	u.Expr.Walk(fn)
 }
 
+// NonNullAssert represents the postfix `expr!` operator, which asserts that
+// the operand is non-null. At the type level it narrows `T` to `T!`; at
+// runtime it raises if the value turns out to be null.
+type NonNullAssert struct {
+	InferredTypeHolder
+	Expr Node
+	Loc  *SourceLocation
+}
+
+var _ Node = (*NonNullAssert)(nil)
+var _ Evaluator = (*NonNullAssert)(nil)
+
+func (n *NonNullAssert) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(n, func() (hm.Type, error) {
+		t, err := n.Expr.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Strip the outer nullability. If the type is already non-null the
+		// assertion is a no-op and we keep the type as-is.
+		if nn, ok := t.(hm.NonNullType); ok {
+			n.SetInferredType(nn)
+			return nn, nil
+		}
+
+		result := hm.NonNullType{Type: t}
+		n.SetInferredType(result)
+		return result, nil
+	})
+}
+
+func (n *NonNullAssert) DeclaredSymbols() []string {
+	return nil
+}
+
+func (n *NonNullAssert) ReferencedSymbols() []string {
+	return n.Expr.ReferencedSymbols()
+}
+
+func (n *NonNullAssert) Body() hm.Expression { return n }
+
+func (n *NonNullAssert) GetSourceLocation() *SourceLocation { return n.Loc }
+
+func (n *NonNullAssert) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return WithEvalErrorHandling(ctx, n, func() (Value, error) {
+		val, err := EvalNode(ctx, scope, n.Expr)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, isNull := val.(NullValue); isNull {
+			return nil, fmt.Errorf("non-null assertion failed: value is null")
+		}
+
+		return val, nil
+	})
+}
+
+func (n *NonNullAssert) Walk(fn func(Node) bool) {
+	if !fn(n) {
+		return
+	}
+	n.Expr.Walk(fn)
+}
+
 // FunctionRef represents the &foo function-reference operator.
 type FunctionRef struct {
 	InferredTypeHolder
