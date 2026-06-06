@@ -41,6 +41,7 @@
 - single lowercase letters: `a`, `b`
 - used in generic function signatures
 - inferred at call sites
+- **opaque**: a generic value supports no operations. Inside the body that declares it, a type variable can only be passed through (returned, stored, passed on) or compared with `==`/`!=` — arithmetic and ordering are definition-time errors (`do(&yield: b): b { yield * 2 }` → "operator multiplication is not defined for the generic type b"). Use a concrete type (e.g. `Int`) if the body must operate on the value.
 
 ## Type hints / casts: `::`
 
