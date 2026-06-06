@@ -4,6 +4,13 @@ assert { 2.0 > 1 }
 assert { 3 <= 3 }
 assert { 2.5 >= 2 }
 
+# Ordering also works on strings, compared lexicographically.
+assert { "a" < "b" }
+assert { "b" > "a" }
+assert { "a" <= "a" }
+assert { "abc" < "abd" }
+assert { ("z" < "a") == false }
+
 # Equality is defined across all types, including mismatched ones, and simply
 # reports inequality rather than failing to type-check.
 assert { (1 == 1) }

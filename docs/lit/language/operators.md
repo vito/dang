@@ -34,7 +34,7 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 
 ## Comparison
 
-- `<` `<=` `>` `>=` on numbers only (`Int`/`Float`, mixed allowed) — **not** on strings (`"a" < "b"` is a static type error)
+- `<` `<=` `>` `>=` on numbers (`Int`/`Float`, mixed allowed) or strings (compared lexicographically) — operands must match (`"a" < 1` is a static type error)
 - `==` `!=` are type-safe — mismatched types compare `false`, no coercion (`num == str` is `false`)
 - `==`/`!=` work on numbers, strings, bools, null, lists, records; both return `Boolean!`
 

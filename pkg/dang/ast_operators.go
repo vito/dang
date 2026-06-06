@@ -40,7 +40,7 @@ type BinaryOperator struct {
 	Loc      *SourceLocation
 	OpType   OperatorType
 	OpName   string
-	Operands operandClass // accepted operand categories (ArithmeticOp only)
+	Operands operandClass // accepted operand categories (arithmetic + ordering comparisons)
 	EvalFunc BinaryOperatorEvaluator
 }
 
@@ -364,6 +364,10 @@ func lessThanEval(leftVal, rightVal Value) (Value, error) {
 		case FloatValue:
 			return BoolValue{Val: lv.Val < rv.Val}, nil
 		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
+			return BoolValue{Val: lv.Val < rv.Val}, nil
+		}
 	}
 	return nil, fmt.Errorf("less than comparison not supported for types %T and %T", leftVal, rightVal)
 }
@@ -382,6 +386,10 @@ func greaterThanEval(leftVal, rightVal Value) (Value, error) {
 		case IntValue:
 			return BoolValue{Val: lv.Val > float64(rv.Val)}, nil
 		case FloatValue:
+			return BoolValue{Val: lv.Val > rv.Val}, nil
+		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
 			return BoolValue{Val: lv.Val > rv.Val}, nil
 		}
 	}
@@ -404,6 +412,10 @@ func lessThanEqualEval(leftVal, rightVal Value) (Value, error) {
 		case FloatValue:
 			return BoolValue{Val: lv.Val <= rv.Val}, nil
 		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
+			return BoolValue{Val: lv.Val <= rv.Val}, nil
+		}
 	}
 	return nil, fmt.Errorf("less than or equal comparison not supported for types %T and %T", leftVal, rightVal)
 }
@@ -422,6 +434,10 @@ func greaterThanEqualEval(leftVal, rightVal Value) (Value, error) {
 		case IntValue:
 			return BoolValue{Val: lv.Val >= float64(rv.Val)}, nil
 		case FloatValue:
+			return BoolValue{Val: lv.Val >= rv.Val}, nil
+		}
+	case StringValue:
+		if rv, ok := rightVal.(StringValue); ok {
 			return BoolValue{Val: lv.Val >= rv.Val}, nil
 		}
 	}
@@ -760,7 +776,7 @@ func NewLessThan(left, right Node, loc *SourceLocation) *LessThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than",
-			Operands: numericOperand,
+			Operands: numericOperand | stringOperand,
 			EvalFunc: lessThanEval,
 		},
 	}
@@ -789,7 +805,7 @@ func NewGreaterThan(left, right Node, loc *SourceLocation) *GreaterThan {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than",
-			Operands: numericOperand,
+			Operands: numericOperand | stringOperand,
 			EvalFunc: greaterThanEval,
 		},
 	}
@@ -818,7 +834,7 @@ func NewLessThanEqual(left, right Node, loc *SourceLocation) *LessThanEqual {
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "less_than_equal",
-			Operands: numericOperand,
+			Operands: numericOperand | stringOperand,
 			EvalFunc: lessThanEqualEval,
 		},
 	}
@@ -847,7 +863,7 @@ func NewGreaterThanEqual(left, right Node, loc *SourceLocation) *GreaterThanEqua
 			Loc:      loc,
 			OpType:   ComparisonOp,
 			OpName:   "greater_than_equal",
-			Operands: numericOperand,
+			Operands: numericOperand | stringOperand,
 			EvalFunc: greaterThanEqualEval,
 		},
 	}
