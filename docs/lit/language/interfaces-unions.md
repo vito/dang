@@ -97,25 +97,25 @@ case (pet) {
 > Meta: inline fragments are the GraphQL selection syntax (see [#graphql]); they apply to single values *and* lists.
 
 ```dang
-pets.{
+pets.{{
   ... on Cat { name, lives }
   ... on Dog { name, tricks }
-}
+}}
 ```
 
 - selects different field sets per concrete type
 - applies to a single value or to a list (maps over elements)
 - after selection you only have the fields you selected: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type
 - type conditions resolve against the receiver's (GraphQL) schema, not a local type that shadows the name
-- can nest: `... on Post { title, author.{name} }`, and selections-of-selections `edges.{ node.{ ... on User { ... } } }`
+- can nest: `... on Post { title, author.{{name}} }`, and selections-of-selections `edges.{{ node.{{ ... on User { ... } }} }}`
 
 ### Lazy inline fragments
 
 - `... on Cat` (no field block) yields a typed reference / type assertion without selecting fields
-- works on a single value or a list (`pets.{ ... on Cat, ... on Dog }` — comma- or newline-separated)
-- non-matching assertion returns `null`: `cat.{... on Dog} == null`
+- works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}` — comma- or newline-separated)
+- non-matching assertion returns `null`: `cat.{{... on Dog}} == null`
 - non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`
-- useful for narrowing a GraphQL interface/union value before chaining (`node(id).{... on User}.name`)
+- useful for narrowing a GraphQL interface/union value before chaining (`node(id).{{... on User}}.name`)
 
 ## Interface vs. union vs. enum
 
