@@ -2,12 +2,12 @@ import Test
 
 # Nested selection inside inline fragment — author.{name} tests
 # that nested .{} works inside ... on Type { } bodies
-let results = searchConnection(query: "Hello").edges.{
-  node.{
+let results = searchConnection(query: "Hello").edges.{{
+  node.{{
     ... on User { name }
-    ... on Post { title, author.{name} }
-  }
-}
+    ... on Post { title, author.{{name}} }
+  }}
+}}
 
 let first = results[0]
 let line = case (first.node) {

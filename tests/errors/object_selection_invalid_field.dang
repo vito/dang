@@ -2,4 +2,4 @@
 
 import Test
 
-let result = user(id: "1").{name, nonexistent}
+let result = user(id: "1").{{name, nonexistent}}

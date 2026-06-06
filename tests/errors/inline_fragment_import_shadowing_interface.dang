@@ -8,6 +8,6 @@ type User {
   origin: String! = "local"
 }
 
-let bad = node(id: "1").{
+let bad = node(id: "1").{{
   ... on User { origin }
-}
+}}

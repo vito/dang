@@ -3,10 +3,10 @@
 import Test
 
 # Test the actual pattern with nested field arguments
-let user_with_limited_posts = user(id: "1").{
+let user_with_limited_posts = user(id: "1").{{
   name,
-  posts(first: 2).{posts.{title, content}}
-}
+  posts(first: 2).{{posts.{{title, content}}}}
+}}
 
 assert { user_with_limited_posts.name == "John Doe" }
 assert { user_with_limited_posts.posts != null }
@@ -14,13 +14,13 @@ assert { user_with_limited_posts.posts.posts[0].title == "First Post" }
 assert { user_with_limited_posts.posts.posts[0].content == "Hello World!" }
 
 # Test more complex nested pattern
-let detailed_user = user(id: "1").{
+let detailed_user = user(id: "1").{{
   name,
   age,
-  posts(first: 1).{
-    posts.{title, author.{name}}
-  }
-}
+  posts(first: 1).{{
+    posts.{{title, author.{{name}}}}
+  }}
+}}
 
 assert { detailed_user.name == "John Doe" }
 assert { detailed_user.age == 30 }

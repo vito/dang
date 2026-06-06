@@ -21,13 +21,13 @@ type TestUserWithProfile {
 
 # Test basic object selection
 let user = TestUser("Alice", "alice@example.com", 30)
-let user_summary = user.{name, email}
+let user_summary = user.{{name, email}}
 
 assert { user_summary.name == "Alice" }
 assert { user_summary.email == "alice@example.com" }
 
 # Test object selection with multiple fields
-let user_info = user.{name, email, age, active}
+let user_info = user.{{name, email, age, active}}
 assert { user_info.name == "Alice" }
 assert { user_info.email == "alice@example.com" }
 assert { user_info.age == 30 }
@@ -36,7 +36,7 @@ assert { user_info.active == true }
 # Test nested object selection
 let profile = Profile("Software Engineer", "alice.jpg")
 let user_with_profile = TestUserWithProfile("Bob", "bob@example.com", profile)
-let user_nested = user_with_profile.{name, profile.{bio, avatar}}
+let user_nested = user_with_profile.{{name, profile.{{bio, avatar}}}}
 
 assert { user_nested.name == "Bob" }
 assert { user_nested.profile.bio == "Software Engineer" }
@@ -48,7 +48,7 @@ let users = [
   TestUser("Diana", "diana@example.com", 28),
 ]
 
-let user_summaries = users.{name, email}
+let user_summaries = users.{{name, email}}
 # Note: Since Dang doesn't support array indexing, we'll test the structure differently
 # We can verify the object selection works by checking that the result is well-formed
 assert { user_summaries != null }
@@ -59,7 +59,7 @@ let users_with_profile = [
   TestUserWithProfile("Frank", "frank@example.com", Profile("Developer", "frank.jpg")),
 ]
 
-let detailed_summaries = users_with_profile.{name, profile.{bio}}
+let detailed_summaries = users_with_profile.{{name, profile.{{bio}}}}
 # Note: Since Dang doesn't support array indexing, we'll test the structure differently
 # We can verify the nested object selection works by checking that the result is well-formed
 assert { detailed_summaries != null }

@@ -18,7 +18,7 @@ let statusValue = status
 assert { statusValue == Status.ACTIVE }
 
 # Test enum field on a type
-let statuses = users.{status}
+let statuses = users.{{status}}
 let john = statuses[0]
 assert { john.status == Status.ACTIVE }
 assert { john.status != Status.PENDING }

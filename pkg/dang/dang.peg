@@ -219,13 +219,13 @@ IndexOrCall <- left:Term ImmediateBracket _ index:Form _ ']' args:ArgValues? {
 }
 ImmediateBracket <- '['
 
-ObjectSelection <- '{' _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ '}' {
+ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ "}}" {
   return &ObjectSelection{
     Receiver: nil,
     InlineFragments: sliceOfPrepend[*InlineFragment](first, rest),
     Loc: c.Loc(),
   }, nil
-} / '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}' {
+} / "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
   return &ObjectSelection{
     Receiver: nil, // Will be set by parent SelectOrCall
     Fields: sliceOfAppend[*FieldSelection](fields, last),
