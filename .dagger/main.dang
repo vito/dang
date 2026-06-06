@@ -36,6 +36,21 @@ type Dang {
   }
 
   """
+  Build the documentation site, returning the rendered output directory.
+
+  Mirrors docs/build.sh: compiles the playground to wasm, renders the
+  syntax-highlight palette, and generates the static HTML from lit/. Runs as
+  a check too, so a broken docs build fails CI. The output is gitignored, so
+  this builds an artifact rather than generating committed files.
+  """
+  pub docs: Directory! @check {
+    base
+      .withWorkdir("/src/docs")
+      .withExec(["bash", "./build.sh"])
+      .directory("/src/docs")
+  }
+
+  """
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   @generate
