@@ -17,11 +17,11 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 | 5 | `<`, `<=`, `>`, `>=` | left |
 | 6 | `+`, `-` | left |
 | 7 | `*`, `/`, `%` | left |
-| 8 | `!`, `-` (unary), `&` (prefix) | — |
-| 9 | `.`, `[]`, `()` | left |
+| 8 | `!` (prefix), `-` (unary), `&` (prefix) | — |
+| 9 | `!` (postfix), `.`, `[]`, `()` | left |
 
 - `::` (cast / type hint) is **not** in this chain. In the grammar it's a sibling of `??` (`Form <- … / DefaultExpr / TypeHint / Term`) and binds only a bare `Term` on its left, e.g. `(a + b) :: T!` needs the parens. See [#types].
-- the unary/postfix levels (8, 9) also parse as `Term`, so `&expr`, `!expr`, `-expr`, `.field`, `[i]`, `(args)` all bind tighter than every binary operator.
+- the unary/postfix levels (8, 9) also parse as `Term`, so `&expr`, `!expr`, `-expr`, `expr!`, `.field`, `[i]`, `(args)` all bind tighter than every binary operator.
 
 ## Arithmetic
 
@@ -47,6 +47,22 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 - `nullable ?? fallback` — returns fallback when LHS is null (`Default.Eval` checks `NullValue`)
 - result type is the **fallback's** type: `Default.Infer` returns the right operand's type after `Assignable(rt, lt)`. So `T ?? T! → T!`; `T ?? T → T`
 - right-associative: `a ?? b ?? c` parses as `a ?? (b ?? c)`
+
+## Non-null assertion (postfix `!`)
+
+- `expr!` asserts that a nullable value is non-null: it narrows the type from `T` to `T!` and, at runtime, raises `non-null assertion failed: value is null` if the value is actually null
+- it's the explicit escape hatch for when [flow-sensitive narrowing][#flow-typing] can't prove non-nullness (e.g. a field or call result that can't be soundly narrowed) — prefer narrowing when you can, and reach for `!` when you know better than the checker
+- binds as a `Term` (level 9), so it sticks to the immediately preceding operand: `a.b!` is `(a.b)!`, and `a! + b` is `(a!) + b`
+- it's `expr!` with no space before the `!`; `a != b` and `a!=b` still parse as inequality
+
+```dang
+let name: String = user.nickname   # nullable
+print(name!.length)                # assert non-null, then call
+
+# asserting a value that is null raises at runtime
+let missing: String = null
+missing!                           # -> non-null assertion failed: value is null
+```
 
 ## Compound assignment
 
