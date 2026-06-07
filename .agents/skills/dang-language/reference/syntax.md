@@ -23,7 +23,7 @@
 ## Reserved words
 
 ```
-pub let type interface enum union scalar new implements
+let type interface enum union scalar new implements
 if else case for break continue return
 try catch raise
 import directive on
@@ -42,7 +42,7 @@ self
 """
 Greets the named user.
 """
-pub greet(
+greet(
   """name of the person to greet"""
   name: String!
 ): String! { `hi, ${name}` }
@@ -111,7 +111,7 @@ pub greet(
 - Right-associative: `a ?? b ?? c` = `a ?? (b ?? c)`.
 
 ### Compound assignment
-- `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field (`pub`/`let`).
+- `+=` desugars to `+`; works on `Int`/`Float`, `String`, lists. Requires LHS to be a mutable field or `let` local.
 - `=` is plain reassignment, not an operator on the precedence chain.
 
 ### Unary

@@ -130,5 +130,5 @@ scalar JSON
 - Treat as opaque: equality, comparison, list membership, records/lists work; no string operations unless cast back to `String`.
 
 ### `ID!`
-- Its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop). But string *literals* still coerce into `ID!` slots (`pub idSlot: ID! = "abc"`).
+- Its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop). But string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`).
 - Scalar fields are **invariant** across interface implementation — `id: String!` does not satisfy `id: ID!` (see objects.md variance).

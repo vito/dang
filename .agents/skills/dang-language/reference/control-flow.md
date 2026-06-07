@@ -5,7 +5,7 @@
 
 ## `if` / `else`
 ```dang
-pub status = if (active) { "on" } else { "off" }
+let status = if (active) { "on" } else { "off" }
 ```
 - Condition must be `Boolean!` — **no truthiness**. A non-`Boolean` condition is a compile error (`condition must be Boolean, got Int!`).
 - `else if` chains: `if (a) {..} else if (b) {..} else {..}`.
@@ -85,10 +85,10 @@ raise NotFoundError(message: "user gone", resource: "User")
 
 ### The `Error` interface
 ```dang
-interface Error { pub message: String! }
+interface Error { message: String! }
 ```
 - A real prelude interface; `BasicError` is the built-in implementer for string raises.
-- User error types `implements Error`, which forces `pub message: String!`. Additional fields (`resource`, `field`, `code`) are preserved on the raised value and matchable in `catch`.
+- User error types `implements Error`, which forces `message: String!`. Additional fields (`resource`, `field`, `code`) are preserved on the raised value and matchable in `catch`.
 
 ### Catching
 ```dang

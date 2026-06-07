@@ -80,8 +80,8 @@ in one iteration would be invisible to the next:
 
 ```dang
 type Builder {
-  pub items: [String!]! = []
-  pub addAll(source: [String!]!): Builder! {
+  items: [String!]! = []
+  addAll(source: [String!]!): Builder! {
     source.each { item => self.items += [item] }   # must accumulate
     self
   }

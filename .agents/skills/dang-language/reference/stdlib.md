@@ -94,7 +94,7 @@ Parsing is **type-driven** — `fromJSON`/`fromYAML` produce values of the *expe
 let summary: Summary! = fromJSON("""{"name": "test", "count": 42}""")
 let status: Status! = fromJSON("\"PASSED\"")
 let s = fromJSON(...) :: Status!
-pub f(d: String!): Summary! { fromJSON(d) }
+f(d: String!): Summary! { fromJSON(d) }
 ```
 - Works for primitives, lists, records, custom types, enums.
 - Unknown/extra fields in the input are ignored, not errors. `fromJSON` rejects trailing data after the first value.
@@ -124,6 +124,6 @@ pub f(d: String!): Summary! { fromJSON(d) }
 - `UUID.v7 -> String!` — time-ordered UUID v7
 
 ## Error types
-- `Error` — interface with `pub message: String!`
+- `Error` — interface with `message: String!`
 - `BasicError` — concrete type behind `raise "msg"`; implements `Error`
 - `AssertionError` — raised by a failed `assert` (carries the offending expression and sub-values)

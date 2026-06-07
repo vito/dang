@@ -72,7 +72,7 @@ Mutation.createUser(input: CreateUserInput(name: "Alice", email: "..."))
 ## Modules and imports
 
 ### A single file is a module
-- Top-level declarations are the module's surface; `pub` exported, `let` private.
+- Top-level declarations are the module's surface; a typed declaration is exported, `let` keeps it private.
 - Order doesn't matter — declarations are hoisted; forward references work.
 
 ### A directory is also a module
@@ -122,7 +122,7 @@ import MyApi
 - Circular *types* (interface-implementing-interface, mutually-referencing types) are fine.
 
 ### What a module exports
-- Every `pub` field, type, interface, union, enum, scalar, directive. Nothing `let`.
+- Every public (typed) field, type, interface, union, enum, scalar, directive. Nothing `let`.
 
 ---
 
@@ -143,19 +143,19 @@ directive @cache(ttl: Int! = 300, key: String) on FIELD_DEFINITION
 ### Applying
 ```dang
 type Person @deprecated(reason: "use NewPerson") {
-  pub name: String! @deprecated
-  pub email: String! @cache(ttl: 60)
+  name: String! @deprecated
+  email: String! @cache(ttl: 60)
 }
 
 @check
-pub mixedField: String! @cache(ttl: 120) { "mixed" }   # prefix and suffix both collected
+mixedField: String! @cache(ttl: 120) { "mixed" }   # prefix and suffix both collected
 ```
 - Suffix form attaches to the field/type; prefix form sits on its own line before the declaration. Both forms apply to types, fields, and function/field arguments (`process(user: Person! @experimental)`). Multiple prefix directives go on separate lines.
 - Args: named (`@cache(ttl: 60, key: "user")`) or positional shorthand (`@cache(60, key: "user")`); positionals before named (`positional arguments must come before named arguments`). Declaration defaults apply when omitted.
 
 ### Qualified access
 - `@MyApi.experimental` disambiguates when an import shadows a name. Two imports providing the same unqualified directive → `ambiguous reference to directive @experimental`.
-- Qualified access is **suffix-only** — the prefix form does not accept a `Module.` scope (`@MyApi.experimental pub ...` is a syntax error).
+- Qualified access is **suffix-only** — the prefix form does not accept a `Module.` scope (`@MyApi.experimental name: ...` on its own line is a syntax error).
 
 ### Common built-ins
 - `@defaultPath(path: ...)` — provides a default for a `Directory!` field (Dagger)
