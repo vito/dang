@@ -1,6 +1,6 @@
 type MyClass {
-  pub val = 1
-  pub name = "initial"
+  val: Int! = 1
+  name: String! = "initial"
 
   incr: MyClass! {
     incrBy(1) # Using foo instead of self.goo

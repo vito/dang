@@ -1,6 +1,6 @@
 # Test basic deep assignment parsing
 type TestClass {
-  pub field = "original"
+  field: String! = "original"
 
   test: TestClass! {
     self.field = "updated"

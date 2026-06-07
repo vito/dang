@@ -2,7 +2,7 @@
 
 # Basic constructor with no parameters
 type Empty {
-  pub val = null
+  val: String = null
 }
 
 assert { Empty.val == null }

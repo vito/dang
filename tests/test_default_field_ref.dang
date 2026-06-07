@@ -29,9 +29,9 @@ assert("method: explicit arg") { Builder.container("22.0.0") == "node:22.0.0" }
 # --- Object methods referencing untyped constant fields ---
 
 type Defaults {
-  pub strVal = "hello"
-  pub intVal = 42
-  pub boolVal = true
+  strVal: String! = "hello"
+  intVal: Int! = 42
+  boolVal: Boolean! = true
 
   greet(name: String! = strVal): String! {
     name

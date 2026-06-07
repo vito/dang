@@ -2,7 +2,7 @@
 # This tests foo.{bar(arg: 123).{deeper}} pattern with object methods
 
 type TestService {
-  pub name = "TestService"
+  name: String! = "TestService"
 
   getData(limit: Int!): TestData! {
     TestData(name: "Data", count: limit)

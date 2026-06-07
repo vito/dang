@@ -1,8 +1,8 @@
 # Test parameter precedence with deep assignment
 
 type TestClass {
-  pub config = "receiver_config"
-  pub field = "original_field"
+  config: String! = "receiver_config"
+  field: String! = "original_field"
 
   method(config: String!): TestClass! {
     # Using new deep assignment syntax

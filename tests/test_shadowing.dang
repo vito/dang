@@ -3,7 +3,7 @@ assert { { let a = "one", a } == "one" }
 assert { a == 1 }
 
 type MyClass {
-  pub a = "two"
+  a: String! = "two"
 }
 
 assert { MyClass.a == "two" }

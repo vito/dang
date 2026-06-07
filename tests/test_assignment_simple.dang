@@ -1,5 +1,5 @@
 type Test {
-  pub field = "original"
+  field: String! = "original"
 
   test: Test! {
     field = "new"

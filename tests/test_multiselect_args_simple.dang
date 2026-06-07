@@ -1,7 +1,7 @@
 # Test multi-select with arguments functionality
 
 type Calculator {
-  pub value = 0
+  value: Int! = 0
 
   add(amount: Int!): Int! {
     self.value + amount
