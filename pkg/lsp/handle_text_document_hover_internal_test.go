@@ -23,10 +23,10 @@ func TestFormatTypeDefinitionForHover(t *testing.T) {
 A person type.
 """
 type Person {
-  pub name: String!
+  name: String!
 }
 `,
-			want: "type Person {\n  pub name: String!\n}",
+			want: "type Person {\n  name: String!\n}",
 		},
 		{
 			name: "interface",
@@ -34,10 +34,10 @@ type Person {
 A thing interface.
 """
 interface Thing {
-  pub id: String!
+  id: String!
 }
 `,
-			want: "interface Thing {\n  pub id: String!\n}",
+			want: "interface Thing {\n  id: String!\n}",
 		},
 	}
 
@@ -93,8 +93,8 @@ func TestFormatPublicTypeShape(t *testing.T) {
   """
   The stable ID.
   """
-  pub id: String!
-  pub items(limit: Int): [String!]!
+  id: String!
+  items(limit: Int): [String!]!
 }`
 	if codeBlock != want {
 		t.Fatalf("code block:\n%s\nwant:\n%s", codeBlock, want)
@@ -118,7 +118,7 @@ func TestFormatNamedTypeForHoverUsesTypeScope(t *testing.T) {
 	f := &File{TypeScope: env}
 
 	codeBlock, docString := formatNamedTypeForHover(f, Position{}, "Thing")
-	if !strings.Contains(codeBlock, "interface Thing {") || !strings.Contains(codeBlock, "pub id: String!") {
+	if !strings.Contains(codeBlock, "interface Thing {") || !strings.Contains(codeBlock, "id: String!") {
 		t.Fatalf("unexpected code block: %q", codeBlock)
 	}
 	if docString != "Loaded from GraphQL." {
@@ -151,7 +151,7 @@ func TestFormatNamedTypeForHoverResolvesQualifiedType(t *testing.T) {
 	f := &File{Text: text, TypeScope: preludeTypeScope}
 
 	codeBlock, docString := formatNamedTypeForHover(f, pos, "ServerInfo")
-	if !strings.Contains(codeBlock, "pub version: String!") {
+	if !strings.Contains(codeBlock, "version: String!") {
 		t.Fatalf("expected imported type, got: %q", codeBlock)
 	}
 	if strings.Contains(codeBlock, "localOnly") {
@@ -188,7 +188,7 @@ func TestFormatNamedTypeForHoverFromGraphQLImport(t *testing.T) {
 	f := h.waitForFile(uri)
 	lineIdx := -1
 	for i, line := range strings.Split(text, "\n") {
-		if strings.Contains(line, "pub info: ServerInfo!") {
+		if strings.Contains(line, "info: ServerInfo!") {
 			lineIdx = i
 			break
 		}
@@ -200,21 +200,21 @@ func TestFormatNamedTypeForHoverFromGraphQLImport(t *testing.T) {
 	pos := Position{Line: lineIdx, Character: strings.Index(line, "ServerInfo")}
 
 	codeBlock, _ := formatNamedTypeForHover(f, pos, "ServerInfo")
-	if !strings.Contains(codeBlock, "type ServerInfo {") || !strings.Contains(codeBlock, "pub version: String!") {
+	if !strings.Contains(codeBlock, "type ServerInfo {") || !strings.Contains(codeBlock, "version: String!") {
 		t.Fatalf("unexpected code block: %q", codeBlock)
 	}
 }
 
 func TestHoverResultWithDocBelow(t *testing.T) {
 	h := &langHandler{}
-	res, err := h.hoverResultWithDocBelow("A thing interface.", "interface Thing {\n  pub id: String!\n}")
+	res, err := h.hoverResultWithDocBelow("A thing interface.", "interface Thing {\n  id: String!\n}")
 	if err != nil {
 		t.Fatalf("hover result: %v", err)
 	}
 
 	hover := res.(*Hover)
 	contents := hover.Contents.(MarkupContent)
-	want := "```dang\ninterface Thing {\n  pub id: String!\n}\n```\n\n---\n\nA thing interface."
+	want := "```dang\ninterface Thing {\n  id: String!\n}\n```\n\n---\n\nA thing interface."
 	if contents.Value != want {
 		t.Fatalf("hover markdown:\n%s\nwant:\n%s", contents.Value, want)
 	}
