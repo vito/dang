@@ -20,8 +20,8 @@ describe(pet: Pet!): String! {
   }
 }
 
-pub cat = Cat(name: "Whiskers")
-pub dog = Dog(name: "Rex", tricks: 5)
+let cat = Cat(name: "Whiskers")
+let dog = Dog(name: "Rex", tricks: 5)
 
 assert { describe(cat) == "Whiskers has 9 lives" }
 assert { describe(dog) == "Rex knows 5 tricks" }

@@ -10,8 +10,8 @@ get_existing: String! {
 }
 
 # Test results
-pub result1 = get_fallback
-pub result2 = get_existing
+let result1 = get_fallback
+let result2 = get_existing
 
 assert { result1 == "fallback_value" }
 assert { result2 == "existing" }
@@ -21,7 +21,7 @@ get_number: Int! {
   null ?? 42
 }
 
-pub number_result = get_number
+let number_result = get_number
 assert { number_result == 42 }
 
 print("Default operator tests passed!")

@@ -43,7 +43,7 @@ type ValidationRegistry implements Registry {
   validators: [Validator!]! = [EmailValidator, EmailValidator]
 
   validateAll(input: String!): Boolean! {
-    pub res = true
+    let res = true
     validators.each { v =>
       if (!v.validate(input)) {
         res = false

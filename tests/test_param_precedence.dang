@@ -14,7 +14,7 @@ type TestClass {
 }
 
 # Test that parameter is used in deep assignment
-pub result = TestClass.method("param_config")
+let result = TestClass.method("param_config")
 assert { result.field == "param_config" }
 
 print("Deep assignment parameter precedence test passed!")

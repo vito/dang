@@ -30,7 +30,7 @@ assert { Other.status == Other.Status.ACTIVE }
 
 scalar URL
 
-pub localURL = URL
+let localURL = URL
 assert { localURL != null }
 
 testURL: Test.URL! = Test.homepage
@@ -70,7 +70,7 @@ union SearchResult = Cat | Dog
 localSearchResult: SearchResult! = Cat("Whiskers")
 assert { SearchResult != null }
 
-pub localSearchName = case (localSearchResult) {
+let localSearchName = case (localSearchResult) {
   c: Cat => c.name
   d: Dog => d.name
 }

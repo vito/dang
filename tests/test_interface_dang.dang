@@ -12,7 +12,7 @@ type Person implements Named {
 }
 
 # Test: Can instantiate a type that implements an interface
-pub person = Person(name: "Alice", age: 30)
+let person = Person(name: "Alice", age: 30)
 assert { person.name == "Alice" }
 assert { person.age == 30 }
 
@@ -30,7 +30,7 @@ type Product implements Identifiable {
 }
 
 # Test: Instantiate
-pub product = Product(id: "prod-1", title: "Widget", price: 9.99)
+let product = Product(id: "prod-1", title: "Widget", price: 9.99)
 assert { product.id == "prod-1" }
 assert { product.title == "Widget" }
 
@@ -45,7 +45,7 @@ type Book implements Named & Serializable {
   data: String!
 }
 
-pub book = Book(name: "1984", author: "George Orwell", data: "{}")
+let book = Book(name: "1984", author: "George Orwell", data: "{}")
 assert { book.name == "1984" }
 assert { book.author == "George Orwell" }
 assert { book.data != null }

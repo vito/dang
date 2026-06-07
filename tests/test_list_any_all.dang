@@ -32,7 +32,7 @@ assert { [42].all { x => x == 42 } == true }
 assert { [42].all { x => x == 0 } == false }
 
 # any/all with strings
-pub words = ["hello", "world", "hi"]
+let words = ["hello", "world", "hi"]
 assert { words.any { w => w.contains("or") } == true }
 assert { words.all { w => w.contains("h") } == false }
 assert { words.any { w => w == "hi" } == true }

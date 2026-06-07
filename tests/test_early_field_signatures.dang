@@ -9,7 +9,7 @@ type ComputedDefaultUser {
 
 assert { ComputedDefaultUser.name == "Ada" }
 
-pub literalTemplateDefault = `Ada`
+let literalTemplateDefault = `Ada`
 
 type LiteralTemplateDefaultUser {
   name: String! = literalTemplateDefault
@@ -17,8 +17,8 @@ type LiteralTemplateDefaultUser {
 
 assert { LiteralTemplateDefaultUser.name == "Ada" }
 
-pub who = "Grace"
-pub templatedDefault = `hello ${who}`
+let who = "Grace"
+let templatedDefault = `hello ${who}`
 
 type TemplateDefaultUser {
   message: String! = templatedDefault
@@ -29,10 +29,10 @@ assert { TemplateDefaultUser.message == "hello Grace" }
 # A variable can construct a hoisted type before a later computed default's
 # value has been evaluated. The constructor must wait for the default's
 # dependency even though it is hidden inside the type body.
-pub runtimeUser = RuntimeTemplateDefaultUser
+let runtimeUser = RuntimeTemplateDefaultUser
 
-pub runtimeWho = "Katherine"
-pub runtimeTemplatedDefault = `hello ${runtimeWho}`
+let runtimeWho = "Katherine"
+let runtimeTemplatedDefault = `hello ${runtimeWho}`
 
 type RuntimeTemplateDefaultUser {
   message: String! = runtimeTemplatedDefault
@@ -41,23 +41,23 @@ type RuntimeTemplateDefaultUser {
 assert { runtimeUser.message == "hello Katherine" }
 
 # Forward reads hidden behind function calls are handled by lazy module fields.
-pub lazyFunctionValue = lazyFunction
-pub lazyFunctionLater = "ok"
+let lazyFunctionValue = lazyFunction
+let lazyFunctionLater = "ok"
 
 lazyFunction: String! { lazyFunctionLater }
 
 assert { lazyFunctionValue == "ok" }
 
-pub lazyExplicitCallValue = lazyExplicitCallFunction("called")
-pub lazyExplicitCallLater = "ok"
+let lazyExplicitCallValue = lazyExplicitCallFunction("called")
+let lazyExplicitCallLater = "ok"
 
 lazyExplicitCallFunction(prefix: String!): String! { prefix + lazyExplicitCallLater }
 
 assert { lazyExplicitCallValue == "calledok" }
 
 # Local bindings inside functions should not create false top-level cycles.
-pub lazyLocalValue = lazyLocalFunction
-pub lazyLocalLater = lazyLocalValue
+let lazyLocalValue = lazyLocalFunction
+let lazyLocalLater = lazyLocalValue
 
 lazyLocalFunction: String! {
   let lazyLocalLater = "x"

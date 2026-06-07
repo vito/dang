@@ -18,11 +18,11 @@ union Pet = Cat | Dog
 assert { Pet != null }
 
 # Cat and Dog can be created
-pub cat = Cat(name: "Whiskers")
+let cat = Cat(name: "Whiskers")
 assert { cat.name == "Whiskers" }
 assert { cat.lives == 9 }
 
-pub dog = Dog(name: "Rex", tricks: 3)
+let dog = Dog(name: "Rex", tricks: 3)
 assert { dog.name == "Rex" }
 assert { dog.tricks == 3 }
 

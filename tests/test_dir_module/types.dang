@@ -1,6 +1,6 @@
 # Define shared types and constants
-pub MAGIC_NUMBER = 42
-pub VERSION = "1.0.0"
+let MAGIC_NUMBER = 42
+let VERSION = "1.0.0"
 
 type Person {
   name: String! = "Unknown"

@@ -1,7 +1,7 @@
 # Test basic case expressions
 
 # Simple literal matching
-pub result1 = case (1) {
+let result1 = case (1) {
   1 => "one"
   2 => "two"
   0 => "other"
@@ -10,7 +10,7 @@ pub result1 = case (1) {
 assert { result1 == "one" }
 
 # Multiple values tested
-pub result2 = case (2) {
+let result2 = case (2) {
   1 => "one"
   2 => "two"
   3 => "three"
@@ -19,7 +19,7 @@ pub result2 = case (2) {
 assert { result2 == "two" }
 
 # String matching
-pub result3 = case ("hello") {
+let result3 = case ("hello") {
   "world" => "not this"
   "hello" => "matched"
 }

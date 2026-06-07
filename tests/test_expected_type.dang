@@ -4,15 +4,15 @@
 
 import Test
 
-pub john = primaryUser
-pub jane = secondaryUser
+let john = primaryUser
+let jane = secondaryUser
 
 # ID arguments annotated with @expectedType(name: "User") accept User objects.
 assert { userName(user: john) == "John Doe" }
 assert { userName(user: jane) == "Jane Smith" }
 
 # Lists of ID arguments preserve the expected object type for each element.
-pub selectedNames = userNames(users: [john, jane])
+let selectedNames = userNames(users: [john, jane])
 assert { selectedNames[0] == "John Doe" }
 assert { selectedNames[1] == "Jane Smith" }
 
@@ -28,7 +28,7 @@ assert { userName(user: syncedUser) == "John Doe" }
 
 # Lists of ID return values preserve the expected object type for downstream args.
 returnedUsers: [User!]! = favoriteUserIDs
-pub favoriteNames = userNames(users: returnedUsers)
+let favoriteNames = userNames(users: returnedUsers)
 assert { favoriteNames[0] == "John Doe" }
 assert { favoriteNames[1] == "Jane Smith" }
 

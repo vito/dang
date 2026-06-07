@@ -1,48 +1,48 @@
 # Test type hints with :: syntax
 
 # Basic type hints on literals (non-null types)
-pub empty_list = [] :: [String!]!
-pub number = 42 :: Int!
-pub text = "hello" :: String!
+let empty_list = [] :: [String!]!
+let number = 42 :: Int!
+let text = "hello" :: String!
 
 # String literals coerce to the built-in ID scalar
-pub id_value = "foo" :: ID!
-pub nullable_id = "bar" :: ID
+let id_value = "foo" :: ID!
+let nullable_id = "bar" :: ID
 
 # A String! value coerces to ID! via an explicit cast
 raw_string: String! = "baz"
-pub id_from_string = raw_string :: ID!
+let id_from_string = raw_string :: ID!
 
 # Casting to nullable types (subtyping: Int! <: Int)
-pub nullable_number = 42 :: Int
-pub nullable_empty_list = [] :: [String!]
+let nullable_number = 42 :: Int
+let nullable_empty_list = [] :: [String!]
 
 # Test case for the bug: empty list with nullable element type
 # This should work - type hint should bind the type variable to String
-pub empty_list_nullable_strings = [] :: [String]
+let empty_list_nullable_strings = [] :: [String]
 
 # Type hints on function calls
 getValue: Int! { 100 }
 
-pub result = getValue :: Int!
+let result = getValue :: Int!
 
 # Type hints on complex expressions
-pub sum = (1 + 2) :: Int!
-pub concat = ("hello" + " world") :: String!
+let sum = (1 + 2) :: Int!
+let concat = ("hello" + " world") :: String!
 
 # Type hints on nested list structures
-pub nested_list = [[1, 2], [3, 4]] :: [[Int!]!]!
-pub string_list = ["hello", "world"] :: [String!]!
+let nested_list = [[1, 2], [3, 4]] :: [[Int!]!]!
+let string_list = ["hello", "world"] :: [String!]!
 
 # Type hints on object structures
-pub empty_obj = {{}} :: {{}}!
-pub simple_obj = {{name: "test"}} :: {{name: String!}}!
+let empty_obj = {{}} :: {{}}!
+let simple_obj = {{name: "test"}} :: {{name: String!}}!
 # Additional complex type hints
-pub typed_empty_list = [] :: [String!]!
+let typed_empty_list = [] :: [String!]!
 # Note: Objects are always non-null in Dang, so no nullable object test
 # Complex nested object type hints work with concrete values
-pub nested_obj = {{items: ["hello", "world"]}} :: {{items: [String!]!}}!
-pub complex_obj = {{user: {{name: "Alice", age: 30}}}} :: {{user: {{name: String!, age: Int!}}!}}!
+let nested_obj = {{items: ["hello", "world"]}} :: {{items: [String!]!}}!
+let complex_obj = {{user: {{name: "Alice", age: 30}}}} :: {{user: {{name: String!, age: Int!}}!}}!
 
 # Test that values are correctly typed and evaluable
 assert { empty_list == [] }

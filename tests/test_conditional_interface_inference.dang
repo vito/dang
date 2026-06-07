@@ -24,7 +24,7 @@ selectedPet: ConditionalPet! = if (false) {
 
 assert { selectedPet.name == "Fido" }
 
-pub concreteBranchPet = if (true) {
+let concreteBranchPet = if (true) {
   ConditionalCat(name: "Mog", lives: 9)
 } else {
   ConditionalDog(name: "Fido", bark: "woof")

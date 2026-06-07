@@ -18,21 +18,21 @@ dog: Pet! = Dog(name: "Rex", tricks: 5)
 pets: [Pet!]! = [cat, dog]
 
 # Select different fields from different types using inline fragments
-pub results = pets.{
+let results = pets.{
   ... on Cat { name, lives }
   ... on Dog { name, tricks }
 }
 
 # Discriminate with case after inline fragment selection
-pub first = results[0]
-pub desc = case (first) {
+let first = results[0]
+let desc = case (first) {
   c: Cat => c.name + " has " + toString(c.lives) + " lives"
   d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
 }
 assert { desc == "Whiskers has 9 lives" }
 
-pub second = results[1]
-pub desc2 = case (second) {
+let second = results[1]
+let desc2 = case (second) {
   c: Cat => c.name + " (cat)"
   d: Dog => d.name + " knows " + toString(d.tricks) + " tricks"
 }

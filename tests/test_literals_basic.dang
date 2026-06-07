@@ -1,9 +1,9 @@
 # Simple values
-pub str = "hello world"
-pub bool_true = true
-pub bool_false = false
-pub num = 42
-pub null_val = null
+let str = "hello world"
+let bool_true = true
+let bool_false = false
+let num = 42
+let null_val = null
 
 # Test assertions
 assert { str == "hello world" }

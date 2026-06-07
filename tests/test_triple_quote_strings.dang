@@ -1,15 +1,15 @@
 # Test triple-quote string literals
 
 # Simple cases
-pub test1 = """
+let test1 = """
 hello
 """
 
-pub test2 = """
+let test2 = """
 hello
 """
 
-pub test3 = """
+let test3 = """
 hello
 world
 """
@@ -19,9 +19,9 @@ assert { test2 == "hello" }
 assert { test3 == "hello\nworld" }
 
 # Inline triple-quote
-pub inline = """just one line"""
+let inline = """just one line"""
 assert { inline == "just one line" }
 
 # Empty
-pub empty = """"""
+let empty = """"""
 assert { empty == "" }

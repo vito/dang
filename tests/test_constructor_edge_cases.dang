@@ -41,7 +41,7 @@ assert { MixedVisibility("custom").publicField == "custom" }
 assert { MixedVisibility("custom").getPrivate == "private" }
 
 # Constructor with default values that depend on external variables
-pub globalValue = "global"
+let globalValue = "global"
 
 type UsingGlobals {
   local: String! = globalValue + "_local"

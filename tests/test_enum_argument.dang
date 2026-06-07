@@ -3,11 +3,11 @@
 import Test
 
 # Query users filtered by status enum
-pub activeUsers = usersByStatus(status: Status.ACTIVE).{name}
+let activeUsers = usersByStatus(status: Status.ACTIVE).{name}
 assert { activeUsers.length == 1 }
 assert { activeUsers[0].name == "John Doe" }
 
-pub pendingUsers = usersByStatus(status: Status.PENDING).{name}
+let pendingUsers = usersByStatus(status: Status.PENDING).{name}
 assert { pendingUsers.length == 1 }
 assert { pendingUsers[0].name == "Jane Smith" }
 

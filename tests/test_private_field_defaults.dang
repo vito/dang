@@ -1,7 +1,7 @@
 # Test that private fields with default values are used in defaults, not outer scope
 # See: https://github.com/vito/dang/issues/17
 
-pub version = "wrong"
+let version = "wrong"
 
 type Rust {
   let version = "1.90"

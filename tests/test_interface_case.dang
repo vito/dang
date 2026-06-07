@@ -21,8 +21,8 @@ describe(named: Named!): String! {
   }
 }
 
-pub person = Person(name: "Alice", age: 30)
-pub company = Company(name: "Acme", employees: 50)
+let person = Person(name: "Alice", age: 30)
+let company = Company(name: "Acme", employees: 50)
 
 assert { describe(person) == "Alice (age 30)" }
 assert { describe(company) == "Acme (50 employees)" }

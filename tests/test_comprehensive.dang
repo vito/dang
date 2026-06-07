@@ -1,12 +1,12 @@
 # Comprehensive test of working Dang language features
 
 # =================== LITERALS ===================
-pub number = 42
-pub text = "hello world"
-pub flag = true
-pub nothing = null
-pub numbers_list = [1, 2, 3, 4, 5]
-pub words_list = ["apple", "banana", "cherry"]
+let number = 42
+let text = "hello world"
+let flag = true
+let nothing = null
+let numbers_list = [1, 2, 3, 4, 5]
+let words_list = ["apple", "banana", "cherry"]
 
 assert { number == 42 }
 assert { text == "hello world" }
@@ -16,9 +16,9 @@ assert { numbers_list == [1, 2, 3, 4, 5] }
 assert { words_list == ["apple", "banana", "cherry"] }
 
 # =================== CONDITIONALS ===================
-pub max_num = if (number == 42) { number } else { 100 }
-pub min_result = if (false) { "false branch" } else { "true branch" }
-pub no_else_result = if (true) { "has value" }
+let max_num = if (number == 42) { number } else { 100 }
+let min_result = if (false) { "false branch" } else { "true branch" }
+let no_else_result = if (true) { "has value" }
 
 assert { max_num == 42 }
 assert { min_result == "true branch" }
@@ -31,9 +31,9 @@ greet(name: String!): String! { name }
 
 zero_arity_func: String! { "constant_value" }
 
-pub squared = square(n: 8)
-pub greeting = greet(name: "Alice")
-pub constant = zero_arity_func
+let squared = square(n: 8)
+let greeting = greet(name: "Alice")
+let constant = zero_arity_func
 
 assert { squared == 8 }
 assert { greeting == "Alice" }
@@ -42,8 +42,8 @@ assert { constant == "constant_value" }
 # =================== POSITIONAL ARGUMENTS ===================
 add_nums(a: Int!, b: Int!): Int! { a }
 
-pub mixed_result = add_nums(10, b: 20)
-pub named_result = add_nums(a: 30, b: 40)
+let mixed_result = add_nums(10, b: 20)
+let named_result = add_nums(a: 30, b: 40)
 
 assert { mixed_result == 10 }
 assert { named_result == 30 }

@@ -1,7 +1,7 @@
 # Test error message access
 
 # error message from a string raise
-pub result = try {
+let result = try {
   raise "not found"
 } catch {
   err => err.message
@@ -10,7 +10,7 @@ pub result = try {
 assert { result == "not found" }
 
 # error message from a runtime error
-pub divResult = try {
+let divResult = try {
   let x = 1 / 0
   "ok"
 } catch {

@@ -14,7 +14,7 @@ assert { (false or false) == false }
 
 # Test short-circuiting for 'and'
 # If left side is false, right side should not be evaluated
-pub and_short_circuit = {
+let and_short_circuit = {
   let side_effect = false
   let result = false and {
     side_effect = true
@@ -27,7 +27,7 @@ pub and_short_circuit = {
 
 # Test short-circuiting for 'or'
 # If left side is true, right side should not be evaluated
-pub or_short_circuit = {
+let or_short_circuit = {
   let side_effect = false
   let result = true or {
     side_effect = true
@@ -46,8 +46,8 @@ assert { true and (false or true) }
 assert { (true or false) and (false or true) }
 
 # Test with variables
-pub x = true
-pub y = false
+let x = true
+let y = false
 assert { x and !y }
 assert { x or y }
 assert { !x or !y }

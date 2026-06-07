@@ -5,7 +5,7 @@ failing: String! {
   raise "kaboom"
 }
 
-pub result = try {
+let result = try {
   failing
 } catch {
   err => "caught: " + err.message
@@ -22,7 +22,7 @@ outer: String! {
   inner + " unreachable"
 }
 
-pub nested = try {
+let nested = try {
   outer
 } catch {
   err => err.message
@@ -31,7 +31,7 @@ pub nested = try {
 assert { nested == "inner error" }
 
 # re-raise an error
-pub rethrow = try {
+let rethrow = try {
   try {
     raise "original"
   } catch {

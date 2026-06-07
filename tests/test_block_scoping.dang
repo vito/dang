@@ -1,7 +1,7 @@
 # Test block scoping behavior for reassignment
 
 # Test 1: Basic outer field reassignment (no local declaration)
-pub outer_var = 100
+let outer_var = 100
 {
   assert { outer_var == 100 }
   outer_var = 200
@@ -12,7 +12,7 @@ assert("outer variable should be updated when block doesn't declare local") {
 }
 
 # Test 2: Local declaration shadows outer variable (preserves existing behavior)
-pub shadowed_var = 300
+let shadowed_var = 300
 {
   let shadowed_var = 400
   assert { shadowed_var == 400 }
@@ -24,7 +24,7 @@ assert("outer variable should be unchanged when block declares local") {
 }
 
 # Test 3: Nested blocks with outer field reassignment
-pub nested_var = 10
+let nested_var = 10
 {
   assert { nested_var == 10 }
   nested_var = 20
@@ -43,7 +43,7 @@ assert("all nested blocks should have updated outer variable") {
 }
 
 # Test 4: Mixed shadowing and outer reassignment
-pub mixed_var = 1
+let mixed_var = 1
 {
   assert { mixed_var == 1 }
   mixed_var = 2
@@ -65,7 +65,7 @@ assert("outer variable should reflect only non-shadowed updates") {
 }
 
 # Test 5: Compound assignment with outer field reassignment
-pub compound_var = 5
+let compound_var = 5
 {
   assert { compound_var == 5 }
   compound_var += 10
@@ -76,7 +76,7 @@ assert("compound assignment should update outer variable") {
 }
 
 # Test 6: String reassignment
-pub string_var = "hello"
+let string_var = "hello"
 {
   assert { string_var == "hello" }
   string_var = "world"
@@ -87,7 +87,7 @@ assert("string reassignment should update outer variable") {
 }
 
 # Test 7: Boolean reassignment
-pub bool_var = true
+let bool_var = true
 {
   assert { bool_var == true }
   bool_var = false

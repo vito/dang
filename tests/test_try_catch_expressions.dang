@@ -19,7 +19,7 @@ assert { safeDivide(10, 2) == 5 }
 assert { safeDivide(10, 0) == 0 }
 
 # nested try/catch
-pub nestedResult = try {
+let nestedResult = try {
   try {
     raise "inner"
   } catch {

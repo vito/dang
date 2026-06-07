@@ -1,6 +1,6 @@
 # Test that constructor args properly shadow fields and outer scope (issue #23)
 
-pub version = "outer"
+let version = "outer"
 
 # Constructor arg shadows outer variable
 type ShadowOuter {

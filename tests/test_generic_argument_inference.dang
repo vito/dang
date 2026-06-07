@@ -4,10 +4,10 @@ chooseFirst(x: a, y: a): a { x }
 
 chooseSecond(x: a, y: a): a { y }
 
-pub nullThenInt = chooseFirst(null, 1)
-pub intThenNull = chooseFirst(1, null)
-pub secondNullThenInt = chooseSecond(null, 1)
-pub secondIntThenNull = chooseSecond(1, null)
+let nullThenInt = chooseFirst(null, 1)
+let intThenNull = chooseFirst(1, null)
+let secondNullThenInt = chooseSecond(null, 1)
+let secondIntThenNull = chooseSecond(1, null)
 
 assert { nullThenInt == null }
 assert { intThenNull == 1 }

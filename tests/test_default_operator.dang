@@ -1,30 +1,30 @@
 # Test default operator (null coalescing)
 
 # Basic null coalescing
-pub maybe_null = null
-pub fallback = "default"
-pub result = maybe_null ?? fallback
+let maybe_null = null
+let fallback = "default"
+let result = maybe_null ?? fallback
 
 assert { result == "default" }
 
 # Non-null value should not use fallback
-pub not_null = "value"
-pub result2 = not_null ?? fallback
+let not_null = "value"
+let result2 = not_null ?? fallback
 
 assert { result2 == "value" }
 
 # Test with different types
-pub null_num = null
-pub fallback_num = 42
-pub result_num = null_num ?? fallback_num
+let null_num = null
+let fallback_num = 42
+let result_num = null_num ?? fallback_num
 
 assert { result_num == 42 }
 
 # Test chaining
-pub first_null = null
-pub second_null = null
-pub final_value = "final"
-pub chained = first_null ?? (second_null ?? final_value)
+let first_null = null
+let second_null = null
+let final_value = "final"
+let chained = first_null ?? (second_null ?? final_value)
 
 assert { chained == "final" }
 

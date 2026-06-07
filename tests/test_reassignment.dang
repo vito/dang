@@ -1,8 +1,8 @@
 # Test reassignment functionality
 
-pub x = 42
-pub y = "hello"
-pub flag = true
+let x = 42
+let y = "hello"
+let flag = true
 
 # Test basic reassignment
 x = 100

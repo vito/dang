@@ -17,13 +17,13 @@ if (true) {
 }
 
 # Bound union: type-pattern narrowing recovers a concrete value.
-pub pet = if (true) {
+let pet = if (true) {
   Cat(name: "Whiskers")
 } else {
   Dog(name: "Rex")
 }
 
-pub petName = case (pet) {
+let petName = case (pet) {
   c: Cat => c.name
   d: Dog => d.name
 }

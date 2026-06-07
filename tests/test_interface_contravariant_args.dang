@@ -12,9 +12,9 @@ type FlexibleProcessor implements Processor {
   }
 }
 
-pub processor = FlexibleProcessor
-pub result1 = processor.process(input: "test")
-pub result2 = processor.process(input: null)
+let processor = FlexibleProcessor
+let result1 = processor.process(input: "test")
+let result2 = processor.process(input: null)
 assert { result1 == "test" }
 assert { result2 == "default" }
 
@@ -29,9 +29,9 @@ type AdvancedFormatter implements SimpleFormatter {
   }
 }
 
-pub formatter = AdvancedFormatter
-pub formatted1 = formatter.format(text: "hello")
-pub formatted2 = formatter.format(text: "hello", prefix: "[", suffix: "]")
+let formatter = AdvancedFormatter
+let formatted1 = formatter.format(text: "hello")
+let formatted2 = formatter.format(text: "hello", prefix: "[", suffix: "]")
 assert { formatted1 == "hello" }
 assert { formatted2 == "[hello]" }
 

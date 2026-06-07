@@ -14,8 +14,8 @@ type StrictDataProvider implements DataProvider {
   }
 }
 
-pub provider = StrictDataProvider(data: "test data")
-pub result = provider.getData
+let provider = StrictDataProvider(data: "test data")
+let result = provider.getData
 assert { result == "test data" }
 
 # Test: Multiple levels of covariance
@@ -27,7 +27,7 @@ type RequiredResult implements OptionalResult {
   value: String!
 }
 
-pub required = RequiredResult(value: "required")
+let required = RequiredResult(value: "required")
 assert { required.value == "required" }
 
 # Test: List covariance - [String!] is subtype of [String]
@@ -39,7 +39,7 @@ type StrictItemProvider implements ItemProvider {
   items: [String!]
 }
 
-pub strictItems = StrictItemProvider(items: ["a", "b", "c"])
+let strictItems = StrictItemProvider(items: ["a", "b", "c"])
 assert { strictItems.items[0] == "a" }
 
 print("Covariant return type tests passed!")

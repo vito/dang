@@ -90,4 +90,4 @@ assert { multipleA[0].valueA == "a" }
 assert { multipleA[1].valueA == "a" }
 assert { multipleA[2].valueA == "a" }
 
-pub testResult = "All supertype inference tests passed!"
+let testResult = "All supertype inference tests passed!"
