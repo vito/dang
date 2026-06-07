@@ -1,2 +1,2 @@
 # List merging is pure: String! does not implicitly become ID!.
-pub ids = ["abc" :: ID!, "def"]
+let ids = ["abc" :: ID!, "def"]

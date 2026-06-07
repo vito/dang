@@ -1,2 +1,2 @@
 # This should fail: mixing types in list literal
-pub result = [[], ["foo"], [3]]
+let result = [[], ["foo"], [3]]

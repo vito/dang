@@ -3,4 +3,4 @@ id(x: a): a { x }
 
 takes(value: Int!): Int! { value }
 
-pub result = takes(id(null))
+let result = takes(id(null))

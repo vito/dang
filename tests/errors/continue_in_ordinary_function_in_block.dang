@@ -1,5 +1,5 @@
 # An ordinary nested function must not inherit the enclosing block invocation's continue target
-pub result = [1].map { x =>
+let result = [1].map { x =>
   let bad: Int! {
     continue 1
   }

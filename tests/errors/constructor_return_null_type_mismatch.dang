@@ -5,4 +5,4 @@ type BadNullConstructor {
   }
 }
 
-pub result = BadNullConstructor
+let result = BadNullConstructor

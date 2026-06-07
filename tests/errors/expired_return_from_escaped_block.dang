@@ -13,7 +13,7 @@ makeReturner: Int! {
   0
 }
 
-pub result = {
+let result = {
   makeReturner
   saved(1)
 }

@@ -3,4 +3,4 @@
 add(x: Int!, y: Int!): Int! { x + y }
 
 # ERROR: function does not accept a block argument
-pub result = add(1, 2) { x => x * 2 }
+let result = add(1, 2) { x => x * 2 }

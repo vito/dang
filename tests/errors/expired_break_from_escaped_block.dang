@@ -13,7 +13,7 @@ makeBreaker: Int! {
   0
 }
 
-pub result = {
+let result = {
   makeBreaker
   savedBreak(1)
 }

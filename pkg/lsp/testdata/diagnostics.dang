@@ -2,10 +2,10 @@
 # This file intentionally contains type errors to test diagnostic reporting
 
 # Type mismatch: string + int
-pub bad_add = "hello" + 42
+let bad_add = "hello" + 42
 
 # Undefined symbol
-pub missing = undefined_var
+let missing = undefined_var
 
 # All good - no errors
-pub good = "hello"
+let good = "hello"

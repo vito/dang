@@ -2,13 +2,13 @@
 
 import Test
 
-pub results = search(query: "John").{
+let results = search(query: "John").{
   ... on User { name }
   ... on Post { title }
 }
 
-pub first = results[0]
-pub desc = case (first) {
+let first = results[0]
+let desc = case (first) {
   u: User => u.age
   p: Post => p.title
 }

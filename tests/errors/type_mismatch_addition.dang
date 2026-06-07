@@ -1,2 +1,2 @@
 # Test type mismatch in addition
-pub result = "hello" + 42
+let result = "hello" + 42

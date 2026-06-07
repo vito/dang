@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  2 | choose(x: a, y: a): a { x }[0m
  [2m  3 | [0m
- [2m[34m[1m  4 | [0mpub result = choose(1, "one")
+ [2m[34m[1m  4 | [0mlet result = choose(1, "one")
 [2m                              [31m^^^^^[0m
  [2m  5 | [0m
  [2m    |[0m

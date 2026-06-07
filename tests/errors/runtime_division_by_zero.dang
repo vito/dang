@@ -1,2 +1,2 @@
 # Test runtime division by zero error
-pub result = 42 / 0
+let result = 42 / 0

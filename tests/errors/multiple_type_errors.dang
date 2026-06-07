@@ -1,4 +1,4 @@
 # Test multiple type errors in one file
-pub bad_addition = "hello" + 42
-pub missing_var = undefined_symbol
+let bad_addition = "hello" + 42
+let missing_var = undefined_symbol
 bad_arg: Int! = "string"

@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  4 | [0m
  [2m  5 | # ERROR: multiplication is not defined for String[0m
- [2m[34m[1m  6 | [0mpub result = "a" * "b"
+ [2m[34m[1m  6 | [0mlet result = "a" * "b"
 [2m                    [31m^^^^^^^^^[0m
  [2m  7 | [0m
  [2m    |[0m

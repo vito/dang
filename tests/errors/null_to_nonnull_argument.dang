@@ -3,4 +3,4 @@ echo(value: String!): String! {
   value
 }
 
-pub result = echo(null)
+let result = echo(null)

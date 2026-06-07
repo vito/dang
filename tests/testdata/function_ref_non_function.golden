@@ -1,7 +1,7 @@
 [1m[31mError:[0m & requires a function, got Int!
   [2m[34m--> errors/function_ref_non_function.dang:1:10[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0mpub x = &1
+ [2m[34m[1m  1 | [0mlet x = &1
 [2m                [31m^[0m
  [2m  2 | [0m
  [2m    |[0m

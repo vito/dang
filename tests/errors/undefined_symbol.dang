@@ -1,2 +1,2 @@
 # Test undefined symbol error
-pub x = undefined_var
+let x = undefined_var

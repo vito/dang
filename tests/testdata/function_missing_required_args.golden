@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  2 | add_nums(x: Int!, y: Int!): Int! { x + y }[0m
  [2m  3 | [0m
- [2m[34m[1m  4 | [0mpub result = add_nums(x: 5)
+ [2m[34m[1m  4 | [0mlet result = add_nums(x: 5)
 [2m                    [31m^^^^^^^^^^^^^^[0m
  [2m  5 | [0m
  [2m    |[0m

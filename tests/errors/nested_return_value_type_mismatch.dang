@@ -5,4 +5,4 @@ bad: String! {
   }
 }
 
-pub result = bad
+let result = bad

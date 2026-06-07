@@ -6,4 +6,4 @@ bad: String! {
   "ok"
 }
 
-pub result = bad
+let result = bad

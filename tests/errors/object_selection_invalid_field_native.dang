@@ -5,5 +5,5 @@ type Foo {
   age: Int! = 25
 }
 
-pub foo = Foo
-pub result = foo.{name, unknown}
+let foo = Foo
+let result = foo.{name, unknown}
