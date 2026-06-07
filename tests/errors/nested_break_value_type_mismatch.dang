@@ -1,6 +1,6 @@
 # Nested break expressions in a break value still target the enclosing call
-yield(&block(): String!): String! {
-  block()
+yield(&block: String!): String! {
+  block
 }
 
 result: String! = yield {

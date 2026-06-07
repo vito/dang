@@ -1,9 +1,9 @@
 # return inside a block argument belongs to the enclosing function
-bad(): String! {
+bad: String! {
   [1].each { x =>
     return 42
   }
   "ok"
 }
 
-pub result = bad()
+pub result = bad

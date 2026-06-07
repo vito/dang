@@ -1,10 +1,10 @@
 [1m[31mError:[0m assigning `source` calls it and produces Boolean!; use `&source` to assign the function itself ((): Boolean!)
-  [2m[34m--> errors/function_assignment_requires_ref.dang:4:10[0m
+  [2m[34m--> errors/function_assignment_requires_ref.dang:5:10[0m
  [2m    |[0m
- [2m  2 | let target: Boolean! { false }[0m
- [2m  3 | [0m
- [2m[34m[1m  4 | [0mtarget = source
+ [2m  3 | let target: Boolean! { false }[0m
+ [2m  4 | [0m
+ [2m[34m[1m  5 | [0mtarget = source
 [2m                [31m^^^^^^[0m
- [2m  5 | [0m
+ [2m  6 | [0m
  [2m    |[0m
 

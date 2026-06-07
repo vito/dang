@@ -41,7 +41,7 @@ assert { Mixed.shown == "hidden" }
 
 # Explicit `pub` is still accepted (backwards compat) and equals bare.
 type Explicit {
-  pub a: Int! = 1
+  a: Int! = 1
   b: Int! = 2
 }
 

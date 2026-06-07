@@ -1,6 +1,6 @@
 # Explicit constructor returns must be the non-null constructed type
 type BadNullConstructor {
-  new() {
+  new {
     return null
   }
 }
