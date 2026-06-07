@@ -1,11 +1,11 @@
 [1m[31mError:[0m initialization cycle while evaluating variable "lazyCycleA"
-  [2m[34m--> errors/module_lazy_cycle.dang:4:27[0m
+  [2m[34m--> errors/module_lazy_cycle.dang:4:23[0m
  [2m    |[0m
  [2m  2 | # The lazy runtime initializer should report the cycle when the variable is forced.[0m
- [2m  3 | pub lazyCycleA: String! = lazyCycleF[0m
- [2m[34m[1m  4 | [0mpub lazyCycleB: String! = lazyCycleA
-[2m                                 [31m^^^^^^^^^^[0m
+ [2m  3 | lazyCycleA: String! = lazyCycleF[0m
+ [2m[34m[1m  4 | [0mlazyCycleB: String! = lazyCycleA
+[2m                             [31m^^^^^^^^^^[0m
  [2m  5 | [0m
- [2m  6 | pub lazyCycleF: String! {[0m
+ [2m  6 | lazyCycleF: String! {[0m
  [2m    |[0m
 

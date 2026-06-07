@@ -1,6 +1,6 @@
 # Postfix `!` raises at runtime when the asserted value is actually null.
 
-pub maybe(b: Boolean!): String {
+maybe(b: Boolean!): String {
   if (b) { "hi" } else { null }
 }
 

@@ -1,5 +1,5 @@
 # return inside a block argument belongs to the enclosing function
-pub bad(): String! {
+bad(): String! {
   [1].each { x =>
     return 42
   }

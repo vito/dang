@@ -2,7 +2,7 @@
   [2m[34m--> errors/early_return_null_list_element_type_mismatch.dang:3:10[0m
  [2m    |[0m
  [2m  1 | # Early return values must preserve nested non-null requirements[0m
- [2m  2 | pub bad(): [Int!]! {[0m
+ [2m  2 | bad(): [Int!]! {[0m
  [2m[34m[1m  3 | [0m  return [null]
 [2m                [31m^^^^^^[0m
  [2m  4 |   [][0m

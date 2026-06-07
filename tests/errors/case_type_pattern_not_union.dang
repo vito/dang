@@ -1,5 +1,5 @@
 type Cat {
-  pub name: String!
+  name: String!
 }
 
 pub x = Cat(name: "Whiskers")

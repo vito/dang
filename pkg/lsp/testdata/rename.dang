@@ -4,10 +4,10 @@ let renamable = 42
 renamable # test: ^grn<C-u>world<CR> => ┃world
 
 # function parameter rename
-pub add(x: Int!, y: Int!): Int! { x + y } # test: ^fxgrn<C-u>a<CR> => pub add(┃a: Int!, y: Int!): Int! { a + y }
+add(x: Int!, y: Int!): Int! { x + y } # test: ^fxgrn<C-u>a<CR> => add(┃a: Int!, y: Int!): Int! { a + y }
 
 # function rename
-pub sub(x: Int!, y: Int!): Int! { x - y } # test: ^wgrn<C-u>minus<CR> => pub ┃minus(a: Int!, y: Int!): Int! { a - y }
+sub(x: Int!, y: Int!): Int! { x - y } # test: ^wgrn<C-u>minus<CR> => ┃minus(a: Int!, y: Int!): Int! { a - y }
 
 add
 

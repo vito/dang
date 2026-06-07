@@ -1,9 +1,9 @@
 # Nested break expressions in a break value still target the enclosing call
-pub yield(&block(): String!): String! {
+yield(&block(): String!): String! {
   block()
 }
 
-pub result: String! = yield {
+result: String! = yield {
   break {
     break 42
   }

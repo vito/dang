@@ -1,2 +1,2 @@
 # Null cannot initialize a non-null field
-pub value: String! = null
+value: String! = null

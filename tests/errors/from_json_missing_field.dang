@@ -1,12 +1,12 @@
 enum Status { PASSED FAILED }
 
 type Child {
-  pub name: String!
-  pub outcome: Status!
+  name: String!
+  outcome: Status!
 }
 
 type Summary {
-  pub children: [Child!]!
+  children: [Child!]!
 }
 
 let summary: Summary! = fromJSON("""

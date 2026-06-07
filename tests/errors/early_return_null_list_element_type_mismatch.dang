@@ -1,5 +1,5 @@
 # Early return values must preserve nested non-null requirements
-pub bad(): [Int!]! {
+bad(): [Int!]! {
   return [null]
   []
 }

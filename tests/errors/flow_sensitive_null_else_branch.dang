@@ -2,7 +2,7 @@
 type TestType {
   let maybeString: String = null
 
-  pub testBothBranches: String! {
+  testBothBranches: String! {
     if (maybeString != null) {
       # This should work - maybeString is refined to String! in the then branch
       maybeString + "!"

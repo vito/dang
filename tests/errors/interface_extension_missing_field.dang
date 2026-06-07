@@ -1,14 +1,14 @@
 # A child interface must cover every field its parent interface declares.
 
 interface Named {
-  pub name: String!
+  name: String!
 }
 
 interface Greetable {
-  pub greet: String!
+  greet: String!
 }
 
 # Missing: pub greet
 interface Greeter implements Named & Greetable {
-  pub name: String!
+  name: String!
 }

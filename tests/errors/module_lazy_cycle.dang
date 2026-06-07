@@ -1,8 +1,8 @@
 # A real module initialization cycle can be hidden behind an auto-called function.
 # The lazy runtime initializer should report the cycle when the variable is forced.
-pub lazyCycleA: String! = lazyCycleF
-pub lazyCycleB: String! = lazyCycleA
+lazyCycleA: String! = lazyCycleF
+lazyCycleB: String! = lazyCycleA
 
-pub lazyCycleF: String! {
+lazyCycleF: String! {
   lazyCycleB
 }

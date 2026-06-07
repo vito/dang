@@ -1,7 +1,7 @@
 [1m[31mError:[0m return from expired function
   [2m[34m--> errors/expired_return_from_escaped_block.dang:11:5[0m
  [2m    |[0m
- [2m  9 | pub makeReturner: Int! {[0m
+ [2m  9 | makeReturner: Int! {[0m
  [2m 10 |   store { x =>[0m
  [2m[34m[1m 11 | [0m    return x
 [2m           [31m^^^^^^^^[0m

@@ -149,12 +149,12 @@ func (LSPSuite) TestDiagnosticsIgnoresSiblingBodyErrors(ctx context.Context, t *
 	// not inferred. Diagnostics for the open buffer therefore reflect only
 	// the open buffer's own errors.
 	root := t.TempDir()
-	writeDangFile(t, filepath.Join(root, "broken.dang"), `pub helper: String! { "ok" }
+	writeDangFile(t, filepath.Join(root, "broken.dang"), `helper: String! { "ok" }
 
 pub bad_add = "hello" + 42
 `)
 	mainPath := filepath.Join(root, "main.dang")
-	writeDangFile(t, mainPath, `pub greeting: String! { helper }
+	writeDangFile(t, mainPath, `greeting: String! { helper }
 `)
 
 	h := newLSPHarness(ctx, t, root)
@@ -193,7 +193,7 @@ type Holder {
 type Owner {
   let info: Test.ServerInfo!
 
-  pub make: Holder! {
+  make: Holder! {
     Holder(info: info)
   }
 }
@@ -224,7 +224,7 @@ func (LSPSuite) TestDiagnosticsResolvesUnannotatedSiblingVars(ctx context.Contex
 	writeDangFile(t, filepath.Join(root, "defs.dang"), `pub answer = "ok".toUpper
 `)
 	mainPath := filepath.Join(root, "main.dang")
-	writeDangFile(t, mainPath, `pub use: String! = answer
+	writeDangFile(t, mainPath, `use: String! = answer
 `)
 
 	h := newLSPHarness(ctx, t, root)
@@ -237,17 +237,17 @@ func (LSPSuite) TestDiagnosticsResolvesUnannotatedSiblingVars(ctx context.Contex
 func (LSPSuite) TestDiagnosticsLoadsSiblingFiles(ctx context.Context, t *testctx.T) {
 	root := t.TempDir()
 	writeDangFile(t, filepath.Join(root, "defs.dang"), `type Template {
-  pub name: String!
+  name: String!
 }
 
-pub modules(): [Template!] {
+modules(): [Template!] {
   []
 }
 `)
 	mainPath := filepath.Join(root, "main.dang")
 	writeDangFile(t, mainPath, `pub useTemplates = modules()
 
-pub typedTemplates: [Template!] {
+typedTemplates: [Template!] {
   []
 }
 `)

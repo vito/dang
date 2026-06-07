@@ -1,5 +1,5 @@
 # Nested return expressions in a return value still target the enclosing function
-pub bad(): String! {
+bad(): String! {
   return {
     return 42
   }

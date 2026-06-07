@@ -1,8 +1,8 @@
 # Test: user-defined function requires block argument
 
-pub withBlock(&block(x: Int!): String!): String! {
+withBlock(&block(x: Int!): String!): String! {
   block(42)
 }
 
 # ERROR: function requires a block argument
-pub result: String! = withBlock
+result: String! = withBlock

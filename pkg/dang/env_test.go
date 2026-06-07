@@ -108,7 +108,7 @@ func TestObjectSetDoesNotMutateTypeScopeOrigins(t *testing.T) {
 func TestRunDirDeclarationsShadowPreludeTypes(t *testing.T) {
 	env := runDangSnippet(t, `
 type Error {
-  pub id: String! = "x"
+  id: String! = "x"
 }
 assert { Error.id == "x" }
 `)
@@ -254,10 +254,10 @@ func TestRunDirDeclarationShadowsImportAlias(t *testing.T) {
 import Dagger
 
 type Dagger {
-  pub value: String!
+  value: String!
 }
 
-pub core: Dagger.Container! = Dagger.container
+core: Dagger.Container! = Dagger.container
 `), 0o600))
 
 	_, err := RunDir(ctx, dir, false)
@@ -271,24 +271,24 @@ func TestRunDirDeclarationsShadowImportedTypes(t *testing.T) {
 		AutoImport: true,
 	})
 	env := runDangSnippetContext(t, ctx, `
-pub maybe: Container = null
+maybe: Container = null
 
 type TestShadowing {
-  pub makeLocal: Container! {
+  makeLocal: Container! {
     Container("local")
   }
 
-  pub makeCore: Dagger.Container! {
+  makeCore: Dagger.Container! {
     Dagger.container
   }
 }
 
 type Container {
-  pub value: String!
+  value: String!
 }
 
 type Directory {
-  pub value: String!
+  value: String!
 }
 `)
 
@@ -345,11 +345,11 @@ func TestDeclareDirSkipsBodiesAndKeepsDaggerTypes(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
 type Test {
-  pub containerEcho(stringArg: String! = missing.default): Container! {
+  containerEcho(stringArg: String! = missing.default): Container! {
     Dagger.container
   }
 
-  pub print(stringArg: String!): String! {
+  print(stringArg: String!): String! {
     test.containerEcho(stringArg: stringArg).stdout
   }
 }
@@ -395,11 +395,11 @@ func TestRunDirSameFileImportAndDeclaration(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte(`
 import Dagger
 
-pub container: String! = "from_a"
-pub use: String! = container
+container: String! = "from_a"
+use: String! = container
 `), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte(`
-pub other: String! = "from_b"
+other: String! = "from_b"
 `), 0o600))
 
 	env, err := RunDir(ctx, dir, false)
@@ -426,11 +426,11 @@ func TestRunDirImportedValueDoesNotShadowLocalDeclaration(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a_uses_dagger.dang"), []byte(`
 import Dagger
 
-pub fromA: Dagger.Container! = Dagger.container
+fromA: Dagger.Container! = Dagger.container
 `), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b_declares_container.dang"), []byte(`
-pub container: String! = "local"
-pub useContainer: String! = container
+container: String! = "local"
+useContainer: String! = container
 `), 0o600))
 
 	env, err := RunDir(ctx, dir, false)
@@ -454,10 +454,10 @@ func TestRunDirImportsAreFileLocal(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a_uses_dagger.dang"), []byte(`
 import Dagger
 
-pub fromA: Dagger.Container! = Dagger.container
+fromA: Dagger.Container! = Dagger.container
 `), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b_no_import.dang"), []byte(`
-pub fromB: String! = container.value
+fromB: String! = container.value
 `), 0o600))
 
 	_, err := RunDir(ctx, dir, false)
@@ -476,12 +476,12 @@ func TestRunDirMultipleFilesCanImportSameSchema(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.dang"), []byte(`
 import Dagger
 
-pub fromA: Dagger.Container! = Dagger.container
+fromA: Dagger.Container! = Dagger.container
 `), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "b.dang"), []byte(`
 import Dagger
 
-pub fromB: Dagger.Container! = Dagger.container
+fromB: Dagger.Container! = Dagger.container
 `), 0o600))
 
 	_, err := RunDir(ctx, dir, false)
@@ -500,11 +500,11 @@ func TestRunDirImportedTypesUnifyAcrossFiles(t *testing.T) {
 	})
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "producer.dang"), []byte(`
-pub make: Container! = Dagger.container
+make: Container! = Dagger.container
 `), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "consumer.dang"), []byte(`
-pub take(c: Container!): Container! { c }
-pub piped: Container! = take(c: make)
+take(c: Container!): Container! { c }
+piped: Container! = take(c: make)
 `), 0o600))
 
 	_, err := RunDir(ctx, dir, false)
@@ -542,7 +542,7 @@ func TestRunDirNestedBlockImportStaysLocal(t *testing.T) {
 	})
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
-pub useDagger: Dagger.Container! {
+useDagger: Dagger.Container! {
   import Dagger
   Dagger.container
 }
@@ -556,7 +556,7 @@ func TestRunDirImplementingPreludeInterfaceDoesNotMutatePrelude(t *testing.T) {
 	before := len(ErrorType.GetImplementers())
 	runDangSnippet(t, `
 type MyError implements Error {
-  pub message: String! = "x"
+  message: String! = "x"
 }
 assert { MyError.message == "x" }
 `)

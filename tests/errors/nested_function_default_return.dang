@@ -1,5 +1,5 @@
 # Default values for nested function arguments must not inherit the enclosing return target.
-pub outer: Int! {
+outer: Int! {
   let inner(x: Int! = return 1): Int! {
     x
   }

@@ -1,6 +1,6 @@
 # Test: function refs must match required block parameters
 
-pub noBlock: String! {
+noBlock: String! {
   "no block"
 }
 

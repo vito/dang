@@ -1,4 +1,4 @@
 # Repeated generic arguments must still have a common assignable type.
-pub choose(x: a, y: a): a { x }
+choose(x: a, y: a): a { x }
 
 pub result = choose(1, "one")

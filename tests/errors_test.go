@@ -58,12 +58,12 @@ func (DangSuite) TestRunDirControlFlowSourceErrors(ctx context.Context, t *testc
 	path := filepath.Join(dir, "main.dang")
 	err = os.WriteFile(path, []byte(`let saved(x: Int!): Int! { x }
 
-pub store(&block(x: Int!): Int!): Int! {
+store(&block(x: Int!): Int!): Int! {
   saved = block
   0
 }
 
-pub makeReturner: Int! {
+makeReturner: Int! {
   store { x =>
     return x
   }

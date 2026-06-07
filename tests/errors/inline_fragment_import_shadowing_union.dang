@@ -4,8 +4,8 @@
 import Test
 
 type User {
-  pub name: String!
-  pub origin: String! = "local"
+  name: String!
+  origin: String! = "local"
 }
 
 pub bad = search(query: "John").{

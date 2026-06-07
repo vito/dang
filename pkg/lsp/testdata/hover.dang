@@ -11,12 +11,12 @@ directive @experimental on FIELD_DEFINITION
 
 type Directives {
   @deprecated(reason: "use new instead")
-  pub old: String! { # test: ^kwK => hover: Marks a field as deprecated.
+  old: String! { # test: ^kwK => hover: Marks a field as deprecated.
     "old"
   }
 
   @experimental
-  pub beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
+  beta: String! { # test: ^kwK => hover: directive @experimental on FIELD_DEFINITION
     "beta"
   }
 }
@@ -26,7 +26,7 @@ let greeting = 42
 
 greeting # test: K => hover: Int!
 
-# function hover (cross-file: pub addNums declared in gd.dang)
+# function hover (cross-file: addNums declared in gd.dang)
 addNums # test: K => hover: (x: Int!, y: Int!): Int!
 
 # function docs hover (cross-file: gd.dang's addNums has a docstring)
@@ -37,7 +37,7 @@ addNums # test: K => hover: Adds two numbers
 Multiplies two numbers together.
 Returns the product of x and y.
 """
-pub multiply(x: Int!, y: Int!): Int! {
+multiply(x: Int!, y: Int!): Int! {
   x * y
 }
 
@@ -53,11 +53,11 @@ Test.serverInfo # test: ^wwK => hover: ServerInfo!
 Test.serverInfo.version # test: ^wwwwK => hover: String!
 
 type MyModule {
-  pub info: ServerInfo! {
+  info: ServerInfo! {
     serverInfo
   }
 
-  pub build: String! {
+  build: String! {
     generated.ver # test: ^K => hover: Generated server info.
   }
 
@@ -68,7 +68,7 @@ type MyModule {
     serverInfo
   }
 
-  pub buildQualified: Test.ServerInfo! {
+  buildQualified: Test.ServerInfo! {
     generatedQualified.ver # test: ^K => hover: Generated server info.
   }
 
@@ -88,11 +88,11 @@ Color # test: K => hover: //   RED
 
 # union hover
 type Cat {
-  pub name: String! { "cat" }
+  name: String! { "cat" }
 }
 
 type Dog {
-  pub name: String! { "dog" }
+  name: String! { "dog" }
 }
 
 union Pet = Cat | Dog
@@ -107,7 +107,7 @@ let obj = {
   """
   let helper = 42
 
-  pub value: Int! {
+  value: Int! {
     helper # test: ^K => hover: Helper value for the object.
   }
 }
