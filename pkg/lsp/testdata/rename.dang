@@ -7,7 +7,7 @@ renamable # test: ^grn<C-u>world<CR> => ┃world
 add(x: Int!, y: Int!): Int! { x + y } # test: ^fxgrn<C-u>a<CR> => add(┃a: Int!, y: Int!): Int! { a + y }
 
 # function rename
-sub(x: Int!, y: Int!): Int! { x - y } # test: ^wgrn<C-u>minus<CR> => ┃minus(a: Int!, y: Int!): Int! { a - y }
+sub(x: Int!, y: Int!): Int! { x - y } # test: ^grn<C-u>minus<CR> => ┃minus(a: Int!, y: Int!): Int! { a - y }
 
 add
 
