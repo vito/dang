@@ -26,8 +26,8 @@ GraphQL schema.
 \dang-playground{{{
 # Edit me, then hit Run — this evaluates in your browser.
 type Greeter {
-  pub name: String!
-  pub greet: String! { `Hello, ${name}!` }
+  name: String!
+  greet: String! { `Hello, ${name}!` }
 }
 
 ["world", "Dang", "you"].map { who => Greeter(who).greet }

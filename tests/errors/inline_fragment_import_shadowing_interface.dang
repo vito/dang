@@ -4,10 +4,10 @@
 import Test
 
 type User {
-  pub name: String!
-  pub origin: String! = "local"
+  name: String!
+  origin: String! = "local"
 }
 
-pub bad = node(id: "1").{
+let bad = node(id: "1").{
   ... on User { origin }
 }

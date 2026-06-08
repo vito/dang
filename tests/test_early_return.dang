@@ -1,6 +1,6 @@
 # Test early returns from functions and constructors
 
-pub describe(n: Int!): String! {
+describe(n: Int!): String! {
   if (n < 0) {
     return "negative"
   }
@@ -15,7 +15,7 @@ assert { describe(0) == "zero" }
 assert { describe(2) == "positive" }
 
 # Return should unwind through ordinary blocks and loops.
-pub stopAtThree: Int! {
+stopAtThree: Int! {
   let count = 0
   for (count < 10) {
     count += 1
@@ -29,7 +29,7 @@ pub stopAtThree: Int! {
 assert { stopAtThree == 3 }
 
 # try/catch catches raises, not returns.
-pub returnThroughTry: String! {
+returnThroughTry: String! {
   try {
     return "done"
   } catch {
@@ -40,7 +40,7 @@ pub returnThroughTry: String! {
 assert { returnThroughTry == "done" }
 
 type EarlyReturnGreeter {
-  pub greeting: String!
+  greeting: String!
 
   new(useDefault: Boolean!) {
     if (useDefault) {
@@ -51,7 +51,7 @@ type EarlyReturnGreeter {
     self
   }
 
-  pub label(short: Boolean!): String! {
+  label(short: Boolean!): String! {
     if (short) {
       return "short"
     }

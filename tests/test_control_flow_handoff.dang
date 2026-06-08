@@ -1,6 +1,6 @@
 # Test Ruby-like block control-flow handoff
 
-pub firstEven: Int! {
+firstEven: Int! {
   [1, 2, 3, 4].each { x =>
     if (x % 2 == 0) {
       return x
@@ -11,13 +11,13 @@ pub firstEven: Int! {
 
 assert { firstEven == 2 }
 
-pub yieldTwice(&block(x: Int!): Int!): Int! {
+yieldTwice(&block(x: Int!): Int!): Int! {
   block(1)
   block(2)
   99
 }
 
-pub returnFromUserBlock: Int! {
+returnFromUserBlock: Int! {
   yieldTwice { x =>
     if (x == 2) {
       return x
@@ -29,7 +29,7 @@ pub returnFromUserBlock: Int! {
 
 assert { returnFromUserBlock == 2 }
 
-pub mapped = [1, 2, 3].map { x =>
+let mapped = [1, 2, 3].map { x =>
   if (x == 2) {
     continue 20
   }
@@ -47,7 +47,7 @@ let sum = 0
 }
 assert { sum == 4 }
 
-pub eachBreak = [1, 2, 3].each { x =>
+let eachBreak = [1, 2, 3].each { x =>
   if (x == 2) {
     break "done"
   }
@@ -56,7 +56,7 @@ pub eachBreak = [1, 2, 3].each { x =>
 
 assert { eachBreak == "done" }
 
-pub mapBreak = [1, 2, 3].map { x =>
+let mapBreak = [1, 2, 3].map { x =>
   if (x == 2) {
     break "done"
   }
@@ -65,25 +65,25 @@ pub mapBreak = [1, 2, 3].map { x =>
 
 assert { mapBreak == "done" }
 
-pub yieldBreak = yieldTwice { x =>
+let yieldBreak = yieldTwice { x =>
   break x
 }
 
 assert { yieldBreak == 1 }
 
-pub noValueBreak = [1].each { x =>
+let noValueBreak = [1].each { x =>
   break
   "not the break value"
 }
 assert { noValueBreak == null }
 
-pub noValueContinue = [1].map { x =>
+let noValueContinue = [1].map { x =>
   continue
   99
 }
 assert { noValueContinue == [null] }
 
-pub loopBreakValue = for {
+let loopBreakValue = for {
   break "loop done"
 }
 assert { loopBreakValue == "loop done" }
@@ -110,7 +110,7 @@ let nestedContinueCount = 0
 assert { nestedContinueCount == 4 }
 
 let nestedBlockCount = 0
-pub nestedBlockBreak = [1, 2, 3].map { x =>
+let nestedBlockBreak = [1, 2, 3].map { x =>
   nestedBlockCount += 1
   [10, 20].each { y =>
     break "inner"
@@ -124,17 +124,17 @@ assert { nestedBlockCount == 3 }
 type StoredBlockHandler {
   let saved(x: Int!): Int! { x }
 
-  pub store(&block(x: Int!): Int!): StoredBlockHandler! {
+  store(&block(x: Int!): Int!): StoredBlockHandler! {
     self.saved = block
     self
   }
 
-  pub callSaved(n: Int!): Int! {
+  callSaved(n: Int!): Int! {
     self.saved(n)
   }
 }
 
-pub storedBlockContinue = StoredBlockHandler.store { x =>
+let storedBlockContinue = StoredBlockHandler.store { x =>
   continue x + 10
 }.callSaved(5)
 

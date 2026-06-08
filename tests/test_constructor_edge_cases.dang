@@ -4,7 +4,7 @@
 type PrivateOnly {
   let value = 42
 
-  pub getValue: Int! {
+  getValue: Int! {
     value
   }
 }
@@ -13,11 +13,11 @@ assert { PrivateOnly.getValue == 42 }
 
 # Object with only function fields (no constructor parameters)
 type FunctionOnly {
-  pub getValue: Int! {
+  getValue: Int! {
     42
   }
 
-  pub getString: String! {
+  getString: String! {
     "hello"
   }
 }
@@ -27,10 +27,10 @@ assert { FunctionOnly.getString == "hello" }
 
 # Object with mix of public/private fields
 type MixedVisibility {
-  pub publicField: String! = "public"
+  publicField: String! = "public"
   let privateField = "private"
 
-  pub getPrivate: String! {
+  getPrivate: String! {
     privateField
   }
 }
@@ -41,10 +41,10 @@ assert { MixedVisibility("custom").publicField == "custom" }
 assert { MixedVisibility("custom").getPrivate == "private" }
 
 # Constructor with default values that depend on external variables
-pub globalValue = "global"
+let globalValue = "global"
 
 type UsingGlobals {
-  pub local: String! = globalValue + "_local"
+  local: String! = globalValue + "_local"
 }
 
 assert { UsingGlobals.local == "global_local" }
@@ -66,8 +66,8 @@ assert { NestedDefaults.person.details.active == true }
 
 # Constructor with list default values
 type ListDefaults {
-  pub numbers: [Int!]! = [1, 2, 3]
-  pub names: [String!]! = ["a", "b"]
+  numbers: [Int!]! = [1, 2, 3]
+  names: [String!]! = ["a", "b"]
 }
 
 assert { ListDefaults.numbers == [1, 2, 3] }

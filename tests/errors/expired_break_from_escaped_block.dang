@@ -1,19 +1,19 @@
 # break from an escaped block fails once the receiving call has returned
 let savedBreak(x: Int!): Int! { x }
 
-pub storeBreak(&block(x: Int!): Int!): Int! {
+storeBreak(&block(x: Int!): Int!): Int! {
   savedBreak = block
   0
 }
 
-pub makeBreaker: Int! {
+makeBreaker: Int! {
   storeBreak { x =>
     break x
   }
   0
 }
 
-pub result = {
+let result = {
   makeBreaker
   savedBreak(1)
 }

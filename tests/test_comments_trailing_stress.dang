@@ -4,22 +4,22 @@ let x = 42 # trailing on simple let
 let y = "hello" # trailing on string let
 
 # standalone before pub
-pub z = x + 5 # trailing on pub with expression
+let z = x + 5 # trailing on pub with expression
 
 # standalone before type
 type Greeter { # trailing on type open
   """
   Says hello.
   """
-  pub greet(name: String!): String! { # trailing on pub fun with args
+  greet(name: String!): String! { # trailing on pub fun with args
     "Hello, " + name # trailing on body expression
   }
 
-  pub shout(name: String!): String! { # trailing on another pub fun
+  shout(name: String!): String! { # trailing on another pub fun
     greet(name).toUpper # trailing on chained expression
   }
 
-  pub id: Int! { # trailing on parameterless pub fun
+  id: Int! { # trailing on parameterless pub fun
     42 # trailing on literal in block
   }
 
@@ -30,10 +30,10 @@ type Greeter { # trailing on type open
 
 # standalone between types
 type Pair { # trailing on second type open
-  pub first: Int! # trailing on type field with no body
-  pub second: Int! # trailing on second type field
+  first: Int! # trailing on type field with no body
+  second: Int! # trailing on second type field
 
-  pub sum: Int! { # trailing on method
+  sum: Int! { # trailing on method
     first + second # trailing on addition
   }
 } # trailing on second type close
@@ -50,14 +50,14 @@ enum Direction { # trailing on multi-line enum open
 
 # interface declaration
 interface Printable { # trailing on interface open
-  pub display: String! # trailing on interface field
+  display: String! # trailing on interface field
 }
 
 # directives
 directive @cool on FIELD_DEFINITION # trailing on directive
 
 # standalone before function
-pub add(a: Int!, b: Int!): Int! { # trailing on function open
+add(a: Int!, b: Int!): Int! { # trailing on function open
   a + b # trailing on function body
 }
 
@@ -68,46 +68,46 @@ let total = 0 # trailing on mutable let
 }
 
 # conditional
-pub result = if (x > 10) { # trailing on if
+let result = if (x > 10) { # trailing on if
   "big" # trailing on then branch
 } else { # trailing on else
   "small" # trailing on else branch
 }
 
 # case expression
-pub matched = case (x) { # trailing on case open
+let matched = case (x) { # trailing on case open
   1 => "one" # trailing on case clause
   42 => "the answer" # trailing on matching clause
   else => "other" # trailing on else clause
 }
 
 # list - multiline
-pub nums = [ # trailing on list open
+let nums = [ # trailing on list open
   1, # trailing on first element
   2, # trailing on second element
   3, # trailing on third element
 ]
 
 # list - single line
-pub short = [10, 20, 30] # trailing on single-line list
+let short = [10, 20, 30] # trailing on single-line list
 
 # block arg
-pub doubled = nums.map { n => n * 2 } # trailing on block arg
+let doubled = nums.map { n => n * 2 } # trailing on block arg
 
 # multiline chain
-pub chainResult = [1, 2, 3] # trailing on chain root
+let chainResult = [1, 2, 3] # trailing on chain root
   .map { n => n * 2 } # trailing on first chain step
   .filter { n => n > 2 } # trailing on second chain step
 
 # assert
 assert { x == 42 } # trailing on assert
 
-assert("custom message") { # trailing on assert with message
+assert("custom message") {  # trailing on assert with message
   total == 6 # trailing on assert body
 }
 
 # nested blocks
-pub outer = { # trailing on outer block open
+let outer = { # trailing on outer block open
   let inner = { # trailing on inner block open
     42 # trailing on inner value
   }
@@ -115,7 +115,7 @@ pub outer = { # trailing on outer block open
 }
 
 # binary operations
-pub math = (1 + 2) * 3 # trailing on grouped math
+let math = (1 + 2) * 3 # trailing on grouped math
 
 # .each with index
 let indexed = "" # trailing on mutable string
@@ -124,22 +124,22 @@ let indexed = "" # trailing on mutable string
 }
 
 # boolean operations
-pub logic = true and false or true # trailing on boolean ops
+let logic = true and false or true # trailing on boolean ops
 
 # null handling
-pub maybe: Int = null # trailing on nullable
-pub safe = maybe ?? 99 # trailing on default operator
+maybe: Int = null # trailing on nullable
+let safe = maybe ?? 99 # trailing on default operator
 
 # type with implements and directives
 type Fancy implements Printable { # trailing on type with implements
   @cool # trailing on prefix directive
-  pub display: String! { # trailing on directive-decorated field
+  display: String! { # trailing on directive-decorated field
     "I'm fancy!" # trailing on decorated body
   }
 }
 
 # deeply nested
-pub deep = if (true) { # trailing on outer if
+let deep = if (true) { # trailing on outer if
   if (true) { # trailing on inner if
     if (true) { # trailing on innermost if
       "deep" # trailing on deep value
@@ -154,9 +154,9 @@ counter += 1 # trailing on compound reassignment
 
 # self keyword in object
 type Counter { # trailing on Counter type
-  pub value: Int! # trailing on Counter field
+  value: Int! # trailing on Counter field
 
-  pub incr: Counter! { # trailing on incr method
+  incr: Counter! { # trailing on incr method
     value += 1 # trailing on incr body
     self # trailing on self return
   }

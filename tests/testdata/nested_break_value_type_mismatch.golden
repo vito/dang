@@ -1,10 +1,10 @@
 [1m[31mError:[0m cannot use String! | a | Int! as String!
-  [2m[34m--> errors/nested_break_value_type_mismatch.dang:6:23[0m
+  [2m[34m--> errors/nested_break_value_type_mismatch.dang:6:19[0m
  [2m    |[0m
  [2m  4 | }[0m
  [2m  5 | [0m
- [2m[34m[1m  6 | [0mpub result: String! = yield {
-[2m                             [31m^^^^^^^[0m
+ [2m[34m[1m  6 | [0mresult: String! = yield {
+[2m                         [31m^^^^^^^[0m
  [2m  7 |   break {[0m
  [2m  8 |     break 42[0m
  [2m    |[0m

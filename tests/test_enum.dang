@@ -14,16 +14,16 @@ assert { Status.ACTIVE != Status.PENDING }
 assert { Status.PENDING != Status.ARCHIVED }
 
 # Test querying enum values from GraphQL
-pub statusValue = status
+let statusValue = status
 assert { statusValue == Status.ACTIVE }
 
 # Test enum field on a type
 let statuses = users.{status}
-pub john = statuses[0]
+let john = statuses[0]
 assert { john.status == Status.ACTIVE }
 assert { john.status != Status.PENDING }
 
-pub jane = statuses[1]
+let jane = statuses[1]
 assert { jane.status == Status.PENDING }
 assert { jane.status != Status.ACTIVE }
 

@@ -2,14 +2,14 @@
 
 # Basic: constructor calls a method that returns a modified self
 type Builder {
-  pub value: String! = ""
+  value: String! = ""
 
   new(initial: String!) {
     self.value = initial
     self.withSuffix("!")
   }
 
-  pub withSuffix(s: String!): Builder! {
+  withSuffix(s: String!): Builder! {
     self.value = self.value + s
     self
   }
@@ -20,8 +20,8 @@ assert { Builder("hello").withSuffix("?").value == "hello!?" }
 
 # Method chain in the middle of a constructor
 type Config {
-  pub host: String!
-  pub port: Int!
+  host: String!
+  port: Int!
 
   new(host: String!, port: Int! = 8080) {
     self.host = host
@@ -29,7 +29,7 @@ type Config {
     self.withDefaults
   }
 
-  pub withDefaults: Config! {
+  withDefaults: Config! {
     self.host = self.host + ".local"
     self
   }
@@ -40,14 +40,14 @@ assert { Config("myapp").port == 8080 }
 
 # Multiple method calls in constructor
 type Pipeline {
-  pub steps: [String!]! = []
+  steps: [String!]! = []
 
   new(name: String!) {
     self.steps = [name]
     self.addStep("init").addStep("ready")
   }
 
-  pub addStep(step: String!): Pipeline! {
+  addStep(step: String!): Pipeline! {
     self.steps = self.steps + [step]
     self
   }

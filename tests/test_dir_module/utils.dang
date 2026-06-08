@@ -1,12 +1,12 @@
 # Utility functions using types from types.dang
-pub createPerson(name: String!, age: Int!): Person! {
+createPerson(name: String!, age: Int!): Person! {
   Person(name, age)
 }
 
-pub getMagicNumber: Int! {
+getMagicNumber: Int! {
   MAGIC_NUMBER
 }
 
-pub formatVersion: String! {
+formatVersion: String! {
   "Version: " + VERSION
 }

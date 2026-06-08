@@ -1,2 +1,2 @@
 # Test multiplication type mismatch
-pub result = "hello" * 42
+let result = "hello" * 42

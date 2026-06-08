@@ -1,12 +1,12 @@
 # Test that private fields with default values are used in defaults, not outer scope
 # See: https://github.com/vito/dang/issues/17
 
-pub version = "wrong"
+let version = "wrong"
 
 type Rust {
   let version = "1.90"
 
-  pub combined: String! = "rust:" + version
+  combined: String! = "rust:" + version
 }
 
 let rust = Rust
@@ -19,7 +19,7 @@ assert("provided value should override default") { Rust("custom").combined == "c
 type WithMethod {
   let prefix = "hello"
 
-  pub greeting: String! {
+  greeting: String! {
     prefix + " world"
   }
 }

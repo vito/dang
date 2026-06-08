@@ -2,39 +2,39 @@
 # This should fail because object literals inherit lexical scope
 
 # Simple object literal
-pub obj1 = {{name: "test", value: 42}}
-pub json1 = toJSON(value: obj1)
+let obj1 = {{name: "test", value: 42}}
+let json1 = toJSON(value: obj1)
 
 assert { json1 == "{\"name\":\"test\",\"value\":42}" }
 
 # Object literal with nested structure
-pub obj2 = {{user: {{id: 1, active: true}}, count: 100}}
-pub json2 = toJSON(value: obj2)
+let obj2 = {{user: {{id: 1, active: true}}, count: 100}}
+let json2 = toJSON(value: obj2)
 
 # TODO: make this match defined order? or don't? maybe it's nice that it's
 # stable for cache busting avoidance?
 assert { json2 == "{\"count\":100,\"user\":{\"active\":true,\"id\":1}}" }
 
 # Object literal created in function scope - this should expose the issue
-pub createObject = {
-  pub localVar = "local"
+let createObject = {
+  let localVar = "local"
   {{data: localVar, timestamp: 1234567890}}
 }
 
-pub obj3 = createObject
-pub json3 = toJSON(value: obj3)
+let obj3 = createObject
+let json3 = toJSON(value: obj3)
 
 assert { json3 == "{\"data\":\"local\",\"timestamp\":1234567890}" }
 
 # Empty list from map should serialize as [] not null
-pub nums: [Int] = [1, 2, 3]
-pub emptyFiltered = nums.filter { x => false }
-pub json4 = toJSON(value: emptyFiltered)
+nums: [Int] = [1, 2, 3]
+let emptyFiltered = nums.filter { x => false }
+let json4 = toJSON(value: emptyFiltered)
 assert { json4 == "[]" }
 
 # map over empty result should also be []
-pub emptyMapped = emptyFiltered.map { x => x + 1 }
-pub json5 = toJSON(value: emptyMapped)
+let emptyMapped = emptyFiltered.map { x => x + 1 }
+let json5 = toJSON(value: emptyMapped)
 assert { json5 == "[]" }
 
 print("JSON marshaling tests passed!")

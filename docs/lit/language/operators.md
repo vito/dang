@@ -68,7 +68,7 @@ missing!                           # -> non-null assertion failed: value is null
 ## Compound assignment
 
 - `+=` desugars to `+` (`AssignOp` in grammar maps `+=` to `+`); works on `Int`/`Float`, `String`, and lists
-- requires the LHS to be a mutable field (`pub`/`let`)
+- requires the LHS to be a mutable field, local, or arg
 - `=` is plain reassignment, not an operator on the precedence chain
 
 ## Cast / type hint: `::`

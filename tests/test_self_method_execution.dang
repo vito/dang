@@ -7,7 +7,7 @@ type SimpleApko {
   }}
 
   # This method uses self and should fail if self is not available during method execution
-  pub withItems(items: [String!]!): SimpleApko! {
+  withItems(items: [String!]!): SimpleApko! {
     self.config.items += items
     self
   }

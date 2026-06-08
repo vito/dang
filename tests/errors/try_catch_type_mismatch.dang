@@ -1,5 +1,5 @@
 # try body returns Int! but catch returns String! — type mismatch
-pub result = try {
+let result = try {
   42
 } catch {
   err => "not a number"

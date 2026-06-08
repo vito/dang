@@ -17,15 +17,15 @@ enum Color {
 # comment before interface
 interface Greeter {
   # comment inside interface
-  pub greet(name: String!): String!
+  greet(name: String!): String!
 }
 
 # comment before type
 type Dog implements Greeter {
   # comment before field
-  pub name: String!
+  name: String!
   # comment between fields
-  pub age: Int!
+  age: Int!
 
   # comment before constructor
   new(
@@ -41,29 +41,29 @@ type Dog implements Greeter {
   }
 
   # comment before method
-  pub greet(name: String!): String! {
+  greet(name: String!): String! {
     # comment inside method body
     "woof " + name
   }
 }
 
 # comment before simple field
-pub simple = 42
+let simple = 42
 
 # comment before let
 let local = "hello"
 
 # comment before typed field
-pub typed: Int! = 100
+typed: Int! = 100
 
 # comment before function
-pub add(a: Int!, b: Int!): Int! {
+add(a: Int!, b: Int!): Int! {
   # comment inside function
   a + b
 }
 
 # comment before block
-pub block_result = {
+let block_result = {
   # comment at start of block
   let x = 1
   # comment between block forms
@@ -73,7 +73,7 @@ pub block_result = {
 }
 
 # comment before conditional
-pub cond_result = if (true) {
+let cond_result = if (true) {
   # comment in true branch
   "yes"
 } else {
@@ -82,7 +82,7 @@ pub cond_result = if (true) {
 }
 
 # comment before case
-pub case_result = case ("b") {
+let case_result = case ("b") {
   # comment before first arm
   "a" => "alpha"
   # comment before second arm
@@ -92,14 +92,14 @@ pub case_result = case ("b") {
 }
 
 # comment before .each
-pub sum = 0
+let sum = 0
 [1, 2, 3].each { n =>
   # comment inside .each body
   sum += n
 }
 
 # comment before list
-pub nums = [
+let nums = [
   # comment before first element
   1,
   # comment between elements
@@ -109,12 +109,12 @@ pub nums = [
 ]
 
 # comment before chain
-pub chain_result = Dog("Rex", 5)
+let chain_result = Dog("Rex", 5)
   # comment before chained method
   .greet("world")
 
 # comment before multiline chain
-pub chain2 = [10, 20, 30]
+let chain2 = [10, 20, 30]
   # comment before map
   .map { x => x * 2 }
   # comment before filter
@@ -135,7 +135,7 @@ assert { chain_result == "woof world" }
 assert { chain2 == [40, 60] }
 
 # comment before reassignment
-pub counter = 0
+let counter = 0
 # comment between reassignment
 counter = 10
 # comment after reassignment
@@ -143,29 +143,29 @@ assert { counter == 10 }
 
 # comment before nested type
 type Pair {
-  pub left: Int!
-  pub right: Int!
+  left: Int!
+  right: Int!
 
   # comment before pair method
-  pub sum: Int! {
+  sum: Int! {
     # comment inside pair method
     left + right
   }
 }
 
 # comment before instantiation
-pub pair = Pair(3, 7)
+let pair = Pair(3, 7)
 assert { pair.sum == 10 }
 
 # comment before default operator
-pub maybe: Int = null
-pub safe = maybe ?? 99
+maybe: Int = null
+let safe = maybe ?? 99
 # comment after default
 assert { safe == 99 }
 
 # comment before boolean operators
-pub logic_and = true and true
-pub logic_or = false or true
+let logic_and = true and true
+let logic_or = false or true
 # comment between logic asserts
 assert { logic_and == true }
 assert { logic_or == true }
@@ -180,7 +180,7 @@ assert { 1 != 2 }
 assert { 1 == 1 }
 
 # comment before arithmetic
-pub math = (2 + 3) * 4 - 1
+let math = (2 + 3) * 4 - 1
 # comment after arithmetic
 assert { math == 19 }
 
@@ -188,7 +188,7 @@ assert { math == 19 }
 assert { (!false) == true }
 
 # comment before .each with index
-pub index_sum = 0
+let index_sum = 0
 Color.values.each { color, i =>
   # comment inside indexed .each
   index_sum += i
@@ -196,7 +196,7 @@ Color.values.each { color, i =>
 assert { index_sum == 3 }
 
 # comment before break/continue
-pub break_sum = 0
+let break_sum = 0
 [1, 2, 3, 4, 5].each { n =>
   # comment before conditional break
   if (n > 3) {
@@ -207,7 +207,7 @@ pub break_sum = 0
 }
 assert { break_sum == 6 }
 
-pub skip_sum = 0
+let skip_sum = 0
 [1, 2, 3, 4, 5].each { n =>
   # comment before conditional continue
   if (n == 3) {

@@ -1,11 +1,11 @@
 [1m[31mError:[0m cannot use ConditionalAnimal! as ConditionalCat!:
   - missing field "lives"
-  [2m[34m--> errors/conditional_reverse_assignability_narrowing.dang:19:34[0m
+  [2m[34m--> errors/conditional_reverse_assignability_narrowing.dang:19:30[0m
  [2m    |[0m
  [2m 17 | let dogAsAnimal: ConditionalAnimal! = ConditionalDog(name: "Fido", bark: "woof")[0m
  [2m 18 | [0m
- [2m[34m[1m 19 | [0mpub chosenCat: ConditionalCat! = if (false) {
-[2m                                        [31m^^^^^^^^^^^^[0m
+ [2m[34m[1m 19 | [0mchosenCat: ConditionalCat! = if (false) {
+[2m                                    [31m^^^^^^^^^^^^[0m
  [2m 20 |   ConditionalCat(name: "Mog", lives: 9)[0m
  [2m 21 | } else {[0m
  [2m    |[0m

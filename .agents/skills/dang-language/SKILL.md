@@ -50,14 +50,14 @@ Four ideas the rest of the language hangs on:
 ## Quick syntax
 
 ```dang
-pub x = 42                       # public binding, inferred Int!
+x: Int! = 42                     # public binding (a type makes it public)
 let secret = "hidden"            # private to file/type
-pub add(a: Int!, b: Int!): Int! { a + b }   # function; last expr is result
-pub motd: String! { "hi" }       # zero-arg method/computed field (no parens)
+add(a: Int!, b: Int!): Int! { a + b }   # function; last expr is result
+motd: String! { "hi" }           # zero-arg method/computed field (no parens)
 
 type Counter {
-  pub value: Int!                # no default -> required constructor param
-  pub incr: Counter! { value += 1; self }   # forks self, returns the copy
+  value: Int!                    # no default -> required constructor param
+  incr: Counter! { value += 1; self }   # forks self, returns the copy
 }
 assert { Counter(0).incr.incr.value == 2 }
 
@@ -73,7 +73,7 @@ Load the reference file that matches the question:
 |---|---|
 | `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
 | `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
-| `reference/objects.md` | `pub`/`let` **fields**, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write**, **interfaces** & **unions** + variance |
+| `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write**, **interfaces** & **unions** + variance |
 | `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `for`, `break`/`continue`/`return`, **errors** (`try`/`catch`/`raise`, the `Error` interface, when to raise vs. return null) |
 | `reference/stdlib.md` | top-level builtins (`assert`/`print`/`toString`/`toJSON`/`fromJSON`/`fromYAML`), **`String!` methods** (incl. regex/`Match`), **list `[T]!` methods**, **JSON/YAML**, `Random`, `UUID`, error types |
 | `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |

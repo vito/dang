@@ -1,15 +1,15 @@
 # Test basic list iteration with .each
-pub numbers = [1, 2, 3, 4, 5]
-pub sum = 0
+let numbers = [1, 2, 3, 4, 5]
+let sum = 0
 
 numbers.each { num => sum += num }
 
 assert { sum == 15 }
 
 # Test .each with index
-pub fruits = ["apple", "banana", "cherry"]
-pub result = ""
-pub indices = []
+let fruits = ["apple", "banana", "cherry"]
+let result = ""
+let indices = []
 
 fruits.each { fruit, index =>
   result += fruit
@@ -20,8 +20,8 @@ assert { result == "applebananacherry" }
 assert { indices == [0, 1, 2] } # 0 + 1 + 2
 
 # Test nested .each
-pub matrix = [[1, 2], [3, 4]]
-pub total = 0
+let matrix = [[1, 2], [3, 4]]
+let total = 0
 
 matrix.each { row =>
   row.each { value =>
@@ -32,16 +32,16 @@ matrix.each { row =>
 assert { total == 10 }
 
 # Test empty list
-pub empty: [Int!]! = []
-pub count = 0
+empty: [Int!]! = []
+let count = 0
 
 empty.each { item => count += 1 }
 
 assert { count == 0 }
 
 # Test single element list
-pub single = [42]
-pub captured = 0
+let single = [42]
+let captured = 0
 
 single.each { item => captured = item }
 

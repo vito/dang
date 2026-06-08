@@ -1,2 +1,2 @@
 # Test less than or equal comparison type mismatch
-pub result = "hello" <= 42
+let result = "hello" <= 42

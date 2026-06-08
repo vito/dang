@@ -169,7 +169,7 @@ assert("while-loop condition narrows the body") {
 type Holder {
   let maybe: String = null
 
-  pub describeNotEq: String! {
+  describeNotEq: String! {
     if (maybe != null) {
       "got " + maybe
     } else {
@@ -177,7 +177,7 @@ type Holder {
     }
   }
 
-  pub describeEq: String! {
+  describeEq: String! {
     if (maybe == null) {
       "missing"
     } else {
@@ -188,7 +188,7 @@ type Holder {
   # Compound `and` inside a condition: both narrowings apply in then-branch.
   let other: String = null
 
-  pub bothBranches: String! {
+  bothBranches: String! {
     if (maybe != null and other != null) {
       maybe + other
     } else {
@@ -198,7 +198,7 @@ type Holder {
 
   # Guard clause inside a method: bare field references on `self` are
   # plain Symbols, so they narrow.
-  pub useGuard: String! {
+  useGuard: String! {
     if (maybe == null) {
       raise "no maybe"
     }

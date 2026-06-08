@@ -1,4 +1,4 @@
-pub name = "Ada"
-pub bad = ```
+let name = "Ada"
+let bad = ```
 hello ${name
 ```

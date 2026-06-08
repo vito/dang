@@ -62,6 +62,7 @@ TypeVariable := [a-z]                           # single lowercase letter
 ## Reserved words
 
 - keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `catch`, `continue`, `directive`, `else`, `enum`, `false`, `for`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `return`, `scalar`, `self`, `true`, `try`, `type`, `union`
+- `pub` is optional — the visibility keyword is parsed but no longer required; declarations are public by default (see [#fields])
 - see [#syntax]
 
 ## Notable productions

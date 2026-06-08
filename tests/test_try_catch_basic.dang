@@ -1,7 +1,7 @@
 # Test basic try/catch expressions
 
 # catch a raised error
-pub caught = try {
+let caught = try {
   raise "oops"
 } catch {
   err => "caught: " + err.message
@@ -10,7 +10,7 @@ pub caught = try {
 assert { caught == "caught: oops" }
 
 # success path passes through
-pub ok = try {
+let ok = try {
   "hello"
 } catch {
   err => "unreachable"
@@ -19,7 +19,7 @@ pub ok = try {
 assert { ok == "hello" }
 
 # catch with no error returns the body value
-pub number = try {
+let number = try {
   42
 } catch {
   err => 0

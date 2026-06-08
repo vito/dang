@@ -7,29 +7,29 @@ bound # test: gd => ┃bound = 42
 """
 Adds two numbers.
 """
-pub addNums(x: Int!, y: Int!): Int! {
-  x + y # test: ^gd => pub addNums(┃x: Int!, y: Int!): Int! {
+addNums(x: Int!, y: Int!): Int! {
+  x + y # test: ^gd => addNums(┃x: Int!, y: Int!): Int! {
 }
 
-addNums # test: ^gd => pub ┃addNums(x: Int!, y: Int!): Int! {
+addNums # test: ^gd => ┃addNums(x: Int!, y: Int!): Int! {
 
 # nested scope
 let outer = 1
 
-pub innerFn: Int! {
+innerFn: Int! {
   let inner = 2
   outer + inner # test: ^gd => let ┃outer = 1
 }
 
-innerFn # test: ^gd => pub ┃innerFn: Int! {
+innerFn # test: ^gd => ┃innerFn: Int! {
 
 # type/class definition
 type Person {
-  pub name: String!
-  pub age: Int!
+  name: String!
+  age: Int!
 }
 
 Person # test: ^gd => type ┃Person {
 
-# cross-file: pub multiply(...) is declared in hover.dang
-multiply # test: ^gd => pub ┃multiply(x: Int!, y: Int!): Int! {
+# cross-file: multiply(...) is declared in hover.dang
+multiply # test: ^gd => ┃multiply(x: Int!, y: Int!): Int! {

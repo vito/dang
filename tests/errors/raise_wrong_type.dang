@@ -1,2 +1,2 @@
 # raise requires a String! or Error!, not an Int
-pub result = raise 42
+let result = raise 42

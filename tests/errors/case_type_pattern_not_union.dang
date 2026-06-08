@@ -1,9 +1,9 @@
 type Cat {
-  pub name: String!
+  name: String!
 }
 
-pub x = Cat(name: "Whiskers")
+let x = Cat(name: "Whiskers")
 
-pub result = case (x) {
+let result = case (x) {
   c: Cat => c.name
 }

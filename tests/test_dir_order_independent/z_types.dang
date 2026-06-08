@@ -1,7 +1,7 @@
 type Later {
-  pub name: String!
+  name: String!
 }
 
 interface LaterInterface {
-  pub name: String!
+  name: String!
 }

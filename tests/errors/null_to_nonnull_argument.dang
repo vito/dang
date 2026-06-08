@@ -1,6 +1,6 @@
 # Null cannot be passed to a non-null function argument
-pub echo(value: String!): String! {
+echo(value: String!): String! {
   value
 }
 
-pub result = echo(null)
+let result = echo(null)

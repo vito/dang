@@ -2,12 +2,12 @@
 
 Error 1:
 [1m[31mError:[0m cannot use String! as Int!
-  [2m[34m--> errors/multiple_type_errors.dang:4:21[0m
+  [2m[34m--> errors/multiple_type_errors.dang:4:17[0m
  [2m    |[0m
- [2m  2 | pub bad_addition = "hello" + 42[0m
- [2m  3 | pub missing_var = undefined_symbol[0m
- [2m[34m[1m  4 | [0mpub bad_arg: Int! = "string"
-[2m                           [31m^^^^^^^^[0m
+ [2m  2 | let bad_addition = "hello" + 42[0m
+ [2m  3 | let missing_var = undefined_symbol[0m
+ [2m[34m[1m  4 | [0mbad_arg: Int! = "string"
+[2m                       [31m^^^^^^^^[0m
  [2m  5 | [0m
  [2m    |[0m
 
@@ -17,10 +17,10 @@ Error 2:
   [2m[34m--> errors/multiple_type_errors.dang:2:20[0m
  [2m    |[0m
  [2m  1 | # Test multiple type errors in one file[0m
- [2m[34m[1m  2 | [0mpub bad_addition = "hello" + 42
+ [2m[34m[1m  2 | [0mlet bad_addition = "hello" + 42
 [2m                          [31m^^^^^^^^^^^^[0m
- [2m  3 | pub missing_var = undefined_symbol[0m
- [2m  4 | pub bad_arg: Int! = "string"[0m
+ [2m  3 | let missing_var = undefined_symbol[0m
+ [2m  4 | bad_arg: Int! = "string"[0m
  [2m    |[0m
 
 
@@ -29,10 +29,10 @@ Error 3:
   [2m[34m--> errors/multiple_type_errors.dang:3:19[0m
  [2m    |[0m
  [2m  1 | # Test multiple type errors in one file[0m
- [2m  2 | pub bad_addition = "hello" + 42[0m
- [2m[34m[1m  3 | [0mpub missing_var = undefined_symbol
+ [2m  2 | let bad_addition = "hello" + 42[0m
+ [2m[34m[1m  3 | [0mlet missing_var = undefined_symbol
 [2m                         [31m^^^^^^^^^^^^^^^^[0m
- [2m  4 | pub bad_arg: Int! = "string"[0m
+ [2m  4 | bad_arg: Int! = "string"[0m
  [2m  5 | [0m
  [2m    |[0m
 

@@ -1,29 +1,30 @@
 # Objects, Mutation/CoW, Fields, Functions, Blocks, Interfaces, Unions
 
-## Fields: `pub` and `let`
+## Fields: declaration and `let`
 
-`pub`/`let` declare **fields** in the current scope: top-level (across `.dang` files in a directory), type-level (inside a `type`/`interface`), or block-level (inside the nearest `{ }`). A field is a named, typed thing — value, function, or computed expression.
+A **field** is a named, typed thing — value, function, or computed expression — declared in the current scope: top-level (across `.dang` files in a directory), type-level (inside a `type`/`interface`), or block-level (inside the nearest `{ }`). A field is recognized by its **shape**: a name followed by a type, an argument list, or a block body. `let` introduces a local field instead.
 
 ```dang
-pub x = 42                # public, inferred Int!
-pub y: Int! = 100         # explicit type
-pub maybe: String = null  # nullable
-let secret = "shhh"       # private to the file/type
-pub z: Int                # declaration without value
+x: Int! = 42              # public, explicit Int!
+y: Int! = 100             # explicit type with default
+maybe: String = null      # nullable
+let secret = "shhh"       # local to the file/type
+z: Int!                   # declaration without value
 ```
 
-- `pub` — exported (visible to importers and outside the type). Default visibility for a `type`.
-- `let` — unexported. At **top level** it is *module*-scoped, not file-scoped: a directory is one module/scope, so a top-level `let` in one `.dang` file is visible (callable, referenceable) from every other file in the same directory — it just isn't part of the module's exported surface. At **type level** it is readable only inside that type's own methods/defaults. (Use a top-level `let` helper in its own file to share private logic across a directory module without exporting it.)
-- A field **without a value** (`pub name: Type`) acts as a required constructor parameter (in objects) or an unresolved declaration. A `let` required field with no default is *also* a required constructor param; a `let` field *with* a default is not.
+- A field is **public** (exported — visible to importers and outside the type) when it declares a type, an arg list, or a block body. This is the default; a `type`'s members are public unless marked `let`.
+- `let` — local/unexported. At **top level** it is *module*-scoped, not file-scoped: a directory is one module/scope, so a top-level `let` in one `.dang` file is visible (callable, referenceable) from every other file in the same directory — it just isn't part of the module's exported surface. At **type level** it is readable only inside that type's own methods/defaults. A `let` field may be untyped (`let x = 42`). (Use a top-level `let` helper in its own file to share private logic across a directory module without exporting it.)
+- A field **without a value** (`name: Type`) acts as a required constructor parameter (in objects) or an unresolved declaration. A `let` required field with no default is *also* a required constructor param; a `let` field *with* a default is not.
+- A public field always carries a type — there is no untyped public field. A bare `name = value` (no type, no `let`) is a **reassignment**, not a declaration (see below).
 - Private fields with defaults are preferred over outer-scope bindings of the same name inside the type.
 
 ### Forward references (they work)
 `.dang` files in a directory share one scope (like Go). Fields may forward-reference fields later in the same file, cross-reference sibling files, and types may forward-reference later types.
-- A *direct* initializer cycle (`pub a = b`, `pub b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`.
+- A *direct* initializer cycle (`a: Int! = b`, `b: Int! = a`) is rejected statically: `circular module variable initializer: a -> b -> a`.
 - A cycle hidden behind an auto-called function/constructor default is caught at runtime: `initialization cycle while evaluating variable "..."`.
 
 ### Reassignment vs. declaration
-- `name = newValue` mutates an existing field/local/arg. `+=` for compound update.
+- A bare `name = value` mutates an existing field/local/arg. To declare a *new* field instead, give it a type (`total: Int! = 0`, public) or introduce it with `let` (`let total = 0`, local). `+=` for compound update.
 - Type must stay assignable to the declared type.
 - Assigning a function-valued field a bare function name *calls* it; use `&name` to assign the function itself.
 - Inside a `type`, bare `name = ...` resolves to the field when nothing shadows it; if a parameter/local shadows the name, **field** mutation requires `self.name = ...`.
@@ -31,7 +32,7 @@ pub z: Int                # declaration without value
 ## Functions
 
 ```dang
-pub add(a: Int!, b: Int!): Int! { a + b }
+add(a: Int!, b: Int!): Int! { a + b }
 ```
 - Name, params, return type, body. The **last expression is the result** — no `return` needed for the normal result.
 - `return expr` is for *early* exit; unwinds through enclosing blocks/loops; valid in `new(...)` too. `return` outside any function → `return outside of function`.
@@ -39,7 +40,7 @@ pub add(a: Int!, b: Int!): Int! { a + b }
 
 ### Zero-arity & auto-calling
 ```dang
-pub motd: String! { "hello" }   # omit parens; it's a field with a function body
+motd: String! { "hello" }   # omit parens; it's a field with a function body
 ```
 - Callers also omit parens: `motd`, not `motd()`.
 - A zero-arity function/method **invokes on reference**, like a property. Same for GraphQL fields with no required args.
@@ -71,9 +72,9 @@ pub motd: String! { "hello" }   # omit parens; it's a field with a function body
 ### Block arguments to functions
 A block parameter is declared with the `&` sigil; its type is a function type:
 ```dang
-pub twice(&body: Int!): Int! { body + body }          # zero-arg block returning Int!
-pub myFun(&block(x: Int!): String!): String! { block(42) }   # block taking args
-pub do(&yield: b): b { yield * 2 }                    # arg type can be a type variable
+twice(&body: Int!): Int! { body + body }          # zero-arg block returning Int!
+myFun(&block(x: Int!): String!): String! { block(42) }   # block taking args
+do(&yield: b): b { yield * 2 }                    # arg type can be a type variable
 ```
 - At most **one** block parameter per function/constructor; it must come **last**.
 - Callers pass a trailing brace block:
@@ -103,25 +104,25 @@ A `type` declares both a **type** and its **prototype constructor**.
 
 ```dang
 type Person {
-  pub name: String!
-  pub age: Int! = 0
-  pub greet: String! { "hi, I'm " + name }   # zero-arg method / computed field
+  name: String!
+  age: Int! = 0
+  greet: String! { "hi, I'm " + name }   # zero-arg method / computed field
 }
 ```
-- Members are fields or methods, indistinguishable in syntax (`pub`/`let` + name + optional `: Type`, `= default`, or `{ body }`).
-- `pub` is readable outside the type (default); `let` is readable only inside the type's own methods/defaults.
+- Members are fields or methods, indistinguishable in syntax (name + a type, `= default`, and/or `{ body }`, optionally prefixed with `let`).
+- A typed member is readable outside the type (the default); `let` makes a member readable only inside the type's own methods/defaults.
 
 ### Constructor parameters
 Whether a member is a constructor param depends on having **NO default**, not on visibility:
-- `pub x: T!` (no default) → required positional param
-- `pub x: T! = d` / `pub x = d` → optional param (default `d`)
+- `x: T!` (no default) → required positional param
+- `x: T! = d` → optional param (default `d`)
 - `let x: T!` (no default) → required positional param too
 - `let x: T! = d` → NOT a param; the default is used
 - members with a `{ body }` are never constructor params
 
 ### Implicit constructor
 - One positional param per non-default field, in **declaration order** (not required-first). A defaulted field may precede a required one; positional args still line up by declaration order.
-- Also callable with named args. Field defaults evaluate with `self` bound, so a default may reference earlier/sibling fields (`combined = prefix + "_" + suffix`).
+- Also callable with named args. Field defaults evaluate with `self` bound, so a default may reference earlier/sibling fields (`combined: String! = prefix + "_" + suffix`).
 
 ```dang
 Person("Alice", age: 30)
@@ -130,19 +131,19 @@ Person(name: "Alice")
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.
-- Exception: a constructor requiring a **block argument** is NOT auto-called by a bare reference (`pub loop: Loop! = Loop` is an error).
+- Exception: a constructor requiring a **block argument** is NOT auto-called by a bare reference (`loop: Loop! = Loop` is an error).
 
 ### Explicit constructor: `new`
 ```dang
 type Greeter {
-  pub greeting: String!
+  greeting: String!
   new(name: String!) {
     self.greeting = "hello, " + name
     self
   }
 }
 ```
-- `new(args) { body }` or `new { body }` (no parens when no args). No `pub`, no return-type annotation (both errors: `'new' is a constructor, not a method`). Only valid inside a `type` body.
+- `new(args) { body }` or `new { body }` (no parens when no args). No visibility keyword, no return-type annotation (both errors: `'new' is a constructor, not a method`). Only valid inside a `type` body.
 - Overrides the implicit constructor (fields no longer auto-become params; `new`'s arg list defines the signature).
 - Constructor args are *local* bindings, distinct from fields even when same-named: `foo = foo + 10` rebinds the arg, does NOT touch `self.foo`; shadows same-named fields; NOT visible in method bodies (only in `new`).
 - Must return the constructed type (`self`, or a method chain returning it) — last expression must be `Foo!`. Returning another type → `new() must return Wrong!, got String!`; returning `null` errors.
@@ -156,10 +157,10 @@ type Greeter {
 
 ### Computed fields
 ```dang
-pub fullName: String! { firstName + " " + lastName }
+fullName: String! { firstName + " " + lastName }
 ```
 - A member with a type and a body but no arg list — a zero-arg function evaluated on `self` each access (no call parens). Recomputes against the current receiver.
-- A defaulted-value member (`pub x = config.name + "_computed"`) is computed once at construction; a `{ body }` computed field is re-evaluated per access.
+- A defaulted-value member (`computedField: String! = config.name + "_computed"`) is computed once at construction; a `{ body }` computed field is re-evaluated per access.
 
 ## Mutation and copy-on-write
 
@@ -167,8 +168,8 @@ pub fullName: String! { firstName + " " + lastName }
 
 ```dang
 type Foo {
-  pub a: Int!
-  pub incr: Foo! { a += 1; self }
+  a: Int!
+  incr: Foo! { a += 1; self }
 }
 Foo(42).incr.a == 43          # original Foo(42) untouched
 ```
@@ -191,13 +192,13 @@ Map 1:1 to their GraphQL counterparts. The interface/union type itself is also a
 
 ### Interfaces
 ```dang
-interface Named { pub name: String! }
-type Person implements Named { pub name: String!; pub age: Int! }
+interface Named { name: String! }
+type Person implements Named { name: String!; age: Int! }
 type Book implements Named & Serializable { ... }   # implements A & B for multiple
 ```
 - A type implementing an interface must provide all interface fields. A method field also satisfies an interface field.
 - Missing field → `object X is missing \`f(): T\`, required by interface I`. Incompatible type → `field "f": type ... is not compatible with interface type ...`.
-- Interface inheritance: `interface User implements Named { pub email: String! }` — the child must re-declare (cover) every parent field with compatible types. A child-interface value widens to the parent (and lists: `[User!]!` → `[Named!]!`).
+- Interface inheritance: `interface User implements Named { email: String! }` — the child must re-declare (cover) every parent field with compatible types. A child-interface value widens to the parent (and lists: `[User!]!` → `[Named!]!`).
 
 ### Variance (interface implementation)
 - **Return types** covariant (may be more specific): interface `getData: String` (nullable) can be implemented as `getData: String!`. Weakening is rejected: `return type String is not compatible with interface return type String! (covariance required)`.

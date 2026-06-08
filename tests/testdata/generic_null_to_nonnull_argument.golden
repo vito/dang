@@ -1,9 +1,9 @@
 [1m[31mError:[0m cannot use a? as Int!
   [2m[34m--> errors/generic_null_to_nonnull_argument.dang:6:20[0m
  [2m    |[0m
- [2m  4 | pub takes(value: Int!): Int! { value }[0m
+ [2m  4 | takes(value: Int!): Int! { value }[0m
  [2m  5 | [0m
- [2m[34m[1m  6 | [0mpub result = takes(id(null))
+ [2m[34m[1m  6 | [0mlet result = takes(id(null))
 [2m                          [31m^^^^^^^^[0m
  [2m  7 | [0m
  [2m    |[0m

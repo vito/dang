@@ -1,7 +1,7 @@
 # Test that self field mutation inside a loop in a constructor accumulates
 
 type Accumulator {
-  pub items: [String!]!
+  items: [String!]!
 
   new(source: [String!]!) {
     self.items = []
@@ -17,7 +17,7 @@ assert("items should accumulate in loop") { acc.items == ["a", "b", "c"] }
 
 # Also test with direct assignment (+=) on a non-list field
 type Counter {
-  pub total: Int!
+  total: Int!
 
   new(nums: [Int!]!) {
     self.total = 0

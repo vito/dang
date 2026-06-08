@@ -7,7 +7,7 @@
 ## Declaration
 
 ```dang
-pub add(a: Int!, b: Int!): Int! { a + b }
+add(a: Int!, b: Int!): Int! { a + b }
 ```
 
 - name, parameter list, return type, body
@@ -19,7 +19,7 @@ pub add(a: Int!, b: Int!): Int! { a + b }
 ## Zero-arity
 
 ```dang
-pub motd: String! { "hello" }
+motd: String! { "hello" }
 ```
 
 - omit the parentheses; the function is a *field* with a function body
@@ -69,7 +69,7 @@ whenever a sensible default (including a sentinel like `""`) exists, keeping bot
 (who can omit the argument) and the body (which never sees null) happy.
 
 ```dang
-pub greet(name: String! = "world"): String! { "hi " + name }
+greet(name: String! = "world"): String! { "hi " + name }
 greet                      # "hi world"  (omitted)
 greet(null)                # "hi world"  (explicit null falls back)
 greet(someNullableString)  # falls back to "world" when the value is null
@@ -93,7 +93,7 @@ greet(someNullableString)  # falls back to "world" when the value is null
 ## Docstrings on parameters
 
 ```dang
-pub greet(
+greet(
   """name of the person to greet"""
   name: String!
 ): String! { ... }

@@ -1,7 +1,7 @@
 # Test: constructors requiring a block are not auto-called by bare references
 
 type Loop {
-  pub ok: Boolean!
+  ok: Boolean!
 
   new(&condition: Boolean!) {
     self.ok = condition
@@ -9,4 +9,4 @@ type Loop {
   }
 }
 
-pub loop: Loop! = Loop
+loop: Loop! = Loop

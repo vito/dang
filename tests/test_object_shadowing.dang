@@ -1,11 +1,11 @@
 # Test that object fields have precedence over outer scope
 
-pub shadowed = "outer"
+let shadowed = "outer"
 
 type Foo {
   let shadowed = 42
 
-  pub bump: Foo! {
+  bump: Foo! {
     shadowed += 3
     self
   }

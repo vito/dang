@@ -3,7 +3,7 @@
  [2m    |[0m
  [2m  2 | [0m
  [2m  3 | # Runtime materialization only supports String -> custom scalar casts.[0m
- [2m[34m[1m  4 | [0mpub url = 42 :: URL!
+ [2m[34m[1m  4 | [0mlet url = 42 :: URL!
 [2m                 [31m^^[0m
  [2m  5 | [0m
  [2m    |[0m

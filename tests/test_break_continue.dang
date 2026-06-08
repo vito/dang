@@ -1,6 +1,6 @@
 # Test break in .each
-pub numbers = [1, 2, 3, 4, 5]
-pub sum = 0
+let numbers = [1, 2, 3, 4, 5]
+let sum = 0
 
 numbers.each { num =>
   if (num == 3) {
@@ -12,8 +12,8 @@ numbers.each { num =>
 assert { sum == 3 } # Only 1 + 2, stops before 3
 
 # Test continue in .each
-pub numbers2 = [1, 2, 3, 4, 5]
-pub sum2 = 0
+let numbers2 = [1, 2, 3, 4, 5]
+let sum2 = 0
 
 numbers2.each { num =>
   if (num == 3) {
@@ -25,7 +25,7 @@ numbers2.each { num =>
 assert { sum2 == 12 } # 1 + 2 + 4 + 5, skips 3
 
 # Test break in for loop with condition
-pub count = 0
+let count = 0
 for (count < 10) {
   count += 1
   if (count == 5) {
@@ -36,8 +36,8 @@ for (count < 10) {
 assert { count == 5 }
 
 # Test continue in for loop with condition
-pub count2 = 0
-pub evens = 0
+let count2 = 0
+let evens = 0
 
 for (count2 < 10) {
   count2 += 1
@@ -50,8 +50,8 @@ for (count2 < 10) {
 assert { evens == 5 } # 2, 4, 6, 8, 10
 
 # Test nested .each with break
-pub matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-pub found = 0
+let matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+let found = 0
 
 matrix.each { row =>
   row.each { value =>
@@ -69,7 +69,7 @@ assert { found == 5 }
 
 # Test nested .each with continue
 # continue should continue the innermost loop
-pub result = 0
+let result = 0
 [1, 2, 3].each { i =>
   [1, 2, 3].each { j =>
     if (i == 2) {
@@ -90,8 +90,8 @@ pub result = 0
 assert { result == 16 }
 
 # Test break with two-variable iteration
-pub items = ["a", "b", "c", "d"]
-pub lastIndex = 0 - 1
+let items = ["a", "b", "c", "d"]
+let lastIndex = 0 - 1
 
 items.each { value, index =>
   if (value == "c") {
@@ -103,8 +103,8 @@ items.each { value, index =>
 assert { lastIndex == 2 }
 
 # Test continue with two-variable iteration
-pub items2 = ["a", "b", "c", "d"]
-pub result3 = ""
+let items2 = ["a", "b", "c", "d"]
+let result3 = ""
 
 items2.each { value, index =>
   if (index == 1) {

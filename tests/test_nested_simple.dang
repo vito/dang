@@ -1,33 +1,33 @@
 # Test nested field assignment in object methods with Fork() semantics
 
 type InnerData {
-  pub value: Int! = 42
-  pub name: String! = "default"
+  value: Int! = 42
+  name: String! = "default"
 }
 
 type MiddleLayer {
-  pub inner: InnerData!
-  pub count: Int! = 0
+  inner: InnerData!
+  count: Int! = 0
 }
 
 type Container {
-  pub middle: MiddleLayer!
+  middle: MiddleLayer!
 
   # Test: nested field assignment should work with Fork() semantics
   # This should: Fork container -> clone middle -> clone inner -> update value
-  pub updateDeepValue(newValue: Int!): Container! {
+  updateDeepValue(newValue: Int!): Container! {
     middle.inner.value = newValue # No self. prefix
     self
   }
 
   # Test: compound assignment on deeply nested fields
-  pub incrementDeepValue: Container! {
+  incrementDeepValue: Container! {
     middle.inner.value += 10 # No self. prefix
     self
   }
 
   # Test: update multiple fields in nested structure
-  pub updateMultiple(newValue: Int!, newName: String!): Container! {
+  updateMultiple(newValue: Int!, newName: String!): Container! {
     middle.inner.value = newValue # No self. prefix
     middle.inner.name = newName # No self. prefix
     middle.count += 1 # No self. prefix

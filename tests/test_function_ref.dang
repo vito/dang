@@ -2,7 +2,7 @@
 
 let dynamicValue = 1
 
-pub currentValue: Int! {
+currentValue: Int! {
   dynamicValue
 }
 
@@ -13,6 +13,7 @@ assert { currentGetter == 2 }
 
 # Function references can be assigned to existing function-valued fields.
 let storedGetter: Int! { 0 }
+
 storedGetter = &currentValue
 assert { storedGetter == 2 }
 dynamicValue += 1
@@ -20,7 +21,7 @@ assert { storedGetter == 3 }
 
 # Selecting a function through a receiver can also be captured without auto-call.
 type DynamicMethodRefBox {
-  pub currentValue: Int! {
+  currentValue: Int! {
     dynamicValue
   }
 }

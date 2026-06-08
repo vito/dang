@@ -3,14 +3,14 @@
 type Counter {
   let count = 0
 
-  pub increment: Counter! {
+  increment: Counter! {
     print("increment called, count = " + toJSON(self.count))
     self.count = self.count + 1
     self
   }
 
   # Recursively increment n times
-  pub incrementN(n: Int!): Counter! {
+  incrementN(n: Int!): Counter! {
     print("incrementN(" + toJSON(n) + ") called, count = " + toJSON(self.count))
 
     if (n <= 0) {
@@ -24,7 +24,7 @@ type Counter {
     }
   }
 
-  pub testRecursive: Counter! {
+  testRecursive: Counter! {
     let result1 = self.incrementN(2)
     let result2 = self.incrementN(2)
 

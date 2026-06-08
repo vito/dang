@@ -62,6 +62,34 @@ type Dang {
   }
 
   """
+  Reformat every Dang source file in place with `dang fmt`, returning the
+  changeset.
+
+  Skips the Dagger module sources under mod/, which must keep their explicit
+  `pub` keywords until the engine bumps its embedded dang. (The .dagger sources
+  are already excluded from `source` via @ignorePatterns.) Files that don't
+  parse are skipped too, since tests/errors/ holds deliberately-malformed
+  syntax fixtures the formatter can't read.
+  """
+  @generate
+  pub fmt: Changeset! {
+    base
+      .withFile("/usr/bin/dang", binary)
+      .withExec([
+        "bash", "-c",
+        """
+        shopt -s globstar nullglob
+        for f in **/*.dang; do
+          [[ $f == mod/* ]] && continue
+          dang fmt -lw "$f" || echo "skipping unparseable file: $f" >&2
+        done
+        """,
+      ])
+      .directory(".")
+      .changes(base.directory("."))
+  }
+
+  """
   Run `go mod tidy` for each Go module in the repo.
   """
   pub tidy: Changeset! {

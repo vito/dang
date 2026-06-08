@@ -14,7 +14,7 @@
 
 ```dang
 interface Named {
-  pub name: String!
+  name: String!
 }
 ```
 
@@ -22,8 +22,8 @@ interface Named {
 
 ```dang
 type Person implements Named {
-  pub name: String!
-  pub age: Int!
+  name: String!
+  age: Int!
 }
 ```
 
@@ -37,7 +37,7 @@ type Person implements Named {
 ### Interface inheritance
 
 ```dang
-interface User implements Named { pub email: String! }
+interface User implements Named { email: String! }
 interface Post implements Named & Timestamped { ... }
 ```
 

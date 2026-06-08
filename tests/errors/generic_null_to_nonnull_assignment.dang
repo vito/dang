@@ -1,4 +1,4 @@
 # Null flowing through a generic function cannot initialize a non-null field
-pub id(x: a): a { x }
+id(x: a): a { x }
 
-pub result: Int! = id(null)
+result: Int! = id(null)

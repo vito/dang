@@ -5,7 +5,7 @@
  [2m  7 | # Wrong: parent requires String!, child weakens to nullable String[0m
  [2m[34m[1m  8 | [0minterface Person implements Named {
 [2m                                   [31m^^^^^[0m
- [2m  9 |   pub name: String[0m
+ [2m  9 |   name: String[0m
  [2m 10 | }[0m
  [2m    |[0m
 

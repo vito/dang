@@ -16,7 +16,7 @@ type Apko {
     archs: [arch]
   }}
 
-  pub withAlpine(branch: String! = "edge"): Apko! {
+  withAlpine(branch: String! = "edge"): Apko! {
     self.config.contents.packages += ["apk-tools"]
     self.config.contents.repositories += [
       "https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main",
@@ -24,7 +24,7 @@ type Apko {
     self
   }
 
-  pub withWolfi: Apko! {
+  withWolfi: Apko! {
     self.config.contents.packages += ["wolfi-base"]
     self.config.contents.keyring += [
       "https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
@@ -35,19 +35,19 @@ type Apko {
     self
   }
 
-  pub withPackages(packages: [String!]!): Apko! {
+  withPackages(packages: [String!]!): Apko! {
     self.config.contents.packages += packages
     self
   }
 
-  pub withArchs(archs: [String!]!): Apko! {
+  withArchs(archs: [String!]!): Apko! {
     self.config.archs += archs
     self
   }
 
   # Test copy-on-write: calling the same method multiple times should NOT accumulate mutations.
   # Each call to withAlpine gets a fresh forked copy of self, not the original.
-  pub alpine(packages: [String!]!, branch: String! = "edge"): Apko! {
+  alpine(packages: [String!]!, branch: String! = "edge"): Apko! {
     let apko1 = withAlpine(branch).withPackages(packages)
     let apko2 = withAlpine(branch).withPackages(packages)
     let apko3 = withAlpine(branch).withPackages(packages)

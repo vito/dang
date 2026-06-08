@@ -4,30 +4,30 @@
 import Test
 
 type User {
-  pub name: String!
-  pub origin: String! = "local"
+  name: String!
+  origin: String! = "local"
 }
 
-pub localUser: User! = User("Local User")
+localUser: User! = User("Local User")
 assert { localUser.origin == "local" }
 
 # search returns [Test.SearchResult!]!, whose User member is Test.User.
-pub searchResults = search(query: "John").{
+let searchResults = search(query: "John").{
   ... on User { name, age }
 }
 
-pub searchAge = case (searchResults[0]) {
+let searchAge = case (searchResults[0]) {
   u: User => u.age
   else => null
 }
 assert { searchAge == 30 }
 
 # node returns Test.Node, whose User implementer is Test.User.
-pub nodeResult = node(id: "1").{
+let nodeResult = node(id: "1").{
   ... on User { name, age }
 }
 
-pub nodeAge = case (nodeResult) {
+let nodeAge = case (nodeResult) {
   u: User => u.age
   else => null
 }

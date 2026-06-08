@@ -1,5 +1,16 @@
 package dang
 
+// visOrPublic returns the parsed Visibility, defaulting to public when the
+// optional `pub`/`let` keyword was omitted (val is nil). Inlined into the
+// field-declaration rules rather than wrapped in a named grammar rule, because
+// tree-sitter forbids a named rule that can match the empty string.
+func visOrPublic(val any) Visibility {
+	if val == nil {
+		return PublicVisibility
+	}
+	return val.(Visibility)
+}
+
 func sliceOf[T any](val any) []T {
 	if val == nil {
 		return nil

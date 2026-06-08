@@ -6,7 +6,7 @@
 
 let prefix = "img"
 
-pub withPrefix(tag: String! = prefix + ":latest"): String! {
+withPrefix(tag: String! = prefix + ":latest"): String! {
   tag
 }
 
@@ -16,9 +16,9 @@ assert("fn: explicit arg") { withPrefix("custom") == "custom" }
 # --- Object methods referencing typed fields ---
 
 type Builder {
-  pub defaultVersion: String! = "20.18.1"
+  defaultVersion: String! = "20.18.1"
 
-  pub container(nodeVersion: String! = defaultVersion): String! {
+  container(nodeVersion: String! = defaultVersion): String! {
     "node:" + nodeVersion
   }
 }
@@ -29,19 +29,19 @@ assert("method: explicit arg") { Builder.container("22.0.0") == "node:22.0.0" }
 # --- Object methods referencing untyped constant fields ---
 
 type Defaults {
-  pub strVal = "hello"
-  pub intVal = 42
-  pub boolVal = true
+  strVal: String! = "hello"
+  intVal: Int! = 42
+  boolVal: Boolean! = true
 
-  pub greet(name: String! = strVal): String! {
+  greet(name: String! = strVal): String! {
     name
   }
 
-  pub count(n: Int! = intVal): Int! {
+  count(n: Int! = intVal): Int! {
     n
   }
 
-  pub flag(b: Boolean! = boolVal): Boolean! {
+  flag(b: Boolean! = boolVal): Boolean! {
     b
   }
 }
@@ -53,8 +53,8 @@ assert("untyped bool field") { Defaults.flag == true }
 # --- Constructor with arg forward-ref in defaults ---
 
 type Config {
-  pub version: String! = "latest"
-  pub tag: String!
+  version: String! = "latest"
+  tag: String!
 
   new(version: String! = "latest", tag: String! = "img:" + version) {
     self.version = version

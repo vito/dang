@@ -9,7 +9,7 @@
 - braces with optional parameter list: `{ x => x + 1 }`
 - zero or more parameters separated by commas before `=>` (e.g. `{ item, index => ... }`)
 - body is a form sequence separated by newlines or `,`; the last form is the result
-- a bare `{ ... }` with no `=>` is also a block expression and evaluates to its last form: `pub single = { 42 }` ⇒ `42`
+- a bare `{ ... }` with no `=>` is also a block expression and evaluates to its last form: `let single = { 42 }` ⇒ `42`
 
 ## Block arguments to functions
 
@@ -17,17 +17,17 @@
 
 ```dang
 # zero-arg block returning Int! (parens omitted)
-pub twice(&body: Int!): Int! {
+twice(&body: Int!): Int! {
   body + body
 }
 
 # block taking args: &name(params): Ret
-pub myFun(&block(x: Int!): String!): String! {
+myFun(&block(x: Int!): String!): String! {
   block(42)
 }
 ```
 
-- the block param's arg types may also be a type variable: `pub id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#types])
+- the block param's arg types may also be a type variable: `id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#types])
 - a function/constructor may have at most one block parameter
 - regular args and a block param can mix; the block param comes last
 - callers pass a trailing brace block:
@@ -57,7 +57,11 @@ numbers.filter { false }        # ⇒ []
 
 ## Scoping
 
-- a block is a lexical scope; `let` declares a fresh local
+- a block is a lexical scope; `let` declares a fresh local. `let` is *the* way
+  to declare a local — a bare `name = value` is a reassignment of an existing
+  field, not a new declaration (see [#fields])
+- inside a block, prefer `let` for locals; bare (public) declarations are for a
+  type's or module's exported surface, where "public" actually means something
 - a local `let` shadows an outer field of the same name; mutating the local leaves the outer untouched
 - reassignment without a shadowing `let` mutates the enclosing field — across nested blocks too
 - `+=` works on the outer field from inside a block

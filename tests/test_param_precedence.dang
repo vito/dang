@@ -1,10 +1,10 @@
 # Test parameter precedence with deep assignment
 
 type TestClass {
-  pub config = "receiver_config"
-  pub field = "original_field"
+  config: String! = "receiver_config"
+  field: String! = "original_field"
 
-  pub method(config: String!): TestClass! {
+  method(config: String!): TestClass! {
     # Using new deep assignment syntax
     # self.field should refer to receiver field
     # config should refer to parameter (lexical scope)
@@ -14,7 +14,7 @@ type TestClass {
 }
 
 # Test that parameter is used in deep assignment
-pub result = TestClass.method("param_config")
+let result = TestClass.method("param_config")
 assert { result.field == "param_config" }
 
 print("Deep assignment parameter precedence test passed!")

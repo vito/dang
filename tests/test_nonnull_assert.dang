@@ -1,7 +1,7 @@
 # Postfix `!` asserts that a nullable value is non-null, narrowing its type
 # from `T` to `T!` and raising at runtime if the value is actually null.
 
-pub maybe(b: Boolean!): String {
+maybe(b: Boolean!): String {
   if (b) { "hi" } else { null }
 }
 
@@ -14,7 +14,7 @@ assert("binds tighter than +") { maybe(true)! + " there" == "hi there" }
 
 # Chains with field selection: `(box.val)!`.
 type Box {
-  pub val: String = "x"
+  val: String = "x"
 }
 
 let b = Box
@@ -33,6 +33,6 @@ assert("applies to grouped expression") { (maybe(false) ?? "fallback")! == "fall
 
 # `!=` is unaffected, with or without surrounding whitespace.
 assert("inequality still parses") { 1 != 2 }
-assert("inequality without spaces") { 1!=1 == false }
+assert("inequality without spaces") { 1 != 1 == false }
 
 print("non-null assertion tests passed!")

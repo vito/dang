@@ -4,12 +4,12 @@
 # interface fields (like `name`) are still required.
 
 interface Identifiable {
-  pub id: ID!
-  pub name: String!
+  id: ID!
+  name: String!
 }
 
 type User implements Identifiable {
-  pub name: String!
+  name: String!
 }
 
 assert { User("alice").name == "alice" }

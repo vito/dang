@@ -3,4 +3,4 @@
 # strings is a type error rather than a runtime failure.
 
 # ERROR: multiplication is not defined for String
-pub result = "a" * "b"
+let result = "a" * "b"

@@ -5,6 +5,6 @@ import Test
 # type must still fail with a type mismatch.
 let s: String! = "https://dang-lang.dev"
 
-pub result = case (homepage) {
+let result = case (homepage) {
   s => "matched"
 }

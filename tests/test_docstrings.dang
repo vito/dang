@@ -6,16 +6,16 @@ type TestClass {
   """
   This is a function with a doc string
   """
-  pub documented_func: String! {
+  documented_func: String! {
     "result"
   }
 
   """
   This is a variable with a doc string
   """
-  pub documented_var: String! = "hello"
+  documented_var: String! = "hello"
 
-  pub undocumented_func: String! {
+  undocumented_func: String! {
     "no doc"
   }
 }
@@ -23,7 +23,7 @@ type TestClass {
 """
 This is a standalone function doc string
 """
-pub standalone_func: String! {
+standalone_func: String! {
   "standalone"
 }
 

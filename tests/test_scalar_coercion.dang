@@ -8,34 +8,34 @@ import Test
 # Test 1: Literal string -> custom scalar at call sites
 # =============================================================================
 
-pub urlResult = fetchURL(url: "https://example.com")
+let urlResult = fetchURL(url: "https://example.com")
 assert { urlResult == "Fetched: https://example.com" }
 
-pub tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z")
+let tsResult = formatTimestamp(ts: "2024-01-15T10:30:00Z")
 assert { tsResult == "Formatted: 2024-01-15T10:30:00Z" }
 
-pub jsonResult = parseJSON(data: "{\"key\": \"value\"}")
+let jsonResult = parseJSON(data: "{\"key\": \"value\"}")
 assert { jsonResult == "Parsed JSON: {\"key\": \"value\"}" }
 
-pub bigIntResult = addBigInt(a: "12345678901234567890", b: "98765432109876543210")
+let bigIntResult = addBigInt(a: "12345678901234567890", b: "98765432109876543210")
 assert { bigIntResult == "12345678901234567890+98765432109876543210" }
 
 # =============================================================================
 # Test 2: Nullable scalar parameters
 # =============================================================================
 
-pub nullableWithValue = fetchURLNullable(url: "https://nullable.com")
+let nullableWithValue = fetchURLNullable(url: "https://nullable.com")
 assert { nullableWithValue == "Fetched nullable: https://nullable.com" }
 
 # Nullable URL with null - omitting the argument
-pub nullableWithNull = fetchURLNullable
+let nullableWithNull = fetchURLNullable
 assert { nullableWithNull == null }
 
 # =============================================================================
 # Test 3: List literals -> [Scalar!]!
 # =============================================================================
 
-pub multiResult = fetchMultipleURLs(urls: ["https://a.com", "https://b.com", "https://c.com"])
+let multiResult = fetchMultipleURLs(urls: ["https://a.com", "https://b.com", "https://c.com"])
 assert { multiResult[0] == "Fetched[0]: https://a.com" }
 assert { multiResult[1] == "Fetched[1]: https://b.com" }
 assert { multiResult[2] == "Fetched[2]: https://c.com" }
@@ -44,52 +44,53 @@ assert { multiResult[2] == "Fetched[2]: https://c.com" }
 # Test 4: Scalar values from GraphQL flow directly
 # =============================================================================
 
-pub urlValue = homepage
+let urlValue = homepage
 assert { urlValue == "https://dang-lang.dev" }
 
-pub fetchedHomepage = fetchURL(url: urlValue)
+let fetchedHomepage = fetchURL(url: urlValue)
 assert { fetchedHomepage == "Fetched: https://dang-lang.dev" }
 
 # =============================================================================
 # Test 5: Templates also auto-coerce, even with interpolations
 # =============================================================================
 
-pub host = "templated.com"
-pub templateResult = fetchURL(url: `https://${host}/path`)
+let host = "templated.com"
+let templateResult = fetchURL(url: `https://${host}/path`)
 assert { templateResult == "Fetched: https://templated.com/path" }
 
 # =============================================================================
 # Test 6: Non-literal Strings require an explicit cast
 # =============================================================================
 
-pub myUrl = "https://variable.com"
-pub varResult = fetchURL(url: myUrl :: URL!)
+let myUrl = "https://variable.com"
+let varResult = fetchURL(url: myUrl :: URL!)
 assert { varResult == "Fetched: https://variable.com" }
 
-pub base = "https://"
-pub domain = "concat.com"
-pub concatResult = fetchURL(url: (base + domain) :: URL!)
+let base = "https://"
+let domain = "concat.com"
+let concatResult = fetchURL(url: (base + domain) :: URL!)
 assert { concatResult == "Fetched: https://concat.com" }
 
 # =============================================================================
 # Test 7: Literal in a typed field, reassignment, and return
 # =============================================================================
 
-pub idSlot: ID! = "abc"
+idSlot: ID! = "abc"
 assert { idSlot == "abc" }
 
 let currentID: ID! = "first"
 currentID = "second"
 assert { currentID == "second" }
 
-pub makeID: ID! { "abc" }
+makeID: ID! { "abc" }
+
 assert { makeID == "abc" }
 
 # =============================================================================
 # Test 8: Mixed scalar and non-scalar arguments
 # =============================================================================
 
-pub greeting = hello(name: "World")
+let greeting = hello(name: "World")
 assert { greeting == "Hello, World!" }
 
 print("All scalar coercion tests passed!")

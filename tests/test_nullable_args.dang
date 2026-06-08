@@ -1,5 +1,5 @@
 type Formatter {
-  pub format(text: String!, prefix: String, suffix: String): String! {
+  format(text: String!, prefix: String, suffix: String): String! {
     (prefix ?? "oh ") + text + (suffix ?? "")
   }
 }

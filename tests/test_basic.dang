@@ -1,7 +1,7 @@
 # Test very basic functionality
 
-pub x = 42
-pub y = "hello"
+let x = 42
+let y = "hello"
 
 assert { x == 42 }
 assert { y == "hello" }

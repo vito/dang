@@ -100,19 +100,19 @@ func publicShapeInterfaceNames(mod *Type) []string {
 
 func formatPublicShapeField(name string, scheme *hm.Scheme) string {
 	if scheme == nil {
-		return fmt.Sprintf("pub %s", name)
+		return name
 	}
 
 	fieldType, _ := scheme.Type()
 	if fnType, ok := fieldType.(*hm.FunctionType); ok {
 		args := formatPublicShapeFunctionArgs(fnType)
 		if args == "" {
-			return fmt.Sprintf("pub %s: %s", name, formatPublicShapeType(fnType.Ret(false)))
+			return fmt.Sprintf("%s: %s", name, formatPublicShapeType(fnType.Ret(false)))
 		}
-		return fmt.Sprintf("pub %s(%s): %s", name, args, formatPublicShapeType(fnType.Ret(false)))
+		return fmt.Sprintf("%s(%s): %s", name, args, formatPublicShapeType(fnType.Ret(false)))
 	}
 
-	return fmt.Sprintf("pub %s: %s", name, formatPublicShapeType(fieldType))
+	return fmt.Sprintf("%s: %s", name, formatPublicShapeType(fieldType))
 }
 
 func formatPublicShapeFunctionArgs(fnType *hm.FunctionType) string {

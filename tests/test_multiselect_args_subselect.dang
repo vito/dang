@@ -2,30 +2,30 @@
 # This tests foo.{bar(arg: 123).{deeper}} pattern with object methods
 
 type TestService {
-  pub name = "TestService"
+  name: String! = "TestService"
 
-  pub getData(limit: Int!): TestData! {
+  getData(limit: Int!): TestData! {
     TestData(name: "Data", count: limit)
   }
 
-  pub getInfo(prefix: String!): String! {
+  getInfo(prefix: String!): String! {
     prefix + ": " + self.name
   }
 }
 
 type TestData {
-  pub name: String!
-  pub count: Int!
+  name: String!
+  count: Int!
 
-  pub getDetails(suffix: String!): String! {
+  getDetails(suffix: String!): String! {
     self.name + " - " + suffix
   }
 }
 
-pub service = TestService
+let service = TestService
 
 # Test the actual pattern: foo.{bar(arg: 123).{deeper}}
-pub result = service.{
+let result = service.{
   name,
   getData(limit: 5).{
     name,

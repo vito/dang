@@ -1,21 +1,21 @@
 # Test multi-select with arguments functionality
 
 type Calculator {
-  pub value = 0
+  value: Int! = 0
 
-  pub add(amount: Int!): Int! {
+  add(amount: Int!): Int! {
     self.value + amount
   }
 
-  pub multiply(factor: Int!): Int! {
+  multiply(factor: Int!): Int! {
     self.value * factor
   }
 }
 
-pub calc = Calculator
+let calc = Calculator
 
 # Test basic multi-select with arguments
-pub result = calc.{
+let result = calc.{
   value,
   add(amount: 10),
   multiply(factor: 3)

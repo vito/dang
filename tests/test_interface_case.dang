@@ -1,34 +1,34 @@
 # Test case expression with type patterns on interfaces
 
 interface Named {
-  pub name: String!
+  name: String!
 }
 
 type Person implements Named {
-  pub name: String!
-  pub age: Int! = 25
+  name: String!
+  age: Int! = 25
 }
 
 type Company implements Named {
-  pub name: String!
-  pub employees: Int! = 10
+  name: String!
+  employees: Int! = 10
 }
 
-pub describe(named: Named!): String! {
+describe(named: Named!): String! {
   case (named) {
     p: Person => p.name + " (age " + toString(p.age) + ")"
     c: Company => c.name + " (" + toString(c.employees) + " employees)"
   }
 }
 
-pub person = Person(name: "Alice", age: 30)
-pub company = Company(name: "Acme", employees: 50)
+let person = Person(name: "Alice", age: 30)
+let company = Company(name: "Acme", employees: 50)
 
 assert { describe(person) == "Alice (age 30)" }
 assert { describe(company) == "Acme (50 employees)" }
 
 # interface as a type pattern — matches any implementer
-pub getName(named: Named!): String! {
+getName(named: Named!): String! {
   case (named) {
     n: Named => n.name
   }
@@ -38,7 +38,7 @@ assert { getName(person) == "Alice" }
 assert { getName(company) == "Acme" }
 
 # interface as a fallback after specific types
-pub describeWithFallback(named: Named!): String! {
+describeWithFallback(named: Named!): String! {
   case (named) {
     p: Person => "person: " + p.name
     n: Named => "other: " + n.name

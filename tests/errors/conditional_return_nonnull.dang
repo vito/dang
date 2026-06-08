@@ -1,6 +1,6 @@
 # A conditional without an else may skip its body, so a return inside the
 # then branch cannot make the function non-null.
-pub bad(flag: Boolean!): String! {
+bad(flag: Boolean!): String! {
   if (flag) {
     return "x"
   }

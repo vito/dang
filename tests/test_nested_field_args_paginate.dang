@@ -10,12 +10,12 @@ import Test
 
 # user "1" (John Doe) authored four posts, so each `first` value must come
 # back with exactly that many.
-pub one_post = user(id: "1").{
+let one_post = user(id: "1").{
   posts(first: 1).{posts.{title}}
 }
 assert { one_post.posts.posts.length == 1 }
 
-pub two_posts = user(id: "1").{
+let two_posts = user(id: "1").{
   posts(first: 2).{posts.{title}}
 }
 assert { two_posts.posts.posts.length == 2 }

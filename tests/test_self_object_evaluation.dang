@@ -9,10 +9,10 @@ type SelfDuringEvaluation {
 
   # This computed field uses self during object body evaluation
   # It should fail if self is not bound during object construction
-  pub computedField = config.name + "_computed"
+  computedField: String! = config.name + "_computed"
 
   # Regular method that should work after construction
-  pub getName: String! {
+  getName: String! {
     self.config.name
   }
 }

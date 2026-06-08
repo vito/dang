@@ -1,2 +1,2 @@
 # Test variable type annotation mismatch
-pub x: Int! = "hello"
+x: Int! = "hello"

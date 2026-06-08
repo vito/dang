@@ -1,38 +1,74 @@
 \use-plugin{dang}
 
-# Fields: `pub` and `let` {#fields}
+# Fields {#fields}
 
-> Meta: this is also the right place to introduce the *field* concept, since `pub` and `let` declare fields whether they hold a value or a function. The object-context behavior is covered in [#objects] — link there, don't duplicate.
+> Meta: introduce the *field* concept here. Lead with the shape and let the examples carry it — the whole rule is just: `let` makes a field local, a type makes it public, and a bare `name = value` reassigns. Don't mention `pub` (it's legacy and formatted away). Object-context behavior lives in [#objects] — link, don't duplicate.
 
-The `pub` and `let` keywords declare fields in the current scope:
+A **field** is a named, typed thing — a value, a function, or a computed
+expression — declared in the current scope:
 
 * Top-level fields, declared across `.dang` files in the same directory
 * Type-level fields declared within an [#objects] or [#interfaces-unions]
 * Block-level fields declared within the nearest enclosing `{` and `}`
 
-These keywords distinguish the expression from [#mutation], which updates an
-already-declared field.
+A field is recognized by its **shape** — a name followed by a type, an argument
+list, or a block body:
 
-## Two visibilities
+```dang
+name: String!             # typed field
+greet: String! { ... }    # computed field / method
+add(x: Int!): Int! { x }  # method with args
+y: Int! = 100             # typed field with default
+let secret = "shhh"       # local field
+```
 
-- `pub name = value` — exported; visible to importers and outside the type
-- `let name = value` — unexported. A *top-level* `let` is module-scoped: since a directory is one module, it is visible from every `.dang` file in that directory (just not exported). A *type-level* `let` is readable only inside that type's own methods/defaults. (So a top-level `let` in its own file is the way to share private helpers across a directory module — see [#modules].)
+## Visibility
+
+A field is **public** when it declares a type, and **local** when it starts with
+`let`:
+
+```dang
+name: String!              # public field
+greet: String! { ... }     # public method
+count: Int! = 0            # public field with a default
+let secret = "shhh"        # local field
+```
+
+`let` introduces a local field. A *type-level* `let` is readable only inside that
+type's own methods and defaults; a *block-level* `let` is a fresh local; a
+*top-level* `let` is module-scoped — visible to every `.dang` file in the
+directory but not exported, which is how you share helpers across a module (see
+[#modules]).
+
+## Declaration vs. reassignment
+
+A bare `name = value` reassigns an existing field — see [#mutation]. To declare a
+new field instead, give it a type or introduce it with `let`:
+
+```dang
+total: Int! = 0   # declares a public field
+let total = 0     # declares a local field
+total = 5         # reassigns the existing field
+```
 
 ## What a field is
 
 - a field is a named, typed thing — value, function, or computed expression
 - fields can carry an explicit type annotation
-- fields without a value (`pub name: Type`) act as required constructor parameters (in objects) or unresolved declarations
-- a `let` (private) required field with no default still becomes a required constructor parameter; a `let` field *with* a default does not
-- private fields with defaults are preferred over outer-scope bindings of the same name inside the type
+- fields without a value (`name: Type`) act as required constructor parameters
+  (in objects) or unresolved declarations
+- a `let` (private) required field with no default still becomes a required
+  constructor parameter; a `let` field *with* a default does not
+- private fields with defaults are preferred over outer-scope bindings of the
+  same name inside the type
 
 ## Forms
 
 ```dang
-pub x = 42                # inferred Int!
-pub y: Int! = 100         # explicit type
-pub maybe: String = null  # nullable
-let secret = "shhh"
+x: Int! = 42              # explicit type with default
+y: Int! = 100             # explicit type
+maybe: String = null      # nullable
+let secret = "shhh"       # local field (untyped is fine)
 ```
 
 ## Forward references
@@ -44,7 +80,7 @@ tl;dr: they work.
 * field declarations may cross-reference fields in sibling files
 * types may forward-reference types declared later in the file
 * forward reads hidden behind function calls / computed defaults resolve via lazy module slots
-* a *direct* initializer cycle (`pub a = b`, `pub b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`
+* a *direct* initializer cycle (`a = b`, `b = a`) is rejected statically: `circular module variable initializer: a -> b -> a`
 * a cycle hidden behind an auto-called function or constructor default is caught at runtime when the variable is forced: `initialization cycle while evaluating variable "..."`
 
 ## Docstrings
@@ -56,7 +92,7 @@ tl;dr: they work.
 """
 Greets the named user.
 """
-pub greet(name: String!): String! {
+greet(name: String!): String! {
   `hi, ${name}`
 }
 ```

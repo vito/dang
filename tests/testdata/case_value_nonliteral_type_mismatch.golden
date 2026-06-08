@@ -2,7 +2,7 @@
   [2m[34m--> errors/case_value_nonliteral_type_mismatch.dang:9:3[0m
  [2m    |[0m
  [2m  7 | [0m
- [2m  8 | pub result = case (homepage) {[0m
+ [2m  8 | let result = case (homepage) {[0m
  [2m[34m[1m  9 | [0m  s => "matched"
 [2m         [31m^[0m
  [2m 10 | }[0m

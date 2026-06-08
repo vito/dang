@@ -1,11 +1,11 @@
 # Test raise and error propagation
 
 # raise propagates through function calls
-pub failing: String! {
+failing: String! {
   raise "kaboom"
 }
 
-pub result = try {
+let result = try {
   failing
 } catch {
   err => "caught: " + err.message
@@ -14,15 +14,15 @@ pub result = try {
 assert { result == "caught: kaboom" }
 
 # raise in nested calls
-pub inner: String! {
+inner: String! {
   raise "inner error"
 }
 
-pub outer: String! {
+outer: String! {
   inner + " unreachable"
 }
 
-pub nested = try {
+let nested = try {
   outer
 } catch {
   err => err.message
@@ -31,7 +31,7 @@ pub nested = try {
 assert { nested == "inner error" }
 
 # re-raise an error
-pub rethrow = try {
+let rethrow = try {
   try {
     raise "original"
   } catch {

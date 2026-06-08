@@ -1,2 +1,2 @@
-pub name = "Ada"
-pub bad = `hello ${name`
+let name = "Ada"
+let bad = `hello ${name`

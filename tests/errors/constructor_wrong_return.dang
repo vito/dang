@@ -1,7 +1,7 @@
 # Test that a constructor returning the wrong type produces a clear error
 
 type Wrong {
-  pub name: String!
+  name: String!
 
   new(name: String!) {
     self.name = name

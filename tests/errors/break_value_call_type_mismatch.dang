@@ -1,5 +1,5 @@
 # break values contribute to the enclosing call expression type
-pub result: [Int!]! = [1, 2, 3].map { x =>
+result: [Int!]! = [1, 2, 3].map { x =>
   if (x == 2) {
     break "done"
   }

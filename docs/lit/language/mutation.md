@@ -13,8 +13,8 @@
 
 ```dang
 type Foo {
-  pub a: Int!
-  pub incr: Foo! {
+  a: Int!
+  incr: Foo! {
     a += 1
     self
   }
@@ -49,7 +49,7 @@ let c3 = c1.incr     # c3.value == 1, c1.value still 0
 ## Within a method, mutations accumulate inside one fork
 
 ```dang
-pub addAll(source: [String!]!): Builder! {
+addAll(source: [String!]!): Builder! {
   source.each { item => self.items += [item] }
   self
 }
@@ -77,6 +77,6 @@ pub addAll(source: [String!]!): Builder! {
 ## When not to think in CoW
 
 - pure functions — no `self`, no forking
-- top-level `pub`/`let` bindings — plain bindings, no `self` to fork (see [#blocks])
+- top-level bindings (bare or `let`) — plain bindings, no `self` to fork (see [#blocks])
 - the *values themselves* are immutable regardless
 - see [#objects] for `type`/`self`/constructor mechanics that this page builds on

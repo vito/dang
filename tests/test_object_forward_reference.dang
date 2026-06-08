@@ -2,7 +2,7 @@
 # See: https://github.com/vito/dang/issues/22
 
 type App {
-  pub greet: String! {
+  greet: String! {
     Greeter("world").hello
   }
 }
@@ -10,7 +10,7 @@ type App {
 type Greeter {
   let name: String!
 
-  pub hello: String! {
+  hello: String! {
     "Hello, " + name + "!"
   }
 }

@@ -1,29 +1,29 @@
 # Test list type inference with common supertypes
 
 interface Base {
-  pub id: String!
+  id: String!
 }
 
 interface Timestamped {
-  pub createdAt: String!
+  createdAt: String!
 }
 
 # Type that implements multiple interfaces
 type A implements Base & Timestamped {
-  pub id: String! = "a"
-  pub createdAt: String! = "2024-01-01"
-  pub valueA: String! = "a"
+  id: String! = "a"
+  createdAt: String! = "2024-01-01"
+  valueA: String! = "a"
 }
 
 type B implements Base & Timestamped {
-  pub id: String! = "b"
-  pub createdAt: String! = "2024-01-02"
-  pub valueB: String! = "b"
+  id: String! = "b"
+  createdAt: String! = "2024-01-02"
+  valueB: String! = "b"
 }
 
 type C implements Base {
-  pub id: String! = "c"
-  pub valueC: String! = "c"
+  id: String! = "c"
+  valueC: String! = "c"
 }
 
 # Test 1: Two types with multiple common interfaces should pick one
@@ -47,8 +47,8 @@ assert { mixedCAB[2].id == "b" }
 # Test 3: Nested lists with interfaces
 # Use same-interface types to avoid issues
 type D implements Base {
-  pub id: String! = "d"
-  pub valueD: String! = "d"
+  id: String! = "d"
+  valueD: String! = "d"
 }
 
 let nestedLists = [[C, D], [D, C]]
@@ -59,15 +59,15 @@ assert { nestedLists[1][1].id == "c" }
 
 # Test 4: NonNull vs nullable mixing
 interface Nullable {
-  pub opt: String
+  opt: String
 }
 
 type WithNull implements Nullable {
-  pub opt: String = null
+  opt: String = null
 }
 
 type WithValue implements Nullable {
-  pub opt: String = "value"
+  opt: String = "value"
 }
 
 let nullableMix = [WithNull, WithValue]
@@ -90,4 +90,4 @@ assert { multipleA[0].valueA == "a" }
 assert { multipleA[1].valueA == "a" }
 assert { multipleA[2].valueA == "a" }
 
-pub testResult = "All supertype inference tests passed!"
+let testResult = "All supertype inference tests passed!"

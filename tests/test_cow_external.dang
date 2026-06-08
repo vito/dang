@@ -3,7 +3,7 @@
 type Counter {
   let count = 0
 
-  pub increment: Counter! {
+  increment: Counter! {
     self.count = self.count + 1
     self
   }

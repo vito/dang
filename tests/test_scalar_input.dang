@@ -2,7 +2,7 @@ import Test
 
 # String literals auto-coerce into custom GraphQL scalars at call boundaries.
 
-pub result = fetchURL(url: "https://example.com")
+let result = fetchURL(url: "https://example.com")
 assert { result == "Fetched: https://example.com" }
 
 print("Scalar input tests passed!")

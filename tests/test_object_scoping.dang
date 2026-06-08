@@ -1,19 +1,19 @@
 import Test
 
 type MyClass {
-  pub value = 0
+  value: Int! = 0
 
   new(v: Int!) {
     self.value = v
     self
   }
 
-  pub add(value: Int!): MyClass! {
+  add(value: Int!): MyClass! {
     self.value += value
     self
   }
 
-  pub currentValue: Int! {
+  currentValue: Int! {
     serverInfo.totalPosts + self.value
   }
 }

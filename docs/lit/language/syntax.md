@@ -31,6 +31,7 @@
 - `pub`, `let`, `type`, `interface`, `enum`, `union`, `scalar`, `new`, `implements`
 - `if`, `else`, `case`, `for`, `break`, `continue`, `return`
 - `try`, `catch`, `raise`
+- `pub` is optional and being retired — a declaration is public by default; see [#fields]
 - `import`, `directive`, `on`
 - `true`, `false`, `null`
 - `and`, `or`

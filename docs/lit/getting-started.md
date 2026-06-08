@@ -12,7 +12,7 @@
 ## Hello, world
 
 ```dang
-pub message(who: String!): String! {
+message(who: String!): String! {
   `hello, ${who}`
 }
 
@@ -75,7 +75,7 @@ $ dagger init --sdk=dang
 
 ```dang
 type Greeter {
-  pub message(target: String!): String! {
+  message(target: String!): String! {
     container
       .from("ubuntu")
       .withExec(["apt-get", "update", "-y"])

@@ -2,7 +2,7 @@
 # rebinds the arg locally; writing to a field requires self.field.
 
 type SimpleAssign {
-  pub foo: Int!
+  foo: Int!
 
   new(foo: Int!) {
     foo = foo + 10
@@ -14,7 +14,7 @@ type SimpleAssign {
 assert { SimpleAssign(5).foo == 15 }
 
 type CompoundAssign {
-  pub foo: Int!
+  foo: Int!
 
   new(foo: Int!) {
     foo += foo
@@ -27,8 +27,8 @@ assert { CompoundAssign(10).foo == 20 }
 
 # Mutating the arg does not implicitly write to the field of the same name.
 type ArgVsField {
-  pub foo: Int! = 99
-  pub bar: Int!
+  foo: Int! = 99
+  bar: Int!
 
   new(foo: Int!) {
     foo = foo + 1

@@ -1,101 +1,101 @@
 # Test backtick string templates with ${...} interpolation
 
 # Single-line, no interpolation
-pub plain = `hello world`
+let plain = `hello world`
 assert { plain == "hello world" }
 
 # Empty
-pub empty = ``
+let empty = ``
 assert { empty == "" }
 
 # Single-line interpolation
-pub name = "Ada"
-pub greeting = `hello ${name}!`
+let name = "Ada"
+let greeting = `hello ${name}!`
 assert { greeting == "hello Ada!" }
 
 # Multiple interpolations
-pub a = "foo"
-pub b = "bar"
-pub multi = `${a}-${b}-${a}`
+let a = "foo"
+let b = "bar"
+let multi = `${a}-${b}-${a}`
 assert { multi == "foo-bar-foo" }
 
 # \$ is just literal \$
-pub escaped_dollar = `\$ is dollar`
+let escaped_dollar = `\$ is dollar`
 assert { escaped_dollar == "\\$ is dollar" }
 
 # \${} escapes to literal ${}
-pub escaped_interp = `\${foo} is not interpolated`
+let escaped_interp = `\${foo} is not interpolated`
 assert { escaped_interp == "${foo} is not interpolated" }
 
 # Lone $ not followed by { is literal
-pub stray_dollar = `cost $5`
+let stray_dollar = `cost $5`
 assert { stray_dollar == "cost $5" }
 
 # A backslash is just a backslash — no escape interpretation except for
 # \${, which emits a literal ${ opener instead of starting interpolation.
-pub backslash = `\d+`
+let backslash = `\d+`
 assert { backslash == "\\d+" }
-pub literal_dollar_brace = `prefix \${name} suffix`
+let literal_dollar_brace = `prefix \${name} suffix`
 assert { literal_dollar_brace == "prefix ${name} suffix" }
 
 # Expression interpolation (not just symbols)
-pub x = 2
-pub y = 3
-pub sum = `${x} + ${y} = ${x + y}`
+let x = 2
+let y = 3
+let sum = `${x} + ${y} = ${x + y}`
 assert { sum == "2 + 3 = 5" }
 
 # Auto-stringification of non-string values
-pub n = 42
-pub b1 = true
-pub mixed = `n=${n}, b=${b1}`
+let n = 42
+let b1 = true
+let mixed = `n=${n}, b=${b1}`
 assert { mixed == "n=42, b=true" }
 
 # null interpolates as the literal string "null" (lenient)
-pub nullish = `x=${null}`
+let nullish = `x=${null}`
 assert { nullish == "x=null" }
 
 # ---------- Multi-line (triple backtick) ----------
 
 # Basic triple-backtick mirrors triple-quote dedent behavior
-pub block1 = ```
+let block1 = ```
 hello
 ```
 assert { block1 == "hello" }
 
-pub block2 = ```
+let block2 = ```
 hello
 world
 ```
 assert { block2 == "hello\nworld" }
 
 # Indentation: minimum-indent dedent
-pub block3 = ```
+let block3 = ```
   indented
   body
 ```
 assert { block3 == "indented\nbody" }
 
 # Language tag is parsed but doesn't affect the value
-pub langged = ```go
+let langged = ```go
 func main() {}
 ```
 assert { langged == "func main() {}" }
 
 # Interpolation inside multi-line
-pub who = "world"
-pub multi_block = ```
+let who = "world"
+let multi_block = ```
 hello ${who}!
 ```
 assert { multi_block == "hello world!" }
 
 # Escaped interpolation opener inside multi-line
-pub multi_escaped = ```
+let multi_escaped = ```
 hello \${who}!
 ```
 assert { multi_escaped == "hello ${who}!" }
 
 # Fence bumping: 4 backticks wrap a 3-backtick code block
-pub readme = ````
+let readme = ````
 ```go
 func main() {}
 ```
@@ -103,7 +103,7 @@ func main() {}
 assert { readme == "```go\nfunc main() {}\n```" }
 
 # 5 backticks wrap 4 backticks
-pub deeper = `````
+let deeper = `````
 ````
 inner
 ````

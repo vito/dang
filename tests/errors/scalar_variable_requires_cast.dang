@@ -2,5 +2,5 @@ import Test
 
 # Literals auto-coerce to compatible scalars, but a non-literal String value
 # (a variable) still requires an explicit :: cast at the call boundary.
-pub myUrl = "https://example.com"
-pub bad = fetchURL(url: myUrl)
+let myUrl = "https://example.com"
+let bad = fetchURL(url: myUrl)

@@ -4,8 +4,8 @@
 import Test
 
 type User {
-  pub name: String!
-  pub origin: String! = "local"
+  name: String!
+  origin: String! = "local"
 }
 
 enum Status { LOCAL REMOTE }
@@ -13,15 +13,15 @@ enum Status { LOCAL REMOTE }
 scalar URL
 
 interface Node {
-  pub label: String!
+  label: String!
 }
 
 type Cat {
-  pub name: String!
+  name: String!
 }
 
 type Dog {
-  pub name: String!
+  name: String!
 }
 
 union SearchResult = Cat | Dog

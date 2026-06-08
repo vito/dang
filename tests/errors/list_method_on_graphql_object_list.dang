@@ -3,4 +3,4 @@
 
 import Test
 
-pub result = users.length
+let result = users.length

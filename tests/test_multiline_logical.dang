@@ -6,8 +6,10 @@ assert {
     and true
 }
 assert {
-  (true
-    and false) == false
+  (
+    true
+      and false
+  ) == false
 }
 
 # Multiline or
@@ -16,8 +18,10 @@ assert {
     or false
 }
 assert {
-  (false
-    or false) == false
+  (
+    false
+      or false
+  ) == false
 }
 
 # Chained multiline and
@@ -27,9 +31,11 @@ assert {
     and true
 }
 assert {
-  (true
-    and true
-    and false) == false
+  (
+    true
+      and true
+      and false
+  ) == false
 }
 
 # Chained multiline or
@@ -39,9 +45,11 @@ assert {
     or true
 }
 assert {
-  (false
-    or false
-    or false) == false
+  (
+    false
+      or false
+      or false
+  ) == false
 }
 
 # Multiline with complex operands
@@ -80,11 +88,13 @@ assert { side_effect2 == false }
 
 # Mixed with single-line
 assert {
-  true and true
+  true
+    and true
     and true
 }
 assert {
-  false or false
+  false
+    or false
     or true
 }
 

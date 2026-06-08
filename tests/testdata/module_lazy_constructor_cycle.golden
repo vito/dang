@@ -1,10 +1,10 @@
 [1m[31mError:[0m initialization cycle while evaluating variable "lazyCtorA"
-  [2m[34m--> errors/module_lazy_constructor_cycle.dang:4:33[0m
+  [2m[34m--> errors/module_lazy_constructor_cycle.dang:4:29[0m
  [2m    |[0m
  [2m  2 | # The lazy runtime initializer should report the cycle when the field is evaluated.[0m
- [2m  3 | pub lazyCtorA: LazyCtorCycle! = LazyCtorCycle[0m
- [2m[34m[1m  4 | [0mpub lazyCtorB: LazyCtorCycle! = lazyCtorA
-[2m                                       [31m^^^^^^^^^[0m
+ [2m  3 | lazyCtorA: LazyCtorCycle! = LazyCtorCycle[0m
+ [2m[34m[1m  4 | [0mlazyCtorB: LazyCtorCycle! = lazyCtorA
+[2m                                   [31m^^^^^^^^^[0m
  [2m  5 | [0m
  [2m  6 | type LazyCtorCycle {[0m
  [2m    |[0m

@@ -1,7 +1,7 @@
 # Explicit constructors can take Ruby-style block arguments.
 
 type Loop {
-  pub ok: Boolean!
+  ok: Boolean!
 
   new(&condition: Boolean!) {
     self.ok = condition
@@ -14,7 +14,7 @@ let loop = Loop { x < 1 }
 assert { loop.ok == true }
 
 type PredicateBox {
-  pub ok: Boolean!
+  ok: Boolean!
 
   new(value: Int!, &predicate(x: Int!): Boolean!) {
     self.ok = predicate(value)

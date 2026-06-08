@@ -1,9 +1,9 @@
 [1m[31mError:[0m cannot use String! as Int!
-  [2m[34m--> errors/variable_type_annotation_mismatch.dang:2:15[0m
+  [2m[34m--> errors/variable_type_annotation_mismatch.dang:2:11[0m
  [2m    |[0m
  [2m  1 | # Test variable type annotation mismatch[0m
- [2m[34m[1m  2 | [0mpub x: Int! = "hello"
-[2m                     [31m^^^^^^^[0m
+ [2m[34m[1m  2 | [0mx: Int! = "hello"
+[2m                 [31m^^^^^^^[0m
  [2m  3 | [0m
  [2m    |[0m
 

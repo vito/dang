@@ -9,9 +9,9 @@ assert { ACTIVE == Status.ACTIVE }
 assert { INACTIVE == Status.INACTIVE }
 
 # Test unqualified GraphQL functions
-pub result = postTitles
+let result = postTitles
 assert { result == ["First Post", "Second Post", "Third Post", "Fourth Post", "Fifth Post", "Sixth Post"] }
 
 # Test unqualified object selection still works
-pub posts_ = posts(limit: 2).{id, title}
+let posts_ = posts(limit: 2).{id, title}
 assert { posts_ != null }

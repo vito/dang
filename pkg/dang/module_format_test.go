@@ -15,7 +15,7 @@ func TestFormatPublicTypeShapePreservesTypeFieldOrder(t *testing.T) {
 	mod.Add("alpha", hm.NewScheme(nil, hm.NonNullType{Type: IntType}))
 	mod.SetVisibility("alpha", PublicVisibility)
 
-	require.Equal(t, "type Thing {\n  pub zeta: String!\n  pub alpha: Int!\n}", FormatPublicTypeShape(mod))
+	require.Equal(t, "type Thing {\n  zeta: String!\n  alpha: Int!\n}", FormatPublicTypeShape(mod))
 }
 
 func TestFormatPublicTypeShapePreservesGraphQLFieldOrder(t *testing.T) {
@@ -65,5 +65,5 @@ func TestFormatPublicTypeShapePreservesGraphQLFieldOrder(t *testing.T) {
 	thingMod, ok := thing.(*Type)
 	require.True(t, ok)
 
-	require.Equal(t, "type Thing {\n  pub second: String!\n  pub first: String!\n}", FormatPublicTypeShape(thingMod))
+	require.Equal(t, "type Thing {\n  second: String!\n  first: String!\n}", FormatPublicTypeShape(thingMod))
 }
