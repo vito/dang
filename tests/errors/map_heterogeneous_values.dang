@@ -1,2 +1,2 @@
 # This should fail: map values must share a common type
-pub result = ["a": 1, "b": "two"]
+let result = ["a": 1, "b": "two"]

@@ -2,7 +2,7 @@
   [2m[34m--> errors/map_non_string_key.dang:2:15[0m
  [2m    |[0m
  [2m  1 | # This should fail: map keys must be String![0m
- [2m[34m[1m  2 | [0mpub result = [1: "a"]
+ [2m[34m[1m  2 | [0mlet result = [1: "a"]
 [2m                     [31m^[0m
  [2m  3 | [0m
  [2m    |[0m

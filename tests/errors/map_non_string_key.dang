@@ -1,2 +1,2 @@
 # This should fail: map keys must be String!
-pub result = [1: "a"]
+let result = [1: "a"]
