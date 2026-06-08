@@ -13,7 +13,7 @@ pub counts = ["a": 1, "b": 2, "c": 3]
 assert { counts["b"] == 2 }
 
 # Empty map
-pub empty: Map[Int!] = [:]
+empty: Map[Int!] = [:]
 assert { empty.isEmpty }
 assert { empty.length == 0 }
 
@@ -23,7 +23,7 @@ assert { ["a": 1] != ["a": 2] }
 assert { ["a": 1] != ["a": 1, "b": 2] }
 
 # Map[a] is the explicit form
-pub annotated: Map[String!] = ["x": "y"]
+annotated: Map[String!] = ["x": "y"]
 assert { annotated["x"] == "y" }
 
 # get / has
@@ -74,7 +74,7 @@ pub labeled = counts.map { key, value => `${key}=${value}` }
 assert { labeled["a"] == "a=1" }
 
 # each iterates in insertion order and returns the original map
-pub seen: List[String!] = []
+seen: List[String!] = []
 counts.each { key, value => seen = seen + [key] }
 assert { seen == ["a", "b", "c"] }
 

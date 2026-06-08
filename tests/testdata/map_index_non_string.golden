@@ -2,7 +2,7 @@
   [2m[34m--> errors/map_index_non_string.dang:3:11[0m
  [2m    |[0m
  [2m  1 | # This should fail: maps are indexed by String!, not Int![0m
- [2m  2 | pub m: Map[Int!] = ["a": 1][0m
+ [2m  2 | m: Map[Int!] = ["a": 1][0m
  [2m[34m[1m  3 | [0mpub bad = m[0]
 [2m                 [31m^^^^[0m
  [2m  4 | [0m
