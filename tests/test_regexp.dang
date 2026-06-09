@@ -18,11 +18,20 @@ assert { m.end == 3 }
 # no match → null
 assert { "abc".match(`\d+`) == null }
 
-# named captures
+# named captures: `named` is a Map keyed by group name
 let phone = "555-1212".match(`(?P<area>\d{3})-(?P<num>\d{4})`)
-assert { phone.capture("area") == "555" }
-assert { phone.capture("num") == "1212" }
-assert { phone.capture("nope") == null }
+assert { phone.named["area"] == "555" }
+assert { phone.named["num"] == "1212" }
+assert { phone.named["nope"] == null }
+
+# an unknown name and a named group that did not participate both read as null
+let optName = "bar".match(`(?P<pre>foo)?(?P<word>bar)`)
+assert { optName.named["pre"] == null }
+assert { optName.named["word"] == "bar" }
+
+# positional captures and named captures coexist on the same match
+assert { phone.captures[0] == "555" }
+assert { phone.captures[1] == "1212" }
 
 # matchAll
 let nums = "a1 b22 c333".matchAll(`\d+`)

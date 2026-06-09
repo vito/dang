@@ -936,17 +936,6 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				}
 				return nil, fmt.Errorf("map value does not have method %q", d.Field.Name)
 
-			case MatchValue:
-				methodKey := fmt.Sprintf("_match_%s_builtin", d.Field.Name)
-				if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
-					return nil, err
-				} else if found {
-					if builtinFn, ok := method.(BuiltinFunction); ok {
-						return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
-					}
-				}
-				return nil, fmt.Errorf("match value does not have method %q", d.Field.Name)
-
 			default:
 				return nil, fmt.Errorf("Select.Eval: cannot select field %q from %T (value: %q). Expected a record or module value, but got %T", d.Field.Name, receiverVal, receiverVal.String(), receiverVal)
 			}

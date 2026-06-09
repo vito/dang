@@ -51,7 +51,7 @@ Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `
 - `.string -> String!` — whole matched substring
 - `.start -> Int!`, `.end -> Int!` — byte offsets
 - `.captures -> [String!]!` — positional groups (`captures[0]` is `$1`); unmatched optional groups surface as `""`
-- `.capture(name: String!) -> String` — named group; null if absent
+- `.named -> Map[String]!` — named groups by name (`m.named["area"]`); a key reads as null if that group didn't match, and is absent for an unknown name
 
 ## `[T]!` methods (lists)
 
