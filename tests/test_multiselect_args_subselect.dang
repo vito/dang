@@ -25,15 +25,15 @@ type TestData {
 let service = TestService
 
 # Test the actual pattern: foo.{bar(arg: 123).{deeper}}
-let result = service.{
+let result = service.{{
   name,
-  getData(limit: 5).{
+  getData(limit: 5).{{
     name,
     count,
     getDetails(suffix: "deep info")
-  },
+  }},
   getInfo(prefix: "Service")
-}
+}}
 
 assert { result.name == "TestService" }
 assert { result.getData.name == "Data" }

@@ -1,0 +1,43 @@
+# Cargo-module-style interleaving smoke test: dot-blocks and real method
+# calls in a single chain, mirroring the design discussion.
+type Container {
+  label: String!
+  env: [String!]! = []
+
+  withEnvVariable(name: String!, value: String!): Container! {
+    env += [name + "=" + value]
+    self
+  }
+}
+
+mountCache(c: Container!, path: String!, cache: String!): Container! {
+  c.withEnvVariable("CACHE:" + path, cache)
+}
+
+prepareToolchain(c: Container!, target: String!): Container! {
+  c.withEnvVariable("TOOLCHAIN", target)
+}
+
+let container = Container("app").{ mountCache(_, "/registry", "regCache") }.{
+  prepareToolchain(
+    _,
+    "x86_64",
+  )
+}.withEnvVariable("CARGO_TARGET_DIR", "/work/target").{
+  mountCache(
+    _,
+    "/target",
+    "tgtCache",
+  )
+}
+
+assert {
+  container.env == [
+    "CACHE:/registry=regCache",
+    "TOOLCHAIN=x86_64",
+    "CARGO_TARGET_DIR=/work/target",
+    "CACHE:/target=tgtCache",
+  ]
+}
+
+print("Cargo interleaving smoke test passed!")

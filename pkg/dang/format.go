@@ -646,6 +646,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatIndex(n)
 	case *ObjectSelection:
 		f.formatObjectSelection(n)
+	case *DotApply:
+		f.formatDotApply(n)
 	case *BlockArg:
 		f.formatBlockArg(n)
 	case *Default:
@@ -2841,7 +2843,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 
 	// Handle inline fragments
 	if len(o.InlineFragments) > 0 {
-		f.write("{")
+		f.write("{{")
 		if multiline {
 			f.newline()
 			f.indented(func() {
@@ -2878,11 +2880,11 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 				f.formatInlineFragment(frag)
 			}
 		}
-		f.write("}")
+		f.write("}}")
 		return
 	}
 
-	f.write("{")
+	f.write("{{")
 	if multiline {
 		f.newline()
 		f.indented(func() {
@@ -2926,7 +2928,13 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 			f.formatFieldSelection(field)
 		}
 	}
-	f.write("}")
+	f.write("}}")
+}
+
+func (f *Formatter) formatDotApply(d *DotApply) {
+	f.formatNode(d.Receiver)
+	f.write(".")
+	f.formatBlockArg(d.Block)
 }
 
 func (f *Formatter) formatInlineFragment(frag *InlineFragment) {

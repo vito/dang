@@ -55,6 +55,24 @@ numbers.filter { true }         # param ignored ⇒ all
 numbers.filter { false }        # ⇒ []
 ```
 
+## Implicit `_` parameter {#implicit-param}
+
+> Meta: Kotlin's `it`, not Scala's positional `_`. The one rule people trip on: every `_` in a param-less block is the *same* one argument.
+
+- a block with **no explicit params** that references `_` gets a single implicit parameter named `_`
+- every `_` in that block refers to that same one argument — `{ _ * 2 }` and `{ _ + _ }` both bind exactly one value (NOT Scala-style positional `_1`, `_2`)
+- works everywhere blocks are used:
+
+```dang
+xs.map { _ * 2 }                # ⇒ each doubled
+xs.filter { _ > 0 }             # ⇒ positives
+foo.{ bar(_) }                  # dot-block; see [#dot-block]
+```
+
+- a block with **explicit params** does not capture `_` — `{ x => x * 2 }` has no implicit parameter
+- nesting: `_` binds to the **nearest enclosing param-less block**; a nested param-less block shadows the outer one
+- a bare `_` outside any block is an undefined-reference error
+
 ## Scoping
 
 - a block is a lexical scope; `let` declares a fresh local. `let` is *the* way
@@ -84,6 +102,31 @@ numbers.filter { false }        # ⇒ []
 
 - block: inline code, common case
 - `&fn`: store a callable, rebind it, pass it around as data (see [#functions])
+
+## Dot-block application (piping) {#dot-block}
+
+> Meta: this is Dang's piping primitive — there is no `|>` operator. Lead with the equivalence, then the interleaving, then the null behaviour as a consequence of "application, not navigation."
+
+- `receiver.{ block }` calls the block with the receiver as its single argument — Dang's piping mechanism
+- `foo.{ bar(_) }` ≡ `bar(foo)`, and `foo.{ x => bar(x) }` ≡ `bar(foo)` (the implicit `_` from [#implicit-param] is the idiomatic form)
+- it sits at `.`'s precedence — a sibling of `.{{ }}` selection and method calls — so it **interleaves with real method calls in a single chain**:
+
+```dang
+c.{ mountCache(_, path, cache) }
+ .withEnvVariable("X", "y")
+ .{ prepare(_) }
+```
+
+- the block must take **0 or 1 parameters**; 2+ is an error: `dot-block takes a single value`
+- a 0-param block ignores the receiver and just returns its body
+
+### Null: dot-block is application, not navigation
+
+> Meta: the null behaviour follows from what dot-block *is*. Frame it that way rather than as a gotcha vs. selection.
+
+- because `foo.{ bar(_) }` ≡ `bar(foo)`, a null receiver is simply *passed in*: the block runs with `_` bound to null, exactly as `bar(null)` would. Dot-block applies a block — it does not navigate into the receiver, so it has nothing to short-circuit
+- this is what lets a block *handle* null: `x.{ _ ?? 0 }`, `x.{ if (_ == null) { … } else { … } }`
+- contrast `.{{ }}` selection ([#graphql]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
 
 ## Common methods that take blocks
 

@@ -16,7 +16,7 @@
 
 - types and root functions come from a **GraphQL schema**, not handwritten declarations ([#graphql])
 - **prototype-based** objects (`type Foo` declares both a type and its constructor) ([#objects])
-- **multi-field selection**: `user.{name, posts.{title}}` becomes one query ([#objects])
+- **multi-field selection**: `user.{{name, posts.{{title}}}}` becomes one query ([#objects])
 - **null tracking** in the type system (`String` ≠ `String!`) ([#types], [#flow-typing])
 - **optional parens** for zero-arg calls — fields and methods feel the same ([#fields])
 - **directives** instead of comment pragmas ([#directives])

@@ -1,0 +1,3 @@
+# `_` is only meaningful as the implicit parameter inside a block.
+# Outside any block it is an undefined reference.
+let x = _ + 1

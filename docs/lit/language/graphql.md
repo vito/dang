@@ -24,45 +24,47 @@ let users = users(limit: 10)
 ## Multi-field selection
 
 ```dang
-user.{ name, email, posts.{ title, createdAt } }
+user.{{ name, email, posts.{{ title, createdAt }} }}
 ```
 
+- multi-field selection uses double braces `.{{ }}`, mirroring record literals `{{ }}` (both infer to the same anonymous structural type)
 - desugars to a single GraphQL query — the headline feature
 - nested selections work to arbitrary depth
 - arguments on nested fields:
 
 ```dang
-user.{ posts(first: 5).{ title } }
+user.{{ posts(first: 5).{{ title }} }}
 ```
 
-- positional args work in nested selections too: `users.{ posts(1).{ ... } }`
-- selection on a nullable receiver propagates null: if `user` is `null`, `user.{ name }` is `null` (not an error)
+- positional args work in nested selections too: `users.{{ posts(1).{{ ... }} }}`
+- selection on a nullable receiver **short-circuits**: if `user` is `null`, `user.{{ name }}` is `null` (not an error), and the result type is nullable
 - the result is a record (`{{ ... }}`); access fields by name; see [#objects]
+- `.{{ }}` selection is navigation (it reads fields), so it short-circuits on null; the single-brace dot-block `.{ }` is block *application*, so it passes the receiver — null included — into the block. Same `.`-brace surface, different jobs; see [#blocks]'s [#dot-block]
 
 ## Inline fragments
 
 ```dang
-node(id: "x").{
+node(id: "x").{{
   ... on User { name, email }
   ... on Post { title }
-}
+}}
 ```
 
 - type-conditional selection on unions and interfaces
 - the union-type result narrows in `case` (see [#interfaces-unions])
 - lazy form `... on User` (no block): narrows the value to that type, returns a chainable lazy value
-- narrowing that doesn't match returns `null` (e.g. `node(...).{... on Post}` when the node is a User)
+- narrowing that doesn't match returns `null` (e.g. `node(...).{{... on Post}}` when the node is a User)
 - `... on User!` asserts non-null (raises if the narrowing fails)
-- multiple lazy fragments narrow a union: `node(...).{ ... on User, ... on Post }`; works elementwise on lists (`nodes.{ ... on User, ... on Post }`)
+- multiple lazy fragments narrow a union: `node(...).{{ ... on User, ... on Post }}`; works elementwise on lists (`nodes.{{ ... on User, ... on Post }}`)
 
 ## Lists of objects
 
 ```dang
-users.{ name, email }
+users.{{ name, email }}
 ```
 
 - applies the selection elementwise; result is `[ {{ name, email }} ]` (a list of records)
-- index into the result to force it: `users.{name}[0].name`; see [#collections]
+- index into the result to force it: `users.{{name}}[0].name`; see [#collections]
 
 ## Mutations
 
@@ -71,7 +73,7 @@ users.{ name, email }
 - side effects happen when the call executes, which is when its value is **forced**
 - the laziness/forcing rules below apply to mutations exactly as they do to queries
 
-> Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{...}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{ name, posts.{ title } }` one round-trip. See [#mutation] for how forcing interacts with side effects.
+> Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. See [#mutation] for how forcing interacts with side effects.
 
 ## Errors from the server
 

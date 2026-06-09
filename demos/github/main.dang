@@ -1,12 +1,12 @@
 import GitHub
 
 # Look up a repo and show its stats
-let repo = repository(owner: "golang", name: "go").{
+let repo = repository(owner: "golang", name: "go").{{
   name,
   description,
   stargazerCount,
   forkCount
-}
+}}
 
 print(repo.name + " — " + repo.description)
 print(toString(repo.stargazerCount) + " stars · " + toString(repo.forkCount) + " forks")
@@ -19,9 +19,9 @@ let issues = repository(owner: "golang", name: "go")
     first: 5,
     orderBy: IssueOrder(field: IssueOrderField.UPDATED_AT, direction: OrderDirection.DESC),
   )
-  .edges.{
-  node.{number, title}
-}
+  .edges.{{
+  node.{{number, title}}
+}}
 
 issues.each { edge =>
   let issue = edge.node
@@ -38,11 +38,11 @@ let results = search(
   query: "graphql client language:go stars:>100",
   type: SearchType.REPOSITORY,
   first: 5,
-).edges.{
-  node.{
-    ... on Repository { name, stargazerCount, owner.{login} }
-  }
-}
+).edges.{{
+  node.{{
+    ... on Repository { name, stargazerCount, owner.{{login}} }
+  }}
+}}
 
 print("Top GraphQL clients for Go:")
 

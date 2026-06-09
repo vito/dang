@@ -13,5 +13,5 @@ union Pet = Cat | Dog
 cat: Pet! = Cat(name: "Whiskers")
 
 # This should error at runtime - cat is a Cat, not a Dog
-let oops = cat.{... on Dog!}
+let oops = cat.{{... on Dog!}}
 print(oops)

@@ -16,20 +16,20 @@ cat: Pet! = Cat(name: "Whiskers")
 dog: Pet! = Dog(name: "Rex", tricks: 5)
 
 # Single lazy inline fragment - type assertion
-let narrowed_cat = cat.{... on Cat}
+let narrowed_cat = cat.{{... on Cat}}
 assert { narrowed_cat.name == "Whiskers" }
 assert { narrowed_cat.lives == 9 }
 
 # Type assertion that doesn't match - should return null
-let not_a_dog = cat.{... on Dog}
+let not_a_dog = cat.{{... on Dog}}
 assert { not_a_dog == null }
 
 # Multiple lazy inline fragments on a list
 pets: [Pet!]! = [cat, dog]
-let narrowed_pets = pets.{
+let narrowed_pets = pets.{{
   ... on Cat
   ... on Dog
-}
+}}
 
 let first = narrowed_pets[0]
 let desc = case (first) {

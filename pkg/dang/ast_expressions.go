@@ -1151,6 +1151,99 @@ func (i *Index) Walk(fn func(Node) bool) {
 	i.Index.Walk(fn)
 }
 
+// DotApply is dot-block application: `receiver.{ block }`. It calls the block
+// with the receiver as its single argument, so `foo.{ x => bar(x) }` and
+// `foo.{ bar(_) }` both mean `bar(foo)`. It sits at `.`'s precedence (a sibling
+// of selection and method calls in SelectOrCall), so it interleaves with real
+// method calls in a single chain.
+type DotApply struct {
+	InferredTypeHolder
+	Receiver Node
+	Block    *BlockArg
+	Loc      *SourceLocation
+}
+
+var _ Node = (*DotApply)(nil)
+var _ Evaluator = (*DotApply)(nil)
+
+func (d *DotApply) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(d, func() (hm.Type, error) {
+		receiverType, err := d.Receiver.Infer(ctx, env, fresh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Dot-block supplies exactly one value, so the block must take 0 or 1
+		// parameters; 2+ is an error.
+		if len(d.Block.Args) > 1 {
+			return nil, NewInferError(
+				fmt.Errorf("dot-block takes a single value, but the block declares %d parameters",
+					len(d.Block.Args)),
+				d.Block,
+			)
+		}
+
+		// The receiver is the block's single argument. Unlike selection,
+		// dot-block does not short-circuit on null: the receiver type (nullable
+		// or not) passes straight through to the parameter, letting the block
+		// decide what to do with null.
+		d.Block.ExpectedParamTypes = []hm.Type{receiverType}
+		if _, err := d.Block.Infer(ctx, env, fresh); err != nil {
+			return nil, err
+		}
+
+		result := d.Block.Inferred.Ret(false)
+		d.SetInferredType(result)
+		return result, nil
+	})
+}
+
+func (d *DotApply) DeclaredSymbols() []string {
+	return nil
+}
+
+func (d *DotApply) ReferencedSymbols() []string {
+	var symbols []string
+	symbols = append(symbols, d.Receiver.ReferencedSymbols()...)
+	symbols = append(symbols, d.Block.ReferencedSymbols()...)
+	return symbols
+}
+
+func (d *DotApply) Body() hm.Expression { return d }
+
+func (d *DotApply) GetSourceLocation() *SourceLocation { return d.Loc }
+
+func (d *DotApply) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	return WithEvalErrorHandling(ctx, d, func() (Value, error) {
+		receiverVal, err := EvalNode(ctx, scope, d.Receiver)
+		if err != nil {
+			return nil, err
+		}
+
+		blockVal, err := d.Block.Eval(ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+
+		fn, ok := blockVal.(Callable)
+		if !ok {
+			return nil, fmt.Errorf("dot-block did not evaluate to a callable, got %T", blockVal)
+		}
+
+		// Apply the block to the receiver as its single argument. The receiver
+		// is bound even when null (no short-circuit).
+		return callFunc(ctx, fn, receiverVal)
+	})
+}
+
+func (d *DotApply) Walk(fn func(Node) bool) {
+	if !fn(d) {
+		return
+	}
+	d.Receiver.Walk(fn)
+	d.Block.Walk(fn)
+}
+
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
 	InferredTypeHolder
@@ -3029,6 +3122,36 @@ type BlockArg struct {
 
 	// InferredScope is the environment with parameters in scope
 	InferredScope TypeScope
+
+	// ImplicitUnderscore is set during Infer when the block declares no explicit
+	// parameters but references `_`, giving it a single implicit parameter `_`.
+	ImplicitUnderscore bool
+}
+
+// blockArgUsesImplicitUnderscore reports whether the body references the
+// implicit `_` parameter. References inside a nested param-less block belong to
+// that inner block (it shadows), so descent stops there; blocks with explicit
+// parameters are descended into, since `_` inside them refers outward.
+func blockArgUsesImplicitUnderscore(body Node) bool {
+	found := false
+	body.Walk(func(node Node) bool {
+		if found {
+			return false
+		}
+		switch n := node.(type) {
+		case *Symbol:
+			if n.Name == "_" {
+				found = true
+			}
+		case *BlockArg:
+			if len(n.Args) == 0 {
+				// Nested param-less block captures its own `_`; don't descend.
+				return false
+			}
+		}
+		return true
+	})
+	return found
 }
 
 var _ Node = &BlockArg{}
@@ -3073,6 +3196,12 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			)
 		}
 
+		// A block with no explicit parameters that references `_` in its body
+		// takes a single implicit parameter named `_` (Kotlin `it`-style). Every
+		// `_` in the block refers to that same single argument; a nested
+		// param-less block shadows it.
+		b.ImplicitUnderscore = len(b.Args) == 0 && blockArgUsesImplicitUnderscore(b.BodyNode)
+
 		// Clone environment for closure semantics
 		newEnv := env.Clone()
 		b.InferredScope = newEnv.(TypeScope)
@@ -3097,9 +3226,26 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			})
 		}
 
+		// The implicit `_` parameter consumes the first expected parameter slot.
+		consumed := len(b.Args)
+		if b.ImplicitUnderscore {
+			var paramType hm.Type
+			if len(b.ExpectedParamTypes) > 0 && b.ExpectedParamTypes[0] != nil {
+				paramType = b.ExpectedParamTypes[0]
+			} else {
+				paramType = fresh.Fresh()
+			}
+			newEnv.Add("_", hm.NewScheme(nil, paramType))
+			argSchemes = append(argSchemes, Keyed[*hm.Scheme]{
+				Key:   "_",
+				Value: hm.NewScheme(nil, paramType),
+			})
+			consumed = 1
+		}
+
 		// Add any remaining expected parameters to the function type signature
 		// but NOT to the environment (they will be ignored by the block)
-		for i := len(b.Args); i < len(b.ExpectedParamTypes); i++ {
+		for i := consumed; i < len(b.ExpectedParamTypes); i++ {
 			paramType := b.ExpectedParamTypes[i]
 			// Generate a parameter name for the type signature
 			paramName := fmt.Sprintf("_unused%d", i)

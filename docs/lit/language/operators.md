@@ -18,10 +18,11 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 | 6 | `+`, `-` | left |
 | 7 | `*`, `/`, `%` | left |
 | 8 | `!` (prefix), `-` (unary), `&` (prefix) | — |
-| 9 | `!` (postfix), `.`, `[]`, `()` | left |
+| 9 | `!` (postfix), `.`, `.{{ }}`, `.{ }`, `[]`, `()` | left |
 
 - `::` (cast / type hint) is **not** in this chain. In the grammar it's a sibling of `??` (`Form <- … / DefaultExpr / TypeHint / Term`) and binds only a bare `Term` on its left, e.g. `(a + b) :: T!` needs the parens. See [#types].
 - the unary/postfix levels (8, 9) also parse as `Term`, so `&expr`, `!expr`, `-expr`, `expr!`, `.field`, `[i]`, `(args)` all bind tighter than every binary operator.
+- the postfix `.`-brace forms are both siblings of `.field`/method calls at `.` precedence, so they interleave freely in one chain: `.{{ ... }}` is multi-field [selection][#graphql] (record-literal braces, short-circuits on null), and `.{ ... }` is [dot-block application][#dot-block] (single brace, the piping primitive). Their null behaviour differs — see [#dot-block].
 
 ## Arithmetic
 
