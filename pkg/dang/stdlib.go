@@ -647,6 +647,45 @@ func registerStdlib() {
 			}, nil
 		})
 
+	// List.find method: find(fn: \(a) -> Boolean!) -> a?
+	Method(ListTypeModule, "find").
+		Doc("returns the first element for which the predicate returns true, or null if none match").
+		Example(`[1, 2, 3].find { x => x > 1 }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "item",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			NonNull(BooleanType),
+		)).
+		Returns(Nullable(TypeVar('a'))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			list := self.(ListValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("find requires a block argument")
+			}
+			fn := *args.Block
+
+			for _, item := range list.Elements {
+				res, err := callFunc(ctx, fn, item)
+				if err != nil {
+					return nil, fmt.Errorf("find predicate: %w", err)
+				}
+
+				boolVal, ok := res.(BoolValue)
+				if !ok {
+					return nil, fmt.Errorf("find predicate must return Boolean!, got %T", res)
+				}
+
+				if boolVal.Val {
+					return item, nil
+				}
+			}
+
+			return NullValue{}, nil
+		})
+
 	// List.length method: length -> Int!
 	Method(ListTypeModule, "length").
 		Doc("returns the number of elements in the list").

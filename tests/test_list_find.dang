@@ -1,0 +1,28 @@
+# Test list.find() method
+
+pub numbers: [Int!]! = [1, 2, 3, 4]
+
+# Basic match returns the first matching item.
+let firstLarge: Int = numbers.find { x => x > 2 }
+assert { firstLarge == 3 }
+
+# No match returns null, even when the list element type is non-null.
+let missing: Int = numbers.find { x => x > 10 }
+assert { missing == null }
+
+# Empty lists also return null.
+pub empty: [Int!]! = []
+let emptyResult: Int = empty.find { x => x > 0 }
+assert { emptyResult == null }
+
+# Works with strings and preserves the first match.
+pub words: [String!]! = ["hello", "world", "hi"]
+let hWord: String = words.find { w => w.hasPrefix("h") }
+assert { hWord == "hello" }
+
+# Nullable list receivers still propagate null before evaluating the block.
+let nullableNumbers: [Int!] = null
+let propagated: Int = nullableNumbers.find { x => x > 0 }
+assert { propagated == null }
+
+print("List find tests passed!")

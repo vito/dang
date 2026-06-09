@@ -592,6 +592,20 @@ func NonNull(t hm.Type) hm.Type {
 	return hm.NonNullType{Type: t}
 }
 
+// Nullable returns the nullable form of a type.
+func Nullable(t hm.Type) hm.Type {
+	switch typ := t.(type) {
+	case hm.NullableTypeVariable:
+		return typ
+	case hm.NonNullType:
+		return typ.Type
+	case hm.TypeVariable:
+		return hm.NullableTypeVariable{TypeVariable: typ}
+	default:
+		return t
+	}
+}
+
 // ListOf creates a list type
 func ListOf(t hm.Type) hm.Type {
 	return ListType{Type: t}

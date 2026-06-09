@@ -3385,6 +3385,11 @@ func instantiateListMethod(def BuiltinDef, elemType hm.Type) hm.Type {
 // substituteTypeVar recursively replaces a type variable with a concrete type
 func substituteTypeVar(t hm.Type, tv hm.TypeVariable, replacement hm.Type) hm.Type {
 	switch typ := t.(type) {
+	case hm.NullableTypeVariable:
+		if typ.TypeVariable == tv {
+			return Nullable(replacement)
+		}
+		return typ
 	case hm.TypeVariable:
 		if typ == tv {
 			return replacement
