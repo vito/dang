@@ -1,6 +1,6 @@
 # Test list.find() method
 
-pub numbers: [Int!]! = [1, 2, 3, 4]
+let numbers: [Int!]! = [1, 2, 3, 4]
 
 # Basic match returns the first matching item.
 let firstLarge: Int = numbers.find { x => x > 2 }
@@ -11,12 +11,12 @@ let missing: Int = numbers.find { x => x > 10 }
 assert { missing == null }
 
 # Empty lists also return null.
-pub empty: [Int!]! = []
+let empty: [Int!]! = []
 let emptyResult: Int = empty.find { x => x > 0 }
 assert { emptyResult == null }
 
 # Works with strings and preserves the first match.
-pub words: [String!]! = ["hello", "world", "hi"]
+let words: [String!]! = ["hello", "world", "hi"]
 let hWord: String = words.find { w => w.hasPrefix("h") }
 assert { hWord == "hello" }
 
