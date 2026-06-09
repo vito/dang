@@ -14,9 +14,11 @@ import (
 // to it via the scalar coercion path in materializeStringValue.
 var RegexpType = NewType("Regexp", ScalarKind)
 
-// MatchType is the "Match" object returned by String regex methods. Fields
-// like .string and .captures are zero-arg methods that auto-call when
-// accessed via dot notation.
+// MatchType is the "Match" object returned by String regex methods. A Match
+// is a plain object (see newMatch): its members are materialized as ordinary
+// fields, so it needs no bespoke runtime value — field access resolves the
+// bound value directly. The Method(MatchType, ...) registrations exist only to
+// type-check those members and list them in the stdlib reference.
 var MatchType = NewType("Match", ObjectKind)
 
 // RegexpValue is the runtime value for a compiled Regexp.
@@ -33,28 +35,59 @@ func (r RegexpValue) MarshalJSON() ([]byte, error) {
 	return fmt.Appendf(nil, "%q", r.Source), nil
 }
 
-// MatchValue is the runtime value for a single regex match. Indices comes
-// straight from regexp.FindSubmatchIndex (pairs of byte offsets); fields are
-// derived lazily so we keep the cost of an unused match minimal.
-type MatchValue struct {
-	Re      *regexp.Regexp
-	Src     string
-	Indices []int
-}
+// newMatch builds the plain object returned for a successful regex match.
+// indices comes straight from regexp.FindSubmatchIndex (pairs of byte
+// offsets). A Match carries no behavior of its own: every member is computed
+// here and bound as an ordinary field, so the value flows through normal
+// object field access with no dedicated value type or dispatch special-case.
+func newMatch(re *regexp.Regexp, src string, indices []int) *Object {
+	m := NewObject(MatchType)
 
-var _ Value = MatchValue{}
+	m.Bind("string", StringValue{Val: src[indices[0]:indices[1]]}, PublicVisibility)
+	m.Bind("start", IntValue{Val: indices[0]}, PublicVisibility)
+	m.Bind("end", IntValue{Val: indices[1]}, PublicVisibility)
 
-func (m MatchValue) Type() hm.Type { return NonNull(MatchType) }
-
-func (m MatchValue) String() string {
-	if len(m.Indices) < 2 || m.Indices[0] < 0 {
-		return ""
+	// Positional captures: indices = [match_start, match_end, g1s, g1e, ...].
+	// Skip the whole-match pair; emit "" for any -1 (unmatched) group.
+	nCaps := (len(indices) - 2) / 2
+	caps := make([]Value, nCaps)
+	for i := range nCaps {
+		start := indices[2+2*i]
+		end := indices[2+2*i+1]
+		if start < 0 {
+			caps[i] = StringValue{Val: ""}
+		} else {
+			caps[i] = StringValue{Val: src[start:end]}
+		}
 	}
-	return m.Src[m.Indices[0]:m.Indices[1]]
-}
+	m.Bind("captures", ListValue{Elements: caps, ElemType: NonNull(StringType)}, PublicVisibility)
 
-func (m MatchValue) MarshalJSON() ([]byte, error) {
-	return fmt.Appendf(nil, "%q", m.String()), nil
+	// Named captures: group name -> matched substring, or null for a named
+	// group that did not participate in the match. Unnamed groups are omitted
+	// (use captures for those). The value type is the nullable String, so an
+	// unmatched group reads back as null — the same as indexing a missing key,
+	// preserving the behavior of the old capture(name) lookup.
+	names := re.SubexpNames()
+	namedKeys := make([]string, 0, len(names))
+	namedEntries := make(map[string]Value, len(names))
+	for i, name := range names {
+		if i == 0 || name == "" {
+			continue // whole match, or an unnamed group
+		}
+		start := indices[2*i]
+		end := indices[2*i+1]
+		var v Value = NullValue{}
+		if start >= 0 {
+			v = StringValue{Val: src[start:end]}
+		}
+		if _, exists := namedEntries[name]; !exists {
+			namedKeys = append(namedKeys, name)
+		}
+		namedEntries[name] = v
+	}
+	m.Bind("named", MapValue{Keys: namedKeys, Entries: namedEntries, ValType: StringType}, PublicVisibility)
+
+	return m
 }
 
 // regexpCacheCap bounds the compiled-pattern cache. On overflow we reset
@@ -121,7 +154,7 @@ func registerRegexpStringMethods() {
 			if idx == nil {
 				return NullValue{}, nil
 			}
-			return MatchValue{Re: re, Src: s, Indices: idx}, nil
+			return newMatch(re, s, idx), nil
 		})
 
 	Method(StringType, "matchAll").
@@ -135,7 +168,7 @@ func registerRegexpStringMethods() {
 			all := re.FindAllStringSubmatchIndex(s, -1)
 			out := make([]Value, len(all))
 			for i, idx := range all {
-				out[i] = MatchValue{Re: re, Src: s, Indices: idx}
+				out[i] = newMatch(re, s, idx)
 			}
 			return ListValue{Elements: out, ElemType: NonNull(MatchType)}, nil
 		})
@@ -193,7 +226,7 @@ func registerRegexpStringMethods() {
 					break
 				}
 				out.WriteString(s[last:idx[0]])
-				res, err := callFunc(ctx, fn, MatchValue{Re: re, Src: s, Indices: idx})
+				res, err := callFunc(ctx, fn, newMatch(re, s, idx))
 				if err != nil {
 					return nil, fmt.Errorf("rewriteMatches block: %w", err)
 				}
@@ -228,75 +261,50 @@ func registerRegexpStringMethods() {
 		})
 }
 
+// registerRegexpMatchMethods declares Match's members for the type checker and
+// the stdlib reference. The behavior lives in newMatch, which binds each member
+// as a field on the match object; field access resolves those bindings directly
+// and never reaches these impls. They are kept coherent — returning the bound
+// member — so the registration stays a faithful description of the type.
 func registerRegexpMatchMethods() {
 	Method(MatchType, "string").
 		Doc("the whole matched substring").
 		Example("\"x42y\".match(`\\d+`).string").
 		Returns(NonNull(StringType)).
-		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			m := self.(MatchValue)
-			return StringValue{Val: m.Src[m.Indices[0]:m.Indices[1]]}, nil
-		})
+		Impl(matchMember("string"))
 
 	Method(MatchType, "start").
 		Doc("byte offset of the match start in the source string").
 		Example("\"x42y\".match(`\\d+`).start").
 		Returns(NonNull(IntType)).
-		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			return IntValue{Val: self.(MatchValue).Indices[0]}, nil
-		})
+		Impl(matchMember("start"))
 
 	Method(MatchType, "end").
 		Doc("byte offset just past the end of the match").
 		Example("\"x42y\".match(`\\d+`).end").
 		Returns(NonNull(IntType)).
-		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			return IntValue{Val: self.(MatchValue).Indices[1]}, nil
-		})
+		Impl(matchMember("end"))
 
 	Method(MatchType, "captures").
 		Doc("positional captures, with `captures[0]` corresponding to $1").
 		Example("\"42-99\".match(`(\\d+)-(\\d+)`).captures").
 		Returns(NonNull(ListOf(NonNull(StringType)))).
-		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			m := self.(MatchValue)
-			// Indices = [match_start, match_end, g1_start, g1_end, g2_start, ...].
-			// Skip the whole-match pair; emit "" for any -1 (unmatched) group.
-			n := (len(m.Indices) - 2) / 2
-			out := make([]Value, n)
-			for i := range n {
-				start := m.Indices[2+2*i]
-				end := m.Indices[2+2*i+1]
-				if start < 0 {
-					out[i] = StringValue{Val: ""}
-				} else {
-					out[i] = StringValue{Val: m.Src[start:end]}
-				}
-			}
-			return ListValue{Elements: out, ElemType: NonNull(StringType)}, nil
-		})
+		Impl(matchMember("captures"))
 
-	Method(MatchType, "capture").
-		Doc("named capture; null if no such group or the group did not match").
-		Example("\"555-1212\".match(`(?P<area>\\d{3})-(\\d{4})`).capture(\"area\")").
-		Params("name", NonNull(StringType)).
-		Returns(StringType).
-		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
-			m := self.(MatchValue)
-			name := args.GetString("name")
-			for i, n := range m.Re.SubexpNames() {
-				if n != name {
-					continue
-				}
-				start := m.Indices[2*i]
-				end := m.Indices[2*i+1]
-				if start < 0 {
-					return NullValue{}, nil
-				}
-				return StringValue{Val: m.Src[start:end]}, nil
-			}
-			return NullValue{}, nil
-		})
+	Method(MatchType, "named").
+		Doc("named captures keyed by group name; a key reads as null if that group did not match, and is absent for an unknown name").
+		Example("\"555-1212\".match(`(?P<area>\\d{3})-(\\d{4})`).named[\"area\"]").
+		Returns(NonNull(MapOf(StringType))).
+		Impl(matchMember("named"))
+}
+
+// matchMember returns a builtin impl that yields a match object's already-bound
+// member. See registerRegexpMatchMethods for why these are declaration-only.
+func matchMember(name string) func(context.Context, Value, Args) (Value, error) {
+	return func(ctx context.Context, self Value, _ Args) (Value, error) {
+		v, _, err := self.(ValueScope).Lookup(ctx, name)
+		return v, err
+	}
 }
 
 // replaceFirstN replaces up to the first n matches of re in s, expanding
