@@ -19,6 +19,7 @@ var (
 	IntType        = NewType("Int", ScalarKind)
 	FloatType      = NewType("Float", ScalarKind)
 	ListTypeModule = NewType("List", ScalarKind)
+	MapTypeModule  = NewType("Map", ScalarKind)
 	ErrorType      = NewType("Error", InterfaceKind)
 	BasicErrorType = NewType("BasicError", ObjectKind)
 )
@@ -122,6 +123,120 @@ func (l *List) Walk(fn func(Node) bool) {
 	}
 	for _, elem := range l.Elements {
 		elem.Walk(fn)
+	}
+}
+
+// MapEntry is a single key: value pair in a map literal. Keys are arbitrary
+// expressions constrained to String! during inference.
+type MapEntry struct {
+	Key   Node
+	Value Node
+}
+
+// MapLiteral represents a map literal like ["a": 1, "b": 2] or the empty [:].
+type MapLiteral struct {
+	InferredTypeHolder
+	Entries []MapEntry
+	Loc     *SourceLocation
+}
+
+var _ Node = (*MapLiteral)(nil)
+var _ Evaluator = (*MapLiteral)(nil)
+
+func (m *MapLiteral) Infer(ctx context.Context, env hm.Env, f hm.Fresher) (hm.Type, error) {
+	if len(m.Entries) == 0 {
+		tv := f.Fresh()
+		t := hm.NonNullType{Type: MapType{tv}}
+		m.SetInferredType(t)
+		return t, nil
+	}
+
+	wantKey := hm.NonNullType{Type: StringType}
+	var valType hm.Type
+	for i, entry := range m.Entries {
+		kt, err := entry.Key.Infer(ctx, env, f)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := hm.Assignable(kt, wantKey); err != nil {
+			return nil, NewInferError(fmt.Errorf("map key must be String!, got %s", kt), entry.Key)
+		}
+
+		vt, err := entry.Value.Infer(ctx, env, f)
+		if err != nil {
+			return nil, err
+		}
+		if valType == nil {
+			valType = vt
+		} else {
+			merged, _, err := hm.MergeTypes(valType, vt)
+			if err != nil {
+				return nil, NewInferError(fmt.Errorf("unify entry %d: no common value type between %s and %s", i, vt, valType), m.Entries[i].Value)
+			}
+			valType = merged
+		}
+	}
+	mapType := hm.NonNullType{Type: MapType{valType}}
+	m.SetInferredType(mapType)
+	return mapType, nil
+}
+
+func (m *MapLiteral) DeclaredSymbols() []string { return nil }
+
+func (m *MapLiteral) ReferencedSymbols() []string {
+	var symbols []string
+	for _, entry := range m.Entries {
+		symbols = append(symbols, entry.Key.ReferencedSymbols()...)
+		symbols = append(symbols, entry.Value.ReferencedSymbols()...)
+	}
+	return symbols
+}
+
+func (m *MapLiteral) Body() hm.Expression { return m }
+
+func (m *MapLiteral) GetSourceLocation() *SourceLocation { return m.Loc }
+
+func (m *MapLiteral) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+	keys := make([]string, 0, len(m.Entries))
+	entries := make(map[string]Value, len(m.Entries))
+	var valType hm.Type
+
+	for i, entry := range m.Entries {
+		keyVal, err := EvalNode(ctx, scope, entry.Key)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating map key %d: %w", i, err)
+		}
+		keyStr, ok := keyVal.(StringValue)
+		if !ok {
+			return nil, fmt.Errorf("map key %d must be a string, got %s", i, keyVal.Type())
+		}
+
+		val, err := EvalNode(ctx, scope, entry.Value)
+		if err != nil {
+			return nil, fmt.Errorf("evaluating map value for key %q: %w", keyStr.Val, err)
+		}
+		if _, exists := entries[keyStr.Val]; !exists {
+			keys = append(keys, keyStr.Val)
+		}
+		entries[keyStr.Val] = val
+		if valType == nil {
+			valType = val.Type()
+		}
+	}
+
+	if valType == nil {
+		valType = hm.TypeVariable('a')
+	}
+	return MapValue{Keys: keys, Entries: entries, ValType: valType}, nil
+}
+
+func (m *MapLiteral) Walk(fn func(Node) bool) {
+	if !fn(m) {
+		return
+	}
+	for _, entry := range m.Entries {
+		entry.Key.Walk(fn)
+		entry.Value.Walk(fn)
 	}
 }
 

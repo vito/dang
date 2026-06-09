@@ -286,6 +286,19 @@ func valuesEqual(left, right Value) bool {
 			}
 			return true
 		}
+	case MapValue:
+		if r, ok := right.(MapValue); ok {
+			if len(l.Entries) != len(r.Entries) {
+				return false
+			}
+			for k, lv := range l.Entries {
+				rv, ok := r.Entries[k]
+				if !ok || !valuesEqual(lv, rv) {
+					return false
+				}
+			}
+			return true
+		}
 	}
 
 	// Different types or unsupported comparison

@@ -63,6 +63,55 @@ func (t *NamedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 	})
 }
 
+// AppliedTypeNode resolves a generic type application like List[a] or Map[a]
+// written in source. Only the built-in generic types are supported for now.
+type AppliedTypeNode struct {
+	Base *NamedTypeNode
+	Args []TypeNode
+	Loc  *SourceLocation
+}
+
+var _ TypeNode = (*AppliedTypeNode)(nil)
+
+func (t *AppliedTypeNode) ReferencedSymbols() []string {
+	syms := t.Base.ReferencedSymbols()
+	for _, a := range t.Args {
+		syms = append(syms, a.ReferencedSymbols()...)
+	}
+	return syms
+}
+
+func (t *AppliedTypeNode) GetSourceLocation() *SourceLocation { return t.Loc }
+
+func (t *AppliedTypeNode) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+	return WithInferErrorHandling(t, func() (hm.Type, error) {
+		if t.Base.Base == nil {
+			switch t.Base.Name {
+			case "List":
+				elem, err := t.singleArg(ctx, env, fresh, "List")
+				if err != nil {
+					return nil, err
+				}
+				return ListType{elem}, nil
+			case "Map":
+				val, err := t.singleArg(ctx, env, fresh, "Map")
+				if err != nil {
+					return nil, err
+				}
+				return MapType{val}, nil
+			}
+		}
+		return nil, fmt.Errorf("type %s does not take type arguments", t.Base.Name)
+	})
+}
+
+func (t *AppliedTypeNode) singleArg(ctx context.Context, env hm.Env, fresh hm.Fresher, name string) (hm.Type, error) {
+	if len(t.Args) != 1 {
+		return nil, fmt.Errorf("%s[...] expects 1 type argument, got %d", name, len(t.Args))
+	}
+	return t.Args[0].Infer(ctx, env, fresh)
+}
+
 type ListTypeNode struct {
 	Elem TypeNode
 }
@@ -129,6 +178,60 @@ func (t ListType) Supertypes() []hm.Type {
 	for i, t := range innerSupers {
 		// Generalize into list type for each supertype
 		innerSupers[i] = ListType{t}
+	}
+	return innerSupers
+}
+
+// MapType is a string-keyed map whose values all have the wrapped type. Keys
+// are always String!, so only the value type is parameterized.
+type MapType struct {
+	hm.Type
+}
+
+var _ hm.Type = MapType{}
+
+func (t MapType) Name() string {
+	return fmt.Sprintf("Map[%s]", t.Type)
+}
+
+func (t MapType) Apply(subs hm.Subs) hm.Substitutable {
+	return MapType{t.Type.Apply(subs).(hm.Type)}
+}
+
+func (t MapType) Normalize(k, v hm.TypeVarSet) (hm.Type, error) {
+	normalized, err := t.Type.Normalize(k, v)
+	if err != nil {
+		return nil, err
+	}
+	return MapType{normalized}, nil
+}
+
+func (t MapType) Types() hm.Types {
+	ts := hm.BorrowTypes(1)
+	ts[0] = t.Type
+	return ts
+}
+
+func (t MapType) String() string {
+	return fmt.Sprintf("Map[%s]", t.Type)
+}
+
+func (t MapType) Format(s fmt.State, c rune) {
+	_, _ = fmt.Fprintf(s, "Map[%"+string(c)+"]", t.Type)
+}
+
+func (t MapType) Eq(other hm.Type) bool {
+	if ot, ok := other.(MapType); ok {
+		return t.Type.Eq(ot.Type)
+	}
+	return false
+}
+
+func (t MapType) Supertypes() []hm.Type {
+	innerSupers := t.Type.Supertypes()
+	for i, t := range innerSupers {
+		// Generalize into map type for each supertype
+		innerSupers[i] = MapType{t}
 	}
 	return innerSupers
 }

@@ -618,6 +618,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.write("self")
 	case *List:
 		f.formatList(n)
+	case *MapLiteral:
+		f.formatMap(n)
 	case *ObjectLiteral:
 		f.formatObject(n)
 	case *TryCatch:
@@ -699,6 +701,8 @@ func (f *Formatter) formatNodeInline(node Node) {
 		f.formatSelectInline(n)
 	case *List:
 		f.formatListInline(n)
+	case *MapLiteral:
+		f.formatMapInline(n)
 	case *ObjectLiteral:
 		f.formatObjectInline(n)
 	default:
@@ -2479,6 +2483,28 @@ func (f *Formatter) formatListInline(l *List) {
 	f.write("]")
 }
 
+func (f *Formatter) formatMap(m *MapLiteral) {
+	// Map literals are kept inline; the empty map is the special [:] form.
+	f.formatMapInline(m)
+}
+
+func (f *Formatter) formatMapInline(m *MapLiteral) {
+	if len(m.Entries) == 0 {
+		f.write("[:]")
+		return
+	}
+	f.write("[")
+	for i, entry := range m.Entries {
+		if i > 0 {
+			f.write(", ")
+		}
+		f.formatNodeInline(entry.Key)
+		f.write(": ")
+		f.formatNodeInline(entry.Value)
+	}
+	f.write("]")
+}
+
 func (f *Formatter) formatListMultiline(l *List) {
 	f.write("[")
 	if l.Loc != nil {
@@ -3269,6 +3295,16 @@ func (f *Formatter) formatTypeNode(t TypeNode) {
 	case ListTypeNode:
 		f.write("[")
 		f.formatTypeNode(tn.Elem)
+		f.write("]")
+	case *AppliedTypeNode:
+		f.formatTypeNode(tn.Base)
+		f.write("[")
+		for i, arg := range tn.Args {
+			if i > 0 {
+				f.write(", ")
+			}
+			f.formatTypeNode(arg)
+		}
 		f.write("]")
 	case ObjectTypeNode:
 		f.write("{{")

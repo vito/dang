@@ -1,0 +1,2 @@
+# This should fail: map keys must be String!
+let result = [1: "a"]

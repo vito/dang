@@ -23,7 +23,7 @@ Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
 Form         := Return | TryCatch | Raise | Conditional | ForLoop
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
-              | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
+              | MapLiteral | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
 NonNullAssert := Term '!'
 ```
 
@@ -41,13 +41,17 @@ NonNullAssert := Term '!'
 > `Type` dispatches to one of these; non-null is a suffix `!` wrapping any inner type. See [#types].
 
 ```
-Type         := NonNull | NamedType | ListType | ObjectType | TypeVariable
+Type         := NonNull | AppliedType | NamedType | ListType | ObjectType | TypeVariable
 NonNull      := Type '!'
+AppliedType  := NamedType '[' (Type Sep)* Type? ']'   # generic application, e.g. List[a], Map[a]
 NamedType    := (NamedType '.')? UpperIdent     # qualifier is itself a NamedType
-ListType     := '[' Type ']'
+ListType     := '[' Type ']'                    # shorthand for List[...]
 ObjectType   := '{{' (ObjectTypeField Sep)* ObjectTypeField? '}}'
 TypeVariable := [a-z]                           # single lowercase letter
 ```
+
+> `[a]` is shorthand for `List[a]`. `Map[a]` is a string-keyed map of `a` values
+> (only the built-in `List` and `Map` accept type arguments today).
 
 ## Lexical
 

@@ -1,0 +1,3 @@
+# This should fail: maps are indexed by String!, not Int!
+let m: Map[Int!] = ["a": 1]
+let bad = m[0]

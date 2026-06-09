@@ -887,6 +887,192 @@ func registerStdlib() {
 
 			return ToValue(strings.Join(parts, separator))
 		})
+
+	// Map.get method: get(key: String!) -> a
+	Method(MapTypeModule, "get").
+		Doc("returns the value for the given key, or null if the key is absent").
+		Example(`["a": 1, "b": 2].get("a")`).
+		Params("key", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			key := args.GetString("key")
+			if val, ok := m.Get(key); ok {
+				return val, nil
+			}
+			return NullValue{}, nil
+		})
+
+	// Map.has method: has(key: String!) -> Boolean!
+	Method(MapTypeModule, "has").
+		Doc("returns true if the map contains the given key").
+		Example(`["a": 1, "b": 2].has("a")`).
+		Params("key", NonNull(StringType)).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			_, ok := m.Get(args.GetString("key"))
+			return BoolValue{Val: ok}, nil
+		})
+
+	// Map.with method: with(key: String!, value: a) -> Map[a]!
+	Method(MapTypeModule, "with").
+		Doc("returns a new map with the given key set to the given value").
+		Example(`["a": 1].with("b", 2)`).
+		Params("key", NonNull(StringType), "value", TypeVar('a')).
+		Returns(NonNull(MapOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			value, _ := args.Get("value")
+			return m.With(args.GetString("key"), value), nil
+		})
+
+	// Map.without method: without(key: String!) -> Map[a]!
+	Method(MapTypeModule, "without").
+		Doc("returns a new map with the given key removed").
+		Example(`["a": 1, "b": 2].without("a")`).
+		Params("key", NonNull(StringType)).
+		Returns(NonNull(MapOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			return m.Without(args.GetString("key")), nil
+		})
+
+	// Map.merge method: merge(other: Map[a]!) -> Map[a]!
+	Method(MapTypeModule, "merge").
+		Doc("returns a new map combining this map with another; values from the other map win on key conflicts").
+		Example(`["a": 1, "b": 2].merge(["b": 20, "c": 3])`).
+		Params("other", NonNull(MapOf(TypeVar('a')))).
+		Returns(NonNull(MapOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			otherVal, _ := args.Get("other")
+			other, ok := otherVal.(MapValue)
+			if !ok {
+				return nil, fmt.Errorf("merge expects a map, got %T", otherVal)
+			}
+			result := m
+			for _, k := range other.Keys {
+				result = result.With(k, other.Entries[k])
+			}
+			return result, nil
+		})
+
+	// Map.keys method: keys -> [String!]!
+	Method(MapTypeModule, "keys").
+		Doc("returns the map's keys in insertion order").
+		Example(`["a": 1, "b": 2].keys`).
+		Returns(NonNull(ListOf(NonNull(StringType)))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			elems := make([]Value, len(m.Keys))
+			for i, k := range m.Keys {
+				elems[i] = StringValue{Val: k}
+			}
+			return ListValue{Elements: elems, ElemType: NonNull(StringType)}, nil
+		})
+
+	// Map.values method: values -> [a]!
+	Method(MapTypeModule, "values").
+		Doc("returns the map's values in insertion order").
+		Example(`["a": 1, "b": 2].values`).
+		Returns(NonNull(ListOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			elems := make([]Value, len(m.Keys))
+			for i, k := range m.Keys {
+				elems[i] = m.Entries[k]
+			}
+			return ListValue{Elements: elems, ElemType: m.ValType}, nil
+		})
+
+	// Map.length method: length -> Int!
+	Method(MapTypeModule, "length").
+		Doc("returns the number of entries in the map").
+		Example(`["a": 1, "b": 2].length`).
+		Returns(NonNull(IntType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			return IntValue{Val: len(m.Keys)}, nil
+		})
+
+	// Map.isEmpty method: isEmpty -> Boolean!
+	Method(MapTypeModule, "isEmpty").
+		Doc("returns true if the map contains no entries").
+		Example(`[:].isEmpty`).
+		Returns(NonNull(BooleanType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			return BoolValue{Val: len(m.Keys) == 0}, nil
+		})
+
+	// Map.each method: each(fn: \(String!, a) -> b) -> Map[a]!
+	Method(MapTypeModule, "each").
+		Doc("iterates over each entry in insertion order, calling the block with the key and value").
+		Example(`["a": 1, "b": 2].each { key, value => print(`+"`${key}=${value}`"+`) }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "key",
+				Value: hm.NewScheme(nil, NonNull(StringType)),
+			}, Keyed[*hm.Scheme]{
+				Key:   "value",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			TypeVar('b'),
+		)).
+		Returns(NonNull(MapOf(TypeVar('a')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			if args.Block == nil {
+				return nil, fmt.Errorf("each requires a block argument")
+			}
+			fn := *args.Block
+			for _, k := range m.Keys {
+				_, err := callFunc(ctx, fn, StringValue{Val: k}, m.Entries[k])
+				if err != nil {
+					return nil, fmt.Errorf("each block: %w", err)
+				}
+			}
+			return m, nil
+		})
+
+	// Map.map method: map(fn: \(String!, a) -> b) -> Map[b]!
+	Method(MapTypeModule, "map").
+		Doc("returns a new map with each value transformed by the block; keys are preserved").
+		Example(`["a": 1, "b": 2].map { key, value => value * 2 }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "key",
+				Value: hm.NewScheme(nil, NonNull(StringType)),
+			}, Keyed[*hm.Scheme]{
+				Key:   "value",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			TypeVar('b'),
+		)).
+		Returns(NonNull(MapOf(TypeVar('b')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			if args.Block == nil {
+				return nil, fmt.Errorf("map requires a block argument")
+			}
+			fn := *args.Block
+			fnType, ok := fn.Type().(*hm.FunctionType)
+			if !ok {
+				return nil, fmt.Errorf("map expects a function type, got %T", fn.Type())
+			}
+			resultValType := fnType.ReturnType()
+
+			entries := make(map[string]Value, len(m.Keys))
+			for _, k := range m.Keys {
+				res, err := callFunc(ctx, fn, StringValue{Val: k}, m.Entries[k])
+				if err != nil {
+					return nil, fmt.Errorf("map block: %w", err)
+				}
+				entries[k] = res
+			}
+			return MapValue{Keys: append([]string{}, m.Keys...), Entries: entries, ValType: resultValType}, nil
+		})
 }
 
 // callFunc calls a function with the given values as arguments.

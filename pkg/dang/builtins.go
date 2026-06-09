@@ -597,6 +597,11 @@ func ListOf(t hm.Type) hm.Type {
 	return ListType{Type: t}
 }
 
+// MapOf creates a string-keyed map type with the given value type
+func MapOf(t hm.Type) hm.Type {
+	return MapType{Type: t}
+}
+
 // Optional returns a nullable type with a default value
 func Optional(t hm.Type, defaultVal Value) (hm.Type, Value) {
 	// If t is already non-null, unwrap it to make it nullable

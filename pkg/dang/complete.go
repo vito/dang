@@ -216,6 +216,8 @@ func builtinModuleFor(t hm.Type) *Type {
 	switch t.(type) {
 	case ListType:
 		return ListTypeModule
+	case MapType:
+		return MapTypeModule
 	}
 	if mod, ok := t.(*Type); ok {
 		switch mod {
