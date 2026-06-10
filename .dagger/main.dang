@@ -144,21 +144,6 @@ type Dang {
   }
 
   """
-  Update the Golden-style test specimens, treating the current output as
-  correct.
-  """
-  pub testUpdate: Changeset! {
-    generated
-      .withExec(
-        ["otelgotest", "-v", "./tests", "-update"],
-        expect: ReturnType.ANY,
-        experimentalPrivilegedNesting: true,
-      )
-      .directory(".")
-      .changes(generated.directory("."))
-  }
-
-  """
   Update the tree-sitter test corpus.
   """
   pub treesitterUpdate: Changeset! {
@@ -273,6 +258,18 @@ type Test {
         ["otelgotest"] + args,
         experimentalPrivilegedNesting: true,
       )
+  }
+
+  """
+  Update the Golden-style test specimens, treating the current output as
+  correct.
+  """
+  # Intentionally not marked @generate - so it's run intentionally and not
+  # redundant with full check runs.
+  pub update: Changeset! {
+    go(["./tests", "-update"])
+      .directory(".")
+      .changes(dang.generated.directory("."))
   }
 
   """

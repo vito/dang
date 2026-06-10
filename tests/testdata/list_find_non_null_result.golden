@@ -1,7 +1,7 @@
 [1m[31mError:[0m cannot use Int as Int!
   [2m[34m--> errors/list_find_non_null_result.dang:1:19[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0mpub found: Int! = [1, 2, 3].find { x => x > 1 }
+ [2m[34m[1m  1 | [0mlet found: Int! = [1, 2, 3].find { x => x > 1 }
 [2m                         [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
  [2m  2 | [0m
  [2m    |[0m
