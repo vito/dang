@@ -2,16 +2,19 @@
 //
 // The whole site is colored through --base00..--base0F variables (see
 // chroma.css and page.tmpl); each stylesheet under css/base16/ defines one
-// scheme's variables. This script swaps the active scheme stylesheet,
-// persists the choice, and — until the reader picks one — rolls a random
-// curated scheme per page load from the list matching the OS light/dark
+// scheme's variables. This script applies the active scheme, persists an
+// explicit choice, and — until the reader picks one — rolls a random curated
+// scheme once per browser session from the list matching the OS light/dark
 // preference, following it live if it changes.
 //
-// Loaded early (no defer) so the scheme applies before first paint; the
-// <select id="styleswitcher"> in the sidebar may not exist yet, so UI sync
-// happens again on window.onload.
+// Loaded early (no defer): the active scheme's stylesheet is written
+// synchronously while the head is still parsing, so the page first-paints in
+// the right colors with no flash of the chroma.css fallback palette between
+// page navigations. The <select id="styleswitcher"> in the sidebar doesn't
+// exist yet at that point, so UI sync happens on window.onload.
 
 const styleKey = "dang-code-theme";
+const rollKey = "dang-code-theme-roll";
 const linkId = "theme";
 
 const controlsId = "choosetheme";
@@ -26,11 +29,18 @@ function loadStyle() {
   return window.localStorage.getItem(styleKey);
 }
 
+function styleHref(style) {
+  return "css/base16/base16-" + style + ".css";
+}
+
+// setActiveStyle swaps the scheme at runtime (select changes, OS preference
+// changes). Initial page load doesn't come through here — see the
+// document.write at the bottom.
 function setActiveStyle(style) {
   var link = document.createElement("link");
   link.rel = "stylesheet";
   link.type = "text/css";
-  link.href = "css/base16/base16-" + style + ".css";
+  link.href = styleHref(style);
   link.media = "all";
 
   // only swap the element once the CSS has loaded to prevent flickering
@@ -45,6 +55,10 @@ function setActiveStyle(style) {
 
   document.head.appendChild(link);
 
+  syncControls(style);
+}
+
+function syncControls(style) {
   var switcher = document.getElementById(switcherId);
   if (switcher) {
     switcher.value = style;
@@ -84,19 +98,17 @@ function resetReset() {
   }
 }
 
-function setStyleOrDefault(def) {
-  setActiveStyle(loadStyle() || def);
-}
-
 function switchStyle(event) {
   var style = event.target.value;
   storeStyle(style);
+  activeStyle = style;
   setActiveStyle(style);
 }
 
 function resetStyle() {
   window.localStorage.removeItem(styleKey);
-  setActiveStyle(defaultStyle);
+  activeStyle = rollStyle();
+  setActiveStyle(activeStyle);
 }
 
 var curatedDarkStyles = [
@@ -160,36 +172,68 @@ function curatedStyles() {
   return prefersLight.matches ? curatedLightStyles : curatedDarkStyles;
 }
 
-function randomStyle() {
+// rollStyle picks a fresh random scheme for the current OS mode and remembers
+// it for the rest of the browser session, so navigating between pages keeps
+// one scheme instead of re-rolling on every load.
+function rollStyle() {
   var styles = curatedStyles();
-  return styles[Math.floor(Math.random() * styles.length)];
+  var style = styles[Math.floor(Math.random() * styles.length)];
+  window.sessionStorage.setItem(rollKey, style);
+  return style;
 }
 
-var defaultStyle = randomStyle();
+// initialStyle resolves what this page load should paint with: an explicit
+// choice, else this session's roll (re-rolled if the OS mode no longer
+// matches it), else a fresh roll.
+function initialStyle() {
+  var stored = loadStyle();
+  if (stored) {
+    return stored;
+  }
 
-// preload the curated styles for the active mode to prevent flickering
+  var rolled = window.sessionStorage.getItem(rollKey);
+  if (rolled && curatedStyles().indexOf(rolled) !== -1) {
+    return rolled;
+  }
+
+  return rollStyle();
+}
+
+var activeStyle;
+try {
+  activeStyle = initialStyle();
+} catch (e) {
+  // storage can throw in some privacy modes; still paint something
+  activeStyle = curatedStyles()[0];
+}
+
+// Apply the scheme as a parser-inserted stylesheet: document.write during
+// head parsing makes it render-blocking, so the first paint already has the
+// right palette — no flash of the fallback :root in chroma.css. This relies
+// on the script being a plain (non-deferred) <script> in <head>.
+document.write('<link id="' + linkId + '" rel="stylesheet" type="text/css" href="' + styleHref(activeStyle) + '">');
+
+// preload the curated styles for the active mode so switching is instant
 curatedStyles().forEach(function (style) {
   var link = document.createElement("link");
   link.rel = "alternate stylesheet";
   link.title = style;
   link.type = "text/css";
-  link.href = "css/base16/base16-" + style + ".css";
+  link.href = styleHref(style);
   link.media = "all";
   document.head.appendChild(link);
 });
-
-setStyleOrDefault(defaultStyle);
 
 // follow OS light/dark changes until the reader picks a scheme themselves
 prefersLight.addEventListener("change", function () {
   if (loadStyle()) {
     return;
   }
-  defaultStyle = randomStyle();
-  setActiveStyle(defaultStyle);
+  activeStyle = rollStyle();
+  setActiveStyle(activeStyle);
 });
 
 window.addEventListener("load", function () {
-  // call again to update switcher selection now that the DOM exists
-  setStyleOrDefault(defaultStyle);
+  // the sidebar controls exist now; reflect the active scheme in them
+  syncControls(activeStyle);
 });
