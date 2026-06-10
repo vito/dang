@@ -510,10 +510,6 @@
                   "name": "object_selection"
                 },
                 {
-                  "type": "SYMBOL",
-                  "name": "block_arg"
-                },
-                {
                   "type": "SEQ",
                   "members": [
                     {
@@ -632,7 +628,7 @@
           "members": [
             {
               "type": "STRING",
-              "value": "{{"
+              "value": "{"
             },
             {
               "type": "FIELD",
@@ -668,7 +664,7 @@
             },
             {
               "type": "STRING",
-              "value": "}}"
+              "value": "}"
             }
           ]
         },
@@ -677,7 +673,7 @@
           "members": [
             {
               "type": "STRING",
-              "value": "{{"
+              "value": "{"
             },
             {
               "type": "FIELD",
@@ -721,7 +717,7 @@
             },
             {
               "type": "STRING",
-              "value": "}}"
+              "value": "}"
             }
           ]
         }

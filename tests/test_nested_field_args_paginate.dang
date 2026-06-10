@@ -10,14 +10,14 @@ import Test
 
 # user "1" (John Doe) authored four posts, so each `first` value must come
 # back with exactly that many.
-let one_post = user(id: "1").{{
-  posts(first: 1).{{posts.{{title}}}}
-}}
+let one_post = user(id: "1").{
+  posts(first: 1).{posts.{title}}
+}
 assert { one_post.posts.posts.length == 1 }
 
-let two_posts = user(id: "1").{{
-  posts(first: 2).{{posts.{{title}}}}
-}}
+let two_posts = user(id: "1").{
+  posts(first: 2).{posts.{title}}
+}
 assert { two_posts.posts.posts.length == 2 }
 
 print("Nested field arguments are sent to the server!")

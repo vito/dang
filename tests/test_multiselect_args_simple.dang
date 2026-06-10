@@ -15,11 +15,11 @@ type Calculator {
 let calc = Calculator
 
 # Test basic multi-select with arguments
-let result = calc.{{
+let result = calc.{
   value,
   add(amount: 10),
   multiply(factor: 3)
-}}
+}
 
 assert { result.value == 0 }
 assert { result.add == 10 }

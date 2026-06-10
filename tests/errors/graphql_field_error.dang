@@ -4,7 +4,7 @@
 # must point at `alwaysFails`.
 import Test
 
-user(id: "1").{{
+user(id: "1").{
   name,
   alwaysFails
-}}
+}

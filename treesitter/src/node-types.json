@@ -3425,10 +3425,6 @@
         "required": false,
         "types": [
           {
-            "type": "block_arg",
-            "named": true
-          },
-          {
             "type": "object_selection",
             "named": true
           }

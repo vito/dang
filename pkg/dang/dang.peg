@@ -146,19 +146,12 @@ AutoCallSymbol <- name:Id {
 }
 
 // Handle Select followed by optional (), or ObjectSelection
-SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / BlockArg / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
+SelectOrCall <- left:Term _ DotToken _ selection:(ObjectSelection / name:FieldId args:ArgValues? blockArg:(_ b:BlockArg { return b, nil })?) {
   switch sel := selection.(type) {
   case *ObjectSelection:
-    // Object selection: obj.{{field1, field2}}
+    // Object selection: obj.{field1, field2}
     sel.Receiver = left.(Node)
     return sel, nil
-  case *BlockArg:
-    // Dot-block application: obj.{ x => ... } / obj.{ bar(_) }
-    return &DotApply{
-      Receiver: left.(Node),
-      Block:    sel,
-      Loc:      c.Loc(),
-    }, nil
   case []interface{}:
     // Regular field access with optional args
     name := sel[0].(*Symbol)
@@ -226,13 +219,13 @@ IndexOrCall <- left:Term ImmediateBracket _ index:Form _ ']' args:ArgValues? {
 }
 ImmediateBracket <- '['
 
-ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ "}}" {
+ObjectSelection <- '{' _ first:InlineFragment rest:(Sep f:InlineFragment { return f, nil })* _ '}' {
   return &ObjectSelection{
     Receiver: nil,
     InlineFragments: sliceOfPrepend[*InlineFragment](first, rest),
     Loc: c.Loc(),
   }, nil
-} / "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
+} / '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}' {
   return &ObjectSelection{
     Receiver: nil, // Will be set by parent SelectOrCall
     Fields: sliceOfAppend[*FieldSelection](fields, last),

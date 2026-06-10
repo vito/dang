@@ -15,7 +15,7 @@ union Pet = Cat | Dog
 cat: Pet! = Cat(name: "Whiskers")
 
 # Non-null type assertion that matches
-narrowed: Cat! = cat.{{... on Cat!}}
+narrowed: Cat! = cat.{... on Cat!}
 assert { narrowed.name == "Whiskers" }
 assert { narrowed.lives == 9 }
 

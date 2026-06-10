@@ -6,4 +6,4 @@ type Foo {
 }
 
 let foo = Foo
-let result = foo.{{name, unknown}}
+let result = foo.{name, unknown}

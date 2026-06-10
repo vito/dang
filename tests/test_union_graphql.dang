@@ -3,10 +3,10 @@
 import Test
 
 # Search returns [SearchResult!]! where SearchResult = User | Post
-let results = search(query: "John").{{
+let results = search(query: "John").{
   ... on User { name, age }
   ... on Post { title, content }
-}}
+}
 
 assert { results != null }
 

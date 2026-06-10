@@ -3,8 +3,8 @@
  [2m    |[0m
  [2m 14 | [0m
  [2m 15 | # This should error at runtime - cat is a Cat, not a Dog[0m
- [2m[34m[1m 16 | [0mlet oops = cat.{{... on Dog!}}
-[2m                      [31m^^^^^^^^^^^^^^^[0m
+ [2m[34m[1m 16 | [0mlet oops = cat.{... on Dog!}
+[2m                      [31m^^^^^^^^^^^^^[0m
  [2m 17 | print(oops)[0m
  [2m 18 | [0m
  [2m    |[0m

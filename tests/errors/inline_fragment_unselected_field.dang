@@ -15,10 +15,10 @@ union Pet = Cat | Dog
 cat: Pet! = Cat
 pets: [Pet!]! = [cat]
 
-let results = pets.{{
+let results = pets.{
   ... on Cat { name }
   ... on Dog { name }
-}}
+}
 
 let first = results[0]
 let desc = case (first) {

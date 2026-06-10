@@ -8,6 +8,6 @@ type User {
   origin: String! = "local"
 }
 
-let bad = search(query: "John").{{
+let bad = search(query: "John").{
   ... on User { origin }
-}}
+}

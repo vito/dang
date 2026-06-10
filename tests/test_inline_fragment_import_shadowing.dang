@@ -12,9 +12,9 @@ localUser: User! = User("Local User")
 assert { localUser.origin == "local" }
 
 # search returns [Test.SearchResult!]!, whose User member is Test.User.
-let searchResults = search(query: "John").{{
+let searchResults = search(query: "John").{
   ... on User { name, age }
-}}
+}
 
 let searchAge = case (searchResults[0]) {
   u: User => u.age
@@ -23,9 +23,9 @@ let searchAge = case (searchResults[0]) {
 assert { searchAge == 30 }
 
 # node returns Test.Node, whose User implementer is Test.User.
-let nodeResult = node(id: "1").{{
+let nodeResult = node(id: "1").{
   ... on User { name, age }
-}}
+}
 
 let nodeAge = case (nodeResult) {
   u: User => u.age

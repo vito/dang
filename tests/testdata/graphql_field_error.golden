@@ -2,11 +2,11 @@
 
   [2m[34m--> errors/graphql_field_error.dang:9:3[0m
  [2m    |[0m
- [2m  7 | user(id: "1").{{[0m
+ [2m  7 | user(id: "1").{[0m
  [2m  8 |   name,[0m
  [2m[34m[1m  9 | [0m  alwaysFails
 [2m         [31m^^^^^^^^^^^[0m
- [2m 10 | }}[0m
+ [2m 10 | }[0m
  [2m 11 | [0m
  [2m    |[0m
 

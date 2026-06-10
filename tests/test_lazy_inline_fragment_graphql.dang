@@ -3,7 +3,7 @@
 import Test
 
 # node(id) returns the Node interface - narrow to User with a lazy fragment
-let user_node = node(id: "1").{{... on User}}
+let user_node = node(id: "1").{... on User}
 assert { user_node != null }
 
 # The result should be a full lazy User we can chain on
@@ -11,25 +11,25 @@ assert { user_node.name == "John Doe" }
 assert { user_node.age == 30 }
 
 # Non-null assertion that succeeds
-user_node_nn: User! = node(id: "1").{{... on User!}}
+user_node_nn: User! = node(id: "1").{... on User!}
 assert { user_node_nn.name == "John Doe" }
 
 # Type narrowing that doesn't match returns null
-let not_a_post = node(id: "1").{{... on Post}}
+let not_a_post = node(id: "1").{... on Post}
 assert { not_a_post == null }
 
 # Multiple lazy fragments (narrowed union)
-let any_node = node(id: "2").{{
+let any_node = node(id: "2").{
   ... on User
   ... on Post
-}}
+}
 assert { any_node != null }
 
 # nodes() returns [Node!]! - narrow with lazy fragments on a list
-let all_nodes = nodes.{{
+let all_nodes = nodes.{
   ... on User
   ... on Post
-}}
+}
 assert { all_nodes != null }
 
 print("GraphQL lazy inline fragment tests passed!")

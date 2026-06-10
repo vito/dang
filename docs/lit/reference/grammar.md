@@ -73,7 +73,6 @@ TypeVariable := [a-z]                           # single lowercase letter
 
 - `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — the field path; zero-arg fields auto-call. See [#fields].
 - `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block attached to a call; params are optional. See [#blocks].
-- `ObjectSelection`: `"{{" ... "}}"` after a `.` — two forms: a `FieldSelection` list (`user.{{name, posts.{{title}}}}`), or a list of `InlineFragment`s for unions/interfaces. The double braces mirror record literals `{{ }}`. See [#objects].
-- `DotBlock`: `'.' BlockArg` — a single-brace block applied to the receiver (`foo.{ bar(_) }` ≡ `bar(foo)`), a sibling of `ObjectSelection` and method calls at `.` precedence. See [#blocks]'s [#dot-block].
-- `FieldSelection`: `Id ArgValues? ('.' ObjectSelection)?` — a field in a selection, optionally with args and a nested `{{ }}` selection.
+- `ObjectSelection`: `'{' ... '}'` after a `.` — two forms: a `FieldSelection` list (`user.{name, posts.{title}}`), or a list of `InlineFragment`s for unions/interfaces. See [#objects].
+- `FieldSelection`: `Id ArgValues? ('.' ObjectSelection)?` — a field in a selection, optionally with args and a nested selection.
 - `InlineFragment`: `'...' 'on' Symbol ('{' FieldSelection* '}' | '!'?)` — type-narrowing in a selection. See [#interfaces-unions].
