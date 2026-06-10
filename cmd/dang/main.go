@@ -110,9 +110,10 @@ It provides type-safe, composable abstractions for container operations.`,
 	ctx := context.Background()
 	ctx = ioctx.StdoutToContext(ctx, os.Stdout)
 	ctx = ioctx.StderrToContext(ctx, os.Stderr)
+	version, commit := versionInfo()
 	if err := fang.Execute(ctx, rootCmd,
-		fang.WithVersion("v0.1.0"),
-		fang.WithCommit("dev"),
+		fang.WithVersion(version),
+		fang.WithCommit(commit),
 		fang.WithErrorHandler(func(w io.Writer, styles fang.Styles, err error) {
 			_, _ = fmt.Fprintln(w, err.Error())
 		}),

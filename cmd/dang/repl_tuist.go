@@ -249,7 +249,8 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 
 	// Welcome message.
 	welcome := newReplEntry("")
-	welcome.writeLogLine(welcomeStyle.Render("Welcome to Dang REPL v0.1.0"))
+	version, _ := versionInfo()
+	welcome.writeLogLine(welcomeStyle.Render("Welcome to Dang REPL " + version))
 	if len(importConfigs) > 0 {
 		var names []string
 		for _, ic := range importConfigs {

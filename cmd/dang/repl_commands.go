@@ -120,7 +120,8 @@ func (r *replComponent) buildCommandDefs() []replCommandDef {
 			name: "version",
 			desc: "Show version info",
 			handler: func(_ tuist.Context, r *replComponent, e *replEntry, _ []string) {
-				e.writeLogLine(resultStyle.Render("Dang REPL v0.1.0"))
+				version, commit := versionInfo()
+				e.writeLogLine(resultStyle.Render(fmt.Sprintf("Dang REPL %s (%s)", version, commit)))
 				if len(r.importConfigs) > 0 {
 					var names []string
 					for _, ic := range r.importConfigs {
