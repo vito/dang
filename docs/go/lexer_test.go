@@ -1,13 +1,16 @@
+//go:build cgo
+
 package dangdocs
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alecthomas/chroma/v2"
 )
 
-// tokenize runs the dang lexer over source and returns the non-whitespace
-// tokens.
+// tokenize runs the dang lexer over source and returns its tokens, asserting
+// that they concatenate back to the source.
 func tokenize(t *testing.T, source string) []chroma.Token {
 	t.Helper()
 
@@ -17,22 +20,36 @@ func tokenize(t *testing.T, source string) []chroma.Token {
 	}
 
 	var tokens []chroma.Token
+	var rebuilt strings.Builder
 	for tok := it(); tok != chroma.EOF; tok = it() {
-		if tok.Type == chroma.TextWhitespace {
-			continue
-		}
+		rebuilt.WriteString(tok.Value)
 		tokens = append(tokens, tok)
+	}
+	if rebuilt.String() != source {
+		t.Fatalf("tokens do not reproduce source:\n%q\n!=\n%q", rebuilt.String(), source)
 	}
 	return tokens
 }
 
-func tokenType(tokens []chroma.Token, value string) (chroma.TokenType, bool) {
+// tokenType returns the type of the first token whose trimmed value equals
+// value. Unstyled runs coalesce with surrounding whitespace, so plain tokens
+// are matched by their trimmed content.
+func tokenType(t *testing.T, tokens []chroma.Token, value string) chroma.TokenType {
+	t.Helper()
 	for _, tok := range tokens {
-		if tok.Value == value {
-			return tok.Type, true
+		if tok.Value == value || strings.TrimSpace(tok.Value) == value {
+			return tok.Type
 		}
 	}
-	return 0, false
+	t.Fatalf("token %q not found in %v", value, tokens)
+	return 0
+}
+
+func assertToken(t *testing.T, tokens []chroma.Token, value string, want chroma.TokenType) {
+	t.Helper()
+	if got := tokenType(t, tokens, value); got != want {
+		t.Errorf("token %q is %v, want %v", value, got, want)
+	}
 }
 
 // Every link of a chained call highlights as a function, whether or not it
@@ -41,31 +58,50 @@ func TestChainedCallHighlighting(t *testing.T) {
 	tokens := tokenize(t, "foo.fizz(arg: 1).buzz.bar(x: 2).baz")
 
 	for _, name := range []string{"fizz", "buzz", "bar", "baz"} {
-		typ, ok := tokenType(tokens, name)
-		if !ok {
-			t.Fatalf("token %q not found in %v", name, tokens)
-		}
-		if typ != chroma.NameFunction {
-			t.Errorf("token %q is %v, want %v", name, typ, chroma.NameFunction)
-		}
+		assertToken(t, tokens, name, chroma.NameFunction)
 	}
 
 	// the chain head is a plain reference, not a call
-	if typ, _ := tokenType(tokens, "foo"); typ != chroma.Name {
-		t.Errorf("token \"foo\" is %v, want %v", typ, chroma.Name)
-	}
+	assertToken(t, tokens, "foo", chroma.Name)
 
-	// argument names keep their plain highlighting
-	if typ, _ := tokenType(tokens, "arg"); typ != chroma.Name {
-		t.Errorf("token \"arg\" is %v, want %v", typ, chroma.Name)
-	}
+	// argument names are properties, unstyled under the current palette
+	assertToken(t, tokens, "arg", chroma.NameProperty)
 }
 
-// Float literals must not be split by the field-selection rule.
-func TestFloatLiteralUnaffectedByDotRule(t *testing.T) {
-	tokens := tokenize(t, "let x = 1.5")
+// Builtins are distinguished from ordinary calls via the query's #match?
+// text predicate, which the Go binding must apply.
+func TestBuiltinPredicate(t *testing.T) {
+	tokens := tokenize(t, `print("hi")`)
+	assertToken(t, tokens, "print", chroma.NameBuiltin)
+	assertToken(t, tokens, `"hi"`, chroma.LiteralString)
 
-	if typ, ok := tokenType(tokens, "1.5"); !ok || typ != chroma.LiteralNumberFloat {
-		t.Errorf("token \"1.5\" is %v (found=%v), want %v", typ, ok, chroma.LiteralNumberFloat)
-	}
+	tokens = tokenize(t, `shout("hi")`)
+	assertToken(t, tokens, "shout", chroma.NameFunction)
+}
+
+// Float literals highlight as numbers and survive intact.
+func TestFloatLiteral(t *testing.T) {
+	tokens := tokenize(t, "let x = 1.5")
+	assertToken(t, tokens, "let", chroma.Keyword)
+	assertToken(t, tokens, "1.5", chroma.LiteralNumber)
+}
+
+// Stdlib signature cards render bare field-declaration fragments; the lexer
+// re-parses them inside a synthetic interface body so they highlight like
+// real declarations instead of falling back to plain text.
+func TestSignatureFragment(t *testing.T) {
+	tokens := tokenize(t, "withExec(args: [String!]!): Container!")
+	assertToken(t, tokens, "withExec", chroma.NameFunction)
+	assertToken(t, tokens, "args", chroma.Name) // parameter, plain like today
+	assertToken(t, tokens, "String", chroma.KeywordType)
+	assertToken(t, tokens, "Container", chroma.NameClass)
+}
+
+// Whole-program snippets keep highlighting: types, keywords, strings.
+func TestProgramSnippet(t *testing.T) {
+	tokens := tokenize(t, "type Greeter {\n  greet(name: String!): String! {\n    \"hey, ${name}!\"\n  }\n}\n")
+	assertToken(t, tokens, "type", chroma.Keyword)
+	assertToken(t, tokens, "Greeter", chroma.NameClass)
+	assertToken(t, tokens, "greet", chroma.NameFunction)
+	assertToken(t, tokens, "String", chroma.KeywordType)
 }

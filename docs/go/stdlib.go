@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
@@ -27,10 +28,11 @@ import (
 // quick-scan index. We deliberately leave out bass-isms that don't apply to
 // Dang (per-line source links, type predicates).
 //
-// Signatures are highlighted at build time with chroma (the same "dang" lexer
-// and style as the site's code blocks). chroma's regex lexer tolerates these
-// declaration-style signatures — which aren't always complete Dang programs —
-// far more gracefully than the tree-sitter parser would.
+// Signatures are highlighted at build time with the same "dang" lexer and
+// style as the site's code blocks. The lexer tokenizes with the Dang
+// tree-sitter grammar and re-parses declaration-style signatures — which
+// aren't complete Dang programs — inside a synthetic interface body (see
+// lexer.go), so they highlight like real declarations.
 
 // indexThreshold is the group size above which a quick-scan index is rendered
 // before the cards. Small groups read fine as bare cards.
@@ -126,7 +128,7 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 	rows := make(booklit.Sequence, 0, len(defs))
 	for _, d := range defs {
 		tag := stdlibTag(key, d.Name)
-		sig := signature(d, prefix)
+		sigToks := signatureTokens(d, prefix)
 
 		// Target.Content (and the card/row Description) feed the search index's
 		// text; Title feeds its title. StripAux dereferences these, so they must
@@ -160,7 +162,7 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  highlightDang(sig),
+			Content:  highlightTokens(sigToks),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
@@ -217,8 +219,8 @@ func exampleRepl(code string) booklit.Content {
 // code blocks. It mirrors the site's class/inline choice
 // (baselit.HighlightWithClasses): in class mode the colors and code background
 // come from chroma.css, so the snippet themes with the rest of the page. It
-// backs both the signature cards and the example REPLs; the chroma regex lexer
-// tolerates partial declarations and whole expressions alike.
+// backs both the signature cards and the example REPLs; the lexer handles
+// partial declarations and whole expressions alike.
 func highlightDang(src string) booklit.Content {
 	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(src)}
 
@@ -230,6 +232,17 @@ func highlightDang(src string) booklit.Content {
 	if err != nil {
 		return plain
 	}
+	return formatHighlighted(iterator, plain)
+}
+
+// highlightTokens renders pre-classified tokens (stdlib signatures) through
+// the same formatter and theming as lexed snippets.
+func highlightTokens(tokens []chroma.Token) booklit.Content {
+	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(tokensString(tokens))}
+	return formatHighlighted(chroma.Literator(tokens...), plain)
+}
+
+func formatHighlighted(iterator chroma.Iterator, plain booklit.Content) booklit.Content {
 	opts := []chromahtml.Option{chromahtml.InlineCode(true)}
 	if baselit.HighlightWithClasses {
 		opts = append(opts, chromahtml.WithClasses(true))
@@ -244,54 +257,75 @@ func highlightDang(src string) booklit.Content {
 // signature renders a builtin's call signature in Dang declaration form, e.g.
 // ".split(separator: String!, limit: Int = 0): [String!]!".
 func signature(d dang.BuiltinDef, prefix string) string {
-	var b strings.Builder
-	b.WriteString(prefix)
-	b.WriteString(d.Name)
+	return tokensString(signatureTokens(d, prefix))
+}
+
+// signatureTokens renders a builtin's call signature as pre-classified chroma
+// tokens. Signatures use a synthetic notation (the block type sits between
+// the args and the return type, mirroring call sites), so they can't be
+// tokenized by parsing; building tokens from the structured definition keeps
+// them highlighted exactly like real declarations.
+func signatureTokens(d dang.BuiltinDef, prefix string) []chroma.Token {
+	var toks []chroma.Token
+	if prefix != "" {
+		if owner := strings.TrimSuffix(prefix, "."); owner != "" {
+			toks = append(toks, typeNameToken(owner))
+		}
+		toks = append(toks, punctTok("."))
+	}
+	toks = append(toks, chroma.Token{Type: chroma.NameFunction, Value: d.Name})
 
 	if len(d.ParamTypes) > 0 {
-		b.WriteString("(")
+		toks = append(toks, punctTok("("))
 		for i, param := range d.ParamTypes {
 			if i > 0 {
-				b.WriteString(", ")
+				toks = append(toks, punctTok(","), textTok(" "))
 			}
-			b.WriteString(param.Name)
-			b.WriteString(": ")
-			b.WriteString(renderType(param.Type))
+			toks = append(toks, chroma.Token{Type: chroma.Name, Value: param.Name}, punctTok(":"), textTok(" "))
+			toks = append(toks, typeTokens(renderType(param.Type))...)
 			if param.DefaultValue != nil {
-				b.WriteString(" = ")
-				b.WriteString(renderDefault(param.DefaultValue))
+				toks = append(toks, textTok(" "), chroma.Token{Type: chroma.Operator, Value: "="}, textTok(" "))
+				toks = append(toks, defaultTokens(renderDefault(param.DefaultValue))...)
 			}
 		}
-		b.WriteString(")")
+		toks = append(toks, punctTok(")"))
 	}
 
 	if d.BlockType != nil {
-		b.WriteString(" ")
-		b.WriteString(renderBlock(d.BlockType))
+		toks = append(toks, textTok(" "))
+		toks = append(toks, blockTokens(d.BlockType)...)
 	}
 
 	if d.ReturnType != nil {
-		b.WriteString(": ")
-		b.WriteString(renderType(d.ReturnType))
+		toks = append(toks, punctTok(":"), textTok(" "))
+		toks = append(toks, typeTokens(renderType(d.ReturnType))...)
 	}
 
-	return b.String()
+	return toks
 }
 
-// renderBlock renders a block parameter, e.g. "{ item, index => b }". A block
+// blockTokens renders a block parameter, e.g. "{ item, index => b }". A block
 // with no parameters renders as just its body type, e.g. "{ Boolean! }".
-func renderBlock(ft *hm.FunctionType) string {
+func blockTokens(ft *hm.FunctionType) []chroma.Token {
+	toks := []chroma.Token{punctTok("{"), textTok(" ")}
 	var params []string
 	if rec, ok := ft.Arg().(*dang.RecordType); ok {
 		for _, f := range rec.Fields {
 			params = append(params, f.Key)
 		}
 	}
-	body := renderType(ft.ReturnType())
-	if len(params) == 0 {
-		return "{ " + body + " }"
+	if len(params) > 0 {
+		for i, p := range params {
+			if i > 0 {
+				toks = append(toks, punctTok(","), textTok(" "))
+			}
+			toks = append(toks, chroma.Token{Type: chroma.Name, Value: p})
+		}
+		toks = append(toks, textTok(" "), chroma.Token{Type: chroma.Operator, Value: "=>"}, textTok(" "))
 	}
-	return "{ " + strings.Join(params, ", ") + " => " + body + " }"
+	toks = append(toks, typeTokens(renderType(ft.ReturnType()))...)
+	toks = append(toks, textTok(" "), punctTok("}"))
+	return toks
 }
 
 // renderType formats a type for a signature. The null-returning builtins are

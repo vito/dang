@@ -23,7 +23,8 @@ chmod +x build-highlight-assets.sh
 # the light/dark theming. Build artifact, ignored by git.
 CGO_ENABLED=0 go run ./gen-chroma-css chroma.css
 
-# CGO_ENABLED=0 keeps this build pure-Go: the stdlib reference page imports
-# pkg/dang to introspect the builtin registry, and pkg/dang only pulls in
-# tree-sitter (cgo) when CGO is enabled. The registry itself is pure Go.
-CGO_ENABLED=0 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"
+# CGO_ENABLED=1: code blocks are tokenized by the Dang tree-sitter grammar
+# (the same parser and highlight query the editors and the playground use),
+# which binds the generated C parser via cgo. The build image needs a C
+# compiler; chroma stays on purely as the HTML/CSS formatting layer.
+CGO_ENABLED=1 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"
