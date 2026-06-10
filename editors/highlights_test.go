@@ -1,4 +1,4 @@
-package tests
+package editors
 
 import (
 	"bytes"
@@ -16,9 +16,32 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/dagger/otel-go/oteltestctx"
 	"github.com/dagger/testctx"
 	"gotest.tools/v3/golden"
 )
+
+func TestMain(m *testing.M) {
+	os.Exit(oteltestctx.Main(m))
+}
+
+type EditorsSuite struct {
+}
+
+func TestEditors(tT *testing.T) {
+	testctx.New(tT,
+		oteltestctx.WithTracing[*testing.T](),
+	).RunTests(EditorsSuite{})
+}
+
+// requireSubmodule skips the test if the given editor submodule has not been
+// initialized (git submodule update --init).
+func requireSubmodule(t *testctx.T, repoRoot, submodule string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(submodule), ".git")); err != nil {
+		t.Skipf("%s submodule not initialized; run git submodule update --init", submodule)
+	}
+}
 
 type highlightCorpusCase struct {
 	ID       string
@@ -69,7 +92,7 @@ type zedGrammarConfig struct {
 	Path       string `toml:"path"`
 }
 
-func (DangSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
+func (EditorsSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
 	if testing.Short() {
 		t.Skip("skipping Neovim highlight tests in short mode")
 	}
@@ -78,6 +101,8 @@ func (DangSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
 	if err != nil {
 		t.Fatalf("resolve repo root: %v", err)
 	}
+
+	requireSubmodule(t, repoRoot, "editors/nvim")
 
 	casesByFile, cases, err := loadHighlightCorpus(filepath.Join("highlights", "corpus"))
 	if err != nil {
@@ -118,11 +143,11 @@ func (DangSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
 				t.Run(testCase.Name, func(_ context.Context, t *testctx.T) {
 					if testCase.Actual != testCase.Expected {
 						t.Errorf(
-							"highlight corpus mismatch for %s\n\nexpected:\n%s\n\nactual:\n%s\n\nrun go test ./tests -run %q -update to regenerate",
+							"highlight corpus mismatch for %s\n\nexpected:\n%s\n\nactual:\n%s\n\nrun go test ./editors -run %q -update to regenerate",
 							testCase.Name,
 							testCase.Expected,
 							testCase.Actual,
-							"TestDang/TestNeovimHighlights",
+							"TestEditors/TestNeovimHighlights",
 						)
 					}
 				})
@@ -131,7 +156,7 @@ func (DangSuite) TestNeovimHighlights(ctx context.Context, t *testctx.T) {
 	}
 }
 
-func (DangSuite) TestZedHighlightQueryCompatibility(ctx context.Context, t *testctx.T) {
+func (EditorsSuite) TestZedHighlightQueryCompatibility(ctx context.Context, t *testctx.T) {
 	if testing.Short() {
 		t.Skip("skipping Zed highlight query compatibility tests in short mode")
 	}
@@ -144,6 +169,8 @@ func (DangSuite) TestZedHighlightQueryCompatibility(ctx context.Context, t *test
 	if err != nil {
 		t.Fatalf("resolve repo root: %v", err)
 	}
+
+	requireSubmodule(t, repoRoot, "editors/zed")
 
 	casesByFile, _, err := loadHighlightCorpus(filepath.Join("highlights", "corpus"))
 	if err != nil {
@@ -461,7 +488,7 @@ func runNeovimHighlightDump(ctx context.Context, t *testctx.T, repoRoot, parserP
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 
-	scriptPath := filepath.Join(repoRoot, "tests", "testdata", "highlight_dump.lua")
+	scriptPath := filepath.Join(repoRoot, "editors", "highlights", "highlight_dump.lua")
 	trackTestInput(t, scriptPath)
 	trackTestInput(t, filepath.Join(repoRoot, "editors", "nvim", "lua", "dang", "init.lua"))
 	trackTestInputs(t, filepath.Join(repoRoot, "editors", "nvim", "queries", "dang", "*.scm"))

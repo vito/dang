@@ -27,6 +27,20 @@ The `DangSuite` (in `tests/integration_test.go`) has three sub-suites:
 - **TestFormatLanguage**: Formats each `tests/test_*.dang` file, re-parses the formatted output, runs it, and checks it still produces the same result.
 - **TestErrorMessages**: Runs each `tests/errors/*.dang` file, expects an error, and compares the output against `tests/testdata/<name>.golden`.
 
+## Editor Highlight Tests
+
+Editor syntax highlighting tests live in `editors/` and run via the `TestEditors` suite:
+
+```bash
+go test ./editors/ -v
+go test ./editors/ -run "TestEditors/TestNeovimHighlights" -update
+```
+
+- **TestNeovimHighlights**: Renders each case in `editors/highlights/corpus/*.txt` through Neovim with the tree-sitter parser and compares highlight spans.
+- **TestZedHighlightQueryCompatibility**: Smoke-tests the Zed highlight queries against the corpus with the `tree-sitter` CLI.
+
+These tests Skip unless the `editors/nvim` and `editors/zed` submodules are initialized (`git submodule update --init`).
+
 ## Error Message Golden Files
 
 Error golden files live in `tests/testdata/` and contain the exact error output including ANSI escape codes for colored/highlighted source annotations.
