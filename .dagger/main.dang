@@ -2,23 +2,17 @@ type Dang {
   """
   The source directory for the Dang project.
   """
-  pub source: Directory! @defaultPath("/") @ignorePatterns(patterns: [
-    # TODO: respecting .gitignore would be nice
-    "Session.vim",
-    "dang",
-    "editors",
-    "!editors/nvim",
-    "!editors/zed/extension.toml",
-    "!editors/zed/languages",
-    ".env",
-    ".envrc",
-    ".dagger",
-  ])
+  source: Directory!
+
+  new(ws: Workspace!) {
+    self.source = ws.directory("/", gitignore: true)
+    self
+  }
 
   """
   Return a compiled Dang binary.
   """
-  pub binary(race: Boolean! = false): File! {
+  binary(race: Boolean! = false): File! {
     let args = ["go", "build"]
     if (race) {
       args += ["-race"]
@@ -31,7 +25,7 @@ type Dang {
   """
   Build the Dang binary to ./bin/dang.
   """
-  pub build: Changeset! {
+  build: Changeset! {
     source.withFile("bin/dang", binary).changes(source)
   }
 
@@ -45,7 +39,7 @@ type Dang {
   changeset would always look unapplied in CI, where the gitignored artifacts
   are absent.
   """
-  pub docs: Changeset! @check {
+  docs: Changeset! @check {
     let built = base
       .withWorkdir("/src/docs")
       .withExec(["bash", "./build.sh"])
@@ -57,7 +51,7 @@ type Dang {
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   @generate
-  pub generate: Changeset! {
+  generate: Changeset! {
     generated.directory(".").changes(base.directory("/src"))
   }
 
@@ -72,15 +66,13 @@ type Dang {
   syntax fixtures the formatter can't read.
   """
   @generate
-  pub fmt: Changeset! {
+  fmt: Changeset! {
     base
       .withFile("/usr/bin/dang", binary)
       .withExec([
         "bash", "-c",
         """
-        shopt -s globstar nullglob
-        for f in **/*.dang; do
-          [[ $f == mod/* ]] && continue
+        find . -name '*.dang' | while read f; do
           dang fmt -lw "$f" || echo "skipping unparseable file: $f" >&2
         done
         """,
@@ -92,7 +84,7 @@ type Dang {
   """
   Run `go mod tidy` for each Go module in the repo.
   """
-  pub tidy: Changeset! {
+  tidy: Changeset! {
     base
       .withExec([
         "sh", "-c",
@@ -124,7 +116,7 @@ type Dang {
     dang --debug script.dang
     dang -d ./my-module
   """
-  pub dang(args: [String!]!): Void {
+  dang(args: [String!]!): Void {
     base
       .withFile("/usr/bin/dang", binary)
       .withExec(
@@ -139,14 +131,14 @@ type Dang {
   """
   Start a Dang coding agent.
   """
-  pub coder: LLM! {
+  coder: LLM! {
     dev(source).agent(llm.withEnv(env.withCurrentModule))
   }
 
   """
   Update the tree-sitter test corpus.
   """
-  pub treesitterUpdate: Changeset! {
+  treesitterUpdate: Changeset! {
     generated
       .withDirectory(
         "./treesitter",
@@ -162,7 +154,7 @@ type Dang {
   """
   Run the linter.
   """
-  pub lint: Void @check {
+  lint: Void @check {
     base
       .withEnvVariable("GOLANGCI_LINT_CACHE", "/var/cache/golangci-lint")
       .withMountedCache("/var/cache/golangci-lint", cacheVolume("golangci-lint-cache"))
@@ -175,7 +167,7 @@ type Dang {
   """
   Bump the pinned Dang version in each editor plugin.
   """
-  pub bumpEditors(repo: GitRepository! @defaultPath(path: "/.git")): Changeset! {
+  bumpEditors(repo: GitRepository! @defaultPath(path: "/.git")): Changeset! {
     let commit = repo.head.commit
     base
       .withExec([
@@ -190,7 +182,7 @@ type Dang {
   """
   Enter a terminal for debugging the Neovim LSP setup.
   """
-  pub nvimDebug: Container! {
+  nvimDebug: Container! {
     base
       .withFile("/usr/bin/dang", binary)
       .withFile(
@@ -231,11 +223,11 @@ type Dang {
   """
   Base with ./hack/generate ran.
   """
-  pub generated: Container! {
+  generated: Container! {
     base.withExec(["./hack/generate"])
   }
 
-  pub test: Test! {
+  test: Test! {
     Test(self)
   }
 }
@@ -248,7 +240,7 @@ type Test {
   """
   @check
   @cache(policy: FunctionCachePolicy.Never)
-  pub go(
+  go(
     """
     Arguments to pass along to go test.
     """
@@ -264,13 +256,13 @@ type Test {
       )
   }
 
+  # Intentionally not marked @generate - so it's run intentionally and not
+  # redundant with full check runs.
   """
   Update the Golden-style test specimens, treating the current output as
   correct.
   """
-  # Intentionally not marked @generate - so it's run intentionally and not
-  # redundant with full check runs.
-  pub update: Changeset! {
+  update: Changeset! {
     go(["./tests", "-update"])
       .directory(".")
       .changes(dang.generated.directory("."))
@@ -279,7 +271,7 @@ type Test {
   """
   List available tests.
   """
-  pub list(source: Workspace!): String! {
+  list(source: Workspace!): String! {
     let out = "Tests from go test -list . ./...:\n"
     out += go(["-list", ".", "./..."]).stdout
     out += "\n\n"
@@ -298,7 +290,7 @@ type Test {
   """
   Run the tree-sitter tests.
   """
-  pub treesitter: Void @check {
+  treesitter: Void @check {
     dang
       .generated
       .withWorkdir("./treesitter")
