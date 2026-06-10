@@ -67,6 +67,11 @@ var dangLexer = chroma.MustNewLexer(
 				// function call: lower-cased ident immediately followed by `(`
 				{Pattern: `\b[a-z_][A-Za-z0-9_]*(?=\s*\()`, Type: chroma.NameFunction},
 
+				// field selection: lower-cased ident immediately preceded by `.`,
+				// so every link of a chain like foo.fizz(arg: 1).buzz highlights
+				// as a call, matching the editors' tree-sitter queries
+				{Pattern: `(\.)([a-z_][A-Za-z0-9_]*)`, Type: chroma.ByGroups(chroma.Punctuation, chroma.NameFunction)},
+
 				// regular identifiers
 				{Pattern: `\b[a-z_][A-Za-z0-9_]*\b`, Type: chroma.Name},
 
