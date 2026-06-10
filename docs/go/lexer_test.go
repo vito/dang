@@ -97,7 +97,7 @@ func TestSignatureFragment(t *testing.T) {
 	assertToken(t, tokens, "withExec", chroma.NameFunction)
 	assertToken(t, tokens, "args", chroma.Name) // parameter, plain like today
 	assertToken(t, tokens, "String", chroma.KeywordType)
-	assertToken(t, tokens, "Container", chroma.NameClass)
+	assertToken(t, tokens, "Container", chroma.KeywordType)
 
 	// a declaration with a block parameter, as the stdlib cards render them
 	tokens = tokenize(t, "find(&block(item: a): Boolean!): a")
@@ -146,7 +146,7 @@ func TestSignaturesAreValidDeclarations(t *testing.T) {
 func TestProgramSnippet(t *testing.T) {
 	tokens := tokenize(t, "type Greeter {\n  greet(name: String!): String! {\n    \"hey, ${name}!\"\n  }\n}\n")
 	assertToken(t, tokens, "type", chroma.Keyword)
-	assertToken(t, tokens, "Greeter", chroma.NameClass)
+	assertToken(t, tokens, "Greeter", chroma.KeywordType)
 	assertToken(t, tokens, "greet", chroma.NameFunction)
 	assertToken(t, tokens, "String", chroma.KeywordType)
 }

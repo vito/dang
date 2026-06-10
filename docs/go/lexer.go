@@ -127,7 +127,7 @@ func (l *treeSitterLexer) Tokenise(_ *chroma.TokeniseOptions, text string) (chro
 		types[i] = chroma.Text
 	}
 	for _, s := range spans {
-		tt, ok := captureTokenType(s.capture, text[s.start:s.end])
+		tt, ok := captureTokenType(s.capture)
 		if !ok {
 			continue
 		}
@@ -225,22 +225,11 @@ func errorBytes(node *tree_sitter.Node, start, end int) int {
 	return total
 }
 
-// builtinTypes are highlighted as keywords so the docs keep distinguishing
-// core scalars from user-defined types.
-var builtinTypes = map[string]bool{
-	"Int":     true,
-	"Float":   true,
-	"String":  true,
-	"Boolean": true,
-	"ID":      true,
-	"Void":    true,
-}
-
 // captureTokenType maps a highlight query capture name to the chroma token
 // type carrying the equivalent CSS class, keeping chroma.css and the
 // light/dark palettes working unchanged. Unhandled captures (notably @error,
 // since docs snippets may be fragments) report false to stay unstyled.
-func captureTokenType(name, text string) (chroma.TokenType, bool) {
+func captureTokenType(name string) (chroma.TokenType, bool) {
 	switch name {
 	case "error":
 		return 0, false
@@ -257,10 +246,8 @@ func captureTokenType(name, text string) (chroma.TokenType, bool) {
 	case "label":
 		return chroma.NameTag, true
 	case "type":
-		if builtinTypes[text] {
-			return chroma.KeywordType, true
-		}
-		return chroma.NameClass, true
+		// all capitalized type names highlight the same, like the editors
+		return chroma.KeywordType, true
 	}
 	switch strings.SplitN(name, ".", 2)[0] {
 	case "keyword":
