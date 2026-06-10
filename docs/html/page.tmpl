@@ -13,11 +13,11 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
   /* The whole site is colored by the selected base16 scheme (chroma.css
-     supplies a fallback palette; css/base16/ + js/switcher.js pick the
-     active one). A light scheme makes a light site — there is no separate
-     prefers-color-scheme handling. Slot conventions follow the base16
-     styling guide: 00-02 background depths, 03-05 foreground depths,
-     08-0E the rainbow. */
+     supplies fallback palettes; css/base16/ + js/switcher.js pick the
+     active one). A light scheme makes a light site; the OS light/dark
+     preference steers the default scheme choice, an explicit pick wins.
+     Slot conventions follow the base16 styling guide: 00-02 background
+     depths, 03-05 foreground depths, 08-0E the rainbow. */
   --bg:var(--base00);--bg2:var(--base01);--bg3:var(--base02);
   --fg:var(--base05);--fg2:var(--base04);--fg3:var(--base03);
   --accent:var(--base09);--accent2:var(--base0A);--on-accent:var(--base00);

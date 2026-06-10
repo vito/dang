@@ -1,10 +1,11 @@
-// Base16 theme switcher for the code surfaces, ported from vito/bass's docs.
+// Base16 theme switcher, ported from vito/bass's docs.
 //
-// Every code surface (static blocks, signature cards, playground/REPL) is
-// colored through --base00..--base0F variables (see chroma.css); each
-// stylesheet under css/base16/ defines one scheme's variables. This script
-// swaps the active scheme stylesheet, persists the choice, and — until the
-// reader picks one — rolls a random curated scheme per page load.
+// The whole site is colored through --base00..--base0F variables (see
+// chroma.css and page.tmpl); each stylesheet under css/base16/ defines one
+// scheme's variables. This script swaps the active scheme stylesheet,
+// persists the choice, and — until the reader picks one — rolls a random
+// curated scheme per page load from the list matching the OS light/dark
+// preference, following it live if it changes.
 //
 // Loaded early (no defer) so the scheme applies before first paint; the
 // <select id="styleswitcher"> in the sidebar may not exist yet, so UI sync
@@ -98,7 +99,7 @@ function resetStyle() {
   setActiveStyle(defaultStyle);
 }
 
-var curatedStyles = [
+var curatedDarkStyles = [
   "catppuccin",
   "chalk",
   "classic-dark",
@@ -134,10 +135,40 @@ var curatedStyles = [
   "woodland",
 ];
 
-var defaultStyle = curatedStyles[Math.floor(Math.random() * curatedStyles.length)];
+var curatedLightStyles = [
+  "classic-light",
+  "cupertino",
+  "default-light",
+  "edge-light",
+  "equilibrium-light",
+  "github",
+  "google-light",
+  "gruvbox-light-medium",
+  "humanoid-light",
+  "ia-light",
+  "one-light",
+  "papercolor-light",
+  "rose-pine-dawn",
+  "solarized-light",
+  "tokyo-night-light",
+  "tomorrow",
+];
 
-// preload all curated styles to prevent flickering
-curatedStyles.forEach(function (style) {
+var prefersLight = window.matchMedia("(prefers-color-scheme: light)");
+
+function curatedStyles() {
+  return prefersLight.matches ? curatedLightStyles : curatedDarkStyles;
+}
+
+function randomStyle() {
+  var styles = curatedStyles();
+  return styles[Math.floor(Math.random() * styles.length)];
+}
+
+var defaultStyle = randomStyle();
+
+// preload the curated styles for the active mode to prevent flickering
+curatedStyles().forEach(function (style) {
   var link = document.createElement("link");
   link.rel = "alternate stylesheet";
   link.title = style;
@@ -148,6 +179,15 @@ curatedStyles.forEach(function (style) {
 });
 
 setStyleOrDefault(defaultStyle);
+
+// follow OS light/dark changes until the reader picks a scheme themselves
+prefersLight.addEventListener("change", function () {
+  if (loadStyle()) {
+    return;
+  }
+  defaultStyle = randomStyle();
+  setActiveStyle(defaultStyle);
+});
 
 window.addEventListener("load", function () {
   // call again to update switcher selection now that the DOM exists

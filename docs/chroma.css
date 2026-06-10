@@ -7,8 +7,10 @@
  * styling guide: 0E keywords, 0A types, 0D functions, 0C support/builtins,
  * 0B strings, 09 constants, 08 variables/tags/properties, 03 comments.
  *
- * The :root block is the no-JS fallback scheme (Rosé Pine Moon); the
- * switcher's stylesheet loads after this one, so its :root wins. */
+ * The :root blocks are the no-JS fallback schemes — Rosé Pine Moon, with
+ * Rosé Pine Dawn under prefers-color-scheme:light. The switcher's stylesheet
+ * loads after this one, so once a scheme is active its :root wins over
+ * both. */
 
 :root {
   --base00: #232136;
@@ -27,6 +29,27 @@
   --base0D: #9ccfd8;
   --base0E: #c4a7e7;
   --base0F: #b9b9bc;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --base00: #faf4ed;
+    --base01: #fffaf3;
+    --base02: #f2e9de;
+    --base03: #9893a5;
+    --base04: #6e6a86;
+    --base05: #575279;
+    --base06: #555169;
+    --base07: #26233a;
+    --base08: #b4637a;
+    --base09: #ea9d34;
+    --base0A: #ea9d34;
+    --base0B: #286983;
+    --base0C: #d7827e;
+    --base0D: #56949f;
+    --base0E: #907aa9;
+    --base0F: #c5c3ce;
+  }
 }
 
 .chroma { color: var(--base05); background-color: var(--base00); -webkit-text-size-adjust: none; }
