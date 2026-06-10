@@ -16,8 +16,8 @@ import (
 	"unicode"
 
 	"github.com/creachadair/jrpc2"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // NewHandler create JSON-RPC handler for this language server.

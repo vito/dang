@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang"
 )
 
 //go:generate go run .

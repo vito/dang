@@ -1,7 +1,7 @@
 package lsp
 
 import (
-	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang"
 )
 
 // positionWithinNode checks if an LSP Position is within a node's source location

@@ -11,8 +11,8 @@ import (
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/vito/booklit"
 	"github.com/vito/booklit/baselit"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // The standard library reference is generated straight from the builtin

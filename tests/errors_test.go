@@ -10,9 +10,9 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/dagger/testctx"
 	"github.com/stretchr/testify/require"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/tests/gqlserver"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/ioctx"
+	"github.com/vito/dang/v2/tests/gqlserver"
 	"gotest.tools/v3/golden"
 )
 

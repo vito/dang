@@ -6,7 +6,7 @@
 
 ## Install
 
-- `go install github.com/vito/dang/cmd/dang@latest` (or `go install ./cmd/dang` from a checkout)
+- `go install github.com/vito/dang/v2/cmd/dang@latest` (or `go install ./cmd/dang` from a checkout)
 - editor support: VS Code, Zed, Neovim (see `editors/`)
 
 ## Hello, world

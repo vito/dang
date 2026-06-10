@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/creachadair/jrpc2"
-	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang"
 )
 
 func (h *langHandler) handleTextDocumentFormatting(ctx context.Context, req *jrpc2.Request) (any, error) {

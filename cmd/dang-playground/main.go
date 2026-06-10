@@ -51,10 +51,10 @@ import (
 	"syscall/js"
 
 	"github.com/Khan/genqlient/graphql"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
-	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // githubEndpoint is GitHub's GraphQL API. Queries and introspection both go here

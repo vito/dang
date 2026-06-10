@@ -14,7 +14,7 @@ Accepts at most one positional path argument.
 
 ## Install
 ```sh
-go install github.com/vito/dang/cmd/dang@latest    # or: go install ./cmd/dang
+go install github.com/vito/dang/v2/cmd/dang@latest    # or: go install ./cmd/dang
 ```
 
 ## Root flags

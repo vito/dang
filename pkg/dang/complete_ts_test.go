@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // testCompletionTypeScope builds a simple env with some bindings for testing.

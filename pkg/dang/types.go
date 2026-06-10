@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 type TypeNode interface {

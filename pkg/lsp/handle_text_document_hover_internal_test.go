@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 func TestFormatTypeDefinitionForHover(t *testing.T) {

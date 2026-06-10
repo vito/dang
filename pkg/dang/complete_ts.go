@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
-	"github.com/vito/dang/pkg/dang/danglang"
+	"github.com/vito/dang/v2/pkg/dang/danglang"
 )
 
 var (

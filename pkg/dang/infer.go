@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 func Infer(ctx context.Context, env hm.Env, expr hm.Expression, hoist bool) (*hm.Scheme, error) {

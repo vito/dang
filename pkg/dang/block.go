@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 type Block struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // CompletionContext describes the cursor context for completion.

@@ -79,7 +79,7 @@ type Plugin struct {
 
 // Install renders a shell install command block.
 //
-//	\shell{go install github.com/vito/dang/cmd/dang@latest}
+//	\shell{go install github.com/vito/dang/v2/cmd/dang@latest}
 func (p Plugin) Shell(content booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "shell",

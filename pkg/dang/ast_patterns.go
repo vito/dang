@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // Case represents a case expression that evaluates branches based on equality

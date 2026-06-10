@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 
-	"github.com/vito/dang/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/tuist"
 )
 

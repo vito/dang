@@ -1,4 +1,4 @@
-module github.com/vito/dang
+module github.com/vito/dang/v2
 
 go 1.25.3
 

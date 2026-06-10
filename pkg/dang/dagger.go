@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/Khan/genqlient/graphql"
-	"github.com/vito/dang/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/introspection"
 	"go.opentelemetry.io/otel/propagation"
 )
 

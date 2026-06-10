@@ -13,9 +13,9 @@ import (
 	"github.com/creachadair/jrpc2"
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/spf13/cobra"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/pkg/lsp"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/ioctx"
+	"github.com/vito/dang/v2/pkg/lsp"
 )
 
 // Config holds the application configuration

@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // Coerce wraps an expression so that its value is materialized at the given

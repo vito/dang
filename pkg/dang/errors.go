@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // SourceLocation represents a location in source code

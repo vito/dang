@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/vito/dang/pkg/dang/treesitter"
+	"github.com/vito/dang/v2/pkg/dang/treesitter"
 )
 
 // tsSkippedRules lists named rules whose bodies should not appear in the

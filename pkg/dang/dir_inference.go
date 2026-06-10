@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // InferDirectoryFiles runs phased type inference across multiple file blocks of

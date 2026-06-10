@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/introspection"
 )
 
 func TestAssignableRejectsImplicitScalarCoercion(t *testing.T) {

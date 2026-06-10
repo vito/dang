@@ -17,10 +17,10 @@ import (
 
 	"github.com/kr/pretty"
 
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/ioctx"
-	"github.com/vito/dang/pkg/repl"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/ioctx"
+	"github.com/vito/dang/v2/pkg/repl"
 	"github.com/vito/tuist"
 )
 

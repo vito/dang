@@ -8,9 +8,9 @@ import (
 
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
-	"github.com/vito/dang/pkg/querybuilder"
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/querybuilder"
 )
 
 // Grouped represents a parenthesized expression - used to preserve explicit grouping

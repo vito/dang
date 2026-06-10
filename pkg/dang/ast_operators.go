@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // OperatorType defines the category of binary operator

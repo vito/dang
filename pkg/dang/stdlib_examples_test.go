@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // allBuiltins returns every registered builtin: free functions, methods on

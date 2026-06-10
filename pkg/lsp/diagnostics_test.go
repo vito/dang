@@ -14,8 +14,8 @@ import (
 	"github.com/creachadair/jrpc2/channel"
 	"github.com/dagger/testctx"
 	"github.com/stretchr/testify/require"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/lsp"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/lsp"
 )
 
 type lspHarness struct {

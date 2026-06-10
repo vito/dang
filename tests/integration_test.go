@@ -16,8 +16,8 @@ import (
 
 	"github.com/dagger/otel-go/oteltestctx"
 	"github.com/dagger/testctx"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 func TestMain(m *testing.M) {

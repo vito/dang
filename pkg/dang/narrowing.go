@@ -1,7 +1,7 @@
 package dang
 
 import (
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // Narrowing refines the type of a symbol in some scope.

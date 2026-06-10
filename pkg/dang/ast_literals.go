@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 // Type variables for literal types

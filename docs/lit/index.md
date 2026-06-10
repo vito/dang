@@ -21,7 +21,7 @@ GraphQL schema.
   [pkg.go.dev](https://pkg.go.dev/github.com/vito/dang)
 }
 
-\shell{go install github.com/vito/dang/cmd/dang@latest}
+\shell{go install github.com/vito/dang/v2/cmd/dang@latest}
 
 \dang-playground{{{
 # Edit me, then hit Run — this evaluates in your browser.

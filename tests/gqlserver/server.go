@@ -16,8 +16,8 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/introspection"
 )
 
 type Server struct {

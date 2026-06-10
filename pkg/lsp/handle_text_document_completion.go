@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/creachadair/jrpc2"
-	"github.com/vito/dang/pkg/dang"
-	"github.com/vito/dang/pkg/hm"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/hm"
 )
 
 func (h *langHandler) handleTextDocumentCompletion(ctx context.Context, req *jrpc2.Request) (any, error) {

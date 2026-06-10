@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vito/dang/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/introspection"
 )
 
 func TestSchemaFromSDL(t *testing.T) {

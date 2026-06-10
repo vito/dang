@@ -3,7 +3,7 @@ package main
 import (
 	"strings"
 
-	"github.com/vito/dang/pkg/repl"
+	"github.com/vito/dang/v2/pkg/repl"
 	"github.com/vito/tuist"
 )
 

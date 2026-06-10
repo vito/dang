@@ -17,9 +17,9 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/kr/pretty"
 
-	"github.com/vito/dang/pkg/hm"
-	"github.com/vito/dang/pkg/introspection"
-	"github.com/vito/dang/pkg/querybuilder"
+	"github.com/vito/dang/v2/pkg/hm"
+	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/querybuilder"
 )
 
 // Context key for passing block arguments

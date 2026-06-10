@@ -19,8 +19,8 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
-	"github.com/vito/dang/pkg/introspection"
-	"github.com/vito/dang/pkg/ioctx"
+	"github.com/vito/dang/v2/pkg/introspection"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // ProjectConfig represents a dang.toml project configuration file.
