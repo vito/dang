@@ -128,7 +128,6 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 	rows := make(booklit.Sequence, 0, len(defs))
 	for _, d := range defs {
 		tag := stdlibTag(key, d.Name)
-		sigToks := signatureTokens(d, prefix)
 
 		// Target.Content (and the card/row Description) feed the search index's
 		// text; Title feeds its title. StripAux dereferences these, so they must
@@ -147,6 +146,12 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 			},
 			"Reference": &booklit.Reference{Section: p.section, TagName: tag},
 		}
+		// The receiver/module context (".", "Random.") is display labeling,
+		// not part of the declaration; the template renders it ahead of the
+		// highlighted code.
+		if prefix != "" {
+			cardPartials["Prefix"] = booklit.String(prefix)
+		}
 		rowPartials := booklit.Partials{}
 		if d.Doc != "" {
 			cardPartials["Description"] = desc
@@ -162,7 +167,7 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  highlightTokens(sigToks),
+			Content:  highlightDang(signature(d, "")),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
@@ -235,13 +240,6 @@ func highlightDang(src string) booklit.Content {
 	return formatHighlighted(iterator, plain)
 }
 
-// highlightTokens renders pre-classified tokens (stdlib signatures) through
-// the same formatter and theming as lexed snippets.
-func highlightTokens(tokens []chroma.Token) booklit.Content {
-	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(tokensString(tokens))}
-	return formatHighlighted(chroma.Literator(tokens...), plain)
-}
-
 func formatHighlighted(iterator chroma.Iterator, plain booklit.Content) booklit.Content {
 	opts := []chromahtml.Option{chromahtml.InlineCode(true)}
 	if baselit.HighlightWithClasses {
@@ -254,85 +252,75 @@ func formatHighlighted(iterator chroma.Iterator, plain booklit.Content) booklit.
 	return booklit.Styled{Style: "raw-html", Content: booklit.String(buf.String())}
 }
 
-// signature renders a builtin's call signature in Dang declaration form, e.g.
-// ".split(separator: String!, limit: Int = 0): [String!]!".
+// signature renders a builtin's signature in real Dang declaration form: a
+// block parameter is written `&block(args): Type`, last in the argument list,
+// exactly as user code declares one — so signature cards double as examples
+// of declaring block-taking functions, and the "dang" lexer can highlight
+// them by parsing like any other snippet (via its interface-body fragment
+// handling). TestSignaturesAreValidDeclarations pins the notation. prefix is
+// display context (".", "List."), not part of the declaration — cards render
+// it separately and lex only the unprefixed form.
 func signature(d dang.BuiltinDef, prefix string) string {
-	return tokensString(signatureTokens(d, prefix))
-}
-
-// signatureTokens renders a builtin's signature as pre-classified chroma
-// tokens, in real declaration form: a block parameter is written `&block(args):
-// Type`, last in the argument list, exactly as user code declares one — so
-// signature cards double as examples of declaring block-taking functions.
-// TestSignaturesAreValidDeclarations pins this. Tokens are still built from
-// the structured definition rather than lexed, both for exactness and because
-// the display prefix (".", "List.") isn't part of the declaration proper.
-func signatureTokens(d dang.BuiltinDef, prefix string) []chroma.Token {
-	var toks []chroma.Token
-	if prefix != "" {
-		if owner := strings.TrimSuffix(prefix, "."); owner != "" {
-			toks = append(toks, typeNameToken(owner))
-		}
-		toks = append(toks, punctTok("."))
-	}
-	toks = append(toks, chroma.Token{Type: chroma.NameFunction, Value: d.Name})
+	var b strings.Builder
+	b.WriteString(prefix)
+	b.WriteString(d.Name)
 
 	if len(d.ParamTypes) > 0 || d.BlockType != nil {
-		toks = append(toks, punctTok("("))
+		b.WriteString("(")
 		for i, param := range d.ParamTypes {
 			if i > 0 {
-				toks = append(toks, punctTok(","), textTok(" "))
+				b.WriteString(", ")
 			}
-			toks = append(toks, chroma.Token{Type: chroma.Name, Value: param.Name}, punctTok(":"), textTok(" "))
-			toks = append(toks, typeTokens(renderType(param.Type))...)
+			b.WriteString(param.Name)
+			b.WriteString(": ")
+			b.WriteString(renderType(param.Type))
 			if param.DefaultValue != nil {
-				toks = append(toks, textTok(" "), chroma.Token{Type: chroma.Operator, Value: "="}, textTok(" "))
-				toks = append(toks, defaultTokens(renderDefault(param.DefaultValue))...)
+				b.WriteString(" = ")
+				b.WriteString(renderDefault(param.DefaultValue))
 			}
 		}
 		if d.BlockType != nil {
 			if len(d.ParamTypes) > 0 {
-				toks = append(toks, punctTok(","), textTok(" "))
+				b.WriteString(", ")
 			}
-			toks = append(toks, blockParamTokens(d.BlockType)...)
+			b.WriteString(renderBlockParam(d.BlockType))
 		}
-		toks = append(toks, punctTok(")"))
+		b.WriteString(")")
 	}
 
 	if d.ReturnType != nil {
-		toks = append(toks, punctTok(":"), textTok(" "))
-		toks = append(toks, typeTokens(renderType(d.ReturnType))...)
+		b.WriteString(": ")
+		b.WriteString(renderType(d.ReturnType))
 	}
 
-	return toks
+	return b.String()
 }
 
-// blockParamTokens renders a block parameter in declaration form, e.g.
-// "&block(item: a!): Boolean!", or "&block: a" for a block taking no
+// renderBlockParam renders a block parameter in declaration form, e.g.
+// "&block(item: a): Boolean!", or "&block: a" for a block taking no
 // arguments.
-func blockParamTokens(ft *hm.FunctionType) []chroma.Token {
-	toks := []chroma.Token{
-		{Type: chroma.Operator, Value: "&"},
-		{Type: chroma.Name, Value: "block"},
-	}
+func renderBlockParam(ft *hm.FunctionType) string {
+	var b strings.Builder
+	b.WriteString("&block")
 	if rec, ok := ft.Arg().(*dang.RecordType); ok && len(rec.Fields) > 0 {
-		toks = append(toks, punctTok("("))
+		b.WriteString("(")
 		for i, f := range rec.Fields {
 			if i > 0 {
-				toks = append(toks, punctTok(","), textTok(" "))
+				b.WriteString(", ")
 			}
-			toks = append(toks, chroma.Token{Type: chroma.Name, Value: f.Key}, punctTok(":"), textTok(" "))
+			b.WriteString(f.Key)
+			b.WriteString(": ")
 			argType := f.Value.String()
 			if t, ok := f.Value.Type(); ok {
 				argType = renderType(t)
 			}
-			toks = append(toks, typeTokens(argType)...)
+			b.WriteString(argType)
 		}
-		toks = append(toks, punctTok(")"))
+		b.WriteString(")")
 	}
-	toks = append(toks, punctTok(":"), textTok(" "))
-	toks = append(toks, typeTokens(renderType(ft.ReturnType()))...)
-	return toks
+	b.WriteString(": ")
+	b.WriteString(renderType(ft.ReturnType()))
+	return b.String()
 }
 
 // renderType formats a type for a signature. The null-returning builtins are

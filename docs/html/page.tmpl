@@ -241,8 +241,13 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-entry>a[id]{display:block;scroll-margin-top:1.5rem}
 /* The signature is chroma-highlighted: its <code> carries the dark code
    background and base color inline, so the bar just adds layout + accent edge. */
-.stdlib-sig{display:block;text-decoration:none;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;overflow:hidden}
-.stdlib-sig code{display:block;padding:.5rem .8rem;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+.stdlib-sig{display:flex;text-decoration:none;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;overflow:hidden}
+.stdlib-sig code{display:block;flex:1;padding:.5rem .8rem;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+/* The receiver/module context (".", "Random.") sits outside the declaration
+   proper — only the declaration is parsed for highlighting — but shares the
+   code box visually. The chroma class supplies the matching background. */
+.stdlib-sig-prefix{padding:.5rem 0 .5rem .8rem;font-size:.82rem;white-space:pre;font-family:'JetBrains Mono',monospace;opacity:.65}
+.stdlib-sig-prefix+code{padding-left:0}
 .stdlib-sig:hover{border-left-color:var(--accent2)}
 .stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
 .stdlib-desc{color:var(--fg2);font-size:.9rem;margin:.4rem 0 0 .85rem}

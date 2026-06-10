@@ -98,6 +98,12 @@ func TestSignatureFragment(t *testing.T) {
 	assertToken(t, tokens, "args", chroma.Name) // parameter, plain like today
 	assertToken(t, tokens, "String", chroma.KeywordType)
 	assertToken(t, tokens, "Container", chroma.NameClass)
+
+	// a declaration with a block parameter, as the stdlib cards render them
+	tokens = tokenize(t, "find(&block(item: a): Boolean!): a")
+	assertToken(t, tokens, "find", chroma.NameFunction)
+	assertToken(t, tokens, "&", chroma.Operator)
+	assertToken(t, tokens, "Boolean", chroma.KeywordType)
 }
 
 // Every registered builtin's signature must be a valid Dang declaration —

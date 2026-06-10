@@ -225,6 +225,17 @@ func errorBytes(node *tree_sitter.Node, start, end int) int {
 	return total
 }
 
+// builtinTypes are highlighted as keywords so the docs keep distinguishing
+// core scalars from user-defined types.
+var builtinTypes = map[string]bool{
+	"Int":     true,
+	"Float":   true,
+	"String":  true,
+	"Boolean": true,
+	"ID":      true,
+	"Void":    true,
+}
+
 // captureTokenType maps a highlight query capture name to the chroma token
 // type carrying the equivalent CSS class, keeping chroma.css and the
 // light/dark palettes working unchanged. Unhandled captures (notably @error,
