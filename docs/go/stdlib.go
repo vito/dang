@@ -260,11 +260,13 @@ func signature(d dang.BuiltinDef, prefix string) string {
 	return tokensString(signatureTokens(d, prefix))
 }
 
-// signatureTokens renders a builtin's call signature as pre-classified chroma
-// tokens. Signatures use a synthetic notation (the block type sits between
-// the args and the return type, mirroring call sites), so they can't be
-// tokenized by parsing; building tokens from the structured definition keeps
-// them highlighted exactly like real declarations.
+// signatureTokens renders a builtin's signature as pre-classified chroma
+// tokens, in real declaration form: a block parameter is written `&block(args):
+// Type`, last in the argument list, exactly as user code declares one — so
+// signature cards double as examples of declaring block-taking functions.
+// TestSignaturesAreValidDeclarations pins this. Tokens are still built from
+// the structured definition rather than lexed, both for exactness and because
+// the display prefix (".", "List.") isn't part of the declaration proper.
 func signatureTokens(d dang.BuiltinDef, prefix string) []chroma.Token {
 	var toks []chroma.Token
 	if prefix != "" {
@@ -275,7 +277,7 @@ func signatureTokens(d dang.BuiltinDef, prefix string) []chroma.Token {
 	}
 	toks = append(toks, chroma.Token{Type: chroma.NameFunction, Value: d.Name})
 
-	if len(d.ParamTypes) > 0 {
+	if len(d.ParamTypes) > 0 || d.BlockType != nil {
 		toks = append(toks, punctTok("("))
 		for i, param := range d.ParamTypes {
 			if i > 0 {
@@ -288,12 +290,13 @@ func signatureTokens(d dang.BuiltinDef, prefix string) []chroma.Token {
 				toks = append(toks, defaultTokens(renderDefault(param.DefaultValue))...)
 			}
 		}
+		if d.BlockType != nil {
+			if len(d.ParamTypes) > 0 {
+				toks = append(toks, punctTok(","), textTok(" "))
+			}
+			toks = append(toks, blockParamTokens(d.BlockType)...)
+		}
 		toks = append(toks, punctTok(")"))
-	}
-
-	if d.BlockType != nil {
-		toks = append(toks, textTok(" "))
-		toks = append(toks, blockTokens(d.BlockType)...)
 	}
 
 	if d.ReturnType != nil {
@@ -304,37 +307,44 @@ func signatureTokens(d dang.BuiltinDef, prefix string) []chroma.Token {
 	return toks
 }
 
-// blockTokens renders a block parameter, e.g. "{ item, index => b }". A block
-// with no parameters renders as just its body type, e.g. "{ Boolean! }".
-func blockTokens(ft *hm.FunctionType) []chroma.Token {
-	toks := []chroma.Token{punctTok("{"), textTok(" ")}
-	var params []string
-	if rec, ok := ft.Arg().(*dang.RecordType); ok {
-		for _, f := range rec.Fields {
-			params = append(params, f.Key)
-		}
+// blockParamTokens renders a block parameter in declaration form, e.g.
+// "&block(item: a!): Boolean!", or "&block: a" for a block taking no
+// arguments.
+func blockParamTokens(ft *hm.FunctionType) []chroma.Token {
+	toks := []chroma.Token{
+		{Type: chroma.Operator, Value: "&"},
+		{Type: chroma.Name, Value: "block"},
 	}
-	if len(params) > 0 {
-		for i, p := range params {
+	if rec, ok := ft.Arg().(*dang.RecordType); ok && len(rec.Fields) > 0 {
+		toks = append(toks, punctTok("("))
+		for i, f := range rec.Fields {
 			if i > 0 {
 				toks = append(toks, punctTok(","), textTok(" "))
 			}
-			toks = append(toks, chroma.Token{Type: chroma.Name, Value: p})
+			toks = append(toks, chroma.Token{Type: chroma.Name, Value: f.Key}, punctTok(":"), textTok(" "))
+			argType := f.Value.String()
+			if t, ok := f.Value.Type(); ok {
+				argType = renderType(t)
+			}
+			toks = append(toks, typeTokens(argType)...)
 		}
-		toks = append(toks, textTok(" "), chroma.Token{Type: chroma.Operator, Value: "=>"}, textTok(" "))
+		toks = append(toks, punctTok(")"))
 	}
+	toks = append(toks, punctTok(":"), textTok(" "))
 	toks = append(toks, typeTokens(renderType(ft.ReturnType()))...)
-	toks = append(toks, textTok(" "), punctTok("}"))
 	return toks
 }
 
 // renderType formats a type for a signature. The null-returning builtins are
 // typed with a fresh type variable (NullValue.Type()); surface that as Null.
+// Nullable type variables print as `a?` internally, but Dang's surface syntax
+// has no `?` — nullable is the unmarked default — so strip it to keep
+// signatures valid declarations.
 func renderType(t hm.Type) string {
 	if tv, ok := t.(hm.TypeVariable); ok && tv == hm.TypeVariable('n') {
 		return "Null"
 	}
-	return fmt.Sprintf("%s", t)
+	return strings.ReplaceAll(fmt.Sprintf("%s", t), "?", "")
 }
 
 func renderDefault(v dang.Value) string {

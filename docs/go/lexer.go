@@ -92,9 +92,9 @@ func (l *treeSitterLexer) compile() {
 	l.captures = query.CaptureNames()
 }
 
-// signaturePrefix wraps declaration fragments for parsing. Stdlib signature
-// cards render bare field declarations like `find { x => Boolean! }: a?`,
-// which only parse inside an interface body.
+// signaturePrefix wraps declaration fragments for parsing. Bare field
+// declarations like `withExec(args: [String!]!): Container!` — common in
+// prose — only parse inside an interface body.
 const (
 	signaturePrefix = "interface _ {\n"
 	signatureSuffix = "\n}"

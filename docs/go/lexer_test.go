@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"github.com/alecthomas/chroma/v2"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/dang/danglang"
 )
 
 // tokenize runs the dang lexer over source and returns its tokens, asserting
@@ -95,6 +98,42 @@ func TestSignatureFragment(t *testing.T) {
 	assertToken(t, tokens, "args", chroma.Name) // parameter, plain like today
 	assertToken(t, tokens, "String", chroma.KeywordType)
 	assertToken(t, tokens, "Container", chroma.NameClass)
+}
+
+// Every registered builtin's signature must be a valid Dang declaration —
+// the stdlib cards double as examples of declaring block-taking functions,
+// so the notation may not drift from the grammar.
+func TestSignaturesAreValidDeclarations(t *testing.T) {
+	var defs []dang.BuiltinDef
+	dang.ForEachFunction(func(d dang.BuiltinDef) { defs = append(defs, d) })
+	for _, recv := range dang.MethodReceivers() {
+		dang.ForEachMethod(recv, func(d dang.BuiltinDef) { defs = append(defs, d) })
+	}
+	for _, mod := range dang.StaticModules() {
+		dang.ForEachStaticMethod(mod, func(d dang.BuiltinDef) { defs = append(defs, d) })
+	}
+	if len(defs) == 0 {
+		t.Fatal("no builtins registered")
+	}
+
+	parser := tree_sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(danglang.Language()); err != nil {
+		t.Fatalf("set language: %v", err)
+	}
+
+	for _, d := range defs {
+		sig := signature(d, "")
+		src := []byte("interface _ {\n" + sig + "\n}")
+		tree := parser.Parse(src, nil)
+		if tree == nil {
+			t.Fatalf("parse %q: no tree", sig)
+		}
+		if n := errorBytes(tree.RootNode(), 0, len(src)); n > 0 {
+			t.Errorf("signature %q is not a valid declaration (%d error bytes)", sig, n)
+		}
+		tree.Close()
+	}
 }
 
 // Whole-program snippets keep highlighting: types, keywords, strings.
