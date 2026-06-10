@@ -166,7 +166,9 @@
     });
   }
 
-  // Map a tree-sitter capture name (e.g. "constant.numeric") to a token class.
+  // Map a tree-sitter capture name (e.g. "constant.numeric") to a token
+  // class. The classes carry the same base16 slots chroma.css maps the
+  // static blocks to (see page.tmpl), so every surface matches.
   function tokenClass(name) {
     var base = name.split(".")[0];
     switch (base) {
@@ -174,11 +176,12 @@
       case "type": return "tok-type";
       case "string": return "tok-string";
       case "constant": return "tok-number";
-      case "function": return "tok-function";
+      case "function": return name === "function.builtin" ? "tok-builtin" : "tok-function";
       case "comment": return "tok-comment";
       case "operator": return "tok-operator";
       case "label": return "tok-label";
-      case "variable": return name === "variable.special" ? "tok-keyword" : "tok-variable";
+      case "property": return "tok-property";
+      case "variable": return name === "variable.special" ? "tok-self" : "tok-variable";
       default: return "tok-punct";
     }
   }

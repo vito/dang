@@ -6,8 +6,6 @@
 package dangdocs
 
 import (
-	"github.com/alecthomas/chroma/v2"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/vito/booklit"
 	"github.com/vito/booklit/baselit"
 	chromap "github.com/vito/booklit/chroma"
@@ -17,55 +15,12 @@ func init() {
 	booklit.RegisterPlugin("chroma", chromap.NewPlugin)
 	booklit.RegisterPlugin("dang", NewPlugin)
 
-	// Emit chroma CSS classes instead of inline styles so code blocks can be
-	// themed from a stylesheet. The palettes below are rendered to docs/chroma.css
-	// by ./gen-chroma-css (run from build.sh) and linked from the page template.
+	// Emit chroma CSS classes instead of inline styles. The colors live in
+	// docs/chroma.css, which maps the classes onto base16 variables; the
+	// vendored schemes under docs/css/base16/ supply the variables and the
+	// theme switcher (docs/js/switcher.js) picks the scheme.
 	baselit.HighlightWithClasses = true
-	styles.Fallback = DangDarkStyle
 }
-
-// DangDarkStyle and DangLightStyle are the syntax palettes for the docs, mapped
-// from GitHub's dark and light schemes. They are the single source of truth for
-// code colors: build.sh renders them to docs/chroma.css via ./gen-chroma-css.
-var (
-	DangDarkStyle = chroma.MustNewStyle("dang", chroma.StyleEntries{
-		chroma.Background:      "#c9d1d9 bg:#0d1117",
-		chroma.Keyword:         "#ff7b72 bold",
-		chroma.KeywordConstant: "#ff7b72",
-		chroma.KeywordType:     "#79c0ff nobold",
-		chroma.NameFunction:    "#d2a8ff",
-		chroma.NameBuiltin:     "#d2a8ff",
-		chroma.NameOther:       "#ffa657",
-		chroma.NameTag:         "#7ee787",
-		chroma.LiteralString:   "#a5d6ff",
-		chroma.LiteralNumber:   "#79c0ff",
-		chroma.Operator:        "#ff7b72",
-		chroma.Punctuation:     "#c9d1d9",
-		chroma.Comment:         "#6e7681 italic",
-		chroma.CommentPreproc:  "#ff7b72 noitalic",
-		chroma.GenericEmph:     "italic",
-		chroma.GenericStrong:   "bold",
-	})
-
-	DangLightStyle = chroma.MustNewStyle("dang-light", chroma.StyleEntries{
-		chroma.Background:      "#1f2328 bg:#f6f8fa",
-		chroma.Keyword:         "#cf222e bold",
-		chroma.KeywordConstant: "#cf222e",
-		chroma.KeywordType:     "#0550ae nobold",
-		chroma.NameFunction:    "#8250df",
-		chroma.NameBuiltin:     "#8250df",
-		chroma.NameOther:       "#953800",
-		chroma.NameTag:         "#116329",
-		chroma.LiteralString:   "#0a3069",
-		chroma.LiteralNumber:   "#0550ae",
-		chroma.Operator:        "#cf222e",
-		chroma.Punctuation:     "#1f2328",
-		chroma.Comment:         "#6e7781 italic",
-		chroma.CommentPreproc:  "#cf222e noitalic",
-		chroma.GenericEmph:     "italic",
-		chroma.GenericStrong:   "bold",
-	})
-)
 
 // NewPlugin constructs a new dang docs plugin for the given section.
 func NewPlugin(section *booklit.Section) booklit.Plugin {

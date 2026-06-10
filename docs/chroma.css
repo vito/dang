@@ -1,0 +1,66 @@
+/* Syntax palette for every code surface on the site: static blocks, stdlib
+ * signature cards, and the playground/REPL editors. Colors come from base16
+ * variables so one scheme themes them all; a scheme stylesheet under
+ * css/base16/ supplies the variables and js/switcher.js swaps it at runtime.
+ * These rules map chroma's token classes (the formatting layer for the
+ * tree-sitter token stream) onto the base16 slots, following the base16
+ * styling guide: 0E keywords, 0A types, 0D functions, 0C support/builtins,
+ * 0B strings, 09 constants, 08 variables/tags/properties, 03 comments.
+ *
+ * The :root block is the no-JS fallback scheme (Rosé Pine Moon); the
+ * switcher's stylesheet loads after this one, so its :root wins. */
+
+:root {
+  --base00: #232136;
+  --base01: #2a273f;
+  --base02: #393552;
+  --base03: #59546d;
+  --base04: #817c9c;
+  --base05: #e0def4;
+  --base06: #f5f5f7;
+  --base07: #d9d7e1;
+  --base08: #eb6f92;
+  --base09: #f6c177;
+  --base0A: #f6c177;
+  --base0B: #3e8fb0;
+  --base0C: #ea9a97;
+  --base0D: #9ccfd8;
+  --base0E: #c4a7e7;
+  --base0F: #b9b9bc;
+}
+
+.chroma { color: var(--base05); background-color: var(--base00); -webkit-text-size-adjust: none; }
+.chroma .line { display: flex; }
+
+/* keywords */
+.chroma .k, .chroma .kd, .chroma .kn, .chroma .kp, .chroma .kr { color: var(--base0E); }
+/* types (every capitalized type name) */
+.chroma .kt { color: var(--base0A); }
+/* constant literals: true/false/null and numbers */
+.chroma .kc { color: var(--base09); }
+.chroma .m, .chroma .mb, .chroma .mf, .chroma .mh, .chroma .mi, .chroma .il, .chroma .mo { color: var(--base09); }
+/* functions and methods */
+.chroma .nf, .chroma .fm { color: var(--base0D); }
+/* builtins (assert, print, ...) read as support functions */
+.chroma .nb { color: var(--base0C); }
+/* self */
+.chroma .bp { color: var(--base08); }
+/* directives (@deprecated) */
+.chroma .nd { color: var(--base0F); }
+/* language tags on multiline templates, markup tags */
+.chroma .nt { color: var(--base08); }
+/* argument/key names */
+.chroma .py { color: var(--base08); }
+/* misc names from non-Dang lexers (toml keys, shell vars) */
+.chroma .nx, .chroma .nv, .chroma .vc, .chroma .vg, .chroma .vi { color: var(--base08); }
+/* strings (and docstrings) */
+.chroma .s, .chroma .sa, .chroma .sb, .chroma .sc, .chroma .dl, .chroma .sd,
+.chroma .s2, .chroma .sh, .chroma .si, .chroma .sx, .chroma .sr, .chroma .s1, .chroma .ss { color: var(--base0B); }
+/* string escapes */
+.chroma .se { color: var(--base0C); }
+/* operators */
+.chroma .o, .chroma .ow { color: var(--base0E); }
+/* punctuation stays at the default foreground */
+.chroma .p { color: var(--base05); }
+/* comments */
+.chroma .c, .chroma .ch, .chroma .cm, .chroma .c1, .chroma .cs, .chroma .cp, .chroma .cpf { color: var(--base03); font-style: italic; }
