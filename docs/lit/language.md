@@ -14,7 +14,6 @@ errors. If you've written any modern scripting language, most of this part is
 \table-of-contents
 
 \include-section{./language/syntax.md}
-\include-section{./language/literals.md}
 \include-section{./language/operators.md}
 \include-section{./language/fields.md}
 \include-section{./language/functions.md}
