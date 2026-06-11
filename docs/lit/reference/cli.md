@@ -57,7 +57,7 @@ REPL commands (prefix `:`):
 
 - `:help` — list commands
 - `:exit` / `:quit` — leave the REPL (also Ctrl+D)
-- `:doc` — interactive API/schema browser. See [#graphql].
+- `:doc` — interactive API/schema browser. See [#interop].
 - `:env` — show environment bindings
 - `:type <expr>` — show the inferred type of an expression
 - `:find` / `:search <pattern>` — find functions/types by pattern
@@ -72,7 +72,7 @@ Input keys: Tab completion, Up/Down history, Alt+Enter (or Shift+Enter under a K
 ## Configuration
 
 - GraphQL connections are configured per-import in `dang.toml` under `[imports.<Name>]`. Keys: `dagger`, `schema` (local `.graphqls` SDL path), `endpoint`, `service` (command that prints its endpoint/session JSON), `authorization`, `headers`.
-- `endpoint`, `authorization`, and `headers` values support `${VAR}` environment expansion. `$(...)` command substitution is **not** supported (use an env var instead). See [#getting-started] and [#graphql].
+- `endpoint`, `authorization`, and `headers` values support `${VAR}` environment expansion. `$(...)` command substitution is **not** supported (use an env var instead). See [#getting-started] and [#interop].
 - config is discovered by walking up from the working directory, stopping at a `.git` boundary.
 
 ## Exit codes

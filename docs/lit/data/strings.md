@@ -14,7 +14,7 @@
 ## Conversion
 
 - `toString(value)` — JSON-encodes non-strings; passes strings through
-- `value :: String!` — explicit cast where types align (see [#types])
+- `value :: String!` — explicit cast where types align (see [#nullability])
 
 ## Inspection
 

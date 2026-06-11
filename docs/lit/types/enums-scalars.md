@@ -71,9 +71,9 @@ scalar JSON
 
 ## Built-in scalars
 
-- `Int!`, `Float!`, `String!`, `Boolean!`, `ID!` (see [#types])
+- `Int!`, `Float!`, `String!`, `Boolean!`, `ID!` (see [#nullability])
 - `ID!` is its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop) — but string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`)
 
 > Meta: scalar fields are invariant across interface implementation — `id: String!` does not satisfy `id: ID!`. Cross-ref the variance rules in [#interfaces-unions].
 
-> See also: enum values and custom scalars declared in an imported schema are reached through the module name (see [#modules]); GraphQL representations are covered in [#graphql].
+> See also: enum values and custom scalars declared in an imported schema are reached through the module name (see [#modules]); GraphQL representations are covered in [#interop].

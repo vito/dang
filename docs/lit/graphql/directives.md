@@ -8,7 +8,7 @@
 
 - a typed annotation attachable to a declaration or argument
 - a *real declaration* — type-checked args, locations, defaults — not a comment pragma
-- declared like GraphQL directives (see [#graphql]):
+- declared like GraphQL directives (see [#interop]):
 
 ```dang
 directive @deprecated(reason: String = "No longer supported") on FIELD_DEFINITION | OBJECT

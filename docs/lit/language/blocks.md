@@ -27,7 +27,7 @@ myFun(&block(x: Int!): String!): String! {
 }
 ```
 
-- the block param's arg types may also be a type variable: `id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#types])
+- the block param's arg types may also be a type variable: `id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#nullability])
 - a function/constructor may have at most one block parameter
 - regular args and a block param can mix; the block param comes last
 - callers pass a trailing brace block:
@@ -87,15 +87,11 @@ foo.{ bar(_) }                  # dot-block; see [#dot-block]
 
 ## Control-flow handoff
 
-> Meta: the cute Ruby-esque part. `return` inside a `.map`/`.each` block unwinds the *enclosing function*, not just the block.
+> Meta: the cute Ruby-esque part. `return` inside a `.map`/`.each` block unwinds the *enclosing function*, not just the block. The full `break`/`continue` spec lives in [#control-flow]; keep only the block-specific wrinkles here.
 
 - `return` inside a block unwinds through the enclosing **function**, not just the block
-- `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls
-- `break value` becomes the loop/call's result; bare `break` yields `null`
-- `continue value` flows into `.map`'s result for that element; bare `continue` yields `null` there (e.g. `[null]`); in `.each`/`loop` it just skips to the next iteration
-- `break`/`continue` target the *innermost* loop/block call
+- `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls — a block-taking call is a valid target, and the value/result rules are specified in [#control-flow]
 - an **ordinary nested function** declared inside a block does NOT inherit the block's break/continue target — `break`/`continue` there errors `... outside of loop or block-taking call`
-- `break`/`continue`/`return` with no enclosing loop/function error at typecheck: `break outside of loop or block-taking call`, `continue outside of loop or block arg invocation`, `return outside of function`
 - escaped blocks (stored via `&block`, then called after the receiving call/function has already returned) error at runtime: `break from expired block call` / `return from expired function`
 
 ## When to use a block vs. a function reference
@@ -126,7 +122,7 @@ c.{ mountCache(_, path, cache) }
 
 - because `foo.{ bar(_) }` ≡ `bar(foo)`, a null receiver is simply *passed in*: the block runs with `_` bound to null, exactly as `bar(null)` would. Dot-block applies a block — it does not navigate into the receiver, so it has nothing to short-circuit
 - this is what lets a block *handle* null: `x.{ _ ?? 0 }`, `x.{ if (_ == null) { … } else { … } }`
-- contrast `.{{ }}` selection ([#graphql]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
+- contrast `.{{ }}` selection ([#interop]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
 
 ## Common methods that take blocks
 

@@ -114,4 +114,4 @@ type Person implements Named & Identifiable { name: String!, id: String! }
 - references also resolve across files in a directory module, order-independently
 - defaults can reference sibling fields (evaluated with `self` bound)
 
-> Meta: user-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax. Schema input types are constructed exactly like local types: `CreateUserInput(name: "Alice", email: "...")` passed as `Mutation.createUser(input: ...)`. See [#graphql].
+> Meta: user-defined `type`s and imported GraphQL **input** types share the same `Type(args)` construction syntax. Schema input types are constructed exactly like local types: `CreateUserInput(name: "Alice", email: "...")` passed as `Mutation.createUser(input: ...)`. See [#interop].

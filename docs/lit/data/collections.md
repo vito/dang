@@ -123,4 +123,4 @@ are always `String!`; only the value type is parameterized.
 
 > Note: `.length` and `.isEmpty` are list-only — strings do *not* have them (see [#strings]).
 
-> Meta: many list operations are mirrored on strings (`split`, `contains`, etc.) and readers will look both places — see [#strings]. Block-taking list methods relate to [#blocks]; full signatures live in [#stdlib]; element/list nullability follows [#types].
+> Meta: many list operations are mirrored on strings (`split`, `contains`, etc.) and readers will look both places — see [#strings]. Block-taking list methods relate to [#blocks]; full signatures live in [#stdlib]; element/list nullability follows [#nullability].

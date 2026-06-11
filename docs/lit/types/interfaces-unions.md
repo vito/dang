@@ -4,8 +4,8 @@
 
 > Meta: these align directly with GraphQL interfaces and unions, so users coming from a schema will recognize them. Worth saying that up front to set expectations.
 
-- interfaces and unions map 1:1 to their GraphQL counterparts; a schema's interfaces/unions are available as [#types] values
-- both are discriminated with `case` (see [#control-flow]) and, for GraphQL values, with inline fragments (see [#graphql])
+- interfaces and unions map 1:1 to their GraphQL counterparts; a schema's interfaces/unions are available as [#nullability] values
+- both are discriminated with `case` (see [#control-flow]) and, for GraphQL values, with inline fragments (see [#interop])
 - the interface/union type itself is also a runtime value (`Named != null`, `Pet != null`)
 
 ## Interfaces
@@ -94,7 +94,7 @@ case (pet) {
 
 ### Inline fragments
 
-> Meta: inline fragments are the GraphQL selection syntax (see [#graphql]); they apply to single values *and* lists.
+> Meta: inline fragments are selection syntax, so the full treatment — the field-selecting form, the lazy narrowing form, null/assertion behavior — lives with the rest of selection in [#interop]. Keep this as a pointer, not a second copy.
 
 ```dang
 pets.{{
@@ -103,19 +103,9 @@ pets.{{
 }}
 ```
 
-- selects different field sets per concrete type
-- applies to a single value or to a list (maps over elements)
-- after selection you only have the fields you selected: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type
-- type conditions resolve against the receiver's (GraphQL) schema, not a local type that shadows the name
-- can nest: `... on Post { title, author.{{name}} }`, and selections-of-selections `edges.{{ node.{{ ... on User { ... } }} }}`
-
-### Lazy inline fragments
-
-- `... on Cat` (no field block) yields a typed reference / type assertion without selecting fields
-- works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}` — comma- or newline-separated)
-- non-matching assertion returns `null`: `cat.{{... on Dog}} == null`
-- non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`
-- useful for narrowing a GraphQL interface/union value before chaining (`node(id).{{... on User}}.name`)
+- selects different field sets per concrete type; works on single values and lists
+- the lazy form (`... on Cat`, no field block) narrows without selecting, and `... on Cat!` asserts
+- see [#interop] for the full rules
 
 ## Interface vs. union vs. enum
 

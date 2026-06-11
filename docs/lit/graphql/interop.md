@@ -1,8 +1,8 @@
 \use-plugin{dang}
 
-# GraphQL interop {#graphql}
+# GraphQL interop {#interop}
 
-> Meta: this is the page that justifies the language. Lead with "schema-as-stdlib" — when you `import Dagger`, every type and root function in the schema becomes part of the language. Import wiring (`dang.toml`, `import`) lives in [#modules]; type machinery in [#types]; record/object access in [#objects].
+> Meta: this is the page that justifies the language. Lead with "schema-as-stdlib" — when you `import Dagger`, every type and root function in the schema becomes part of the language. Import wiring (`dang.toml`, `import`) lives in [#modules]; type machinery in [#nullability]; record/object access in [#objects].
 
 ## Schema-as-stdlib
 
@@ -39,6 +39,7 @@ user.{{ posts(first: 5).{{ title }} }}
 - positional args work in nested selections too: `users.{{ posts(1).{{ ... }} }}`
 - selection on a nullable receiver **short-circuits**: if `user` is `null`, `user.{{ name }}` is `null` (not an error), and the result type is nullable
 - the result is a record (`{{ ... }}`); access fields by name; see [#objects]
+- after selection you only have the fields you selected: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type
 - `.{{ }}` selection is navigation (it reads fields), so it short-circuits on null; the single-brace dot-block `.{ }` is block *application*, so it passes the receiver — null included — into the block. Same `.`-brace surface, different jobs; see [#blocks]'s [#dot-block]
 
 ## Inline fragments
@@ -50,12 +51,19 @@ node(id: "x").{{
 }}
 ```
 
-- type-conditional selection on unions and interfaces
+- type-conditional selection on unions and interfaces ([#interfaces-unions])
+- selects different field sets per concrete type; applies to a single value or to a list (maps over elements)
+- type conditions resolve against the receiver's (GraphQL) schema, not a local type that shadows the name
+- can nest: `... on Post { title, author.{{name}} }`, and selections-of-selections `edges.{{ node.{{ ... on User { ... } }} }}`
 - the union-type result narrows in `case` (see [#interfaces-unions])
-- lazy form `... on User` (no block): narrows the value to that type, returns a chainable lazy value
-- narrowing that doesn't match returns `null` (e.g. `node(...).{{... on Post}}` when the node is a User)
-- `... on User!` asserts non-null (raises if the narrowing fails)
-- multiple lazy fragments narrow a union: `node(...).{{ ... on User, ... on Post }}`; works elementwise on lists (`nodes.{{ ... on User, ... on Post }}`)
+
+### Lazy inline fragments
+
+- the lazy form `... on User` (no field block) narrows the value to that type without selecting fields, returning a chainable lazy value / typed reference
+- works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}` — comma- or newline-separated); multiple lazy fragments narrow a union
+- a narrowing that doesn't match returns `null`: `cat.{{... on Dog}} == null` (e.g. `node(...).{{... on Post}}` when the node is a User)
+- the non-null form `... on User!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`
+- useful for narrowing a GraphQL interface/union value before chaining (`node(id).{{... on User}}.name`)
 
 ## Lists of objects
 
@@ -84,3 +92,4 @@ users.{{ name, email }}
 - one `[imports.Name]` per endpoint; each becomes its own qualified namespace (config in [#modules])
 - types from different endpoints are *distinct* even if they share a name (e.g. `Test.User` ≠ `Other.User`)
 - a bare unqualified name provided by two imports is ambiguous — must qualify (see [#modules])
+
