@@ -1,13 +1,15 @@
 {{ $current := .Current }}
 {{ range .Section.Children }}
   <h2><a href="{{url .PrimaryTag}}"{{if eq .PrimaryTag.Name $current.PrimaryTag.Name}} class="current"{{end}}>{{.Title | render}}</a></h2>
-  <ul>
-    {{ range .Children }}
-      <li>
-        <a href="{{url .PrimaryTag}}"{{if .IsOrHasChild $current}} class="current"{{end}}>
-          {{- .Title | render -}}
-        </a>
-      </li>
-    {{ end }}
-  </ul>
+  {{ if .SplitSections }}
+    <ul>
+      {{ range .Children }}
+        <li>
+          <a href="{{url .PrimaryTag}}"{{if .IsOrHasChild $current}} class="current"{{end}}>
+            {{- .Title | render -}}
+          </a>
+        </li>
+      {{ end }}
+    </ul>
+  {{ end }}
 {{ end }}

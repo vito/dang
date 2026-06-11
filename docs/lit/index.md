@@ -37,7 +37,7 @@ type Greeter {
 
 \table-of-contents
 
-\include-section{./start.md}
+\include-section{./getting-started.md}
 \include-section{./language.md}
 \include-section{./types.md}
 \include-section{./graphql.md}
