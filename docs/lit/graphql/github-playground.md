@@ -1,6 +1,6 @@
 \use-plugin{dang}
 
-# GraphQL + Dang playground {#github-playground}
+# GitHub playground {#github-playground}
 
 > Meta: the live payoff of [#interop] — "schema-as-stdlib" against a real API the
 > reader already has an account on. Keep it concrete: sign in, run, see your own
