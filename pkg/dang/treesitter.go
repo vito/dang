@@ -58,7 +58,8 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
-	treesitter.Name("Sep"): patchSepAutomaticNewline,
+	treesitter.Name("Sep"):     patchSepAutomaticNewline,
+	treesitter.Name("ArgType"): patchArgTypeDocstringSep,
 }
 
 func tsExternalSymbol(name treesitter.RuleName) treesitter.Rule {
@@ -82,6 +83,33 @@ func patchTSRule(name treesitter.RuleName, rule treesitter.Rule) treesitter.Rule
 		return rule
 	}
 	return patch(rule)
+}
+
+// The PEG allows arbitrary whitespace — including newlines — between a
+// parameter docstring and the parameter it documents. In tree-sitter that
+// newline lexes as the external _automatic_newline (the call interpretation
+// of `name("""...` keeps the sep token valid at that position), which the
+// declaration's arg_type couldn't shift, so the GLR fork for the declaration
+// died. Accept an optional sep between the docstring and the field.
+func patchArgTypeDocstringSep(rule treesitter.Rule) treesitter.Rule {
+	for i, member := range rule.Members {
+		if member.Type != treesitter.RuleTypeSeq {
+			continue
+		}
+		optSep := treesitter.Rule{
+			Type: treesitter.RuleTypeChoice,
+			Members: []treesitter.Rule{
+				{Type: treesitter.RuleTypeSymbol, Name: "sep"},
+				{Type: treesitter.RuleTypeBlank},
+			},
+		}
+		member.Members = append(
+			[]treesitter.Rule{member.Members[0], optSep},
+			member.Members[1:]...,
+		)
+		rule.Members[i] = member
+	}
+	return rule
 }
 
 func patchSepAutomaticNewline(rule treesitter.Rule) treesitter.Rule {
@@ -116,6 +144,11 @@ func TreesitterGrammar() treesitter.Grammar {
 		// explores both; the trailing `: Type` (declaration) vs its absence
 		// (call) disambiguates.
 		{treesitter.Name("Id"), treesitter.Name("KeyValue")},
+		// A `"""..."""` after `(` is ambiguous between a parameter docstring
+		// (declaration) and a triple-quoted string argument (call) — both are
+		// built from the same tokens. GLR explores both; what follows the
+		// closing paren disambiguates.
+		{treesitter.Name("DocString"), treesitter.Name("TripleQuoteString")},
 	}
 	ts.Precedences = [][]treesitter.Rule{
 		{

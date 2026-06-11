@@ -79,7 +79,6 @@ static bool is_word_char(int32_t c) {
 // of the previous expression (i.e. the newline is NOT a statement separator).
 static bool is_continuation_start(int32_t c) {
   switch (c) {
-    case '.':  // method chain
     case '{':  // block arg or object selection
     case '|':  // pipe operator
       return true;
@@ -124,25 +123,6 @@ static bool is_leading_logical_op(TSLexer *lexer) {
   return false;
 }
 
-static bool scan_inline_space(TSLexer *lexer) {
-  if (lexer->lookahead != ' ' && lexer->lookahead != '\t') {
-    return false;
-  }
-
-  do {
-    lexer->advance(lexer, false);
-  } while (lexer->lookahead == ' ' || lexer->lookahead == '\t');
-
-  // `_inlineSpace` is used before required same-line values. Do not let
-  // comments or newlines be consumed as extras before the value.
-  if (lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
-      lexer->lookahead == '#' || lexer->eof(lexer)) {
-    return false;
-  }
-
-  lexer->result_symbol = INLINE_SPACE;
-  return true;
-}
 
 // Scan a multi-line backtick template opening fence: 3 or more backticks
 // not followed by another backtick. Records the fence length on the stack.
@@ -344,11 +324,34 @@ bool tree_sitter_dang_external_scanner_scan(
     return true;
   }
 
+  // Trailing comments and `_inlineSpace` both begin with a run of spaces or
+  // tabs. The internal lexer only skips extras before *internal* tokens, so
+  // unless the run is consumed here, a comment after code on the same line
+  // (`foo { 1 } # note`) never reaches the comment scanner. Skip the run as
+  // whitespace once, then decide by what follows.
+  bool saw_inline_space = false;
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    lexer->advance(lexer, true);
+    saw_inline_space = true;
+  }
+
   if (valid_symbols[COMMENT_TOKEN] && scan_comment_token(lexer, valid_symbols)) {
     return true;
   }
 
-  if (valid_symbols[INLINE_SPACE] && scan_inline_space(lexer)) {
+  // `_inlineSpace` is used before required same-line values. Do not let
+  // comments or newlines be consumed as extras before the value. The spaces
+  // were skipped above, so the token is zero-width at the value's position.
+  // A closer or comma can never start a value either — refusing those lets
+  // the parser take the no-value branch of `break`/`return` (the PEG
+  // backtracks out of `_inlineSpace Form`, but tree-sitter commits once the
+  // token is emitted, turning `for { break }` into an error).
+  if (valid_symbols[INLINE_SPACE] && saw_inline_space &&
+      lexer->lookahead != '\n' && lexer->lookahead != '\r' &&
+      lexer->lookahead != '#' && lexer->lookahead != '}' &&
+      lexer->lookahead != ')' && lexer->lookahead != ']' &&
+      lexer->lookahead != ',' && !lexer->eof(lexer)) {
+    lexer->result_symbol = INLINE_SPACE;
     return true;
   }
 
@@ -375,9 +378,32 @@ bool tree_sitter_dang_external_scanner_scan(
   // lookahead and must not be included in the token.
   lexer->mark_end(lexer);
 
+  // A leading `.` continues a method chain — unless it's a `...` spread
+  // starting another inline fragment in a selection, where the newline IS
+  // the separator between entries. We're past mark_end, so this is pure
+  // lookahead.
+  if (lexer->lookahead == '.') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '.') {
+      return false;
+    }
+    lexer->result_symbol = AUTOMATIC_NEWLINE;
+    return true;
+  }
+
   // If the first significant character indicates expression continuation,
   // this newline is NOT a separator.
   if (is_continuation_start(lexer->lookahead)) {
+    return false;
+  }
+
+  // A newline before a closing delimiter is plain whitespace: no grammar
+  // rule requires a separator there, and `block_arg`/`object_selection`/
+  // `arg_values` place separators *between* elements, so emitting one would
+  // wrongly demand another element (the PEG backtracks out of this; the
+  // tree-sitter lexer cannot).
+  if (lexer->lookahead == '}' || lexer->lookahead == ')' ||
+      lexer->lookahead == ']') {
     return false;
   }
 

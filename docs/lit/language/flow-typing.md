@@ -26,7 +26,7 @@ if (x != null) {
 ### Else branch
 
 ```dang
-if (x == null) { ... } else {
+if (x == null) { print("no x") } else {
   # x is T! here
 }
 ```

@@ -92,5 +92,4 @@ false
       (int
         (non_zero_decimal_digit)
         (decimal_digit)
-        (decimal_digit)))
-    (sep)))
+        (decimal_digit)))))

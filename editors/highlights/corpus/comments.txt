@@ -1,0 +1,81 @@
+===
+Trailing comments after block args
+===
+
+twice { 21 }                  # body takes no args
+twice { let n = 21, n }       # multi-statement
+list.map { x => x * 2 }       # built-in
+withArg("Number: ") { x => toJSON(x) }   # args then block
+
+---
+
+(highlights
+  (@variable @function.call "twice")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@number "21")
+  " "
+  (@punctuation.bracket "}")
+  "                  "
+  (@comment "# body takes no args")
+  "\n"
+  (@variable @function.call "twice")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@keyword "let")
+  " "
+  (@variable @function.method "n")
+  " "
+  (@operator "=")
+  " "
+  (@number "21")
+  (@punctuation.delimiter ",")
+  " "
+  (@variable "n")
+  " "
+  (@punctuation.bracket "}")
+  "       "
+  (@comment "# multi-statement")
+  "\n"
+  (@variable "list")
+  (@punctuation.delimiter ".")
+  (@function.method.call "map")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@variable @variable.parameter "x")
+  " "
+  (@operator "=>")
+  " "
+  (@variable "x")
+  " "
+  (@operator "*")
+  " "
+  (@number "2")
+  " "
+  (@punctuation.bracket "}")
+  "       "
+  (@comment "# built-in")
+  "\n"
+  (@variable @function.call "withArg")
+  "("
+  (@string "\"Number: \"")
+  (@punctuation.bracket ")")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@variable @variable.parameter "x")
+  " "
+  (@operator "=>")
+  " "
+  (@variable @function.call @function.builtin "toJSON")
+  "("
+  (@variable "x")
+  (@punctuation.bracket ")")
+  " "
+  (@punctuation.bracket "}")
+  "   "
+  (@comment "# args then block")
+)

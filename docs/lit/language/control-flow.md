@@ -66,7 +66,7 @@ case (animal) {
 
 ```dang
 for (i < 10) { i += 1 }   # loops while condition is Boolean! true
-for { ... break ... }     # infinite; exit via break/return
+for { break }             # infinite; exit via break/return
 ```
 
 - condition must be `Boolean!` (same as `if`) — no `for (x in xs)`; iterate collections with `xs.each { x => ... }` (see [#collections])

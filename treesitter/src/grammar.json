@@ -2111,6 +2111,18 @@
               }
             },
             {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "sep"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
               "type": "FIELD",
               "name": "field",
               "content": {
@@ -5523,6 +5535,10 @@
     [
       "id",
       "key_value"
+    ],
+    [
+      "doc_string",
+      "triple_quote_string"
     ]
   ],
   "precedences": [

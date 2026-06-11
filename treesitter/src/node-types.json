@@ -276,6 +276,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "sep",
+          "named": true
+        }
+      ]
     }
   },
   {
