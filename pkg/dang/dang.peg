@@ -72,7 +72,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
   }
 }
 
-Form <- Return / TryCatch / Raise / Conditional / ForLoop / Case / Break / Continue / DefaultExpr / TypeHint / Term
+Form <- Return / TryCatch / Raise / Conditional / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
 Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
 
@@ -1080,25 +1080,6 @@ IfToken <- "if" !WordChar
 ElseToken <- "else" !WordChar
 OrToken <- "or" !WordChar
 AndToken <- "and" !WordChar
-
-ForLoop <- ForConditionLoop / ForInfiniteLoop
-
-ForConditionLoop <- ForToken _ '(' _ cond:Form _ ')' _ body:Block {
-  return &ForLoop{
-    Condition: cond.(Node),
-    LoopBody: body.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
-
-ForInfiniteLoop <- ForToken _ body:Block {
-  return &ForLoop{
-    LoopBody: body.(*Block),
-    Loc: c.Loc(),
-  }, nil
-}
-
-ForToken <- "for" !WordChar
 
 ArrowToken <- "=>"
 

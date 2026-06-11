@@ -20,7 +20,7 @@ Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
 Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
                            | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
-Form         := Return | TryCatch | Raise | Conditional | ForLoop
+Form         := Return | TryCatch | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
               | MapLiteral | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
@@ -65,7 +65,7 @@ TypeVariable := [a-z]                           # single lowercase letter
 
 ## Reserved words
 
-- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `catch`, `continue`, `directive`, `else`, `enum`, `false`, `for`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `return`, `scalar`, `self`, `true`, `try`, `type`, `union`
+- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `catch`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `return`, `scalar`, `self`, `true`, `try`, `type`, `union`
 - `pub` is optional — the visibility keyword is parsed but no longer required; declarations are public by default (see [#fields])
 - see [#syntax]
 

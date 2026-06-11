@@ -17,7 +17,10 @@ assert { describe(2) == "positive" }
 # Return should unwind through ordinary blocks and loops.
 stopAtThree: Int! {
   let count = 0
-  for (count < 10) {
+  loop {
+    if (count >= 10) {
+      break
+    }
     count += 1
     if (count == 3) {
       return count

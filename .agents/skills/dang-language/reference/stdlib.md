@@ -7,7 +7,7 @@ The built-in surface of Dang itself (everything here is available without any
 ## Top-level functions
 - `assert { Boolean! } -> Null` — runs the block; raises an `AssertionError` if not truthy. Block, not parens: `assert { x == 1 }`. The failure message includes the source expression and sub-values.
 - `assert(message: String! = null) { Boolean! } -> Null` — optional named `message`.
-- `loop { ... } -> r` — calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. Equivalent to `for { ... }` but as a plain builtin; see control-flow.md.
+- `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings through, JSON-encode everything else.
 - `toJSON(value: a) -> String!` — JSON-encode anything.

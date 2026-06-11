@@ -89,12 +89,12 @@ list.each { item, index => ... }
 ### Scoping
 - A block is a lexical scope; `let` declares a fresh local that shadows an outer field; mutating the local leaves the outer untouched.
 - Reassignment **without** a shadowing `let` mutates the enclosing field — across nested blocks too. `+=` works on the outer field from inside a block.
-- Hoisting: a mutation inside a `for` loop is visible after the loop in the same scope.
+- Hoisting: a mutation inside a `loop` block is visible after the loop in the same scope.
 - Closures inside a method/constructor share `self` across iterations, so `source.each { item => self.items += [item] }` accumulates.
 
 ### Control-flow handoff
 - `return` inside a block unwinds the enclosing **function**, not just the block.
-- `break value` / `continue value` work inside `.each`, `.map`, `for`, and user-defined block-arg calls. `break value` becomes the loop/call result; bare `break` yields `null`. `continue value` flows into `.map`'s result (bare → `null`, e.g. `[null]`); in `.each`/`for` it just advances.
+- `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls. `break value` becomes the loop/call result; bare `break` yields `null`. `continue value` flows into `.map`'s result (bare → `null`, e.g. `[null]`); in `.each`/`loop` it just advances.
 - `break`/`continue` target the **innermost** loop/block-call. An ordinary nested function declared inside a block does NOT inherit the break/continue target → `... outside of loop or block-taking call`.
 - Escaped blocks (stored via `&block`, called after the receiving call returned) error at runtime: `break from expired block call` / `return from expired function`.
 

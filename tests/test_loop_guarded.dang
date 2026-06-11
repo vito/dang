@@ -1,0 +1,32 @@
+simpleGuarded: String! {
+  let counter = 0
+  let result = ""
+
+  loop {
+    if (counter >= 3) {
+      break
+    }
+    result = result + "loop"
+    counter = counter + 1
+  }
+
+  result
+}
+
+guardedAccumulate: Int! {
+  let sum = 0
+  let i = 1
+
+  loop {
+    if (i > 3) {
+      break
+    }
+    sum = sum + i
+    i = i + 1
+  }
+
+  sum
+}
+
+assert { simpleGuarded == "looplooploop" }
+assert { guardedAccumulate == 6 }

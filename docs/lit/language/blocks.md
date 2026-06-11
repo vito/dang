@@ -83,16 +83,16 @@ foo.{ bar(_) }                  # dot-block; see [#dot-block]
 - a local `let` shadows an outer field of the same name; mutating the local leaves the outer untouched
 - reassignment without a shadowing `let` mutates the enclosing field — across nested blocks too
 - `+=` works on the outer field from inside a block
-- hoisting: a mutation made inside a `for` loop is visible to code after the loop in the same scope
+- hoisting: a mutation made inside a `loop` block is visible to code after the loop in the same scope
 
 ## Control-flow handoff
 
 > Meta: the cute Ruby-esque part. `return` inside a `.map`/`.each` block unwinds the *enclosing function*, not just the block.
 
 - `return` inside a block unwinds through the enclosing **function**, not just the block
-- `break value` / `continue value` work inside `.each`, `.map`, `for`, and user-defined block-arg calls
+- `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls
 - `break value` becomes the loop/call's result; bare `break` yields `null`
-- `continue value` flows into `.map`'s result for that element; bare `continue` yields `null` there (e.g. `[null]`); in `.each`/`for` it just skips to the next iteration
+- `continue value` flows into `.map`'s result for that element; bare `continue` yields `null` there (e.g. `[null]`); in `.each`/`loop` it just skips to the next iteration
 - `break`/`continue` target the *innermost* loop/block call
 - an **ordinary nested function** declared inside a block does NOT inherit the block's break/continue target — `break`/`continue` there errors `... outside of loop or block-taking call`
 - `break`/`continue`/`return` with no enclosing loop/function error at typecheck: `break outside of loop or block-taking call`, `continue outside of loop or block arg invocation`, `return outside of function`
@@ -131,4 +131,4 @@ c.{ mountCache(_, path, cache) }
 ## Common methods that take blocks
 
 - the common block-taking collection methods are `.map`, `.filter`, `.each`; see [#collections] for the full set
-- conditionals (`if`/`else`) and loops (`for`) use block bodies; see [#control-flow]
+- conditionals (`if`/`else`) and loops (`loop`) use block bodies; see [#control-flow]

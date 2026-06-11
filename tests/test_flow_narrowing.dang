@@ -113,7 +113,7 @@ assert("guard with return narrows variable") {
 # subsequent forms in the same iteration see the narrowed type.
 let guardWithBreak(s: String): String! {
   let x = optional(s)
-  let result = for (true) {
+  let result = loop {
     if (x == null) { break }
     let y: String! = x
     break y
@@ -131,8 +131,7 @@ assert("guard with break narrows within loop iteration") {
 # continue inside a loop body diverges — same as break for narrowing purposes.
 let guardWithContinue(s: String): String! {
   let x = optional(s)
-  let count = 0
-  for (count == 0) {
+  loop {
     if (x == null) { continue }
     let y: String! = x
     break
@@ -145,24 +144,6 @@ let guardWithContinue(s: String): String! {
 
 assert("guard with continue narrows within loop iteration") {
   guardWithContinue("c") == "c"
-}
-
-# While-loop condition narrows the body. Inside the body, x is non-null,
-# so we can bind it to a String! and break with that value.
-let whileCondNarrows(s: String): String! {
-  let x = optional(s)
-  let result = for (x != null) {
-    let y: String! = x
-    break y
-  }
-  if (result == null) {
-    raise "missing"
-  }
-  result
-}
-
-assert("while-loop condition narrows the body") {
-  whileCondNarrows("present") == "present"
 }
 
 # Branch narrowing still applies inside then/else.

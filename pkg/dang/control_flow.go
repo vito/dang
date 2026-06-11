@@ -11,7 +11,6 @@ type ControlFrameKind int
 const (
 	NoControlFrame ControlFrameKind = iota
 	ReturnFrame
-	LoopFrame
 	BlockCallFrame
 	BlockInvocationFrame
 )

@@ -68,17 +68,19 @@ pub f: Int! {
               (non_zero_decimal_digit))))))))
 
 ===
-Bare break in infinite for loop
+Bare break in loop builtin
 ===
 
-for { break }
+loop { break }
 
 ---
 
 (dang
-  (for_loop
-    (for_infinite_loop
-      (for_token)
-      (block
+  (symbol_or_call
+    (symbol_block
+      (symbol
+        (id
+          (word_token)))
+      (block_arg
         (break
           (break_token))))))

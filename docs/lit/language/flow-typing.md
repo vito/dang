@@ -31,11 +31,12 @@ if (x == null) { print("no x") } else {
 }
 ```
 
-### Loop conditions
+### Loop guards
 
 ```dang
-for (x != null) {
-  # x is T! in the body
+loop {
+  if (x == null) { break }
+  # x is T! after the guard
   x = x.next
 }
 ```
@@ -47,7 +48,7 @@ for (x != null) {
 - a guard whose then-branch diverges narrows the rest of the enclosing scope
 - `else if` chains: the parser wraps `else if` in a Block, so the outer guard's falsy facts still apply afterward
 - sequential guards accumulate: each narrows independently as forms are processed in order
-- a loop *condition* narrows the loop body (`for (x != null) { … }` → `x` is `T!` inside)
+- inside a `loop` / `.each` block, a guard that `break`s or `continue`s narrows the rest of that iteration (`if (x == null) { break }` → `x` is `T!` after)
 
 ## Type narrowing via `case`
 

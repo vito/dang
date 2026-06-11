@@ -1,0 +1,4 @@
+# `for` is no longer a keyword; repetition is the `loop` builtin.
+for {
+  break
+}

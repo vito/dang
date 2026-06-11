@@ -83,14 +83,14 @@ let noValueContinue = [1].map { x =>
 }
 assert { noValueContinue == [null] }
 
-let loopBreakValue = for {
+let loopBreakValue = loop {
   break "loop done"
 }
 assert { loopBreakValue == "loop done" }
 
 let nestedLoopCount = 0
 [1, 2, 3].each { x =>
-  for {
+  loop {
     nestedLoopCount += 1
     break
   }
@@ -100,7 +100,10 @@ assert { nestedLoopCount == 3 }
 let nestedContinueCount = 0
 [1, 2].each { x =>
   let i = 0
-  for (i < 2) {
+  loop {
+    if (i >= 2) {
+      break
+    }
     i += 1
     continue
     break "wrong target"

@@ -56,7 +56,7 @@ Narrowing applies to **bare symbols** (locals, and bare `self`-field references 
 if (x != null) { print("got " + x) }   # x is T! in the then-branch
 if (x == null) { return "no value" }    # x is T! after the guard
 if (x == null) { ... } else { ... }     # x is T! in the else
-for (x != null) { x = x.next }          # x is T! in the loop body
+loop { if (x == null) { break }, x = x.next }   # x is T! after the guard
 ```
 
 ### Diverging constructs are narrowing-aware
