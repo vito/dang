@@ -65,6 +65,17 @@ nav.sidebar .brand{font-weight:600;color:var(--fg);font-size:1rem;display:block}
 
 main{flex:1;max-width:820px;margin:0 auto;padding:2.5rem 2rem 4rem;min-width:0}
 
+/* Hover-revealed deep link on every section heading, sitting in the left
+   margin so it doesn't shift the title. Hidden on touch layouts (no hover,
+   and the margin is too tight). */
+.section-header{position:relative}
+.heading-anchor{
+  position:absolute;left:-1.1em;top:0;
+  color:var(--fg3);font-weight:400;opacity:0;transition:opacity .12s;
+}
+.section-header:hover .heading-anchor,.heading-anchor:focus{opacity:1}
+.heading-anchor:hover{color:var(--link);text-decoration:none}
+
 h1{font-size:1.8rem;font-weight:600;margin-bottom:.25rem}
 h2{font-size:1.2rem;font-weight:600;margin:2.5rem 0 .75rem;padding-bottom:.4rem;border-bottom:1px solid var(--code-border)}
 h3{font-size:1rem;font-weight:600;margin:1.5rem 0 .5rem}
@@ -271,6 +282,7 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
   .sidebar-nav{display:none;max-height:70vh;overflow-y:auto;margin-top:.75rem}
   .nav-toggle:checked ~ nav.sidebar .sidebar-nav{display:block}
   main{padding:1.5rem 1rem 3rem}
+  .heading-anchor{display:none}
 }
 </style>
 </head>

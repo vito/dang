@@ -1,5 +1,6 @@
 <h{{headerDepth .}} class="section-header"><a id="{{.PrimaryTag.Name}}"></a>
   {{.Title | render -}}
+  <a class="heading-anchor" href="{{url .PrimaryTag}}" aria-label="Link to this section">#</a>
 </h{{headerDepth .}}>
 
 {{.Body | render}}
