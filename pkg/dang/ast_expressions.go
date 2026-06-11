@@ -593,7 +593,11 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 		t, _ := scheme.Type()
 		if s.AutoCall {
-			t, _ = autoCallFnType(t)
+			var err error
+			t, _, err = autoCallFnType(t)
+			if err != nil {
+				return nil, err
+			}
 		}
 		s.SetInferredType(t)
 		return t, nil
@@ -703,7 +707,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			methodType := instantiateListMethod(def, listElemType)
 
 			if d.AutoCall {
-				methodType, _ = autoCallFnType(methodType)
+				var err error
+				methodType, _, err = autoCallFnType(methodType)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			// For nullable list receivers, mark as nullable so the call site
@@ -740,7 +748,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			methodType := instantiateListMethod(def, mapValType)
 
 			if d.AutoCall {
-				methodType, _ = autoCallFnType(methodType)
+				var err error
+				methodType, _, err = autoCallFnType(methodType)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			if nullableMap {
@@ -801,7 +813,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
 		}
 		if d.AutoCall {
-			t, _ = autoCallFnType(t)
+			var err error
+			t, _, err = autoCallFnType(t)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		// If receiver was nullable, make result nullable too
@@ -1025,7 +1041,11 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Apply auto-call if needed
 		if i.AutoCall {
-			elementType, _ = autoCallFnType(elementType)
+			var err error
+			elementType, _, err = autoCallFnType(elementType)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		// Return nullable element type since indexing can fail (out of bounds)
@@ -1590,7 +1610,10 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		}
 	}
 
-	ret, _ := autoCallFnType(fieldType)
+	ret, _, err := autoCallFnType(fieldType)
+	if err != nil {
+		return nil, err
+	}
 
 	// Handle nested selections
 	if field.Selection != nil {
@@ -2549,148 +2572,6 @@ func (c *Conditional) Walk(fn func(Node) bool) {
 	}
 }
 
-// ForLoop represents a condition-based loop or infinite loop
-type ForLoop struct {
-	InferredTypeHolder
-	Condition Node   // Condition for condition-based loops (nil for infinite loops)
-	LoopBody  *Block // Loop body
-	Loc       *SourceLocation
-}
-
-var _ Node = (*ForLoop)(nil)
-var _ Evaluator = (*ForLoop)(nil)
-
-func (f *ForLoop) DeclaredSymbols() []string {
-	return nil // For loops don't declare anything in global scope
-}
-
-func (f *ForLoop) ReferencedSymbols() []string {
-	var symbols []string
-	if f.Condition != nil {
-		symbols = append(symbols, f.Condition.ReferencedSymbols()...)
-	}
-	symbols = append(symbols, f.LoopBody.ReferencedSymbols()...)
-	return symbols
-}
-
-func (f *ForLoop) Body() hm.Expression { return f }
-
-func (f *ForLoop) GetSourceLocation() *SourceLocation { return f.Loc }
-
-func (f *ForLoop) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
-	return WithInferErrorHandling(f, func() (hm.Type, error) {
-		// Apply truthy facts from the condition inside the body. The body
-		// only executes when the condition is true, so refinements derived
-		// from it hold for each iteration.
-		bodyEnv := env
-		if f.Condition != nil {
-			// Infer the condition type outside the loop control-flow target.
-			condType, err := f.Condition.Infer(ctx, env, fresh)
-			if err != nil {
-				return nil, err
-			}
-
-			// Unify with boolean
-			if _, err := hm.Assignable(condType, hm.NonNullType{Type: BooleanType}); err != nil {
-				return nil, NewInferError(fmt.Errorf("condition must be boolean, got %s", condType), f.Condition)
-			}
-
-			facts := analyzeCondition(f.Condition, env)
-			bodyEnv = withNarrowings(env, facts.Truthy)
-		}
-
-		loopTarget := NewInferControlTarget(LoopFrame)
-		bodyCtx := contextWithInferBreakTarget(ctx, loopTarget)
-		bodyCtx = contextWithInferContinueTarget(bodyCtx, loopTarget)
-
-		bodyType, err := f.LoopBody.Infer(bodyCtx, bodyEnv, fresh)
-		if err != nil {
-			return nil, err
-		}
-
-		// Loops return the last value from the body, or null if never executed.
-		// Condition-based loops may skip their body entirely, so preserve that
-		// nullable possibility even when the body type is still a type variable
-		// from a local control-flow expression like return/break/continue.
-		loopType := bodyType
-		if f.Condition != nil {
-			loopType = nullableControlResultType(loopType)
-		} else if nonNull, ok := loopType.(hm.NonNullType); ok {
-			loopType = nonNull.Type
-		}
-
-		// A value-bearing break overrides the loop result; plain break preserves
-		// the previous last value for backwards compatibility.
-		for _, br := range collectBreakStatements(f.LoopBody, loopTarget) {
-			if !br.HasValue {
-				continue
-			}
-			loopType = mergeControlResultTypes(loopType, breakValueType(br))
-		}
-
-		return loopType, nil
-	})
-}
-
-func (f *ForLoop) Eval(ctx context.Context, scope ValueScope) (Value, error) {
-	return WithEvalErrorHandling(ctx, f, func() (Value, error) {
-		var lastVal Value = NullValue{}
-		loopFrame := NewControlFrame(LoopFrame)
-		defer loopFrame.Deactivate()
-		bodyCtx := contextWithBreakFrame(ctx, loopFrame)
-		bodyCtx = contextWithContinueFrame(bodyCtx, loopFrame)
-
-		for {
-			if f.Condition != nil {
-				condVal, err := EvalNode(ctx, scope, f.Condition)
-				if err != nil {
-					return nil, fmt.Errorf("evaluating condition: %w", err)
-				}
-
-				boolVal, ok := condVal.(BoolValue)
-				if !ok {
-					return nil, fmt.Errorf("condition must evaluate to boolean, got %T", condVal)
-				}
-
-				if !boolVal.Val {
-					break
-				}
-			}
-
-			val, err := EvalNode(bodyCtx, scope, f.LoopBody)
-			if err != nil {
-				var breakEx *BreakException
-				if errors.As(err, &breakEx) && controlFrameMatches(breakEx.Target, loopFrame) {
-					if breakEx.HasValue && breakEx.Value != nil {
-						lastVal = breakEx.Value
-					}
-					break
-				}
-
-				var continueEx *ContinueException
-				if errors.As(err, &continueEx) && controlFrameMatches(continueEx.Target, loopFrame) {
-					continue
-				}
-
-				return nil, fmt.Errorf("evaluating body: %w", err)
-			}
-			lastVal = val
-		}
-
-		return lastVal, nil
-	})
-}
-
-func (f *ForLoop) Walk(fn func(Node) bool) {
-	if !fn(f) {
-		return
-	}
-	if f.Condition != nil {
-		f.Condition.Walk(fn)
-	}
-	f.LoopBody.Walk(fn)
-}
-
 // Break represents a break statement in a loop or block-taking call.
 type Break struct {
 	InferredTypeHolder
@@ -2870,8 +2751,6 @@ func (e *BreakException) Error() string {
 		switch e.Target.Kind {
 		case BlockCallFrame:
 			return "break from expired block call"
-		case LoopFrame:
-			return "break from expired loop"
 		}
 	}
 	return "break outside of loop or block-taking call"
@@ -2890,8 +2769,6 @@ func (e *ContinueException) Error() string {
 		switch e.Target.Kind {
 		case BlockInvocationFrame:
 			return "continue from expired block invocation"
-		case LoopFrame:
-			return "continue from expired loop"
 		}
 	}
 	return "continue outside of loop or block arg invocation"

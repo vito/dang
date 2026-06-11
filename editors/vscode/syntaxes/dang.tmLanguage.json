@@ -116,7 +116,7 @@
       "name": "entity.name.function.macro.dang"
     },
     "keyword-control": {
-      "match": "\\b(type|interface|union|implements|enum|scalar|if|else|for|break|continue|case|assert|directive|on|import|new|and|or|try|catch|raise|return)\\b",
+      "match": "\\b(type|interface|union|implements|enum|scalar|if|else|break|continue|case|assert|directive|on|import|new|and|or|try|catch|raise|return)\\b",
       "name": "keyword.control.dang"
     },
     "keyword": {
@@ -128,7 +128,7 @@
       "name": "entity.name.type.dang"
     },
     "builtin-function": {
-      "match": "\\b(print|toJSON)\\b",
+      "match": "\\b(print|loop|toJSON)\\b",
       "name": "support.function.builtin.dang"
     },
     "operator": {

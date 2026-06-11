@@ -630,8 +630,6 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatReturn(n)
 	case *Conditional:
 		f.formatConditional(n)
-	case *ForLoop:
-		f.formatForLoop(n)
 	case *Case:
 		f.formatCase(n)
 	case *Break:
@@ -1731,8 +1729,6 @@ func (f *Formatter) isMultilineNode(node Node) bool {
 		return true
 	case *Conditional:
 		return wasMultiline(n)
-	case *ForLoop:
-		return true
 	case *Case:
 		return true
 	case *FunCall:
@@ -2653,22 +2649,6 @@ func (f *Formatter) formatConditional(c *Conditional) {
 			f.write("}")
 		}
 	}
-}
-
-func (f *Formatter) formatForLoop(l *ForLoop) {
-	f.write("for ")
-
-	if l.Condition != nil {
-		// Condition loop: for (condition)
-		f.write("(")
-		f.formatNode(l.Condition)
-		f.write(") ")
-	}
-	// else: infinite loop - just "for { ... }"
-
-	f.write("{")
-	f.formatBlockContents(l.LoopBody)
-	f.write("}")
 }
 
 func (f *Formatter) formatCase(c *Case) {

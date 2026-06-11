@@ -24,7 +24,7 @@
 
 ```
 let type interface enum union scalar new implements
-if else case for break continue return
+if else case break continue return
 try catch raise
 import directive on
 true false null
@@ -128,7 +128,7 @@ Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
 Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
                            | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
-Form         := Return | TryCatch | Raise | Conditional | ForLoop
+Form         := Return | TryCatch | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | IndexOrCall | SelectOrCall | Literal | List
               | ObjectLiteral | Block | ParenForm | SymbolOrCall

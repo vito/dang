@@ -37,13 +37,14 @@ Four ideas the rest of the language hangs on:
   *auto-call* on bare reference. Use `&name` to get the function without calling.
 - **No `return` for the normal result** — the last expression is the value.
   `return` is for *early* exit only.
-- **No truthiness** — `if`/`for` conditions must be `Boolean!`.
-- **Everything is an expression** — `if`, `case`, `for`, `try` all yield values.
+- **No truthiness** — `if` conditions must be `Boolean!`.
+- **Everything is an expression** — `if`, `case`, `loop`, `try` all yield values.
 - **Multi-field selection** — `user.{name, posts.{title}}` becomes one GraphQL
   query (lazy; sent when forced).
 - **`#` comments, no `//`**; docstrings are real `"""..."""` strings before a
   declaration. Record literals use **double braces** `{{ ... }}`.
-- **No `for (x in xs)`** — iterate with `xs.each { x => ... }`.
+- **No `for`/`while` keyword** — iterate with `xs.each { x => ... }`; repeat-until-`break`
+  is the `loop { ... }` builtin.
 - **Directives** (`@deprecated`) are typed declarations, not comment pragmas.
 - **Errors are for errors**, not control flow or expected absence (use `null`).
 
@@ -74,8 +75,8 @@ Load the reference file that matches the question:
 | `reference/syntax.md` | file layout, comments, identifiers, reserved words, docstrings, **literals** (numbers/strings/lists/records), **operators** + precedence, the PEG **grammar** |
 | `reference/types.md` | built-in types, the `!` nullability sigil, list nullability matrix, null propagation, `::` type hints/casts, coercion rules, **flow-sensitive narrowing** (and its gaps), **enums**, **custom scalars** |
 | `reference/objects.md` | **fields** & `let`, **functions** & `&fn` refs, **blocks** & control-flow handoff, **`type` objects** & constructors (`new`), `self`, computed fields, **mutation / copy-on-write**, **interfaces** & **unions** + variance |
-| `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `for`, `break`/`continue`/`return`, **errors** (`try`/`catch`/`raise`, the `Error` interface, when to raise vs. return null) |
-| `reference/stdlib.md` | top-level builtins (`assert`/`print`/`toString`/`toJSON`/`fromJSON`/`fromYAML`), **`String!` methods** (incl. regex/`Match`), **list `[T]!` methods**, **JSON/YAML**, `Random`, `UUID`, error types |
+| `reference/control-flow.md` | `if`/`else`, `case` (value + type patterns), `loop`, `break`/`continue`/`return`, **errors** (`try`/`catch`/`raise`, the `Error` interface, when to raise vs. return null) |
+| `reference/stdlib.md` | top-level builtins (`assert`/`print`/`loop`/`toString`/`toJSON`/`fromJSON`/`fromYAML`), **`String!` methods** (incl. regex/`Match`), **list `[T]!` methods**, **JSON/YAML**, `Random`, `UUID`, error types |
 | `reference/graphql.md` | **GraphQL interop** (selection, inline fragments, laziness/forcing, mutations), **modules** & directory modules, **`dang.toml`**, `import`, shadowing, **directives** |
 | `reference/cli.md` | the `dang` CLI, `dang fmt`, the REPL and its `:` commands, exit codes, LSP/editor integration |
 

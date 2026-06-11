@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use (&block: (): Boolean!): Loop! as Loop!
+[1m[31mError:[0m function requires a block argument
   [2m[34m--> errors/constructor_block_autocall.dang:12:15[0m
  [2m    |[0m
  [2m 10 | }[0m

@@ -2,11 +2,11 @@
 
 # Control flow {#control-flow}
 
-> Meta: keep `if`, `case`, and `for` close together — they're all expression-form. The "no statements vs. expressions" point is worth stating once at the top.
+> Meta: keep `if`, `case`, and `loop` close together — they're all expression-form. The "no statements vs. expressions" point is worth stating once at the top.
 
 ## Everything is an expression
 
-- `if`, `case`, `for`, `try` all return values
+- `if`, `case`, `loop`, `try` all return values
 - the value is the last expression in the chosen branch
 - so they're assignable, returnable, usable as args (see [#blocks])
 
@@ -62,23 +62,22 @@ case (animal) {
 
 - `case { x > 0 => "+", x < 0 => "-", else => "0" }` — omitting the operand desugars to `case (true)`; clauses are `Boolean!` conditions
 
-## `for`
+## `loop`
 
 ```dang
-for (i < 10) { i += 1 }   # loops while condition is Boolean! true
-for { break }             # infinite; exit via break/return
+let answer = loop { break 42 }   # block-taking builtin; runs until break
 ```
 
-- condition must be `Boolean!` (same as `if`) — no `for (x in xs)`; iterate collections with `xs.each { x => ... }` (see [#collections])
-- a `for` is an expression: yields the last body value, or `null` if the body never ran
-- condition loops are always nullable (the body may be skipped), so a value-`break`/`return` inside the body cannot make the loop result non-null
-- `break value` overrides the yielded value (`for { break "loop done" }` yields `"loop done"`)
+- `loop { ... }` is Dang's only loop — a stdlib builtin (see [#stdlib]), not a keyword: it calls its block repeatedly forever
+- there is no `for` or `while`; iterate collections with `xs.each { x => ... }` (see [#collections]), and write conditional loops with a mid-body guard: `loop { if (!cond) { break } ... }`
+- exit via `break` / `return` / `raise`; `continue` advances to the next iteration
+- an expression: yields the `break` value (`null` for a bare `break`); the result is non-null when every `break` carries a non-null value, so `loop { break 42 }` is usable directly as `Int!`
 
 ## `break` and `continue`
 
 - valid only inside a loop or a block-taking call; otherwise compile error (`break outside of loop or block-taking call` / `continue outside of loop or block arg invocation`)
 - `break` exits; `break value` makes the loop / block-call yield `value`; bare `break` yields `null`
-- `continue` skips to the next iteration; in `.map`, `continue value` inserts `value` into the result (bare `continue` inserts `null`); in `.each` / `for` it just advances
+- `continue` skips to the next iteration; in `.map`, `continue value` inserts `value` into the result (bare `continue` inserts `null`); in `.each` / `loop` it just advances
 - target the nearest enclosing loop or block-call only; an ordinary nested function does NOT inherit the enclosing block's break/continue target (compile error if it tries)
 
 ## `return`
@@ -86,7 +85,7 @@ for { break }             # infinite; exit via break/return
 - exits the enclosing function / method / constructor early; outside one is a compile error (`return outside of function`)
 - value type must satisfy the function's declared return type
 - unwinds through enclosing blocks and loops (e.g. `return` from inside `.each` exits the whole fn; see [#blocks])
-- a `return` in a skippable branch (no-else `if`, condition `for`) does not make the fn non-null
+- a `return` in a skippable branch (e.g. a no-else `if`) does not make the fn non-null
 - `return` is NOT an error and is NOT catchable by `try`/`catch` (see [#errors])
 
 ## `try` / `catch` / `raise`

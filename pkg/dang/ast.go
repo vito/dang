@@ -60,13 +60,14 @@ const (
 )
 
 // autoCallFnType returns the type that should be used for zero-arity function auto-calling
-func autoCallFnType(t hm.Type) (hm.Type, bool) {
+func autoCallFnType(t hm.Type) (hm.Type, bool, error) {
 	// Check if this is a zero-arity function and return its return type.
-	// A declared block parameter is required, so functions that expect a block
-	// cannot be auto-called by a bare reference.
+	// A bare reference auto-calls, and a block parameter is required, so a
+	// bare reference to a block-taking function is the same error as calling
+	// it without a block. References without calling are spelled `&name`.
 	if ft, ok := t.(*hm.FunctionType); ok {
 		if ft.Block() != nil {
-			return t, false
+			return t, false, fmt.Errorf("function requires a block argument")
 		}
 		if rt, ok := ft.Arg().(*RecordType); ok {
 			// Check if all fields are optional (no NonNullType fields)
@@ -83,16 +84,14 @@ func autoCallFnType(t hm.Type) (hm.Type, bool) {
 			}
 
 			if hasRequiredArgs {
-				return t, false
+				return t, false, nil
 			}
 
-			if !hasRequiredArgs {
-				// All arguments are optional, return the return type
-				return ft.Ret(false), true
-			}
+			// All arguments are optional, return the return type
+			return ft.Ret(false), true, nil
 		}
 	}
-	return t, true
+	return t, true, nil
 }
 
 // isAutoCallableFn checks if a function can be auto-called (has no required arguments)

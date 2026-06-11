@@ -46,10 +46,6 @@
         "named": true
       },
       {
-        "type": "for_loop",
-        "named": true
-      },
-      {
         "type": "raise",
         "named": true
       },
@@ -1845,87 +1841,6 @@
         },
         {
           "type": "non_zero_decimal_digit",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "for_condition_loop",
-    "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "cond": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "form",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "for_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "for_infinite_loop",
-    "named": true,
-    "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "for_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "for_loop",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "for_condition_loop",
-          "named": true
-        },
-        {
-          "type": "for_infinite_loop",
           "named": true
         }
       ]
@@ -4668,10 +4583,6 @@
   },
   {
     "type": "false_token",
-    "named": true
-  },
-  {
-    "type": "for_token",
     "named": true
   },
   {

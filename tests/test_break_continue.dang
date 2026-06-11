@@ -24,9 +24,12 @@ numbers2.each { num =>
 
 assert { sum2 == 12 } # 1 + 2 + 4 + 5, skips 3
 
-# Test break in for loop with condition
+# Test break in a guarded loop
 let count = 0
-for (count < 10) {
+loop {
+  if (count >= 10) {
+    break
+  }
   count += 1
   if (count == 5) {
     break
@@ -35,11 +38,14 @@ for (count < 10) {
 
 assert { count == 5 }
 
-# Test continue in for loop with condition
+# Test continue in a guarded loop
 let count2 = 0
 let evens = 0
 
-for (count2 < 10) {
+loop {
+  if (count2 >= 10) {
+    break
+  }
   count2 += 1
   if (count2 % 2 == 1) {
     continue

@@ -48,7 +48,7 @@ Person(name: "Alice")
 
 - a type whose constructor needs nothing (all fields have defaults / no required params) constructs on bare reference:
   `let p = Person` ≡ `let p = Person()`
-- exception: a constructor that requires a **block argument** is NOT auto-called by a bare reference (`loop: Loop! = Loop` is an error)
+- a bare reference to a function requiring a **block argument** is an error (`function requires a block argument`) — same as calling it without a block; use `&name` to reference it without calling
 
 ## Explicit constructor: `new`
 

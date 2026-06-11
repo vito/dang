@@ -1,0 +1,79 @@
+# loop calls its block repeatedly; break exits and provides the result
+let result = loop { break 42 }
+assert { result == 42 }
+
+# break with no value yields null
+let bare = loop {
+  break
+}
+assert { bare == null }
+
+# mutation across iterations, conditional break
+let i = 0
+let sum = 0
+loop {
+  i += 1
+  if (i > 3) {
+    break
+  }
+  sum += i
+}
+assert { sum == 6 } # 1 + 2 + 3
+
+# continue advances to the next iteration
+let j = 0
+let evens = 0
+loop {
+  j += 1
+  if (j > 6) {
+    break
+  }
+  if (j % 2 == 1) {
+    continue
+  }
+  evens += j
+}
+assert { evens == 12 } # 2 + 4 + 6
+
+# loop is an expression; break value flows out through let
+let countdown = 5
+let landed = loop {
+  countdown = countdown - 1
+  if (countdown == 0) {
+    break "liftoff"
+  }
+}
+assert { landed == "liftoff" }
+
+# return inside loop exits the enclosing function
+firstAbove(threshold: Int!): Int! {
+  let n = 0
+  loop {
+    n += 1
+    if (n > threshold) {
+      return n
+    }
+  }
+  0
+}
+
+assert { firstAbove(3) == 4 }
+
+# nested loops: break/continue target the innermost loop
+let outer = 0
+let inner_total = 0
+loop {
+  outer += 1
+  if (outer > 2) {
+    break
+  }
+  let inner = 0
+  loop {
+    inner += 1
+    if (inner > 3) {
+      break
+    }
+    inner_total += 1
+  }
+}
+assert { inner_total == 6 } # 3 inner iterations x 2 outer

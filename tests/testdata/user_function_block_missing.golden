@@ -1,4 +1,4 @@
-[1m[31mError:[0m cannot use (&block: (x: Int!): String!): String! as String!
+[1m[31mError:[0m function requires a block argument
   [2m[34m--> errors/user_function_block_missing.dang:8:19[0m
  [2m    |[0m
  [2m  6 | [0m
