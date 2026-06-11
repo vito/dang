@@ -38,7 +38,7 @@ NonNullAssert := Term '!'
 
 ## Type syntax
 
-> `Type` dispatches to one of these; non-null is a suffix `!` wrapping any inner type. See [#types].
+> `Type` dispatches to one of these; non-null is a suffix `!` wrapping any inner type. See [#nullability].
 
 ```
 Type         := NonNull | AppliedType | NamedType | ListType | ObjectType | TypeVariable

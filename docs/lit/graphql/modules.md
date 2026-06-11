@@ -55,7 +55,7 @@ environment expansion; `$(...)` command substitution is not supported.
 - `authorization = "..."` — value for the `Authorization` header
 - `[imports.<Name>.headers]` — extra HTTP headers (table of key = value)
 - `authorization` / `endpoint` / `headers` values support `${ENV_VAR}` expansion (note: the old `DANG_GRAPHQL_*` env-var config was dropped)
-- runtime queries are GraphQL interop; see [#graphql]
+- runtime queries are GraphQL interop; see [#interop]
 
 ## `import` declarations
 
@@ -65,7 +65,7 @@ import MyApi
 ```
 
 - exposes both *qualified* (`MyApi.User`) and *unqualified* (`User`) names
-- covers types, root `Query`/`Mutation` functions, interfaces, unions, enums, scalars, and directives (see [#graphql])
+- covers types, root `Query`/`Mutation` functions, interfaces, unions, enums, scalars, and directives (see [#interop])
 - enum *values* become unqualified too: `ACTIVE` (== `Status.ACTIVE`) if no collision (see [#enums-scalars])
 - imported directives are usable unqualified: `@customDirective(...)` (see [#directives])
 

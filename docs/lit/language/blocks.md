@@ -27,7 +27,7 @@ myFun(&block(x: Int!): String!): String! {
 }
 ```
 
-- the block param's arg types may also be a type variable: `id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#types])
+- the block param's arg types may also be a type variable: `id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#nullability])
 - a function/constructor may have at most one block parameter
 - regular args and a block param can mix; the block param comes last
 - callers pass a trailing brace block:
@@ -126,7 +126,7 @@ c.{ mountCache(_, path, cache) }
 
 - because `foo.{ bar(_) }` ≡ `bar(foo)`, a null receiver is simply *passed in*: the block runs with `_` bound to null, exactly as `bar(null)` would. Dot-block applies a block — it does not navigate into the receiver, so it has nothing to short-circuit
 - this is what lets a block *handle* null: `x.{ _ ?? 0 }`, `x.{ if (_ == null) { … } else { … } }`
-- contrast `.{{ }}` selection ([#graphql]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
+- contrast `.{{ }}` selection ([#interop]), which *is* navigation and therefore **short-circuits**: `user.{{name}}` is `null` when `user` is null, and its result type is nullable. Same `.`-brace surface, but selection reads fields while dot-block calls a block
 
 ## Common methods that take blocks
 

@@ -1,8 +1,8 @@
 \use-plugin{dang}
 
-# GraphQL interop {#graphql}
+# GraphQL interop {#interop}
 
-> Meta: this is the page that justifies the language. Lead with "schema-as-stdlib" — when you `import Dagger`, every type and root function in the schema becomes part of the language. Import wiring (`dang.toml`, `import`) lives in [#modules]; type machinery in [#types]; record/object access in [#objects].
+> Meta: this is the page that justifies the language. Lead with "schema-as-stdlib" — when you `import Dagger`, every type and root function in the schema becomes part of the language. Import wiring (`dang.toml`, `import`) lives in [#modules]; type machinery in [#nullability]; record/object access in [#objects].
 
 ## Schema-as-stdlib
 

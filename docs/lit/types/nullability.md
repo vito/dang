@@ -1,6 +1,6 @@
 \use-plugin{dang}
 
-# Types and nullability {#types}
+# Types and nullability {#nullability}
 
 > Meta: nullability is the page's main attraction. Most readers won't have seen GraphQL-style `T!` outside of a schema and may misread it as "definitely-null" or "force-unwrap."
 

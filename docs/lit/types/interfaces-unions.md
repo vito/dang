@@ -4,8 +4,8 @@
 
 > Meta: these align directly with GraphQL interfaces and unions, so users coming from a schema will recognize them. Worth saying that up front to set expectations.
 
-- interfaces and unions map 1:1 to their GraphQL counterparts; a schema's interfaces/unions are available as [#types] values
-- both are discriminated with `case` (see [#control-flow]) and, for GraphQL values, with inline fragments (see [#graphql])
+- interfaces and unions map 1:1 to their GraphQL counterparts; a schema's interfaces/unions are available as [#nullability] values
+- both are discriminated with `case` (see [#control-flow]) and, for GraphQL values, with inline fragments (see [#interop])
 - the interface/union type itself is also a runtime value (`Named != null`, `Pet != null`)
 
 ## Interfaces
@@ -94,7 +94,7 @@ case (pet) {
 
 ### Inline fragments
 
-> Meta: inline fragments are the GraphQL selection syntax (see [#graphql]); they apply to single values *and* lists.
+> Meta: inline fragments are the GraphQL selection syntax (see [#interop]); they apply to single values *and* lists.
 
 ```dang
 pets.{{

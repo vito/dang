@@ -14,10 +14,10 @@
 
 ## What's distinctive
 
-- types and root functions come from a **GraphQL schema**, not handwritten declarations ([#graphql])
+- types and root functions come from a **GraphQL schema**, not handwritten declarations ([#interop])
 - **prototype-based** objects (`type Foo` declares both a type and its constructor) ([#objects])
 - **multi-field selection**: `user.{{name, posts.{{title}}}}` becomes one query ([#objects])
-- **null tracking** in the type system (`String` ≠ `String!`) ([#types], [#flow-typing])
+- **null tracking** in the type system (`String` ≠ `String!`) ([#nullability], [#flow-typing])
 - **optional parens** for zero-arg calls — fields and methods feel the same ([#fields])
 - **directives** instead of comment pragmas ([#directives])
 - **directory-level modules** — split files however ([#modules])

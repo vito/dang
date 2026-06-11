@@ -45,6 +45,10 @@ nav.sidebar{
 }
 nav.sidebar h2{font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin:1.25rem 0 .35rem;border:none;padding:0}
 nav.sidebar h2:first-child{margin-top:0}
+/* part headers are links to the part's stub page, but keep the label look */
+nav.sidebar h2 a{display:inline;padding:0;border-radius:0;color:inherit}
+nav.sidebar h2 a:hover{background:none;color:var(--fg);text-decoration:none}
+nav.sidebar h2 a.current{background:none;color:var(--accent2)}
 nav.sidebar ul{list-style:none;padding:0;margin:0}
 nav.sidebar li{margin:.15rem 0}
 nav.sidebar a{color:var(--fg2);display:block;padding:.2rem .4rem;border-radius:4px}

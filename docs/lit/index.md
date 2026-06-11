@@ -33,33 +33,13 @@ type Greeter {
 ["world", "Dang", "you"].map { who => Greeter(who).greet }
 }}}
 
-> Meta: this is the landing page — pitch, install, first-look code, then a curated contents block. The TOC is intentional but stays at two levels (chapters and their sections — toc.tmpl caps the depth); deeper navigation lives in the sidebar and on the pages themselves.
+> Meta: this is the landing page — pitch, install, first-look code, then a curated contents block. The TOC is intentional but stays at two levels (parts and their chapters — toc.tmpl caps the depth); deeper navigation lives in the sidebar and on the pages themselves.
 
 \table-of-contents
 
-\include-section{./getting-started.md}
-\include-section{./language/overview.md}
-\include-section{./language/syntax.md}
-\include-section{./language/literals.md}
-\include-section{./language/types.md}
-\include-section{./language/operators.md}
-\include-section{./language/fields.md}
-\include-section{./language/functions.md}
-\include-section{./language/blocks.md}
-\include-section{./language/control-flow.md}
-\include-section{./language/objects.md}
-\include-section{./language/mutation.md}
-\include-section{./language/interfaces-unions.md}
-\include-section{./language/enums-scalars.md}
-\include-section{./language/errors.md}
-\include-section{./language/flow-typing.md}
-\include-section{./language/modules.md}
-\include-section{./language/directives.md}
-\include-section{./language/graphql.md}
-\include-section{./github-playground.md}
-\include-section{./language/collections.md}
-\include-section{./language/strings.md}
-\include-section{./language/json-yaml.md}
-\include-section{./reference/stdlib.md}
-\include-section{./reference/grammar.md}
-\include-section{./reference/cli.md}
+\include-section{./start.md}
+\include-section{./language.md}
+\include-section{./types.md}
+\include-section{./graphql.md}
+\include-section{./data.md}
+\include-section{./reference.md}

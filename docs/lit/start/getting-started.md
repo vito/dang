@@ -92,6 +92,6 @@ type Greeter {
 ## Where next
 
 - [#overview] for the mental model
-- [#graphql] once you want to do real work
+- [#interop] once you want to do real work
 - [#objects] for `type` declarations and methods (like the Dagger module above)
 - [#modules] for splitting a program across files / directory modules

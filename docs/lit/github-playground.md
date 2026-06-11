@@ -2,9 +2,9 @@
 
 # GraphQL + Dang playground {#github-playground}
 
-> Meta: the live payoff of [#graphql] — "schema-as-stdlib" against a real API the
+> Meta: the live payoff of [#interop] — "schema-as-stdlib" against a real API the
 > reader already has an account on. Keep it concrete: sign in, run, see your own
-> data. Don't re-teach selection syntax (that's [#graphql]); show it working.
+> data. Don't re-teach selection syntax (that's [#interop]); show it working.
 > Honesty: the only thing not client-side is the OAuth token exchange, and the
 > token stays in the tab. Say that plainly, don't oversell.
 
@@ -33,7 +33,7 @@ viewer.{{
 - `import GitHub` introspects GitHub's schema the first time you run (a few
   seconds — it's a big schema), then caches it for the rest of the session
 - root `Query` fields like `viewer` and `repository` become callable functions
-- `.{{ ... }}` selections, nested fields, and arguments all work as in [#graphql]
+- `.{{ ... }}` selections, nested fields, and arguments all work as in [#interop]
 
 ## What's actually happening
 
