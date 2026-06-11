@@ -134,7 +134,7 @@ var curatedDarkStyles = [
   "hardcore",
   "horizon-dark",
   "horizon-terminal-dark",
-  "ir-black",
+  "irblack",
   "materia",
   "material",
   "mocha",

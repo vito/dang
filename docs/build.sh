@@ -18,7 +18,16 @@ cp "$wasm_exec" js/wasm_exec.js
 chmod +x build-highlight-assets.sh
 ./build-highlight-assets.sh --runtime-only || echo "warning: highlight assets unavailable; playground editor will not be colored" >&2
 
-# Regenerate the theme switcher's <option> list from the vendored base16
+# Generate the per-scheme CSS from the tinted-theming/schemes submodule
+# (pinned at docs/schemes). The submodule is initialized here rather than
+# assumed so that checkouts made without --recurse-submodules (and CI clones
+# that skip submodules) still build.
+if [ ! -d schemes/base16 ]; then
+  git -C .. submodule update --init docs/schemes
+fi
+go run ./cmd/genthemes
+
+# Regenerate the theme switcher's <option> list from the generated base16
 # schemes. Committed (it only changes when schemes are added) so the booklit
 # templates also work without this script.
 {
