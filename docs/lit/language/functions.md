@@ -96,5 +96,5 @@ greet(someNullableString)  # falls back to "world" when the value is null
 greet(
   """name of the person to greet"""
   name: String!
-): String! { ... }
+): String! { "hey, ${name}!" }
 ```

@@ -38,7 +38,7 @@ type Person implements Named {
 
 ```dang
 interface User implements Named { email: String! }
-interface Post implements Named & Timestamped { ... }
+interface Post implements Named & Timestamped { title: String! }
 ```
 
 - a child interface must re-declare (cover) every field the parent declares

@@ -49,7 +49,7 @@ try {
 ## Type-pattern catches
 
 ```dang
-try { ... } catch {
+try { risky() } catch {
   v: ValidationError => v.field
   n: NotFoundError => n.resource
   e: Error => e.message     # interface pattern = typed catch-all

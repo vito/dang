@@ -16,7 +16,7 @@ list, or a block body:
 
 ```dang
 name: String!             # typed field
-greet: String! { ... }    # computed field / method
+greet: String! { "hi!" }  # computed field / method
 add(x: Int!): Int! { x }  # method with args
 y: Int! = 100             # typed field with default
 let secret = "shhh"       # local field
@@ -29,7 +29,7 @@ A field is **public** when it declares a type, and **local** when it starts with
 
 ```dang
 name: String!              # public field
-greet: String! { ... }     # public method
+greet: String! { "hi!" }   # public method
 count: Int! = 0            # public field with a default
 let secret = "shhh"        # local field
 ```

@@ -42,7 +42,7 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
 - block parameter list can take multiple args:
 
 ```dang
-list.each { item, index => ... }
+list.each { item, index => print("${index}: ${item}") }
 ```
 
 ## Optional parameters
