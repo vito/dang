@@ -56,6 +56,7 @@ firstAbove(threshold: Int!): Int! {
   }
   0
 }
+
 assert { firstAbove(3) == 4 }
 
 # nested loops: break/continue target the innermost loop
