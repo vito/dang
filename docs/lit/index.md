@@ -3,17 +3,9 @@
 
 # dang {#index}
 
-> NOTE FROM A HUMAN: these docs are a rough AI-assisted draft. For this first
-> phase I'm just establishing the concepts, framing, and facts. I'm publishing
-> this ASAP to unblock users and LLMs on learning the language, and I'll
-> gradually humanize and de-slop them over time. This notice will go away when
-> it's in a state I'm proud of.
->
-> Apologies in advance for any nonsense. Every paragraph has a 'feedback'
-> button so you can yell at me about it anonymously.
+A statically typed scripting language for GraphQL, where the types and
+functions are loaded directly from the schema.
 
-A statically typed scripting language whose types and root functions come from a
-GraphQL schema.
 
 \header-links{
   [GitHub](https://github.com/vito/dang)
@@ -33,7 +25,12 @@ type Greeter {
 ["world", "Dang", "you"].map { who => Greeter(who).greet }
 }}}
 
-> Meta: this is the landing page — pitch, install, first-look code, then a curated contents block. The TOC is intentional but stays at two levels (parts and their chapters — toc.tmpl caps the depth); deeper navigation lives in the sidebar and on the pages themselves.
+> **NOTE FROM A HUMAN:** this is an AI-assisted draft, for now just
+> establishing the concepts, framing, and facts. Everything here is correct and
+> verifiable, and I do like the brevity, but there are probably better ways to
+> explain things. I'll be improving them gradually and this notice will go away
+> when it's in a state I'm proud of. Sorry for any nonsense. Every paragraph
+> has a 'feedback' button so you can yell at me about it anonymously.
 
 \table-of-contents
 
