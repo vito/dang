@@ -87,15 +87,11 @@ foo.{ bar(_) }                  # dot-block; see [#dot-block]
 
 ## Control-flow handoff
 
-> Meta: the cute Ruby-esque part. `return` inside a `.map`/`.each` block unwinds the *enclosing function*, not just the block.
+> Meta: the cute Ruby-esque part. `return` inside a `.map`/`.each` block unwinds the *enclosing function*, not just the block. The full `break`/`continue` spec lives in [#control-flow]; keep only the block-specific wrinkles here.
 
 - `return` inside a block unwinds through the enclosing **function**, not just the block
-- `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls
-- `break value` becomes the loop/call's result; bare `break` yields `null`
-- `continue value` flows into `.map`'s result for that element; bare `continue` yields `null` there (e.g. `[null]`); in `.each`/`loop` it just skips to the next iteration
-- `break`/`continue` target the *innermost* loop/block call
+- `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls — a block-taking call is a valid target, and the value/result rules are specified in [#control-flow]
 - an **ordinary nested function** declared inside a block does NOT inherit the block's break/continue target — `break`/`continue` there errors `... outside of loop or block-taking call`
-- `break`/`continue`/`return` with no enclosing loop/function error at typecheck: `break outside of loop or block-taking call`, `continue outside of loop or block arg invocation`, `return outside of function`
 - escaped blocks (stored via `&block`, then called after the receiving call/function has already returned) error at runtime: `break from expired block call` / `return from expired function`
 
 ## When to use a block vs. a function reference
