@@ -14,7 +14,6 @@ declared as prototypes, plus interfaces, unions, enums, and scalars that map
 \table-of-contents
 
 \include-section{./types/nullability.md}
-\include-section{./types/flow-typing.md}
 \include-section{./types/objects.md}
 \include-section{./types/mutation.md}
 \include-section{./types/interfaces-unions.md}
