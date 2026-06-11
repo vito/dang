@@ -131,7 +131,7 @@ Person(name: "Alice")
 
 ### Zero-arg auto-construction
 - A type whose constructor needs nothing constructs on bare reference: `let p = Person` ≡ `Person()`.
-- Exception: a constructor requiring a **block argument** is NOT auto-called by a bare reference (`loop: Loop! = Loop` is an error).
+- A bare reference to a function requiring a **block argument** is an error (`function requires a block argument`) — same as calling it without a block. Use `&name` to reference it without calling.
 
 ### Explicit constructor: `new`
 ```dang

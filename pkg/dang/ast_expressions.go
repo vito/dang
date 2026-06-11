@@ -593,7 +593,11 @@ func (s *Symbol) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 		}
 		t, _ := scheme.Type()
 		if s.AutoCall {
-			t, _ = autoCallFnType(t)
+			var err error
+			t, _, err = autoCallFnType(t)
+			if err != nil {
+				return nil, err
+			}
 		}
 		s.SetInferredType(t)
 		return t, nil
@@ -703,7 +707,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			methodType := instantiateListMethod(def, listElemType)
 
 			if d.AutoCall {
-				methodType, _ = autoCallFnType(methodType)
+				var err error
+				methodType, _, err = autoCallFnType(methodType)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			// For nullable list receivers, mark as nullable so the call site
@@ -740,7 +748,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			methodType := instantiateListMethod(def, mapValType)
 
 			if d.AutoCall {
-				methodType, _ = autoCallFnType(methodType)
+				var err error
+				methodType, _, err = autoCallFnType(methodType)
+				if err != nil {
+					return nil, err
+				}
 			}
 
 			if nullableMap {
@@ -801,7 +813,11 @@ func (d *Select) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Ty
 			return nil, fmt.Errorf("Select.Infer: type of field %q is not monomorphic", d.Field.Name)
 		}
 		if d.AutoCall {
-			t, _ = autoCallFnType(t)
+			var err error
+			t, _, err = autoCallFnType(t)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		// If receiver was nullable, make result nullable too
@@ -1025,7 +1041,11 @@ func (i *Index) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 
 		// Apply auto-call if needed
 		if i.AutoCall {
-			elementType, _ = autoCallFnType(elementType)
+			var err error
+			elementType, _, err = autoCallFnType(elementType)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		// Return nullable element type since indexing can fail (out of bounds)
@@ -1590,7 +1610,10 @@ func (o *ObjectSelection) inferFieldType(ctx context.Context, field *FieldSelect
 		}
 	}
 
-	ret, _ := autoCallFnType(fieldType)
+	ret, _, err := autoCallFnType(fieldType)
+	if err != nil {
+		return nil, err
+	}
 
 	// Handle nested selections
 	if field.Selection != nil {

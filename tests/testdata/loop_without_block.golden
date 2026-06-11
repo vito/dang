@@ -1,8 +1,8 @@
 [1m[31mError:[0m function requires a block argument
   [2m[34m--> errors/loop_without_block.dang:1:1[0m
  [2m    |[0m
- [2m[34m[1m  1 | [0mloop()
-[2m       [31m^^^^^^[0m
+ [2m[34m[1m  1 | [0mloop
+[2m       [31m^^^^[0m
  [2m  2 | [0m
  [2m    |[0m
 
