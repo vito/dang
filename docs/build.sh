@@ -18,12 +18,19 @@ cp "$wasm_exec" js/wasm_exec.js
 chmod +x build-highlight-assets.sh
 ./build-highlight-assets.sh --runtime-only || echo "warning: highlight assets unavailable; playground editor will not be colored" >&2
 
-# Render the syntax-highlight palettes to chroma.css. Highlighting emits chroma
-# CSS classes (not inline styles), so this stylesheet supplies their colors and
-# the light/dark theming. Build artifact, ignored by git.
-CGO_ENABLED=0 go run ./gen-chroma-css chroma.css
+# Regenerate the theme switcher's <option> list from the vendored base16
+# schemes. Committed (it only changes when schemes are added) so the booklit
+# templates also work without this script.
+{
+  for scheme in css/base16/*.css; do
+    name="$(basename "$scheme" .css)"
+    name="${name#base16-}"
+    echo "<option value=\"${name}\">${name}</option>"
+  done
+} > html/base16-options.tmpl
 
-# CGO_ENABLED=0 keeps this build pure-Go: the stdlib reference page imports
-# pkg/dang to introspect the builtin registry, and pkg/dang only pulls in
-# tree-sitter (cgo) when CGO is enabled. The registry itself is pure Go.
-CGO_ENABLED=0 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"
+# CGO_ENABLED=1: code blocks are tokenized by the Dang tree-sitter grammar
+# (the same parser and highlight query the editors and the playground use),
+# which binds the generated C parser via cgo. The build image needs a C
+# compiler; chroma stays on purely as the HTML/CSS formatting layer.
+CGO_ENABLED=1 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"

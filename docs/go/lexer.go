@@ -1,81 +1,307 @@
+//go:build cgo
+
 package dangdocs
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
+	"github.com/vito/dang/v2/pkg/dang/danglang"
 )
 
 func init() {
 	lexers.Register(dangLexer)
 }
 
-var dangLexer = chroma.MustNewLexer(
-	&chroma.Config{
+// dangLexer is a chroma.Lexer backed by the Dang tree-sitter grammar and the
+// same highlight query the editors and the playground use, so static code
+// blocks on the site highlight identically to Neovim, Zed, and the in-browser
+// editor. Chroma stays on as the HTML/CSS formatting layer (and the lexer for
+// the few non-Dang fences); only the tokenization is tree-sitter's.
+var dangLexer = &treeSitterLexer{
+	config: &chroma.Config{
 		Name:      "Dang",
 		Aliases:   []string{"dang"},
 		Filenames: []string{"*.dang"},
 		MimeTypes: []string{"text/x-dang"},
 	},
-	func() chroma.Rules {
-		return chroma.Rules{
-			"root": {
-				// whitespace
-				{Pattern: `\s+`, Type: chroma.TextWhitespace},
+}
 
-				// comments
-				{Pattern: `#[^\r\n]*`, Type: chroma.Comment},
+type treeSitterLexer struct {
+	config *chroma.Config
 
-				// triple-quoted strings (incl. docstrings)
-				{Pattern: `"""[\s\S]*?"""`, Type: chroma.LiteralString},
+	once     sync.Once
+	query    *tree_sitter.Query
+	captures []string
+	loadErr  error
+}
 
-				// backtick templates: single-line; multi-line fences handled as longer match first
-				{Pattern: "`{3,}[\\s\\S]*?`{3,}", Type: chroma.LiteralString},
-				{Pattern: "`[^`\n]*`", Type: chroma.LiteralString},
+func (l *treeSitterLexer) Config() *chroma.Config { return l.config }
 
-				// double-quoted string with escapes
-				{Pattern: `"(\\.|[^"\\])*"`, Type: chroma.LiteralString},
+func (l *treeSitterLexer) SetRegistry(*chroma.LexerRegistry) chroma.Lexer { return l }
 
-				// numeric literals
-				{Pattern: `-?\d+\.\d+([eE][+\-]?\d+)?`, Type: chroma.LiteralNumberFloat},
-				{Pattern: `-?\d+[eE][+\-]?\d+`, Type: chroma.LiteralNumberFloat},
-				{Pattern: `-?\d+`, Type: chroma.LiteralNumberInteger},
+func (l *treeSitterLexer) SetAnalyser(func(string) float32) chroma.Lexer { return l }
 
-				// directives (@foo)
-				{Pattern: `@[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*`, Type: chroma.NameDecorator},
+func (l *treeSitterLexer) AnalyseText(string) float32 { return 0 }
 
-				// declaration keywords
-				{Pattern: `\b(pub|let|type|interface|union|enum|scalar|new|implements|directive|import|on)\b`, Type: chroma.KeywordDeclaration},
-
-				// control-flow keywords
-				{Pattern: `\b(if|else|case|for|break|continue|return|try|catch|raise)\b`, Type: chroma.Keyword},
-
-				// logical keywords
-				{Pattern: `\b(and|or)\b`, Type: chroma.OperatorWord},
-
-				// constant literals
-				{Pattern: `\b(true|false|null)\b`, Type: chroma.KeywordConstant},
-
-				// `self`
-				{Pattern: `\bself\b`, Type: chroma.NameBuiltinPseudo},
-
-				// built-in types
-				{Pattern: `\b(Int|Float|String|Boolean|ID|Void)\b`, Type: chroma.KeywordType},
-
-				// user-defined types (Capitalized identifiers)
-				{Pattern: `\b[A-Z][A-Za-z0-9_]*\b`, Type: chroma.NameClass},
-
-				// function call: lower-cased ident immediately followed by `(`
-				{Pattern: `\b[a-z_][A-Za-z0-9_]*(?=\s*\()`, Type: chroma.NameFunction},
-
-				// regular identifiers
-				{Pattern: `\b[a-z_][A-Za-z0-9_]*\b`, Type: chroma.Name},
-
-				// operators
-				{Pattern: `(::|\?\?|==|!=|<=|>=|\+=|-=|=>|->|&&|\|\||[+\-*/%<>=!&])`, Type: chroma.Operator},
-
-				// punctuation
-				{Pattern: `[(){}\[\],.:;|?]`, Type: chroma.Punctuation},
-			},
+// loadHighlightQuery finds highlights.scm the same way build-highlight-assets.sh
+// does: the in-repo copy (a symlink into the editors/zed submodule) when it's
+// checked out, otherwise the copy the build script fetched into docs/js/.
+// DANG_HIGHLIGHT_QUERY overrides both.
+func loadHighlightQuery() (string, error) {
+	var candidates []string
+	if p := os.Getenv("DANG_HIGHLIGHT_QUERY"); p != "" {
+		candidates = append(candidates, p)
+	}
+	if _, src, _, ok := runtime.Caller(0); ok {
+		root := filepath.Dir(filepath.Dir(filepath.Dir(src)))
+		candidates = append(candidates,
+			filepath.Join(root, "treesitter", "queries", "highlights.scm"),
+			filepath.Join(root, "docs", "js", "dang-highlights.scm"),
+		)
+	}
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return string(data), nil
 		}
-	},
+	}
+	return "", fmt.Errorf("highlights.scm not found (tried %s)", strings.Join(candidates, ", "))
+}
+
+func (l *treeSitterLexer) compile() {
+	source, err := loadHighlightQuery()
+	if err != nil {
+		l.loadErr = err
+		return
+	}
+	query, qerr := tree_sitter.NewQuery(danglang.Language(), source)
+	if qerr != nil {
+		l.loadErr = fmt.Errorf("compile highlights.scm: %w", qerr)
+		return
+	}
+	l.query = query
+	l.captures = query.CaptureNames()
+}
+
+// signaturePrefix wraps declaration fragments for parsing. Bare field
+// declarations like `withExec(args: [String!]!): Container!` — common in
+// prose — only parse inside an interface body.
+const (
+	signaturePrefix = "interface _ {\n"
+	signatureSuffix = "\n}"
 )
+
+func (l *treeSitterLexer) Tokenise(_ *chroma.TokeniseOptions, text string) (chroma.Iterator, error) {
+	l.once.Do(l.compile)
+	if l.loadErr != nil {
+		return nil, l.loadErr
+	}
+	if text == "" {
+		return chroma.Literator(), nil
+	}
+
+	types := l.paintTypes(text)
+
+	var tokens []chroma.Token
+	for i := 0; i < len(text); {
+		j := i + 1
+		for j < len(text) && types[j] == types[i] {
+			j++
+		}
+		tokens = append(tokens, chroma.Token{Type: types[i], Value: text[i:j]})
+		i = j
+	}
+	return chroma.Literator(tokens...), nil
+}
+
+// paintTypes assigns a token type per byte: wider captures first, narrower
+// (and later) captures override, mirroring how the editors resolve the same
+// query. The lexer must be compiled (l.once) before calling.
+func (l *treeSitterLexer) paintTypes(text string) []chroma.TokenType {
+	spans, errBytes := l.capture(text, 0)
+	if errBytes > 0 {
+		// The source didn't fully parse. Snippets on the site are often
+		// declaration fragments (stdlib signatures); retry inside a synthetic
+		// interface body and keep whichever parse recovered more.
+		wrapped, wrappedErrBytes := l.capture(signaturePrefix+text+signatureSuffix, len(signaturePrefix))
+		if wrappedErrBytes < errBytes {
+			spans = wrapped
+		}
+	}
+
+	types := make([]chroma.TokenType, len(text))
+	for i := range types {
+		types[i] = chroma.Text
+	}
+	for _, s := range spans {
+		tt, ok := captureTokenType(s.capture)
+		if !ok {
+			continue
+		}
+		for b := s.start; b < s.end; b++ {
+			types[b] = tt
+		}
+	}
+	return types
+}
+
+// classify returns the chroma CSS class for each byte of source (empty for
+// unstyled bytes), or nil if the highlight query is unavailable.
+func (l *treeSitterLexer) classify(source string) []string {
+	l.once.Do(l.compile)
+	if l.loadErr != nil {
+		return nil
+	}
+	types := l.paintTypes(source)
+	classes := make([]string, len(source))
+	for i, tt := range types {
+		classes[i] = tokenCSSClass(tt)
+	}
+	return classes
+}
+
+// tokenCSSClass resolves a token type to chroma's standard CSS class the same
+// way chroma's HTML formatter does: walk up the type hierarchy to the nearest
+// entry in StandardTypes.
+func tokenCSSClass(tt chroma.TokenType) string {
+	for t := tt; t != 0; t = t.Parent() {
+		if cls, ok := chroma.StandardTypes[t]; ok {
+			return cls
+		}
+	}
+	return ""
+}
+
+type captureSpan struct {
+	start, end int
+	capture    string
+}
+
+// capture parses source and returns highlight spans translated back by
+// offset, along with the number of bytes covered by ERROR/MISSING nodes
+// within the [offset, len(source)-offset') snippet region.
+func (l *treeSitterLexer) capture(source string, offset int) ([]captureSpan, int) {
+	src := []byte(source)
+	snippetLen := len(src) - offset
+	if offset > 0 {
+		snippetLen -= len(signatureSuffix)
+	}
+
+	parser := tree_sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(danglang.Language()); err != nil {
+		return nil, snippetLen
+	}
+	tree := parser.Parse(src, nil)
+	if tree == nil {
+		return nil, snippetLen
+	}
+	defer tree.Close()
+
+	root := tree.RootNode()
+
+	var spans []captureSpan
+	cursor := tree_sitter.NewQueryCursor()
+	defer cursor.Close()
+	captures := cursor.Captures(l.query, root, src)
+	for {
+		match, idx := captures.Next()
+		if match == nil {
+			break
+		}
+		c := match.Captures[idx]
+		start := int(c.Node.StartByte()) - offset
+		end := int(c.Node.EndByte()) - offset
+		if end <= 0 || start >= snippetLen {
+			continue
+		}
+		spans = append(spans, captureSpan{
+			start:   max(start, 0),
+			end:     min(end, snippetLen),
+			capture: l.captures[c.Index],
+		})
+	}
+
+	sort.SliceStable(spans, func(i, j int) bool {
+		if spans[i].start != spans[j].start {
+			return spans[i].start < spans[j].start
+		}
+		return spans[i].end-spans[i].start > spans[j].end-spans[j].start
+	})
+
+	return spans, errorBytes(root, offset, offset+snippetLen)
+}
+
+// errorBytes sums the bytes of ERROR/MISSING nodes intersecting [start, end).
+func errorBytes(node *tree_sitter.Node, start, end int) int {
+	if node.IsError() || node.IsMissing() {
+		s, e := int(node.StartByte()), int(node.EndByte())
+		if e < start || s > end {
+			return 0
+		}
+		// A zero-width MISSING node still poisons the parse it appears in.
+		return max(min(e, end)-max(s, start), 1)
+	}
+	total := 0
+	for i := uint(0); i < node.ChildCount(); i++ {
+		total += errorBytes(node.Child(i), start, end)
+	}
+	return total
+}
+
+// captureTokenType maps a highlight query capture name to the chroma token
+// type carrying the equivalent CSS class, keeping chroma.css and the
+// light/dark palettes working unchanged. Unhandled captures (notably @error,
+// since docs snippets may be fragments) report false to stay unstyled.
+func captureTokenType(name string) (chroma.TokenType, bool) {
+	switch name {
+	case "error":
+		return 0, false
+	case "variable.special":
+		return chroma.NameBuiltinPseudo, true
+	case "function.builtin":
+		return chroma.NameBuiltin, true
+	case "function.macro":
+		return chroma.NameDecorator, true
+	case "string.escape":
+		return chroma.LiteralStringEscape, true
+	case "property":
+		return chroma.NameProperty, true
+	case "label":
+		return chroma.NameTag, true
+	case "type":
+		// all capitalized type names highlight the same, like the editors
+		return chroma.KeywordType, true
+	}
+	switch strings.SplitN(name, ".", 2)[0] {
+	case "keyword":
+		return chroma.Keyword, true
+	case "constant":
+		if strings.HasPrefix(name, "constant.numeric") {
+			return chroma.LiteralNumber, true
+		}
+		return chroma.KeywordConstant, true
+	case "string":
+		return chroma.LiteralString, true
+	case "comment":
+		return chroma.Comment, true
+	case "operator":
+		return chroma.Operator, true
+	case "punctuation":
+		return chroma.Punctuation, true
+	case "function":
+		return chroma.NameFunction, true
+	case "variable":
+		return chroma.Name, true
+	}
+	return 0, false
+}

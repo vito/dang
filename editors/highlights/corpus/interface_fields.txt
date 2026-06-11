@@ -1,0 +1,35 @@
+===
+interface method signatures highlight as methods
+===
+
+interface Runner {
+  withExec(args: [String!]!): Container!
+}
+
+---
+
+(highlights
+  (@keyword "interface")
+  " "
+  (@variable @type "Runner")
+  " "
+  (@punctuation.bracket "{")
+  "\n  "
+  (@variable @function.method "withExec")
+  "("
+  (@variable @variable.parameter "args")
+  (@punctuation.delimiter ":")
+  " "
+  (@punctuation.bracket "[")
+  (@type "String")
+  (@operator "!")
+  (@punctuation.bracket "]")
+  (@operator "!")
+  (@punctuation.bracket ")")
+  (@punctuation.delimiter ":")
+  " "
+  (@type "Container")
+  (@operator "!")
+  "\n"
+  (@punctuation.bracket "}")
+)

@@ -92,9 +92,9 @@ static bool is_continuation_start(int32_t c) {
 // a non-word character (space, newline, paren, etc.). This is used to treat
 // leading `and`/`or` on a new line as expression continuation.
 //
-// The lexer is advanced past the keyword; the caller should only call this when
-// a false return means the scan will return true (AUTOMATIC_NEWLINE), so
-// advancing is harmless since tree-sitter will re-lex from the marked position.
+// The lexer is advanced past the keyword, so the caller must mark_end the
+// token before calling this; otherwise a false return emits a token that has
+// swallowed the advanced characters (e.g. the `a` of `agent`).
 static bool is_leading_logical_op(TSLexer *lexer) {
   // Check for "and"
   if (lexer->lookahead == 'a') {
@@ -370,6 +370,10 @@ bool tree_sitter_dang_external_scanner_scan(
          lexer->lookahead == '\r' || lexer->lookahead == '\n') {
     lexer->advance(lexer, false);
   }
+
+  // The separator token ends here; everything past this point is pure
+  // lookahead and must not be included in the token.
+  lexer->mark_end(lexer);
 
   // If the first significant character indicates expression continuation,
   // this newline is NOT a separator.

@@ -1,16 +1,11 @@
 package dangdocs
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 	"strings"
 
-	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/vito/booklit"
-	"github.com/vito/booklit/baselit"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -27,10 +22,11 @@ import (
 // quick-scan index. We deliberately leave out bass-isms that don't apply to
 // Dang (per-line source links, type predicates).
 //
-// Signatures are highlighted at build time with chroma (the same "dang" lexer
-// and style as the site's code blocks). chroma's regex lexer tolerates these
-// declaration-style signatures — which aren't always complete Dang programs —
-// far more gracefully than the tree-sitter parser would.
+// Signatures are highlighted at build time with the same "dang" lexer and
+// style as the site's code blocks. The lexer tokenizes with the Dang
+// tree-sitter grammar and re-parses declaration-style signatures — which
+// aren't complete Dang programs — inside a synthetic interface body (see
+// lexer.go), so they highlight like real declarations.
 
 // indexThreshold is the group size above which a quick-scan index is rendered
 // before the cards. Small groups read fine as bare cards.
@@ -126,7 +122,6 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 	rows := make(booklit.Sequence, 0, len(defs))
 	for _, d := range defs {
 		tag := stdlibTag(key, d.Name)
-		sig := signature(d, prefix)
 
 		// Target.Content (and the card/row Description) feed the search index's
 		// text; Title feeds its title. StripAux dereferences these, so they must
@@ -143,7 +138,12 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 				Title:    booklit.String(signature(d, titlePrefix)),
 				Content:  desc,
 			},
-			"Reference": &booklit.Reference{Section: p.section, TagName: tag},
+		}
+		// The receiver/module context (".", "Random.") is display labeling,
+		// not part of the declaration; the template renders it ahead of the
+		// highlighted code.
+		if prefix != "" {
+			cardPartials["Prefix"] = booklit.String(prefix)
 		}
 		rowPartials := booklit.Partials{}
 		if d.Doc != "" {
@@ -154,13 +154,13 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 		// A builtin's example becomes a pre-seeded, runnable REPL on the card
 		// (see exampleRepl). The index rows stay terse — signature + one-liner.
 		if d.Example != "" {
-			cardPartials["Example"] = exampleRepl(d.Example)
+			cardPartials["Example"] = p.exampleRepl(d.Example)
 		}
 
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  highlightDang(sig),
+			Content:  p.renderSignature(signature(d, ""), d.Name, tag),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
@@ -200,55 +200,32 @@ func stdlibTag(key, name string) string {
 }
 
 // exampleRepl renders a builtin's example as a pre-seeded, runnable REPL. The
-// snippet is chroma-highlighted at build time so it reads as a normal code
-// block (and stays useful without JavaScript); docs/js/playground.js upgrades
-// it into a live REPL — seeded with this code — on first Run. See the
-// "stdlib-example" template and \dang-repl.
-func exampleRepl(code string) booklit.Content {
+// snippet is highlighted (and stdlib auto-linked) at build time so it reads
+// as a normal code block and stays useful without JavaScript;
+// docs/js/playground.js upgrades it into a live REPL — seeded with this
+// code — on first Run. See the "stdlib-example" template and \dang-repl.
+func (p Plugin) exampleRepl(code string) booklit.Content {
 	return booklit.Styled{
 		Style:   "stdlib-example",
 		Block:   true,
-		Content: highlightDang(code),
+		Content: p.highlightDang(code),
 	}
 }
 
-// highlightDang renders a snippet of Dang as inline, syntax-highlighted HTML
-// using the same chroma "dang" lexer and style (styles.Fallback) as the site's
-// code blocks. It mirrors the site's class/inline choice
-// (baselit.HighlightWithClasses): in class mode the colors and code background
-// come from chroma.css, so the snippet themes with the rest of the page. It
-// backs both the signature cards and the example REPLs; the chroma regex lexer
-// tolerates partial declarations and whole expressions alike.
-func highlightDang(src string) booklit.Content {
-	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(src)}
-
-	lexer := lexers.Get("dang")
-	if lexer == nil {
-		return plain
-	}
-	iterator, err := lexer.Tokenise(nil, src)
-	if err != nil {
-		return plain
-	}
-	opts := []chromahtml.Option{chromahtml.InlineCode(true)}
-	if baselit.HighlightWithClasses {
-		opts = append(opts, chromahtml.WithClasses(true))
-	}
-	var buf bytes.Buffer
-	if err := chromahtml.New(opts...).Format(&buf, styles.Fallback, iterator); err != nil {
-		return plain
-	}
-	return booklit.Styled{Style: "raw-html", Content: booklit.String(buf.String())}
-}
-
-// signature renders a builtin's call signature in Dang declaration form, e.g.
-// ".split(separator: String!, limit: Int = 0): [String!]!".
+// signature renders a builtin's signature in real Dang declaration form: a
+// block parameter is written `&block(args): Type`, last in the argument list,
+// exactly as user code declares one — so signature cards double as examples
+// of declaring block-taking functions, and the "dang" lexer can highlight
+// them by parsing like any other snippet (via its interface-body fragment
+// handling). TestSignaturesAreValidDeclarations pins the notation. prefix is
+// display context (".", "List."), not part of the declaration — cards render
+// it separately and lex only the unprefixed form.
 func signature(d dang.BuiltinDef, prefix string) string {
 	var b strings.Builder
 	b.WriteString(prefix)
 	b.WriteString(d.Name)
 
-	if len(d.ParamTypes) > 0 {
+	if len(d.ParamTypes) > 0 || d.BlockType != nil {
 		b.WriteString("(")
 		for i, param := range d.ParamTypes {
 			if i > 0 {
@@ -262,12 +239,13 @@ func signature(d dang.BuiltinDef, prefix string) string {
 				b.WriteString(renderDefault(param.DefaultValue))
 			}
 		}
+		if d.BlockType != nil {
+			if len(d.ParamTypes) > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(renderBlockParam(d.BlockType))
+		}
 		b.WriteString(")")
-	}
-
-	if d.BlockType != nil {
-		b.WriteString(" ")
-		b.WriteString(renderBlock(d.BlockType))
 	}
 
 	if d.ReturnType != nil {
@@ -278,29 +256,43 @@ func signature(d dang.BuiltinDef, prefix string) string {
 	return b.String()
 }
 
-// renderBlock renders a block parameter, e.g. "{ item, index => b }". A block
-// with no parameters renders as just its body type, e.g. "{ Boolean! }".
-func renderBlock(ft *hm.FunctionType) string {
-	var params []string
-	if rec, ok := ft.Arg().(*dang.RecordType); ok {
-		for _, f := range rec.Fields {
-			params = append(params, f.Key)
+// renderBlockParam renders a block parameter in declaration form, e.g.
+// "&block(item: a): Boolean!", or "&block: a" for a block taking no
+// arguments.
+func renderBlockParam(ft *hm.FunctionType) string {
+	var b strings.Builder
+	b.WriteString("&block")
+	if rec, ok := ft.Arg().(*dang.RecordType); ok && len(rec.Fields) > 0 {
+		b.WriteString("(")
+		for i, f := range rec.Fields {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(f.Key)
+			b.WriteString(": ")
+			argType := f.Value.String()
+			if t, ok := f.Value.Type(); ok {
+				argType = renderType(t)
+			}
+			b.WriteString(argType)
 		}
+		b.WriteString(")")
 	}
-	body := renderType(ft.ReturnType())
-	if len(params) == 0 {
-		return "{ " + body + " }"
-	}
-	return "{ " + strings.Join(params, ", ") + " => " + body + " }"
+	b.WriteString(": ")
+	b.WriteString(renderType(ft.ReturnType()))
+	return b.String()
 }
 
 // renderType formats a type for a signature. The null-returning builtins are
 // typed with a fresh type variable (NullValue.Type()); surface that as Null.
+// Nullable type variables print as `a?` internally, but Dang's surface syntax
+// has no `?` — nullable is the unmarked default — so strip it to keep
+// signatures valid declarations.
 func renderType(t hm.Type) string {
 	if tv, ok := t.(hm.TypeVariable); ok && tv == hm.TypeVariable('n') {
 		return "Null"
 	}
-	return fmt.Sprintf("%s", t)
+	return strings.ReplaceAll(fmt.Sprintf("%s", t), "?", "")
 }
 
 func renderDefault(v dang.Value) string {

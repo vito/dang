@@ -1,0 +1,132 @@
+===
+regression test for weird partial word highlighting
+===
+
+"""
+A Dagger-native sandboxed coding agent.
+"""
+type Doug {
+  let source: Directory! @defaultPath(path: "/")
+
+  """
+  A CLI friendly entrypoint for starting a coding agent developing in a workdir.
+  """
+  dev(
+    source: Directory!,
+    module: Module,
+  ): LLM! {
+    let e = env.withWorkspace(source)
+    if (module != null) {
+      e = e.withModule(module)
+    }
+    agent(base: llm.withEnv(e))
+  }
+}
+
+---
+
+(highlights
+  (@string "\"\"\"\nA Dagger-native sandboxed coding agent.\n\"\"\"")
+  "\n"
+  (@keyword "type")
+  " "
+  (@variable @type "Doug")
+  " "
+  (@punctuation.bracket "{")
+  "\n  "
+  (@keyword "let")
+  " "
+  (@variable @function.method "source")
+  (@punctuation.delimiter ":")
+  " "
+  (@type "Directory")
+  (@operator "!")
+  " "
+  (@punctuation.special "@")
+  (@function.macro "defaultPath")
+  "("
+  (@property "path")
+  (@punctuation.delimiter ":")
+  " "
+  (@string "\"/\"")
+  (@punctuation.bracket ")")
+  "\n\n  "
+  (@string "\"\"\"\n  A CLI friendly entrypoint for starting a coding agent developing in a workdir.\n  \"\"\"")
+  "\n  "
+  (@variable @function.method "dev")
+  "(\n    "
+  (@variable @variable.parameter "source")
+  (@punctuation.delimiter ":")
+  " "
+  (@type "Directory")
+  (@operator "!")
+  (@punctuation.delimiter ",")
+  "\n    "
+  (@variable @variable.parameter "module")
+  (@punctuation.delimiter ":")
+  " "
+  (@type "Module")
+  (@punctuation.delimiter ",")
+  "\n  "
+  (@punctuation.bracket ")")
+  (@punctuation.delimiter ":")
+  " "
+  (@type "LLM")
+  (@operator "!")
+  " "
+  (@punctuation.bracket "{")
+  "\n    "
+  (@keyword "let")
+  " "
+  (@variable @function.method "e")
+  " "
+  (@operator "=")
+  " "
+  (@variable "env")
+  (@punctuation.delimiter ".")
+  (@function.method.call "withWorkspace")
+  "("
+  (@variable "source")
+  (@punctuation.bracket ")")
+  "\n    "
+  (@keyword "if")
+  " "
+  (@punctuation.bracket "(")
+  (@variable "module")
+  " "
+  (@operator "!=")
+  " "
+  (@constant.builtin "null")
+  (@punctuation.bracket ")")
+  " "
+  (@punctuation.bracket "{")
+  "\n      "
+  (@variable "e")
+  " "
+  (@operator "=")
+  " "
+  (@variable "e")
+  (@punctuation.delimiter ".")
+  (@function.method.call "withModule")
+  "("
+  (@variable "module")
+  (@punctuation.bracket ")")
+  "\n    "
+  (@punctuation.bracket "}")
+  "\n    "
+  (@variable @function.call "agent")
+  "("
+  (@property "base")
+  (@punctuation.delimiter ":")
+  " "
+  (@variable "llm")
+  (@punctuation.delimiter ".")
+  (@function.method.call "withEnv")
+  "("
+  (@variable "e")
+  (@punctuation.bracket "))")
+  "\n  "
+  (@punctuation.bracket "}")
+  "\n"
+  (@punctuation.bracket "}")
+)

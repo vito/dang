@@ -8,31 +8,34 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="chroma.css">
+<script type="text/javascript" src="js/switcher.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --bg:#0d0f14;--bg2:#13161d;--bg3:#1a1e28;
-  --fg:#c9d1d9;--fg2:#8b949e;--fg3:#6e7681;
-  --accent:#ffbb19;--accent2:#ffcf5b;--on-accent:#0d0f14;
-  --green:#34d399;--cyan:#22d3ee;--pink:#f472b6;--orange:#ffa657;--yellow:#fbbf24;
-  --code-bg:#0d1117;--code-border:#30363d;
-  --td-border:rgba(48,54,61,.3);
-}
-@media (prefers-color-scheme:light){
-  :root{
-    --bg:#ffffff;--bg2:#f6f8fa;--bg3:#eaeef2;
-    --fg:#1f2328;--fg2:#57606a;--fg3:#818b98;
-    --accent:#195dff;--accent2:#0044e5;--on-accent:#ffffff;
-    --green:#1a7f55;--cyan:#0b7285;--pink:#bf3989;--orange:#bc4c00;--yellow:#9a6700;
-    --code-bg:#f6f8fa;--code-border:#d0d7de;
-    --td-border:rgba(208,215,222,.6);
-  }
+  /* The whole site is colored by the selected base16 scheme (chroma.css
+     supplies fallback palettes; css/base16/ + js/switcher.js pick the
+     active one). A light scheme makes a light site; the OS light/dark
+     preference steers the default scheme choice, an explicit pick wins.
+     Slot conventions follow the base16 styling guide: 00-02 background
+     depths, 03-05 foreground depths, 08-0E the rainbow. */
+  --bg:var(--base00);--bg2:var(--base01);--bg3:var(--base02);
+  --fg:var(--base05);--fg2:var(--base04);--fg3:var(--base03);
+  --accent:var(--base09);--accent2:var(--base0A);--on-accent:var(--base00);
+  --link:var(--base0D);
+  --green:var(--base0B);--cyan:var(--base0C);--pink:var(--base08);--orange:var(--base09);--yellow:var(--base0A);
+  --code-bg:var(--base00);--code-border:var(--base02);
+  --td-border:var(--base01);
 }
 html{font-size:16px}
 body{background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,sans-serif;line-height:1.6;margin:0;display:flex;min-height:100vh}
 code,pre,.mono{font-family:'JetBrains Mono',monospace}
-a{color:var(--accent2);text-decoration:none}
+a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
+::selection{background:var(--base02)}
+/* Auto-links inside code (stdlib references) keep their token color; the
+   underline appears on hover so code still reads as code. */
+.chroma a{color:inherit;text-decoration:none}
+.chroma a:hover{text-decoration:underline}
 p code{background:var(--bg3);padding:.15em .4em;border-radius:4px;font-size:.85em}
 
 nav.sidebar{
@@ -49,6 +52,14 @@ nav.sidebar a:hover{color:var(--fg);background:var(--bg3);text-decoration:none}
 nav.sidebar a.current{color:var(--accent2);background:var(--bg3)}
 nav.sidebar .brand{font-weight:600;color:var(--fg);font-size:1rem;display:block}
 .sidebar-head{margin-bottom:1rem}
+/* base16 code-theme switcher (js/switcher.js) */
+.sidebar-theme{margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--code-border)}
+.sidebar-theme label{display:block;font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin-bottom:.35rem}
+.sidebar-theme select{
+  width:100%;padding:.25rem .4rem;font-size:.78rem;font-family:inherit;
+  color:var(--fg2);background:var(--bg2);border:1px solid var(--code-border);border-radius:4px;
+}
+.sidebar-theme .reset{display:block;font-size:.72rem;color:var(--fg3);margin-top:.3rem}
 .nav-toggle{display:none}
 .nav-toggle-btn{display:none}
 
@@ -70,7 +81,7 @@ blockquote p + p, .inset p + p{margin-top:.6rem}
 blockquote strong, .inset strong{color:var(--accent2)}
 
 pre{
-  background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
+  background:var(--code-bg);color:var(--base05);border:1px solid var(--code-border);border-radius:6px;
   padding:1rem 1.25rem;font-size:.8rem;line-height:1.65;overflow-x:auto;margin:.75rem 0;
 }
 pre code{display:block}
@@ -97,9 +108,8 @@ pre code{display:block}
 .dang-playground-github{border-color:var(--fg3)}
 /* Overlay editor: a transparent textarea over a highlighted layer. Both
    share identical metrics so the caret lines up with the colored text. The
-   code area is dark by default; the light-mode media query below recolors it
-   in step with the static code blocks. */
-.dang-playground-editor{position:relative;background:#0d1117}
+   code area is colored by the selected base16 scheme. */
+.dang-playground-editor{position:relative;background:var(--base00)}
 .dang-playground-highlight,
 .dang-playground-input{
   margin:0;border:0;box-sizing:border-box;
@@ -109,25 +119,28 @@ pre code{display:block}
 }
 .dang-playground-highlight{
   position:absolute;inset:0;pointer-events:none;overflow:hidden;
-  color:#c9d1d9;background:transparent;z-index:0;
+  color:var(--base05);background:transparent;z-index:0;
 }
 .dang-playground-input{
   position:relative;z-index:1;display:block;width:100%;resize:none;overflow:hidden;
-  color:transparent;caret-color:#c9d1d9;background:transparent;outline:none;
+  color:transparent;caret-color:var(--base05);background:transparent;outline:none;
 }
-.dang-playground-input::selection{background:rgba(110,140,220,.35)}
-/* token colors — mirror the chroma "dang" palette used elsewhere on the site.
-   Shared by the playground and the REPL (both highlight on a dark code area). */
-.tok-keyword{color:#ff7b72}
-.tok-type{color:#79c0ff}
-.tok-string{color:#a5d6ff}
-.tok-number{color:#79c0ff}
-.tok-function{color:#d2a8ff}
-.tok-operator{color:#ff7b72}
-.tok-label{color:#7ee787}
-.tok-comment{color:#6e7681;font-style:italic}
+.dang-playground-input::selection{background:var(--base02)}
+/* token colors — the same base16 slots chroma.css maps the static blocks to,
+   so the playground and REPL stay in lockstep with the rest of the site. */
+.tok-keyword{color:var(--base0E)}
+.tok-type{color:var(--base0A)}
+.tok-string{color:var(--base0B)}
+.tok-number{color:var(--base09)}
+.tok-function{color:var(--base0D)}
+.tok-builtin{color:var(--base0C)}
+.tok-self{color:var(--base08)}
+.tok-property{color:var(--base08)}
+.tok-operator{color:var(--base0E)}
+.tok-label{color:var(--base08)}
+.tok-comment{color:var(--base03);font-style:italic}
 .tok-variable,
-.tok-punct{color:#c9d1d9}
+.tok-punct{color:var(--base05)}
 .dang-playground-output{
   border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
   font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
@@ -138,7 +151,7 @@ pre code{display:block}
 .dang-playground-result{color:var(--green);white-space:pre-wrap}
 .dang-playground-error{color:var(--pink);white-space:pre-wrap}
 .dang-playground-fallback{
-  background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
+  background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
   font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
 }
 
@@ -152,10 +165,9 @@ pre code{display:block}
   background:var(--bg2);border-bottom:1px solid var(--code-border);
 }
 .dang-repl-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
-/* The code area is dark by default; the light-mode media query below recolors
-   it in step with the static code blocks. */
-.dang-repl-body{background:#0d1117}
-.dang-repl-entry{border-bottom:1px solid rgba(48,54,61,.4)}
+/* The code area is colored by the selected base16 scheme. */
+.dang-repl-body{background:var(--base00)}
+.dang-repl-entry{border-bottom:1px solid var(--base01)}
 /* prompt + highlighted source, and prompt + input, share these metrics so the
    transcript and the live line align into one column. */
 .dang-repl-code,
@@ -166,7 +178,7 @@ pre code{display:block}
   font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
 }
 .dang-repl-codehl{
-  flex:1;margin:0;padding:0;border:0;background:transparent;color:#c9d1d9;
+  flex:1;margin:0;padding:0;border:0;background:transparent;color:var(--base05);
   font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
   white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
 }
@@ -188,37 +200,17 @@ pre code{display:block}
 }
 .dang-repl-highlight{
   position:absolute;inset:0;pointer-events:none;overflow:hidden;
-  color:#c9d1d9;background:transparent;
+  color:var(--base05);background:transparent;
 }
 .dang-repl-input{
   position:relative;z-index:1;display:block;width:100%;resize:none;overflow:hidden;
-  color:transparent;caret-color:#c9d1d9;background:transparent;outline:none;
+  color:transparent;caret-color:var(--base05);background:transparent;outline:none;
 }
-.dang-repl-input::selection{background:rgba(110,140,220,.35)}
+.dang-repl-input::selection{background:var(--base02)}
 .dang-repl-input:disabled{cursor:default}
 .dang-repl-fallback{
-  background:var(--code-bg);color:var(--fg);font-family:'JetBrains Mono',monospace;
+  background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
   font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
-}
-
-/* ── light mode: recolor the (otherwise dark) code palette ───────────────
-   Static code blocks are themed by chroma.css (generated from the dark/light
-   palettes in docs/go/plugin.go). The playground and REPL highlight client-
-   side with the .tok-* classes, so light mode flips their dark editor surfaces
-   and recolors those classes to match — keeping every code surface in sync. */
-@media (prefers-color-scheme:light){
-  .dang-playground-editor,.dang-repl-body{background:var(--code-bg)}
-  .dang-playground-highlight,.dang-repl-highlight,.dang-repl-codehl{color:var(--fg)}
-  .dang-playground-input,.dang-repl-input{caret-color:var(--fg)}
-  .dang-playground-input::selection,.dang-repl-input::selection{background:rgba(25,93,255,.18)}
-
-  .tok-keyword,.tok-operator{color:#cf222e}
-  .tok-type,.tok-number{color:#0550ae}
-  .tok-string{color:#0a3069}
-  .tok-function{color:#8250df}
-  .tok-label{color:#116329}
-  .tok-comment{color:#6e7781}
-  .tok-variable,.tok-punct{color:var(--fg)}
 }
 
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
@@ -241,8 +233,13 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-entry>a[id]{display:block;scroll-margin-top:1.5rem}
 /* The signature is chroma-highlighted: its <code> carries the dark code
    background and base color inline, so the bar just adds layout + accent edge. */
-.stdlib-sig{display:block;text-decoration:none;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;overflow:hidden}
-.stdlib-sig code{display:block;padding:.5rem .8rem;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+.stdlib-sig{display:flex;text-decoration:none;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;overflow:hidden}
+.stdlib-sig code{display:block;flex:1;padding:.5rem .8rem;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
+/* The receiver/module context (".", "Random.") sits outside the declaration
+   proper — only the declaration is parsed for highlighting — but shares the
+   code box visually. The chroma class supplies the matching background. */
+.stdlib-sig-prefix{padding:.5rem 0 .5rem .8rem;font-size:.82rem;white-space:pre;font-family:'JetBrains Mono',monospace;opacity:.65}
+.stdlib-sig-prefix+code{padding-left:0}
 .stdlib-sig:hover{border-left-color:var(--accent2)}
 .stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
 .stdlib-desc{color:var(--fg2);font-size:.9rem;margin:.4rem 0 0 .85rem}
@@ -290,6 +287,12 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
   </div>
   <div class="sidebar-nav">
     {{ template "sidebar.tmpl" walkContext $current $top }}
+    <div class="sidebar-theme" id="choosetheme">
+      <label for="styleswitcher">code theme</label>
+      <select id="styleswitcher" onchange="switchStyle(event)">
+        {{ template "base16-options.tmpl" }}
+      </select>
+    </div>
   </div>
 </nav>
 <main>

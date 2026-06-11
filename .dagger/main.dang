@@ -213,6 +213,10 @@ type Dang {
         "clang",
       ])
       .withMountedCache("/go/pkg/mod", cacheVolume("go-mod"))
+      # cgo needs a C compiler: the docs build compiles the tree-sitter
+      # grammar (danglang) into its highlighter, and Wolfi ships clang, not
+      # gcc (Go's default CC).
+      .withEnvVariable("CC", "clang")
       .withEnvVariable("GOMODCACHE", "/go/pkg/mod")
       .withMountedCache("/go/build-cache", cacheVolume("go-build"))
       .withEnvVariable("GOCACHE", "/go/build-cache")

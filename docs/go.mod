@@ -26,7 +26,7 @@ require (
 	github.com/segmentio/textio v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
-	github.com/tree-sitter/go-tree-sitter v0.25.0 // indirect
+	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30 // indirect
 	github.com/vito/dang/v2 v2.0.0
 	github.com/yuin/goldmark v1.7.16 // indirect

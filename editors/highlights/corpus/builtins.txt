@@ -72,7 +72,9 @@ assert("must equal") { 1 == 1 }
   (@punctuation.bracket "{")
   " "
   (@number "1")
-  " == "
+  " "
+  (@operator "==")
+  " "
   (@number "1")
   " "
   (@punctuation.bracket "}")
@@ -87,12 +89,14 @@ assert { 1 == 1 }
 ---
 
 (highlights
-  (@variable @function.builtin "assert")
+  (@variable @function.call @function.builtin "assert")
   " "
   (@punctuation.bracket "{")
   " "
   (@number "1")
-  " == "
+  " "
+  (@operator "==")
+  " "
   (@number "1")
   " "
   (@punctuation.bracket "}")

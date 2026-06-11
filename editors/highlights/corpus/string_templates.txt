@@ -15,7 +15,7 @@ pub greeting = `hello ${name}!`
   " "
   (@string "`hello ")
   (@punctuation.special "${")
-  "name"
+  (@variable "name")
   (@punctuation.bracket @punctuation.special "}")
   (@string "!`")
 )
@@ -37,7 +37,7 @@ pub greeting = `hello${name}!`
   " "
   (@string "`hello")
   (@punctuation.special "${")
-  "name"
+  (@variable "name")
   (@punctuation.bracket @punctuation.special "}")
   (@string "!`")
 )
@@ -83,7 +83,7 @@ hello ${name}!
   " "
   (@string "```\nhello ")
   (@punctuation.special "${")
-  "name"
+  (@variable "name")
   (@punctuation.bracket @punctuation.special "}")
   (@string "!\n```")
 )

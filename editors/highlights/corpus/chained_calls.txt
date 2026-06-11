@@ -1,0 +1,79 @@
+===
+field select after a call highlights like the call
+===
+
+foo.fizz(arg: 1).buzz
+
+---
+
+(highlights
+  (@variable "foo")
+  (@punctuation.delimiter ".")
+  (@function.method.call "fizz")
+  "("
+  (@property "arg")
+  (@punctuation.delimiter ":")
+  " "
+  (@number "1")
+  (@punctuation.bracket ")")
+  (@punctuation.delimiter ".")
+  (@function.method.call "buzz")
+)
+
+===
+multiline chain highlights every link
+===
+
+foo
+  .fizz(arg: 1)
+  .buzz
+
+---
+
+(highlights
+  (@variable "foo")
+  "\n  "
+  (@punctuation.delimiter ".")
+  (@function.method.call "fizz")
+  "("
+  (@property "arg")
+  (@punctuation.delimiter ":")
+  " "
+  (@number "1")
+  (@punctuation.bracket ")")
+  "\n  "
+  (@punctuation.delimiter ".")
+  (@function.method.call "buzz")
+)
+
+===
+chained calls and selects all highlight as methods
+===
+
+foo.fizz(arg: 1).buzz.bar(x: 2).baz
+
+---
+
+(highlights
+  (@variable "foo")
+  (@punctuation.delimiter ".")
+  (@function.method.call "fizz")
+  "("
+  (@property "arg")
+  (@punctuation.delimiter ":")
+  " "
+  (@number "1")
+  (@punctuation.bracket ")")
+  (@punctuation.delimiter ".")
+  (@function.method.call "buzz")
+  (@punctuation.delimiter ".")
+  (@function.method.call "bar")
+  "("
+  (@property "x")
+  (@punctuation.delimiter ":")
+  " "
+  (@number "2")
+  (@punctuation.bracket ")")
+  (@punctuation.delimiter ".")
+  (@function.method.call "baz")
+)
