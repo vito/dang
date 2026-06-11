@@ -15,9 +15,7 @@ type Apko {
     }},
 
     cmd: "",
-    environment: {{ # TODO: how to support arbitrary key-value?
-      PATH: "/usr/local/bin:/usr/bin:/bin"
-    }},
+    environment: ["PATH": "/usr/local/bin:/usr/bin:/bin"],
 
     archs: [arch]
   }}
@@ -25,7 +23,7 @@ type Apko {
   withAlpine(branch: String! = "edge"): Apko! {
     self.config.contents.packages += ["apk-tools"]
     self.config.contents.repositories += [
-      "https://dl-cdn.alpinelinux.org/alpine/" + branch + "/main",
+      `https://dl-cdn.alpinelinux.org/alpine/${branch}/main`,
     ]
     self
   }
@@ -52,7 +50,7 @@ type Apko {
   }
 
   asContainer: Container! {
-    pub apko = container.from("cgr.dev/chainguard/apko")
+    let apko = container.from("cgr.dev/chainguard/apko")
     container
       .import(
         apko
