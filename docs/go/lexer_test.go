@@ -142,6 +142,15 @@ func TestSignaturesAreValidDeclarations(t *testing.T) {
 	}
 }
 
+// A comment trailing code on the same line highlights as a comment. The
+// external scanner used to refuse the `#` because the inline spaces before it
+// were never skipped, turning the comment into a parse error.
+func TestTrailingCommentHighlighting(t *testing.T) {
+	tokens := tokenize(t, "twice { 21 }                  # body takes no args\ntwice { let n = 21, n }       # multi-statement\n")
+	assertToken(t, tokens, "# body takes no args", chroma.Comment)
+	assertToken(t, tokens, "# multi-statement", chroma.Comment)
+}
+
 // Whole-program snippets keep highlighting: types, keywords, strings.
 func TestProgramSnippet(t *testing.T) {
 	tokens := tokenize(t, "type Greeter {\n  greet(name: String!): String! {\n    \"hey, ${name}!\"\n  }\n}\n")
