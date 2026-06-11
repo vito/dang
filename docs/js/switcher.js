@@ -155,12 +155,14 @@ var curatedDarkStyles = [
 
 var curatedLightStyles = [
   "cupertino",
+  "dirtysea",
   "equilibrium-gray-light",
   "equilibrium-light",
   "gruvbox-light-medium",
   "ia-light",
   "one-light",
   "rose-pine-dawn",
+  "tokyo-city-light",
   "tokyo-night-light",
 ];
 
