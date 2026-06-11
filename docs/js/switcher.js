@@ -111,8 +111,14 @@ function resetStyle() {
   setActiveStyle(activeStyle);
 }
 
+// Curated schemes must read well under page.tmpl's role mapping: base00 is
+// the page background, base04 colors most prose, base01/base02 are secondary
+// *backgrounds* (sidebar, selection, inline code), and base08-0F are syntax
+// foregrounds on base00. Schemes that repurpose base01/base02 as saturated
+// accents (papercolor-light, edge-light) or have washed-out base04/base0A
+// render the docs illegibly, so they stay out of the rotation even though
+// they remain selectable in the dropdown.
 var curatedDarkStyles = [
-  "catppuccin",
   "chalk",
   "classic-dark",
   "darkmoss",
@@ -148,22 +154,14 @@ var curatedDarkStyles = [
 ];
 
 var curatedLightStyles = [
-  "classic-light",
   "cupertino",
-  "default-light",
-  "edge-light",
+  "equilibrium-gray-light",
   "equilibrium-light",
-  "github",
-  "google-light",
   "gruvbox-light-medium",
-  "humanoid-light",
   "ia-light",
   "one-light",
-  "papercolor-light",
   "rose-pine-dawn",
-  "solarized-light",
   "tokyo-night-light",
-  "tomorrow",
 ];
 
 var prefersLight = window.matchMedia("(prefers-color-scheme: light)");
