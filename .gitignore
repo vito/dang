@@ -8,6 +8,7 @@ CLAUDE.local.md
 /treesitter/parser.so
 /docs/*.html
 /docs/search_index.json
+/docs/css/base16/
 /docs/js/dang.wasm
 /docs/js/wasm_exec.js
 /docs/js/tree-sitter.js

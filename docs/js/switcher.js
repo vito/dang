@@ -111,59 +111,82 @@ function resetStyle() {
   setActiveStyle(activeStyle);
 }
 
+// Curated schemes must read well under page.tmpl's role mapping: base00 is
+// the page background, base04 colors most prose, base01/base02 are secondary
+// *backgrounds* (sidebar, selection, inline code), and base08-0F are syntax
+// foregrounds on base00. Schemes that repurpose base01/base02 as saturated
+// accents (papercolor-light, edge-light) or have washed-out base04/base0A
+// render the docs illegibly, so they stay out of the rotation even though
+// they remain selectable in the dropdown.
 var curatedDarkStyles = [
-  "catppuccin",
+  "ashes",
+  "bright",
   "chalk",
+  "chinoiserie-night",
   "classic-dark",
+  "da-one-black",
+  "danqing",
   "darkmoss",
   "decaf",
   "default-dark",
   "dracula",
   "eighties",
+  "eldritch",
   "equilibrium-dark",
   "equilibrium-gray-dark",
   "espresso",
+  "everforest",
   "framer",
+  "gigavolt",
+  "google-dark",
   "gruvbox-dark-medium",
   "hardcore",
+  "harmonic16-dark",
+  "helios",
   "horizon-dark",
   "horizon-terminal-dark",
-  "ir-black",
+  "ia-dark",
+  "irblack",
+  "kissa-macchiato",
   "materia",
   "material",
+  "measured-dark",
   "mocha",
   "monokai",
   "ocean",
   "oceanicnext",
   "outrun-dark",
+  "penumbra-dark-contrast-plus-plus",
+  "precious-dark-eleven",
   "rose-pine",
   "rose-pine-moon",
   "snazzy",
+  "spaceduck",
   "tender",
   "tokyo-night-dark",
   "tomorrow-night",
   "tomorrow-night-eighties",
   "twilight",
+  "windows-10",
   "woodland",
 ];
 
 var curatedLightStyles = [
-  "classic-light",
+  "alucard",
+  "charcoal-light",
   "cupertino",
-  "default-light",
-  "edge-light",
+  "dirtysea",
+  "equilibrium-gray-light",
   "equilibrium-light",
-  "github",
-  "google-light",
   "gruvbox-light-medium",
-  "humanoid-light",
   "ia-light",
+  "kissa-latte",
+  "measured-light",
   "one-light",
-  "papercolor-light",
+  "precious-light-white",
   "rose-pine-dawn",
-  "solarized-light",
+  "tokyo-city-light",
   "tokyo-night-light",
-  "tomorrow",
 ];
 
 var prefersLight = window.matchMedia("(prefers-color-scheme: light)");
