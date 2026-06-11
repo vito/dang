@@ -33,7 +33,7 @@ type Greeter {
 ["world", "Dang", "you"].map { who => Greeter(who).greet }
 }}}
 
-> Meta: this is the landing page — pitch, install, first-look code. Skim-friendly. Real navigation lives in the sidebar; don't try to build a full TOC here.
+> Meta: this is the landing page — pitch, install, first-look code, then a curated contents block. The TOC is intentional but stays at two levels (chapters and their sections — toc.tmpl caps the depth); deeper navigation lives in the sidebar and on the pages themselves.
 
 \table-of-contents
 

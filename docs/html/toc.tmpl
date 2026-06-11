@@ -1,0 +1,22 @@
+{{if and .Children (not .OmitChildrenFromTableOfContents)}}
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    {{range .Children}}
+    <li>
+      <span class="toc-number">{{.Number}}</span>
+      <div class="toc-entry">
+        <a class="toc-chapter" href="{{.PrimaryTag | url}}">{{.Title | stripAux | render}}</a>
+        {{- if and .Children (not .OmitChildrenFromTableOfContents)}}
+        <div class="toc-sections">
+          {{- range .Children}}
+          <a href="{{.PrimaryTag | url}}">{{.Title | stripAux | render}}</a>
+          {{- end}}
+        </div>
+        {{- end}}
+      </div>
+    </li>
+    {{end}}
+  </ol>
+</nav>
+{{end}}

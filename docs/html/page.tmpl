@@ -83,6 +83,22 @@ p{color:var(--fg2);font-size:.92rem;margin-bottom:.75rem}
 li{color:var(--fg2);font-size:.92rem;margin-bottom:.25rem}
 ul{padding-left:1.25rem;margin-bottom:.75rem}
 
+/* ── landing-page table of contents (toc.tmpl) ──────────────────────── */
+/* Two levels only: chapter rows with the number in its own muted mono
+   column, then each chapter's sections as a compact inline run. */
+nav.toc{margin:1.5rem 0 2.5rem}
+nav.toc h2{font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin:0 0 .75rem;padding:0;border:none}
+nav.toc ol{list-style:none;padding:0;margin:0}
+nav.toc li{display:grid;grid-template-columns:2rem minmax(0,1fr);column-gap:.75rem;align-items:baseline;margin:0 0 .7rem}
+.toc-number{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--fg3);text-align:right}
+.toc-chapter{font-size:.92rem;font-weight:500;color:var(--fg)}
+.toc-chapter:hover{color:var(--link)}
+.toc-sections{font-size:.8rem;line-height:1.7;color:var(--fg3)}
+.toc-sections a{color:var(--fg2)}
+.toc-sections a:hover{color:var(--link)}
+/* inline-block keeps the separator outside the hover underline */
+.toc-sections a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg3);margin-left:.35em}
+
 blockquote, .inset{
   border-left:3px solid var(--accent);background:var(--bg2);
   padding:.6rem .9rem !important;margin:.75rem 0 !important;border-radius:0 4px 4px 0;font-size:.85rem;
