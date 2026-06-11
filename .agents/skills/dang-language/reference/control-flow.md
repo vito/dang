@@ -57,6 +57,14 @@ for { ... break ... }     # infinite; exit via break/return
 - Condition loops are always **nullable** (the body may be skipped), so a value-`break`/`return` inside cannot make the loop result non-null.
 - `break value` overrides the yielded value (`for { break "loop done" }` yields `"loop done"`).
 
+## `loop` (builtin)
+```dang
+let answer = loop { break 42 }   # block-taking builtin; runs until break
+```
+- `loop { ... }` is a stdlib builtin (not a keyword) that calls its block repeatedly forever — the builtin equivalent of `for { ... }`. Exit via `break`/`return`/`raise`; `continue` advances to the next iteration.
+- Yields the `break` value (`null` for a bare `break`). Unlike `for`, the result is **non-null** when every `break` carries a non-null value: `loop { break 42 }` is usable directly as `Int!`.
+- Preferred over `for` for new code; conditional loops are written with a mid-body guard: `loop { if (!cond) { break } ... }`.
+
 ## `break` / `continue`
 - Valid only inside a loop or block-taking call; otherwise compile error (`break outside of loop or block-taking call` / `continue outside of loop or block arg invocation`).
 - `break` exits; `break value` makes the loop/block-call yield `value`; bare `break` yields `null`.

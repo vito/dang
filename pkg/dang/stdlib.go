@@ -31,6 +31,30 @@ func registerStdlib() {
 			return NullValue{}, nil
 		})
 
+	// loop function: loop { ... } -> r
+	//
+	// Repeatedly calls the block forever; the only normal exit is a break
+	// (or return/raise) unwinding out of the block, so the call's result is
+	// the break value. The declared return type is a bare type variable that
+	// only ever materializes through mergeCallBreakTypes.
+	Builtin("loop").
+		Doc("repeatedly calls the block until it exits via break").
+		Example(`loop { break 42 }`).
+		Block(hm.NewFnType(NewRecordType(""), TypeVar('a'))).
+		Returns(TypeVar('r')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			if args.Block == nil {
+				return nil, fmt.Errorf("loop requires a block argument")
+			}
+			fn := *args.Block
+
+			for {
+				if _, err := callFunc(ctx, fn); err != nil {
+					return nil, err
+				}
+			}
+		})
+
 	// toJSON function: toJSON(value: b) -> String!
 	Builtin("toJSON").
 		Doc("serializes a value to JSON").

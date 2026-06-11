@@ -43,7 +43,8 @@ Four ideas the rest of the language hangs on:
   query (lazy; sent when forced).
 - **`#` comments, no `//`**; docstrings are real `"""..."""` strings before a
   declaration. Record literals use **double braces** `{{ ... }}`.
-- **No `for (x in xs)`** — iterate with `xs.each { x => ... }`.
+- **No `for (x in xs)`** — iterate with `xs.each { x => ... }`. For repeat-until-`break`,
+  prefer the `loop { ... }` builtin over the `for` keyword.
 - **Directives** (`@deprecated`) are typed declarations, not comment pragmas.
 - **Errors are for errors**, not control flow or expected absence (use `null`).
 
