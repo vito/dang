@@ -112,12 +112,14 @@ function resetStyle() {
 }
 
 // Curated schemes must read well under page.tmpl's role mapping: base00 is
-// the page background, base04 colors most prose, base01/base02 are secondary
-// *backgrounds* (sidebar, selection, inline code), and base08-0F are syntax
-// foregrounds on base00. Schemes that repurpose base01/base02 as saturated
-// accents (papercolor-light, edge-light) or have washed-out base04/base0A
-// render the docs illegibly, so they stay out of the rotation even though
-// they remain selectable in the dropdown.
+// the page background, base05 colors prose, base04 colors secondary text
+// (sidebar/TOC labels, footer) on base00 and base01, base01/base02 are
+// secondary *backgrounds* (sidebar, selection, inline code), and base08-0F
+// are syntax foregrounds on base00. Schemes that repurpose base01/base02 as
+// saturated accents (papercolor-light, edge-light) or whose base04 is too
+// close to base01 to label the sidebar (hardcore, cupertino) render parts of
+// the docs illegibly, so they stay out of the rotation even though they
+// remain selectable in the dropdown.
 var curatedDarkStyles = [
   "ashes",
   "bright",
@@ -140,7 +142,6 @@ var curatedDarkStyles = [
   "gigavolt",
   "google-dark",
   "gruvbox-dark-medium",
-  "hardcore",
   "harmonic16-dark",
   "helios",
   "horizon-dark",
@@ -174,7 +175,6 @@ var curatedDarkStyles = [
 var curatedLightStyles = [
   "alucard",
   "charcoal-light",
-  "cupertino",
   "dirtysea",
   "equilibrium-gray-light",
   "equilibrium-light",
