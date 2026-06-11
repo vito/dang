@@ -2,27 +2,16 @@
 
 `dang` is a statically typed language for scripting GraphQL, where the types and functions are loaded directly from the schema.
 
-## sample
-
-Here's `.dagger/main.dang` at the time of this writing:
+## hello, world!
 
 ```graphql
-type Dang {
-  pub source: Directory! @defaultPath(path: "/")
-
-  pub build: File! {
-    go(source).binary("./cmd/dang")
-  }
-
-  pub test: Container! {
-    go(source).base.
-      withDirectory("/src", source).
-      withWorkdir("/src").
-      withExec(["go", "test", "-v", "./..."], experimentalPrivilegedNesting: true)
-  }
+type Greeter {
+  name: String!
+  greet: String! { `Hello, ${name}!` }
 }
-```
 
+["world", "Dang", "you"].map { who => print(Greeter(who).greet) }
+```
 
 ## why?
 
@@ -41,7 +30,7 @@ Architecturally, Dang is decoupled from Dagger; it just speaks GraphQL, so you
 can point it at any API endpoint you want.
 
 [Dagger]: https://dagger.io
-[Dagger SDK]: https://docs.dagger.io/api/sdk/
+[Dagger SDK]: https://docs.dagger.io/getting-started/api/sdk
 
 
 ## design philosophy
@@ -61,7 +50,7 @@ can point it at any API endpoint you want.
 ### cute bits
 
 * **multi-field selection**
-  - `user.{name, posts.{title, createdAt}}}` fetches everything in one query
+  - `user.{{ name, posts.{{ title, createdAt }} }}` fetches everything in one query
 * **null tracking**
   - `String` does not satisfy `String!`, but `String!` satisfies `String`
 * **optional parentheses** for functions without required args
@@ -71,7 +60,7 @@ can point it at any API endpoint you want.
 * **directives**
   - structural type-checked metadata (`@defaultPath(...)`) instead of comment pragmas
 * **prototype-based objects**
-  - `type Foo(bar: String!) { ... }` declares a new `Foo` type and `Foo("xyz")` constructor
+  - `type Foo { bar: String! }` declares a new `Foo` type and `Foo("xyz")` constructor
 * **directory-level loading**
   - Similar to Go; split your code up at your liesure.
 
