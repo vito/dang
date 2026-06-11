@@ -23,13 +23,25 @@ func init() {
 }
 
 // NewPlugin constructs a new dang docs plugin for the given section.
+//
+// The plugin is also prepended to the section's plugin stack: booklit
+// resolves invoked functions first-match across the stack and baselit always
+// sits first, so without the prepend our CodeBlock override (which gives
+// ```dang fences tree-sitter highlighting and stdlib auto-links; see
+// render.go) would be shadowed by baselit's.
 func NewPlugin(section *booklit.Section) booklit.Plugin {
-	return Plugin{section: section}
+	p := Plugin{
+		section: section,
+		base:    baselit.NewPlugin(section).(baselit.Plugin),
+	}
+	section.Plugins = append([]booklit.Plugin{p}, section.Plugins...)
+	return p
 }
 
 // Plugin provides custom functions for the dang documentation site.
 type Plugin struct {
 	section *booklit.Section
+	base    baselit.Plugin
 }
 
 // Install renders a shell install command block.

@@ -1,17 +1,11 @@
 package dangdocs
 
 import (
-	"bytes"
 	"fmt"
 	"sort"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2"
-	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/vito/booklit"
-	"github.com/vito/booklit/baselit"
 	"github.com/vito/dang/v2/pkg/dang"
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -144,7 +138,6 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 				Title:    booklit.String(signature(d, titlePrefix)),
 				Content:  desc,
 			},
-			"Reference": &booklit.Reference{Section: p.section, TagName: tag},
 		}
 		// The receiver/module context (".", "Random.") is display labeling,
 		// not part of the declaration; the template renders it ahead of the
@@ -161,13 +154,13 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 		// A builtin's example becomes a pre-seeded, runnable REPL on the card
 		// (see exampleRepl). The index rows stay terse — signature + one-liner.
 		if d.Example != "" {
-			cardPartials["Example"] = exampleRepl(d.Example)
+			cardPartials["Example"] = p.exampleRepl(d.Example)
 		}
 
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
-			Content:  highlightDang(signature(d, "")),
+			Content:  p.renderSignature(signature(d, ""), d.Name, tag),
 			Partials: cardPartials,
 		})
 		rows = append(rows, booklit.Styled{
@@ -207,49 +200,16 @@ func stdlibTag(key, name string) string {
 }
 
 // exampleRepl renders a builtin's example as a pre-seeded, runnable REPL. The
-// snippet is chroma-highlighted at build time so it reads as a normal code
-// block (and stays useful without JavaScript); docs/js/playground.js upgrades
-// it into a live REPL — seeded with this code — on first Run. See the
-// "stdlib-example" template and \dang-repl.
-func exampleRepl(code string) booklit.Content {
+// snippet is highlighted (and stdlib auto-linked) at build time so it reads
+// as a normal code block and stays useful without JavaScript;
+// docs/js/playground.js upgrades it into a live REPL — seeded with this
+// code — on first Run. See the "stdlib-example" template and \dang-repl.
+func (p Plugin) exampleRepl(code string) booklit.Content {
 	return booklit.Styled{
 		Style:   "stdlib-example",
 		Block:   true,
-		Content: highlightDang(code),
+		Content: p.highlightDang(code),
 	}
-}
-
-// highlightDang renders a snippet of Dang as inline, syntax-highlighted HTML
-// using the same chroma "dang" lexer and style (styles.Fallback) as the site's
-// code blocks. It mirrors the site's class/inline choice
-// (baselit.HighlightWithClasses): in class mode the colors and code background
-// come from chroma.css, so the snippet themes with the rest of the page. It
-// backs both the signature cards and the example REPLs; the lexer handles
-// partial declarations and whole expressions alike.
-func highlightDang(src string) booklit.Content {
-	plain := booklit.Styled{Style: booklit.StyleCodeFlow, Content: booklit.String(src)}
-
-	lexer := lexers.Get("dang")
-	if lexer == nil {
-		return plain
-	}
-	iterator, err := lexer.Tokenise(nil, src)
-	if err != nil {
-		return plain
-	}
-	return formatHighlighted(iterator, plain)
-}
-
-func formatHighlighted(iterator chroma.Iterator, plain booklit.Content) booklit.Content {
-	opts := []chromahtml.Option{chromahtml.InlineCode(true)}
-	if baselit.HighlightWithClasses {
-		opts = append(opts, chromahtml.WithClasses(true))
-	}
-	var buf bytes.Buffer
-	if err := chromahtml.New(opts...).Format(&buf, styles.Fallback, iterator); err != nil {
-		return plain
-	}
-	return booklit.Styled{Style: "raw-html", Content: booklit.String(buf.String())}
 }
 
 // signature renders a builtin's signature in real Dang declaration form: a

@@ -109,6 +109,24 @@ func (l *treeSitterLexer) Tokenise(_ *chroma.TokeniseOptions, text string) (chro
 		return chroma.Literator(), nil
 	}
 
+	types := l.paintTypes(text)
+
+	var tokens []chroma.Token
+	for i := 0; i < len(text); {
+		j := i + 1
+		for j < len(text) && types[j] == types[i] {
+			j++
+		}
+		tokens = append(tokens, chroma.Token{Type: types[i], Value: text[i:j]})
+		i = j
+	}
+	return chroma.Literator(tokens...), nil
+}
+
+// paintTypes assigns a token type per byte: wider captures first, narrower
+// (and later) captures override, mirroring how the editors resolve the same
+// query. The lexer must be compiled (l.once) before calling.
+func (l *treeSitterLexer) paintTypes(text string) []chroma.TokenType {
 	spans, errBytes := l.capture(text, 0)
 	if errBytes > 0 {
 		// The source didn't fully parse. Snippets on the site are often
@@ -120,8 +138,6 @@ func (l *treeSitterLexer) Tokenise(_ *chroma.TokeniseOptions, text string) (chro
 		}
 	}
 
-	// Paint a token type per byte: wider captures first, narrower (and later)
-	// captures override, mirroring how the editors resolve the same query.
 	types := make([]chroma.TokenType, len(text))
 	for i := range types {
 		types[i] = chroma.Text
@@ -135,17 +151,34 @@ func (l *treeSitterLexer) Tokenise(_ *chroma.TokeniseOptions, text string) (chro
 			types[b] = tt
 		}
 	}
+	return types
+}
 
-	var tokens []chroma.Token
-	for i := 0; i < len(text); {
-		j := i + 1
-		for j < len(text) && types[j] == types[i] {
-			j++
-		}
-		tokens = append(tokens, chroma.Token{Type: types[i], Value: text[i:j]})
-		i = j
+// classify returns the chroma CSS class for each byte of source (empty for
+// unstyled bytes), or nil if the highlight query is unavailable.
+func (l *treeSitterLexer) classify(source string) []string {
+	l.once.Do(l.compile)
+	if l.loadErr != nil {
+		return nil
 	}
-	return chroma.Literator(tokens...), nil
+	types := l.paintTypes(source)
+	classes := make([]string, len(source))
+	for i, tt := range types {
+		classes[i] = tokenCSSClass(tt)
+	}
+	return classes
+}
+
+// tokenCSSClass resolves a token type to chroma's standard CSS class the same
+// way chroma's HTML formatter does: walk up the type hierarchy to the nearest
+// entry in StandardTypes.
+func tokenCSSClass(tt chroma.TokenType) string {
+	for t := tt; t != 0; t = t.Parent() {
+		if cls, ok := chroma.StandardTypes[t]; ok {
+			return cls
+		}
+	}
+	return ""
 }
 
 type captureSpan struct {

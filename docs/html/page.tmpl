@@ -32,6 +32,10 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
 a{color:var(--link);text-decoration:none}
 a:hover{text-decoration:underline}
 ::selection{background:var(--base02)}
+/* Auto-links inside code (stdlib references) keep their token color; the
+   underline appears on hover so code still reads as code. */
+.chroma a{color:inherit;text-decoration:none}
+.chroma a:hover{text-decoration:underline}
 p code{background:var(--bg3);padding:.15em .4em;border-radius:4px;font-size:.85em}
 
 nav.sidebar{
