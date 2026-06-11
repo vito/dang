@@ -131,8 +131,7 @@ type Dev {
                 (symbol_or_call
                   (auto_call_symbol
                     (id
-                      (word_token))))
-                (sep)))))
+                      (word_token))))))))
         (sep)
         (literal
           (triple_quote_string
@@ -155,6 +154,7 @@ type Dev {
                     (triple_quote)
                     (immediate_triple_quote_string_content)
                     (triple_quote))
+                  (sep)
                   (arg_with_default
                     (symbol
                       (id
@@ -170,8 +170,7 @@ type Dev {
                     (equal_token)
                     (literal
                       (string
-                        (immediate_quote_token)))))
-                (sep))
+                        (immediate_quote_token))))))
               (colon_token)
               (type
                 (named_type
@@ -192,8 +191,7 @@ type Dev {
                         (symbol_or_call
                           (auto_call_symbol
                             (id
-                              (word_token))))))))
-                (sep)))))
+                              (word_token))))))))))))
         (sep)
         (literal
           (triple_quote_string
@@ -245,6 +243,56 @@ type Dev {
                           (literal
                             (string
                               (immediate_string_content)
-                              (immediate_quote_token))))))))
-                (sep)))))
-        (sep)))))
+                              (immediate_quote_token))))))))))))))))
+
+===
+Docstring param in undeclared function call position
+===
+
+greet(
+  """name of the person to greet"""
+  name: String!
+): String! { "hey, ${name}!" }
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (type_and_args_and_block_field
+        (symbol
+          (id
+            (word_token)))
+        (arg_types
+          (immediate_paren)
+          (arg_type
+            (doc_string
+              (triple_quote)
+              (immediate_triple_quote_string_content)
+              (triple_quote))
+            (sep)
+            (arg_with_type
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token))))))
+        (colon_token)
+        (type
+          (non_null
+            (type
+              (named_type
+                (upper_id
+                  (upper_token))))
+            (bang_token)))
+        (block
+          (literal
+            (string
+              (immediate_string_content)
+              (immediate_quote_token))))))))

@@ -86,9 +86,7 @@ print(test(bin(src)))
                   (literal
                     (string
                       (immediate_string_content)
-                      (immediate_quote_token)))
-                  (sep))))
-            (sep))))))
+                      (immediate_quote_token)))))))))))
   (sep)
   (decl
     (field_decl
@@ -232,8 +230,7 @@ print(test(bin(src)))
                   (literal
                     (string
                       (immediate_string_content)
-                      (immediate_quote_token)))))))
-          (sep)))))
+                      (immediate_quote_token)))))))))))
   (sep)
   (decl
     (field_decl
@@ -321,8 +318,7 @@ print(test(bin(src)))
                           (immediate_string_content)
                           (immediate_quote_token))))))))
             (dot_token)
-            (field_id))
-          (sep)))))
+            (field_id))))))
   (sep)
   (symbol_or_call
     (call

@@ -26,12 +26,11 @@ pub f: Int! {
                   (upper_token))))
             (bang_token)))
         block: (block
-          e: (return
+          last: (return
             (return_token)
             value: (literal
               (int
-                (non_zero_decimal_digit))))
-          eles: (sep))))))
+                (non_zero_decimal_digit)))))))))
 
 ===
 Multiline return value is not accepted
@@ -64,7 +63,22 @@ pub f: Int! {
         block: (block
           (ERROR
             (return_token))
-          e: (literal
+          last: (literal
             (int
-              (non_zero_decimal_digit)))
-          eles: (sep))))))
+              (non_zero_decimal_digit))))))))
+
+===
+Bare break in infinite for loop
+===
+
+for { break }
+
+---
+
+(dang
+  (for_loop
+    (for_infinite_loop
+      (for_token)
+      (block
+        (break
+          (break_token))))))

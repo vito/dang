@@ -1,0 +1,75 @@
+===
+Multi-line inline fragments
+===
+
+node(id: "x").{{
+  ... on User { name, email }
+  ... on Post { title }
+}}
+
+---
+
+(dang
+  (select_or_call
+    (symbol_or_call
+      (call
+        (symbol
+          (id
+            (word_token)))
+        (arg_values
+          (immediate_paren)
+          (argument
+            (key_value
+              (word_token)
+              (colon_token)
+              (literal
+                (string
+                  (immediate_string_content)
+                  (immediate_quote_token))))))))
+    (dot_token)
+    (object_selection
+      (inline_fragment
+        (spread_token)
+        (on_token)
+        (symbol
+          (id
+            (word_token)))
+        (field_selection
+          (id
+            (word_token)))
+        (sep
+          (comma_token))
+        (field_selection
+          (id
+            (word_token))))
+      (sep)
+      (inline_fragment
+        (spread_token)
+        (on_token)
+        (symbol
+          (id
+            (word_token)))
+        (field_selection
+          (id
+            (word_token)))))))
+
+===
+Block arg body ending with a newline
+===
+
+foo {
+  1
+}
+
+---
+
+(dang
+  (symbol_or_call
+    (symbol_block
+      (symbol
+        (id
+          (word_token)))
+      (block_arg
+        (literal
+          (int
+            (non_zero_decimal_digit)))))))

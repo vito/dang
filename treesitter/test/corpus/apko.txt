@@ -122,8 +122,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (key_value
                       (word_token)
                       (colon_token)
-                      (list))
-                    (sep)))
+                      (list))))
                 (sep)
                 (key_value
                   (word_token)
@@ -142,8 +141,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                       (literal
                         (string
                           (immediate_string_content)
-                          (immediate_quote_token))))
-                    (sep)))
+                          (immediate_quote_token))))))
                 (sep)
                 (key_value
                   (word_token)
@@ -152,8 +150,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                     (symbol_or_call
                       (auto_call_symbol
                         (id
-                          (word_token))))))
-                (sep)))))
+                          (word_token))))))))))
         (sep)
         (decl
           (field_decl
@@ -255,9 +252,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                 (literal
                                   (string
                                     (immediate_string_content)
-                                    (immediate_quote_token)))))))))
-                    (sep)))
-                (sep)))))
+                                    (immediate_quote_token)))))))))))))))
         (sep)
         (decl
           (field_decl
@@ -314,8 +309,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (symbol_or_call
                     (auto_call_symbol
                       (id
-                        (word_token)))))
-                (sep)))))
+                        (word_token)))))))))
         (sep)
         (decl
           (field_decl
@@ -369,8 +363,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (symbol_or_call
                     (auto_call_symbol
                       (id
-                        (word_token)))))
-                (sep)))))
+                        (word_token)))))))))
         (sep)
         (decl
           (field_decl
@@ -531,9 +524,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                                 (literal
                                   (string
                                     (immediate_string_content)
-                                    (immediate_quote_token)))))))))
-                    (sep)))
-                (sep)))))
+                                    (immediate_quote_token)))))))))))))))
         (sep)
         (decl
           (field_decl
@@ -618,9 +609,7 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                               (id
                                 (word_token))))))))
                   (dot_token)
-                  (field_id))
-                (sep)))))
-        (sep))))
+                  (field_id)))))))))
   (sep)
   (symbol_or_call
     (call

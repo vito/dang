@@ -79,7 +79,6 @@ static bool is_word_char(int32_t c) {
 // of the previous expression (i.e. the newline is NOT a statement separator).
 static bool is_continuation_start(int32_t c) {
   switch (c) {
-    case '.':  // method chain
     case '{':  // block arg or object selection
     case '|':  // pipe operator
       return true;
@@ -343,9 +342,15 @@ bool tree_sitter_dang_external_scanner_scan(
   // `_inlineSpace` is used before required same-line values. Do not let
   // comments or newlines be consumed as extras before the value. The spaces
   // were skipped above, so the token is zero-width at the value's position.
+  // A closer or comma can never start a value either — refusing those lets
+  // the parser take the no-value branch of `break`/`return` (the PEG
+  // backtracks out of `_inlineSpace Form`, but tree-sitter commits once the
+  // token is emitted, turning `for { break }` into an error).
   if (valid_symbols[INLINE_SPACE] && saw_inline_space &&
       lexer->lookahead != '\n' && lexer->lookahead != '\r' &&
-      lexer->lookahead != '#' && !lexer->eof(lexer)) {
+      lexer->lookahead != '#' && lexer->lookahead != '}' &&
+      lexer->lookahead != ')' && lexer->lookahead != ']' &&
+      lexer->lookahead != ',' && !lexer->eof(lexer)) {
     lexer->result_symbol = INLINE_SPACE;
     return true;
   }
@@ -373,9 +378,32 @@ bool tree_sitter_dang_external_scanner_scan(
   // lookahead and must not be included in the token.
   lexer->mark_end(lexer);
 
+  // A leading `.` continues a method chain — unless it's a `...` spread
+  // starting another inline fragment in a selection, where the newline IS
+  // the separator between entries. We're past mark_end, so this is pure
+  // lookahead.
+  if (lexer->lookahead == '.') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '.') {
+      return false;
+    }
+    lexer->result_symbol = AUTOMATIC_NEWLINE;
+    return true;
+  }
+
   // If the first significant character indicates expression continuation,
   // this newline is NOT a separator.
   if (is_continuation_start(lexer->lookahead)) {
+    return false;
+  }
+
+  // A newline before a closing delimiter is plain whitespace: no grammar
+  // rule requires a separator there, and `block_arg`/`object_selection`/
+  // `arg_values` place separators *between* elements, so emitting one would
+  // wrongly demand another element (the PEG backtracks out of this; the
+  // tree-sitter lexer cannot).
+  if (lexer->lookahead == '}' || lexer->lookahead == ')' ||
+      lexer->lookahead == ']') {
     return false;
   }
 
