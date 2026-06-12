@@ -1,0 +1,39 @@
+# Scalars
+assert { toYAML("hello") == "hello\n" }
+assert { toYAML(42) == "42\n" }
+assert { toYAML(1.5) == "1.5\n" }
+assert { toYAML(true) == "true\n" }
+
+# Strings that would parse as another type are quoted
+assert { toYAML("123") == "\"123\"\n" }
+
+# Multiline strings use literal block style
+assert { toYAML("multi\nline") == "|-\n  multi\n  line\n" }
+
+# Lists
+assert { toYAML([1, 2, 3]) == "- 1\n- 2\n- 3\n" }
+assert { toYAML([1, 2, 3].filter { x => false }) == "[]\n" }
+
+# Maps keep insertion order
+assert { toYAML(["b": 2, "a": 1]) == "b: 2\na: 1\n" }
+
+# Object/record keys are emitted in alphabetical order, like toJSON
+assert { toYAML({{name: "test", value: 42}}) == "name: test\nvalue: 42\n" }
+assert {
+  toYAML({{user: {{id: 1, active: true}}, count: 100}}) == "count: 100\nuser:\n  active: true\n  id: 1\n"
+}
+
+# Nesting indents by two spaces
+assert { toYAML([["x": [1, 2]]]) == "- x:\n    - 1\n    - 2\n" }
+
+# Round-trips through fromYAML
+type Summary {
+  name: String!
+  count: Int!
+}
+
+let summary: Summary! = fromYAML(toYAML({{name: "test", count: 42}}))
+assert { summary.name == "test" }
+assert { summary.count == 42 }
+
+print("YAML serialization tests passed!")
