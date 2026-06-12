@@ -39,6 +39,14 @@
 //     (docs/go/literate.go), which share one session per page; re-running a
 //     page's chain client-side must show exactly what the build baked in.
 //
+//   - dangLiterateFailEval(sessionID, source) is dangLiterateEval against
+//     throwaway forks of the session's scopes, for the expected-failure
+//     literate blocks (```dang-failure fences): the entry sees everything the
+//     session has accumulated but contributes nothing back, mirroring
+//     literateFailEval (docs/go/literate.go). The result is reported as-is —
+//     the page decides how to present a block that was expected to fail but
+//     succeeded.
+//
 //   - dangReplReset(sessionID) discards a session's accumulated state, so the
 //     next dangReplEval starts from fresh standard-library scopes.
 //
@@ -50,6 +58,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -71,6 +80,7 @@ func main() {
 	js.Global().Set("dangEval", js.FuncOf(dangEval))
 	js.Global().Set("dangReplEval", js.FuncOf(dangReplEval))
 	js.Global().Set("dangLiterateEval", js.FuncOf(dangLiterateEval))
+	js.Global().Set("dangLiterateFailEval", js.FuncOf(dangLiterateFailEval))
 	js.Global().Set("dangReplReset", js.FuncOf(dangReplReset))
 	// dangReady lets the page know the module has finished initializing.
 	js.Global().Set("dangReady", js.ValueOf(true))
@@ -319,6 +329,58 @@ func dangLiterateEval(_ js.Value, args []js.Value) any {
 		value = ""
 	}
 	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
+}
+
+// dangLiterateFailEval evaluates one expected-failure literate block:
+// dangLiterateFailEval(sessionID, source). The block runs against throwaway
+// forks of the session's scopes — a cloned type scope and a sealed child
+// value scope — so whatever it declares or half-evaluates never reaches the
+// shared session: failing is the point, and a failing block's partial state
+// is unknowable. This mirrors the build-time evaluator (literateFailEval in
+// docs/go/literate.go — the two must stay in lockstep). Unlike the build,
+// which rejects a succeeding snippet outright, this reports the result
+// as-is; the page presents an unexpected success however it sees fit.
+func dangLiterateFailEval(_ js.Value, args []js.Value) any {
+	if len(args) < 2 || args[0].Type() != js.TypeNumber || args[1].Type() != js.TypeString {
+		return result("", "", "dangLiterateFailEval expects (sessionID, source)", "parse")
+	}
+	sess := session(args[0].Int())
+	source := args[1].String()
+
+	typeScope, ok := sess.typeScope.Clone().(dang.TypeScope)
+	if !ok {
+		return result("", "", "session type scope is not a TypeScope", "type")
+	}
+	valueScope := sess.valueScope.Derive(true)
+
+	fresh := hm.NewSimpleFresher()
+
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx = ioctx.StderrToContext(ctx, &out)
+
+	value, lastIsDecl, err, stage := evalForms(ctx, source, typeScope, valueScope, fresh)
+	if err != nil {
+		return result("", strings.TrimRight(out.String(), "\n"), failureMessage(err), stage)
+	}
+	if lastIsDecl {
+		value = ""
+	}
+	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
+}
+
+// failureMessage extracts the bare message from an expected failure.
+// SourceError.Error() renders for a terminal — ANSI colors plus a quoted
+// source span — but the failing block's editor already shows the source, and
+// escape codes have no business in the page. The same unwrap lives in
+// docs/go/literate.go's failureMessage; the two must stay in lockstep so a
+// replay shows exactly the line the build baked.
+func failureMessage(err error) string {
+	var srcErr *dang.SourceError
+	if errors.As(err, &srcErr) {
+		return srcErr.Inner.Error()
+	}
+	return err.Error()
 }
 
 // dangReplReset(sessionID) discards a session so the next dangReplEval starts

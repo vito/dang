@@ -19,15 +19,23 @@ import (
 //
 // Inside a \literate-fences scope (see literate.go) a ```dang fence instead
 // becomes a literate block — evaluated at build time in the page's shared
-// session, output baked in. ```dang-static opts a single fence back out: it
-// highlights (and auto-links) as Dang but is never evaluated, for fragments
-// or intentionally invalid code that would fail the literate build.
+// session, output baked in. ```dang-failure marks a fence that is REQUIRED
+// to fail: it runs against forks of the same session and bakes the error it
+// raises (see DangLiterateFailure). ```dang-static opts a single fence back
+// out: it highlights (and auto-links) as Dang but is never evaluated, for
+// fragments that can't run at all. Outside a literate scope both extra tags
+// just highlight as Dang.
 func (p Plugin) CodeBlock(language string, code booklit.Content, styleName ...string) (booklit.Content, error) {
 	switch language {
 	case "dang":
 		if literateFencesEnabled(p.section) {
 			return p.literateBlock(code, "```dang fence")
 		}
+	case "dang-failure":
+		if literateFencesEnabled(p.section) {
+			return p.literateFailureBlock(code, "```dang-failure fence")
+		}
+		language = "dang"
 	case "dang-static":
 		language = "dang"
 	}

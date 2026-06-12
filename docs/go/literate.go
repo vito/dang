@@ -3,6 +3,7 @@ package dangdocs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -120,6 +121,33 @@ func (p Plugin) DangLiterate(code booklit.Content) (booklit.Content, error) {
 	return p.literateBlock(code, `\dang-literate block`)
 }
 
+// DangLiterateFailure renders a literate block that is REQUIRED to fail.
+// The snippet is evaluated like a literate block but against throwaway forks
+// of the page's session — a cloned type scope and a sealed child value scope
+// — so whatever it declares or half-evaluates before failing never reaches
+// later blocks. The error it raises is baked into the page in place of a
+// value; a snippet that succeeds fails the docs build, so expected-failure
+// examples are as rot-proof as the passing ones.
+//
+//	\dang-literate-failure{{{
+//	if (1) "yes" else "no"
+//	}}}
+//
+// In a \literate-fences scope, ```dang-failure fences render through this
+// same path (see CodeBlock).
+func (p Plugin) DangLiterateFailure(code booklit.Content) (booklit.Content, error) {
+	return p.literateFailureBlock(code, `\dang-literate-failure block`)
+}
+
+// stageLabels mirrors playground.js's STAGE_LABEL: the baked error line must
+// read exactly like the one renderReplOutput shows after a client-side
+// replay, label and all.
+var stageLabels = map[string]string{
+	"parse": "Parse error",
+	"type":  "Type error",
+	"eval":  "Runtime error",
+}
+
 // literateBlock evaluates and renders one literate snippet; label names the
 // originating syntax in build errors.
 func (p Plugin) literateBlock(code booklit.Content, label string) (booklit.Content, error) {
@@ -145,6 +173,89 @@ func (p Plugin) literateBlock(code booklit.Content, label string) (booklit.Conte
 		Partials: partials,
 		Block:    true,
 	}, nil
+}
+
+// literateFailureBlock evaluates and renders one expected-failure snippet;
+// label names the originating syntax in build errors. The rendered block
+// carries the error under the "Error" partial — its presence is what marks
+// the block as an expected failure, both for the template and for
+// playground.js's chain replay.
+func (p Plugin) literateFailureBlock(code booklit.Content, label string) (booklit.Content, error) {
+	source := strings.TrimRight(code.String(), "\n")
+	sess := literateSessionFor(p.section)
+
+	stdout, stage, failure := literateFailEval(source, sess)
+	if failure == nil {
+		return nil, fmt.Errorf("%s in %s: expected the snippet to fail, but it succeeded — use a plain ```dang fence", label, p.section.FilePath())
+	}
+
+	partials := booklit.Partials{
+		"Error": booklit.String(stageLabels[stage] + ": " + failureMessage(failure)),
+	}
+	if stdout != "" {
+		partials["Stdout"] = booklit.String(stdout)
+	}
+
+	return booklit.Styled{
+		Style:    "dang-literate",
+		Content:  p.highlightDang(source),
+		Partials: partials,
+		Block:    true,
+	}, nil
+}
+
+// failureMessage extracts the bare message from a snippet's failure.
+// SourceError.Error() renders for a terminal — ANSI colors plus a quoted
+// source span — but the snippet already sits right above the baked error,
+// and escape codes have no business in HTML. The same unwrap lives in
+// dangLiterateFailEval (cmd/dang-playground) so a client-side replay shows
+// the identical line.
+func failureMessage(err error) string {
+	var srcErr *dang.SourceError
+	if errors.As(err, &srcErr) {
+		return srcErr.Inner.Error()
+	}
+	return err.Error()
+}
+
+// literateFailEval runs source the way literateEval does, but against
+// throwaway forks of the session's scopes: a cloned type scope (declarations
+// land in the discarded child layer) and a sealed child value scope (even
+// reassignments of outer bindings stay local). Failing is the point, and a
+// failing block's partial state is unknowable, so it contributes nothing to
+// the page's chain — the same isolation dangLiterateFailEval
+// (cmd/dang-playground) applies when the page is replayed client-side. It
+// returns the captured output plus the failing stage ("parse" | "type" |
+// "eval") and error; a nil error means the snippet unexpectedly succeeded.
+func literateFailEval(source string, sess *literateSession) (string, string, error) {
+	parsed, err := dang.ParseWithRecovery("literate", []byte(source))
+	if err != nil {
+		return "", "parse", err
+	}
+	file, ok := parsed.(*dang.FileBlock)
+	if !ok {
+		return "", "parse", fmt.Errorf("unexpected parse result")
+	}
+	forms := file.Forms
+
+	typeScope := sess.typeScope.Clone()
+	valueScope := sess.valueScope.Derive(true)
+
+	fresh := hm.NewSimpleFresher()
+	if _, err := dang.InferFormsWithPhases(context.Background(), forms, typeScope, fresh); err != nil {
+		return "", "type", err
+	}
+
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx = ioctx.StderrToContext(ctx, &out)
+
+	for _, node := range forms {
+		if _, err := dang.EvalNode(ctx, valueScope, node); err != nil {
+			return strings.TrimRight(out.String(), "\n"), "eval", err
+		}
+	}
+	return strings.TrimRight(out.String(), "\n"), "", nil
 }
 
 // literateEval parses, type-checks, and evaluates source against the
