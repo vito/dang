@@ -13,7 +13,8 @@ argument — you can do with a conditional or a loop.
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
 > in by the docs build — edit a snippet and hit Run ▶ to replay the page in
-> your browser.
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## Everything is an expression
 
@@ -49,8 +50,12 @@ grouping several expressions into one (see [#blocks]):
 if (ready) { let msg = "on", msg.toUpper } else { "off" }
 ```
 
-The condition must be a `Boolean!` — there is no truthiness. A non-`Boolean`
-condition is a compile error: `condition must be Boolean, got Int!`.
+The condition must be a `Boolean!` — there is no truthiness, and a
+non-`Boolean` condition is a compile error:
+
+```dang-failure
+if (1) "yes" else "no"
+```
 
 `else if` chains aren't special syntax either: the `else` branch is simply
 another `if` expression:
@@ -87,9 +92,8 @@ union instead (see [#flow-typing]). `pet` here is a `Cat! | Dog!`, which
 `case` type patterns will take back apart shortly:
 
 ```dang
-interface Named { name: String! }
-type Cat implements Named { name: String!, lives: Int! = 9 }
-type Dog implements Named { name: String! }
+type Cat { name: String!, lives: Int! = 9 }
+type Dog { name: String! }
 
 let pet = if (grade(95) == "A") Cat(name: "Whiskers") else Dog(name: "Rex")
 ```
@@ -108,10 +112,18 @@ case (1 + 1) {
 }
 ```
 
-Clause bodies must merge to one common type (otherwise: `Case.Infer: clause
-N type mismatch`). And there is **no compile-time exhaustiveness check**:
-when nothing matches and there's no `else`, the `case` raises a runtime
-error, catchable like any other (see [#errors]):
+Clause bodies must merge to one common type:
+
+```dang-failure
+case (1) {
+  1 => "one"
+  2 => 2
+}
+```
+
+And there is **no compile-time exhaustiveness check**: when nothing matches
+and there's no `else`, the `case` raises a runtime error, catchable like any
+other (see [#errors]):
 
 ```dang
 try { case (7) { 1 => "one" } } catch { err => err.message }
@@ -161,23 +173,36 @@ case (pet) {
 }
 ```
 
-The operand must be a union or an interface: on a plain object type the
-pattern is a compile error (`type pattern requires a union or interface
-operand`), as is naming a type that isn't in the union (`type X is not a
-member of union Y`). See [#interfaces-unions].
+The operand must be a union or an interface (see [#interfaces-unions]) — a
+plain object type is already fully known, so there is nothing to narrow:
 
-An interface is itself a valid pattern — a typed catch-all matching any
-implementer, so specific types go first:
+```dang-failure
+case (Cat(name: "Solo")) { c: Cat => c.name }
+```
+
+And the named type must be one of the operand's actual possibilities:
+
+```dang-failure
+case (pet) { s: String => s }
+```
+
+An interface-typed operand works the same way, with patterns checked against
+its implementers — and an interface is itself a valid pattern, a typed
+catch-all matching any implementer, so specific types go first:
 
 ```dang
-label(n: Named!): String! {
-  case (n) {
-    c: Cat => `the cat with ${c.lives} lives`
-    other: Named => `some other ${other.name}`
+interface Sound { noise: String! }
+type Bell implements Sound { noise: String! = "ding" }
+type Horn implements Sound { noise: String! = "honk" }
+
+play(s: Sound!): String! {
+  case (s) {
+    b: Bell => `a bell goes ${b.noise}`
+    other: Sound => `something goes ${other.noise}`
   }
 }
 
-[label(Cat(name: "Maru")), label(Dog(name: "Rex"))]
+[play(Bell), play(Horn)]
 ```
 
 `catch` clauses use these same type patterns, over `Error` implementers —
@@ -233,9 +258,12 @@ loop { break 42 } + 1
 
 ## `break` and `continue`
 
-`break` and `continue` are valid only inside a loop or a block-taking call;
-anywhere else they're compile errors (`break outside of loop or block-taking
-call`, `continue outside of loop or block arg invocation`).
+`break` and `continue` are valid only inside a loop or a block-taking call —
+anywhere else they're compile errors (`continue` reports the same way):
+
+```dang-failure
+break
+```
 
 `break` exits the nearest enclosing loop or block-taking call, and `break
 value` makes it yield `value` (a bare `break` yields `null`). `.each`
@@ -272,9 +300,14 @@ there is the same compile error as outside. (More block-specific wrinkles in
 `return` exits the enclosing function, method, or constructor early — there
 is no `return` for the normal result, since the last expression already is
 the result (see [#functions]). Its value must satisfy the declared return
-type, and outside a function it's a compile error (`return outside of
-function`). It unwinds through any blocks and loops in between, so returning
-from inside `.each` exits the whole function:
+type, and there must be a function to exit:
+
+```dang-failure
+return "early"
+```
+
+It unwinds through any blocks and loops in between, so returning from inside
+`.each` exits the whole function:
 
 ```dang
 firstEven(nums: [Int!]!): Int {
