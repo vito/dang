@@ -37,6 +37,12 @@ let nested = if (true) if (false) "inner_false" else "inner_true" else "outer_fa
 
 assert { nested == "inner_true" }
 
+# Braces mean the same thing they mean everywhere else: a record literal
+# branch is a record literal, not a block
+let rec = if (true) {{a: 1}} else {{a: 2}}
+
+assert { rec.a == 1 }
+
 # Conditional results feed into larger expressions
 let sum = (if (true) 1 else 2) + (if (false) 10 else 20)
 

@@ -22,20 +22,18 @@ let x = if (cond) { "yes" } else { "no" }
             (auto_call_symbol
               (id
                 (word_token))))
-          (conditional_body
+          (block
+            (literal
+              (string
+                (immediate_string_content)
+                (immediate_quote_token))))
+          (else_clause
+            (else_token)
             (block
               (literal
                 (string
                   (immediate_string_content)
-                  (immediate_quote_token)))))
-          (else_clause
-            (else_token)
-            (conditional_body
-              (block
-                (literal
-                  (string
-                    (immediate_string_content)
-                    (immediate_quote_token)))))))))))
+                  (immediate_quote_token))))))))))
 
 ===
 Conditional with expression branches
@@ -61,18 +59,16 @@ let x = if (cond) "yes" else "no"
             (auto_call_symbol
               (id
                 (word_token))))
-          (conditional_body
+          (literal
+            (string
+              (immediate_string_content)
+              (immediate_quote_token)))
+          (else_clause
+            (else_token)
             (literal
               (string
                 (immediate_string_content)
-                (immediate_quote_token))))
-          (else_clause
-            (else_token)
-            (conditional_body
-              (literal
-                (string
-                  (immediate_string_content)
-                  (immediate_quote_token))))))))))
+                (immediate_quote_token)))))))))
 
 ===
 Else-if chain with expression branches
@@ -98,29 +94,25 @@ let x = if (a) 1 else if (b) 2 else 3
             (auto_call_symbol
               (id
                 (word_token))))
-          (conditional_body
-            (literal
-              (int
-                (non_zero_decimal_digit))))
+          (literal
+            (int
+              (non_zero_decimal_digit)))
           (else_clause
             (else_token)
-            (conditional_body
-              (conditional
-                (if_token)
-                (symbol_or_call
-                  (auto_call_symbol
-                    (id
-                      (word_token))))
-                (conditional_body
-                  (literal
-                    (int
-                      (non_zero_decimal_digit))))
-                (else_clause
-                  (else_token)
-                  (conditional_body
-                    (literal
-                      (int
-                        (non_zero_decimal_digit)))))))))))))
+            (conditional
+              (if_token)
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token))))
+              (literal
+                (int
+                  (non_zero_decimal_digit)))
+              (else_clause
+                (else_token)
+                (literal
+                  (int
+                    (non_zero_decimal_digit)))))))))))
 
 ===
 Dangling else binds to the innermost if
@@ -146,20 +138,17 @@ let x = if (a) if (b) 1 else 2
             (auto_call_symbol
               (id
                 (word_token))))
-          (conditional_body
-            (conditional
-              (if_token)
-              (symbol_or_call
-                (auto_call_symbol
-                  (id
-                    (word_token))))
-              (conditional_body
-                (literal
-                  (int
-                    (non_zero_decimal_digit))))
-              (else_clause
-                (else_token)
-                (conditional_body
-                  (literal
-                    (int
-                      (non_zero_decimal_digit))))))))))))
+          (conditional
+            (if_token)
+            (symbol_or_call
+              (auto_call_symbol
+                (id
+                  (word_token))))
+            (literal
+              (int
+                (non_zero_decimal_digit)))
+            (else_clause
+              (else_token)
+              (literal
+                (int
+                  (non_zero_decimal_digit))))))))))

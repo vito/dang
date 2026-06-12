@@ -1185,7 +1185,7 @@
         "required": true,
         "types": [
           {
-            "type": "conditional_body",
+            "type": "form",
             "named": true
           }
         ]
@@ -1197,25 +1197,6 @@
       "types": [
         {
           "type": "if_token",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "conditional_body",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "block",
-          "named": true
-        },
-        {
-          "type": "form",
           "named": true
         }
       ]
@@ -1598,7 +1579,7 @@
         "required": true,
         "types": [
           {
-            "type": "conditional_body",
+            "type": "form",
             "named": true
           }
         ]

@@ -197,7 +197,7 @@
     },
     "term": {
       "type": "PREC_LEFT",
-      "value": 170,
+      "value": 169,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -294,7 +294,7 @@
     },
     "non_null_assert": {
       "type": "PREC_LEFT",
-      "value": 169,
+      "value": 168,
       "content": {
         "type": "SEQ",
         "members": [
@@ -479,7 +479,7 @@
     },
     "select_or_call": {
       "type": "PREC_LEFT",
-      "value": 162,
+      "value": 161,
       "content": {
         "type": "SEQ",
         "members": [
@@ -566,7 +566,7 @@
     },
     "index_or_call": {
       "type": "PREC_LEFT",
-      "value": 161,
+      "value": 160,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2445,7 +2445,7 @@
     },
     "type": {
       "type": "PREC_LEFT",
-      "value": 107,
+      "value": 106,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2563,7 +2563,7 @@
     },
     "named_type": {
       "type": "PREC_LEFT",
-      "value": 105,
+      "value": 104,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2708,7 +2708,7 @@
     },
     "non_null": {
       "type": "PREC_LEFT",
-      "value": 101,
+      "value": 100,
       "content": {
         "type": "SEQ",
         "members": [
@@ -2796,7 +2796,7 @@
     },
     "logical_or_expr": {
       "type": "PREC_LEFT",
-      "value": 97,
+      "value": 96,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2860,7 +2860,7 @@
     },
     "logical_and_expr": {
       "type": "PREC_LEFT",
-      "value": 96,
+      "value": 95,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -2924,7 +2924,7 @@
     },
     "equality_expr": {
       "type": "PREC_LEFT",
-      "value": 95,
+      "value": 94,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3005,7 +3005,7 @@
     },
     "relational_expr": {
       "type": "PREC_LEFT",
-      "value": 93,
+      "value": 92,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3094,7 +3094,7 @@
     },
     "additive_expr": {
       "type": "PREC_LEFT",
-      "value": 91,
+      "value": 90,
       "content": {
         "type": "CHOICE",
         "members": [
@@ -3175,7 +3175,7 @@
     },
     "multiplicative_expr": {
       "type": "PREC_LEFT",
-      "value": 89,
+      "value": 88,
       "content": {
         "type": "SEQ",
         "members": [
@@ -4593,7 +4593,7 @@
             "name": "then_",
             "content": {
               "type": "SYMBOL",
-              "name": "conditional_body"
+              "name": "form"
             }
           },
           {
@@ -4615,19 +4615,6 @@
         ]
       }
     },
-    "conditional_body": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "block"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "form"
-        }
-      ]
-    },
     "else_clause": {
       "type": "SEQ",
       "members": [
@@ -4640,7 +4627,7 @@
           "name": "body",
           "content": {
             "type": "SYMBOL",
-            "name": "conditional_body"
+            "name": "form"
           }
         }
       ]
