@@ -231,6 +231,37 @@ pre code{display:block}
   font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
 }
 
+/* ── literate blocks ─────────────────────────────────────────────────── */
+/* \dang-literate snippets share one Dang environment per page; their output
+   is baked in at build time and replayed client-side on Run (playground.js).
+   Editor metrics and output classes are the playground's, so the static and
+   live states render identically. */
+.dang-literate{
+  position:relative;background:var(--code-bg);border:1px solid var(--code-border);
+  border-radius:6px;margin:.75rem 0;overflow:hidden;
+}
+.dang-literate-fallback{
+  background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+}
+.dang-literate-out{
+  border-top:1px solid var(--code-border);padding:.6rem 1.25rem;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  color:var(--fg);white-space:pre-wrap;word-break:break-word;
+}
+.dang-literate-out.is-empty{display:none}
+/* An edit above this output may have invalidated it; dim until the next Run. */
+.dang-literate-out.is-stale{opacity:.45}
+/* Run sits in the block's corner, revealed on hover/focus (always shown on
+   touch layouts, which have no hover). */
+.dang-literate-controls{
+  position:absolute;top:.4rem;right:.4rem;display:flex;gap:.3rem;z-index:2;
+  opacity:0;transition:opacity .12s;
+}
+.dang-literate:hover .dang-literate-controls,
+.dang-literate:focus-within .dang-literate-controls{opacity:1}
+@media (hover:none){.dang-literate-controls{opacity:1}}
+
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
 th{text-align:left;padding:.5rem .6rem;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--code-border)}
 td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
