@@ -1,5 +1,3 @@
-//go:build cgo
-
 package dangdocs
 
 import (
@@ -9,20 +7,22 @@ import (
 	"github.com/vito/booklit"
 )
 
-// CodeBlock intercepts ```dang fences and renders them with the tree-sitter
-// lexer plus stdlib auto-links: the snippet is typechecked against the
-// prelude and every call-position name that resolves to a stdlib builtin
-// becomes a reference into the stdlib docs. Other languages keep baselit's
-// chroma path. Booklit resolves plugin methods first-match across the
-// section's plugin stack and baselit always sits first, so NewPlugin prepends
-// this plugin to make this override reachable; without cgo this method
-// doesn't exist at all and fences fall through to baselit.
+// CodeBlock renders every fenced code block with tree-sitter highlighting
+// (see highlight.go for the registered grammars). ```dang fences additionally
+// get stdlib auto-links: the snippet is typechecked against the prelude and
+// every call-position name that resolves to a stdlib builtin becomes a
+// reference into the stdlib docs. Languages without a grammar — and every
+// language when built without cgo — render as plain code in the same wrapper.
+// Booklit resolves plugin methods first-match across the section's plugin
+// stack and baselit always sits first, so NewPlugin prepends this plugin to
+// make this override reachable.
 func (p Plugin) CodeBlock(language string, code booklit.Content, styleName ...string) (booklit.Content, error) {
-	if language != "dang" {
-		return p.base.CodeBlock(language, code, styleName...)
-	}
-
 	source := code.String()
+
+	var links []linkSpan
+	if language == "dang" {
+		links = stdlibLinks(source)
+	}
 
 	style := booklit.StyleCodeBlock
 	if code.IsFlow() {
@@ -32,7 +32,7 @@ func (p Plugin) CodeBlock(language string, code booklit.Content, styleName ...st
 	return booklit.Styled{
 		Style:   style,
 		Block:   !code.IsFlow(),
-		Content: renderDang(p.section, source, stdlibLinks(source), code.IsFlow()),
+		Content: renderCode(p.section, language, source, links, code.IsFlow()),
 		Partials: booklit.Partials{
 			"Language": booklit.String(language),
 		},
@@ -40,10 +40,10 @@ func (p Plugin) CodeBlock(language string, code booklit.Content, styleName ...st
 }
 
 // highlightDang renders a snippet of Dang as inline highlighted content with
-// stdlib auto-links, themed by chroma.css like the site's code blocks. It
+// stdlib auto-links, themed by syntax.css like the site's code blocks. It
 // backs the stdlib example REPLs and any other generated snippet.
 func (p Plugin) highlightDang(src string) booklit.Content {
-	return renderDang(p.section, src, stdlibLinks(src), true)
+	return renderCode(p.section, "dang", src, stdlibLinks(src), true)
 }
 
 // renderSignature renders a stdlib card's declaration with exactly one link:
@@ -51,18 +51,19 @@ func (p Plugin) highlightDang(src string) booklit.Content {
 // declaration positions, so they get no typecheck-driven auto-links.
 func (p Plugin) renderSignature(sig, name, tag string) booklit.Content {
 	links := []linkSpan{{start: 0, end: len(name), tag: tag}}
-	return renderDang(p.section, sig, links, true)
+	return renderCode(p.section, "dang", sig, links, true)
 }
 
-// renderDang emits highlighted Dang as a sequence of raw HTML fragments
+// renderCode emits highlighted code as a sequence of raw HTML fragments
 // interleaved with booklit references for the link spans. References render
 // as plain <a> elements inside the surrounding token <span>, so links keep
-// their token color (chroma.css underlines them on hover). Falls back to a
-// plain code style when the highlight query is unavailable.
-func renderDang(section *booklit.Section, source string, links []linkSpan, inline bool) booklit.Content {
-	classes := dangLexer.classify(source)
+// their token color (page.tmpl underlines them on hover). When the language
+// has no grammar (or the build has no cgo) the code renders plain — same
+// wrapper, no token spans — so every fence shares this one path.
+func renderCode(section *booklit.Section, language, source string, links []linkSpan, inline bool) booklit.Content {
+	classes := classifyCode(language, source)
 	if classes == nil {
-		return booklit.Styled{Style: booklit.StyleVerbatim, Content: booklit.String(source)}
+		classes = make([]string, len(source))
 	}
 
 	// linkAt[i] is the index into links covering byte i, or -1.
@@ -87,9 +88,9 @@ func renderDang(section *booklit.Section, source string, links []linkSpan, inlin
 	}
 
 	if inline {
-		raw.WriteString(`<code class="chroma">`)
+		raw.WriteString(`<code class="syntax">`)
 	} else {
-		raw.WriteString(`<pre class="chroma"><code>`)
+		raw.WriteString(`<pre class="syntax"><code>`)
 	}
 
 	for i := 0; i < len(source); {

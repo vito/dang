@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "github.com/vito/dang/docs/go" // registers dang + chroma plugins
+	_ "github.com/vito/dang/docs/go" // registers the dang plugin
 
 	"github.com/vito/booklit/booklitcmd"
 )

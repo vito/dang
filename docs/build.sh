@@ -38,8 +38,8 @@ go run ./cmd/genthemes
   done
 } > html/base16-options.tmpl
 
-# CGO_ENABLED=1: code blocks are tokenized by the Dang tree-sitter grammar
-# (the same parser and highlight query the editors and the playground use),
-# which binds the generated C parser via cgo. The build image needs a C
-# compiler; chroma stays on purely as the HTML/CSS formatting layer.
+# CGO_ENABLED=1: code blocks are highlighted by tree-sitter grammars (Dang
+# uses the same parser and highlight query as the editors and the playground;
+# sh/toml fences use their upstream grammars), which bind the generated C
+# parsers via cgo. The build image needs a C compiler.
 CGO_ENABLED=1 go run . -i lit/index.md -o . --html-templates html --save-search-index "$@"

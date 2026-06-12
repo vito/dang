@@ -31,7 +31,7 @@ type Dang {
 
   """
   Build the documentation site, returning the changeset it produces under
-  docs/ (static HTML rendered from lit/, the playground wasm, the chroma
+  docs/ (static HTML rendered from lit/, the playground wasm, the syntax
   palette, the search index).
 
   Mirrors docs/build.sh. The output is gitignored, so this is a check (it

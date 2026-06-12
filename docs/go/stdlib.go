@@ -22,11 +22,11 @@ import (
 // quick-scan index. We deliberately leave out bass-isms that don't apply to
 // Dang (per-line source links, type predicates).
 //
-// Signatures are highlighted at build time with the same "dang" lexer and
-// style as the site's code blocks. The lexer tokenizes with the Dang
-// tree-sitter grammar and re-parses declaration-style signatures — which
-// aren't complete Dang programs — inside a synthetic interface body (see
-// lexer.go), so they highlight like real declarations.
+// Signatures are highlighted at build time with the same Dang tree-sitter
+// grammar and style as the site's code blocks. The highlighter re-parses
+// declaration-style signatures — which aren't complete Dang programs —
+// inside a synthetic interface body (see highlight.go), so they highlight
+// like real declarations.
 
 // indexThreshold is the group size above which a quick-scan index is rendered
 // before the cards. Small groups read fine as bare cards.

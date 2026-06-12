@@ -167,23 +167,30 @@
   }
 
   // Map a tree-sitter capture name (e.g. "constant.numeric") to a token
-  // class. The classes carry the same base16 slots chroma.css maps the
-  // static blocks to (see page.tmpl), so every surface matches.
+  // class, themed by syntax.css. This mirrors captureClass in
+  // docs/go/highlight.go (the two must stay in lockstep), so the editors
+  // match the statically-highlighted blocks span for span.
   function tokenClass(name) {
-    var base = name.split(".")[0];
-    switch (base) {
-      case "keyword": return "tok-keyword";
+    switch (name) {
+      case "variable.special": return "tok-self";
+      case "function.builtin": return "tok-builtin";
+      case "function.macro": return "tok-directive";
+      case "string.escape": return "tok-escape";
+      case "property": return "tok-property";
+      case "label": return "tok-label";
       case "type": return "tok-type";
+    }
+    switch (name.split(".")[0]) {
+      case "keyword": return "tok-keyword";
+      case "constant": case "number": return "tok-number";
       case "string": return "tok-string";
-      case "constant": return "tok-number";
-      case "function": return name === "function.builtin" ? "tok-builtin" : "tok-function";
       case "comment": return "tok-comment";
       case "operator": return "tok-operator";
-      case "label": return "tok-label";
-      case "property": return "tok-property";
-      case "variable": return name === "variable.special" ? "tok-self" : "tok-variable";
-      default: return "tok-punct";
+      case "punctuation": return "tok-punct";
+      case "function": return "tok-function";
+      case "variable": return "tok-variable";
     }
+    return null;
   }
 
   // Build highlighted HTML for source using the tree-sitter query captures.
@@ -200,6 +207,7 @@
     });
     for (var i = 0; i < caps.length; i++) {
       var c = caps[i], cls = tokenClass(c.name);
+      if (!cls) continue; // unmapped captures (e.g. @error) stay unstyled
       for (var j = c.node.startIndex; j < c.node.endIndex; j++) names[j] = cls;
     }
     tree.delete();

@@ -2,10 +2,12 @@
  * signature cards, and the playground/REPL editors. Colors come from base16
  * variables so one scheme themes them all; a scheme stylesheet under
  * css/base16/ supplies the variables and js/switcher.js swaps it at runtime.
- * These rules map chroma's token classes (the formatting layer for the
- * tree-sitter token stream) onto the base16 slots, following the base16
- * styling guide: 0E keywords, 0A types, 0D functions, 0C support/builtins,
- * 0B strings, 09 constants, 08 variables/tags/properties, 03 comments.
+ * These rules map the tok-* token classes — assigned from the tree-sitter
+ * highlight queries' capture names, at build time by docs/go/highlight.go
+ * and in the browser editors by docs/js/playground.js — onto the base16
+ * slots, following the base16 styling guide: 0E keywords, 0A types, 0D
+ * functions, 0C support/builtins, 0B strings, 09 constants, 08
+ * variables/tags/properties, 03 comments.
  *
  * The :root blocks are the no-JS fallback schemes — Rosé Pine Moon, with
  * Rosé Pine Dawn under prefers-color-scheme:light. The switcher's stylesheet
@@ -52,38 +54,34 @@
   }
 }
 
-.chroma { color: var(--base05); background-color: var(--base00); -webkit-text-size-adjust: none; }
-.chroma .line { display: flex; }
+/* the wrapper around every highlighted (or plain) code surface */
+.syntax { color: var(--base05); background-color: var(--base00); -webkit-text-size-adjust: none; }
 
 /* keywords */
-.chroma .k, .chroma .kd, .chroma .kn, .chroma .kp, .chroma .kr { color: var(--base0E); }
+.tok-keyword { color: var(--base0E); }
 /* types (every capitalized type name) */
-.chroma .kt { color: var(--base0A); }
+.tok-type { color: var(--base0A); }
 /* constant literals: true/false/null and numbers */
-.chroma .kc { color: var(--base09); }
-.chroma .m, .chroma .mb, .chroma .mf, .chroma .mh, .chroma .mi, .chroma .il, .chroma .mo { color: var(--base09); }
+.tok-number { color: var(--base09); }
 /* functions and methods */
-.chroma .nf, .chroma .fm { color: var(--base0D); }
+.tok-function { color: var(--base0D); }
 /* builtins (assert, print, ...) read as support functions */
-.chroma .nb { color: var(--base0C); }
+.tok-builtin { color: var(--base0C); }
 /* self */
-.chroma .bp { color: var(--base08); }
+.tok-self { color: var(--base08); }
 /* directives (@deprecated) */
-.chroma .nd { color: var(--base0F); }
+.tok-directive { color: var(--base0F); }
 /* language tags on multiline templates, markup tags */
-.chroma .nt { color: var(--base08); }
-/* argument/key names */
-.chroma .py { color: var(--base08); }
-/* misc names from non-Dang lexers (toml keys, shell vars) */
-.chroma .nx, .chroma .nv, .chroma .vc, .chroma .vg, .chroma .vi { color: var(--base08); }
+.tok-label { color: var(--base08); }
+/* argument/key names (and toml keys, shell variables) */
+.tok-property { color: var(--base08); }
 /* strings (and docstrings) */
-.chroma .s, .chroma .sa, .chroma .sb, .chroma .sc, .chroma .dl, .chroma .sd,
-.chroma .s2, .chroma .sh, .chroma .si, .chroma .sx, .chroma .sr, .chroma .s1, .chroma .ss { color: var(--base0B); }
+.tok-string { color: var(--base0B); }
 /* string escapes */
-.chroma .se { color: var(--base0C); }
+.tok-escape { color: var(--base0C); }
 /* operators */
-.chroma .o, .chroma .ow { color: var(--base0E); }
-/* punctuation stays at the default foreground */
-.chroma .p { color: var(--base05); }
+.tok-operator { color: var(--base0E); }
 /* comments */
-.chroma .c, .chroma .ch, .chroma .cm, .chroma .c1, .chroma .cs, .chroma .cp, .chroma .cpf { color: var(--base03); font-style: italic; }
+.tok-comment { color: var(--base03); font-style: italic; }
+/* variables and punctuation stay at the default foreground */
+.tok-variable, .tok-punct { color: var(--base05); }
