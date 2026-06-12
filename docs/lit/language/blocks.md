@@ -1,4 +1,5 @@
 \use-plugin{dang}
+\literate-fences
 
 # Blocks {#blocks}
 
@@ -20,15 +21,15 @@ A block is braces around a sequence of forms, separated by newlines or `,`;
 the last form is the block's result. A bare `{ ... }` with no parameters is
 itself an expression:
 
-\dang-literate{{{
+```dang
 { let width = 4, let height = 3, width * height }
-}}}
+```
 
 Parameters, when a block takes them, are comma-separated names before a `=>`:
 
-\dang-literate{{{
+```dang
 [1, 2, 3].map { x => x + 1 }
-}}}
+```
 
 ## Block arguments to functions
 
@@ -36,54 +37,54 @@ A function declares a block parameter with the `&` sigil (the same operator
 as [#functions]'s `&fn` refs); its type is a function type. The caller passes
 the block as trailing braces after the call:
 
-\dang-literate{{{
+```dang
 twice(&body: Int!): Int! {
   body + body
 }
 
 twice { 21 }
-}}}
+```
 
 The block parameter can itself take arguments — declared `&name(params): Ret`
 — and the function body calls it like any function:
 
-\dang-literate{{{
+```dang
 apply(&block(x: Int!): String!): String! {
   block(42)
 }
 
 apply { x => `got ${x}` }
-}}}
+```
 
 The block param's arg types may also be a type variable. A type variable is
 opaque — the body can only pass the value through, not operate on it, so
 `yield * 2` here would be a type error (see [#nullability]):
 
-\dang-literate{{{
+```dang
 id(&yield: b): b { yield }
 
 id { "anything" }
-}}}
+```
 
 Regular args and a block param can mix; the block param comes last, and a
 function or constructor may have at most one:
 
-\dang-literate{{{
+```dang
 greet(name: String!, &style(s: String!): String!): String! {
   style(`Hello, ${name}`)
 }
 
 greet("Dang") { s => s.toUpper }
-}}}
+```
 
 A block's parameter list can take multiple args when the call supplies them —
 `.each` passes the element and its index:
 
-\dang-literate{{{
+```dang
 let fruits = ["apple", "banana", "cherry"]
 
 fruits.each { item, index => print(`${index}: ${item}`) }
-}}}
+```
 
 (`.each` returns the original list — that's the `=>` line above — so calls
 chain even when the block is pure side effect.)
@@ -92,16 +93,16 @@ chain even when the block is pure side effect.)
 
 A block whose body ignores its parameters can omit the `param =>` entirely:
 
-\dang-literate{{{
+```dang
 [1, 2, 3].map { "whee" }
-}}}
+```
 
 That works anywhere a block does — a constant predicate, say:
 
-\dang-literate{{{
+```dang
 fruits.filter { true }     # param ignored ⇒ keeps everything
 fruits.filter { false }
-}}}
+```
 
 ## Implicit `_` parameter {#implicit-param}
 
@@ -110,25 +111,25 @@ fruits.filter { false }
 A block with **no explicit params** that references `_` gets a single
 implicit parameter named `_`:
 
-\dang-literate{{{
+```dang
 [1, 2, 3].map { _ * 2 }
-}}}
+```
 
 Every `_` in that block refers to that same one argument — Kotlin's `it`, NOT
 Scala-style positional `_1`, `_2`. So `{ _ + _ }` doubles each element rather
 than pairing two arguments:
 
-\dang-literate{{{
+```dang
 [1, 2, 3].map { _ + _ }
-}}}
+```
 
 `_` binds to the **nearest enclosing param-less block**, and a nested
 param-less block shadows the outer one — here the outer `_` is each sublist,
 the inner `_` each number:
 
-\dang-literate{{{
+```dang
 [[1, 2], [3]].map { _.map { _ * 10 } }
-}}}
+```
 
 A block with **explicit params** does not capture `_` — `{ x => x * 2 }` has
 no implicit parameter — and a bare `_` outside any block is an
@@ -140,28 +141,28 @@ A block is a lexical scope, and `let` is *the* way to declare a local. A
 local `let` shadows an outer field of the same name; mutating the local
 leaves the outer untouched:
 
-\dang-literate{{{
+```dang
 let name = "outer"
 let result = { let name = "inner", name }
 
 [result, name]
-}}}
+```
 
 Without a shadowing `let`, a bare `name = value` is a *reassignment* of the
 existing field, not a new declaration (see [#fields]) — and that reach
 extends through nested blocks, with mutations still visible after the block
 returns. `+=` works on the outer field the same way:
 
-\dang-literate{{{
+```dang
 let total = 0
 [1, 2, 3].each { x => total += x }
 
 total
-}}}
+```
 
 The same hoisting applies to `loop` bodies:
 
-\dang-literate{{{
+```dang
 let tries = 0
 loop {
   tries += 1
@@ -169,7 +170,7 @@ loop {
 }
 
 tries
-}}}
+```
 
 Inside a block, prefer `let` for locals; bare (public) declarations are for a
 type's or module's exported surface, where "public" actually means something.
@@ -181,29 +182,29 @@ type's or module's exported surface, where "public" actually means something.
 `return` inside a block unwinds through the enclosing **function**, not just
 the block — which is what makes early exit from an iteration read naturally:
 
-\dang-literate{{{
+```dang
 firstMatch(words: [String!]!, prefix: String!): String {
   words.each { w => if (w.hasPrefix(prefix)) { return w } }
   null
 }
 
 firstMatch(fruits, "b")
-}}}
+```
 
 `break value` works inside `.each`, `.map`, `loop`, and user-defined
 block-arg calls — a block-taking call is a valid target, and `break` makes it
 yield the value:
 
-\dang-literate{{{
+```dang
 [1, 2, 3, 4].each { x => if (x > 2) { break x } }
-}}}
+```
 
 `continue value` supplies one iteration's result — in `.map` it inserts the
 value; in `.each` it just advances:
 
-\dang-literate{{{
+```dang
 [1, 2, 3].map { x => if (x == 2) { continue 0 }, x }
-}}}
+```
 
 The value/result rules are specified in [#control-flow]. Two block-specific
 wrinkles:
@@ -229,31 +230,31 @@ wrinkles:
 `bar(foo)`, and `foo.{ x => bar(x) }` ≡ `bar(foo)` (the implicit `_` from
 [#implicit-param] is the idiomatic form):
 
-\dang-literate{{{
+```dang
 inc(x: Int!): Int! { x + 1 }
 
 41.{ inc(_) }
-}}}
+```
 
 It sits at `.`'s precedence — a sibling of `.{{ }}` selection and method
 calls — so it **interleaves with real method calls in a single chain**:
 
-\dang-literate{{{
+```dang
 emphasize(s: String!): String! { `**${s}**` }
 
 "hello world"
   .toUpper
   .{ emphasize(_) }
   .replace(" ", ", ")
-}}}
+```
 
 The block must take **0 or 1 parameters**; 2+ is an error: `dot-block takes a
 single value`. A 0-param block ignores the receiver and just returns its
 body:
 
-\dang-literate{{{
+```dang
 5.{ "ignored the receiver" }
-}}}
+```
 
 ### Null: dot-block is application, not navigation
 
@@ -264,23 +265,23 @@ the block runs with `_` bound to null, exactly as `bar(null)` would.
 Dot-block applies a block — it does not navigate into the receiver, so it has
 nothing to short-circuit. This is what lets a block *handle* null:
 
-\dang-literate{{{
+```dang
 let missing = null :: String
 
 missing.{ _ ?? "fallback" }
-}}}
+```
 
 Contrast `.{{ }}` selection ([#interop]), which *is* navigation and therefore
 **short-circuits**: the selection below never reads `name`, and its result
 type is nullable. Same `.`-brace surface, but selection reads fields while
 dot-block calls a block:
 
-\dang-literate{{{
+```dang
 type User { name: String! }
 let nobody = null :: User
 
 nobody.{{name}}
-}}}
+```
 
 ## Common methods that take blocks
 
