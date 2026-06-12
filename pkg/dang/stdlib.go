@@ -70,6 +70,20 @@ func registerStdlib() {
 			return ToValue(string(jsonBytes))
 		})
 
+	// toTOML function: toTOML(value: b) -> String!
+	Builtin("toTOML").
+		Doc("serializes a value to TOML").
+		Params("value", TypeVar('b')).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			val, _ := args.Get("value")
+			data, err := encodeTOML(val)
+			if err != nil {
+				return nil, fmt.Errorf("toTOML: %w", err)
+			}
+			return ToValue(data)
+		})
+
 	// fromJSON function: fromJSON(data: String!) -> a
 	Builtin("fromJSON").
 		Doc("parses JSON into an opaque value that is materialized by an expected type").
@@ -94,6 +108,20 @@ func registerStdlib() {
 				return nil, fmt.Errorf("fromJSON: invalid JSON: trailing data")
 			}
 
+			return DeferredValue{Raw: raw}, nil
+		})
+
+	// fromTOML function: fromTOML(data: String!) -> a
+	Builtin("fromTOML").
+		Doc("parses TOML into an opaque value that is materialized by an expected type").
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			data := args.GetString("data")
+			raw, err := decodeTOML(data)
+			if err != nil {
+				return nil, fmt.Errorf("fromTOML: invalid TOML: %w", err)
+			}
 			return DeferredValue{Raw: raw}, nil
 		})
 
