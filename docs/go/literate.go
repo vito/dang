@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/vito/booklit"
 	"github.com/vito/dang/v2/pkg/dang"
@@ -22,11 +21,6 @@ type literateSession struct {
 	valueScope dang.ValueScope
 }
 
-var (
-	literateMu       sync.Mutex
-	literateSessions = map[string]*literateSession{}
-)
-
 // literateFencesPartial is the section partial under which \literate-fences
 // records itself. Partials are booklit's "arbitrary named content" slot, the
 // closest plugin-side analogue to how \split-sections sets a flag on its
@@ -34,17 +28,45 @@ var (
 // never renders.
 const literateFencesPartial = "LiterateFences"
 
-// literateSessionFor returns the shared session for the given source file,
-// creating it from fresh standard-library scopes on first use.
-func literateSessionFor(path string) *literateSession {
-	literateMu.Lock()
-	defer literateMu.Unlock()
-	s := literateSessions[path]
-	if s == nil {
-		typeScope, valueScope := dang.BuildScopesFromImports("", nil)
-		s = &literateSession{typeScope: typeScope, valueScope: valueScope}
-		literateSessions[path] = s
+// literateSessionPartial is the section partial under which the source
+// file's literate session is stowed, on the section that carries the file.
+// Stowing it on the section rather than in a package-level map ties the
+// session's lifetime to one load of the book: booklit's dev server
+// (`build.sh -s`) re-loads the whole book on every page request,
+// concurrently across requests, and Dang scopes are not safe for concurrent
+// use (one request's Infer writes the scope maps another request's Eval is
+// reading). Sections are rebuilt per load and a load evaluates on one
+// goroutine, so sessions never cross goroutines and every rebuild replays
+// the page's chain fresh.
+const literateSessionPartial = "LiterateSession"
+
+// literateSessionContent carries a session as a Content so it can live in a
+// partial; like the \literate-fences marker it never renders.
+type literateSessionContent struct {
+	booklit.Content
+	session *literateSession
+}
+
+// literateSessionFor returns the session shared by every literate block in
+// the given section's source file, creating it from fresh standard-library
+// scopes on first use.
+func literateSessionFor(section *booklit.Section) *literateSession {
+	// The session lives on the section that carries the source file: inline
+	// \section blocks have no Path of their own, so walk up to the file's
+	// section (mirroring FilePath) — the chain spans every heading in the
+	// file.
+	file := section
+	for file.Path == "" && file.Parent != nil {
+		file = file.Parent
 	}
+
+	if c, ok := file.Partial(literateSessionPartial).(literateSessionContent); ok {
+		return c.session
+	}
+
+	typeScope, valueScope := dang.BuildScopesFromImports("", nil)
+	s := &literateSession{typeScope: typeScope, valueScope: valueScope}
+	file.SetPartial(literateSessionPartial, literateSessionContent{booklit.Empty, s})
 	return s
 }
 
@@ -102,7 +124,7 @@ func (p Plugin) DangLiterate(code booklit.Content) (booklit.Content, error) {
 // originating syntax in build errors.
 func (p Plugin) literateBlock(code booklit.Content, label string) (booklit.Content, error) {
 	source := strings.TrimRight(code.String(), "\n")
-	sess := literateSessionFor(p.section.FilePath())
+	sess := literateSessionFor(p.section)
 
 	stdout, value, err := literateEval(source, sess)
 	if err != nil {

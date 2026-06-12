@@ -1,6 +1,8 @@
 package dangdocs
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/vito/booklit"
@@ -74,5 +76,53 @@ func TestCodeBlockLiterateRouting(t *testing.T) {
 	outside := render(plain, "dang", "undefinedNameNeverEvaluated")
 	if outside.Style != booklit.StyleCodeBlock {
 		t.Errorf("dang fence outside scope: style %q, want %q", outside.Style, booklit.StyleCodeBlock)
+	}
+}
+
+// Booklit's dev server re-loads the whole book on every page request,
+// concurrently across requests, and Dang scopes are not safe for concurrent
+// use — so each load must get its own sessions. Each goroutine here simulates
+// one load evaluating the same source file; `go test -race` fails if loads
+// share scopes. The loads declare distinct names: concurrent loads of a real
+// book sit at different blocks of the page, and identical sources fail fast
+// in Infer without the scope writes that make the detector fire.
+func TestLiterateSessionsScopedPerLoad(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			root := &booklit.Section{Path: "blocks.md"}
+			sess := literateSessionFor(root)
+			if _, _, err := literateEval(fmt.Sprintf("let nums%d = [1, 2, 3]", i), sess); err != nil {
+				t.Error(err)
+				return
+			}
+
+			// An inline \section shares the file path but is its own Section;
+			// the notebook chain spans it, so it must get the same session.
+			sub := &booklit.Section{Parent: root}
+			if subSess := literateSessionFor(sub); subSess != sess {
+				t.Error("inline subsection got a different session than its file")
+				return
+			}
+
+			// Earlier blocks' definitions are in scope for later blocks.
+			if _, _, err := literateEval(fmt.Sprintf("nums%d.map { x => x + 1 }", i), sess); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// Re-loading the same file in a new load must start the chain fresh rather
+// than reusing (and accumulating into) the previous load's scopes.
+func TestLiterateSessionsFreshPerLoad(t *testing.T) {
+	first := literateSessionFor(&booklit.Section{Path: "blocks.md"})
+	second := literateSessionFor(&booklit.Section{Path: "blocks.md"})
+	if first == second {
+		t.Error("new load reused the previous load's session")
 	}
 }
