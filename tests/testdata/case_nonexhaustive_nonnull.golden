@@ -1,0 +1,11 @@
+[1m[31mError:[0m return type mismatch: declared String!, inferred String
+  [2m[34m--> errors/case_nonexhaustive_nonnull.dang:3:28[0m
+ [2m    |[0m
+ [2m  1 | # This should fail: without an else the case can fall through to null,[0m
+ [2m  2 | # tainting the non-null return type[0m
+ [2m[34m[1m  3 | [0mclassify(x: Int!): String! {
+[2m                                  [31m^[0m
+ [2m  4 |   case (x) {[0m
+ [2m  5 |     1 => "one"[0m
+ [2m    |[0m
+

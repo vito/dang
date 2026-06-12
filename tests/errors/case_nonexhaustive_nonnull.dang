@@ -1,0 +1,8 @@
+# This should fail: without an else the case can fall through to null,
+# tainting the non-null return type
+classify(x: Int!): String! {
+  case (x) {
+    1 => "one"
+    2 => "two"
+  }
+}

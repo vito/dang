@@ -1,0 +1,111 @@
+# Case clause bodies that diverge widen to a union (like if/else branches),
+# and a case that can fall through yields null instead of raising.
+
+# Diverging clause bodies widen to String! | Int!
+describeWidened(x: Int!): String! {
+  let widened = case (x) {
+    1 => "one"
+    2 => 2
+    else => "other"
+  }
+
+  case (widened) {
+    s: String => `string ${s}`
+    i: Int => `int ${toString(i)}`
+  }
+}
+
+assert { describeWidened(1) == "string one" }
+assert { describeWidened(2) == "int 2" }
+assert { describeWidened(3) == "string other" }
+
+# No match without an else falls through to null, so the result is nullable
+let unmatched = case (5) {
+  1 => "one"
+  2 => "two"
+}
+
+assert { unmatched == null }
+
+# The fallthrough composes with widening: a nullable union
+let maybeWidened = case (5) {
+  1 => "one"
+  2 => 2
+}
+
+assert { maybeWidened == null }
+
+# Type patterns covering every member of a union are exhaustive: no else
+# needed, and the result stays non-null
+type Cat {
+  name: String!
+  lives: Int! = 9
+}
+
+type Dog {
+  name: String!
+}
+
+union Pet = Cat | Dog
+
+describePet(pet: Pet!): String! {
+  case (pet) {
+    c: Cat => `cat with ${toString(c.lives)} lives`
+    d: Dog => `dog named ${d.name}`
+  }
+}
+
+assert { describePet(Cat(name: "Whiskers")) == "cat with 9 lives" }
+assert { describePet(Dog(name: "Rex")) == "dog named Rex" }
+
+# Partial coverage of a union is not exhaustive: nullable result
+maybeCat(pet: Pet!): String {
+  case (pet) {
+    c: Cat => c.name
+  }
+}
+
+assert { maybeCat(Cat(name: "Solo")) == "Solo" }
+assert { maybeCat(Dog(name: "Rex")) == null }
+
+# A nullable operand is never exhaustive: null matches no type pattern
+maybePetName(pet: Pet): String {
+  case (pet) {
+    c: Cat => c.name
+    d: Dog => d.name
+  }
+}
+
+assert { maybePetName(Cat(name: "Mia")) == "Mia" }
+assert { maybePetName(null) == null }
+
+# Inline unions (from if/else widening) get the same exhaustiveness check
+describeInline(flag: Boolean!): String! {
+  let pet = if (flag) Cat(name: "Whiskers") else Dog(name: "Rex")
+  case (pet) {
+    c: Cat => "cat"
+    d: Dog => "dog"
+  }
+}
+
+assert { describeInline(true) == "cat" }
+assert { describeInline(false) == "dog" }
+
+# An interface catch-all pattern makes an interface operand exhaustive
+interface Sound {
+  noise: String!
+}
+
+type Bell implements Sound {
+  noise: String! = "ding"
+}
+
+play(s: Sound!): String! {
+  case (s) {
+    other: Sound => other.noise
+  }
+}
+
+assert { play(Bell) == "ding" }
+
+print("Case widening and nullable fallthrough tests passed!")

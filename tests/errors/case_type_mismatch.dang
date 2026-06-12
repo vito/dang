@@ -1,5 +1,0 @@
-# This should fail: case clauses have incompatible types
-let result = case (1) {
-  1 => "string"
-  2 => 42
-}

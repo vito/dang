@@ -24,8 +24,8 @@ case (value) {
 }
 ```
 - Clauses tried top-to-bottom; first match wins (including a stray duplicate or an `else` placed before later clauses).
-- Clause bodies must merge to a common type (`Case.Infer: clause N type mismatch` otherwise).
-- **No compile-time exhaustiveness check**: if nothing matches and there's no `else`, it's a runtime error `no case clause matched the value: <v>`.
+- Clause bodies merge to a common type when they can; diverging bodies widen to a union, like `if` branches.
+- If nothing matches and there's no `else`, the case is `null` — its result type is **nullable**. An `else` keeps it non-null, as do type patterns covering every member of a non-null union (**exhaustive**). An interface operand is exhaustive only via an interface catch-all pattern (its implementer set is open); a nullable operand is never exhaustive (`null` matches no type pattern).
 
 ### Value patterns
 - Literal scalars: ints `1`, floats `3.14`, strings `"foo"`, booleans, `null`, enum values.

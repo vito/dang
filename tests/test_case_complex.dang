@@ -19,8 +19,9 @@ let var_result = case (x) {
 
 assert { var_result == "five" }
 
-# Case in a function
-caseInClassify(x: Int!): String! {
+# Case in a function: without an else the case can fall through to null,
+# so the return type must be nullable
+caseInClassify(x: Int!): String {
   case (x) {
     0 => "zero"
     1 => "one"
@@ -31,6 +32,7 @@ caseInClassify(x: Int!): String! {
 assert { caseInClassify(0) == "zero" }
 assert { caseInClassify(1) == "one" }
 assert { caseInClassify(2) == "two" }
+assert { caseInClassify(9) == null }
 
 # Nested case
 let nested = case (1) {

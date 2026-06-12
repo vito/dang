@@ -88,9 +88,9 @@ case (pet) {
 }
 ```
 
-- NOT statically exhaustive — a `case` missing some members type-checks fine
-- a value that matches no arm is a *runtime* error: `no case clause matched the value`
-- add `else => ...` as a catch-all to cover unmatched members
+- covering every member is exhaustive: no `else` needed, and the result stays non-null
+- a `case` missing some members still type-checks, but a value that matches no arm yields `null`, so the case's type is nullable
+- add `else => ...` as a catch-all to cover unmatched members and keep the result non-null
 
 ### Inline fragments
 
