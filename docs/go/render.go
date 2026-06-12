@@ -16,7 +16,22 @@ import (
 // Booklit resolves plugin methods first-match across the section's plugin
 // stack and baselit always sits first, so NewPlugin prepends this plugin to
 // make this override reachable.
+//
+// Inside a \literate-fences scope (see literate.go) a ```dang fence instead
+// becomes a literate block — evaluated at build time in the page's shared
+// session, output baked in. ```dang-static opts a single fence back out: it
+// highlights (and auto-links) as Dang but is never evaluated, for fragments
+// or intentionally invalid code that would fail the literate build.
 func (p Plugin) CodeBlock(language string, code booklit.Content, styleName ...string) (booklit.Content, error) {
+	switch language {
+	case "dang":
+		if literateFencesEnabled(p.section) {
+			return p.literateBlock(code, "```dang fence")
+		}
+	case "dang-static":
+		language = "dang"
+	}
+
 	source := code.String()
 
 	var links []linkSpan

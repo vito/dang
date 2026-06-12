@@ -25,6 +25,11 @@ type literateSession struct {
 var (
 	literateMu       sync.Mutex
 	literateSessions = map[string]*literateSession{}
+
+	// literateFenceSections holds the sections in which \literate-fences has
+	// been invoked. Fences check their own section and every ancestor, so the
+	// call covers the rest of its section including sub-sections.
+	literateFenceSections = map[*booklit.Section]bool{}
 )
 
 // literateSessionFor returns the shared session for the given source file,
@@ -41,9 +46,39 @@ func literateSessionFor(path string) *literateSession {
 	return s
 }
 
+// LiterateFences turns the ```dang fences that follow it into literate
+// blocks, each rendered exactly as if it were a \dang-literate invocation.
+// The switch is lexically scoped: it covers the rest of the section it's
+// called in, sub-sections included (each markdown heading is its own booklit
+// section, linked by Parent), and only fences evaluated after the call —
+// booklit evaluates in document order. Call it right after the page title for
+// a fully literate page, or under one heading to scope it to that section;
+// ```dang fences elsewhere stay plain highlighted Markdown. A ```dang-static
+// fence opts a single snippet back out (see CodeBlock).
+//
+//	\literate-fences
+func (p Plugin) LiterateFences() {
+	literateMu.Lock()
+	defer literateMu.Unlock()
+	literateFenceSections[p.section] = true
+}
+
+// literateFencesEnabled reports whether \literate-fences was called in sec or
+// any of its ancestors before this point in document order.
+func literateFencesEnabled(sec *booklit.Section) bool {
+	literateMu.Lock()
+	defer literateMu.Unlock()
+	for s := sec; s != nil; s = s.Parent {
+		if literateFenceSections[s] {
+			return true
+		}
+	}
+	return false
+}
+
 // DangLiterate renders a literate-programming code block. The snippet is
 // evaluated at build time against a Dang environment shared by every
-// \dang-literate block in the same source file — earlier blocks' definitions
+// literate block in the same source file — earlier blocks' definitions
 // are in scope, like cells of a notebook — and its output (stdout plus the
 // value of the last form) is baked into the static page. A block that fails
 // to parse, type-check, or evaluate fails the docs build, so literate
@@ -53,17 +88,26 @@ func literateSessionFor(path string) *literateSession {
 //	list.each { item, index => print(`${index}: ${item}`) }
 //	}}}
 //
+// In a \literate-fences scope, plain ```dang fences render through this same
+// path (see CodeBlock), so pages can stay pure Markdown.
+//
 // docs/js/playground.js progressively enhances these blocks into editable
 // widgets with the same chain semantics: Run replays every literate block on
 // the page, top to bottom, in one wasm REPL session. Without JavaScript the
 // baked output still shows.
 func (p Plugin) DangLiterate(code booklit.Content) (booklit.Content, error) {
+	return p.literateBlock(code, `\dang-literate block`)
+}
+
+// literateBlock evaluates and renders one literate snippet; label names the
+// originating syntax in build errors.
+func (p Plugin) literateBlock(code booklit.Content, label string) (booklit.Content, error) {
 	source := strings.TrimRight(code.String(), "\n")
 	sess := literateSessionFor(p.section.FilePath())
 
 	stdout, value, err := literateEval(source, sess)
 	if err != nil {
-		return nil, fmt.Errorf("\\dang-literate block in %s: %w", p.section.FilePath(), err)
+		return nil, fmt.Errorf("%s in %s: %w", label, p.section.FilePath(), err)
 	}
 
 	partials := booklit.Partials{}
