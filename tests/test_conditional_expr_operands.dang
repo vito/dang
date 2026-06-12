@@ -1,0 +1,55 @@
+# Conditional branches are plain expressions — braces are just the usual
+# grouping block, not part of the if/else syntax.
+
+# Bare expression operands
+let a = if (true) "yes" else "no"
+let b = if (false) "yes" else "no"
+
+assert { a == "yes" }
+assert { b == "no" }
+
+# Operator expressions as operands
+let x = 10
+let y = 20
+let bigger = if (x > y) x + 1 else y + 1
+
+assert { bigger == 21 }
+
+# If without else still falls through to null
+let c = if (false) "value"
+
+assert { c == null }
+
+# else-if chains without braces
+let grade = if (x > 100) "high" else if (x > 5) "medium" else "low"
+
+assert { grade == "medium" }
+
+# Mixing block and bare operands
+let mixed1 = if (true) { let tmp = 2, tmp * 3 } else 0
+let mixed2 = if (false) 0 else { let tmp = 2, tmp * 3 }
+
+assert { mixed1 == 6 }
+assert { mixed2 == 6 }
+
+# Nested bare conditionals
+let nested = if (true) if (false) "inner_false" else "inner_true" else "outer_false"
+
+assert { nested == "inner_true" }
+
+# Conditional results feed into larger expressions
+let sum = (if (true) 1 else 2) + (if (false) 10 else 20)
+
+assert { sum == 21 }
+
+# Guard-clause narrowing still applies to bare diverging branches
+describe(n: Int): String! {
+  if (n == null) return "missing"
+  if (n > 0) "positive" else "non-positive"
+}
+
+assert { describe(null) == "missing" }
+assert { describe(3) == "positive" }
+assert { describe(-3) == "non-positive" }
+
+print("Conditional expression operand tests passed!")

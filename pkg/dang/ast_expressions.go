@@ -2455,8 +2455,8 @@ func (o *ObjectSelection) Walk(fn func(Node) bool) {
 type Conditional struct {
 	InferredTypeHolder
 	Condition Node
-	Then      *Block
-	Else      any
+	Then      Node
+	Else      Node
 	Loc       *SourceLocation
 }
 
@@ -2472,8 +2472,7 @@ func (c *Conditional) ReferencedSymbols() []string {
 	symbols = append(symbols, c.Condition.ReferencedSymbols()...)
 	symbols = append(symbols, c.Then.ReferencedSymbols()...)
 	if c.Else != nil {
-		elseBlock := c.Else.(*Block)
-		symbols = append(symbols, elseBlock.ReferencedSymbols()...)
+		symbols = append(symbols, c.Else.ReferencedSymbols()...)
 	}
 	return symbols
 }
@@ -2503,10 +2502,8 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 		}
 
 		if c.Else != nil {
-			elseBlock := c.Else.(*Block)
-
 			elseEnv := withNarrowings(env, facts.Falsy)
-			elseType, err := elseBlock.Infer(ctx, elseEnv, fresh)
+			elseType, err := c.Else.Infer(ctx, elseEnv, fresh)
 			if err != nil {
 				return nil, err
 			}
@@ -2551,8 +2548,7 @@ func (c *Conditional) Eval(ctx context.Context, scope ValueScope) (Value, error)
 		if boolVal.Val {
 			return EvalNode(ctx, scope, c.Then)
 		} else if c.Else != nil {
-			elseBlock := c.Else.(*Block)
-			return EvalNode(ctx, scope, elseBlock)
+			return EvalNode(ctx, scope, c.Else)
 		} else {
 			return NullValue{}, nil
 		}
@@ -2566,9 +2562,7 @@ func (c *Conditional) Walk(fn func(Node) bool) {
 	c.Condition.Walk(fn)
 	c.Then.Walk(fn)
 	if c.Else != nil {
-		if elseBlock, ok := c.Else.(*Block); ok {
-			elseBlock.Walk(fn)
-		}
+		c.Else.Walk(fn)
 	}
 }
 

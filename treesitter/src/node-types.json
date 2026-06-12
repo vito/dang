@@ -1160,16 +1160,6 @@
     "type": "conditional",
     "named": true,
     "fields": {
-      "block": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
       "cond": {
         "multiple": false,
         "required": true,
@@ -1189,6 +1179,16 @@
             "named": true
           }
         ]
+      },
+      "then_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "conditional_body",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -1197,6 +1197,25 @@
       "types": [
         {
           "type": "if_token",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "conditional_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "form",
           "named": true
         }
       ]
@@ -1574,22 +1593,12 @@
     "type": "else_clause",
     "named": true,
     "fields": {
-      "block": {
+      "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "elseif": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "conditional",
+            "type": "conditional_body",
             "named": true
           }
         ]

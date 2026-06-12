@@ -2630,25 +2630,37 @@ func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 func (f *Formatter) formatConditional(c *Conditional) {
 	f.write("if (")
 	f.formatNode(c.Condition)
-	f.write(") {")
-	f.formatBlockContents(c.Then)
-	f.write("}")
+	f.write(") ")
+	f.formatConditionalBody(c.Then)
 
 	if c.Else != nil {
 		f.write(" else ")
-		// Check if else contains another conditional (else if)
-		if elseBlock, ok := c.Else.(*Block); ok {
-			if len(elseBlock.Forms) == 1 {
-				if cond, ok := elseBlock.Forms[0].(*Conditional); ok {
-					f.formatConditional(cond)
-					return
-				}
-			}
-			f.write("{")
-			f.formatBlockContents(elseBlock)
-			f.write("}")
+		// Format `else if` as a continued chain rather than a nested body.
+		if cond, ok := c.Else.(*Conditional); ok {
+			f.formatConditional(cond)
+			return
 		}
+		// Collapse `else { if ... }` into the same chain.
+		if elseBlock, ok := c.Else.(*Block); ok && len(elseBlock.Forms) == 1 {
+			if cond, ok := elseBlock.Forms[0].(*Conditional); ok {
+				f.formatConditional(cond)
+				return
+			}
+		}
+		f.formatConditionalBody(c.Else)
 	}
+}
+
+// formatConditionalBody formats a conditional branch, which may be a grouping
+// block or any other expression.
+func (f *Formatter) formatConditionalBody(body Node) {
+	if block, ok := body.(*Block); ok {
+		f.write("{")
+		f.formatBlockContents(block)
+		f.write("}")
+		return
+	}
+	f.formatNode(body)
 }
 
 func (f *Formatter) formatCase(c *Case) {

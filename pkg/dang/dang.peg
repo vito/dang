@@ -1057,23 +1057,26 @@ Return <- ReturnToken _inlineSpace value:Form {
 
 ReturnToken <- "return" !WordChar
 
-Conditional <- IfToken _ '(' _ cond:Form _ ')' _ block:Block else_:ElseClause? {
+Conditional <- IfToken _ '(' _ cond:Form _ ')' _ then_:ConditionalBody else_:ElseClause? {
+  var elseNode Node
+  if else_ != nil {
+    elseNode = else_.(Node)
+  }
   return &Conditional{
     Condition: cond.(Node),
-    Then: block.(*Block),
-    Else: else_,
+    Then: then_.(Node),
+    Else: elseNode,
     Loc: c.Loc(),
   }, nil
 }
 
-ElseClause <- _ ElseToken _ elseif:Conditional {
-  // else if - wrap the conditional in a block
-  return &Block{
-    Forms: []Node{elseif.(Node)},
-    Loc: elseif.(Node).GetSourceLocation(),
-  }, nil
-} / _ ElseToken _ block:Block {
-  return block.(*Block), nil
+// A conditional branch is any expression. Block is tried first so that a
+// brace-delimited body keeps parsing as a grouping block rather than a
+// map/object literal.
+ConditionalBody <- Block / Form
+
+ElseClause <- _ ElseToken _ body:ConditionalBody {
+  return body, nil
 }
 
 IfToken <- "if" !WordChar

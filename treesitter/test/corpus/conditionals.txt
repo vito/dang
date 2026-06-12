@@ -1,0 +1,165 @@
+===
+Conditional with block branches
+===
+
+let x = if (cond) { "yes" } else { "no" }
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (conditional
+          (if_token)
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token))))
+          (conditional_body
+            (block
+              (literal
+                (string
+                  (immediate_string_content)
+                  (immediate_quote_token)))))
+          (else_clause
+            (else_token)
+            (conditional_body
+              (block
+                (literal
+                  (string
+                    (immediate_string_content)
+                    (immediate_quote_token)))))))))))
+
+===
+Conditional with expression branches
+===
+
+let x = if (cond) "yes" else "no"
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (conditional
+          (if_token)
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token))))
+          (conditional_body
+            (literal
+              (string
+                (immediate_string_content)
+                (immediate_quote_token))))
+          (else_clause
+            (else_token)
+            (conditional_body
+              (literal
+                (string
+                  (immediate_string_content)
+                  (immediate_quote_token))))))))))
+
+===
+Else-if chain with expression branches
+===
+
+let x = if (a) 1 else if (b) 2 else 3
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (conditional
+          (if_token)
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token))))
+          (conditional_body
+            (literal
+              (int
+                (non_zero_decimal_digit))))
+          (else_clause
+            (else_token)
+            (conditional_body
+              (conditional
+                (if_token)
+                (symbol_or_call
+                  (auto_call_symbol
+                    (id
+                      (word_token))))
+                (conditional_body
+                  (literal
+                    (int
+                      (non_zero_decimal_digit))))
+                (else_clause
+                  (else_token)
+                  (conditional_body
+                    (literal
+                      (int
+                        (non_zero_decimal_digit)))))))))))))
+
+===
+Dangling else binds to the innermost if
+===
+
+let x = if (a) if (b) 1 else 2
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (conditional
+          (if_token)
+          (symbol_or_call
+            (auto_call_symbol
+              (id
+                (word_token))))
+          (conditional_body
+            (conditional
+              (if_token)
+              (symbol_or_call
+                (auto_call_symbol
+                  (id
+                    (word_token))))
+              (conditional_body
+                (literal
+                  (int
+                    (non_zero_decimal_digit))))
+              (else_clause
+                (else_token)
+                (conditional_body
+                  (literal
+                    (int
+                      (non_zero_decimal_digit))))))))))))
