@@ -2566,7 +2566,7 @@ func (c *Conditional) Walk(fn func(Node) bool) {
 	}
 }
 
-// Break represents a break statement in a loop or block-taking call.
+// Break represents a break statement in a block-taking call.
 type Break struct {
 	InferredTypeHolder
 	Value      Node
@@ -2599,7 +2599,7 @@ func (b *Break) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Typ
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
 		target := currentInferBreakTarget(ctx)
 		if target == nil {
-			return nil, NewInferError(fmt.Errorf("break outside of loop or block-taking call"), b)
+			return nil, NewInferError(fmt.Errorf("break outside of block-taking call"), b)
 		}
 		b.Target = target
 		b.TargetKind = target.Kind
@@ -2649,7 +2649,7 @@ func (b *Break) Walk(fn func(Node) bool) {
 	}
 }
 
-// Continue represents a continue statement in a loop or block invocation.
+// Continue represents a continue statement in a block-taking call.
 type Continue struct {
 	InferredTypeHolder
 	Value      Node
@@ -2682,7 +2682,7 @@ func (c *Continue) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 	return WithInferErrorHandling(c, func() (hm.Type, error) {
 		target := currentInferContinueTarget(ctx)
 		if target == nil {
-			return nil, NewInferError(fmt.Errorf("continue outside of loop or block arg invocation"), c)
+			return nil, NewInferError(fmt.Errorf("continue outside of block-taking call"), c)
 		}
 		c.Target = target
 		c.TargetKind = target.Kind
@@ -2747,7 +2747,7 @@ func (e *BreakException) Error() string {
 			return "break from expired block call"
 		}
 	}
-	return "break outside of loop or block-taking call"
+	return "break outside of block-taking call"
 }
 
 // ContinueException is used to signal a continue statement.
@@ -2765,7 +2765,7 @@ func (e *ContinueException) Error() string {
 			return "continue from expired block invocation"
 		}
 	}
-	return "continue outside of loop or block arg invocation"
+	return "continue outside of block-taking call"
 }
 
 func breakValueType(br *Break) hm.Type {

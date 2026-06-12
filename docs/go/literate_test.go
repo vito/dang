@@ -2,6 +2,7 @@ package dangdocs
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -76,6 +77,83 @@ func TestCodeBlockLiterateRouting(t *testing.T) {
 	outside := render(plain, "dang", "undefinedNameNeverEvaluated")
 	if outside.Style != booklit.StyleCodeBlock {
 		t.Errorf("dang fence outside scope: style %q, want %q", outside.Style, booklit.StyleCodeBlock)
+	}
+}
+
+// A ```dang-failure fence is required to fail: it bakes the error it raises
+// (labelled like the playground's stage labels), runs against forks of the
+// session so nothing it declares leaks into later fences, and a snippet that
+// succeeds is a build error. Outside a literate scope it stays a plain
+// highlighted block.
+func TestCodeBlockFailureRouting(t *testing.T) {
+	root := &booklit.Section{Path: "failure-routing-test.md"}
+	lit := &booklit.Section{Parent: root}
+	plain := &booklit.Section{Parent: root}
+
+	Plugin{section: lit}.LiterateFences()
+
+	render := func(language, source string) (booklit.Styled, error) {
+		t.Helper()
+		content, err := Plugin{section: lit}.CodeBlock(language, booklit.Preformatted{booklit.String(source)})
+		if err != nil {
+			return booklit.Styled{}, err
+		}
+		styled, ok := content.(booklit.Styled)
+		if !ok {
+			t.Fatalf("CodeBlock(%q, %q) returned %T, want booklit.Styled", language, source, content)
+		}
+		return styled, nil
+	}
+
+	if _, err := render("dang", "let x = 6 * 7"); err != nil {
+		t.Fatalf("seeding session: %v", err)
+	}
+
+	// The failure block sees the session's state (x) and bakes its error.
+	failed, err := render("dang-failure", "x.toUpper")
+	if err != nil {
+		t.Fatalf("dang-failure fence: %v", err)
+	}
+	errPartial := failed.Partials["Error"]
+	if errPartial == nil {
+		t.Fatal("dang-failure fence baked no Error partial")
+	}
+	if got := errPartial.String(); !strings.HasPrefix(got, "Type error: ") {
+		t.Errorf("baked error %q, want a %q prefix matching playground.js's STAGE_LABEL", got, "Type error: ")
+	}
+	if failed.Partials["Value"] != nil {
+		t.Errorf("dang-failure fence baked a Value: %v", failed.Partials["Value"])
+	}
+
+	// Declarations made before the failure stay in the discarded fork.
+	if _, err := render("dang-failure", "let leaked = 1\nleaked.toUpper"); err != nil {
+		t.Fatalf("dang-failure fence with declaration: %v", err)
+	}
+	if _, err := render("dang", "leaked"); err == nil {
+		t.Error("a dang-failure fence's declaration leaked into the session")
+	}
+
+	// The session itself is unharmed: later fences still chain.
+	after, err := render("dang", "x + 1")
+	if err != nil {
+		t.Fatalf("fence after failures: %v", err)
+	}
+	if got := after.Partials["Value"]; got == nil || got.String() != "43" {
+		t.Errorf("fence after failures: Value = %v, want 43", got)
+	}
+
+	// A succeeding snippet in a dang-failure fence fails the build.
+	if _, err := render("dang-failure", "1 + 1"); err == nil {
+		t.Error("dang-failure fence with a succeeding snippet did not error")
+	}
+
+	// Outside a literate scope, dang-failure is just a highlighted block.
+	content, err := Plugin{section: plain}.CodeBlock("dang-failure", booklit.Preformatted{booklit.String("definitely not dang ((")})
+	if err != nil {
+		t.Fatalf("dang-failure outside literate scope: %v", err)
+	}
+	if styled, ok := content.(booklit.Styled); !ok || styled.Style != booklit.StyleCodeBlock {
+		t.Errorf("dang-failure outside literate scope: got %v, want %q", content, booklit.StyleCodeBlock)
 	}
 }
 

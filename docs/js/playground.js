@@ -111,6 +111,7 @@
           eval: window.dangEval,
           replEval: window.dangReplEval,
           literateEval: window.dangLiterateEval,
+          literateFailEval: window.dangLiterateFailEval,
           replReset: window.dangReplReset,
         });
       };
@@ -857,7 +858,26 @@
               b.out.classList.add("is-stale");
               return;
             }
-            var res = dang.literateEval(sessionId, b.editor.value.replace(/\s+$/, ""));
+            var source = b.editor.value.replace(/\s+$/, "");
+            if (b.expectFailure) {
+              // Expected-failure blocks (```dang-failure) evaluate against
+              // throwaway forks of the session, so they never poison the
+              // chain: the error is their output, and even an (unexpected)
+              // success contributes no state.
+              var fres = dang.literateFailEval(sessionId, source);
+              if (fres.ok) {
+                renderReplOutput(b.out, {
+                  ok: false, stage: "", value: "", output: fres.output,
+                  error: "expected this block to fail, but it succeeded" +
+                    (fres.value !== "" ? " with => " + fres.value : ""),
+                });
+              } else {
+                renderReplOutput(b.out, fres);
+              }
+              b.out.classList.remove("is-stale");
+              return;
+            }
+            var res = dang.literateEval(sessionId, source);
             renderReplOutput(b.out, res);
             b.out.classList.remove("is-stale");
             if (!res.ok) failed = true;
@@ -929,7 +949,12 @@
       controls.appendChild(runBtn);
       container.appendChild(controls);
 
-      var entry = { editor: editor, out: out, runBtn: runBtn };
+      var entry = {
+        editor: editor,
+        out: out,
+        runBtn: runBtn,
+        expectFailure: container.hasAttribute("data-dang-literate-failure"),
+      };
       runBtn.addEventListener("click", function () { runChain(entry); });
 
       function rehighlight() {

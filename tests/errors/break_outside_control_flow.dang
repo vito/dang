@@ -1,2 +1,2 @@
-# break is only valid inside a loop or block-taking call
+# break is only valid inside a block-taking call
 break

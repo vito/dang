@@ -211,7 +211,7 @@ wrinkles:
 
 - an **ordinary nested function** declared inside a block does NOT inherit
   the block's break/continue target — `break`/`continue` there errors
-  `... outside of loop or block-taking call`
+  `... outside of block-taking call`
 - escaped blocks (stored via `&block`, then called after the receiving
   call/function has already returned) error at runtime:
   `break from expired block call` / `return from expired function`

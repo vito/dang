@@ -95,7 +95,7 @@ list.each { item, index => ... }
 ### Control-flow handoff
 - `return` inside a block unwinds the enclosing **function**, not just the block.
 - `break value` / `continue value` work inside `.each`, `.map`, `loop`, and user-defined block-arg calls. `break value` becomes the loop/call result; bare `break` yields `null`. `continue value` flows into `.map`'s result (bare → `null`, e.g. `[null]`); in `.each`/`loop` it just advances.
-- `break`/`continue` target the **innermost** loop/block-call. An ordinary nested function declared inside a block does NOT inherit the break/continue target → `... outside of loop or block-taking call`.
+- `break`/`continue` target the **innermost** block-taking call. An ordinary nested function declared inside a block does NOT inherit the break/continue target → `... outside of block-taking call`.
 - Escaped blocks (stored via `&block`, called after the receiving call returned) error at runtime: `break from expired block call` / `return from expired function`.
 
 ## Objects (`type`)

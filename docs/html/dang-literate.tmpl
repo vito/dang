@@ -1,9 +1,10 @@
-<div class="dang-literate" data-dang-literate>
+<div class="dang-literate" data-dang-literate{{if .Partial "Error"}} data-dang-literate-failure{{end}}>
 <pre class="dang-literate-fallback">{{.Content | render}}</pre>
-{{- if or (.Partial "Stdout") (.Partial "Value")}}
-<div class="dang-literate-out">
+{{- if or (.Partial "Stdout") (.Partial "Value") (.Partial "Error")}}
+<div class="dang-literate-out{{if .Partial "Error"}} is-error{{end}}">
 {{- with .Partial "Stdout"}}<div class="dang-playground-stdout">{{. | render}}</div>{{end}}
-{{- with .Partial "Value"}}<div class="dang-playground-result">=&gt; {{. | render}}</div>{{end -}}
+{{- with .Partial "Value"}}<div class="dang-playground-result">=&gt; {{. | render}}</div>{{end}}
+{{- with .Partial "Error"}}<div class="dang-playground-error">{{. | render}}</div>{{end -}}
 </div>
 {{- end}}
 </div>
