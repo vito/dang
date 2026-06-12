@@ -25,12 +25,14 @@ type literateSession struct {
 var (
 	literateMu       sync.Mutex
 	literateSessions = map[string]*literateSession{}
-
-	// literateFenceSections holds the sections in which \literate-fences has
-	// been invoked. Fences check their own section and every ancestor, so the
-	// call covers the rest of its section including sub-sections.
-	literateFenceSections = map[*booklit.Section]bool{}
 )
+
+// literateFencesPartial is the section partial under which \literate-fences
+// records itself. Partials are booklit's "arbitrary named content" slot, the
+// closest plugin-side analogue to how \split-sections sets a flag on its
+// section; templates only read partials by explicit name, so the marker
+// never renders.
+const literateFencesPartial = "LiterateFences"
 
 // literateSessionFor returns the shared session for the given source file,
 // creating it from fresh standard-library scopes on first use.
@@ -58,18 +60,15 @@ func literateSessionFor(path string) *literateSession {
 //
 //	\literate-fences
 func (p Plugin) LiterateFences() {
-	literateMu.Lock()
-	defer literateMu.Unlock()
-	literateFenceSections[p.section] = true
+	p.section.SetPartial(literateFencesPartial, booklit.Empty)
 }
 
 // literateFencesEnabled reports whether \literate-fences was called in sec or
-// any of its ancestors before this point in document order.
+// any of its ancestors before this point in document order. The ancestor walk
+// mirrors booklit's SplitSectionsPrevented.
 func literateFencesEnabled(sec *booklit.Section) bool {
-	literateMu.Lock()
-	defer literateMu.Unlock()
 	for s := sec; s != nil; s = s.Parent {
-		if literateFenceSections[s] {
+		if s.Partial(literateFencesPartial) != nil {
 			return true
 		}
 	}
