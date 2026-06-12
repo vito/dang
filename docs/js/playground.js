@@ -110,6 +110,7 @@
         resolve({
           eval: window.dangEval,
           replEval: window.dangReplEval,
+          literateEval: window.dangLiterateEval,
           replReset: window.dangReplReset,
         });
       };
@@ -798,6 +799,153 @@
     });
   }
 
+  // ── literate blocks ───────────────────────────────────────────────────────
+  //
+  // \dang-literate blocks (docs/go/literate.go) arrive with their output
+  // already baked in at build time, so the page is complete without JS. The
+  // enhancement makes them editable: every literate block on the page shares
+  // one Dang environment, evaluated top to bottom — Run (or Ctrl/Cmd+Enter)
+  // resets that shared session and replays the whole chain with the editors'
+  // current contents, updating each block's output along the way. Editing a
+  // block dims its output and every output below it until the next replay,
+  // since anything downstream may depend on the edit.
+
+  function enhanceLiterateChain(containers) {
+    var sessionId = nextReplSession++;
+    var chain = []; // { editor, out, runBtn } in document order
+
+    var running = false;
+    function runChain(origin) {
+      if (running) return;
+      running = true;
+      chain.forEach(function (b) { b.runBtn.disabled = true; });
+      if (origin) origin.runBtn.textContent = "Running…";
+      loadDang()
+        .then(function (dang) {
+          dang.replReset(sessionId);
+          var failed = false;
+          chain.forEach(function (b) {
+            if (failed) {
+              // State below a failed block is unknowable; dim its last-known
+              // output rather than pretend it still holds.
+              b.out.classList.add("is-stale");
+              return;
+            }
+            var res = dang.literateEval(sessionId, b.editor.value.replace(/\s+$/, ""));
+            renderReplOutput(b.out, res);
+            b.out.classList.remove("is-stale");
+            if (!res.ok) failed = true;
+          });
+        })
+        .catch(function (err) {
+          var out = origin ? origin.out : chain[0].out;
+          renderReplOutput(out, {
+            ok: false, stage: "", value: "", output: "",
+            error: "Failed to load: " + (err && err.message ? err.message : err),
+          });
+        })
+        .then(function () {
+          running = false;
+          chain.forEach(function (b) {
+            b.runBtn.disabled = false;
+            b.runBtn.textContent = "Run ▶";
+          });
+        });
+    }
+
+    function build(container, index) {
+      var fallback = container.querySelector(".dang-literate-fallback");
+      if (!fallback) return;
+      var seed = fallback.cloneNode(true);
+      seed.querySelectorAll(".dang-fb").forEach(function (n) { n.remove(); });
+      var source = seed.textContent.replace(/\s+$/, "");
+      var seedCode = seed.querySelector("code");
+      var seedHtml = seedCode ? seedCode.innerHTML : null;
+
+      // Reuse the baked output element so the build-time results stay on
+      // screen until the first replay; create one for output-less blocks.
+      var out = container.querySelector(".dang-literate-out");
+      if (!out) {
+        out = document.createElement("div");
+        out.className = "dang-literate-out is-empty";
+        container.appendChild(out);
+      }
+
+      // Same overlay editor as the playground: transparent textarea over a
+      // highlighted layer with identical metrics.
+      var editorWrap = document.createElement("div");
+      editorWrap.className = "dang-playground-editor";
+      var highlight = document.createElement("pre");
+      highlight.className = "dang-playground-highlight";
+      highlight.setAttribute("aria-hidden", "true");
+      var editor = document.createElement("textarea");
+      editor.className = "dang-playground-input";
+      editor.spellcheck = false;
+      editor.setAttribute("autocomplete", "off");
+      editor.setAttribute("autocapitalize", "off");
+      editor.setAttribute("autocorrect", "off");
+      editor.value = source;
+      editorWrap.appendChild(highlight);
+      editorWrap.appendChild(editor);
+      container.replaceChild(editorWrap, fallback);
+
+      var controls = document.createElement("div");
+      controls.className = "dang-literate-controls";
+      var runBtn = document.createElement("button");
+      runBtn.className = "dang-playground-btn dang-playground-run";
+      runBtn.type = "button";
+      runBtn.textContent = "Run ▶";
+      runBtn.title = "Replay every block on this page in one shared environment";
+      controls.appendChild(runBtn);
+      container.appendChild(controls);
+
+      var entry = { editor: editor, out: out, runBtn: runBtn };
+      runBtn.addEventListener("click", function () { runChain(entry); });
+
+      function rehighlight() {
+        highlight.innerHTML = highlightHtml(editor.value);
+      }
+      function autosize() {
+        editor.style.height = "auto";
+        editor.style.height = editor.scrollHeight + "px";
+      }
+      if (seedHtml && !ts) {
+        highlight.innerHTML = seedHtml;
+      } else {
+        rehighlight();
+      }
+      autosize();
+      editor.addEventListener("input", function () {
+        rehighlight();
+        autosize();
+        // This output and everything downstream may no longer match the code.
+        for (var i = index; i < chain.length; i++) {
+          chain[i].out.classList.add("is-stale");
+        }
+      });
+      loadTreeSitter().then(function () { rehighlight(); });
+
+      editor.addEventListener("keydown", function (e) {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          var s = editor.selectionStart, en = editor.selectionEnd;
+          editor.value = editor.value.slice(0, s) + "  " + editor.value.slice(en);
+          editor.selectionStart = editor.selectionEnd = s + 2;
+          rehighlight();
+          autosize();
+        }
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          runChain(entry);
+        }
+      });
+
+      chain.push(entry);
+    }
+
+    for (var i = 0; i < containers.length; i++) build(containers[i], chain.length);
+  }
+
   function init() {
     var blocks = document.querySelectorAll("[data-dang-playground]");
     for (var i = 0; i < blocks.length; i++) enhance(blocks[i]);
@@ -805,6 +953,8 @@
     for (var j = 0; j < repls.length; j++) enhanceRepl(repls[j]);
     var lazies = document.querySelectorAll("[data-dang-repl-lazy]");
     for (var k = 0; k < lazies.length; k++) enhanceLazyRepl(lazies[k]);
+    var lits = document.querySelectorAll("[data-dang-literate]");
+    if (lits.length) enhanceLiterateChain(lits);
   }
 
   // Capture any OAuth token handed back in the fragment before enhancing, so
