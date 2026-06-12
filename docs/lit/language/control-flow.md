@@ -13,11 +13,12 @@
 ## `if` / `else`
 
 ```dang
-status: String! = if (active) { "on" } else { "off" }
+status: String! = if (active) "on" else "off"
 ```
 
+- branches are plain expressions; braces aren't part of the `if` syntax — `if (x) { a } else { b }` is just `if`/`else` applied to two blocks (see [#blocks]), useful when a branch needs multiple expressions
 - condition must be `Boolean!` — no truthiness; a non-`Boolean` condition is a compile error (`condition must be Boolean, got Int!`)
-- `else if` chains: `if (a) {..} else if (b) {..} else {..}`
+- `else if` chains aren't special syntax either: the `else` branch is just another `if` expression — `if (a) {..} else if (b) {..} else {..}`
 - no-else form returns `null` when the condition is false — result type is nullable (e.g. `if (false) { "value" }` is `null`); `else if` chains with no final `else` are likewise nullable
 - branches must merge to a common type; if they diverge they widen to a union (see [#flow-typing])
 - flow-sensitive narrowings from the condition apply per-branch (then=truthy, else=falsy) — see [#flow-typing]

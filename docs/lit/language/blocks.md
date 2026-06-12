@@ -285,4 +285,4 @@ nobody.{{name}}
 ## Common methods that take blocks
 
 - the common block-taking collection methods are `.map`, `.filter`, `.each`; see [#collections] for the full set
-- conditionals (`if`/`else`) and loops (`loop`) use block bodies; see [#control-flow]
+- `if`/`else` branches are plain expressions — a braced branch is just a block grouping several expressions into one, not part of the `if` syntax; `loop` takes a block; see [#control-flow]
