@@ -64,10 +64,25 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 ```dang
 { x => x + 1 }            # one param
 { item, index => ... }    # multiple params, comma-separated, before =>
+{ x: Int!, y => ... }     # params may carry explicit type annotations
 { 42 }                    # no =>; a block expression evaluating to its last form
+{ => 42 }                 # explicit zero arity; a function value, not a block
 ```
 - Body is a form sequence (newline/`,` separated); last form is the result.
 - Blocks are the iteration protocol, the lambda-equivalent, AND the body of conditionals/loops.
+
+### Function literals (standalone)
+A block with a `=>` is a first-class function value anywhere an expression goes; the arrow is mandatory in that position (otherwise it's just a block):
+```dang
+let inc = { x => x + 1 }            # param type inferred from the body
+let add = { x: Int!, y: Int! => x + y }   # or annotated explicitly
+let answer = { => 42 }              # zero-arity; bare `answer` auto-calls
+inc(41)                             # call like any function (named args work too)
+let f = &answer                     # & references without auto-calling
+```
+- Auto-call applies as usual: a bare reference to a zero-arity function invokes it; use `&name` to grab the function itself.
+- An explicit arrow with no params (`{ => expr }`) declares zero arity and suppresses the implicit `_` parameter — at call sites too.
+- Unannotated params get types via inference from the body; params whose type the body doesn't pin down may need annotations (calling an unannotated function-typed param is not supported — annotate or use `&`-declared block params).
 
 ### Block arguments to functions
 A block parameter is declared with the `&` sigil; its type is a function type:

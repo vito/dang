@@ -143,6 +143,7 @@ TypeVariable := [a-z]                             # single lowercase letter
 
 Notable productions:
 - `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — field path; zero-arg fields auto-call.
-- `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block on a call; params optional.
+- `BlockArg`: `'{' (BlockParams? '=>')? Expr (Sep Expr)* '}'` — trailing block on a call; the params-and-arrow prefix is optional, and `{ => expr }` declares zero arity explicitly.
+- `FunctionLit`: `'{' BlockParams? '=>' Expr (Sep Expr)* '}'` — a block with a mandatory `=>` in expression position is a first-class function value (`let inc = { x => x + 1 }`, `{ => 42 }`); params may carry type annotations (`BlockParam := Symbol (':' Type)?`).
 - `ObjectSelection`: `'{' ... '}'` after a `.` — a `FieldSelection` list (`user.{name, posts.{title}}`) or a list of `InlineFragment`s for unions/interfaces.
 - `InlineFragment`: `'...' 'on' Symbol ('{' FieldSelection* '}' | '!'?)` — type-narrowing in a selection.

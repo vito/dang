@@ -5,10 +5,11 @@
 
 > Meta: blocks are doing a lot of work in Dang — they're the iteration protocol, the `Ruby`-ish DSL hook, the lambda-equivalent, *and* the body of conditionals/loops. Worth a paragraph naming them explicitly as "the lambda of Dang."
 
-Blocks are the lambda of Dang. There is no separate closure literal or arrow
-function: a brace block is how code gets passed around, and the same form is
-the iteration protocol, the hook for Ruby-ish DSLs, and the body of every
-conditional and loop.
+Blocks are the lambda of Dang. There is no separate closure syntax to learn:
+a brace block is how code gets passed around, and the same form is the
+iteration protocol, the hook for Ruby-ish DSLs, the body of every conditional
+and loop, and — with a `=>` — a first-class function literal (see
+[#function-literals]).
 
 > The examples on this page are live: they share one Dang environment, so
 > later snippets use earlier definitions. Each result is computed and baked
@@ -29,6 +30,57 @@ Parameters, when a block takes them, are comma-separated names before a `=>`:
 
 ```dang
 [1, 2, 3].map { x => x + 1 }
+```
+
+## Function literals {#function-literals}
+
+A block with a `=>` is a function literal anywhere an expression goes — the
+arrow is what distinguishes it from a plain block, so it's mandatory even
+when there's nothing in front of it. Bind one with `let` and call it like any
+function:
+
+```dang
+let inc = { x => x + 1 }
+
+inc(41)
+```
+
+Parameter types are inferred from the body when they can be, or annotated
+explicitly:
+
+```dang
+let add = { x: Int!, y: Int! => x + y }
+
+add(20, 22)
+```
+
+A zero-arity literal is `{ => body }` — without the arrow, `{ body }` would
+just be a block that evaluates immediately:
+
+```dang
+let answer = { => 6 * 7 }
+
+answer
+```
+
+That last line shows the usual auto-call rule applies: a bare reference to a
+zero-arity function calls it. To get at the function itself without calling
+it, use the same `&` operator as any other function reference (see
+[#functions]):
+
+```dang
+let incFn = &inc
+
+incFn(41)
+```
+
+Function literals close over their environment:
+
+```dang
+let base = 40
+let offset = { x => base + x }
+
+offset(2)
 ```
 
 ## Block arguments to functions

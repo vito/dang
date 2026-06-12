@@ -23,7 +23,7 @@ Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
 Form         := Return | TryCatch | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
-              | MapLiteral | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
+              | MapLiteral | List | ObjectLiteral | FunctionLit | Block | ParenForm | SymbolOrCall
 NonNullAssert := Term '!'
 ```
 
@@ -72,7 +72,8 @@ TypeVariable := [a-z]                           # single lowercase letter
 ## Notable productions
 
 - `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — the field path; zero-arg fields auto-call. See [#fields].
-- `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block attached to a call; params are optional. See [#blocks].
+- `BlockArg`: `'{' (BlockParams? '=>')? Expr (Sep Expr)* '}'` — trailing block attached to a call; the params-and-arrow prefix is optional, and `{ => expr }` declares zero arity explicitly. See [#blocks].
+- `FunctionLit`: `'{' BlockParams? '=>' Expr (Sep Expr)* '}'` — a block with a mandatory `=>` in expression position is a first-class function value (`let inc = { x => x + 1 }`, `{ => 42 }`). Params may carry type annotations (`BlockParam := Symbol (':' Type)?`). See [#blocks].
 - `ObjectSelection`: `"{{" ... "}}"` after a `.` — two forms: a `FieldSelection` list (`user.{{name, posts.{{title}}}}`), or a list of `InlineFragment`s for unions/interfaces. The double braces mirror record literals `{{ }}`. See [#objects].
 - `DotBlock`: `'.' BlockArg` — a single-brace block applied to the receiver (`foo.{ bar(_) }` ≡ `bar(foo)`), a sibling of `ObjectSelection` and method calls at `.` precedence. See [#blocks]'s [#dot-block].
 - `FieldSelection`: `Id ArgValues? ('.' ObjectSelection)?` — a field in a selection, optionally with args and a nested `{{ }}` selection.
