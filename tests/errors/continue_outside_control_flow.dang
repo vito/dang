@@ -1,2 +1,2 @@
-# continue is only valid inside a loop or block argument
+# continue is only valid inside a block-taking call
 continue

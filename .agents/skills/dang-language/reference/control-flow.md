@@ -57,10 +57,10 @@ let answer = loop { break 42 }   # block-taking builtin; runs until break
 - An expression: yields the `break` value (`null` for a bare `break`). The result is **non-null** when every `break` carries a non-null value: `loop { break 42 }` is usable directly as `Int!`.
 
 ## `break` / `continue`
-- Valid only inside a loop or block-taking call; otherwise compile error (`break outside of loop or block-taking call` / `continue outside of loop or block arg invocation`).
-- `break` exits; `break value` makes the loop/block-call yield `value`; bare `break` yields `null`.
+- Valid only inside a block passed to a call (`.each`, `loop`, user-defined block-taking fns — a `loop` body is just an ordinary block argument); otherwise compile error (`break outside of block-taking call` / `continue outside of block-taking call`).
+- `break` exits; `break value` makes the block-taking call yield `value`; bare `break` yields `null`.
 - `continue` skips to the next iteration; in `.map`, `continue value` inserts `value` into the result (bare → `null`); in `.each`/`loop` it just advances.
-- Target the nearest enclosing loop/block-call only; an ordinary nested function does NOT inherit the target.
+- Target the nearest enclosing block-taking call only; an ordinary nested function does NOT inherit the target.
 
 ## `return`
 - Exits the enclosing function/method/constructor early; outside one → `return outside of function`.

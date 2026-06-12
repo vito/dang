@@ -1,4 +1,4 @@
-[1m[31mError:[0m continue outside of loop or block arg invocation
+[1m[31mError:[0m continue outside of block-taking call
   [2m[34m--> errors/continue_in_ordinary_function_in_block.dang:4:5[0m
  [2m    |[0m
  [2m  2 | let result = [1].map { x =>[0m

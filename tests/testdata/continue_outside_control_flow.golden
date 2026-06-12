@@ -1,7 +1,7 @@
-[1m[31mError:[0m continue outside of loop or block arg invocation
+[1m[31mError:[0m continue outside of block-taking call
   [2m[34m--> errors/continue_outside_control_flow.dang:2:1[0m
  [2m    |[0m
- [2m  1 | # continue is only valid inside a loop or block argument[0m
+ [2m  1 | # continue is only valid inside a block-taking call[0m
  [2m[34m[1m  2 | [0mcontinue
 [2m       [31m^^^^^^^^[0m
  [2m  3 | [0m

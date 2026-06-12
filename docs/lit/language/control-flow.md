@@ -258,16 +258,18 @@ loop { break 42 } + 1
 
 ## `break` and `continue`
 
-`break` and `continue` are valid only inside a loop or a block-taking call —
-anywhere else they're compile errors (`continue` reports the same way):
+`break` and `continue` are valid only inside a block being passed to a call
+— `.each`, `loop`, a user-defined block-taking function; there is no other
+category, since a `loop` body is just an ordinary block argument. Anywhere
+else they're compile errors (`continue` reports the same way):
 
 ```dang-failure
 break
 ```
 
-`break` exits the nearest enclosing loop or block-taking call, and `break
-value` makes it yield `value` (a bare `break` yields `null`). `.each`
-normally returns its receiver, but a `break` overrides that:
+`break` exits the nearest enclosing block-taking call, and `break value`
+makes it yield `value` (a bare `break` yields `null`). `.each` normally
+returns its receiver, but a `break` overrides that:
 
 ```dang
 [5, 10, 15, 20].each { x => if (x > 12) { break x } }
@@ -290,7 +292,7 @@ let sum = 0
 sum
 ```
 
-Both target the *nearest* enclosing loop or block-call only, and an ordinary
+Both target the *nearest* enclosing block-taking call only, and an ordinary
 function declared inside a block does not inherit that target — a `break`
 there is the same compile error as outside. (More block-specific wrinkles in
 [#blocks].)
