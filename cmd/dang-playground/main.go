@@ -33,6 +33,12 @@
 //     session rather than replaying history. The browser REPL runs the core
 //     language only (no GraphQL imports), so it stays synchronous.
 //
+//   - dangLiterateEval(sessionID, source) is dangReplEval with the literate
+//     blocks' display rule: an entry whose last form is a declaration yields
+//     no value, only its output. It backs the \dang-literate blocks
+//     (docs/go/literate.go), which share one session per page; re-running a
+//     page's chain client-side must show exactly what the build baked in.
+//
 //   - dangReplReset(sessionID) discards a session's accumulated state, so the
 //     next dangReplEval starts from fresh standard-library scopes.
 //
@@ -64,6 +70,7 @@ const githubEndpoint = "https://api.github.com/graphql"
 func main() {
 	js.Global().Set("dangEval", js.FuncOf(dangEval))
 	js.Global().Set("dangReplEval", js.FuncOf(dangReplEval))
+	js.Global().Set("dangLiterateEval", js.FuncOf(dangLiterateEval))
 	js.Global().Set("dangReplReset", js.FuncOf(dangReplReset))
 	// dangReady lets the page know the module has finished initializing.
 	js.Global().Set("dangReady", js.ValueOf(true))
@@ -213,45 +220,50 @@ func session(id int) *replSession {
 
 // evalForms parses, type-checks, and evaluates source against the given scopes,
 // writing any stdout/stderr through ctx. It returns the stringified value of
-// the last form, or a non-nil error and the failing stage ("parse" | "type" |
-// "eval"). The scopes are mutated in place, so passing the same scopes to
-// successive calls accumulates session state.
-func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, valueScope dang.ValueScope, fresh hm.Fresher) (string, error, string) {
+// the last form and whether that form is a declaration, or a non-nil error and
+// the failing stage ("parse" | "type" | "eval"). The scopes are mutated in
+// place, so passing the same scopes to successive calls accumulates session
+// state.
+func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, valueScope dang.ValueScope, fresh hm.Fresher) (string, bool, error, string) {
 	parsed, err := dang.ParseWithRecovery("playground", []byte(source))
 	if err != nil {
-		return "", err, "parse"
+		return "", false, err, "parse"
 	}
 	file, ok := parsed.(*dang.FileBlock)
 	if !ok {
-		return "", fmt.Errorf("unexpected parse result"), "parse"
+		return "", false, fmt.Errorf("unexpected parse result"), "parse"
 	}
 	forms := file.Forms
 
 	if _, err := dang.InferFormsWithPhases(ctx, forms, typeScope, fresh); err != nil {
-		return "", err, "type"
+		return "", false, err, "type"
 	}
 
+	var lastNode dang.Node
 	var last dang.Value
 	for _, node := range forms {
 		val, err := dang.EvalNode(ctx, valueScope, node)
 		if err != nil {
-			return "", err, "eval"
+			return "", false, err, "eval"
 		}
+		lastNode = node
 		last = val
 	}
 
 	value := ""
+	lastIsDecl := false
 	if last != nil {
 		value = fmt.Sprint(last.String())
+		lastIsDecl = len(lastNode.DeclaredSymbols()) > 0
 	}
-	return value, nil, ""
+	return value, lastIsDecl, nil, ""
 }
 
 // dangReplEval evaluates one REPL entry: dangReplEval(sessionID, source).
 //
 // The entry is type-checked and evaluated against the session's persistent
 // scopes, which are mutated in place so definitions accumulate (`let greeting =
-// "world"` then `` `hello, ${greeting}!` `` works) without re-parsing or
+// "world"` then “ `hello, ${greeting}!` “ works) without re-parsing or
 // re-running any earlier entry. Only this entry's output and result are
 // returned. The browser REPL is core-language only (no GraphQL imports), so
 // unlike dangEval it never touches the network and stays synchronous.
@@ -274,9 +286,37 @@ func dangReplEval(_ js.Value, args []js.Value) any {
 	ctx := ioctx.StdoutToContext(context.Background(), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	value, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
+	value, _, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
 	if err != nil {
 		return result("", strings.TrimRight(out.String(), "\n"), err.Error(), stage)
+	}
+	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
+}
+
+// dangLiterateEval evaluates one literate block: dangLiterateEval(sessionID,
+// source). Identical to dangReplEval except for the display rule shared with
+// the build-time evaluator (literateEval in docs/go/literate.go — the two
+// must stay in lockstep): a block whose last form is a declaration yields no
+// value, so a setup block shows only what it prints.
+func dangLiterateEval(_ js.Value, args []js.Value) any {
+	if len(args) < 2 || args[0].Type() != js.TypeNumber || args[1].Type() != js.TypeString {
+		return result("", "", "dangLiterateEval expects (sessionID, source)", "parse")
+	}
+	sess := session(args[0].Int())
+	source := args[1].String()
+
+	fresh := hm.NewSimpleFresher()
+
+	var out bytes.Buffer
+	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx = ioctx.StderrToContext(ctx, &out)
+
+	value, lastIsDecl, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
+	if err != nil {
+		return result("", strings.TrimRight(out.String(), "\n"), err.Error(), stage)
+	}
+	if lastIsDecl {
+		value = ""
 	}
 	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
 }
