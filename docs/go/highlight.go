@@ -13,8 +13,8 @@ import (
 	"sync"
 	"unsafe"
 
-	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	tree_sitter_toml "github.com/tree-sitter-grammars/tree-sitter-toml/bindings/go"
+	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	tree_sitter_bash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
 	"github.com/vito/dang/v2/pkg/dang/danglang"
 )

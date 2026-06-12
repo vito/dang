@@ -73,11 +73,14 @@ func (p Plugin) ThematicBreak() booklit.Content {
 //	[1, 2, 3].map { x => x * 2 }
 //	}}}
 //
-// Without JavaScript it degrades to a plain (non-highlighted) code block.
+// The fallback block is highlighted (and stdlib auto-linked) at build time,
+// so the code is colored from first paint; docs/js/playground.js seeds the
+// editor's highlight layer from it and re-renders client-side on edit.
+// Without JavaScript it stays a static highlighted code block.
 func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "dang-playground",
-		Content: code,
+		Content: p.highlightDang(code.String()),
 		Block:   true,
 	}
 }
@@ -95,7 +98,7 @@ func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
 func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "dang-github-playground",
-		Content: code,
+		Content: p.highlightDang(code.String()),
 		Block:   true,
 	}
 }
@@ -110,11 +113,12 @@ func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
 //	[1, 2, 3].map { x => x * 2 }
 //	}}}
 //
-// Without JavaScript it degrades to a plain (non-highlighted) code block.
+// The seed is highlighted at build time like \dang-playground's. Without
+// JavaScript it stays a static highlighted code block.
 func (p Plugin) DangRepl(code booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "dang-repl",
-		Content: code,
+		Content: p.highlightDang(code.String()),
 		Block:   true,
 	}
 }

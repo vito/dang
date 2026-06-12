@@ -260,6 +260,11 @@
     var seed = fallback.cloneNode(true);
     seed.querySelectorAll(".dang-fb").forEach(function (n) { n.remove(); });
     var source = seed.textContent.replace(/\s+$/, "");
+    // The fallback is highlighted at build time with the same tok-* spans
+    // tree-sitter produces, so it can seed the editor's highlight layer and
+    // the code stays colored from first paint until the grammar loads.
+    var seedCode = seed.querySelector("code");
+    var seedHtml = seedCode ? seedCode.innerHTML : null;
     var isGitHub = container.hasAttribute("data-dang-github");
     container.innerHTML = "";
 
@@ -348,13 +353,18 @@
       editor.style.height = "auto";
       editor.style.height = editor.scrollHeight + "px";
     }
-    rehighlight();
+    if (seedHtml && !ts) {
+      highlight.innerHTML = seedHtml;
+    } else {
+      rehighlight();
+    }
     autosize();
     editor.addEventListener("input", function () {
       rehighlight();
       autosize();
     });
-    // Highlight as soon as the (small) grammar finishes loading.
+    // Re-render as soon as the (small) grammar finishes loading, taking over
+    // from the build-time seed.
     loadTreeSitter().then(function () { rehighlight(); });
 
     // Tab inserts two spaces instead of moving focus.
@@ -499,6 +509,10 @@
     var seed = fallback.cloneNode(true);
     seed.querySelectorAll(".dang-fb").forEach(function (n) { n.remove(); });
     var seedSource = seed.textContent.replace(/\s+$/, "");
+    // Build-time tok-* spans, used to seed the input row's highlight layer
+    // (see enhance()).
+    var seedCode = seed.querySelector("code");
+    var seedHtml = seedCode ? seedCode.innerHTML : null;
     container.innerHTML = "";
 
     // Toolbar.
@@ -579,7 +593,11 @@
       input.style.height = "auto";
       input.style.height = input.scrollHeight + "px";
     }
-    rehighlight();
+    if (seedHtml && !ts) {
+      highlight.innerHTML = seedHtml;
+    } else {
+      rehighlight();
+    }
     autosize();
     input.addEventListener("input", function () {
       rehighlight();
