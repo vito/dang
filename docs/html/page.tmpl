@@ -19,7 +19,7 @@
      Slot conventions follow the base16 styling guide: 00-02 background
      depths, 03-05 foreground depths, 08-0E the rainbow. */
   --bg:var(--base00);--bg2:var(--base01);--bg3:var(--base02);
-  --fg:var(--base05);--fg2:var(--base04);--fg3:var(--base03);
+  --fg:var(--base05);--fg2:var(--base04);
   --accent:var(--base09);--accent2:var(--base0A);--on-accent:var(--base00);
   --link:var(--base0D);
   --green:var(--base0B);--cyan:var(--base0C);--pink:var(--base08);--orange:var(--base09);--yellow:var(--base0A);
@@ -43,7 +43,7 @@ nav.sidebar{
   width:240px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--code-border);
   padding:1.5rem 1rem;font-size:.85rem;
 }
-nav.sidebar h2{font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin:1.25rem 0 .35rem;border:none;padding:0}
+nav.sidebar h2{font-size:.7rem;text-transform:uppercase;color:var(--fg2);font-weight:600;letter-spacing:.05em;margin:1.25rem 0 .35rem;border:none;padding:0}
 nav.sidebar h2:first-child{margin-top:0}
 /* part headers are links to the part's stub page, but keep the label look */
 nav.sidebar h2 a{display:inline;padding:0;border-radius:0;color:inherit}
@@ -51,19 +51,19 @@ nav.sidebar h2 a:hover{background:none;color:var(--fg);text-decoration:none}
 nav.sidebar h2 a.current{background:none;color:var(--accent2)}
 nav.sidebar ul{list-style:none;padding:0;margin:0}
 nav.sidebar li{margin:.15rem 0}
-nav.sidebar a{color:var(--fg2);display:block;padding:.2rem .4rem;border-radius:4px}
+nav.sidebar a{color:var(--fg);display:block;padding:.2rem .4rem;border-radius:4px}
 nav.sidebar a:hover{color:var(--fg);background:var(--bg3);text-decoration:none}
 nav.sidebar a.current{color:var(--accent2);background:var(--bg3)}
 nav.sidebar .brand{font-weight:600;color:var(--fg);font-size:1rem;display:block}
 .sidebar-head{margin-bottom:1rem}
 /* base16 code-theme switcher (js/switcher.js) */
 .sidebar-theme{margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--code-border)}
-.sidebar-theme label{display:block;font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin-bottom:.35rem}
+.sidebar-theme label{display:block;font-size:.7rem;text-transform:uppercase;color:var(--fg2);font-weight:600;letter-spacing:.05em;margin-bottom:.35rem}
 .sidebar-theme select{
   width:100%;padding:.25rem .4rem;font-size:.78rem;font-family:inherit;
-  color:var(--fg2);background:var(--bg2);border:1px solid var(--code-border);border-radius:4px;
+  color:var(--fg);background:var(--bg2);border:1px solid var(--code-border);border-radius:4px;
 }
-.sidebar-theme .reset{display:block;font-size:.72rem;color:var(--fg3);margin-top:.3rem}
+.sidebar-theme .reset{display:block;font-size:.72rem;color:var(--fg2);margin-top:.3rem}
 .nav-toggle{display:none}
 .nav-toggle-btn{display:none}
 
@@ -75,7 +75,7 @@ main{flex:1;max-width:820px;margin:0 auto;padding:2.5rem 2rem 4rem;min-width:0}
 .section-header{position:relative}
 .heading-anchor{
   position:absolute;left:-1.1em;top:0;
-  color:var(--fg3);font-weight:400;opacity:0;transition:opacity .12s;
+  color:var(--fg2);font-weight:400;opacity:0;transition:opacity .12s;
 }
 .section-header:hover .heading-anchor,.heading-anchor:focus{opacity:1}
 .heading-anchor:hover{color:var(--link);text-decoration:none}
@@ -83,31 +83,31 @@ main{flex:1;max-width:820px;margin:0 auto;padding:2.5rem 2rem 4rem;min-width:0}
 h1{font-size:1.8rem;font-weight:600;margin-bottom:.25rem}
 h2{font-size:1.2rem;font-weight:600;margin:2.5rem 0 .75rem;padding-bottom:.4rem;border-bottom:1px solid var(--code-border)}
 h3{font-size:1rem;font-weight:600;margin:1.5rem 0 .5rem}
-p{color:var(--fg2);font-size:.92rem;margin-bottom:.75rem}
-li{color:var(--fg2);font-size:.92rem;margin-bottom:.25rem}
+p{color:var(--fg);font-size:.92rem;margin-bottom:.75rem}
+li{color:var(--fg);font-size:.92rem;margin-bottom:.25rem}
 ul{padding-left:1.25rem;margin-bottom:.75rem}
 
 /* ── landing-page table of contents (toc.tmpl) ──────────────────────── */
 /* Two levels only: chapter rows with the number in its own muted mono
    column, then each chapter's sections as a compact inline run. */
 nav.toc{margin:1.5rem 0 2.5rem}
-nav.toc h2{font-size:.7rem;text-transform:uppercase;color:var(--fg3);font-weight:600;letter-spacing:.05em;margin:0 0 .75rem;padding:0;border:none}
+nav.toc h2{font-size:.7rem;text-transform:uppercase;color:var(--fg2);font-weight:600;letter-spacing:.05em;margin:0 0 .75rem;padding:0;border:none}
 nav.toc ol{list-style:none;padding:0;margin:0}
 nav.toc li{display:grid;grid-template-columns:2rem minmax(0,1fr);column-gap:.75rem;align-items:baseline;margin:0 0 .7rem}
-.toc-number{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--fg3);text-align:right}
+.toc-number{font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--fg2);text-align:right}
 .toc-chapter{font-size:.92rem;font-weight:500;color:var(--fg)}
 .toc-chapter:hover{color:var(--link)}
-.toc-sections{font-size:.8rem;line-height:1.7;color:var(--fg3)}
-.toc-sections a{color:var(--fg2)}
+.toc-sections{font-size:.8rem;line-height:1.7;color:var(--fg2)}
+.toc-sections a{color:var(--fg)}
 .toc-sections a:hover{color:var(--link)}
 /* inline-block keeps the separator outside the hover underline */
-.toc-sections a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg3);margin-left:.35em}
+.toc-sections a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg2);margin-left:.35em}
 
 blockquote, .inset{
   border-left:3px solid var(--accent);background:var(--bg2);
   padding:.6rem .9rem !important;margin:.75rem 0 !important;border-radius:0 4px 4px 0;font-size:.85rem;
 }
-blockquote p, .inset p{color:var(--fg2);margin:0}
+blockquote p, .inset p{color:var(--fg);margin:0}
 blockquote p + p, .inset p + p{margin-top:.6rem}
 blockquote strong, .inset strong{color:var(--accent2)}
 
@@ -126,17 +126,17 @@ pre code{display:block}
   display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem .45rem .9rem;
   background:var(--bg2);border-bottom:1px solid var(--code-border);
 }
-.dang-playground-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
+.dang-playground-label{font-size:.72rem;color:var(--fg2);letter-spacing:.02em}
 .dang-playground-btn{
   font-family:'Inter',system-ui,sans-serif;font-size:.74rem;font-weight:500;cursor:pointer;
-  border:1px solid var(--code-border);background:var(--bg3);color:var(--fg2);
+  border:1px solid var(--code-border);background:var(--bg3);color:var(--fg);
   padding:.22rem .6rem;border-radius:5px;line-height:1.2;transition:background .12s,color .12s,border-color .12s;
 }
-.dang-playground-btn:hover{color:var(--fg);border-color:var(--fg3)}
+.dang-playground-btn:hover{color:var(--fg);border-color:var(--fg2)}
 .dang-playground-run{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .dang-playground-run:hover{background:var(--accent2);border-color:var(--accent2);color:var(--on-accent)}
 .dang-playground-run:disabled{opacity:.6;cursor:default}
-.dang-playground-github{border-color:var(--fg3)}
+.dang-playground-github{border-color:var(--fg2)}
 /* Overlay editor: a transparent textarea over a highlighted layer. Both
    share identical metrics so the caret lines up with the colored text. The
    code area is colored by the selected base16 scheme. */
@@ -175,10 +175,10 @@ pre code{display:block}
 .dang-playground-output{
   border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
   font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
-  color:var(--fg2);white-space:pre-wrap;word-break:break-word;
+  color:var(--fg);white-space:pre-wrap;word-break:break-word;
 }
 .dang-playground-output.is-empty{display:none}
-.dang-playground-stdout{color:var(--fg2);margin-bottom:.3rem;white-space:pre-wrap}
+.dang-playground-stdout{color:var(--fg);margin-bottom:.3rem;white-space:pre-wrap}
 .dang-playground-result{color:var(--green);white-space:pre-wrap}
 .dang-playground-error{color:var(--pink);white-space:pre-wrap}
 .dang-playground-fallback{
@@ -195,7 +195,7 @@ pre code{display:block}
   display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem .45rem .9rem;
   background:var(--bg2);border-bottom:1px solid var(--code-border);
 }
-.dang-repl-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
+.dang-repl-label{font-size:.72rem;color:var(--fg2);letter-spacing:.02em}
 /* The code area is colored by the selected base16 scheme. */
 .dang-repl-body{background:var(--base00)}
 .dang-repl-entry{border-bottom:1px solid var(--base01)}
@@ -217,7 +217,7 @@ pre code{display:block}
 .dang-repl-out{
   padding:.1rem 1.25rem .5rem;
   font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
-  color:var(--fg2);white-space:pre-wrap;word-break:break-word;
+  color:var(--fg);white-space:pre-wrap;word-break:break-word;
 }
 .dang-repl-out.is-empty{display:none}
 /* Live input row: a transparent textarea over a highlighted layer, like the
@@ -245,7 +245,7 @@ pre code{display:block}
 }
 
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
-th{text-align:left;padding:.5rem .6rem;color:var(--fg3);font-weight:500;border-bottom:1px solid var(--code-border)}
+th{text-align:left;padding:.5rem .6rem;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--code-border)}
 td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 
 /* ── stdlib reference ────────────────────────────────────────────────── */
@@ -257,7 +257,7 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-index-name a{text-decoration:none}
 .stdlib-index-name a:hover code{color:var(--accent2)}
 .stdlib-index-name code{font-size:.82rem;color:var(--fg)}
-.stdlib-index-desc{color:var(--fg2)}
+.stdlib-index-desc{color:var(--fg)}
 .stdlib-entry{margin:1.25rem 0}
 /* booklit.Target renders an empty <a id> anchor; give it scroll offset and use
    it to highlight the signature it precedes when linked. */
@@ -273,7 +273,7 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-sig-prefix+code{padding-left:0}
 .stdlib-sig:hover{border-left-color:var(--accent2)}
 .stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
-.stdlib-desc{color:var(--fg2);font-size:.9rem;margin:.4rem 0 0 .85rem}
+.stdlib-desc{color:var(--fg);font-size:.9rem;margin:.4rem 0 0 .85rem}
 /* A runnable example: a chroma-highlighted snippet with a Run bar that upgrades
    it into a live, pre-seeded REPL in place (docs/js/playground.js). The snippet
    keeps chroma's fixed-dark <code> background, like the signatures above it. */
@@ -281,21 +281,21 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-example .dang-repl-fallback{background:transparent;border:none;border-radius:0;margin:0;padding:0;white-space:normal;overflow-x:auto}
 .stdlib-example .dang-repl-fallback code{display:block;padding:.45rem .7rem;font-size:.8rem;white-space:pre-wrap;word-break:break-word}
 .stdlib-example-bar{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .35rem .7rem;border-top:1px solid var(--code-border);background:var(--bg2)}
-.stdlib-example-label{font-size:.72rem;color:var(--fg3);letter-spacing:.02em}
+.stdlib-example-label{font-size:.72rem;color:var(--fg2);letter-spacing:.02em}
 
 .links p{margin:0}
 
 .screenshot{margin:.75rem 0}
 .screenshot img{width:100%;border-radius:6px;border:1px solid var(--code-border)}
 
-footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border);font-size:.8rem;color:var(--fg3)}
+footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border);font-size:.8rem;color:var(--fg2)}
 
 @media (max-width:760px){
   body{flex-direction:column}
   nav.sidebar{position:sticky;top:0;z-index:10;align-self:stretch;height:auto;width:auto;overflow-y:visible;border-right:none;border-bottom:1px solid var(--code-border);padding:.75rem 1rem}
   .sidebar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:0}
   .nav-toggle-btn{display:flex;flex-direction:column;gap:5px;cursor:pointer;padding:.4rem;margin:-.4rem}
-  .nav-toggle-btn span{display:block;width:22px;height:2px;background:var(--fg2);border-radius:2px;transition:transform .2s,opacity .2s}
+  .nav-toggle-btn span{display:block;width:22px;height:2px;background:var(--fg);border-radius:2px;transition:transform .2s,opacity .2s}
   .nav-toggle:checked ~ nav.sidebar .nav-toggle-btn span:nth-child(1){transform:translateY(7px) rotate(45deg)}
   .nav-toggle:checked ~ nav.sidebar .nav-toggle-btn span:nth-child(2){opacity:0}
   .nav-toggle:checked ~ nav.sidebar .nav-toggle-btn span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
