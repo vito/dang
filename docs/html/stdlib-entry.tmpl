@@ -1,6 +1,6 @@
 <div class="stdlib-entry">
   {{- .Partial "Target" | render -}}
-  <div class="stdlib-sig">{{with .Partial "Prefix"}}<span class="stdlib-sig-prefix chroma">{{. | render}}</span>{{end}}{{.Content | render}}</div>
+  <div class="stdlib-sig">{{with .Partial "Prefix"}}<span class="stdlib-sig-prefix syntax">{{. | render}}</span>{{end}}{{.Content | render}}</div>
   {{with .Partial "Description"}}<p class="stdlib-desc">{{. | render}}</p>{{end}}
   {{with .Partial "Example"}}{{. | render}}{{end}}
 </div>

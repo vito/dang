@@ -1,6 +1,6 @@
 // genthemes generates the per-scheme CSS under css/base16/ from the
 // tinted-theming/schemes submodule (schemes/). Each scheme becomes a
-// stylesheet defining the --base00..--base0F variables that chroma.css and
+// stylesheet defining the --base00..--base0F variables that syntax.css and
 // page.tmpl color the whole site through; the file naming matches what
 // switcher.js expects (base16-<name>.css), so scheme names double as the
 // values persisted in readers' localStorage.

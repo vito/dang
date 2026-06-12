@@ -1,38 +1,26 @@
-// Package dangdocs provides a Booklit plugin for the dang documentation site.
-//
-// It registers both the "dang" plugin (custom functions for the site) and the
-// "chroma" plugin (syntax highlighting), so the build only needs a single
-// import.
+// Package dangdocs provides the Booklit plugin for the dang documentation
+// site: custom functions, the stdlib reference generator, and tree-sitter
+// syntax highlighting for every code block (see highlight.go).
 package dangdocs
 
 import (
 	"github.com/vito/booklit"
-	"github.com/vito/booklit/baselit"
-	chromap "github.com/vito/booklit/chroma"
 )
 
 func init() {
-	booklit.RegisterPlugin("chroma", chromap.NewPlugin)
 	booklit.RegisterPlugin("dang", NewPlugin)
-
-	// Emit chroma CSS classes instead of inline styles. The colors live in
-	// docs/chroma.css, which maps the classes onto base16 variables; the
-	// vendored schemes under docs/css/base16/ supply the variables and the
-	// theme switcher (docs/js/switcher.js) picks the scheme.
-	baselit.HighlightWithClasses = true
 }
 
 // NewPlugin constructs a new dang docs plugin for the given section.
 //
 // The plugin is also prepended to the section's plugin stack: booklit
 // resolves invoked functions first-match across the stack and baselit always
-// sits first, so without the prepend our CodeBlock override (which gives
-// ```dang fences tree-sitter highlighting and stdlib auto-links; see
-// render.go) would be shadowed by baselit's.
+// sits first, so without the prepend our CodeBlock override (which renders
+// every fence with tree-sitter highlighting and gives ```dang fences stdlib
+// auto-links; see render.go) would be shadowed by baselit's chroma-based one.
 func NewPlugin(section *booklit.Section) booklit.Plugin {
 	p := Plugin{
 		section: section,
-		base:    baselit.NewPlugin(section).(baselit.Plugin),
 	}
 	section.Plugins = append([]booklit.Plugin{p}, section.Plugins...)
 	return p
@@ -41,7 +29,6 @@ func NewPlugin(section *booklit.Section) booklit.Plugin {
 // Plugin provides custom functions for the dang documentation site.
 type Plugin struct {
 	section *booklit.Section
-	base    baselit.Plugin
 }
 
 // Install renders a shell install command block.
@@ -86,11 +73,14 @@ func (p Plugin) ThematicBreak() booklit.Content {
 //	[1, 2, 3].map { x => x * 2 }
 //	}}}
 //
-// Without JavaScript it degrades to a plain (non-highlighted) code block.
+// The fallback block is highlighted (and stdlib auto-linked) at build time,
+// so the code is colored from first paint; docs/js/playground.js seeds the
+// editor's highlight layer from it and re-renders client-side on edit.
+// Without JavaScript it stays a static highlighted code block.
 func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "dang-playground",
-		Content: code,
+		Content: p.highlightDang(code.String()),
 		Block:   true,
 	}
 }
@@ -108,7 +98,7 @@ func (p Plugin) DangPlayground(code booklit.Content) booklit.Content {
 func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "dang-github-playground",
-		Content: code,
+		Content: p.highlightDang(code.String()),
 		Block:   true,
 	}
 }
@@ -123,11 +113,12 @@ func (p Plugin) DangGithubPlayground(code booklit.Content) booklit.Content {
 //	[1, 2, 3].map { x => x * 2 }
 //	}}}
 //
-// Without JavaScript it degrades to a plain (non-highlighted) code block.
+// The seed is highlighted at build time like \dang-playground's. Without
+// JavaScript it stays a static highlighted code block.
 func (p Plugin) DangRepl(code booklit.Content) booklit.Content {
 	return booklit.Styled{
 		Style:   "dang-repl",
-		Content: code,
+		Content: p.highlightDang(code.String()),
 		Block:   true,
 	}
 }

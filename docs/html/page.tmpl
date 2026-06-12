@@ -7,12 +7,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="chroma.css">
+<link rel="stylesheet" href="syntax.css">
 <script type="text/javascript" src="js/switcher.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  /* The whole site is colored by the selected base16 scheme (chroma.css
+  /* The whole site is colored by the selected base16 scheme (syntax.css
      supplies fallback palettes; css/base16/ + js/switcher.js pick the
      active one). A light scheme makes a light site; the OS light/dark
      preference steers the default scheme choice, an explicit pick wins.
@@ -34,8 +34,8 @@ a:hover{text-decoration:underline}
 ::selection{background:var(--base02)}
 /* Auto-links inside code (stdlib references) keep their token color; the
    underline appears on hover so code still reads as code. */
-.chroma a{color:inherit;text-decoration:none}
-.chroma a:hover{text-decoration:underline}
+.syntax a{color:inherit;text-decoration:none}
+.syntax a:hover{text-decoration:underline}
 p code{background:var(--bg3);padding:.15em .4em;border-radius:4px;font-size:.85em}
 
 nav.sidebar{
@@ -157,21 +157,8 @@ pre code{display:block}
   color:transparent;caret-color:var(--base05);background:transparent;outline:none;
 }
 .dang-playground-input::selection{background:var(--base02)}
-/* token colors — the same base16 slots chroma.css maps the static blocks to,
+/* token colors (.tok-*) live in syntax.css, shared with the static blocks,
    so the playground and REPL stay in lockstep with the rest of the site. */
-.tok-keyword{color:var(--base0E)}
-.tok-type{color:var(--base0A)}
-.tok-string{color:var(--base0B)}
-.tok-number{color:var(--base09)}
-.tok-function{color:var(--base0D)}
-.tok-builtin{color:var(--base0C)}
-.tok-self{color:var(--base08)}
-.tok-property{color:var(--base08)}
-.tok-operator{color:var(--base0E)}
-.tok-label{color:var(--base08)}
-.tok-comment{color:var(--base03);font-style:italic}
-.tok-variable,
-.tok-punct{color:var(--base05)}
 .dang-playground-output{
   border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
   font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
@@ -262,21 +249,21 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 /* booklit.Target renders an empty <a id> anchor; give it scroll offset and use
    it to highlight the signature it precedes when linked. */
 .stdlib-entry>a[id]{display:block;scroll-margin-top:1.5rem}
-/* The signature is chroma-highlighted: its <code> carries the dark code
+/* The signature is syntax-highlighted: its <code> carries the dark code
    background and base color inline, so the bar just adds layout + accent edge. */
 .stdlib-sig{display:flex;text-decoration:none;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;overflow:hidden}
 .stdlib-sig code{display:block;flex:1;padding:.5rem .8rem;font-size:.82rem;white-space:pre-wrap;word-break:break-word}
 /* The receiver/module context (".", "Random.") sits outside the declaration
    proper — only the declaration is parsed for highlighting — but shares the
-   code box visually. The chroma class supplies the matching background. */
+   code box visually. The syntax class supplies the matching background. */
 .stdlib-sig-prefix{padding:.5rem 0 .5rem .8rem;font-size:.82rem;white-space:pre;font-family:'JetBrains Mono',monospace;opacity:.65}
 .stdlib-sig-prefix+code{padding-left:0}
 .stdlib-sig:hover{border-left-color:var(--accent2)}
 .stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
 .stdlib-desc{color:var(--fg);font-size:.9rem;margin:.4rem 0 0 .85rem}
-/* A runnable example: a chroma-highlighted snippet with a Run bar that upgrades
+/* A runnable example: a syntax-highlighted snippet with a Run bar that upgrades
    it into a live, pre-seeded REPL in place (docs/js/playground.js). The snippet
-   keeps chroma's fixed-dark <code> background, like the signatures above it. */
+   keeps the syntax class's <code> background, like the signatures above it. */
 .stdlib-example{margin:.5rem 0 0 .85rem;border:1px solid var(--code-border);border-radius:6px;overflow:hidden}
 .stdlib-example .dang-repl-fallback{background:transparent;border:none;border-radius:0;margin:0;padding:0;white-space:normal;overflow-x:auto}
 .stdlib-example .dang-repl-fallback code{display:block;padding:.45rem .7rem;font-size:.8rem;white-space:pre-wrap;word-break:break-word}

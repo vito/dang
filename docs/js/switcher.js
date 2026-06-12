@@ -1,7 +1,7 @@
 // Base16 theme switcher, ported from vito/bass's docs.
 //
 // The whole site is colored through --base00..--base0F variables (see
-// chroma.css and page.tmpl); each stylesheet under css/base16/ defines one
+// syntax.css and page.tmpl); each stylesheet under css/base16/ defines one
 // scheme's variables. This script applies the active scheme, persists an
 // explicit choice, and — until the reader picks one — rolls a random curated
 // scheme once per browser session from the list matching the OS light/dark
@@ -9,7 +9,7 @@
 //
 // Loaded early (no defer): the active scheme's stylesheet is written
 // synchronously while the head is still parsing, so the page first-paints in
-// the right colors with no flash of the chroma.css fallback palette between
+// the right colors with no flash of the syntax.css fallback palette between
 // page navigations. The <select id="styleswitcher"> in the sidebar doesn't
 // exist yet at that point, so UI sync happens on window.onload.
 
@@ -353,7 +353,7 @@ try {
 
 // Apply the scheme as a parser-inserted stylesheet: document.write during
 // head parsing makes it render-blocking, so the first paint already has the
-// right palette — no flash of the fallback :root in chroma.css. This relies
+// right palette — no flash of the fallback :root in syntax.css. This relies
 // on the script being a plain (non-deferred) <script> in <head>.
 document.write('<link id="' + linkId + '" rel="stylesheet" type="text/css" href="' + styleHref(activeStyle) + '">');
 

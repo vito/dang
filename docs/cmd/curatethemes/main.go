@@ -1,5 +1,5 @@
 // curatethemes audits every scheme in the tinted-theming/schemes submodule
-// against the docs' base16 role mapping (see page.tmpl and chroma.css) and
+// against the docs' base16 role mapping (see page.tmpl and syntax.css) and
 // regenerates the curated rotation lists in js/switcher.js.
 //
 // The site uses slots like so: base00 is the page and code background,
