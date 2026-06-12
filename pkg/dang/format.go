@@ -1823,6 +1823,13 @@ func (f *Formatter) nodeEndLineForChain(node Node) int {
 		if n.Loc != nil {
 			return n.Loc.Line
 		}
+	case *DotApply:
+		if n.Loc != nil && n.Loc.End != nil {
+			return n.Loc.End.Line
+		}
+		if n.Loc != nil {
+			return n.Loc.Line
+		}
 	}
 	// Fall back to nodeEndLine for other types
 	return nodeEndLine(node)
@@ -1861,12 +1868,22 @@ func (f *Formatter) wasChainMultiline(node Node) bool {
 			return f.wasChainMultiline(n.Receiver)
 		}
 		return false
+	case *DotApply:
+		// A dot-block makes the chain multiline if any part of it (the `.{`
+		// or its block body) extends past the receiver's last line. Unlike
+		// regular block args, a multiline dot-block body alone is enough to
+		// split the chain into leading-dot style.
+		recvEndLine := f.nodeEndLineForChain(n.Receiver)
+		if n.Loc != nil && n.Loc.End != nil && recvEndLine > 0 && n.Loc.End.Line > recvEndLine {
+			return true
+		}
+		return f.wasChainMultiline(n.Receiver)
 	default:
 		return false
 	}
 }
 
-func (f *Formatter) formatChainedCall(c *FunCall) {
+func (f *Formatter) formatChainedCall(c Node) {
 	// Collect the chain
 	var chain []Node
 	var root Node
@@ -1893,6 +1910,10 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 			case *Select:
 				if e.Field.Loc != nil {
 					elemLine = e.Field.Loc.Line
+				}
+			case *DotApply:
+				if e.Block.Loc != nil {
+					elemLine = e.Block.Loc.Line
 				}
 			}
 			if elemLine > 0 {
@@ -1952,6 +1973,13 @@ func (f *Formatter) formatChainedCall(c *FunCall) {
 				if e.Loc != nil && e.Loc.End != nil {
 					f.emitTrailingComment(e.Loc.End.Line)
 				}
+			case *DotApply:
+				// The leading "." is already written; the block renders as
+				// `{ ... }` right after it.
+				f.formatBlockArg(e.Block)
+				if e.Loc != nil && e.Loc.End != nil {
+					f.emitTrailingComment(e.Loc.End.Line)
+				}
 			}
 		}
 	})
@@ -1967,6 +1995,9 @@ func (f *Formatter) collectChain(node Node, chain *[]Node, root *Node) {
 			*root = node
 		}
 	case *Select:
+		f.collectChain(n.Receiver, chain, root)
+		*chain = append(*chain, n)
+	case *DotApply:
 		f.collectChain(n.Receiver, chain, root)
 		*chain = append(*chain, n)
 	default:
@@ -2924,6 +2955,10 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 }
 
 func (f *Formatter) formatDotApply(d *DotApply) {
+	if f.wasChainMultiline(d) {
+		f.formatChainedCall(d)
+		return
+	}
 	f.formatNode(d.Receiver)
 	f.write(".")
 	f.formatBlockArg(d.Block)

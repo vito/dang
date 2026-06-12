@@ -18,18 +18,22 @@ prepareToolchain(c: Container!, target: String!): Container! {
   c.withEnvVariable("TOOLCHAIN", target)
 }
 
-let container = Container("app").{ mountCache(_, "/registry", "regCache") }.{
-  prepareToolchain(
-    _,
-    "x86_64",
-  )
-}.withEnvVariable("CARGO_TARGET_DIR", "/work/target").{
-  mountCache(
-    _,
-    "/target",
-    "tgtCache",
-  )
-}
+let container = Container("app")
+  .{ mountCache(_, "/registry", "regCache") }
+  .{
+    prepareToolchain(
+      _,
+      "x86_64",
+    )
+  }
+  .withEnvVariable("CARGO_TARGET_DIR", "/work/target")
+  .{
+    mountCache(
+      _,
+      "/target",
+      "tgtCache",
+    )
+  }
 
 assert {
   container.env == [

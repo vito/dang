@@ -85,6 +85,81 @@ func (FormatSuite) TestChainFormatting(ctx context.Context, t *testctx.T) {
 	}
 }
 
+func (FormatSuite) TestDotBlockChainFormatting(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:  "single-line dot-block chain stays single-line",
+			input: `pub x = 3.{ _ + 1 }.{ _ * 10 }`,
+			expected: `pub x = 3.{ _ + 1 }.{ _ * 10 }
+`,
+		},
+		{
+			name: "multiline dot-block body splits the whole chain",
+			input: `pub x = Container("app").{ mountCache(_, "/registry", "regCache") }.{
+  prepareToolchain(
+    _,
+    "x86_64",
+  )
+}.withEnvVariable("CARGO_TARGET_DIR", "/work/target").{
+  mountCache(
+    _,
+    "/target",
+    "tgtCache",
+  )
+}`,
+			expected: `pub x = Container("app")
+  .{ mountCache(_, "/registry", "regCache") }
+  .{
+    prepareToolchain(
+      _,
+      "x86_64",
+    )
+  }
+  .withEnvVariable("CARGO_TARGET_DIR", "/work/target")
+  .{
+    mountCache(
+      _,
+      "/target",
+      "tgtCache",
+    )
+  }
+`,
+		},
+		{
+			name: "dot-block on next line splits the chain",
+			input: `pub x = foo
+  .{ bar(_) }
+  .baz`,
+			expected: `pub x = foo
+  .{ bar(_) }
+  .baz
+`,
+		},
+		{
+			name: "regular block arg chain keeps closing brace attached",
+			input: `pub x = foo.store { x =>
+  x + 10
+}.get(5)`,
+			expected: `pub x = foo.store { x =>
+  x + 10
+}.get(5)
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func (FormatSuite) TestVisibilityFormatting(ctx context.Context, t *testctx.T) {
 	tests := []struct {
 		name     string
