@@ -1,5 +1,0 @@
-# This should fail: no matching clause
-let result = case (5) {
-  1 => "one"
-  2 => "two"
-}

@@ -14,7 +14,10 @@ type Company implements Named {
   employees: Int! = 10
 }
 
-describe(named: Named!): String! {
+# An interface's implementer set is open, so matching specific implementers
+# is never exhaustive: the result is nullable without an else or an
+# interface catch-all
+describe(named: Named!): String {
   case (named) {
     p: Person => p.name + " (age " + toString(p.age) + ")"
     c: Company => c.name + " (" + toString(c.employees) + " employees)"

@@ -51,12 +51,13 @@ let first_wins = case (1) {
 
 assert { first_wins == "first" }
 
-# Case in function
+# Case in function: the else keeps the result non-null
 caseInFunction(x: Int!): String! {
   case (x) {
     0 => "zero"
     1 => "one"
     5 => "five"
+    else => "other"
   }
 }
 

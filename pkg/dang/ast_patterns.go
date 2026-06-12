@@ -14,6 +14,12 @@ type Case struct {
 	Clauses   []*CaseClause
 	NoOperand bool // true when written as `case { ... }` without an explicit operand
 	Loc       *SourceLocation
+
+	// exhaustive is set during inference when the clauses are known to cover
+	// every possible operand value (an else clause, or type patterns covering
+	// every member of a non-null union). A non-exhaustive case can fall
+	// through and evaluate to null, so its result type is nullable.
+	exhaustive bool
 }
 
 var _ Node = (*Case)(nil)
@@ -53,6 +59,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 			return nil, fmt.Errorf("Case.Infer: no case clauses")
 		}
 
+		hasElse := false
 		var resultType hm.Type
 		for i, clause := range c.Clauses {
 			var caseType hm.Type
@@ -92,6 +99,7 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				})
 			} else {
 				// Else clause
+				hasElse = true
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
@@ -104,15 +112,96 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 				resultType = caseType
 				continue
 			}
-			mergedType, _, err := hm.MergeTypes(resultType, caseType)
-			if err != nil {
-				return nil, WrapInferError(fmt.Errorf("Case.Infer: clause %d type mismatch: %s != %s", i, resultType, caseType), clause.Expr)
-			}
-			resultType = mergedType
+			// Clause bodies that diverge widen to a union, same as if/else
+			// branches.
+			resultType = mergeControlResultTypes(resultType, caseType)
+		}
+
+		c.exhaustive = hasElse || c.coversAllMembers(exprType)
+		if !c.exhaustive {
+			// Nothing guarantees a clause matches, so the case can fall
+			// through and evaluate to null.
+			resultType = nullableControlResultType(resultType)
 		}
 
 		return resultType, nil
 	})
+}
+
+// coversAllMembers reports whether the type pattern clauses cover every
+// possible value of the operand type, making an else clause unnecessary.
+// Only a non-null operand qualifies: a nullable operand can be null, which
+// no type pattern matches.
+func (c *Case) coversAllMembers(exprType hm.Type) bool {
+	var patterns []*Type
+	for _, clause := range c.Clauses {
+		if clause.IsTypePattern() && clause.resolvedMemberType != nil {
+			patterns = append(patterns, clause.resolvedMemberType)
+		}
+	}
+	if len(patterns) == 0 {
+		return false
+	}
+
+	switch t := exprType.(type) {
+	case hm.NonNullType:
+		switch inner := t.Type.(type) {
+		case *Type:
+			return moduleCoveredBy(inner, patterns)
+		case *hm.UnionType:
+			return inlineUnionCoveredBy(inner, patterns)
+		}
+	case *hm.UnionType:
+		// An inline union carries nullability on its options, not on the
+		// union itself, so a bare union of non-null options can't be null.
+		return inlineUnionCoveredBy(t, patterns)
+	}
+	return false
+}
+
+func inlineUnionCoveredBy(union *hm.UnionType, patterns []*Type) bool {
+	for _, option := range union.Options {
+		nn, ok := option.(hm.NonNullType)
+		if !ok {
+			// A nullable option admits null, which no pattern matches.
+			return false
+		}
+		mod, ok := nn.Type.(*Type)
+		if !ok || !moduleCoveredBy(mod, patterns) {
+			return false
+		}
+	}
+	return true
+}
+
+// moduleCoveredBy reports whether every value of mod is matched by one of
+// the type patterns. A union is covered when all of its members are; an
+// interface only by itself (its implementer set is open).
+func moduleCoveredBy(mod *Type, patterns []*Type) bool {
+	modCanon := canonicalModule(mod)
+	for _, p := range patterns {
+		pCanon := canonicalModule(p)
+		if modCanon == pCanon || modCanon.Name() == pCanon.Name() {
+			return true
+		}
+		if pCanon.Kind == InterfaceKind && modCanon.ImplementsInterface(pCanon) {
+			return true
+		}
+	}
+	if modCanon.Kind == UnionKind {
+		members := modCanon.GetMembers()
+		if len(members) == 0 {
+			return false
+		}
+		for _, m := range members {
+			memberMod, ok := m.(*Type)
+			if !ok || !moduleCoveredBy(memberMod, patterns) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // inferTypePatternClause validates a type pattern clause against the operand type.
@@ -288,7 +377,15 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			}
 		}
 
-		return nil, fmt.Errorf("no case clause matched the value: %v", exprVal)
+		if c.exhaustive {
+			// Inference proved a clause must match; falling through here is
+			// a compiler bug, not a user error.
+			return nil, fmt.Errorf("exhaustive case did not match the value: %v", exprVal)
+		}
+
+		// No clause matched: the case's type is nullable to account for
+		// exactly this fallthrough.
+		return NullValue{}, nil
 	})
 }
 
