@@ -3,7 +3,7 @@
 {{- if or (.Partial "Stdout") (.Partial "Value")}}
 <div class="dang-literate-out">
 {{- with .Partial "Stdout"}}<div class="dang-playground-stdout">{{. | render}}</div>{{end}}
-{{- with .Partial "Value"}}<div class="dang-playground-result">=&gt; {{. | render}}</div>{{end}}
+{{- with .Partial "Value"}}<div class="dang-playground-result">=&gt; {{. | render}}</div>{{end -}}
 </div>
 {{- end}}
 </div>
