@@ -20,6 +20,7 @@ let cfg = fromYAML("name: foo\ncount: 1")
 ## Serialization
 
 - `toJSON(value)` — `String!`; object/record keys are emitted in alphabetical order (see [#literals])
+- `toYAML(value)` — `String!`; same key ordering as `toJSON` (map keys keep insertion order), nesting indented by two spaces, ends with a newline
 - `toString(value)` — pass-through for strings, JSON-encode otherwise (see [#strings])
 
 ## Coercion during parsing

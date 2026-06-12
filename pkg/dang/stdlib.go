@@ -112,6 +112,21 @@ func registerStdlib() {
 			return DeferredValue{Raw: raw}, nil
 		})
 
+	// toYAML function: toYAML(value: b) -> String!
+	Builtin("toYAML").
+		Doc("serializes a value to YAML").
+		Example(`toYAML([1, 2, 3])`).
+		Params("value", TypeVar('b')).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			val, _ := args.Get("value")
+			yamlStr, err := encodeYAML(val)
+			if err != nil {
+				return nil, fmt.Errorf("toYAML: %w", err)
+			}
+			return ToValue(yamlStr)
+		})
+
 	// toString function: toString(value: b) -> String!
 	Builtin("toString").
 		Doc("converts a value to a string, returning strings as-is and serializing other values to JSON").

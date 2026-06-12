@@ -11,6 +11,7 @@ The built-in surface of Dang itself (everything here is available without any
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings through, JSON-encode everything else.
 - `toJSON(value: a) -> String!` — JSON-encode anything.
+- `toYAML(value: a) -> String!` — YAML-encode anything.
 - `fromJSON(data: String!) -> a` — parse JSON into a value materialized by the expected type.
 - `fromYAML(data: String!) -> a` — parse YAML into a value materialized by the expected type.
 
@@ -107,6 +108,7 @@ f(d: String!): Summary! { fromJSON(d) }
 
 ### Serialization
 - `toJSON(value) -> String!` — object/record keys emitted in **alphabetical** order.
+- `toYAML(value) -> String!` — same key ordering as `toJSON` (map keys keep insertion order); two-space indent, multiline strings as literal blocks, trailing newline.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
 ### Errors (all catchable with `try`/`catch`)
