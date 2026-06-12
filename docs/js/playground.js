@@ -333,6 +333,9 @@
     editor.setAttribute("autocomplete", "off");
     editor.setAttribute("autocapitalize", "off");
     editor.setAttribute("autocorrect", "off");
+    // rows=1, like the REPL input: the default two-row minimum would keep a
+    // single-line snippet two lines tall even after autosize.
+    editor.setAttribute("rows", "1");
     editor.value = source;
 
     editorWrap.appendChild(highlight);
@@ -884,6 +887,10 @@
       editor.setAttribute("autocomplete", "off");
       editor.setAttribute("autocapitalize", "off");
       editor.setAttribute("autocorrect", "off");
+      // rows=1: a textarea defaults to two rows, and autosize can't shrink
+      // below that (scrollHeight includes the rows-derived minimum), which
+      // would render every single-line block two lines tall.
+      editor.setAttribute("rows", "1");
       editor.value = source;
       editorWrap.appendChild(highlight);
       editorWrap.appendChild(editor);
