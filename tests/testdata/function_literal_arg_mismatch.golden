@@ -1,0 +1,10 @@
+[1m[31mError:[0m cannot use String! as Int!
+  [2m[34m--> errors/function_literal_arg_mismatch.dang:3:3[0m
+ [2m    |[0m
+ [2m  1 | let f = { x: Int! => x + 1 }[0m
+ [2m  2 | [0m
+ [2m[34m[1m  3 | [0mf("hey")
+[2m         [31m^^^^^[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

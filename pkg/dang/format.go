@@ -2967,18 +2967,25 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 	block, isBlock := b.BodyNode.(*Block)
 	singleLineBody := isBlock && len(block.Forms) == 1 && !wasMultiline(block)
 
-	if len(b.Args) > 0 {
+	if len(b.Args) > 0 || b.HasArrow {
 		f.write(" ")
 		for i, arg := range b.Args {
 			if i > 0 {
 				f.write(", ")
 			}
 			f.write(arg.Name.Name)
+			if arg.Type_ != nil {
+				f.write(": ")
+				f.formatTypeNode(arg.Type_)
+			}
+		}
+		if len(b.Args) > 0 {
+			f.write(" ")
 		}
 		if singleLineBody {
-			f.write(" => ")
+			f.write("=> ")
 		} else {
-			f.write(" =>")
+			f.write("=>")
 		}
 	} else {
 		f.write(" ")

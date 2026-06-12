@@ -74,7 +74,7 @@ Decl <- docstring:DocString? decl:(InterfaceDecl / UnionDecl / EnumDecl / Scalar
 
 Form <- Return / TryCatch / Raise / Conditional / Case / Break / Continue / DefaultExpr / TypeHint / Term
 
-Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / Block / ParenForm / SymbolOrCall
+Term <- UnaryExpr / NonNullAssert / IndexOrCall / SelectOrCall / Literal / MapLiteral / List / ObjectLiteral / FunctionLit / Block / ParenForm / SymbolOrCall
 
 // Postfix `!` asserts that the operand is non-null, narrowing its type from
 // `T` to `T!` and raising at runtime if the value turns out to be null. The
@@ -1081,13 +1081,38 @@ AndToken <- "and" !WordChar
 
 ArrowToken <- "=>"
 
-BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
+BlockArg <- '{' _ paramsAndArrow:(params:BlockParams? _ ArrowToken {
+  if params == nil {
+    return []*FieldDecl{}, nil
+  }
+  return params, nil
+})? _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
   var args []*FieldDecl
   if paramsAndArrow != nil {
     args = paramsAndArrow.([]*FieldDecl)
   }
   return &BlockArg{
     Args: args,
+    HasArrow: paramsAndArrow != nil,
+    BodyNode: &Block{
+      Forms: sliceOfPrepend[Node](node, rest),
+      Loc: c.Loc(),
+    },
+    Loc: c.Loc(),
+  }, nil
+}
+
+// A function literal in expression position: `{ x => x + 1 }`, `{ => 42 }`.
+// Unlike BlockArg (whose arrow is optional at call sites), the arrow is
+// mandatory so a plain `{ expr }` still parses as a Block.
+FunctionLit <- '{' _ params:BlockParams? _ ArrowToken _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
+  var args []*FieldDecl
+  if params != nil {
+    args = params.([]*FieldDecl)
+  }
+  return &BlockArg{
+    Args: args,
+    HasArrow: true,
     BodyNode: &Block{
       Forms: sliceOfPrepend[Node](node, rest),
       Loc: c.Loc(),
@@ -1100,11 +1125,15 @@ BlockParams <- params:(p:BlockParam Sep { return p, nil })* last:BlockParam {
   return sliceOfAppend[*FieldDecl](params, last), nil
 }
 
-BlockParam <- name:Symbol {
-  return &FieldDecl{
+BlockParam <- name:Symbol type_:(_ ColonToken _ t:Type { return t, nil })? {
+  fd := &FieldDecl{
     Name: name.(*Symbol),
     Loc: c.Loc(),
-  }, nil
+  }
+  if type_ != nil {
+    fd.Type_ = type_.(TypeNode)
+  }
+  return fd, nil
 }
 
 

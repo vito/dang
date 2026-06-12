@@ -161,6 +161,10 @@ func TreesitterGrammar() treesitter.Grammar {
 		// built from the same tokens. GLR explores both; what follows the
 		// closing paren disambiguates.
 		{treesitter.Name("DocString"), treesitter.Name("TripleQuoteString")},
+		// `{ x: Int!, ...` is ambiguous between a function-literal parameter
+		// and a type-only field declaration in a block. GLR explores both;
+		// the presence or absence of `=>` disambiguates.
+		{treesitter.Name("TypeOnlyField"), treesitter.Name("BlockParam")},
 	}
 	ts.Precedences = [][]treesitter.Rule{
 		{

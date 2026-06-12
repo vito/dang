@@ -1,0 +1,65 @@
+# Function literals: blocks with a mandatory `=>` in expression position
+
+# Basic literal with an inferred parameter type
+let inc = { x => x + 1 }
+assert { inc(1) == 2 }
+
+# Named arguments work like any other function
+assert { inc(x: 41) == 42 }
+
+# Zero-arity literal; a bare reference auto-calls it
+let answer = { => 40 + 2 }
+assert { answer == 42 }
+
+# & references the function without calling it
+let ref = &inc
+assert { ref(1) == 2 }
+let answerRef = &answer
+assert { answerRef == 42 }
+
+# Explicit parameter types
+let add = { x: Int!, y: Int! => x + y }
+assert { add(1, 2) == 3 }
+
+let shout = { s: String! => s + "!" }
+assert { shout("hey") == "hey!" }
+
+# Multiple inferred params, and mixing annotated with inferred
+let mul = { x, y => x * y }
+assert { mul(6, 7) == 42 }
+
+let mixed = { x: Int!, y => x - y }
+assert { mixed(50, 8) == 42 }
+
+# Closure capture
+let n = 10
+let addN = { x => x + n }
+assert { addN(5) == 15 }
+
+# Multi-statement body
+let measure = { x =>
+  let doubled = x * 2
+  doubled + 1
+}
+assert { measure(3) == 7 }
+
+# Function literals still work as block arguments, now with explicit types
+twice(&block(x: Int!): Int!): Int! {
+  block(1) + block(2)
+}
+
+assert { twice { x => x * 10 } == 30 }
+assert { twice { x: Int! => x * 10 } == 30 }
+
+# Zero-arity arrow block at a call site declares "no parameters"
+constant(&block: Int!): Int! {
+  block
+}
+
+assert { constant { => 5 } == 5 }
+
+# A plain block (no arrow) is still a block, not a function
+let plain = { 1 + 2 }
+assert { plain == 3 }
+
+print("Function literal tests passed!")

@@ -1,0 +1,60 @@
+===
+function literal params highlight as parameters
+===
+
+let f = { x: Int!, y => x + y }
+
+---
+
+(highlights
+  (@keyword "let")
+  " "
+  (@variable @function.method "f")
+  " "
+  (@operator "=")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@variable @variable.parameter "x")
+  (@punctuation.delimiter ":")
+  " "
+  (@type "Int")
+  (@operator "!")
+  (@punctuation.delimiter ",")
+  " "
+  (@variable @variable.parameter "y")
+  " "
+  (@operator "=>")
+  " "
+  (@variable "x")
+  " "
+  (@operator "+")
+  " "
+  (@variable "y")
+  " "
+  (@punctuation.bracket "}")
+)
+
+===
+zero-arity function literal
+===
+
+let z = { => 42 }
+
+---
+
+(highlights
+  (@keyword "let")
+  " "
+  (@variable @function.method "z")
+  " "
+  (@operator "=")
+  " "
+  (@punctuation.bracket "{")
+  " "
+  (@operator "=>")
+  " "
+  (@number "42")
+  " "
+  (@punctuation.bracket "}")
+)

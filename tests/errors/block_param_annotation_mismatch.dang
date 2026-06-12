@@ -1,0 +1,5 @@
+twice(&block(x: Int!): Int!): Int! {
+  block(1) + block(2)
+}
+
+twice { x: String! => x }

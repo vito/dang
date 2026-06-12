@@ -76,6 +76,10 @@
         "named": true
       },
       {
+        "type": "function_lit",
+        "named": true
+      },
+      {
         "type": "index_or_call",
         "named": true
       },
@@ -775,6 +779,26 @@
         "types": [
           {
             "type": "symbol",
+            "named": true
+          }
+        ]
+      },
+      "t": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "type_": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "colon_token",
             "named": true
           }
         ]
@@ -1831,6 +1855,66 @@
         },
         {
           "type": "non_zero_decimal_digit",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "function_lit",
+    "named": true,
+    "fields": {
+      "e": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "node": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "params": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "block_params",
+            "named": true
+          }
+        ]
+      },
+      "rest": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          },
+          {
+            "type": "sep",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "arrow_token",
           "named": true
         }
       ]

@@ -2969,6 +2969,12 @@ type BlockArg struct {
 	BodyNode Node
 	Loc      *SourceLocation
 
+	// HasArrow records whether the source spelled out an explicit `=>`. An
+	// explicit arrow with no parameters (`{ => expr }`) declares zero arity,
+	// which suppresses the implicit `_` parameter. Function literals in
+	// expression position always have it.
+	HasArrow bool
+
 	// ExpectedParamTypes are the parameter types expected by the function signature.
 	// Set by FunCall.Infer() before calling BlockArg.Infer()
 	ExpectedParamTypes []hm.Type
@@ -3047,8 +3053,10 @@ func (b *BlockArg) GetSourceLocation() *SourceLocation { return b.Loc }
 
 func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(b, func() (hm.Type, error) {
-		// Check if block has too many parameters
-		if len(b.Args) > len(b.ExpectedParamTypes) {
+		// Check if block has too many parameters. ExpectedParamTypes is nil for
+		// standalone function literals, whose arity isn't constrained by any
+		// call-site signature.
+		if b.ExpectedParamTypes != nil && len(b.Args) > len(b.ExpectedParamTypes) {
 			return nil, NewInferError(
 				fmt.Errorf("block has %d parameters but expected at most %d",
 					len(b.Args), len(b.ExpectedParamTypes)),
@@ -3059,8 +3067,9 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		// A block with no explicit parameters that references `_` in its body
 		// takes a single implicit parameter named `_` (Kotlin `it`-style). Every
 		// `_` in the block refers to that same single argument; a nested
-		// param-less block shadows it.
-		b.ImplicitUnderscore = len(b.Args) == 0 && blockArgUsesImplicitUnderscore(b.BodyNode)
+		// param-less block shadows it. An explicit arrow (`{ => expr }`)
+		// declares zero arity, so no implicit parameter.
+		b.ImplicitUnderscore = len(b.Args) == 0 && !b.HasArrow && blockArgUsesImplicitUnderscore(b.BodyNode)
 
 		// Clone environment for closure semantics
 		newEnv := env.Clone()
@@ -3070,9 +3079,31 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		argSchemes := []Keyed[*hm.Scheme]{}
 		for i, arg := range b.Args {
 			var paramType hm.Type
-			if i < len(b.ExpectedParamTypes) && b.ExpectedParamTypes[i] != nil {
+			var expectedType hm.Type
+			if i < len(b.ExpectedParamTypes) {
+				expectedType = b.ExpectedParamTypes[i]
+			}
+			if arg.Type_ != nil {
+				// Explicit parameter annotation: `{ x: Int! => ... }`
+				declaredType, err := arg.Type_.Infer(ctx, env, fresh)
+				if err != nil {
+					return nil, WrapInferError(err, arg)
+				}
+				if expectedType != nil {
+					// The block receives values of the expected type, so the
+					// annotation must be able to accept them.
+					if _, err := hm.Assignable(expectedType, declaredType); err != nil {
+						return nil, NewInferError(
+							fmt.Errorf("block parameter %s declared as %s but expected %s",
+								arg.Name.Name, declaredType, expectedType),
+							arg,
+						)
+					}
+				}
+				paramType = declaredType
+			} else if expectedType != nil {
 				// Use the expected type from the function signature
-				paramType = b.ExpectedParamTypes[i]
+				paramType = expectedType
 			} else {
 				// No expected type - create a fresh type variable
 				paramType = fresh.Fresh()
