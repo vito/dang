@@ -13,9 +13,14 @@
 
 ## Block arguments to functions
 
+> The examples with results attached are live: they share one Dang
+> environment, so later snippets use earlier definitions. The results are
+> baked in by the docs build — edit a snippet and hit Run ▶ to replay the
+> page in your browser.
+
 - a block parameter is declared with the `&` sigil (same operator as [#functions]'s `&fn` refs); its type is a function type:
 
-```dang
+\dang-literate{{{
 # zero-arg block returning Int! (parens omitted)
 twice(&body: Int!): Int! {
   body + body
@@ -25,35 +30,44 @@ twice(&body: Int!): Int! {
 myFun(&block(x: Int!): String!): String! {
   block(42)
 }
-```
+
+# regular args mix with the block param (it comes last)
+withArg(prefix: String!, &fmt(x: Int!): String!): String! {
+  prefix + fmt(42)
+}
+}}}
 
 - the block param's arg types may also be a type variable: `id(&yield: b): b { yield }`. A type variable is opaque — the body can only pass the value through, not operate on it, so `yield * 2` would be a type error (see [#nullability])
 - a function/constructor may have at most one block parameter
 - regular args and a block param can mix; the block param comes last
 - callers pass a trailing brace block:
 
-```dang
+\dang-literate{{{
+let list = [1, 2, 3]
+
 twice { 21 }                  # ⇒ 42, body takes no args
 twice { let n = 21, n }       # multi-statement (separate with newline or `,`)
 list.map { x => x * 2 }       # built-in
 withArg("Number: ") { x => toJSON(x) }   # args then block
-```
+}}}
 
 - block parameter list can take multiple args:
 
-```dang
-list.each { item, index => print("${index}: ${item}") }
-```
+\dang-literate{{{
+list.each { item, index => print(`${index}: ${item}`) }
+}}}
 
 ## Optional parameters
 
 - a block whose body ignores its parameters can omit the `param =>` entirely:
 
-```dang
+\dang-literate{{{
+let numbers = [1, 2, 3]
+
 [1, 2, 3].map { "whee" }        # param ignored ⇒ ["whee", "whee", "whee"]
 numbers.filter { true }         # param ignored ⇒ all
 numbers.filter { false }        # ⇒ []
-```
+}}}
 
 ## Implicit `_` parameter {#implicit-param}
 
