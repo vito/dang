@@ -112,21 +112,24 @@ case (1 + 1) {
 }
 ```
 
-Clause bodies must merge to one common type:
+Clause bodies merge to one common type when they can; bodies that *diverge*
+widen to a union instead, exactly like `if` branches (see [#flow-typing]) —
+this one is a `String! | Int!`:
 
-```dang-failure
+```dang
 case (1) {
   1 => "one"
   2 => 2
 }
 ```
 
-And there is **no compile-time exhaustiveness check**: when nothing matches
-and there's no `else`, the `case` raises a runtime error, catchable like any
-other (see [#errors]):
+And when nothing matches and there's no `else`, the `case` is `null` — so,
+like a no-`else` `if`, its type is nullable. Adding an `else` keeps the
+result non-null. (So is covering every possibility; see *Type patterns*
+below.)
 
 ```dang
-try { case (7) { 1 => "one" } } catch { err => err.message }
+case (7) { 1 => "one" }
 ```
 
 ### Value patterns
@@ -173,6 +176,15 @@ case (pet) {
 }
 ```
 
+Type patterns covering every member of a non-null union are *exhaustive*:
+nothing can fall through, so no `else` is needed and the result stays
+non-null — the case above is a `String!`. Leave a member out and the usual
+nullable fallthrough applies — `pet` is a `Cat`, so this is `null`:
+
+```dang
+case (pet) { d: Dog => d.name }
+```
+
 The operand must be a union or an interface (see [#interfaces-unions]) — a
 plain object type is already fully known, so there is nothing to narrow:
 
@@ -188,7 +200,10 @@ case (pet) { s: String => s }
 
 An interface-typed operand works the same way, with patterns checked against
 its implementers — and an interface is itself a valid pattern, a typed
-catch-all matching any implementer, so specific types go first:
+catch-all matching any implementer, so specific types go first. An
+interface's implementer set is open, so matching specific implementers is
+never exhaustive: it takes that catch-all (or an `else`) to keep the result
+non-null, as in `play` returning `String!` here:
 
 ```dang
 interface Sound { noise: String! }
