@@ -223,6 +223,27 @@
     return out;
   }
 
+  // ── editor autosizing ─────────────────────────────────────────────────────
+  //
+  // Every editor textarea autosizes to its content by measuring scrollHeight.
+  // The measurement is only valid for the width (and font) it was taken at:
+  // wrapping changes when the viewport narrows and again when the monospace
+  // webfont arrives. Each widget registers its autosize here so one shared,
+  // frame-throttled pass can re-measure them all on those events.
+
+  var autosizers = [];
+  var autosizeQueued = false;
+  function autosizeAll() {
+    if (autosizeQueued) return;
+    autosizeQueued = true;
+    requestAnimationFrame(function () {
+      autosizeQueued = false;
+      for (var i = 0; i < autosizers.length; i++) autosizers[i]();
+    });
+  }
+  window.addEventListener("resize", autosizeAll);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(autosizeAll);
+
   // ── output rendering ──────────────────────────────────────────────────────
 
   var STAGE_LABEL = { parse: "Parse error", type: "Type error", eval: "Runtime error", auth: "GitHub error" };
@@ -357,6 +378,7 @@
       editor.style.height = "auto";
       editor.style.height = editor.scrollHeight + "px";
     }
+    autosizers.push(autosize);
     if (seedHtml && !ts) {
       highlight.innerHTML = seedHtml;
     } else {
@@ -597,6 +619,7 @@
       input.style.height = "auto";
       input.style.height = input.scrollHeight + "px";
     }
+    autosizers.push(autosize);
     if (seedHtml && !ts) {
       highlight.innerHTML = seedHtml;
     } else {
@@ -916,6 +939,7 @@
         editor.style.height = "auto";
         editor.style.height = editor.scrollHeight + "px";
       }
+      autosizers.push(autosize);
       if (seedHtml && !ts) {
         highlight.innerHTML = seedHtml;
       } else {
