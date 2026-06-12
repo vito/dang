@@ -33,11 +33,7 @@ func divergesNormally(node Node) bool {
 		if n.Else == nil {
 			return false
 		}
-		elseBlock, ok := n.Else.(*Block)
-		if !ok {
-			return false
-		}
-		return divergesNormally(n.Then) && divergesNormally(elseBlock)
+		return divergesNormally(n.Then) && divergesNormally(n.Else)
 	}
 	return false
 }
@@ -63,11 +59,7 @@ func conditionalExitNarrowings(cond *Conditional, env hm.Env) []Narrowing {
 		return nil
 	}
 
-	elseBlock, ok := cond.Else.(*Block)
-	if !ok {
-		return nil
-	}
-	elseDiverges := divergesNormally(elseBlock)
+	elseDiverges := divergesNormally(cond.Else)
 
 	switch {
 	case thenDiverges && !elseDiverges:

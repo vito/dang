@@ -58,8 +58,20 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
-	treesitter.Name("Sep"):     patchSepAutomaticNewline,
-	treesitter.Name("ArgType"): patchArgTypeDocstringSep,
+	treesitter.Name("Sep"):         patchSepAutomaticNewline,
+	treesitter.Name("ArgType"):     patchArgTypeDocstringSep,
+	treesitter.Name("Conditional"): patchPrecRight,
+}
+
+// patchPrecRight wraps a rule in right associativity. Used for the classic
+// dangling-else ambiguity: `if (a) if (b) x else y` binds the `else` to the
+// innermost `if`, matching the PEG's greedy parse.
+func patchPrecRight(rule treesitter.Rule) treesitter.Rule {
+	return treesitter.Rule{
+		Type:    treesitter.RuleTypePrecRight,
+		Value:   0,
+		Content: &rule,
+	}
 }
 
 func tsExternalSymbol(name treesitter.RuleName) treesitter.Rule {

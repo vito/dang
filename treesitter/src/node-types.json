@@ -1160,16 +1160,6 @@
     "type": "conditional",
     "named": true,
     "fields": {
-      "block": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
       "cond": {
         "multiple": false,
         "required": true,
@@ -1186,6 +1176,16 @@
         "types": [
           {
             "type": "else_clause",
+            "named": true
+          }
+        ]
+      },
+      "then_": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "form",
             "named": true
           }
         ]
@@ -1574,22 +1574,12 @@
     "type": "else_clause",
     "named": true,
     "fields": {
-      "block": {
+      "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
-            "type": "block",
-            "named": true
-          }
-        ]
-      },
-      "elseif": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "conditional",
+            "type": "form",
             "named": true
           }
         ]
