@@ -1826,9 +1826,9 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 			// (copy-on-write may have replaced it via self.field = value)
 			if updatedInstance, found := newBodyScope.Self(); found {
 				instance = updatedInstance.(*Object)
-				// Update newBodyScope to use the new instance
-				newBodyScope = CreateConstructorScope(instance, argScope, c.Closure)
-				newBodyScope.EnterSelf(instance)
+				// Keep constructor locals while pointing bare field reads/writes at
+				// the latest copy-on-write generation of self.
+				newBodyScope.instance = instance
 			}
 			if returned {
 				break
