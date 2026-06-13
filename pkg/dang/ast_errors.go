@@ -68,7 +68,7 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 		resultType := bodyType
 
-		for i, clause := range t.Clauses {
+		for _, clause := range t.Clauses {
 			var clauseType hm.Type
 
 			if clause.IsTypePattern() {
@@ -102,15 +102,11 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 				return nil, NewInferError(fmt.Errorf("catch clauses must be type patterns or a catch-all"), clause)
 			}
 
-			// Merge this clause's return type with the body type.
-			mergedType, _, err := hm.MergeTypes(resultType, clauseType)
-			if err != nil {
-				if i == 0 {
-					return nil, NewInferError(err, clause)
-				}
-				return nil, NewInferError(fmt.Errorf("catch clause type mismatch: %s vs %s", clauseType, resultType), clause)
-			}
-			resultType = mergedType
+			// Arms that diverge from the body (or each other) widen to a
+			// union, same as if branches and case clauses. There is no null
+			// fallthrough to account for: a catch with no matching clause
+			// re-raises rather than yielding null.
+			resultType = mergeControlResultTypes(resultType, clauseType)
 		}
 
 		return resultType, nil

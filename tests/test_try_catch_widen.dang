@@ -1,0 +1,44 @@
+# Catch arms that diverge from the try body widen to a union, like if/else
+# branches and case clauses, instead of erroring. There is no null
+# fallthrough: a catch whose clauses all miss re-raises, so widening never
+# taints the result with nullability.
+
+# Body Int!, catch String! — widens to Int! | String!
+describeOutcome(fail: Boolean!): String! {
+  let outcome = try {
+    if (fail) raise "boom" else 42
+  } catch {
+    err => err.message
+  }
+
+  case (outcome) {
+    i: Int => `int ${toString(i)}`
+    s: String => `string ${s}`
+  }
+}
+
+assert { describeOutcome(false) == "int 42" }
+assert { describeOutcome(true) == "string boom" }
+
+# Clauses widen with each other too, not just with the body
+type NotFoundError implements Error {
+  message: String!
+  resource: String!
+}
+
+let mixed = try { raise NotFoundError(message: "gone", resource: "User") } catch {
+  n: NotFoundError => 404
+  err => err.message
+}
+
+assert { mixed == 404 }
+
+# Arms that agree still merge to a single type, with no union in the way
+# of a non-null declared return type
+total: Int! {
+  try { 1 + 1 } catch {
+    err => 0
+  }
+}
+
+assert { total == 2 }

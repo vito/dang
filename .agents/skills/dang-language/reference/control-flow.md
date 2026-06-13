@@ -71,7 +71,7 @@ let answer = loop { break 42 }   # block-taking builtin; runs until break
 
 ## Errors: `try`, `catch`, `raise`
 
-Dang uses errors for *errors* — recoverable failures across boundaries — **not** for `null` or expected branches.
+An error is a value implementing the `Error` interface; `raise` throws it up the stack, and `try`/`catch` — itself an expression — recovers it. Raise for failures: continuing would produce wrong results, or the failure crosses a boundary (validation, HTTP/GraphQL, contract). Return `null` for normal absence (see the table below).
 
 ### Raising
 ```dang
@@ -87,7 +87,7 @@ raise NotFoundError(message: "user gone", resource: "User")
 interface Error { message: String! }
 ```
 - A real prelude interface; `BasicError` is the built-in implementer for string raises.
-- User error types `implements Error`, which forces `message: String!`. Additional fields (`resource`, `field`, `code`) are preserved on the raised value and matchable in `catch`.
+- User error types `implements Error`, which forces `message: String!` (omitting it → ``object Foo is missing `message: String!`, required by interface Error``). Additional fields (`resource`, `field`, `code`) are preserved on the raised value and readable in `catch` clauses.
 
 ### Catching
 ```dang
@@ -102,9 +102,10 @@ try {
 ```
 - The whole `try`/`catch` is one expression — assignable, returnable, nestable.
 - The body's success value passes through unchanged when nothing is raised.
-- Body and every catch clause must merge to one type (`cannot use String! as Int!` otherwise).
-- Catches errors raised anywhere in the body, including ones propagated from called functions and **runtime errors** (null access, `1 / 0` → `division by zero`, GraphQL failures).
-- Catch clauses are `case` patterns limited to **type patterns** and a **catch-all** (no value patterns). First match wins. Pattern types must implement `Error`. The bare catch-all binds the error as `Error!`. The `Error` interface itself matches any error; place specific types first.
+- Body and catch clauses merge to one type when they can; arms that diverge **widen to a union** (`try { 1 } catch { err => "s" }` is `Int! | String!`), exactly like `if` branches and `case` clauses.
+- Catches errors raised anywhere in the body, including ones propagated from called functions and **runtime errors** (null access, `1 / 0` → `division by zero`, GraphQL failures). Runtime errors arrive wrapped in `BasicError`, so `.message` is uniform.
+- Catch clauses are `case` patterns limited to **type patterns** and a **catch-all** (a value pattern like `404 =>` is a syntax error). First match wins. Pattern types must implement `Error` (else `type X does not implement interface Error`). The bare catch-all binds the error as `Error!`. The `Error` interface itself matches any error; place specific types first.
+- When **no clause matches**, the error is re-raised to the next enclosing `catch` — an incomplete `catch` narrows what it handles rather than swallowing the rest, and (unlike a non-exhaustive `case`) never makes the result nullable: a miss re-raises, it never yields null.
 
 ### Propagation
 - Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `catch` terminates the program (`uncaught error: <message>`).

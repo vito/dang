@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -675,6 +676,18 @@ func isReservedInterfaceField(field string, scheme *hm.Scheme) bool {
 	return t.Name() == "ID"
 }
 
+// fieldSignature renders a field and its scheme for conformance error
+// messages. Method schemes already lead with their parameter list
+// (`greet(): String!`); plain value fields need a separator
+// (`message: String!`).
+func fieldSignature(field string, scheme *hm.Scheme) string {
+	sig := scheme.String()
+	if strings.HasPrefix(sig, "(") {
+		return field + sig
+	}
+	return field + ": " + sig
+}
+
 // validateInterfaceImplementations checks that this type correctly implements all declared interfaces
 func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeScope, ifaceSym *Symbol) error {
 	ifaceType, found := env.NamedType(ifaceSym.Name)
@@ -717,7 +730,7 @@ func (c *ObjectDecl) validateInterfaceImplementations(objectMod *Type, env TypeS
 		for _, field := range missingFields {
 			fieldScheme, _ := ifaceMod.SchemeOf(field)
 			errs.Add(WrapInferError(
-				fmt.Errorf("object %s is missing `%s%s`, required by interface %s", objectMod, field, fieldScheme, ifaceMod),
+				fmt.Errorf("object %s is missing `%s`, required by interface %s", objectMod, fieldSignature(field, fieldScheme), ifaceMod),
 				ifaceSym,
 			))
 		}
@@ -1319,7 +1332,7 @@ func validateInterfaceExtension(child *Type, env TypeScope, parentSym *Symbol) e
 		for _, field := range missingFields {
 			fieldScheme, _ := parentMod.SchemeOf(field)
 			errs.Add(WrapInferError(
-				fmt.Errorf("interface %s is missing `%s%s`, required by interface %s", child, field, fieldScheme, parentMod),
+				fmt.Errorf("interface %s is missing `%s`, required by interface %s", child, fieldSignature(field, fieldScheme), parentMod),
 				parentSym,
 			))
 		}
