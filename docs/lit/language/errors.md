@@ -111,11 +111,19 @@ let attempt = try { "all good" } catch { err => "recovered: " + err.message }
 attempt.toUpper
 ```
 
-The body and every catch clause must merge to a single type — catch arms
-don't widen to a union the way `case` clauses do (see [#control-flow]):
+The body and the catch clauses merge to one type when they can; arms that
+diverge widen to a union instead, exactly like `if` branches and `case`
+clauses (see [#control-flow]). Here the body is an `Int!` and the catch
+recovers with a `String!`, so the whole expression is an `Int! | String!` —
+which `case` type patterns can take back apart:
 
-```dang-failure
-try { 1 } catch { err => "fallback" }
+```dang
+let outcome = try { halve(7) } catch { err => err.message }
+
+case (outcome) {
+  n: Int => "halved fine"
+  s: String => `halving failed: ${s}`
+}
 ```
 
 A `catch` hears everything raised in its body: explicit raises, errors
@@ -192,7 +200,9 @@ try { lookup(0) } catch {
 
 And when *no* clause matches, the error is re-raised to the next enclosing
 `catch` — an incomplete `catch` narrows what it handles instead of
-swallowing the rest:
+swallowing the rest. (That's also why it doesn't make the result nullable
+the way a non-exhaustive `case` does: a miss re-raises, it never yields
+`null`.)
 
 ```dang
 try {
