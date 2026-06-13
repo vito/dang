@@ -324,6 +324,26 @@ func (f *Formatter) emitCommentsForNode(node Node) {
 // emitCommentsBeforeNode emits comments before a node, optionally suppressing
 // the blank line that would normally be added for a gap (used when node has docstring)
 func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
+	f.emitStandaloneComments(line)
+
+	// If there's a blank line between the last comment and the node, preserve it
+	// BUT not if the node has a docstring (which fills the gap)
+	if !hasDocString && f.lastLine > 0 && line > f.lastLine+1 {
+		f.newline()
+	}
+}
+
+// emitCommentsBeforeClose emits comments before a closing delimiter (brace,
+// bracket, paren). Unlike emitCommentsBeforeNode, it does not preserve a blank
+// line between the last content and the delimiter: empty lines before a closing
+// delimiter (with nothing but the delimiter following) are dropped.
+func (f *Formatter) emitCommentsBeforeClose(line int) {
+	f.emitStandaloneComments(line)
+}
+
+// emitStandaloneComments emits standalone comments appearing before the given
+// line, preserving blank-line gaps between comment groups.
+func (f *Formatter) emitStandaloneComments(line int) {
 	for len(f.comments) > 0 && f.comments[0].Line < line {
 		// Skip over trailing comments - they're emitted by emitTrailingComment.
 		if f.comments[0].IsTrailing || f.emittedComments[f.comments[0].Line] {
@@ -345,12 +365,6 @@ func (f *Formatter) emitCommentsBeforeNode(line int, hasDocString bool) {
 		f.emittedComments[comment.Line] = true
 		f.newline()
 		f.lastLine = comment.Line
-	}
-
-	// If there's a blank line between the last comment and the node, preserve it
-	// BUT not if the node has a docstring (which fills the gap)
-	if !hasDocString && f.lastLine > 0 && line > f.lastLine+1 {
-		f.newline()
 	}
 }
 
@@ -969,7 +983,7 @@ func (f *Formatter) formatObjectDecl(c *ObjectDecl) {
 
 		// Emit any remaining comments inside the body (before closing brace)
 		if c.Value.Loc != nil && c.Value.Loc.End != nil {
-			f.emitCommentsBeforeNode(c.Value.Loc.End.Line, false)
+			f.emitCommentsBeforeClose(c.Value.Loc.End.Line)
 		}
 	})
 
@@ -1561,7 +1575,7 @@ func (f *Formatter) formatBlockContents(b *Block) {
 			f.nl(b.Loc.Line)
 			f.indented(func() {
 				f.lastLine = b.Loc.Line
-				f.emitCommentsBeforeNode(b.Loc.End.Line, false)
+				f.emitCommentsBeforeClose(b.Loc.End.Line)
 			})
 			f.writeIndent()
 		}
@@ -1615,7 +1629,7 @@ func (f *Formatter) formatBlockContents(b *Block) {
 
 		// Emit comments between last form and closing }
 		if b.Loc != nil && b.Loc.End != nil {
-			f.emitCommentsBeforeNode(b.Loc.End.Line, false)
+			f.emitCommentsBeforeClose(b.Loc.End.Line)
 		}
 	})
 	f.writeIndent()
@@ -2121,7 +2135,7 @@ func (f *Formatter) formatCallArgs(args []Keyed[Node], multiline bool, closingLi
 				f.newline()
 			}
 			if closingLine > 0 {
-				f.emitCommentsBeforeNode(closingLine, false)
+				f.emitCommentsBeforeClose(closingLine)
 			}
 		})
 		f.writeIndent()
@@ -2891,7 +2905,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 
 				// Emit comments between last fragment and closing }
 				if o.Loc != nil && o.Loc.End != nil {
-					f.emitCommentsBeforeNode(o.Loc.End.Line, false)
+					f.emitCommentsBeforeClose(o.Loc.End.Line)
 				}
 			})
 			f.writeIndent()
@@ -2939,7 +2953,7 @@ func (f *Formatter) formatObjectSelection(o *ObjectSelection) {
 
 			// Emit comments between last field and closing }
 			if o.Loc != nil && o.Loc.End != nil {
-				f.emitCommentsBeforeNode(o.Loc.End.Line, false)
+				f.emitCommentsBeforeClose(o.Loc.End.Line)
 			}
 		})
 		f.writeIndent()
@@ -3046,7 +3060,7 @@ func (f *Formatter) formatBlockArg(b *BlockArg) {
 
 			// Emit comments between last form and closing }
 			if block.Loc != nil && block.Loc.End != nil {
-				f.emitCommentsBeforeNode(block.Loc.End.Line, false)
+				f.emitCommentsBeforeClose(block.Loc.End.Line)
 			}
 		})
 		f.writeIndent()
