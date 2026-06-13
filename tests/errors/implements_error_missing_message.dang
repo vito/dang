@@ -1,0 +1,6 @@
+# Implementing Error without the message field it requires. The prelude
+# declares `message` as a plain value field (not a zero-arg method), so this
+# pins the field-style rendering of the conformance error.
+type BrokenError implements Error {
+  code: Int!
+}

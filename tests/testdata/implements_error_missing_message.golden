@@ -1,0 +1,11 @@
+[1m[31mError:[0m object BrokenError is missing `message: String!`, required by interface Error
+  [2m[34m--> errors/implements_error_missing_message.dang:4:29[0m
+ [2m    |[0m
+ [2m  2 | # declares `message` as a plain value field (not a zero-arg method), so this[0m
+ [2m  3 | # pins the field-style rendering of the conformance error.[0m
+ [2m[34m[1m  4 | [0mtype BrokenError implements Error {
+[2m                                   [31m^^^^^[0m
+ [2m  5 |   code: Int![0m
+ [2m  6 | }[0m
+ [2m    |[0m
+
