@@ -3,8 +3,6 @@
 
 # Errors: `try`, `catch`, `raise` {#errors}
 
-> Meta: positioning matters: errors are not for control flow — but make that case where the contrast has context (the raise-vs-null section at the end), not in the opening line; opening by negation read as confusing in docs feedback. Open with what errors *are*: values implementing `Error`, raised and caught by ordinary expressions.
-
 An error is a value — an object implementing the `Error` interface — and
 error handling is expression-shaped like everything else in Dang (see
 [#control-flow]): `raise` cuts the computation short with an error
