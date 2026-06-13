@@ -1,126 +1,299 @@
 \use-plugin{dang}
+\literate-fences
 
 # Collections {#collections}
 
 > Meta: two collections today — lists and string-keyed maps. Don't sketch a future (no sets yet). Big API surface; group by intent (construct / index / transform / select / aggregate / slice).
 
-- lists (`[a]`) and maps (`Map[a]`) are the collection types today (no sets yet)
-- `[a]` is shorthand for `List[a]`; the two spellings are interchangeable in type annotations
+Dang has two collection types: **lists** (`[a]`) and string-keyed **maps**
+(`Map[a]`). Both are immutable — every operation that "changes" a collection
+returns a new one — and both carry a single element type, so a `[Int!]` holds
+only `Int!`s and a `Map[String!]` only `String!` values.
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## Lists
 
-### Construction
+A list is comma-separated values in square brackets:
 
-- literal: `[1, 2, 3]`
-- type: `[Int!]` or, equivalently, `List[Int!]`
-- empty (needs type hint): `[] :: [Int!]!` or via an annotation: `let xs: [Int!]! = []`
-- concatenation: `[1, 2] + [3, 4]` (associative; works with empties)
+```dang
+["apple", "banana", "cherry"]
+```
+
+Its type is `[String!]!` — a non-null list of non-null strings. `[a]` is
+shorthand for `List[a]`, and the two spellings are interchangeable in
+annotations. We'll reuse a couple of lists below, so bind them now (a block
+ending in a declaration prints nothing — it's just setup):
+
+```dang
+let fruits = ["apple", "banana", "cherry"]
+let nums = [1, 2, 3, 4]
+```
+
+`+` concatenates two lists; it's associative and works with empties:
+
+```dang
+[1, 2] + nums
+```
+
+An empty literal can't infer its element type on its own, so it needs an
+annotation (or a `:: [T]!` hint — see [#nullability]):
+
+```dang
+let none: [Int!]! = []
+none.isEmpty
+```
 
 ### Indexing
 
-- `xs[0]` — element access
-- out-of-bounds yields `null` (so the result is `T`, not `T!`)
-- chained: `matrix[0][1]`
+`xs[i]` reads the element at a zero-based index. An out-of-bounds index
+yields `null`, so the result type is `T`, not `T!`:
+
+```dang
+fruits[0]
+```
+
+```dang
+fruits[99]
+```
+
+The index must be an `Int!` — anything else is a compile error:
+
+```dang-failure
+fruits["first"]
+```
+
+Indexing chains, so a list of lists reads positionally:
+
+```dang
+[[1, 2], [3, 4]][1][0]
+```
 
 ### Length and emptiness
 
-- `xs.length` — `Int!`
-- `xs.isEmpty` — `Boolean!`
+```dang
+[nums.length, fruits.length]
+```
 
-### Transform
+```dang
+[nums.isEmpty, none.isEmpty]
+```
 
-- `xs.map { x => f(x) }` — block also receives index: `{ x, i => ... }` → `[b]!`
-- `xs.filter { x => p(x) }` — `[a]!`
-- `xs.reject { x => p(x) }` — inverse of filter
-- `xs.reduce(init) { acc, x => g(acc, x) }` — `init` is the (positional/named `initial:`) seed; returns `b`
-- `xs.uniq` — drops duplicates, keeps first-occurrence order; uses Dang equality (works on nested lists)
+> `.length` and `.isEmpty` are list methods only — strings do **not** have
+> them; use the string predicates instead (see [#strings]).
 
-### Iterate
+### Transforming
 
-- `xs.each { x => ... }`
-- `xs.each { x, i => ... }` — element and index
-- returns the list (for chaining); used for side effects
+`.map` applies a block to every element, returning a new list (see
+[#blocks] for the block forms — `_` is the implicit parameter):
 
-### Predicates
+```dang
+nums.map { _ * 2 }
+```
 
-- `xs.any { x => p(x) }`
-- `xs.all { x => p(x) }`
-- `xs.contains(value)`
+The block can take the index as a second parameter:
 
-### Slice
+```dang
+fruits.map { fruit, i => `${i}: ${fruit}` }
+```
 
-- `xs.takeFirst`, `xs.takeFirst(n)`
-- `xs.takeLast`, `xs.takeLast(n)`
-- `xs.dropFirst`, `xs.dropFirst(n)`
-- `xs.dropLast`, `xs.dropLast(n)`
-- `xs.takeWhile { x => p(x) }`
-- `xs.dropWhile { x => p(x) }`
+`.filter` keeps the elements a predicate accepts; `.reject` is its inverse:
 
-### Join
+```dang
+[nums.filter { _ % 2 == 0 }, nums.reject { _ % 2 == 0 }]
+```
 
-- `xs.join(", ")` — `String!`; non-string elements are stringified (numbers, bools, etc.)
+`.reduce` folds the list down to a single value, threading an accumulator from
+a seed (positional, or named `initial:`) through each element:
+
+```dang
+nums.reduce(0) { acc, x => acc + x }
+```
+
+`.uniq` drops duplicates, keeping first-occurrence order. It uses Dang
+equality, so it works on nested lists too:
+
+```dang
+[1, 1, 2, 3, 3, 1].uniq
+```
+
+### Iterating
+
+`.each` runs a block for its side effects and returns the original list, so
+calls keep chaining. Like `.map`, it can take the index:
+
+```dang
+fruits.each { fruit, i => print(`${i} = ${fruit}`) }
+```
+
+### Asking questions
+
+`.any` and `.all` test a predicate across the list; `.contains` tests for a
+specific value:
+
+```dang
+[nums.any { _ > 3 }, nums.all { _ > 0 }, fruits.contains("banana")]
+```
+
+### Slicing
+
+`.takeFirst` / `.takeLast` keep elements from an end, `.dropFirst` /
+`.dropLast` discard them. Each takes an optional count (default 1):
+
+```dang
+[nums.takeFirst(2), nums.dropLast]
+```
+
+`.takeWhile` / `.dropWhile` cut at the first element that fails a predicate:
+
+```dang
+[1, 2, 3, 10, 1].takeWhile { _ < 5 }
+```
+
+### Joining
+
+`.join` concatenates the elements into a `String!` with a separator;
+non-string elements are stringified:
+
+```dang
+nums.join(" + ")
+```
 
 ## Maps
 
-Maps are immutable, string-keyed collections with a homogeneous value type. Keys
-are always `String!`; only the value type is parameterized.
+Maps are immutable, string-keyed collections with a homogeneous value type.
+Keys are always `String!`; only the value type is parameterized. A literal
+pairs keys with values:
 
-### Construction
+```dang
+let roles = ["alice": "admin", "bob": "user"]
+roles
+```
 
-- literal: `["alice": "admin", "bob": "user"]`
-- type: `Map[a]` — e.g. `Map[Int!]` is a map of `Int!` values (there is no `[a]`-style shorthand for maps)
-- empty map: `[:]` (distinct from the empty list `[]`); needs a type hint, e.g. `let m: Map[Int!]! = [:]`
-- keys may be any `String!` expression, not just literals: `[key: value]`
+The value type is inferred (`Map[String!]` here), written `Map[a]` — there is
+no `[a]`-style shorthand for maps. Keys may be any `String!` expression, not
+just literals. The empty map is `[:]`, distinct from the empty list `[]`, and
+like an empty list it needs a type hint:
 
-### Indexing
+```dang
+let counts: Map[Int!]! = [:]
+counts.isEmpty
+```
 
-- `m["alice"]` — value access by key
-- a missing key yields `null` (so the result is `T`, not `T!`)
+### Indexing and lookup
 
-### Length and emptiness
+`m["key"]` reads a value; a missing key yields `null`, so the result is `T`,
+not `T!`. `.get` is the method form of the same lookup:
 
-- `m.length` — `Int!`
-- `m.isEmpty` — `Boolean!`
+```dang
+[roles["alice"], roles.get("carol")]
+```
 
-### Lookup
+`.has` tests for a key:
 
-- `m.get("key")` — value or `null` (same as `m["key"]`)
-- `m.has("key")` — `Boolean!`
-- `m.keys` — `[String!]!`, in insertion order
-- `m.values` — `[a]!`, in insertion order
+```dang
+roles.has("dave")
+```
 
-### Derive (immutable — these return new maps)
+`.keys` and `.values` return lists in insertion order, and `.length` counts
+the entries:
 
-- `m.with("key", value)` — a new map with the key set (replaces in place if present, keeping position)
-- `m.without("key")` — a new map with the key removed (no-op if absent)
-- `m.merge(other)` — a new map combining both; `other`'s values win on key conflicts
+```dang
+[roles.keys, roles.values]
+```
 
-### Transform and iterate
+### Deriving new maps
 
-- `m.map { key, value => f(key, value) }` — transforms values, preserves keys → `Map[b]!`
-- `m.each { key, value => ... }` — iterates in insertion order, returns the original map (for chaining)
+Maps are immutable, so these return a *new* map and leave the original
+untouched. `.with` sets a key (replacing in place if present, keeping its
+position), `.without` removes one, and `.merge` combines two — the argument's
+values winning on conflicts:
 
-> Note: maps are equal when they hold the same entries, regardless of insertion
-> order: `["a": 1, "b": 2] == ["b": 2, "a": 1]`.
+```dang
+roles.with("carol", "admin")
+```
 
-## Nullable lists vs. lists of nullables
+```dang
+roles.merge(["bob": "owner", "dave": "guest"])
+```
 
-- `[T]` — list might be null
-- `[T]!` — list is non-null; elements might be null
-- `[T!]!` — both non-null
+A map's value type is fixed, so a `.with` of the wrong type is a compile
+error:
 
-### Methods on nullable lists
+```dang-failure
+["a": 1].with("b", "two")
+```
 
-- list methods work on `[T]` (nullable) receivers
-- null propagates: if the list is `null`, the method returns `null` (e.g. `nullList.map { ... } == null`, `nullList.length == null`)
+### Transforming and iterating
 
-## Type inference for heterogeneous elements
+`.map` transforms the values and preserves the keys, and its block receives
+both; `.each` iterates in insertion order and returns the original map:
 
-- `[Cat, Dog]` where both implement `Animal` → `[Animal!]` (a common supertype/interface)
-- when several common interfaces exist, the first common one found is picked
-- mixing `null` widens elements to nullable: `[WithNull, WithValue]` → `[Nullable]`
-- single-element or same-type lists need no supertype inference
+```dang
+roles.map { name, role => role.toUpper }
+```
 
-> Note: `.length` and `.isEmpty` are list-only — strings do *not* have them (see [#strings]).
+Two maps are equal when they hold the same entries, regardless of insertion
+order:
+
+```dang
+["a": 1, "b": 2] == ["b": 2, "a": 1]
+```
+
+## Nullable elements and nullable collections
+
+The `!` sigil (see [#nullability]) sits in two independent places on a list
+type — the list itself, and its elements:
+
+| written | meaning |
+|---|---|
+| `[T]` | nullable list of nullable T |
+| `[T]!` | non-null list of nullable T |
+| `[T!]` | nullable list of non-null T |
+| `[T!]!` | non-null list of non-null T |
+
+A list whose elements may be null is the common case for parsed or
+fetched data. Indexing such a list gives a nullable element, which `??` (see
+[#operators]) or a `.map` can recover:
+
+```dang
+let scores = [10, null, 30]
+scores.map { _ ?? 0 }
+```
+
+When the *list itself* is null, methods short-circuit and return `null`
+rather than raising — `.length`, `.map`, and the rest all yield `null`, the
+same way null propagates through field access:
+
+```dang
+let missing = null :: [Int!]
+missing.map { _ + 1 }
+```
+
+## Heterogeneous elements
+
+A list literal whose elements differ in type infers their nearest common
+type. `Cat` and `Dog` here both implement `Animal` (see
+[#interfaces-unions]), so the list is an `[Animal!]` — and only the shared
+`Animal` surface is available on its elements:
+
+```dang
+interface Animal { name: String! }
+type Cat implements Animal { name: String! }
+type Dog implements Animal { name: String! }
+
+[Cat(name: "Whiskers"), Dog(name: "Rex")].map { _.name }
+```
+
+Mixing `null` in widens the elements to nullable; elements with no common
+type at all are rejected:
+
+```dang-failure
+[1, "two"]
+```
 
 > Meta: many list operations are mirrored on strings (`split`, `contains`, etc.) and readers will look both places — see [#strings]. Block-taking list methods relate to [#blocks]; full signatures live in [#stdlib]; element/list nullability follows [#nullability].
