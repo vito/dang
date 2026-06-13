@@ -130,8 +130,8 @@ try { toString(100 / 0) } catch { err => err.message }
 
 Catch clauses are the same patterns as `case` (see [#control-flow]),
 limited to **type patterns** and a bare **catch-all**, which binds the
-error as `Error!`. With two error types in play — `lookup` raises a
-different one per failure —
+error as `Error!`. `lookup` here raises a different error type for each
+way it can fail:
 
 ```dang
 type ValidationError implements Error {
@@ -148,8 +148,9 @@ lookup(id: Int!): String! {
 lookup(7)
 ```
 
-— a `catch` routes each to its own recovery, with the binding narrowed to
-the matched type inside the clause, extra fields included:
+A `catch` dispatches on the raised error's type, routing each to its own
+recovery — the binding is the error narrowed to the matched type, extra
+fields included:
 
 ```dang
 fetch(id: Int!): String! {
@@ -190,8 +191,8 @@ try { lookup(0) } catch {
 ```
 
 And when *no* clause matches, the error is re-raised to the next enclosing
-`catch`: an incomplete `catch` narrows what it handles instead of
-swallowing the rest.
+`catch` — an incomplete `catch` narrows what it handles instead of
+swallowing the rest:
 
 ```dang
 try {
