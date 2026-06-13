@@ -423,6 +423,69 @@ pub x = 1`,
 pub x = 1
 `,
 		},
+		{
+			name: "blank lines before closing brace are removed",
+			input: `pub foo: String {
+  let x = 1
+
+  x
+
+}`,
+			expected: `foo: String {
+  let x = 1
+
+  x
+}
+`,
+		},
+		{
+			name: "blank lines before nested closing braces are removed",
+			input: `pub bar: String {
+  let y = 2
+
+  if (y) {
+    y
+
+  }
+
+}`,
+			expected: `bar: String {
+  let y = 2
+
+  if (y) {
+    y
+  }
+}
+`,
+		},
+		{
+			name: "blank lines before closing bracket are removed",
+			input: `pub items = [
+  1,
+  2,
+
+]`,
+			expected: `pub items = [
+  1,
+  2,
+]
+`,
+		},
+		{
+			name: "blank line before comment kept, blank before brace removed",
+			input: `pub foo: String {
+  x
+
+  # tail
+
+}`,
+			expected: `foo: String {
+  x
+
+  # tail
+}
+`,
+		},
 	}
 
 	for _, tt := range tests {
