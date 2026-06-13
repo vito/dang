@@ -73,6 +73,14 @@ assert { doubled == ["a": 2, "b": 4, "c": 6] }
 let labeled = counts.map { key, value => `${key}=${value}` }
 assert { labeled["a"] == "a=1" }
 
+# mapEntries collects each entry into a single list element
+let pairs = counts.mapEntries { key, value => `${key}=${value}` }
+assert { pairs == ["a=1", "b=2", "c=3"] }
+
+# mapEntries can produce any element type
+let sums = ["a": 1, "b": 2].mapEntries { key, value => value + 10 }
+assert { sums == [11, 12] }
+
 # each iterates in insertion order and returns the original map
 let seen: List[String!] = []
 counts.each { key, value => seen = seen + [key] }
