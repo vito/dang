@@ -1,78 +1,261 @@
 \use-plugin{dang}
+\literate-fences
 
 # Errors: `try`, `catch`, `raise` {#errors}
 
-> Meta: positioning matters: errors are not for control flow. Open with "Dang uses errors for *errors* — recoverable failures across boundaries — not for `null` or expected branches."
+> Meta: positioning matters: errors are not for control flow — but make that case where the contrast has context (the raise-vs-null section at the end), not in the opening line; opening by negation read as confusing in docs feedback. Open with what errors *are*: values implementing `Error`, raised and caught by ordinary expressions.
 
-Dang uses errors for *errors* — recoverable failures across boundaries — not for `null` or expected branches.
+An error is a value — an object implementing the `Error` interface — and
+error handling is expression-shaped like everything else in Dang (see
+[#control-flow]): `raise` cuts the computation short with an error
+describing what went wrong, and `try`/`catch` is an expression that yields
+the body's value when it succeeds or a catch clause's when it doesn't.
+
+> The examples on this page are live: they share one Dang environment, so
+> later snippets use earlier definitions. Each result is computed and baked
+> in by the docs build — edit a snippet and hit Run ▶ to replay the page in
+> your browser. Blocks that show an error are *supposed* to fail: the build
+> verifies the failure the same way it verifies the results.
 
 ## Raising
 
-```dang
+In its simplest form, `raise` takes a message string. The error unwinds to
+the nearest enclosing `catch` — and with no `catch` anywhere up the stack,
+it terminates the program:
+
+```dang-failure
 raise "something went wrong"
-raise NotFoundError(message: "user gone", resource: "User")
 ```
 
-- `raise` takes a `String!` or an `Error!`; anything else is a compile error (`raise requires a String! or Error!, got Int!`)
-- raising a string wraps it in a built-in `BasicError` (implements `Error`, `message` = the string)
-- raising a value implementing `Error` raises it as-is
-- `raise` is itself an expression of any type (fresh type var), so it can sit in any branch (e.g. a `case`/`catch` arm) without breaking the merged result type
+Caught, the message comes back as the error's `message` field: raising a
+`String!` wraps it in the built-in `BasicError`, so even a string raise
+produces a real error value:
+
+```dang
+try { raise "out of coffee" } catch { err => "plan B: " + err.message }
+```
+
+Only a `String!` or a value implementing `Error` (next section) can be
+raised:
+
+```dang-failure
+raise 42
+```
+
+`raise` is itself an expression, and an expression of *any* type — a fresh
+type variable — so it can sit in any branch without breaking the merged
+result type. `halve` stays an `Int!` function even though its `else` branch
+raises; and because errors propagate out of calls, the failure surfaces at
+the caller's `catch`:
+
+```dang
+halve(n: Int!): Int! {
+  if (n % 2 == 0) n / 2 else raise `${n} is odd`
+}
+
+[halve(10), try { halve(7) } catch { err => 0 }]
+```
 
 ## The `Error` interface
 
-```dang
+`Error` is a real interface, declared in the prelude alongside `BasicError`
+(see [#stdlib]), with a single required field:
+
+```dang-static
 interface Error {
   message: String!
 }
 ```
 
-- `Error` is a real prelude interface; `BasicError` is the built-in implementer for string raises
-- user error types must `implements Error`, which forces a `message: String!` field (see [#interfaces-unions])
-- additional fields are preserved on the raised value and matchable in `catch` (e.g. `resource`, `field`, `code`)
-- `Error!` is usable like any interface type — as a fn param, in a type pattern, etc.
+A user error type opts in with `implements Error` (see
+[#interfaces-unions]), and conformance is enforced — leaving out `message`
+is a compile error:
+
+```dang-failure
+type BrokenError implements Error { code: Int! }
+```
+
+A value implementing `Error` raises as-is — no wrapping — and any
+additional fields, like `resource` here, ride along on the raised value for
+a `catch` to read:
+
+```dang
+type NotFoundError implements Error {
+  message: String!
+  resource: String!
+}
+
+try { raise NotFoundError(message: "user gone", resource: "User") } catch {
+  err => err.message
+}
+```
+
+And `Error!` is an ordinary interface type — a parameter type, a type
+pattern, anywhere a type goes:
+
+```dang
+describe(err: Error!): String! { `error: ${err.message}` }
+
+try { raise "no more tea" } catch { err => describe(err) }
+```
 
 ## Catching
 
+The whole `try`/`catch` is one expression — bind it, return it, nest one
+inside another. When nothing raises, the body's value passes through
+unchanged:
+
 ```dang
-try {
-  validate(name)
-} catch {
-  err => "fallback: " + err.message
-}
+let attempt = try { "all good" } catch { err => "recovered: " + err.message }
+
+attempt.toUpper
 ```
 
-- whole `try`/`catch` is one expression — assignable, returnable, usable inline (incl. nested / in a `let`)
-- the success value of the body passes through unchanged when nothing is raised
-- the body and every catch clause must merge to one type, else compile error (`cannot use String! as Int!`)
-- catches errors raised anywhere in the body, including ones propagated out of called functions and runtime errors (e.g. `1 / 0` → `division by zero`)
+The body and every catch clause must merge to a single type — catch arms
+don't widen to a union the way `case` clauses do (see [#control-flow]):
+
+```dang-failure
+try { 1 } catch { err => "fallback" }
+```
+
+A `catch` hears everything raised in its body: explicit raises, errors
+propagating out of called functions, and runtime errors like division by
+zero — which arrive wrapped in `BasicError`, so `.message` is always there:
+
+```dang
+try { toString(100 / 0) } catch { err => err.message }
+```
 
 ## Type-pattern catches
 
+Catch clauses are the same patterns as `case` (see [#control-flow]),
+limited to **type patterns** and a bare **catch-all**, which binds the
+error as `Error!`. With two error types in play — `lookup` raises a
+different one per failure —
+
 ```dang
-try { risky() } catch {
-  v: ValidationError => v.field
-  n: NotFoundError => n.resource
-  e: Error => e.message     # interface pattern = typed catch-all
-  err => err.message        # bare catch-all, err: Error!
+type ValidationError implements Error {
+  message: String!
+  field: String!
+}
+
+lookup(id: Int!): String! {
+  if (id <= 0) raise ValidationError(message: "id must be positive", field: "id")
+  else if (id > 100) raise NotFoundError(message: `no user ${id}`, resource: "User")
+  else `user-${id}`
+}
+
+lookup(7)
+```
+
+— a `catch` routes each to its own recovery, with the binding narrowed to
+the matched type inside the clause, extra fields included:
+
+```dang
+fetch(id: Int!): String! {
+  try { lookup(id) } catch {
+    v: ValidationError => `bad input: ${v.field}`
+    n: NotFoundError => `no such ${n.resource}`
+    err => err.message
+  }
+}
+
+[fetch(7), fetch(0), fetch(404)]
+```
+
+Pattern types must implement `Error` — validated like a `case` over an
+interface operand (see [#control-flow]):
+
+```dang-failure
+try { lookup(7) } catch { s: String => s }
+```
+
+Value patterns have no place in a `catch` — there is no operand to compare,
+only an error to inspect — and they don't even parse:
+
+```dang-failure
+try { lookup(404) } catch { 404 => "no user" }
+```
+
+The `Error` interface is itself a valid pattern — a typed catch-all
+matching any error — and clauses are tried top to bottom, first match wins,
+so specific types go before general ones. This `ValidationError` clause is
+unreachable:
+
+```dang
+try { lookup(0) } catch {
+  e: Error => `something failed: ${e.message}`
+  v: ValidationError => "never reached"
 }
 ```
 
-- catch clauses are the same patterns as `case`, but limited to **type patterns** and a **catch-all** (no value patterns)
-- first match wins
-- pattern types must implement `Error` (validated against the `Error!` operand, like a `case` over an interface — see [#control-flow])
-- the bare catch-all binds the error as `Error!`
-- the `Error` interface itself works as a pattern, matching any error; place specific types before it
+And when *no* clause matches, the error is re-raised to the next enclosing
+`catch`: an incomplete `catch` narrows what it handles instead of
+swallowing the rest.
+
+```dang
+try {
+  try { lookup(404) } catch { v: ValidationError => "bad input" }
+} catch {
+  n: NotFoundError => `escalated: no ${n.resource}`
+}
+```
 
 ## Propagation
 
-- uncaught errors unwind through enclosing function calls
-- a `raise` with no enclosing `catch` terminates the program (`uncaught error: <message>`)
-- `return` *cannot* be caught; it's not an error — `try { return x } catch {..}` still returns `x` from the function
-- re-raise inside a catch with `raise err` (or a new error); it propagates to the next enclosing `catch`
+Uncaught errors unwind through enclosing function calls until a `catch`
+takes them — above, `fetch` caught what `lookup` raised — and with no
+`catch` all the way up, the program terminates with the error's message:
+
+```dang-failure
+lookup(404)
+```
+
+A `catch` can also rethrow: `raise err` re-raises the same error, or raise
+a new one to recast it. Either way it propagates to the next enclosing
+`catch`:
+
+```dang
+try {
+  try { lookup(-5) } catch { err => raise `lookup failed: ${err.message}` }
+} catch {
+  err => err.message
+}
+```
+
+Jumps are not errors: `return`, `break`, and `continue` pass through a
+`try` untouched (see [#control-flow]), so an early exit can't be
+accidentally caught:
+
+```dang
+bail: String! {
+  try { return "returned, not caught" } catch { err => "caught?!" }
+}
+
+bail
+```
 
 ## When to raise vs. return null
 
 > Meta: a small "when to raise vs. when to return null" table would help here. The rule of thumb: raise when continuing would yield wrong results; return null when absence is normal.
+
+Not every "no result" is a failure. When absence is a normal, expected
+outcome — a search that can come up empty — return `null` and let the
+caller branch (see [#flow-typing]):
+
+```dang
+find(name: String!): Int {
+  if (name == "alice") 1 else if (name == "bob") 2
+}
+
+[find("alice"), find("nadia")]
+```
+
+`raise` is for failures: continuing would produce wrong results, or the
+failure crosses a boundary — invalid input, a violated contract, a failed
+HTTP or GraphQL call. `lookup` above raises rather than returning `null`
+because an id you're already holding should resolve; a miss means something
+went wrong upstream.
 
 | situation | use |
 |---|---|
@@ -80,12 +263,6 @@ try { risky() } catch {
 | caller routinely branches on the result | return `null` / a result value |
 | continuing would produce wrong results | `raise` |
 | failure crosses a boundary (validation, HTTP/GraphQL, contract) | `raise` |
-
-## Common patterns
-
-- input validation
-- failed external calls (HTTP/GraphQL)
-- contract violations
 
 ## Anti-patterns
 
