@@ -1,6 +1,0 @@
-# try body returns Int! but catch returns String! — type mismatch
-let result = try {
-  42
-} catch {
-  err => "not a number"
-}
