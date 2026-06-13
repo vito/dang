@@ -98,6 +98,7 @@ are always `String!`; only the value type is parameterized.
 ### Transform and iterate
 
 - `m.map { key, value => f(key, value) }` — transforms values, preserves keys → `Map[b]!`
+- `m.mapEntries { key, value => f(key, value) }` — collects each entry into a single list element → `[b]!`
 - `m.each { key, value => ... }` — iterates in insertion order, returns the original map (for chaining)
 
 > Note: maps are equal when they hold the same entries, regardless of insertion

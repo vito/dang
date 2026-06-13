@@ -1136,6 +1136,44 @@ func registerStdlib() {
 			}
 			return MapValue{Keys: append([]string{}, m.Keys...), Entries: entries, ValType: resultValType}, nil
 		})
+
+	// Map.mapEntries method: mapEntries(fn: \(String!, a) -> b) -> [b]!
+	Method(MapTypeModule, "mapEntries").
+		Doc("returns a list with each entry transformed into a single element by the block").
+		Example(`["a": 1, "b": 2].mapEntries { key, value => `+"`${key}=${value}`"+` }`).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "key",
+				Value: hm.NewScheme(nil, NonNull(StringType)),
+			}, Keyed[*hm.Scheme]{
+				Key:   "value",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			TypeVar('b'),
+		)).
+		Returns(NonNull(ListOf(TypeVar('b')))).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+			if args.Block == nil {
+				return nil, fmt.Errorf("mapEntries requires a block argument")
+			}
+			fn := *args.Block
+			fnType, ok := fn.Type().(*hm.FunctionType)
+			if !ok {
+				return nil, fmt.Errorf("mapEntries expects a function type, got %T", fn.Type())
+			}
+			resultElemType := fnType.ReturnType()
+
+			result := make([]Value, 0, len(m.Keys))
+			for _, k := range m.Keys {
+				res, err := callFunc(ctx, fn, StringValue{Val: k}, m.Entries[k])
+				if err != nil {
+					return nil, fmt.Errorf("mapEntries block: %w", err)
+				}
+				result = append(result, res)
+			}
+			return ListValue{Elements: result, ElemType: resultElemType}, nil
+		})
 }
 
 // callFunc calls a function with the given values as arguments.
