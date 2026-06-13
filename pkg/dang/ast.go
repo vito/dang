@@ -441,11 +441,12 @@ func CreateOverlayValueScope(primary ValueScope, lexical ValueScope) OverlayValu
 }
 
 // ConstructorScope is a specialized environment for new() constructor bodies.
-// Reads check constructor args first (shadowing fields and outer scope),
-// while writes go to the instance so bare assignments like `x = val` work.
+// Declarations bind to constructor-local lexical scope, while reassignment can
+// still update constructor args or existing instance fields.
 type ConstructorScope struct {
-	instance ValueScope // Object instance (target for writes)
-	args     ValueScope // Constructor arguments (shadow everything on reads)
+	locals   ValueScope // Constructor-body let bindings
+	instance ValueScope // Object instance (target for bare field reassignments)
+	args     ValueScope // Constructor arguments
 	closure  ValueScope // Lexical closure (outer scope)
 
 	dynamicScope *DynamicScope
@@ -453,6 +454,7 @@ type ConstructorScope struct {
 
 func CreateConstructorScope(instance ValueScope, args ValueScope, closure ValueScope) *ConstructorScope {
 	return &ConstructorScope{
+		locals:   NewObject(NewType("_constructor_locals_", ObjectKind)),
 		instance: instance,
 		args:     args,
 		closure:  closure,
@@ -460,7 +462,13 @@ func CreateConstructorScope(instance ValueScope, args ValueScope, closure ValueS
 }
 
 func (e *ConstructorScope) Lookup(ctx context.Context, name string) (Value, bool, error) {
-	// Constructor args shadow everything
+	// Constructor-body locals shadow args, fields, and outer scope.
+	if val, found, err := e.locals.Lookup(ctx, name); err != nil {
+		return nil, found, err
+	} else if found {
+		return val, true, nil
+	}
+	// Constructor args shadow fields and outer scope.
 	if val, found, err := e.args.Lookup(ctx, name); err != nil {
 		return nil, found, err
 	} else if found {
@@ -477,23 +485,29 @@ func (e *ConstructorScope) Lookup(ctx context.Context, name string) (Value, bool
 }
 
 func (e *ConstructorScope) Has(name string) bool {
-	return e.args.Has(name) || e.instance.Has(name) || e.closure.Has(name)
+	return e.locals.Has(name) || e.args.Has(name) || e.instance.Has(name) || e.closure.Has(name)
 }
 
 func (e *ConstructorScope) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
-	e.instance.BindLazy(name, init, visibility)
+	e.locals.BindLazy(name, init, visibility)
 }
 
 func (e *ConstructorScope) LookupLocal(name string) (Value, bool) {
-	return e.instance.LookupLocal(name)
+	return e.locals.LookupLocal(name)
 }
 
 func (e *ConstructorScope) Bindings(vis Visibility) []Keyed[Value] {
 	var bs []Keyed[Value]
 	seen := map[string]bool{}
-	for _, kv := range e.args.Bindings(vis) {
+	for _, kv := range e.locals.Bindings(vis) {
 		bs = append(bs, kv)
 		seen[kv.Key] = true
+	}
+	for _, kv := range e.args.Bindings(vis) {
+		if !seen[kv.Key] {
+			bs = append(bs, kv)
+			seen[kv.Key] = true
+		}
 	}
 	for _, kv := range e.instance.Bindings(vis) {
 		if !seen[kv.Key] {
@@ -514,10 +528,15 @@ func (e *ConstructorScope) MarshalJSON() ([]byte, error) {
 }
 
 func (e *ConstructorScope) Bind(name string, value Value, visibility Visibility) {
-	e.instance.Bind(name, value, visibility)
+	e.locals.Bind(name, value, visibility)
 }
 
 func (e *ConstructorScope) Update(name string, value Value) {
+	// If the name is constructor-local, reassign there so later reads see it.
+	if e.locals.Has(name) {
+		e.locals.Update(name, value)
+		return
+	}
 	// If the name is a constructor arg, reassign there so that
 	// subsequent reads (which check args first) see the new value.
 	if e.args.Has(name) {
@@ -529,11 +548,18 @@ func (e *ConstructorScope) Update(name string, value Value) {
 }
 
 func (e *ConstructorScope) Visibility(name string) Visibility {
+	if e.locals.Has(name) {
+		return e.locals.Visibility(name)
+	}
+	if e.args.Has(name) {
+		return e.args.Visibility(name)
+	}
 	return e.instance.Visibility(name)
 }
 
 func (e *ConstructorScope) Derive(sealed bool) ValueScope {
 	return &ConstructorScope{
+		locals:       e.locals.Derive(sealed),
 		instance:     e.instance.Derive(sealed),
 		args:         e.args,
 		closure:      e.closure,

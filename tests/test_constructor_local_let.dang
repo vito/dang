@@ -1,0 +1,27 @@
+# Constructor-local let bindings should not become persisted object fields.
+
+type DangConstructorLocal {
+  let value: String!
+
+  new {
+    let tmp: String! = "ok"
+
+    self.value = tmp
+
+    let afterMutation: String! = tmp + "!"
+    self.value = afterMutation
+
+    self
+  }
+
+  get: String! {
+    self.value
+  }
+}
+
+let constructed = DangConstructorLocal
+
+assert { constructed.get == "ok!" }
+assert { toJSON(constructed) == "{\"value\":\"ok!\"}" }
+
+print("Constructor local let tests passed!")
