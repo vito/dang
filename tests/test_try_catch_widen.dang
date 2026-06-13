@@ -36,7 +36,9 @@ assert { mixed == 404 }
 # Arms that agree still merge to a single type, with no union in the way
 # of a non-null declared return type
 total: Int! {
-  try { 1 + 1 } catch { err => 0 }
+  try { 1 + 1 } catch {
+    err => 0
+  }
 }
 
 assert { total == 2 }
