@@ -26,7 +26,7 @@ Trailing comment after block arg
 ===
 
 twice { 21 }                  # body takes no args
-twice { let n = 21, n }       # multi-statement
+twice { let n = 21; n }       # multi-statement
 list.map { x => x * 2 }       # built-in
 withArg("Number: ") { x => toJSON(x) }   # args then block
 
@@ -44,7 +44,7 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
             (non_zero_decimal_digit)
             (decimal_digit))))))
   (comment_token)
-  (sep)
+  (stmt_sep)
   (symbol_or_call
     (symbol_block
       (symbol
@@ -64,14 +64,14 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
                 (int
                   (non_zero_decimal_digit)
                   (decimal_digit))))))
-        (sep
-          (comma_token))
+        (stmt_sep
+          (semi_token))
         (symbol_or_call
           (auto_call_symbol
             (id
               (word_token)))))))
   (comment_token)
-  (sep)
+  (stmt_sep)
   (select_or_call
     (symbol_or_call
       (auto_call_symbol
@@ -102,7 +102,7 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
                       (int
                         (non_zero_decimal_digit))))))))))))
   (comment_token)
-  (sep)
+  (stmt_sep)
   (symbol_or_call
     (call
       (symbol

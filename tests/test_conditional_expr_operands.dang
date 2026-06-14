@@ -26,8 +26,8 @@ let grade = if (x > 100) "high" else if (x > 5) "medium" else "low"
 assert { grade == "medium" }
 
 # Mixing block and bare operands
-let mixed1 = if (true) { let tmp = 2, tmp * 3 } else 0
-let mixed2 = if (false) 0 else { let tmp = 2, tmp * 3 }
+let mixed1 = if (true) { let tmp = 2; tmp * 3 } else 0
+let mixed2 = if (false) 0 else { let tmp = 2; tmp * 3 }
 
 assert { mixed1 == 6 }
 assert { mixed2 == 6 }
