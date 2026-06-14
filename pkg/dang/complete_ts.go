@@ -75,9 +75,36 @@ func computeReplaceFrom(text string, line, col int, cc *CompletionContext) int {
 	return offset - len(cc.Partial)
 }
 
+// cursorInStringContent reports whether the cursor sits within string-literal
+// content. Error recovery on an unterminated string (e.g. `f(x: "ab`) leaves
+// the content as a loose token whose position otherwise reads as an
+// argument/identifier slot; never offer completions inside a string literal.
+// Template interpolation (`${...}`) is unaffected: its expression isn't string
+// content.
+func cursorInStringContent(root *tree_sitter.Node, line, col uint) bool {
+	found := false
+	walkTS(root, func(n *tree_sitter.Node) bool {
+		if !tsContains(n.StartPosition(), n.EndPosition(), line, col) {
+			return false
+		}
+		switch n.Kind() {
+		case "immediate_string_content", "immediate_triple_quote_string_content":
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 // classifyCursorContext analyzes the tree-sitter CST to determine what kind
 // of completion the cursor needs.
 func classifyCursorContext(root *tree_sitter.Node, source []byte, line, col uint) *CompletionContext {
+	// Inside a string literal there is nothing to complete.
+	if cursorInStringContent(root, line, col) {
+		return nil
+	}
+
 	// Strategy 1: Argument context via tree-sitter.
 	if ac := findArgContextAtCursor(root, source, line, col); ac != nil {
 		return ac

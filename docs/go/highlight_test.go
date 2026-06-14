@@ -158,7 +158,7 @@ func TestSignaturesAreValidDeclarations(t *testing.T) {
 // external scanner used to refuse the `#` because the inline spaces before it
 // were never skipped, turning the comment into a parse error.
 func TestTrailingCommentHighlighting(t *testing.T) {
-	runs := classify(t, "dang", "twice { 21 }                  # body takes no args\ntwice { let n = 21, n }       # multi-statement\n")
+	runs := classify(t, "dang", "twice { 21 }                  # body takes no args\ntwice { let n = 21; n }       # multi-statement\n")
 	assertClass(t, runs, "# body takes no args", "tok-comment")
 	assertClass(t, runs, "# multi-statement", "tok-comment")
 }

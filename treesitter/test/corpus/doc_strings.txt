@@ -55,7 +55,7 @@ type Dev {
             (triple_quote)
             (immediate_triple_quote_string_content)
             (triple_quote)))
-        (sep)
+        (stmt_sep)
         (decl
           (field_decl
             (type_only_field
@@ -72,13 +72,13 @@ type Dev {
                       (upper_id
                         (upper_token))))
                   (bang_token))))))
-        (sep)
+        (stmt_sep)
         (literal
           (triple_quote_string
             (triple_quote)
             (immediate_triple_quote_string_content)
             (triple_quote)))
-        (sep)
+        (stmt_sep)
         (decl
           (field_decl
             (type_and_block_field
@@ -127,18 +127,18 @@ type Dev {
                                   (string
                                     (immediate_string_content)
                                     (immediate_quote_token)))))))))))
-                (sep)
+                (stmt_sep)
                 (symbol_or_call
                   (auto_call_symbol
                     (id
                       (word_token))))))))
-        (sep)
+        (stmt_sep)
         (literal
           (triple_quote_string
             (triple_quote)
             (immediate_triple_quote_string_content)
             (triple_quote)))
-        (sep)
+        (stmt_sep)
         (decl
           (field_decl
             (type_and_args_and_block_field
@@ -192,13 +192,13 @@ type Dev {
                           (auto_call_symbol
                             (id
                               (word_token))))))))))))
-        (sep)
+        (stmt_sep)
         (literal
           (triple_quote_string
             (triple_quote)
             (immediate_triple_quote_string_content)
             (triple_quote)))
-        (sep)
+        (stmt_sep)
         (decl
           (field_decl
             (type_and_block_field
