@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -189,6 +190,30 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			return ToValue(strings.ToLower(str))
+		})
+
+	// String.toBase64 method: toBase64() -> String!
+	Method(StringType, "toBase64").
+		Doc("encodes the string's bytes as a standard (padded) base64 string").
+		Example(`"hello".toBase64`).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return ToValue(base64.StdEncoding.EncodeToString([]byte(str)))
+		})
+
+	// String.fromBase64 method: fromBase64() -> String!
+	Method(StringType, "fromBase64").
+		Doc("decodes a standard (padded) base64 string, returning the decoded bytes as a string").
+		Example(`"aGVsbG8=".fromBase64`).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			decoded, err := base64.StdEncoding.DecodeString(str)
+			if err != nil {
+				return nil, fmt.Errorf("fromBase64: %w", err)
+			}
+			return ToValue(string(decoded))
 		})
 
 	// String.trimPrefix method: trimPrefix(prefix: String!) -> String!
