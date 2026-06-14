@@ -142,7 +142,7 @@
           "name": "punctuation.bracket.dang"
         },
         {
-          "match": "[,.]",
+          "match": "[,.;]",
           "name": "punctuation.delimiter.dang"
         },
         {

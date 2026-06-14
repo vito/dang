@@ -3,7 +3,7 @@ Trailing comments after block args
 ===
 
 twice { 21 }                  # body takes no args
-twice { let n = 21, n }       # multi-statement
+twice { let n = 21; n }       # multi-statement
 list.map { x => x * 2 }       # built-in
 withArg("Number: ") { x => toJSON(x) }   # args then block
 
@@ -31,7 +31,7 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
   (@operator "=")
   " "
   (@number "21")
-  (@punctuation.delimiter ",")
+  (@punctuation.delimiter ";")
   " "
   (@variable "n")
   " "
