@@ -36,7 +36,7 @@ add(a: Int!, b: Int!): Int! { a + b }
 ```
 - Name, params, return type, body. The **last expression is the result** — no `return` needed for the normal result.
 - `return expr` is for *early* exit; unwinds through enclosing blocks/loops; valid in `new(...)` too. `return` outside any function → `return outside of function`.
-- No `;` separator; separate forms with newlines or `,`.
+- Separate forms with newlines or `;` (commas are for collections/args, not statements).
 
 ### Zero-arity & auto-calling
 ```dang
@@ -66,7 +66,7 @@ motd: String! { "hello" }   # omit parens; it's a field with a function body
 { item, index => ... }    # multiple params, comma-separated, before =>
 { 42 }                    # no =>; a block expression evaluating to its last form
 ```
-- Body is a form sequence (newline/`,` separated); last form is the result.
+- Body is a form sequence (newline/`;` separated); last form is the result.
 - Blocks are the iteration protocol, the lambda-equivalent, AND the body of conditionals/loops.
 
 ### Block arguments to functions
