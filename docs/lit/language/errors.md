@@ -48,7 +48,11 @@ the caller's `catch`:
 
 ```dang
 halve(n: Int!): Int! {
-  if (n % 2 == 0) n / 2 else raise `${n} is odd`
+  if (n % 2 == 0) {
+    n / 2
+  } else {
+    raise `${n} is odd`
+  }
 }
 
 [halve(10), try { halve(7) } catch { err => 0 }]
@@ -146,9 +150,13 @@ type ValidationError implements Error {
 }
 
 lookup(id: Int!): String! {
-  if (id <= 0) raise ValidationError(message: "id must be positive", field: "id")
-  else if (id > 100) raise NotFoundError(message: `no user ${id}`, resource: "User")
-  else `user-${id}`
+  if (id <= 0) {
+    raise ValidationError(message: "id must be positive", field: "id")
+  } else if (id > 100) {
+    raise NotFoundError(message: `no user ${id}`, resource: "User")
+  } else {
+    `user-${id}`
+  }
 }
 
 lookup(7)
