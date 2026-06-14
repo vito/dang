@@ -1598,7 +1598,7 @@ func (f *Formatter) formatBlockContents(b *Block) {
 			f.write(" ")
 			for i, form := range b.Forms {
 				if i > 0 {
-					f.write(", ")
+					f.write("; ")
 				}
 				f.formatNode(form)
 			}
