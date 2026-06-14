@@ -95,7 +95,11 @@ union instead (see [#flow-typing]). `pet` here is a `Cat! | Dog!`, which
 type Cat { name: String!, lives: Int! = 9 }
 type Dog { name: String! }
 
-let pet = if (grade(95) == "A") Cat(name: "Whiskers") else Dog(name: "Rex")
+let pet = if (grade(95) == "A") {
+  Cat(name: "Whiskers")
+} else {
+  Dog(name: "Rex")
+}
 ```
 
 ## `case`
