@@ -330,6 +330,12 @@ func init() {
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
+	// JSON is installed as a value only (no AddObject) so it does not occupy the
+	// type namespace: this provides the default `JSON.encode` / `JSON.decode`
+	// namespace, while an in-scope `JSON` scalar owns `:: JSON` and is grafted
+	// with the same encode/decode by the format-codec merge (see stdlib_json.go).
+	Prelude.Add("JSON", hm.NewScheme(nil, hm.NonNullType{Type: JSONModule}))
+
 	// Install regex types so user code can refer to them by name.
 	Prelude.AddObject("Regexp", RegexpType)
 	RegexpType.AddObject("Match", MatchType)
@@ -468,9 +474,20 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			if !found {
 				continue
 			}
-			// Add the scalar type as a scheme
-			env.Add(t.Name, hm.NewScheme(nil, sub))
+			// Add the scalar type as a scheme. A codec scalar (e.g. an imported
+			// JSON scalar) doubles as its namespace and is always present, so it
+			// binds non-null — otherwise JSON.encode would inherit the binding's
+			// nullability and weaken String! to String.
+			scalarScheme := hm.NewScheme(nil, sub)
+			if _, isCodec := formatCodecs[t.Name]; isCodec {
+				scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: sub})
+			}
+			env.Add(t.Name, scalarScheme)
 			env.SetVisibility(t.Name, PublicVisibility)
+			// Graft encode/decode onto the scalar so it doubles as the namespace.
+			if scalarMod, ok := sub.(*Type); ok {
+				graftCodecSchemes(scalarMod)
+			}
 		}
 	}
 

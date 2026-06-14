@@ -2,4 +2,4 @@ type Summary {
   children: [String!]!
 }
 
-let summary: Summary! = fromJSON("\"oops\"")
+let summary: Summary! = JSON.decode("\"oops\"")

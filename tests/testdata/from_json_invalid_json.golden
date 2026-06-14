@@ -1,10 +1,10 @@
-[1m[31mError:[0m fromJSON: invalid JSON: invalid character 'o' in literal null (expecting 'u')
+[1m[31mError:[0m JSON.decode: invalid JSON: invalid character 'o' in literal null (expecting 'u')
   [2m[34m--> errors/from_json_invalid_json.dang:3:23[0m
  [2m    |[0m
  [2m  1 | enum Status { PASSED FAILED }[0m
  [2m  2 | [0m
- [2m[34m[1m  3 | [0mlet status: Status! = fromJSON("not json")
-[2m                             [31m^^^^^^^^^^^^^^^^^^^^[0m
+ [2m[34m[1m  3 | [0mlet status: Status! = JSON.decode("not json")
+[2m                             [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
  [2m  4 | [0m
  [2m    |[0m
 

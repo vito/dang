@@ -128,7 +128,7 @@
       "name": "entity.name.type.dang"
     },
     "builtin-function": {
-      "match": "\\b(print|loop|toJSON)\\b",
+      "match": "\\b(print|loop)\\b",
       "name": "support.function.builtin.dang"
     },
     "operator": {

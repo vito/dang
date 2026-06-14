@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -16,6 +15,7 @@ import (
 // This is called from init() in env.go after type definitions are set up
 func registerStdlib() {
 	registerRandomAndUUID()
+	registerJSON()
 	registerAssert()
 	registerRegexp()
 
@@ -54,48 +54,6 @@ func registerStdlib() {
 					return nil, err
 				}
 			}
-		})
-
-	// toJSON function: toJSON(value: b) -> String!
-	Builtin("toJSON").
-		Doc("serializes a value to JSON").
-		Example(`toJSON([1, 2, 3])`).
-		Params("value", TypeVar('b')).
-		Returns(NonNull(StringType)).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			val, _ := args.Get("value")
-			jsonBytes, err := json.Marshal(val)
-			if err != nil {
-				return nil, fmt.Errorf("toJSON: %w", err)
-			}
-			return ToValue(string(jsonBytes))
-		})
-
-	// fromJSON function: fromJSON(data: String!) -> a
-	Builtin("fromJSON").
-		Doc("parses JSON into an opaque value that is materialized by an expected type").
-		Example(`fromJSON("[1, 2, 3]") :: [Int!]!`).
-		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			data := args.GetString("data")
-			decoder := json.NewDecoder(strings.NewReader(data))
-			decoder.UseNumber()
-
-			var raw any
-			if err := decoder.Decode(&raw); err != nil {
-				return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
-			}
-
-			var extra any
-			if err := decoder.Decode(&extra); err != io.EOF {
-				if err != nil {
-					return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
-				}
-				return nil, fmt.Errorf("fromJSON: invalid JSON: trailing data")
-			}
-
-			return DeferredValue{Raw: raw}, nil
 		})
 
 	// fromYAML function: fromYAML(data: String!) -> a

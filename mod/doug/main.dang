@@ -85,12 +85,12 @@ type Doug {
     } else {
       # fileContents
       #	 .split("\n", 0)
-      #	 .map { (i, x) => toJSON(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
+      #	 .map { (i, x) => JSON.encode(offset+i+1).padLeft(6) + "→" + line + "\n" } # TODO: template
       #	 .join("\n")
       let numbered = ""
       fileContents.split("\n", 0).each { line, i =>
         # TODO: template
-        numbered += toJSON(offset + i + 1).padLeft(6) + "→" + line + "\n"
+        numbered += JSON.encode(offset + i + 1).padLeft(6) + "→" + line + "\n"
       }
       numbered.trimSuffix("\n")
     }
@@ -406,7 +406,7 @@ type Doug {
         limit: limit,
       )
 
-    toJSON(matches.{{id}}.length) + " matches found"
+    JSON.encode(matches.{{id}}.length) + " matches found"
   }
 
   """

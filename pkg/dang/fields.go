@@ -446,6 +446,9 @@ func declareLocalType(env TypeScope, name string, kind Kind) (*Type, error) {
 
 	mod := NewType(name, kind)
 	env.AddObject(name, mod)
+	// A scalar whose name has a registered codec (e.g. JSON) doubles as that
+	// codec's namespace: graft encode/decode onto its type.
+	graftCodecSchemes(mod)
 	return mod, nil
 }
 
@@ -1095,8 +1098,14 @@ func (s *ScalarDecl) Hoist(ctx context.Context, env hm.Env, fresh hm.Fresher, pa
 	s.Inferred = scalarType
 	s.SetInferredType(scalarType)
 
-	// Add the scalar type to the environment
+	// Add the scalar type to the environment. A codec scalar (JSON, ...) doubles
+	// as its namespace and is always present, so it binds non-null — otherwise
+	// member access like JSON.encode would inherit the binding's nullability and
+	// weaken String! to String.
 	scalarScheme := hm.NewScheme(nil, scalarType)
+	if _, isCodec := formatCodecs[s.Name.Name]; isCodec {
+		scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: scalarType})
+	}
 	env.Add(s.Name.Name, scalarScheme)
 
 	if s.DocString != "" {
@@ -1130,6 +1139,9 @@ func (s *ScalarDecl) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 	// Scalars are just type placeholders, similar to enums but with no values
 	// The actual scalar values come from GraphQL or are just strings
 	scalarModule := NewObject(s.Inferred)
+	// A scalar whose name has a registered codec (e.g. JSON) doubles as that
+	// codec's namespace: bind encode/decode onto its runtime object.
+	graftCodecMethods(scalarModule, s.Inferred)
 
 	// Register the scalar type in the environment
 	scope.Bind(s.Name.Name, scalarModule, s.Visibility)
