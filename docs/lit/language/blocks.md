@@ -17,12 +17,12 @@ conditional and loop.
 
 ## What a block is
 
-A block is braces around a sequence of forms, separated by newlines or `,`;
+A block is braces around a sequence of forms, separated by newlines or `;`;
 the last form is the block's result. A bare `{ ... }` with no parameters is
 itself an expression:
 
 ```dang
-{ let width = 4, let height = 3, width * height }
+{ let width = 4; let height = 3; width * height }
 ```
 
 Parameters, when a block takes them, are comma-separated names before a `=>`:
@@ -143,7 +143,7 @@ leaves the outer untouched:
 
 ```dang
 let name = "outer"
-let result = { let name = "inner", name }
+let result = { let name = "inner"; name }
 
 [result, name]
 ```
@@ -203,7 +203,7 @@ yield the value:
 value; in `.each` it just advances:
 
 ```dang
-[1, 2, 3].map { x => if (x == 2) { continue 0 }, x }
+[1, 2, 3].map { x => if (x == 2) { continue 0 }; x }
 ```
 
 The value/result rules are specified in [#control-flow]. Two block-specific
