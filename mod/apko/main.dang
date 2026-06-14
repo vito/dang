@@ -55,7 +55,7 @@ type Apko {
       .import(
         apko
           .withMountedCache("/apkache/", cacheVolume("apko"), owner: apko.user)
-          .withNewFile("/config.yml", contents: JSON.encode(config))
+          .withNewFile("/config.yml", contents: toString(config))
           .withExec(["apko", "build", "--cache-dir", "/apkache/", "/config.yml", "latest", "layout.tar"])
           .file("layout.tar"),
       )
@@ -71,6 +71,6 @@ type Apko {
 }
 
 # USAGE:
-# print(JSON.encode(Apko.withAlpine.config))
+# print(toString(Apko.withAlpine.config))
 # print(Apko.withAlpine.withPackages(["git"]).asContainer.withExec(["git", "version"]).stdout)
 # print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
