@@ -8,7 +8,7 @@ type Circle implements Drawable {
   radius: Int! = 5
 
   draw: String! {
-    "Drawing circle with radius " + toJSON(self.radius)
+    "Drawing circle with radius " + JSON.encode(self.radius)
   }
 }
 
@@ -17,7 +17,7 @@ type Rectangle implements Drawable {
   height: Int! = 20
 
   draw: String! {
-    "Drawing rectangle " + toJSON(self.width) + "x" + toJSON(self.height)
+    "Drawing rectangle " + JSON.encode(self.width) + "x" + JSON.encode(self.height)
   }
 }
 

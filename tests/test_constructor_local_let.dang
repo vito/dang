@@ -22,6 +22,6 @@ type DangConstructorLocal {
 let constructed = DangConstructorLocal
 
 assert { constructed.get == "ok!" }
-assert { toJSON(constructed) == "{\"value\":\"ok!\"}" }
+assert { JSON.encode(constructed) == "{\"value\":\"ok!\"}" }
 
 print("Constructor local let tests passed!")

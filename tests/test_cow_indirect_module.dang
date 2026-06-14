@@ -4,12 +4,12 @@ type Helper {
   let value = 100
 
   addValueScoped(x: Int!): Int! {
-    print("Helper.addValue called with x = " + toJSON(x) + ", value = " + toJSON(self.value))
+    print("Helper.addValue called with x = " + JSON.encode(x) + ", value = " + JSON.encode(self.value))
     x + value
   }
 
   addValueSelf(x: Int!): Int! {
-    print("Helper.addValue called with x = " + toJSON(x) + ", value = " + toJSON(self.value))
+    print("Helper.addValue called with x = " + JSON.encode(x) + ", value = " + JSON.encode(self.value))
     x + self.value
   }
 }

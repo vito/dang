@@ -1,3 +1,3 @@
 enum Status { PASSED FAILED }
 
-let status: Status! = fromJSON("not json")
+let status: Status! = JSON.decode("not json")

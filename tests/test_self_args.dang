@@ -11,4 +11,4 @@ type Calculator {
 }
 
 assert { Calculator(1).addY(4).x == 5 }
-assert { toJSON(Calculator(1).addY(4)) == "{\"x\":5}" }
+assert { JSON.encode(Calculator(1).addY(4)) == "{\"x\":5}" }

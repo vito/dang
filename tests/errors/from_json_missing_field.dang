@@ -9,7 +9,7 @@ type Summary {
   children: [Child!]!
 }
 
-let summary: Summary! = fromJSON("""
+let summary: Summary! = JSON.decode("""
 {
   "children": [
     {"name": "one"}

@@ -2,14 +2,14 @@
 
 # Basic functionality - map numbers to JSON strings
 numbers: [Int!]! = [1, 2, 3]
-jsonStrings: [String!]! = numbers.map { x => toJSON(x) }
+jsonStrings: [String!]! = numbers.map { x => JSON.encode(x) }
 assert { jsonStrings[0] == "1" }
 assert { jsonStrings[1] == "2" }
 assert { jsonStrings[2] == "3" }
 
 # Map strings to JSON (identity for strings, but tests the type system)
 words: [String!]! = ["hello", "world", "hi"]
-jsonWords: [String!]! = words.map { w => toJSON(w) }
+jsonWords: [String!]! = words.map { w => JSON.encode(w) }
 assert { jsonWords[0] == "\"hello\"" }
 assert { jsonWords[1] == "\"world\"" }
 assert { jsonWords[2] == "\"hi\"" }

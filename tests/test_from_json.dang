@@ -14,28 +14,28 @@ type Summary {
 
 echoStatus(status: Status!): Status! { status }
 
-parseSummary(data: String!): Summary! { fromJSON(data) }
+parseSummary(data: String!): Summary! { JSON.decode(data) }
 
 parseSummaryReturn(data: String!): Summary! {
-  return fromJSON(data)
+  return JSON.decode(data)
 }
 
-let status1 = fromJSON("\"PASSED\"") :: Status!
+let status1 = JSON.decode("\"PASSED\"") :: Status!
 assert { status1 == Status.PASSED }
 
-let status2: Status! = fromJSON("\"FAILED\"")
+let status2: Status! = JSON.decode("\"FAILED\"")
 assert { status2 == Status.FAILED }
 
-let status3 = echoStatus(fromJSON("\"PASSED\""))
+let status3 = echoStatus(JSON.decode("\"PASSED\""))
 assert { status3 == Status.PASSED }
 
 let direct = "FAILED" :: Status!
 assert { direct == Status.FAILED }
 
-let scalar: CustomScalar! = fromJSON("\"hello\"")
+let scalar: CustomScalar! = JSON.decode("\"hello\"")
 assert { scalar == "hello" }
 
-let summary: Summary! = fromJSON("""
+let summary: Summary! = JSON.decode("""
 {
   "children": [
     {"name": "one", "outcome": "PASSED", "ignored": true},
@@ -71,6 +71,6 @@ let parsedReturn = parseSummaryReturn("""
 assert { parsedReturn.children[0].name == "four" }
 assert { parsedReturn.children[0].outcome == Status.FAILED }
 
-let anon = fromJSON("{\"foo\": 1, \"bar\": \"PASSED\", \"extra\": 2}") :: {{foo: Int!, bar: Status!}}!
+let anon = JSON.decode("{\"foo\": 1, \"bar\": \"PASSED\", \"extra\": 2}") :: {{foo: Int!, bar: Status!}}!
 assert { anon.foo == 1 }
 assert { anon.bar == Status.PASSED }

@@ -63,6 +63,6 @@ type Apko {
 assert { Apko.alpine(["bash"]).config.contents.packages == ["apk-tools", "bash"] }
 
 # USAGE:
-# print(toJSON(Apko.withAlpine.config))
+# print(JSON.encode(Apko.withAlpine.config))
 # print(Apko.withAlpine.withPackages(["git"]).asContainer.withExec(["git", "version"]).stdout)
 # print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)

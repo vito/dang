@@ -1,0 +1,17 @@
+# base64 encode/decode live on the String type, since both directions are
+# String -> String.
+
+let encoded = "hello".toBase64
+assert { encoded == "aGVsbG8=" }
+
+let decoded = "aGVsbG8=".fromBase64
+assert { decoded == "hello" }
+
+# round-trips
+assert { "the quick brown fox".toBase64.fromBase64 == "the quick brown fox" }
+
+# empty string is its own base64
+assert { "".toBase64 == "" }
+assert { "".fromBase64 == "" }
+
+print("base64 tests passed!")
