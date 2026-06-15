@@ -292,7 +292,15 @@ type Directory {
 }
 `)
 
-	daggerVal, found := requireEvalGet(t, env, "Dagger")
+	// Imports are file-scoped, so the Dagger namespace is not a binding on the
+	// returned module scope; reach it through a local type's captured closure,
+	// which still sees the file's imports.
+	testVal, found := requireEvalGet(t, env, "TestShadowing")
+	require.True(t, found)
+	testCtor, ok := testVal.(*ConstructorFunction)
+	require.True(t, ok)
+
+	daggerVal, found := requireEvalGet(t, testCtor.Closure, "Dagger")
 	require.True(t, found)
 	daggerMod, ok := daggerVal.(*Object)
 	require.True(t, ok)
@@ -321,11 +329,6 @@ type Directory {
 	directoryCtor, ok := directoryVal.(*ConstructorFunction)
 	require.True(t, ok)
 	require.NotSame(t, importedDirectory, directoryCtor.ObjectType)
-
-	testVal, found := requireEvalGet(t, env, "TestShadowing")
-	require.True(t, found)
-	testCtor, ok := testVal.(*ConstructorFunction)
-	require.True(t, ok)
 
 	localScheme, found := testCtor.ObjectType.LocalSchemeOf("makeLocal")
 	require.True(t, found)
@@ -463,6 +466,64 @@ fromB: String! = container.value
 	_, err := RunDir(ctx, dir, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "container")
+}
+
+// importingTypeModule writes a module whose Widget type, declared in a file that
+// imports Dagger, references the imported namespace. multiFile controls whether
+// the module is single- or multi-file.
+func importingTypeModule(t *testing.T, ctx context.Context, multiFile bool) ValueScope {
+	t.Helper()
+	dir := t.TempDir()
+	if multiFile {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "main.dang"), []byte(`
+pub mainThing: String! = "hi"
+`), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "widget.dang"), []byte(`
+import Dagger
+
+type Widget {
+  pub make: Dagger.Container! { Dagger.container }
+}
+`), 0o600))
+	env, err := RunDir(ctx, dir, false)
+	require.NoError(t, err)
+	return env
+}
+
+// TestRunDirImportsFileLocalReachableViaClosure is the regression test for
+// dagger#13440: imports are file-scoped (absent from the returned module scope),
+// but each type's constructor captures its file's composite scope as Closure, so
+// imported symbols remain resolvable there. Dagger relies on this to evaluate
+// directive arguments like @cache(policy: FunctionCachePolicy.Never). Single- and
+// multi-file modules must behave identically.
+func TestRunDirImportsFileLocalReachableViaClosure(t *testing.T) {
+	for _, multiFile := range []bool{false, true} {
+		name := "single-file"
+		if multiFile {
+			name = "multi-file"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := ContextWithImportConfigs(context.Background(), ImportConfig{
+				Name:   "Dagger",
+				Schema: schemaWithCoreShadowTypes(),
+			})
+			env := importingTypeModule(t, ctx, multiFile)
+
+			// Imports are file-scoped: the Dagger namespace must not leak into
+			// the returned module scope.
+			_, found := requireEvalGet(t, env, "Dagger")
+			require.False(t, found, "imported Dagger namespace must not leak into the module scope")
+
+			// But the owning type's constructor Closure still resolves it.
+			widgetVal, found := requireEvalGet(t, env, "Widget")
+			require.True(t, found)
+			widgetCtor, ok := widgetVal.(*ConstructorFunction)
+			require.True(t, ok)
+			_, found = requireEvalGet(t, widgetCtor.Closure, "Dagger")
+			require.True(t, found, "constructor Closure should still see the file's imports")
+		})
+	}
 }
 
 func TestRunDirMultipleFilesCanImportSameSchema(t *testing.T) {
