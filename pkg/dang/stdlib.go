@@ -15,7 +15,7 @@ import (
 // This is called from init() in env.go after type definitions are set up
 func registerStdlib() {
 	registerRandomAndUUID()
-	registerJSON()
+	registerCodecs()
 	registerAssert()
 	registerRegexp()
 
@@ -54,21 +54,6 @@ func registerStdlib() {
 					return nil, err
 				}
 			}
-		})
-
-	// fromYAML function: fromYAML(data: String!) -> a
-	Builtin("fromYAML").
-		Doc("parses YAML into an opaque value that is materialized by an expected type").
-		Example(`fromYAML("[a, b, c]") :: [String!]!`).
-		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			data := args.GetString("data")
-			raw, err := decodeYAML(data)
-			if err != nil {
-				return nil, fmt.Errorf("fromYAML: invalid YAML: %w", err)
-			}
-			return DeferredValue{Raw: raw}, nil
 		})
 
 	// toString function: toString(value: b) -> String!
@@ -1055,7 +1040,7 @@ func registerStdlib() {
 	// Map.each method: each(fn: \(String!, a) -> b) -> Map[a]!
 	Method(MapTypeModule, "each").
 		Doc("iterates over each entry in insertion order, calling the block with the key and value").
-		Example(`["a": 1, "b": 2].each { key, value => print(`+"`${key}=${value}`"+`) }`).
+		Example(`["a": 1, "b": 2].each { key, value => print(` + "`${key}=${value}`" + `) }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "key",

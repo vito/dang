@@ -1,0 +1,32 @@
+# Codec scalars (JSON, YAML, TOML) are owned by Dang and installed in both
+# namespaces, so encode/decode and `:: Format` type ascription all work with no
+# schema import and no `scalar` declaration in scope. This is the uniform case
+# the reactive graft could not cover for YAML/TOML (Dagger defines `scalar JSON`
+# but no YAML/TOML scalar). See tests/test_json.dang for the merge case where an
+# in-scope scalar of the same name shadows and grafts onto these.
+
+# JSON
+let nums = JSON.decode("[1, 2, 3]") :: [Int!]!
+assert { nums == [1, 2, 3] }
+assert { JSON.encode([1, 2, 3]) == "[1,2,3]" }
+let blob: JSON! = "{\"ok\":true}"
+assert { JSON.encode(blob) == "\"{\\\"ok\\\":true}\"" }
+
+# YAML (no Dagger scalar exists, yet identical behavior)
+let ynums = YAML.decode("[1, 2, 3]") :: [Int!]!
+assert { ynums == [1, 2, 3] }
+assert { YAML.encode([1, 2, 3]) == "- 1\n- 2\n- 3" }
+let yblob: YAML! = "ok: true"
+
+# TOML (top level is a table)
+type Settings {
+  count: Int!
+  enabled: Boolean!
+}
+
+let cfg = TOML.decode("count = 3\nenabled = true") :: Settings!
+assert { cfg.count == 3 }
+assert { cfg.enabled == true }
+assert { TOML.encode({{count: 3, enabled: true}}) == "count = 3\nenabled = true" }
+
+print("bare codec tests passed!")

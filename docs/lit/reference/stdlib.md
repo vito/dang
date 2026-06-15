@@ -10,7 +10,7 @@
 
 \stdlib-functions
 
-> `print` and `assert` return `null` — there is no `Void` type; treat the result as `null`. `toJSON`/`fromJSON`/`fromYAML` are covered in depth on [#json-yaml].
+> `print` and `assert` return `null` — there is no `Void` type; treat the result as `null`. The `JSON`/`YAML`/`TOML` codec namespaces (`encode`/`decode`) are covered in depth on [#json-yaml].
 
 ## `String!` methods
 

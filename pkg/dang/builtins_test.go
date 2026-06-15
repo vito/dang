@@ -15,24 +15,27 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 		}
 		functionNames[def.Name] = true
 	})
-	for _, name := range []string{"print", "fromYAML", "toString"} {
+	for _, name := range []string{"print", "toString"} {
 		if !functionNames[name] {
 			t.Fatalf("function %q was not registered", name)
 		}
 	}
-	// JSON encode/decode are static methods on the JSON module, not functions.
-	for _, name := range []string{"toJSON", "fromJSON"} {
+	// encode/decode are static methods on the codec modules, not top-level
+	// functions: keep the precious top-level namespace clear of conversions.
+	for _, name := range []string{"toJSON", "fromJSON", "fromYAML"} {
 		if functionNames[name] {
 			t.Fatalf("%q should no longer be a top-level function", name)
 		}
 	}
-	jsonMethods := map[string]bool{}
-	ForEachStaticMethod(JSONModule, func(def BuiltinDef) {
-		jsonMethods[def.Name] = true
-	})
-	for _, name := range []string{"encode", "decode"} {
-		if !jsonMethods[name] {
-			t.Fatalf("JSON.%s was not registered", name)
+	for _, mod := range []*Type{JSONModule, YAMLModule, TOMLModule} {
+		methods := map[string]bool{}
+		ForEachStaticMethod(mod, func(def BuiltinDef) {
+			methods[def.Name] = true
+		})
+		for _, name := range []string{"encode", "decode"} {
+			if !methods[name] {
+				t.Fatalf("%s.%s was not registered", mod.Named, name)
+			}
 		}
 	}
 

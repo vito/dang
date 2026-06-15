@@ -330,12 +330,6 @@ func init() {
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
 
-	// JSON is installed as a value only (no AddObject) so it does not occupy the
-	// type namespace: this provides the default `JSON.encode` / `JSON.decode`
-	// namespace, while an in-scope `JSON` scalar owns `:: JSON` and is grafted
-	// with the same encode/decode by the format-codec merge (see stdlib_json.go).
-	Prelude.Add("JSON", hm.NewScheme(nil, hm.NonNullType{Type: JSONModule}))
-
 	// Install regex types so user code can refer to them by name.
 	Prelude.AddObject("Regexp", RegexpType)
 	RegexpType.AddObject("Match", MatchType)
@@ -354,6 +348,18 @@ func init() {
 
 	// Register standard library builtins
 	registerStdlib()
+
+	// Install codec scalars (JSON/YAML/TOML) in both namespaces, like the
+	// modules above. registerStdlib has populated formatCodecs by now. Each is
+	// AddObject'd so `:: JSON` resolves in type position even without a schema
+	// scalar, and Add'd non-null so `JSON.encode`/`.decode` resolve as a value.
+	// A user- or schema-declared scalar of the same name shadows these and is
+	// grafted with the identical codec (merge, not collide), so all three
+	// formats behave uniformly. See stdlib_codec.go.
+	for name, mod := range formatCodecs {
+		Prelude.AddObject(name, mod)
+		Prelude.Add(name, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
+	}
 
 	// Register builtin function types from the registry
 	registerBuiltinTypes()

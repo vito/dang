@@ -3,8 +3,8 @@
  [2m    |[0m
  [2m 10 | }[0m
  [2m 11 | [0m
- [2m[34m[1m 12 | [0mlet summary: Summary! = fromYAML("""
-[2m                               [31m^^^^^^^^^^^^[0m
+ [2m[34m[1m 12 | [0mlet summary: Summary! = YAML.decode("""
+[2m                               [31m^^^^^^^^^^^^^^^[0m
  [2m 13 | children:[0m
  [2m 14 |   - name: one[0m
  [2m    |[0m

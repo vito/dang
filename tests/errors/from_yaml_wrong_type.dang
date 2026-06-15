@@ -2,4 +2,4 @@ type Summary {
   children: [String!]!
 }
 
-let summary: Summary! = fromYAML("oops")
+let summary: Summary! = YAML.decode("oops")
