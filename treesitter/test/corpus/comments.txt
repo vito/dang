@@ -44,7 +44,7 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
             (non_zero_decimal_digit)
             (decimal_digit))))))
   (comment_token)
-  (stmt_sep)
+  (form_sep)
   (symbol_or_call
     (symbol_block
       (symbol
@@ -64,14 +64,14 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
                 (int
                   (non_zero_decimal_digit)
                   (decimal_digit))))))
-        (stmt_sep
+        (form_sep
           (semi_token))
         (symbol_or_call
           (auto_call_symbol
             (id
               (word_token)))))))
   (comment_token)
-  (stmt_sep)
+  (form_sep)
   (select_or_call
     (symbol_or_call
       (auto_call_symbol
@@ -102,7 +102,7 @@ withArg("Number: ") { x => toJSON(x) }   # args then block
                       (int
                         (non_zero_decimal_digit))))))))))))
   (comment_token)
-  (stmt_sep)
+  (form_sep)
   (symbol_or_call
     (call
       (symbol

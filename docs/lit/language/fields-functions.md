@@ -108,7 +108,7 @@ add(a: Int!, b: Int!): Int! { a + b }
 - last expression is the result — no `return` keyword needed for the normal result
 - `return expr` is available for *early* exit and unwinds through enclosing blocks/loops; also valid in `new(...)` constructors
 - `return` outside any function/method/constructor errors: `return outside of function`
-- multi-statement bodies separate forms with newlines or `;` (commas are for collections and argument lists, not statements)
+- multi-form bodies separate forms with newlines or `;` (commas are for collections and argument lists)
 
 ### Zero-arity and auto-calling
 

@@ -36,7 +36,7 @@ add(a: Int!, b: Int!): Int! { a + b }
 ```
 - Name, params, return type, body. The **last expression is the result** — no `return` needed for the normal result.
 - `return expr` is for *early* exit; unwinds through enclosing blocks/loops; valid in `new(...)` too. `return` outside any function → `return outside of function`.
-- Separate forms with newlines or `;` (commas are for collections/args, not statements).
+- Separate forms with newlines or `;`; commas are for collection and argument lists, not forms in a block.
 
 ### Zero-arity & auto-calling
 ```dang

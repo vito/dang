@@ -265,7 +265,7 @@ android
           (auto_call_symbol
             name: (id
               (word_token)))))))
-  eles: (stmt_sep)
+  eles: (form_sep)
   last: (symbol_or_call
     (auto_call_symbol
       name: (id
@@ -294,7 +294,7 @@ order
           (auto_call_symbol
             name: (id
               (word_token)))))))
-  eles: (stmt_sep)
+  eles: (form_sep)
   last: (symbol_or_call
     (auto_call_symbol
       name: (id

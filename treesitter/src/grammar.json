@@ -23,7 +23,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "stmt_sep"
+                  "name": "form_sep"
                 }
               ]
             }
@@ -67,7 +67,7 @@
         "value": ","
       }
     },
-    "stmt_sep": {
+    "form_sep": {
       "type": "CHOICE",
       "members": [
         {
@@ -3501,7 +3501,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "stmt_sep"
+                  "name": "form_sep"
                 }
               ]
             }
@@ -4741,7 +4741,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "stmt_sep"
+                  "name": "form_sep"
                 },
                 {
                   "type": "FIELD",

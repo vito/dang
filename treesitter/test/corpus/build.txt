@@ -87,7 +87,7 @@ print(test(bin(src)))
                     (string
                       (immediate_string_content)
                       (immediate_quote_token)))))))))))
-  (stmt_sep)
+  (form_sep)
   (decl
     (field_decl
       (type_and_args_and_block_field
@@ -231,7 +231,7 @@ print(test(bin(src)))
                     (string
                       (immediate_string_content)
                       (immediate_quote_token)))))))))))
-  (stmt_sep)
+  (form_sep)
   (decl
     (field_decl
       (type_and_args_and_block_field
@@ -319,7 +319,7 @@ print(test(bin(src)))
                           (immediate_quote_token))))))))
             (dot_token)
             (field_id))))))
-  (stmt_sep)
+  (form_sep)
   (symbol_or_call
     (call
       (symbol

@@ -2,9 +2,9 @@
 
 ## File layout
 
-- A file is a sequence of statements separated by **newlines or `;`** (interchangeable; both optional).
+- A file is a sequence of forms separated by **newlines or `;`** (interchangeable; both optional).
 - Whitespace is significant only as a separator; indentation is conventional, not syntactic.
-- `;` separates statements (top-level forms, block bodies); `,` separates collection/argument elements. The split is code vs. data — a `,` between statements (or a `;` in a list) is a syntax error.
+- `;` separates forms in a sequence (top-level, block bodies); `,` separates collection/argument elements. The split is code vs. data — a `,` between forms (or a `;` in a list) is a syntax error.
 - Declarations are **hoisted** and order-independent within a file/directory (forward references work).
 
 ## Comments
@@ -122,7 +122,7 @@ greet(
 A condensed view of the user-visible structure (the start rule is `Dang`):
 
 ```
-Dang         := (Expr StmtSep)* Expr?     # StmtSep = newline or ';' (statements); Sep = newline or ',' (collections)
+Dang         := (Expr FormSep)* Expr?     # FormSep = newline or ';' (forms in sequence); Sep = newline or ',' (collection elements)
 Expr         := Import | Decl | Reassignment | Form
 Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
