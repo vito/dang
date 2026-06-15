@@ -29,9 +29,8 @@ NonNullAssert := Term '!'
 
 ## Separators
 
-- forms in a sequence (top-level, block bodies) are separated by newlines or `;` — `FormSep`
-- newlines and commas are interchangeable inside arg lists, lists, records, and parameter lists — `Sep`
-- the split is code vs. data: `;` sequences forms, `,` groups collection/argument elements; both are optional and both accept a bare newline
+- forms (top-level, block bodies) are separated by newlines or `;` — `FormSep`
+- newlines and commas are interchangeable inside arg lists, lists, records — `Sep`
 
 ## Expression form (precedence)
 

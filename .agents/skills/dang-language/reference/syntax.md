@@ -4,7 +4,7 @@
 
 - A file is a sequence of forms separated by **newlines or `;`** (interchangeable; both optional).
 - Whitespace is significant only as a separator; indentation is conventional, not syntactic.
-- `;` separates forms in a sequence (top-level, block bodies); `,` separates collection/argument elements. The split is code vs. data — a `,` between forms (or a `;` in a list) is a syntax error.
+- `;` separates forms in a sequence (top-level, block bodies); `,` separates collection/argument elements. A `,` between forms (or a `;` in a list) is a syntax error.
 - Declarations are **hoisted** and order-independent within a file/directory (forward references work).
 
 ## Comments

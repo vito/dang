@@ -41,9 +41,8 @@
 
 ## Separators and trailing commas
 
-- forms in a sequence are separated by newlines or `;` — in blocks and at the top level (the code separator)
-- newlines and commas are interchangeable inside lists, arg lists, object literals, and parameter lists (the data separator)
-- a `;` is not a *terminator*; like the comma it only separates forms, and is optional at the end
+- forms in blocks and at the top level are separated by newlines or `;`
+- newlines and commas are interchangeable inside lists, arg lists, object literals
 - formatter strips trailing commas
 
 ## Literals {#literals}
