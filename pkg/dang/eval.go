@@ -890,7 +890,7 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 // Runtime value implementations
 
 // DeferredValue is an opaque decoded data value returned by deserializers like
-// fromJSON and fromYAML. It is materialized only when an expected type is
+// JSON.decode and YAML.decode. It is materialized only when an expected type is
 // available.
 type DeferredValue struct {
 	Raw any
