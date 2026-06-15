@@ -10,17 +10,17 @@ The built-in surface of Dang itself (everything here is available without any
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
 - `toString(value: a) -> String!` — pass strings through, JSON-encode everything else.
-- `toJSON(value: a) -> String!` — JSON-encode anything.
-- `fromJSON(data: String!) -> a` — parse JSON into a value materialized by the expected type.
-- `fromYAML(data: String!) -> a` — parse YAML into a value materialized by the expected type.
 
 `print` and `assert` return `null` — there is no `Void` type.
+
+JSON/YAML/TOML conversions are **not** top-level functions — they live in the `JSON`/`YAML`/`TOML` codec namespaces (`.encode` / `.decode`; see [JSON, YAML, and TOML](#json-yaml-and-toml) below). base64 lives on `String!` (`.toBase64` / `.fromBase64`).
 
 ## `String!` methods
 
 Strings have **no** `.length` / `.isEmpty` — those are list-only. Use the predicates below.
 
 - `.toUpper -> String!`, `.toLower -> String!`
+- `.toBase64 -> String!` — standard padded base64 of the string's bytes; `.fromBase64 -> String!` — decode standard padded base64 (raises on invalid input)
 - `.contains(substring: String!) -> Boolean!`
 - `.hasPrefix(prefix: String!) -> Boolean!`, `.hasSuffix(suffix: String!) -> Boolean!`
 - `.trim(cutset: String!)`, `.trimLeft(cutset)`, `.trimRight(cutset)`, `.trimSpace`
@@ -88,17 +88,20 @@ Lists are the **only collection type today** (no maps/sets). Block params shown 
 - `[Cat, Dog]` where both implement `Animal` → `[Animal!]` (common supertype/interface; first common one found).
 - Mixing `null` widens elements to nullable.
 
-## JSON and YAML
+## JSON, YAML, and TOML
 
-Parsing is **type-driven** — `fromJSON`/`fromYAML` produce values of the *expected* type, which comes from a `::` cast, an annotation, or the parameter/return type at the call site:
+Each format is a codec namespace — `JSON`, `YAML`, `TOML` — with static `encode` / `decode` methods. The names double as scalar types (`:: JSON`) and are owned by Dang, so they work with **no `import`**; an in-scope scalar of the same name (e.g. Dagger's `scalar JSON`) merges with the codec rather than colliding.
+
+Parsing is **type-driven** — `JSON.decode` / `YAML.decode` / `TOML.decode` produce values of the *expected* type, which comes from a `::` cast, an annotation, or the parameter/return type at the call site:
 ```dang
-let summary: Summary! = fromJSON("""{"name": "test", "count": 42}""")
-let status: Status! = fromJSON("\"PASSED\"")
-let s = fromJSON(...) :: Status!
-f(d: String!): Summary! { fromJSON(d) }
+let summary: Summary! = JSON.decode("""{"name": "test", "count": 42}""")
+let status: Status! = JSON.decode("\"PASSED\"")
+let s = JSON.decode(...) :: Status!
+f(d: String!): Summary! { JSON.decode(d) }
+let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a table
 ```
 - Works for primitives, lists, records, custom types, enums.
-- Unknown/extra fields in the input are ignored, not errors. `fromJSON` rejects trailing data after the first value.
+- Unknown/extra fields in the input are ignored, not errors. `decode` rejects trailing data after the first value.
 
 ### Coercion during parsing
 - Enum values decode from their string names (`"PASSED"` → `Status.PASSED`).
@@ -106,11 +109,11 @@ f(d: String!): Summary! { fromJSON(d) }
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
 ### Serialization
-- `toJSON(value) -> String!` — object/record keys emitted in **alphabetical** order.
+- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
 ### Errors (all catchable with `try`/`catch`)
-- invalid JSON/YAML → `invalid JSON: ...` / `invalid YAML: ...`
+- invalid input → `<Format>.decode: invalid <Format>: ...` (e.g. `JSON.decode: invalid JSON: ...`, `YAML.decode: invalid YAML: ...`)
 - missing required field → `<path>: missing required field`
 - wrong type for field → raises
 - invalid enum value → `<path>: invalid enum value "X" for <Enum>`

@@ -36,7 +36,7 @@
 - `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`), enum (`"PASSED" :: Status!`), and `ID` coercions go here.
 - Coercion source is limited: only **`String`** values coerce to custom scalars/enums. `42 :: URL!` is rejected **statically** (`type hint mismatch: Int!, but hint expects URL!`).
 - Enum casts checked at **runtime**: `"NOPE" :: Status!` → `invalid enum value`.
-- Nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `fromJSON("null") :: String!` → `null is not allowed for String!`.
+- Nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `JSON.decode("null") :: String!` → `null is not allowed for String!`.
 
 Two uses to keep distinct:
 - type *hint* — narrowing/disambiguation, e.g. `[] :: [String!]!` binding a type variable.
