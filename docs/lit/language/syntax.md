@@ -6,7 +6,7 @@
 
 ## File layout
 
-- a file is a sequence of forms separated by newlines or commas (the start rule is `Dang`; see [#grammar])
+- a file is a sequence of forms separated by newlines or `;` (the start rule is `Dang`; see [#grammar])
 - whitespace is significant only as separators; indentation is conventional, not syntactic
 - declarations are hoisted and order-independent within a file/directory — forward references just work (see [#fields-functions])
 - names are public by default; `let` keeps a name private/local (see [#fields])
@@ -41,6 +41,7 @@
 
 ## Separators and trailing commas
 
+- forms in blocks and at the top level are separated by newlines or `;`
 - newlines and commas are interchangeable inside lists, arg lists, object literals
 - formatter strips trailing commas
 

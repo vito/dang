@@ -47,7 +47,7 @@ Braces aren't part of the `if` syntax — a braced branch is just a block
 grouping several expressions into one (see [#blocks]):
 
 ```dang
-if (ready) { let msg = "on", msg.toUpper } else { "off" }
+if (ready) { let msg = "on"; msg.toUpper } else { "off" }
 ```
 
 The condition must be a `Boolean!` — there is no truthiness, and a
@@ -92,7 +92,7 @@ union instead (see [#flow-typing]). `pet` here is a `Cat! | Dog!`, which
 `case` type patterns will take back apart shortly:
 
 ```dang
-type Cat { name: String!, lives: Int! = 9 }
+type Cat { name: String!; lives: Int! = 9 }
 type Dog { name: String! }
 
 let pet = if (grade(95) == "A") {
@@ -298,7 +298,7 @@ returns its receiver, but a `break` overrides that:
 that element's result — so this bare `continue` inserts `null`:
 
 ```dang
-[1, 2, 3].map { x => if (x == 2) { continue }, x }
+[1, 2, 3].map { x => if (x == 2) { continue }; x }
 ```
 
 In `.each` and `loop` there is no per-element result, so `continue` just
@@ -306,7 +306,7 @@ advances:
 
 ```dang
 let sum = 0
-[1, 2, 3, 4].each { x => if (x % 2 == 1) { continue }, sum += x }
+[1, 2, 3, 4].each { x => if (x % 2 == 1) { continue }; sum += x }
 
 sum
 ```

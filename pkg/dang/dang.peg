@@ -9,7 +9,7 @@
   )
 }
 
-Dang <- _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ !. {
+Dang <- _ eles:(e:Expr FormSep { return e, nil })* last:Expr? _ !. {
   return &FileBlock{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
@@ -22,6 +22,12 @@ _inlineSpace <- [ \t]+
 
 Sep <- (_ CommaToken / _lineSpace '\n') _
 CommaToken <- ','
+
+// FormSep separates forms in a sequence (code) — block bodies, the file
+// top-level, and block-argument bodies. Collection and argument contexts use
+// Sep (comma) instead. Both accept a bare newline.
+FormSep <- (_ SemiToken / _lineSpace '\n') _
+SemiToken <- ';'
 
 Expr <- Import / Decl / Reassignment / Form
 
@@ -780,7 +786,7 @@ ObjectLiteral <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? 
   }, nil
 }
 
-Block <- '{' _ eles:(e:Expr Sep { return e, nil })* last:Expr? _ '}' {
+Block <- '{' _ eles:(e:Expr FormSep { return e, nil })* last:Expr? _ '}' {
   return &Block{
     Forms: sliceOfAppend[Node](eles, last),
     Loc: c.Loc(),
@@ -1081,7 +1087,7 @@ AndToken <- "and" !WordChar
 
 ArrowToken <- "=>"
 
-BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(Sep e:Expr { return e, nil })* _ '}' {
+BlockArg <- '{' _ paramsAndArrow:(params:BlockParams _ ArrowToken { return params, nil })? _ node:Expr rest:(FormSep e:Expr { return e, nil })* _ '}' {
   var args []*FieldDecl
   if paramsAndArrow != nil {
     args = paramsAndArrow.([]*FieldDecl)

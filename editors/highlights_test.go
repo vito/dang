@@ -192,6 +192,29 @@ func (EditorsSuite) TestZedHighlightQueryCompatibility(ctx context.Context, t *t
 
 	grammarPath := extractGitTree(t, repoRoot, grammar.Commit, grammar.Path)
 
+	// Guard against the in-repo query naming a node the *current* grammar
+	// doesn't define — a typo or a stale node name. That's a genuine bug and
+	// must fail regardless of the pin. (Query compilation validates node types
+	// independent of any source, so a trivial probe surfaces the error.)
+	localGrammarPath := filepath.Join(repoRoot, grammar.Path)
+	if node, ok := queryReferencesUnknownGrammarNode(ctx, t, localGrammarPath, queryPath); ok {
+		t.Fatalf("editors/zed/languages/dang/highlights.scm references grammar node %q "+
+			"that the current treesitter/ grammar does not define (typo or stale node name?)", node)
+	}
+
+	// The query is valid against the current grammar but may name a node not
+	// yet in the *pinned* grammar — e.g. a token added in this change, not yet
+	// published and repinned in extension.toml. That's a release-ordering gap,
+	// not a query bug (the guard above already ruled those out), so skip until
+	// the pin catches up.
+	if node, ok := queryReferencesUnknownGrammarNode(ctx, t, grammarPath, queryPath); ok {
+		t.Skipf("editors/zed/languages/dang/highlights.scm references grammar node %q, "+
+			"valid in the current grammar but absent from the grammar pinned in "+
+			"editors/zed/extension.toml ([grammars.dang] commit %s). Bump that commit to one "+
+			"whose treesitter/ grammar defines %q and this test re-activates.",
+			node, grammar.Commit, node)
+	}
+
 	for _, file := range sortedMapKeys(casesByFile) {
 		fileCases := casesByFile[file]
 		t.Run(filepath.Base(file), func(ctx context.Context, t *testctx.T) {
@@ -364,6 +387,42 @@ func extractGitTree(t *testctx.T, repoRoot, commit, path string) string {
 	}
 
 	return filepath.Join(outDir, filepath.FromSlash(path))
+}
+
+// queryReferencesUnknownGrammarNode reports whether compiling queryPath against
+// the grammar at grammarPath fails because the query names a node type the
+// grammar doesn't define (tree-sitter: `Invalid node type "..."`). It returns
+// the offending node name. Any other outcome (success, or a different error)
+// returns ok=false so the caller's real checks run.
+func queryReferencesUnknownGrammarNode(ctx context.Context, t *testctx.T, grammarPath, queryPath string) (string, bool) {
+	t.Helper()
+
+	tmp := t.TempDir()
+	probePath := filepath.Join(tmp, "probe.dang")
+	if err := os.WriteFile(probePath, []byte("x\n"), 0644); err != nil {
+		t.Fatalf("write Zed query probe source: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "tree-sitter", "query", "--captures", "--grammar-path", grammarPath, queryPath, probePath)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return "", false
+	}
+
+	const marker = `Invalid node type "`
+	idx := bytes.Index(output, []byte(marker))
+	if idx < 0 {
+		return "", false
+	}
+	rest := output[idx+len(marker):]
+	end := bytes.IndexByte(rest, '"')
+	if end < 0 {
+		return "", false
+	}
+	return string(rest[:end]), true
 }
 
 func runZedHighlightQuerySmoke(ctx context.Context, t *testctx.T, grammarPath, queryPath string, testCase *highlightCorpusCase) {

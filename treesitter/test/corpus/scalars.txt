@@ -26,61 +26,61 @@ false
   (literal
     (null
       (null_token)))
-  (sep)
+  (form_sep)
   (literal
     (boolean
       (true_token)))
-  (sep)
+  (form_sep)
   (literal
     (boolean
       (false_token)))
-  (sep)
+  (form_sep)
   (literal
     (int
       (non_zero_decimal_digit)
       (decimal_digit)
       (decimal_digit)))
-  (sep)
+  (form_sep)
   (literal
     (string
       (immediate_string_content)
       (immediate_quote_token)))
-  (sep)
-  (literal
-    (string
-      (immediate_string_content)
-      (immediate_escape)
-      (immediate_string_content)
-      (immediate_quote_token)))
-  (sep)
+  (form_sep)
   (literal
     (string
       (immediate_string_content)
       (immediate_escape)
       (immediate_string_content)
       (immediate_quote_token)))
-  (sep)
+  (form_sep)
   (literal
     (string
       (immediate_string_content)
       (immediate_escape)
       (immediate_string_content)
       (immediate_quote_token)))
-  (sep)
+  (form_sep)
   (literal
     (string
       (immediate_string_content)
       (immediate_escape)
       (immediate_string_content)
       (immediate_quote_token)))
-  (sep)
+  (form_sep)
   (literal
     (string
       (immediate_string_content)
       (immediate_escape)
       (immediate_string_content)
       (immediate_quote_token)))
-  (sep)
+  (form_sep)
+  (literal
+    (string
+      (immediate_string_content)
+      (immediate_escape)
+      (immediate_string_content)
+      (immediate_quote_token)))
+  (form_sep)
   (list
     (literal
       (triple_quote_string

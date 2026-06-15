@@ -14,7 +14,7 @@
 > The start rule is `Dang`, not `Module`. `Import` and `Reassignment` are siblings of `Decl`/`Form`, not members of `Decl`.
 
 ```
-Dang         := (Expr Sep)* Expr?         # Sep = newline or comma
+Dang         := (Expr FormSep)* Expr?     # FormSep = newline or ';' (forms in sequence); Sep = newline or ',' (collection elements)
 Expr         := Import | Decl | Reassignment | Form
 Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
@@ -29,8 +29,8 @@ NonNullAssert := Term '!'
 
 ## Separators
 
-- newlines and commas are interchangeable inside arg lists, lists, records
-- top-level forms are separated by newlines
+- forms (top-level, block bodies) are separated by newlines or `;` — `FormSep`
+- newlines and commas are interchangeable inside arg lists, lists, records — `Sep`
 
 ## Expression form (precedence)
 

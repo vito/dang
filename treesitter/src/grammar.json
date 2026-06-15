@@ -23,7 +23,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "sep"
+                  "name": "form_sep"
                 }
               ]
             }
@@ -65,6 +65,26 @@
       "content": {
         "type": "STRING",
         "value": ","
+      }
+    },
+    "form_sep": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "semi_token"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_automatic_newline"
+        }
+      ]
+    },
+    "semi_token": {
+      "type": "TOKEN",
+      "content": {
+        "type": "STRING",
+        "value": ";"
       }
     },
     "expr": {
@@ -3481,7 +3501,7 @@
                 },
                 {
                   "type": "SYMBOL",
-                  "name": "sep"
+                  "name": "form_sep"
                 }
               ]
             }
@@ -4721,7 +4741,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "sep"
+                  "name": "form_sep"
                 },
                 {
                   "type": "FIELD",

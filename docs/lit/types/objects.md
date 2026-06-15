@@ -103,7 +103,7 @@ fullName: String! { firstName + " " + lastName }
 ## Implements
 
 ```dang
-type Person implements Named & Identifiable { name: String!, id: String! }
+type Person implements Named & Identifiable { name: String!; id: String! }
 ```
 
 - see [#interfaces-unions]

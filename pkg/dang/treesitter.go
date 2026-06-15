@@ -59,6 +59,7 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
 	treesitter.Name("Sep"):         patchSepAutomaticNewline,
+	treesitter.Name("FormSep"):     patchSepAutomaticNewline,
 	treesitter.Name("ArgType"):     patchArgTypeDocstringSep,
 	treesitter.Name("Conditional"): patchPrecRight,
 }

@@ -1,5 +1,5 @@
 let a = 1
-assert { { let a = "one", a } == "one" }
+assert { { let a = "one"; a } == "one" }
 assert { a == 1 }
 
 type MyClass {
