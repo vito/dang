@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/kr/pretty"
@@ -1330,22 +1331,55 @@ func (f FunctionValue) IsAutoCallable() bool {
 	return true
 }
 
-// pendingState tracks whether a deferred initializer is idle or actively
-// running. Reaching pendingEvaluating again means a real init cycle.
-type pendingState int
-
-const (
-	pendingReady pendingState = iota
-	pendingEvaluating
-)
-
-// pendingInit is a deferred initializer registered via setPending. It runs
-// at most once: on the first Get for its name. The result replaces the
+// pendingInit is a deferred initializer registered via BindLazy. It runs at
+// most once: on the first Lookup for its name. The result replaces the
 // pending entry in Values, so subsequent reads bypass the initializer.
+//
+// mu serializes forcing so concurrent readers (e.g. independent object-literal
+// fields that reference the same lazy binding) run the initializer once and
+// share the result, rather than racing on the owning Object's maps. The
+// initializer runs while holding mu, so an unrelated concurrent reader of the
+// same binding blocks until it completes. Re-entry by the *same* evaluation
+// chain (a real initialization cycle) is detected via the force chain carried
+// on the context before mu is taken, so it errors instead of deadlocking.
 type pendingInit struct {
 	Init       func(ctx context.Context) (Value, error)
 	Visibility Visibility
-	State      pendingState
+
+	mu   sync.Mutex
+	done bool
+	val  Value
+}
+
+// forceChain is a linked list, threaded through the context, of the pending
+// initializers currently being forced in one evaluation chain. It lets force
+// distinguish a genuine self-referential cycle (the same chain re-enters a
+// pending it is already forcing) from ordinary concurrent access by an
+// unrelated goroutine (which must wait, not error).
+type forceChain struct {
+	p      *pendingInit
+	parent *forceChain
+}
+
+type forceChainKey struct{}
+
+// forcingInChain reports whether p is already being forced earlier in ctx's
+// evaluation chain.
+func forcingInChain(ctx context.Context, p *pendingInit) bool {
+	fc, _ := ctx.Value(forceChainKey{}).(*forceChain)
+	for ; fc != nil; fc = fc.parent {
+		if fc.p == p {
+			return true
+		}
+	}
+	return false
+}
+
+// withForceChain returns ctx extended with p as the innermost initializer
+// being forced.
+func withForceChain(ctx context.Context, p *pendingInit) context.Context {
+	fc, _ := ctx.Value(forceChainKey{}).(*forceChain)
+	return context.WithValue(ctx, forceChainKey{}, &forceChain{p: p, parent: fc})
 }
 
 // DynamicScope is a shared mutable cell for the 'self' value.
@@ -1358,6 +1392,11 @@ type DynamicScope struct {
 
 // Object represents an instance of a Type; it implements ValueScope
 type Object struct {
+	// mu guards Values, Visibilities, and Pending so a scope can be read
+	// concurrently while lazy initializers are forced — e.g. when independent
+	// object-literal fields are evaluated in parallel and read shared lexical
+	// bindings.
+	mu           sync.Mutex
 	Mod          TypeScope
 	Values       map[string]Value
 	Visibilities map[string]Visibility   // Track visibility of each field
@@ -1386,27 +1425,34 @@ func (m *Object) String() string {
 }
 
 func (m *Object) Lookup(ctx context.Context, name string) (Value, bool, error) {
-	if p, ok := m.Pending[name]; ok {
+	m.mu.Lock()
+	p, pending := m.Pending[name]
+	val, hasVal := m.Values[name]
+	parent := m.Parent
+	m.mu.Unlock()
+	if pending {
 		return m.force(ctx, name, p)
 	}
-	if val, ok := m.Values[name]; ok {
+	if hasVal {
 		return val, true, nil
 	}
-	if m.Parent != nil {
-		return m.Parent.Lookup(ctx, name)
+	if parent != nil {
+		return parent.Lookup(ctx, name)
 	}
 	return nil, false, nil
 }
 
 func (m *Object) Has(name string) bool {
-	if _, ok := m.Pending[name]; ok {
+	m.mu.Lock()
+	_, pending := m.Pending[name]
+	_, hasVal := m.Values[name]
+	parent := m.Parent
+	m.mu.Unlock()
+	if pending || hasVal {
 		return true
 	}
-	if _, ok := m.Values[name]; ok {
-		return true
-	}
-	if m.Parent != nil {
-		return m.Parent.Has(name)
+	if parent != nil {
+		return parent.Has(name)
 	}
 	return false
 }
@@ -1416,6 +1462,8 @@ func (m *Object) Has(name string) bool {
 // no-op if name is already bound locally — letting earlier bindings
 // (constructor args, prior installs) shadow the placeholder.
 func (m *Object) BindLazy(name string, init func(ctx context.Context) (Value, error), visibility Visibility) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, alreadyReal := m.Values[name]; alreadyReal {
 		return
 	}
@@ -1433,25 +1481,48 @@ func (m *Object) BindLazy(name string, init func(ctx context.Context) (Value, er
 }
 
 func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value, bool, error) {
-	if p.State == pendingEvaluating {
+	// A genuine initialization cycle: this evaluation chain is already forcing
+	// p. Detect it before taking p.mu so we report an error rather than
+	// deadlocking on our own lock. Concurrent forcing by an unrelated goroutine
+	// is not a cycle — it falls through and waits on p.mu below.
+	if forcingInChain(ctx, p) {
 		return nil, true, fmt.Errorf("initialization cycle while evaluating variable %q", name)
 	}
-	p.State = pendingEvaluating
-	val, err := p.Init(ctx)
+
+	// Serialize forcing of this binding. Holding p.mu across Init means a
+	// concurrent reader of the same binding blocks until the value is ready and
+	// then sees the cached result, so the initializer runs exactly once.
+	// Distinct bindings have distinct locks, so independent fields still force
+	// in parallel.
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.done {
+		return p.val, true, nil
+	}
+
+	val, err := p.Init(withForceChain(ctx, p))
 	if err != nil {
-		p.State = pendingReady
+		// Leave the binding unforced so it can be retried.
 		return nil, true, err
 	}
 	if val == nil {
-		p.State = pendingReady
 		return nil, true, fmt.Errorf("initializer for variable %q returned nil", name)
 	}
+
+	p.val = val
+	p.done = true
+
+	m.mu.Lock()
 	delete(m.Pending, name)
 	m.Values[name] = val
+	m.mu.Unlock()
+
 	return val, true, nil
 }
 
 func (m *Object) LookupLocal(name string) (Value, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	val, ok := m.Values[name]
 	return val, ok
 }
@@ -1460,21 +1531,44 @@ func (m *Object) LookupLocal(name string) (Value, bool) {
 // initializers). Use this only when pending has already been forced —
 // otherwise Lookup is the right call.
 func (m *Object) lookupValue(name string) (Value, bool) {
-	if val, ok := m.Values[name]; ok {
+	m.mu.Lock()
+	val, ok := m.Values[name]
+	parent := m.Parent
+	m.mu.Unlock()
+	if ok {
 		return val, true
 	}
-	if m.Parent != nil {
-		return m.Parent.lookupValue(name)
+	if parent != nil {
+		return parent.lookupValue(name)
 	}
 	return nil, false
 }
 
 func (m *Object) Bind(name string, value Value, visibility Visibility) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.Values[name] = value
 	m.Visibilities[name] = visibility
 }
 
 func (m *Object) Visibility(name string) Visibility {
+	m.mu.Lock()
+	vis, ok := m.Visibilities[name]
+	parent := m.Parent
+	m.mu.Unlock()
+	if ok {
+		return vis
+	}
+	if parent != nil {
+		return parent.Visibility(name)
+	}
+	return PrivateVisibility
+}
+
+// visibilityLocked resolves a visibility while the caller already holds m.mu.
+// Local lookups stay under the held lock; the parent fallback takes the
+// parent's own lock (child -> parent ordering, never the reverse).
+func (m *Object) visibilityLocked(name string) Visibility {
 	if vis, ok := m.Visibilities[name]; ok {
 		return vis
 	}
@@ -1487,8 +1581,12 @@ func (m *Object) Visibility(name string) Visibility {
 func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 	var bindings []Keyed[Value]
 
-	// Collect bindings from this module
+	m.mu.Lock()
+	// Collect bindings from this module, recording every local key so parent
+	// bindings it shadows can be filtered out below.
+	shadowed := make(map[string]struct{}, len(m.Values))
 	for name, value := range m.Values {
+		shadowed[name] = struct{}{}
 		if m.Visibilities[name] >= vis {
 			bindings = append(bindings, Keyed[Value]{
 				Key:        name,
@@ -1497,12 +1595,14 @@ func (m *Object) Bindings(vis Visibility) []Keyed[Value] {
 			})
 		}
 	}
+	parent := m.Parent
+	m.mu.Unlock()
 
 	// Collect bindings from parent (if any) - avoiding duplicates
-	if m.Parent != nil {
-		for _, binding := range m.Parent.Bindings(vis) {
+	if parent != nil {
+		for _, binding := range parent.Bindings(vis) {
 			// Only include if not shadowed by current module
-			if _, shadowed := m.Values[binding.Key]; !shadowed {
+			if _, isShadowed := shadowed[binding.Key]; !isShadowed {
 				bindings = append(bindings, binding)
 			}
 		}
@@ -1527,24 +1627,30 @@ func (m *Object) Derive(sealed bool) ValueScope {
 // - If the variable doesn't exist locally but exists in parent, update parent (unless forked)
 // - If the variable doesn't exist anywhere, set it locally
 func (m *Object) Update(name string, value Value) {
+	m.mu.Lock()
 	if _, existsLocally := m.Values[name]; existsLocally {
 		// Variable exists locally, update it locally
 		m.Values[name] = value
-		m.Visibilities[name] = m.Visibility(name)
-	} else if m.Parent != nil && !m.IsForked {
-		if m.Parent.Has(name) {
-			// Variable exists in parent, update parent (only if not forked)
-			m.Parent.Update(name, value)
-		} else {
-			// Variable doesn't exist anywhere, set it locally
-			m.Values[name] = value
-			m.Visibilities[name] = m.Visibility(name)
-		}
-	} else {
-		// No parent or forked boundary, set it locally
-		m.Values[name] = value
-		m.Visibilities[name] = m.Visibility(name)
+		m.Visibilities[name] = m.visibilityLocked(name)
+		m.mu.Unlock()
+		return
 	}
+	parent := m.Parent
+	forked := m.IsForked
+	m.mu.Unlock()
+
+	if parent != nil && !forked && parent.Has(name) {
+		// Variable exists in parent, update parent (only if not forked)
+		parent.Update(name, value)
+		return
+	}
+
+	// Variable doesn't exist anywhere (or we're a forked boundary): set it
+	// locally.
+	m.mu.Lock()
+	m.Values[name] = value
+	m.Visibilities[name] = m.visibilityLocked(name)
+	m.mu.Unlock()
 }
 
 // Self returns the dynamic scope value ('self')
