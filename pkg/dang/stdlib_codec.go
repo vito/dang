@@ -9,43 +9,29 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/vito/dang/v2/pkg/hm"
 	"gopkg.in/yaml.v3"
 )
 
-// Codec scalars (JSON, YAML, TOML) are string-shaped data-interchange formats
-// that double as their own encode/decode namespace. Dang *owns* them: each is
-// installed as a ScalarKind type in both the type namespace (so `:: JSON`
-// resolves in type position) and the value namespace (so `JSON.encode` /
-// `JSON.decode` resolve), see env.go init.
-//
-// When a schema imports — or a user declares — a scalar of the same name (e.g.
-// Dagger's `scalar JSON`), it shadows the owned scalar and is grafted with the
-// identical encode/decode via the format-codec merge below, so the two *merge*
-// into one entity rather than colliding: `:: JSON` resolves the scalar type
-// while `JSON.encode` resolves the grafted method. This is uniform across all
-// three formats — JSON happens to have a Dagger scalar, YAML/TOML do not, but
-// the owned-scalar default means they all behave the same. See issue #105.
+// JSON, YAML, and TOML are string-shaped data-interchange formats that double as
+// their own encode/decode namespace. Each is a builtin scalar — a ScalarKind
+// module Dang ships members for. As such they are installed in the Prelude (so
+// `:: JSON` and `JSON.encode` resolve with no import), and a schema- or
+// user-declared scalar of the same name (e.g. Dagger's `scalar JSON`) merges
+// with them through the general scalar-attach mechanism in builtins.go
+// (BuiltinScalarModule / attachBuiltinSchemes / attachBuiltinMethods). Nothing
+// here is special-cased for encoding — encoding is just the first builtin scalar.
+// See issue #105.
 var (
 	JSONModule = NewType("JSON", ScalarKind)
 	YAMLModule = NewType("YAML", ScalarKind)
 	TOMLModule = NewType("TOML", ScalarKind)
 )
 
-// formatCodecs maps a scalar type name to the module whose static methods are
-// grafted onto a same-named scalar in scope, so an imported or declared scalar
-// of that name merges with the codec instead of shadowing it.
-var formatCodecs = map[string]*Type{}
-
 // registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
-// with the builtin DSL like the Random/UUID modules. Recording each in
-// formatCodecs lets a same-named schema or user scalar graft the identical
-// methods, so the two merge instead of colliding (see graftCodecSchemes).
+// with the builtin DSL like the Random/UUID modules. Being ScalarKind static
+// modules, they are installed in the Prelude and merge with a same-named schema
+// or user scalar automatically (see builtins.go: BuiltinScalarModule).
 func registerCodecs() {
-	formatCodecs["JSON"] = JSONModule
-	formatCodecs["YAML"] = YAMLModule
-	formatCodecs["TOML"] = TOMLModule
-
 	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
 	// encode takes an arbitrary value, so it cannot live on the String type
 	// (there is no universal receiver); it belongs to the format's namespace.
@@ -305,54 +291,4 @@ func numbersToGo(v any) any {
 	default:
 		return v
 	}
-}
-
-// --- codec/scalar merge ---
-
-// graftCodecSchemes adds a registered codec's static-method type schemes onto a
-// scalar type of the same name, so `Name.encode` / `Name.decode` type-check
-// when `Name` resolves to a user-declared or imported scalar. No-op for
-// non-scalars and unregistered names; idempotent.
-func graftCodecSchemes(scalarType *Type) {
-	if scalarType == nil || scalarType.Kind != ScalarKind {
-		return
-	}
-	host, ok := formatCodecs[scalarType.Named]
-	if !ok {
-		return
-	}
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		if _, exists := scalarType.LocalSchemeOf(def.Name); exists {
-			return
-		}
-		scalarType.Add(def.Name, hm.NewScheme(nil, createFunctionTypeFromDef(def)))
-		scalarType.SetVisibility(def.Name, PublicVisibility)
-		if def.Doc != "" {
-			scalarType.SetDocString(def.Name, def.Doc)
-		}
-	})
-}
-
-// graftCodecMethods binds a registered codec's static-method implementations
-// onto a scalar's runtime object, so `Name.encode` / `Name.decode` resolve at
-// eval. No-op for non-scalars and unregistered names.
-func graftCodecMethods(obj *Object, scalarType TypeScope) {
-	mod, ok := scalarType.(*Type)
-	if !ok || mod.Kind != ScalarKind {
-		return
-	}
-	host, found := formatCodecs[mod.Named]
-	if !found {
-		return
-	}
-	ForEachStaticMethod(host, func(def BuiltinDef) {
-		obj.Bind(def.Name, BuiltinFunction{
-			Name:         def.Name,
-			FnType:       createFunctionTypeFromDef(def),
-			AllDefaulted: allParamsDefaulted(def),
-			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
-				return def.Impl(ctx, nil, Args{Values: applyDefaults(args, def)})
-			},
-		}, PublicVisibility)
-	})
 }

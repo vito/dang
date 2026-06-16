@@ -447,9 +447,9 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 
 			// Create a module for the scalar type (just a type placeholder)
 			scalarModuleVal := NewObject(scalarTypeScope)
-			// A scalar whose name has a registered codec (e.g. an imported JSON
-			// scalar) doubles as that codec's namespace.
-			graftCodecMethods(scalarModuleVal, scalarTypeScope)
+			// A scalar whose name matches a builtin scalar (e.g. an imported JSON
+			// scalar) doubles as that scalar's namespace.
+			attachBuiltinMethods(scalarModuleVal, scalarTypeScope)
 
 			// Add the scalar module to the environment
 			env.Bind(t.Name, scalarModuleVal, PublicVisibility)

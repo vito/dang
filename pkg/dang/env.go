@@ -349,16 +349,19 @@ func init() {
 	// Register standard library builtins
 	registerStdlib()
 
-	// Install codec scalars (JSON/YAML/TOML) in both namespaces, like the
-	// modules above. registerStdlib has populated formatCodecs by now. Each is
-	// AddObject'd so `:: JSON` resolves in type position even without a schema
-	// scalar, and Add'd non-null so `JSON.encode`/`.decode` resolve as a value.
-	// A user- or schema-declared scalar of the same name shadows these and is
-	// grafted with the identical codec (merge, not collide), so all three
-	// formats behave uniformly. See stdlib_codec.go.
-	for name, mod := range formatCodecs {
-		Prelude.AddObject(name, mod)
-		Prelude.Add(name, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
+	// Install the builtin scalars (JSON/YAML/TOML) in both namespaces, like the
+	// modules above. They are the ScalarKind static modules registerStdlib just
+	// registered. Each is AddObject'd so `:: JSON` resolves in type position even
+	// without a schema scalar, and Add'd non-null so `JSON.encode`/`.decode`
+	// resolve as a value. A user- or schema-declared scalar of the same name
+	// shadows these and is grafted the identical members (merge, not collide),
+	// so all behave uniformly. See builtins.go: BuiltinScalarModule.
+	for _, mod := range StaticModules() {
+		if mod.Kind != ScalarKind {
+			continue
+		}
+		Prelude.AddObject(mod.Named, mod)
+		Prelude.Add(mod.Named, hm.NewScheme(nil, hm.NonNullType{Type: mod}))
 	}
 
 	// Register builtin function types from the registry
@@ -480,19 +483,19 @@ func TypeScopeFromSchema(name string, schema *introspection.Schema) TypeScope {
 			if !found {
 				continue
 			}
-			// Add the scalar type as a scheme. A codec scalar (e.g. an imported
+			// Add the scalar type as a scheme. A builtin scalar (e.g. an imported
 			// JSON scalar) doubles as its namespace and is always present, so it
 			// binds non-null — otherwise JSON.encode would inherit the binding's
 			// nullability and weaken String! to String.
 			scalarScheme := hm.NewScheme(nil, sub)
-			if _, isCodec := formatCodecs[t.Name]; isCodec {
+			if _, isBuiltin := BuiltinScalarModule(t.Name); isBuiltin {
 				scalarScheme = hm.NewScheme(nil, hm.NonNullType{Type: sub})
 			}
 			env.Add(t.Name, scalarScheme)
 			env.SetVisibility(t.Name, PublicVisibility)
-			// Graft encode/decode onto the scalar so it doubles as the namespace.
+			// Staple Dang's members onto the scalar so it doubles as the namespace.
 			if scalarMod, ok := sub.(*Type); ok {
-				graftCodecSchemes(scalarMod)
+				attachBuiltinSchemes(scalarMod)
 			}
 		}
 	}
