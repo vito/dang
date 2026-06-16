@@ -4,7 +4,7 @@ type ModuleA {
   let x = 21
 
   addOne: ModuleA! {
-    print("ModuleA.addOne called, x = " + toJSON(self.x))
+    print("ModuleA.addOne called, x = " + JSON.encode(self.x))
     self.x = self.x + 1
     self
   }

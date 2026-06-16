@@ -81,7 +81,7 @@ do(&yield: b): b { yield * 2 }                    # arg type can be a type varia
 ```dang
 twice { 21 }                  # ⇒ 42
 list.map { x => x * 2 }
-withArg("Number: ") { x => toJSON(x) }   # args then block
+withArg("Number: ") { x => toString(x) }   # args then block
 list.each { item, index => ... }
 ```
 - A block whose body ignores its params can omit `param =>`: `[1,2,3].map { "whee" }`, `numbers.filter { true }`.

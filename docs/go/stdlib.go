@@ -124,18 +124,36 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 		tag := stdlibTag(key, d.Name)
 
 		// Target.Content (and the card/row Description) feed the search index's
-		// text; Title feeds its title. StripAux dereferences these, so they must
-		// be non-nil — use Empty when a builtin has no doc.
+		// text. Title is the qualified name (e.g. List.uniq); it feeds the search
+		// result title and the page table of contents, which lists each section's
+		// anchor tags by their title (\table-of-contents). The full signature
+		// still appears on the card itself, via renderSignature below. StripAux
+		// dereferences these, so they must be non-nil — use Empty when a builtin
+		// has no doc.
 		var desc booklit.Content = booklit.Empty
 		if d.Doc != "" {
 			desc = booklit.String(d.Doc)
+		}
+
+		// For an instance method the receiver is implied by its section, so wrap
+		// it in Aux: the ToC's stripAux drops it (showing `.uniq`) while the
+		// search title's String() keeps it (`List.uniq`). Static modules and free
+		// functions stay plain — `Random.float` is literally how it's called.
+		var title booklit.Content
+		if prefix == "." {
+			title = booklit.Sequence{
+				booklit.Aux{Content: booklit.String(qualifier)},
+				booklit.String("." + d.Name),
+			}
+		} else {
+			title = booklit.String(titlePrefix + d.Name)
 		}
 
 		cardPartials := booklit.Partials{
 			"Target": booklit.Target{
 				TagName:  tag,
 				Location: p.section.InvokeLocation,
-				Title:    booklit.String(signature(d, titlePrefix)),
+				Title:    title,
 				Content:  desc,
 			},
 		}

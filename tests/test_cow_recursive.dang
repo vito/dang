@@ -4,14 +4,14 @@ type Counter {
   let count = 0
 
   increment: Counter! {
-    print("increment called, count = " + toJSON(self.count))
+    print("increment called, count = " + JSON.encode(self.count))
     self.count = self.count + 1
     self
   }
 
   # Recursively increment n times
   incrementN(n: Int!): Counter! {
-    print("incrementN(" + toJSON(n) + ") called, count = " + toJSON(self.count))
+    print("incrementN(" + JSON.encode(n) + ") called, count = " + JSON.encode(self.count))
 
     if (n <= 0) {
       print("\tBase case reached")

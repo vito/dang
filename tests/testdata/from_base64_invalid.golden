@@ -1,0 +1,9 @@
+[1m[31mError:[0m fromBase64: illegal base64 data at input byte 0
+  [2m[34m--> errors/from_base64_invalid.dang:1:11[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mlet bad = "!!!".fromBase64
+[2m                 [31m^^^^^^^^^^^^^^^^[0m
+ [2m  2 | print(bad)[0m
+ [2m  3 | [0m
+ [2m    |[0m
+

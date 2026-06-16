@@ -2,9 +2,9 @@ package dang
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/vito/dang/v2/pkg/hm"
@@ -15,6 +15,7 @@ import (
 // This is called from init() in env.go after type definitions are set up
 func registerStdlib() {
 	registerRandomAndUUID()
+	registerCodecs()
 	registerAssert()
 	registerRegexp()
 
@@ -53,63 +54,6 @@ func registerStdlib() {
 					return nil, err
 				}
 			}
-		})
-
-	// toJSON function: toJSON(value: b) -> String!
-	Builtin("toJSON").
-		Doc("serializes a value to JSON").
-		Example(`toJSON([1, 2, 3])`).
-		Params("value", TypeVar('b')).
-		Returns(NonNull(StringType)).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			val, _ := args.Get("value")
-			jsonBytes, err := json.Marshal(val)
-			if err != nil {
-				return nil, fmt.Errorf("toJSON: %w", err)
-			}
-			return ToValue(string(jsonBytes))
-		})
-
-	// fromJSON function: fromJSON(data: String!) -> a
-	Builtin("fromJSON").
-		Doc("parses JSON into an opaque value that is materialized by an expected type").
-		Example(`fromJSON("[1, 2, 3]") :: [Int!]!`).
-		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			data := args.GetString("data")
-			decoder := json.NewDecoder(strings.NewReader(data))
-			decoder.UseNumber()
-
-			var raw any
-			if err := decoder.Decode(&raw); err != nil {
-				return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
-			}
-
-			var extra any
-			if err := decoder.Decode(&extra); err != io.EOF {
-				if err != nil {
-					return nil, fmt.Errorf("fromJSON: invalid JSON: %w", err)
-				}
-				return nil, fmt.Errorf("fromJSON: invalid JSON: trailing data")
-			}
-
-			return DeferredValue{Raw: raw}, nil
-		})
-
-	// fromYAML function: fromYAML(data: String!) -> a
-	Builtin("fromYAML").
-		Doc("parses YAML into an opaque value that is materialized by an expected type").
-		Example(`fromYAML("[a, b, c]") :: [String!]!`).
-		Params("data", NonNull(StringType)).
-		Returns(TypeVar('a')).
-		Impl(func(ctx context.Context, args Args) (Value, error) {
-			data := args.GetString("data")
-			raw, err := decodeYAML(data)
-			if err != nil {
-				return nil, fmt.Errorf("fromYAML: invalid YAML: %w", err)
-			}
-			return DeferredValue{Raw: raw}, nil
 		})
 
 	// toString function: toString(value: b) -> String!
@@ -189,6 +133,30 @@ func registerStdlib() {
 		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
 			str := self.(StringValue).Val
 			return ToValue(strings.ToLower(str))
+		})
+
+	// String.toBase64 method: toBase64() -> String!
+	Method(StringType, "toBase64").
+		Doc("encodes the string's bytes as a standard (padded) base64 string").
+		Example(`"hello".toBase64`).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			return ToValue(base64.StdEncoding.EncodeToString([]byte(str)))
+		})
+
+	// String.fromBase64 method: fromBase64() -> String!
+	Method(StringType, "fromBase64").
+		Doc("decodes a standard (padded) base64 string, returning the decoded bytes as a string").
+		Example(`"aGVsbG8=".fromBase64`).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			decoded, err := base64.StdEncoding.DecodeString(str)
+			if err != nil {
+				return nil, fmt.Errorf("fromBase64: %w", err)
+			}
+			return ToValue(string(decoded))
 		})
 
 	// String.trimPrefix method: trimPrefix(prefix: String!) -> String!
@@ -1072,7 +1040,7 @@ func registerStdlib() {
 	// Map.each method: each(fn: \(String!, a) -> b) -> Map[a]!
 	Method(MapTypeModule, "each").
 		Doc("iterates over each entry in insertion order, calling the block with the key and value").
-		Example(`["a": 1, "b": 2].each { key, value => print(`+"`${key}=${value}`"+`) }`).
+		Example(`["a": 1, "b": 2].each { key, value => print(` + "`${key}=${value}`" + `) }`).
 		Block(hm.NewFnType(
 			NewRecordType("", Keyed[*hm.Scheme]{
 				Key:   "key",

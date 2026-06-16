@@ -5,7 +5,7 @@ myFun(&block(x: Int!): String!): String! {
   block(42)
 }
 
-result1: String! = myFun { x => toJSON(x) }
+result1: String! = myFun { x => JSON.encode(x) }
 assert { result1 == "42" }
 
 # Block arg with multiple calls
@@ -21,7 +21,7 @@ withArg(prefix: String!, &block(x: Int!): String!): String! {
   prefix + block(99)
 }
 
-result3: String! = withArg("Number: ") { x => toJSON(x) }
+result3: String! = withArg("Number: ") { x => JSON.encode(x) }
 assert { result3 == "Number: 99" }
 
 print("User-defined block args tests passed!")

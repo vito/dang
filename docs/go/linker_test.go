@@ -41,10 +41,10 @@ let doubled = xs.map { x => x * 2 }
 // Free builtin functions link to the functions page; static module methods
 // link via their host module.
 func TestStdlibLinksFunctionsAndStatics(t *testing.T) {
-	tags := linkTags(t, `print(toJSON([1, 2]))
+	tags := linkTags(t, `print(JSON.encode([1, 2]))
 let f = Random.float`)
 	assertLink(t, tags, "print", "stdlib-fn-print")
-	assertLink(t, tags, "toJSON", "stdlib-fn-toJSON")
+	assertLink(t, tags, "encode", "stdlib-JSON-encode")
 	assertLink(t, tags, "float", "stdlib-Random-float")
 }
 

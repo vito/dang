@@ -149,7 +149,7 @@ See also [#errors] (`raise`/`try`/`catch` divergence) and [#control-flow] (guard
 - `::` is the explicit materialization/coercion boundary: `String` → custom scalar (`URL!`, `Timestamp!`, …), enum (`"PASSED" :: Status!`), and `ID` coercions go here
 - coercion source is limited: only **`String`** values coerce to custom scalars/enums. `42 :: URL!` is rejected **statically** ("type hint mismatch: Int!, but hint expects URL!")
 - enum casts are checked at **runtime**: `"NOPE" :: Status!` → "invalid enum value"
-- nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `fromJSON("null") :: String!` → "null is not allowed for String!"
+- nullable → non-null casts do **not** strip the wrapper statically; they defer to a runtime `Coerce` that rejects null: `JSON.decode("null") :: String!` → "null is not allowed for String!"
 
 > Meta: `::` deserves a worked example showing the difference between a type *hint* (narrowing/disambiguation, e.g. `[] :: [String!]!` binding a type variable) and a type *cast* (coercion, e.g. `myUrl :: URL!`). The runtime-assertion behavior for non-null casts is a footgun worth a short callout.
 

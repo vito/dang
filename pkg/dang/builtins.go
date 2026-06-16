@@ -552,6 +552,75 @@ func StaticModules() []*Type {
 	return append([]*Type(nil), builtins.staticModules...)
 }
 
+// Dang can staple its own APIs onto a scalar by name. A builtin scalar is a
+// ScalarKind module Dang ships members for (JSON, YAML, TOML); it is installed
+// in the Prelude so its name resolves with no import. When a schema imports —
+// or a user declares — a scalar of the same name, that scalar shadows the
+// builtin one and is grafted the identical members, so the two merge into one
+// entity rather than colliding: the declared scalar is the type, and Dang's
+// members ride along. This is general — any future builtin scalar behaves the
+// same way; encoding is just the first use.
+
+// BuiltinScalarModule returns the builtin scalar module of the given name, if
+// Dang ships one. These are the ScalarKind entries among the static modules.
+func BuiltinScalarModule(name string) (*Type, bool) {
+	for _, mod := range builtins.staticModules {
+		if mod.Kind == ScalarKind && mod.Named == name {
+			return mod, true
+		}
+	}
+	return nil, false
+}
+
+// attachBuiltinSchemes staples the type schemes of every member Dang registers
+// for a scalar of this name onto scalarType, so `Name.member` type-checks
+// whether Name resolves to the builtin scalar or to a same-named scalar a schema
+// or user declared. No-op for non-scalars and names Dang ships no API for;
+// idempotent (skips members the scalar already declares).
+func attachBuiltinSchemes(scalarType *Type) {
+	if scalarType == nil || scalarType.Kind != ScalarKind {
+		return
+	}
+	host, ok := BuiltinScalarModule(scalarType.Named)
+	if !ok {
+		return
+	}
+	ForEachStaticMethod(host, func(def BuiltinDef) {
+		if _, exists := scalarType.LocalSchemeOf(def.Name); exists {
+			return
+		}
+		scalarType.Add(def.Name, hm.NewScheme(nil, createFunctionTypeFromDef(def)))
+		scalarType.SetVisibility(def.Name, PublicVisibility)
+		if def.Doc != "" {
+			scalarType.SetDocString(def.Name, def.Doc)
+		}
+	})
+}
+
+// attachBuiltinMethods binds the implementations of every member Dang registers
+// for a scalar of this name onto its runtime object, so `Name.member` resolves
+// at eval. No-op for non-scalars and names Dang ships no API for.
+func attachBuiltinMethods(obj *Object, scalarType TypeScope) {
+	mod, ok := scalarType.(*Type)
+	if !ok || mod.Kind != ScalarKind {
+		return
+	}
+	host, found := BuiltinScalarModule(mod.Named)
+	if !found {
+		return
+	}
+	ForEachStaticMethod(host, func(def BuiltinDef) {
+		obj.Bind(def.Name, BuiltinFunction{
+			Name:         def.Name,
+			FnType:       createFunctionTypeFromDef(def),
+			AllDefaulted: allParamsDefaulted(def),
+			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+				return def.Impl(ctx, nil, Args{Values: applyDefaults(args, def)})
+			},
+		}, PublicVisibility)
+	})
+}
+
 // DefineEnum creates an enum type with the given values and registers it
 // as a nested type on a parent module. It handles both type-level and
 // eval-level registration so that the enum values are available during

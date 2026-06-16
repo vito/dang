@@ -302,8 +302,9 @@ func (f *FunctionBase) inferFunctionType(ctx context.Context, env hm.Env, fresh 
 	}
 
 	// When the function has an explicit return type, wrap the body and any
-	// early returns with Coerce so that fromJSON/fromYAML values produced at
-	// the function boundary materialize against the declared type.
+	// early returns with Coerce so that decode values (JSON.decode/YAML.decode/
+	// TOML.decode) produced at the function boundary materialize against the
+	// declared type.
 	if definedRet != nil {
 		for _, ret := range collectReturnStatements(f.Body, returnTarget) {
 			if ret.Value != nil {

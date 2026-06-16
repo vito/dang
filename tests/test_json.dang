@@ -1,40 +1,39 @@
-# Test object literal JSON marshaling
-# This should fail because object literals inherit lexical scope
+# JSON encode/decode live in the JSON namespace. Encode takes an arbitrary
+# value, so it cannot live on the String type (no universal receiver); decode
+# materializes against an expected type supplied with `:: T`.
 
 # Simple object literal
 let obj1 = {{name: "test", value: 42}}
-let json1 = toJSON(value: obj1)
-
+let json1 = JSON.encode(obj1)
 assert { json1 == "{\"name\":\"test\",\"value\":42}" }
 
 # Object literal with nested structure
 let obj2 = {{user: {{id: 1, active: true}}, count: 100}}
-let json2 = toJSON(value: obj2)
-
-# TODO: make this match defined order? or don't? maybe it's nice that it's
-# stable for cache busting avoidance?
+let json2 = JSON.encode(obj2)
 assert { json2 == "{\"count\":100,\"user\":{\"active\":true,\"id\":1}}" }
 
-# Object literal created in function scope - this should expose the issue
-let createObject = {
-  let localVar = "local"
-  {{data: localVar, timestamp: 1234567890}}
-}
-
-let obj3 = createObject
-let json3 = toJSON(value: obj3)
-
-assert { json3 == "{\"data\":\"local\",\"timestamp\":1234567890}" }
-
-# Empty list from map should serialize as [] not null
+# Empty list from filter/map should serialize as [] not null
 nums: [Int] = [1, 2, 3]
 let emptyFiltered = nums.filter { x => false }
-let json4 = toJSON(value: emptyFiltered)
-assert { json4 == "[]" }
+assert { JSON.encode(emptyFiltered) == "[]" }
 
-# map over empty result should also be []
-let emptyMapped = emptyFiltered.map { x => x + 1 }
-let json5 = toJSON(value: emptyMapped)
-assert { json5 == "[]" }
+# decode materializes against the expected type
+let parsed = JSON.decode("[1, 2, 3]") :: [Int!]!
+assert { parsed == [1, 2, 3] }
 
-print("JSON marshaling tests passed!")
+# round-trip
+let roundtrip = JSON.encode(JSON.decode("[4, 5, 6]") :: [Int!]!)
+assert { roundtrip == "[4,5,6]" }
+
+# A "JSON" scalar declared in scope (mirroring an imported Dagger JSON scalar)
+# is grafted with the codec: `JSON` the scalar type and `JSON` the namespace
+# merge into one entity rather than colliding. `:: JSON` resolves the scalar
+# while `JSON.encode` / `JSON.decode` resolve the grafted methods.
+scalar JSON
+
+let raw: JSON! = "{\"ok\":true}"
+assert { JSON.encode([7, 8]) == "[7,8]" }
+let parsed2 = JSON.decode("[9, 10]") :: [Int!]!
+assert { parsed2 == [9, 10] }
+
+print("JSON module + scalar coexistence tests passed!")

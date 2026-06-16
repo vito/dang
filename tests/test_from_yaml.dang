@@ -14,21 +14,21 @@ type Summary {
 
 echoStatus(status: Status!): Status! { status }
 
-parseSummary(data: String!): Summary! { fromYAML(data) }
+parseSummary(data: String!): Summary! { YAML.decode(data) }
 
-let status1 = fromYAML("PASSED") :: Status!
+let status1 = YAML.decode("PASSED") :: Status!
 assert { status1 == Status.PASSED }
 
-let status2: Status! = fromYAML("FAILED")
+let status2: Status! = YAML.decode("FAILED")
 assert { status2 == Status.FAILED }
 
-let status3 = echoStatus(fromYAML("PASSED"))
+let status3 = echoStatus(YAML.decode("PASSED"))
 assert { status3 == Status.PASSED }
 
-let scalar: CustomScalar! = fromYAML("hello")
+let scalar: CustomScalar! = YAML.decode("hello")
 assert { scalar == "hello" }
 
-let summary: Summary! = fromYAML(```yaml
+let summary: Summary! = YAML.decode(```yaml
 children:
   - name: one
     outcome: PASSED
@@ -52,7 +52,7 @@ children:
 assert { parsed.children[0].name == "three" }
 assert { parsed.children[0].outcome == Status.PASSED }
 
-let anon = fromYAML(```yaml
+let anon = YAML.decode(```yaml
 foo: 1
 bar: PASSED
 extra: 2

@@ -6,11 +6,13 @@
 
 > This page is generated from the builtin registry in `pkg/dang` (`stdlib.go`, `stdlib_random.go`, `stdlib_regexp.go`, `assert.go`). Each entry's signature, one-line description, and example come straight from the builtin's definition, so the reference can't drift from the implementation — to change an entry, edit the builtin's `.Doc(...)` or `.Example(...)`. Each example is a live REPL: press **Run** to evaluate it (and then keep typing — state carries across entries, just like the CLI).
 
+\table-of-contents
+
 ## Top-level functions
 
 \stdlib-functions
 
-> `print` and `assert` return `null` — there is no `Void` type; treat the result as `null`. `toJSON`/`fromJSON`/`fromYAML` are covered in depth on [#json-yaml].
+> `print` and `assert` return `null` — there is no `Void` type; treat the result as `null`. The `JSON`/`YAML`/`TOML` codec namespaces (`encode`/`decode`) are covered in depth on [#json-yaml].
 
 ## `String!` methods
 
@@ -19,12 +21,6 @@
 > Regex methods take a `Regexp!` pattern. Backtick template strings auto-coerce to the `Regexp` scalar, so a pattern is usually written as `` `\d+` `` (Go `regexp/syntax`).
 
 \stdlib-methods{String}
-
-### `Match` object
-
-> Returned by `.match` (and as elements of `.matchAll`); a missing match is `null`. See [#strings].
-
-\stdlib-methods{Match}
 
 ## `[T]!` methods
 
@@ -37,6 +33,22 @@
 > See [#collections]. Map methods are registered on the `Map` module. Keys are always `String!`; the value type shows as the type variable `a` (and block result types as `b`). Block params are named `key`/`value`.
 
 \stdlib-methods{Map}
+
+## `JSON` module
+
+> See [#json-yaml]. `JSON`/`YAML`/`TOML` are codec namespaces: `encode` serializes any value to a string, `decode` materializes a string against the expected type (`:: T`). The names double as scalar types (`:: JSON`) owned by Dang, and merge with a same-named schema scalar such as Dagger's `JSON`.
+
+\stdlib-statics{JSON}
+
+## `YAML` module
+
+\stdlib-statics{YAML}
+
+## `TOML` module
+
+> `TOML.encode` requires a table (record) at the top level.
+
+\stdlib-statics{TOML}
 
 ## `Random` module
 

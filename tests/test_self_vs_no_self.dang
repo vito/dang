@@ -2,9 +2,9 @@ type Foo {
   let x = 0
 
   addOne: Foo! {
-    print("addOne: x before = " + toJSON(self.x))
+    print("addOne: x before = " + JSON.encode(self.x))
     self.x = self.x + 1
-    print("addOne: x after = " + toJSON(self.x))
+    print("addOne: x after = " + JSON.encode(self.x))
     self
   }
 

@@ -1,0 +1,19 @@
+import Test
+
+# The imported schema defines `scalar JSON`. The format-codec merge grafts
+# encode/decode onto the imported scalar, so it doubles as the JSON namespace:
+# `:: JSON` resolves the imported scalar type while `JSON.encode` /
+# `JSON.decode` resolve the grafted methods, instead of the scalar shadowing
+# the namespace. This is the real Dagger scenario.
+
+let encoded = JSON.encode([1, 2, 3])
+assert { encoded == "[1,2,3]" }
+
+let decoded = JSON.decode("[4, 5, 6]") :: [Int!]!
+assert { decoded == [4, 5, 6] }
+
+# `:: JSON` resolves the imported scalar type in type position
+let raw: JSON! = "{\"ok\":true}"
+assert { JSON.encode(raw) == "\"{\\\"ok\\\":true}\"" }
+
+print("JSON scalar import + codec merge tests passed!")

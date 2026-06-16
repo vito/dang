@@ -9,7 +9,7 @@ type Summary {
   children: [Child!]!
 }
 
-let summary: Summary! = fromYAML("""
+let summary: Summary! = YAML.decode("""
 children:
   - name: one
     outcome: Skipped

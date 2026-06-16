@@ -447,6 +447,9 @@ func populateSchemaFunctions(env *Object, typeScope TypeScope, client graphql.Cl
 
 			// Create a module for the scalar type (just a type placeholder)
 			scalarModuleVal := NewObject(scalarTypeScope)
+			// A scalar whose name matches a builtin scalar (e.g. an imported JSON
+			// scalar) doubles as that scalar's namespace.
+			attachBuiltinMethods(scalarModuleVal, scalarTypeScope)
 
 			// Add the scalar module to the environment
 			env.Bind(t.Name, scalarModuleVal, PublicVisibility)
@@ -887,7 +890,7 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 // Runtime value implementations
 
 // DeferredValue is an opaque decoded data value returned by deserializers like
-// fromJSON and fromYAML. It is materialized only when an expected type is
+// JSON.decode and YAML.decode. It is materialized only when an expected type is
 // available.
 type DeferredValue struct {
 	Raw any

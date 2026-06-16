@@ -102,6 +102,12 @@ nav.toc li{display:grid;grid-template-columns:2rem minmax(0,1fr);column-gap:.75r
 .toc-sections a:hover{color:var(--link)}
 /* inline-block keeps the separator outside the hover underline */
 .toc-sections a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg2);margin-left:.35em}
+/* Anchor tags under a ToC entry (e.g. the stdlib reference's per-section
+   builtins): a wrapping word cloud of compact mono links, no separator since
+   many read as `.foo`. */
+.toc-anchors{display:flex;flex-wrap:wrap;gap:.15rem .85em;margin-top:.15rem;font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.8}
+.toc-anchors a{color:var(--fg2)}
+.toc-anchors a:hover{color:var(--link)}
 
 blockquote, .inset{
   border-left:3px solid var(--accent);background:var(--bg2);
