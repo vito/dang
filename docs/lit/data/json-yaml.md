@@ -27,7 +27,7 @@ let settings: Settings! = TOML.decode("count = 1")
 
 ## Serialization
 
-- `JSON.encode(value)` / `YAML.encode(value)` / `TOML.encode(value)` — `String!`; object/record keys are emitted in alphabetical order (see [#literals]). `TOML.encode` requires a table (record) at the top level.
+- `JSON.encode(value)` / `YAML.encode(value)` / `TOML.encode(value)` — `String!`; object/record keys are emitted in alphabetical order (see [#literals]). `TOML.encode` requires a table (record) at the top level, and drops null fields (TOML has no null) where JSON/YAML keep them.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise (see [#strings])
 
 ## Coercion during parsing

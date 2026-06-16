@@ -109,7 +109,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Record/object fields fall back to declared defaults when absent; nullable fields absent from input decode to `null`.
 
 ### Serialization
-- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level.
+- `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
 ### Errors (all catchable with `try`/`catch`)
