@@ -270,7 +270,10 @@ type Test {
       .generated
       .withWorkdir("/src/docs")
       .withEnvVariable("CGO_ENABLED", "1")
-      .withExec(["go", "test", "./..."])
+      .withExec(
+        ["otelgotest", "./..."],
+        experimentalPrivilegedNesting: true,
+      )
   }
 
   # Intentionally not marked @generate - so it's run intentionally and not
