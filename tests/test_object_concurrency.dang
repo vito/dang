@@ -38,3 +38,15 @@ assert { fanout.one == "hello world!" }
 assert { fanout.two == "hello world?" }
 assert { fanout.three == "hello world." }
 assert { fanout.four == "hello world," }
+
+# A field whose name matches an enclosing binding resolves its OWN name to the
+# outer binding (not itself), while siblings still see the field's value.
+pub tag = "outer"
+
+pub shadowing = {{
+  tag: tag + "/inner",
+  derived_tag: tag + "/derived"
+}}
+
+assert { shadowing.tag == "outer/inner" }
+assert { shadowing.derived_tag == "outer/inner/derived" }

@@ -1349,6 +1349,7 @@ type pendingInit struct {
 	mu   sync.Mutex
 	done bool
 	val  Value
+	err  error
 }
 
 // forceChain is a linked list, threaded through the context, of the pending
@@ -1490,27 +1491,24 @@ func (m *Object) force(ctx context.Context, name string, p *pendingInit) (Value,
 	}
 
 	// Serialize forcing of this binding. Holding p.mu across Init means a
-	// concurrent reader of the same binding blocks until the value is ready and
-	// then sees the cached result, so the initializer runs exactly once.
-	// Distinct bindings have distinct locks, so independent fields still force
-	// in parallel.
+	// concurrent reader of the same binding blocks until the result is ready and
+	// then sees it cached, so the initializer runs exactly once — value or
+	// error. Distinct bindings have distinct locks, so independent fields still
+	// force in parallel.
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.done {
-		return p.val, true, nil
+		return p.val, true, p.err
 	}
 
 	val, err := p.Init(withForceChain(ctx, p))
+	if err == nil && val == nil {
+		err = fmt.Errorf("initializer for variable %q returned nil", name)
+	}
+	p.val, p.err, p.done = val, err, true
 	if err != nil {
-		// Leave the binding unforced so it can be retried.
 		return nil, true, err
 	}
-	if val == nil {
-		return nil, true, fmt.Errorf("initializer for variable %q returned nil", name)
-	}
-
-	p.val = val
-	p.done = true
 
 	m.mu.Lock()
 	delete(m.Pending, name)

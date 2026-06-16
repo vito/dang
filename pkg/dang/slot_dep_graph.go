@@ -4,13 +4,13 @@ import "fmt"
 
 // slotDepGraph models the data-dependency graph between nodes that declare
 // and reference named symbols. An edge i -> dep means nodes[i] references a
-// symbol declared by nodes[dep]. Used by module-variable inference ordering
-// and by object-literal field scheduling.
+// symbol declared by nodes[dep]. Used to order module-variable and
+// object-literal field inference (dependencies before dependents) and to
+// reject cyclic dependencies.
 type slotDepGraph struct {
 	n     int
 	names []string      // names[i] is one declared symbol per node, for diagnostics
 	deps  map[int][]int // i -> indices it depends on, source order, deduplicated
-	rdeps map[int][]int // i -> indices that depend on i, source order, deduplicated
 }
 
 // newSlotDepGraph builds a dependency graph from nodes' DeclaredSymbols and
@@ -36,7 +36,6 @@ func newSlotDepGraph(nodes []Node) *slotDepGraph {
 		n:     len(nodes),
 		names: names,
 		deps:  make(map[int][]int, len(nodes)),
-		rdeps: make(map[int][]int, len(nodes)),
 	}
 	seen := make(map[[2]int]struct{}, len(nodes))
 	for i, node := range nodes {
@@ -51,7 +50,6 @@ func newSlotDepGraph(nodes []Node) *slotDepGraph {
 			}
 			seen[key] = struct{}{}
 			g.deps[i] = append(g.deps[i], dep)
-			g.rdeps[dep] = append(g.rdeps[dep], i)
 		}
 	}
 	return g
@@ -105,43 +103,6 @@ func (g *slotDepGraph) LinearOrder() (order []int, cycle []int) {
 	}
 
 	return order, nil
-}
-
-// Layers returns a Kahn-style layered topological order: each layer is a
-// set of indices that can be evaluated independently after all prior layers
-// have completed. If a cycle exists, returns nil and a cycle path.
-func (g *slotDepGraph) Layers() (layers [][]int, cycle []int) {
-	inDegree := make([]int, g.n)
-	for i := range g.n {
-		inDegree[i] = len(g.deps[i])
-	}
-	var ready []int
-	for i := range g.n {
-		if inDegree[i] == 0 {
-			ready = append(ready, i)
-		}
-	}
-	scheduled := 0
-	for len(ready) > 0 {
-		layer := append([]int(nil), ready...)
-		layers = append(layers, layer)
-		ready = nil
-		for _, i := range layer {
-			scheduled++
-			for _, dependent := range g.rdeps[i] {
-				inDegree[dependent]--
-				if inDegree[dependent] == 0 {
-					ready = append(ready, dependent)
-				}
-			}
-		}
-	}
-	if scheduled == g.n {
-		return layers, nil
-	}
-	// Cycle present: derive a path via DFS for diagnostics.
-	_, cycle = g.LinearOrder()
-	return nil, cycle
 }
 
 // CycleNames maps a cycle path (indices) to declared names for diagnostics.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -511,11 +512,12 @@ func (f *ObjectLiteral) GetSourceLocation() *SourceLocation { return f.Loc }
 
 var _ hm.Inferer = &ObjectLiteral{}
 
-// objectSlotLayers validates the field list and returns layers of field
-// indices that can be inferred or evaluated independently within a layer.
-// Errors are scoped to the object node so the source location points at the
-// literal.
-func objectSlotLayers(o *ObjectLiteral) ([][]int, error) {
+// objectFieldOrder validates the field list and returns field indices in
+// dependency order (a field comes after the siblings it references), so
+// inference can type-check forward references, and rejects cyclic field
+// dependencies. Errors are scoped to the object node so the source location
+// points at the literal.
+func objectFieldOrder(o *ObjectLiteral) ([]int, error) {
 	localNames := make(map[string]int, len(o.Fields))
 	nodes := make([]Node, len(o.Fields))
 	for i, field := range o.Fields {
@@ -535,7 +537,7 @@ func objectSlotLayers(o *ObjectLiteral) ([][]int, error) {
 	}
 
 	graph := newSlotDepGraph(nodes)
-	layers, cycle := graph.Layers()
+	order, cycle := graph.LinearOrder()
 	if cycle != nil {
 		names := graph.CycleNames(cycle)
 		return nil, NewInferError(
@@ -543,7 +545,7 @@ func objectSlotLayers(o *ObjectLiteral) ([][]int, error) {
 			o,
 		)
 	}
-	return layers, nil
+	return order, nil
 }
 
 func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
@@ -552,17 +554,15 @@ func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher)
 		primary: mod,
 		lexical: env.(TypeScope),
 	}
-	layers, err := objectSlotLayers(o)
+	order, err := objectFieldOrder(o)
 	if err != nil {
 		return nil, err
 	}
-	// Infer in dependency-layer order so a field can reference siblings that
-	// are declared later in source order.
-	for _, layer := range layers {
-		for _, fieldIdx := range layer {
-			if _, err := o.Fields[fieldIdx].Infer(ctx, inferTypeScope, fresh); err != nil {
-				return nil, err
-			}
+	// Infer in dependency order so a field can reference siblings that are
+	// declared later in source order.
+	for _, idx := range order {
+		if _, err := o.Fields[idx].Infer(ctx, inferTypeScope, fresh); err != nil {
+			return nil, err
 		}
 	}
 	o.Mod = mod
@@ -577,65 +577,61 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 	}
 	newMod := NewObject(o.Mod)
 	valueScope := CreateOverlayValueScope(newMod, scope)
-	layers, err := objectSlotLayers(o)
-	if err != nil {
-		return nil, err
+
+	// Bind each field as a lazy initializer in the object, then force them all
+	// concurrently. Lazy resolution evaluates fields in dependency order for
+	// free: forcing a field that references a sibling forces that sibling first
+	// (sharing the single result), while independent fields run in parallel and
+	// each runs exactly once. Inference already rejected cyclic fields, so
+	// forcing cannot deadlock. force() publishes each field's value, so the
+	// resulting object carries every field regardless of completion order.
+	for _, field := range o.Fields {
+		field := field
+		name := field.Name.Name
+		newMod.BindLazy(name, func(ctx context.Context) (Value, error) {
+			// Fork so a field's incidental local writes stay private; sibling
+			// references resolve through newMod, forcing them on demand.
+			fieldScope := valueScope.Derive(true)
+			// A field's own name refers to the enclosing scope, not the field
+			// being defined, so `users: users.{{...}}` reads the outer `users`
+			// rather than recursing into itself. Redirect it to the outer scope
+			// lazily, so the outer lookup happens only if the field actually
+			// references its own name. (A self-reference with no outer binding is
+			// already rejected during inference.)
+			if scope.Has(name) {
+				fieldScope.BindLazy(name, func(ctx context.Context) (Value, error) {
+					v, _, err := scope.Lookup(ctx, name)
+					return v, err
+				}, field.Visibility)
+			}
+			return WithEvalErrorHandling(ctx, field, func() (Value, error) {
+				return field.EvalValue(ctx, fieldScope)
+			})
+		}, field.Visibility)
 	}
 
-	// Independent fields within a layer run concurrently; dependent fields
-	// wait for the layers they depend on. Evaluation fails fast: the first
-	// error cancels the rest. Within a layer, completed values are published
-	// in source order so the resulting object layout is deterministic.
+	// Fail fast on the first error (cancelling in-flight siblings), but wait for
+	// every field and report the lowest-source-index error, so the failure
+	// surfaced is deterministic regardless of completion order.
 	evalCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	for _, layer := range layers {
-		type fieldResult struct {
-			idx int
-			val Value
-			err error
-		}
-		results := make(chan fieldResult, len(layer))
-		for _, fieldIdx := range layer {
-			field := o.Fields[fieldIdx]
-			go func(idx int, field *FieldDecl) {
-				// Evaluate each field against a fork of the object scope. The
-				// fork can read already-published dependency fields through its
-				// parent, but any incidental local writes remain private to this
-				// field. The shared object is only mutated below, after the whole
-				// layer has completed.
-				fieldScope := CreateOverlayValueScope(newMod.Derive(true), scope)
-				val, err := WithEvalErrorHandling(evalCtx, field, func() (Value, error) {
-					return field.EvalValue(evalCtx, fieldScope)
-				})
-				if err != nil {
-					err = fmt.Errorf("evaluating object field %q: %w", field.Name.Name, err)
-				}
-				results <- fieldResult{idx: idx, val: val, err: err}
-			}(fieldIdx, field)
-		}
-
-		values := make(map[int]Value, len(layer))
-		var firstErr error
-		firstErrIdx := len(o.Fields)
-		for range layer {
-			res := <-results
-			if res.err != nil {
+	errs := make([]error, len(o.Fields))
+	var wg sync.WaitGroup
+	for i, field := range o.Fields {
+		i, name := i, field.Name.Name
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := newMod.Lookup(evalCtx, name); err != nil {
+				errs[i] = err
 				cancel()
-				if firstErr == nil || res.idx < firstErrIdx {
-					firstErr = res.err
-					firstErrIdx = res.idx
-				}
-				continue
 			}
-			values[res.idx] = res.val
-		}
-		if firstErr != nil {
-			return nil, firstErr
-		}
-
-		// Publish completed fields in source order for deterministic layout.
-		for _, fieldIdx := range layer {
-			o.Fields[fieldIdx].Publish(valueScope, values[fieldIdx])
+		}()
+	}
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
 		}
 	}
 	return newMod, nil
