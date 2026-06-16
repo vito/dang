@@ -1,0 +1,8 @@
+[1m[31mError:[0m TOML.encode: TOML requires a table (record) at the top level, got a list
+  [2m[34m--> errors/toml_encode_not_table.dang:1:7[0m
+ [2m    |[0m
+ [2m[34m[1m  1 | [0mprint(TOML.encode([1, 2, 3]))
+[2m             [31m^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  2 | [0m
+ [2m    |[0m
+

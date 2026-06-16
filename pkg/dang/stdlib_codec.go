@@ -178,9 +178,10 @@ func encodeTOML(val Value) (string, error) {
 		return "", err
 	}
 	// TOML's top level must be a table; a bare scalar or array has no TOML
-	// representation. Report that rather than emitting something surprising.
+	// representation. Report that in Dang terms rather than emitting something
+	// surprising or leaking a Go type name.
 	if _, ok := plain.(map[string]any); !ok {
-		return "", fmt.Errorf("TOML requires a table (record) at the top level, got %T", plain)
+		return "", fmt.Errorf("TOML requires a table (record) at the top level, got %s", plainKindName(plain))
 	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(plain); err != nil {
@@ -234,6 +235,30 @@ func jsonBytesToRaw(jsonBytes []byte) (any, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+// plainKindName names a plain Go value (as produced by plainFromValue) in
+// Dang-facing terms, so error messages describe what the user passed rather
+// than leaking a Go type name like []interface {} or int64.
+func plainKindName(v any) string {
+	switch v.(type) {
+	case nil:
+		return "null"
+	case bool:
+		return "a boolean"
+	case string:
+		return "a string"
+	case int64:
+		return "an integer"
+	case float64:
+		return "a float"
+	case []any:
+		return "a list"
+	case map[string]any:
+		return "a record"
+	default:
+		return fmt.Sprintf("%T", v)
+	}
 }
 
 // numbersToGo walks a decoded structure and converts json.Number to int64 or
