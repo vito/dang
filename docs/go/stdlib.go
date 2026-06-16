@@ -49,7 +49,6 @@ type tocGroup struct {
 var tocGroups = []tocGroup{
 	{title: "Top-level functions", key: "fn", kind: "functions"},
 	{title: "String! methods", key: "String", kind: "methods"},
-	{title: "Match object", key: "Match", kind: "methods"},
 	{title: "[T]! methods", key: "List", kind: "methods"},
 	{title: "Map[a]! methods", key: "Map", kind: "methods"},
 	{title: "JSON module", key: "JSON", kind: "statics"},
@@ -58,6 +57,12 @@ var tocGroups = []tocGroup{
 	{title: "Random module", key: "Random", kind: "statics"},
 	{title: "UUID module", key: "UUID", kind: "statics"},
 }
+
+// tocExternalReceivers are method receivers documented on another page rather
+// than the stdlib reference, so they are intentionally absent from tocGroups
+// (and from the exhaustiveness guard). Match only arises from String/Regexp
+// APIs, so it lives on the Strings page.
+var tocExternalReceivers = map[string]bool{"Match": true}
 
 // StdlibToc renders a compact, page-level table of contents: each section links
 // to its heading, and every documented entry links to its card anchor — a
@@ -72,7 +77,7 @@ func (p Plugin) StdlibToc() (booklit.Content, error) {
 		covered[g.key] = true
 	}
 	for _, r := range dang.MethodReceivers() {
-		if !covered[r.Named] {
+		if !covered[r.Named] && !tocExternalReceivers[r.Named] {
 			return nil, fmt.Errorf("stdlib-toc: receiver %q is missing from tocGroups", r.Named)
 		}
 	}

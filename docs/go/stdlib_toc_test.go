@@ -16,7 +16,7 @@ func TestStdlibTocCoversEveryGroup(t *testing.T) {
 		covered[g.key] = true
 	}
 	for _, r := range dang.MethodReceivers() {
-		if !covered[r.Named] {
+		if !covered[r.Named] && !tocExternalReceivers[r.Named] {
 			t.Errorf("method receiver %q has no entry in tocGroups; \\stdlib-toc would omit it", r.Named)
 		}
 	}

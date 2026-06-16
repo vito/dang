@@ -40,6 +40,12 @@
 - `s.split(separator)`, `s.split(separator, limit: n)` — empty separator splits into characters; `limit` caps the number of parts (last part keeps the remainder)
 - `s.replace(old, new)`, `s.replace(old, new, count: n)` — `count` defaults to -1 (replace all); empty `old` inserts between characters
 
-## Future: regex
+## Regex
 
-> Meta: see `regexp.md` for the planned `Regexp` scalar, `Match` object, and `containsMatch/match/matchAll/replaceMatches/rewriteMatches/splitMatches` family. Add a section here when it lands.
+> Regex methods — `containsMatch`, `match`, `matchAll`, `replaceMatches`, `rewriteMatches`, `splitMatches` — take a `Regexp!` pattern. A backtick template string auto-coerces to the `Regexp` scalar, so a pattern is usually written `` `\d+` `` (Go `regexp/syntax`). Full signatures are on [#stdlib].
+
+### `Match` object
+
+> Returned by `.match`, and as the elements of `.matchAll`; a missing match is `null`. It only arises from these String/Regexp APIs, so it lives here rather than as a top-level stdlib module.
+
+\stdlib-methods{Match}

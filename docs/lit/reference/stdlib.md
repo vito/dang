@@ -22,12 +22,6 @@
 
 \stdlib-methods{String}
 
-### `Match` object
-
-> Returned by `.match` (and as elements of `.matchAll`); a missing match is `null`. See [#strings].
-
-\stdlib-methods{Match}
-
 ## `[T]!` methods
 
 > See [#collections]. List methods are registered on the `List` module, so signatures show the element type as the type variable `a` (and block result types as `b`). Block params are named `item`/`index` — and `acc` for `.reduce`.
