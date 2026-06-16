@@ -38,6 +38,22 @@
 
 \stdlib-methods{Map}
 
+## `JSON` module
+
+> See [#json-yaml]. `JSON`/`YAML`/`TOML` are codec namespaces: `encode` serializes any value to a string, `decode` materializes a string against the expected type (`:: T`). The names double as scalar types (`:: JSON`) owned by Dang, and merge with a same-named schema scalar such as Dagger's `JSON`.
+
+\stdlib-statics{JSON}
+
+## `YAML` module
+
+\stdlib-statics{YAML}
+
+## `TOML` module
+
+> `TOML.encode` requires a table (record) at the top level.
+
+\stdlib-statics{TOML}
+
 ## `Random` module
 
 \stdlib-statics{Random}
