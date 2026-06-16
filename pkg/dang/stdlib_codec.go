@@ -37,80 +37,99 @@ var (
 // of that name merges with the codec instead of shadowing it.
 var formatCodecs = map[string]*Type{}
 
-// codec bundles a format's marshal funcs with runnable doc examples. Adding a
-// format is a single entry here plus its encode/decode funcs.
-type codec struct {
-	mod           *Type
-	name          string
-	encode        func(Value) (string, error)
-	decode        func(string) (any, error)
-	encodeExample string
-	decodeExample string
-}
-
+// registerCodecs registers the JSON/YAML/TOML codec namespaces, each directly
+// with the builtin DSL like the Random/UUID modules. Recording each in
+// formatCodecs lets a same-named schema or user scalar graft the identical
+// methods, so the two merge instead of colliding (see graftCodecSchemes).
 func registerCodecs() {
-	for _, c := range []codec{
-		{
-			mod: JSONModule, name: "JSON", encode: encodeJSON, decode: decodeJSON,
-			encodeExample: `JSON.encode([1, 2, 3])`,
-			decodeExample: `JSON.decode("[1, 2, 3]") :: [Int!]!`,
-		},
-		{
-			mod: YAMLModule, name: "YAML", encode: encodeYAML, decode: decodeYAMLRaw,
-			encodeExample: `YAML.encode([1, 2, 3])`,
-			decodeExample: `YAML.decode("[1, 2, 3]") :: [Int!]!`,
-		},
-		{
-			mod: TOMLModule, name: "TOML", encode: encodeTOML, decode: decodeTOML,
-			encodeExample: `TOML.encode({{enabled: true, count: 3}})`,
-			decodeExample: "type Settings { count: Int! }\nTOML.decode(\"count = 3\") :: Settings",
-		},
-	} {
-		registerCodec(c)
-	}
-}
+	formatCodecs["JSON"] = JSONModule
+	formatCodecs["YAML"] = YAMLModule
+	formatCodecs["TOML"] = TOMLModule
 
-// registerCodec installs encode/decode static methods on a codec scalar and
-// records it in formatCodecs.
-func registerCodec(c codec) {
-	c.mod.SetTypeDocString("functions for encoding and decoding " + c.name)
-
-	// <Format>.encode(value: a) -> String!
-	//
-	// Encode takes an arbitrary value, so it cannot live on the String type
+	JSONModule.SetTypeDocString("functions for encoding and decoding JSON")
+	// encode takes an arbitrary value, so it cannot live on the String type
 	// (there is no universal receiver); it belongs to the format's namespace.
-	StaticMethod(c.mod, "encode").
-		Doc("serializes a value to a "+c.name+" string").
-		Example(c.encodeExample).
+	StaticMethod(JSONModule, "encode").
+		Doc("serializes a value to a JSON string").
+		Example(`JSON.encode([1, 2, 3])`).
 		Params("value", TypeVar('a')).
 		Returns(NonNull(StringType)).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			val, _ := args.Get("value")
-			out, err := c.encode(val)
+			out, err := encodeJSON(val)
 			if err != nil {
-				return nil, fmt.Errorf("%s.encode: %w", c.name, err)
+				return nil, fmt.Errorf("JSON.encode: %w", err)
 			}
 			return ToValue(out)
 		})
-
-	// <Format>.decode(data: String!) -> a
-	//
-	// Returns an opaque value that is materialized against the expected type
+	// decode returns an opaque value materialized against the expected type
 	// supplied via a `:: T` hint at the call boundary.
-	StaticMethod(c.mod, "decode").
-		Doc("parses a "+c.name+" string into an opaque value that is materialized by an expected type").
-		Example(c.decodeExample).
+	StaticMethod(JSONModule, "decode").
+		Doc("parses a JSON string into an opaque value that is materialized by an expected type").
+		Example(`JSON.decode("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
 		Returns(TypeVar('a')).
 		Impl(func(ctx context.Context, args Args) (Value, error) {
-			raw, err := c.decode(args.GetString("data"))
+			raw, err := decodeJSON(args.GetString("data"))
 			if err != nil {
-				return nil, fmt.Errorf("%s.decode: %w", c.name, err)
+				return nil, fmt.Errorf("JSON.decode: %w", err)
 			}
 			return DeferredValue{Raw: raw}, nil
 		})
 
-	formatCodecs[c.name] = c.mod
+	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
+	StaticMethod(YAMLModule, "encode").
+		Doc("serializes a value to a YAML string").
+		Example(`YAML.encode([1, 2, 3])`).
+		Params("value", TypeVar('a')).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			val, _ := args.Get("value")
+			out, err := encodeYAML(val)
+			if err != nil {
+				return nil, fmt.Errorf("YAML.encode: %w", err)
+			}
+			return ToValue(out)
+		})
+	StaticMethod(YAMLModule, "decode").
+		Doc("parses a YAML string into an opaque value that is materialized by an expected type").
+		Example(`YAML.decode("[1, 2, 3]") :: [Int!]!`).
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			raw, err := decodeYAMLRaw(args.GetString("data"))
+			if err != nil {
+				return nil, fmt.Errorf("YAML.decode: %w", err)
+			}
+			return DeferredValue{Raw: raw}, nil
+		})
+
+	TOMLModule.SetTypeDocString("functions for encoding and decoding TOML")
+	StaticMethod(TOMLModule, "encode").
+		Doc("serializes a value to a TOML string").
+		Example(`TOML.encode({{enabled: true, count: 3}})`).
+		Params("value", TypeVar('a')).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			val, _ := args.Get("value")
+			out, err := encodeTOML(val)
+			if err != nil {
+				return nil, fmt.Errorf("TOML.encode: %w", err)
+			}
+			return ToValue(out)
+		})
+	StaticMethod(TOMLModule, "decode").
+		Doc("parses a TOML string into an opaque value that is materialized by an expected type").
+		Example("type Settings { count: Int! }\nTOML.decode(\"count = 3\") :: Settings").
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			raw, err := decodeTOML(args.GetString("data"))
+			if err != nil {
+				return nil, fmt.Errorf("TOML.decode: %w", err)
+			}
+			return DeferredValue{Raw: raw}, nil
+		})
 }
 
 // --- JSON ---
