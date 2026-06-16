@@ -2,7 +2,6 @@ package dangdocs
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -32,141 +31,6 @@ import (
 // indexThreshold is the group size above which a quick-scan index is rendered
 // before the cards. Small groups read fine as bare cards.
 const indexThreshold = 8
-
-// tocGroup describes one section of the stdlib reference for the page-level
-// table of contents: its heading title, the registry key used to build entry
-// anchors, and how to enumerate its entries.
-type tocGroup struct {
-	title string // must match the section's `##`/`###` heading (sans code ticks)
-	key   string // anchor namespace: "fn", or a receiver/module type name
-	kind  string // "functions" | "methods" | "statics"
-	// prefix is prepended to each entry's display name (".split", "JSON.encode").
-}
-
-// tocGroups lists the reference's sections in page order. The exhaustiveness
-// guard in StdlibToc fails the build if a registry receiver or static module is
-// missing here, so the ToC can't silently fall behind the page.
-var tocGroups = []tocGroup{
-	{title: "Top-level functions", key: "fn", kind: "functions"},
-	{title: "String! methods", key: "String", kind: "methods"},
-	{title: "[T]! methods", key: "List", kind: "methods"},
-	{title: "Map[a]! methods", key: "Map", kind: "methods"},
-	{title: "JSON module", key: "JSON", kind: "statics"},
-	{title: "YAML module", key: "YAML", kind: "statics"},
-	{title: "TOML module", key: "TOML", kind: "statics"},
-	{title: "Random module", key: "Random", kind: "statics"},
-	{title: "UUID module", key: "UUID", kind: "statics"},
-}
-
-// tocExternalReceivers are method receivers documented on another page rather
-// than the stdlib reference, so they are intentionally absent from tocGroups
-// (and from the exhaustiveness guard). Match only arises from String/Regexp
-// APIs, so it lives on the Strings page.
-var tocExternalReceivers = map[string]bool{"Match": true}
-
-// StdlibToc renders a compact, page-level table of contents: each section links
-// to its heading, and every documented entry links to its card anchor — a
-// word-cloud index so a reader can jump straight to a method. It is generated
-// from the same builtin registry as the cards, so it stays exhaustive; the
-// per-entry links are booklit.References, so a stale anchor fails the build.
-//
-//	\stdlib-toc
-func (p Plugin) StdlibToc() (booklit.Content, error) {
-	covered := map[string]bool{}
-	for _, g := range tocGroups {
-		covered[g.key] = true
-	}
-	for _, r := range dang.MethodReceivers() {
-		if !covered[r.Named] && !tocExternalReceivers[r.Named] {
-			return nil, fmt.Errorf("stdlib-toc: receiver %q is missing from tocGroups", r.Named)
-		}
-	}
-	for _, m := range dang.StaticModules() {
-		if !covered[m.Named] {
-			return nil, fmt.Errorf("stdlib-toc: module %q is missing from tocGroups", m.Named)
-		}
-	}
-
-	groups := make(booklit.Sequence, 0, len(tocGroups))
-	for _, g := range tocGroups {
-		defs, prefix, err := p.tocGroupDefs(g)
-		if err != nil {
-			return nil, err
-		}
-		sort.SliceStable(defs, func(i, j int) bool { return defs[i].Name < defs[j].Name })
-
-		entries := make(booklit.Sequence, 0, len(defs))
-		for _, d := range defs {
-			entries = append(entries, &booklit.Reference{
-				Section: p.section,
-				TagName: stdlibTag(g.key, d.Name),
-				Content: booklit.Styled{
-					Style:   booklit.StyleVerbatim,
-					Content: booklit.String(prefix + d.Name),
-				},
-			})
-		}
-
-		groups = append(groups, booklit.Styled{
-			Style:   "stdlib-toc-group",
-			Block:   true,
-			Content: entries,
-			Partials: booklit.Partials{
-				"Title": &booklit.Reference{
-					Section: p.section,
-					TagName: sectionSlug(g.title),
-					Content: booklit.String(g.title),
-				},
-			},
-		})
-	}
-
-	return booklit.Styled{
-		Style:   "stdlib-toc",
-		Block:   true,
-		Content: groups,
-	}, nil
-}
-
-// tocGroupDefs enumerates a group's builtin definitions and the display prefix
-// for its entries (matching the cards: "" for functions, "." for methods,
-// "Module." for statics).
-func (p Plugin) tocGroupDefs(g tocGroup) ([]dang.BuiltinDef, string, error) {
-	var defs []dang.BuiltinDef
-	switch g.kind {
-	case "functions":
-		dang.ForEachFunction(func(d dang.BuiltinDef) { defs = append(defs, d) })
-		return defs, "", nil
-	case "methods":
-		recv := receiverByName(g.key)
-		if recv == nil {
-			return nil, "", fmt.Errorf("stdlib-toc: no builtin method receiver named %q", g.key)
-		}
-		dang.ForEachMethod(recv, func(d dang.BuiltinDef) { defs = append(defs, d) })
-		return defs, ".", nil
-	case "statics":
-		mod := moduleByName(g.key)
-		if mod == nil {
-			return nil, "", fmt.Errorf("stdlib-toc: no builtin module named %q", g.key)
-		}
-		dang.ForEachStaticMethod(mod, func(d dang.BuiltinDef) { defs = append(defs, d) })
-		return defs, g.key + ".", nil
-	default:
-		return nil, "", fmt.Errorf("stdlib-toc: unknown group kind %q", g.kind)
-	}
-}
-
-var tocWhitespace = regexp.MustCompile(`\s+`)
-var tocSpecialChars = regexp.MustCompile(`[^[:alnum:]_\-]`)
-
-// sectionSlug reproduces booklit's Section.defaultTag so a group can link to
-// its heading's auto-generated anchor (e.g. "String! methods" -> string-methods).
-func sectionSlug(title string) string {
-	s := strings.ReplaceAll(title, " & ", " and ")
-	s = tocWhitespace.ReplaceAllString(s, "-")
-	s = tocSpecialChars.ReplaceAllString(s, "")
-	return strings.ToLower(s)
-}
 
 // StdlibFunctions renders the top-level builtin functions (alphabetical).
 //
@@ -260,8 +124,12 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 		tag := stdlibTag(key, d.Name)
 
 		// Target.Content (and the card/row Description) feed the search index's
-		// text; Title feeds its title. StripAux dereferences these, so they must
-		// be non-nil — use Empty when a builtin has no doc.
+		// text. Title is the qualified name (e.g. List.uniq); it feeds the search
+		// result title and the page table of contents, which lists each section's
+		// anchor tags by their title (\table-of-contents). The full signature
+		// still appears on the card itself, via renderSignature below. StripAux
+		// dereferences these, so they must be non-nil — use Empty when a builtin
+		// has no doc.
 		var desc booklit.Content = booklit.Empty
 		if d.Doc != "" {
 			desc = booklit.String(d.Doc)
@@ -271,7 +139,7 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 			"Target": booklit.Target{
 				TagName:  tag,
 				Location: p.section.InvokeLocation,
-				Title:    booklit.String(signature(d, titlePrefix)),
+				Title:    booklit.String(titlePrefix + d.Name),
 				Content:  desc,
 			},
 		}
