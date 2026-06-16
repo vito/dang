@@ -113,9 +113,10 @@ nav.stdlib-toc h2{font-size:.7rem;text-transform:uppercase;color:var(--fg2);font
 .stdlib-toc-title a{color:var(--fg)}
 .stdlib-toc-title a:hover{color:var(--link)}
 .stdlib-toc-entries{font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.8;color:var(--fg2)}
-.stdlib-toc-entries a{color:var(--fg2)}
+/* No separator between entries — many read as `.foo`, which looks awkward
+   beside a middot; rely on spacing instead. */
+.stdlib-toc-entries a{color:var(--fg2);margin-right:.85em}
 .stdlib-toc-entries a:hover{color:var(--link)}
-.stdlib-toc-entries a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg2);margin-left:.4em;margin-right:.05em}
 @media (max-width:34rem){.stdlib-toc-group{grid-template-columns:1fr;row-gap:.2rem;margin-bottom:1rem}}
 
 blockquote, .inset{
