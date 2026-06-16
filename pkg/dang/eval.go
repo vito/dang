@@ -2295,15 +2295,13 @@ func RunDir(ctx context.Context, dirPath string, isDebug bool) (ValueScope, erro
 // scoping. Phases run in lockstep across files so cross-file references resolve
 // regardless of file order.
 //
-// A single-file directory has no sibling to leak imports to, so its forms are
-// evaluated directly against valueScope — the imports end up reachable from the
-// returned env, which is what callers like RunDir's single-file tests rely on.
+// Imports are file-scoped regardless of file count: even a single-file directory
+// installs its imports into a per-file env rather than the returned valueScope,
+// so `import` consistently means "this file imports X" and imported symbols never
+// leak into the module scope. Each declaration still captures its file's composite
+// scope (e.g. via ConstructorFunction.Closure), so directive arguments and method
+// bodies that reference imported symbols continue to resolve.
 func evaluateDirectoryFiles(ctx context.Context, blocks []*FileBlock, valueScope ValueScope) error {
-	if len(blocks) == 1 {
-		_, err := EvaluateFormsWithPhases(ctx, blocks[0].Forms, valueScope)
-		return err
-	}
-
 	type fileEvalScope struct {
 		classified ClassifiedForms
 		scope      ValueScope
