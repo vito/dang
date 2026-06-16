@@ -111,6 +111,47 @@ Both work and produce the same result:
 
 Use `self.` when a parameter shadows a field name (`new(x: Int!) { self.x = x }`).
 
+## Object literals: parallel lazy evaluation
+
+`ObjectLiteral.Eval` does not evaluate fields top-to-bottom. Each field is
+installed as a lazy initializer in the new object (`BindLazy`) and all are
+forced concurrently. Dependency order is *emergent*: forcing a field that
+references a sibling forces that sibling first and shares the single result,
+so independent fields run in parallel while dependents wait. `force`
+publishes each value, so the object ends up with every field regardless of
+completion order. The first failure cancels in-flight siblings, but every
+field is awaited and the **lowest-source-index** error is returned, so a
+failure is reported deterministically.
+
+Two things to preserve when touching this:
+
+- **`Object` is concurrency-safe by necessity.** `Lookup`/`force`/`Bind` and
+  the other map accessors take `Object.mu` only for brief snapshots/commits —
+  never across `Init`, which runs arbitrary user code that re-enters the scope
+  and would deadlock. A pending initializer instead runs under its own
+  `pendingInit.mu` (held across `Init` to serialize forcing), and its result
+  (value *or* error) is memoized. Don't add a path that touches
+  `Values`/`Pending` without `Object.mu`.
+- **A field's own name resolves outward.** During a field's evaluation its own
+  name is redirected to the enclosing scope, so `users: users.{{...}}` reads
+  the outer `users` instead of recursing into itself. Siblings still see the
+  field. (The layered predecessor got this for free by not publishing a field
+  until after its turn; the lazy version makes it explicit.)
+
+### Two cycle detectors, two jobs
+
+- **Static (inference).** `objectFieldOrder` and `orderVariablesForInference`
+  build a `slotDepGraph` and topologically sort it. This is what lets a field
+  reference a later-declared sibling, and a failed sort *is* the cycle. The
+  sort — not a separate check — is why the graph exists; cycle detection is its
+  byproduct. Object-field cycles are always caught here (a function body can't
+  reach object fields), so eval never sees one.
+- **Dynamic (eval).** `force` threads a `forceChain` through the context and
+  errors if the chain re-enters a pending it is already forcing. This catches
+  cycles the static graph can't see — module-level cycles routed through an
+  auto-called function (`module_lazy_cycle`) — and is what stops a
+  self-referential force from deadlocking on its own `pendingInit.mu`.
+
 ## Subtyping via `Module.Eq`
 
 Subtyping is folded into Hindley-Milner unification by making `Module.Eq`

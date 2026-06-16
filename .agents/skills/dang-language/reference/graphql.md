@@ -23,6 +23,7 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 - The result is a **record** (`{{ ... }}`); access fields by name.
 - **Aliases** rename a field in the result, GraphQL-style (alias before the colon): `user.{{ fullName: name, email }}`. A bare field is shorthand for aliasing to itself — `user.{{ name }}` ≡ `user.{{ name: name }}` — exactly as `{{ name }}` ≡ `{{ name: name }}` in a record literal.
 - Aliases become real GraphQL aliases, so the **same field** can be selected more than once with different args: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`.
+- Combining independent selections in a record literal runs them **concurrently**: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` issues two queries in parallel (record fields evaluate concurrently).
 
 ## Inline fragments (unions/interfaces)
 ```dang

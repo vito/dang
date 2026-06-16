@@ -93,5 +93,8 @@ Backtick templates in detail — backticks switch the lexer into template mode:
 - nestable: `{{user: {{id: 1, active: true}}, count: 100}}`
 - compared by **value** — two records with the same fields and equal values are equal, `{{a: 1}} == {{a: 1}}` (see [#operators]); this is the structural cousin of a named `type`, which compares by type identity
 - serialized to JSON with keys sorted alphabetically, not declaration order (see [#json-yaml]): `{{count: 100, user: ...}}` → `{"count":100,"user":...}`
+- fields may reference each other in any order: `{{ total: a + b, a: 1, b: 2 }}` works regardless of declaration order; a cyclic reference is a compile error
+- a field's own name refers to the enclosing scope, not the field being defined: `{{ user: user.{{ name }} }}` reads the outer `user`
+- independent fields are evaluated concurrently; a field that references a sibling waits for it (so a record of GraphQL selections issues them in parallel, see [#interop])
 
 > Meta: explicitly call out the double-brace syntax — it's the unusual one and the first reaction is "is that a typo?"
