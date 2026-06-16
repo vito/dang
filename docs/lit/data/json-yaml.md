@@ -24,6 +24,7 @@ let settings: Settings! = TOML.decode("count = 1")
 - unknown/extra fields in the input are ignored, not errors
 - `JSON.decode` rejects trailing data after the first value
 - TOML's top level is always a table, so `TOML.decode` materializes into a record/object type
+- empty input differs by format: `JSON.decode("")` errors (not valid JSON); `YAML.decode("")` is `null` (an empty YAML document), so it won't materialize into a non-null record; `TOML.decode("")` is an empty table, so an empty TOML config still fills declared defaults
 
 ## Serialization
 
