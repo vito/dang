@@ -256,6 +256,23 @@ type Test {
       )
   }
 
+  """
+  Run the docs Go module's tests.
+
+  The docs site renderer lives in a separate Go module
+  (github.com/vito/dang/docs), so the root `go test ./...` above never reaches
+  it. Without this check its linker/literate/highlight tests rot unnoticed.
+  """
+  @check
+  @cache(policy: FunctionCachePolicy.Never)
+  docsGo: Container! {
+    dang
+      .generated
+      .withWorkdir("/src/docs")
+      .withEnvVariable("CGO_ENABLED", "1")
+      .withExec(["go", "test", "./..."])
+  }
+
   # Intentionally not marked @generate - so it's run intentionally and not
   # redundant with full check runs.
   """
