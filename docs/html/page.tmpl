@@ -103,6 +103,21 @@ nav.toc li{display:grid;grid-template-columns:2rem minmax(0,1fr);column-gap:.75r
 /* inline-block keeps the separator outside the hover underline */
 .toc-sections a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg2);margin-left:.35em}
 
+/* ── stdlib reference table of contents (stdlib-toc.tmpl) ────────────── */
+/* Per-section rows: the section title links its heading, then every entry is
+   a compact mono link — a word cloud you can jump from. */
+nav.stdlib-toc{margin:1.5rem 0 2.5rem}
+nav.stdlib-toc h2{font-size:.7rem;text-transform:uppercase;color:var(--fg2);font-weight:600;letter-spacing:.05em;margin:0 0 .75rem;padding:0;border:none}
+.stdlib-toc-group{display:grid;grid-template-columns:minmax(8rem,12rem) minmax(0,1fr);column-gap:1rem;align-items:baseline;margin:0 0 .7rem}
+.stdlib-toc-title{font-size:.85rem;font-weight:500}
+.stdlib-toc-title a{color:var(--fg)}
+.stdlib-toc-title a:hover{color:var(--link)}
+.stdlib-toc-entries{font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.8;color:var(--fg2)}
+.stdlib-toc-entries a{color:var(--fg2)}
+.stdlib-toc-entries a:hover{color:var(--link)}
+.stdlib-toc-entries a:not(:last-child)::after{content:"·";display:inline-block;color:var(--fg2);margin-left:.4em;margin-right:.05em}
+@media (max-width:34rem){.stdlib-toc-group{grid-template-columns:1fr;row-gap:.2rem;margin-bottom:1rem}}
+
 blockquote, .inset{
   border-left:3px solid var(--accent);background:var(--bg2);
   padding:.6rem .9rem !important;margin:.75rem 0 !important;border-radius:0 4px 4px 0;font-size:.85rem;

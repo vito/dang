@@ -1,0 +1,4 @@
+<div class="stdlib-toc-group">
+  {{with .Partial "Title"}}<span class="stdlib-toc-title">{{. | render}}</span>{{end}}
+  <span class="stdlib-toc-entries">{{range .Content}}{{. | render}}{{end}}</span>
+</div>
