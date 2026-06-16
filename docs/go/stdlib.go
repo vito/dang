@@ -135,11 +135,25 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 			desc = booklit.String(d.Doc)
 		}
 
+		// For an instance method the receiver is implied by its section, so wrap
+		// it in Aux: the ToC's stripAux drops it (showing `.uniq`) while the
+		// search title's String() keeps it (`List.uniq`). Static modules and free
+		// functions stay plain — `Random.float` is literally how it's called.
+		var title booklit.Content
+		if prefix == "." {
+			title = booklit.Sequence{
+				booklit.Aux{Content: booklit.String(qualifier)},
+				booklit.String("." + d.Name),
+			}
+		} else {
+			title = booklit.String(titlePrefix + d.Name)
+		}
+
 		cardPartials := booklit.Partials{
 			"Target": booklit.Target{
 				TagName:  tag,
 				Location: p.section.InvokeLocation,
-				Title:    booklit.String(titlePrefix + d.Name),
+				Title:    title,
 				Content:  desc,
 			},
 		}
