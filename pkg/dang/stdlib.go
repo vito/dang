@@ -350,6 +350,30 @@ func registerStdlib() {
 			return ToValue(centered)
 		})
 
+	// String.truncate method: truncate(length: Int!) -> String!
+	Method(StringType, "truncate").
+		Doc("truncates the string to at most the given length (in characters). If the string is already that length or shorter, it is returned unchanged. A length of zero or less yields an empty string.").
+		Example(`"hello world".truncate(5)`).
+		Params("length", NonNull(IntType)).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			str := self.(StringValue).Val
+			length := args.GetInt("length")
+
+			// A non-positive length always yields an empty string.
+			if length <= 0 {
+				return ToValue("")
+			}
+
+			// Count by characters (runes) so multi-byte characters are not split.
+			runes := []rune(str)
+			if len(runes) <= length {
+				return ToValue(str)
+			}
+
+			return ToValue(string(runes[:length]))
+		})
+
 	// List.contains method: contains(element: a) -> Boolean!
 	Method(ListTypeModule, "contains").
 		Doc("checks if the list contains the specified element").

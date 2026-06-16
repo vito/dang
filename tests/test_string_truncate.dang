@@ -1,0 +1,31 @@
+# Test the String truncate method
+
+# Longer string gets truncated to the given length
+let trunc_basic = "hello world".truncate(5)
+assert { trunc_basic == "hello" }
+
+# String shorter than the length is returned unchanged
+let trunc_shorter = "hi".truncate(5)
+assert { trunc_shorter == "hi" }
+
+# String exactly the length is returned unchanged
+let trunc_exact = "hello".truncate(5)
+assert { trunc_exact == "hello" }
+
+# Empty string stays empty
+let trunc_empty = "".truncate(5)
+assert { trunc_empty == "" }
+
+# A length of zero yields an empty string
+let trunc_zero = "hello".truncate(0)
+assert { trunc_zero == "" }
+
+# A negative length yields an empty string
+let trunc_negative = "hello".truncate(-1)
+assert { trunc_negative == "" }
+
+# Multi-byte (unicode) characters are not split
+let trunc_unicode = "héllo".truncate(3)
+assert { trunc_unicode == "hél" }
+
+print("All String truncate tests passed!")
