@@ -112,10 +112,10 @@ nav.stdlib-toc h2{font-size:.7rem;text-transform:uppercase;color:var(--fg2);font
 .stdlib-toc-title{font-size:.85rem;font-weight:500}
 .stdlib-toc-title a{color:var(--fg)}
 .stdlib-toc-title a:hover{color:var(--link)}
-.stdlib-toc-entries{font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.8;color:var(--fg2)}
+.stdlib-toc-entries{display:flex;flex-wrap:wrap;gap:.15rem .85em;font-family:'JetBrains Mono',monospace;font-size:.76rem;line-height:1.8;color:var(--fg2)}
 /* No separator between entries — many read as `.foo`, which looks awkward
-   beside a middot; rely on spacing instead. */
-.stdlib-toc-entries a{color:var(--fg2);margin-right:.85em}
+   beside a middot; rely on the flex gap instead. */
+.stdlib-toc-entries a{color:var(--fg2)}
 .stdlib-toc-entries a:hover{color:var(--link)}
 @media (max-width:34rem){.stdlib-toc-group{grid-template-columns:1fr;row-gap:.2rem;margin-bottom:1rem}}
 
