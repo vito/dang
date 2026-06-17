@@ -891,11 +891,11 @@ func (m gqlObjectMarshaller) MarshalJSON() ([]byte, error) {
 
 // DeferredValue is an opaque decoded data value returned by deserializers like
 // JSON.decode and YAML.decode. It is materialized only when an expected type is
-// available. Format records which codec produced it ("JSON"/"YAML"/"TOML"), so
-// materialization can honor that format's @FORMAT.field key renames.
+// available. Codec records which format produced it, so materialization can
+// honor that format's @FORMAT.field key renames.
 type DeferredValue struct {
-	Raw    any
-	Format string
+	Raw   any
+	Codec Codec
 }
 
 var _ Value = DeferredValue{}

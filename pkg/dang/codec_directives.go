@@ -8,26 +8,40 @@ import (
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-// codecFormats are the builtin string-shaped data-interchange formats that
-// expose field directives. Each name matches a ScalarKind module
-// (JSONModule/YAMLModule/TOMLModule) and is the directive scope used to apply
-// its options, e.g. @JSON.field or @YAML.ignore. Keeping the directive scoped
-// to the format means each codec controls its own serialized shape without a
-// global directive name, and one format's renames never leak into another.
-var codecFormats = []string{"JSON", "YAML", "TOML"}
+// A Codec is one of Dang's string-shaped data-interchange formats — JSON, YAML,
+// or TOML. It wraps the format's builtin ScalarKind module and owns that
+// format's field mapping: the reading of the @FORMAT.field / @FORMAT.ignore
+// directives. A DeferredValue carries the Codec that produced it (rather than a
+// format string) so materialization can apply the right directives when reading
+// fields back, with the set of formats kept closed and the directive scope named
+// in exactly one place — the module.
+type Codec struct {
+	module *Type
+}
 
-func codecModules() []*Type { return []*Type{JSONModule, YAMLModule, TOMLModule} }
+var (
+	jsonCodec = Codec{JSONModule}
+	yamlCodec = Codec{YAMLModule}
+	tomlCodec = Codec{TOMLModule}
+)
+
+// codecs returns every codec in declaration order, for registration and for
+// validation that must cover all formats.
+func codecs() []Codec { return []Codec{jsonCodec, yamlCodec, tomlCodec} }
+
+// scope is the directive scope this codec reads and the name its module is
+// published under, e.g. "JSON".
+func (c Codec) scope() string { return c.module.Named }
 
 // registerCodecFieldDirectives declares @field and @ignore on each codec
-// module. Their argument values are read back as literals by codecFieldOptions
-// and checked by validateCodecFieldDirectives, so the arguments are declared
-// without static types (Type_ == nil): the format module's own scope cannot
-// resolve names like String, and the literal-aware validation gives clearer
-// errors than generic type unification would.
+// module. Their argument values are read back as literals by Codec.options and
+// checked by validateCodecFieldDirectives, so the arguments are declared without
+// static types (Type_ == nil): the format module's own scope cannot resolve
+// names like String, and the literal-aware validation gives clearer errors than
+// generic type unification would.
 func registerCodecFieldDirectives() {
-	for _, mod := range codecModules() {
-		format := mod.Named
-		mod.AddDirective("field", &DirectiveDecl{
+	for _, c := range codecs() {
+		c.module.AddDirective("field", &DirectiveDecl{
 			Name: "field",
 			Args: []*FieldDecl{
 				{
@@ -40,17 +54,17 @@ func registerCodecFieldDirectives() {
 				},
 			},
 			Locations: []DirectiveLocation{{Name: "FIELD_DEFINITION"}},
-			DocString: fmt.Sprintf("Controls how a field is encoded to and decoded from %s.", format),
+			DocString: fmt.Sprintf("Controls how a field is encoded to and decoded from %s.", c.scope()),
 		})
-		mod.AddDirective("ignore", &DirectiveDecl{
+		c.module.AddDirective("ignore", &DirectiveDecl{
 			Name:      "ignore",
 			Locations: []DirectiveLocation{{Name: "FIELD_DEFINITION"}},
-			DocString: fmt.Sprintf("Excludes a field from %s encoding and decoding.", format),
+			DocString: fmt.Sprintf("Excludes a field from %s encoding and decoding.", c.scope()),
 		})
 	}
 }
 
-// codecFieldOpts is the resolved effect a format's directives have on a single
+// codecFieldOpts is the resolved effect a codec's directives have on a single
 // field.
 type codecFieldOpts struct {
 	rename   string
@@ -67,15 +81,15 @@ func (o codecFieldOpts) key(field string) string {
 	return field
 }
 
-// codecFieldOptions reads the options a given format imposes on a field from
-// its directive applications. Applications scoped to other formats are skipped.
-// Values come straight from literal nodes; validateCodecFieldDirectives has
-// already guaranteed (at compile time) that they are literals of the right
-// kind, so anything unexpected here is simply ignored.
-func codecFieldOptions(directives []*DirectiveApplication, format string) codecFieldOpts {
+// options reads this codec's directives off a field's directive applications.
+// Applications scoped to other codecs are skipped. Values come straight from
+// literal nodes; validateCodecFieldDirectives has already guaranteed (at compile
+// time) that they are literals of the right kind, so anything unexpected here is
+// simply ignored.
+func (c Codec) options(directives []*DirectiveApplication) codecFieldOpts {
 	var o codecFieldOpts
 	for _, d := range directives {
-		if d.Scope == nil || d.Scope.Name != format {
+		if d.Scope == nil || d.Scope.Name != c.scope() {
 			continue
 		}
 		switch d.Name {
@@ -100,32 +114,34 @@ func codecFieldOptions(directives []*DirectiveApplication, format string) codecF
 	return o
 }
 
-// codecDecodeField resolves, for a field being decoded from a format, which
+// fieldKey resolves, for a field of target being decoded with this codec, which
 // key to read it from and whether it is excluded entirely. An ignored field is
-// never read from the input, so it falls back to its default or null.
-func codecDecodeField(mod *Type, name, format string) (key string, ignore bool) {
-	if mod == nil {
-		return name, false
+// never read from the input, so it falls back to its default or null. A codec
+// with no module, or an absent target, maps every field to its own name.
+func (c Codec) fieldKey(target *Type, field string) (key string, ignore bool) {
+	if c.module == nil || target == nil {
+		return field, false
 	}
-	opts := codecFieldOptions(mod.GetDirectives(name), format)
-	return opts.key(name), opts.ignore
+	opts := c.options(target.GetDirectives(field))
+	return opts.key(field), opts.ignore
 }
 
 // validateCodecFieldDirectives checks every field's @FORMAT.field /
-// @FORMAT.ignore directives, for each codec format. It runs during type
-// inference so mistakes surface as compile errors with source locations:
-// non-literal or malformed names, omitNull on a non-null field, ignore combined
-// with field, and two fields colliding on the same serialized key.
+// @FORMAT.ignore directives, for each codec. It runs during type inference so
+// mistakes surface as compile errors with source locations: non-literal or
+// malformed names, omitNull on a non-null field, ignore combined with field, and
+// two fields colliding on the same serialized key.
 func validateCodecFieldDirectives(mod *Type) error {
-	for _, format := range codecFormats {
-		if err := validateCodecFormatDirectives(mod, format); err != nil {
+	for _, c := range codecs() {
+		if err := c.validateFieldDirectives(mod); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func validateCodecFormatDirectives(mod *Type, format string) error {
+func (c Codec) validateFieldDirectives(mod *Type) error {
+	scope := c.scope()
 	seen := map[string]string{} // serialized key -> declaring field
 	for fieldName, scheme := range mod.Bindings(PrivateVisibility) {
 		if !isCodecDataField(scheme) {
@@ -134,7 +150,7 @@ func validateCodecFormatDirectives(mod *Type, format string) error {
 
 		var fieldApp, ignoreApp *DirectiveApplication
 		for _, d := range mod.GetDirectives(fieldName) {
-			if d.Scope == nil || d.Scope.Name != format {
+			if d.Scope == nil || d.Scope.Name != scope {
 				continue
 			}
 			switch d.Name {
@@ -146,7 +162,7 @@ func validateCodecFormatDirectives(mod *Type, format string) error {
 		}
 
 		if ignoreApp != nil && fieldApp != nil {
-			return NewInferError(fmt.Errorf("@%s.ignore cannot be combined with @%s.field on the same field", format, format), fieldApp)
+			return NewInferError(fmt.Errorf("@%s.ignore cannot be combined with @%s.field on the same field", scope, scope), fieldApp)
 		}
 		if ignoreApp != nil {
 			// Excluded from this format entirely; contributes no key.
@@ -160,12 +176,12 @@ func validateCodecFormatDirectives(mod *Type, format string) error {
 			if nameArg != nil {
 				lit, ok := nameArg.(*String)
 				if !ok {
-					return NewInferError(fmt.Errorf("@%s.field name must be a string literal", format), nameArg)
+					return NewInferError(fmt.Errorf("@%s.field name must be a string literal", scope), nameArg)
 				}
 				if lit.Value == "" {
-					return NewInferError(fmt.Errorf("@%s.field name must be a non-empty string literal", format), nameArg)
+					return NewInferError(fmt.Errorf("@%s.field name must be a non-empty string literal", scope), nameArg)
 				}
-				if err := validateCodecName(format, lit.Value); err != nil {
+				if err := validateCodecName(scope, lit.Value); err != nil {
 					return NewInferError(err, nameArg)
 				}
 				key = lit.Value
@@ -174,10 +190,10 @@ func validateCodecFormatDirectives(mod *Type, format string) error {
 			if omitNullArg != nil {
 				lit, ok := omitNullArg.(*Boolean)
 				if !ok {
-					return NewInferError(fmt.Errorf("@%s.field omitNull must be a boolean literal", format), omitNullArg)
+					return NewInferError(fmt.Errorf("@%s.field omitNull must be a boolean literal", scope), omitNullArg)
 				}
 				if lit.Value && !isNullableScheme(scheme) {
-					return NewInferError(fmt.Errorf("@%s.field omitNull has no effect on non-null field %q", format, fieldName), omitNullArg)
+					return NewInferError(fmt.Errorf("@%s.field omitNull has no effect on non-null field %q", scope, fieldName), omitNullArg)
 				}
 			}
 		}
@@ -187,7 +203,7 @@ func validateCodecFormatDirectives(mod *Type, format string) error {
 			if keyNode != nil {
 				errNode = keyNode
 			}
-			return NewInferError(fmt.Errorf("%s field name %q is used by both %q and %q", format, key, prev, fieldName), errNode)
+			return NewInferError(fmt.Errorf("%s field name %q is used by both %q and %q", scope, key, prev, fieldName), errNode)
 		}
 		seen[key] = fieldName
 	}
@@ -233,13 +249,13 @@ func isNullableScheme(scheme *hm.Scheme) bool {
 
 // validateCodecName rejects field names that would corrupt the encoded output:
 // invalid UTF-8 or control characters.
-func validateCodecName(format, name string) error {
+func validateCodecName(scope, name string) error {
 	if !utf8.ValidString(name) {
-		return fmt.Errorf("@%s.field name must be valid UTF-8", format)
+		return fmt.Errorf("@%s.field name must be valid UTF-8", scope)
 	}
 	for _, r := range name {
 		if unicode.IsControl(r) {
-			return fmt.Errorf("@%s.field name %q contains invalid control character U+%04X", format, name, r)
+			return fmt.Errorf("@%s.field name %q contains invalid control character U+%04X", scope, name, r)
 		}
 	}
 	return nil

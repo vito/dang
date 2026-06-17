@@ -60,7 +60,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("JSON.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Format: "JSON"}, nil
+			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
 		})
 
 	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
@@ -87,7 +87,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("YAML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Format: "YAML"}, nil
+			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
 		})
 
 	TOMLModule.SetTypeDocString("functions for encoding and decoding TOML")
@@ -114,7 +114,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("TOML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw, Format: "TOML"}, nil
+			return DeferredValue{Raw: raw, Codec: tomlCodec}, nil
 		})
 
 	registerCodecFieldDirectives()
@@ -123,10 +123,10 @@ func registerCodecs() {
 // --- JSON ---
 
 func encodeJSON(val Value) (string, error) {
-	// encodeForFormat applies @JSON.field / @JSON.ignore at object boundaries;
+	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries;
 	// json.Marshal then produces canonical output (json.Number leaves render as
 	// numbers, object keys sort).
-	tree, err := encodeForFormat(val, "JSON")
+	tree, err := encodeValue(val, jsonCodec)
 	if err != nil {
 		return "", err
 	}
@@ -160,7 +160,7 @@ func decodeJSON(data string) (any, error) {
 // --- YAML ---
 
 func encodeYAML(val Value) (string, error) {
-	tree, err := encodeForFormat(val, "YAML")
+	tree, err := encodeValue(val, yamlCodec)
 	if err != nil {
 		return "", err
 	}
@@ -185,7 +185,7 @@ func decodeYAMLRaw(data string) (any, error) {
 // --- TOML ---
 
 func encodeTOML(val Value) (string, error) {
-	tree, err := encodeForFormat(val, "TOML")
+	tree, err := encodeValue(val, tomlCodec)
 	if err != nil {
 		return "", err
 	}
@@ -220,14 +220,14 @@ func decodeTOML(data string) (any, error) {
 
 // --- shared value conversion ---
 
-// encodeForFormat converts a Dang Value into a plain Go value (map / slice /
-// string / bool / json.Number / nil) for a specific codec format, applying that
-// format's field directives at every object boundary: @FORMAT.field renames the
-// key and omits it when null, @FORMAT.ignore drops it entirely. Numbers stay as
-// json.Number so each codec can render them (json.Marshal directly; yaml/toml
-// after numbersToGo). Renames are a codec concern only — Object.MarshalJSON,
-// used for internal state retention, keeps canonical field names.
-func encodeForFormat(val Value, format string) (any, error) {
+// encodeValue converts a Dang Value into a plain Go value (map / slice / string
+// / bool / json.Number / nil) for a codec, applying that codec's field
+// directives at every object boundary: @FORMAT.field renames the key and omits
+// it when null, @FORMAT.ignore drops it entirely. Numbers stay as json.Number so
+// each codec can render them (json.Marshal directly; yaml/toml after
+// numbersToGo). Renames are a codec concern only — Object.MarshalJSON, used for
+// internal state retention, keeps canonical field names.
+func encodeValue(val Value, c Codec) (any, error) {
 	switch v := val.(type) {
 	case NullValue:
 		return nil, nil
@@ -241,7 +241,7 @@ func encodeForFormat(val Value, format string) (any, error) {
 			if v.Mod != nil {
 				directives = v.Mod.GetDirectives(kv.Key)
 			}
-			opts := codecFieldOptions(directives, format)
+			opts := c.options(directives)
 			if opts.ignore {
 				continue
 			}
@@ -250,7 +250,7 @@ func encodeForFormat(val Value, format string) (any, error) {
 					continue
 				}
 			}
-			encoded, err := encodeForFormat(kv.Value, format)
+			encoded, err := encodeValue(kv.Value, c)
 			if err != nil {
 				return nil, err
 			}
@@ -261,7 +261,7 @@ func encodeForFormat(val Value, format string) (any, error) {
 		// Use a non-nil slice so an empty list encodes as [] rather than null.
 		items := make([]any, len(v.Elements))
 		for i, elem := range v.Elements {
-			encoded, err := encodeForFormat(elem, format)
+			encoded, err := encodeValue(elem, c)
 			if err != nil {
 				return nil, err
 			}
@@ -272,21 +272,21 @@ func encodeForFormat(val Value, format string) (any, error) {
 		// Everything else (scalars, enums, maps, ...) has no renamable fields of
 		// its own, so it keeps its canonical encoding. Field directives do not
 		// reach objects nested as map values.
-		return encodeLeaf(val, format)
+		return c.encodeLeaf(val)
 	}
 }
 
-// encodeLeaf converts a leaf Dang Value to its canonical form for a format. For
-// JSON it preserves the value's own MarshalJSON output verbatim (as
+// encodeLeaf converts a leaf Dang Value to its canonical form for this codec.
+// JSON preserves the value's own MarshalJSON output verbatim (as
 // json.RawMessage), so map keys keep their insertion order through the final
-// marshal. For YAML/TOML it produces a plain Go value (numbers as json.Number)
-// that those encoders can render — they sort map keys regardless.
-func encodeLeaf(val Value, format string) (any, error) {
+// marshal. YAML/TOML produce a plain Go value (numbers as json.Number) that
+// those encoders can render — they sort map keys regardless.
+func (c Codec) encodeLeaf(val Value) (any, error) {
 	jsonBytes, err := json.Marshal(val)
 	if err != nil {
 		return nil, err
 	}
-	if format == "JSON" {
+	if c == jsonCodec {
 		return json.RawMessage(jsonBytes), nil
 	}
 	return jsonBytesToRaw(jsonBytes)
