@@ -28,6 +28,9 @@ func FindDaggerModule(startPath string) string {
 		if _, err := os.Stat(filepath.Join(dir, "dagger-module.toml")); err == nil {
 			return dir
 		}
+		if _, err := os.Stat(filepath.Join(dir, "dagger.toml")); err == nil {
+			return dir
+		}
 		if _, err := os.Stat(filepath.Join(dir, "dagger.json")); err == nil { // Backward compatibility with pre 1.0
 			return dir
 		}
