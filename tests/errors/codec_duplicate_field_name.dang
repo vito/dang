@@ -1,0 +1,8 @@
+# Two fields cannot encode to the same JSON object key.
+
+type DuplicateNames {
+  firstName: String! @JSON.field(name: "name")
+  displayName: String! @JSON.field(name: "name")
+}
+
+print("Should not reach here!")

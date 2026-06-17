@@ -1,0 +1,7 @@
+# omitNull and omitEmpty are redundant together; omitEmpty already omits null.
+
+type OmitConflict {
+  field: String @JSON.field(omitNull: true, omitEmpty: true)
+}
+
+print("Should not reach here!")

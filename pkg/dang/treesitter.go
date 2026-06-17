@@ -58,10 +58,41 @@ var tsRuleRefAliases = map[string]treesitter.RuleName{
 }
 
 var tsRulePatches = map[treesitter.RuleName]func(treesitter.Rule) treesitter.Rule{
-	treesitter.Name("Sep"):         patchSepAutomaticNewline,
-	treesitter.Name("FormSep"):     patchSepAutomaticNewline,
-	treesitter.Name("ArgType"):     patchArgTypeDocstringSep,
-	treesitter.Name("Conditional"): patchPrecRight,
+	treesitter.Name("Sep"):                  patchSepAutomaticNewline,
+	treesitter.Name("FormSep"):              patchSepAutomaticNewline,
+	treesitter.Name("ArgType"):              patchArgTypeDocstringSep,
+	treesitter.Name("Conditional"):          patchPrecRight,
+	treesitter.Name("DirectiveApplication"): patchDirectiveScopeAsId,
+}
+
+// patchDirectiveScopeAsId rewrites a directive's optional qualifier so it lexes
+// as a plain identifier (word_token) rather than a NamedType (upper_token). In
+// `@JSON.field` the qualifier `JSON` is all-caps, so it matches both word_token
+// and upper_token; tree-sitter's lexer prefers word_token — the directive
+// name's own token — which leaves the upper_token NamedType qualifier
+// unreachable and `.field` an error. Lexing the qualifier as `id` removes the
+// ambiguity; the resulting `(id ".")? id` is LR(1), with the `.` lookahead
+// deciding qualifier vs. name. (The PEG keeps NamedType; this divergence is
+// tree-sitter-only, like the other patches here.)
+func patchDirectiveScopeAsId(rule treesitter.Rule) treesitter.Rule {
+	return replaceTSSymbol(rule, "named_type", "id")
+}
+
+// replaceTSSymbol returns rule with every SYMBOL reference named from rewritten
+// to to, recursing through Content and Members.
+func replaceTSSymbol(rule treesitter.Rule, from, to treesitter.RuleName) treesitter.Rule {
+	if rule.Type == treesitter.RuleTypeSymbol && rule.Name == from {
+		rule.Name = to
+		return rule
+	}
+	if rule.Content != nil {
+		patched := replaceTSSymbol(*rule.Content, from, to)
+		rule.Content = &patched
+	}
+	for i := range rule.Members {
+		rule.Members[i] = replaceTSSymbol(rule.Members[i], from, to)
+	}
+	return rule
 }
 
 // patchPrecRight wraps a rule in right associativity. Used for the classic

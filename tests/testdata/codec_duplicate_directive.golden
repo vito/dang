@@ -1,0 +1,11 @@
+[1m[31mError:[0m @JSON.field cannot be applied more than once on the same field
+  [2m[34m--> errors/codec_duplicate_directive.dang:6:39[0m
+ [2m    |[0m
+ [2m  4 | [0m
+ [2m  5 | type Dup {[0m
+ [2m[34m[1m  6 | [0m  name: String! @JSON.field(name: "a") @JSON.field(name: "b")
+[2m                                             [31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m    |[0m
+

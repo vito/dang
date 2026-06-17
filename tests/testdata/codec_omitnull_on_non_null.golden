@@ -1,0 +1,11 @@
+[1m[31mError:[0m @JSON.field omitNull has no effect on non-null field "field"
+  [2m[34m--> errors/codec_omitnull_on_non_null.dang:4:40[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | type OmitNullNonNull {[0m
+ [2m[34m[1m  4 | [0m  field: String! @JSON.field(omitNull: true)
+[2m                                              [31m^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

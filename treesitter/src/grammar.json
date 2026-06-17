@@ -5235,7 +5235,7 @@
                     "name": "s",
                     "content": {
                       "type": "SYMBOL",
-                      "name": "named_type"
+                      "name": "id"
                     }
                   },
                   {

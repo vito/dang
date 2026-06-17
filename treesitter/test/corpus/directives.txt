@@ -1,0 +1,188 @@
+===
+Plain directive
+===
+
+type T {
+  f: String! @deprecated
+}
+
+---
+
+(dang
+  (decl
+    (object_decl
+      (type_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (field_decl
+            (type_only_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (directive_application
+                (id
+                  (word_token))))))))))
+
+===
+Qualified directive with arguments
+===
+
+type T {
+  f: String! @JSON.field(name: "x")
+}
+
+---
+
+(dang
+  (decl
+    (object_decl
+      (type_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (field_decl
+            (type_only_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (directive_application
+                (id
+                  (word_token))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (immediate_paren)
+                  (argument
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (literal
+                        (string
+                          (immediate_string_content)
+                          (immediate_quote_token))))))))))))))
+
+===
+Qualified directive without arguments
+===
+
+type T {
+  f: String! @JSON.ignore
+}
+
+---
+
+(dang
+  (decl
+    (object_decl
+      (type_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (field_decl
+            (type_only_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (directive_application
+                (id
+                  (word_token))
+                (dot_token)
+                (id
+                  (word_token))))))))))
+
+===
+Multiple directives on a field
+===
+
+type T {
+  f: String! @JSON.field(name: "x") @YAML.field(name: "y")
+}
+
+---
+
+(dang
+  (decl
+    (object_decl
+      (type_token)
+      (symbol
+        (id
+          (word_token)))
+      (block
+        (decl
+          (field_decl
+            (type_only_field
+              (symbol
+                (id
+                  (word_token)))
+              (colon_token)
+              (type
+                (non_null
+                  (type
+                    (named_type
+                      (upper_id
+                        (upper_token))))
+                  (bang_token)))
+              (directive_application
+                (id
+                  (word_token))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (immediate_paren)
+                  (argument
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (literal
+                        (string
+                          (immediate_string_content)
+                          (immediate_quote_token)))))))
+              (directive_application
+                (id
+                  (word_token))
+                (dot_token)
+                (id
+                  (word_token))
+                (arg_values
+                  (immediate_paren)
+                  (argument
+                    (key_value
+                      (word_token)
+                      (colon_token)
+                      (literal
+                        (string
+                          (immediate_string_content)
+                          (immediate_quote_token))))))))))))))

@@ -1,0 +1,11 @@
+[1m[31mError:[0m @JSON.field name "bad\nname" contains invalid control character U+000A
+  [2m[34m--> errors/codec_field_name_invalid.dang:4:36[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | type InvalidName {[0m
+ [2m[34m[1m  4 | [0m  field: String! @JSON.field(name: "bad\nname")
+[2m                                          [31m^^^^^^^^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

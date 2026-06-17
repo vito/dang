@@ -60,7 +60,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("JSON.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw}, nil
+			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
 		})
 
 	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
@@ -87,7 +87,7 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("YAML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw}, nil
+			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
 		})
 
 	TOMLModule.SetTypeDocString("functions for encoding and decoding TOML")
@@ -114,16 +114,23 @@ func registerCodecs() {
 			if err != nil {
 				return nil, fmt.Errorf("TOML.decode: %w", err)
 			}
-			return DeferredValue{Raw: raw}, nil
+			return DeferredValue{Raw: raw, Codec: tomlCodec}, nil
 		})
+
+	registerCodecFieldDirectives()
 }
 
 // --- JSON ---
 
 func encodeJSON(val Value) (string, error) {
-	// Dang values implement MarshalJSON, so json.Marshal produces canonical
-	// output directly (correct int/float distinction, sorted object keys).
-	jsonBytes, err := json.Marshal(val)
+	// encodeValue applies @JSON.field / @JSON.ignore at object boundaries;
+	// json.Marshal then produces canonical output (json.Number leaves render as
+	// numbers, object keys sort).
+	tree, err := encodeValue(val, jsonCodec)
+	if err != nil {
+		return "", err
+	}
+	jsonBytes, err := json.Marshal(tree)
 	if err != nil {
 		return "", err
 	}
@@ -153,11 +160,11 @@ func decodeJSON(data string) (any, error) {
 // --- YAML ---
 
 func encodeYAML(val Value) (string, error) {
-	plain, err := plainFromValue(val)
+	tree, err := encodeValue(val, yamlCodec)
 	if err != nil {
 		return "", err
 	}
-	out, err := yaml.Marshal(plain)
+	out, err := yaml.Marshal(numbersToGo(tree))
 	if err != nil {
 		return "", err
 	}
@@ -178,15 +185,19 @@ func decodeYAMLRaw(data string) (any, error) {
 // --- TOML ---
 
 func encodeTOML(val Value) (string, error) {
-	plain, err := plainFromValue(val)
+	tree, err := encodeValue(val, tomlCodec)
 	if err != nil {
 		return "", err
 	}
+	plain := numbersToGo(tree)
 	// TOML's top level must be a table; a bare scalar or array has no TOML
 	// representation. Report that in Dang terms rather than emitting something
 	// surprising or leaking a Go type name.
 	if _, ok := plain.(map[string]any); !ok {
 		return "", fmt.Errorf("TOML requires a table (record) at the top level, got %s", plainKindName(plain))
+	}
+	if err := tomlRejectNullInList(plain); err != nil {
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(plain); err != nil {
@@ -212,22 +223,153 @@ func decodeTOML(data string) (any, error) {
 
 // --- shared value conversion ---
 
-// plainFromValue converts a Dang Value to a plain Go value (map / slice /
-// string / bool / int64 / float64 / nil) suitable for yaml.Marshal and
-// toml.Encode. It routes through the value's canonical JSON form so every
-// Value type that implements MarshalJSON is handled uniformly, then converts
-// json.Number back to int64/float64 (yaml/toml would otherwise emit numbers as
-// quoted strings).
-func plainFromValue(val Value) (any, error) {
+// encodeValue converts a Dang Value into a plain Go value (map / slice / string
+// / bool / json.Number / nil) for a codec, applying that codec's field
+// directives at every object boundary: @FORMAT.field renames the key and omits
+// it when null, @FORMAT.ignore drops it entirely. Numbers stay as json.Number so
+// each codec can render them (json.Marshal directly; yaml/toml after
+// numbersToGo). Renames are a codec concern only — Object.MarshalJSON, used for
+// internal state retention, keeps canonical field names.
+func encodeValue(val Value, c Codec) (any, error) {
+	switch v := val.(type) {
+	case NullValue:
+		return nil, nil
+	case *Object:
+		result := make(map[string]any, len(v.Values))
+		for _, kv := range v.Bindings(PrivateVisibility) {
+			if _, isFn := kv.Value.(FunctionValue); isFn {
+				continue
+			}
+			var directives []*DirectiveApplication
+			if v.Mod != nil {
+				directives = v.Mod.GetDirectives(kv.Key)
+			}
+			opts := c.options(directives)
+			if opts.ignore {
+				continue
+			}
+			if opts.omitNull {
+				if _, isNull := kv.Value.(NullValue); isNull {
+					continue
+				}
+			}
+			if opts.omitEmpty && isEmptyValue(kv.Value) {
+				continue
+			}
+			encoded, err := encodeValue(kv.Value, c)
+			if err != nil {
+				return nil, err
+			}
+			result[opts.key(kv.Key)] = encoded
+		}
+		return result, nil
+	case ListValue:
+		// Use a non-nil slice so an empty list encodes as [] rather than null.
+		items := make([]any, len(v.Elements))
+		for i, elem := range v.Elements {
+			encoded, err := encodeValue(elem, c)
+			if err != nil {
+				return nil, err
+			}
+			items[i] = encoded
+		}
+		return items, nil
+	case MapValue:
+		// Map keys are runtime data and are never renamed, but the values may be
+		// objects with field directives, so recurse into them. JSON preserves key
+		// insertion order, which a Go map would lose (encoding/json sorts keys),
+		// so assemble it directly; YAML/TOML sort keys regardless, so a plain map
+		// suffices.
+		if c == jsonCodec {
+			return c.encodeOrderedMap(v)
+		}
+		result := make(map[string]any, len(v.Keys))
+		for _, k := range v.Keys {
+			encoded, err := encodeValue(v.Entries[k], c)
+			if err != nil {
+				return nil, err
+			}
+			result[k] = encoded
+		}
+		return result, nil
+	default:
+		// Scalars, enums, and other leaves have no renamable fields of their own,
+		// so they keep their canonical encoding.
+		return c.encodeLeaf(val)
+	}
+}
+
+// encodeOrderedMap renders a MapValue as a JSON object preserving key insertion
+// order — a Go map would be re-sorted by encoding/json. It mirrors
+// MapValue.MarshalJSON but encodes each value through encodeValue, so field
+// directives reach objects nested as map values. The result is a json.RawMessage
+// so the final json.Marshal emits it verbatim.
+func (c Codec) encodeOrderedMap(m MapValue) (any, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range m.Keys {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		keyBytes, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(keyBytes)
+		buf.WriteByte(':')
+		encoded, err := encodeValue(m.Entries[k], c)
+		if err != nil {
+			return nil, err
+		}
+		valBytes, err := json.Marshal(encoded)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(valBytes)
+	}
+	buf.WriteByte('}')
+	return json.RawMessage(buf.Bytes()), nil
+}
+
+// isEmptyValue reports whether a value counts as empty for @FORMAT.field's
+// omitEmpty, matching Go's encoding/json omitempty: null, the empty string, a
+// zero number, false, and an empty list or map. Objects and other values are
+// never considered empty.
+func isEmptyValue(v Value) bool {
+	switch x := v.(type) {
+	case NullValue:
+		return true
+	case StringValue:
+		return x.Val == ""
+	case IntValue:
+		return x.Val == 0
+	case FloatValue:
+		return x.Val == 0
+	case BoolValue:
+		return !x.Val
+	case ListValue:
+		return len(x.Elements) == 0
+	case MapValue:
+		return len(x.Keys) == 0
+	default:
+		return false
+	}
+}
+
+// encodeLeaf converts a leaf Dang Value to its canonical form for this codec.
+// JSON preserves the value's own MarshalJSON output verbatim (as
+// json.RawMessage), so map keys keep their insertion order through the final
+// marshal. YAML/TOML produce a plain Go value (numbers as json.Number) that
+// those encoders can render — they sort map keys regardless.
+func (c Codec) encodeLeaf(val Value) (any, error) {
 	jsonBytes, err := json.Marshal(val)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := jsonBytesToRaw(jsonBytes)
-	if err != nil {
-		return nil, err
+	if c == jsonCodec {
+		return json.RawMessage(jsonBytes), nil
 	}
-	return numbersToGo(raw), nil
+	return jsonBytesToRaw(jsonBytes)
 }
 
 // jsonBytesToRaw decodes JSON bytes into a generic value, preserving numbers as
@@ -240,6 +382,32 @@ func jsonBytesToRaw(jsonBytes []byte) (any, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+// tomlRejectNullInList reports a Dang-framed error for a null list element,
+// which TOML cannot represent. Without this, BurntSushi surfaces its own
+// internal message ("toml: cannot encode array with nil element"), unlike the
+// rest of the encoder which keeps errors in Dang terms (see plainKindName). A
+// null *table* value the encoder drops silently, which we leave as-is.
+func tomlRejectNullInList(v any) error {
+	switch x := v.(type) {
+	case []any:
+		for _, e := range x {
+			if e == nil {
+				return fmt.Errorf("TOML cannot represent null inside a list")
+			}
+			if err := tomlRejectNullInList(e); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for _, e := range x {
+			if err := tomlRejectNullInList(e); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // plainKindName names a plain Go value (as produced by plainFromValue) in

@@ -1,0 +1,9 @@
+# A codec field name must be a string literal known at compile time.
+
+pub configuredName = "configured"
+
+type DynamicName {
+  field: String! @JSON.field(name: configuredName)
+}
+
+print("Should not reach here!")

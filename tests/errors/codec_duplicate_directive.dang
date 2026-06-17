@@ -1,0 +1,9 @@
+# The same @FORMAT.field directive cannot be applied twice to one field. The
+# runtime reader merges arguments across every application, so a second @field
+# would otherwise smuggle unvalidated arguments past the compile-time checks.
+
+type Dup {
+  name: String! @JSON.field(name: "a") @JSON.field(name: "b")
+}
+
+print("Should not reach here!")
