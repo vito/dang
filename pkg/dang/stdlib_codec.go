@@ -63,6 +63,41 @@ func registerCodecs() {
 			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
 		})
 
+	// toJSON / fromJSON / fromYAML are the deprecated top-level predecessors of
+	// the JSON.encode / JSON.decode / YAML.decode namespace members, kept so
+	// existing scripts keep working. They are marked @deprecated via the builtin
+	// DSL; calling one prints a warning pointing at the call site (see
+	// FunCall.Eval / WarnAtSource). Each delegates to the same implementation as
+	// its namespaced successor, so they honor codec field directives identically.
+	// (There was never a top-level toYAML/toTOML/fromTOML to restore.)
+	Builtin("toJSON").
+		Doc("serializes a value to a JSON string. Deprecated: use JSON.encode instead.").
+		Deprecated("use JSON.encode instead").
+		Example(`toJSON([1, 2, 3])`).
+		Params("value", TypeVar('a')).
+		Returns(NonNull(StringType)).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			val, _ := args.Get("value")
+			out, err := encodeJSON(val)
+			if err != nil {
+				return nil, fmt.Errorf("toJSON: %w", err)
+			}
+			return ToValue(out)
+		})
+	Builtin("fromJSON").
+		Doc("parses a JSON string into an opaque value that is materialized by an expected type. Deprecated: use JSON.decode instead.").
+		Deprecated("use JSON.decode instead").
+		Example(`fromJSON("[1, 2, 3]") :: [Int!]!`).
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			raw, err := decodeJSON(args.GetString("data"))
+			if err != nil {
+				return nil, fmt.Errorf("fromJSON: %w", err)
+			}
+			return DeferredValue{Raw: raw, Codec: jsonCodec}, nil
+		})
+
 	YAMLModule.SetTypeDocString("functions for encoding and decoding YAML")
 	StaticMethod(YAMLModule, "encode").
 		Doc("serializes a value to a YAML string").
@@ -86,6 +121,19 @@ func registerCodecs() {
 			raw, err := decodeYAMLRaw(args.GetString("data"))
 			if err != nil {
 				return nil, fmt.Errorf("YAML.decode: %w", err)
+			}
+			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
+		})
+	Builtin("fromYAML").
+		Doc("parses a YAML string into an opaque value that is materialized by an expected type. Deprecated: use YAML.decode instead.").
+		Deprecated("use YAML.decode instead").
+		Example(`fromYAML("[a, b, c]") :: [String!]!`).
+		Params("data", NonNull(StringType)).
+		Returns(TypeVar('a')).
+		Impl(func(ctx context.Context, args Args) (Value, error) {
+			raw, err := decodeYAMLRaw(args.GetString("data"))
+			if err != nil {
+				return nil, fmt.Errorf("fromYAML: %w", err)
 			}
 			return DeferredValue{Raw: raw, Codec: yamlCodec}, nil
 		})

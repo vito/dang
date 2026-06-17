@@ -1,0 +1,15 @@
+# toJSON / fromJSON / fromYAML are the deprecated predecessors of JSON.encode,
+# JSON.decode, and YAML.decode. They still work (printing a deprecation warning
+# that names the call site) and behave identically to their successors because
+# they share the same implementation.
+let obj = {{name: "test", value: 42}}
+assert { toJSON(obj) == JSON.encode(obj) }
+assert { toJSON([1, 2, 3]) == "[1,2,3]" }
+
+let parsed = fromJSON("[1, 2, 3]") :: [Int!]!
+assert { parsed == [1, 2, 3] }
+
+let yparsed = fromYAML("[a, b, c]") :: [String!]!
+assert { yparsed == ["a", "b", "c"] }
+
+print("deprecated conversion aliases work")
