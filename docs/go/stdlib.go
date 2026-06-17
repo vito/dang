@@ -231,7 +231,7 @@ func (p Plugin) deprecatedBadge(replacement string) booklit.Content {
 	badge := booklit.Sequence{booklit.String("@deprecated")}
 	if replacement != "" {
 		badge = append(badge,
-			booklit.String(" → "),
+			booklit.String(" => "),
 			&booklit.Reference{
 				Section: p.section,
 				TagName: replacementTag(replacement),
