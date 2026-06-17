@@ -268,12 +268,61 @@ func encodeValue(val Value, c Codec) (any, error) {
 			items[i] = encoded
 		}
 		return items, nil
+	case MapValue:
+		// Map keys are runtime data and are never renamed, but the values may be
+		// objects with field directives, so recurse into them. JSON preserves key
+		// insertion order, which a Go map would lose (encoding/json sorts keys),
+		// so assemble it directly; YAML/TOML sort keys regardless, so a plain map
+		// suffices.
+		if c == jsonCodec {
+			return c.encodeOrderedMap(v)
+		}
+		result := make(map[string]any, len(v.Keys))
+		for _, k := range v.Keys {
+			encoded, err := encodeValue(v.Entries[k], c)
+			if err != nil {
+				return nil, err
+			}
+			result[k] = encoded
+		}
+		return result, nil
 	default:
-		// Everything else (scalars, enums, maps, ...) has no renamable fields of
-		// its own, so it keeps its canonical encoding. Field directives do not
-		// reach objects nested as map values.
+		// Scalars, enums, and other leaves have no renamable fields of their own,
+		// so they keep their canonical encoding.
 		return c.encodeLeaf(val)
 	}
+}
+
+// encodeOrderedMap renders a MapValue as a JSON object preserving key insertion
+// order — a Go map would be re-sorted by encoding/json. It mirrors
+// MapValue.MarshalJSON but encodes each value through encodeValue, so field
+// directives reach objects nested as map values. The result is a json.RawMessage
+// so the final json.Marshal emits it verbatim.
+func (c Codec) encodeOrderedMap(m MapValue) (any, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range m.Keys {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		keyBytes, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(keyBytes)
+		buf.WriteByte(':')
+		encoded, err := encodeValue(m.Entries[k], c)
+		if err != nil {
+			return nil, err
+		}
+		valBytes, err := json.Marshal(encoded)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(valBytes)
+	}
+	buf.WriteByte('}')
+	return json.RawMessage(buf.Bytes()), nil
 }
 
 // encodeLeaf converts a leaf Dang Value to its canonical form for this codec.

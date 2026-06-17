@@ -56,13 +56,20 @@ let post: Post! = JSON.decode("{\"post_title\":\"Hello\",\"tags\":[{\"tag_name\"
 assert { post.postTitle == "Hello" }
 assert { post.tags[0].tagName == "x" }
 
-# the rename walk leaves map values alone: a map keeps its insertion order, and
-# a renamed field holding a map renames the field but not the map's keys
+# map keys are data, never renamed, and JSON keeps their insertion order; a
+# renamed field holding a map renames the field but not the map's keys
 type WithMap {
   entries: Map[Int!] @JSON.field(name: "entry_map")
 }
 
 assert { JSON.encode(["z": 1, "a": 2, "m": 3]) == "{\"z\":1,\"a\":2,\"m\":3}" }
 assert { JSON.encode(WithMap(["z": 1, "a": 2])) == "{\"entry_map\":{\"z\":1,\"a\":2}}" }
+
+# directives do reach objects nested as map values, while keys keep their order
+type Member {
+  fullName: String! @JSON.field(name: "full_name")
+}
+
+assert { JSON.encode(["b": Member("Bee"), "a": Member("Ay")]) == "{\"b\":{\"full_name\":\"Bee\"},\"a\":{\"full_name\":\"Ay\"}}" }
 
 print("Codec field directive tests passed!")
