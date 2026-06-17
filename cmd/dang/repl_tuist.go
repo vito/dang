@@ -480,7 +480,9 @@ func (r *replComponent) startEval(ectx tuist.Context, expr string) {
 				return
 			}
 
-			results = append(results, resultStyle.Render(fmt.Sprintf("=> %s", val.String())))
+			// Echo the result as a highlighted Dang literal (quoted strings,
+			// same grammar as the input), behind a green "=> " marker.
+			results = append(results, resultStyle.Render("=> ")+highlightCode(dang.Repr(val)))
 			if debug {
 				results = append(results, dimStyle.Render(fmt.Sprintf("%# v", pretty.Formatter(val))))
 			}

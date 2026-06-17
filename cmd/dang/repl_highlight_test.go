@@ -55,3 +55,11 @@ func TestHighlightSkipsReplCommands(t *testing.T) {
 	assert.Nil(t, highlightSpans(":help"))
 	assert.Equal(t, ":type foo", highlightCode(":type foo"))
 }
+
+// REPL result echoing highlights the value as a Dang literal: strings are
+// quoted and colored with the string class, exactly like input.
+func TestResultReprQuotesAndHighlights(t *testing.T) {
+	out := highlightCode(dang.Repr(dang.StringValue{Val: "hi"}))
+	assert.Equal(t, `"hi"`, ansi.Strip(out))
+	assert.Contains(t, out, classStyles[dang.ClassString].Render(`"hi"`))
+}
