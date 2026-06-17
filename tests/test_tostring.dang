@@ -28,3 +28,8 @@ assert { result5 == "{\"a\":1,\"b\":\"test\"}" }
 # Null gets JSON-encoded
 let result6 = toString(null)
 assert { result6 == "null" }
+
+# Enum values render as their bare name, not as a JSON string
+enum Color { RED GREEN BLUE }
+let result7 = toString(Color.RED)
+assert { result7 == "RED" }
