@@ -1,0 +1,64 @@
+/* Inkstained Dark — progressive enhancement layered on the base16 :root above.
+ *
+ * The dark companion to inkstained.css, with the same four flourishes re-tuned
+ * for a dark ground: where the light theme paints dark ink on pale tints, this
+ * paints pale ink on deep tints. genthemes appends this to the generated
+ * base16-inkstained-dark.css, and switcher.js swaps a single <link> between the
+ * css/base16/*.css files, so every rule here applies only while Inkstained Dark
+ * is the active scheme.
+ *
+ * The active scheme's stylesheet loads before page.tmpl's inline <style>, so
+ * the prose rules below are scoped to `main` both to clear that later style on
+ * specificity and to stay clear of the same tags in the sidebar/ToC nav. */
+
+:root {
+  /* inkstained's accent families, lifted for the dark ground; the `-tint`
+     backgrounds are deep, desaturated washes that sit just above base00
+     (https://github.com/yuttie/inkstained-vim). */
+  --ink-red-tint: #3a2a31;     --ink-red: #d2899a;
+  --ink-teal-tint: #243531;    --ink-teal: #a6cecb;
+  --ink-cyan-tint: #233139;    --ink-cyan: #6f9db0;
+  --ink-blue: #91a8c9;         --ink-blue-2: #7593bb;
+  --ink-violet-tint: #2a2735;  --ink-violet: #9784ae;
+  --ink-violet-light: #ac99c4;
+  --ink-magenta-tint: #2f2531; --ink-magenta: #c190ae;
+  --ink-magenta-soft: #b0789b;
+}
+
+/* Identifiers and keywords are set in bold ink — inkstained's most
+   recognizable trait. (JetBrains Mono is monospace at every weight, so the
+   bold tokens stay column-aligned in code blocks.) */
+.tok-function,
+.tok-keyword { font-weight: 700; }
+
+/* The signature teal box behind literals: strings and the true/false/null/
+   number constants, now pale teal on a deep teal wash. Background only — no
+   padding — so code stays aligned. */
+.tok-string,
+.tok-number {
+  color: var(--ink-teal);
+  background-color: var(--ink-teal-tint);
+  border-radius: 3px;
+}
+
+/* Code set inside paragraphs gets the same teal box, so inline references read
+   like the literals they usually are. page.tmpl keeps the padding and radius;
+   this only recolors. */
+main p code {
+  color: var(--ink-teal);
+  background-color: var(--ink-teal-tint);
+}
+
+/* A sparing wash of magenta marks the prose headings. */
+main h1,
+main h2,
+main h3 { color: var(--ink-magenta); }
+
+/* Asides take a quiet violet tint — another inkstained hue the base16 slots
+   don't surface on their own. page.tmpl's 3px solid left border stays; only
+   its color and the background change. */
+main blockquote,
+main .inset {
+  border-left-color: var(--ink-violet);
+  background-color: var(--ink-violet-tint);
+}

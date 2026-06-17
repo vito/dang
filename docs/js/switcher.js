@@ -206,6 +206,7 @@ var curatedDarkStyles = [
   "ic-green-ppl",
   "ic-orange-ppl",
   "idle-toes",
+  "inkstained-dark",
   "irblack",
   "kanagawa",
   "kanagawa-dragon",
