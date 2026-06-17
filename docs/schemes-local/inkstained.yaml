@@ -1,0 +1,28 @@
+system: "base16"
+name: "Inkstained"
+author: "yuttie (inkstained-vim), base16 port for the dang docs"
+slug: "inkstained"
+variant: "light"
+# A base16 translation of yuttie's inkstained-vim
+# (https://github.com/yuttie/inkstained-vim): ink on warm, aged paper. The
+# greyscale ramp (base00-base07) and the cool accents (red/teal/cyan/blue/
+# violet) come straight from the vim palette; inkstained has no orange,
+# yellow, or brown, so base09/base0A/base0F are muted sepia tones mixed to
+# fill the base16 rainbow without breaking the theme's quiet, cool mood.
+palette:
+  base00: "#e7e5e2" # page + code background (inkstained's lightest paper)
+  base01: "#dfddd7" # sidebar / selection background
+  base02: "#d3d1cc" # inline-code / hover background
+  base03: "#929cad" # comments (inkstained's muted comment grey)
+  base04: "#697383" # secondary labels (inkstained's body text)
+  base05: "#555f6f" # prose / default foreground (inkstained's darkest ink)
+  base06: "#434a57" # darker foreground
+  base07: "#2b313a" # darkest foreground
+  base08: "#aa586e" # red    — variables, tags, errors (inkstained red)
+  base09: "#98703f" # orange — numbers, constants, run button (sepia ink)
+  base0A: "#8a7a35" # yellow — types (muted gold)
+  base0B: "#608f8e" # green  — strings (inkstained teal)
+  base0C: "#447487" # cyan   — builtins, escapes (inkstained cyan)
+  base0D: "#56759a" # blue   — functions, links (inkstained blue)
+  base0E: "#7c6a93" # violet — keywords, operators (inkstained violet)
+  base0F: "#7d5f4a" # brown  — deprecations (sepia ink)

@@ -97,6 +97,22 @@ func main() {
 		}
 	}
 
+	// Repo-local schemes live in docs/schemes-local because the schemes
+	// submodule is upstream's tinted-theming/schemes and can't carry our own
+	// additions. They load last so a local scheme overrides an upstream one of
+	// the same name.
+	localPaths, err := filepath.Glob(filepath.Join("schemes-local", "*.yaml"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, p := range localPaths {
+		s, err := parseScheme(p)
+		if err != nil {
+			log.Fatal(err)
+		}
+		schemes[s.name] = s
+	}
+
 	outDir := filepath.Join("css", "base16")
 	if err := os.RemoveAll(outDir); err != nil {
 		log.Fatal(err)
@@ -106,7 +122,18 @@ func main() {
 	}
 	for name, s := range schemes {
 		out := filepath.Join(outDir, "base16-"+name+".css")
-		if err := os.WriteFile(out, []byte(s.css()), 0o644); err != nil {
+		css := s.css()
+		// Append a repo-local progressive enhancement, if the scheme ships
+		// one. switcher.js swaps a single <link> between these files, so any
+		// rules past the :root variables apply only while this scheme is
+		// active — letting a scheme reach beyond the 16 base16 slots (bold
+		// tokens, extra palette accents) without touching any other.
+		if enh, err := os.ReadFile(filepath.Join("schemes-local", name+".css")); err == nil {
+			css += "\n" + string(enh)
+		} else if !os.IsNotExist(err) {
+			log.Fatal(err)
+		}
+		if err := os.WriteFile(out, []byte(css), 0o644); err != nil {
 			log.Fatal(err)
 		}
 	}

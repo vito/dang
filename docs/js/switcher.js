@@ -294,6 +294,7 @@ var curatedLightStyles = [
   "gruvbox-light-soft",
   "gruvbox-material-light-medium",
   "gruvbox-material-light-soft",
+  "inkstained",
   "kissa-latte",
   "measured-light",
   "nord-light",
