@@ -633,6 +633,12 @@ func (c *ObjectDecl) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		return nil, err
 	}
 
+	// Validate codec field directives (@JSON.field, @YAML.ignore, ...) now that
+	// every field's type and directives are known.
+	if err := validateCodecFieldDirectives(object); err != nil {
+		return nil, err
+	}
+
 	// If there's an explicit new(), infer its body with its args in scope.
 	// Errors here (e.g. wrong return type) are collected but don't prevent
 	// the object from being usable, avoiding cascading type errors.

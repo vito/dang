@@ -1,0 +1,7 @@
+# omitNull is meaningless on a non-null field, which can never be null.
+
+type OmitNullNonNull {
+  field: String! @JSON.field(omitNull: true)
+}
+
+print("Should not reach here!")

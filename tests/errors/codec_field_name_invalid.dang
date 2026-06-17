@@ -1,0 +1,7 @@
+# Codec field names must not contain control characters.
+
+type InvalidName {
+  field: String! @JSON.field(name: "bad\nname")
+}
+
+print("Should not reach here!")

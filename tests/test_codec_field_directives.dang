@@ -1,0 +1,68 @@
+# Codec field directives: @JSON.field / @YAML.field / @TOML.field rename a
+# field's serialized key, `omitNull` drops a null field, and @JSON.ignore (etc.)
+# excludes it entirely. Each directive is scoped to one format, so a rename in
+# one codec never leaks into another. Encoding and decoding are symmetric.
+
+type Account {
+  displayName: String! @JSON.field(name: "display_name") @YAML.field(name: "display-name") @TOML.field(name: "display_name")
+  email: String @JSON.field(name: "email_address", omitNull: true)
+  secret: String! @JSON.ignore @YAML.ignore @TOML.ignore = "hidden"
+  balance: Int!
+}
+
+let nullEmail = Account("Ada", null, "s", 100)
+let withEmail = Account("Mary", "mary@x.io", "s", 50)
+
+# --- JSON encode: rename, omitNull drops the null field, @JSON.ignore excludes ---
+assert { JSON.encode(nullEmail) == "{\"balance\":100,\"display_name\":\"Ada\"}" }
+# a non-null value is kept, under its renamed key
+assert { JSON.encode(withEmail) == "{\"balance\":50,\"display_name\":\"Mary\",\"email_address\":\"mary@x.io\"}" }
+
+# --- Format isolation: YAML honors only @YAML.* ---
+# display-name uses YAML's own rename; email keeps its declared name and its null
+# value (omitNull is JSON-only here); secret is dropped by @YAML.ignore.
+assert { YAML.encode(nullEmail) == "balance: 100\ndisplay-name: Ada\nemail: null" }
+
+# --- TOML honors only @TOML.* ---
+assert { TOML.encode(withEmail) == "balance = 50\ndisplay_name = \"Mary\"\nemail = \"mary@x.io\"" }
+
+# --- JSON decode: renamed keys are read back; ignored fields use their default ---
+let decoded: Account! = JSON.decode("{\"display_name\":\"Grace\",\"email_address\":\"g@x.io\",\"balance\":85,\"secret\":\"INPUT_IGNORED\"}")
+assert { decoded.displayName == "Grace" }
+assert { decoded.email == "g@x.io" }
+assert { decoded.balance == 85 }
+# secret is @JSON.ignore: never read from input, so it falls back to its default
+assert { decoded.secret == "hidden" }
+
+# round-trip: encode then decode recovers every non-ignored field
+let round: Account! = JSON.decode(JSON.encode(withEmail))
+assert { round.displayName == "Mary" }
+assert { round.email == "mary@x.io" }
+assert { round.balance == 50 }
+
+# --- renames apply recursively, through nested objects and lists ---
+type Tag {
+  tagName: String! @JSON.field(name: "tag_name")
+}
+
+type Post {
+  postTitle: String! @JSON.field(name: "post_title")
+  tags: [Tag!]!
+}
+
+assert { JSON.encode(Post("Hi", [Tag("a"), Tag("b")])) == "{\"post_title\":\"Hi\",\"tags\":[{\"tag_name\":\"a\"},{\"tag_name\":\"b\"}]}" }
+
+let post: Post! = JSON.decode("{\"post_title\":\"Hello\",\"tags\":[{\"tag_name\":\"x\"}]}")
+assert { post.postTitle == "Hello" }
+assert { post.tags[0].tagName == "x" }
+
+# the rename walk leaves map values alone: a map keeps its insertion order, and
+# a renamed field holding a map renames the field but not the map's keys
+type WithMap {
+  entries: Map[Int!] @JSON.field(name: "entry_map")
+}
+
+assert { JSON.encode(["z": 1, "a": 2, "m": 3]) == "{\"z\":1,\"a\":2,\"m\":3}" }
+assert { JSON.encode(WithMap(["z": 1, "a": 2])) == "{\"entry_map\":{\"z\":1,\"a\":2}}" }
+
+print("Codec field directive tests passed!")

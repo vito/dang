@@ -1,0 +1,11 @@
+[1m[31mError:[0m JSON field name "name" is used by both "firstName" and "displayName"
+  [2m[34m--> errors/codec_duplicate_field_name.dang:5:42[0m
+ [2m    |[0m
+ [2m  3 | type DuplicateNames {[0m
+ [2m  4 |   firstName: String! @JSON.field(name: "name")[0m
+ [2m[34m[1m  5 | [0m  displayName: String! @JSON.field(name: "name")
+[2m                                                [31m^^^^^^[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m    |[0m
+

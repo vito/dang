@@ -595,6 +595,15 @@ func attachBuiltinSchemes(scalarType *Type) {
 			scalarType.SetDocString(def.Name, def.Doc)
 		}
 	})
+	// Graft the builtin scalar's directives (e.g. @JSON.field / @JSON.ignore)
+	// too, so they resolve whether the scope name refers to the builtin module
+	// or to a same-named scalar a schema or user declared.
+	for name, decl := range host.directives {
+		if _, exists := scalarType.directives[name]; exists {
+			continue
+		}
+		scalarType.AddDirective(name, decl)
+	}
 }
 
 // attachBuiltinMethods binds the implementations of every member Dang registers

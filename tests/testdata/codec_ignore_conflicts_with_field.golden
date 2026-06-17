@@ -1,0 +1,11 @@
+[1m[31mError:[0m @JSON.ignore cannot be combined with @JSON.field on the same field
+  [2m[34m--> errors/codec_ignore_conflicts_with_field.dang:4:30[0m
+ [2m    |[0m
+ [2m  2 | [0m
+ [2m  3 | type IgnoreConflict {[0m
+ [2m[34m[1m  4 | [0m  field: String! @JSON.ignore @JSON.field(name: "renamed")
+[2m                                    [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+

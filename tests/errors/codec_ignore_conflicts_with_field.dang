@@ -1,0 +1,7 @@
+# A field cannot be both excluded and renamed for the same format.
+
+type IgnoreConflict {
+  field: String! @JSON.ignore @JSON.field(name: "renamed")
+}
+
+print("Should not reach here!")

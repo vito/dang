@@ -36,4 +36,15 @@ assert { JSON.encode([7, 8]) == "[7,8]" }
 let parsed2 = JSON.decode("[9, 10]") :: [Int!]!
 assert { parsed2 == [9, 10] }
 
+# The grafting also carries the @JSON.field / @JSON.ignore directives, so they
+# resolve even when JSON is the declared scalar above rather than the builtin
+# module.
+type Renamed {
+  fooBar: String! @JSON.field(name: "foo_bar")
+}
+
+assert { JSON.encode(Renamed("hi")) == "{\"foo_bar\":\"hi\"}" }
+let back: Renamed! = JSON.decode("{\"foo_bar\":\"there\"}")
+assert { back.fooBar == "there" }
+
 print("JSON module + scalar coexistence tests passed!")
