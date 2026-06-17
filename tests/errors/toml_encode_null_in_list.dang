@@ -1,0 +1,4 @@
+# TOML cannot represent null inside a list; report it in Dang terms rather than
+# leaking the encoder's internal "cannot encode array with nil element" message.
+
+print(TOML.encode({{xs: [1, null, 3]}}))

@@ -1,0 +1,10 @@
+[1m[31mError:[0m TOML.encode: TOML cannot represent null inside a list
+  [2m[34m--> errors/toml_encode_null_in_list.dang:4:7[0m
+ [2m    |[0m
+ [2m  2 | # leaking the encoder's internal "cannot encode array with nil element" message.[0m
+ [2m  3 | [0m
+ [2m[34m[1m  4 | [0mprint(TOML.encode({{xs: [1, null, 3]}}))
+[2m             [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | [0m
+ [2m    |[0m
+

@@ -196,6 +196,9 @@ func encodeTOML(val Value) (string, error) {
 	if _, ok := plain.(map[string]any); !ok {
 		return "", fmt.Errorf("TOML requires a table (record) at the top level, got %s", plainKindName(plain))
 	}
+	if err := tomlRejectNullInList(plain); err != nil {
+		return "", err
+	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(plain); err != nil {
 		return "", err
@@ -379,6 +382,32 @@ func jsonBytesToRaw(jsonBytes []byte) (any, error) {
 		return nil, err
 	}
 	return raw, nil
+}
+
+// tomlRejectNullInList reports a Dang-framed error for a null list element,
+// which TOML cannot represent. Without this, BurntSushi surfaces its own
+// internal message ("toml: cannot encode array with nil element"), unlike the
+// rest of the encoder which keeps errors in Dang terms (see plainKindName). A
+// null *table* value the encoder drops silently, which we leave as-is.
+func tomlRejectNullInList(v any) error {
+	switch x := v.(type) {
+	case []any:
+		for _, e := range x {
+			if e == nil {
+				return fmt.Errorf("TOML cannot represent null inside a list")
+			}
+			if err := tomlRejectNullInList(e); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for _, e := range x {
+			if err := tomlRejectNullInList(e); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // plainKindName names a plain Go value (as produced by plainFromValue) in
