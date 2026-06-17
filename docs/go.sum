@@ -105,8 +105,8 @@ github.com/tree-sitter/tree-sitter-rust v0.23.2 h1:6AtoooCW5GqNrRpfnvl0iUhxTAZEo
 github.com/tree-sitter/tree-sitter-rust v0.23.2/go.mod h1:hfeGWic9BAfgTrc7Xf6FaOAguCFJRo3RBbs7QJ6D7MI=
 github.com/vektah/gqlparser/v2 v2.5.30 h1:EqLwGAFLIzt1wpx1IPpY67DwUujF1OfzgEyDsLrN6kE=
 github.com/vektah/gqlparser/v2 v2.5.30/go.mod h1:D1/VCZtV3LPnQrcPBeR/q5jkSQIPti0uYCP/RI0gIeo=
-github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73 h1:bCIWzuysEP02c9sfToJtIzm5nKBRtVs0G97uUByWIaY=
-github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73/go.mod h1:8cuS7SjeT0I5ElVc/eXAkjeURu1tigzKaQWiREBcTt8=
+github.com/vito/booklit v0.12.2-0.20260617225338-4844115b3da7 h1:3P2sU5y8+WKGxmTHyWZi41t2qiFC/4R0rkhpDl4SDng=
+github.com/vito/booklit v0.12.2-0.20260617225338-4844115b3da7/go.mod h1:8cuS7SjeT0I5ElVc/eXAkjeURu1tigzKaQWiREBcTt8=
 github.com/yuin/goldmark v1.7.16 h1:n+CJdUxaFMiDUNnWC3dMWCIQJSkxH4uz3ZwQBkAlVNE=
 github.com/yuin/goldmark v1.7.16/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
