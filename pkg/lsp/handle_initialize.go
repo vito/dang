@@ -36,6 +36,7 @@ func (h *langHandler) handleInitialize(ctx context.Context, req *jrpc2.Request) 
 			},
 			DefinitionProvider:         true,
 			HoverProvider:              true,
+			CodeActionProvider:         true,
 			RenameProvider:             true,
 			WorkspaceSymbolProvider:    true,
 			DocumentFormattingProvider: true,
