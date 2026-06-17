@@ -250,6 +250,9 @@ func encodeValue(val Value, c Codec) (any, error) {
 					continue
 				}
 			}
+			if opts.omitEmpty && isEmptyValue(kv.Value) {
+				continue
+			}
 			encoded, err := encodeValue(kv.Value, c)
 			if err != nil {
 				return nil, err
@@ -323,6 +326,31 @@ func (c Codec) encodeOrderedMap(m MapValue) (any, error) {
 	}
 	buf.WriteByte('}')
 	return json.RawMessage(buf.Bytes()), nil
+}
+
+// isEmptyValue reports whether a value counts as empty for @FORMAT.field's
+// omitEmpty, matching Go's encoding/json omitempty: null, the empty string, a
+// zero number, false, and an empty list or map. Objects and other values are
+// never considered empty.
+func isEmptyValue(v Value) bool {
+	switch x := v.(type) {
+	case NullValue:
+		return true
+	case StringValue:
+		return x.Val == ""
+	case IntValue:
+		return x.Val == 0
+	case FloatValue:
+		return x.Val == 0
+	case BoolValue:
+		return !x.Val
+	case ListValue:
+		return len(x.Elements) == 0
+	case MapValue:
+		return len(x.Keys) == 0
+	default:
+		return false
+	}
 }
 
 // encodeLeaf converts a leaf Dang Value to its canonical form for this codec.

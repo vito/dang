@@ -26,6 +26,27 @@ assert { YAML.encode(nullEmail) == "balance: 100\ndisplay-name: Ada\nemail: null
 # --- TOML honors only @TOML.* ---
 assert { TOML.encode(withEmail) == "balance = 50\ndisplay_name = \"Mary\"\nemail = \"mary@x.io\"" }
 
+# --- omitEmpty drops empty values Go-style: null, "", 0, false, empty list/map ---
+type Sparse {
+  note: String! @JSON.field(omitEmpty: true)
+  count: Int! @JSON.field(omitEmpty: true)
+  flag: Boolean! @JSON.field(omitEmpty: true)
+  tags: [String!]! @JSON.field(omitEmpty: true)
+  keep: Int!
+}
+
+assert { JSON.encode(Sparse("", 0, false, [], 7)) == "{\"keep\":7}" }
+assert { JSON.encode(Sparse("hi", 3, true, ["a"], 7)) == "{\"count\":3,\"flag\":true,\"keep\":7,\"note\":\"hi\",\"tags\":[\"a\"]}" }
+
+# omitNull keeps "" (only null is absent); omitEmpty also drops ""
+type NullVsEmpty {
+  kept: String @JSON.field(omitNull: true)
+  dropped: String @JSON.field(omitEmpty: true)
+}
+
+assert { JSON.encode(NullVsEmpty("", "")) == "{\"kept\":\"\"}" }
+assert { JSON.encode(NullVsEmpty(null, null)) == "{}" }
+
 # --- JSON decode: renamed keys are read back; ignored fields use their default ---
 let decoded: Account! = JSON.decode("{\"display_name\":\"Grace\",\"email_address\":\"g@x.io\",\"balance\":85,\"secret\":\"INPUT_IGNORED\"}")
 assert { decoded.displayName == "Grace" }

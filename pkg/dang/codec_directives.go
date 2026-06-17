@@ -52,6 +52,10 @@ func registerCodecFieldDirectives() {
 					Name:      &Symbol{Name: "omitNull"},
 					DocString: "omit this field from output when its value is null",
 				},
+				{
+					Name:      &Symbol{Name: "omitEmpty"},
+					DocString: "omit this field from output when its value is empty (null, \"\", 0, false, or an empty list/map)",
+				},
 			},
 			Locations: []DirectiveLocation{{Name: "FIELD_DEFINITION"}},
 			DocString: fmt.Sprintf("Controls how a field is encoded to and decoded from %s.", c.scope()),
@@ -67,10 +71,11 @@ func registerCodecFieldDirectives() {
 // codecFieldOpts is the resolved effect a codec's directives have on a single
 // field.
 type codecFieldOpts struct {
-	rename   string
-	renamed  bool
-	omitNull bool
-	ignore   bool
+	rename    string
+	renamed   bool
+	omitNull  bool
+	omitEmpty bool
+	ignore    bool
 }
 
 // key returns the serialized key for a field given its declared name.
@@ -106,6 +111,10 @@ func (c Codec) options(directives []*DirectiveApplication) codecFieldOpts {
 				case "omitNull":
 					if b, ok := arg.Value.(*Boolean); ok {
 						o.omitNull = b.Value
+					}
+				case "omitEmpty":
+					if b, ok := arg.Value.(*Boolean); ok {
+						o.omitEmpty = b.Value
 					}
 				}
 			}
@@ -172,7 +181,7 @@ func (c Codec) validateFieldDirectives(mod *Type) error {
 		key := fieldName
 		var keyNode Node
 		if fieldApp != nil {
-			nameArg, omitNullArg := codecFieldArgs(fieldApp)
+			nameArg, omitNullArg, omitEmptyArg := codecFieldArgs(fieldApp)
 			if nameArg != nil {
 				lit, ok := nameArg.(*String)
 				if !ok {
@@ -187,6 +196,7 @@ func (c Codec) validateFieldDirectives(mod *Type) error {
 				key = lit.Value
 				keyNode = nameArg
 			}
+			omitNull := false
 			if omitNullArg != nil {
 				lit, ok := omitNullArg.(*Boolean)
 				if !ok {
@@ -194,6 +204,16 @@ func (c Codec) validateFieldDirectives(mod *Type) error {
 				}
 				if lit.Value && !isNullableScheme(scheme) {
 					return NewInferError(fmt.Errorf("@%s.field omitNull has no effect on non-null field %q", scope, fieldName), omitNullArg)
+				}
+				omitNull = lit.Value
+			}
+			if omitEmptyArg != nil {
+				lit, ok := omitEmptyArg.(*Boolean)
+				if !ok {
+					return NewInferError(fmt.Errorf("@%s.field omitEmpty must be a boolean literal", scope), omitEmptyArg)
+				}
+				if lit.Value && omitNull {
+					return NewInferError(fmt.Errorf("@%s.field omitNull and omitEmpty cannot both be set; omitEmpty already omits null", scope), omitEmptyArg)
 				}
 			}
 		}
@@ -210,18 +230,20 @@ func (c Codec) validateFieldDirectives(mod *Type) error {
 	return nil
 }
 
-// codecFieldArgs returns the value nodes of @FORMAT.field's name and omitNull
-// arguments, or nil for any that are absent.
-func codecFieldArgs(app *DirectiveApplication) (name, omitNull Node) {
+// codecFieldArgs returns the value nodes of @FORMAT.field's name, omitNull, and
+// omitEmpty arguments, or nil for any that are absent.
+func codecFieldArgs(app *DirectiveApplication) (name, omitNull, omitEmpty Node) {
 	for _, arg := range app.Args {
 		switch arg.Key {
 		case "name":
 			name = arg.Value
 		case "omitNull":
 			omitNull = arg.Value
+		case "omitEmpty":
+			omitEmpty = arg.Value
 		}
 	}
-	return name, omitNull
+	return name, omitNull, omitEmpty
 }
 
 // isCodecDataField reports whether a binding participates in serialization.

@@ -61,7 +61,7 @@ mixedField: String! @cache(ttl: 120) { "mixed" }
 
 - `@defaultPath(path: ...)` — provides a default for a `Directory!` field
 - `@ignorePatterns(patterns: [...])` — filtering metadata
-- `@JSON.field(name:, omitNull:)` / `@JSON.ignore` (and `@YAML.*`, `@TOML.*`) — control how a field serializes (see [#json-yaml])
+- `@JSON.field(name:, omitNull:, omitEmpty:)` / `@JSON.ignore` (and `@YAML.*`, `@TOML.*`) — control how a field serializes (see [#json-yaml])
 - plus every directive imported from connected schemas (see [#modules] for import/qualification)
 
 ## Structural, not semantic
