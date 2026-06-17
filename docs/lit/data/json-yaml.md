@@ -48,14 +48,16 @@ type Account {
 
 - `@JSON.field(name: "...")` — the key this field encodes to and decodes from
 - `@JSON.field(omitNull: true)` — omit the field from output when its value is null (nullable fields only)
-- `@JSON.field(omitEmpty: true)` — omit the field when its value is empty: null, `""`, `0`, `false`, or an empty list/map (this matches Go's `omitempty`; use `omitNull` instead if you want to keep `""`/`0`/`false`)
+- `@JSON.field(omitEmpty: true)` — omit the field when its value is empty: null, `""`, `0`, `false`, or an empty list/map (like Go's `omitempty`, applied to the built-in string/number/bool/list/map kinds; use `omitNull` instead if you want to keep `""`/`0`/`false`)
 - `@JSON.ignore` — exclude the field from encoding and decoding entirely
-- `@YAML.*` and `@TOML.*` are the same directives for their formats; a field can carry one set per format it customizes (`@JSON.field` and `@YAML.field` on the same field rename it differently per codec)
+- `@YAML.*` and `@TOML.*` are the same directives for their formats; a field can carry one set per format it customizes (`@JSON.field` and `@YAML.field` on the same field rename it differently per codec). The same directive cannot be applied twice for one format.
 
 Both `encode` and `decode` honor them, so a renamed field round-trips. An
 `@JSON.ignore` field is never read on decode, so give it a default (or make it
-nullable) if it would otherwise be required. The name must be a string literal,
-and two fields cannot map to the same key.
+nullable) if it would otherwise be required. The same goes for `omitEmpty` on a
+required field: an empty value is dropped on encode, so without a default the
+field cannot be decoded back. The name must be a string literal, and two fields
+cannot map to the same key.
 
 ## Coercion during parsing
 
