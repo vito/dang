@@ -58,6 +58,17 @@ git add editors/zed editors/nvim editors/vscode/syntaxes/dang.tmLanguage.json
 git commit -m "chore(editors): ..."
 ```
 
+## Embedded highlight query (REPL)
+
+The REPL highlights its input with the same Zed `highlights.scm`, embedded
+into the binary at `pkg/dang/highlights.scm` (a generated copy, since
+`go:embed` can't follow the `treesitter/queries/highlights.scm` symlink into
+the submodule). `./hack/generate` (via `go generate ./...`) refreshes it with
+`cp`, so it tracks the query automatically — just re-run generation after
+editing the Zed query. New capture names also need a case in `captureClass`
+in `pkg/dang/highlight_common.go` (kept in lockstep with
+`docs/go/highlight.go`).
+
 ## Checklist
 
 When a language keyword or token changes:
@@ -65,4 +76,5 @@ When a language keyword or token changes:
 1. [ ] Update `editors/zed/languages/dang/highlights.scm`
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`
 3. [ ] Update `editors/vscode/syntaxes/dang.tmLanguage.json`
-4. [ ] Commit submodules, then parent repo
+4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`
+5. [ ] Commit submodules, then parent repo
