@@ -1020,6 +1020,20 @@ TryCatch <- TryToken _ body:Block _ CatchToken _ '{' _ cs:(clause:CatchClause Se
     Clauses: sliceOfAppend[*CaseClause](cs, last),
     Loc: c.Loc(),
   }, nil
+} / TryToken _ body:Block {
+  // Bare `try { ... }` with no catch: yields `a | Error`.
+  return &TryCatch{
+    TryBody: body.(*Block),
+    NoCatch: true,
+    Loc: c.Loc(),
+  }, nil
+} / TryToken _inlineSpace value:Form {
+  // Block-less `try expr`: yields `a | Error`.
+  return &TryCatch{
+    TryBody: &Block{Forms: []Node{value.(Node)}, Loc: c.Loc()},
+    NoCatch: true,
+    Loc: c.Loc(),
+  }, nil
 }
 
 CatchClause <- binding:Symbol _ ColonToken _ typeName:Symbol _ ArrowToken _ expr:Form {

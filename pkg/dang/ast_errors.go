@@ -21,6 +21,11 @@ type TryCatch struct {
 	InferredTypeHolder
 	TryBody *Block
 	Clauses []*CaseClause
+	// NoCatch is set for a bare `try` with no `catch` block. Instead of
+	// dispatching to clauses, the whole expression evaluates to the body's
+	// value on success or the raised error on failure, so its type is the
+	// body type widened with Error! (i.e. `a | Error`).
+	NoCatch bool
 	Loc     *SourceLocation
 }
 
@@ -57,6 +62,13 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 		}
 
 		errorType := hm.NonNullType{Type: ErrorType}
+
+		// A bare `try` with no catch yields the body's value on success or
+		// the raised error on failure: `a | Error`. Any runtime error counts,
+		// so Error! is always a possible option.
+		if t.NoCatch {
+			return mergeControlResultTypes(bodyType, errorType), nil
+		}
 
 		// Build an implicit Case over Error! and infer each clause the
 		// same way case does.
@@ -143,6 +155,12 @@ func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		// Resolve the error value to bind in catch clauses.
 		errVal := extractErrorValue(err)
+
+		// A bare `try` with no catch surfaces the error as a value rather
+		// than dispatching or re-raising.
+		if t.NoCatch {
+			return errVal, nil
+		}
 
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {

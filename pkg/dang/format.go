@@ -2757,6 +2757,19 @@ func (f *Formatter) formatCase(c *Case) {
 }
 
 func (f *Formatter) formatTryCatch(t *TryCatch) {
+	if t.NoCatch {
+		// A bare `try` with no catch. Keep a single-expression body block-less
+		// (`try expr`); brace a multi-statement body.
+		if len(t.TryBody.Forms) == 1 {
+			f.write("try ")
+			f.formatNode(t.TryBody.Forms[0])
+		} else {
+			f.write("try {")
+			f.formatBlockContents(t.TryBody)
+			f.write("}")
+		}
+		return
+	}
 	f.write("try {")
 	f.formatBlockContents(t.TryBody)
 	f.write("} catch {")

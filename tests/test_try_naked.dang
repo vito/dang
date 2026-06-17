@@ -1,0 +1,43 @@
+# A bare `try` with no catch yields the body's value on success or the raised
+# error on failure: the result type is `a | Error`, the same union catch arms
+# widen to. Both a block-less `try expr` and a braced `try { ... }` are allowed.
+
+foo(fail: Boolean!): Int! {
+  if (fail) raise "boom" else 99
+}
+
+# Block-less form. The result is Int! | Error!, so it must be narrowed before
+# use; a plain case type-pattern dispatch does the job.
+describe(fail: Boolean!): String! {
+  case (try foo(fail)) {
+    e: Error => `error: ${e.message}`
+    i: Int => `value: ${toString(i)}`
+  }
+}
+
+assert { describe(false) == "value: 99" }
+assert { describe(true) == "error: boom" }
+
+# Braced form, no catch — equivalent to the block-less form.
+braced(fail: Boolean!): String! {
+  case (try { foo(fail) }) {
+    e: Error => "fell over"
+    i: Int => toString(i)
+  }
+}
+
+assert { braced(false) == "99" }
+assert { braced(true) == "fell over" }
+
+# Runtime errors (not just explicit raises) are captured too.
+divide(n: Int!, d: Int!): Int! { n / d }
+
+safeDivide(n: Int!, d: Int!): String! {
+  case (try divide(n, d)) {
+    e: Error => "undefined"
+    i: Int => toString(i)
+  }
+}
+
+assert { safeDivide(6, 2) == "3" }
+assert { safeDivide(1, 0) == "undefined" }
