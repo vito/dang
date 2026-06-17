@@ -304,6 +304,13 @@ func (b *BuiltinBuilder) Returns(typ hm.Type) *BuiltinBuilder {
 	return b
 }
 
+// Deprecated marks the function as deprecated. The reason is shown (alongside
+// the call site) when the function is called.
+func (b *BuiltinBuilder) Deprecated(reason string) *BuiltinBuilder {
+	b.def.Deprecated = reason
+	return b
+}
+
 // Impl sets the implementation and registers the builtin
 func (b *BuiltinBuilder) Impl(fn func(context.Context, Args) (Value, error)) {
 	// Wrap to match the internal signature (functions ignore self)
@@ -360,6 +367,13 @@ func (b *MethodBuilder) Returns(typ hm.Type) *MethodBuilder {
 	return b
 }
 
+// Deprecated marks the method as deprecated. The reason is shown (alongside
+// the call site) when the method is called.
+func (b *MethodBuilder) Deprecated(reason string) *MethodBuilder {
+	b.def.Deprecated = reason
+	return b
+}
+
 // Impl sets the implementation and registers the method
 func (b *MethodBuilder) Impl(fn func(context.Context, Value, Args) (Value, error)) {
 	b.def.Impl = fn
@@ -407,6 +421,13 @@ func (b *StaticMethodBuilder) Returns(typ hm.Type) *StaticMethodBuilder {
 	return b
 }
 
+// Deprecated marks the static method as deprecated. The reason is shown
+// (alongside the call site) when the method is called.
+func (b *StaticMethodBuilder) Deprecated(reason string) *StaticMethodBuilder {
+	b.def.Deprecated = reason
+	return b
+}
+
 // Impl sets the implementation and registers the static method
 func (b *StaticMethodBuilder) Impl(fn func(context.Context, Args) (Value, error)) {
 	b.def.Impl = func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -431,6 +452,11 @@ type BuiltinDef struct {
 	// builtin. The docs reference renders it as a pre-seeded, runnable REPL,
 	// and a test evaluates every example to keep them honest.
 	Example string
+	// Deprecated, when non-empty, marks this builtin as the Go-side equivalent
+	// of a @deprecated directive. The string is the human-facing reason
+	// (typically naming the replacement). Calling a deprecated builtin prints a
+	// warning to stderr pointing at the call site; see FunCall.Eval.
+	Deprecated string
 }
 
 // ParamDef defines a parameter with optional default value.
@@ -623,6 +649,7 @@ func attachBuiltinMethods(obj *Object, scalarType TypeScope) {
 			Name:         def.Name,
 			FnType:       createFunctionTypeFromDef(def),
 			AllDefaulted: allParamsDefaulted(def),
+			Deprecated:   def.Deprecated,
 			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 				return def.Impl(ctx, nil, Args{Values: applyDefaults(args, def)})
 			},

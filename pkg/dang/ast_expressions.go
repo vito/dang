@@ -319,6 +319,11 @@ func (c *FunCall) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, NewSourceError(fmt.Errorf("cannot call null"), c.Fun.GetSourceLocation(), "")
 		}
 
+		// Warn at the call site if the callee is a deprecated builtin.
+		if fn, ok := funVal.(BuiltinFunction); ok && fn.Deprecated != "" {
+			WarnAtSource(ctx, c.Loc, fmt.Sprintf("%s is deprecated: %s", fn.Name, fn.Deprecated))
+		}
+
 		// Evaluate arguments and handle positional/named argument mapping
 		argValues, err := c.evaluateArguments(ctx, scope, funVal)
 		if err != nil {

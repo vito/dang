@@ -601,6 +601,7 @@ func addBuiltinFunctions(scope ValueScope) {
 			Name:         def.Name,
 			FnType:       fnType,
 			AllDefaulted: allParamsDefaulted(def),
+			Deprecated:   def.Deprecated,
 			CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 				// Apply defaults for missing arguments
 				argsWithDefaults := applyDefaults(args, def)
@@ -627,6 +628,7 @@ func addBuiltinFunctions(scope ValueScope) {
 				Name:         def.Name,
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
+				Deprecated:   def.Deprecated,
 				CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 					selfVal, _ := scope.Self()
 					// Apply defaults for missing arguments
@@ -657,6 +659,7 @@ func addBuiltinFunctions(scope ValueScope) {
 				Name:         def.Name,
 				FnType:       fnType,
 				AllDefaulted: allParamsDefaulted(def),
+				Deprecated:   def.Deprecated,
 				CallFn: func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
 					argsWithDefaults := applyDefaults(args, def)
 					return def.Impl(ctx, nil, Args{Values: argsWithDefaults})
@@ -1681,6 +1684,9 @@ type BuiltinFunction struct {
 	FnType       *hm.FunctionType
 	CallFn       func(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error)
 	AllDefaulted bool // true when every parameter has a default value
+	// Deprecated, when non-empty, is the reason this builtin is deprecated.
+	// FunCall.Eval emits a warning naming the call site whenever it is called.
+	Deprecated string
 }
 
 func (b BuiltinFunction) Type() hm.Type {
