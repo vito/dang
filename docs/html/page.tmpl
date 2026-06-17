@@ -296,6 +296,11 @@ td{padding:.4rem .6rem;border-bottom:1px solid var(--td-border)}
 .stdlib-sig-prefix{padding:.5rem 0 .5rem .8rem;font-size:.82rem;white-space:pre;font-family:'JetBrains Mono',monospace;opacity:.65}
 .stdlib-sig-prefix+code{padding-left:0}
 .stdlib-sig:hover{border-left-color:var(--accent2)}
+/* Right-aligned "@deprecated" badge in a card header. The signature <code> takes
+   flex:1, so the badge sits flush against the right edge of the bar. */
+.stdlib-deprecated{flex:none;align-self:stretch;display:flex;align-items:center;gap:.3rem;padding:.5rem .7rem;font-size:.72rem;font-family:'JetBrains Mono',monospace;white-space:nowrap;color:var(--orange);background:var(--bg2);border-left:1px solid var(--code-border)}
+.stdlib-deprecated a{color:var(--accent2);text-decoration:none}
+.stdlib-deprecated a:hover{text-decoration:underline}
 .stdlib-entry>a[id]:target+.stdlib-sig{border-left-color:var(--accent2);box-shadow:0 0 0 2px var(--accent2)}
 .stdlib-desc{color:var(--fg);font-size:.9rem;margin:.4rem 0 0 .85rem}
 /* A runnable example: a syntax-highlighted snippet with a Run bar that upgrades
