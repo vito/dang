@@ -151,7 +151,13 @@ func validateCodecFieldDirectives(mod *Type) error {
 
 func (c Codec) validateFieldDirectives(mod *Type) error {
 	scope := c.scope()
-	seen := map[string]string{} // serialized key -> declaring field
+	// serialized key -> the field that first claimed it, plus the node to blame
+	// on a collision (its @field name argument or application, if any).
+	type keyClaim struct {
+		field string
+		node  Node
+	}
+	seen := map[string]keyClaim{}
 	for fieldName, scheme := range mod.Bindings(PrivateVisibility) {
 		if !isCodecDataField(scheme) {
 			continue
@@ -164,8 +170,19 @@ func (c Codec) validateFieldDirectives(mod *Type) error {
 			}
 			switch d.Name {
 			case "field":
+				// Reject duplicates: the runtime reader (Codec.options) merges
+				// arguments across every application, so a second @field would
+				// otherwise smuggle unvalidated arguments (a non-literal name,
+				// omitNull on a non-null field, ...) past the checks below while
+				// still taking effect.
+				if fieldApp != nil {
+					return NewInferError(fmt.Errorf("@%s.field cannot be applied more than once on the same field", scope), d)
+				}
 				fieldApp = d
 			case "ignore":
+				if ignoreApp != nil {
+					return NewInferError(fmt.Errorf("@%s.ignore cannot be applied more than once on the same field", scope), d)
+				}
 				ignoreApp = d
 			}
 		}
@@ -218,14 +235,24 @@ func (c Codec) validateFieldDirectives(mod *Type) error {
 			}
 		}
 
-		if prev, dup := seen[key]; dup {
-			errNode := Node(fieldApp)
-			if keyNode != nil {
-				errNode = keyNode
-			}
-			return NewInferError(fmt.Errorf("%s field name %q is used by both %q and %q", scope, key, prev, fieldName), errNode)
+		// Blame the most specific node available: this field's @field name
+		// argument, else its @field application. A plain field carries neither;
+		// it can only collide with a renamed field (two plain fields can't share
+		// a key), so the colliding field's node is non-nil. Avoid wrapping a
+		// typed-nil *DirectiveApplication, which would slip past NewInferError's
+		// nil guard and panic in GetSourceLocation.
+		claimNode := keyNode
+		if claimNode == nil && fieldApp != nil {
+			claimNode = fieldApp
 		}
-		seen[key] = fieldName
+		if prev, dup := seen[key]; dup {
+			errNode := claimNode
+			if errNode == nil {
+				errNode = prev.node
+			}
+			return NewInferError(fmt.Errorf("%s field name %q is used by both %q and %q", scope, key, prev.field, fieldName), errNode)
+		}
+		seen[key] = keyClaim{field: fieldName, node: claimNode}
 	}
 	return nil
 }

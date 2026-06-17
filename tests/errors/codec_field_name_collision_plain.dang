@@ -1,0 +1,9 @@
+# A plain (un-renamed) field colliding with the serialized key of an earlier
+# renamed field is a clean compile error, not a compiler crash.
+
+type Collide {
+  a: String! @JSON.field(name: "b")
+  b: String!
+}
+
+print("Should not reach here!")
