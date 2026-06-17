@@ -1,0 +1,32 @@
+# Test nullable new() constructor parameters shadow outer scope when omitted.
+
+let version = "outer-version"
+let foo = "outer-foo"
+
+type NullableConstructorParams {
+  version: String
+  foo: String
+
+  new(version: String, foo: String) {
+    self.version = version
+    self.foo = foo
+    self
+  }
+}
+
+let omittedVersion = NullableConstructorParams(foo: "arg-foo")
+
+assert("omitted nullable constructor param binds null") { omittedVersion.version == null }
+assert("provided constructor param stays provided") { omittedVersion.foo == "arg-foo" }
+
+let omittedFoo = NullableConstructorParams(version: "arg-version")
+
+assert("provided version constructor param stays provided") { omittedFoo.version == "arg-version" }
+assert("omitted nullable constructor param does not use closure") { omittedFoo.foo == null }
+
+let explicitNull = NullableConstructorParams(null, null)
+
+assert("explicit null constructor param stays null") { explicitNull.version == null }
+assert("explicit null constructor param shadows closure") { explicitNull.foo == null }
+
+print("Constructor nullable params tests passed!")

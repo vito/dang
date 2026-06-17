@@ -1780,18 +1780,21 @@ func (c *ConstructorFunction) Call(ctx context.Context, scope ValueScope, args m
 		// expressions for later parameters can see earlier parameters.
 		defaultScope := c.Closure.Derive(false)
 		for _, param := range c.Parameters {
+			var val Value
 			if arg, found := args[param.Name.Name]; found {
-				argScope.Bind(param.Name.Name, arg, PrivateVisibility)
-				defaultScope.Bind(param.Name.Name, arg, PrivateVisibility)
+				val = arg
 			} else if param.Value != nil {
 				// Evaluate in defaultScope so earlier args are visible.
 				defaultVal, err := EvalNode(ctx, defaultScope, param.Value)
 				if err != nil {
 					return nil, fmt.Errorf("evaluating default for constructor arg %q: %w", param.Name.Name, err)
 				}
-				argScope.Bind(param.Name.Name, defaultVal, PrivateVisibility)
-				defaultScope.Bind(param.Name.Name, defaultVal, PrivateVisibility)
+				val = defaultVal
+			} else {
+				val = NullValue{}
 			}
+			argScope.Bind(param.Name.Name, val, PrivateVisibility)
+			defaultScope.Bind(param.Name.Name, val, PrivateVisibility)
 		}
 		if c.BlockParamName != "" {
 			blockRaw := ctx.Value(blockArgContextKey)
