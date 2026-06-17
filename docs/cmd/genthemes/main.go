@@ -97,6 +97,22 @@ func main() {
 		}
 	}
 
+	// Repo-local schemes live in docs/schemes-local because the schemes
+	// submodule is upstream's tinted-theming/schemes and can't carry our own
+	// additions. They load last so a local scheme overrides an upstream one of
+	// the same name.
+	localPaths, err := filepath.Glob(filepath.Join("schemes-local", "*.yaml"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, p := range localPaths {
+		s, err := parseScheme(p)
+		if err != nil {
+			log.Fatal(err)
+		}
+		schemes[s.name] = s
+	}
+
 	outDir := filepath.Join("css", "base16")
 	if err := os.RemoveAll(outDir); err != nil {
 		log.Fatal(err)
