@@ -1265,11 +1265,12 @@ func (f *Formatter) formatFieldDecl(s *FieldDecl) {
 				f.write("}")
 			}
 		} else {
-			// Non-block value: suffix directives come after value
-			// pub foo: Type = value @directive OR pub foo = value @directive
+			// Non-block value: suffix directives come before the default value,
+			// matching the grammar (Type <directives> = value).
+			// pub foo: Type @directive = value OR pub foo @directive = value
+			f.formatSuffixDirectives(s.Directives, nameLine)
 			f.write(" = ")
 			f.formatNode(s.Value)
-			f.formatSuffixDirectives(s.Directives, nameLine)
 		}
 	} else {
 		// No value - just type with suffix directives
