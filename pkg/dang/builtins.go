@@ -311,6 +311,14 @@ func (b *BuiltinBuilder) Deprecated(reason string) *BuiltinBuilder {
 	return b
 }
 
+// Replacement names the callee that supersedes this one (e.g. "JSON.encode"),
+// letting tools rewrite a call mechanically. Only meaningful alongside
+// Deprecated.
+func (b *BuiltinBuilder) Replacement(name string) *BuiltinBuilder {
+	b.def.Replacement = name
+	return b
+}
+
 // Impl sets the implementation and registers the builtin
 func (b *BuiltinBuilder) Impl(fn func(context.Context, Args) (Value, error)) {
 	// Wrap to match the internal signature (functions ignore self)
@@ -374,6 +382,13 @@ func (b *MethodBuilder) Deprecated(reason string) *MethodBuilder {
 	return b
 }
 
+// Replacement names the member that supersedes this method, letting tools
+// rewrite a call mechanically. Only meaningful alongside Deprecated.
+func (b *MethodBuilder) Replacement(name string) *MethodBuilder {
+	b.def.Replacement = name
+	return b
+}
+
 // Impl sets the implementation and registers the method
 func (b *MethodBuilder) Impl(fn func(context.Context, Value, Args) (Value, error)) {
 	b.def.Impl = fn
@@ -428,6 +443,13 @@ func (b *StaticMethodBuilder) Deprecated(reason string) *StaticMethodBuilder {
 	return b
 }
 
+// Replacement names the member that supersedes this static method, letting
+// tools rewrite a call mechanically. Only meaningful alongside Deprecated.
+func (b *StaticMethodBuilder) Replacement(name string) *StaticMethodBuilder {
+	b.def.Replacement = name
+	return b
+}
+
 // Impl sets the implementation and registers the static method
 func (b *StaticMethodBuilder) Impl(fn func(context.Context, Args) (Value, error)) {
 	b.def.Impl = func(ctx context.Context, self Value, args Args) (Value, error) {
@@ -457,6 +479,10 @@ type BuiltinDef struct {
 	// (typically naming the replacement). Calling a deprecated builtin prints a
 	// warning to stderr pointing at the call site; see FunCall.Eval.
 	Deprecated string
+	// Replacement, when non-empty, names the callee that supersedes this one
+	// (e.g. "JSON.encode"). Unlike the prose in Deprecated, it is structured so
+	// tools can rewrite a call mechanically — the LSP offers it as a quick fix.
+	Replacement string
 }
 
 // ParamDef defines a parameter with optional default value.

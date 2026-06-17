@@ -73,6 +73,7 @@ func registerCodecs() {
 	Builtin("toJSON").
 		Doc("serializes a value to a JSON string. Deprecated: use JSON.encode instead.").
 		Deprecated("use JSON.encode instead").
+		Replacement("JSON.encode").
 		Example(`toJSON([1, 2, 3])`).
 		Params("value", TypeVar('a')).
 		Returns(NonNull(StringType)).
@@ -87,6 +88,7 @@ func registerCodecs() {
 	Builtin("fromJSON").
 		Doc("parses a JSON string into an opaque value that is materialized by an expected type. Deprecated: use JSON.decode instead.").
 		Deprecated("use JSON.decode instead").
+		Replacement("JSON.decode").
 		Example(`fromJSON("[1, 2, 3]") :: [Int!]!`).
 		Params("data", NonNull(StringType)).
 		Returns(TypeVar('a')).
@@ -127,6 +129,7 @@ func registerCodecs() {
 	Builtin("fromYAML").
 		Doc("parses a YAML string into an opaque value that is materialized by an expected type. Deprecated: use YAML.decode instead.").
 		Deprecated("use YAML.decode instead").
+		Replacement("YAML.decode").
 		Example(`fromYAML("[a, b, c]") :: [String!]!`).
 		Params("data", NonNull(StringType)).
 		Returns(TypeVar('a')).
