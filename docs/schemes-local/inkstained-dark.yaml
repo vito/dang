@@ -1,0 +1,30 @@
+system: "base16"
+name: "Inkstained Dark"
+author: "after yuttie's inkstained-vim, base16 dark variant for the dang docs"
+slug: "inkstained-dark"
+variant: "dark"
+# A dark companion to the inkstained theme. yuttie's inkstained-vim is a light
+# scheme (https://github.com/yuttie/inkstained-vim), but its greyscale ramp is
+# Solarized-style and its accents are a cool slate-blue / teal / cyan / violet
+# family — so this inverts the value of the ramp (deep slate ground, pale cool
+# ink) and lifts the accents to their lighter inkstained variants so they read
+# on the dark background. base09/base0A/base0F stay muted sepia, lifted to
+# match, the way the light scheme fills the base16 rainbow inkstained leaves
+# open.
+palette:
+  base00: "#1a1e26" # page + code background (deep ink slate)
+  base01: "#222732" # sidebar / selection background
+  base02: "#2b303b" # inline-code / hover background
+  base03: "#626c7e" # comments (dim slate)
+  base04: "#8b94a5" # secondary labels
+  base05: "#d7dae1" # prose / default foreground (pale cool ink)
+  base06: "#e6e8ec" # lighter foreground
+  base07: "#f3f4f6" # lightest foreground
+  base08: "#d2899a" # red    — variables, tags, errors (lifted inkstained rose)
+  base09: "#cf9b6a" # orange — numbers, constants, run button (lifted sepia)
+  base0A: "#c9b96b" # yellow — types (lifted gold)
+  base0B: "#88b5b1" # green  — strings (lifted inkstained teal)
+  base0C: "#6f9db0" # cyan   — builtins, escapes (inkstained cyan3)
+  base0D: "#91a8c9" # blue   — functions, links (inkstained blue3)
+  base0E: "#ac99c4" # violet — keywords, operators (inkstained violet3)
+  base0F: "#b08a6a" # brown  — deprecations (lifted sepia)
