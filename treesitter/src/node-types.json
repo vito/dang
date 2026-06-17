@@ -1400,7 +1400,7 @@
         "required": false,
         "types": [
           {
-            "type": "named_type",
+            "type": "id",
             "named": true
           }
         ]
