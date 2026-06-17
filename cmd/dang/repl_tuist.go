@@ -106,7 +106,7 @@ func newEntryView(entry *replEntry) *entryView {
 	return ev
 }
 
-func (ev *entryView) Render(ctx tuist.Context) tuist.RenderResult {
+func (ev *entryView) Render(ctx tuist.Context) {
 	// Snapshot entry data.
 	input := ev.entry.input
 	logs := ev.entry.logs.String()
@@ -143,7 +143,7 @@ func (ev *entryView) Render(ctx tuist.Context) tuist.RenderResult {
 		}
 	}
 
-	return tuist.RenderResult{Lines: lines}
+	ctx.Lines(lines...)
 }
 
 // (completion menu overlay and detail bubble are now provided by tuist.CompletionMenu)
@@ -203,6 +203,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 
 	ti := tuist.NewTextInput(promptStyle.Render("dang> "))
 	ti.ContinuationPrompt = promptStyle.Render("  ... ")
+	ti.Highlight = highlightSpans // live tree-sitter syntax highlighting
 
 	r := &replComponent{
 		importConfigs:  importConfigs,
@@ -220,7 +221,7 @@ func newReplComponent(ctx context.Context, importConfigs []dang.ImportConfig, de
 	// Spinner
 	sp := tuist.NewSpinner()
 	sp.Style = func(s string) string {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(s)
 	}
 	sp.Label = dimStyle.Render("Evaluating... (Ctrl+C to cancel)")
 	r.spinner = sp
@@ -307,8 +308,10 @@ func (r *replComponent) onSubmit(ctx tuist.Context, line string) bool {
 
 	r.history.Add(line)
 
-	// Format the echoed input: first line with prompt, continuation lines with "  ... ".
-	inputLines := strings.Split(line, "\n")
+	// Format the echoed input: syntax-highlight the source, then prefix the
+	// first line with the prompt and continuation lines with "  ... ".
+	// highlightCode clips styling at newlines, so splitting stays safe.
+	inputLines := strings.Split(highlightCode(line), "\n")
 	var echoedLines []string
 	for i, l := range inputLines {
 		if i == 0 {
@@ -577,7 +580,7 @@ func runREPLTUI(ctx context.Context, moduleDir string, debug bool) error {
 
 		loadSp := tuist.NewSpinner()
 		loadSp.Style = func(s string) string {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(s)
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(s)
 		}
 		loadSp.Label = dimStyle.Render(fmt.Sprintf("Loading Dagger module from %s... (Ctrl+C to cancel)", moduleDir))
 
