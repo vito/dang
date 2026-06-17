@@ -1148,7 +1148,18 @@ Case <- CaseToken _ operand:('(' _ expr:Form _ ')' { return expr, nil })? _ '{' 
   }, nil
 }
 
-CaseClause <- ElseToken _ ArrowToken _ expr:Form {
+CaseClause <- ElseToken _ binding:Symbol _ ArrowToken _ expr:Form {
+  // else binding => ... binds the operand (narrowed to the un-matched
+  // variants) and always matches. A bare `binding => ...` can't mean this in
+  // case because it collides with matching against a variable's value.
+  return &CaseClause{
+    Value: nil,
+    Expr: expr.(Node),
+    IsElse: true,
+    Binding: binding.(*Symbol).Name,
+    Loc: c.Loc(),
+  }, nil
+} / ElseToken _ ArrowToken _ expr:Form {
   // else => ... creates a clause that always matches
   return &CaseClause{
     Value: nil, // Value is not used for else clauses

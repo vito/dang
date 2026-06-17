@@ -2736,6 +2736,10 @@ func (f *Formatter) formatCase(c *Case) {
 			f.writeIndent()
 			if clause.IsElse {
 				f.write("else")
+				if clause.Binding != "" {
+					f.write(" ")
+					f.write(clause.Binding)
+				}
 			} else if clause.IsTypePattern() {
 				f.write(clause.Binding)
 				f.write(": ")

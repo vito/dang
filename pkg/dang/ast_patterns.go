@@ -98,10 +98,17 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 					return clause.Expr.Infer(ctx, env, fresh)
 				})
 			} else {
-				// Else clause
+				// Else clause, optionally binding the operand. With a
+				// binding (`else v => ...`), v is the operand narrowed to the
+				// variants not already matched by preceding type patterns.
 				hasElse = true
 				caseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					return clause.Expr.Infer(ctx, env, fresh)
+					clauseEnv := env
+					if clause.Binding != "" {
+						clauseEnv = env.Clone()
+						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, residualOperandType(exprType, c.Clauses)))
+					}
+					return clause.Expr.Infer(ctx, clauseEnv, fresh)
 				})
 			}
 			if err != nil {
@@ -157,6 +164,47 @@ func (c *Case) coversAllMembers(exprType hm.Type) bool {
 		return inlineUnionCoveredBy(t, patterns)
 	}
 	return false
+}
+
+// residualOperandType returns the operand type narrowed to the variants not
+// already matched by the type-pattern clauses, for use as the bound type of a
+// catch-all binding (`else v => ...`). Narrowing only applies to structural
+// (inline) unions, where membership is closed; for an interface or named-union
+// operand the un-matched set is open, so the full operand type is returned.
+func residualOperandType(exprType hm.Type, clauses []*CaseClause) hm.Type {
+	var patterns []*Type
+	for _, clause := range clauses {
+		if clause.IsTypePattern() && clause.resolvedMemberType != nil {
+			patterns = append(patterns, clause.resolvedMemberType)
+		}
+	}
+	if len(patterns) == 0 {
+		return exprType
+	}
+
+	union, ok := exprType.(*hm.UnionType)
+	if !ok {
+		if nn, isNN := exprType.(hm.NonNullType); isNN {
+			union, ok = nn.Type.(*hm.UnionType)
+		}
+	}
+	if !ok {
+		return exprType
+	}
+
+	var kept []hm.Type
+	for _, option := range union.Options {
+		if mod, isMod := moduleType(option); isMod && moduleCoveredBy(mod, patterns) {
+			continue
+		}
+		kept = append(kept, option)
+	}
+	if len(kept) == 0 {
+		// Every variant is already matched, so the binding is unreachable;
+		// fall back to the full operand type rather than an empty union.
+		return exprType
+	}
+	return hm.NewUnionType(kept...)
 }
 
 func inlineUnionCoveredBy(union *hm.UnionType, patterns []*Type) bool {
@@ -348,8 +396,13 @@ func (c *Case) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 
 		// Try each clause in order
 		for i, clause := range c.Clauses {
-			// Else clauses always match
+			// Else clauses always match, optionally binding the operand.
 			if clause.IsElse {
+				if clause.Binding != "" {
+					childScope := scope.Derive(true)
+					childScope.Bind(clause.Binding, exprVal, PrivateVisibility)
+					return EvalNode(ctx, childScope, clause.Expr)
+				}
 				return EvalNode(ctx, scope, clause.Expr)
 			}
 

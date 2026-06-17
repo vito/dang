@@ -1,0 +1,50 @@
+# A case catch-all can bind the operand: `else v => ...`. The binding is the
+# operand narrowed to the variants not already matched by preceding type
+# patterns, so after matching every error arm `v` is just the success value.
+#
+# A bare `v => ...` can't mean this in case — it collides with matching against
+# a variable's value — which is why the binding form is spelled `else v`.
+
+type MyError implements Error {
+  message: String!
+  code: Int!
+}
+
+foo(fail: Boolean!): Int! {
+  if (fail) raise MyError(message: "bad", code: 7) else 99
+}
+
+# else v binds the Int! success value (Error! subtracted by the e: Error arm),
+# so arithmetic on v type-checks.
+describe(fail: Boolean!): String! {
+  case (try foo(fail)) {
+    m: MyError => `myerr ${toString(m.code)}`
+    e: Error => `err ${e.message}`
+    else v => `val ${toString(v + 1)}`
+  }
+}
+
+assert { describe(false) == "val 100" }
+assert { describe(true) == "myerr 7" }
+
+# With no type patterns to subtract, else v binds the whole operand union.
+both(fail: Boolean!): String! {
+  case (try foo(fail)) {
+    else v => toString(v)
+  }
+}
+
+assert { both(false) == "99" }
+assert { both(true).contains("bad") }
+
+# Narrowing works over a plain inline union too (no errors involved).
+classify(useString: Boolean!): String! {
+  let x = if (useString) "hi" else 1
+  case (x) {
+    s: String => `string ${s}`
+    else n => `number ${toString(n + 1)}`
+  }
+}
+
+assert { classify(true) == "string hi" }
+assert { classify(false) == "number 2" }
