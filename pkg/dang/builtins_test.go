@@ -9,23 +9,34 @@ import (
 
 func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 	functionNames := map[string]bool{}
+	functionDefs := map[string]BuiltinDef{}
 	ForEachFunction(func(def BuiltinDef) {
 		if def.IsMethod || def.IsStatic {
 			t.Fatalf("function iterator returned non-function builtin: %+v", def)
 		}
 		functionNames[def.Name] = true
+		functionDefs[def.Name] = def
 	})
 	for _, name := range []string{"print", "toString"} {
 		if !functionNames[name] {
 			t.Fatalf("function %q was not registered", name)
 		}
 	}
-	// encode/decode are static methods on the codec modules, not top-level
-	// functions: keep the precious top-level namespace clear of conversions.
+	// toJSON/fromJSON/fromYAML are restored as deprecated top-level aliases for
+	// their JSON/YAML namespace members so old scripts keep working; each must
+	// carry a deprecation reason so callers get a warning pointing at the new
+	// namespace.
 	for _, name := range []string{"toJSON", "fromJSON", "fromYAML"} {
-		if functionNames[name] {
-			t.Fatalf("%q should no longer be a top-level function", name)
+		if !functionNames[name] {
+			t.Fatalf("%q should be registered as a (deprecated) top-level function", name)
 		}
+		if functionDefs[name].Deprecated == "" {
+			t.Fatalf("%q should be marked deprecated", name)
+		}
+	}
+	// Non-deprecated builtins must not carry a deprecation reason.
+	if functionDefs["print"].Deprecated != "" {
+		t.Fatalf("print should not be marked deprecated")
 	}
 	for _, mod := range []*Type{JSONModule, YAMLModule, TOMLModule} {
 		methods := map[string]bool{}

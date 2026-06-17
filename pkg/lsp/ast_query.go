@@ -31,6 +31,20 @@ func positionWithinNode(node dang.Node, pos Position) bool {
 		(pos.Line < endLine || (pos.Line == endLine && pos.Character <= endCol))
 }
 
+// positionAfter reports whether p comes strictly after q in a document.
+func positionAfter(p, q Position) bool {
+	if p.Line != q.Line {
+		return p.Line > q.Line
+	}
+	return p.Character > q.Character
+}
+
+// rangesOverlap reports whether two ranges intersect. Touching endpoints count
+// as overlapping, so a zero-width cursor at either edge of a range matches.
+func rangesOverlap(a, b Range) bool {
+	return !positionAfter(a.Start, b.End) && !positionAfter(b.Start, a.End)
+}
+
 // findEnclosingEnvironments walks the AST and collects all environments that enclose the given position.
 // Returns environments from outermost to innermost.
 func findEnclosingEnvironments(root dang.Node, pos Position) []dang.TypeScope {

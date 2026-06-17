@@ -177,6 +177,27 @@ type DiagnosticRelatedInformation struct {
 	Message  string   `json:"message"`
 }
 
+// DiagnosticSeverity is
+type DiagnosticSeverity int
+
+// SeverityError is
+const (
+	SeverityError       DiagnosticSeverity = 1
+	SeverityWarning     DiagnosticSeverity = 2
+	SeverityInformation DiagnosticSeverity = 3
+	SeverityHint        DiagnosticSeverity = 4
+)
+
+// DiagnosticTag is
+type DiagnosticTag int
+
+// DiagnosticTagUnnecessary fades the range; DiagnosticTagDeprecated strikes it
+// through. See the LSP spec's DiagnosticTag.
+const (
+	DiagnosticTagUnnecessary DiagnosticTag = 1
+	DiagnosticTagDeprecated  DiagnosticTag = 2
+)
+
 // Diagnostic is
 type Diagnostic struct {
 	Range              Range                          `json:"range"`
@@ -184,6 +205,7 @@ type Diagnostic struct {
 	Code               *string                        `json:"code,omitempty"`
 	Source             *string                        `json:"source,omitempty"`
 	Message            string                         `json:"message"`
+	Tags               []DiagnosticTag                `json:"tags,omitempty"`
 	RelatedInformation []DiagnosticRelatedInformation `json:"relatedInformation,omitempty"`
 }
 
@@ -289,10 +311,11 @@ type WorkspaceEdit struct {
 // CodeAction is
 type CodeAction struct {
 	Title       string         `json:"title"`
-	Diagnostics []Diagnostic   `json:"diagnostics"`
-	IsPreferred bool           `json:"isPreferred"` // TODO
-	Edit        *WorkspaceEdit `json:"edit"`
-	Command     *Command       `json:"command"`
+	Kind        CodeActionKind `json:"kind,omitempty"`
+	Diagnostics []Diagnostic   `json:"diagnostics,omitempty"`
+	IsPreferred bool           `json:"isPreferred,omitempty"`
+	Edit        *WorkspaceEdit `json:"edit,omitempty"`
+	Command     *Command       `json:"command,omitempty"`
 }
 
 // CompletionItem is

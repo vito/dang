@@ -175,6 +175,12 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 			cardPartials["Example"] = p.exampleRepl(d.Example)
 		}
 
+		// A deprecated builtin gets a right-aligned "@deprecated" badge in its
+		// card header, linking to the replacement's own card when one is known.
+		if d.Deprecated != "" {
+			cardPartials["Deprecated"] = p.deprecatedBadge(d.Replacement)
+		}
+
 		cards = append(cards, booklit.Styled{
 			Style:    "stdlib-entry",
 			Block:    true,
@@ -215,6 +221,39 @@ func (p Plugin) stdlibModule(defs []dang.BuiltinDef, prefix, key, qualifier stri
 
 func stdlibTag(key, name string) string {
 	return "stdlib-" + key + "-" + name
+}
+
+// deprecatedBadge renders the "@deprecated" marker shown on a deprecated
+// builtin's card header. When replacement names a superseding callable, it is
+// appended as a link to that entry's own card (resolved by tag, so it works
+// across the page's module sections).
+func (p Plugin) deprecatedBadge(replacement string) booklit.Content {
+	badge := booklit.Sequence{booklit.String("@deprecated")}
+	if replacement != "" {
+		badge = append(badge,
+			booklit.String(" => "),
+			&booklit.Reference{
+				Section: p.section,
+				TagName: replacementTag(replacement),
+				Content: booklit.Styled{
+					Style:   booklit.StyleVerbatim,
+					Content: booklit.String(replacement),
+				},
+			},
+		)
+	}
+	return badge
+}
+
+// replacementTag maps a replacement callable name to the anchor tag of its
+// stdlib card. A qualified name like "JSON.encode" or "String.toBase64" splits
+// into the section key and member ("JSON"/"encode"); a bare name is a top-level
+// function, whose cards use the "fn" key.
+func replacementTag(replacement string) string {
+	if i := strings.LastIndex(replacement, "."); i >= 0 {
+		return stdlibTag(replacement[:i], replacement[i+1:])
+	}
+	return stdlibTag("fn", replacement)
 }
 
 // exampleRepl renders a builtin's example as a pre-seeded, runnable REPL. The

@@ -329,6 +329,10 @@ func (h *langHandler) analyzeDirectory(ctx context.Context, uri DocumentURI, fp 
 		analysis.TypeScope = typeScope
 	}
 
+	// Surface deprecated-builtin usages as strike-through warnings. This walks
+	// the parsed AST, so it works regardless of whether inference succeeded.
+	analysis.Diagnostics = append(analysis.Diagnostics, deprecationDiagnostics(currentBlock)...)
+
 	return analysis, nil
 }
 
@@ -894,6 +898,8 @@ func (h *langHandler) Assign(ctx context.Context, method string) jrpc2.Handler {
 		return h.handleTextDocumentDefinition
 	case "textDocument/hover":
 		return h.handleTextDocumentHover
+	case "textDocument/codeAction":
+		return h.handleTextDocumentCodeAction
 	case "textDocument/rename":
 		return h.handleTextDocumentRename
 	case "textDocument/formatting":
