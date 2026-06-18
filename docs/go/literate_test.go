@@ -2,12 +2,26 @@ package dangdocs
 
 import (
 	"fmt"
+	"html"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/vito/booklit"
 )
+
+// valueText returns the plain text of a literate block's Value partial,
+// stripping the syntax-highlight markup the result is now rendered with
+// (tags and HTML entities).
+var htmlTagRE = regexp.MustCompile(`<[^>]*>`)
+
+func valueText(c booklit.Content) string {
+	if c == nil {
+		return ""
+	}
+	return html.UnescapeString(htmlTagRE.ReplaceAllString(c.String(), ""))
+}
 
 // \literate-fences covers the section it's called in and its sub-sections —
 // not the parent or siblings.
@@ -65,7 +79,7 @@ func TestCodeBlockLiterateRouting(t *testing.T) {
 	}
 
 	second := render(lit, "dang", "x + 1")
-	if got := second.Partials["Value"]; got == nil || got.String() != "43" {
+	if got := second.Partials["Value"]; got == nil || valueText(got) != "43" {
 		t.Errorf("second fence should see first fence's `x`: Value = %v, want 43", got)
 	}
 
@@ -77,6 +91,32 @@ func TestCodeBlockLiterateRouting(t *testing.T) {
 	outside := render(plain, "dang", "undefinedNameNeverEvaluated")
 	if outside.Style != booklit.StyleCodeBlock {
 		t.Errorf("dang fence outside scope: style %q, want %q", outside.Style, booklit.StyleCodeBlock)
+	}
+}
+
+// A literate block's result is echoed as a quoted Dang literal (via Repr) and
+// highlighted under the same grammar as the input, so the baked output matches
+// what the reader sees after client-side enhancement.
+func TestLiterateResultQuotedAndHighlighted(t *testing.T) {
+	root := &booklit.Section{Path: "result-test.md"}
+	lit := &booklit.Section{Parent: root}
+	Plugin{section: lit}.LiterateFences()
+
+	content, err := Plugin{section: lit}.CodeBlock("dang", booklit.Preformatted{booklit.String(`"hi"`)})
+	if err != nil {
+		t.Fatalf("CodeBlock: %v", err)
+	}
+	value := content.(booklit.Styled).Partials["Value"]
+	if value == nil {
+		t.Fatal("string result baked no Value partial")
+	}
+	// Quoted (Repr), not the bare `hi` that String() would produce.
+	if got := valueText(value); got != `"hi"` {
+		t.Errorf("result text = %q, want %q", got, `"hi"`)
+	}
+	// Highlighted as a string token (same classes as the input).
+	if html := value.String(); !strings.Contains(html, `class="tok-string"`) {
+		t.Errorf("result not highlighted as a string: %s", html)
 	}
 }
 
@@ -138,7 +178,7 @@ func TestCodeBlockFailureRouting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fence after failures: %v", err)
 	}
-	if got := after.Partials["Value"]; got == nil || got.String() != "43" {
+	if got := after.Partials["Value"]; got == nil || valueText(got) != "43" {
 		t.Errorf("fence after failures: Value = %v, want 43", got)
 	}
 

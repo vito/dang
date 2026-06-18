@@ -263,7 +263,8 @@
     var line = document.createElement("div");
     if (res.ok) {
       line.className = "dang-playground-result";
-      line.textContent = "=> " + res.value;
+      // Highlight the result like the input (highlightHtml escapes it).
+      line.innerHTML = "=&gt; " + highlightHtml(res.value);
     } else {
       out.classList.add("is-error");
       line.className = "dang-playground-error";
@@ -516,7 +517,8 @@
       if (res.value !== "") {
         var line = document.createElement("div");
         line.className = "dang-playground-result";
-        line.textContent = "=> " + res.value;
+        // Highlight the result like the input (highlightHtml escapes it).
+        line.innerHTML = "=&gt; " + highlightHtml(res.value);
         out.appendChild(line);
       }
     } else {

@@ -196,7 +196,7 @@ func evalSource(source, token string) map[string]any {
 
 	value := ""
 	if last != nil {
-		value = fmt.Sprint(last.String())
+		value = dang.Repr(last)
 	}
 	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
 }
@@ -263,7 +263,7 @@ func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, val
 	value := ""
 	lastIsDecl := false
 	if last != nil {
-		value = fmt.Sprint(last.String())
+		value = dang.Repr(last)
 		lastIsDecl = len(lastNode.DeclaredSymbols()) > 0
 	}
 	return value, lastIsDecl, nil, ""
