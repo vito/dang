@@ -6,15 +6,6 @@
 A statically typed scripting language for GraphQL, where the types and
 functions are loaded directly from the schema.
 
-
-\header-links{
-  [GitHub](https://github.com/vito/dang)
-}{
-  [pkg.go.dev](https://pkg.go.dev/github.com/vito/dang)
-}
-
-\shell{go install github.com/vito/dang/v2/cmd/dang@latest}
-
 \dang-playground{{{
 # Edit me, then hit Run — this evaluates in your browser.
 type Greeter {
@@ -24,6 +15,14 @@ type Greeter {
 
 ["world", "Dang", "you"].map { who => Greeter(who).greet }
 }}}
+
+In a nutshell:
+
+* **GraphQL-imported** types and functions
+* **Prototype-based** object system
+* Ruby-style **block arguments** to emphasize chaining
+* **Immutable** data behind mutable syntax
+* Hindley-Milner style **type inference**
 
 > **NOTE FROM A HUMAN:** this is an AI-assisted draft, for now just
 > establishing the concepts, framing, and facts. Everything here is correct and

@@ -14,6 +14,7 @@ version of all of it, see [#twenty-minutes].
 
 \table-of-contents
 
+\include-section{./language/what-and-why.md}
 \include-section{./language/syntax.md}
 \include-section{./language/operators.md}
 \include-section{./language/fields-functions.md}
