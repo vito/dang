@@ -49,32 +49,47 @@
   var hoverRule = (INLINE + ", " + BLOCK)
     .split(", ")
     .map(function (sel) {
-      return sel + ":hover > .dang-fb-link";
+      return sel + ":hover > .dang-fb-link > .dang-fb-chip";
     })
     .join(", ");
 
   var style = document.createElement("style");
   style.textContent = [
     "main p, main li, main h1, main h2, main h3, main h4, main h5, main h6, main pre { position: relative; }",
-    // Absolutely positioned so the hidden (opacity:0) link occupies no layout
-    // space — an inline link would still take width at the end of a paragraph
-    // and bump the last word onto a new line. Pinned to the element's top-right
-    // corner and raised slightly so it floats over the margin above the first
-    // line rather than overlapping the text. The prose elements are already
-    // position:relative (see the rule above).
+    // The clickable host is an inline, ZERO-WIDTH box, so the hidden
+    // (opacity:0) link adds no advance to the line and can never bump a
+    // paragraph's trailing word onto a new line. The visible "feedback" pill
+    // lives in a child (.dang-fb-chip) painted just past the host, to the right
+    // of the text — staying inline where it belongs instead of floating into
+    // the content. main clips horizontal overflow (rule below), so a pill
+    // trailing a full last line runs off the column edge rather than forcing a
+    // horizontal scrollbar.
     ".dang-fb-link {",
-    "  position: absolute; top: -.55em; right: 0; margin-left: 0;",
-    "  font: inherit; font-size: .72rem; cursor: pointer;",
-    "  padding: 0 .35em; border-radius: 4px;",
-    "  border: 1px solid var(--code-border); background: var(--bg3);",
-    "  color: var(--fg2); opacity: 0; transition: opacity .12s ease;",
-    "  user-select: none;",
+    "  display: inline-block; cursor: pointer; user-select: none;",
+    "  margin: 0; padding: 0; border: 0; background: none; font: inherit;",
     "}",
-    hoverRule + ", .dang-fb-link:focus { opacity: 1; }",
-    ".dang-fb-link:hover { color: var(--accent2); border-color: var(--accent); }",
+    ".dang-fb-link:not(.dang-fb-link--corner) {",
+    "  position: relative; width: 0; vertical-align: baseline;",
+    "}",
+    ".dang-fb-link:not(.dang-fb-link--corner) > .dang-fb-chip {",
+    "  position: absolute; left: .4em; bottom: -.15em;",
+    "}",
+    ".dang-fb-chip {",
+    "  font-size: .72rem; white-space: nowrap; padding: 0 .35em;",
+    "  border-radius: 4px; border: 1px solid var(--code-border);",
+    "  background: var(--bg3); color: var(--fg2);",
+    "  opacity: 0; transition: opacity .12s ease;",
+    "}",
+    hoverRule + ", .dang-fb-link:focus > .dang-fb-chip { opacity: 1; }",
+    ".dang-fb-link:hover > .dang-fb-chip { color: var(--accent2); border-color: var(--accent); }",
+    // Code blocks keep the corner-pinned link; its chip just rides along inside
+    // the pinned host (no zero-width / overflow trick needed there).
     ".dang-fb-link--corner {",
-    "  position: absolute; top: .45rem; right: .5rem; margin-left: 0; z-index: 2;",
+    "  position: absolute; top: .45rem; right: .5rem; z-index: 2;",
     "}",
+    // Clip the feedback pill at the content column's edge so a pill trailing a
+    // full last line runs offscreen instead of adding a horizontal scrollbar.
+    "main { overflow-x: clip; }",
     ".dang-fb-bubble {",
     "  position: absolute; z-index: 50; width: min(22rem, 90vw);",
     "  background: var(--bg2); border: 1px solid var(--code-border);",
@@ -292,8 +307,13 @@
     var link = document.createElement("button");
     link.type = "button";
     link.className = "dang-fb-link dang-fb" + (corner ? " dang-fb-link--corner" : "");
-    link.textContent = "feedback";
     link.setAttribute("aria-label", "Leave feedback on this");
+    // The label lives in a child so the host itself can be zero-width: the
+    // visible pill overflows the host instead of contributing to line width.
+    var chip = document.createElement("span");
+    chip.className = "dang-fb-chip";
+    chip.textContent = "feedback";
+    link.appendChild(chip);
     link.addEventListener("click", function (e) {
       e.stopPropagation();
       if (openTarget === target) {
