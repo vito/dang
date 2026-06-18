@@ -1,0 +1,18 @@
+# Test GraphQL object equality (reference identity, like native objects)
+
+import Test
+
+# The same handle is equal to itself.
+let u = primaryUser
+assert("same handle is equal") { u == u }
+
+# Two independent constructions are NOT equal, even when they denote the same
+# server object — exactly as Rabbit("x") != Rabbit("x"). Compare a field (e.g.
+# .id) when you want to ask whether two objects are the same server entity.
+assert("independent constructions are not equal") { (primaryUser == user(id: "1")) == false }
+
+# != mirrors ==.
+assert("inequality holds for independent constructions") { primaryUser != user(id: "1") }
+assert("inequality is false for the same handle") { (u != u) == false }
+
+print("GraphQL object equality tests passed!")
