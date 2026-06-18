@@ -3,18 +3,30 @@
 
 # What & Why {#what-and-why}
 
-A wise old Yahoo! Answers comment once described Go as "a language designed for
+A wise old Yahoo! Answers comment once described Go as "a language for doing
 garbage collection." A bit fatalistic, for sure, but through that same lens
-I might describe Dang as "a language designed for occasions where you wish you
-didn't have to write it."
+I might describe Dang as "a language for occasions where you wish you didn't
+have to write it."
 
 Dang is for _glue code_: the code that connects your project to the systems
 that build, test, deploy, or manage it. It's the language between "real"
 languages. A creature of the backrooms.
 
-Dang strives to make the coder's time spent with it short and sweet.
+Knowing its place in the world, Dang strives to make the coder's time spent
+with it short and sweet.
 
-To that end, let's dive straight in to some code.
+To that end, Dang takes the following strategy:
+
+* Bootstrap with **GraphQL**, betting on its familiarity across ecosystems.
+* Static typing, with full inference, to save time and raise confidence.
+* Immutable semantics for safety, with mutable syntax for ergonomics.
+* Ruby-style block arguments -- they're fun, and pair well with chaining.
+* Tiny things that spark joy: language-tagged code blocks, syntax highlighted REPL, 
+
+{-
+To that end, let's dive straight in to some code. This may seem like a lot at
+once, but I encourage you mess around with it and press the "Play" button to
+see what happens.
 
 ```dang
 type Hat {
@@ -52,14 +64,17 @@ assert("jeff is furry")             { withJeff.animal.coat == Coat.FUR }
 [Dove("molly"), withJeff.animal, Rabbit("richard")].map { _.coat }
 ```
 
-Here's what you can infer from above:
+Here are some things that you can infer from above:
 
 * Yep -- that's GraphQL, alright.
-* But you define the bodies, too; not just the signatures!
-* `null` is a thing, but the type system tracks it (`!` is non-null)
-* Objects don't mutate. Not even `self`.
-* Forward references are fine.
+* But you implement the fields, too; not just the signatures!
+* `null` is a thing, and the type system tracks it (`!` is non-null)
+* Required slots become constructor arguments (`Rabbit("jeffrey")`)
+* Named arguments can be passed positionally (`Rabbit("jeffrey")` is `Rabbit(name: "jeffrey")`)
+* Objects don't mutate -- `insert` returns a modified copy.
+* Ruby-style block arguments and method chaining (optional parentheses)
 
+-}
 
 ## ...but why?
 
