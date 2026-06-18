@@ -61,18 +61,18 @@
     // paragraph's trailing word onto a new line. The visible "feedback" pill
     // lives in a child (.dang-fb-chip) painted just past the host, to the right
     // of the text — staying inline where it belongs instead of floating into
-    // the content. main clips horizontal overflow (rule below), so a pill
-    // trailing a full last line runs off the column edge rather than forcing a
-    // horizontal scrollbar.
+    // the content. The host aligns to text-bottom so the pill sits on the
+    // bottom of the line; a pill trailing a full last line just spills into the
+    // right margin.
     ".dang-fb-link {",
     "  display: inline-block; cursor: pointer; user-select: none;",
     "  margin: 0; padding: 0; border: 0; background: none; font: inherit;",
     "}",
     ".dang-fb-link:not(.dang-fb-link--corner) {",
-    "  position: relative; width: 0; vertical-align: baseline;",
+    "  position: relative; width: 0; vertical-align: text-bottom;",
     "}",
     ".dang-fb-link:not(.dang-fb-link--corner) > .dang-fb-chip {",
-    "  position: absolute; left: .4em; bottom: -.15em;",
+    "  position: absolute; left: .4em; bottom: 0;",
     "}",
     ".dang-fb-chip {",
     "  font-size: .72rem; white-space: nowrap; padding: 0 .35em;",
@@ -87,9 +87,6 @@
     ".dang-fb-link--corner {",
     "  position: absolute; top: .45rem; right: .5rem; z-index: 2;",
     "}",
-    // Clip the feedback pill at the content column's edge so a pill trailing a
-    // full last line runs offscreen instead of adding a horizontal scrollbar.
-    "main { overflow-x: clip; }",
     ".dang-fb-bubble {",
     "  position: absolute; z-index: 50; width: min(22rem, 90vw);",
     "  background: var(--bg2); border: 1px solid var(--code-border);",
