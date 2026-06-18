@@ -327,8 +327,10 @@ func init() {
 	// Install built-in modules (as both objects and values)
 	Prelude.AddObject("Random", RandomModule)
 	Prelude.AddObject("UUID", UUIDModule)
+	Prelude.AddObject("Path", PathModule)
 	Prelude.Add("Random", hm.NewScheme(nil, hm.NonNullType{Type: RandomModule}))
 	Prelude.Add("UUID", hm.NewScheme(nil, hm.NonNullType{Type: UUIDModule}))
+	Prelude.Add("Path", hm.NewScheme(nil, hm.NonNullType{Type: PathModule}))
 
 	// Install regex types so user code can refer to them by name.
 	Prelude.AddObject("Regexp", RegexpType)

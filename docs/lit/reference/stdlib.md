@@ -4,7 +4,7 @@
 
 > Meta: alphabetical reference, not a tutorial. Each entry: signature, one-line description, one tiny example. Group by module/receiver. Cross-link to the conceptual page that introduces the API.
 
-> This page is generated from the builtin registry in `pkg/dang` (`stdlib.go`, `stdlib_random.go`, `stdlib_regexp.go`, `assert.go`). Each entry's signature, one-line description, and example come straight from the builtin's definition, so the reference can't drift from the implementation — to change an entry, edit the builtin's `.Doc(...)` or `.Example(...)`. Each example is a live REPL: press **Run** to evaluate it (and then keep typing — state carries across entries, just like the CLI).
+> This page is generated from the builtin registry in `pkg/dang` (`stdlib*.go`, `assert.go`). Each entry's signature, one-line description, and example come straight from the builtin's definition, so the reference can't drift from the implementation — to change an entry, edit the builtin's `.Doc(...)` or `.Example(...)`. Each example is a live REPL: press **Run** to evaluate it (and then keep typing — state carries across entries, just like the CLI).
 
 \table-of-contents
 
@@ -49,6 +49,16 @@
 > `TOML.encode` requires a table (record) at the top level.
 
 \stdlib-statics{TOML}
+
+## `Path` module
+
+> Slash-separated path manipulation, matching Go's `path` package rather than OS-specific filesystem paths. `Path.join` takes a list because Dang has no variadic arguments; `Path.split` returns a `Path.Split!` object with `.dir` and `.file` fields.
+
+\stdlib-statics{Path}
+
+## `Path.Split!` methods
+
+\stdlib-methods{Split}
 
 ## `Random` module
 

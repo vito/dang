@@ -13,7 +13,7 @@ The built-in surface of Dang itself (everything here is available without any
 
 `print` and `assert` return `null` — there is no `Void` type.
 
-JSON/YAML/TOML conversions are **not** top-level functions — they live in the `JSON`/`YAML`/`TOML` codec namespaces (`.encode` / `.decode`; see [JSON, YAML, and TOML](#json-yaml-and-toml) below). base64 lives on `String!` (`.toBase64` / `.fromBase64`).
+JSON/YAML/TOML conversions are **not** top-level functions — they live in the `JSON`/`YAML`/`TOML` codec namespaces (`.encode` / `.decode`; see [JSON, YAML, and TOML](#json-yaml-and-toml) below). Slash-separated path helpers live under `Path`. base64 lives on `String!` (`.toBase64` / `.fromBase64`).
 
 ## `String!` methods
 
@@ -118,6 +118,17 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - missing required field → `<path>: missing required field`
 - wrong type for field → raises
 - invalid enum value → `<path>: invalid enum value "X" for <Enum>`
+
+## `Path` module
+- Mirrors Go's slash-separated `path` package, not OS-specific filesystem paths.
+- `Path.base(path: String!) -> String!`
+- `Path.clean(path: String!) -> String!`
+- `Path.dir(path: String!) -> String!`
+- `Path.ext(path: String!) -> String!`
+- `Path.isAbs(path: String!) -> Boolean!`
+- `Path.join(elements: [String!]!) -> String!` — list form of Go's variadic `Join`
+- `Path.match(pattern: String!, name: String!) -> Boolean!` — raises if the pattern syntax is invalid
+- `Path.split(path: String!) -> Path.Split!` — returns `.dir` and `.file` fields
 
 ## `Random` module
 - `Random.int(min: Int!, max: Int!) -> Int!` — `min` inclusive, `max` exclusive (errors if `min >= max`)

@@ -1,0 +1,47 @@
+# Test Path module functions
+
+# Path.base mirrors Go path.Base.
+assert { Path.base("/usr/local/bin") == "bin" }
+assert { Path.base("") == "." }
+assert { Path.base("/") == "/" }
+
+# Path.clean mirrors Go path.Clean.
+assert { Path.clean("/a/b/../c//") == "/a/c" }
+assert { Path.clean("") == "." }
+assert { Path.clean("a/./b") == "a/b" }
+
+# Path.dir mirrors Go path.Dir.
+assert { Path.dir("/usr/local/bin") == "/usr/local" }
+assert { Path.dir("file.txt") == "." }
+assert { Path.dir("/") == "/" }
+
+# Path.ext mirrors Go path.Ext.
+assert { Path.ext("archive.tar.gz") == ".gz" }
+assert { Path.ext("Makefile") == "" }
+assert { Path.ext("/a.b/c") == "" }
+
+# Path.isAbs mirrors Go path.IsAbs.
+assert { Path.isAbs("/usr/local") == true }
+assert { Path.isAbs("usr/local") == false }
+
+# Path.join mirrors Go path.Join, with a list for Go's variadic arguments.
+assert { Path.join(["a", "b", "c.txt"]) == "a/b/c.txt" }
+assert { Path.join(["", "a", "b/../c"]) == "a/c" }
+let empty: [String!]! = []
+assert { Path.join(empty) == "" }
+
+# Path.match mirrors Go path.Match.
+assert { Path.match("*.dang", "main.dang") == true }
+assert { Path.match("*.dang", "main.go") == false }
+assert { Path.match("a/*", "a/b/c") == false }
+
+# Path.split mirrors Go path.Split, returning an object with dir and file fields.
+let split = Path.split("a/b/c.txt")
+assert { split.dir == "a/b/" }
+assert { split.file == "c.txt" }
+
+let simple = Path.split("file.txt")
+assert { simple.dir == "" }
+assert { simple.file == "file.txt" }
+
+print("Path module tests passed!")
