@@ -164,7 +164,9 @@ func (p Plugin) literateBlock(code booklit.Content, label string) (booklit.Conte
 		partials["Stdout"] = booklit.String(stdout)
 	}
 	if value != "" {
-		partials["Value"] = booklit.String(value)
+		// Highlight the result with bare token spans, matching the client-side
+		// highlighting so the baked output and its enhanced replay agree.
+		partials["Value"] = highlightResult(value)
 	}
 
 	return booklit.Styled{
@@ -299,7 +301,7 @@ func literateEval(source string, sess *literateSession) (string, string, error) 
 
 	value := ""
 	if lastVal != nil && (last == nil || len(last.DeclaredSymbols()) == 0) {
-		value = lastVal.String()
+		value = dang.Repr(lastVal)
 	}
 	return strings.TrimRight(out.String(), "\n"), value, nil
 }

@@ -13,16 +13,18 @@ import (
 
 // ── styles ──────────────────────────────────────────────────────────────────
 
+// Styles use the ANSI 16-color palette ("0".."15") so the doc browser follows
+// the user's terminal theme.
 var (
-	DocTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
-	DocActiveTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	DocSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
-	DocDocTextStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	DocArgNameStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	DocArgTypeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	DocDimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
-	DocSepStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	DocHoverStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("237"))
+	DocTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("5"))  // magenta
+	DocActiveTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")) // bright magenta
+	DocSelectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true) // bright magenta
+	DocDocTextStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))             // white
+	DocArgNameStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))             // cyan
+	DocArgTypeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))             // bright black
+	DocDimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))             // bright black
+	DocSepStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))             // bright black
+	DocHoverStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("8"))
 )
 
 // ── breadcrumb crumb ────────────────────────────────────────────────────────
@@ -35,17 +37,17 @@ type BreadcrumbCrumb struct {
 	OnClick func()
 }
 
-func (b *BreadcrumbCrumb) Render(_ tuist.Context) tuist.RenderResult {
+func (b *BreadcrumbCrumb) Render(ctx tuist.Context) {
 	var st lipgloss.Style
 	switch {
 	case b.Active:
-		st = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+		st = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")) // bright magenta
 	case b.Hovered:
-		st = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Underline(true)
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Underline(true)
 	default:
-		st = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Underline(true)
+		st = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Underline(true) // magenta
 	}
-	return tuist.RenderResult{Lines: []string{st.Render(b.Label)}}
+	ctx.Line(st.Render(b.Label))
 }
 
 func (b *BreadcrumbCrumb) HandleMouse(_ tuist.Context, ev tuist.MouseEvent) bool {
@@ -81,7 +83,7 @@ type DocColumnComp struct {
 	ScrollOffset int
 }
 
-func (c *DocColumnComp) Render(ctx tuist.Context) tuist.RenderResult {
+func (c *DocColumnComp) Render(ctx tuist.Context) {
 	w := ctx.Width
 	col := c.Browser.Columns[c.ColIdx]
 	isFiltering := c.Browser.Filtering && c.IsActive
@@ -100,7 +102,7 @@ func (c *DocColumnComp) Render(ctx tuist.Context) tuist.RenderResult {
 	filterLineH := 0
 	if len(col.Items) > 0 && (isFiltering || col.Filter != "") {
 		filterLineH = 1
-		filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+		filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")) // yellow
 		filterText := "/" + col.Filter
 		if isFiltering {
 			filterText += "_"
@@ -180,7 +182,7 @@ func (c *DocColumnComp) Render(ctx tuist.Context) tuist.RenderResult {
 		lines[i] = PadRight(line, w)
 	}
 
-	return tuist.RenderResult{Lines: lines}
+	ctx.Lines(lines...)
 }
 
 func (c *DocColumnComp) HandleMouse(_ tuist.Context, ev tuist.MouseEvent) bool {
@@ -399,14 +401,15 @@ func (d *DocBrowserOverlay) handleFilterKey(key uv.Key) {
 	}
 }
 
-func (d *DocBrowserOverlay) Render(ctx tuist.Context) tuist.RenderResult {
+func (d *DocBrowserOverlay) Render(ctx tuist.Context) {
 	width := ctx.Width
 	height := ctx.Height
 	if height == 0 && ctx.ScreenHeight() > 0 {
 		height = ctx.ScreenHeight()
 	}
 	if width < 20 {
-		return tuist.RenderResult{Lines: []string{"(too narrow)"}}
+		ctx.Line("(too narrow)")
+		return
 	}
 
 	if height > 0 {
@@ -435,7 +438,7 @@ func (d *DocBrowserOverlay) Render(ctx tuist.Context) tuist.RenderResult {
 		if ci == len(d.ColComps)-1 {
 			w = lastColW
 		}
-		r := d.RenderChild(ctx.Resize(w, listH+2), cc)
+		r := d.RenderChildResult(ctx.Resize(w, listH+2), cc)
 		colRendered = append(colRendered, r.Lines)
 	}
 
@@ -458,7 +461,7 @@ func (d *DocBrowserOverlay) Render(ctx tuist.Context) tuist.RenderResult {
 		c.Active = i == d.ActiveCol
 		c.Label = d.Columns[i].Title
 		c.Update()
-		r := d.RenderChild(ctx.Resize(width, 1), c)
+		r := d.RenderChildResult(ctx.Resize(width, 1), c)
 		text := ""
 		if len(r.Lines) > 0 {
 			text = r.Lines[0]
@@ -480,7 +483,7 @@ func (d *DocBrowserOverlay) Render(ctx tuist.Context) tuist.RenderResult {
 		}
 	}
 
-	return tuist.RenderResult{Lines: result}
+	ctx.Lines(result...)
 }
 
 // SyncCrumbs ensures Crumbs has exactly ActiveCol+1 entries.

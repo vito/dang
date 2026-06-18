@@ -8,6 +8,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Khan/genqlient v0.8.1
 	github.com/charmbracelet/fang v0.4.4
+	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/creachadair/jrpc2 v1.3.3
 	github.com/dagger/otel-go v1.43.1-0.20260515012101-af7cd0684887
 	github.com/dagger/testctx v0.1.2
@@ -19,14 +20,13 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/vektah/gqlparser/v2 v2.5.30
-	github.com/vito/tuist v0.0.6-0.20260317030317-5530ade64acd
+	github.com/vito/tuist v0.0.7-0.20260617202722-ed3f1d64aee6
 	golang.org/x/sync v0.20.0
 	gotest.tools/v3 v3.5.2
 )
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )

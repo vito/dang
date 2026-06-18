@@ -156,3 +156,36 @@ func renderCode(section *booklit.Section, language, source string, links []linkS
 
 	return seq
 }
+
+// highlightResult renders a REPL result value as inline highlighted HTML:
+// bare tok-* spans with no .syntax wrapper. This matches what playground.js's
+// highlightHtml produces for the same value client-side, so the baked literate
+// result and its enhanced replay look identical, and unstyled characters
+// inherit the result line's color (.dang-playground-result, green). Without a
+// grammar (or cgo) it degrades to escaped plain text.
+func highlightResult(value string) booklit.Content {
+	classes := classifyCode("dang", value)
+	classAt := func(i int) string {
+		if classes == nil {
+			return ""
+		}
+		return classes[i]
+	}
+
+	var raw strings.Builder
+	for i := 0; i < len(value); {
+		cls := classAt(i)
+		j := i + 1
+		for j < len(value) && classAt(j) == cls {
+			j++
+		}
+		text := html.EscapeString(value[i:j])
+		if cls != "" {
+			raw.WriteString(`<span class="` + cls + `">` + text + `</span>`)
+		} else {
+			raw.WriteString(text)
+		}
+		i = j
+	}
+	return booklit.Styled{Style: "raw-html", Content: booklit.String(raw.String())}
+}

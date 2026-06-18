@@ -230,14 +230,16 @@ var kindOrder = [...]string{
 	KindInput:     "input",
 }
 
+// kindColors uses the ANSI 16-color palette ("0".."15") so completion-kind
+// tags follow the user's terminal theme.
 var kindColors = [...]string{
-	KindField:     "117",
-	KindType:      "213",
-	KindInterface: "141",
-	KindEnum:      "221",
-	KindScalar:    "114",
-	KindUnion:     "209",
-	KindInput:     "183",
+	KindField:     "6",  // cyan
+	KindType:      "3",  // yellow
+	KindInterface: "5",  // magenta
+	KindEnum:      "2",  // green
+	KindScalar:    "4",  // blue
+	KindUnion:     "1",  // red
+	KindInput:     "13", // bright magenta
 }
 
 func (k ItemKind) Label() string {
@@ -251,7 +253,7 @@ func (k ItemKind) Color() string {
 	if int(k) < len(kindColors) {
 		return kindColors[k]
 	}
-	return "247"
+	return "7" // default foreground
 }
 
 // DocItem is a single entry in the doc browser or completion detail.
@@ -470,11 +472,11 @@ func UnwrapType(t hm.Type) hm.Type {
 
 var (
 	DetailTitleStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("255")).Bold(true)
-	DocTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("249"))
-	ArgNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
-	ArgTypeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	DimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+				Foreground(lipgloss.Color("15")).Bold(true) // bright white
+	DocTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("7")) // white
+	ArgNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("6")) // cyan
+	ArgTypeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // bright black
+	DimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8")) // bright black
 )
 
 // RenderDetailLines renders a DocItem for the completion detail panel.
