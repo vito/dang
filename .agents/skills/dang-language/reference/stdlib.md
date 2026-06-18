@@ -123,11 +123,13 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - Mirrors Go's slash-separated `path` package, not OS-specific filesystem paths.
 - `Path.base(path: String!) -> String!`
 - `Path.clean(path: String!) -> String!`
+- `Path.contains(base: String!, path: String!) -> Boolean!` — inclusive containment after cleaning; mixed absolute/relative paths are false
 - `Path.dir(path: String!) -> String!`
 - `Path.ext(path: String!) -> String!`
 - `Path.isAbs(path: String!) -> Boolean!`
 - `Path.join(elements: [String!]!) -> String!` — list form of Go's variadic `Join`
 - `Path.match(pattern: String!, name: String!) -> Boolean!` — raises if the pattern syntax is invalid
+- `Path.rel(base: String!, path: String!) -> String!` — `filepath.Rel`-style lexical relative path, but slash-separated
 - `Path.split(path: String!) -> Path.Split!` — returns `.dir` and `.file` fields
 
 ## `Random` module

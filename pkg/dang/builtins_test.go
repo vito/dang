@@ -88,7 +88,7 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 		}
 		pathMethods[def.Name] = true
 	})
-	for _, name := range []string{"base", "clean", "dir", "ext", "isAbs", "join", "match", "split"} {
+	for _, name := range []string{"base", "clean", "contains", "dir", "ext", "isAbs", "join", "match", "rel", "split"} {
 		if !pathMethods[name] {
 			t.Fatalf("Path.%s was not registered", name)
 		}

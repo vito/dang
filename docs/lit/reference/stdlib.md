@@ -52,7 +52,7 @@
 
 ## `Path` module
 
-> Slash-separated path manipulation, matching Go's `path` package rather than OS-specific filesystem paths. `Path.join` takes a list because Dang has no variadic arguments; `Path.split` returns a `Path.Split!` object with `.dir` and `.file` fields.
+> Slash-separated lexical path manipulation. Most functions match Go's `path` package rather than OS-specific filesystem paths; `Path.rel` follows `filepath.Rel` semantics with slash separators. `Path.contains` is inclusive (equal paths count), `Path.join` takes a list because Dang has no variadic arguments, and `Path.split` returns a `Path.Split!` object with `.dir` and `.file` fields.
 
 \stdlib-statics{Path}
 

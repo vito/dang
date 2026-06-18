@@ -10,6 +10,17 @@ assert { Path.clean("/a/b/../c//") == "/a/c" }
 assert { Path.clean("") == "." }
 assert { Path.clean("a/./b") == "a/b" }
 
+# Path.contains is inclusive and cleans both paths first.
+assert { Path.contains("/foo/bar", "/foo/bar") == true }
+assert { Path.contains("/foo/bar", "/foo/bar/baz") == true }
+assert { Path.contains("/foo/bar", "/foo/baz") == false }
+assert { Path.contains("/foo/bar/.", "/foo/bar/baz/..") == true }
+assert { Path.contains("foo/bar", "foo/bar/baz") == true }
+assert { Path.contains("foo/bar", "foo/baz") == false }
+assert { Path.contains("/foo/bar", "foo/bar") == false }
+assert { Path.contains(".", "foo") == true }
+assert { Path.contains(".", "../foo") == false }
+
 # Path.dir mirrors Go path.Dir.
 assert { Path.dir("/usr/local/bin") == "/usr/local" }
 assert { Path.dir("file.txt") == "." }
@@ -34,6 +45,21 @@ assert { Path.join(empty) == "" }
 assert { Path.match("*.dang", "main.dang") == true }
 assert { Path.match("*.dang", "main.go") == false }
 assert { Path.match("a/*", "a/b/c") == false }
+
+# Path.rel mirrors filepath.Rel's lexical behavior with slash-separated paths.
+assert { Path.rel("/a/b", "/a/b/c/d") == "c/d" }
+assert { Path.rel("/a/b", "/a/c") == "../c" }
+assert { Path.rel("/a/b", "/a/b") == "." }
+assert { Path.rel("/", "/a/b") == "a/b" }
+assert { Path.rel("a/b", "a/b/c") == "c" }
+assert { Path.rel("/a/b/./c", "/a/b/d/../c/e") == "e" }
+
+let relErr = try {
+  Path.rel("/a", "a")
+} catch {
+  err => err.message
+}
+assert { relErr.contains("can't make") }
 
 # Path.split mirrors Go path.Split, returning an object with dir and file fields.
 let split = Path.split("a/b/c.txt")
