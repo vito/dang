@@ -38,6 +38,8 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 - `<` `<=` `>` `>=` on numbers (`Int`/`Float`, mixed allowed) or strings (compared lexicographically) — operands must match (`"a" < 1` is a static type error)
 - `==` `!=` are type-safe — mismatched types compare `false`, no coercion (`num == str` is `false`)
 - `==`/`!=` work on numbers, strings, bools, null, lists, records; both return `Boolean!`
+- objects compare by **reference identity**, never by structure — equal only when they're the same instance, so two separately constructed objects with matching fields are not equal (`Rabbit("x") == Rabbit("x")` is `false`)
+- this applies to both native (`type`) objects and GraphQL objects; a GraphQL object's identity is the query that produced it, so `primaryUser == user(id: "1")` is `false` even though both denote the same user. To ask whether two GraphQL objects are the *same server entity*, compare an identifying field, e.g. `a.id == b.id`
 
 ## Logical
 

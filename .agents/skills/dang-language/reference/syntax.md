@@ -100,6 +100,8 @@ greet(
 ### Comparison
 - `< <= > >=` on **numbers only** (`Int`/`Float`, mixed allowed) — NOT on strings.
 - `== !=` are type-safe: mismatched types compare `false`, no coercion (`num == str` is `false`). Work on numbers, strings, bools, null, lists, records. Return `Boolean!`.
+- Objects compare by **reference identity**, never structurally — equal only when the same instance, so two separately built objects with matching fields are not equal (`Rabbit("x") == Rabbit("x")` is `false`).
+- Same for GraphQL objects: identity is the query that produced them, so `primaryUser == user(id: "1")` is `false` even though both denote the same user — no network call. To compare GraphQL objects as the *same server entity*, compare a field explicitly: `a.id == b.id`.
 
 ### Logical
 - `and`, `or` short-circuit (keywords, not `&&`/`||`); result `Boolean!`.
