@@ -92,7 +92,7 @@ func registerPath() {
 			for i, elem := range elements {
 				str, ok := elem.(StringValue)
 				if !ok {
-					return nil, fmt.Errorf("Path.join: element %d must be String!, got %T", i, elem)
+					return nil, fmt.Errorf("path.join: element %d must be String!, got %T", i, elem)
 				}
 				parts[i] = str.Val
 			}
@@ -108,7 +108,7 @@ func registerPath() {
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			matched, err := stdpath.Match(args.GetString("pattern"), args.GetString("name"))
 			if err != nil {
-				return nil, fmt.Errorf("Path.match: %w", err)
+				return nil, fmt.Errorf("path.match: %w", err)
 			}
 			return ToValue(matched)
 		})
@@ -122,7 +122,7 @@ func registerPath() {
 		Impl(func(ctx context.Context, args Args) (Value, error) {
 			rel, err := pathRel(args.GetString("base"), args.GetString("path"))
 			if err != nil {
-				return nil, fmt.Errorf("Path.rel: %w", err)
+				return nil, fmt.Errorf("path.rel: %w", err)
 			}
 			return ToValue(rel)
 		})
