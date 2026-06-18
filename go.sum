@@ -161,10 +161,6 @@ github.com/vektah/gqlparser/v2 v2.5.30 h1:EqLwGAFLIzt1wpx1IPpY67DwUujF1OfzgEyDsL
 github.com/vektah/gqlparser/v2 v2.5.30/go.mod h1:D1/VCZtV3LPnQrcPBeR/q5jkSQIPti0uYCP/RI0gIeo=
 github.com/vito/pigeon v0.0.0-20260530031413-6ddc6a5a5a53 h1:6od1Xihcqxz4Ebv89ngBGRYW6rAZvsJj+W9EmtsKMFY=
 github.com/vito/pigeon v0.0.0-20260530031413-6ddc6a5a5a53/go.mod h1:XjNXeCGWAXtMkTaQQ0U4QTqJwZFfkTONME5a0uwpjpU=
-github.com/vito/tuist v0.0.7-0.20260617191526-ae2d0e490bbb h1:qyv4z2VqUmuUVfAkXHDoiPV85y9CTU1W9mubStuw/zU=
-github.com/vito/tuist v0.0.7-0.20260617191526-ae2d0e490bbb/go.mod h1:CsNN9DERASd6PBtcSqTcOJDV1ZX/+i+j+kxh9k8Fff0=
-github.com/vito/tuist v0.0.7-0.20260617202527-a2010468cb93 h1:+M1EaGbLpQp6RM8CzRZZXWOlvnfjQxM7acUZz5Y3+l4=
-github.com/vito/tuist v0.0.7-0.20260617202527-a2010468cb93/go.mod h1:CsNN9DERASd6PBtcSqTcOJDV1ZX/+i+j+kxh9k8Fff0=
 github.com/vito/tuist v0.0.7-0.20260617202722-ed3f1d64aee6 h1:IPtxrF8bghyJTOcUGw5aFdZRoul2/XJugGiWPdOWo88=
 github.com/vito/tuist v0.0.7-0.20260617202722-ed3f1d64aee6/go.mod h1:CsNN9DERASd6PBtcSqTcOJDV1ZX/+i+j+kxh9k8Fff0=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
