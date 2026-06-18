@@ -56,12 +56,19 @@
   var style = document.createElement("style");
   style.textContent = [
     "main p, main li, main h1, main h2, main h3, main h4, main h5, main h6, main pre { position: relative; }",
+    // Absolutely positioned so the hidden (opacity:0) link occupies no layout
+    // space — an inline link would still take width at the end of a paragraph
+    // and bump the last word onto a new line. Pinned to the element's top-right
+    // corner and raised slightly so it floats over the margin above the first
+    // line rather than overlapping the text. The prose elements are already
+    // position:relative (see the rule above).
     ".dang-fb-link {",
+    "  position: absolute; top: -.55em; right: 0; margin-left: 0;",
     "  font: inherit; font-size: .72rem; cursor: pointer;",
-    "  margin-left: .5em; padding: 0 .35em; border-radius: 4px;",
+    "  padding: 0 .35em; border-radius: 4px;",
     "  border: 1px solid var(--code-border); background: var(--bg3);",
     "  color: var(--fg2); opacity: 0; transition: opacity .12s ease;",
-    "  vertical-align: baseline; user-select: none;",
+    "  user-select: none;",
     "}",
     hoverRule + ", .dang-fb-link:focus { opacity: 1; }",
     ".dang-fb-link:hover { color: var(--accent2); border-color: var(--accent); }",
