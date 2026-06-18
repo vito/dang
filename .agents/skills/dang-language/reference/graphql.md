@@ -53,6 +53,10 @@ users.{name}[0].name      # index to force it
 ## Laziness / forcing
 GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.field`, `.{...}`, args); no request is sent until the value is **forced** — materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single request. This is what makes `user.{ name, posts.{ title } }` one round-trip.
 
+## Equality
+- `==`/`!=` on GraphQL objects compare by **reference identity**, exactly like native `type` objects — no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself, but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false` (just as `Rabbit("x") == Rabbit("x")` is `false`).
+- To ask whether two objects are the *same server entity*, compare an identifying field explicitly: `a.id == b.id`. That forces the fetch where it's visible rather than hiding I/O inside `==`.
+
 ## Errors from the server
 - Non-null violations and GraphQL errors **raise** — catchable via `try`/`catch`.
 

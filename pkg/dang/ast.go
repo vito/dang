@@ -215,7 +215,15 @@ func createValueNode(val Value) *ValueNode {
 	return &ValueNode{Val: val, Loc: nil}
 }
 
-// valuesEqual compares two values for equality
+// valuesEqual compares two values for equality.
+//
+// Objects compare by reference identity, never by structure: two separately
+// constructed objects are unequal even if their fields match (just as
+// Rabbit("x") != Rabbit("x")). For native objects identity is the *Object
+// pointer; for GraphQL objects it's the query chain that produced them (an
+// immutable builder allocated fresh per construction and shared across copies
+// of a binding). To compare GraphQL objects as the *same server entity*,
+// compare an identifying field explicitly, e.g. a.id == b.id.
 func valuesEqual(left, right Value) bool {
 	// Handle null values
 	_, leftIsNull := left.(NullValue)
@@ -298,10 +306,21 @@ func valuesEqual(left, right Value) bool {
 			}
 			return true
 		}
+	case *Object:
+		// Reference equality: equal only if the same instance.
+		if r, ok := right.(*Object); ok {
+			return l == r
+		}
+	case GraphQLValue:
+		// Reference equality: a GraphQL object's identity is its query chain,
+		// so the same handle compares equal to itself but two independent
+		// constructions don't.
+		if r, ok := right.(GraphQLValue); ok {
+			return l.QueryChain == r.QueryChain
+		}
 	}
 
 	// Different types or unsupported comparison
-	// TODO: object comparison?
 	return false
 }
 

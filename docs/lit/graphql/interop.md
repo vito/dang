@@ -83,6 +83,11 @@ users.{{ name, email }}
 
 > Laziness: GraphQL field access in Dang is lazy. A `GraphQLValue` accumulates a query chain (`.field`, `.{{...}}` selections, args); no request is sent until the value is **forced** — i.e. materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single `Execute` against the endpoint. This is the desugaring that makes `user.{{ name, posts.{{ title }} }}` one round-trip. See [#mutation] for how forcing interacts with side effects.
 
+## Object equality
+
+- `==`/`!=` compare GraphQL objects by **reference identity**, the same way native `type` objects compare — there's no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false` (just as `Rabbit("x") == Rabbit("x")` is `false`)
+- to ask whether two objects are the *same server entity*, compare an identifying field explicitly — `a.id == b.id` — which forces the necessary fetch where you can see it, instead of hiding I/O inside `==`
+
 ## Errors from the server
 
 - non-null violations and GraphQL errors raise — catchable via `try`/`catch` (see [#errors])

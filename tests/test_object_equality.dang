@@ -1,0 +1,38 @@
+# Test object equality (reference equality for *Object values)
+
+type Hat {
+  animal: Animal = null
+
+  insert(animal: Animal!): Hat! {
+    self.animal = animal
+    self
+  }
+}
+
+interface Animal {
+  coat: Coat!
+}
+
+enum Coat { SKIN FUR FEATHERS }
+
+type Rabbit implements Animal {
+  name: String!
+
+  coat: Coat! { Coat.FUR }
+}
+
+let jeff = Rabbit("jeffrey")
+let hat = Hat
+let withJeff = hat.insert(jeff)
+assert { hat.animal == null }
+assert { withJeff.animal == jeff }
+assert { withJeff.animal.coat == Coat.FUR }
+
+# A distinct object with the same contents is not reference-equal
+let otherJeff = Rabbit("jeffrey")
+assert("distinct objects are not equal") { (jeff == otherJeff) == false }
+
+# Same object reference is equal to itself
+assert("same reference is equal") { jeff == jeff }
+
+print("Object equality tests completed")
