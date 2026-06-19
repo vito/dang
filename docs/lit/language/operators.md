@@ -37,9 +37,10 @@ Precedence follows the `DefaultExpr → … → MultiplicativeExpr → Term` cha
 
 - `<` `<=` `>` `>=` on numbers (`Int`/`Float`, mixed allowed) or strings (compared lexicographically) — operands must match (`"a" < 1` is a static type error)
 - `==` `!=` are type-safe — mismatched types compare `false`, no coercion (`num == str` is `false`)
-- `==`/`!=` work on numbers, strings, bools, null, lists, records; both return `Boolean!`
-- objects compare by **reference identity**, never by structure — equal only when they're the same instance, so two separately constructed objects with matching fields are not equal (`Rabbit("x") == Rabbit("x")` is `false`)
-- this applies to both native (`type`) objects and GraphQL objects; a GraphQL object's identity is the query that produced it, so `primaryUser == user(id: "1")` is `false` even though both denote the same user. To ask whether two GraphQL objects are the *same server entity*, compare an identifying field, e.g. `a.id == b.id`
+- `==`/`!=` work on numbers, strings, bools, null, lists, maps, and records; both return `Boolean!`
+- **anonymous records** (`{{…}}` literals and `.{{…}}` selections) compare by **value**: equal when they have the same fields and every field is equal, so `{{a: 1}} == {{a: 1}}` is `true` and `{{a: 1}} == {{a: 2}}` is `false`
+- **named-type objects** compare by **type identity, then by their stored fields**: equal only when both are the same named type *and* every data field is equal. So `Rabbit("x") == Rabbit("x")` is `true`, `Rabbit("x") == Rabbit("y")` is `false`, distinct types never match (`Rabbit == Hare` is `false`), and a named object never equals an anonymous record of the same shape. Computed members (`field: T { … }`) are behavior, not stored state, so they're ignored
+- **GraphQL objects** compare by **reference identity** — a GraphQL object's identity is the query that produced it, so `primaryUser == user(id: "1")` is `false` even though both denote the same user. To ask whether two GraphQL objects are the *same server entity*, compare an identifying field, e.g. `a.id == b.id`
 
 ## Logical
 
