@@ -91,8 +91,8 @@ explicit form `self.value += 1` does exactly the same thing — the prefix is
 only there to disambiguate when a local or argument shadows the field name (see
 [#name-resolution]).
 
-Within a single method body, those writes accumulate into *one* fork. A loop
-that pushes onto a field builds the result up step by step, then returns it:
+Those forks compose. A loop that writes a field on every pass builds the
+result up one copy at a time, then returns the last:
 
 ```dang
 type Builder {
@@ -107,10 +107,13 @@ type Builder {
 Builder([]).addAll(["a", "b", "c"]).items
 ```
 
-The `.each` block runs three times, each appending to `self.items`, and all
-three writes land on the same fork — the one the method is assembling. (The
-return type is the concrete `Builder!`, not a `Self`: Dang has no `Self`
-keyword, only the lowercase `self` value.)
+The `.each` block runs three times, each appending to `self.items`. A field
+write always forks, so this isn't one value mutated in place: every `+=` reads
+the current copy's `items`, builds the longer list, and binds it on a *fresh*
+copy, with `self` rebound to follow. Three passes leave a chain of three
+generations, each reaching back through the one before it, and the method hands
+back the last — `["a", "b", "c"]`. (The return type is the concrete `Builder!`,
+not a `Self`: Dang has no `Self` keyword, only the lowercase `self` value.)
 
 ## Deep paths copy the whole spine {#deep-paths}
 
