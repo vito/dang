@@ -133,6 +133,18 @@ When adding a new subtyping relationship, the asymmetry direction matters:
 the *more specific* type's `Eq` should return true against the *more
 general* type, not vice versa.
 
+Because `Type.Eq` is asymmetric (and its anonymous branch duck-types
+structurally), runtime value equality must **not** route through it.
+`objectsEqual` (`ast.go`, behind `valuesEqual`'s `*Object` case, used by
+`==`/`case`/`contains`/`uniq`) instead gates on the module directly: both
+anonymous → structural `AsRecord().Eq`; either named → **pointer** comparison
+of the `*Type`s. That keeps `==` commutative (a named-vs-anonymous compare can't
+flip on operand order) and nominal (distinct `*Type`s, even same-named ones
+from different namespaces, never match). It then compares stored data fields via
+`lookupValue` **without forcing** — pending initializers and computed `{ }`
+members (function-typed in the module) are skipped, so the comparison stays pure
+(no `ctx`, no I/O, no error path). See issue #150.
+
 ## When adding a new type-like declaration
 
 Checklist:
