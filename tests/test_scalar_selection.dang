@@ -3,6 +3,13 @@
 # as a standalone `recv.field`, so whatever a single selection can reach a
 # multi-field selection can too.
 
+# A type with a computed (zero-arg method) field, used below to prove that
+# selecting such a field actually calls it rather than capturing the function.
+type Widget {
+  name: String! = "?"
+  label: String! { name.toUpper }
+}
+
 # Selecting builtin methods on a String
 let upper_lower = "Hello".{{ toUpper, toLower }}
 assert { upper_lower.toUpper == "HELLO" }
@@ -18,8 +25,29 @@ let trimmed = "  spaced  ".{{ trimSpace, hasPrefix(prefix: " ") }}
 assert { trimmed.trimSpace == "spaced" }
 assert { trimmed.hasPrefix == true }
 
-# Element-wise selection over a list of scalars
+# A selected zero-arg method field is auto-called, matching its inferred type
+# and what `widget.label` yields on its own (it resolves to String!, not a
+# function value).
+let one = Widget("a").{{ name, label }}
+assert { one.name == "a" }
+assert { one.label == "A" }
+
+# Element-wise selection over a list of scalars; results are one-field records
 let shouted = ["foo", "bar"].{{ toUpper }}
-assert { shouted != null }
+assert { shouted[0].toUpper == "FOO" }
+assert { shouted[1].toUpper == "BAR" }
+assert { shouted.length == 2 }
+
+# Element-wise selection over a list of objects, calling the method per element
+let widgets = [Widget("a"), Widget("b")].{{ name, label }}
+assert { widgets[0].name == "a" }
+assert { widgets[0].label == "A" }
+assert { widgets[1].name == "b" }
+assert { widgets[1].label == "B" }
+
+# Records aren't structurally comparable, but the scalars projected out of them
+# are — so map the selection down to a plain list and compare that.
+let labels = [Widget("a"), Widget("b")].{{ label }}.map { r => r.label }
+assert { labels == ["A", "B"] }
 
 print("Scalar selection tests passed!")

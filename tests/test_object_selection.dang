@@ -49,9 +49,10 @@ let users = [
 ]
 
 let user_summaries = users.{{name, email}}
-# Note: Since Dang doesn't support array indexing, we'll test the structure differently
-# We can verify the object selection works by checking that the result is well-formed
-assert { user_summaries != null }
+assert { user_summaries.length == 2 }
+assert { user_summaries[0].name == "Charlie" }
+assert { user_summaries[0].email == "charlie@example.com" }
+assert { user_summaries[1].name == "Diana" }
 
 # Test with nested lists
 let users_with_profile = [
@@ -60,8 +61,10 @@ let users_with_profile = [
 ]
 
 let detailed_summaries = users_with_profile.{{name, profile.{{bio}}}}
-# Note: Since Dang doesn't support array indexing, we'll test the structure differently
-# We can verify the nested object selection works by checking that the result is well-formed
-assert { detailed_summaries != null }
+assert { detailed_summaries.length == 2 }
+assert { detailed_summaries[0].name == "Eve" }
+assert { detailed_summaries[0].profile.bio == "Designer" }
+assert { detailed_summaries[1].name == "Frank" }
+assert { detailed_summaries[1].profile.bio == "Developer" }
 
 print("Object selection tests passed!")
