@@ -16,14 +16,6 @@ type Greeter {
 ["world", "Dang", "you"].map { who => Greeter(who).greet }
 }}}
 
-In a nutshell:
-
-* **GraphQL-imported** types and functions
-* **Prototype-based** object system
-* Ruby-style **block arguments** to emphasize chaining
-* **Immutable** data behind mutable syntax
-* Hindley-Milner style **type inference**
-
 > **NOTE FROM A HUMAN:** this is an AI-assisted draft, for now just
 > establishing the concepts, framing, and facts. Everything here is correct and
 > verifiable, and I do like the brevity, but there are probably better ways to
@@ -34,8 +26,6 @@ In a nutshell:
 \table-of-contents
 
 \include-section{./getting-started.md}
-\include-section{./twenty-minutes.md}
-\include-section{./coming-from.md}
 \include-section{./language.md}
 \include-section{./types.md}
 \include-section{./graphql.md}

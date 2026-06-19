@@ -3,41 +3,64 @@
 
 # What & Why {#what-and-why}
 
-A wise old Yahoo! Answers comment once described Go as "a language for doing
-garbage collection." A bit fatalistic, for sure, but through that same lens
-I might describe Dang as "a language for occasions where you wish you didn't
-have to write it."
+A wise old Yahoo! Answers comment once explained Go to a newcomer as "a
+language for doing garbage collection."
 
-Dang is for **glue**: the code that connects your project to the systems
-that build, test, deploy, or manage it. It's the language between "real"
+A bit fatalistic, perhaps, but through that same lens I might describe Dang as
+"a language whose highest form is to be deleted."
+
+## What is Dang?
+
+Dang is a language for **glue**: the code that connects the project you're
+creating with the systems that keep it going. It's the language between "real"
 languages. A creature of the backrooms.
 
-To that end, Dang takes the following strategy:
+Knowing its place in the universe, Dang strives to make the coder's experience
+as brief and pleasant as possible.
 
-* Bootstrap with **GraphQL**, betting on its familiarity across ecosystems.
-* Static typing with inference, to save time and raise confidence.
-* **Immutable semantics** for safety, with **mutable syntax** for ergonomics.
-* Ruby-style block arguments -- they're fun, and pair well with chaining.
+To that end:
 
-## ...but why?
+* Dang builds on [**GraphQL**](#graphql) to provide a familiar starting point
+  across ecosystems.
+* It has [**Hindley-Milner-ish**](#types) types, so your janky code fails
+  _before_ it tries shipping to prod.
+* It has [**immutable data** with **mutable syntax**](#mutation), balancing
+  safety with ergonomics.
+* It steals fun ideas like [block args](#blocks) from Ruby. (In fact, it steals
+  a _lot_ from Ruby.)
 
-The initial goal was a native language for [Dagger]. Dagger
-is a polyglot function engine with an underlying GraphQL API serving as the
-common layer where functions written in different languages call one another.
+{-
+* **GraphQL-based** types and functions
+* **Prototype-style** object system
+* Ruby-style **block arguments** to emphasize chaining
+* **Immutable** data behind mutable syntax
+* Hindley-Milner-ish[*](#types) **type inference**
+-}
 
-Combining Dang with Dagger gives you a polyglot language with an ecosystem of
-modules developed in any language that has a Dagger SDK. Dang is one such
-Dagger SDK, so it's perfect for writing Dagger modules that simply glue
-together APIs and don't need a heavy full-blown language runtime. As a result
-of not needing a codegen phase, it has potential to be much, much faster than
-the other SDKs.
+
+## ...but _why_ is Dang?
+
+The initial goal was a native language for [Dagger]. Dagger could be described
+as a polyglot function engine that uses GraphQL as the common substrate between
+languages.
+
+Most other Dagger SDKs work via code generation. The Go SDK generates bindings
+for the GraphQL schema exposed to your Dagger module. Dagger goes to great
+lengths to make this process fast, but you can never be faster than _not having
+to do the thing_.
+
+Because Dang is native to GraphQL, there is no code generation -- it literally
+imports the schema like code. Many Dagger modules are just gluing together
+APIs, so they can be written in any language. Dang aims to be the best option
+in that scenario.
 
 Architecturally, Dang is decoupled from Dagger; it just speaks GraphQL, so you
 can point it at any API endpoint you want.
 
 [Dagger]: https://dagger.io/
 
-## A primer
+
+## Just put the code in the bag...
 
 For those impatient like me, we'll dive straight in to some code. This may seem
 like a lot at once, but I encourage you mess around with it and press the
@@ -88,3 +111,8 @@ Here are some things that you can infer from above:
 * Named arguments can be passed positionally (`Rabbit("jeffrey")` is `Rabbit(name: "jeffrey")`)
 * Objects don't mutate -- `insert` returns a modified copy.
 * Ruby-style block arguments and method chaining (optional parentheses)
+
+
+## Acknowledgements
+
+* The many color themes to the left are from

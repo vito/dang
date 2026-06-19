@@ -11,6 +11,8 @@ Dang's type system is GraphQL's: nullability tracked in the types, objects
 declared as prototypes, plus interfaces, unions, enums, and scalars that map
 1:1 to their schema counterparts.
 
+TODO: describe the type system itself, inference, subtyping, nullability, etc
+
 \table-of-contents
 
 \include-section{./types/nullability.md}
