@@ -22,6 +22,9 @@ type Greeter {
 > explain things. I'll be improving them gradually and this notice will go away
 > when it's in a state I'm proud of. Sorry for any nonsense. Every paragraph
 > has a 'feedback' button so you can yell at me about it anonymously.
+>
+> Until this notice is gone, please don't submit this anywhere for public
+> commentary.
 
 \table-of-contents
 

@@ -11,7 +11,7 @@ A bit fatalistic, perhaps, but through that same lens I might describe Dang as
 
 ## What is Dang?
 
-Dang is a language for **glue**: the code that connects the project you're
+Dang is a language for *glue* --- the code that connects the project you're
 creating with the systems that keep it going. It's the language between "real"
 languages. A creature of the backrooms.
 
@@ -20,12 +20,11 @@ as brief and pleasant as possible.
 
 To that end:
 
-* Dang builds on [**GraphQL**](#graphql) to provide a familiar starting point
-  across ecosystems.
+* Dang builds on [**GraphQL**](#graphql) to provide a familiar starting point.
 * It has [**Hindley-Milner-ish**](#types) types, so your janky code fails
   _before_ it tries shipping to prod.
-* It has [**immutable data** with **mutable syntax**](#mutation), balancing
-  safety with ergonomics.
+* It has [**immutable data** with **mutable syntax**](#mutation), trading
+  performance for safety with ergonomics.
 * It steals fun ideas like [block args](#blocks) from Ruby. (In fact, it steals
   a _lot_ from Ruby.)
 
