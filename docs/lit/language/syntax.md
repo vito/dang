@@ -87,6 +87,7 @@ Backtick templates in detail — backticks switch the lexer into template mode:
 ### Objects (record literals)
 
 - `{{ key: value, other: value }}`
+- a bare name is **shorthand** for `name: name`: `{{ name, age }}` means `{{ name: name, age: age }}`, taking the values from variables in scope. This mirrors object selection, where `recv.{{ name }}` is shorthand for `recv.{{ name: name }}` (see [#interop])
 - always non-null
 - the same `{{ ... }}` syntax is also a record *type* annotation: `x :: {{foo: Int!, bar: Status!}}!`
 - nestable: `{{user: {{id: 1, active: true}}, count: 100}}`
