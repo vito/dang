@@ -3,11 +3,11 @@
 
 # What & Why {#what-and-why}
 
-A wise old Yahoo! Answers comment once explained Go to a newcomer as "a
-language for doing garbage collection."
+A wise old Yahoo! Answers comment once explained Go as "a language for doing
+garbage collection."
 
 A bit fatalistic, perhaps, but through that same lens I might describe Dang as
-"a language whose highest form is to be deleted."
+"a language for code that shouldn't need to exist."
 
 ## What is Dang?
 
