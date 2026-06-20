@@ -10,10 +10,12 @@ type Widget {
   label: String! { name.toUpper }
 }
 
-# Selecting builtin methods on a String
+# Selecting builtin methods on a String. The result is an anonymous record, so
+# it compares structurally to a matching record literal.
 let upper_lower = "Hello".{{ toUpper, toLower }}
 assert { upper_lower.toUpper == "HELLO" }
 assert { upper_lower.toLower == "hello" }
+assert { upper_lower == {{ toUpper: "HELLO", toLower: "hello" }} }
 
 # Fields with arguments alongside plain fields
 let split_result = "a,b,c".{{ split(separator: ","), toUpper }}
@@ -32,22 +34,13 @@ let one = Widget("a").{{ name, label }}
 assert { one.name == "a" }
 assert { one.label == "A" }
 
-# Element-wise selection over a list of scalars; results are one-field records
+# Element-wise selection over a list of scalars; results are one-field records,
+# and the list of records compares structurally.
 let shouted = ["foo", "bar"].{{ toUpper }}
-assert { shouted[0].toUpper == "FOO" }
-assert { shouted[1].toUpper == "BAR" }
-assert { shouted.length == 2 }
+assert { shouted == [{{ toUpper: "FOO" }}, {{ toUpper: "BAR" }}] }
 
-# Element-wise selection over a list of objects, calling the method per element
+# Element-wise selection over a list of objects, calling the method per element.
 let widgets = [Widget("a"), Widget("b")].{{ name, label }}
-assert { widgets[0].name == "a" }
-assert { widgets[0].label == "A" }
-assert { widgets[1].name == "b" }
-assert { widgets[1].label == "B" }
-
-# Records aren't structurally comparable, but the scalars projected out of them
-# are — so map the selection down to a plain list and compare that.
-let labels = [Widget("a"), Widget("b")].{{ label }}.map { r => r.label }
-assert { labels == ["A", "B"] }
+assert { widgets == [{{ name: "a", label: "A" }}, {{ name: "b", label: "B" }}] }
 
 print("Scalar selection tests passed!")
