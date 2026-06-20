@@ -2601,6 +2601,15 @@ func (f *Formatter) formatListMultiline(l *List) {
 	f.write("]")
 }
 
+// objectFieldShorthand reports whether a record-literal field can render in
+// shorthand form `name` (sugar for `name: name`): its value is a plain symbol
+// reference with the same name as the key. This keeps record literals aligned
+// with object selection, where a bare field name implies `name: name`.
+func objectFieldShorthand(field *FieldDecl) bool {
+	sym, ok := field.Value.(*Symbol)
+	return ok && sym.Name == field.Name.Name
+}
+
 func (f *Formatter) formatObject(o *ObjectLiteral) {
 	if len(o.Fields) == 0 {
 		f.write("{{}}")
@@ -2616,7 +2625,11 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 		if i > 0 {
 			length += 2
 		}
-		length += len(field.Name.Name) + 2 + f.estimateLength(field.Value)
+		if objectFieldShorthand(field) {
+			length += len(field.Name.Name)
+		} else {
+			length += len(field.Name.Name) + 2 + f.estimateLength(field.Value)
+		}
 	}
 
 	if !wasMultiline && f.col+length <= maxLineLength {
@@ -2633,8 +2646,10 @@ func (f *Formatter) formatObjectInline(o *ObjectLiteral) {
 			f.write(", ")
 		}
 		f.write(field.Name.Name)
-		f.write(": ")
-		f.formatNodeInline(field.Value)
+		if !objectFieldShorthand(field) {
+			f.write(": ")
+			f.formatNodeInline(field.Value)
+		}
 	}
 	f.write("}}")
 }
@@ -2657,8 +2672,10 @@ func (f *Formatter) formatObjectMultiline(o *ObjectLiteral) {
 			f.emitCommentsForNode(field)
 			f.writeIndent()
 			f.write(field.Name.Name)
-			f.write(": ")
-			f.formatNode(field.Value)
+			if !objectFieldShorthand(field) {
+				f.write(": ")
+				f.formatNode(field.Value)
+			}
 			// Add trailing comma (except for last field)
 			if i < len(o.Fields)-1 {
 				f.write(",")
@@ -2999,6 +3016,12 @@ func (f *Formatter) formatInlineFragment(frag *InlineFragment) {
 }
 
 func (f *Formatter) formatFieldSelection(field *FieldSelection) {
+	// `name` and `name: name` are equivalent, so only render the alias when it
+	// actually renames the field.
+	if field.Alias != "" && field.Alias != field.Name {
+		f.write(field.Alias)
+		f.write(": ")
+	}
 	f.write(field.Name)
 	if len(field.Args) > 0 {
 		f.write("(")

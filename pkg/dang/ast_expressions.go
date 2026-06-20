@@ -1261,13 +1261,25 @@ func (d *DotApply) Walk(fn func(Node) bool) {
 // FieldSelection represents a field name in an object selection
 type FieldSelection struct {
 	InferredTypeHolder
-	Name      string
+	Alias     string           // GraphQL-style output name; "" means use Name
+	Name      string           // The field actually selected off the receiver
 	Args      Record           // For arguments like repositories(first: 100)
 	Selection *ObjectSelection // For nested selections like profile.{bio, avatar}
 	Loc       *SourceLocation
 }
 
 func (f *FieldSelection) GetSourceLocation() *SourceLocation { return f.Loc }
+
+// OutputKey is the name this field is bound to in the resulting record: the
+// alias when one is given (`full: name`), otherwise the field name itself
+// (`name`, which is sugar for `name: name`). This keeps selection aligned with
+// record literals, where `{{ foo }}` is shorthand for `{{ foo: foo }}`.
+func (f *FieldSelection) OutputKey() string {
+	if f.Alias != "" {
+		return f.Alias
+	}
+	return f.Name
+}
 
 // InlineFragment represents a type-conditional selection like ... on User { name, email }
 type InlineFragment struct {
@@ -1436,7 +1448,7 @@ func (o *ObjectSelection) inferInlineFragments(ctx context.Context, receiverType
 				if err != nil {
 					return nil, NewInferError(fmt.Errorf("field %s not found on type %s", field.Name, memberMod), field)
 				}
-				narrowedMember.Add(field.Name, hm.NewScheme(nil, fieldType))
+				narrowedMember.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
 			}
 
 			narrowedUnion.LinkMember(narrowedMember)
@@ -1567,7 +1579,7 @@ func (o *ObjectSelection) inferSelectionType(ctx context.Context, receiverType h
 		if err != nil {
 			return nil, err
 		}
-		mod.Add(field.Name, hm.NewScheme(nil, fieldType))
+		mod.Add(field.OutputKey(), hm.NewScheme(nil, fieldType))
 	}
 	o.Inferred = mod
 	return mod, nil
@@ -1721,7 +1733,7 @@ func (o *ObjectSelection) evalInlineFragmentOnValue(val Value, ctx context.Conte
 				if !exists {
 					return nil, fmt.Errorf("field %s not found on %s", field.Name, mod)
 				}
-				resultObject.Bind(field.Name, fieldVal, PublicVisibility)
+				resultObject.Bind(field.OutputKey(), fieldVal, PublicVisibility)
 			}
 			return resultObject, nil
 		}
@@ -1944,14 +1956,15 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 
 			resultObject := NewObject(concreteType)
 			for _, field := range frag.Fields {
-				if fieldValue, exists := resultMap[field.Name]; exists {
+				outKey := field.OutputKey()
+				if fieldValue, exists := resultMap[outKey]; exists {
 					// Handle nested selections recursively
 					if field.Selection != nil {
 						nestedVal, err := o.convertNestedSelectionResult(fieldValue, field.Selection, schema, typeName, field.Name, typeScope)
 						if err != nil {
 							return nil, fmt.Errorf("converting nested field %s: %w", field.Name, err)
 						}
-						resultObject.Bind(field.Name, nestedVal, PublicVisibility)
+						resultObject.Bind(outKey, nestedVal, PublicVisibility)
 						continue
 					}
 
@@ -1965,7 +1978,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 									if strVal, ok := fieldValue.(string); ok {
 										enumType, found := typeScope.NamedType(fieldType.Name)
 										if found {
-											resultObject.Bind(field.Name, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
+											resultObject.Bind(outKey, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
 											continue
 										}
 									}
@@ -1979,7 +1992,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 					if err != nil {
 						return nil, fmt.Errorf("converting field %s: %w", field.Name, err)
 					}
-					resultObject.Bind(field.Name, dangVal, PublicVisibility)
+					resultObject.Bind(outKey, dangVal, PublicVisibility)
 				}
 			}
 
@@ -2005,19 +2018,20 @@ func (o *ObjectSelection) convertNestedSelectionResult(value any, sel *ObjectSel
 	}
 	mod := NewObject(sel.Inferred)
 	for _, f := range sel.Fields {
-		if fv, exists := resultMap[f.Name]; exists {
+		outKey := f.OutputKey()
+		if fv, exists := resultMap[outKey]; exists {
 			if f.Selection != nil {
 				nested, err := o.convertNestedSelectionResult(fv, f.Selection, schema, "", f.Name, typeScope)
 				if err != nil {
 					return nil, err
 				}
-				mod.Bind(f.Name, nested, PublicVisibility)
+				mod.Bind(outKey, nested, PublicVisibility)
 			} else {
 				dv, err := ToValue(fv)
 				if err != nil {
 					return nil, fmt.Errorf("converting field %s: %w", f.Name, err)
 				}
-				mod.Bind(f.Name, dv, PublicVisibility)
+				mod.Bind(outKey, dv, PublicVisibility)
 			}
 		}
 	}
@@ -2070,7 +2084,7 @@ func (o *ObjectSelection) evalFieldsBySelection(recv Value, ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		resultObject.Bind(field.Name, fieldVal, PublicVisibility)
+		resultObject.Bind(field.OutputKey(), fieldVal, PublicVisibility)
 	}
 	return resultObject, nil
 }
@@ -2175,9 +2189,11 @@ func (o *ObjectSelection) locateErrorField(path []string) *FieldSelection {
 		return nil
 	}
 
+	// GraphQL error paths use response keys, which are the field aliases when
+	// present, so match on the output key rather than the field name.
 	findField := func(fields []*FieldSelection, name string) *FieldSelection {
 		for _, f := range fields {
-			if f.Name == name {
+			if f.OutputKey() == name {
 				return f
 			}
 		}
@@ -2215,77 +2231,70 @@ func (o *ObjectSelection) buildGraphQLQuery(ctx context.Context, scope ValueScop
 		builder = querybuilder.Query()
 	}
 
-	// Check if we have any nested selections or fields with arguments
-	hasNestedSelectionsOrArgs := false
+	// Build an ordered, alias-aware selection set. A field with neither
+	// arguments nor a nested selection becomes a plain scalar (Sub == nil);
+	// otherwise its Sub carries the nested selection and/or arguments. Using an
+	// ordered list (rather than a name-keyed map) lets aliases rename fields and
+	// lets the same field appear more than once under distinct aliases.
+	selections := make([]querybuilder.SelectionField, 0, len(fields))
 	for _, field := range fields {
+		entry := querybuilder.SelectionField{Name: field.Name}
+		// `name` and `name: name` are equivalent, so only emit an explicit
+		// GraphQL alias when it actually renames the field.
+		if field.Alias != "" && field.Alias != field.Name {
+			entry.Alias = field.Alias
+		}
+
 		if field.Selection != nil || len(field.Args) > 0 {
-			hasNestedSelectionsOrArgs = true
-			break
-		}
-	}
-
-	if !hasNestedSelectionsOrArgs {
-		// Simple case: just select all fields using SelectFields (no args, no nested selections)
-		fieldNames := make([]string, len(fields))
-		for i, field := range fields {
-			fieldNames[i] = field.Name
-		}
-		return builder.SelectFields(fieldNames...), nil
-	}
-
-	// Complex case: mix of simple fields, fields with arguments, and nested selections
-	// Use SelectMixed to handle all types in a single selection set
-
-	// Collect simple fields (no args, no nested selections)
-	var simpleFields []string
-	fieldsWithSelections := make(map[string]*querybuilder.QueryBuilder)
-
-	for _, field := range fields {
-		if field.Selection == nil && len(field.Args) == 0 {
-			// Simple field - no arguments, no nested selection
-			simpleFields = append(simpleFields, field.Name)
-			continue
-		}
-
-		// Field has arguments and/or a nested selection. Build the
-		// sub-selection (if any) and attach arguments through the query
-		// builder, which owns argument marshalling and formatting.
-		var value *querybuilder.Selection
-		var err error
-		switch {
-		case field.Selection == nil:
-			// Scalar field that only takes arguments (e.g. avatarUrl(size:
-			// 200)); no sub-selection. An empty selection carries the args.
-			value = querybuilder.Query().SelectFields()
-		case len(field.Selection.InlineFragments) > 0:
-			// Nested inline fragments: build __typename + ... on Type { fields }
-			value, err = field.Selection.buildInlineFragmentQuery(querybuilder.Query())
-		default:
-			value, err = field.Selection.buildGraphQLQuery(ctx, scope, querybuilder.Query(), field.Selection.Fields)
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		for _, arg := range field.Args {
-			argVal, err := EvalNode(ctx, scope, arg.Value)
-			if err != nil {
-				return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
+			// Field has arguments and/or a nested selection. Build the
+			// sub-selection (if any) and attach arguments through the query
+			// builder, which owns argument marshalling and formatting.
+			var value *querybuilder.Selection
+			var err error
+			switch {
+			case field.Selection == nil:
+				// Scalar field that only takes arguments (e.g. avatarUrl(size:
+				// 200)); no sub-selection. An empty selection carries the args.
+				value = querybuilder.Query().SelectFields()
+			case len(field.Selection.InlineFragments) > 0:
+				// Nested inline fragments: build __typename + ... on Type { fields }
+				value, err = field.Selection.buildInlineFragmentQuery(querybuilder.Query())
+			default:
+				value, err = field.Selection.buildGraphQLQuery(ctx, scope, querybuilder.Query(), field.Selection.Fields)
 			}
-			// Convert Dang value to Go value for GraphQL; the builder marshals it.
-			goVal, err := dangValueToGo(argVal)
 			if err != nil {
-				return nil, fmt.Errorf("converting argument %s: %w", arg.Key, err)
+				return nil, err
 			}
-			value = value.Arg(arg.Key, goVal)
+
+			for _, arg := range field.Args {
+				argVal, err := EvalNode(ctx, scope, arg.Value)
+				if err != nil {
+					return nil, fmt.Errorf("evaluating argument %s: %w", arg.Key, err)
+				}
+				// Convert Dang value to Go value for GraphQL; the builder marshals it.
+				goVal, err := dangValueToGo(argVal)
+				if err != nil {
+					return nil, fmt.Errorf("converting argument %s: %w", arg.Key, err)
+				}
+				value = value.Arg(arg.Key, goVal)
+			}
+
+			entry.Sub = value
 		}
 
-		fieldsWithSelections[field.Name] = value
+		selections = append(selections, entry)
 	}
 
-	builder = builder.SelectMixed(simpleFields, fieldsWithSelections)
+	return builder.SelectAliased(selections), nil
+}
 
-	return builder, nil
+// graphQLFieldToken renders a field's GraphQL selection token, prefixing the
+// alias when one renames the field: "name" or "alias: name".
+func graphQLFieldToken(field *FieldSelection) string {
+	if field.Alias != "" && field.Alias != field.Name {
+		return field.Alias + ": " + field.Name
+	}
+	return field.Name
 }
 
 // buildInlineFragmentQuery builds a query with __typename and inline fragments
@@ -2298,9 +2307,9 @@ func (o *ObjectSelection) buildInlineFragmentQuery(baseQuery *querybuilder.Selec
 		for _, field := range frag.Fields {
 			if field.Selection != nil {
 				// Nested selection: build sub-selection string
-				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
+				fieldParts = append(fieldParts, graphQLFieldToken(field)+" "+buildSelectionString(field.Selection))
 			} else {
-				fieldParts = append(fieldParts, field.Name)
+				fieldParts = append(fieldParts, graphQLFieldToken(field))
 			}
 		}
 		fragParts = append(fragParts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
@@ -2314,18 +2323,18 @@ func buildSelectionString(sel *ObjectSelection) string {
 	var parts []string
 	for _, field := range sel.Fields {
 		if field.Selection != nil {
-			parts = append(parts, field.Name+" "+buildSelectionString(field.Selection))
+			parts = append(parts, graphQLFieldToken(field)+" "+buildSelectionString(field.Selection))
 		} else {
-			parts = append(parts, field.Name)
+			parts = append(parts, graphQLFieldToken(field))
 		}
 	}
 	for _, frag := range sel.InlineFragments {
 		var fieldParts []string
 		for _, field := range frag.Fields {
 			if field.Selection != nil {
-				fieldParts = append(fieldParts, field.Name+" "+buildSelectionString(field.Selection))
+				fieldParts = append(fieldParts, graphQLFieldToken(field)+" "+buildSelectionString(field.Selection))
 			} else {
-				fieldParts = append(fieldParts, field.Name)
+				fieldParts = append(fieldParts, graphQLFieldToken(field))
 			}
 		}
 		parts = append(parts, fmt.Sprintf("... on %s { %s }", frag.TypeName.Name, strings.Join(fieldParts, " ")))
@@ -2352,7 +2361,10 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 	// Convert GraphQL result to Dang values
 	if resultMap, ok := result.(map[string]any); ok {
 		for _, field := range fields {
-			if fieldValue, exists := resultMap[field.Name]; exists {
+			// The response is keyed by the output name (alias when present),
+			// while schema lookups use the underlying field name.
+			outKey := field.OutputKey()
+			if fieldValue, exists := resultMap[outKey]; exists {
 				// Check if fieldValue is a list that needs selection applied to each element
 				// Get the field information for the nested selection
 				nestedField := o.getFieldFromParent(field.Name, parentField, schema)
@@ -2365,7 +2377,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q inline fragments: %w", field.Name, err)
 						}
-						resultObject.Bind(field.Name, nestedResult, PublicVisibility)
+						resultObject.Bind(outKey, nestedResult, PublicVisibility)
 					} else if fieldSlice, isSlice := fieldValue.([]any); isSlice && field.Selection.IsList {
 						// Sub-selecting arrays
 						var elements []Value
@@ -2376,14 +2388,14 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 							}
 							elements = append(elements, itemResult)
 						}
-						resultObject.Bind(field.Name, ListValue{Elements: elements}, PublicVisibility)
+						resultObject.Bind(outKey, ListValue{Elements: elements}, PublicVisibility)
 					} else {
 						// Sub-selecting objects
 						nestedResult, err := field.Selection.convertGraphQLResultToModule(fieldValue, field.Selection.Fields, schema, nestedField, typeScope)
 						if err != nil {
 							return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: nested field %q: %w", field.Name, err)
 						}
-						resultObject.Bind(field.Name, nestedResult, PublicVisibility)
+						resultObject.Bind(outKey, nestedResult, PublicVisibility)
 					}
 				} else if fieldType := schema.Types.Get(o.unwrapType(nestedField.TypeRef).Name); fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
 					// Convert enums
@@ -2396,7 +2408,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 					if !found {
 						return nil, fmt.Errorf("type not defined for enum: %q", fieldType.Name)
 					}
-					resultObject.Bind(field.Name, EnumValue{
+					resultObject.Bind(outKey, EnumValue{
 						Val:      strVal,
 						EnumType: enumType,
 					}, PublicVisibility)
@@ -2406,7 +2418,7 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
-					resultObject.Bind(field.Name, dangVal, PublicVisibility)
+					resultObject.Bind(outKey, dangVal, PublicVisibility)
 				}
 			}
 		}
