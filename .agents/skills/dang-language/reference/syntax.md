@@ -70,6 +70,7 @@ greet(
 
 ### Records (object literals) — `{{ ... }}`
 - `{{ key: value, other: value }}` — note the **double braces**. Always non-null.
+- A bare name is **shorthand** for `name: name`: `{{ name, age }}` ≡ `{{ name: name, age: age }}` (values taken from variables in scope), mirroring object selection's bare-field form (`recv.{{ name }}` ≡ `recv.{{ name: name }}`).
 - Same `{{ ... }}` syntax is also a record *type* annotation: `x :: {{foo: Int!, bar: Status!}}!`.
 - Nestable. Serialized to JSON with keys **sorted alphabetically**, not declaration order.
 
@@ -147,5 +148,5 @@ TypeVariable := [a-z]                             # single lowercase letter
 Notable productions:
 - `SelectOrCall`: `Term '.' (ObjectSelection | FieldId ArgValues? BlockArg?)` — field path; zero-arg fields auto-call.
 - `BlockArg`: `'{' (BlockParams '=>')? Expr (Sep Expr)* '}'` — trailing block on a call; params optional.
-- `ObjectSelection`: `'{' ... '}'` after a `.` — a `FieldSelection` list (`user.{name, posts.{title}}`) or a list of `InlineFragment`s for unions/interfaces.
+- `ObjectSelection`: `'{{' ... '}}'` after a `.` — a `FieldSelection` list (`user.{{name, posts.{{title}}}}`) or a list of `InlineFragment`s for unions/interfaces. A field may carry a GraphQL-style alias (`user.{{full: name}}`); a bare field is shorthand for `name: name`.
 - `InlineFragment`: `'...' 'on' Symbol ('{' FieldSelection* '}' | '!'?)` — type-narrowing in a selection.
