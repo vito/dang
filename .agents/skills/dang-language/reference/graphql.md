@@ -27,14 +27,15 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 ## Inline fragments (unions/interfaces)
 ```dang
 node(id: "x").{{
-  ... on User { name, email }
-  ... on Post { title }
+  ... on User {{ name, email }}
+  ... on Post {{ title }}
 }}
 ```
 - Type-conditional selection on unions and interfaces; the result narrows in `case`.
 - After selection you only have the selected fields: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type.
 - Type conditions resolve against the receiver's (GraphQL) schema, not a local type shadowing the name.
-- Can nest: `... on Post { title, author.{{name}} }`, and `edges.{{ node.{{ ... on User { ... } }} }}`.
+- The field set uses the same double braces as any selection (`... on User {{ name, email }}`).
+- Can nest: `... on Post {{ title, author.{{name}} }}`, and `edges.{{ node.{{ ... on User {{ ... }} }} }}`.
 
 ### Lazy inline fragments (no field block)
 - `... on User` yields a typed reference / type assertion without selecting fields; chainable: `node(id).{{... on User}}.name`.

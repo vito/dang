@@ -76,4 +76,4 @@ TypeVariable := [a-z]                           # single lowercase letter
 - `ObjectSelection`: `"{{" ... "}}"` after a `.` — two forms: a `FieldSelection` list (`user.{{name, posts.{{title}}}}`), or a list of `InlineFragment`s for unions/interfaces. The double braces mirror record literals `{{ }}`. See [#objects].
 - `DotBlock`: `'.' BlockArg` — a single-brace block applied to the receiver (`foo.{ bar(_) }` ≡ `bar(foo)`), a sibling of `ObjectSelection` and method calls at `.` precedence. See [#blocks]'s [#dot-block].
 - `FieldSelection`: `(Id ':')? Id ArgValues? ('.' ObjectSelection)?` — a field in a selection, optionally with args and a nested `{{ }}` selection. A leading `Id ':'` is a GraphQL-style **alias** that renames the field in the result (`user.{{ full: name }}`); a bare field is shorthand for `name: name`.
-- `InlineFragment`: `'...' 'on' Symbol ('{' FieldSelection* '}' | '!'?)` — type-narrowing in a selection. See [#interfaces-unions].
+- `InlineFragment`: `'...' 'on' Symbol ('{{' FieldSelection* '}}' | '!'?)` — type-narrowing in a selection; the field set uses the same double braces as any selection. See [#interfaces-unions].

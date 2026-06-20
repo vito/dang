@@ -98,8 +98,8 @@ case (pet) {
 
 ```dang
 pets.{{
-  ... on Cat { name, lives }
-  ... on Dog { name, tricks }
+  ... on Cat {{ name, lives }}
+  ... on Dog {{ name, tricks }}
 }}
 ```
 
