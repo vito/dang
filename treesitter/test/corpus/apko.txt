@@ -105,52 +105,60 @@ print(Apko.alpine(["git"]).withExec(["git", "version"]).stdout)
                   (word_token)))
               (equal_token)
               (object_literal
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (object_literal
-                    (key_value
-                      (word_token)
-                      (colon_token)
-                      (list))
-                    (sep)
-                    (key_value
-                      (word_token)
-                      (colon_token)
-                      (list))
-                    (sep)
-                    (key_value
-                      (word_token)
-                      (colon_token)
-                      (list))))
+                (object_field
+                  (key_value
+                    (word_token)
+                    (colon_token)
+                    (object_literal
+                      (object_field
+                        (key_value
+                          (word_token)
+                          (colon_token)
+                          (list)))
+                      (sep)
+                      (object_field
+                        (key_value
+                          (word_token)
+                          (colon_token)
+                          (list)))
+                      (sep)
+                      (object_field
+                        (key_value
+                          (word_token)
+                          (colon_token)
+                          (list))))))
                 (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (literal
-                    (string
-                      (immediate_quote_token))))
+                (object_field
+                  (key_value
+                    (word_token)
+                    (colon_token)
+                    (literal
+                      (string
+                        (immediate_quote_token)))))
                 (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (object_literal
-                    (key_value
-                      (word_token)
-                      (colon_token)
-                      (literal
-                        (string
-                          (immediate_string_content)
-                          (immediate_quote_token))))))
+                (object_field
+                  (key_value
+                    (word_token)
+                    (colon_token)
+                    (object_literal
+                      (object_field
+                        (key_value
+                          (word_token)
+                          (colon_token)
+                          (literal
+                            (string
+                              (immediate_string_content)
+                              (immediate_quote_token))))))))
                 (sep)
-                (key_value
-                  (word_token)
-                  (colon_token)
-                  (list
-                    (symbol_or_call
-                      (auto_call_symbol
-                        (id
-                          (word_token))))))))))
+                (object_field
+                  (key_value
+                    (word_token)
+                    (colon_token)
+                    (list
+                      (symbol_or_call
+                        (auto_call_symbol
+                          (id
+                            (word_token)))))))))))
         (form_sep)
         (decl
           (field_decl
