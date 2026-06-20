@@ -304,6 +304,54 @@ func TestSelectMixedInlineFragmentArgs(t *testing.T) {
 	require.Equal(t, `{search{node(first:1){__typename ... on User { name }}}}`, q)
 }
 
+func TestSelectAliased(t *testing.T) {
+	// Aliases rename fields in the emitted query, and a field with no alias is
+	// rendered bare. Order is preserved.
+	q, err := Query().
+		Select("viewer").
+		SelectAliased([]SelectionField{
+			{Alias: "fullName", Name: "name"},
+			{Name: "login"},
+		}).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `{viewer{fullName:name login}}`, q)
+}
+
+func TestSelectAliasedDuplicateField(t *testing.T) {
+	// The same field can be selected more than once under distinct aliases with
+	// different arguments — the case a name-keyed selection set cannot express.
+	small := Query().SelectFields().Arg("size", 100)
+	large := Query().SelectFields().Arg("size", 200)
+
+	q, err := Query().
+		Select("viewer").
+		SelectAliased([]SelectionField{
+			{Alias: "small", Name: "avatarUrl", Sub: small},
+			{Alias: "large", Name: "avatarUrl", Sub: large},
+		}).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `{viewer{small:avatarUrl(size:100) large:avatarUrl(size:200)}}`, q)
+}
+
+func TestSelectAliasedNested(t *testing.T) {
+	// An aliased field with a nested selection renders alias:field{ sub }.
+	repos := Query().SelectFields("name", "stargazerCount").Arg("first", 3)
+
+	q, err := Query().
+		Select("viewer").
+		SelectAliased([]SelectionField{
+			{Alias: "topRepos", Name: "repositories", Sub: repos},
+		}).
+		Build(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, `{viewer{topRepos:repositories(first:3){name stargazerCount}}}`, q)
+}
+
 func TestUnpackMixedFieldsAndSubselections(t *testing.T) {
 	type Post struct {
 		Title   string `json:"title"`
