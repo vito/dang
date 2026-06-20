@@ -103,6 +103,7 @@ assert { {{pet: Rabbit("bun")}} != {{pet: Rabbit("hop")}} }
 type Cage {
   contents: {{food: String!}}!
 }
+
 assert { Cage({{food: "hay"}}) == Cage({{food: "hay"}}) }
 assert { Cage({{food: "hay"}}) != Cage({{food: "pellets"}}) }
 
