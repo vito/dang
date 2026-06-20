@@ -1684,20 +1684,9 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 			return o.evalInlineFragmentOnValue(receiverVal, ctx, scope)
 		}
 
-		// Handle list types - apply selection to each element
-		if listVal, ok := receiverVal.(ListValue); ok {
-			var results []Value
-			for _, elem := range listVal.Elements {
-				result, err := o.evalSelectionOnValue(elem, ctx, scope)
-				if err != nil {
-					return nil, err
-				}
-				results = append(results, result)
-			}
-			return ListValue{Elements: results}, nil
-		}
-
-		// Handle regular object types
+		// Apply the selection. evalSelectionOnValue handles lists (element-wise),
+		// GraphQL values (one batched query), objects, and scalar/builtin
+		// receivers uniformly.
 		return o.evalSelectionOnValue(receiverVal, ctx, scope)
 	})
 }
@@ -2040,69 +2029,88 @@ func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, s
 	case NullValue:
 		// Null propagation for individual values in lists
 		return NullValue{}, nil
-	case *Object:
-		return o.evalModuleSelection(v, ctx, scope)
+	case ListValue:
+		// Apply the selection element-wise, matching the inferred element type.
+		results := make([]Value, len(v.Elements))
+		for i, elem := range v.Elements {
+			result, err := o.evalSelectionOnValue(elem, ctx, scope)
+			if err != nil {
+				return nil, err
+			}
+			results[i] = result
+		}
+		return ListValue{Elements: results}, nil
 	case GraphQLValue:
+		// GraphQL receivers are special-cased so the whole selection becomes a
+		// single batched query — the GraphQL server resolves the sibling fields
+		// in parallel, just as it would for a query written by hand.
 		return o.evalGraphQLSelection(v, ctx, scope)
 	default:
-		return nil, fmt.Errorf("ObjectSelection.evalSelectionOnValue: expected *Object or GraphQLValue, got %T", val)
+		// Any other selectable value — a Dang object, a String, a Float, a Map,
+		// etc. — is handled uniformly by evaluating each field through the same
+		// Select machinery that powers single-field selection. This keeps
+		// `recv.{{ a, b }}` aligned with `recv.a` / `recv.b` by construction:
+		// whatever a single selection can reach, a multi-field selection can too.
+		return o.evalFieldsBySelection(v, ctx, scope)
 	}
 }
 
-func (o *ObjectSelection) evalModuleSelection(objVal *Object, ctx context.Context, scope ValueScope) (Value, error) {
+// evalFieldsBySelection builds the result object by selecting each field off the
+// receiver exactly as a standalone `recv.field` expression would. Delegating to
+// Select (and FunCall, for fields with arguments) is what guarantees multi-field
+// selection works for every selectable value, not just objects and GraphQL.
+func (o *ObjectSelection) evalFieldsBySelection(recv Value, ctx context.Context, scope ValueScope) (Value, error) {
 	if o.Inferred == nil {
-		return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: inferred type is nil")
+		return nil, fmt.Errorf("ObjectSelection.evalFieldsBySelection: inferred type is nil")
 	}
 
 	resultObject := NewObject(o.Inferred)
-
-	// Build result object with selected fields
 	for _, field := range o.Fields {
-		var fieldVal Value
-		var err error
-
-		if len(field.Args) > 0 {
-			// Field has arguments - create a Select then FunCall to evaluate
-			selectNode := &Select{
-				Receiver: createValueNode(objVal),
-				Field:    &Symbol{Name: field.Name, Loc: field.Loc},
-				AutoCall: false,
-				Loc:      field.Loc,
-			}
-
-			funCall := &FunCall{
-				Fun:  selectNode,
-				Args: field.Args,
-				Loc:  field.Loc,
-			}
-			fieldVal, err = funCall.Eval(ctx, scope)
-			if err != nil {
-				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: evaluating field %q with args: %w", field.Name, err)
-			}
-		} else {
-			// No arguments - get field value directly
-			var exists bool
-			fieldVal, exists, err = objVal.Lookup(ctx, field.Name)
-			if err != nil {
-				return nil, err
-			}
-			if !exists {
-				return nil, fmt.Errorf("ObjectSelection.evalModuleSelection: field %q not found", field.Name)
-			}
+		fieldVal, err := o.evalFieldSelection(recv, field, ctx, scope)
+		if err != nil {
+			return nil, err
 		}
-
-		// Handle nested selections
-		if field.Selection != nil {
-			fieldVal, err = field.Selection.evalSelectionOnValue(fieldVal, ctx, scope)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		resultObject.Bind(field.Name, fieldVal, PublicVisibility)
 	}
-
 	return resultObject, nil
+}
+
+// evalFieldSelection evaluates a single selected field against the receiver,
+// reusing the Select/FunCall evaluation path so the result matches what the
+// equivalent standalone selection would produce.
+func (o *ObjectSelection) evalFieldSelection(recv Value, field *FieldSelection, ctx context.Context, scope ValueScope) (Value, error) {
+	selectNode := &Select{
+		Receiver: createValueNode(recv),
+		Field:    &Symbol{Name: field.Name, Loc: field.Loc},
+		// With no arguments the field is auto-called when it resolves to a
+		// zero-arity function, mirroring how the type was inferred.
+		AutoCall: len(field.Args) == 0,
+		Loc:      field.Loc,
+	}
+
+	var node Node = selectNode
+	if len(field.Args) > 0 {
+		node = &FunCall{
+			Fun:  selectNode,
+			Args: field.Args,
+			Loc:  field.Loc,
+		}
+	}
+
+	fieldVal, err := EvalNode(ctx, scope, node)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle nested selections, e.g. profile.{{ bio, avatar }}.
+	if field.Selection != nil {
+		fieldVal, err = field.Selection.evalSelectionOnValue(fieldVal, ctx, scope)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return fieldVal, nil
 }
 
 func (o *ObjectSelection) evalGraphQLSelection(gqlVal GraphQLValue, ctx context.Context, scope ValueScope) (Value, error) {

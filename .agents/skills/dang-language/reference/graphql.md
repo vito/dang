@@ -42,9 +42,12 @@ node(id: "x").{
 
 ## Lists of objects
 ```dang
-users.{ name, email }     # elementwise; result is [ {{ name, email }} ]
-users.{name}[0].name      # index to force it
+users.{{ name, email }}    # distributes over elements -> [ {{ name, email }} ]
+users.{{ name }}[0].name   # index to force the query
 ```
+- A selection on a list reaches **into each element** (mirrors GraphQL: a selection set on a list-typed field applies per element). `.{{ … }}` is element-wise; `.field` treats the list as the receiver and resolves a list method (`.length`, `.map`). So `xs.{{ f }}` is not `xs.f`.
+- Nested selections distribute the same way: `users.{{ name, posts.{{ title }} }}`.
+- Result records compare by **value**, so lists of projections compare directly (`users.{{ name }} == [{{ name: "Alice" }}]`). The result is an ordinary list — chain `.map`, index, etc.
 
 ## Mutations
 - Root `Mutation` fields are functions like queries; the result is whatever the schema declares.
