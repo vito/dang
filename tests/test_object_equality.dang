@@ -83,6 +83,29 @@ assert { {{a: {{b: 1}}}} != {{a: {{b: 2}}}} }
 assert { (jeff == {{name: "jeffrey"}}) == false }
 assert { ({{name: "jeffrey"}} == jeff) == false } # commutative
 
+# Recursion through a named-type data field: two Hats holding distinct-but-equal
+# Rabbits are equal; a differing nested field breaks it.
+let hatBun = Hat.insert(Rabbit("bun"))
+let hatBun2 = Hat.insert(Rabbit("bun"))
+assert("nested named field: equal") { hatBun == hatBun2 }
+let hatHop = Hat.insert(Rabbit("hop"))
+assert("nested named field: differ") { hatBun != hatHop }
+
+# Records of named types compare element-wise / field-wise
+assert { [Rabbit("a"), Rabbit("b")] == [Rabbit("a"), Rabbit("b")] }
+assert { [Rabbit("a"), Rabbit("b")] != [Rabbit("a"), Rabbit("c")] }
+
+# Crossing the boundary: an anonymous record wrapping a named type
+assert { {{pet: Rabbit("bun")}} == {{pet: Rabbit("bun")}} }
+assert { {{pet: Rabbit("bun")}} != {{pet: Rabbit("hop")}} }
+
+# ...and a named type wrapping an anonymous record
+type Cage {
+  contents: {{food: String!}}!
+}
+assert { Cage({{food: "hay"}}) == Cage({{food: "hay"}}) }
+assert { Cage({{food: "hay"}}) != Cage({{food: "pellets"}}) }
+
 # Structural equality stays pure, so it composes with case / contains / uniq
 let kind = case ({{a: 1}}) {
   {{a: 1}} => "one"
