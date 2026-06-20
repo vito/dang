@@ -1,0 +1,65 @@
+# GraphQL-style aliases in object selection, and the symmetric record-literal
+# shorthand. `recv.{{ out: field }}` renames a selected field; a bare
+# `recv.{{ field }}` is sugar for `recv.{{ field: field }}`. Record literals
+# mirror this: `{{ x }}` is sugar for `{{ x: x }}`.
+
+type Profile {
+  bio: String! = ""
+  avatar: String! = ""
+}
+
+type TestUser {
+  name: String! = "Anonymous"
+  email: String! = "user@example.com"
+  age: Int! = 0
+  profile: Profile! = Profile("", "")
+}
+
+let user = TestUser("Alice", "alice@example.com", 30, Profile("Engineer", "a.jpg"))
+
+# Alias a single field; leave another as a bare (shorthand) selection.
+let summary = user.{{ fullName: name, email }}
+assert { summary.fullName == "Alice" }
+assert { summary.email == "alice@example.com" }
+
+# Multiple aliases alongside bare fields.
+let info = user.{{ who: name, contact: email, age }}
+assert { info.who == "Alice" }
+assert { info.contact == "alice@example.com" }
+assert { info.age == 30 }
+
+# Aliases on nested selections, including aliasing the nested field itself.
+let nested = user.{{ who: name, prof: profile.{{ summary: bio, avatar }} }}
+assert { nested.who == "Alice" }
+assert { nested.prof.summary == "Engineer" }
+assert { nested.prof.avatar == "a.jpg" }
+
+# Aliases applied element-wise over a list of objects.
+let users = [
+  TestUser("Charlie", "charlie@example.com", 25, Profile("", "")),
+  TestUser("Diana", "diana@example.com", 28, Profile("", "")),
+]
+let labelled = users.{{ label: name, mail: email }}
+assert { labelled.length == 2 }
+assert { labelled[0].label == "Charlie" }
+assert { labelled[0].mail == "charlie@example.com" }
+assert { labelled[1].label == "Diana" }
+
+# `out: field` and a bare `field` are equivalent to `field: field`.
+let explicit = user.{{ name: name }}
+assert { explicit.name == "Alice" }
+
+# Record-literal shorthand: `{{ x }}` means `{{ x: x }}`.
+let name = "Bob"
+let age = 42
+let record = {{ name, age }}
+assert { record.name == "Bob" }
+assert { record.age == 42 }
+
+# Shorthand mixed with explicit fields.
+let mixed = {{ name, label: "tester", age }}
+assert { mixed.name == "Bob" }
+assert { mixed.label == "tester" }
+assert { mixed.age == 42 }
+
+print("Selection aliases + record shorthand tests passed!")
