@@ -1,4 +1,6 @@
-# Test object equality (reference equality for *Object values)
+# Test object equality:
+#   - anonymous records ({{…}}) compare by value (structural)
+#   - named types compare by *type* identity, then by their data fields
 
 type Hat {
   animal: Animal = null
@@ -21,6 +23,12 @@ type Rabbit implements Animal {
   coat: Coat! { Coat.FUR }
 }
 
+type Hare implements Animal {
+  name: String!
+
+  coat: Coat! { Coat.FUR }
+}
+
 let jeff = Rabbit("jeffrey")
 let hat = Hat
 let withJeff = hat.insert(jeff)
@@ -28,11 +36,88 @@ assert { hat.animal == null }
 assert { withJeff.animal == jeff }
 assert { withJeff.animal.coat == Coat.FUR }
 
-# A distinct object with the same contents is not reference-equal
-let otherJeff = Rabbit("jeffrey")
-assert("distinct objects are not equal") { (jeff == otherJeff) == false }
-
 # Same object reference is equal to itself
 assert("same reference is equal") { jeff == jeff }
+assert { withJeff == withJeff }
+
+# Named types: two instances of the same type with equal data fields are equal.
+# The computed `coat` member is behavior, not state, so it is ignored.
+let otherJeff = Rabbit("jeffrey")
+assert("same type + equal fields are equal") { jeff == otherJeff }
+assert { otherJeff == jeff } # commutative
+
+# Same type, differing data field
+let roger = Rabbit("roger")
+assert("same type + differing field are not equal") { jeff != roger }
+assert { (jeff == roger) == false }
+
+# Distinct named types never compare equal, even with the same shape and data
+let jeffHare = Hare("jeffrey")
+assert("distinct named types are not equal") { jeff != jeffHare }
+assert { jeffHare != jeff } # commutative
+
+# Two fresh Hats with the same (default) data are equal
+assert { Hat == Hat }
+# A mutation (copy-on-write) produces a structurally different object
+assert { (hat == withJeff) == false }
+
+# Anonymous records compare by value
+assert { {{a: 1}} == {{a: 1}} }
+assert { {{a: 1, b: 2}} == {{a: 1, b: 2}} }
+
+# Differing field value
+assert { {{a: 1}} != {{a: 2}} }
+assert { ({{a: 1}} == {{a: 2}}) == false }
+
+# Differing shape: extra field
+assert { {{a: 1}} != {{a: 1, b: 2}} }
+
+# Differing shape: different field name
+assert { {{a: 1}} != {{b: 1}} }
+
+# Nested anonymous records recurse structurally
+assert { {{a: {{b: 1}}}} == {{a: {{b: 1}}}} }
+assert { {{a: {{b: 1}}}} != {{a: {{b: 2}}}} }
+
+# A named type and an anonymous record of the same shape are never equal
+assert { (jeff == {{name: "jeffrey"}}) == false }
+assert { ({{name: "jeffrey"}} == jeff) == false } # commutative
+
+# Recursion through a named-type data field: two Hats holding distinct-but-equal
+# Rabbits are equal; a differing nested field breaks it.
+let hatBun = Hat.insert(Rabbit("bun"))
+let hatBun2 = Hat.insert(Rabbit("bun"))
+assert("nested named field: equal") { hatBun == hatBun2 }
+let hatHop = Hat.insert(Rabbit("hop"))
+assert("nested named field: differ") { hatBun != hatHop }
+
+# Records of named types compare element-wise / field-wise
+assert { [Rabbit("a"), Rabbit("b")] == [Rabbit("a"), Rabbit("b")] }
+assert { [Rabbit("a"), Rabbit("b")] != [Rabbit("a"), Rabbit("c")] }
+
+# Crossing the boundary: an anonymous record wrapping a named type
+assert { {{pet: Rabbit("bun")}} == {{pet: Rabbit("bun")}} }
+assert { {{pet: Rabbit("bun")}} != {{pet: Rabbit("hop")}} }
+
+# ...and a named type wrapping an anonymous record
+type Cage {
+  contents: {{food: String!}}!
+}
+
+assert { Cage({{food: "hay"}}) == Cage({{food: "hay"}}) }
+assert { Cage({{food: "hay"}}) != Cage({{food: "pellets"}}) }
+
+# Structural equality stays pure, so it composes with case / contains / uniq
+let kind = case ({{a: 1}}) {
+  {{a: 1}} => "one"
+  else => "other"
+}
+assert { kind == "one" }
+
+assert { [{{a: 1}}, {{a: 2}}].contains({{a: 1}}) }
+assert { [{{a: 1}}, {{a: 2}}].contains({{a: 3}}) == false }
+
+let deduped = [{{a: 1}}, {{a: 1}}, {{a: 2}}].uniq
+assert { deduped.length == 2 }
 
 print("Object equality tests completed")

@@ -90,6 +90,7 @@ Backtick templates in detail — backticks switch the lexer into template mode:
 - always non-null
 - the same `{{ ... }}` syntax is also a record *type* annotation: `x :: {{foo: Int!, bar: Status!}}!`
 - nestable: `{{user: {{id: 1, active: true}}, count: 100}}`
+- compared by **value** — two records with the same fields and equal values are equal, `{{a: 1}} == {{a: 1}}` (see [#operators]); this is the structural cousin of a named `type`, which compares by type identity
 - serialized to JSON with keys sorted alphabetically, not declaration order (see [#json-yaml]): `{{count: 100, user: ...}}` → `{"count":100,"user":...}`
 
 > Meta: explicitly call out the double-brace syntax — it's the unusual one and the first reaction is "is that a typo?"

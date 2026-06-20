@@ -307,9 +307,10 @@ func valuesEqual(left, right Value) bool {
 			return true
 		}
 	case *Object:
-		// Reference equality: equal only if the same instance.
+		// Value semantics for anonymous records, nominal identity for named
+		// types. See objectsEqual and issue #150.
 		if r, ok := right.(*Object); ok {
-			return l == r
+			return objectsEqual(l, r)
 		}
 	case GraphQLValue:
 		// Reference equality: a GraphQL object's identity is its query chain,
@@ -322,6 +323,75 @@ func valuesEqual(left, right Value) bool {
 
 	// Different types or unsupported comparison
 	return false
+}
+
+// objectsEqual compares two *Object values: structural value semantics for
+// anonymous records ({{…}} literals and .{{…}} selections), nominal identity
+// for named types. See issue #150.
+//
+// A "type/shape gate" decides whether two objects are even comparable: both
+// anonymous requires a matching structural shape (same field names + types);
+// either named requires the *Types to be the same pointer (a Rabbit is only
+// ever comparable to that same Rabbit type — not to another type, not across
+// namespaces, not to an anonymous record of the same shape). Pointer equality
+// is written out explicitly rather than delegated to Type.Eq, which keys off
+// the receiver's name and would make the result order-dependent — == must be
+// commutative.
+//
+// If the gate passes, the stored data fields are compared structurally.
+// Methods and computed `{ }` members are excluded: they carry function types in
+// the module and are behavior, not state (re-evaluated on each read, never
+// written back). Fields are resolved across the copy-on-write Parent chain
+// without forcing pending initializers, so the comparison stays pure — no ctx,
+// no I/O, no error path (the #145 constraint that keeps case/contains/uniq
+// usable).
+func objectsEqual(l, r *Object) bool {
+	if l == r {
+		// Same instance: fast path.
+		return true
+	}
+	lt, lok := l.Mod.(*Type)
+	rt, rok := r.Mod.(*Type)
+	if !lok || !rok {
+		// Non-*Type module: nothing structural to compare; instance identity
+		// (ruled out above) is the only equality.
+		return false
+	}
+	if lt.Named != "" || rt.Named != "" {
+		// Either side named: nominal identity via pointer-equal *Types.
+		if lt != rt {
+			return false
+		}
+	} else if !lt.AsRecord().Eq(rt.AsRecord()) {
+		// Both anonymous: structural type match.
+		return false
+	}
+	// Shapes match (so both modules declare the same fields). Compare each
+	// declared data field's stored value.
+	for name, scheme := range lt.Bindings(PrivateVisibility) {
+		if t, _ := scheme.Type(); isMethodType(t) {
+			continue
+		}
+		lv, lfound := l.lookupValue(name)
+		rv, rfound := r.lookupValue(name)
+		if lfound != rfound {
+			return false
+		}
+		if lfound && !valuesEqual(lv, rv) {
+			return false
+		}
+	}
+	return true
+}
+
+// isMethodType reports whether a module member's declared type is a function
+// type — a method or computed `{ }` member — unwrapping a non-null wrapper.
+func isMethodType(t hm.Type) bool {
+	if nn, ok := t.(hm.NonNullType); ok {
+		t = nn.Type
+	}
+	_, ok := t.(*hm.FunctionType)
+	return ok
 }
 
 // isTruthy determines if a value should be considered true for assertion purposes

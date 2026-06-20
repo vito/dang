@@ -85,8 +85,9 @@ users.{{ name, email }}
 
 ## Object equality
 
-- `==`/`!=` compare GraphQL objects by **reference identity**, the same way native `type` objects compare — there's no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false` (just as `Rabbit("x") == Rabbit("x")` is `false`)
+- `==`/`!=` compare GraphQL objects by **reference identity** — there's no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false`
 - to ask whether two objects are the *same server entity*, compare an identifying field explicitly — `a.id == b.id` — which forces the necessary fetch where you can see it, instead of hiding I/O inside `==`
+- a `.{{ }}` selection is different: it materializes an **anonymous record**, which compares by **value**, so two selections with the same fields and equal values are equal (see [#operators])
 
 ## Errors from the server
 

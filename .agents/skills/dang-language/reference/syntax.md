@@ -99,9 +99,10 @@ greet(
 
 ### Comparison
 - `< <= > >=` on **numbers only** (`Int`/`Float`, mixed allowed) — NOT on strings.
-- `== !=` are type-safe: mismatched types compare `false`, no coercion (`num == str` is `false`). Work on numbers, strings, bools, null, lists, records. Return `Boolean!`.
-- Objects compare by **reference identity**, never structurally — equal only when the same instance, so two separately built objects with matching fields are not equal (`Rabbit("x") == Rabbit("x")` is `false`).
-- Same for GraphQL objects: identity is the query that produced them, so `primaryUser == user(id: "1")` is `false` even though both denote the same user — no network call. To compare GraphQL objects as the *same server entity*, compare a field explicitly: `a.id == b.id`.
+- `== !=` are type-safe: mismatched types compare `false`, no coercion (`num == str` is `false`). Work on numbers, strings, bools, null, lists, maps, records. Return `Boolean!`.
+- **Anonymous records** (`{{…}}` literals and `.{{…}}` selections) compare by **value**: equal when they have the same fields and every field is equal (`{{a: 1}} == {{a: 1}}` is `true`, `{{a: 1}} == {{a: 2}}` is `false`).
+- **Named-type objects** compare by **type identity, then stored fields**: equal only when both are the same named type *and* every data field is equal. So `Rabbit("x") == Rabbit("x")` is `true`, `Rabbit("x") == Rabbit("y")` is `false`, distinct types never match (`Rabbit == Hare` is `false`), and a named object never equals an anonymous record of the same shape. Computed members (`field: T { … }`) are behavior, not state, so they're ignored.
+- **GraphQL objects** compare by **reference identity**: identity is the query that produced them, so `primaryUser == user(id: "1")` is `false` even though both denote the same user — no network call. To compare GraphQL objects as the *same server entity*, compare a field explicitly: `a.id == b.id`. (A `.{{ }}` selection materializes an anonymous record and so compares by value.)
 
 ### Logical
 - `and`, `or` short-circuit (keywords, not `&&`/`||`); result `Boolean!`.
