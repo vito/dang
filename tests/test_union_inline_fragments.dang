@@ -19,8 +19,8 @@ pets: [Pet!]! = [cat, dog]
 
 # Select different fields from different types using inline fragments
 let results = pets.{{
-  ... on Cat { name, lives }
-  ... on Dog { name, tricks }
+  ... on Cat {{ name, lives }}
+  ... on Dog {{ name, tricks }}
 }}
 
 # Discriminate with case after inline fragment selection

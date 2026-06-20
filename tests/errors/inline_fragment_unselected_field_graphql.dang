@@ -3,8 +3,8 @@
 import Test
 
 let results = search(query: "John").{{
-  ... on User { name }
-  ... on Post { title }
+  ... on User {{ name }}
+  ... on Post {{ title }}
 }}
 
 let first = results[0]

@@ -9,5 +9,5 @@ type User {
 }
 
 let bad = search(query: "John").{{
-  ... on User { origin }
+  ... on User {{ origin }}
 }}

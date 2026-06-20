@@ -3,8 +3,8 @@ Multi-line inline fragments
 ===
 
 node(id: "x").{{
-  ... on User { name, email }
-  ... on Post { title }
+  ... on User {{ name, email }}
+  ... on Post {{ title }}
 }}
 
 ---
