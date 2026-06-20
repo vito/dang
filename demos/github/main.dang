@@ -40,7 +40,7 @@ let results = search(
   first: 5,
 ).edges.{{
   node.{{
-    ... on Repository { name, stargazerCount, owner.{{login}} }
+    ... on Repository {{ name, stargazerCount, owner.{{login}} }}
   }}
 }}
 

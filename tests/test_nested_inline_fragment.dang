@@ -1,11 +1,11 @@
 import Test
 
-# Nested selection inside inline fragment — author.{name} tests
-# that nested .{} works inside ... on Type { } bodies
+# Nested selection inside inline fragment — author.{{name}} tests
+# that nested .{{}} works inside ... on Type {{ }} bodies
 let results = searchConnection(query: "Hello").edges.{{
   node.{{
-    ... on User { name }
-    ... on Post { title, author.{{name}} }
+    ... on User {{ name }}
+    ... on Post {{ title, author.{{name}} }}
   }}
 }}
 

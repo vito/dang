@@ -15,29 +15,32 @@ let users = users(limit: 10)
 
 ## Multi-field selection (the headline feature)
 ```dang
-user.{ name, email, posts.{ title, createdAt } }
+user.{{ name, email, posts.{{ title, createdAt }} }}
 ```
 - Desugars to a **single GraphQL query**. Nested selections to arbitrary depth.
-- Arguments on nested fields: `user.{ posts(first: 5).{ title } }`; positional works too: `users.{ posts(1).{ ... } }`.
-- Selection on a nullable receiver propagates null: if `user` is `null`, `user.{ name }` is `null` (not an error).
+- Arguments on nested fields: `user.{{ posts(first: 5).{{ title }} }}`; positional works too: `users.{{ posts(1).{{ ... }} }}`.
+- Selection on a nullable receiver propagates null: if `user` is `null`, `user.{{ name }}` is `null` (not an error).
 - The result is a **record** (`{{ ... }}`); access fields by name.
+- **Aliases** rename a field in the result, GraphQL-style (alias before the colon): `user.{{ fullName: name, email }}`. A bare field is shorthand for aliasing to itself — `user.{{ name }}` ≡ `user.{{ name: name }}` — exactly as `{{ name }}` ≡ `{{ name: name }}` in a record literal.
+- Aliases become real GraphQL aliases, so the **same field** can be selected more than once with different args: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`.
 
 ## Inline fragments (unions/interfaces)
 ```dang
-node(id: "x").{
-  ... on User { name, email }
-  ... on Post { title }
-}
+node(id: "x").{{
+  ... on User {{ name, email }}
+  ... on Post {{ title }}
+}}
 ```
 - Type-conditional selection on unions and interfaces; the result narrows in `case`.
 - After selection you only have the selected fields: accessing an unselected field is a *compile* error (`field "lives" not found in Cat`), even after a `case` narrows the type.
 - Type conditions resolve against the receiver's (GraphQL) schema, not a local type shadowing the name.
-- Can nest: `... on Post { title, author.{name} }`, and `edges.{ node.{ ... on User { ... } } }`.
+- The field set uses the same double braces as any selection (`... on User {{ name, email }}`).
+- Can nest: `... on Post {{ title, author.{{name}} }}`, and `edges.{{ node.{{ ... on User {{ ... }} }} }}`.
 
 ### Lazy inline fragments (no field block)
-- `... on User` yields a typed reference / type assertion without selecting fields; chainable: `node(id).{... on User}.name`.
-- Works on a single value or a list (`pets.{ ... on Cat, ... on Dog }`, comma/newline-separated, elementwise on lists).
-- Non-matching assertion returns `null` (`cat.{... on Dog} == null`).
+- `... on User` yields a typed reference / type assertion without selecting fields; chainable: `node(id).{{... on User}}.name`.
+- Works on a single value or a list (`pets.{{ ... on Cat, ... on Dog }}`, comma/newline-separated, elementwise on lists).
+- Non-matching assertion returns `null` (`cat.{{... on Dog}} == null`).
 - Non-null form `... on Cat!` asserts and unwraps; a mismatch is a *runtime* error: `inline fragment type assertion failed: expected one of Cat, got Dog`.
 
 ## Lists of objects
@@ -54,7 +57,7 @@ users.{{ name }}[0].name   # index to force the query
 - Side effects happen when the call **executes**, which is when its value is **forced** (same laziness rules as queries).
 
 ## Laziness / forcing
-GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.field`, `.{...}`, args); no request is sent until the value is **forced** — materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single request. This is what makes `user.{ name, posts.{ title } }` one round-trip.
+GraphQL field access is **lazy**. A GraphQL value accumulates a query chain (`.field`, `.{{...}}`, args); no request is sent until the value is **forced** — materialized at an expected-type boundary (assertion, `print`, assignment to a typed field, indexing into a result, etc.). Forcing runs the built-up selection as a single request. This is what makes `user.{{ name, posts.{{ title }} }}` one round-trip.
 
 ## Equality
 - `==`/`!=` on GraphQL objects compare by **reference identity** — no network call. A GraphQL object's identity is the query that produced it, so the same handle equals itself, but two independent constructions don't, even when they denote the same server object: `primaryUser == user(id: "1")` is `false`.

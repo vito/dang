@@ -29,6 +29,9 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 
 - multi-field selection uses double braces `.{{ }}`, mirroring record literals `{{ }}` (both infer to the same anonymous structural type)
 - desugars to a single GraphQL query — the headline feature
+- a field may be **aliased** to rename it in the result, GraphQL-style — the alias goes before the colon: `user.{{ fullName: name, email }}` yields a record with keys `fullName` and `email`
+- a bare field is shorthand for aliasing it to itself: `user.{{ name }}` means `user.{{ name: name }}`, exactly as `{{ name }}` is shorthand for `{{ name: name }}` in a record literal (see [#objects])
+- aliases are emitted as real GraphQL aliases, so the **same field** can be selected more than once under different arguments: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`
 - nested selections work to arbitrary depth
 - arguments on nested fields:
 
@@ -46,15 +49,16 @@ user.{{ posts(first: 5).{{ title }} }}
 
 ```dang
 node(id: "x").{{
-  ... on User { name, email }
-  ... on Post { title }
+  ... on User {{ name, email }}
+  ... on Post {{ title }}
 }}
 ```
 
 - type-conditional selection on unions and interfaces ([#interfaces-unions])
+- the field set is delimited by the same double braces as any other selection: `... on User {{ name, email }}`
 - selects different field sets per concrete type; applies to a single value or to a list (maps over elements)
 - type conditions resolve against the receiver's (GraphQL) schema, not a local type that shadows the name
-- can nest: `... on Post { title, author.{{name}} }`, and selections-of-selections `edges.{{ node.{{ ... on User { ... } }} }}`
+- can nest: `... on Post {{ title, author.{{name}} }}`, and selections-of-selections `edges.{{ node.{{ ... on User {{ ... }} }} }}`
 - the union-type result narrows in `case` (see [#interfaces-unions])
 
 ### Lazy inline fragments

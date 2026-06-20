@@ -21,9 +21,10 @@ type QueryBuilder struct {
 	bind     any
 	multiple bool
 
-	// Support for multi-field selections
-	fields        []string
-	subSelections map[string]*QueryBuilder
+	// Support for multi-field selections. An ordered list so GraphQL aliases
+	// and repeated field names (e.g. avatarUrl aliased at two sizes) are both
+	// representable, and so field order is deterministic.
+	selections []selectionField
 
 	// inlineFragment is the type name for an inline fragment (... on TypeName).
 	// When set, this step emits "... on TypeName" instead of a field name.
@@ -102,40 +103,81 @@ func (q *QueryBuilder) SelectMultiple(name ...string) *QueryBuilder {
 	return sel
 }
 
-// SelectFields selects multiple fields at the current level
+// selectionField is one entry in a multi-field selection set: an optional
+// GraphQL alias (the response/output key), the field name, and an optional
+// sub-selection. The sub-selection also carries the field's arguments; it is
+// nil for a plain scalar field with no arguments.
+type selectionField struct {
+	alias string
+	name  string
+	sub   *QueryBuilder
+}
+
+// SelectionField describes one field of a multi-field selection for
+// SelectAliased: an optional alias (output key), the field name, and an
+// optional sub-selection carrying nested fields and/or arguments.
+type SelectionField struct {
+	Alias string
+	Name  string
+	Sub   *QueryBuilder
+}
+
+// SelectFields selects multiple plain scalar fields at the current level.
 func (q *QueryBuilder) SelectFields(fields ...string) *QueryBuilder {
-	sel := &QueryBuilder{
-		prev:          q,
-		client:        q.client,
-		isMutation:    q.isMutation,
-		fields:        fields,
-		subSelections: make(map[string]*QueryBuilder),
+	sels := make([]selectionField, len(fields))
+	for i, f := range fields {
+		sels[i] = selectionField{name: f}
 	}
-	return sel
+	return &QueryBuilder{
+		prev:       q,
+		client:     q.client,
+		isMutation: q.isMutation,
+		selections: sels,
+	}
 }
 
 // SelectNested selects a field with nested sub-selections
 func (q *QueryBuilder) SelectNested(field string, subSelection *QueryBuilder) *QueryBuilder {
-	sel := &QueryBuilder{
-		prev:          q,
-		client:        q.client,
-		isMutation:    q.isMutation,
-		subSelections: make(map[string]*QueryBuilder),
+	return &QueryBuilder{
+		prev:       q,
+		client:     q.client,
+		isMutation: q.isMutation,
+		selections: []selectionField{{name: field, sub: subSelection}},
 	}
-	sel.subSelections[field] = subSelection
-	return sel
 }
 
 // SelectMixed allows mixing simple fields and nested selections at the same level
 func (q *QueryBuilder) SelectMixed(simpleFields []string, nestedSelections map[string]*QueryBuilder) *QueryBuilder {
-	sel := &QueryBuilder{
-		prev:          q,
-		client:        q.client,
-		isMutation:    q.isMutation,
-		fields:        simpleFields,
-		subSelections: nestedSelections,
+	sels := make([]selectionField, 0, len(simpleFields)+len(nestedSelections))
+	for _, f := range simpleFields {
+		sels = append(sels, selectionField{name: f})
 	}
-	return sel
+	for name, sub := range nestedSelections {
+		sels = append(sels, selectionField{name: name, sub: sub})
+	}
+	return &QueryBuilder{
+		prev:       q,
+		client:     q.client,
+		isMutation: q.isMutation,
+		selections: sels,
+	}
+}
+
+// SelectAliased selects an ordered set of fields, each with an optional GraphQL
+// alias and an optional sub-selection. Unlike SelectMixed it preserves order
+// and allows the same field name to appear more than once under distinct
+// aliases (e.g. small: avatarUrl(size: 100), large: avatarUrl(size: 200)).
+func (q *QueryBuilder) SelectAliased(fields []SelectionField) *QueryBuilder {
+	sels := make([]selectionField, len(fields))
+	for i, f := range fields {
+		sels[i] = selectionField{alias: f.Alias, name: f.Name, sub: f.Sub}
+	}
+	return &QueryBuilder{
+		prev:       q,
+		client:     q.client,
+		isMutation: q.isMutation,
+		selections: sels,
+	}
 }
 
 func (q *QueryBuilder) Arg(name string, value any) *QueryBuilder {
@@ -169,8 +211,8 @@ func (q *QueryBuilder) marshalArguments(ctx context.Context) error {
 }
 
 // scheduleArgMarshalling queues marshalling for every argument reachable from
-// this selection. Arguments on nested fields live in subSelections, which are
-// not part of the linear path(), so they are visited recursively.
+// this selection. Arguments on nested fields live in their sub-selections,
+// which are not part of the linear path(), so they are visited recursively.
 func (q *QueryBuilder) scheduleArgMarshalling(eg *errgroup.Group, ctx context.Context) {
 	for _, sel := range q.path() {
 		for _, arg := range sel.args {
@@ -178,8 +220,10 @@ func (q *QueryBuilder) scheduleArgMarshalling(eg *errgroup.Group, ctx context.Co
 				return arg.marshal(ctx)
 			})
 		}
-		for _, sub := range sel.subSelections {
-			sub.scheduleArgMarshalling(eg, ctx)
+		for _, fsel := range sel.selections {
+			if fsel.sub != nil {
+				fsel.sub.scheduleArgMarshalling(eg, ctx)
+			}
 		}
 	}
 }
@@ -204,7 +248,7 @@ func writeArgs(b *strings.Builder, args map[string]*argument) {
 // ("{...}") for this selection. A bare argument carrier — a field that takes
 // arguments but selects no sub-fields — emits nothing.
 func (q *QueryBuilder) rendersSelectionSet() bool {
-	return len(q.fields) > 0 || len(q.subSelections) > 0 ||
+	return len(q.selections) > 0 ||
 		q.inlineFragment != "" || q.multiple || q.name != ""
 }
 
@@ -224,24 +268,20 @@ func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
 
 		b.WriteRune('{')
 
-		// Handle multi-field selections (SelectFields) and mixed selections
-		if len(sel.fields) > 0 || len(sel.subSelections) > 0 {
-			// Write simple fields first
-			for i, field := range sel.fields {
+		// Handle multi-field selections (SelectFields, SelectMixed, SelectAliased)
+		if len(sel.selections) > 0 {
+			for i, fsel := range sel.selections {
 				if i > 0 {
 					b.WriteRune(' ')
 				}
-				b.WriteString(field)
-			}
-
-			// Write nested selections
-			needSpace := len(sel.fields) > 0
-			for field, subSel := range sel.subSelections {
-				if needSpace {
-					b.WriteRune(' ')
+				// Emit the GraphQL alias (output key) when one is set, e.g.
+				// stars:stargazerCount.
+				if fsel.alias != "" {
+					b.WriteString(fsel.alias)
+					b.WriteRune(':')
 				}
-				b.WriteString(field)
-				if subSel != nil {
+				b.WriteString(fsel.name)
+				if subSel := fsel.sub; subSel != nil {
 					// Arguments on a nested field are rendered here: Build
 					// ignores them for multi-field nodes and would misplace
 					// them for others.
@@ -264,7 +304,6 @@ func (q *QueryBuilder) Build(ctx context.Context) (string, error) {
 						b.WriteString(subQuery)
 					}
 				}
-				needSpace = true
 			}
 		} else if sel.inlineFragment != "" {
 			b.WriteString("... on ")
@@ -312,7 +351,7 @@ func (q *QueryBuilder) unpack(data any) error {
 		// Handle SelectFields case - when we have fields but no name,
 		// or when we have subselections but no name (mixed selection case)
 		// don't navigate deeper, just bind at the current level
-		if (len(i.fields) > 0 || len(i.subSelections) > 0) && i.name == "" {
+		if len(i.selections) > 0 && i.name == "" {
 			// This is a SelectFields or mixed selection - bind directly to current data
 			if i.bind != nil {
 				marshalled, err := json.Marshal(data)

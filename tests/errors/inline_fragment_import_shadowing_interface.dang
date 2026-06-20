@@ -9,5 +9,5 @@ type User {
 }
 
 let bad = node(id: "1").{{
-  ... on User { origin }
+  ... on User {{ origin }}
 }}

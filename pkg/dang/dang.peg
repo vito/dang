@@ -246,7 +246,7 @@ ObjectSelection <- "{{" _ first:InlineFragment rest:(Sep f:InlineFragment { retu
   }, nil
 }
 
-InlineFragment <- SpreadToken _ OnToken _ typeName:Symbol _ '{' _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ '}' {
+InlineFragment <- SpreadToken _ OnToken _ typeName:Symbol _ "{{" _ fields:(f:FieldSelection Sep { return f, nil })* last:FieldSelection? _ "}}" {
   return &InlineFragment{
     TypeName: typeName.(*Symbol),
     Fields:   sliceOfAppend[*FieldSelection](fields, last),
@@ -263,27 +263,34 @@ InlineFragment <- SpreadToken _ OnToken _ typeName:Symbol _ '{' _ fields:(f:Fiel
 
 SpreadToken <- "..."
 
-FieldSelection <- name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
+FieldSelection <- alias:(a:Id ColonToken _ { return a, nil })? name:Id args:ArgValues? selection:('.' sel:ObjectSelection)? {
+  var aliasStr string
+  if alias != nil {
+    aliasStr = alias.(string)
+  }
+  // A redundant `name: name` alias is just `name`; normalize so the two forms
+  // are indistinguishable, mirroring `{{ x: x }}` and `{{ x }}`.
+  if aliasStr == name.(string) {
+    aliasStr = ""
+  }
+
   var argRecord Record
   if args != nil {
     argRecord = Record(args.([]Keyed[Node]))
   }
 
+  var sel *ObjectSelection
   if selection != nil {
-    return &FieldSelection{
-      Name: name.(string),
-      Args: argRecord,
-      Selection: selection.([]interface{})[1].(*ObjectSelection),
-      Loc: c.Loc(),
-    }, nil
-  } else {
-    return &FieldSelection{
-      Name: name.(string),
-      Args: argRecord,
-      Selection: nil,
-      Loc: c.Loc(),
-    }, nil
+    sel = selection.([]interface{})[1].(*ObjectSelection)
   }
+
+  return &FieldSelection{
+    Alias: aliasStr,
+    Name: name.(string),
+    Args: argRecord,
+    Selection: sel,
+    Loc: c.Loc(),
+  }, nil
 }
 
 InterfaceDecl <- InterfaceToken _ name:Symbol implements:(_ i:Implements { return i, nil })? _ block:HeadersBlock {
@@ -768,7 +775,7 @@ MapEntry <- key:Form _ ColonToken _ value:Form {
   return MapEntry{Key: key.(Node), Value: value.(Node)}, nil
 }
 
-ObjectLiteral <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? _ "}}" {
+ObjectLiteral <- "{{" _ vals:(v:ObjectField Sep { return v, nil })* last:ObjectField? _ "}}" {
   var fields []*FieldDecl
   for _, kv := range sliceOfAppend[Keyed[Node]](vals, last) {
     fields = append(fields, &FieldDecl{
@@ -783,6 +790,21 @@ ObjectLiteral <- "{{" _ vals:(v:KeyValue Sep { return v, nil })* last:KeyValue? 
   return &ObjectLiteral{
     Fields: fields,
     Loc: c.Loc(),
+  }, nil
+}
+
+// An object literal field is either an explicit `key: value` or shorthand
+// `name` (sugar for `name: name`), mirroring the bare-field form of object
+// selection.
+ObjectField <- KeyValue / ShorthandField
+
+ShorthandField <- name:Id {
+  return Keyed[Node]{
+    Key: name.(string),
+    // Equivalent to `name: name`; the value is the bare symbol, auto-called
+    // exactly as it would be when written out explicitly.
+    Value: &Symbol{Name: name.(string), AutoCall: true, Loc: c.Loc()},
+    Positional: false,
   }, nil
 }
 

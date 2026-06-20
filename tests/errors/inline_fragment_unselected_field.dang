@@ -16,8 +16,8 @@ cat: Pet! = Cat
 pets: [Pet!]! = [cat]
 
 let results = pets.{{
-  ... on Cat { name }
-  ... on Dog { name }
+  ... on Cat {{ name }}
+  ... on Dog {{ name }}
 }}
 
 let first = results[0]

@@ -1,0 +1,31 @@
+# GraphQL-style aliases in object selection against a real schema. Aliases are
+# emitted as GraphQL aliases (`out: field`), so the same field can even be
+# selected more than once with different arguments.
+import Test
+
+# Simple aliases on a GraphQL object, mixed with bare (shorthand) fields.
+let info = serverInfo.{{ver: version, plat: platform, totalUsers}}
+assert { info.ver == "1.0.0" }
+assert { info.plat != null }
+assert { info.totalUsers == 2 }
+
+# Aliases on a field with arguments + a bare field.
+let summary = user(id: "1").{{fullName: name, emails}}
+assert { summary.fullName == "John Doe" }
+assert { summary.emails[0] == "john@example.com" }
+
+# Aliased nested selection.
+let profile = userProfile(userId: "1").{{owner: user.{{who: name}}, bio}}
+assert { profile.owner.who == "John Doe" }
+
+# The payoff: alias the SAME field twice with different arguments. This only
+# works because each selection is emitted as a distinct GraphQL alias; a
+# name-keyed query would collide. User "1" authored four posts.
+let counts = user(id: "1").{{
+  firstPost: posts(first: 1).{{posts.{{title}}}},
+  twoPosts: posts(first: 2).{{posts.{{title}}}}
+}}
+assert { counts.firstPost.posts.length == 1 }
+assert { counts.twoPosts.posts.length == 2 }
+
+print("GraphQL selection aliases tests passed!")
