@@ -7,40 +7,41 @@
 # selecting such a field actually calls it rather than capturing the function.
 type Widget {
   name: String! = "?"
+
   label: String! { name.toUpper }
 }
 
 # Selecting builtin methods on a String. The result is an anonymous record, so
 # it compares structurally to a matching record literal.
-let upper_lower = "Hello".{{ toUpper, toLower }}
+let upper_lower = "Hello".{{toUpper, toLower}}
 assert { upper_lower.toUpper == "HELLO" }
 assert { upper_lower.toLower == "hello" }
-assert { upper_lower == {{ toUpper: "HELLO", toLower: "hello" }} }
+assert { upper_lower == {{toUpper: "HELLO", toLower: "hello"}} }
 
 # Fields with arguments alongside plain fields
-let split_result = "a,b,c".{{ split(separator: ","), toUpper }}
+let split_result = "a,b,c".{{split(separator: ","), toUpper}}
 assert { split_result.toUpper == "A,B,C" }
 assert { split_result.split == ["a", "b", "c"] }
 
 # Several methods at once, including ones taking arguments
-let trimmed = "  spaced  ".{{ trimSpace, hasPrefix(prefix: " ") }}
+let trimmed = "  spaced  ".{{trimSpace, hasPrefix(prefix: " ")}}
 assert { trimmed.trimSpace == "spaced" }
 assert { trimmed.hasPrefix == true }
 
 # A selected zero-arg method field is auto-called, matching its inferred type
 # and what `widget.label` yields on its own (it resolves to String!, not a
 # function value).
-let one = Widget("a").{{ name, label }}
+let one = Widget("a").{{name, label}}
 assert { one.name == "a" }
 assert { one.label == "A" }
 
 # Element-wise selection over a list of scalars; results are one-field records,
 # and the list of records compares structurally.
-let shouted = ["foo", "bar"].{{ toUpper }}
-assert { shouted == [{{ toUpper: "FOO" }}, {{ toUpper: "BAR" }}] }
+let shouted = ["foo", "bar"].{{toUpper}}
+assert { shouted == [{{toUpper: "FOO"}}, {{toUpper: "BAR"}}] }
 
 # Element-wise selection over a list of objects, calling the method per element.
-let widgets = [Widget("a"), Widget("b")].{{ name, label }}
-assert { widgets == [{{ name: "a", label: "A" }}, {{ name: "b", label: "B" }}] }
+let widgets = [Widget("a"), Widget("b")].{{name, label}}
+assert { widgets == [{{name: "a", label: "A"}}, {{name: "b", label: "B"}}] }
 
 print("Scalar selection tests passed!")
