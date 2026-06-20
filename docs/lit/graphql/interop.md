@@ -71,8 +71,12 @@ node(id: "x").{{
 users.{{ name, email }}
 ```
 
-- applies the selection elementwise; result is `[ {{ name, email }} ]` (a list of records)
-- index into the result to force it: `users.{{name}}[0].name`; see [#collections]
+- a selection on a list **distributes over its elements**: `users.{{ name, email }}` selects those fields from every element, producing `[ {{ name, email }} ]` — a list of records
+- this is the shape GraphQL itself produces: a selection set on a list-typed field applies to each element, so `users.{{ name, email }}` mirrors the response of `{ users { name email } }`
+- `.{{ … }}` and `.field` do different jobs on a list. `.field` treats the **list** as the receiver and resolves a list method (`users.length`, `users.map { … }`); `.{{ … }}` reaches **into** each element. So `xs.{{ f }}` is not `xs.f` — the former is a list of `{{ f }}` records, the latter looks for a method `f` on the list itself
+- nested selections distribute the same way: `users.{{ name, posts.{{ title }} }}` gives a list of records each holding its own list of post records
+- the result records compare by **value** ([#operators]), so a list of projections can be compared, asserted on, or deduplicated directly: `users.{{ name }} == [{{ name: "Alice" }}, {{ name: "Bob" }}]`
+- the result is an ordinary list — chain list operations on it (`users.{{ name }}.map { r => r.name }`) or index to force the query: `users.{{ name }}[0].name`; see [#collections]
 
 ## Mutations
 
