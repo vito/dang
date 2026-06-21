@@ -1,0 +1,62 @@
+# `{{ }}` is always parallel. Multi-field selection over a non-GraphQL object
+# evaluates its fields concurrently, and selection over a list evaluates across
+# the elements concurrently. These assertions pin down that the parallel
+# evaluation still produces correct, deterministically-ordered results; the
+# concurrency itself is proven in pkg/dang/parallel_selection_test.go.
+
+type Profile {
+  bio: String! = ""
+  avatar: String! = ""
+}
+
+type TestUser {
+  name: String! = "Anonymous"
+  email: String! = "user@example.com"
+  age: Int! = 0
+  profile: Profile! = Profile("", "")
+}
+
+let user = TestUser("Alice", "alice@example.com", 30, Profile("Engineer", "a.jpg"))
+
+# Independent fields selected off one object are evaluated in parallel; the
+# resulting record carries every field, in source order.
+let summary = user.{{name, email, age}}
+assert { summary.name == "Alice" }
+assert { summary.email == "alice@example.com" }
+assert { summary.age == 30 }
+
+# Nested selection fans out at each level.
+let nested = user.{{who: name, prof: profile.{{summary: bio, avatar}}}}
+assert { nested.who == "Alice" }
+assert { nested.prof.summary == "Engineer" }
+assert { nested.prof.avatar == "a.jpg" }
+
+# Selection over a list evaluates across the elements in parallel, preserving
+# element order.
+let users = [
+  TestUser("Charlie", "charlie@example.com", 25, Profile("Dev", "c.jpg")),
+  TestUser("Diana", "diana@example.com", 28, Profile("Ops", "d.jpg")),
+  TestUser("Erin", "erin@example.com", 33, Profile("PM", "e.jpg")),
+]
+
+let labelled = users.{{label: name, mail: email, prof: profile.{{bio}}}}
+assert { labelled.length == 3 }
+assert { labelled[0].label == "Charlie" }
+assert { labelled[0].mail == "charlie@example.com" }
+assert { labelled[0].prof.bio == "Dev" }
+assert { labelled[1].label == "Diana" }
+assert { labelled[2].label == "Erin" }
+assert { labelled[2].prof.bio == "PM" }
+
+# A standalone `{{ }}` record literal that combines independent selections is
+# parallel for the same reason; the two forms share one rule.
+let combined = {{
+  first: users[0].{{name}},
+  second: users[1].{{name}},
+  third: users[2].{{name}}
+}}
+assert { combined.first.name == "Charlie" }
+assert { combined.second.name == "Diana" }
+assert { combined.third.name == "Erin" }
+
+print("Parallel selection tests passed!")

@@ -1,0 +1,9 @@
+# Multi-field selection evaluates its fields concurrently, but it still fails
+# fast: if a selected field errors, the whole selection raises that error.
+type Report {
+  title: String! = "ok"
+
+  body: String! { raise "no body available" }
+}
+
+print(Report.{{title, body}})
