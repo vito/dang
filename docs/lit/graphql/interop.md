@@ -32,7 +32,8 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 - a field may be **aliased** to rename it in the result, GraphQL-style — the alias goes before the colon: `user.{{ fullName: name, email }}` yields a record with keys `fullName` and `email`
 - a bare field is shorthand for aliasing it to itself: `user.{{ name }}` means `user.{{ name: name }}`, exactly as `{{ name }}` is shorthand for `{{ name: name }}` in a record literal (see [#objects])
 - aliases are emitted as real GraphQL aliases, so the **same field** can be selected more than once under different arguments: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`
-- a record literal that combines independent selections issues them concurrently: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` sends two queries in parallel (record fields evaluate concurrently, see [#syntax])
+- selected fields evaluate **concurrently** — `{{ }}` is always parallel, the same rule as record literals (see [#syntax]). For a GraphQL receiver that is the single batched query above; for a plain object or list it is parallel Dang evaluation, and a list distributes across its elements in parallel. Evaluation fails fast on the first error
+- so a record literal that combines independent selections issues them concurrently too: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` sends two queries in parallel
 - nested selections work to arbitrary depth
 - arguments on nested fields:
 

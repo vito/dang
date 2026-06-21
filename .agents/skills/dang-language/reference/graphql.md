@@ -21,9 +21,10 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 - Arguments on nested fields: `user.{{ posts(first: 5).{{ title }} }}`; positional works too: `users.{{ posts(1).{{ ... }} }}`.
 - Selection on a nullable receiver propagates null: if `user` is `null`, `user.{{ name }}` is `null` (not an error).
 - The result is a **record** (`{{ ... }}`); access fields by name.
+- Selected fields evaluate **concurrently** — `{{ }}` is always parallel (the same rule as record literals). For a GraphQL receiver that *is* the single batched query above; for a plain object or list it's parallel Dang evaluation. Evaluation fails fast on the first error.
 - **Aliases** rename a field in the result, GraphQL-style (alias before the colon): `user.{{ fullName: name, email }}`. A bare field is shorthand for aliasing to itself — `user.{{ name }}` ≡ `user.{{ name: name }}` — exactly as `{{ name }}` ≡ `{{ name: name }}` in a record literal.
 - Aliases become real GraphQL aliases, so the **same field** can be selected more than once with different args: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`.
-- Combining independent selections in a record literal runs them **concurrently**: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` issues two queries in parallel (record fields evaluate concurrently).
+- Combining independent selections in a record literal runs them **concurrently** too: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` issues two queries in parallel.
 
 ## Inline fragments (unions/interfaces)
 ```dang
@@ -50,6 +51,7 @@ users.{{ name, email }}    # distributes over elements -> [ {{ name, email }} ]
 users.{{ name }}[0].name   # index to force the query
 ```
 - A selection on a list reaches **into each element** (mirrors GraphQL: a selection set on a list-typed field applies per element). `.{{ … }}` is element-wise; `.field` treats the list as the receiver and resolves a list method (`.length`, `.map`). So `xs.{{ f }}` is not `xs.f`.
+- The elements are projected **concurrently** (a non-GraphQL list fans out across its elements in parallel; a GraphQL list is still one batched query).
 - Nested selections distribute the same way: `users.{{ name, posts.{{ title }} }}`.
 - Result records compare by **value**, so lists of projections compare directly (`users.{{ name }} == [{{ name: "Alice" }}]`). The result is an ordinary list — chain `.map`, index, etc.
 

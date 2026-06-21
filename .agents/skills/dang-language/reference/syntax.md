@@ -75,7 +75,7 @@ greet(
 - Nestable. Serialized to JSON with keys **sorted alphabetically**, not declaration order.
 - Fields may reference each other in **any order** (`{{ total: a + b, a: 1, b: 2 }}`); a cyclic reference is a compile error.
 - A field's **own name resolves to the enclosing scope**, not the field being defined: `{{ user: user.{{name}} }}` reads the outer `user`. Siblings still see the field.
-- Independent fields evaluate **concurrently**; a field that references a sibling waits for it. A record of GraphQL selections therefore issues them in parallel.
+- Independent fields evaluate **concurrently**; a field that references a sibling waits for it. `{{ }}` is **always parallel** — the same rule governs chained `recv.{{ … }}` selection (and a selection over a list fans out across its elements). A record of GraphQL selections therefore issues them in parallel. Evaluation fails fast on the first error.
 
 ## Operators
 

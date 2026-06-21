@@ -111,17 +111,39 @@ Both work and produce the same result:
 
 Use `self.` when a parameter shadows a field name (`new(x: Int!) { self.x = x }`).
 
-## Object literals: parallel lazy evaluation
+## `{{ }}` is always parallel
+
+Every `{{ }}` evaluates its fields concurrently, whether it is a standalone
+record literal or a chained `recv.{{ … }}` selection, and a selection over a
+list fans out across the elements. The shared primitive is `evalParallel`
+(eval.go): it runs N tasks concurrently, returns their results in index order,
+and **fails fast** — the first error cancels the context handed to the
+still-running tasks. Every task is awaited, then one error is chosen
+deterministically: the lowest-index *genuine* error, preferring it over the
+`context.Canceled` errors our own cancellation may have induced in siblings
+(so the real cause is never masked by cancellation noise from a lower index).
+`n <= 1` runs inline. Callers fork the scope per task (`scope.Derive(true)`) so
+a task's incidental writes stay private while the receiver and lexical scope are
+only read.
+
+The selection paths (`ObjectSelection.evalFieldsBySelection`, the `ListValue`
+case of `evalSelectionOnValue`, and the inline-fragment-over-list case) are thin
+wrappers over `evalParallel`. The GraphQL receiver stays special-cased: one
+batched query, parallelism handled server-side.
+
+### Object literals: parallel lazy evaluation
 
 `ObjectLiteral.Eval` does not evaluate fields top-to-bottom. Each field is
 installed as a lazy initializer in the new object (`BindLazy`) and all are
-forced concurrently. Dependency order is *emergent*: forcing a field that
-references a sibling forces that sibling first and shares the single result,
-so independent fields run in parallel while dependents wait. `force`
-publishes each value, so the object ends up with every field regardless of
-completion order. The first failure cancels in-flight siblings, but every
-field is awaited and the **lowest-source-index** error is returned, so a
-failure is reported deterministically.
+forced concurrently (via `evalParallel`). Dependency order is *emergent*:
+forcing a field that references a sibling forces that sibling first and shares
+the single result, so independent fields run in parallel while dependents wait.
+`force` publishes each value, so the object ends up with every field regardless
+of completion order.
+
+Multi-field selection differs in one way: its fields are independent reads off
+the same receiver, so there is no inter-field dependency graph — `evalParallel`
+fans them out directly rather than through `BindLazy`.
 
 Two things to preserve when touching this:
 
