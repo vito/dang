@@ -1383,6 +1383,70 @@ func withForceChain(ctx context.Context, p *pendingInit) context.Context {
 	return context.WithValue(ctx, forceChainKey{}, &forceChain{p: p, parent: fc})
 }
 
+// evalParallel runs fn for each index in [0, n) concurrently and returns the
+// results in index order. It is the shared concurrency contract behind every
+// `{{ }}`: independent work runs in parallel and evaluation fails fast — the
+// first error cancels the context handed to the still-running tasks — but every
+// task is awaited and a single error is chosen deterministically regardless of
+// completion order. Single-item (and empty) work runs inline to avoid goroutine
+// and context overhead.
+func evalParallel[T any](ctx context.Context, n int, fn func(ctx context.Context, i int) (T, error)) ([]T, error) {
+	results := make([]T, n)
+	switch n {
+	case 0:
+		return results, nil
+	case 1:
+		v, err := fn(ctx, 0)
+		if err != nil {
+			return nil, err
+		}
+		results[0] = v
+		return results, nil
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func(i int) {
+			defer wg.Done()
+			v, err := fn(ctx, i)
+			if err != nil {
+				errs[i] = err
+				cancel()
+				return
+			}
+			results[i] = v
+		}(i)
+	}
+	wg.Wait()
+
+	// Report the lowest-index failure, but prefer a genuine error over the
+	// context.Canceled errors our own fail-fast cancellation may have induced in
+	// still-running siblings — otherwise the actual cause could be masked by
+	// cancellation noise from a lower index (e.g. a list of GraphQL queries
+	// where one fails and the rest are cancelled mid-flight).
+	var canceled error
+	for i := range errs {
+		switch {
+		case errs[i] == nil:
+		case errors.Is(errs[i], context.Canceled):
+			if canceled == nil {
+				canceled = errs[i]
+			}
+		default:
+			return nil, errs[i]
+		}
+	}
+	if canceled != nil {
+		return nil, canceled
+	}
+	return results, nil
+}
+
 // DynamicScope is a shared mutable cell for the 'self' value.
 // Cloned environments share the same cell so that mutations to self
 // inside closures (e.g. inside .each blocks) are visible to the

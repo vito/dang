@@ -1681,15 +1681,15 @@ func (o *ObjectSelection) Eval(ctx context.Context, scope ValueScope) (Value, er
 				return o.evalGraphQLInlineFragments(gqlVal, ctx, scope)
 			}
 			// For Dang-native values, inline fragments work like regular selection
-			// but we need to handle lists
+			// but we need to handle lists. `{{ }}` is always parallel, so apply
+			// the fragment to the elements concurrently, failing fast and keeping
+			// results in source order.
 			if listVal, ok := receiverVal.(ListValue); ok {
-				var results []Value
-				for _, elem := range listVal.Elements {
-					result, err := o.evalInlineFragmentOnValue(elem, ctx, scope)
-					if err != nil {
-						return nil, err
-					}
-					results = append(results, result)
+				results, err := evalParallel(ctx, len(listVal.Elements), func(ctx context.Context, i int) (Value, error) {
+					return o.evalInlineFragmentOnValue(listVal.Elements[i], ctx, scope)
+				})
+				if err != nil {
+					return nil, err
 				}
 				return ListValue{Elements: results, ElemType: o.GetInferredType()}, nil
 			}
@@ -2044,14 +2044,14 @@ func (o *ObjectSelection) evalSelectionOnValue(val Value, ctx context.Context, s
 		// Null propagation for individual values in lists
 		return NullValue{}, nil
 	case ListValue:
-		// Apply the selection element-wise, matching the inferred element type.
-		results := make([]Value, len(v.Elements))
-		for i, elem := range v.Elements {
-			result, err := o.evalSelectionOnValue(elem, ctx, scope)
-			if err != nil {
-				return nil, err
-			}
-			results[i] = result
+		// Apply the selection element-wise. `{{ }}` is always parallel, so the
+		// elements are selected concurrently (each forks the scope for isolation)
+		// and fail fast; results stay in source order.
+		results, err := evalParallel(ctx, len(v.Elements), func(ctx context.Context, i int) (Value, error) {
+			return o.evalSelectionOnValue(v.Elements[i], ctx, scope.Derive(true))
+		})
+		if err != nil {
+			return nil, err
 		}
 		return ListValue{Elements: results}, nil
 	case GraphQLValue:
@@ -2078,13 +2078,21 @@ func (o *ObjectSelection) evalFieldsBySelection(recv Value, ctx context.Context,
 		return nil, fmt.Errorf("ObjectSelection.evalFieldsBySelection: inferred type is nil")
 	}
 
+	// `{{ }}` is always parallel: selected fields are independent reads off the
+	// same receiver, so evaluate them concurrently and fail fast. Each field
+	// forks the scope so its incidental local writes stay private — the receiver
+	// and lexical scope are only read. Results are bound in source order, so the
+	// record layout is deterministic regardless of completion order.
+	vals, err := evalParallel(ctx, len(o.Fields), func(ctx context.Context, i int) (Value, error) {
+		return o.evalFieldSelection(recv, o.Fields[i], ctx, scope.Derive(true))
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	resultObject := NewObject(o.Inferred)
-	for _, field := range o.Fields {
-		fieldVal, err := o.evalFieldSelection(recv, field, ctx, scope)
-		if err != nil {
-			return nil, err
-		}
-		resultObject.Bind(field.OutputKey(), fieldVal, PublicVisibility)
+	for i, field := range o.Fields {
+		resultObject.Bind(field.OutputKey(), vals[i], PublicVisibility)
 	}
 	return resultObject, nil
 }

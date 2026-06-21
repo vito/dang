@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/vito/dang/v2/pkg/hm"
 )
@@ -610,29 +609,15 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 		}, field.Visibility)
 	}
 
-	// Fail fast on the first error (cancelling in-flight siblings), but wait for
-	// every field and report the lowest-source-index error, so the failure
-	// surfaced is deterministic regardless of completion order.
-	evalCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	errs := make([]error, len(o.Fields))
-	var wg sync.WaitGroup
-	for i, field := range o.Fields {
-		i, name := i, field.Name.Name
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, _, err := newMod.Lookup(evalCtx, name); err != nil {
-				errs[i] = err
-				cancel()
-			}
-		}()
-	}
-	wg.Wait()
-	for _, err := range errs {
-		if err != nil {
-			return nil, err
-		}
+	// Force every field concurrently. evalParallel fails fast on the first error
+	// (cancelling in-flight siblings) but awaits every field and reports the
+	// lowest-source-index error, so the failure surfaced is deterministic
+	// regardless of completion order.
+	if _, err := evalParallel(ctx, len(o.Fields), func(ctx context.Context, i int) (struct{}, error) {
+		_, _, err := newMod.Lookup(ctx, o.Fields[i].Name.Name)
+		return struct{}{}, err
+	}); err != nil {
+		return nil, err
 	}
 	return newMod, nil
 }
