@@ -27,13 +27,13 @@ let users = users(limit: 10)
 user.{{ name, email, posts.{{ title, createdAt }} }}
 ```
 
-- multi-field selection uses double braces `.{{ }}`, mirroring record literals `{{ }}` (both infer to the same anonymous structural type)
+- multi-field selection and record literals are the **same construct**: the double braces `{{ }}`, the same anonymous structural type, and the same concurrent evaluation. A selection `recv.{{ name }}` is a record literal whose fields are read off `recv` — `{{ name: recv.name }}`
 - desugars to a single GraphQL query — the headline feature
 - a field may be **aliased** to rename it in the result, GraphQL-style — the alias goes before the colon: `user.{{ fullName: name, email }}` yields a record with keys `fullName` and `email`
 - a bare field is shorthand for aliasing it to itself: `user.{{ name }}` means `user.{{ name: name }}`, exactly as `{{ name }}` is shorthand for `{{ name: name }}` in a record literal (see [#objects])
 - aliases are emitted as real GraphQL aliases, so the **same field** can be selected more than once under different arguments: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`
-- selected fields evaluate **concurrently** — `{{ }}` is always parallel, the same rule as record literals (see [#syntax]). For a GraphQL receiver that is the single batched query above; for a plain object or list it is parallel Dang evaluation, and a list distributes across its elements in parallel. Evaluation fails fast on the first error
-- so a record literal that combines independent selections issues them concurrently too: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` sends two queries in parallel
+- `{{ }}` **always evaluates its fields concurrently**, failing fast on the first error (see [#syntax]): over a GraphQL receiver that is the single batched query above, over a plain object it is parallel Dang evaluation, and over a list it runs the elements in parallel
+- a record literal is `{{ }}` with no receiver, so it has the same parallelism: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` sends both queries at once
 - nested selections work to arbitrary depth
 - arguments on nested fields:
 

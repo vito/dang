@@ -40,7 +40,9 @@ Four ideas the rest of the language hangs on:
 - **No truthiness** — `if` conditions must be `Boolean!`.
 - **Everything is an expression** — `if`, `case`, `loop`, `try` all yield values.
 - **Multi-field selection** — `user.{{name, posts.{{title}}}}` becomes one GraphQL
-  query (lazy; sent when forced). Fields can be aliased (`user.{{full: name}}`).
+  query (lazy; sent when forced). Fields can be aliased (`user.{{full: name}}`). It
+  is the same `{{ }}` construct as a record literal; every `{{ }}` evaluates its
+  fields concurrently.
 - **`#` comments, no `//`**; docstrings are real `"""..."""` strings before a
   declaration. Record literals use **double braces** `{{ ... }}`.
 - **No `for`/`while` keyword** — iterate with `xs.each { x => ... }`; repeat-until-`break`

@@ -21,10 +21,10 @@ user.{{ name, email, posts.{{ title, createdAt }} }}
 - Arguments on nested fields: `user.{{ posts(first: 5).{{ title }} }}`; positional works too: `users.{{ posts(1).{{ ... }} }}`.
 - Selection on a nullable receiver propagates null: if `user` is `null`, `user.{{ name }}` is `null` (not an error).
 - The result is a **record** (`{{ ... }}`); access fields by name.
-- Selected fields evaluate **concurrently** — `{{ }}` is always parallel (the same rule as record literals). For a GraphQL receiver that *is* the single batched query above; for a plain object or list it's parallel Dang evaluation. Evaluation fails fast on the first error.
+- `{{ }}` **always evaluates its fields concurrently**, failing fast on the first error. A selection and a record literal are one construct, so the rule is uniform: over a GraphQL receiver it's the single batched query above, over a plain object it's parallel Dang evaluation, and over a list it runs the elements in parallel.
 - **Aliases** rename a field in the result, GraphQL-style (alias before the colon): `user.{{ fullName: name, email }}`. A bare field is shorthand for aliasing to itself — `user.{{ name }}` ≡ `user.{{ name: name }}` — exactly as `{{ name }}` ≡ `{{ name: name }}` in a record literal.
 - Aliases become real GraphQL aliases, so the **same field** can be selected more than once with different args: `user.{{ small: avatarUrl(size: 100), large: avatarUrl(size: 200) }}`.
-- Combining independent selections in a record literal runs them **concurrently** too: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` issues two queries in parallel.
+- A record literal is `{{ }}` with no receiver, so it has the same parallelism: `{{ users: users.{{ name }}, posts: posts.{{ title }} }}` issues both queries at once.
 
 ## Inline fragments (unions/interfaces)
 ```dang

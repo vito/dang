@@ -95,6 +95,6 @@ Backtick templates in detail — backticks switch the lexer into template mode:
 - serialized to JSON with keys sorted alphabetically, not declaration order (see [#json-yaml]): `{{count: 100, user: ...}}` → `{"count":100,"user":...}`
 - fields may reference each other in any order: `{{ total: a + b, a: 1, b: 2 }}` works regardless of declaration order; a cyclic reference is a compile error
 - a field's own name refers to the enclosing scope, not the field being defined: `{{ user: user.{{ name }} }}` reads the outer `user`
-- independent fields are evaluated concurrently; a field that references a sibling waits for it. `{{ }}` is **always parallel** — the same rule governs chained `recv.{{ … }}` selection (and a selection over a list fans out across its elements), so a record of GraphQL selections issues them in parallel (see [#interop]). Evaluation fails fast on the first error
+- `{{ }}` is **always parallel** — independent fields are evaluated concurrently (a field that references a sibling waits for it) and evaluation fails fast on the first error. One rule for one construct: chained `recv.{{ … }}` selection behaves identically and fans out across a list's elements, so a record of GraphQL selections issues them at once (see [#interop])
 
 > Meta: explicitly call out the double-brace syntax — it's the unusual one and the first reaction is "is that a typo?"
