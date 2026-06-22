@@ -73,6 +73,16 @@ assert { doubled == ["a": 2, "b": 4, "c": 6] }
 let labeled = counts.map { key, value => `${key}=${value}` }
 assert { labeled["a"] == "a=1" }
 
+# reduce accumulates values in insertion order
+let total = counts.reduce(0) { sum, key, value => sum + value }
+assert { total == 6 }
+
+let reducedKeys = counts.reduce("") { keys, key, value => keys + key }
+assert { reducedKeys == "abc" }
+
+# reduce on an empty map returns the initial value
+assert { empty.reduce(42) { sum, key, value => sum + value } == 42 }
+
 # each iterates in insertion order and returns the original map
 let seen: List[String!] = []
 counts.each { key, value => seen = seen + [key] }

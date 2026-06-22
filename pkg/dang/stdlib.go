@@ -1094,6 +1094,45 @@ func registerStdlib() {
 			return m, nil
 		})
 
+	// Map.reduce method: reduce(fn: \(acc: b, key: String!, value: a) -> b, initial: b) -> b
+	Method(MapTypeModule, "reduce").
+		Doc("reduces the map to a single value using an accumulator function, iterating in insertion order").
+		Example(`["a": 1, "b": 2].reduce(0) { sum, key, value => sum + value }`).
+		Params("initial", TypeVar('b')).
+		Block(hm.NewFnType(
+			NewRecordType("", Keyed[*hm.Scheme]{
+				Key:   "acc",
+				Value: hm.NewScheme(nil, TypeVar('b')),
+			}, Keyed[*hm.Scheme]{
+				Key:   "key",
+				Value: hm.NewScheme(nil, NonNull(StringType)),
+			}, Keyed[*hm.Scheme]{
+				Key:   "value",
+				Value: hm.NewScheme(nil, TypeVar('a')),
+			}),
+			TypeVar('b'),
+		)).
+		Returns(TypeVar('b')).
+		Impl(func(ctx context.Context, self Value, args Args) (Value, error) {
+			m := self.(MapValue)
+
+			if args.Block == nil {
+				return nil, fmt.Errorf("reduce requires a block argument")
+			}
+			fn := *args.Block
+			accumulator, _ := args.Get("initial")
+
+			for _, k := range m.Keys {
+				result, err := callFunc(ctx, fn, accumulator, StringValue{Val: k}, m.Entries[k])
+				if err != nil {
+					return nil, fmt.Errorf("reduce function: %w", err)
+				}
+				accumulator = result
+			}
+
+			return accumulator, nil
+		})
+
 	// Map.map method: map(fn: \(String!, a) -> b) -> Map[b]!
 	Method(MapTypeModule, "map").
 		Doc("returns a new map with each value transformed by the block; keys are preserved").
