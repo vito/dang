@@ -1,0 +1,52 @@
+pub obj = {{
+  a: 1,
+  b: 2,
+  c: a + b,
+  base: "hello",
+  derived: base + " world",
+  independent: "!"
+}}
+
+assert { obj.c == 3 }
+assert { obj.derived == "hello world" }
+assert { obj.independent == "!" }
+
+# Fields may reference siblings declared later in source order; scheduling
+# resolves the dependency order regardless of textual order.
+pub forward = {{
+  derived: base + " world",
+  base: "hello"
+}}
+
+assert { forward.derived == "hello world" }
+
+# Independent fields that all read the same lazily-initialized module variable
+# must force it exactly once even though they are evaluated concurrently. This
+# literal is declared before the variable it depends on, so the dependency is
+# still pending when the fields fan out.
+pub fanout = {{
+  one: shared_dep + "!",
+  two: shared_dep + "?",
+  three: shared_dep + ".",
+  four: shared_dep + ","
+}}
+
+pub shared_dep = greeting + " world"
+pub greeting = "hello"
+
+assert { fanout.one == "hello world!" }
+assert { fanout.two == "hello world?" }
+assert { fanout.three == "hello world." }
+assert { fanout.four == "hello world," }
+
+# A field whose name matches an enclosing binding resolves its OWN name to the
+# outer binding (not itself), while siblings still see the field's value.
+pub tag = "outer"
+
+pub shadowing = {{
+  tag: tag + "/inner",
+  derived_tag: tag + "/derived"
+}}
+
+assert { shadowing.tag == "outer/inner" }
+assert { shadowing.derived_tag == "outer/inner/derived" }

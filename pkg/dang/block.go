@@ -65,40 +65,11 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 		return variables, nil
 	}
 
-	declared := make(map[string]int)
-	names := make([]string, len(variables))
-	dependencies := make(map[int][]int)
-
-	for i, variable := range variables {
-		decls := variable.DeclaredSymbols()
-		if len(decls) > 0 {
-			names[i] = decls[0]
-		}
-		for _, name := range decls {
-			declared[name] = i
-		}
-	}
-
-	for i, variable := range variables {
-		for _, ref := range variable.ReferencedSymbols() {
-			dep, ok := declared[ref]
-			if ok && dep != i {
-				dependencies[i] = append(dependencies[i], dep)
-			}
-		}
-	}
-
-	order, cycle := dfsTopologicalOrder(len(variables), dependencies)
+	graph := newSlotDepGraph(variables)
+	order, cycle := graph.LinearOrder()
 	if cycle != nil {
-		cycleNames := make([]string, len(cycle))
-		for i, idx := range cycle {
-			cycleNames[i] = names[idx]
-			if cycleNames[i] == "" {
-				cycleNames[i] = fmt.Sprintf("<variable %d>", idx)
-			}
-		}
-
-		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(cycleNames, " -> "))
+		names := graph.CycleNames(cycle)
+		err := fmt.Errorf("circular module variable initializer: %s", strings.Join(names, " -> "))
 		node := variables[cycle[0]]
 		if field, ok := node.(*FieldDecl); ok && field.Value != nil {
 			return nil, NewInferError(err, field.Value)
@@ -111,55 +82,6 @@ func orderVariablesForInference(variables []Node) ([]Node, error) {
 		sorted[i] = variables[idx]
 	}
 	return sorted, nil
-}
-
-// dfsTopologicalOrder returns either a topological order (deps before
-// dependents) or, if one exists, a cycle path through the dependency graph.
-func dfsTopologicalOrder(n int, dependencies map[int][]int) (order []int, cycle []int) {
-	const (
-		unvisited = iota
-		visiting
-		done
-	)
-
-	state := make([]int, n)
-	var stack []int
-	positions := make(map[int]int)
-
-	var visit func(int) []int
-	visit = func(i int) []int {
-		state[i] = visiting
-		positions[i] = len(stack)
-		stack = append(stack, i)
-
-		for _, dep := range dependencies[i] {
-			switch state[dep] {
-			case unvisited:
-				if c := visit(dep); c != nil {
-					return c
-				}
-			case visiting:
-				c := append([]int(nil), stack[positions[dep]:]...)
-				return append(c, dep)
-			}
-		}
-
-		stack = stack[:len(stack)-1]
-		delete(positions, i)
-		state[i] = done
-		order = append(order, i)
-		return nil
-	}
-
-	for i := range n {
-		if state[i] == unvisited {
-			if c := visit(i); c != nil {
-				return nil, c
-			}
-		}
-	}
-
-	return order, nil
 }
 
 // ClassifiedForms holds forms categorized by their compilation phase
@@ -589,15 +511,56 @@ func (f *ObjectLiteral) GetSourceLocation() *SourceLocation { return f.Loc }
 
 var _ hm.Inferer = &ObjectLiteral{}
 
+// objectFieldOrder validates the field list and returns field indices in
+// dependency order (a field comes after the siblings it references), so
+// inference can type-check forward references, and rejects cyclic field
+// dependencies. Errors are scoped to the object node so the source location
+// points at the literal.
+func objectFieldOrder(o *ObjectLiteral) ([]int, error) {
+	localNames := make(map[string]int, len(o.Fields))
+	nodes := make([]Node, len(o.Fields))
+	for i, field := range o.Fields {
+		declared := field.DeclaredSymbols()
+		if len(declared) != 1 {
+			return nil, NewInferError(fmt.Errorf("object field must declare exactly one name"), o)
+		}
+		name := declared[0]
+		if prev, ok := localNames[name]; ok {
+			return nil, NewInferError(
+				fmt.Errorf("object literal has duplicate field %q (previous declaration at field %d)", name, prev+1),
+				o,
+			)
+		}
+		localNames[name] = i
+		nodes[i] = field
+	}
+
+	graph := newSlotDepGraph(nodes)
+	order, cycle := graph.LinearOrder()
+	if cycle != nil {
+		names := graph.CycleNames(cycle)
+		return nil, NewInferError(
+			fmt.Errorf("object literal has cyclic field dependencies: %s", strings.Join(names, " -> ")),
+			o,
+		)
+	}
+	return order, nil
+}
+
 func (o *ObjectLiteral) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	mod := NewType("", ObjectKind)
 	inferTypeScope := &OverlayTypeScope{
 		primary: mod,
 		lexical: env.(TypeScope),
 	}
-	for _, field := range o.Fields {
-		_, err := field.Infer(ctx, inferTypeScope, fresh)
-		if err != nil {
+	order, err := objectFieldOrder(o)
+	if err != nil {
+		return nil, err
+	}
+	// Infer in dependency order so a field can reference siblings that are
+	// declared later in source order.
+	for _, idx := range order {
+		if _, err := o.Fields[idx].Infer(ctx, inferTypeScope, fresh); err != nil {
 			return nil, err
 		}
 	}
@@ -613,11 +576,48 @@ func (o *ObjectLiteral) Eval(ctx context.Context, scope ValueScope) (Value, erro
 	}
 	newMod := NewObject(o.Mod)
 	valueScope := CreateOverlayValueScope(newMod, scope)
+
+	// Bind each field as a lazy initializer in the object, then force them all
+	// concurrently. Lazy resolution evaluates fields in dependency order for
+	// free: forcing a field that references a sibling forces that sibling first
+	// (sharing the single result), while independent fields run in parallel and
+	// each runs exactly once. Inference already rejected cyclic fields, so
+	// forcing cannot deadlock. force() publishes each field's value, so the
+	// resulting object carries every field regardless of completion order.
 	for _, field := range o.Fields {
-		_, err := EvalNode(ctx, valueScope, field)
-		if err != nil {
-			return nil, err
-		}
+		field := field
+		name := field.Name.Name
+		newMod.BindLazy(name, func(ctx context.Context) (Value, error) {
+			// Fork so a field's incidental local writes stay private; sibling
+			// references resolve through newMod, forcing them on demand.
+			fieldScope := valueScope.Derive(true)
+			// A field's own name refers to the enclosing scope, not the field
+			// being defined, so `users: users.{{...}}` reads the outer `users`
+			// rather than recursing into itself. Redirect it to the outer scope
+			// lazily, so the outer lookup happens only if the field actually
+			// references its own name. (A self-reference with no outer binding is
+			// already rejected during inference.)
+			if scope.Has(name) {
+				fieldScope.BindLazy(name, func(ctx context.Context) (Value, error) {
+					v, _, err := scope.Lookup(ctx, name)
+					return v, err
+				}, field.Visibility)
+			}
+			return WithEvalErrorHandling(ctx, field, func() (Value, error) {
+				return field.EvalValue(ctx, fieldScope)
+			})
+		}, field.Visibility)
+	}
+
+	// Force every field concurrently. evalParallel fails fast on the first error
+	// (cancelling in-flight siblings) but awaits every field and reports the
+	// lowest-source-index error, so the failure surfaced is deterministic
+	// regardless of completion order.
+	if _, err := evalParallel(ctx, len(o.Fields), func(ctx context.Context, i int) (struct{}, error) {
+		_, _, err := newMod.Lookup(ctx, o.Fields[i].Name.Name)
+		return struct{}{}, err
+	}); err != nil {
+		return nil, err
 	}
 	return newMod, nil
 }
