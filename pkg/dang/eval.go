@@ -1193,14 +1193,30 @@ func (f FunctionValue) MarshalJSON() ([]byte, error) {
 }
 
 func (f FunctionValue) Call(ctx context.Context, scope ValueScope, args map[string]Value) (Value, error) {
+	// A naked self-call to a sibling method or computed field (`foo()` rather
+	// than `self.foo()`, recursion included) must behave exactly like
+	// `self.foo()`: each call forks `self` into its own sealed receiver, so the
+	// body's field writes stay isolated copy-on-write generations. Dispatch it
+	// through the same path as an explicit method call. Running the body against
+	// the closure scope instead (the fall-through below) shares one `self` cell
+	// across recursive calls and lets bare field writes leak out to the original
+	// instance through the lexical parent chain — scrambling state. Block
+	// arguments are excluded: they intentionally share the enclosing method's
+	// `self` (so `xs.each { self.x += ... }` accumulates), and BoundMethod.Call
+	// would re-dispatch a block straight back here.
+	if f.IsDynamic && !f.IsBlockArg {
+		if self, ok := scope.Self(); ok {
+			if recv, ok := self.(ValueScope); ok {
+				return BoundMethod{Method: f, Receiver: recv}.Call(ctx, scope, args)
+			}
+		}
+	}
+
 	fnScope := f.Closure.Derive(false)
 
 	if f.IsDynamic {
-		// Propagate dynamic scope from calling environment
-		//
-		// A dynamic FunctionValue being called will ALWAYS mean we're coming from a
-		// 'naked' self-call (foo() instead of self.foo()) from a sibling method, so
-		// we can inherit the caller's `self`.
+		// A block argument inherits the caller's `self` by sharing its cell, so
+		// mutations inside the block stay visible to the enclosing method.
 		if dynScope, hasDynScope := scope.Self(); hasDynScope {
 			fnScope.MutateSelf(dynScope)
 		}

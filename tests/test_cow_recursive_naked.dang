@@ -1,0 +1,58 @@
+# Regression: a naked self-call that recurses (`foo()` rather than `self.foo()`)
+# must keep copy-on-write semantics, exactly like an explicit `self.foo()` call.
+# Each call forks `self` into its own generation, so writes accumulate down the
+# recursion and never leak back to the caller's value. Before the fix a naked
+# self-recursion ran its body against the closure scope instead of a forked
+# receiver, sharing one `self` cell across calls and leaking writes to the
+# original instance (e.g. `a.up(3)` left `a` mutated and returned the wrong
+# value). See test_cow_recursive.dang for the explicit-receiver recursion that
+# already worked.
+
+# Bare field write, then naked recursion.
+type Bumper {
+  value: Int! = 0
+
+  up(n: Int!): Bumper! {
+    if (n <= 0) { self } else { value += 1; up(n - 1) }
+  }
+}
+
+let a = Bumper(0)
+let bumped = a.up(3)
+assert("naked recursion accumulates into the returned fork") { bumped.value == 3 }
+assert("the original receiver is untouched") { a.value == 0 }
+
+# Two independent naked-recursion calls on the same receiver must not compound.
+assert("calls fork independently") { a.up(2).value == 2 }
+assert("still untouched after a second call") { a.value == 0 }
+
+# Naked recursion routed through a mutating computed field.
+type ViaField {
+  value: Int! = 0
+
+  incr: ViaField! { value += 1; self }
+
+  by(n: Int!): ViaField! {
+    if (n <= 0) { self } else { incr.by(n - 1) }
+  }
+}
+
+let c = ViaField(0)
+assert("computed-field recursion accumulates") { c.by(5).value == 5 }
+assert("computed-field recursion leaves the original alone") { c.value == 0 }
+
+# Naked recursion routed through a sibling method that takes an argument,
+# building a running sum (4 + 3 + 2 + 1 == 10).
+type Summer {
+  acc: Int! = 0
+
+  add(x: Int!): Summer! { acc += x; self }
+
+  sumTo(n: Int!): Summer! {
+    if (n <= 0) { self } else { add(n).sumTo(n - 1) }
+  }
+}
+
+let s = Summer(0)
+assert("sibling-method recursion sums correctly") { s.sumTo(4).acc == 10 }
+assert("sibling-method recursion leaves the original alone") { s.acc == 0 }
