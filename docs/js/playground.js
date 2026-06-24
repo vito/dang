@@ -1011,8 +1011,21 @@
     for (var j = 0; j < repls.length; j++) enhanceRepl(repls[j]);
     var lazies = document.querySelectorAll("[data-dang-repl-lazy]");
     for (var k = 0; k < lazies.length; k++) enhanceLazyRepl(lazies[k]);
+    // Literate blocks replay as a chain (notebook semantics: one shared
+    // session, top to bottom). By default the whole page is one chain; a
+    // [data-dang-literate-chain] ancestor scopes an independent chain, so e.g.
+    // each carousel slide replays on its own fresh session instead of being
+    // folded into the page's chain.
     var lits = document.querySelectorAll("[data-dang-literate]");
-    if (lits.length) enhanceLiterateChain(lits);
+    if (lits.length) {
+      var groups = new Map(); // chain root (element or document) -> blocks
+      for (var m = 0; m < lits.length; m++) {
+        var root = lits[m].closest("[data-dang-literate-chain]") || document;
+        if (!groups.has(root)) groups.set(root, []);
+        groups.get(root).push(lits[m]);
+      }
+      groups.forEach(function (blocks) { enhanceLiterateChain(blocks); });
+    }
   }
 
   // Capture any OAuth token handed back in the fragment before enhancing, so
