@@ -57,7 +57,7 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
-	github.com/mna/pigeon v1.3.0 // indirect
+	github.com/mna/pigeon v1.3.1-0.20260627070130-aa1e61c16975 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/mango v0.1.0 // indirect
 	github.com/muesli/mango-cobra v1.2.0 // indirect
@@ -105,5 +105,3 @@ tool (
 	github.com/99designs/gqlgen
 	github.com/dagger/otel-go/cmd/otelgotest
 )
-
-replace github.com/mna/pigeon => github.com/vito/pigeon v0.0.0-20260530031413-6ddc6a5a5a53
