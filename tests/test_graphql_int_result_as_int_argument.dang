@@ -1,0 +1,12 @@
+import Test
+
+let limit_from_graphql_int = serverInfo.totalUsers
+assert { limit_from_graphql_int == 2 }
+
+let limited_posts = posts(limit: limit_from_graphql_int).{{title}}
+
+assert { limited_posts[0].title == "First Post" }
+assert { limited_posts[1].title == "Second Post" }
+assert { limited_posts[2] == null }
+
+print("GraphQL Int result can be reused as an Int argument")

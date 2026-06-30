@@ -188,41 +188,7 @@ func (g GraphQLFunction) Call(ctx context.Context, scope ValueScope, args map[st
 			return nil, fmt.Errorf("executing GraphQL query for %s.%s: %w", g.TypeName, g.Name, err)
 		}
 
-		// Check if the return type is an enum
-		if isEnumType(g.Field.TypeRef, g.Schema) {
-			// Convert string result to EnumValue
-			if strVal, ok := result.(string); ok {
-				enumTypeName := getTypeName(g.Field.TypeRef)
-				// Get the enum type from the type environment
-				enumType, found := g.TypeScope.NamedType(enumTypeName)
-				if !found {
-					return nil, fmt.Errorf("enum type %s not found", enumTypeName)
-				}
-				return EnumValue{
-					Val:      strVal,
-					EnumType: enumType,
-				}, nil
-			}
-		}
-
-		// Check if the return type is a custom scalar
-		if isCustomScalarType(g.Field.TypeRef, g.Schema) {
-			// Convert string result to ScalarValue
-			if strVal, ok := result.(string); ok {
-				scalarTypeName := getTypeName(g.Field.TypeRef)
-				// Get the scalar type from the type environment
-				scalarType, found := g.TypeScope.NamedType(scalarTypeName)
-				if !found {
-					return nil, fmt.Errorf("scalar type %s not found", scalarTypeName)
-				}
-				return ScalarValue{
-					Val:        strVal,
-					ScalarType: scalarType,
-				}, nil
-			}
-		}
-
-		return ToValue(result)
+		return graphQLResultToValue(result, g.Field.TypeRef, g.Field.Directives.ExpectedType(), g.Schema, g.TypeScope)
 	}
 
 	// For non-scalar types, return a GraphQLValue that can be further selected
@@ -750,48 +716,6 @@ func isScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) 
 	return false
 }
 
-// Helper function to determine if a GraphQL type is an enum
-func isEnumType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
-	// Unwrap NonNull and List wrappers
-	currentType := typeRef
-	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
-		currentType = currentType.OfType
-	}
-
-	// Check if it's an enum in the schema
-	for _, t := range schema.Types {
-		if t.Name == currentType.Name && t.Kind == introspection.TypeKindEnum {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Helper function to determine if a GraphQL type is a custom scalar
-func isCustomScalarType(typeRef *introspection.TypeRef, schema *introspection.Schema) bool {
-	// Unwrap NonNull and List wrappers
-	currentType := typeRef
-	for currentType.Kind == "NON_NULL" || currentType.Kind == "LIST" {
-		currentType = currentType.OfType
-	}
-
-	// Skip built-in scalars
-	switch currentType.Name {
-	case "String", "Int", "Float", "Boolean", "ID":
-		return false
-	}
-
-	// Check if it's a custom scalar in the schema
-	for _, t := range schema.Types {
-		if t.Name == currentType.Name && t.Kind == introspection.TypeKindScalar {
-			return true
-		}
-	}
-
-	return false
-}
-
 // Helper function to get the type name from a TypeRef
 func getTypeName(typeRef *introspection.TypeRef) string {
 	// Unwrap NonNull and List wrappers to get the base type name
@@ -800,6 +724,190 @@ func getTypeName(typeRef *introspection.TypeRef) string {
 		currentType = currentType.OfType
 	}
 	return currentType.Name
+}
+
+func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType string, schema *introspection.Schema, typeScope TypeScope) (Value, error) {
+	if typeRef == nil {
+		return ToValue(raw)
+	}
+
+	switch typeRef.Kind {
+	case introspection.TypeKindNonNull:
+		if raw == nil {
+			return nil, fmt.Errorf("null is not allowed for %s", getTypeName(typeRef))
+		}
+		return graphQLResultToValue(raw, typeRef.OfType, expectedType, schema, typeScope)
+	case introspection.TypeKindList:
+		if raw == nil {
+			return NullValue{}, nil
+		}
+		items, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("expected list for GraphQL %s, got %T", getTypeName(typeRef), raw)
+		}
+		values := make([]Value, len(items))
+		for i, item := range items {
+			converted, err := graphQLResultToValue(item, typeRef.OfType, expectedType, schema, typeScope)
+			if err != nil {
+				return nil, fmt.Errorf("converting list element %d: %w", i, err)
+			}
+			values[i] = converted
+		}
+		list := ListValue{Elements: values}
+		if typeScope != nil {
+			if elemType, err := gqlOutputTypeRefToTypeNode(typeScope, typeRef.OfType, expectedType); err == nil {
+				list.ElemType = elemType
+			}
+		}
+		return list, nil
+	}
+
+	if raw == nil {
+		return NullValue{}, nil
+	}
+
+	switch typeRef.Name {
+	case "String", "ID":
+		str, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("expected string for GraphQL %s, got %T", typeRef.Name, raw)
+		}
+		return StringValue{Val: str}, nil
+	case "Int":
+		return graphQLIntResultToValue(raw)
+	case "Float":
+		return graphQLFloatResultToValue(raw)
+	case "Boolean":
+		b, ok := raw.(bool)
+		if !ok {
+			return nil, fmt.Errorf("expected boolean for GraphQL Boolean, got %T", raw)
+		}
+		return BoolValue{Val: b}, nil
+	}
+
+	if schema != nil {
+		if schemaType := schema.Types.Get(typeRef.Name); schemaType != nil {
+			switch schemaType.Kind {
+			case introspection.TypeKindEnum:
+				str, ok := raw.(string)
+				if !ok {
+					return nil, fmt.Errorf("expected string for enum %s, got %T", typeRef.Name, raw)
+				}
+				if typeScope == nil {
+					return nil, fmt.Errorf("enum type %s not found", typeRef.Name)
+				}
+				enumType, found := typeScope.NamedType(typeRef.Name)
+				if !found {
+					return nil, fmt.Errorf("enum type %s not found", typeRef.Name)
+				}
+				return EnumValue{Val: str, EnumType: enumType}, nil
+			case introspection.TypeKindScalar:
+				str, ok := raw.(string)
+				if ok {
+					if typeScope == nil {
+						return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
+					}
+					scalarType, found := typeScope.NamedType(typeRef.Name)
+					if !found {
+						return nil, fmt.Errorf("scalar type %s not found", typeRef.Name)
+					}
+					return ScalarValue{Val: str, ScalarType: scalarType}, nil
+				}
+			}
+		}
+	}
+
+	return ToValue(raw)
+}
+
+func graphQLIntResultToValue(raw any) (Value, error) {
+	val, err := graphQLNumberToInt(raw)
+	if err != nil {
+		return nil, fmt.Errorf("expected integral number for GraphQL Int, got %v", raw)
+	}
+	return IntValue{Val: val}, nil
+}
+
+func graphQLNumberToInt(raw any) (int, error) {
+	switch n := raw.(type) {
+	case int:
+		return n, nil
+	case int8:
+		return int(n), nil
+	case int16:
+		return int(n), nil
+	case int32:
+		return int(n), nil
+	case int64:
+		if int64(int(n)) != n {
+			return 0, fmt.Errorf("integer out of range")
+		}
+		return int(n), nil
+	case uint:
+		if uint(int(n)) != n {
+			return 0, fmt.Errorf("integer out of range")
+		}
+		return int(n), nil
+	case uint8:
+		return int(n), nil
+	case uint16:
+		return int(n), nil
+	case uint32:
+		if uint32(int(n)) != n {
+			return 0, fmt.Errorf("integer out of range")
+		}
+		return int(n), nil
+	case uint64:
+		if uint64(int(n)) != n {
+			return 0, fmt.Errorf("integer out of range")
+		}
+		return int(n), nil
+	case float32:
+		return decodedNumberToInt(json.Number(strconv.FormatFloat(float64(n), 'f', -1, 32)))
+	case float64:
+		return decodedNumberToInt(json.Number(strconv.FormatFloat(n, 'f', -1, 64)))
+	case json.Number:
+		return decodedNumberToInt(n)
+	default:
+		return 0, fmt.Errorf("not a number")
+	}
+}
+
+func graphQLFloatResultToValue(raw any) (Value, error) {
+	switch n := raw.(type) {
+	case float64:
+		return FloatValue{Val: n}, nil
+	case float32:
+		return FloatValue{Val: float64(n)}, nil
+	case int:
+		return FloatValue{Val: float64(n)}, nil
+	case int8:
+		return FloatValue{Val: float64(n)}, nil
+	case int16:
+		return FloatValue{Val: float64(n)}, nil
+	case int32:
+		return FloatValue{Val: float64(n)}, nil
+	case int64:
+		return FloatValue{Val: float64(n)}, nil
+	case uint:
+		return FloatValue{Val: float64(n)}, nil
+	case uint8:
+		return FloatValue{Val: float64(n)}, nil
+	case uint16:
+		return FloatValue{Val: float64(n)}, nil
+	case uint32:
+		return FloatValue{Val: float64(n)}, nil
+	case uint64:
+		return FloatValue{Val: float64(n)}, nil
+	case json.Number:
+		val, err := n.Float64()
+		if err != nil {
+			return nil, fmt.Errorf("invalid number %q", n.String())
+		}
+		return FloatValue{Val: val}, nil
+	default:
+		return nil, fmt.Errorf("expected number for GraphQL Float, got %T", raw)
+	}
 }
 
 // Helper function to convert Dang values to Go values for GraphQL

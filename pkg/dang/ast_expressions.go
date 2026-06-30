@@ -1955,6 +1955,7 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 			}
 
 			resultObject := NewObject(concreteType)
+			concreteSchemaType := schema.Types.Get(typeName)
 			for _, field := range frag.Fields {
 				outKey := field.OutputKey()
 				if fieldValue, exists := resultMap[outKey]; exists {
@@ -1968,27 +1969,22 @@ func (o *ObjectSelection) convertInlineFragmentResult(result any, schema *intros
 						continue
 					}
 
-					// Look up field type info for enum conversion
-					concreteSchemaType := schema.Types.Get(typeName)
+					var schemaField *introspection.Field
 					if concreteSchemaType != nil {
-						for _, schemaField := range concreteSchemaType.Fields {
-							if schemaField.Name == field.Name {
-								fieldType := schema.Types.Get(o.unwrapType(schemaField.TypeRef).Name)
-								if fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
-									if strVal, ok := fieldValue.(string); ok {
-										enumType, found := typeScope.NamedType(fieldType.Name)
-										if found {
-											resultObject.Bind(outKey, EnumValue{Val: strVal, EnumType: enumType}, PublicVisibility)
-											continue
-										}
-									}
-								}
+						for _, candidate := range concreteSchemaType.Fields {
+							if candidate.Name == field.Name {
+								schemaField = candidate
 								break
 							}
 						}
 					}
-
-					dangVal, err := ToValue(fieldValue)
+					expectedType := ""
+					var typeRef *introspection.TypeRef
+					if schemaField != nil {
+						typeRef = schemaField.TypeRef
+						expectedType = schemaField.Directives.ExpectedType()
+					}
+					dangVal, err := graphQLResultToValue(fieldValue, typeRef, expectedType, schema, typeScope)
 					if err != nil {
 						return nil, fmt.Errorf("converting field %s: %w", field.Name, err)
 					}
@@ -2405,24 +2401,14 @@ func (o *ObjectSelection) convertGraphQLResultToModule(result any, fields []*Fie
 						}
 						resultObject.Bind(outKey, nestedResult, PublicVisibility)
 					}
-				} else if fieldType := schema.Types.Get(o.unwrapType(nestedField.TypeRef).Name); fieldType != nil && fieldType.Kind == introspection.TypeKindEnum {
-					// Convert enums
-					strVal, ok := fieldValue.(string)
-					if !ok {
-						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting enum field %q: expected string value, got %T", field.Name, fieldValue)
-					}
-					// Get the enum type from the type environment
-					enumType, found := typeScope.NamedType(fieldType.Name)
-					if !found {
-						return nil, fmt.Errorf("type not defined for enum: %q", fieldType.Name)
-					}
-					resultObject.Bind(outKey, EnumValue{
-						Val:      strVal,
-						EnumType: enumType,
-					}, PublicVisibility)
 				} else {
-					// Convert GraphQL value to Dang value
-					dangVal, err := ToValue(fieldValue)
+					expectedType := ""
+					var typeRef *introspection.TypeRef
+					if nestedField != nil {
+						typeRef = nestedField.TypeRef
+						expectedType = nestedField.Directives.ExpectedType()
+					}
+					dangVal, err := graphQLResultToValue(fieldValue, typeRef, expectedType, schema, typeScope)
 					if err != nil {
 						return nil, fmt.Errorf("ObjectSelection.convertGraphQLResultToModule: converting field %q: %w", field.Name, err)
 					}
