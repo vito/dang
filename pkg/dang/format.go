@@ -515,7 +515,11 @@ func (f *Formatter) resetLastLineForForms(forms []Node) {
 // finishForm emits a trailing comment for the form and updates lastLine.
 func (f *Formatter) finishForm(form Node) {
 	if loc := form.GetSourceLocation(); loc != nil {
-		f.emitTrailingComment(loc.Line)
+		commentLine := loc.Line
+		if endLine := nodeEndLine(form); endLine > commentLine {
+			commentLine = endLine
+		}
+		f.emitTrailingComment(commentLine)
 	}
 	if endLine := nodeEndLine(form); endLine > 0 {
 		f.lastLine = endLine
@@ -1742,6 +1746,12 @@ func (f *Formatter) isMultilineNode(node Node) bool {
 	switch n := node.(type) {
 	case *Block:
 		return true
+	case *List:
+		return f.shouldSplitList(n)
+	case *MapLiteral:
+		return f.shouldSplitMap(n)
+	case *ObjectLiteral:
+		return f.shouldSplitObject(n)
 	case *Conditional:
 		return wasMultiline(n)
 	case *Case:
@@ -2475,15 +2485,41 @@ func (f *Formatter) formatList(l *List) {
 		return
 	}
 
-	// Check if list was originally multiline (elements on different lines)
-	if f.wasListMultiline(l) {
-		f.formatListMultiline(l)
+	wasMultiline := f.wasListMultiline(l)
+	if wasMultiline || f.shouldSplitList(l) {
+		f.formatListMultiline(l, wasMultiline)
 		return
 	}
 
-	// List was originally on one line - keep it that way
-	// (respect user's intent over line length)
 	f.formatListInline(l)
+}
+
+func (f *Formatter) shouldSplitList(l *List) bool {
+	if len(l.Elements) == 0 {
+		return false
+	}
+	if f.wasListMultiline(l) {
+		return true
+	}
+	for _, elem := range l.Elements {
+		if f.collectionNodeWillSplit(elem) {
+			return true
+		}
+	}
+	return f.col+f.estimateLength(l) > maxLineLength
+}
+
+func (f *Formatter) collectionNodeWillSplit(node Node) bool {
+	switch n := node.(type) {
+	case *List:
+		return f.shouldSplitList(n)
+	case *MapLiteral:
+		return f.shouldSplitMap(n)
+	case *ObjectLiteral:
+		return f.shouldSplitObject(n)
+	default:
+		return false
+	}
 }
 
 func (f *Formatter) wasListMultiline(l *List) bool {
@@ -2528,8 +2564,56 @@ func (f *Formatter) formatListInline(l *List) {
 }
 
 func (f *Formatter) formatMap(m *MapLiteral) {
-	// Map literals are kept inline; the empty map is the special [:] form.
+	if len(m.Entries) == 0 {
+		f.write("[:]")
+		return
+	}
+
+	wasMultiline := f.wasMapMultiline(m)
+	if wasMultiline || f.shouldSplitMap(m) {
+		f.formatMapMultiline(m, wasMultiline)
+		return
+	}
+
 	f.formatMapInline(m)
+}
+
+func (f *Formatter) shouldSplitMap(m *MapLiteral) bool {
+	if len(m.Entries) == 0 {
+		return false
+	}
+	if f.wasMapMultiline(m) {
+		return true
+	}
+	for _, entry := range m.Entries {
+		if f.collectionNodeWillSplit(entry.Key) || f.collectionNodeWillSplit(entry.Value) {
+			return true
+		}
+	}
+	return f.col+f.estimateLength(m) > maxLineLength
+}
+
+func (f *Formatter) wasMapMultiline(m *MapLiteral) bool {
+	if len(m.Entries) == 0 {
+		return false
+	}
+
+	for i := 1; i < len(m.Entries); i++ {
+		prevLoc := m.Entries[i-1].Key.GetSourceLocation()
+		currLoc := m.Entries[i].Key.GetSourceLocation()
+		if prevLoc != nil && currLoc != nil && currLoc.Line > prevLoc.Line {
+			return true
+		}
+	}
+
+	if len(m.Entries) == 1 && m.Loc != nil {
+		keyLoc := m.Entries[0].Key.GetSourceLocation()
+		if keyLoc != nil && keyLoc.Line > m.Loc.Line {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (f *Formatter) formatMapInline(m *MapLiteral) {
@@ -2549,9 +2633,63 @@ func (f *Formatter) formatMapInline(m *MapLiteral) {
 	f.write("]")
 }
 
-func (f *Formatter) formatListMultiline(l *List) {
+func (f *Formatter) formatMapMultiline(m *MapLiteral, preserveSameLineGroups bool) {
 	f.write("[")
-	if l.Loc != nil {
+	if preserveSameLineGroups && m.Loc != nil {
+		f.nl(m.Loc.Line)
+	} else {
+		f.newline()
+	}
+	f.indented(func() {
+		if len(m.Entries) > 0 {
+			if loc := m.Entries[0].Key.GetSourceLocation(); loc != nil && loc.Line > 0 {
+				f.lastLine = loc.Line - 1
+			}
+		}
+
+		i := 0
+		for i < len(m.Entries) {
+			entry := m.Entries[i]
+			entryLoc := entry.Key.GetSourceLocation()
+
+			f.emitCommentsForNode(entry.Key)
+			f.writeIndent()
+			f.formatMapEntry(entry)
+
+			for preserveSameLineGroups && i+1 < len(m.Entries) {
+				nextEntry := m.Entries[i+1]
+				nextLoc := nextEntry.Key.GetSourceLocation()
+				if entryLoc != nil && nextLoc != nil && nextLoc.Line == entryLoc.Line {
+					f.write(", ")
+					f.formatMapEntry(nextEntry)
+					i++
+				} else {
+					break
+				}
+			}
+
+			f.write(",")
+
+			if preserveSameLineGroups && entryLoc != nil {
+				f.emitTrailingComment(entryLoc.Line)
+			}
+			f.newline()
+			i++
+		}
+	})
+	f.writeIndent()
+	f.write("]")
+}
+
+func (f *Formatter) formatMapEntry(entry MapEntry) {
+	f.formatNode(entry.Key)
+	f.write(": ")
+	f.formatNode(entry.Value)
+}
+
+func (f *Formatter) formatListMultiline(l *List, preserveSameLineGroups bool) {
+	f.write("[")
+	if preserveSameLineGroups && l.Loc != nil {
 		f.nl(l.Loc.Line)
 	} else {
 		f.newline()
@@ -2565,6 +2703,8 @@ func (f *Formatter) formatListMultiline(l *List) {
 		}
 
 		// Group elements by their original line - elements on the same line stay together
+		// when the source was already multiline. Length-based splits use one element
+		// per line so formatting can actually shorten the overflowing line.
 		i := 0
 		for i < len(l.Elements) {
 			elem := l.Elements[i]
@@ -2575,7 +2715,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 			f.formatNode(elem)
 
 			// Check if next elements are on the same line - if so, keep them together
-			for i+1 < len(l.Elements) {
+			for preserveSameLineGroups && i+1 < len(l.Elements) {
 				nextElem := l.Elements[i+1]
 				nextLoc := nextElem.GetSourceLocation()
 				if elemLoc != nil && nextLoc != nil && nextLoc.Line == elemLoc.Line {
@@ -2590,7 +2730,7 @@ func (f *Formatter) formatListMultiline(l *List) {
 			// Always add trailing comma
 			f.write(",")
 
-			if elemLoc != nil {
+			if preserveSameLineGroups && elemLoc != nil {
 				f.emitTrailingComment(elemLoc.Line)
 			}
 			f.newline()
@@ -2616,10 +2756,26 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 		return
 	}
 
-	// Check if object was originally multiline
-	wasMultiline := o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line
+	if f.shouldSplitObject(o) {
+		f.formatObjectMultiline(o)
+	} else {
+		f.formatObjectInline(o)
+	}
+}
 
-	// Estimate inline length
+func (f *Formatter) shouldSplitObject(o *ObjectLiteral) bool {
+	if len(o.Fields) == 0 {
+		return false
+	}
+	if o.Loc != nil && o.Loc.End != nil && o.Loc.End.Line > o.Loc.Line {
+		return true
+	}
+	for _, field := range o.Fields {
+		if f.collectionNodeWillSplit(field.Value) {
+			return true
+		}
+	}
+
 	length := 4 // {{}}
 	for i, field := range o.Fields {
 		if i > 0 {
@@ -2631,12 +2787,7 @@ func (f *Formatter) formatObject(o *ObjectLiteral) {
 			length += len(field.Name.Name) + 2 + f.estimateLength(field.Value)
 		}
 	}
-
-	if !wasMultiline && f.col+length <= maxLineLength {
-		f.formatObjectInline(o)
-	} else {
-		f.formatObjectMultiline(o)
-	}
+	return f.col+length > maxLineLength
 }
 
 func (f *Formatter) formatObjectInline(o *ObjectLiteral) {
