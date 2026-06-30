@@ -820,94 +820,32 @@ func graphQLResultToValue(raw any, typeRef *introspection.TypeRef, expectedType 
 	return ToValue(raw)
 }
 
+// graphQLIntResultToValue and graphQLFloatResultToValue convert a GraphQL
+// number to a Dang value. GraphQL responses are decoded with UseNumber (see
+// querybuilder.unpack), so numbers arrive as json.Number — the same shape the
+// codec path produces — letting both paths share decodedNumberToInt.
 func graphQLIntResultToValue(raw any) (Value, error) {
-	val, err := graphQLNumberToInt(raw)
+	num, ok := raw.(json.Number)
+	if !ok {
+		return nil, fmt.Errorf("expected number for GraphQL Int, got %T", raw)
+	}
+	val, err := decodedNumberToInt(num)
 	if err != nil {
-		return nil, fmt.Errorf("expected integral number for GraphQL Int, got %v", raw)
+		return nil, fmt.Errorf("expected integral number for GraphQL Int, got %q", num.String())
 	}
 	return IntValue{Val: val}, nil
 }
 
-func graphQLNumberToInt(raw any) (int, error) {
-	switch n := raw.(type) {
-	case int:
-		return n, nil
-	case int8:
-		return int(n), nil
-	case int16:
-		return int(n), nil
-	case int32:
-		return int(n), nil
-	case int64:
-		if int64(int(n)) != n {
-			return 0, fmt.Errorf("integer out of range")
-		}
-		return int(n), nil
-	case uint:
-		if uint(int(n)) != n {
-			return 0, fmt.Errorf("integer out of range")
-		}
-		return int(n), nil
-	case uint8:
-		return int(n), nil
-	case uint16:
-		return int(n), nil
-	case uint32:
-		if uint32(int(n)) != n {
-			return 0, fmt.Errorf("integer out of range")
-		}
-		return int(n), nil
-	case uint64:
-		if uint64(int(n)) != n {
-			return 0, fmt.Errorf("integer out of range")
-		}
-		return int(n), nil
-	case float32:
-		return decodedNumberToInt(json.Number(strconv.FormatFloat(float64(n), 'f', -1, 32)))
-	case float64:
-		return decodedNumberToInt(json.Number(strconv.FormatFloat(n, 'f', -1, 64)))
-	case json.Number:
-		return decodedNumberToInt(n)
-	default:
-		return 0, fmt.Errorf("not a number")
-	}
-}
-
 func graphQLFloatResultToValue(raw any) (Value, error) {
-	switch n := raw.(type) {
-	case float64:
-		return FloatValue{Val: n}, nil
-	case float32:
-		return FloatValue{Val: float64(n)}, nil
-	case int:
-		return FloatValue{Val: float64(n)}, nil
-	case int8:
-		return FloatValue{Val: float64(n)}, nil
-	case int16:
-		return FloatValue{Val: float64(n)}, nil
-	case int32:
-		return FloatValue{Val: float64(n)}, nil
-	case int64:
-		return FloatValue{Val: float64(n)}, nil
-	case uint:
-		return FloatValue{Val: float64(n)}, nil
-	case uint8:
-		return FloatValue{Val: float64(n)}, nil
-	case uint16:
-		return FloatValue{Val: float64(n)}, nil
-	case uint32:
-		return FloatValue{Val: float64(n)}, nil
-	case uint64:
-		return FloatValue{Val: float64(n)}, nil
-	case json.Number:
-		val, err := n.Float64()
-		if err != nil {
-			return nil, fmt.Errorf("invalid number %q", n.String())
-		}
-		return FloatValue{Val: val}, nil
-	default:
+	num, ok := raw.(json.Number)
+	if !ok {
 		return nil, fmt.Errorf("expected number for GraphQL Float, got %T", raw)
 	}
+	val, err := num.Float64()
+	if err != nil {
+		return nil, fmt.Errorf("invalid number %q", num.String())
+	}
+	return FloatValue{Val: val}, nil
 }
 
 // Helper function to convert Dang values to Go values for GraphQL
