@@ -860,10 +860,23 @@ func dangValueToGo(val Value) (any, error) {
 		return v.Val, nil
 	case IntValue:
 		return v.Val, nil
+	case FloatValue:
+		return v.Val, nil
 	case BoolValue:
 		return v.Val, nil
 	case NullValue:
 		return nil, nil
+	case MapValue:
+		// Convert map to a Go map (used for input objects / map-shaped scalars)
+		result := make(map[string]any, len(v.Entries))
+		for key, fieldVal := range v.Entries {
+			goVal, err := dangValueToGo(fieldVal)
+			if err != nil {
+				return nil, fmt.Errorf("converting map entry %q: %w", key, err)
+			}
+			result[key] = goVal
+		}
+		return result, nil
 	case ListValue:
 		// Convert list elements to Go slice
 		result := make([]any, len(v.Elements))

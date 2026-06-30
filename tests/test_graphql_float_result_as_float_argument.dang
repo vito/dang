@@ -1,0 +1,9 @@
+import Test
+
+let rating_from_graphql_float = averageRating
+assert { rating_from_graphql_float == 4.5 }
+
+assert { echoFloat(value: rating_from_graphql_float) == 4.5 }
+assert { echoFloat(value: 2.5) == 2.5 }
+
+print("GraphQL Float result can be reused as a Float argument")

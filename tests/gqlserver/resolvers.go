@@ -373,6 +373,16 @@ func (r *queryResolver) SortedUsers(ctx context.Context, sort UserSort) ([]*User
 	return result, nil
 }
 
+// AverageRating is the resolver for the averageRating field.
+func (r *queryResolver) AverageRating(ctx context.Context) (float64, error) {
+	return 4.5, nil
+}
+
+// EchoFloat is the resolver for the echoFloat field.
+func (r *queryResolver) EchoFloat(ctx context.Context, value float64) (float64, error) {
+	return value, nil
+}
+
 // Posts is the resolver for the posts field.
 func (r *userResolver) Posts(ctx context.Context, obj *User, first *int, after *string, last *int, before *string) (*PostConnection, error) {
 	// Get all posts for this user
