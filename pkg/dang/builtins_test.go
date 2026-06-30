@@ -81,6 +81,22 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 		}
 	}
 
+	pathMethods := map[string]bool{}
+	ForEachStaticMethod(PathModule, func(def BuiltinDef) {
+		if !def.IsStatic || def.HostModule != PathModule {
+			t.Fatalf("path static iterator returned wrong builtin: %+v", def)
+		}
+		pathMethods[def.Name] = true
+	})
+	for _, name := range []string{"base", "clean", "contains", "dir", "ext", "isAbs", "join", "match", "rel", "split"} {
+		if !pathMethods[name] {
+			t.Fatalf("Path.%s was not registered", name)
+		}
+		if functionNames[name] {
+			t.Fatalf("Path.%s leaked into top-level functions", name)
+		}
+	}
+
 	randomIndex, uuidIndex := -1, -1
 	for i, module := range StaticModules() {
 		switch module {

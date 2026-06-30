@@ -11,11 +11,11 @@ import (
 )
 
 // The standard library reference is generated straight from the builtin
-// registry in pkg/dang (see stdlib.go, stdlib_random.go, stdlib_regexp.go,
-// assert.go). Each entry's signature comes from the registered parameter,
-// block, and return types; its description comes from the builtin's .Doc(...),
-// and its pre-seeded REPL from the builtin's .Example(...). Editing a builtin
-// updates this page — there is nothing to hand-maintain.
+// registry in pkg/dang (see stdlib*.go and assert.go). Each entry's signature
+// comes from the registered parameter, block, and return types; its description
+// comes from the builtin's .Doc(...), and its pre-seeded REPL from the builtin's
+// .Example(...). Editing a builtin updates this page — there is nothing to
+// hand-maintain.
 //
 // The layout mirrors vito/bass's stdlib page: every definition becomes an
 // anchored card titled by its signature, and a long group is preceded by a
