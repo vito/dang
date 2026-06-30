@@ -269,14 +269,15 @@ pre code{display:block}
 /* A showcase reel. Each slide is a titled \dang-feature — a real \dang-literate
    block, or a live \dang-github-playground. Without JS the slides stack and
    read fine; carousel.js (.is-enhanced) collapses them to one at a time behind
-   a single top bar whose tabs slide so the active one is left-aligned and
-   styled as the slide's header, the rest trailing off to the right. */
+   a single top bar whose tabs slide so the active one is centered and styled
+   as the slide's header, the rest trailing off to both sides and fading into
+   the prev/next arrows at the edges — a flat carousel. */
 .dang-carousel{
   border:1px solid var(--code-border);border-radius:8px;margin:1.5rem 0;
   background:var(--bg2);overflow:hidden;
 }
 /* The single bar: a horizontally-clipped track of feature tabs. carousel.js
-   slides the track so the active tab sits at the left as the header. */
+   slides the track so the active tab sits centered as the header. */
 .dang-carousel-tabs{
   position:relative;overflow:hidden;
   border-bottom:1px solid var(--code-border);background:var(--bg2);
@@ -297,15 +298,22 @@ pre code{display:block}
    its width, but carousel.js measures offsets after toggling so the slide still
    aligns. */
 .dang-carousel-tab.is-active{color:var(--accent2);font-weight:700;opacity:1;cursor:default}
-/* Prev/next arrows pinned to the right of the bar, built by carousel.js. Its
-   left edge is a fade (transparent -> bar bg) so trailing tabs dissolve before
-   they reach the arrows instead of colliding with them; pointer-events:none on
-   the strip lets that fade zone pass clicks through to the tabs beneath, while
-   the buttons re-enable their own. */
+/* Prev/next arrows at the two edges of the bar, built by carousel.js. Each
+   strip's inner edge is a fade (bar bg -> transparent) so the trailing tabs
+   dissolve into the arrows on both sides instead of colliding with them.
+   pointer-events:none lets the fade zones pass clicks through to the tabs
+   beneath, while the buttons re-enable their own. */
 .dang-carousel-nav{
-  position:absolute;top:0;right:0;bottom:0;display:flex;align-items:center;gap:.1rem;
-  padding:0 .5rem 0 2.5rem;pointer-events:none;
-  background:linear-gradient(to right, transparent, var(--bg2) 2rem);
+  position:absolute;top:0;bottom:0;display:flex;align-items:center;
+  pointer-events:none;z-index:1;
+}
+.dang-carousel-nav-left{
+  left:0;justify-content:flex-start;padding:0 2rem 0 .35rem;
+  background:linear-gradient(to right, var(--bg2) 1.5rem, transparent);
+}
+.dang-carousel-nav-right{
+  right:0;justify-content:flex-end;padding:0 .35rem 0 2rem;
+  background:linear-gradient(to left, var(--bg2) 1.5rem, transparent);
 }
 .dang-carousel-arrow{
   pointer-events:auto;cursor:pointer;
