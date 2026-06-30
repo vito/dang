@@ -2,6 +2,7 @@ package dang
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -128,6 +129,20 @@ func ToValue(v any) (Value, error) {
 		return FloatValue{Val: float64(val)}, nil
 	case float64:
 		return FloatValue{Val: val}, nil
+
+	case json.Number:
+		// Untyped fallback (no declared type to honor): keep the JSON author's
+		// intent — a bare integer literal becomes an Int, anything fractional a
+		// Float. Typed GraphQL/codec leaves never reach here; they convert
+		// against their declared type.
+		if i, err := val.Int64(); err == nil && int64(int(i)) == i {
+			return IntValue{Val: int(i)}, nil
+		}
+		f, err := val.Float64()
+		if err != nil {
+			return nil, fmt.Errorf("cannot convert number %q to a Dang Value", val.String())
+		}
+		return FloatValue{Val: f}, nil
 
 	case bool:
 		return BoolValue{Val: val}, nil

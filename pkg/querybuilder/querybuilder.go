@@ -1,6 +1,7 @@
 package querybuilder
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,16 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"golang.org/x/sync/errgroup"
 )
+
+// decodeJSON unmarshals JSON into v with UseNumber, so numbers landing in an
+// interface{} are preserved as json.Number rather than collapsed to float64.
+// This keeps integers exact through the decode and lets the value layer decide
+// Int vs Float from the declared GraphQL type instead of the value's shape.
+func decodeJSON(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	return dec.Decode(v)
+}
 
 // QueryBuilder represents a GraphQL query builder using a chain-based approach
 type QueryBuilder struct {
@@ -336,7 +347,7 @@ func (q *QueryBuilder) unpack(data any) error {
 				if err != nil {
 					return err
 				}
-				if err := json.Unmarshal(marshalled, i.bind); err != nil {
+				if err := decodeJSON(marshalled, i.bind); err != nil {
 					return err
 				}
 			}
@@ -358,7 +369,7 @@ func (q *QueryBuilder) unpack(data any) error {
 				if err != nil {
 					return err
 				}
-				if err := json.Unmarshal(marshalled, i.bind); err != nil {
+				if err := decodeJSON(marshalled, i.bind); err != nil {
 					return err
 				}
 			}
@@ -376,7 +387,7 @@ func (q *QueryBuilder) unpack(data any) error {
 			if err != nil {
 				return err
 			}
-			if err := json.Unmarshal(marshalled, i.bind); err != nil {
+			if err := decodeJSON(marshalled, i.bind); err != nil {
 				return err
 			}
 		}
@@ -406,16 +417,26 @@ func (q *QueryBuilder) Execute(ctx context.Context) error {
 	payload := opType + " " + opName + " " + query
 	slog.DebugContext(ctx, "executing GraphQL request", "query", payload)
 
-	var response any
+	// Capture the raw "data" bytes and decode them ourselves with UseNumber,
+	// rather than letting the client decode into interface{} (which would
+	// collapse every number to float64 before we can honor the declared type).
+	var rawData json.RawMessage
 	err = q.client.MakeRequest(ctx,
 		&graphql.Request{
 			Query:  payload,
 			OpName: opName,
 		},
-		&graphql.Response{Data: &response},
+		&graphql.Response{Data: &rawData},
 	)
 	if err != nil {
 		return err
+	}
+
+	var response any
+	if len(rawData) > 0 {
+		if err := decodeJSON(rawData, &response); err != nil {
+			return err
+		}
 	}
 
 	return q.unpack(response)
