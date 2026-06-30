@@ -10,6 +10,14 @@
 (function () {
   "use strict";
 
+  // Guard against double-initialization. This script injects a body-level
+  // overlay and a document-wide keydown listener, so running it twice stacks
+  // two independent search palettes — each opening on Ctrl+K and each needing
+  // its own backdrop click to dismiss. Be idempotent no matter how the script
+  // ends up evaluated more than once.
+  if (window.__dangSearchInit) return;
+  window.__dangSearchInit = true;
+
   var INDEX_URL = "search_index.json";
 
   // ---- styles ------------------------------------------------------------
@@ -40,10 +48,15 @@
     "}",
     ".dang-search-box input {",
     "  width: 100%; padding: .9rem 1rem; background: transparent; border: none;",
-    "  border-bottom: 1px solid var(--code-border); color: var(--fg);",
-    "  font: inherit; font-size: 1rem; outline: none;",
+    "  color: var(--fg); font: inherit; font-size: 1rem; outline: none;",
     "}",
-    ".dang-search-results { list-style: none; margin: 0; padding: .35rem; overflow-y: auto; }",
+    // The divider lives on the results list, not the input, so it only shows
+    // when there is something below it.
+    ".dang-search-results { list-style: none; margin: 0; padding: .35rem; overflow-y: auto;",
+    "  border-top: 1px solid var(--code-border); }",
+    // Just opened or query cleared: no list, so no border and no empty sliver
+    // under the input.
+    ".dang-search-results:empty { display: none; }",
     ".dang-search-results li { margin: 0; }",
     ".dang-search-results a {",
     "  display: block; padding: .5rem .65rem; border-radius: 6px; color: var(--fg);",
