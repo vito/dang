@@ -269,6 +269,15 @@ func literateFailEval(source string, sess *literateSession) (string, string, err
 // two must stay in lockstep so enhancing a page client-side doesn't change
 // what the reader already saw.
 func literateEval(source string, sess *literateSession) (string, string, error) {
+	return literateEvalCtx(context.Background(), source, sess)
+}
+
+// literateEvalCtx is literateEval with an explicit base context, so callers can
+// thread GraphQL import configs (dang.ContextWithImportConfigs) through both
+// inference and evaluation — e.g. carousel feature slides that `import` a
+// bundled in-process schema. The base context backs both phases so the import's
+// schema-module identity is shared between them.
+func literateEvalCtx(base context.Context, source string, sess *literateSession) (string, string, error) {
 	parsed, err := dang.ParseWithRecovery("literate", []byte(source))
 	if err != nil {
 		return "", "", err
@@ -280,12 +289,12 @@ func literateEval(source string, sess *literateSession) (string, string, error) 
 	forms := file.Forms
 
 	fresh := hm.NewSimpleFresher()
-	if _, err := dang.InferFormsWithPhases(context.Background(), forms, sess.typeScope, fresh); err != nil {
+	if _, err := dang.InferFormsWithPhases(base, forms, sess.typeScope, fresh); err != nil {
 		return "", "", err
 	}
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx := ioctx.StdoutToContext(base, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	var last dang.Node

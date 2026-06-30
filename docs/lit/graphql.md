@@ -8,12 +8,12 @@
 > it.
 
 Schema-as-stdlib: import a GraphQL schema and its types and root functions
-become part of the language. This part covers querying, a live playground
-against GitHub's real API, wiring up endpoints, and the directive system.
+become part of the language. This part covers querying, wiring up endpoints, and
+the directive system. (The live GitHub playground now rides along in the feature
+carousel on the landing page.)
 
 \table-of-contents
 
 \include-section{./graphql/interop.md}
-\include-section{./graphql/github-playground.md}
 \include-section{./graphql/modules.md}
 \include-section{./graphql/directives.md}

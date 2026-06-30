@@ -8,7 +8,12 @@ require (
 	github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73
 )
 
-require github.com/alecthomas/chroma/v2 v2.23.1 // indirect
+require (
+	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+)
 
 require (
 	github.com/99designs/gqlgen v0.17.81 // indirect

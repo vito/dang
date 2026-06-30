@@ -1,4 +1,7 @@
 <div class="dang-carousel-slide" data-dang-carousel-slide data-dang-literate-chain>
 <div class="dang-carousel-title">{{.Partial "Title" | render}}</div>
 {{.Content | render}}
+{{- with .Partial "Notes"}}
+<div class="dang-carousel-notes">{{. | render}}</div>
+{{- end}}
 </div>

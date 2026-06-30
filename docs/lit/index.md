@@ -16,26 +16,62 @@ functions are loaded directly from the schema.
 \shell{go install github.com/vito/dang/v2/cmd/dang@latest}
 
 \dang-carousel{
-\dang-feature{Prototype objects}{{{
-# `type` declares a type AND its constructor in one go
-type User {
+\dang-feature{Hello, world}{{{
+type Greeter {
   name: String!
-  greeting: String! { `Hi, I'm ${name}` }
+  greet: String! { `Hello, ${name}!` }
 }
 
-User("Ada").greeting
+["world", "Dang", "you"].map { who => Greeter(who).greet }
 }}}
 }{
-\dang-feature{Multi-field selection}{{{
-type Repo {
-  name: String!
-  stars: Int! { 1000 }
-}
+\dang-feature{Schema-native types}{{{
+# Dang's types and root fields come straight from a GraphQL schema:
+import Demo
 
-# select many fields at once; against a GraphQL schema this is
-# ONE query whose fields resolve in parallel
-[Repo("dang"), Repo("booklit")].{{ name, stars }}.map { r => `${r.name} ★${r.stars}` }
+# every schema type and Query field is now part of the language —
+# select fields and map over the result
+users.{{ name, status }}.map { u => `${u.name}: ${u.status}` }
+}}}{
+`Demo` is a small schema bundled into this page and resolved in-process — [see its SDL](https://github.com/vito/dang/blob/main/tests/gqlserver/schema.graphqls).
+}
+}{
+\dang-feature{One query, in parallel}{{{
+import Demo
+
+# .{{ }} selects fields across the graph and compiles to a SINGLE
+# GraphQL request whose fields are resolved in parallel
+posts.{{ title, author.{{ name }} }}.map { p => `${p.title} — ${p.author.name}` }
 }}}
+}{
+\dang-feature{Arguments & nullability}{{{
+import Demo
+
+# root fields take the schema's arguments; results carry its
+# nullability — name is String!, age is Int (may be null)
+let u = user("1")
+`${u.name} is ${u.age} (${u.status})`
+}}}
+}{
+\dang-github-feature{import GitHub}{{{
+import GitHub
+
+# the same idea against a real schema: `viewer` is GitHub's
+# authenticated user, and this is one query
+viewer.{{
+  login
+  name
+  repositories(first: 3).{{ nodes.{{ name, stargazerCount }} }}
+}}
+}}}{
+Sign in above, then **Run** — introspection and queries go straight to `api.github.com` from your browser, and the token stays in this tab. In a project you'd wire it up in `dang.toml`:
+
+```toml
+[imports.GitHub]
+endpoint = "https://api.github.com/graphql"
+authorization = "Bearer ${GITHUB_TOKEN}"
+```
+}
 }{
 \dang-feature{Copy-on-write}{{{
 type Counter {
@@ -46,25 +82,6 @@ type Counter {
 let c = Counter(0)
 # values are immutable — methods fork the receiver, so c never changes
 [c.bump.bump.n, c.n]
-}}}
-}{
-\dang-feature{Null tracking}{{{
-# String may be null; String! cannot — the type system tracks the gap
-let name: String = "Dang"
-
-# inside the guard, name narrows from String to String!
-if (name != null) { name.toUpper } else { "(none)" }
-}}}
-}{
-\dang-feature{Optional parens}{{{
-type Circle {
-  r: Float!
-  area: Float! { 3.14159 * r * r }
-}
-
-let c = Circle(2.0)
-# r is stored, area is computed — but they're accessed identically
-[c.r, c.area]
 }}}
 }{
 \dang-feature{Everything is an expression}{{{
@@ -78,23 +95,7 @@ classify(n: Int!): String! {
 
 [classify(0), classify(7), classify(-3)]
 }}}
-}{
-\dang-feature{Testing built in}{{{
-# assert is a builtin — high-level testing, no framework
-assert { [1, 2, 3].map { x => x * 2 } == [2, 4, 6] }
-"tests pass"
-}}}
 }
-
-\dang-playground{{{
-# Edit me, then hit Run — this evaluates in your browser.
-type Greeter {
-  name: String!
-  greet: String! { `Hello, ${name}!` }
-}
-
-["world", "Dang", "you"].map { who => Greeter(who).greet }
-}}}
 
 > **NOTE FROM A HUMAN:** this is an AI-assisted draft, for now just
 > establishing the concepts, framing, and facts. Everything here is correct and

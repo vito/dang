@@ -292,14 +292,10 @@
     var isGitHub = container.hasAttribute("data-dang-github");
     container.innerHTML = "";
 
-    // Toolbar.
-    var bar = document.createElement("div");
-    bar.className = "dang-playground-bar";
-    var label = document.createElement("span");
-    label.className = "dang-playground-label";
-    label.textContent = "Dang · runs in your browser";
-    var spacer = document.createElement("span");
-    spacer.style.flex = "1";
+    // Inline controls in the block's corner, matching the literate blocks
+    // (hover-revealed; always shown on touch) — no persistent toolbar or label.
+    var controls = document.createElement("div");
+    controls.className = "dang-literate-controls";
     // GitHub auth control (only on data-dang-github blocks). updateAuth()
     // reflects the current sign-in state; it's re-run after sign-in/out.
     var authBtn = null;
@@ -335,11 +331,9 @@
     runBtn.className = "dang-playground-btn dang-playground-run";
     runBtn.type = "button";
     runBtn.textContent = "Run ▶";
-    bar.appendChild(label);
-    bar.appendChild(spacer);
-    if (authBtn) bar.appendChild(authBtn);
-    bar.appendChild(resetBtn);
-    bar.appendChild(runBtn);
+    if (authBtn) controls.appendChild(authBtn);
+    controls.appendChild(resetBtn);
+    controls.appendChild(runBtn);
 
     // Editor: a transparent textarea layered over a highlighted <pre>. Both
     // share identical metrics so the caret lines up with the colored text.
@@ -369,9 +363,9 @@
     output.className = "dang-playground-output is-empty";
     output.textContent = "";
 
-    container.appendChild(bar);
     container.appendChild(editorWrap);
     container.appendChild(output);
+    container.appendChild(controls);
 
     function rehighlight() {
       highlight.innerHTML = highlightHtml(editor.value);
@@ -941,15 +935,33 @@
       editorWrap.appendChild(editor);
       container.replaceChild(editorWrap, fallback);
 
+      // Snapshot the build-time baked output so Reset can restore it verbatim.
+      var bakedOutHtml = out.innerHTML;
+      var bakedOutClass = out.className;
+
       var controls = document.createElement("div");
       controls.className = "dang-literate-controls";
+      var resetBtn = document.createElement("button");
+      resetBtn.className = "dang-playground-btn";
+      resetBtn.type = "button";
+      resetBtn.textContent = "Reset";
+      resetBtn.title = "Restore the original snippet and its output";
       var runBtn = document.createElement("button");
       runBtn.className = "dang-playground-btn dang-playground-run";
       runBtn.type = "button";
       runBtn.textContent = "Run ▶";
-      runBtn.title = "Replay every block on this page in one shared environment";
+      runBtn.title = "Run this snippet";
+      controls.appendChild(resetBtn);
       controls.appendChild(runBtn);
       container.appendChild(controls);
+
+      resetBtn.addEventListener("click", function () {
+        editor.value = source;
+        rehighlight();
+        autosize();
+        out.innerHTML = bakedOutHtml;
+        out.className = bakedOutClass;
+      });
 
       var entry = {
         editor: editor,
