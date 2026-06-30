@@ -10,6 +10,14 @@
 (function () {
   "use strict";
 
+  // Guard against double-initialization. This script injects a body-level
+  // overlay and a document-wide keydown listener, so running it twice stacks
+  // two independent search palettes — each opening on Ctrl+K and each needing
+  // its own backdrop click to dismiss. Be idempotent no matter how the script
+  // ends up evaluated more than once.
+  if (window.__dangSearchInit) return;
+  window.__dangSearchInit = true;
+
   var INDEX_URL = "search_index.json";
 
   // ---- styles ------------------------------------------------------------
