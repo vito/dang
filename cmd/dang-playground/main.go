@@ -70,6 +70,7 @@ import (
 	"github.com/vito/dang/v2/pkg/hm"
 	"github.com/vito/dang/v2/pkg/introspection"
 	"github.com/vito/dang/v2/pkg/ioctx"
+	"github.com/vito/dang/v2/tests/gqlserver"
 )
 
 // githubEndpoint is GitHub's GraphQL API. Queries and introspection both go here
@@ -106,6 +107,41 @@ func result(value, output, errMsg, stage string) map[string]any {
 		"error":  errMsg,
 		"stage":  stage,
 	}
+}
+
+// The bundled "Demo" import: a small GraphQL schema with canned resolvers run
+// entirely in-process (tests/gqlserver), so `import Demo` resolves with no
+// network — the offline counterpart to the live `import GitHub`. Built once and
+// reused for the module's lifetime.
+var (
+	demoOnce sync.Once
+	demoCfg  dang.ImportConfig
+	demoErr  error
+)
+
+func demoImport() (dang.ImportConfig, error) {
+	demoOnce.Do(func() {
+		demoCfg, demoErr = gqlserver.ImportConfig("Demo")
+	})
+	return demoCfg, demoErr
+}
+
+// withDemo adds the bundled Demo import to ctx so `import Demo` resolves in any
+// eval path. Best-effort: if its schema failed to build, the import is simply
+// absent and `import Demo` reports an ordinary "not found" error.
+//
+// ContextWithImportConfigs replaces the configs on the context rather than
+// appending, so callers with other imports (e.g. GitHub) must pass them
+// alongside the Demo config in extra.
+func withDemo(ctx context.Context, extra ...dang.ImportConfig) context.Context {
+	cfgs := extra
+	if cfg, err := demoImport(); err == nil {
+		cfgs = append(cfgs, cfg)
+	}
+	if len(cfgs) == 0 {
+		return ctx
+	}
+	return dang.ContextWithImportConfigs(ctx, cfgs...)
 }
 
 // dangEval is the JS-facing entry point: dangEval(source, token) -> Promise of
@@ -162,13 +198,18 @@ func evalSource(source, token string) map[string]any {
 	// library is in scope. The same context backs both inference and
 	// evaluation so the import's schema-module identity is shared between them.
 	baseCtx := context.Background()
+	var extra []dang.ImportConfig
 	if token != "" {
 		cfg, err := githubImport(baseCtx, token)
 		if err != nil {
 			return result("", "", err.Error(), "auth")
 		}
-		baseCtx = dang.ContextWithImportConfigs(baseCtx, cfg)
+		extra = append(extra, cfg)
 	}
+	// The bundled Demo import is always available (no token needed); GitHub is
+	// added alongside it when a token is present (a single call, since
+	// ContextWithImportConfigs replaces rather than appends).
+	baseCtx = withDemo(baseCtx, extra...)
 
 	// Fresh standard-library scopes per run, so re-running a snippet is
 	// idempotent and never leaks state between evaluations.
@@ -293,7 +334,7 @@ func dangReplEval(_ js.Value, args []js.Value) any {
 	fresh := hm.NewSimpleFresher()
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	value, _, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
@@ -318,7 +359,7 @@ func dangLiterateEval(_ js.Value, args []js.Value) any {
 	fresh := hm.NewSimpleFresher()
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	value, lastIsDecl, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
@@ -356,7 +397,7 @@ func dangLiterateFailEval(_ js.Value, args []js.Value) any {
 	fresh := hm.NewSimpleFresher()
 
 	var out bytes.Buffer
-	ctx := ioctx.StdoutToContext(context.Background(), &out)
+	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
 	value, lastIsDecl, err, stage := evalForms(ctx, source, typeScope, valueScope, fresh)

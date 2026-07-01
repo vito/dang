@@ -336,7 +336,7 @@ func init() {
 
 	// Install Error interface with message field
 	Prelude.AddObject("Error", ErrorType)
-	ErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	ErrorType.Add("message", hm.NewScheme(nil, hm.NewFnType(NewRecordType(""), hm.NonNullType{Type: StringType})))
 	ErrorType.SetVisibility("message", PublicVisibility)
 
 	// Install BasicError — the concrete type behind raise "msg"

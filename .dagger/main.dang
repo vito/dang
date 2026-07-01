@@ -48,6 +48,52 @@ type Dang {
   }
 
   """
+  Build the tree-sitter grammar wasms — the Dang grammar plus the embedded
+  toml/yaml/ruby/bash/go grammars used to highlight injected code blocks — and
+  upload them to the R2 bucket the docs build fetches them from. Run this after
+  changing the grammar or bumping a grammar dependency.
+
+  The wasms are deliberately not committed: the Cloudflare Pages build image
+  can't run the tree-sitter CLI to build them (its prebuilt binaries need a
+  newer glibc), so this is where they're produced and where they come from.
+  """
+  publishGrammars(
+    """
+    Cloudflare API token with R2 read/write on the bucket.
+    """
+    apiToken: Secret!,
+    """
+    R2 bucket the grammar wasms are uploaded to.
+    """
+    bucket: String! = "dang-docs-assets",
+    """
+    Cloudflare account ID that owns the bucket.
+    """
+    accountId: String! = "3f0bfdb3be67e29173fa82412c7afd07",
+  ): Void {
+    base
+      .withWorkdir("/src/docs")
+      .withExec(["bash", "./build-highlight-assets.sh", "--grammar-only"])
+      .withExec(["npm", "install", "-g", "wrangler"])
+      .withEnvVariable("R2_BUCKET", bucket)
+      .withEnvVariable("CLOUDFLARE_ACCOUNT_ID", accountId)
+      .withSecretVariable(name: "CLOUDFLARE_API_TOKEN", secret: apiToken)
+      .withExec([
+        "bash", "-c",
+        """
+        set -euo pipefail
+        for f in js/tree-sitter-*.wasm; do
+          echo "==> uploading $f"
+          wrangler r2 object put "$R2_BUCKET/grammars/$(basename "$f")" --file="$f" --remote
+        done
+        """,
+      ])
+      .sync
+
+    null
+  }
+
+  """
   Runs all code generation procedures, e.g. go generate, tree-sitter generate.
   """
   @generate

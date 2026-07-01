@@ -14,8 +14,11 @@ import (
 	"unsafe"
 
 	tree_sitter_toml "github.com/tree-sitter-grammars/tree-sitter-toml/bindings/go"
+	tree_sitter_yaml "github.com/tree-sitter-grammars/tree-sitter-yaml/bindings/go"
 	tree_sitter "github.com/tree-sitter/go-tree-sitter"
 	tree_sitter_bash "github.com/tree-sitter/tree-sitter-bash/bindings/go"
+	tree_sitter_go "github.com/tree-sitter/tree-sitter-go/bindings/go"
+	tree_sitter_ruby "github.com/tree-sitter/tree-sitter-ruby/bindings/go"
 	"github.com/vito/dang/v2/pkg/dang/danglang"
 )
 
@@ -32,6 +35,15 @@ var bashHighlightsQuery string
 //go:embed queries/toml.scm
 var tomlHighlightsQuery string
 
+//go:embed queries/go.scm
+var goHighlightsQuery string
+
+//go:embed queries/ruby.scm
+var rubyHighlightsQuery string
+
+//go:embed queries/yaml.scm
+var yamlHighlightsQuery string
+
 // highlighter pairs a tree-sitter grammar with its compiled highlight query.
 type highlighter struct {
 	language  func() *tree_sitter.Language
@@ -42,10 +54,19 @@ type highlighter struct {
 	// fragments only parse inside an interface body).
 	wrapPrefix, wrapSuffix string
 
-	once     sync.Once
-	query    *tree_sitter.Query
-	captures []string
-	loadErr  error
+	// loadInjections, when set (Dang only), is the injection query source: it
+	// captures @injection.language + @injection.content on language-tagged
+	// multi-line templates (```toml … ```) so their bodies are re-highlighted
+	// with that language's grammar. Best-effort — a missing or bad query just
+	// leaves the templates highlighted as plain Dang strings.
+	loadInjections func() (string, error)
+
+	once           sync.Once
+	query          *tree_sitter.Query
+	captures       []string
+	injections     *tree_sitter.Query
+	injectionNames []string
+	loadErr        error
 }
 
 // signaturePrefix wraps declaration fragments for parsing. Bare field
@@ -58,10 +79,11 @@ const (
 
 var highlighters = map[string]*highlighter{
 	"dang": {
-		language:   danglang.Language,
-		loadQuery:  loadDangHighlightQuery,
-		wrapPrefix: signaturePrefix,
-		wrapSuffix: signatureSuffix,
+		language:       danglang.Language,
+		loadQuery:      loadDangHighlightQuery,
+		loadInjections: loadDangInjectionQuery,
+		wrapPrefix:     signaturePrefix,
+		wrapSuffix:     signatureSuffix,
 	},
 	"bash": {
 		language:  rawLanguage(tree_sitter_bash.Language),
@@ -71,16 +93,37 @@ var highlighters = map[string]*highlighter{
 		language:  rawLanguage(tree_sitter_toml.Language),
 		loadQuery: staticQuery(tomlHighlightsQuery),
 	},
+	"go": {
+		language:  rawLanguage(tree_sitter_go.Language),
+		loadQuery: staticQuery(goHighlightsQuery),
+		// A bare Go snippet (no `package`) parses as an error soup where
+		// keywords degrade to identifiers; retry inside a synthetic package so
+		// injected ```go blocks highlight like real Go.
+		wrapPrefix: "package p\n",
+	},
+	"ruby": {
+		language:  rawLanguage(tree_sitter_ruby.Language),
+		loadQuery: staticQuery(rubyHighlightsQuery),
+	},
+	"yaml": {
+		language:  rawLanguage(tree_sitter_yaml.Language),
+		loadQuery: staticQuery(yamlHighlightsQuery),
+	},
 }
 
-// languageAliases maps fence language tags onto registered highlighters.
-// Unlisted languages render as plain code.
+// languageAliases maps fence language tags (and injected-string language tags)
+// onto registered highlighters. Unlisted languages render as plain code.
 var languageAliases = map[string]string{
 	"dang":  "dang",
 	"bash":  "bash",
 	"sh":    "bash",
 	"shell": "bash",
 	"toml":  "toml",
+	"go":    "go",
+	"ruby":  "ruby",
+	"rb":    "ruby",
+	"yaml":  "yaml",
+	"yml":   "yaml",
 }
 
 // rawLanguage adapts the unsafe.Pointer constructor the upstream grammar
@@ -118,6 +161,104 @@ func loadDangHighlightQuery() (string, error) {
 	return "", fmt.Errorf("highlights.scm not found (tried %s)", strings.Join(candidates, ", "))
 }
 
+// loadDangInjectionQuery finds injections.scm the same way
+// loadDangHighlightQuery finds highlights.scm — the in-repo copy (a symlink
+// into editors/zed) when checked out, otherwise the copy build-highlight-
+// assets.sh fetched into docs/js/. DANG_INJECTION_QUERY overrides both.
+func loadDangInjectionQuery() (string, error) {
+	var candidates []string
+	if p := os.Getenv("DANG_INJECTION_QUERY"); p != "" {
+		candidates = append(candidates, p)
+	}
+	if _, src, _, ok := runtime.Caller(0); ok {
+		root := filepath.Dir(filepath.Dir(filepath.Dir(src)))
+		candidates = append(candidates,
+			filepath.Join(root, "treesitter", "queries", "injections.scm"),
+			filepath.Join(root, "docs", "js", "dang-injections.scm"),
+		)
+	}
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return string(data), nil
+		}
+	}
+	return "", fmt.Errorf("injections.scm not found (tried %s)", strings.Join(candidates, ", "))
+}
+
+// applyInjections overwrites, in place, the class of every byte inside a
+// language-tagged multi-line template (```toml … ```) with that language's
+// own highlighting. It runs the injection query, and for each match whose
+// @injection.language names a registered grammar, re-classifies each
+// @injection.content region and copies the result over the region — which the
+// base pass had colored as one Dang string. Interpolation regions (${…}) are
+// not captured as content, so they stay Dang.
+func (l *highlighter) applyInjections(source string, classes []string) {
+	src := []byte(source)
+
+	parser := tree_sitter.NewParser()
+	defer parser.Close()
+	if err := parser.SetLanguage(l.language()); err != nil {
+		return
+	}
+	tree := parser.Parse(src, nil)
+	if tree == nil {
+		return
+	}
+	defer tree.Close()
+
+	cursor := tree_sitter.NewQueryCursor()
+	defer cursor.Close()
+	matches := cursor.Matches(l.injections, tree.RootNode(), src)
+	for {
+		match := matches.Next()
+		if match == nil {
+			break
+		}
+
+		var lang string
+		var ranges, segments [][2]int
+		for _, c := range match.Captures {
+			switch l.injectionNames[c.Index] {
+			case "injection.language":
+				lang = c.Node.Utf8Text(src)
+			case "injection.content":
+				ranges = append(ranges, [2]int{int(c.Node.StartByte()), int(c.Node.EndByte())})
+			}
+		}
+		if lang == "" {
+			continue
+		}
+		if _, ok := languageAliases[strings.ToLower(lang)]; !ok {
+			continue // no grammar for this tag; leave it as a Dang string
+		}
+
+		// The query captures content as many tiny parts (one per grammar token)
+		// and omits ${…} interpolation. Merge contiguous parts into segments, so
+		// each embedded run is parsed and highlighted as a whole rather than a
+		// char at a time; the interpolation gaps between segments stay Dang.
+		sort.Slice(ranges, func(i, j int) bool { return ranges[i][0] < ranges[j][0] })
+		for _, r := range ranges {
+			if n := len(segments); n > 0 && segments[n-1][1] == r[0] {
+				segments[n-1][1] = r[1]
+			} else {
+				segments = append(segments, r)
+			}
+		}
+		for _, s := range segments {
+			start, end := s[0], s[1]
+			if start < 0 || end > len(classes) || start >= end {
+				continue
+			}
+			embedded := classifyCode(lang, source[start:end])
+			if embedded == nil {
+				continue
+			}
+			copy(classes[start:end], embedded)
+		}
+	}
+}
+
 func (l *highlighter) compile() {
 	source, err := l.loadQuery()
 	if err != nil {
@@ -131,6 +272,18 @@ func (l *highlighter) compile() {
 	}
 	l.query = query
 	l.captures = query.CaptureNames()
+
+	// Compile the injection query too, when this grammar has one. Best-effort:
+	// a missing or unparseable query just skips injections, so a language-tagged
+	// template stays highlighted as a plain Dang string.
+	if l.loadInjections != nil {
+		if src, ierr := l.loadInjections(); ierr == nil {
+			if iq, iqerr := tree_sitter.NewQuery(l.language(), src); iqerr == nil {
+				l.injections = iq
+				l.injectionNames = iq.CaptureNames()
+			}
+		}
+	}
 }
 
 // classifyCode returns the token CSS class for each byte of source (empty for
@@ -146,12 +299,21 @@ func classifyCode(language, source string) []string {
 	if l.loadErr != nil {
 		return nil
 	}
+	var classes []string
 	if name == "bash" {
-		if classes, ok := classifyTranscript(l, source); ok {
-			return classes
+		if c, ok := classifyTranscript(l, source); ok {
+			classes = c
 		}
 	}
-	return l.classify(source)
+	if classes == nil {
+		classes = l.classify(source)
+	}
+	// Re-highlight any embedded language-tagged templates (```toml … ```) with
+	// their own grammar. Only Dang carries an injection query.
+	if l.injections != nil {
+		l.applyInjections(source, classes)
+	}
+	return classes
 }
 
 // classifyTranscript handles ```sh fences that are terminal transcripts

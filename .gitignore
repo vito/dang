@@ -14,7 +14,22 @@ CLAUDE.local.md
 /docs/js/tree-sitter.js
 /docs/js/tree-sitter.wasm
 /docs/js/dang-highlights.scm
-# tree-sitter-dang.wasm (the compiled grammar) is committed: the Cloudflare
-# build image can't run the tree-sitter CLI to regenerate it. See
-# docs/build-highlight-assets.sh.
+/docs/js/dang-injections.scm
+# embedded-language highlight queries, copied from docs/go/queries for the
+# browser (build-highlight-assets.sh).
+/docs/js/bash-highlights.scm
+/docs/js/toml-highlights.scm
+/docs/js/go-highlights.scm
+/docs/js/ruby-highlights.scm
+/docs/js/yaml-highlights.scm
+# Grammar wasms: built by build-highlight-assets.sh --grammar-only (which needs
+# the tree-sitter CLI), published to R2 by the publishGrammars Dagger function,
+# and fetched at build time (--runtime-only). Not committed — the Cloudflare
+# build image can't run the CLI to build them.
+/docs/js/tree-sitter-dang.wasm
+/docs/js/tree-sitter-toml.wasm
+/docs/js/tree-sitter-yaml.wasm
+/docs/js/tree-sitter-ruby.wasm
+/docs/js/tree-sitter-bash.wasm
+/docs/js/tree-sitter-go.wasm
 .dev.vars

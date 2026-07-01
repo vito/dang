@@ -4,11 +4,19 @@ go 1.25.3
 
 require (
 	github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0
+	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2
 	github.com/tree-sitter/tree-sitter-bash v0.25.1
+	github.com/tree-sitter/tree-sitter-go v0.25.0
+	github.com/tree-sitter/tree-sitter-ruby v0.23.1
 	github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73
 )
 
-require github.com/alecthomas/chroma/v2 v2.23.1 // indirect
+require (
+	github.com/alecthomas/chroma/v2 v2.23.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+)
 
 require (
 	github.com/99designs/gqlgen v0.17.81 // indirect

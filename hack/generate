@@ -8,8 +8,8 @@ pushd treesitter
   go generate ./...
 popd
 
-# The docs playground ships the grammar compiled to wasm; regenerate it from
-# the freshly generated parser so it tracks grammar changes.
-pushd docs
-  ./build-highlight-assets.sh --grammar-only
-popd
+# The docs playground ships the grammar compiled to wasm, but building it needs
+# the tree-sitter CLI and it's large, so it isn't built here (nor committed):
+# the publishGrammars Dagger function builds it and uploads it to R2, and the
+# docs build fetches it back. Run `docs/build-highlight-assets.sh --grammar-only`
+# by hand to preview a local grammar change before publishing.

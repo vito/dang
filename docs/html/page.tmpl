@@ -25,6 +25,9 @@
   --green:var(--base0B);--cyan:var(--base0C);--pink:var(--base08);--orange:var(--base09);--yellow:var(--base0A);
   --code-bg:var(--base00);--code-border:var(--base02);
   --td-border:var(--base01);
+  /* Snug leading for monospace blocks: keeps per-line output backgrounds
+     touching (no gap between highlighted lines) while staying legible. */
+  --code-line-height:1.3;
 }
 html{font-size:16px}
 body{background:var(--bg);color:var(--fg);font-family:'Inter',system-ui,sans-serif;line-height:1.6;margin:0;display:flex;min-height:100vh}
@@ -119,7 +122,7 @@ blockquote strong, .inset strong{color:var(--accent2)}
 
 pre{
   background:var(--code-bg);color:var(--base05);border:1px solid var(--code-border);border-radius:6px;
-  padding:1rem 1.25rem;font-size:.8rem;line-height:1.65;overflow-x:auto;margin:.75rem 0;
+  padding:1rem 1.25rem;font-size:.8rem;line-height:var(--code-line-height);overflow-x:auto;margin:.75rem 0;
 }
 pre code{display:block}
 
@@ -128,11 +131,6 @@ pre code{display:block}
   background:var(--code-bg);border:1px solid var(--code-border);border-radius:6px;
   margin:1rem 0;overflow:hidden;
 }
-.dang-playground-bar{
-  display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem .45rem .9rem;
-  background:var(--bg2);border-bottom:1px solid var(--code-border);
-}
-.dang-playground-label{font-size:.72rem;color:var(--fg2);letter-spacing:.02em}
 .dang-playground-btn{
   font-family:'Inter',system-ui,sans-serif;font-size:.74rem;font-weight:500;cursor:pointer;
   border:1px solid var(--code-border);background:var(--bg3);color:var(--fg);
@@ -150,7 +148,7 @@ pre code{display:block}
 .dang-playground-highlight,
 .dang-playground-input{
   margin:0;border:0;box-sizing:border-box;
-  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:var(--code-line-height);
   padding:1rem 1.25rem;tab-size:2;
   white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
 }
@@ -167,7 +165,7 @@ pre code{display:block}
    so the playground and REPL stay in lockstep with the rest of the site. */
 .dang-playground-output{
   border-top:1px solid var(--code-border);padding:.7rem 1.25rem;
-  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:var(--code-line-height);
   color:var(--fg);white-space:pre-wrap;word-break:break-word;
 }
 .dang-playground-output.is-empty{display:none}
@@ -176,7 +174,7 @@ pre code{display:block}
 .dang-playground-error{color:var(--pink);white-space:pre-wrap}
 .dang-playground-fallback{
   background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
-  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+  font-size:.8rem;line-height:var(--code-line-height);padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
 }
 
 /* ── interactive REPL ────────────────────────────────────────────────── */
@@ -199,17 +197,17 @@ pre code{display:block}
 .dang-repl-code{padding-bottom:.2rem}
 .dang-repl-prompt{
   flex-shrink:0;user-select:none;color:var(--accent);
-  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:var(--code-line-height);
 }
 .dang-repl-codehl{
   flex:1;margin:0;padding:0;border:0;background:transparent;color:var(--base05);
-  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:var(--code-line-height);
   white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
 }
 /* Result/output sits flush under the prompt, matching the CLI REPL's "=>". */
 .dang-repl-out{
   padding:.1rem 1.25rem .5rem;
-  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:var(--code-line-height);
   color:var(--fg);white-space:pre-wrap;word-break:break-word;
 }
 .dang-repl-out.is-empty{display:none}
@@ -219,7 +217,7 @@ pre code{display:block}
 .dang-repl-highlight,
 .dang-repl-input{
   margin:0;border:0;box-sizing:border-box;
-  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:1.65;
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;line-height:var(--code-line-height);
   padding:0;tab-size:2;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;
 }
 .dang-repl-highlight{
@@ -234,7 +232,7 @@ pre code{display:block}
 .dang-repl-input:disabled{cursor:default}
 .dang-repl-fallback{
   background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
-  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+  font-size:.8rem;line-height:var(--code-line-height);padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
 }
 
 /* ── literate blocks ─────────────────────────────────────────────────── */
@@ -248,11 +246,11 @@ pre code{display:block}
 }
 .dang-literate-fallback{
   background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
-  font-size:.8rem;line-height:1.65;padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
+  font-size:.8rem;line-height:var(--code-line-height);padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
 }
 .dang-literate-out{
   border-top:1px solid var(--code-border);padding:.6rem 1.25rem;
-  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:1.6;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;line-height:var(--code-line-height);
   color:var(--fg);white-space:pre-wrap;word-break:break-word;
 }
 .dang-literate-out.is-empty{display:none}
@@ -265,8 +263,94 @@ pre code{display:block}
   opacity:0;transition:opacity .12s;
 }
 .dang-literate:hover .dang-literate-controls,
-.dang-literate:focus-within .dang-literate-controls{opacity:1}
+.dang-literate:focus-within .dang-literate-controls,
+.dang-carousel-slide:hover .dang-literate-controls,
+.dang-carousel-slide:focus-within .dang-literate-controls{opacity:1}
 @media (hover:none){.dang-literate-controls{opacity:1}}
+
+/* ── feature carousel (carousel.js) ──────────────────────────────────── */
+/* A showcase reel. Each slide is a titled \dang-feature — a real \dang-literate
+   block, or a live \dang-github-playground. Without JS the slides stack and
+   read fine; carousel.js (.is-enhanced) collapses them to one at a time behind
+   a single top bar whose tabs slide so the active one is left-aligned as the
+   slide's header, the rest trailing off to the right and fading into a filled
+   prev/next segment at the right edge. */
+.dang-carousel{
+  border:1px solid var(--code-border);border-radius:8px;margin:1.5rem 0;
+  background:var(--bg2);overflow:hidden;
+}
+.dang-carousel .dang-literate pre,
+.dang-carousel .dang-literate textarea,
+.dang-carousel .dang-playground pre,
+.dang-carousel .dang-playground textarea {
+  font-size: 16px;
+}
+/* The single bar: a horizontally-clipped track of feature tabs. carousel.js
+   slides the track so the active tab sits at the left as the header. */
+.dang-carousel-tabs{
+  position:relative;overflow:hidden;
+  border-bottom:1px solid var(--code-border);background:var(--bg2);
+}
+.dang-carousel-track{
+  position:relative;display:flex;align-items:baseline;gap:1.1rem;width:max-content;
+  padding:.55rem .9rem;
+  transition:transform .35s cubic-bezier(.4,0,.2,1);
+}
+.dang-carousel-tab{
+  font-family:'Inter',system-ui,sans-serif;cursor:pointer;white-space:nowrap;
+  border:0;background:none;padding:0;line-height:1.3;
+  font-size:.8rem;font-weight:500;color:var(--fg2);opacity:.6;
+  transition:color .2s,opacity .2s;
+}
+.dang-carousel-tab:hover{color:var(--fg);opacity:1}
+/* Active tab = the slide's header: brighter, bolder, fully opaque. Bold changes
+   its width, but carousel.js measures offsets after toggling so the slide still
+   aligns. */
+.dang-carousel-tab.is-active{color:var(--accent2);font-weight:700;opacity:1;cursor:default}
+/* Prev/next arrows as a filled segment pinned to the bar's right, built by
+   carousel.js. A fade runway on its left (bar bg -> transparent) lets the
+   trailing tabs dissolve before the buttons instead of colliding; that runway
+   is pointer-events:none so clicks pass through to the tabs beneath, while the
+   buttons re-enable their own. The buttons are full-height filled segments
+   flush to the bar edge (no bordered box inside the bordered bar), just a
+   divider line separating them. */
+.dang-carousel-nav{
+  position:absolute;top:0;right:0;bottom:0;display:flex;align-items:stretch;
+  padding-left:1.9rem;pointer-events:none;z-index:1;
+  background:linear-gradient(to right, transparent, var(--bg2) 1.6rem);
+}
+.dang-carousel-arrow{
+  pointer-events:auto;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;width:2.2rem;
+  border:0;border-left:1px solid var(--code-border);
+  background:var(--bg3);color:var(--fg2);
+  font-family:'Inter',system-ui,sans-serif;font-size:1.05rem;line-height:1;
+  transition:background .12s,color .12s;
+}
+.dang-carousel-arrow:hover{background:var(--bg);color:var(--accent2)}
+.dang-carousel-arrow:active{background:var(--bg2)}
+/* Enhanced: the active tab is the header, so drop the in-body title; show one
+   slide at a time. */
+.dang-carousel.is-enhanced .dang-carousel-title{display:none}
+.dang-carousel.is-enhanced .dang-carousel-slide{display:none}
+.dang-carousel.is-enhanced .dang-carousel-slide.is-active{display:block}
+/* Fallback (no JS): stack the slides with dividers and keep the titles. */
+.dang-carousel-slide + .dang-carousel-slide{border-top:1px solid var(--code-border)}
+.dang-carousel-title{font-size:.82rem;font-weight:600;color:var(--fg);padding:.6rem .9rem .1rem}
+/* The embedded code block (literate block or github playground) sits flush;
+   position:relative anchors the corner controls overlay (the github playground
+   isn't otherwise positioned). */
+.dang-carousel-slide .dang-literate,
+.dang-carousel-slide .dang-playground{position:relative;margin:0;border:none;border-radius:0;background:var(--code-bg)}
+/* Prose tips beneath a slide's code. */
+.dang-carousel-notes{
+  padding:.7rem .9rem .8rem;border-top:1px solid var(--code-border);background:var(--bg2);
+  font-size:.82rem;color:var(--fg2);
+}
+.dang-carousel-notes p{margin:0 0 .45rem;font-size:.82rem;color:var(--fg2)}
+.dang-carousel-notes p:last-child{margin-bottom:0}
+.dang-carousel-notes pre{margin:.5rem 0;font-size:.76rem}
+.dang-carousel-notes code{font-size:.9em}
 
 table{width:100%;border-collapse:collapse;font-size:.85rem;margin:.75rem 0}
 th{text-align:left;padding:.5rem .6rem;color:var(--fg2);font-weight:500;border-bottom:1px solid var(--code-border)}
@@ -366,5 +450,6 @@ footer{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--code-border
 <script src="js/search.js" defer></script>
 <script src="js/feedback.js" defer></script>
 <script src="js/playground.js" defer></script>
+<script src="js/carousel.js" defer></script>
 </body>
 </html>
