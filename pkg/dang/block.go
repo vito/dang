@@ -166,11 +166,11 @@ func DeclareFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh
 		{"variable signatures", func(errs *InferenceErrors) (hm.Type, error) {
 			return declareVariableSignaturesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
 		}},
-		{"type signatures", func(errs *InferenceErrors) (hm.Type, error) {
-			return declareTypeSignaturesPhaseResilient(ctx, classified.Types, env, fresh, errs)
-		}},
 		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
 			return declareFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+		}},
+		{"type signatures", func(errs *InferenceErrors) (hm.Type, error) {
+			return declareTypeSignaturesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
 	}
 
