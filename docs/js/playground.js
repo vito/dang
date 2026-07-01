@@ -140,7 +140,7 @@
   // module, so editing feels instant.
 
   var tsPromise = null;
-  var ts = null; // { parser, query } once ready
+  var ts = null; // { parser, query, injQuery, mod } once ready
 
   function loadTreeSitter() {
     if (tsPromise) return tsPromise;
@@ -152,7 +152,16 @@
       parser.setLanguage(lang);
       var scm = await fetch(asset("dang-highlights.scm")).then(function (r) { return r.text(); });
       var query = new mod.Query(lang, scm);
-      ts = { parser: parser, query: query };
+      // Injection query: highlights language-tagged templates (```toml … ```)
+      // with the tagged language. Best-effort — absent, blocks stay plain Dang.
+      var injQuery = null;
+      try {
+        var injScm = await fetch(asset("dang-injections.scm")).then(function (r) { return r.text(); });
+        injQuery = new mod.Query(lang, injScm);
+      } catch (e) {
+        if (window.console) console.warn("dang playground: injection query unavailable:", e);
+      }
+      ts = { parser: parser, query: query, injQuery: injQuery, mod: mod };
       return ts;
     })().catch(function (err) {
       // Highlighting is best-effort; fall back to plain text on failure.
@@ -160,6 +169,58 @@
       return null;
     });
     return tsPromise;
+  }
+
+  // ── embedded-language grammars (for injected ```lang … ``` blocks) ─────────
+  //
+  // Each is its own tree-sitter grammar + highlight query, loaded lazily the
+  // first time a block on the page uses that tag (bash/ruby are big, ~1–2MB, so
+  // pages without them never pay). sh/rb/yml alias onto their grammar; go parses
+  // inside a synthetic package so bare fragments colour (mirrors highlight.go's
+  // wrapPrefix). Keep this table in lockstep with docs/go/highlight.go.
+
+  var EMBEDDED = {
+    toml:  { wasm: "tree-sitter-toml.wasm",  scm: "toml-highlights.scm" },
+    yaml:  { wasm: "tree-sitter-yaml.wasm",  scm: "yaml-highlights.scm" },
+    yml:   { wasm: "tree-sitter-yaml.wasm",  scm: "yaml-highlights.scm" },
+    ruby:  { wasm: "tree-sitter-ruby.wasm",  scm: "ruby-highlights.scm" },
+    rb:    { wasm: "tree-sitter-ruby.wasm",  scm: "ruby-highlights.scm" },
+    bash:  { wasm: "tree-sitter-bash.wasm",  scm: "bash-highlights.scm" },
+    sh:    { wasm: "tree-sitter-bash.wasm",  scm: "bash-highlights.scm" },
+    shell: { wasm: "tree-sitter-bash.wasm",  scm: "bash-highlights.scm" },
+    go:    { wasm: "tree-sitter-go.wasm",    scm: "go-highlights.scm", wrap: "package p\n" },
+  };
+
+  var embedded = {}; // tag -> { ready, parser, query, wrap } | { loading: true }
+
+  // Block highlight-refresh callbacks, re-run when a lazily-loaded embedded
+  // grammar arrives so injected blocks repaint once their grammar is ready.
+  var rehighlighters = [];
+  function refreshHighlights() {
+    for (var i = 0; i < rehighlighters.length; i++) rehighlighters[i]();
+  }
+
+  // Return the loaded grammar for tag synchronously, or null — kicking off the
+  // (one-time) load and a repaint-on-arrival when it isn't ready yet.
+  function embeddedLang(tag) {
+    var key = tag.toLowerCase();
+    var cfg = EMBEDDED[key];
+    if (!cfg || !ts) return null;
+    var slot = embedded[key];
+    if (slot) return slot.ready ? slot : null; // ready, loading, or failed
+    embedded[key] = { loading: true };
+    (async function () {
+      var lang = await ts.mod.Language.load(asset(cfg.wasm));
+      var parser = new ts.mod.Parser();
+      parser.setLanguage(lang);
+      var scm = await fetch(asset(cfg.scm)).then(function (r) { return r.text(); });
+      var query = new ts.mod.Query(lang, scm);
+      embedded[key] = { ready: true, parser: parser, query: query, wrap: cfg.wrap || "" };
+    })().then(refreshHighlights, function (err) {
+      if (window.console) console.warn("dang playground: " + tag + " highlighting unavailable:", err);
+      embedded[key] = { ready: true, parser: null }; // don't retry
+    });
+    return null;
   }
 
   function escapeHtml(s) {
@@ -195,13 +256,17 @@
     return null;
   }
 
-  // Build highlighted HTML for source using the tree-sitter query captures.
-  function highlightHtml(src) {
-    if (!ts) return escapeHtml(src);
-    var tree = ts.parser.parse(src);
-    var caps = ts.query.captures(tree.rootNode);
-    // Assign a class per character: wider captures first, narrower override.
+  // classify(langObj, src) -> a token class per character (null where unstyled),
+  // using langObj's parser + highlight query. langObj.wrap, when set, is a
+  // synthetic prefix that makes a bare fragment parse (e.g. Go's "package p\n");
+  // its captures are shifted back so they line up with src.
+  function classify(langObj, src) {
     var names = new Array(src.length).fill(null);
+    if (!langObj || !langObj.parser) return names;
+    var wrap = langObj.wrap || "";
+    var tree = langObj.parser.parse(wrap + src);
+    var caps = langObj.query.captures(tree.rootNode);
+    // Wider captures first, narrower (and later) override.
     caps.sort(function (a, b) {
       var d = a.node.startIndex - b.node.startIndex;
       if (d) return d;
@@ -210,16 +275,62 @@
     for (var i = 0; i < caps.length; i++) {
       var c = caps[i], cls = tokenClass(c.name);
       if (!cls) continue; // unmapped captures (e.g. @error) stay unstyled
-      for (var j = c.node.startIndex; j < c.node.endIndex; j++) names[j] = cls;
+      var s = c.node.startIndex - wrap.length, e = c.node.endIndex - wrap.length;
+      if (e <= 0 || s >= src.length) continue;
+      if (s < 0) s = 0;
+      if (e > src.length) e = src.length;
+      for (var j = s; j < e; j++) names[j] = cls;
     }
     tree.delete();
+    return names;
+  }
+
+  // Overwrite, in place, the class of every byte inside a language-tagged
+  // template (```toml … ```) with that language's own highlighting. Mirrors
+  // applyInjections in docs/go/highlight.go: run the injection query, merge the
+  // per-token @injection.content captures into contiguous segments (so ${…}
+  // interpolation stays Dang), and re-classify each with the tagged grammar.
+  function applyInjections(src, names) {
+    if (!ts.injQuery) return;
+    var tree = ts.parser.parse(src);
+    var matches = ts.injQuery.matches(tree.rootNode);
+    for (var m = 0; m < matches.length; m++) {
+      var caps = matches[m].captures, lang = "", ranges = [];
+      for (var i = 0; i < caps.length; i++) {
+        if (caps[i].name === "injection.language") lang = caps[i].node.text;
+        else if (caps[i].name === "injection.content")
+          ranges.push([caps[i].node.startIndex, caps[i].node.endIndex]);
+      }
+      var langObj = lang ? embeddedLang(lang) : null;
+      if (!langObj) continue; // no grammar for the tag, or not loaded yet
+      ranges.sort(function (a, b) { return a[0] - b[0]; });
+      var segs = [];
+      for (var r = 0; r < ranges.length; r++) {
+        var last = segs[segs.length - 1];
+        if (last && last[1] === ranges[r][0]) last[1] = ranges[r][1];
+        else segs.push([ranges[r][0], ranges[r][1]]);
+      }
+      for (var s = 0; s < segs.length; s++) {
+        var sub = classify(langObj, src.slice(segs[s][0], segs[s][1]));
+        for (var j = 0; j < sub.length; j++) names[segs[s][0] + j] = sub[j];
+      }
+    }
+    tree.delete();
+  }
+
+  // Build highlighted HTML for a Dang source, re-highlighting any embedded
+  // language-tagged templates with their own grammar.
+  function highlightHtml(src) {
+    if (!ts) return escapeHtml(src);
+    var names = classify(ts, src);
+    applyInjections(src, names);
     // Coalesce runs of equal class into spans.
     var out = "", k = 0;
     while (k < src.length) {
-      var cls2 = names[k], start = k;
-      while (k < src.length && names[k] === cls2) k++;
+      var cls = names[k], start = k;
+      while (k < src.length && names[k] === cls) k++;
       var chunk = escapeHtml(src.slice(start, k));
-      out += cls2 ? '<span class="' + cls2 + '">' + chunk + "</span>" : chunk;
+      out += cls ? '<span class="' + cls + '">' + chunk + "</span>" : chunk;
     }
     return out;
   }
@@ -387,6 +498,7 @@
     });
     // Re-render as soon as the (small) grammar finishes loading, taking over
     // from the build-time seed.
+    rehighlighters.push(rehighlight);
     loadTreeSitter().then(function () { rehighlight(); });
 
     // Tab inserts two spaces instead of moving focus.
@@ -627,6 +739,7 @@
       rehighlight();
       autosize();
     });
+    rehighlighters.push(rehighlightAll);
     loadTreeSitter().then(rehighlightAll);
 
     // Append a finished entry (highlighted source + its result) to the
@@ -993,6 +1106,7 @@
           chain[i].out.classList.add("is-stale");
         }
       });
+      rehighlighters.push(rehighlight);
       loadTreeSitter().then(function () { rehighlight(); });
 
       editor.addEventListener("keydown", function (e) {

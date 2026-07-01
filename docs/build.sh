@@ -12,9 +12,10 @@ if [ ! -f "$wasm_exec" ]; then
 fi
 cp "$wasm_exec" js/wasm_exec.js
 
-# Fetch the editor's highlight query + web-tree-sitter runtime (pure curl; the
-# grammar wasm is committed since the build image can't run the tree-sitter
-# CLI). Best-effort: the editor just renders uncolored text if this fails.
+# Fetch the editor's highlight query, the web-tree-sitter runtime, and the
+# grammar wasms (from R2 — the build image can't run the tree-sitter CLI to
+# build them, so publishGrammars uploads them to R2 and we fetch them here).
+# Pure curl; best-effort: the editor just renders uncolored text if this fails.
 chmod +x build-highlight-assets.sh
 ./build-highlight-assets.sh --runtime-only || echo "warning: highlight assets unavailable; playground editor will not be colored" >&2
 
