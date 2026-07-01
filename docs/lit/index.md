@@ -121,6 +121,8 @@ export GITHUB_TOKEN="$(gh auth token)"
 }
 }{
 \dang-feature{Copy-on-write}{{{
+## shared state changes are copy-on-write
+
 type Counter {
   n: Int!
   bump: Counter! {
@@ -139,16 +141,18 @@ type Tree {
   node: Node!
   bump: Tree! {
     # under the hood this is something like:
-    # self = clone(self)
-    # self.node = clone(self.node)
-    # self.node.leaf = clone(self.node.leaf)
-    # self.node.leaf.c = self.node.leaf.c + 100
+    #   self = clone(self)
+    #   self.node = clone(self.node)
+    #   self.node.leaf = clone(self.node.leaf)
+    #   self.node.leaf.c = self.node.leaf.c + 100
     self.node.leaf.c += 100
     self
   }
 }
 type Node { leaf: Leaf! }
 type Leaf { c: Int! }
+let t = Tree(Node(Leaf(42)))
+[t.bump.bump.node.leaf.c, t.node.leaf.c]
 }}}{
 See [#mutation] for more details.
 }
@@ -264,6 +268,8 @@ html {
 }}}
 }{
 \dang-feature{Type switching}{{{
+## `case` uses exhaustiveness to determine nullability
+
 type Cat {
   name: String!
   sound: String! { "meow" }
@@ -277,7 +283,6 @@ type Dog {
 union Pet = Cat | Dog
 
 speak(p: Pet!): String! {
-  # case exprs uses exhaustiveness to determine nullability;
   # if you add a Mouse without a Mouse branch here, you'll get a
   # String vs. String! type error thanks to the return type
   case (p) {
@@ -290,16 +295,25 @@ speak(p: Pet!): String! {
 }}}
 }{
 \dang-feature{Errors are values}{{{
-# raise for failures; try/catch is an expression that recovers them
+## plain old try/catch/raise
+
+type OddError implements Error {
+  number: Int!
+  message: String! {
+    `${number} is odd`
+  }
+}
+
 half(n: Int!): Int! {
   if (n % 2 != 0) {
-    raise `${n} is odd`
+    raise OddError(n)
   } else {
     n / 2
   }
 }
 
-try { half(7) } catch { e => e.message }
+## `catch` is like `case` - you can match on error types
+try { half(7) } catch { err => err.message }
 }}}{
 See [#errors] for more details.
 }
