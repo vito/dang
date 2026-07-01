@@ -4,7 +4,10 @@ go 1.25.3
 
 require (
 	github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0
+	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2
 	github.com/tree-sitter/tree-sitter-bash v0.25.1
+	github.com/tree-sitter/tree-sitter-go v0.25.0
+	github.com/tree-sitter/tree-sitter-ruby v0.23.1
 	github.com/vito/booklit v0.12.2-0.20260605141055-42aa4a8cdd73
 )
 

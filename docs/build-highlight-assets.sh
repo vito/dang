@@ -72,6 +72,17 @@ if $do_runtime; then
     curl -fsSL "https://raw.githubusercontent.com/vito/zed-dang/${sha}/languages/dang/highlights.scm" -o js/dang-highlights.scm
   fi
 
+  echo "==> injection query"
+  # injections.scm lives alongside highlights.scm; same checked-out-or-fetch
+  # dance. Drives docs/go's embedded-language highlighting (```toml … ``` etc.).
+  inj="$(readlink -f "$root/treesitter/queries/injections.scm" 2>/dev/null || true)"
+  if [ -n "$inj" ] && [ -s "$inj" ]; then
+    cp "$inj" js/dang-injections.scm
+  else
+    sha="$(git -C "$root" rev-parse HEAD:editors/zed)"
+    curl -fsSL "https://raw.githubusercontent.com/vito/zed-dang/${sha}/languages/dang/injections.scm" -o js/dang-injections.scm
+  fi
+
   echo "==> web-tree-sitter@$WTS_VERSION runtime (no npm needed)"
   tmp="$(mktemp -d)"
   curl -fsSL "https://registry.npmjs.org/web-tree-sitter/-/web-tree-sitter-${WTS_VERSION}.tgz" | tar -xz -C "$tmp"
