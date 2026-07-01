@@ -74,19 +74,6 @@ static bool is_word_char(int32_t c) {
          (c >= '0' && c <= '9') || c == '_';
 }
 
-// Returns true if `c` is a character that, when it appears as the first
-// non-whitespace character on a subsequent line, indicates continuation
-// of the previous expression (i.e. the newline is NOT a statement separator).
-static bool is_continuation_start(int32_t c) {
-  switch (c) {
-    case '{':  // block arg or object selection
-    case '|':  // pipe operator
-      return true;
-    default:
-      return false;
-  }
-}
-
 // Checks if the upcoming characters form the keyword `and` or `or` followed by
 // a non-word character (space, newline, paren, etc.). This is used to treat
 // leading `and`/`or` on a new line as expression continuation.
@@ -391,10 +378,30 @@ bool tree_sitter_dang_external_scanner_scan(
     return true;
   }
 
-  // If the first significant character indicates expression continuation,
-  // this newline is NOT a separator.
-  if (is_continuation_start(lexer->lookahead)) {
+  // `|` at the start of the next line continues the previous expression (pipe
+  // operator), so the newline is not a separator.
+  if (lexer->lookahead == '|') {
     return false;
+  }
+
+  // `{` at the start of the next line usually continues the previous
+  // expression as a block-argument body — the PEG's `SymbolBlock <- Symbol _
+  // BlockArg` allows a newline before the block. But `{{` opens an object
+  // literal, which is a *new* statement: block-arg bodies open with a single
+  // `{`, and a bare `{{ … }}` is never a selection (those need a leading `.`,
+  // handled above). Without telling them apart, `foo` ⏎ `{{ … }}` mis-parses
+  // as `foo { … }` and errors on the record fields, where the PEG instead
+  // backtracks out of the block reading. Peek the second brace to decide.
+  // (We're past mark_end, so advancing is pure lookahead and does not extend
+  // the separator token.)
+  if (lexer->lookahead == '{') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '{') {
+      return false;  // single `{`: block-arg body continuation
+    }
+    // `{{`: a bare object literal begins a new statement.
+    lexer->result_symbol = AUTOMATIC_NEWLINE;
+    return true;
   }
 
   // A newline before a closing delimiter is plain whitespace: no grammar

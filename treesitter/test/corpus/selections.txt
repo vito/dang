@@ -73,3 +73,37 @@ foo {
         (literal
           (int
             (non_zero_decimal_digit)))))))
+
+===
+Bare object literal after a statement is a new form, not a block arg
+===
+
+let x = coin
+{{ result: x }}
+
+---
+
+(dang
+  (decl
+    (field_decl
+      (value_only_field
+        (visibility
+          (let_token))
+        (symbol
+          (id
+            (word_token)))
+        (equal_token)
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token)))))))
+  (form_sep)
+  (object_literal
+    (object_field
+      (key_value
+        (word_token)
+        (colon_token)
+        (symbol_or_call
+          (auto_call_symbol
+            (id
+              (word_token))))))))
