@@ -124,6 +124,20 @@ interface Content {
   render: String!
 }
 
+# A shared HTML escaper for text and (double-quoted) attribute values — a type
+# rather than a free function, since a method can only call self-methods,
+# constructors, and namespaced functions. Ampersand first, so we don't
+# double-escape the entities below.
+type Escaper {
+  escape(s: String!): String! {
+    s
+      .replace("&", "&amp;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;")
+      .replace(`"`, "&quot;")
+  }
+}
+
 type Element implements Content {
   tag: String!
   attributes: Map[String!]! = [:]
@@ -146,7 +160,7 @@ type Element implements Content {
   render: String! {
     # buckle up
     `<${tag}${attributes.reduce("") { sofar, name, val =>
-      `${sofar} ${name}=${JSON.encode(val)}`
+      `${sofar} ${name}="${Escaper().escape(val)}"`
     }}>${children.map { _.render }.join("")}</${tag}>`
   }
 
@@ -160,13 +174,7 @@ type Element implements Content {
 
 type Text implements Content {
   text: String!
-  render: String! {
-    # escape & first, so we don't double-escape the entities below
-    text
-      .replace("&", "&amp;")
-      .replace("<", "&lt;")
-      .replace(">", "&gt;")
-  }
+  render: String! { Escaper().escape(text) }
 }
 
 html(&body(root: Element!): Content!): Content! {
