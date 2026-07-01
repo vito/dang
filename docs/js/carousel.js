@@ -15,11 +15,19 @@
 // tabs where the active tab is centered as the slide's header and the rest
 // trail off to both sides, fading into the prev/next arrows at the two edges (a
 // flat carousel). Click a tab to jump to it; the arrows (or ←/→) step through.
+// Each slide is a #slug link target, so the URL fragment focuses one on load
+// and the active slide is reflected back into the fragment as you navigate.
 // The snippets are baked at build time (docs/go/carousel.go), so this is pure
 // presentation.
 
 (function () {
   "use strict";
+
+  // Turn a feature title into a URL-fragment slug, so a slide is deep-linkable
+  // (#records) and the fragment focuses it on load.
+  function slugify(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  }
 
   function enhance(carousel) {
     var slides = Array.prototype.slice.call(
@@ -38,9 +46,14 @@
     track.className = "dang-carousel-track";
     bar.appendChild(track);
 
+    var slugs = [];
     var tabs = slides.map(function (slide, i) {
       var titleEl = slide.querySelector(".dang-carousel-title");
       var label = titleEl ? titleEl.textContent.trim() : "Example " + (i + 1);
+      // Each slide is a link target (#slug), so it can be focused from the URL.
+      var slug = slugify(label) || "slide-" + (i + 1);
+      slide.id = slug;
+      slugs.push(slug);
       var tab = document.createElement("button");
       tab.className = "dang-carousel-tab";
       tab.type = "button";
@@ -90,7 +103,7 @@
       track.style.transform = "translateX(" + x + "px)";
     }
 
-    function show(i) {
+    function show(i, updateHash) {
       var n = slides.length;
       i = ((i % n) + n) % n; // wrap around at both ends
       if (i === active) return;
@@ -107,6 +120,12 @@
         t.tabIndex = on ? 0 : -1;
       });
       reposition();
+      // Reflect the active slide in the URL fragment (replaceState so it stays
+      // shareable without spamming history or scrolling). Skipped for the
+      // initial focus and for changes that came from the fragment itself.
+      if (updateHash !== false && slugs[i]) {
+        try { history.replaceState(null, "", "#" + slugs[i]); } catch (e) { /* ignore */ }
+      }
       // The revealed slide may hold an editor whose textarea autosizes by
       // measuring scrollHeight — which reads 0 while display:none. playground.js
       // re-runs every autosize on window resize, so nudge it.
@@ -124,7 +143,17 @@
     window.addEventListener("resize", reposition);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(reposition);
 
-    show(0);
+    // Deep-linking: focus the slide named by the URL fragment (on load and on
+    // later #hash changes, e.g. back/forward or an in-page link).
+    function slideFromHash() {
+      return slugs.indexOf(decodeURIComponent((location.hash || "").replace(/^#/, "")));
+    }
+    window.addEventListener("hashchange", function () {
+      var i = slideFromHash();
+      if (i >= 0) show(i, false);
+    });
+    var start = slideFromHash();
+    show(start >= 0 ? start : 0, false); // don't rewrite the fragment on load
   }
 
   function init() {

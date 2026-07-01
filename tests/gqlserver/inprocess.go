@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/Khan/genqlient/graphql"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vito/dang/v2/pkg/dang"
+	"github.com/vito/dang/v2/pkg/ioctx"
 )
 
 // schemaSDL is this package's SDL, embedded so the schema is available without
@@ -58,6 +60,11 @@ type inProcessClient struct {
 }
 
 func (c inProcessClient) MakeRequest(ctx context.Context, req *graphql.Request, resp *graphql.Response) error {
+	// Echo the GraphQL query (not the HTTP mechanics) on the eval's stdout, so
+	// docs readers can see what a selection compiled to: one request, resolved
+	// server-side. See the carousel's GraphQL slides.
+	fmt.Fprintf(ioctx.StdoutFromContext(ctx), "→ %s\n", req.Query)
+
 	body, err := json.Marshal(req)
 	if err != nil {
 		return err

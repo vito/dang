@@ -15,8 +15,6 @@ functions are loaded directly from the schema.
 
 \shell{go install github.com/vito/dang/v2/cmd/dang@latest}
 
-> TODO: these should each be target elements with focus derived from the URL fragment
-
 \dang-carousel{
 \dang-feature{Hello, world}{{{
 type Greeter {
@@ -39,8 +37,7 @@ users.{{ name, age, status }}.map { user =>
   `${user.name} (${user.age}): ${user.status}`
 }
 
-# TODO: the demo server should log requests that it receives, AND/OR the client
-# should log requests that it sends - at a high level (GraphQL query, not HTTP)
+# each forced selection echoes the GraphQL query it compiled to (the → lines)
 }}}{
 `Demo` is a small schema bundled into this page and resolved in-process — [see its SDL](https://github.com/vito/dang/blob/main/tests/gqlserver/schema.graphqls).
 }
@@ -48,18 +45,20 @@ users.{{ name, age, status }}.map { user =>
 \dang-feature{Parallel selection}{{{
 import Demo
 
-# .{{ }} selects fields across the graph and compiles to a SINGLE
-# GraphQL request whose fields are resolved in parallel
-posts.{{ title, author.{{ name }} }}.map {
+# against a GraphQL schema, .{{ }} compiles to a SINGLE request whose fields
+# resolve in parallel — here, each post with its author, in one query:
+print(posts.{{ title, author.{{ name }} }}.map {
   # _ inside a block is shorthand for the first argument
   `${_.title} — ${_.author.name}`
-}
+})
 
-# this works for native objects, too, which are evaluated in parallel in the
-# Dang runtime: when called on a list, it's a parallel map, with each
-# sub-selection ALSO performed in parallel
-#
-# TODO: demonstrate this somehow
+# the same .{{ }} works on native objects too — a parallel map over the list,
+# each sub-selection also evaluated in parallel by the Dang runtime:
+type City {
+  name: String!
+  code: String! { name.toUpper }
+}
+[City("portland"), City("austin")].{{ name, code }}.map { `${_.name} → ${_.code}` }
 }}}
 }{
 \dang-github-feature{import GitHub}{{{
@@ -160,8 +159,14 @@ type Element implements Content {
 }
 
 type Text implements Content {
-  # TODO: HTML escape
-  render: String!
+  text: String!
+  render: String! {
+    # escape & first, so we don't double-escape the entities below
+    text
+      .replace("&", "&amp;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;")
+  }
 }
 
 html(&body(root: Element!): Content!): Content! {
@@ -273,7 +278,7 @@ let fn = &coin
 # optional, cosmetic language tag
 let daggerBin = "dagger-dev"
 
-# TODO: docs tree-sitter doesn't support injections
+# the toml body is highlighted as TOML (tree-sitter injection):
 ```toml
 [imports.Dagger]
 dagger = true
