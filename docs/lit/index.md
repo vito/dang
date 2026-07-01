@@ -16,7 +16,7 @@ functions are loaded directly from the schema.
 \shell{go install github.com/vito/dang/v2/cmd/dang@latest}
 
 \dang-carousel{
-\dang-feature{Hello, world}{{{
+\dang-feature{Hello, world!}{{{
 type Greeter {
   name: String!
   greet: String! { `Hello, ${name}!` }
@@ -30,16 +30,24 @@ import Demo # configured in dang.toml below
 
 # imports become globals
 let u = user("1") # or Demo.user("1") to be explicit
+
+# fields that return scalars query on access
 print(`${u.name} is ${u.age} (${u.status})`)
 
 # use sub-selections to avoid N+1 queries
-users.{{ name, age, status }}.map { user =>
-  `${user.name} (${user.age}): ${user.status}`
+users.{{ name, age, status }}.each {
+  print(`${_.name} (${_.age}): ${_.status}`)
 }
-
-# each forced selection echoes the GraphQL query it compiled to (the → lines)
 }}}{
-`Demo` is a small schema bundled into this page and resolved in-process — [see its SDL](https://github.com/vito/dang/blob/main/tests/gqlserver/schema.graphqls).
+`Demo` is a [small schema](https://github.com/vito/dang/blob/main/tests/gqlserver/schema.graphqls) bundled into this page and resolved in-process.
+
+Normally it would be defined with a `dang.toml` like this:
+
+```toml
+[imports.Demo]
+schema = "./tests/gqlserver/schema.graphqls"
+service = ["go", "run", "./tests/gqlserver/service"]
+```
 }
 }{
 \dang-feature{Parallel selection}{{{
@@ -72,9 +80,17 @@ viewer.{{
   repositories(first: 3).{{ nodes.{{ name, stargazerCount }} }}
 }}
 }}}{
-Sign in and then click **Run**. Introspection and queries go straight to
-`api.github.com` from your browser, and the token stays in this tab. In
-a project you'd wire it up in `dang.toml`:
+GitHub's GraphQL API explorer was sadly [removed][GH-Explorer] -- so here's
+something kind of close.
+
+[GH-Explorer]: https://github.blog/changelog/2025-08-21-graphql-explorer-removal-from-api-documentation-on-november-1-2025/
+
+To try it, sign in with GitHub and hit **Run**.
+
+> **NOTE:** this will ask for read-only access (`read:user`). The
+> token only ever exists client-side and expires with the tab.
+
+In a project you'd wire it up in `dang.toml`:
 
 ```toml
 [imports.GitHub]
@@ -124,16 +140,6 @@ interface Content {
   render: String!
 }
 
-# a shared HTML escaper for text and (double-quoted) attribute values —
-# ampersand first, so we don't double-escape the entities below
-escapeHTML(s: String!): String! {
-  s
-    .replace("&", "&amp;")
-    .replace("<", "&lt;")
-    .replace(">", "&gt;")
-    .replace(`"`, "&quot;")
-}
-
 type Element implements Content {
   tag: String!
   attributes: Map[String!]! = [:]
@@ -173,6 +179,19 @@ type Text implements Content {
   render: String! { escapeHTML(text) }
 }
 
+# a shared HTML escaper for text and (double-quoted) attribute values —
+# ampersand first, so we don't double-escape the entities below
+let escapeHTML(s: String!): String! {
+  s
+    .replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace(`"`, "&quot;")
+}
+
+"""
+The root of the HTML DSL.
+"""
 html(&body(root: Element!): Content!): Content! {
   body(Element("html", [:], []))
 }
@@ -229,10 +248,13 @@ try { half(7) } catch { e => e.message }
 }}}
 }{
 \dang-feature{Null propagation}{{{
-type Author { name: String! }
 type Post {
   title: String!
   author: Author        # nullable — may be absent
+}
+
+type Author {
+  name: String!
 }
 
 # instead of crashing, chaining from a nullable type just propagates null
