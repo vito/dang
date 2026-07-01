@@ -218,14 +218,21 @@ func EvaluateDeclaredFormsWithPhases(ctx context.Context, forms []Node, scope Va
 }
 
 // InferFormsWithPhases implements phased compilation:
-// 1. Parse all files (already done)
-// 2. Build dependency graph of all declarations
-// 3. Import external schemas
-// 4. Hoist local type names so annotations shadow imported types immediately
-// 5. Typecheck constants and types (which can reference each other)
-// 6. Declare function signatures (without bodies)
-// 7. Typecheck variables in dependency order (can now reference function signatures)
-// 8. Typecheck function bodies last (can reference all package-level declarations)
+//  1. Parse all files (already done)
+//  2. Build dependency graph of all declarations
+//  3. Import external schemas
+//  4. Hoist local type names so annotations shadow imported types immediately
+//  5. Typecheck constants
+//  6. Declare variable signatures
+//  7. Declare function signatures (without bodies)
+//  8. Typecheck types, including method/computed-field bodies (which can now
+//     reference variable and function signatures declared above)
+//  9. Typecheck variables in dependency order
+//  10. Typecheck function bodies last (can reference all package-level declarations)
+//
+// Function signatures only need type names (hoisted in step 4), not inferred type
+// bodies, so declaring them before types lets type method bodies call top-level
+// functions. Function *bodies* stay last, so nothing loses access to later declarations.
 //
 // This function collects all errors instead of failing fast, allowing partial inference
 // to succeed and providing better error messages showing all problems at once.
@@ -252,11 +259,11 @@ func InferFormsWithPhases(ctx context.Context, forms []Node, env hm.Env, fresh h
 		{"variable signatures", func(errs *InferenceErrors) (hm.Type, error) {
 			return declareVariableSignaturesPhaseResilient(ctx, classified.Variables, env, fresh, errs)
 		}},
-		{"types", func(errs *InferenceErrors) (hm.Type, error) {
-			return inferTypesPhaseResilient(ctx, classified.Types, env, fresh, errs)
-		}},
 		{"function signatures", func(errs *InferenceErrors) (hm.Type, error) {
 			return declareFunctionSignaturesPhaseResilient(ctx, classified.Functions, env, fresh, errs)
+		}},
+		{"types", func(errs *InferenceErrors) (hm.Type, error) {
+			return inferTypesPhaseResilient(ctx, classified.Types, env, fresh, errs)
 		}},
 		{"variables", func(errs *InferenceErrors) (hm.Type, error) {
 			return inferVariablesPhaseResilient(ctx, classified.Variables, env, fresh, errs)

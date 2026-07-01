@@ -1,0 +1,42 @@
+# Regression test for issue #162: a method (or computed field) inside a `type`
+# must be able to reference a top-level function. Function signatures are now
+# declared before type bodies are type-checked, so all of the top-level
+# declaration kinds below resolve from a method body.
+
+# Public top-level function.
+inc(x: Int!): Int! { x + 1 }
+
+# Private (`let`) top-level function.
+let dbl(x: Int!): Int! { x * 2 }
+
+# Top-level value and constructor, which already resolved, kept here to guard
+# against regressing them.
+let base = 40
+
+type Helper {
+  bump(x: Int!): Int! { x + 100 }
+}
+
+type T {
+  # Computed field calling a public top-level function.
+  compute: Int! { inc(41) }
+
+  # Method calling both a public and a private top-level function.
+  combine(x: Int!): Int! { inc(dbl(x)) }
+
+  # Method reaching a top-level value and constructor.
+  viaValueAndCtor: Int! { Helper.bump(base) }
+
+  # Function reference to a top-level function from a method body.
+  viaRef: Int! {
+    let f = &inc
+    f(9)
+  }
+}
+
+assert { T.compute == 42 }
+assert { T.combine(20) == 41 }
+assert { T.viaValueAndCtor == 140 }
+assert { T.viaRef == 10 }
+
+print("Type method top-level function tests passed!")
