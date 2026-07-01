@@ -1,11 +1,17 @@
 \use-plugin{dang}
 \split-sections
 
+> **NOTE FROM A HUMAN:** this is an AI-assisted draft, for now just
+> establishing the concepts, framing, and facts. Everything here is correct and
+> verifiable, and I do like the brevity, but there are probably better ways to
+> explain things. I'll be improving them gradually and this notice will go away
+> when it's in a state I'm proud of. Sorry for any nonsense. Every paragraph
+> has a 'feedback' button so you can yell at me about it anonymously.
+
 # dang {#index}
 
 A statically typed scripting language for GraphQL, where the types and
 functions are loaded directly from the schema.
-
 
 \header-links{
   [GitHub](https://github.com/vito/dang)
@@ -34,7 +40,7 @@ let u = user("1") # or Demo.user("1") to be explicit
 # fields that return scalars query on access
 print(`${u.name} is ${u.age} (${u.status})`)
 
-# use sub-selections to avoid N+1 queries
+# use sub-selections to avoid spamming queries
 users.{{ name, age, status }}.each {
   print(`${_.name} (${_.age}): ${_.status}`)
 }
@@ -53,21 +59,30 @@ service = ["go", "run", "./tests/gqlserver/service"]
 \dang-feature{Parallel selection}{{{
 import Demo
 
-# against a GraphQL schema, .{{ }} compiles to a SINGLE request whose fields
-# resolve in parallel — here, each post with its author, in one query:
-print(posts.{{ title, author.{{ name }} }}.map {
-  # _ inside a block is shorthand for the first argument
-  `${_.title} — ${_.author.name}`
-})
+# .{{ }} is parallel selection
 
-# the same .{{ }} works on native objects too — a parallel map over the list,
-# each sub-selection also evaluated in parallel by the Dang runtime:
+# for GraphQL, it queries for all fields at once
+Demo.posts.{{ title, author.{{ name }} }}.each {
+  print(`${_.title} — ${_.author.name}`)
+}
+
+# for native values, it parallelizes across lists and fields
 type City {
   name: String!
-  code: String! { name.toUpper }
+  code: String! {
+    # click Run again and the log order might* change
+    print(`${Demo.hello(name)}`)
+    name.toUpper
+  }
 }
-[City("portland"), City("austin")].{{ name, code }}.map { `${_.name} → ${_.code}` }
-}}}
+[City("portland"), City("austin")].{{ name, code }}.each {
+  print(`${_.name} → ${_.code}`)
+}
+
+# * Turns out WASM is deterministic, but it might change
+#   when switching from server-rendered to client-rendered.
+}}}{
+}
 }{
 \dang-github-feature{import GitHub}{{{
 import GitHub
@@ -117,29 +132,62 @@ type Counter {
 let c = Counter(0)
 assert("changes accumulate")  { c.bump.bump.n == 2 }
 assert("original unmodified") { c.n == 0 }
+
+# as a result of this truce between mutable and immutable,
+# we gain trivial syntax for deep structural updates
+type Tree {
+  node: Node!
+  bump: Tree! {
+    # under the hood this is something like:
+    # self = clone(self)
+    # self.node = clone(self.node)
+    # self.node.leaf = clone(self.node.leaf)
+    # self.node.leaf.c = self.node.leaf.c + 100
+    self.node.leaf.c += 100
+    self
+  }
+}
+type Node { leaf: Leaf! }
+type Leaf { c: Int! }
 }}}{
 See [#mutation] for more details.
 }
 }{
 \dang-feature{Block arguments}{{{
-# any function can take a trailing block &body is a block parameter.
-# it's what powers .map and loop, and lets you build little DSLs:
-tag(name: String!, &body: String!): String! {
-  `<${name}>${body()}</${name}>`
+## &block args are Dang's closures
+
+"""
+`if` but implemented with blocks.
+"""
+when(condition: Boolean!, &body: a): a {
+  if (condition) {
+    # body is a zero-arity function, so it gets auto-called
+    # like any other field
+    body
+    # use &body to grab the function without calling it.
+    # a bit like keeping the pin in the grenade.
+  }
 }
 
-tag("ul") {
-  tag("li") { "one" } + tag("li") { "two" }
+when(false) { raise "i died" }
+when(true) { "i lived" }
+}}}{
+See [#blocks] for more details.
 }
-}}}
 }{
 \dang-feature{HTML DSL}{{{
-# just for fun, let's write a DSL for generating HTML
+## a DSL for generating HTML
 
+"""
+Anything that can be rendered to a string.
+"""
 interface Content {
   render: String!
 }
 
+"""
+An HTML element.
+"""
 type Element implements Content {
   tag: String!
   attributes: Map[String!]! = [:]
@@ -174,6 +222,9 @@ type Element implements Content {
   }
 }
 
+"""
+Plain text to embed.
+"""
 type Text implements Content {
   text: String!
   render: String! { escapeHTML(text) }
@@ -189,9 +240,7 @@ let escapeHTML(s: String!): String! {
     .replace(`"`, "&quot;")
 }
 
-"""
-The root of the HTML DSL.
-"""
+# a function to kick off the DSL
 html(&body(root: Element!): Content!): Content! {
   body(Element("html", [:], []))
 }
@@ -242,22 +291,31 @@ speak(p: Pet!): String! {
 }{
 \dang-feature{Errors are values}{{{
 # raise for failures; try/catch is an expression that recovers them
-half(n: Int!): Int! { if (n % 2 != 0) raise `${n} is odd` else n / 2 }
+half(n: Int!): Int! {
+  if (n % 2 != 0) {
+    raise `${n} is odd`
+  } else {
+    n / 2
+  }
+}
 
 try { half(7) } catch { e => e.message }
-}}}
+}}}{
+See [#errors] for more details.
+}
 }{
 \dang-feature{Null propagation}{{{
 type Post {
-  title: String!
-  author: Author        # nullable — may be absent
+  title: String! # non-null (!) - Post requires it
+  author: Author # nullable — may be absent
 }
 
 type Author {
   name: String!
 }
 
-# instead of crashing, chaining from a nullable type just propagates null
+# chaining from a null value just propagates null
+# coming from Haskell, it's like the Maybe monad
 Post("Hello", null).author.name
 }}}
 }{
@@ -278,47 +336,34 @@ type Circle implements Shape {
 [Square(3.0), Circle(2.0)].map { _.area }
 }}}
 }{
-\dang-feature{Auto-calling}{{{
-coin: String! { "heads" }
-
-# zero-arg functions are indistinguishable from fields, as in GraphQL;
-# references auto-call without requiring parentheses
-let called = coin
-let fn = &coin
-{{
-  called: [called, fn(), fn]
-  # a bit like a grenade, you have to keep using & to prevent it
-  # from being called.
-  notCalled: [&coin, &fn]
-}}
-}}}
-}{
-\dang-feature{Records}{{{
-# records are anonymous structs (double braces); they compare by value,
-# regardless of field order
-{{ x: 1, y: 2 }} == {{ y: 2, x: 1 }}
-}}}
-}{
 \dang-feature{Multi-line strings}{{{
-# triple-quoted """ is raw; triple-backtick interpolates and takes an
-# optional, cosmetic language tag
-let daggerBin = "dagger-dev"
+## triple-quoted strings trim leading whitespace
+print("""
+  hey there
+    im indented
+      me too
+""")
+print("---")
 
-# the toml body is highlighted as TOML (tree-sitter injection):
-```toml
-[imports.Dagger]
-dagger = true
-service = ["${daggerBin}", "session"]
-```
+
+## backtick-fenced strings support interpolation
+let daggerBin = "dagger-dev"
+let daggerVersion = [1, 0, 0]
+print(```
+$ ${daggerBin} version
+${daggerVersion.join(".")}
+```)
+print("---")
+
+# backtick-fences support language tags, like Markdown
+# why? because it looks nice.
+print(```ruby
+  class << self
+    puts 'wahh'
+  end
+```)
 }}}
 }
-
-> **NOTE FROM A HUMAN:** this is an AI-assisted draft, for now just
-> establishing the concepts, framing, and facts. Everything here is correct and
-> verifiable, and I do like the brevity, but there are probably better ways to
-> explain things. I'll be improving them gradually and this notice will go away
-> when it's in a state I'm proud of. Sorry for any nonsense. Every paragraph
-> has a 'feedback' button so you can yell at me about it anonymously.
 
 \table-of-contents
 
