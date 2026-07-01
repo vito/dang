@@ -15,6 +15,8 @@ functions are loaded directly from the schema.
 
 \shell{go install github.com/vito/dang/v2/cmd/dang@latest}
 
+> TODO: these should each be target elements with focus derived from the URL fragment
+
 \dang-carousel{
 \dang-feature{Hello, world}{{{
 type Greeter {
@@ -26,31 +28,38 @@ type Greeter {
 }}}
 }{
 \dang-feature{Schema-native types}{{{
-# Dang's types and root fields come straight from a GraphQL schema:
-import Demo
+import Demo # configured in dang.toml below
 
-# every schema type and Query field is now part of the language —
-# select fields and map over the result
-users.{{ name, status }}.map { u => `${u.name}: ${u.status}` }
+# imports become globals
+let u = user("1") # or Demo.user("1") to be explicit
+print(`${u.name} is ${u.age} (${u.status})`)
+
+# use sub-selections to avoid N+1 queries
+users.{{ name, age, status }}.map { user =>
+  `${user.name} (${user.age}): ${user.status}`
+}
+
+# TODO: the demo server should log requests that it receives, AND/OR the client
+# should log requests that it sends - at a high level (GraphQL query, not HTTP)
 }}}{
 `Demo` is a small schema bundled into this page and resolved in-process — [see its SDL](https://github.com/vito/dang/blob/main/tests/gqlserver/schema.graphqls).
 }
 }{
-\dang-feature{One query, in parallel}{{{
+\dang-feature{Parallel selection}{{{
 import Demo
 
 # .{{ }} selects fields across the graph and compiles to a SINGLE
 # GraphQL request whose fields are resolved in parallel
-posts.{{ title, author.{{ name }} }}.map { p => `${p.title} — ${p.author.name}` }
-}}}
-}{
-\dang-feature{Arguments & nullability}{{{
-import Demo
+posts.{{ title, author.{{ name }} }}.map {
+  # _ inside a block is shorthand for the first argument
+  `${_.title} — ${_.author.name}`
+}
 
-# root fields take the schema's arguments; results carry its
-# nullability — name is String!, age is Int (may be null)
-let u = user("1")
-`${u.name} is ${u.age} (${u.status})`
+# this works for native objects, too, which are evaluated in parallel in the
+# Dang runtime: when called on a list, it's a parallel map, with each
+# sub-selection ALSO performed in parallel
+#
+# TODO: demonstrate this somehow
 }}}
 }{
 \dang-github-feature{import GitHub}{{{
@@ -64,46 +73,117 @@ viewer.{{
   repositories(first: 3).{{ nodes.{{ name, stargazerCount }} }}
 }}
 }}}{
-Sign in above, then **Run** — introspection and queries go straight to `api.github.com` from your browser, and the token stays in this tab. In a project you'd wire it up in `dang.toml`:
+Sign in and then click **Run**. Introspection and queries go straight to
+`api.github.com` from your browser, and the token stays in this tab. In
+a project you'd wire it up in `dang.toml`:
 
 ```toml
 [imports.GitHub]
 endpoint = "https://api.github.com/graphql"
 authorization = "Bearer ${GITHUB_TOKEN}"
 ```
+
+This `.envrc` might help too:
+
+```sh
+export GITHUB_TOKEN="$(gh auth token)"
+```
 }
 }{
 \dang-feature{Copy-on-write}{{{
 type Counter {
   n: Int!
-  bump: Counter! { n += 1; self }
-}
-
-let c = Counter(0)
-# values are immutable — methods fork the receiver, so c never changes
-[c.bump.bump.n, c.n]
-}}}
-}{
-\dang-feature{Everything is an expression}{{{
-# case yields a value, like if/loop/try — assign it, return it, pass it
-classify(n: Int!): String! {
-  case (n) {
-    0 => "zero"
-    else => if (n > 0) "positive" else "negative"
+  bump: Counter! {
+    n += 1 # this LOOKS like it mutates, but it doesn't!
+    self   # this `self` is actually a clone with n += 1 applied
   }
 }
 
-[classify(0), classify(7), classify(-3)]
-}}}
+let c = Counter(0)
+assert("changes accumulate")  { c.bump.bump.n == 2 }
+assert("original unmodified") { c.n == 0 }
+}}}{
+See [#mutation] for more details.
+}
 }{
 \dang-feature{Block arguments}{{{
-# any function can take a trailing block — &body is a block parameter.
+# any function can take a trailing block &body is a block parameter.
 # it's what powers .map and loop, and lets you build little DSLs:
-tag(name: String!, &body: String!): String! { `<${name}>${body()}</${name}>` }
+tag(name: String!, &body: String!): String! {
+  `<${name}>${body()}</${name}>`
+}
 
 tag("ul") {
   tag("li") { "one" } + tag("li") { "two" }
 }
+}}}
+}{
+\dang-feature{HTML DSL}{{{
+# just for fun, let's write a DSL for generating HTML
+
+interface Content {
+  render: String!
+}
+
+type Element implements Content {
+  tag: String!
+  attributes: Map[String!]! = [:]
+  children: [Content!]! = []
+
+  element(
+    tag: String!
+    attributes: Map[String!]! = [:]
+    &body(root: Element!): Content!
+  ): Element! {
+    self.children += [body(Element(tag, attributes))]
+    self
+  }
+
+  text(text: String!): Content! {
+    self.children += [Text(text)]
+    self
+  }
+
+  render: String! {
+    # buckle up
+    `<${tag}${attributes.reduce("") { sofar, name, val =>
+      `${sofar} ${name}=${JSON.encode(val)}`
+    }}>${children.map { _.render }.join("")}</${tag}>`
+  }
+
+  # DSL helpers
+  ul(&body(root: Element!): Content!): Element! { element("ul") { body(_) } }
+  li(&body(root: Element!): Content!): Element! { element("li") { body(_) } }
+  a(href: String!, &body(root: Element!): Content!): Element! {
+    element("a", ["href": href]) { body(_) }
+  }
+}
+
+type Text implements Content {
+  # TODO: HTML escape
+  render: String!
+}
+
+html(&body(root: Element!): Content!): Content! {
+  body(Element("html", [:], []))
+}
+
+# there's no mutation, so we chain _ to build up the content
+html {
+  _.ul {
+    _
+      .li {
+        _.a(href: "https://danglang.org") {
+          _.text("Dang")
+        }
+      }
+      .li {
+        _.a(href: "https://bass-lang.org") {
+          _.text("Bass")
+        }
+      }
+  }
+}.render
 }}}
 }{
 \dang-feature{Type switching}{{{
@@ -111,14 +191,18 @@ type Cat {
   name: String!
   sound: String! { "meow" }
 }
+
 type Dog {
   name: String!
   sound: String! { "woof" }
 }
+
 union Pet = Cat | Dog
 
-# case switches on the runtime type; each arm narrows p to that type
 speak(p: Pet!): String! {
+  # case exprs uses exhaustiveness to determine nullability;
+  # if you add a Mouse without a Mouse branch here, you'll get a
+  # String vs. String! type error thanks to the return type
   case (p) {
     c: Cat => `${c.name} says ${c.sound}`
     d: Dog => `${d.name} says ${d.sound}`
@@ -142,8 +226,7 @@ type Post {
   author: Author        # nullable — may be absent
 }
 
-# the chain short-circuits to null if any link is null — no crash.
-# (Haskell folks: it's the Maybe monad, woven into member access.)
+# instead of crashing, chaining from a nullable type just propagates null
 Post("Hello", null).author.name
 }}}
 }{
@@ -154,22 +237,29 @@ type Square implements Shape {
   side: Float!
   area: Float! { side * side }
 }
+
 type Circle implements Shape {
   r: Float!
   area: Float! { 3.14 * r * r }
 }
 
-# one list, two types; _ is the implicit block argument
+# type is widened to [Shape!]! during inference
 [Square(3.0), Circle(2.0)].map { _.area }
 }}}
 }{
 \dang-feature{Auto-calling}{{{
-# a zero-arg function auto-calls when you name it — no parens needed
 coin: String! { "heads" }
 
-let called = coin     # auto-called, yields "heads"
-let fn = &coin        # &coin grabs the function itself, uncalled
-[called, fn()]
+# zero-arg functions are indistinguishable from fields, as in GraphQL;
+# references auto-call without requiring parentheses
+let called = coin
+let fn = &coin
+{{
+  called: [called, fn(), fn]
+  # a bit like a grenade, you have to keep using & to prevent it
+  # from being called.
+  notCalled: [&coin, &fn]
+}}
 }}}
 }{
 \dang-feature{Records}{{{
@@ -178,22 +268,16 @@ let fn = &coin        # &coin grabs the function itself, uncalled
 {{ x: 1, y: 2 }} == {{ y: 2, x: 1 }}
 }}}
 }{
-\dang-feature{Regex}{{{
-# rewriteMatches runs a block over each match — here, exclaim every word
-"hello world".rewriteMatches(`\w+`) { _.string + "!" }
-}}}
-}{
-\dang-feature{Functional pipelines}{{{
-# blocks are Dang's lambdas; _ is the implicit arg ({ x, i => } also gives an index)
-[1, 2, 3, 4, 5, 6].filter { _ % 2 == 0 }.map { _ * _ }.reduce(0) { acc, x => acc + x }
-}}}
-}{
 \dang-feature{Multi-line strings}{{{
 # triple-quoted """ is raw; triple-backtick interpolates and takes an
 # optional, cosmetic language tag
-let name = "world"
-```sql
-SELECT * FROM users WHERE name = '${name}'
+let daggerBin = "dagger-dev"
+
+# TODO: docs tree-sitter doesn't support injections
+```toml
+[imports.Dagger]
+dagger = true
+service = ["${daggerBin}", "session"]
 ```
 }}}
 }
