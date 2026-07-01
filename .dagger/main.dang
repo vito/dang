@@ -58,11 +58,17 @@ type Dang {
   newer glibc), so this is where they're produced and where they come from.
   """
   publishGrammars(
-    """Cloudflare API token with R2 read/write on the bucket."""
+    """
+    Cloudflare API token with R2 read/write on the bucket.
+    """
     apiToken: Secret!,
-    """R2 bucket the grammar wasms are uploaded to."""
+    """
+    R2 bucket the grammar wasms are uploaded to.
+    """
     bucket: String! = "dang-docs-assets",
-    """Cloudflare account ID that owns the bucket."""
+    """
+    Cloudflare account ID that owns the bucket.
+    """
     accountId: String! = "3f0bfdb3be67e29173fa82412c7afd07",
   ): Void {
     base
