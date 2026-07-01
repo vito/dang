@@ -12,9 +12,9 @@
 //
 // Without JS every slide shows in sequence — a plain list of examples. With JS
 // we show one at a time behind a single top bar: a sliding track of feature
-// tabs where the active tab is centered as the slide's header and the rest
-// trail off to both sides, fading into the prev/next arrows at the two edges (a
-// flat carousel). Click a tab to jump to it; the arrows (or ←/→) step through.
+// tabs where the active tab is left-aligned as the slide's header and the rest
+// trail off to the right, fading into a filled prev/next segment at the bar's
+// right edge. Click a tab to jump to it; the arrows (or ←/→) step through.
 // Each slide is a #slug link target, so the URL fragment focuses one on load
 // and the active slide is reflected back into the fragment as you navigate.
 // The snippets are baked at build time (docs/go/carousel.go), so this is pure
@@ -65,42 +65,36 @@
       return tab;
     });
 
-    // Prev/next arrows at the two edges, each over a fade so the trailing tabs
-    // dissolve into them on both sides.
-    var navPrev = document.createElement("div");
-    navPrev.className = "dang-carousel-nav dang-carousel-nav-left";
+    // Prev/next arrows as a filled segment on the right, over a fade so the
+    // trailing tabs dissolve into it instead of colliding.
+    var nav = document.createElement("div");
+    nav.className = "dang-carousel-nav";
     var prev = document.createElement("button");
     prev.className = "dang-carousel-arrow";
     prev.type = "button";
     prev.setAttribute("aria-label", "Previous feature");
     prev.innerHTML = "&#8249;"; // ‹
     prev.addEventListener("click", function () { show(active - 1); });
-    navPrev.appendChild(prev);
-
-    var navNext = document.createElement("div");
-    navNext.className = "dang-carousel-nav dang-carousel-nav-right";
     var next = document.createElement("button");
     next.className = "dang-carousel-arrow";
     next.type = "button";
     next.setAttribute("aria-label", "Next feature");
     next.innerHTML = "&#8250;"; // ›
     next.addEventListener("click", function () { show(active + 1); });
-    navNext.appendChild(next);
-
-    bar.appendChild(navPrev);
-    bar.appendChild(navNext);
+    nav.appendChild(prev);
+    nav.appendChild(next);
+    bar.appendChild(nav);
 
     carousel.insertBefore(bar, carousel.firstChild);
     carousel.classList.add("is-enhanced");
 
-    // Slide the track so the active tab is centered in the bar; the rest trail
-    // off to both sides. offsetLeft/offsetWidth are layout positions, so they
-    // ignore the (animating) transform and stay correct mid-slide.
+    // Slide the track so the active tab is left-aligned as the header (where the
+    // first tab sits); the rest trail off to the right. offsetLeft is a layout
+    // position, so it ignores the animating transform and stays correct mid-slide.
     function reposition() {
       if (active < 0) return;
-      var t = tabs[active];
-      var x = bar.clientWidth / 2 - (t.offsetLeft + t.offsetWidth / 2);
-      track.style.transform = "translateX(" + x + "px)";
+      track.style.transform =
+        "translateX(" + (tabs[0].offsetLeft - tabs[active].offsetLeft) + "px)";
     }
 
     function show(i, updateHash) {

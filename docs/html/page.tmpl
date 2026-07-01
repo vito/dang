@@ -269,15 +269,15 @@ pre code{display:block}
 /* A showcase reel. Each slide is a titled \dang-feature — a real \dang-literate
    block, or a live \dang-github-playground. Without JS the slides stack and
    read fine; carousel.js (.is-enhanced) collapses them to one at a time behind
-   a single top bar whose tabs slide so the active one is centered and styled
-   as the slide's header, the rest trailing off to both sides and fading into
-   the prev/next arrows at the edges — a flat carousel. */
+   a single top bar whose tabs slide so the active one is left-aligned as the
+   slide's header, the rest trailing off to the right and fading into a filled
+   prev/next segment at the right edge. */
 .dang-carousel{
   border:1px solid var(--code-border);border-radius:8px;margin:1.5rem 0;
   background:var(--bg2);overflow:hidden;
 }
 /* The single bar: a horizontally-clipped track of feature tabs. carousel.js
-   slides the track so the active tab sits centered as the header. */
+   slides the track so the active tab sits at the left as the header. */
 .dang-carousel-tabs{
   position:relative;overflow:hidden;
   border-bottom:1px solid var(--code-border);background:var(--bg2);
@@ -298,30 +298,28 @@ pre code{display:block}
    its width, but carousel.js measures offsets after toggling so the slide still
    aligns. */
 .dang-carousel-tab.is-active{color:var(--accent2);font-weight:700;opacity:1;cursor:default}
-/* Prev/next arrows at the two edges of the bar, built by carousel.js. Each
-   strip's inner edge is a fade (bar bg -> transparent) so the trailing tabs
-   dissolve into the arrows on both sides instead of colliding with them.
-   pointer-events:none lets the fade zones pass clicks through to the tabs
-   beneath, while the buttons re-enable their own. */
+/* Prev/next arrows as a filled segment pinned to the bar's right, built by
+   carousel.js. A fade runway on its left (bar bg -> transparent) lets the
+   trailing tabs dissolve before the buttons instead of colliding; that runway
+   is pointer-events:none so clicks pass through to the tabs beneath, while the
+   buttons re-enable their own. The buttons are full-height filled segments
+   flush to the bar edge (no bordered box inside the bordered bar), just a
+   divider line separating them. */
 .dang-carousel-nav{
-  position:absolute;top:0;bottom:0;display:flex;align-items:center;
-  pointer-events:none;z-index:1;
-}
-.dang-carousel-nav-left{
-  left:0;justify-content:flex-start;padding:0 2rem 0 .35rem;
-  background:linear-gradient(to right, var(--bg2) 1.5rem, transparent);
-}
-.dang-carousel-nav-right{
-  right:0;justify-content:flex-end;padding:0 .35rem 0 2rem;
-  background:linear-gradient(to left, var(--bg2) 1.5rem, transparent);
+  position:absolute;top:0;right:0;bottom:0;display:flex;align-items:stretch;
+  padding-left:1.9rem;pointer-events:none;z-index:1;
+  background:linear-gradient(to right, transparent, var(--bg2) 1.6rem);
 }
 .dang-carousel-arrow{
   pointer-events:auto;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;width:2.2rem;
+  border:0;border-left:1px solid var(--code-border);
+  background:var(--bg3);color:var(--fg2);
   font-family:'Inter',system-ui,sans-serif;font-size:1.05rem;line-height:1;
-  border:0;background:none;color:var(--fg2);padding:.15rem .3rem;border-radius:4px;
-  transition:color .15s;
+  transition:background .12s,color .12s;
 }
-.dang-carousel-arrow:hover{color:var(--accent2)}
+.dang-carousel-arrow:hover{background:var(--bg);color:var(--accent2)}
+.dang-carousel-arrow:active{background:var(--bg2)}
 /* Enhanced: the active tab is the header, so drop the in-body title; show one
    slide at a time. */
 .dang-carousel.is-enhanced .dang-carousel-title{display:none}
