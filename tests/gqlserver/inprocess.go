@@ -63,7 +63,7 @@ func (c inProcessClient) MakeRequest(ctx context.Context, req *graphql.Request, 
 	// Echo the GraphQL query (not the HTTP mechanics) on the eval's stdout, so
 	// docs readers can see what a selection compiled to: one request, resolved
 	// server-side. See the carousel's GraphQL slides.
-	fmt.Fprintf(ioctx.StdoutFromContext(ctx), "→ %s\n", req.Query)
+	_, _ = fmt.Fprintf(ioctx.StdoutFromContext(ctx), "→ %s\n", req.Query)
 
 	body, err := json.Marshal(req)
 	if err != nil {
