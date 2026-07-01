@@ -1,0 +1,58 @@
+# Test error types whose `message` is computed with a body rather than
+# stored as a plain value field. Interface fields are represented as
+# zero-arg functions, so a computed `message: String! { ... }` must
+# satisfy the builtin Error interface just like a plain `message: String!`.
+
+type OddError implements Error {
+  number: Int!
+
+  message: String! {
+    `${number} is odd`
+  }
+}
+
+half(n: Int!): Int! {
+  if (n % 2 != 0) {
+    raise OddError(n)
+  } else {
+    n / 2
+  }
+}
+
+# catch-all binds the Error interface; message resolves via the object
+let caught = try { half(7) } catch {
+  err => err.message
+}
+assert { caught == "7 is odd" }
+
+# type pattern gives access to the concrete type's other fields
+let matched = try {
+  half(3)
+} catch {
+  o: OddError => `odd number: ${o.number}`
+}
+assert { matched == "odd number: 3" }
+
+# computed message is also reachable directly, without raising
+assert { OddError(5).message == "5 is odd" }
+
+# non-error path still works
+let ok = try { half(4) } catch {
+  err => -1
+}
+assert { ok == 2 }
+
+# computed and plain message types can mix in one catch
+type PlainError implements Error {
+  message: String!
+}
+
+let mixed = try {
+  raise PlainError("plain")
+} catch {
+  o: OddError => o.message
+  err => err.message
+}
+assert { mixed == "plain" }
+
+print("Computed error message tests passed!")
