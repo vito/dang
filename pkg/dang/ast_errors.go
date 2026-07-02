@@ -8,30 +8,44 @@ import (
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
-// TryCatch is an expression that evaluates a body block and, if it raises
-// an error, dispatches to catch clauses.  The catch block uses the same
-// clause syntax as case:
+// RescueExpr is the postfix error-handling expression.  The operand is any
+// expression — commonly a call chain or a block — and if evaluating it
+// raises, the handler runs.  Clause form dispatches on the error's type
+// using the same type patterns as case and re-raises when nothing matches;
+// fallback form yields a replacement value on any error:
 //
-//	try { ... } catch {
-//	  v: ValidationError => handle(v)
-//	  n: NotFoundError   => handle(n)
-//	  err                => fallback(err)  # catch-all
+//	validate(name) rescue {
+//	  v: ValidationError => v.field
+//	  e: Error           => e.message   # typed catch-all, binds the error
+//	  else               => "?"         # catch-all, discards the error
 //	}
-type TryCatch struct {
+//
+//	dir.file("VERSION").contents rescue null
+type RescueExpr struct {
 	InferredTypeHolder
-	TryBody *Block
+	Operand Node
 	Clauses []*CaseClause
-	Loc     *SourceLocation
+	// Fallback is the expression after `rescue` in the fallback form;
+	// mutually exclusive with Clauses.
+	Fallback Node
+	// Legacy marks a node parsed from the removed `try { } catch { }`
+	// block syntax: the formatter rewrites it to the postfix form, and
+	// inference rejects it with a migration hint.
+	Legacy bool
+	Loc    *SourceLocation
 }
 
-var _ Node = (*TryCatch)(nil)
-var _ Evaluator = (*TryCatch)(nil)
+var _ Node = (*RescueExpr)(nil)
+var _ Evaluator = (*RescueExpr)(nil)
 
-func (t *TryCatch) DeclaredSymbols() []string { return nil }
+func (t *RescueExpr) DeclaredSymbols() []string { return nil }
 
-func (t *TryCatch) ReferencedSymbols() []string {
+func (t *RescueExpr) ReferencedSymbols() []string {
 	var symbols []string
-	symbols = append(symbols, t.TryBody.ReferencedSymbols()...)
+	symbols = append(symbols, t.Operand.ReferencedSymbols()...)
+	if t.Fallback != nil {
+		symbols = append(symbols, t.Fallback.ReferencedSymbols()...)
+	}
 	for _, clause := range t.Clauses {
 		if clause.Value != nil {
 			symbols = append(symbols, clause.Value.ReferencedSymbols()...)
@@ -44,16 +58,39 @@ func (t *TryCatch) ReferencedSymbols() []string {
 	return symbols
 }
 
-func (t *TryCatch) Body() hm.Expression { return t }
+func (t *RescueExpr) Body() hm.Expression { return t }
 
-func (t *TryCatch) GetSourceLocation() *SourceLocation { return t.Loc }
+func (t *RescueExpr) GetSourceLocation() *SourceLocation { return t.Loc }
 
-func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
+func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type, error) {
 	return WithInferErrorHandling(t, func() (hm.Type, error) {
-		// Infer the try body type.
-		bodyType, err := t.TryBody.Infer(ctx, env, fresh)
+		if t.Legacy {
+			return nil, NewInferError(
+				fmt.Errorf("try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate"),
+				t,
+			)
+		}
+
+		bodyType, err := t.Operand.Infer(ctx, env, fresh)
 		if err != nil {
 			return nil, err
+		}
+
+		// Fallback form: `expr rescue fallback` merges the two types the
+		// same way an else clause would.
+		if t.Fallback != nil {
+			fallbackType, err := t.Fallback.Infer(ctx, env, fresh)
+			if err != nil {
+				return nil, err
+			}
+			return mergeControlResultTypes(bodyType, fallbackType), nil
+		}
+
+		if len(t.Clauses) == 0 {
+			return nil, NewInferError(
+				fmt.Errorf("rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value`"),
+				t,
+			)
 		}
 
 		errorType := hm.NonNullType{Type: ErrorType}
@@ -87,19 +124,24 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 					return nil, err
 				}
 			} else if clause.IsElse {
-				// Catch-all: err => ...
+				// A binding on a catch-all can only come from the removed
+				// bare-binding form (`err =>`), which parses so it can be
+				// rejected with a targeted error here.
+				if clause.Binding != "" {
+					return nil, NewInferError(
+						fmt.Errorf("bare catch-all `%s =>` is no longer supported; bind the error with `%s: Error =>` or discard it with `else =>`", clause.Binding, clause.Binding),
+						clause,
+					)
+				}
+				// Catch-all: else => ...
 				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
-					clauseEnv := env.Clone()
-					if clause.Binding != "" {
-						clauseEnv = clauseEnv.Add(clause.Binding, hm.NewScheme(nil, errorType))
-					}
-					return clause.Expr.Infer(ctx, clauseEnv, fresh)
+					return clause.Expr.Infer(ctx, env.Clone(), fresh)
 				})
 				if err != nil {
 					return nil, err
 				}
 			} else {
-				return nil, NewInferError(fmt.Errorf("catch clauses must be type patterns or a catch-all"), clause)
+				return nil, NewInferError(fmt.Errorf("rescue clauses must be type patterns or a catch-all"), clause)
 			}
 
 			// Arms that diverge from the body (or each other) widen to a
@@ -115,7 +157,7 @@ func (t *TryCatch) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 
 // RaisedError is a sentinel wrapper that carries an error value through
 // Go's error interface so that Eval methods propagate it up the call
-// stack until a TryCatch catches it.
+// stack until a RescueExpr rescues it.
 type RaisedError struct {
 	Value    Value // always an *Object implementing Error
 	Location *SourceLocation
@@ -130,9 +172,9 @@ func (r *RaisedError) Error() string {
 	return "unknown error"
 }
 
-func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
+func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 	return WithEvalErrorHandling(ctx, t, func() (Value, error) {
-		val, err := EvalNode(ctx, scope, t.TryBody)
+		val, err := EvalNode(ctx, scope, t.Operand)
 		if err == nil {
 			return val, nil
 		}
@@ -141,7 +183,12 @@ func (t *TryCatch) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 			return nil, err
 		}
 
-		// Resolve the error value to bind in catch clauses.
+		// Fallback form: any error yields the fallback value.
+		if t.Fallback != nil {
+			return EvalNode(ctx, scope.Derive(true), t.Fallback)
+		}
+
+		// Resolve the error value to bind in rescue clauses.
 		errVal := extractErrorValue(err)
 
 		// Dispatch through clauses using resolved types from inference.
@@ -194,11 +241,14 @@ func newBasicError(message string) *Object {
 	return mv
 }
 
-func (t *TryCatch) Walk(fn func(Node) bool) {
+func (t *RescueExpr) Walk(fn func(Node) bool) {
 	if !fn(t) {
 		return
 	}
-	t.TryBody.Walk(fn)
+	t.Operand.Walk(fn)
+	if t.Fallback != nil {
+		t.Fallback.Walk(fn)
+	}
 	for _, clause := range t.Clauses {
 		if clause.Value != nil {
 			clause.Value.Walk(fn)

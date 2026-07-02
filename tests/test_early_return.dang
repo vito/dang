@@ -31,12 +31,12 @@ stopAtThree: Int! {
 
 assert { stopAtThree == 3 }
 
-# try/catch catches raises, not returns.
+# rescue catches raises, not returns.
 returnThroughTry: String! {
-  try {
+  {
     return "done"
-  } catch {
-    err => "caught: " + err.message
+  } rescue {
+    err: Error => "caught: " + err.message
   }
 }
 

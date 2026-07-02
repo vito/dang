@@ -1,7 +1,7 @@
 # Control Flow and Errors
 
 ## Everything is an expression
-`if`, `case`, `loop`, `try` all return values (the last expression in the chosen branch), so they're assignable, returnable, and usable as args.
+`if`, `case`, `loop`, `rescue` all return values (the last expression in the chosen branch), so they're assignable, returnable, and usable as args.
 
 ## `if` / `else`
 ```dang
@@ -43,7 +43,7 @@ case (animal) {
 - Operand must be a **union or interface**; on a plain object → `type pattern requires a union or interface operand`.
 - The named type must be a member of the union / an implementer of the interface, else `type X is not a member of union Y`.
 - An interface itself works as a pattern (matches any implementer — a typed catch-all); place specific types before it.
-- Also used in `catch` over `Error` subtypes.
+- Also used in `rescue` clauses over `Error` subtypes.
 
 ### Optional operand
 - `case { x > 0 => "+", x < 0 => "-", else => "0" }` — omitting the operand desugars to `case (true)`; clauses are `Boolean!` conditions.
@@ -67,11 +67,11 @@ let answer = loop { break 42 }   # block-taking builtin; runs until break
 - Value type must satisfy the declared return type.
 - Unwinds through enclosing blocks and loops (a `return` from inside `.each` exits the whole fn).
 - A `return` in a skippable branch (e.g. a no-else `if`) does not make the fn non-null.
-- `return` is **NOT an error** and is **NOT catchable** by `try`/`catch`.
+- `return` is **NOT an error** and is **NOT recoverable** by `rescue`.
 
-## Errors: `try`, `catch`, `raise`
+## Errors: `raise` and postfix `rescue`
 
-An error is a value implementing the `Error` interface; `raise` throws it up the stack, and `try`/`catch` — itself an expression — recovers it. Raise for failures: continuing would produce wrong results, or the failure crosses a boundary (validation, HTTP/GraphQL, contract). Return `null` for normal absence (see the table below).
+An error is a value implementing the `Error` interface; `raise` throws it up the stack, and the postfix `rescue` operator — itself an expression — recovers it. Raise for failures: continuing would produce wrong results, or the failure crosses a boundary (validation, HTTP/GraphQL, contract). Return `null` for normal absence (see the table below).
 
 ### Raising
 ```dang
@@ -80,37 +80,54 @@ raise NotFoundError(message: "user gone", resource: "User")
 ```
 - `raise` takes a `String!` or an `Error!`; anything else → `raise requires a String! or Error!, got Int!`.
 - A string raise wraps it in a built-in `BasicError` (implements `Error`, `message` = the string). A value implementing `Error` raises as-is.
-- `raise` is itself an expression of any type (fresh type var), so it fits in any branch (e.g. a `case`/`catch` arm) without breaking the merged result type.
+- `raise` is itself an expression of any type (fresh type var), so it fits in any branch (e.g. a `case` clause or `rescue` arm) without breaking the merged result type.
 
 ### The `Error` interface
 ```dang
 interface Error { message: String! }
 ```
 - A real prelude interface; `BasicError` is the built-in implementer for string raises.
-- User error types `implements Error`, which forces `message: String!` (omitting it → ``object Foo is missing `message: String!`, required by interface Error``). Additional fields (`resource`, `field`, `code`) are preserved on the raised value and readable in `catch` clauses.
+- User error types `implements Error`, which forces `message: String!` (omitting it → ``object Foo is missing `message: String!`, required by interface Error``). Additional fields (`resource`, `field`, `code`) are preserved on the raised value and readable in `rescue` clauses.
 
-### Catching
+### Rescuing: the fallback form `expr rescue fallback`
 ```dang
-try {
-  validate(name)
-} catch {
+let contents = dir.file("VERSION").contents rescue null
+let ref = commit rescue "main"
+```
+- If evaluating the operand raises **any** error, the result is the fallback; on success the operand's value passes through unchanged.
+- The operand can be any term, including a block: `{ let msg = "boom"; raise msg } rescue "rescued"`.
+
+### Rescuing: the clause form `expr rescue { clauses }`
+```dang
+validate(name) rescue {
   v: ValidationError => v.field
   n: NotFoundError => n.resource
-  e: Error => e.message     # interface pattern = typed catch-all
-  err => err.message        # bare catch-all, err: Error!
+  e: Error => e.message     # interface pattern = typed catch-all, binds e
+  else => "gave up"         # catch-all, discards the error
 }
 ```
-- The whole `try`/`catch` is one expression — assignable, returnable, nestable.
-- The body's success value passes through unchanged when nothing is raised.
-- Body and catch clauses merge to one type when they can; arms that diverge **widen to a union** (`try { 1 } catch { err => "s" }` is `Int! | String!`), exactly like `if` branches and `case` clauses.
-- Catches errors raised anywhere in the body, including ones propagated from called functions and **runtime errors** (null access, `1 / 0` → `division by zero`, GraphQL failures). Runtime errors arrive wrapped in `BasicError`, so `.message` is uniform.
-- Catch clauses are `case` patterns limited to **type patterns** and a **catch-all** (a value pattern like `404 =>` is a syntax error). First match wins. Pattern types must implement `Error` (else `type X does not implement interface Error`). The bare catch-all binds the error as `Error!`. The `Error` interface itself matches any error; place specific types first.
-- When **no clause matches**, the error is re-raised to the next enclosing `catch` — an incomplete `catch` narrows what it handles rather than swallowing the rest, and (unlike a non-exhaustive `case`) never makes the result nullable: a miss re-raises, it never yields null.
+- The whole `rescue` is one expression — assignable, returnable, nestable.
+- Clauses are `case` patterns limited to **type patterns** plus `else` (a value pattern like `404 =>` is a syntax error). `binding: Type => expr` binds the error narrowed to `Type`; pattern types must implement `Error` (else `type X does not implement interface Error`). `else => expr` is the catch-all that discards the error. First match wins. The `Error` interface itself matches any error (typed catch-all); place specific types first.
+- When **no clause matches**, the error is re-raised to the next enclosing `rescue` — a partial `rescue` narrows what it handles rather than swallowing the rest, and (unlike a non-exhaustive `case`) never makes the result nullable: a miss re-raises, it never yields null.
+- Rescues errors raised anywhere in the operand, including ones propagated from called functions and **runtime errors** (null access, `1 / 0` → `division by zero`, GraphQL failures). Runtime errors arrive wrapped in `BasicError`, so `.message` is uniform.
+- Operand and clause results merge to one type when they can; arms that diverge **widen to a union** (`1 rescue { e: Error => "s" }` is `Int! | String!`), exactly like `if` branches and `case` clauses.
+
+### Precedence and parsing
+- Binds tighter than `??`, looser than `or`: `x rescue null ?? "default"` is `(x rescue null) ?? "default"` — handle the error first, then the null.
+- Left-associative chaining: `x rescue { n: NotFoundError => .. } rescue { e: Error => .. }` — a miss in the first re-raises into the second.
+- A bare `{` after `rescue` always starts a **clause block**; a record fallback uses double braces and is unaffected: `x rescue {{ ok: false }}`.
+- `raise x rescue y` parses as `raise (x rescue y)`; to rescue a raise, block it: `{ raise x } rescue y`.
+- `rescue` is a reserved word (can't be an identifier or binding name); `try` and `catch` are ordinary identifiers.
+
+### Compile errors
+- Zero clauses, `expr rescue { }` → ``rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value` ``
+- A bare catch-all clause, `err =>` → ``bare catch-all `err =>` is no longer supported; bind the error with `err: Error =>` or discard it with `else =>` ``
+- Legacy `try { } catch { }` still parses, but type-checking rejects it: ``try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate``. `dang fmt -w` rewrites it (a single-form try body unwraps to plain postfix, bare `err =>` bindings become `err: Error =>`, zero-clause handlers are dropped).
 
 ### Propagation
-- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `catch` terminates the program (`uncaught error: <message>`).
-- `return` cannot be caught — `try { return x } catch {..}` still returns `x`.
-- Re-raise inside a catch with `raise err` (or a new error); it propagates to the next enclosing `catch`.
+- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` terminates the program (`uncaught error: <message>`).
+- `return` cannot be rescued — `{ return x } rescue fallback` still returns `x`; likewise `break`/`continue` are not errors.
+- Re-raise inside a clause with `raise err` (or a new error); it propagates to the next enclosing `rescue`.
 
 ### When to raise vs. return null
 | situation | use |
@@ -120,4 +137,4 @@ try {
 | continuing would produce wrong results | `raise` |
 | failure crosses a boundary (validation, HTTP/GraphQL, contract) | `raise` |
 
-Anti-patterns: `raise` for early exit (use `return`); `raise` to signal expected absence (return `null`); catching `Error` just to ignore it.
+Anti-patterns: `raise` for early exit (use `return`); `raise` to signal expected absence (return `null`); rescuing `Error` just to ignore it.

@@ -73,6 +73,6 @@ cannot map to the same key.
 - wrong type for field → raises
 - invalid enum value → raises (`<path>: invalid enum value "X" for <Enum>`)
 
-All of these are catchable with `try`/`catch` ([#errors]).
+All of these are recoverable with `rescue` ([#errors]).
 
 > Meta: A side-by-side "JSON in / Dang value out" table would be a nice teaching tool.

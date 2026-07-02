@@ -20,11 +20,14 @@ Import       := 'import' Symbol
 Reassignment := Term AssignOp Form
 Decl         := DocString? ( InterfaceDecl | UnionDecl | EnumDecl | ScalarDecl
                            | ObjectDecl | NewConstructorDecl | FieldDecl | DirectiveDecl )
-Form         := Return | TryCatch | Raise | Conditional
+Form         := Return | RescueExpr | Raise | Conditional
               | Case | Break | Continue | DefaultExpr | TypeHint | Term
 Term         := UnaryExpr | NonNullAssert | IndexOrCall | SelectOrCall | Literal
               | MapLiteral | List | ObjectLiteral | Block | ParenForm | SymbolOrCall
 NonNullAssert := Term '!'
+RescueExpr   := (RescueExpr | Term) 'rescue' (RescueClauses | Fallback)   # left-associative chaining; Fallback is any Term
+RescueClauses := '{' RescueClause+ '}'    # a bare '{' after 'rescue' always starts clauses; a record fallback is '{{ ... }}'
+RescueClause := (Symbol ':' TypeName | 'else') '=>' Form
 ```
 
 ## Separators
@@ -35,6 +38,8 @@ NonNullAssert := Term '!'
 ## Expression form (precedence)
 
 > Meta: keep this in sync with [#operators] precedence table — duplicating it isn't ideal but it's the kind of thing readers expect on a grammar page.
+
+- `rescue` sits between `??` and `or`: it binds tighter than `??` and looser than `or`, so `x rescue null ?? "default"` is `(x rescue null) ?? "default"` (see [#errors])
 
 ## Type syntax
 
@@ -65,7 +70,7 @@ TypeVariable := [a-z]                           # single lowercase letter
 
 ## Reserved words
 
-- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `catch`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `return`, `scalar`, `self`, `true`, `try`, `type`, `union`
+- keyword tokens (each `!WordChar`-terminated): `and`, `break`, `case`, `continue`, `directive`, `else`, `enum`, `false`, `if`, `implements`, `import`, `interface`, `let`, `new`, `null`, `on`, `or`, `pub`, `raise`, `rescue`, `return`, `scalar`, `self`, `true`, `type`, `union` (`try` and `catch` are ordinary identifiers now; legacy `try`/`catch` blocks still parse but are rejected at type-check — see [#errors])
 - `pub` is optional — the visibility keyword is parsed but no longer required; declarations are public by default (see [#fields])
 - see [#syntax]
 

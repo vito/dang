@@ -116,7 +116,7 @@
       "name": "entity.name.function.macro.dang"
     },
     "keyword-control": {
-      "match": "\\b(type|interface|union|implements|enum|scalar|if|else|break|continue|case|assert|directive|on|import|new|and|or|try|catch|raise|return)\\b",
+      "match": "\\b(type|interface|union|implements|enum|scalar|if|else|break|continue|case|assert|directive|on|import|new|and|or|rescue|raise|return)\\b",
       "name": "keyword.control.dang"
     },
     "keyword": {

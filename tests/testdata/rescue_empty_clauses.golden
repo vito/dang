@@ -1,0 +1,10 @@
+[1m[31mError:[0m rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value`
+  [2m[34m--> errors/rescue_empty_clauses.dang:2:9[0m
+ [2m    |[0m
+ [2m  1 | # A rescue clause block must contain at least one clause.[0m
+ [2m[34m[1m  2 | [0mlet x = "value" rescue { }
+[2m               [31m^^^^^^^^^^^^^^^^^^[0m
+ [2m  3 | print(x)[0m
+ [2m  4 | [0m
+ [2m    |[0m
+

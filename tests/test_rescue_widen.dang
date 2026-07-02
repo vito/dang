@@ -1,14 +1,14 @@
-# Catch arms that diverge from the try body widen to a union, like if/else
+# Rescue arms that diverge from the operand widen to a union, like if/else
 # branches and case clauses, instead of erroring. There is no null
-# fallthrough: a catch whose clauses all miss re-raises, so widening never
+# fallthrough: a rescue whose clauses all miss re-raises, so widening never
 # taints the result with nullability.
 
-# Body Int!, catch String! — widens to Int! | String!
+# Operand Int!, rescue String! — widens to Int! | String!
 describeOutcome(fail: Boolean!): String! {
-  let outcome = try {
+  let outcome = {
     if (fail) raise "boom" else 42
-  } catch {
-    err => err.message
+  } rescue {
+    err: Error => err.message
   }
 
   case (outcome) {
@@ -26,9 +26,9 @@ type NotFoundError implements Error {
   resource: String!
 }
 
-let mixed = try { raise NotFoundError(message: "gone", resource: "User") } catch {
+let mixed = { raise NotFoundError(message: "gone", resource: "User") } rescue {
   n: NotFoundError => 404
-  err => err.message
+  err: Error => err.message
 }
 
 assert { mixed == 404 }
@@ -36,8 +36,8 @@ assert { mixed == 404 }
 # Arms that agree still merge to a single type, with no union in the way
 # of a non-null declared return type
 total: Int! {
-  try { 1 + 1 } catch {
-    err => 0
+  1 + 1 rescue {
+    err: Error => 0
   }
 }
 

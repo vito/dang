@@ -69,6 +69,22 @@ editing the Zed query. New capture names also need a case in `captureClass`
 in `pkg/dang/highlight_common.go` (kept in lockstep with
 `docs/go/highlight.go`).
 
+## Stale-parser gotcha (cgo build cache)
+
+`pkg/dang/danglang` binds the generated parser by `#include`-ing
+`treesitter/src/parser.c` across package directories, and Go's build cache
+does **not** track that file. After `./hack/generate` regenerates the
+grammar, cached builds keep linking the *old* parser; the first symptom is
+the embedded highlight query failing to compile ("Invalid node type
+<new_token>") and the REPL silently rendering plain text
+(`TestHighlightCodeStylesAndPreservesText` fails). Force one rebuild:
+
+```bash
+go test -a ./pkg/dang/ -run TestHighlight
+```
+
+(`-a` recomputes the cache entry; subsequent normal builds are fine.)
+
 ## Checklist
 
 When a language keyword or token changes:
@@ -77,4 +93,8 @@ When a language keyword or token changes:
 2. [ ] Update `editors/nvim/queries/dang/highlights.scm`
 3. [ ] Update `editors/vscode/syntaxes/dang.tmLanguage.json`
 4. [ ] Re-run `./hack/generate` to refresh the embedded `pkg/dang/highlights.scm`
-5. [ ] Commit submodules, then parent repo
+5. [ ] Force-rebuild the cgo parser binding (see gotcha above)
+6. [ ] Add/refresh `treesitter/test/corpus/` and `editors/highlights/corpus/`
+       cases for the new construct (`tree-sitter test --update`,
+       `go test ./editors/ -run TestNeovimHighlights -update`)
+7. [ ] Commit submodules, then parent repo

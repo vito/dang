@@ -1,0 +1,53 @@
+# The rescue fallback form: `expr rescue value` replaces any error with the
+# fallback value, and `else =>` discards the error in clause form.
+
+raiseIt: String! { raise "boom" }
+
+# fallback form catches any error
+let a = raiseIt rescue "fallback"
+assert { a == "fallback" }
+
+# success passes through untouched
+let ok = "fine" rescue "unused"
+assert { ok == "fine" }
+
+# rescue binds tighter than ??: null fallback feeds the null machinery
+let b = raiseIt rescue null ?? "default"
+assert { b == "default" }
+
+# else => discards the error in clause form
+let c = raiseIt rescue {
+  else => "discarded"
+}
+assert { c == "discarded" }
+
+# specific type first, else as the terminal catch-all
+type CodeError implements Error {
+  message: String!
+  code: Int!
+}
+
+raiseCode: String! { raise CodeError(message: "c", code: 7) }
+
+let d = raiseCode rescue {
+  e: CodeError => `code ${toString(e.code)}`
+  else => "other"
+}
+assert { d == "code 7" }
+
+# chaining is left-associative; a miss re-raises to the next rescue
+let e = raiseCode rescue {
+  b: BasicError => "basic"
+} rescue {
+  c: CodeError => "chained"
+}
+assert { e == "chained" }
+
+# a block operand works like any other operand
+let f = {
+  let msg = "from block"
+  raise msg
+} rescue "rescued"
+assert { f == "rescued" }
+
+print("Rescue fallback tests passed!")

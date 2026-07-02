@@ -539,7 +539,7 @@ type Doug {
     completed: [String!]! = [],
   ): Env! {
     # Try to get current TODOs, default to empty string if not found
-    # Since we don't have try/catch, we'll assume it returns empty string on failure
+    # (predates `rescue`; we assume it returns empty string on failure)
     let currentTodos = currentEnv.input("TODOs").asString
 
     let existingCompleted = [] :: [String!]!
