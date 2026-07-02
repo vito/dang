@@ -96,7 +96,7 @@ case (animal) {
 ```
 
 - `binding: TypeName => …` clauses bind the operand narrowed to the pattern type
-- `try`/`catch` clauses reuse the same `CaseClause` form, so typed catch clauses narrow the bound error the same way
+- `rescue` clauses reuse the same `CaseClause` form, so typed rescue clauses narrow the bound error the same way
 - this is how you recover a concrete value from a widened conditional: an `if`/`else` over divergent branches infers as a **union**, which a `case` then narrows
 
 ### Conditional result inference (related)
@@ -131,7 +131,7 @@ if (maybe != null and other != null) {
 
 When narrowing can't reach the value — a field or call result, or a spot where the checker just can't follow your reasoning — the postfix `!` operator is the explicit escape hatch: `expr!` narrows `T` to `T!` and raises at runtime if the value turns out to be null. See [#operators].
 
-See also [#errors] (`raise`/`try`/`catch` divergence) and [#control-flow] (guards, loops, `case`).
+See also [#errors] (`raise`/`rescue` divergence) and [#control-flow] (guards, loops, `case`).
 
 > Meta: field-narrowing and the `and`-guard non-narrowing are the two most surprising gaps in practice. Both are documented above with the re-bind-to-a-local workaround.
 

@@ -5,9 +5,9 @@
 
 > Meta: keep `if`, `case`, and `loop` close together — they're all expression-form. The "no statements vs. expressions" point is worth stating once at the top.
 
-Dang has no control-flow *statements*. `if`, `case`, `loop`, and `try` are
-expressions: each yields the last expression of whichever branch ran, so
-anything you can do with a value — bind it, return it, pass it as an
+Dang has no control-flow *statements*. `if`, `case`, `loop`, and `rescue`
+are expressions: each yields the last expression of whichever branch ran,
+so anything you can do with a value — bind it, return it, pass it as an
 argument — you can do with a conditional or a loop.
 
 > The examples on this page are live: they share one Dang environment, so
@@ -25,12 +25,12 @@ All four forms, sitting in expression position as list elements:
   if (true) 1 else 2,
   case { else => 3 },
   loop { break 4 },
-  try { raise "!" } catch { err => 5 },
+  { raise "!" } rescue 5,
 ]
 ```
 
 The rest of this page covers `if`, `case`, and `loop`, plus the jumps —
-`break`, `continue`, `return` — that cut across them. `try`/`catch`/`raise`
+`break`, `continue`, `return` — that cut across them. `raise` and `rescue`
 have their own page: [#errors].
 
 ## `if` / `else`
@@ -224,7 +224,7 @@ play(s: Sound!): String! {
 [play(Bell), play(Horn)]
 ```
 
-`catch` clauses use these same type patterns, over `Error` implementers —
+`rescue` clauses use these same type patterns, over `Error` implementers —
 see [#errors].
 
 ### Optional operand
@@ -351,18 +351,21 @@ shout(word: String): String {
 [shout("hey"), shout(null)]
 ```
 
-And `return` is not an error: `try`/`catch` cannot intercept it. (`sneaky`
+And `return` is not an error: `rescue` cannot intercept it. (`sneaky`
 is a zero-arg function, so referencing it calls it — see [#functions].)
 
 ```dang
 sneaky: String! {
-  try { return "returned" } catch { err => `caught: ${err.message}` }
+  { return "returned" } rescue {
+    err: Error => `caught: ${err.message}`
+  }
 }
 
 sneaky
 ```
 
-## `try` / `catch` / `raise`
+## `raise` / `rescue`
 
-Errors are expressions with the same shape — a `try`/`catch` yields a value,
-and `raise` fits in any branch — but they earn their own page: [#errors].
+Errors are expressions with the same shape — postfix `rescue` attaches a
+recovery to any expression and yields a value, and `raise` fits in any
+branch — but they earn their own page: [#errors].

@@ -101,7 +101,7 @@ users.{{ name, email }}
 
 ## Errors from the server
 
-- non-null violations and GraphQL errors raise — catchable via `try`/`catch` (see [#errors])
+- non-null violations and GraphQL errors raise — recoverable via `rescue` (see [#errors])
 
 ## Talking to multiple endpoints
 

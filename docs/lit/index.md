@@ -295,7 +295,7 @@ speak(p: Pet!): String! {
 }}}
 }{
 \dang-feature{Errors are values}{{{
-## plain old try/catch/raise
+## raise any value implementing `Error`
 
 type OddError implements Error {
   number: Int!
@@ -312,8 +312,11 @@ half(n: Int!): Int! {
   }
 }
 
-## `catch` is like `case` - you can match on error types
-try { half(7) } catch { err => err.message }
+## postfix `rescue` handles them: `half(7) rescue 0`,
+## or match on error types like `case`
+half(7) rescue {
+  e: OddError => e.message
+}
 }}}{
 See [#errors] for more details.
 }
