@@ -193,6 +193,11 @@ func TreesitterGrammar() treesitter.Grammar {
 		// built from the same tokens. GLR explores both; what follows the
 		// closing paren disambiguates.
 		{treesitter.Name("DocString"), treesitter.Name("TripleQuoteString")},
+		// A `{` after `rescue` is ambiguous between a clause block and a
+		// block-expression fallback until a clause arrow (or its absence)
+		// appears. GLR explores both; the PEG resolves the same ambiguity
+		// by ordered choice (clauses first).
+		{treesitter.Name("RescueClauses"), treesitter.Name("Block")},
 	}
 	ts.Precedences = [][]treesitter.Rule{
 		{

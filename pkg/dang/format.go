@@ -636,8 +636,8 @@ func (f *Formatter) formatNode(node Node) {
 		f.formatMap(n)
 	case *ObjectLiteral:
 		f.formatObject(n)
-	case *TryCatch:
-		f.formatTryCatch(n)
+	case *RescueExpr:
+		f.formatRescueExpr(n)
 	case *Raise:
 		f.formatRaise(n)
 	case *Return:
@@ -2773,10 +2773,23 @@ func (f *Formatter) formatCase(c *Case) {
 	f.write("}")
 }
 
-func (f *Formatter) formatTryCatch(t *TryCatch) {
-	f.write("try {")
-	f.formatBlockContents(t.TryBody)
-	f.write("} catch {")
+func (f *Formatter) formatRescueExpr(t *RescueExpr) {
+	f.formatRescueOperand(t)
+
+	if t.Legacy && len(t.Clauses) == 0 {
+		// A zero-clause `try { } catch { }` silently re-raised, so the
+		// handler did nothing; the rewrite drops it.
+		return
+	}
+
+	f.write(" rescue ")
+
+	if t.Fallback != nil {
+		f.formatNode(t.Fallback)
+		return
+	}
+
+	f.write("{")
 	if t.Loc != nil {
 		f.nl(t.Loc.Line)
 	} else {
@@ -2797,7 +2810,12 @@ func (f *Formatter) formatTryCatch(t *TryCatch) {
 				f.write(": ")
 				f.write(clause.TypePattern.Name)
 			} else if clause.Binding != "" {
+				// Legacy bare-binding catch-all rewrites to a typed
+				// catch-all on the Error interface.
 				f.write(clause.Binding)
+				f.write(": Error")
+			} else {
+				f.write("else")
 			}
 			f.write(" => ")
 			f.formatNode(clause.Expr)
@@ -2809,6 +2827,38 @@ func (f *Formatter) formatTryCatch(t *TryCatch) {
 	})
 	f.writeIndent()
 	f.write("}")
+}
+
+// formatRescueOperand prints the left side of a rescue expression. A legacy
+// try body is always a block; when it holds a single form that can stand
+// on rescue's left unparenthesized, the block unwraps to the plain postfix
+// form (`try { x() } catch ...` becomes `x() rescue ...`).
+func (f *Formatter) formatRescueOperand(t *RescueExpr) {
+	if t.Legacy {
+		if block, ok := t.Operand.(*Block); ok &&
+			len(block.Forms) == 1 &&
+			rescueOperandSafe(block.Forms[0]) &&
+			!f.hasCommentsInBlock(block) {
+			f.formatNode(block.Forms[0])
+			return
+		}
+	}
+	f.formatNode(t.Operand)
+}
+
+// rescueOperandSafe reports whether a form re-parses as the left operand of
+// `rescue` without a wrapping block: Terms and operator tiers above catch
+// qualify; lower-precedence forms, control flow, and declarations don't.
+func rescueOperandSafe(n Node) bool {
+	if len(n.DeclaredSymbols()) > 0 {
+		return false
+	}
+	switch n.(type) {
+	case *Default, *RescueExpr, *Conditional, *Case, *Raise, *Return,
+		*Break, *Continue, *TypeHint, *Reassignment:
+		return false
+	}
+	return true
 }
 
 func (f *Formatter) formatRaise(r *Raise) {

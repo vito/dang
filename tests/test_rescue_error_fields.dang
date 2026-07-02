@@ -1,20 +1,20 @@
 # Test error message access
 
 # error message from a string raise
-let result = try {
+let result = {
   raise "not found"
-} catch {
-  err => err.message
+} rescue {
+  err: Error => err.message
 }
 
 assert { result == "not found" }
 
 # error message from a runtime error
-let divResult = try {
+let divResult = {
   let x = 1 / 0
   "ok"
-} catch {
-  err => err.message
+} rescue {
+  err: Error => err.message
 }
 
 assert { divResult == "division by zero" }

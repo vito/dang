@@ -1,0 +1,11 @@
+[1m[31mError:[0m bare catch-all `err =>` is no longer supported; bind the error with `err: Error =>` or discard it with `else =>`
+  [2m[34m--> errors/rescue_bare_binding.dang:4:3[0m
+ [2m    |[0m
+ [2m  2 | # bind via a type pattern or discard via else.[0m
+ [2m  3 | let x = "value" rescue {[0m
+ [2m[34m[1m  4 | [0m  err => "caught"
+[2m         [31m^^^^^^^^^^^^^^^[0m
+ [2m  5 | }[0m
+ [2m  6 | print(x)[0m
+ [2m    |[0m
+

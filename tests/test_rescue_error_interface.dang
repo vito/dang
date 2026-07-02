@@ -5,10 +5,10 @@ type AppError implements Error {
   code: Int!
 }
 
-# catch with Error type pattern matches any error
-let result = try {
+# rescue with Error type pattern matches any error
+let result = {
   raise "hell"
-} catch {
+} rescue {
   e: Error => e.message
 }
 
@@ -19,18 +19,18 @@ describe(err: Error!): String! {
   "error: " + err.message
 }
 
-let described = try {
+let described = {
   raise AppError(message: "broken", code: 500)
-} catch {
+} rescue {
   e: AppError => describe(e) + " (" + toString(e.code) + ")"
 }
 
 assert { described == "error: broken (500)" }
 
 # Error interface as a catch-all type pattern alongside specific types
-let triaged = try {
+let triaged = {
   raise "surprise"
-} catch {
+} rescue {
   a: AppError => "app: " + a.message
   e: Error => "generic: " + e.message
 }

@@ -5,10 +5,8 @@ failing: String! {
   raise "kaboom"
 }
 
-let result = try {
-  failing
-} catch {
-  err => "caught: " + err.message
+let result = failing rescue {
+  err: Error => "caught: " + err.message
 }
 
 assert { result == "caught: kaboom" }
@@ -22,23 +20,21 @@ outer: String! {
   inner + " unreachable"
 }
 
-let nested = try {
-  outer
-} catch {
-  err => err.message
+let nested = outer rescue {
+  err: Error => err.message
 }
 
 assert { nested == "inner error" }
 
 # re-raise an error
-let rethrow = try {
-  try {
+let rethrow = {
+  {
     raise "original"
-  } catch {
-    err => raise err
+  } rescue {
+    err: Error => raise err
   }
-} catch {
-  err => err.message
+} rescue {
+  err: Error => err.message
 }
 
 assert { rethrow == "original" }
