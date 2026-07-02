@@ -3,6 +3,7 @@ package dang
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2789,6 +2790,19 @@ func (f *Formatter) formatRescueExpr(t *RescueExpr) {
 		return
 	}
 
+	// A legacy catch with a single bare-binding clause that never reads
+	// the binding (`catch { err => "" }`) is the fallback form in
+	// disguise; rewrite it as `rescue ""`.
+	if t.Legacy && len(t.Clauses) == 1 {
+		clause := t.Clauses[0]
+		if clause.IsElse && clause.Binding != "" &&
+			!slices.Contains(clause.Expr.ReferencedSymbols(), clause.Binding) &&
+			fallbackFormSafe(clause.Expr) {
+			f.formatNode(clause.Expr)
+			return
+		}
+	}
+
 	f.write("{")
 	if t.Loc != nil {
 		f.nl(t.Loc.Line)
@@ -2844,6 +2858,16 @@ func (f *Formatter) formatRescueOperand(t *RescueExpr) {
 		}
 	}
 	f.formatNode(t.Operand)
+}
+
+// fallbackFormSafe reports whether a form re-parses as the fallback
+// expression after `rescue`. Same tier as the operand, except a bare block
+// cannot go there: a `{` after `rescue` always starts a clause block.
+func fallbackFormSafe(n Node) bool {
+	if _, isBlock := n.(*Block); isBlock {
+		return false
+	}
+	return rescueOperandSafe(n)
 }
 
 // rescueOperandSafe reports whether a form re-parses as the left operand of

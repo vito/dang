@@ -1778,3 +1778,138 @@ func (FormatSuite) TestMultilineDirectives(ctx context.Context, t *testctx.T) {
 		})
 	}
 }
+
+func (FormatSuite) TestLegacyTryCatchMigration(ctx context.Context, t *testctx.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "single-expression body unwraps to postfix",
+			input: `let x = try {
+  risky
+} catch {
+  e: BasicError => e.message
+}`,
+			expected: `let x = risky rescue {
+  e: BasicError => e.message
+}
+`,
+		},
+		{
+			name: "bare binding becomes typed catch-all when read",
+			input: `let x = try {
+  risky
+} catch {
+  err => err.message
+}`,
+			expected: `let x = risky rescue {
+  err: Error => err.message
+}
+`,
+		},
+		{
+			name: "unused bare binding collapses to fallback form",
+			input: `let x = try {
+  risky
+} catch {
+  err => ""
+}`,
+			expected: `let x = risky rescue ""
+`,
+		},
+		{
+			name: "unused binding with null fallback",
+			input: `let x = try {
+  risky
+} catch {
+  err => null
+}`,
+			expected: `let x = risky rescue null
+`,
+		},
+		{
+			name: "unused binding with block expr keeps clause form",
+			input: `let x = try {
+  risky
+} catch {
+  err => { a; b }
+}`,
+			expected: `let x = risky rescue {
+  err: Error => { a; b }
+}
+`,
+		},
+		{
+			name: "multi-form body keeps its block",
+			input: `let x = try {
+  let y = risky
+  raise y
+} catch {
+  err => ""
+}`,
+			expected: `let x = {
+  let y = risky
+  raise y
+} rescue ""
+`,
+		},
+		{
+			name: "default-expr body keeps its block",
+			input: `let x = try {
+  risky ?? "missing"
+} catch {
+  err => err.message
+}`,
+			expected: `let x = {
+  risky ?? "missing"
+} rescue {
+  err: Error => err.message
+}
+`,
+		},
+		{
+			name: "raise body keeps its block",
+			input: `let x = try {
+  raise "boom"
+} catch {
+  err => ""
+}`,
+			expected: `let x = {
+  raise "boom"
+} rescue ""
+`,
+		},
+		{
+			name: "zero-clause handler is dropped",
+			input: `let x = try {
+  risky
+} catch { }`,
+			expected: `let x = risky
+`,
+		},
+		{
+			name: "multiple clauses keep clause form",
+			input: `let x = try {
+  risky
+} catch {
+  v: ValidationError => v.field
+  err => ""
+}`,
+			expected: `let x = risky rescue {
+  v: ValidationError => v.field
+  err: Error => ""
+}
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(ctx context.Context, t *testctx.T) {
+			result, err := FormatFile([]byte(tt.input))
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
