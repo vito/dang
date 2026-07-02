@@ -113,7 +113,7 @@ let cfg: Settings! = TOML.decode("count = 1")   # TOML's top level is always a t
 - `JSON.encode(value) -> String!`, `YAML.encode(value)`, `TOML.encode(value)` — object/record keys emitted in **alphabetical** order. `TOML.encode` requires a table (record) at the top level and drops null fields (TOML has no null); JSON/YAML keep them.
 - `toString(value)` — pass-through for strings, JSON-encode otherwise.
 
-### Errors (all catchable with `try`/`catch`)
+### Errors (all recoverable with `rescue`)
 - invalid input → `<Format>.decode: invalid <Format>: ...` (e.g. `JSON.decode: invalid JSON: ...`, `YAML.decode: invalid YAML: ...`)
 - missing required field → `<path>: missing required field`
 - wrong type for field → raises
