@@ -1,0 +1,12 @@
+[1m[31mError:[0m uncaught PublishError: publish failed
+  [2m[34m--> errors/uncaught_error_fields.dang:9:1[0m
+ [2m    |[0m
+ [2m  7 | }[0m
+ [2m  8 | [0m
+ [2m[34m[1m  9 | [0mraise PublishError(message: "publish failed", registry: "ghcr.io/acme/app", attempts: 3)
+[2m       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m 10 | [0m
+ [2m    |[0m
+  [2mregistry:[0m "ghcr.io/acme/app"
+  [2mattempts:[0m 3
+

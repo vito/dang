@@ -1,0 +1,9 @@
+# An uncaught user-defined error reports its type name and public data
+# fields, not just the message.
+type PublishError implements Error {
+  message: String!
+  registry: String!
+  attempts: Int!
+}
+
+raise PublishError(message: "publish failed", registry: "ghcr.io/acme/app", attempts: 3)

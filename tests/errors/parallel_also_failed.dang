@@ -1,0 +1,7 @@
+# When several fields of a {{ }} fail concurrently, the report keeps the
+# deterministic primary error and lists the completed sibling failures
+# instead of silently discarding them.
+boomA: String! { raise "first failure" }
+boomB: String! { raise "second failure" }
+
+{{a: boomA, b: boomB}}

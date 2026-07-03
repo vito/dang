@@ -364,6 +364,29 @@ enclosing `rescue`:
 }
 ```
 
+Recasting doesn't destroy the original: a raise inside a rescue arm
+records the rescued error as the new error's *cause*, automatically. (A
+plain `raise err` re-raise carries no cause — it *is* the original — and
+an error type may declare its own `cause: Error` field to take over the
+chain explicitly.)
+
+When an error escapes the whole program, the report shows everything
+gathered along the way — the error's type and public data fields, the
+raise site, the cause chain, and any sibling failures from a concurrent
+`{{ }}`:
+
+```
+Error: uncaught DeployError: deploy failed
+  --> ./ci/main.dang:12:17
+     |
+  12 |     e: Error => raise DeployError(message: "deploy failed", stage: "push")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+  stage: "push"
+caused by: error: connection refused
+  --> ./ci/main.dang:8:17
+```
+
 Jumps are not errors: `return`, `break`, and `continue` pass through a
 `rescue` untouched (see [#control-flow]), so an early exit can't be
 accidentally rescued:

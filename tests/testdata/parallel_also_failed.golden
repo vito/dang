@@ -1,0 +1,12 @@
+[1m[31mError:[0m uncaught error: first failure
+  [2m[34m--> errors/parallel_also_failed.dang:4:18[0m
+ [2m    |[0m
+ [2m  2 | # deterministic primary error and lists the completed sibling failures[0m
+ [2m  3 | # instead of silently discarding them.[0m
+ [2m[34m[1m  4 | [0mboomA: String! { raise "first failure" }
+[2m                        [31m^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  5 | boomB: String! { raise "second failure" }[0m
+ [2m  6 | [0m
+ [2m    |[0m
+[1m[31malso failed:[0m error: second failure
+

@@ -1,0 +1,16 @@
+# Raising inside a rescue arm records the rescued error as the new
+# error's cause; the uncaught report walks the whole chain.
+type DeployError implements Error {
+  message: String!
+  stage: String!
+}
+
+push: String! { raise "connection refused" }
+
+deploy: String! {
+  push rescue {
+    e: Error => raise DeployError(message: "deploy failed", stage: "push")
+  }
+}
+
+deploy
