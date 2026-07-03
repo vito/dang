@@ -22,11 +22,18 @@ import (
 //   - a still-lazy handle that leaves a rescue carries its failures past the
 //     handler to wherever it is eventually forced.
 //
-// Both are warnings, not errors, because the analysis is heuristic in the
-// permissive direction: anything it cannot classify counts as fallible, and
-// even a "provably" infallible operand can in principle fail through a
-// forced-on-read initializer of a forward-referenced binding. It only speaks
-// up when the operand is flagrantly disconnected from where failures happen.
+// Both are warnings, not errors, by design: the analysis is heuristic in
+// the permissive direction (anything it cannot classify counts as
+// fallible), and inert-but-harmless code — `123 rescue 456` in a demo or
+// teaching snippet — should still run. It only speaks up when the operand
+// is flagrantly disconnected from where failures happen.
+//
+// One subtlety behind the "dead" classification: a read of a
+// forward-referenced binding can force an initializer that raises
+// mid-rescue, and the rescue catches it — but the binding's own
+// declaration-slot forcing then re-raises the memoized error uncaught, so
+// such a program dies regardless. Reads count as infallible here without
+// making the warning a lie worth erroring over.
 
 // gqlFieldClass classifies how referencing a GraphQL schema field behaves at
 // runtime.
