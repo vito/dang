@@ -1116,7 +1116,9 @@ func (t *Type) Supertypes() []hm.Type {
 // AcceptsCoercionFrom implements hm.Coercible for explicit scalar/enum casts.
 // Enums and string-backed scalars (including ID and custom scalars) accept
 // coercion from String so runtime materialization can validate/construct the
-// target value. Primitive scalars do not accept value-level coercion.
+// target value. String additionally accepts the reverse "degrade" coercion
+// from any custom scalar. Primitive scalars otherwise do not accept
+// value-level coercion.
 func (t *Type) AcceptsCoercionFrom(other hm.Type) bool {
 	if t.Kind == EnumKind {
 		return other == StringType
@@ -1126,11 +1128,20 @@ func (t *Type) AcceptsCoercionFrom(other hm.Type) bool {
 		return false
 	}
 
+	// String accepts degrade coercion from any custom scalar — such values
+	// are strings underneath (ScalarValue/RegexpValue), so they may flow into
+	// String slots at value-handoff boundaries. This is the mirror image of
+	// the literal→scalar rule below.
+	if t == StringType {
+		otherMod, ok := other.(*Type)
+		return ok && isDegradableScalar(otherMod)
+	}
+
 	// Primitive scalars are not coerced. ID is intentionally excluded here: Dang
 	// treats it as a distinct string-backed scalar that can be explicitly cast
 	// from String.
 	switch t {
-	case StringType, IntType, FloatType, BooleanType:
+	case IntType, FloatType, BooleanType:
 		return false
 	}
 
