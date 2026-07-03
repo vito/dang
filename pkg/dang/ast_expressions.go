@@ -2533,7 +2533,10 @@ func (c *Conditional) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (
 				// Branches diverge: widen to a union and let downstream usage
 				// (or a tail-position type annotation) decide whether that's
 				// actually a problem.
-				thenType = hm.NewUnionType(thenType, elseType)
+				thenType = hm.NewUnionTypeWithSources(
+					[]hm.Type{thenType, elseType},
+					[]any{nodeOrigin("then branch", c.Then), nodeOrigin("else branch", c.Else)},
+				)
 			} else {
 				// Propagate substitutions backwards to the 'then' branch without
 				// widening the branch itself to the merged conditional result.
@@ -2901,7 +2904,10 @@ func mergeCallBreakTypes(retType hm.Type, body Node, target *InferControlTarget,
 			breakType = breakType.Apply(subs).(hm.Type)
 		}
 		if br.HasValue {
-			retType = hm.NewUnionType(retType, breakType)
+			retType = hm.NewUnionTypeWithSources(
+				[]hm.Type{retType, breakType},
+				[]any{nil, armOrigin("break value", br.Loc)},
+			)
 		} else {
 			retType = mergeControlResultTypes(retType, breakType)
 		}
@@ -3153,7 +3159,10 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			if contType == nil {
 				contType = hm.NullableTypeVariable{TypeVariable: fresh.Fresh()}
 			}
-			bodyType = mergeControlResultTypes(bodyType, contType)
+			bodyType = mergeControlResultTypesTagged(
+				bodyType, nil,
+				contType, armOrigin("continue value", cont.Loc),
+			)
 		}
 
 		// If we have an expected return type, unify with the block's normal result
@@ -3189,8 +3198,11 @@ func (b *BlockArg) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.
 			subs, err := hm.Assignable(bodyType, b.ExpectedReturnType)
 			if err != nil {
 				return nil, NewInferError(
-					fmt.Errorf("block argument body has type %s but expected type %s",
-						bodyType, b.ExpectedReturnType),
+					withUnionProvenance(
+						fmt.Errorf("block argument body has type %s but expected type %s",
+							bodyType, b.ExpectedReturnType),
+						bodyType,
+					),
 					b.BodyNode,
 				)
 			}

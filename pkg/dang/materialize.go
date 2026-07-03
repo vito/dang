@@ -104,9 +104,9 @@ func assignableForValue(have, want hm.Type, value Node) (hm.Subs, error) {
 		}
 	}
 	if diag := diagnoseAssignment(have, want); diag != nil {
-		return nil, diag
+		return nil, withUnionProvenance(diag, have, want)
 	}
-	return nil, err
+	return nil, withUnionProvenance(err, have, want)
 }
 
 // diagnoseAssignment expands an hm.Assignable failure into a detailed

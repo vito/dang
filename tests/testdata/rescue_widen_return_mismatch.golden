@@ -1,0 +1,13 @@
+[1m[31mError:[0m return type mismatch: declared Int!, inferred Int! | String!
+  - Int! from the rescue operand at errors/rescue_widen_return_mismatch.dang:11:3
+  - String! from the rescue clause at errors/rescue_widen_return_mismatch.dang:12:5
+  [2m[34m--> errors/rescue_widen_return_mismatch.dang:10:24[0m
+ [2m    |[0m
+ [2m  8 | }[0m
+ [2m  9 | [0m
+ [2m[34m[1m 10 | [0mquarter(n: Int!): Int! {
+[2m                              [31m^[0m
+ [2m 11 |   half(half(n)) rescue {[0m
+ [2m 12 |     e: Error => "not divisible"[0m
+ [2m    |[0m
+

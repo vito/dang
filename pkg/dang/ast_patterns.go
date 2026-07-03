@@ -130,7 +130,10 @@ func (c *Case) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (hm.Type
 			}
 			// Clause bodies that diverge widen to a union, same as if/else
 			// branches.
-			resultType = mergeControlResultTypes(resultType, caseType)
+			resultType = mergeControlResultTypesTagged(
+				resultType, armOrigin("case clause", c.Clauses[0].Loc),
+				caseType, armOrigin("case clause", clause.Loc),
+			)
 		}
 
 		c.exhaustive = hasElse || c.coversAllMembers(exprType)

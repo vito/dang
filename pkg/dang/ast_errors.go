@@ -89,7 +89,10 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				return nil, err
 			}
 			checkRescueLaziness(ctx, env, t, bodyType)
-			return mergeControlResultTypes(bodyType, fallbackType), nil
+			return mergeControlResultTypesTagged(
+				bodyType, nodeOrigin("rescue operand", t.Operand),
+				fallbackType, nodeOrigin("rescue fallback", t.Fallback),
+			), nil
 		}
 
 		if len(t.Clauses) == 0 {
@@ -110,6 +113,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 		}
 
 		resultType := bodyType
+		operandSrc := nodeOrigin("rescue operand", t.Operand)
 
 		var elseClause *CaseClause
 		var priorPatterns []*CaseClause
@@ -178,7 +182,10 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			// union, same as if branches and case clauses. There is no null
 			// fallthrough to account for: a catch with no matching clause
 			// re-raises rather than yielding null.
-			resultType = mergeControlResultTypes(resultType, clauseType)
+			resultType = mergeControlResultTypesTagged(
+				resultType, operandSrc,
+				clauseType, armOrigin("rescue clause", clause.Loc),
+			)
 		}
 
 		checkRescueLaziness(ctx, env, t, bodyType)

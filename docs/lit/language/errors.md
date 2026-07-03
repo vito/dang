@@ -292,6 +292,18 @@ case (outcome) {
 }
 ```
 
+And when a widened union *doesn't* fit where it ends up — often far from
+the rescue that built it — the type error cites where each member came
+from:
+
+```dang-failure
+let result = halve(7) rescue {
+  err: Error => err.message
+}
+
+result + 1
+```
+
 ## Rescuing a block
 
 The operand can be any term — including a block, which puts several steps

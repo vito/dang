@@ -1,0 +1,16 @@
+# A widened union flowing out of a function body cites its arms in the
+# return type mismatch.
+half(n: Int!): Int! {
+  if (n % 2 != 0) {
+    raise "odd"
+  }
+  n / 2
+}
+
+quarter(n: Int!): Int! {
+  half(half(n)) rescue {
+    e: Error => "not divisible"
+  }
+}
+
+print(toString(quarter(8)))
