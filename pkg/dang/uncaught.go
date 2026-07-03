@@ -125,19 +125,29 @@ func errorSummary(val Value) string {
 }
 
 // writeErrorFields prints the error's public stored data fields (everything
-// except message, methods, and computed members), using lookupValue so
-// pending initializers are never forced. This mirrors objectsEqual's
-// non-forcing walk.
+// except message, methods, and computed members).
 func writeErrorFields(out *strings.Builder, val Value) {
+	for _, f := range errorFields(val) {
+		fmt.Fprintf(out, "  %s%s:%s %s\n", ansiDim, f.Name, ansiReset, f.Value)
+	}
+}
+
+// errorFields collects the error's public stored data fields (everything
+// except message, cause, methods, and computed members), using lookupValue
+// so pending initializers are never forced. This mirrors objectsEqual's
+// non-forcing walk. Shared by the terminal boundary printer and ErrorReport
+// extraction (report.go).
+func errorFields(val Value) []ErrorReportField {
 	obj, ok := val.(*Object)
 	if !ok {
-		return
+		return nil
 	}
 	typ, ok := obj.Mod.(*Type)
 	if !ok {
-		return
+		return nil
 	}
 
+	var fields []ErrorReportField
 	for name, scheme := range typ.Bindings(PublicVisibility) {
 		if name == "message" || name == "cause" {
 			continue
@@ -149,8 +159,9 @@ func writeErrorFields(out *strings.Builder, val Value) {
 		if !found {
 			continue
 		}
-		fmt.Fprintf(out, "  %s%s:%s %s\n", ansiDim, name, ansiReset, Repr(fieldVal))
+		fields = append(fields, ErrorReportField{Name: name, Value: Repr(fieldVal)})
 	}
+	return fields
 }
 
 // causeChain walks the cause links reachable from an uncaught error,
