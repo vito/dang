@@ -172,6 +172,23 @@ pre code{display:block}
 .dang-playground-stdout{color:var(--fg);margin-bottom:.3rem;white-space:pre-wrap}
 .dang-playground-result{color:var(--green);white-space:pre-wrap}
 .dang-playground-error{color:var(--pink);white-space:pre-wrap}
+/* Structured error reports: the annotated source snippet the CLI prints,
+   as HTML (docs/go/errorreport.go bakes it; playground.js re-renders the
+   same DOM on replay). The header keeps the pink error color; the quoted
+   source goes back to full syntax coloring, with context lines dimmed the
+   way the terminal dims them. */
+.dang-error-section+.dang-error-section{margin-top:.6rem}
+.dang-error-label{font-weight:600}
+.dang-error-field{color:var(--fg);opacity:.75;white-space:pre-wrap}
+.dang-error-snippet{
+  color:var(--fg);font-size:inherit;line-height:var(--code-line-height);
+  margin:.2rem 0 0;white-space:pre;overflow-x:auto;
+}
+.dang-error-arrow{color:var(--link);opacity:.8}
+.dang-error-gutter{color:var(--fg2);opacity:.7}
+.dang-error-gutter.is-hl{color:var(--link);opacity:1;font-weight:600}
+.dang-error-dim{opacity:.55}
+.dang-error-underline{color:var(--pink);font-weight:700}
 .dang-playground-fallback{
   background:var(--code-bg);color:var(--base05);font-family:'JetBrains Mono',monospace;
   font-size:.8rem;line-height:var(--code-line-height);padding:1rem 1.25rem;margin:0;white-space:pre;overflow-x:auto;
@@ -284,6 +301,12 @@ pre code{display:block}
 .dang-carousel .dang-playground pre,
 .dang-carousel .dang-playground textarea {
   font-size: 16px;
+}
+/* …except the quoted snippet inside an error report, which stays at the
+   output panel's size (an edited slide that errors renders one there). */
+.dang-carousel .dang-literate pre.dang-error-snippet,
+.dang-carousel .dang-playground pre.dang-error-snippet {
+  font-size: inherit;
 }
 /* The single bar: a horizontally-clipped track of feature tabs. carousel.js
    slides the track so the active tab sits at the left as the header. */
