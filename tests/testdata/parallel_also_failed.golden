@@ -5,17 +5,17 @@
  [2m  3 | # instead of silently discarding them.[0m
  [2m[34m[1m  4 | [0mboomA: String! { raise "first failure" }
 [2m                        [31m^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  5 | boomB: String! { raise "second failure" }[0m
- [2m  6 | [0m
+ [2m  5 | [0m
+ [2m  6 | boomB: String! { raise "second failure" }[0m
  [2m    |[0m
 [1m[31malso failed:[0m error: second failure
-  [2m[34m--> errors/parallel_also_failed.dang:5:18[0m
+  [2m[34m--> errors/parallel_also_failed.dang:6:18[0m
  [2m    |[0m
- [2m  3 | # instead of silently discarding them.[0m
  [2m  4 | boomA: String! { raise "first failure" }[0m
- [2m[34m[1m  5 | [0mboomB: String! { raise "second failure" }
+ [2m  5 | [0m
+ [2m[34m[1m  6 | [0mboomB: String! { raise "second failure" }
 [2m                        [31m^^^^^^^^^^^^^^^^^^^^^^[0m
- [2m  6 | [0m
- [2m  7 | {{a: boomA, b: boomB}}[0m
+ [2m  7 | [0m
+ [2m  8 | {{a: boomA, b: boomB}}[0m
  [2m    |[0m
 
