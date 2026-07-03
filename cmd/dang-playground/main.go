@@ -61,6 +61,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall/js"
@@ -92,21 +93,86 @@ func main() {
 	select {}
 }
 
+// playgroundFilename is the synthetic filename playground snippets parse and
+// evaluate under. Error locations carrying it (or no filename at all) resolve
+// against the snippet's own source; renderers drop it from display, exactly
+// like the docs build's "literate" (see renderErrorReport in
+// docs/go/errorreport.go).
+const playgroundFilename = "playground"
+
 // result builds the JS object returned to the page.
 //
 //	{ ok: bool, value: string, output: string, error: string, stage: string }
 //
 // stage is "" on success, or "parse" | "type" | "eval" | "auth" identifying
 // which phase failed. "auth" covers GitHub introspection failures (e.g. an
-// expired or unauthorized token).
+// expired or unauthorized token). Captured output is stripped of ANSI
+// escapes (warnings color themselves for a terminal), matching the build's
+// baked output (docs/go/literate.go stripANSI).
 func result(value, output, errMsg, stage string) map[string]any {
 	return map[string]any{
 		"ok":     errMsg == "",
 		"value":  value,
-		"output": output,
+		"output": stripANSI(output),
 		"error":  errMsg,
 		"stage":  stage,
 	}
+}
+
+var ansiSGR = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string {
+	return ansiSGR.ReplaceAllString(s, "")
+}
+
+// failure builds the JS object for a failed evaluation: the plain-text
+// fields of result plus "report", the structured error report playground.js
+// renders as an annotated source snippet (renderErrorReport — which must
+// stay in lockstep with the build-side renderer in docs/go/errorreport.go).
+// The reporter describes the unit the error came from, so its locations
+// resolve without touching a filesystem.
+func failure(output string, err error, stage string, rep dang.ErrorReporter) map[string]any {
+	res := result("", output, bareMessage(err), stage)
+	res["report"] = reportJS(rep.Report(err))
+	return res
+}
+
+// reportJS converts an ErrorReport to plain maps and slices, the only shapes
+// js.ValueOf can carry across the wasm boundary.
+func reportJS(rep *dang.ErrorReport) map[string]any {
+	sections := make([]any, 0, len(rep.Sections))
+	for _, sec := range rep.Sections {
+		s := map[string]any{
+			"role":    sec.Role,
+			"message": sec.Message,
+		}
+		if len(sec.Fields) > 0 {
+			fields := make([]any, 0, len(sec.Fields))
+			for _, f := range sec.Fields {
+				fields = append(fields, map[string]any{"name": f.Name, "value": f.Value})
+			}
+			s["fields"] = fields
+		}
+		if sec.Location != nil {
+			s["location"] = map[string]any{
+				"line":   sec.Location.Line,
+				"column": sec.Location.Column,
+				"length": sec.Location.Length,
+			}
+		}
+		if sec.Snippet != nil {
+			lines := make([]any, 0, len(sec.Snippet.Lines))
+			for _, l := range sec.Snippet.Lines {
+				lines = append(lines, l)
+			}
+			s["snippet"] = map[string]any{
+				"startLine": sec.Snippet.StartLine,
+				"lines":     lines,
+			}
+		}
+		sections = append(sections, s)
+	}
+	return map[string]any{"sections": sections}
 }
 
 // The bundled "Demo" import: a small GraphQL schema with canned resolvers run
@@ -183,9 +249,9 @@ func evalSource(source, token string) map[string]any {
 	}
 
 	// Parse.
-	parsed, err := dang.ParseWithRecovery("playground", []byte(source))
+	parsed, err := dang.ParseWithRecovery(playgroundFilename, []byte(source))
 	if err != nil {
-		return result("", "", err.Error(), "parse")
+		return failure("", err, "parse", dang.ErrorReporter{Filename: playgroundFilename, Source: source})
 	}
 	file, ok := parsed.(*dang.FileBlock)
 	if !ok {
@@ -218,19 +284,22 @@ func evalSource(source, token string) map[string]any {
 	// Type-check.
 	fresh := hm.NewSimpleFresher()
 	if _, err := dang.InferFormsWithPhases(baseCtx, forms, typeScope, fresh); err != nil {
-		return result("", "", err.Error(), "type")
+		return failure("", err, "type", dang.ErrorReporter{Filename: playgroundFilename, Source: source})
 	}
 
 	// Evaluate, capturing anything written to stdout/stderr (e.g. log()).
 	var out bytes.Buffer
 	ctx := ioctx.StdoutToContext(baseCtx, &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
+	// Runtime faults that aren't raises only carry a location when an
+	// EvalContext supplies one, the same wiring RunFile does.
+	ctx = dang.WithEvalContext(ctx, dang.NewEvalContext(playgroundFilename, source))
 
 	var last dang.Value
 	for _, node := range forms {
 		val, err := dang.EvalNode(ctx, valueScope, node)
 		if err != nil {
-			return result("", strings.TrimRight(out.String(), "\n"), err.Error(), "eval")
+			return failure(strings.TrimRight(out.String(), "\n"), err, "eval", dang.ErrorReporter{Filename: playgroundFilename, Source: source})
 		}
 		last = val
 	}
@@ -248,6 +317,38 @@ func evalSource(source, token string) map[string]any {
 type replSession struct {
 	typeScope  dang.TypeScope
 	valueScope dang.ValueScope
+
+	// blocks counts the session's evaluated entries; each parses under the
+	// synthetic filename blockFilename(n), and sources records every entry's
+	// text by that name, so an error whose location points into an earlier
+	// entry still quotes the right source. The docs build numbers its
+	// literate blocks with the same scheme (docs/go/literate.go) — a page
+	// replay visits the same blocks in the same order — so any location a
+	// message spells out matches what the build baked.
+	blocks  int
+	sources map[string]string
+}
+
+// blockFilename names the nth entry of a session; lockstep with
+// docs/go/literate.go's blockFilename.
+func blockFilename(n int) string {
+	return fmt.Sprintf("snippet-%d", n)
+}
+
+// nextBlock assigns the next entry filename and records its source.
+func (s *replSession) nextBlock(source string) string {
+	s.blocks++
+	name := blockFilename(s.blocks)
+	if s.sources == nil {
+		s.sources = map[string]string{}
+	}
+	s.sources[name] = source
+	return name
+}
+
+// reporter builds the error reporter for an entry evaluated under name.
+func (s *replSession) reporter(name, source string) dang.ErrorReporter {
+	return dang.ErrorReporter{Filename: name, Source: source, Sources: s.sources}
 }
 
 // replSessions holds the live sessions keyed by the handle the frontend assigns
@@ -269,14 +370,14 @@ func session(id int) *replSession {
 	return s
 }
 
-// evalForms parses, type-checks, and evaluates source against the given scopes,
-// writing any stdout/stderr through ctx. It returns the stringified value of
-// the last form and whether that form is a declaration, or a non-nil error and
-// the failing stage ("parse" | "type" | "eval"). The scopes are mutated in
-// place, so passing the same scopes to successive calls accumulates session
-// state.
-func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, valueScope dang.ValueScope, fresh hm.Fresher) (string, bool, error, string) {
-	parsed, err := dang.ParseWithRecovery("playground", []byte(source))
+// evalForms parses, type-checks, and evaluates source against the given
+// scopes as the session entry named name, writing any stdout/stderr through
+// ctx. It returns the stringified value of the last form and whether that
+// form is a declaration, or a non-nil error and the failing stage ("parse" |
+// "type" | "eval"). The scopes are mutated in place, so passing the same
+// scopes to successive calls accumulates session state.
+func evalForms(ctx context.Context, name, source string, typeScope dang.TypeScope, valueScope dang.ValueScope, fresh hm.Fresher) (string, bool, error, string) {
+	parsed, err := dang.ParseWithRecovery(name, []byte(source), dang.GlobalStore("filePath", name))
 	if err != nil {
 		return "", false, err, "parse"
 	}
@@ -289,6 +390,10 @@ func evalForms(ctx context.Context, source string, typeScope dang.TypeScope, val
 	if _, err := dang.InferFormsWithPhases(ctx, forms, typeScope, fresh); err != nil {
 		return "", false, err, "type"
 	}
+
+	// Runtime faults that aren't raises only carry a location when an
+	// EvalContext supplies one, the same wiring RunFile does.
+	ctx = dang.WithEvalContext(ctx, dang.NewEvalContext(name, source))
 
 	var lastNode dang.Node
 	var last dang.Value
@@ -337,9 +442,10 @@ func dangReplEval(_ js.Value, args []js.Value) any {
 	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	value, _, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
+	name := sess.nextBlock(source)
+	value, _, err, stage := evalForms(ctx, name, source, sess.typeScope, sess.valueScope, fresh)
 	if err != nil {
-		return result("", strings.TrimRight(out.String(), "\n"), err.Error(), stage)
+		return failure(strings.TrimRight(out.String(), "\n"), err, stage, sess.reporter(name, source))
 	}
 	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
 }
@@ -362,9 +468,10 @@ func dangLiterateEval(_ js.Value, args []js.Value) any {
 	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	value, lastIsDecl, err, stage := evalForms(ctx, source, sess.typeScope, sess.valueScope, fresh)
+	name := sess.nextBlock(source)
+	value, lastIsDecl, err, stage := evalForms(ctx, name, source, sess.typeScope, sess.valueScope, fresh)
 	if err != nil {
-		return result("", strings.TrimRight(out.String(), "\n"), err.Error(), stage)
+		return failure(strings.TrimRight(out.String(), "\n"), err, stage, sess.reporter(name, source))
 	}
 	if lastIsDecl {
 		value = ""
@@ -400,9 +507,12 @@ func dangLiterateFailEval(_ js.Value, args []js.Value) any {
 	ctx := ioctx.StdoutToContext(withDemo(context.Background()), &out)
 	ctx = ioctx.StderrToContext(ctx, &out)
 
-	value, lastIsDecl, err, stage := evalForms(ctx, source, typeScope, valueScope, fresh)
+	// The block still takes its place in the session's numbering — the docs
+	// build counts every block of the page the same way.
+	name := sess.nextBlock(source)
+	value, lastIsDecl, err, stage := evalForms(ctx, name, source, typeScope, valueScope, fresh)
 	if err != nil {
-		return result("", strings.TrimRight(out.String(), "\n"), failureMessage(err), stage)
+		return failure(strings.TrimRight(out.String(), "\n"), err, stage, sess.reporter(name, source))
 	}
 	if lastIsDecl {
 		value = ""
@@ -410,13 +520,12 @@ func dangLiterateFailEval(_ js.Value, args []js.Value) any {
 	return result(value, strings.TrimRight(out.String(), "\n"), "", "")
 }
 
-// failureMessage extracts the bare message from an expected failure.
-// SourceError.Error() renders for a terminal — ANSI colors plus a quoted
-// source span — but the failing block's editor already shows the source, and
-// escape codes have no business in the page. The same unwrap lives in
-// docs/go/literate.go's failureMessage; the two must stay in lockstep so a
-// replay shows exactly the line the build baked.
-func failureMessage(err error) string {
+// bareMessage extracts the plain-text message from a failure for the
+// result's "error" field. SourceError.Error() renders for a terminal — ANSI
+// colors plus a quoted source span — but the page renders the structured
+// "report" field instead (renderErrorReport in playground.js), and this
+// string is only its fallback; escape codes have no business in either.
+func bareMessage(err error) string {
 	var srcErr *dang.SourceError
 	if errors.As(err, &srcErr) {
 		return srcErr.Inner.Error()
