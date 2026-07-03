@@ -166,11 +166,26 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 // RaisedError is a sentinel wrapper that carries an error value through
 // Go's error interface so that Eval methods propagate it up the call
 // stack until a RescueExpr rescues it.
+//
+// A RaisedError is immutable once returned: memoized lazy-slot errors mean
+// the same wrapper pointer can resurface at multiple observation sites, so
+// mutating one after the fact would retroactively rewrite history.
 type RaisedError struct {
 	Value    Value // always an *Object implementing Error
 	Location *SourceLocation
+
+	// Cause is the error that was being rescued when this one was raised,
+	// recorded out-of-band (never surfaced through the Error interface or
+	// the type system). It is left nil for a plain re-raise of the rescued
+	// error itself, and when the raised value carries its own non-null
+	// `cause` field — an explicit cause wins over the implicit record.
+	Cause *RaisedError
 }
 
+// Error returns just the message field. Keep it that way: this string is
+// load-bearing in the docs literate build, the playground, and the REPL,
+// which all render failures from Error() — richer uncaught output belongs
+// to the boundary printer, not here.
 func (r *RaisedError) Error() string {
 	if mv, ok := r.Value.(*Object); ok {
 		if msg, found := mv.lookupValue("message"); found {
@@ -178,6 +193,23 @@ func (r *RaisedError) Error() string {
 		}
 	}
 	return "unknown error"
+}
+
+// inFlightErrorKey carries the error currently being rescued through the
+// dynamic extent of a rescue arm (clause expr or fallback), so that a
+// raise evaluating during recovery can record it as the new error's cause.
+type inFlightErrorKey struct{}
+
+// raisedErrorFor returns the *RaisedError wrapper for an error caught by a
+// rescue: the original wrapper when the error came from raise (preserving
+// its location and cause chain), or a fresh one around the classified
+// value otherwise.
+func raisedErrorFor(err error, errVal Value) *RaisedError {
+	var raised *RaisedError
+	if errors.As(err, &raised) {
+		return raised
+	}
+	return &RaisedError{Value: errVal}
 }
 
 func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) {
@@ -191,13 +223,15 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 			return nil, err
 		}
 
+		// Resolve the error value once, and expose it to the arm's dynamic
+		// extent so a raise during recovery records it as the cause.
+		errVal := extractErrorValue(err)
+		armCtx := context.WithValue(ctx, inFlightErrorKey{}, raisedErrorFor(err, errVal))
+
 		// Fallback form: any error yields the fallback value.
 		if t.Fallback != nil {
-			return EvalNode(ctx, scope.Derive(true), t.Fallback)
+			return EvalNode(armCtx, scope.Derive(true), t.Fallback)
 		}
-
-		// Resolve the error value to bind in rescue clauses.
-		errVal := extractErrorValue(err)
 
 		// Dispatch through clauses using resolved types from inference.
 		for _, clause := range t.Clauses {
@@ -206,14 +240,14 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 				if clause.Binding != "" {
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
 				}
-				return EvalNode(ctx, childScope, clause.Expr)
+				return EvalNode(armCtx, childScope, clause.Expr)
 			}
 
 			if clause.IsTypePattern() {
 				if matchesType(errVal, clause.resolvedMemberType) {
 					childScope := scope.Derive(true)
 					childScope.Bind(clause.Binding, errVal, PrivateVisibility)
-					return EvalNode(ctx, childScope, clause.Expr)
+					return EvalNode(armCtx, childScope, clause.Expr)
 				}
 				continue
 			}
@@ -381,17 +415,43 @@ func (r *Raise) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 		return nil, err
 	}
 
+	inFlight, _ := ctx.Value(inFlightErrorKey{}).(*RaisedError)
+
 	switch v := val.(type) {
 	case StringValue:
+		// A string raise mints a fresh BasicError, which can never be the
+		// rescued value itself, so the implicit cause always applies.
 		return nil, &RaisedError{
 			Value:    newBasicError(v.Val),
 			Location: r.Loc,
+			Cause:    inFlight,
 		}
 	case *Object:
-		return nil, &RaisedError{Value: v, Location: r.Loc}
+		cause := inFlight
+		if inFlight != nil && v == inFlight.Value {
+			// Plain re-raise of the rescued error: no self-cause.
+			cause = nil
+		} else if hasExplicitCause(v) {
+			// The raised value carries its own cause; explicit wins.
+			cause = nil
+		}
+		return nil, &RaisedError{Value: v, Location: r.Loc, Cause: cause}
 	default:
 		return nil, fmt.Errorf("raise: expected String or Error, got %T", val)
 	}
+}
+
+// hasExplicitCause reports whether an error object carries a non-null
+// `cause` field of its own. lookupValue never forces pending initializers,
+// and declared fields are always published by the time a constructed
+// object reaches raise, so this stays pure.
+func hasExplicitCause(v *Object) bool {
+	cv, ok := v.lookupValue("cause")
+	if !ok {
+		return false
+	}
+	_, isNull := cv.(NullValue)
+	return !isNull
 }
 
 func (r *Raise) Walk(fn func(Node) bool) {
