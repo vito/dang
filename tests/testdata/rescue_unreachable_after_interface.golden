@@ -1,0 +1,11 @@
+[1m[31mError:[0m unreachable clause: MiniError is already matched by the Error clause on line 8
+  [2m[34m--> errors/rescue_unreachable_after_interface.dang:9:6[0m
+ [2m    |[0m
+ [2m  7 | let x = { raise "boom" } rescue {[0m
+ [2m  8 |   e: Error => "general"[0m
+ [2m[34m[1m  9 | [0m  m: MiniError => "specific"
+[2m            [31m^^^^^^^^^[0m
+ [2m 10 | }[0m
+ [2m 11 | print(x)[0m
+ [2m    |[0m
+

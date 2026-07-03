@@ -205,14 +205,20 @@ toString(100 / 0) rescue {
 ```
 
 Clauses are tried top to bottom, first match wins, so specific types go
-before general ones. This `ValidationError` clause is unreachable:
+before general ones — and a clause that can never match is a *compile
+error*, not a silent no-op. Here the `Error` interface pattern already
+matches everything, so the `ValidationError` clause below it is rejected:
 
-```dang
+```dang-failure
 lookup(0) rescue {
   e: Error => `something failed: ${e.message}`
   v: ValidationError => "never reached"
 }
 ```
+
+The same check rejects a duplicate type pattern, any clause after an
+`else`, and — since a rescue's error is always an `Error!` — an `else`
+following an `e: Error` catch-all.
 
 To handle an error without inspecting it, `else =>` discards it:
 

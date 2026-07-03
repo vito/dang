@@ -105,14 +105,24 @@ let pet = if (grade(95) == "A") {
 ## `case`
 
 `case` compares an operand against clauses, top to bottom — the first match
-wins, so a duplicate clause (or anything after an early `else`) is simply
-never reached:
+wins, so a duplicate value clause is simply never reached:
 
 ```dang
 case (1 + 1) {
   2 => "first match wins"
   2 => "a duplicate is never reached"
   else => "no match above"
+}
+```
+
+Provably dead clauses are rejected at compile time: nothing may follow an
+`else`, and a *type pattern* (below) that repeats an earlier one — or is
+already covered by an earlier interface pattern — is an error:
+
+```dang-failure
+case (1) {
+  else => "matches everything"
+  1 => "never reached"
 }
 ```
 

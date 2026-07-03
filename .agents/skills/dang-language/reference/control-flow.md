@@ -23,7 +23,7 @@ case (value) {
   else => "?"
 }
 ```
-- Clauses tried top-to-bottom; first match wins (including a stray duplicate or an `else` placed before later clauses).
+- Clauses tried top-to-bottom; first match wins. Duplicate **value** clauses are legal (first wins), but provably-dead clauses are **compile errors**: any clause after an `else` (`unreachable clause: follows the else catch-all on line N`), a duplicate type pattern, or a type pattern covered by an earlier interface pattern (`unreachable clause: X is already matched by the Y clause on line N`). A trailing `else` after type patterns stays legal — a nullable operand falls through every type pattern.
 - Clause bodies merge to a common type when they can; diverging bodies widen to a union, like `if` branches.
 - If nothing matches and there's no `else`, the case is `null` — its result type is **nullable**. An `else` keeps it non-null, as do type patterns covering every member of a non-null union (**exhaustive**). An interface operand is exhaustive only via an interface catch-all pattern (its implementer set is open); a nullable operand is never exhaustive (`null` matches no type pattern).
 
@@ -103,11 +103,10 @@ validate(name) rescue {
   v: ValidationError => v.field
   n: NotFoundError => n.resource
   e: Error => e.message     # interface pattern = typed catch-all, binds e
-  else => "gave up"         # catch-all, discards the error
 }
 ```
 - The whole `rescue` is one expression — assignable, returnable, nestable.
-- Clauses are `case` patterns limited to **type patterns** plus `else` (a value pattern like `404 =>` is a syntax error). `binding: Type => expr` binds the error narrowed to `Type`; pattern types must implement `Error` (else `type X does not implement interface Error`). `else => expr` is the catch-all that discards the error. First match wins. The `Error` interface itself matches any error (typed catch-all); place specific types first.
+- Clauses are `case` patterns limited to **type patterns** plus `else` (a value pattern like `404 =>` is a syntax error). `binding: Type => expr` binds the error narrowed to `Type`; pattern types must implement `Error` (else `type X does not implement interface Error`). `else => expr` is the catch-all that discards the error. First match wins. The `Error` interface itself matches any error (typed catch-all); specific types must come first — ordering is **enforced** (see compile errors below).
 - When **no clause matches**, the error is re-raised to the next enclosing `rescue` — a partial `rescue` narrows what it handles rather than swallowing the rest, and (unlike a non-exhaustive `case`) never makes the result nullable: a miss re-raises, it never yields null.
 - Rescues errors raised anywhere in the operand, including ones propagated from called functions and **runtime failures**, classified into the taxonomy above: interpreter faults arrive as `RuntimeError`, failed asserts as `AssertionError`, GraphQL response errors as `GraphQLError` (server's own message, not the client-side wrapping) — so handlers dispatch on type instead of string-matching `.message`.
 - Operand and clause results merge to one type when they can; arms that diverge **widen to a union** (`1 rescue { e: Error => "s" }` is `Int! | String!`), exactly like `if` branches and `case` clauses.
@@ -122,6 +121,7 @@ validate(name) rescue {
 ### Compile errors
 - Zero clauses, `expr rescue { }` → ``rescue requires at least one clause; to replace any error with a value, use the fallback form: `expr rescue value` ``
 - A bare catch-all clause, `err =>` → ``bare catch-all `err =>` is no longer supported; bind the error with `err: Error =>` or discard it with `else =>` ``
+- **Unreachable clauses** (rescue and `case` alike): a duplicate type pattern or one covered by an earlier interface pattern → `unreachable clause: X is already matched by the Y clause on line N`; any clause after `else` → `unreachable clause: follows the else catch-all on line N`. Rescue-only: because the operand is always `Error!`, an `else` after an `e: Error` catch-all → `unreachable clause: the Error clause on line N already matches every error` (in `case`, a trailing `else` after an interface pattern stays legal — nullable operands fall through type patterns).
 - Legacy `try { } catch { }` still parses, but type-checking rejects it: ``try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate``. `dang fmt -w` rewrites it (a single-form try body unwraps to plain postfix, bare `err =>` bindings become `err: Error =>`, zero-clause handlers are dropped).
 
 ### Propagation

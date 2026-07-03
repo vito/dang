@@ -111,7 +111,14 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 
 		resultType := bodyType
 
+		var elseClause *CaseClause
+		var priorPatterns []*CaseClause
 		for _, clause := range t.Clauses {
+			// A clause after an else catch-all can never match.
+			if err := checkClauseReachable(clause, elseClause, nil); err != nil {
+				return nil, err
+			}
+
 			var clauseType hm.Type
 
 			if clause.IsTypePattern() {
@@ -120,6 +127,10 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 				if err := implicitCase.inferTypePatternClause(ctx, env, fresh, clause, errorType); err != nil {
 					return nil, err
 				}
+				if err := checkClauseReachable(clause, nil, priorPatterns); err != nil {
+					return nil, err
+				}
+				priorPatterns = append(priorPatterns, clause)
 
 				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					clauseEnv := env.Clone()
@@ -139,6 +150,19 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 						clause,
 					)
 				}
+				// Unlike case — whose nullable operands fall through every
+				// type pattern — a rescue's operand is always Error!, so an
+				// `e: Error` pattern is a complete catch-all and a later
+				// else can never fire.
+				for _, prev := range priorPatterns {
+					if canonicalModule(prev.resolvedMemberType) == ErrorType {
+						return nil, NewInferError(
+							fmt.Errorf("unreachable clause: the %s clause on line %d already matches every error", prev.TypePattern.Name, prev.Loc.Line),
+							clause,
+						)
+					}
+				}
+				elseClause = clause
 				// Catch-all: else => ...
 				clauseType, err = WithInferErrorHandling(clause, func() (hm.Type, error) {
 					return clause.Expr.Infer(ctx, env.Clone(), fresh)

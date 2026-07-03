@@ -1,0 +1,7 @@
+# A rescue's operand is always Error!, so an `e: Error` pattern is a
+# complete catch-all — an else after it can never fire.
+let x = { raise "boom" } rescue {
+  e: Error => e.message
+  else => "unreachable"
+}
+print(x)
