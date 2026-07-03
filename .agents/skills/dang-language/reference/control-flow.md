@@ -81,6 +81,7 @@ raise NotFoundError(message: "user gone", resource: "User")
 - `raise` takes a `String!` or an `Error!`; anything else → `raise requires a String! or Error!, got Int!`.
 - A string raise wraps it in a built-in `BasicError` (implements `Error`, `message` = the string). A value implementing `Error` raises as-is.
 - `raise` is itself an expression of any type (fresh type var), so it fits in any branch (e.g. a `case` clause or `rescue` arm) without breaking the merged result type.
+- **Implicit cause**: a raise during a rescue arm's dynamic extent (clause expr or fallback, including through calls) records the rescued error as the new error's cause — out-of-band, not a field. A plain `raise err` re-raise does not self-cause; a raised value with its own non-null `cause: Error` field takes over the chain explicitly. The chain surfaces in uncaught output (`caused by:`), not in the type system.
 
 ### The `Error` interface
 ```dang
@@ -125,7 +126,8 @@ validate(name) rescue {
 - Legacy `try { } catch { }` still parses, but type-checking rejects it: ``try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate``. `dang fmt -w` rewrites it (a single-form try body unwraps to plain postfix, bare `err =>` bindings become `err: Error =>`, zero-clause handlers are dropped).
 
 ### Propagation
-- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` terminates the program (`uncaught error: <message>`).
+- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` terminates the program with a full report: `uncaught <TypeName>: <message>` (plain `uncaught error:` for BasicError) + highlighted raise site + the error's public data fields + the `caused by:` chain + `also failed:` lines for completed sibling failures from a concurrent `{{ }}`.
+- `{{ }}` stays fail-fast with one deterministic primary error; a rescue catching the primary drops the siblings (they appear only in the uncaught report).
 - `return` cannot be rescued — `{ return x } rescue fallback` still returns `x`; likewise `break`/`continue` are not errors.
 - Re-raise inside a clause with `raise err` (or a new error); it propagates to the next enclosing `rescue`.
 
