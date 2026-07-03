@@ -201,6 +201,10 @@ let globToRegexp(pattern: String!): String {
 
 """
 a slash-separated path, normalized on construction
+
+```
+Path("a//b/../c")
+```
 """
 scalar Path {
   new(raw: String!) {

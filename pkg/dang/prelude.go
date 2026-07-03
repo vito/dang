@@ -21,11 +21,41 @@ var (
 	// preludeChain is Prelude with the Dang-source prelude layered on top;
 	// NewPreludeTypeScope builds user scopes over it.
 	preludeChain TypeScope
+	// preludeModule holds the prelude's own top-level declarations.
+	preludeModule *Type
 	// preludeBindings are the prelude's public value bindings (constructor
 	// functions and the like), bound builtin-style into every fresh value
 	// scope by NewValueScope.
 	preludeBindings []Keyed[Value]
 )
+
+// PreludeModule returns the module holding the Dang-source prelude's
+// top-level declarations (types via NamedTypes, value schemes via Bindings,
+// docstrings via GetDocString). Read-only: the prelude is frozen after load.
+func PreludeModule() *Type {
+	loadPrelude()
+	return preludeModule
+}
+
+// SplitDocExample splits a docstring into its description and its runnable
+// example, per the stdlib convention that a docstring's first fenced code
+// block (``` ... ```) is a self-contained snippet demonstrating the member.
+// Docstrings without a fence return the whole text and "".
+func SplitDocExample(doc string) (desc, example string) {
+	idx := strings.Index(doc, "```")
+	if idx < 0 {
+		return strings.TrimSpace(doc), ""
+	}
+	rest := doc[idx+3:]
+	if nl := strings.Index(rest, "\n"); nl >= 0 {
+		rest = rest[nl+1:] // drop an optional language tag
+	}
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		return strings.TrimSpace(doc), ""
+	}
+	return strings.TrimSpace(doc[:idx]), strings.TrimSpace(rest[:end])
+}
 
 // preludeSource returns the embedded source of a prelude file for error
 // rendering, matching the "prelude/<name>.dang" filenames that prelude
@@ -103,6 +133,7 @@ func loadPrelude() {
 			preludeBindings = append(preludeBindings, Keyed[Value]{Key: name, Value: val})
 		}
 
+		preludeModule = mod
 		preludeChain = chain
 	})
 }

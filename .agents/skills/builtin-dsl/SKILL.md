@@ -50,11 +50,23 @@ Method(StringType, "toUpper").
     })
 ```
 
-Receiver types currently available: `StringType`, `IntType`, `BooleanType`,
-`PathType`. Custom scalar receivers dispatch generically: `Select.Eval` has a
-`ScalarValue` case that resolves methods via `GetMethodKey(v.ScalarType, name)`,
+Receiver types currently available: `StringType`, `IntType`, `BooleanType`.
+Custom scalar receivers dispatch generically: `Select.Eval` has a
+`ScalarValue` case that resolves builtin methods via
+`GetMethodKey(v.ScalarType, name)` and then the type's Dang-defined methods,
 so registering `Method(SomeScalarType, ...)` on a `ScalarValue`-backed scalar
-needs no new dispatch code (see `stdlib_path.go`).
+needs no new dispatch code.
+
+## Consider self-hosting instead
+
+Before writing a builtin in Go, consider whether it belongs in the
+**Dang-source prelude** (`pkg/dang/prelude/*.dang`): stdlib expressible in
+the core language (string/list manipulation, string-refinement scalars with
+methods and a `new()` hook) lives there — `Path` is the model. Prelude
+members document themselves with docstrings whose first fenced code block is
+a runnable example (enforced + evaluated by `TestPreludeDocExamples`), and
+the docs reference renders them via the same card machinery. Go builtins
+remain for anything needing Go (I/O, regexp engine, crypto/random).
 
 ## Examples are required
 

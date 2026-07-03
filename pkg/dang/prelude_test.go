@@ -43,6 +43,47 @@ func TestPreludeConcurrentUse(t *testing.T) {
 	}
 }
 
+// Every public member declared by the Dang-source prelude must carry a
+// runnable example — the first fenced code block of its docstring — and
+// every example must parse, type-check, and evaluate. This is the prelude's
+// counterpart of TestStdlibExamplesEvaluate for Go builtins.
+func TestPreludeDocExamples(t *testing.T) {
+	mod := PreludeModule()
+	checked := 0
+
+	check := func(label, doc string) {
+		_, example := SplitDocExample(doc)
+		if example == "" {
+			t.Errorf("prelude %s docstring has no runnable example fence", label)
+			return
+		}
+		if err := evalExample(example); err != nil {
+			t.Errorf("prelude %s example: %v", label, err)
+		}
+		checked++
+	}
+
+	for typeName, sub := range mod.NamedTypes() {
+		typ, ok := sub.(*Type)
+		if !ok {
+			continue
+		}
+		for member := range typ.Bindings(PublicVisibility) {
+			doc, _ := typ.GetDocString(member)
+			check(typeName+"."+member, doc)
+		}
+	}
+
+	for name := range mod.Bindings(PublicVisibility) {
+		doc, _ := mod.GetDocString(name)
+		check(name, doc)
+	}
+
+	if checked == 0 {
+		t.Fatalf("no prelude members found")
+	}
+}
+
 // A user program declaring its own `scalar Path` must shadow the prelude's,
 // not mutate it: the prelude type keeps its methods and hook afterwards.
 func TestPreludeShadowingDoesNotMutate(t *testing.T) {

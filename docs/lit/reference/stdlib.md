@@ -4,7 +4,7 @@
 
 > Meta: alphabetical reference, not a tutorial. Each entry: signature, one-line description, one tiny example. Group by module/receiver. Cross-link to the conceptual page that introduces the API.
 
-> This page is generated from the builtin registry in `pkg/dang` (`stdlib.go`, `stdlib_path.go`, `stdlib_random.go`, `stdlib_regexp.go`, `assert.go`). Each entry's signature, one-line description, and example come straight from the builtin's definition, so the reference can't drift from the implementation — to change an entry, edit the builtin's `.Doc(...)` or `.Example(...)`. Each example is a live REPL: press **Run** to evaluate it (and then keep typing — state carries across entries, just like the CLI).
+> This page is generated from the builtin registry in `pkg/dang` (`stdlib.go`, `stdlib_random.go`, `stdlib_regexp.go`, `assert.go`) and from the Dang-source prelude (`pkg/dang/prelude/*.dang`), whose members document themselves with docstrings whose first fenced code block is their runnable example. Each entry's signature, one-line description, and example come straight from the builtin's definition, so the reference can't drift from the implementation — to change an entry, edit the builtin's `.Doc(...)` or `.Example(...)`. Each example is a live REPL: press **Run** to evaluate it (and then keep typing — state carries across entries, just like the CLI).
 
 \table-of-contents
 
@@ -24,7 +24,7 @@
 
 ## `Path!` methods
 
-> `Path` is a slash-separated path scalar, **normalized on construction** — `Path("a//b/../c")` *is* `Path("a/c")`, so there is no `clean`. Construct with the `Path(...)` function (any String), a string literal in a `Path!`-typed slot, or `:: Path!`. A `Path` value **degrades back to `String!`** at value-handoff boundaries (call args, typed slots, returns), so it can be passed anywhere a plain path string is expected.
+> `Path` is a slash-separated path scalar, **normalized on construction** — `Path("a//b/../c")` *is* `Path("a/c")`, so there is no `clean`. Construct with the `Path(...)` function (any String), a string literal in a `Path!`-typed slot, or `:: Path!`. A `Path` value **degrades back to `String!`** at value-handoff boundaries (call args, typed slots, returns), so it can be passed anywhere a plain path string is expected. Path is defined in Dang itself — the interpreter's embedded prelude — as a `scalar` with a body of methods and a `new()` normalization hook.
 
 \stdlib-methods{Path}
 

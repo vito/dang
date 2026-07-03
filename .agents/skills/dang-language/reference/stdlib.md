@@ -61,7 +61,9 @@ Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `
 way a Path comes to exist runs `path.Clean`-style normalization, so an
 un-clean Path cannot exist (there is no `.clean`) and equality is semantic —
 `Path("a//b/./c") == Path("a/b/c")`, and `Path("a//b") == "a/b"` (custom
-scalars compare with plain strings by their underlying string).
+scalars compare with plain strings by their underlying string). Path is
+defined in Dang itself (the interpreter's embedded prelude,
+`pkg/dang/prelude/path.dang`) using the scalar-body syntax — see types.md.
 
 Ways in: the `Path(s)` constructor (any String expression); a string
 *literal*/template in a `Path!`-typed slot (`let p: Path! = "src"`,

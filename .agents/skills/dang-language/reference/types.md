@@ -130,7 +130,41 @@ scalar JSON
 - Scalars from GraphQL responses flow naturally; no cast needed.
 - Values flow **out** freely: every custom scalar **degrades to `String` at value-handoff boundaries** (Coercion rules, Exception 2), and `toString`/interpolation yield the raw string. String *methods* still need a String receiver — degrade through a slot or cast first (`(u :: String!).toUpper`).
 - Equality, comparison against plain strings, list membership, records/lists all work: a custom scalar `==` a `String` compares the underlying strings (`urlValue == "https://…"`).
-- The builtin `Path` scalar additionally carries its own methods and normalizes on construction — see stdlib.md.
+- The `Path` scalar carries its own methods and normalizes on construction — see stdlib.md. It is declared with the scalar-body syntax below (in Dang, in the interpreter's embedded prelude).
+
+### Scalar bodies: methods and the `new()` hook
+
+A `scalar` declaration may carry a body of **methods** and at most one
+**`new()` hook** — the string-refinement pattern (a scalar that normalizes/
+validates its underlying string and offers behavior):
+
+```dang
+scalar Slug {
+  new(raw: String!) {                # runs at EVERY materialization
+    raw.trimSpace.toLower.replace(" ", "-")
+  }
+  words: [String!]! { (self :: String!).split("-") }
+  first: String! { self.words[0] ?? "" }
+}
+```
+
+- **`new(raw: String!)`** takes exactly one non-null String parameter and its
+  body returns **`String!`** — the canonical underlying string; the runtime
+  wraps it into the scalar. It runs at every way a value comes to exist:
+  string literals in scalar-typed slots, `:: Slug!` casts, codec decode, and
+  the derived constructor. A `raise` in the hook surfaces as a recoverable
+  materialization error at the offending slot. `self` is unavailable inside
+  `new()` (no value exists yet).
+- Declaring `new()` makes the scalar's name callable as a **constructor
+  function**: `Slug(anyStringExpr)` — the entry point for non-literal
+  Strings, mirroring how `type` names double as constructors.
+- **Members must be methods** (computed members or functions, `let` for
+  private helpers) — stored fields are rejected; a scalar carries no state
+  beyond its string. Inside a method, `self` is the non-null scalar; get the
+  raw string via degrade (`let s: String! = self`) or `self :: String!`.
+  Sibling methods are callable bare or via `self.`.
+- Construction is total only if the hook never raises; equality is semantic
+  when the hook normalizes (`Slug("A b") == Slug("a-b")`).
 
 ### `ID!`
 - Its own scalar, not a `String` alias: `String!` does not unify with `ID!` (no implicit interop). But string *literals* still coerce into `ID!` slots (`idSlot: ID! = "abc"`).
