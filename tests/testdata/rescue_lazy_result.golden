@@ -1,0 +1,12 @@
+picking
+done
+[1m[33mWarning:[0m a lazy User leaves this rescue without executing: failures in its pipeline will surface where it is used, outside this rescue; force it inside the rescue with a leaf field (`.sync`, `.name`, `.emails`)
+  [2m[34m--> warnings/rescue_lazy_result.dang:8:3[0m
+ [2m    |[0m
+ [2m  6 | let picked = {[0m
+ [2m  7 |   print("picking")[0m
+ [2m[34m[1m  8 | [0m  primaryUser
+[2m         [33m^^^^^^^^^^^[0m
+ [2m  9 | } rescue null[0m
+ [2m 10 | [0m
+ [2m    |[0m

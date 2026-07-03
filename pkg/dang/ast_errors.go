@@ -83,6 +83,7 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			if err != nil {
 				return nil, err
 			}
+			checkRescueLaziness(ctx, env, t, bodyType)
 			return mergeControlResultTypes(bodyType, fallbackType), nil
 		}
 
@@ -150,6 +151,8 @@ func (t *RescueExpr) Infer(ctx context.Context, env hm.Env, fresh hm.Fresher) (h
 			// re-raises rather than yielding null.
 			resultType = mergeControlResultTypes(resultType, clauseType)
 		}
+
+		checkRescueLaziness(ctx, env, t, bodyType)
 
 		return resultType, nil
 	})

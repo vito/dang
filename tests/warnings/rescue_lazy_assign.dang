@@ -1,0 +1,15 @@
+# Assigning a still-lazy handle to a binding declared outside the rescue
+# defers its failures to wherever that binding is forced later — not to this
+# handler.
+
+import Test
+
+let holder = primaryUser
+let outcome = {
+  print("swapping")
+  holder = secondaryUser
+  "swapped"
+} rescue "failed"
+
+assert { outcome == "swapped" }
+print(holder.name)

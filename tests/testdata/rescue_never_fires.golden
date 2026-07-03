@@ -1,0 +1,31 @@
+42
+[1m[33mWarning:[0m this rescue can never fire: `serverInfo` only builds a GraphQL query — no request is sent inside the rescue; failures happen where the chain executes — rescue at a leaf field (`.version`, `.platform`, `.uptime`) or where the value is used
+  [2m[34m--> warnings/rescue_never_fires.dang:8:12[0m
+ [2m    |[0m
+ [2m  6 | [0m
+ [2m  7 | # a bare root field read only builds a query for a lazy handle[0m
+ [2m[34m[1m  8 | [0mlet info = serverInfo rescue null
+[2m                  [33m^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  9 | [0m
+ [2m 10 | # a plain value read can't fail either[0m
+ [2m    |[0m
+[1m[33mWarning:[0m this rescue can never fire: nothing inside it can fail
+  [2m[34m--> warnings/rescue_never_fires.dang:12:9[0m
+ [2m    |[0m
+ [2m 10 | # a plain value read can't fail either[0m
+ [2m 11 | let greeting = "hello"[0m
+ [2m[34m[1m 12 | [0mlet g = greeting rescue "?"
+[2m               [33m^^^^^^^^^^^^^^^^^^^[0m
+ [2m 13 | [0m
+ [2m 14 | # neither can a literal[0m
+ [2m    |[0m
+[1m[33mWarning:[0m this rescue can never fire: nothing inside it can fail
+  [2m[34m--> warnings/rescue_never_fires.dang:15:9[0m
+ [2m    |[0m
+ [2m 13 | [0m
+ [2m 14 | # neither can a literal[0m
+ [2m[34m[1m 15 | [0mlet n = 42 rescue 0
+[2m               [33m^^^^^^^^^^^[0m
+ [2m 16 | [0m
+ [2m 17 | print(toString(n))[0m
+ [2m    |[0m
