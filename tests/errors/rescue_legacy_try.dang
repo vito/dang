@@ -1,8 +1,0 @@
-# The try/catch block syntax was replaced by postfix rescue; it still
-# parses so the error can point at the fix (and dang fmt can migrate it).
-let x = {
-  raise "boom"
-} rescue {
-  err: Error => "caught: " + err.message
-}
-print(x)

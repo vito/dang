@@ -1,6 +1,0 @@
-# The bare-binding catch-all was removed with try/catch; rescue clauses
-# bind via a type pattern or discard via else.
-let x = "value" rescue {
-  err: Error => "caught"
-}
-print(x)
