@@ -417,6 +417,9 @@ func materializeStringValue(val StringValue, target hm.Type, path string) (Value
 			}
 			return RegexpValue{Re: re, Source: val.Val}, nil
 		}
+		if mod == PathType {
+			return newPathValue(val.Val), nil
+		}
 		return ScalarValue{Val: val.Val, ScalarType: mod}, nil
 	default:
 		return val, nil
@@ -518,6 +521,9 @@ func materializeDecoded(ctx context.Context, scope ValueScope, raw any, target h
 			}
 			if mod == StringType {
 				return StringValue{Val: s}, nil
+			}
+			if mod == PathType {
+				return newPathValue(s), nil
 			}
 			return ScalarValue{Val: s, ScalarType: mod}, nil
 		case ObjectKind:

@@ -65,6 +65,27 @@ func TestBuiltinRegistryClassifiesDefinitions(t *testing.T) {
 		t.Fatalf("list method receiver was not registered")
 	}
 
+	// Path is a scalar with instance methods plus a constructor function of
+	// the same name.
+	if !functionNames["Path"] {
+		t.Fatalf("the Path constructor function was not registered")
+	}
+	pathMethods := map[string]bool{}
+	ForEachMethod(PathType, func(def BuiltinDef) {
+		if !def.IsMethod || def.ReceiverType != PathType {
+			t.Fatalf("path method iterator returned wrong builtin: %+v", def)
+		}
+		pathMethods[def.Name] = true
+	})
+	for _, name := range []string{"name", "stem", "extension", "parent", "parts", "isAbsolute", "join", "relativeTo", "contains", "matches", "string"} {
+		if !pathMethods[name] {
+			t.Fatalf("Path.%s was not registered", name)
+		}
+		if functionNames[name] {
+			t.Fatalf("Path.%s leaked into top-level functions", name)
+		}
+	}
+
 	randomMethods := map[string]bool{}
 	ForEachStaticMethod(RandomModule, func(def BuiltinDef) {
 		if !def.IsStatic || def.HostModule != RandomModule {

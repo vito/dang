@@ -1,0 +1,6 @@
+# String literals auto-coerce into Path slots, but a non-literal String value
+# (a variable) still requires explicit conversion: Path(...) or :: Path!.
+takePath(p: Path!): String! { p.string }
+
+let dir = "some/dir"
+let bad = takePath(dir)

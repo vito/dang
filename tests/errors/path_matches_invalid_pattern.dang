@@ -1,0 +1,2 @@
+# Path.matches raises on an invalid glob pattern.
+let ok = Path("x").matches("[")

@@ -8,8 +8,9 @@ The built-in surface of Dang itself (everything here is available without any
 - `assert { Boolean! } -> Null` — runs the block; raises an `AssertionError` if not truthy. Block, not parens: `assert { x == 1 }`. The failure message includes the source expression and sub-values.
 - `assert(message: String! = null) { Boolean! } -> Null` — optional named `message`.
 - `loop { ... } -> r` — Dang's only loop: calls the block repeatedly forever; exit via `break` (the loop yields the break value, non-null if the break value is), `return`, or `raise`. See control-flow.md.
+- `Path(path: String!) -> Path!` — constructs a normalized Path from any String expression (see the [`Path!` scalar](#path-scalar) below).
 - `print(value: a) -> Null` — write a value to stdout (newline-terminated).
-- `toString(value: a) -> String!` — pass strings through, JSON-encode everything else.
+- `toString(value: a) -> String!` — pass strings, enum values, and custom scalar values (Path, Regexp, URL, ...) through as their bare string; JSON-encode everything else.
 
 `print` and `assert` return `null` — there is no `Void` type.
 
@@ -53,6 +54,38 @@ Backtick templates auto-coerce to the `Regexp` scalar, so a pattern is usually `
 - `.start -> Int!`, `.end -> Int!` — byte offsets
 - `.captures -> [String!]!` — positional groups (`captures[0]` is `$1`); unmatched optional groups surface as `""`
 - `.named -> Map[String]!` — named groups by name (`m.named["area"]`); a key reads as null if that group didn't match, and is absent for an unknown name
+
+## `Path!` scalar and methods {#path-scalar}
+
+`Path` is a slash-separated path **scalar, normalized on construction**: every
+way a Path comes to exist runs `path.Clean`-style normalization, so an
+un-clean Path cannot exist (there is no `.clean`) and equality is semantic —
+`Path("a//b/./c") == Path("a/b/c")`, and `Path("a//b") == "a/b"` (custom
+scalars compare with plain strings by their underlying string).
+
+Ways in: the `Path(s)` constructor (any String expression); a string
+*literal*/template in a `Path!`-typed slot (`let p: Path! = "src"`,
+`build(src: Path! = "src")`, case-clause values); an explicit `s :: Path!`
+cast; `JSON`/`YAML`/`TOML.decode` into a `Path!`-typed field. Way out: a Path
+**degrades to `String!` automatically at value-handoff boundaries** (see
+types.md, Coercion rules), plus `.string` for an explicit exit; interpolation
+and `toString` yield the bare path string.
+
+- `.name -> String!` — last element (`Path("/").name` is `"/"`, `Path(".").name` is `"."`)
+- `.stem -> String!` — `name` minus extension
+- `.extension -> String` — after the last dot in `name`, dot excluded; **null** when none; a leading dot alone (`.bashrc`) is not an extension
+- `.parent -> Path!` — parent of `/` is `/`; of a bare name is `.`
+- `.parts -> [String!]!` — segments, root excluded; `.` has no segments
+- `.isAbsolute -> Boolean!`
+- `.join(other: Path!) -> Path!` — lexical concat + normalize; chain for multiple; literals coerce (`p.join("bin")`)
+- `.relativeTo(base: Path!) -> Path` — **null** when not expressible (mixed abs/rel, or base escaping via `..`)
+- `.contains(other: Path!) -> Boolean!` — inclusive lexical containment; mixed abs/rel is never containment
+- `.matches(pattern: String!) -> Boolean!` — shell glob; raises on invalid pattern
+- `.string -> String!` — the normalized string
+
+A String *variable* does not auto-coerce into a `Path!` slot (the literal-only
+rule applies to every scalar) — wrap it: `Path(dir)`. There is no `+` on
+Paths; use `.join` or interpolation.
 
 ## `[T]!` methods (lists)
 

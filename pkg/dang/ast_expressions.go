@@ -915,6 +915,21 @@ func (d *Select) Eval(ctx context.Context, scope ValueScope) (Value, error) {
 				}
 				return nil, fmt.Errorf("string value does not have method %q", d.Field.Name)
 
+			case ScalarValue:
+				// Methods on custom scalar values (e.g. Path) dispatch through
+				// the builtin registry, keyed by the scalar's named type.
+				if mod, ok := rec.ScalarType.(*Type); ok {
+					methodKey := GetMethodKey(mod, d.Field.Name)
+					if method, found, err := scope.Lookup(ctx, methodKey); err != nil {
+						return nil, err
+					} else if found {
+						if builtinFn, ok := method.(BuiltinFunction); ok {
+							return BoundBuiltinMethod{Method: builtinFn, Receiver: rec}, nil
+						}
+					}
+				}
+				return nil, fmt.Errorf("%s value does not have method %q", rec.ScalarType.Name(), d.Field.Name)
+
 			case FloatValue:
 				// Handle methods on float values by looking them up in the evaluation environment
 				// The builtin is registered with a special name

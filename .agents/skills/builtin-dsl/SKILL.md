@@ -50,7 +50,11 @@ Method(StringType, "toUpper").
     })
 ```
 
-Receiver types currently available: `StringType`, `IntType`, `BooleanType`.
+Receiver types currently available: `StringType`, `IntType`, `BooleanType`,
+`PathType`. Custom scalar receivers dispatch generically: `Select.Eval` has a
+`ScalarValue` case that resolves methods via `GetMethodKey(v.ScalarType, name)`,
+so registering `Method(SomeScalarType, ...)` on a `ScalarValue`-backed scalar
+needs no new dispatch code (see `stdlib_path.go`).
 
 ## Examples are required
 
