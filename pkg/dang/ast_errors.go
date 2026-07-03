@@ -2,9 +2,14 @@ package dang
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
+	"github.com/Khan/genqlient/graphql"
+	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/vito/dang/v2/pkg/hm"
 )
 
@@ -219,28 +224,90 @@ func (t *RescueExpr) Eval(ctx context.Context, scope ValueScope) (Value, error) 
 	})
 }
 
-// extractErrorValue turns any caught error into an *Object.  User-
-// level raises already carry one; runtime errors are wrapped in a
-// BasicError.
+// extractErrorValue turns any caught error into an *Object, classifying
+// it into the built-in taxonomy. User-level raises already carry one;
+// assert{} failures become AssertionError; errors returned in a GraphQL
+// response become GraphQLError; every other fault becomes RuntimeError.
+// BasicError is reserved for `raise "string"` (see Raise.Eval).
 func extractErrorValue(err error) Value {
 	var raised *RaisedError
 	if errors.As(err, &raised) {
 		return raised.Value
 	}
-	// Wrap runtime errors in a BasicError.
+
+	var assertErr *AssertionError
+	if errors.As(err, &assertErr) {
+		// Use Message, not Error(): the "  Location: file:line:col" suffix
+		// is for uncaught rendering, not the caught value.
+		return newTypedError(AssertionErrorType, assertErr.Message)
+	}
+
+	var gqlErrs gqlerror.List
+	if errors.As(err, &gqlErrs) && len(gqlErrs) > 0 {
+		return newGraphQLError(gqlErrs)
+	}
+	// genqlient's HTTPError (non-200 responses) has no Unwrap, so any
+	// GraphQL errors in its body are invisible to errors.As above.
+	var httpErr *graphql.HTTPError
+	if errors.As(err, &httpErr) && len(httpErr.Response.Errors) > 0 {
+		return newGraphQLError(httpErr.Response.Errors)
+	}
+
+	// Everything else — interpreter faults, transport failures — is a
+	// RuntimeError carrying the innermost message.
 	msg := err.Error()
 	var sourceErr *SourceError
 	if errors.As(err, &sourceErr) {
 		msg = sourceErr.Inner.Error()
 	}
-	return newBasicError(msg)
+	return newTypedError(RuntimeErrorType, msg)
+}
+
+// newTypedError creates an *Object of the given prelude error type with
+// the given message.
+func newTypedError(mod *Type, message string) *Object {
+	mv := NewObject(mod)
+	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
+	return mv
 }
 
 // newBasicError creates an *Object of type BasicError with the given
 // message.
 func newBasicError(message string) *Object {
-	mv := NewObject(BasicErrorType)
-	mv.Bind("message", StringValue{Val: message}, PublicVisibility)
+	return newTypedError(BasicErrorType, message)
+}
+
+// newGraphQLError builds a GraphQLError from the errors in a GraphQL
+// response. The first error provides the message, path, and extensions;
+// GraphQL servers (and Dagger in particular) return one error per failed
+// request in practice.
+func newGraphQLError(list gqlerror.List) *Object {
+	first := list[0]
+
+	mv := newTypedError(GraphQLErrorType, first.Message)
+
+	elems := []Value{}
+	for _, seg := range first.Path {
+		switch s := seg.(type) {
+		case ast.PathName:
+			elems = append(elems, StringValue{Val: string(s)})
+		case ast.PathIndex:
+			elems = append(elems, StringValue{Val: strconv.Itoa(int(s))})
+		}
+	}
+	mv.Bind("path", ListValue{
+		Elements: elems,
+		ElemType: hm.NonNullType{Type: StringType},
+	}, PublicVisibility)
+
+	extensions := "{}"
+	if len(first.Extensions) > 0 {
+		if encoded, err := json.Marshal(first.Extensions); err == nil {
+			extensions = string(encoded)
+		}
+	}
+	mv.Bind("extensions", StringValue{Val: extensions}, PublicVisibility)
+
 	return mv
 }
 

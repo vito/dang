@@ -347,12 +347,27 @@ func init() {
 	ErrorType.Add("message", hm.NewScheme(nil, hm.NewFnType(NewRecordType(""), hm.NonNullType{Type: StringType})))
 	ErrorType.SetVisibility("message", PublicVisibility)
 
-	// Install BasicError — the concrete type behind raise "msg"
-	Prelude.AddObject("BasicError", BasicErrorType)
-	BasicErrorType.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
-	BasicErrorType.SetVisibility("message", PublicVisibility)
-	BasicErrorType.AddInterface(ErrorType)
-	ErrorType.AddImplementer(BasicErrorType)
+	// Install the built-in error taxonomy. BasicError is the concrete type
+	// behind `raise "msg"`; AssertionError comes from failed assert{} blocks;
+	// RuntimeError covers interpreter faults (division by zero, null
+	// assertions, coercion failures); GraphQLError carries errors returned in
+	// a GraphQL response. Classification happens in extractErrorValue.
+	for _, errMod := range []*Type{BasicErrorType, AssertionErrorType, RuntimeErrorType, GraphQLErrorType} {
+		Prelude.AddObject(errMod.Named, errMod)
+		errMod.Add("message", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+		errMod.SetVisibility("message", PublicVisibility)
+		errMod.AddInterface(ErrorType)
+		ErrorType.AddImplementer(errMod)
+	}
+
+	// GraphQLError additionally exposes the response path and extensions.
+	// extensions is the JSON-encoded extensions object ("{}" when absent) so
+	// it can feed JSON.decode; a builtin-JSON-typed field would be opaque to
+	// both JSON.decode(data: String!) and imported JSON scalars.
+	GraphQLErrorType.Add("path", hm.NewScheme(nil, NonNull(ListType{NonNull(StringType)})))
+	GraphQLErrorType.SetVisibility("path", PublicVisibility)
+	GraphQLErrorType.Add("extensions", hm.NewScheme(nil, hm.NonNullType{Type: StringType}))
+	GraphQLErrorType.SetVisibility("extensions", PublicVisibility)
 
 	// Register standard library builtins
 	registerStdlib()
