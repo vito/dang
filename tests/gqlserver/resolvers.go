@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strconv"
 	"time"
+
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 type Resolver struct{}
@@ -402,9 +404,15 @@ func (r *userResolver) Sync(ctx context.Context, obj *User) (string, error) {
 	return obj.ID, nil
 }
 
-// AlwaysFails is the resolver for the alwaysFails field.
+// AlwaysFails is the resolver for the alwaysFails field. It fails with
+// extensions attached so tests can cover GraphQLError.extensions decoding.
 func (r *userResolver) AlwaysFails(ctx context.Context, obj *User) (string, error) {
-	return "", fmt.Errorf("this field always fails")
+	return "", &gqlerror.Error{
+		Message: "this field always fails",
+		Extensions: map[string]interface{}{
+			"code": "ALWAYS_FAILS",
+		},
+	}
 }
 
 // Mutation returns MutationResolver implementation.

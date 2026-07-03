@@ -1,0 +1,73 @@
+# The built-in error taxonomy: every caught failure is classified into a
+# nameable prelude type, so handlers dispatch on types instead of
+# string-matching messages.
+
+import Test
+
+# assert failures are AssertionError
+let assertCaught = try {
+  assert { 1 == 2 }
+  "unreachable"
+} catch {
+  e: AssertionError => "assert caught"
+  e: Error => "wrong type"
+}
+assert { assertCaught == "assert caught" }
+
+# interpreter faults are RuntimeError
+let faultCaught = try { 1 / 0 } catch {
+  e: RuntimeError => e.message
+  e: Error => "wrong type"
+}
+assert { faultCaught == "division by zero" }
+
+# raise "string" stays BasicError — specifically NOT a RuntimeError
+let raiseCaught = try { raise "boom" } catch {
+  e: RuntimeError => "wrong type"
+  e: AssertionError => "wrong type"
+  e: BasicError => e.message
+}
+assert { raiseCaught == "boom" }
+
+# failed GraphQL requests are GraphQLError, carrying the response path
+let gqlPath = try { user(id: "1").alwaysFails } catch {
+  e: GraphQLError => e.path
+  e: Error => ["wrong type"]
+}
+assert { gqlPath == ["user", "alwaysFails"] }
+
+# extensions arrive as JSON text, ready for JSON.decode
+let gqlExtensions = try { user(id: "1").alwaysFails } catch {
+  e: GraphQLError => e.extensions
+  e: Error => "wrong type"
+}
+assert { gqlExtensions == "{\"code\":\"ALWAYS_FAILS\"}" }
+
+# the response message is the server's own, without client-side wrapping
+let gqlMessage = try { user(id: "1").alwaysFails } catch {
+  e: GraphQLError => e.message
+  e: Error => "wrong type"
+}
+assert { gqlMessage == "this field always fails" }
+
+# user-defined error types are unaffected by classification
+type TokenError implements Error {
+  message: String!
+  token: String!
+}
+
+let customCaught = try {
+  raise TokenError(message: "bad token", token: "abc123")
+} catch {
+  e: RuntimeError => "wrong type"
+  e: TokenError => e.token
+}
+assert { customCaught == "abc123" }
+
+# the Error interface pattern still catches every member of the taxonomy
+let viaInterface = try { 1 % 0 } catch {
+  e: Error => "interface: " + e.message
+}
+assert { viaInterface == "interface: modulo by zero" }
+
+print("Error taxonomy tests passed!")
