@@ -393,20 +393,17 @@ gathered along the way — the error's type and public data fields, the
 raise site, the cause chain, and any sibling failures from a concurrent
 `{{ }}` — each with its own highlighted source location:
 
-```
-Error: uncaught DeployError: deploy failed
-  --> ./ci/main.dang:12:17
-     |
-  12 |     e: Error => raise DeployError(message: "deploy failed", stage: "push")
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-     |
-  stage: "push"
-caused by: error: connection refused
-  --> ./ci/main.dang:8:17
-     |
-   8 | push: String! { raise "connection refused" }
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^
-     |
+```dang-failure
+type DeployError implements Error {
+  message: String!
+  stage: String!
+}
+
+push: String! { raise "connection refused" }
+
+push rescue {
+  err: Error => raise DeployError(message: "deploy failed", stage: "push")
+}
 ```
 
 Jumps are not errors: `return`, `break`, and `continue` pass through a
