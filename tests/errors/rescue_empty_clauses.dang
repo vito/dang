@@ -1,3 +1,4 @@
 # A rescue clause block must contain at least one clause.
-let x = "value" rescue { }
+let x = "value" rescue {
+}
 print(x)
