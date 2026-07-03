@@ -126,7 +126,7 @@ validate(name) rescue {
 - Legacy `try { } catch { }` still parses, but type-checking rejects it: ``try/catch was replaced by postfix `rescue`; attach `rescue` to an expression or block — run `dang fmt -w` to migrate``. `dang fmt -w` rewrites it (a single-form try body unwraps to plain postfix, bare `err =>` bindings become `err: Error =>`, zero-clause handlers are dropped).
 
 ### Propagation
-- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` terminates the program with a full report: `uncaught <TypeName>: <message>` (plain `uncaught error:` for BasicError) + highlighted raise site + the error's public data fields + the `caused by:` chain + `also failed:` lines for completed sibling failures from a concurrent `{{ }}`.
+- Uncaught errors unwind through enclosing calls; a `raise` with no enclosing `rescue` terminates the program with a full report: `uncaught <TypeName>: <message>` (plain `uncaught error:` for BasicError) + highlighted raise site + the error's public data fields + the `caused by:` chain + `also failed:` sections for completed sibling failures from a concurrent `{{ }}` — every link and sibling rendered with its own highlighted source snippet (explicit-field causes have no raise site, so they get just the summary line).
 - `{{ }}` stays fail-fast with one deterministic primary error; a rescue catching the primary drops the siblings (they appear only in the uncaught report).
 - `return` cannot be rescued — `{ return x } rescue fallback` still returns `x`; likewise `break`/`continue` are not errors.
 - Re-raise inside a clause with `raise err` (or a new error); it propagates to the next enclosing `rescue`.

@@ -32,39 +32,76 @@ const (
 )
 
 func (u *uncaughtErrorReport) Error() string {
-	source := u.Source
-	if source == "" && u.Raised.Location != nil && u.Raised.Location.Filename != "" {
-		if contents, err := os.ReadFile(u.Raised.Location.Filename); err == nil {
-			source = string(contents)
-		}
-	}
-
-	header := fmt.Sprintf("uncaught %s", errorSummary(u.Raised.Value))
-
 	var out strings.Builder
-	if annotated, ok := formatSourceAnnotation(u.Raised.Location, source, "Error:", ansiRed, header); ok {
-		out.WriteString(annotated)
-	} else {
-		fmt.Fprintf(&out, "%s%sError:%s %s\n", ansiBold, ansiRed, ansiReset, header)
-	}
 
+	u.annotate(&out, "Error:", fmt.Sprintf("uncaught %s", errorSummary(u.Raised.Value)), u.Raised.Location, "")
 	writeErrorFields(&out, u.Raised.Value)
 
 	for _, link := range causeChain(u.Raised) {
-		fmt.Fprintf(&out, "%s%scaused by:%s %s\n", ansiBold, ansiRed, ansiReset, errorSummary(link.Value))
-		if link.Location != nil {
-			fmt.Fprintf(&out, "  %s%s--> %s:%d:%d%s\n", ansiDim, ansiBlue,
-				link.Location.Filename, link.Location.Line, link.Location.Column, ansiReset)
-		}
+		u.annotate(&out, "caused by:", errorSummary(link.Value), link.Location, "")
 		writeErrorFields(&out, link.Value)
 	}
 
 	for _, sibling := range u.Also {
-		fmt.Fprintf(&out, "%s%salso failed:%s %s\n", ansiBold, ansiRed, ansiReset, siblingSummary(sibling))
+		loc, source := errorLocation(sibling)
+		u.annotate(&out, "also failed:", siblingSummary(sibling), loc, source)
 	}
 
 	// Trailing newline matches the SourceError rendering convention.
 	return strings.TrimSuffix(out.String(), "\n") + "\n"
+}
+
+// annotate writes a labeled section with the same highlighted source
+// snippet treatment as the primary error, degrading to a bare location
+// arrow when the source can't be shown, and to just the label line when
+// there is no location at all (e.g. a cause taken from an explicit field).
+func (u *uncaughtErrorReport) annotate(out *strings.Builder, label, message string, loc *SourceLocation, source string) {
+	if loc != nil {
+		if source == "" {
+			source = u.sourceFor(loc)
+		}
+		if annotated, ok := formatSourceAnnotation(loc, source, label, ansiRed, message); ok {
+			out.WriteString(annotated)
+			return
+		}
+	}
+
+	fmt.Fprintf(out, "%s%s%s%s %s\n", ansiBold, ansiRed, label, ansiReset, message)
+	if loc != nil {
+		fmt.Fprintf(out, "  %s%s--> %s:%d:%d%s\n", ansiDim, ansiBlue,
+			loc.Filename, loc.Line, loc.Column, ansiReset)
+	}
+}
+
+// sourceFor resolves the source text for a location: the boundary's own
+// source when the location is in the same file, otherwise the file on
+// disk. Empty when unknown, so annotate degrades rather than underlining
+// the wrong file's lines.
+func (u *uncaughtErrorReport) sourceFor(loc *SourceLocation) string {
+	primary := u.Raised.Location
+	if u.Source != "" && primary != nil && primary.Filename == loc.Filename {
+		return u.Source
+	}
+	if loc.Filename != "" {
+		if contents, err := os.ReadFile(loc.Filename); err == nil {
+			return string(contents)
+		}
+	}
+	return ""
+}
+
+// errorLocation extracts a source location (and, for SourceErrors, the
+// source text it was recorded with) from an arbitrary sibling error.
+func errorLocation(err error) (*SourceLocation, string) {
+	var raised *RaisedError
+	if errors.As(err, &raised) {
+		return raised.Location, ""
+	}
+	var sourceErr *SourceError
+	if errors.As(err, &sourceErr) {
+		return sourceErr.Location, sourceErr.Source
+	}
+	return nil, ""
 }
 
 // errorSummary renders "TypeName: message" for an error value. BasicError —
@@ -186,6 +223,9 @@ func (p *parallelFailure) Error() string {
 	out.WriteString(p.Primary.Error())
 	for _, sibling := range p.Also {
 		fmt.Fprintf(&out, "\n%s%salso failed:%s %s", ansiBold, ansiRed, ansiReset, siblingSummary(sibling))
+		if loc, _ := errorLocation(sibling); loc != nil {
+			fmt.Fprintf(&out, " %s(%s:%d:%d)%s", ansiDim, loc.Filename, loc.Line, loc.Column, ansiReset)
+		}
 	}
 	return out.String()
 }

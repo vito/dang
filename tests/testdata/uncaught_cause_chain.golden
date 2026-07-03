@@ -11,4 +11,12 @@
   [2mstage:[0m "push"
 [1m[31mcaused by:[0m error: connection refused
   [2m[34m--> errors/uncaught_cause_chain.dang:8:17[0m
+ [2m    |[0m
+ [2m  6 | }[0m
+ [2m  7 | [0m
+ [2m[34m[1m  8 | [0mpush: String! { raise "connection refused" }
+[2m                       [31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+ [2m  9 | [0m
+ [2m 10 | deploy: String! {[0m
+ [2m    |[0m
 

@@ -391,7 +391,7 @@ chain explicitly.)
 When an error escapes the whole program, the report shows everything
 gathered along the way — the error's type and public data fields, the
 raise site, the cause chain, and any sibling failures from a concurrent
-`{{ }}`:
+`{{ }}` — each with its own highlighted source location:
 
 ```
 Error: uncaught DeployError: deploy failed
@@ -403,6 +403,10 @@ Error: uncaught DeployError: deploy failed
   stage: "push"
 caused by: error: connection refused
   --> ./ci/main.dang:8:17
+     |
+   8 | push: String! { raise "connection refused" }
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
 ```
 
 Jumps are not errors: `return`, `break`, and `continue` pass through a
